@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import io
 import math
 import os
 import re
@@ -15,8 +16,12 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from prompt_toolkit import print_formatted_text
 from prompt_toolkit.application import get_app_or_none
+from prompt_toolkit.data_structures import Size
 from prompt_toolkit.formatted_text import ANSI, FormattedText, StyleAndTextTuples, to_formatted_text
-from prompt_toolkit.output import create_output
+from prompt_toolkit.output import ColorDepth, create_output
+from prompt_toolkit.output.vt100 import Vt100_Output
+from prompt_toolkit.renderer import print_formatted_text as render_fragments_to_output
+from prompt_toolkit.styles import default_pygments_style, default_ui_style, merge_styles
 from prompt_toolkit.utils import get_cwidth
 from rich import box
 from rich.console import Console, ConsoleOptions, RenderResult
@@ -392,6 +397,12 @@ def markdown_console(width: int) -> Console:
     return Console(force_terminal=True, color_system="truecolor", no_color=False, width=max(10, width), theme=Theme.rich_theme())
 
 
+# The style `print_formatted_text` builds for a bare call, resolved once. Scrollback fragments
+# carry inline colors from the theme, which every one of these resolves identically; keeping the
+# same style here is what makes the recorded bytes equal to the ones the direct path writes.
+_SCROLLBACK_STYLE = merge_styles([default_ui_style(), default_pygments_style()])
+
+
 class UiPrinter:
     """Render completed output into native terminal scrollback.
 
@@ -435,6 +446,12 @@ class UiPrinter:
     def __init__(self, output_fn=print):
         self.output_fn = output_fn
         self.color = output_fn is print and sys.stdout.isatty()
+        # Where rendered scrollback goes while something else owns the terminal. The TUI sets this
+        # to its ScrollbackRegion, which needs every printed row -- not just the ones routed through
+        # the ordered writer -- because a width change rebuilds the terminal from what it recorded,
+        # and a row nobody recorded is a row the rebuild cannot put back. Startup banners, restored
+        # transcript and the unwinding fallback path all print through here too.
+        self.transcript_sink: Callable[[str], None] | None = None
         # Batch mode: while active, every emit appends its styled fragments instead of printing,
         # so a burst of output (the restored-transcript replay) is printed by a single
         # print_formatted_text call and flushes once. Under the TUI each call coordinates with the
@@ -516,7 +533,38 @@ class UiPrinter:
             self._scrollback_scheduled = False
             self._scrollback_generation += 1
         if parts:
+            self.print_parts(parts)
+
+    def print_parts(self, parts: list[FormattedText | ANSI]) -> None:
+        """Render completed output once, then send it wherever scrollback currently lives.
+
+        Every printed row passes through here, which is what lets the TUI rebuild the terminal
+        after a width change: it records what it is handed, and a row that never reached the
+        recorder is a row no rebuild can restore. When nothing has claimed the sink -- headless
+        runs, startup before the app exists, the unwinding fallback -- this prints as before.
+        """
+        sink = self.transcript_sink
+        if sink is None:
             print_formatted_text(*parts, sep="", end="", flush=True)
+            return
+        sink(self.render_to_ansi(parts))
+
+    @staticmethod
+    def render_to_ansi(parts: list[FormattedText | ANSI]) -> str:
+        """Render fragments to the exact bytes `print_formatted_text` would have written.
+
+        Rendering through a real `Vt100_Output` rather than reimplementing the styling keeps
+        themes, ANSI passthrough and wrapping identical to the direct path; only the destination
+        differs.
+        """
+        buffer = io.StringIO()
+        size = Size(rows=24, columns=80)
+        with contextlib.suppress(OSError, ValueError):
+            columns, rows = os.get_terminal_size()
+            size = Size(rows=rows, columns=columns)
+        output = Vt100_Output(buffer, lambda: size, default_color_depth=ColorDepth.TRUE_COLOR)
+        render_fragments_to_output(output, [fragment for part in parts for fragment in to_formatted_text(part)], _SCROLLBACK_STYLE)
+        return buffer.getvalue()
 
     def _scrollback_print(self, fragment: FormattedText | ANSI) -> None:
         """Print above a live application, batching a burst of emits into one suspend.
@@ -538,7 +586,7 @@ class UiPrinter:
         # (which would delay it past the suspend's wait-then-return contract).
         if app is None or not app.is_running or app._running_in_terminal:
             self.drain_scrollback()
-            print_formatted_text(fragment, end="", flush=True)
+            self.print_parts([fragment])
             return
         loop = app.loop
         assert loop is not None  # a running application always has one; the checker cannot see it
@@ -567,7 +615,7 @@ class UiPrinter:
             parts = self._scrollback_parts
             self._scrollback_parts = []
         if parts:
-            print_formatted_text(*parts, sep="", end="", flush=True)
+            self.print_parts(parts)
 
     @contextlib.contextmanager
     def batched(self):
@@ -593,7 +641,7 @@ class UiPrinter:
         app = get_app_or_none()
         if app is None or not app.is_running or app._running_in_terminal:
             self.drain_scrollback()
-            print_formatted_text(*parts, sep="", end="", flush=True)
+            self.print_parts(parts)
             return
         loop = app.loop
         assert loop is not None  # a running application always has one; the checker cannot see it

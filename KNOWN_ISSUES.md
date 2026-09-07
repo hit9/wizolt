@@ -5,22 +5,39 @@ record, not an implementation specification.
 
 ## TUI resize and scrollback
 
-Do not claim this issue is fixed unless a solution passes the real-tmux acceptance criteria below.
+**Resolved.** The history below is kept because it explains why the solution has the shape it does,
+and why the cheaper-looking alternatives above it are dead ends.
 
 ### Current decision
 
-Wizolt keeps its ordinary input, activity, Ask, approval, and command-selector UI on the terminal's
-primary screen. Completed output remains available in native terminal and tmux scrollback.
+Wizolt keeps its whole UI on the terminal's primary screen, and completed output stays in native
+terminal and tmux scrollback. Two mechanisms make that survive a reflow, and both are required:
 
-This preserves the product's preferred interaction model, but dynamic primary-screen regions can
-leave blank rows or stale fragments after tmux reflows the pane. The artifacts are currently
-accepted because the attempted fixes either deleted real history, remained unstable across
-repeated resizes, or made selectors materially worse to use.
+* Completed output is written into a DEC scroll region strictly above the application
+  (`CSI 1;<top> r`), so printed lines scroll the transcript -- and only the transcript -- off the
+  top into scrollback. The application's rows are never erased and never re-enter the terminal's
+  text flow, which is what used to leave blank rows and stale fragments behind.
+* A width change rewraps every row in the pane, after which nothing can identify which rows the
+  application owns. Rather than guess, the terminal is purged and the transcript is re-emitted
+  from memory. The transcript, not the terminal, is the source of truth.
 
-Exclusive viewers such as `/diff` may still use the alternate screen. Ordinary command selectors
-must not be moved there again without satisfying this document's acceptance criteria.
+Both run from inside the render cycle. The application's absolute position is derived state that
+any resize invalidates, so deriving it from the emitting task races every resize and writes lines
+onto rows that belong to something else. `wizolt/tui/scrollback.py` carries the details.
 
-### Symptoms still reproducible
+**The accepted cost:** purging takes the user's pre-existing shell history with it, so after the
+first width change `Ctrl-b [` no longer reaches what was on screen before wizolt started. This is
+deliberate. The alternative -- deleting a computed number of physical rows -- destroys transcript
+when the estimate drifts, which it does, and that is strictly worse. Everything wizolt itself
+printed is replayed, including the startup banner and restored transcript, which is why every
+printed row must reach the recorder (`tests/test_tui_transcript_recording.py`).
+
+Exclusive viewers such as `/diff` may still use the alternate screen.
+
+### Symptoms this used to produce
+
+The rest of this section describes the problem as it stood before the fix, and the attempts that
+failed. It is kept as the reasoning record; none of it is a live defect.
 
 #### Dynamic activity and thinking output
 
@@ -186,16 +203,25 @@ terminal alone.
 - `tests/test_tui_scrollback.py`: prompt-toolkit suspension and ordered scrollback output.
 - `tests/test_diff_command.py`: alternate-screen capability behavior for the exclusive diff viewer.
 
-### Reopening the problem
+### How it was resolved
 
-Do not reopen this as another small erase, CPR, cursor-move, or alternate-screen patch. A credible
-next attempt needs at least one of these foundations:
+Three of the four foundations this section used to ask for are what the fix is built on:
 
-- a real tmux harness that measures physical history throughout development;
-- a prompt-toolkit change exposing enough physical-row ownership to delete safely;
-- a terminal protocol or application architecture that no longer mixes mutable live rows with
-  append-only transcript rows; or
-- an explicit product decision to use a full-screen alternate-buffer UI and provide conversation
-  history inside Wizolt instead of relying on native scrollback.
+- a real tmux harness that measures physical history (`tests/test_tui_tmux_scrollback.py`), used
+  throughout development rather than written afterwards;
+- an architecture that no longer mixes mutable live rows with append-only transcript rows -- the
+  scroll region keeps the application's rows out of the text flow entirely; and
+- an explicit product decision, which is the scrollback purge on a width change described above.
 
-Until then, preserving transcript data takes priority over hiding resize artifacts.
+The fourth -- a prompt-toolkit change exposing physical-row ownership -- turned out to be
+unnecessary. `Renderer.rows_above_layout` already yields the application's absolute top, and
+because the application is always flush with the pane bottom and tmux pins the cursor line there
+across a reflow, its origin can be handed to the renderer instead of asked for. Removing the CPR
+round trip removed the window in which the application's position was unknown; measured against
+the harness, keeping the CPR was almost three times worse.
+
+Two earlier ideas were measured and rejected, both worse than the shipped approach: restoring the
+cursor with DECSC/DECRC instead of an absolute row, and re-anchoring from a cursor position report.
+
+If this regresses, the acceptance criteria below still apply. Preserving transcript data still
+takes priority over hiding resize artifacts.

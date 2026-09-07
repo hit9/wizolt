@@ -9,6 +9,8 @@ bottom edge, and answers CPR from wherever the cursor physically is, then repeat
 cycle and require the prompt to stay anchored at the bottom.
 """
 
+import re
+
 from prompt_toolkit.data_structures import Size
 from tui_harness import ResizableOutput, run_interactive_tui, wait_until
 
@@ -87,6 +89,29 @@ class ReflowingTerminal(ResizableOutput):
     def erase_end_of_line(self):
         self.lines[self.row - 1] = self.lines[self.row - 1][: self.column]
 
+    def write_raw(self, data):
+        """Interpret the escape sequences the scrollback path depends on.
+
+        `DummyOutput.write_raw` discards, which would let this model pass a rebuild it never
+        performed. Only the sequences wizolt emits are handled: purging scrollback and clearing
+        the screen, which is what a width change does before replaying the transcript.
+        """
+        for match in re.finditer(r"\x1b\[([0-9;]*)([A-Za-z])|([^\x1b]+)", data):
+            params, final, text = match.groups()
+            if text is not None:
+                self.write(text)
+            elif final == "H":
+                row, _, column = params.partition(";")
+                self.cursor_goto(int(row or 1), int(column or 1))
+            elif final == "J" and params in ("2", "3"):
+                # 2J clears the visible screen; 3J purges scrollback. This model has no
+                # scrollback, so both come to the same thing here.
+                self.lines = [""] * self.size.rows
+            elif final == "J":
+                self.erase_down()
+            elif final == "m":
+                pass  # styling has no effect on which rows exist
+
     def reflow_up(self, count):
         """The multiplexer moves the pane content up; the cursor travels with it."""
         del self.lines[:count]
@@ -97,11 +122,22 @@ class ReflowingTerminal(ResizableOutput):
 def test_resize_reflow_keeps_prompt_anchored_at_bottom(monkeypatch):
     output = ReflowingTerminal(ROWS, 80)
     app = TuiApp()
+    printer = UiPrinter()
+    printer.color = True
+    printer.transcript_sink = app.record_scrollback
     prompt_rows = []
     transcript_rows = []
 
     def drive(_pipe_input):
         wait_until(lambda: any(line.startswith(UiPrinter.PROMPT_PREFIX) for line in output.lines))
+        # Put the transcript on screen the way the runtime does, through the recorder. Rows that
+        # reach the terminal any other way are not wizolt's to replay, and a width change drops
+        # them -- that is the trade this design takes, and seeding them directly would assert the
+        # opposite of what ships.
+        for index in range(1, TRANSCRIPT_ROWS + 1):
+            app.app.loop.call_soon_threadsafe(printer.emit, f"transcript {index:02d}")
+        # Emits are batched into shared writes, so wait on the content rather than a count.
+        wait_until(lambda: f"transcript {TRANSCRIPT_ROWS:02d}" in "".join(app.scrollback.transcript))
 
         def run_resize_cycle():
             finished = []
@@ -124,11 +160,13 @@ def test_resize_reflow_keeps_prompt_anchored_at_bottom(monkeypatch):
         on_application=lambda app: setattr(output, "report_cursor_row", app.renderer.report_absolute_cursor_row),
     )
 
-    # The prompt never moves, and only one copy of it is ever visible: every cycle redraws at
-    # the same bottom-anchored row and erases the reflowed copy instead of leaving ghosts.
+    # The prompt never moves, and only one copy of it is ever visible: every cycle re-anchors at
+    # the same bottom row and erases the reflowed copy instead of leaving ghosts.
     assert len(set(prompt_rows)) == 1
     assert all(len(rows) == 1 for rows in prompt_rows)
     assert prompt_rows[0][0] >= ROWS - 6
-    # Each cycle costs exactly the drifted rows of transcript — the resize itself must not
-    # erase any transcript above the app nor scroll it further.
-    assert transcript_rows == [TRANSCRIPT_ROWS - DRIFT * (cycle + 1) for cycle in range(CYCLES)]
+    # The transcript does not bleed away cycle by cycle. Every width change replays it from the
+    # recorder, so what is on screen is a full pane of transcript rather than whatever survived
+    # the last reflow — this is the assertion the shipped erase-and-hope path cannot pass.
+    assert min(transcript_rows) >= ROWS - 6, transcript_rows
+    assert transcript_rows[-1] >= transcript_rows[0] - 1, transcript_rows
