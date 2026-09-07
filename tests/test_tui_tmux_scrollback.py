@@ -33,6 +33,12 @@ from typing import NamedTuple
 
 import pytest
 
+# Skipping is right on a developer machine without tmux, but in CI a silent skip is how this
+# test quietly stops guarding anything -- the exact failure `KNOWN_ISSUES.md` warns about. CI
+# installs tmux, so if it is missing there, that is a broken pipeline, not an absent tool.
+if shutil.which("tmux") is None and os.environ.get("CI"):
+    raise RuntimeError("CI must run the real-tmux acceptance tests, but tmux is not installed")
+
 pytestmark = pytest.mark.skipif(shutil.which("tmux") is None, reason="requires tmux")
 
 WIDE, NARROW = 100, 62
@@ -53,21 +59,40 @@ def tmux(*args: str, check: bool = True) -> str:
 
 
 @pytest.fixture(params=["on", "off"], ids=["alt-screen-on", "alt-screen-off"])
-def pane(tmp_path, request):
-    # One session per test. These run under xdist, and a shared name makes two workers fight
-    # over the same pane, which looks exactly like the corruption the test is meant to detect.
-    session = f"wizolt-{request.node.name[:32]}-{os.getpid()}"
-    tmux("kill-session", "-t", session, check=False)
-    tmux("new-session", "-d", "-s", session, "-x", str(WIDE), "-y", str(TALL), "-c", str(tmp_path), "sh")
-    # Both halves of acceptance criterion 11. Nothing here uses the alternate screen, so the
-    # projection must behave identically either way -- and a terminal with it disabled is
-    # exactly where a stray 1049 would go unnoticed until it ate someone's screen.
-    tmux("set-option", "-t", session, "-w", "alternate-screen", request.param)
-    time.sleep(0.4)
-    try:
-        yield Pane(session, tmp_path)
-    finally:
+def panes(tmp_path, request):
+    """Hand out fresh tmux panes, each torn down at the end of the test.
+
+    A test that needs two runs gets two panes rather than trying to reclaim one. Killing the
+    driver in place meant sending Ctrl-C, which the selector swallows whenever it happens to be
+    open, leaving the pane owned by an app that never exited and every later keystroke going to
+    it instead of the shell.
+    """
+    created: list[str] = []
+
+    def make() -> Pane:
+        # One session per pane. These run under xdist, and a shared name makes two workers fight
+        # over the same pane, which looks exactly like the corruption the test detects.
+        session = f"wizolt-{request.node.name[:24]}-{os.getpid()}-{len(created)}"
         tmux("kill-session", "-t", session, check=False)
+        tmux("new-session", "-d", "-s", session, "-x", str(WIDE), "-y", str(TALL), "-c", str(tmp_path), "sh")
+        # Both halves of acceptance criterion 11. Nothing here uses the alternate screen, so the
+        # projection must behave identically either way -- and a terminal with it disabled is
+        # exactly where a stray 1049 would go unnoticed until it ate someone's screen.
+        tmux("set-option", "-t", session, "-w", "alternate-screen", request.param)
+        created.append(session)
+        time.sleep(0.4)
+        return Pane(session, tmp_path)
+
+    try:
+        yield make
+    finally:
+        for session in created:
+            tmux("kill-session", "-t", session, check=False)
+
+
+@pytest.fixture
+def pane(panes):
+    return panes()
 
 
 class Pane(NamedTuple):
@@ -84,14 +109,30 @@ class Pane(NamedTuple):
         return tmux("capture-pane", "-t", self.session, "-p", "-S", "-").split("\n")
 
 
-def _wait_for_markers(log: Path, count: int, timeout: float = 60.0) -> None:
+def _wait_for_markers(log: Path, count: int, timeout: float = 30.0) -> None:
     """Block until the driver has written at least `count` markers."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if log.exists() and log.read_text().count("wrote MARKER-") >= count:
             return
         time.sleep(0.05)
-    raise AssertionError(f"driver wrote fewer than {count} markers within {timeout}s")
+    raise AssertionError(f"driver wrote fewer than {count} markers within {timeout}s (log exists: {log.exists()})")
+
+
+def _settled_capture(pane, attempts: int = 40) -> list[str]:
+    """Capture once the pane stops changing.
+
+    A fixed pause is a bet on how loaded the machine is; CI runs four workers on two cores and
+    loses that bet. Comparing consecutive captures waits for the thing that actually matters.
+    """
+    previous = pane.capture()
+    for _ in range(attempts):
+        time.sleep(0.15)
+        current = pane.capture()
+        if current == previous:
+            return current
+        previous = current
+    return previous
 
 
 def cycle_size(cycle: int) -> tuple[int, int]:
@@ -118,8 +159,7 @@ def test_transcript_survives_repeated_resize_cycles(pane):
     # written after the capture look destroyed, which under load is the difference between this
     # test passing alone and failing beside the rest of the suite.
     _wait_for_markers(log, MARKERS)
-    time.sleep(1.2)
-    lines = pane.capture()
+    lines = _settled_capture(pane)
 
     text = "\n".join(lines)
     seen = Counter(int(m) for m in re.findall(r"MARKER-(\d+)", text))
@@ -142,19 +182,19 @@ def test_transcript_survives_repeated_resize_cycles(pane):
 
 def _blank_rows_after(pane, cycles: int) -> int:
     """Emit a fixed transcript, then resize `cycles` times, and count the blank rows left."""
-    pane.send(f"{sys.executable} {DRIVER} 40 0.03 {pane.path / f'blank-{cycles}.log'}")
+    log = pane.path / f"blank-{cycles}.log"
+    pane.send(f"{sys.executable} {DRIVER} 40 0.03 {log}")
     # Let the whole transcript land before resizing, so both arms compare the same content and
     # the only difference between them is how many times the pane was resized.
-    time.sleep(3.5)
+    _wait_for_markers(log, 40)
     for cycle in range(cycles):
         pane.resize(*cycle_size(cycle))
         time.sleep(0.15)
     pane.resize(WIDE, TALL)
-    time.sleep(1.2)
-    return sum(1 for line in pane.capture() if not line.strip())
+    return sum(1 for line in _settled_capture(pane) if not line.strip())
 
 
-def test_blank_rows_do_not_grow_with_resize_cycles(pane):
+def test_blank_rows_do_not_grow_with_resize_cycles(panes):
     """The shipped implementation accumulates blank rows per resize; this pins that down.
 
     An absolute bound cannot express the property, because `UiPrinter` puts real blank rows
@@ -162,11 +202,7 @@ def test_blank_rows_do_not_grow_with_resize_cycles(pane):
     tracking the number of *resizes*, so the same transcript is resized a few times and many
     times and the two counts are compared.
     """
-    few = _blank_rows_after(pane, 4)
-    tmux("send-keys", "-t", pane.session, "C-c")
-    time.sleep(0.6)
-    pane.send("clear")
-    time.sleep(0.5)
-    many = _blank_rows_after(pane, CYCLES)
+    few = _blank_rows_after(panes(), 4)
+    many = _blank_rows_after(panes(), CYCLES)
 
     assert many <= few + 2, f"blank rows grew with resize count: {few} after 4 cycles, {many} after {CYCLES}"
