@@ -46,6 +46,13 @@ async def main(log) -> None:
         options = [("", f" option {index}\n") for index in range(8)]
         while True:
             await asyncio.sleep(1.7)
+            # Tests request a quiescent chat frame only after exercising resizes and selectors.
+            # A quiet 150ms capture can also be an open selector; explicitly acknowledge that
+            # this loop has closed its last modal and will not open another one.
+            if log is not None and Path(log.name).with_suffix(".settle").exists():
+                log.write("selectors stopped\n")
+                log.flush()
+                return
             opened = asyncio.get_running_loop().create_task(app.show_modal(lambda: options, lambda _key, _data="": None))
             await asyncio.sleep(0.9)
             app.close_modal(None)

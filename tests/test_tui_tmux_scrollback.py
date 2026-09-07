@@ -139,6 +139,15 @@ def _settled_capture(pane, attempts: int = 40) -> list[str]:
     return previous
 
 
+def _stop_selectors(log: Path, timeout: float = 10.0) -> None:
+    """Wait for the driver to close its selector and stop reopening it before final capture."""
+    log.with_suffix(".settle").touch()
+    deadline = time.monotonic() + timeout
+    while "selectors stopped\n" not in log.read_text():
+        assert time.monotonic() < deadline, "the driver did not settle its selector"
+        time.sleep(0.05)
+
+
 def cycle_size(cycle: int) -> tuple[int, int]:
     return NARROW if cycle % 2 else WIDE, SHORT if cycle % 4 >= 2 else TALL
 
@@ -167,6 +176,7 @@ def test_transcript_survives_repeated_resize_cycles(pane):
     # written after the capture look destroyed, which under load is the difference between this
     # test passing alone and failing beside the rest of the suite.
     _wait_for_markers(log, MARKERS)
+    _stop_selectors(log)
     lines = _settled_capture(pane)
 
     text = "\n".join(lines)
@@ -200,7 +210,14 @@ def _blank_rows_after(pane, cycles: int) -> int:
         pane.resize(*cycle_size(cycle))
         time.sleep(0.15)
     pane.resize(WIDE, TALL)
-    return sum(1 for line in _settled_capture(pane) if not line.strip())
+    # Compare the same live UI state. An open selector has eight option rows where the closed
+    # app has blank padding, so raw blank counts otherwise differ even with no further resize.
+    _stop_selectors(log)
+    lines = _settled_capture(pane)
+    assert not any(" option " in line for line in lines), "the selector was still visible"
+    assert sum(line == ">" or line.startswith("> ") for line in lines) == 1, "prompt missing or duplicated"
+    assert Counter(re.findall(r"MARKER-(\d+)", "\n".join(lines))) == Counter(f"{index:04d}" for index in range(1, 41))
+    return sum(1 for line in lines if not line.strip())
 
 
 def test_blank_rows_do_not_grow_with_resize_cycles(panes):
