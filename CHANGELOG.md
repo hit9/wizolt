@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The status bar's `mcp` group now shows a spinner frame in front of the count while MCP discovery
+  is still in flight, so a session with servers configured reads as "connecting" rather than a
+  bare `mcp 0`; the count still rises server by server and settles to a plain number when
+  discovery finishes.
+
 ## 0.41.0 - 2026-09-06
 
 ### Added

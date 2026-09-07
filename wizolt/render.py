@@ -1508,6 +1508,7 @@ class StatusBar:
 
     RETRY_NOTICE_DURATION: ClassVar[float] = 2.0
     ROLE_KEYS: ClassVar[tuple[str, ...]] = ("provider", "reason", "mcp", "context", "index", "yolo", "worker")
+    SPINNER_FRAMES: ClassVar[str] = "⠋⠙⠹⠸⠼⠴⠦⠧"
 
     @classmethod
     def role_style(cls, role: str) -> str:
@@ -1620,7 +1621,6 @@ class StatusBar:
         else:
             ctx_percent = self.session.state.context_percent
         cache_percent = usage.last_cached_prompt_tokens * 100 // usage.last_prompt_tokens if usage.last_prompt_tokens else 0
-        mcp_count = sum(self.session.mcp.connected(item.name) for item in self.session.mcp.parse_configs()) if self.session.mcp is not None else 0
         skill_count = len(self.session.skills.skills) if self.session.skills else 0
 
         identity: list[tuple[str, str]] = []
@@ -1629,7 +1629,7 @@ class StatusBar:
         identity.extend([(config.active_provider + "/" + model, "provider"), (" · ", "sep"), (provider.reasoning, "reason")])
         groups: list[list[tuple[str, str]]] = [
             identity,
-            [(f"mcp {mcp_count}", "mcp"), (" · ", "sep"), (f"skills {skill_count}", "mcp")],
+            [(self.mcp_label(), "mcp"), (" · ", "sep"), (f"skills {skill_count}", "mcp")],
             [(f"ctx {ctx_percent}%", "context"), (" · ", "sep"), (f"cache {cache_percent}%", "context")],
             [("index" + self.index_status(), "index")],
         ]
@@ -1644,6 +1644,25 @@ class StatusBar:
         if get_cwidth(text) >= columns:
             return self.clip_fragments(fragments, columns - 1)
         return fragments
+
+    def mcp_label(self) -> str:
+        """The MCP group's text: `mcp N`, with a spinner frame in front of the count while
+        discovery is still in flight.
+
+        The count rises server by server as each one finishes, and the idle screen already redraws
+        at the 0.2s idle refresh, so those steps show on their own. The spinner covers the stretch
+        before the first server lands, where a bare `mcp 0` would read as "nothing connected"
+        when the truth is "not yet known". Frames advance at the same five per second as that
+        refresh, so every redraw shows the next frame; a plain count returns once discovery
+        settles, including the honest `mcp 0` of a session where nothing connected.
+        """
+
+        mcp = self.session.mcp
+        count = sum(mcp.connected(item.name) for item in mcp.parse_configs()) if mcp is not None else 0
+        if mcp is not None and mcp.discovery_status == "discovering":
+            frame = self.SPINNER_FRAMES[int(time.monotonic() * 5) % len(self.SPINNER_FRAMES)]
+            return f"mcp {frame}{count}"
+        return f"mcp {count}"
 
     @staticmethod
     def clip_fragments(fragments: StyleAndTextTuples, width: int) -> StyleAndTextTuples:

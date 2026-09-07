@@ -319,20 +319,25 @@ class TestMCPUserScenarios:
         monkeypatch.setattr(s.mcp, "_list_tools", list_tools)
         monkeypatch.setattr(s.mcp, "_list_resources", no_resources)
         loop = CommandLoop(Agent(s), input_fn=lambda _: "", output_fn=lambda _text: None)
+
         # The status row has no animation of its own, but each render reads the current connected
-        # count while both servers connect concurrently on this loop.
+        # count while both servers connect concurrently on this loop. While discovery is in
+        # flight the count carries a spinner frame in front of it; settled renders are plain.
+        def status_text() -> str:
+            return "".join(text for _, text in StatusBar(s).fragments())
+
         connecting = asyncio.ensure_future(mcp_command(loop, "connect alpha beta"))
         await self.wait_for(lambda: all(event.is_set() for event in started.values()))
-        assert "mcp 0" in "".join(text for _, text in StatusBar(s).fragments())
+        assert any(f"mcp {frame}0" in status_text() for frame in StatusBar.SPINNER_FRAMES)
 
         release["alpha"].set()
         await self.wait_for(lambda: s.mcp.connected("alpha"))
         assert s.mcp.discovery_status == "discovering"
-        assert "mcp 1" in "".join(text for _, text in StatusBar(s).fragments())
+        assert any(f"mcp {frame}1" in status_text() for frame in StatusBar.SPINNER_FRAMES)
 
         release["beta"].set()
         result = await connecting
 
         assert s.mcp.discovery_status == "ready"
-        assert "mcp 2" in "".join(text for _, text in StatusBar(s).fragments())
+        assert "mcp 2" in status_text()
         assert result and "`alpha`" in result and "`beta`" in result
