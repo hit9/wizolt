@@ -398,6 +398,11 @@ class TuiRuntime:
         # printed before it starts: a width change rebuilds the terminal from that transcript,
         # so anything it never saw cannot be put back. See wizolt/tui/scrollback.py.
         self.loop.ui.transcript_sink = tui.record_scrollback
+        # The CLI prints before importing the interactive stack. Adopt those already visible
+        # bytes without printing them twice; width-change replay must include them as well.
+        if self.loop.preprinted_output:
+            tui.scrollback.transcript.append(self.loop.preprinted_output)
+            self.loop.preprinted_output = ""
         return tui
 
     def _build_tui(self) -> TuiApp:
@@ -617,6 +622,10 @@ class TuiRuntime:
         self.shutdown = asyncio.Event()
         self.application_ready = asyncio.Event()
         self.loop.tui = self.build_tui()
+        # Record the banner before terminal probing starts. Printing it before build_tui
+        # bypasses the transcript, so the next width-change replay would lose it forever.
+        if show_banner:
+            self.loop.emit_banner()
         self.tui.on_ready = self.application_ready.set
         application = self.spawn(self._run_application(), name="tui-application")
         assert application is not None
@@ -627,16 +636,12 @@ class TuiRuntime:
             self.loop.scrollback = self.scrollback
             self.loop.background_output_lock = self.scrollback.lock
             self.loop.agent.output_barrier = self.scrollback.barrier
-            # Restored transcript lines wait until patch_stdout owns the terminal. The normal
-            # CommandLoop entry already put its static banner in scrollback before terminal
-            # probing; direct runtime callers retain the default banner here.
+            # Restored transcript lines wait until patch_stdout owns the terminal. The banner
+            # was already recorded and printed before the application's initial cursor probe.
             resuming = self.loop.session.resumed
             if resuming:
                 self.tui.set_running(RESUME_STATUS_LABEL)
-            if show_banner:
-                self.loop.start_session()
-            else:
-                self.loop.start_session(show_banner=False)
+            self.loop.start_session(show_banner=False)
             if resuming:
                 self.tui.set_idle()
             self.spawn(self.loop.discover_mcp(), name="mcp-discovery")

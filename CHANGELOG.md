@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Long inline selectors such as `/provider` scroll within the pane, keeping recent output
+  visible after closing instead of pushing it all into scrollback.
+- The startup banner is retained when terminal width changes rebuild the transcript.
+
 ## 0.43.1 - 2026-09-07
 
 ### Fixed

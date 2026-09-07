@@ -63,7 +63,7 @@ def runtime_for(tmp_path, monkeypatch, tui=None):
     # Attached for the tests that drive one turn directly; `run` installs the same object.
     command_loop.tui = tui
     monkeypatch.setattr(runtime, "build_tui", lambda: tui)
-    monkeypatch.setattr(command_loop, "start_session", lambda: None)
+    monkeypatch.setattr(command_loop, "start_session", lambda **_kwargs: None)
     monkeypatch.setattr(command_loop, "refresh_mentions", lambda: None)
     return runtime, command_loop, tui
 

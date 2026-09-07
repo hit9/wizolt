@@ -34,7 +34,8 @@ async def test_run_refuses_to_nest_the_cli_runtime(tmp_path):
         loop.run()
 
 
-async def test_interactive_banner_precedes_tui_terminal_setup(tmp_path, monkeypatch):
+@pytest.mark.parametrize("show_banner", [True, False])
+async def test_interactive_frontend_delegates_banner_to_runtime(tmp_path, monkeypatch, show_banner):
     command_loop = CommandLoop(
         Agent(session(tmp_path), output_fn=lambda _text: None),
         input_fn=lambda _prompt: "",
@@ -58,14 +59,14 @@ async def test_interactive_banner_precedes_tui_terminal_setup(tmp_path, monkeypa
 
     monkeypatch.setattr(loop_module, "TuiRuntime", Runtime)
 
-    running = asyncio.create_task(command_loop._run_frontend())
+    running = asyncio.create_task(command_loop._run_frontend(show_banner=show_banner))
     await tui_started.wait()
-    # A terminal's first CPR can take a second to time out. The banner must already be visible
-    # throughout that wait, and the eventual TUI startup must not print it again.
-    assert events == ["banner"]
+    # Only the runtime can record the banner before printing it. The frontend must not emit
+    # an unrecorded copy before the runtime installs its transcript sink.
+    assert events == []
     finish_tui.set()
     assert await running == 7
-    assert events == ["banner", ("tui", False)]
+    assert events == [("tui", show_banner)]
 
 
 async def test_ps_command_uses_markdown_renderer(tmp_path):

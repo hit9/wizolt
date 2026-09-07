@@ -19,9 +19,11 @@ import contextlib
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from wizolt.cli.modals import choice_application
 from wizolt.render import UiPrinter
 from wizolt.tui.app import TuiApp
 
@@ -35,6 +37,19 @@ async def main(log) -> None:
     # The same wiring `TuiRuntime.build_tui` does. Without it the printer takes the no-sink path
     # and this driver would quietly measure the old implementation instead of the new one.
     ui.transcript_sink = app.record_scrollback
+
+    async def long_selector_loop() -> None:
+        ui.emit("WIZOLT-BANNER")
+        ui.emit("PROVIDER-COMMAND")
+        for cycle in range(3):
+            while not Path(log.name).with_suffix(f".open-{cycle}").exists():
+                await asyncio.sleep(0.02)
+            result = await choice_application(
+                SimpleNamespace(tui=app), "Provider", tuple(f"provider-{i:02d}" for i in range(80)), {}, "", set()
+            )
+            log.write(f"closed {cycle}: {result}\n")
+            log.flush()
+        await asyncio.Event().wait()
 
     async def selector_loop() -> None:
         """Open and close a selector repeatedly, the way `/effort` is used mid-session.
@@ -89,6 +104,9 @@ async def main(log) -> None:
         await asyncio.Event().wait()
 
     def start() -> None:
+        if len(sys.argv) > 4 and sys.argv[4] == "choices":
+            app.app.create_background_task(long_selector_loop())
+            return
         app.app.create_background_task(emit_loop())
         app.app.create_background_task(selector_loop())
 

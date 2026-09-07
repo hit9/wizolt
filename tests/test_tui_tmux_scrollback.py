@@ -114,6 +114,91 @@ class Pane(NamedTuple):
         return tmux("capture-pane", "-t", self.session, "-p", "-S", "-").split("\n")
 
 
+@pytest.mark.parametrize("height", [12, 18, 30])
+def test_long_inline_selector_keeps_context_visible(pane, height):
+    pane.resize(WIDE, height)
+    log = pane.path / "choices.log"
+    pane.send("echo SHELL-CONTEXT")
+    pane.send(f"{sys.executable} {DRIVER} 0 0 {log} choices")
+
+    def visible_containing(needle):
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            visible = tmux("capture-pane", "-t", pane.session, "-p")
+            if needle in visible:
+                return visible
+            time.sleep(0.05)
+        raise AssertionError(f"missing {needle!r} in visible pane:\n{visible}")
+
+    visible_containing("WIZOLT-BANNER")
+    for cycle in range(3):
+        log.with_suffix(f".open-{cycle}").touch()
+        visible_containing("provider-00")
+        tmux("send-keys", "-t", pane.session, "G")
+        opened = visible_containing("provider-79")
+        banner_row = opened.splitlines().index("WIZOLT-BANNER")
+        if cycle == 1:
+            tmux("send-keys", "-t", pane.session, "/", "provider-42")
+            visible_containing("provider-42")
+            tmux("send-keys", "-t", pane.session, "Enter", "Enter")
+        else:
+            tmux("send-keys", "-t", pane.session, "Escape")
+        deadline = time.monotonic() + 15
+        while f"closed {cycle}:" not in log.read_text():
+            assert time.monotonic() < deadline, log.read_text()
+            time.sleep(0.05)
+        _settled_capture(pane)
+        visible = visible_containing("tmux-driver")
+        assert "WIZOLT-BANNER" in visible
+        assert visible.splitlines().index("WIZOLT-BANNER") == banner_row, "closing the selector scrolled the context"
+        assert "PROVIDER-COMMAND" in visible
+        history = "\n".join(pane.capture())
+        assert history.count("WIZOLT-BANNER") == 1
+        assert history.count("PROVIDER-COMMAND") == 1
+        assert "SHELL-CONTEXT" in history
+    assert "closed 1: provider-42" in log.read_text()
+
+
+def test_cli_startup_banner_survives_growing_and_shrinking_pane(pane):
+    config = pane.path / "config.toml"
+    config.write_text(
+        f'[paths]\ndata_dir = "{pane.path}/data"\n'
+        '[provider]\nactive = "test"\n[provider.test]\n'
+        'url = "http://127.0.0.1:9/v1"\nkey = "test-only"\nmodel = "tmux-startup-model"\n'
+    )
+    # Run the real CLI entry and startup handoff. Only background network checks are disabled;
+    # no model request is made, and the session/config live entirely inside the temporary pane.
+    entry = pane.path / "startup.py"
+    entry.write_text(
+        "from wizolt.cli.update import UpdateChecker\n"
+        "from wizolt.providers.sync import CatalogRuntime\n"
+        "from wizolt.__main__ import main\n"
+        "UpdateChecker.load_cached = lambda self: False\n"
+        "CatalogRuntime.refresh_due = lambda self: False\n"
+        "main()\n"
+    )
+    pane.send(f"{sys.executable} {entry} --config {config}")
+    deadline = time.monotonic() + 15
+    while not any("tmux-startup-model" in line for line in pane.capture()):
+        assert time.monotonic() < deadline, "CLI did not start"
+        time.sleep(0.05)
+    for cycle, (width, height) in enumerate([(140, 45), (62, 18), (100, 30)] * 3):
+        pane.resize(width, height)
+        # Editing (without submitting) confirms a fresh frame after each resize, rather than
+        # accepting the previous size's capture while SIGWINCH is still being handled.
+        tmux("send-keys", "-t", pane.session, "C-u")
+        draft = f"startup-check-{cycle}"
+        tmux("send-keys", "-t", pane.session, "-l", draft)
+        deadline = time.monotonic() + 15
+        while not any(draft in line for line in pane.capture()):
+            assert time.monotonic() < deadline, "CLI did not render the new draft"
+            time.sleep(0.05)
+        lines = _settled_capture(pane)
+        assert "\n".join(lines).count("/help for commands.") == 1
+        assert sum(line == ">" or line.startswith("> ") for line in lines) == 1
+        assert sum("tmux-startup-model" in line for line in lines) == 1
+
+
 def _wait_for_markers(log: Path, count: int, timeout: float = 30.0) -> None:
     """Block until the driver has written at least `count` markers."""
     deadline = time.monotonic() + timeout
@@ -235,7 +320,7 @@ def _blank_rows_after(pane, cycles: int) -> int:
     # app has blank padding, so raw blank counts otherwise differ even with no further resize.
     _stop_selectors(log)
     lines = _settled_capture(pane)
-    assert not any(" option " in line for line in lines), "the selector was still visible"
+    assert not any(" option " in line for line in lines), "the selector was still visible:\n" + "\n".join(lines)
     assert sum(line == ">" or line.startswith("> ") for line in lines) == 1, "prompt missing or duplicated"
     assert Counter(re.findall(r"MARKER-(\d+)", "\n".join(lines))) == Counter(f"{index:04d}" for index in range(1, 41))
     return sum(1 for line in lines if not line.strip())

@@ -149,6 +149,8 @@ Mentions are expanded in follow-ups queued while the agent is working, too.
 - `g` / `G` to jump to top / bottom
 - `/` to search, `Enter` to accept, `Esc` to cancel
 
+Long inline lists scroll as you move, leaving a few rows of recent output visible above them.
+
 **The input line** supports:
 
 - history recall and completion

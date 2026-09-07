@@ -44,6 +44,15 @@ def handled_command(exit_now=False, handled=True):
     return command
 
 
+def test_runtime_adopts_preprinted_cli_banner_without_printing_again(tmp_path, capsys):
+    command_loop = loop(tmp_path)
+    command_loop.preprinted_output = "wizolt 0.0.0. /help for commands.\n\n"
+    tui = TuiRuntime(command_loop).build_tui()
+    assert tui.scrollback.transcript == ["wizolt 0.0.0. /help for commands.\n\n"]
+    assert command_loop.preprinted_output == ""
+    assert capsys.readouterr().out == ""
+
+
 def test_tui_emits_resumed_history_after_primary_screen_starts(tmp_path, monkeypatch):
     scenario_session = session(tmp_path)
     scenario_session.resumed = True
@@ -63,6 +72,8 @@ def test_tui_emits_resumed_history_after_primary_screen_starts(tmp_path, monkeyp
     monkeypatch.setattr(UpdateChecker, "load_cached", lambda _checker: False)
     real_application = Application
     emitted_while_running = []
+    banner_states = []
+    banner_records = []
     history_emitted = threading.Event()
 
     # Observe the sink every printed row now passes through. `print_formatted_text` is only
@@ -75,10 +86,14 @@ def test_tui_emits_resumed_history_after_primary_screen_starts(tmp_path, monkeyp
         # The batched resume replay arrives as one call with every fragment as a separate part;
         # scan them all, not just the first.
         text = "".join(fragment_list_to_text(to_formatted_text(part)) for part in parts)
+        if "/help for commands." in text:
+            banner_states.append((self.transcript_sink is not None, command_loop.tui.app is None))
         if "restored answer" in text:
             emitted_while_running.append(command_loop.tui is not None and command_loop.tui.app is not None and command_loop.tui.app.is_running)
             history_emitted.set()
         real_print_parts(self, parts)
+        if "/help for commands." in text:
+            banner_records.append("".join(command_loop.tui.scrollback.transcript))
 
     monkeypatch.setattr(render_module.UiPrinter, "print_parts", print_parts)
 
@@ -100,6 +115,9 @@ def test_tui_emits_resumed_history_after_primary_screen_starts(tmp_path, monkeyp
 
     assert not driver.is_alive()
     assert emitted_while_running == [True]
+    assert banner_states == [(True, True)], "banner must be recorded before terminal setup"
+    assert len(banner_records) == 1
+    assert banner_records[0].count("/help for commands.") == 1
 
 
 def test_batched_emits_join_the_scrollback_queue_in_order(monkeypatch):

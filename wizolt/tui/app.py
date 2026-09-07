@@ -1059,6 +1059,13 @@ class TuiApp:
         self._modal_idle_event().clear()
         target = self.exclusive_modal_window if exclusive else self.modal_window
         assert target is not None
+        if not exclusive:
+            # Reserve recent context when opening, and let Window scroll to the selected item.
+            # Keep this bound for the modal's lifetime: re-querying terminal size during layout
+            # can change its height halfway through a resize frame. The parent still clips it
+            # to the actual space available when the pane shrinks.
+            rows = app.output.get_size().rows
+            target.height = Dimension(max=max(1, rows - 4 - min(6, rows // 3)))
         app.layout.focus(target)
         if exclusive:
             self._use_alternate_screen(True)

@@ -109,7 +109,7 @@ def test_interactive_banner_precedes_session_and_ui_imports(monkeypatch):
             pass
 
         def run(self, *, show_banner=True):
-            calls.append(("run", show_banner))
+            calls.append(("run", show_banner, self.preprinted_output))
             return 0
 
         def close_background_output(self):
@@ -119,7 +119,7 @@ def test_interactive_banner_precedes_session_and_ui_imports(monkeypatch):
 
     assert cli.main([]) == 0
     banner = f"wizolt {cli.__version__}. /help for commands.\n\n"
-    assert calls == [("configure", banner), ("run", False)]
+    assert calls == [("configure", banner), ("run", False, banner)]
     assert stdout.getvalue() == banner
 
 

@@ -194,6 +194,7 @@ Full documentation: https://wizolt.readthedocs.io
         self.view = View(self)
         self.input_fn = input_fn
         self.ui = UiPrinter(output_fn)
+        self.preprinted_output = ""
         self.status_bar = StatusBar(self.session)
         self.live_preview = BashLivePreview()
         self.model_stream_kind = ""
@@ -457,12 +458,7 @@ Full documentation: https://wizolt.readthedocs.io
     async def _run_frontend(self, *, show_banner: bool = True) -> int:
         """Select the frontend inside the CLI's single event-loop entry."""
         if self.interactive_input:
-            # The primary-screen renderer can spend a second probing cursor position on a slow
-            # terminal. Put the static banner in native scrollback before that probe; restored
-            # history and every later write still wait for the TUI's ordered output path.
-            if show_banner:
-                self.emit_banner()
-            return await TuiRuntime(self).run(show_banner=False)
+            return await TuiRuntime(self).run(show_banner=show_banner)
         return await self.run_simple(show_banner=show_banner)
 
     async def run_simple(self, *, show_banner: bool = True) -> int:

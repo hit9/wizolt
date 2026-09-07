@@ -562,6 +562,15 @@ that projection. Its two mechanisms are inseparable:
   and do not replay elapsed-time or other live-state computations.
 - Record using the output's selected color depth, as direct printing and live viewers do; freeze
   that choice for replay. A capture buffer must not force true color and change the visible palette.
+- At opening, inline modal windows reserve up to six rows of recent output (less in small panes) and scroll
+  to the selected item. Filling the pane pushes all preceding context into native history;
+  closing the modal cannot bring it back. Do not add a purge/replay on modal close: preserving
+  visible context must not expand the width-change cost to ordinary selector interactions.
+  Snapshot the height bound at opening; querying terminal size again inside layout can mix two
+  resize geometries in one frame. The parent clips the window if the pane subsequently shrinks.
+- Adopt the CLI's preprinted startup output into the transcript without printing it again.
+  Direct runtime callers install the sink before printing their banner, still before terminal
+  probing. Early visibility must not bypass recording: replay cannot recover unrecorded output.
 
 **Accepted cost:** the first width change removes pre-wizolt shell scrollback. Replay retains at
 most 5,000 writes (a write can contain multiple lines); older output may disappear from terminal
@@ -592,12 +601,16 @@ checks. A regression test must fail against the implementation preceding its fix
 
 `tests/test_tui_tmux_scrollback.py` currently checks 30 size transitions with split-pane zoom/unzoom,
 slow and rapid pauses, completed marker output, repeated inline modals, prompt/status uniqueness,
-blank-row growth, adaptive rules and ordered output on exit. It runs with alternate-screen support
+blank-row growth, adaptive rules and ordered output on exit. Long inline selectors additionally
+cover navigation to the last choice, search, selection/cancellation and visible context after
+repeated closes in small and normal panes, without discarding shell history. It runs with alternate-screen support
 on and off. `tests/test_tui_scrollback_region.py` and `tests/test_tui_transcript_recording.py` guard
 geometry, recording and shutdown boundaries with a terminal model or captured output.
+The real CLI startup path is also grown and shrunk repeatedly with only its banner and an
+unsubmitted draft; both the banner and the live frame must remain single-copy.
 
 **Remaining acceptance coverage:** changing thinking/activity previews, Ask/approval interactions,
-and selector navigation/search still need real-tmux coverage. Future changes at those boundaries
+and selectors with rich previews still need real-tmux coverage. Future changes at those boundaries
 must additionally verify:
 
 - Seeded transcript markers survive exactly once in `tmux capture-pane -p -S -` through at least
