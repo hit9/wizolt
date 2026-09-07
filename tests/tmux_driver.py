@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -30,7 +31,7 @@ async def main(log) -> None:
     interval = float(sys.argv[2]) if len(sys.argv) > 2 else 0.05
 
     ui = UiPrinter()
-    app = TuiApp(status_fragments_fn=lambda: [("", " tmux-driver ")])
+    app = TuiApp(status_fragments_fn=lambda: [("", " tmux-driver ")], on_app_stop=ui.drain_scrollback)
     # The same wiring `TuiRuntime.build_tui` does. Without it the printer takes the no-sink path
     # and this driver would quietly measure the old implementation instead of the new one.
     ui.transcript_sink = app.record_scrollback
@@ -61,6 +62,21 @@ async def main(log) -> None:
             if log is not None:
                 log.write(f"wrote {line.split()[0]}\n")
                 log.flush()
+        if len(sys.argv) > 4 and sys.argv[4] == "rules":
+            with ui.batched():
+                ui.emit("USER-BEGIN " + "u" * 70 + " USER-END")
+                ui.emit_phase_rule()
+                ui.emit("ANSWER-BEGIN " + "a" * 70 + " ANSWER-END")
+                ui.emit_turn_end(time.monotonic() - 65)
+                ui.emit_worker_rule("[worker] 完成")
+            if log is not None:
+                log.write("rules complete\n")
+                log.flush()
+        if len(sys.argv) > 4 and sys.argv[4] == "exit":
+            app.record_scrollback("EXIT-FIRST\n")
+            ui.emit("EXIT-SECOND")
+            app.app.exit()
+            return
         # Stay up after the last line. A test that wants to resize against a fixed transcript
         # needs the app still running, and the session is torn down by the test either way.
         await asyncio.Event().wait()
@@ -71,6 +87,9 @@ async def main(log) -> None:
 
     app.on_ready = start
     await app.run()
+    if log is not None:
+        log.write("driver exited\n")
+        log.flush()
 
 
 if __name__ == "__main__":

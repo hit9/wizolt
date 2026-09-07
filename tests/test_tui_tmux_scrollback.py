@@ -1,6 +1,6 @@
 """Real-tmux acceptance test for transcript integrity across repeated resizes.
 
-`KNOWN_ISSUES.md` requires this test to exist, and requires it to be real: a deterministic
+The Terminal boundary section in `DESIGN.md` requires a real-tmux test: a deterministic
 terminal model cannot reproduce tmux's reflow across multiple width transitions, its persistent
 wrap flags, or the ordering between resize, SIGWINCH and redraw. Every earlier attempt at this
 problem looked correct against a model or a single clean resize and failed on the second one.
@@ -32,9 +32,10 @@ from pathlib import Path
 from typing import NamedTuple
 
 import pytest
+from prompt_toolkit.utils import get_cwidth
 
 # Skipping is right on a developer machine without tmux, but in CI a silent skip is how this
-# test quietly stops guarding anything -- the exact failure `KNOWN_ISSUES.md` warns about. CI
+# test quietly stops guarding anything -- violating the terminal contract in `DESIGN.md`. CI
 # installs tmux, so if it is missing there, that is a broken pipeline, not an absent tool.
 if shutil.which("tmux") is None and os.environ.get("CI"):
     raise RuntimeError("CI must run the real-tmux acceptance tests, but tmux is not installed")
@@ -49,10 +50,13 @@ SEED_LINES = 20
 # both resizing mid-stream and a settled transcript to compare against.
 MARKERS = 200
 DRIVER = Path(__file__).with_name("tmux_driver.py")
+# Each test worker owns a server; a crash or personal tmux config must not affect other panes
+# (especially the developer's own session). The last session's cleanup also stops this server.
+SOCKET = f"wizolt-tests-{os.getpid()}"
 
 
 def tmux(*args: str, check: bool = True) -> str:
-    result = subprocess.run(["tmux", *args], capture_output=True, text=True, check=False)
+    result = subprocess.run(["tmux", "-L", SOCKET, "-f", os.devnull, *args], capture_output=True, text=True, check=False)
     if check and result.returncode != 0:
         raise RuntimeError(f"tmux {' '.join(args)} failed: {result.stderr.strip()}")
     return result.stdout
@@ -141,6 +145,9 @@ def cycle_size(cycle: int) -> tuple[int, int]:
 
 def test_transcript_survives_repeated_resize_cycles(pane):
     log = pane.path / "write.log"
+    # A real split and zoom toggle exercise tmux's pane reflow, not only window resizing.
+    tmux("split-window", "-d", "-h", "-t", pane.session, "sh")
+    tmux("resize-pane", "-Z", "-t", pane.session)
     # Seed the pane so the app starts partway down a screen that already has content, the way a
     # real session does. Whether these survive is not asserted: see the module docstring.
     pane.send(f"i=1; while [ $i -le {SEED_LINES} ]; do echo SHELL-$i; i=$((i+1)); done")
@@ -150,6 +157,7 @@ def test_transcript_survives_repeated_resize_cycles(pane):
 
     for cycle in range(CYCLES):
         pane.resize(*cycle_size(cycle))
+        tmux("resize-pane", "-Z", "-t", pane.session)
         # Alternate settled resizes with rapid ones: the failure modes differ. A slow cycle lets
         # a full repaint land between resizes, a fast one leaves streaming output mid-flight.
         time.sleep(0.12 if cycle % 3 else 0.4)
@@ -171,8 +179,9 @@ def test_transcript_survives_repeated_resize_cycles(pane):
     duplicated = sorted(marker for marker, count in seen.items() if count > 1)
     assert not duplicated, f"markers present more than once: {duplicated[:10]}"
 
-    prompts = [line for line in lines if line.startswith("> ")]
-    assert len(prompts) <= 1, f"stale prompt copies left in scrollback: {len(prompts)}"
+    prompts = [line for line in lines if line == ">" or line.startswith("> ")]
+    assert len(prompts) == 1, f"expected one prompt, found {len(prompts)}"
+    assert sum("tmux-driver" in line for line in lines) == 1, "status missing or duplicated"
 
     # The driver opens and closes a selector on its own timer while all of this happens. Assert it
     # actually did: a run where the selector never opened proves nothing about selectors.
@@ -206,3 +215,38 @@ def test_blank_rows_do_not_grow_with_resize_cycles(panes):
     many = _blank_rows_after(panes(), CYCLES)
 
     assert many <= few + 2, f"blank rows grew with resize count: {few} after 4 cycles, {many} after {CYCLES}"
+
+
+@pytest.mark.parametrize("markers", [1, 40], ids=["short-history", "scrollback"])
+def test_completed_rules_fit_each_width_without_losing_text(pane, markers):
+    log = pane.path / "rules.log"
+    pane.send(f"{sys.executable} {DRIVER} {markers} 0.01 {log} rules")
+    deadline = time.monotonic() + 30
+    while not log.exists() or "rules complete" not in log.read_text():
+        assert time.monotonic() < deadline, "the driver did not finish its rules"
+        time.sleep(0.05)
+
+    # Inspect the narrow state too: returning to the original width hides wrapped rule tails.
+    for width in (WIDE, NARROW, 37, WIDE, NARROW):
+        pane.resize(width, TALL)
+        lines = _settled_capture(pane)
+        joined = "".join(lines)
+        for marker in ("USER-BEGIN", "USER-END", "ANSWER-BEGIN", "ANSWER-END", "done in 1m05s", "[worker] 完成"):
+            assert joined.count(marker) == 1, (width, marker, lines)
+        rules = [line for line in lines if "─" in line]
+        assert len(rules) == 3, f"expected three single-row rules at width {width}: {rules}"
+        assert all(get_cwidth(line) == width for line in rules), (width, rules)
+
+
+
+def test_exit_drains_output_accepted_before_the_last_render(pane):
+    log = pane.path / "exit.log"
+    pane.send(f"{sys.executable} {DRIVER} 1 0.01 {log} exit")
+    deadline = time.monotonic() + 30
+    while not log.exists() or "driver exited" not in log.read_text():
+        assert time.monotonic() < deadline, "the application did not exit"
+        time.sleep(0.05)
+    text = "\n".join(_settled_capture(pane))
+    for marker in ("MARKER-0001", "EXIT-FIRST", "EXIT-SECOND"):
+        assert text.count(marker) == 1, (marker, text)
+    assert text.index("EXIT-FIRST") < text.index("EXIT-SECOND"), text

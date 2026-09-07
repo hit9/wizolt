@@ -12,6 +12,8 @@ import sys
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from prompt_toolkit import print_formatted_text
@@ -56,6 +58,43 @@ try:
 except ImportError:  # pragma: no cover - optional highlighting dependency
     pygments = Token = None
     get_lexer_by_name = get_lexer_for_filename = get_style_by_name = None
+
+
+ScrollbackText = str | Callable[[int], str]
+
+
+@dataclass(frozen=True)
+class HorizontalRule:
+    """A completed rule keeps its label and colors, but takes its width from the projection."""
+
+    rule_style: str
+    label: str = ""
+    label_style: str = ""
+    blank_after: bool = False
+
+    def fragments(self, width: int) -> StyleAndTextTuples:
+        width = max(1, width)
+        parts: StyleAndTextTuples
+        if not self.label:
+            parts = [(self.rule_style, "─" * width)]
+        else:
+            lead = "── "[:width]
+            limit = max(0, width - len(lead) - 1)
+            label = self.label
+            if get_cwidth(label) > limit:
+                clipped = ""
+                for char in label:
+                    if get_cwidth(clipped + char) > max(0, limit - 1):
+                        break
+                    clipped += char
+                label = clipped + "…" if limit else ""
+            trail = max(0, width - len(lead) - get_cwidth(label))
+            parts = [(self.rule_style, lead), (self.label_style, label), (self.rule_style, (" " + "─" * (trail - 1)) if trail else "")]
+        parts.append(("", "\n\n" if self.blank_after else "\n"))
+        return parts
+
+    def __pt_formatted_text__(self) -> StyleAndTextTuples:
+        return self.fragments(shutil.get_terminal_size((80, 20)).columns)
 
 
 def progress_bar(value: int, total: int, width: int = 14) -> str:
@@ -451,17 +490,17 @@ class UiPrinter:
         # the ordered writer -- because a width change rebuilds the terminal from what it recorded,
         # and a row nobody recorded is a row the rebuild cannot put back. Startup banners, restored
         # transcript and the unwinding fallback path all print through here too.
-        self.transcript_sink: Callable[[str], None] | None = None
+        self.transcript_sink: Callable[[ScrollbackText], None] | None = None
         # Batch mode: while active, every emit appends its styled fragments instead of printing,
         # so a burst of output (the restored-transcript replay) is printed by a single
         # print_formatted_text call and flushes once. Under the TUI each call coordinates with the
         # renderer, so batching turns a hundred of those into one. Only the colored path batches.
-        self._batch_parts: list[FormattedText | ANSI] | None = None
+        self._batch_parts: list[FormattedText | ANSI | HorizontalRule] | None = None
         # Scrollback window: while a prompt_toolkit application is live, each print_formatted_text
         # suspends it (erase the whole rendered output, print above it, repaint), which makes the
         # animated divider visibly blink on every emit. A short window batches a burst of emits
         # (a tool result's lines) into one suspend; outside a live application nothing changes.
-        self._scrollback_parts: list[FormattedText | ANSI] = []
+        self._scrollback_parts: list[FormattedText | ANSI | HorizontalRule] = []
         self._scrollback_scheduled = False
         self._scrollback_generation = 0
         # Parts/scheduling state are touched from the app loop and late synchronous fallback
@@ -535,8 +574,8 @@ class UiPrinter:
         if parts:
             self.print_parts(parts)
 
-    def print_parts(self, parts: list[FormattedText | ANSI]) -> None:
-        """Render completed output once, then send it wherever scrollback currently lives.
+    def print_parts(self, parts: list[FormattedText | ANSI | HorizontalRule]) -> None:
+        """Send completed output, retaining width-dependent rules for terminal replay.
 
         Every printed row passes through here, which is what lets the TUI rebuild the terminal
         after a width change: it records what it is handed, and a row that never reached the
@@ -547,26 +586,28 @@ class UiPrinter:
         if sink is None:
             print_formatted_text(*parts, sep="", end="", flush=True)
             return
-        sink(self.render_to_ansi(parts))
+        # Snapshot the batch and the completed labels; replay must never consult live turn state.
+        if any(isinstance(part, HorizontalRule) for part in parts):
+            sink(partial(self.render_to_ansi, list(parts)))
+        else:
+            sink(self.render_to_ansi(parts))
 
     @staticmethod
-    def render_to_ansi(parts: list[FormattedText | ANSI]) -> str:
-        """Render fragments to the exact bytes `print_formatted_text` would have written.
+    def render_to_ansi(parts: list[FormattedText | ANSI | HorizontalRule], columns: int | None = None) -> str:
+        """Render completed fragments and rules to ANSI at the requested terminal width.
 
         Rendering through a real `Vt100_Output` rather than reimplementing the styling keeps
         themes, ANSI passthrough and wrapping identical to the direct path; only the destination
         differs.
         """
         buffer = io.StringIO()
-        size = Size(rows=24, columns=80)
-        with contextlib.suppress(OSError, ValueError):
-            columns, rows = os.get_terminal_size()
-            size = Size(rows=rows, columns=columns)
+        size = Size(rows=24, columns=columns or shutil.get_terminal_size((80, 24)).columns)
         output = Vt100_Output(buffer, lambda: size, default_color_depth=ColorDepth.TRUE_COLOR)
-        render_fragments_to_output(output, [fragment for part in parts for fragment in to_formatted_text(part)], _SCROLLBACK_STYLE)
+        fragments = [fragment for part in parts for fragment in (part.fragments(size.columns) if isinstance(part, HorizontalRule) else to_formatted_text(part))]
+        render_fragments_to_output(output, fragments, _SCROLLBACK_STYLE)
         return buffer.getvalue()
 
-    def _scrollback_print(self, fragment: FormattedText | ANSI) -> None:
+    def _scrollback_print(self, fragment: FormattedText | ANSI | HorizontalRule) -> None:
         """Print above a live application, batching a burst of emits into one suspend.
 
         Outside a live application this drains any queued batch first and then prints
@@ -590,11 +631,11 @@ class UiPrinter:
             return
         loop = app.loop
         assert loop is not None  # a running application always has one; the checker cannot see it
-        self._queue_scrollback(app, fragment)
+        self._queue_scrollback(app, [fragment])
 
-    def _queue_scrollback(self, app: Any, fragment: FormattedText | ANSI) -> None:
+    def _queue_scrollback(self, app: Any, parts: list[FormattedText | ANSI | HorizontalRule]) -> None:
         with self._scrollback_lock:
-            self._scrollback_parts.append(fragment)
+            self._scrollback_parts.extend(parts)
             if self._scrollback_scheduled:
                 return
             self._scrollback_scheduled = True
@@ -632,7 +673,7 @@ class UiPrinter:
             if parts:
                 self._flush_batch(parts)
 
-    def _flush_batch(self, parts: list[FormattedText | ANSI]) -> None:
+    def _flush_batch(self, parts: list[FormattedText | ANSI | HorizontalRule]) -> None:
         """Flush a collected batch through the scrollback path, keeping the batch a single print.
 
         Inside a live application the parts join the same queue as ordinary emits -- landing after
@@ -645,7 +686,7 @@ class UiPrinter:
             return
         loop = app.loop
         assert loop is not None  # a running application always has one; the checker cannot see it
-        self._queue_scrollback(app, FormattedText([segment for part in parts for segment in to_formatted_text(part)]))
+        self._queue_scrollback(app, parts)
 
     def emit(self, text: str | LogBlock = "", indent: int = 0) -> None:
         """Print one line or log block. `indent` moves plain text into a column; a LogBlock is
@@ -787,12 +828,6 @@ class UiPrinter:
             return
         self._scrollback_print(ANSI(cleaned))
 
-    # The label sits just past a short lead rather than flush at column 0 (Rich's `align="left"`
-    # pushes it to the very edge, which reads as a stray label, not text on a rule) and not
-    # centered: a long trail of dashes runs to the full width, so the rule still closes the turn
-    # edge to edge.
-    TURN_END_LEAD: ClassVar[int] = 2
-
     def emit_phase_rule(self) -> None:
         """Close a stretch of the turn with the same quiet full-width rule the turn ends with,
         minus the label: the agent's own words -- or, in a long run of silent calls, their
@@ -809,13 +844,12 @@ class UiPrinter:
         # one below keeps whatever follows off it. Neither is the caller's to draw, and neither
         # doubles up when the block above already ended in a gap.
         self.separate()
-        width = shutil.get_terminal_size((80, 20)).columns
-        fragments = FormattedText([(Theme.fg("rule"), "─" * width + "\n"), ("", "\n")])
+        fragments = HorizontalRule(Theme.fg("rule"), blank_after=True)
         if self._batch_parts is not None:
             self._batch_parts.append(fragments)
         else:
             self._scrollback_print(fragments)
-        self.track_layout("─" * width + "\n\n")
+        self.track_layout("─\n\n")
         # Distance to the next rule is measured from here, so the rule's own rows do not count.
         self.rows_since_rule = 0
 
@@ -840,19 +874,12 @@ class UiPrinter:
             self.output_fn(label)
             return
         self.separate()
-        width = shutil.get_terminal_size((80, 20)).columns
-        lead = "─" * self.TURN_END_LEAD + " "
-        trail = max(0, width - get_cwidth(lead) - get_cwidth(label) - 1)
-        fragments = [
-            (Theme.fg("rule"), lead),
-            (Theme.fg("text"), label),
-            (Theme.fg("rule"), " " + "─" * trail + "\n"),
-        ]
+        fragments = HorizontalRule(Theme.fg("rule"), label, Theme.fg("text"))
         if self._batch_parts is not None:
-            self._batch_parts.append(FormattedText(fragments))
+            self._batch_parts.append(fragments)
         else:
-            self._scrollback_print(FormattedText(fragments))
-        self.track_layout("".join(fragment for _, fragment in fragments))
+            self._scrollback_print(fragments)
+        self.track_layout(label + "\n")
         # Distance to the next rule is measured from here, so the rule's own row does not count.
         self.rows_since_rule = 0
 
@@ -869,31 +896,12 @@ class UiPrinter:
             self.output_fn(label)
             return
         self.separate()
-        width = shutil.get_terminal_size((80, 20)).columns
-        limit = max(1, width - 6)
-        if get_cwidth(label) > limit:
-            available = max(1, limit - get_cwidth("…"))
-            clipped = []
-            used = 0
-            for char in label:
-                char_width = max(0, get_cwidth(char))
-                if used + char_width > available:
-                    break
-                clipped.append(char)
-                used += char_width
-            label = "".join(clipped) + "…"
-        lead = "─" * self.TURN_END_LEAD + " "
-        trail = max(0, width - get_cwidth(lead) - get_cwidth(label) - 1)
-        fragments = [
-            (Theme.fg("rule"), lead),
-            (Theme.fg("status_worker"), label),
-            (Theme.fg("rule"), " " + "─" * trail + "\n"),
-        ]
+        fragments = HorizontalRule(Theme.fg("rule"), label, Theme.fg("status_worker"))
         if self._batch_parts is not None:
-            self._batch_parts.append(FormattedText(fragments))
+            self._batch_parts.append(fragments)
         else:
-            self._scrollback_print(FormattedText(fragments))
-        self.track_layout("".join(fragment for _, fragment in fragments))
+            self._scrollback_print(fragments)
+        self.track_layout(label + "\n")
         self.separate()
 
     @staticmethod

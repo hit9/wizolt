@@ -17,6 +17,8 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from prompt_toolkit.formatted_text import ANSI, to_formatted_text
+from prompt_toolkit.utils import get_cwidth
 
 from wizolt.render import UiPrinter
 from wizolt.tui.app import TuiApp
@@ -72,10 +74,13 @@ def test_recorded_text_carries_styling(recorded):
 
 def test_transcript_is_bounded(recorded):
     printer, tui = recorded
-    for line in range(ScrollbackCap := TuiApp().scrollback.MAX_REPLAY + 50):
+    limit = tui.scrollback.MAX_REPLAY
+    for line in range(limit + 50):
         printer.emit(f"line {line}")
 
-    assert len(tui.scrollback.transcript) <= ScrollbackCap
+    assert len(tui.scrollback.transcript) == limit
+    assert "line 50" in tui.scrollback.transcript[0]
+    assert f"line {limit + 49}" in tui.scrollback.transcript[-1]
 
 
 async def test_scrollback_writes_yield_between_them():
@@ -103,3 +108,26 @@ async def test_scrollback_writes_yield_between_them():
         rival.cancel()
 
     assert ticks >= 20, f"the writer starved everything else on the loop; rival ran {ticks} times"
+
+
+@pytest.mark.parametrize("width", [1, 2, 3, 4, 5, 9, 17, 80, 120])
+def test_recorded_rules_resize_without_recomputing_labels(recorded, monkeypatch, width):
+    printer, tui = recorded
+    monkeypatch.setattr("wizolt.render.time.monotonic", lambda: 100.0)
+    with printer.batched():
+        printer.emit("ordinary ────────── text")
+        printer.emit_phase_rule()
+        printer.emit_turn_end(35)
+        printer.emit_worker_rule("[worker] 中文完成")
+    monkeypatch.setattr("wizolt.render.time.monotonic", lambda: 3600.0)
+
+    output = "".join(entry(width) if callable(entry) else entry for entry in tui.scrollback.transcript)
+    lines = "".join(text for _, text in to_formatted_text(ANSI(output.replace("\x1b[?7h", "")))).splitlines()
+    assert lines[0] == "ordinary ────────── text", "ordinary text was mistaken for a UI rule"
+    rules = [line for line in lines[1:] if line]
+    assert len(rules) == 3
+    assert all(get_cwidth(line) == width for line in rules)
+    if width >= 17:
+        assert "done in 1m05s" in rules[1], "replay recomputed a completed turn's elapsed time"
+    if width >= 22:
+        assert "[worker] 中文完成" in rules[2]

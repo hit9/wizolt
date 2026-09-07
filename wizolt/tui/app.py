@@ -44,7 +44,7 @@ from wizolt.base import (
 from wizolt.image import IMAGE_MARKER, ImageInputs, ImageRef, UserInput
 from wizolt.mentions import FilePick, MentionSpan, active_mention, encode_file_mention, scan_mentions
 from wizolt.paste import PASTE_MARKER, PasteRef
-from wizolt.render import UiPrinter
+from wizolt.render import ScrollbackText, UiPrinter
 from wizolt.tui.scrollback import ScrollbackRegion
 from wizolt.tui.views import TUI_MODAL_PENDING
 
@@ -504,7 +504,7 @@ class TuiApp:
             self.invalidate()
 
     async def write_to_scrollback(self, callback: Callable[[], None]) -> None:
-        """Record one completed write and return once the terminal took it.
+        """Record one completed write and yield so the renderer can project it.
 
         The write is captured rather than performed, then handed to `ScrollbackRegion`, which
         writes it into a scroll region above the app during the next render. That keeps the
@@ -525,7 +525,7 @@ class TuiApp:
         # provide this; recording does not, so it has to be explicit.
         await asyncio.sleep(0)
 
-    def record_scrollback(self, text: str) -> None:
+    def record_scrollback(self, text: ScrollbackText) -> None:
         """The sink `UiPrinter` writes rendered scrollback to while this app owns the terminal.
 
         Every printed row arrives here, including the ones printed before the application starts
@@ -1682,10 +1682,9 @@ class TuiApp:
         prompt-toolkit's resize path erases from where it last drew and then trusts the cursor
         position report (CPR). A multiplexer reflow (tmux zoom/unzoom) moves the already drawn app
         before the resize is even detected, so that erase misses the moved copy and the CPR answer
-        carries the drifted row: the app creeps toward the top of the pane and every cycle leaves
-        a stale copy behind. Erase from the cursor the terminal actually reports, then park the
-        cursor where an app of the last rendered height belongs and run the stock CPR-and-redraw
-        sequence from there, so the reported position describes the app instead of the drift.
+        carries the drifted row. Re-anchor using the previous app height and the new pane bottom,
+        then hand that origin directly to the renderer without a CPR round trip. Width changes
+        also rebuild the transcript in the render hook; re-anchoring alone cannot undo reflow.
         """
         vanilla_resize = app._on_resize
 
@@ -1763,6 +1762,9 @@ class TuiApp:
         # Flush anything still queued in the scrollback batching window before the terminal is
         # handed back; a timer fired inside the app loop would never get to run again.
         self.on_app_stop()
+        # The final render may have no geometry to flush against. No live app remains, so
+        # accepted writes must drain directly instead of waiting forever for another frame.
+        self.scrollback.write_direct()
         self.app = None
         # Anything still parked on an input request unblocks as a cancel: a pending approval must
         # not be granted by the app shutting down.
@@ -1780,9 +1782,8 @@ class TuiApp:
             style=style,
             erase_when_done=True,
         )
-        # A persistent primary-screen renderer needs CPR after a terminal resize; otherwise its
-        # stale cursor coordinates can leave the transient footer in tmux scrollback. Keep the
-        # legacy behavior of silently degrading on terminals that do not answer the probe.
+        # The initial render still probes its origin. Resizes use the explicit bottom anchor
+        # below, without CPR. Silently degrade on terminals that do not answer the initial probe.
         app.renderer.cpr_not_supported_callback = lambda: None
         self._install_resize_reanchor(app)
         self._install_scrollback_flush(app)

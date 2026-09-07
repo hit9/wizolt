@@ -215,3 +215,30 @@ def test_transcript_stays_on_screen_after_the_app_stops(monkeypatch, wired):
     recorded = "".join(app.scrollback.transcript)
     assert "before exit" in recorded
     assert "after exit" in recorded, "output printed after the app stopped was not recorded"
+
+
+@pytest.mark.parametrize("final_write", [False, True])
+def test_accepted_output_survives_exit_before_the_next_render(monkeypatch, wired, capsys, final_write):
+    output, app, _printer = wired
+    if final_write:
+        app.on_app_stop = lambda: app.record_scrollback("later shutdown output\n")
+
+    def drive(_pipe_input):
+        wait_until(lambda: any(line.startswith(UiPrinter.PROMPT_PREFIX) for line in output.lines))
+
+        def emit_then_exit():
+            app.record_scrollback("accepted just before exit\n")
+            app.app.exit()
+
+        app.app.loop.call_soon_threadsafe(emit_then_exit)
+
+    run_tui(monkeypatch, app, output, drive)
+
+    assert "accepted just before exit" in "".join(app.scrollback.transcript)
+    assert not app.scrollback.pending
+    recorded = "".join(app.scrollback.transcript)
+    printed = capsys.readouterr().out
+    assert "accepted just before exit" in printed or any("accepted just before exit" in line for line in output.lines)
+    if final_write:
+        assert recorded.index("accepted just before exit") < recorded.index("later shutdown output")
+        assert printed.index("accepted just before exit") < printed.index("later shutdown output")

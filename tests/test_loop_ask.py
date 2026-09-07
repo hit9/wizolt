@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from agent_harness import session
+from prompt_toolkit.formatted_text import to_formatted_text
 
 import wizolt.cli.modals as modals_mod
 from wizolt.base import (
@@ -385,8 +386,9 @@ async def test_phase_rule_renders_as_an_unlabelled_full_width_solid_rule(tmp_pat
 
     # The dash line, then a blank row that lifts the rule off whatever follows it (the callers
     # draw the blank row above, so each seam lands once).
-    assert [style for style, _ in frags[0]] == [Theme.fg("rule"), ""]
-    text = "".join(fragment for _, fragment in frags[0])
+    fragments = to_formatted_text(frags[0])
+    assert [style for style, _ in fragments] == [Theme.fg("rule"), ""]
+    text = "".join(fragment for _, fragment in fragments)
     assert text.endswith("\n\n")
     assert set(text) <= {"─", "\n"}
     assert loop.ui.rows_since_rule == 0

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Repeated terminal resizes keep completed output separate from the live prompt and selectors.
+  Changing width rebuilds recent output and clears pre-existing shell scrollback.
+- Output accepted immediately before exit now drains in order even if its next repaint never runs.
+- Completed turn, phase and worker dividers resize to the pane width instead of wrapping onto
+  multiple rows; completion times stay unchanged.
+
 ## 0.42.0 - 2026-09-06
 
 ### Changed

@@ -30,6 +30,7 @@ lines on rows that belong to something else.
 
 from __future__ import annotations
 
+import shutil
 import sys
 from typing import TYPE_CHECKING
 
@@ -38,6 +39,8 @@ from prompt_toolkit.renderer import HeightIsUnknownError
 if TYPE_CHECKING:
     from prompt_toolkit.application import Application
     from prompt_toolkit.renderer import Renderer
+
+    from wizolt.render import ScrollbackText
 
 
 def app_top_row(renderer: Renderer) -> int:
@@ -60,13 +63,13 @@ def app_top_row(renderer: Renderer) -> int:
 class ScrollbackRegion:
     """Owns the transcript and the escape sequences that project it onto the terminal."""
 
-    # Replaying is linear in rows, so a long session rebuilds only its tail. Beyond this the
-    # oldest rows are dropped: they are already gone from the terminal's own history too.
+    # Bound retained writes, not physical rows (a batch can contain many lines). Older entries
+    # cannot be restored after a purge, even if the terminal retained a larger native history.
     MAX_REPLAY = 5000
 
     def __init__(self) -> None:
-        self.transcript: list[str] = []
-        self._pending: list[str] = []
+        self.transcript: list[ScrollbackText] = []
+        self._pending: list[ScrollbackText] = []
         self._width: int | None = None
         self._rebuild_owed = False
 
@@ -74,24 +77,29 @@ class ScrollbackRegion:
     def pending(self) -> bool:
         return bool(self._pending)
 
-    def enqueue(self, text: str) -> None:
-        """Accept one rendered write. Nothing reaches the terminal until the next render."""
+    def enqueue(self, text: ScrollbackText) -> None:
+        """Accept text or a frozen width-dependent rendering. Project it on the next render."""
         if text:
             self._pending.append(text)
 
-    def write_direct(self, text: str) -> None:
-        """Record and print one write with no live application to place it above.
+    def write_direct(self, text: ScrollbackText = "") -> None:
+        """Drain accepted output and optionally print another write with no live application.
 
-        Startup banners, restored transcript and the writes that land while the runtime is
-        unwinding all come through here. They must still be recorded: a later width change
-        rebuilds the terminal from the transcript, and whatever is missing from it is gone.
+        Startup/restored output and unwinding writes must be recorded for later width changes.
+        At shutdown there may also be accepted writes whose render never ran. Drain those first,
+        before newer direct output, and allow the app to drain them even when no final write comes.
         """
-        if not text:
+        pending, self._pending = self._pending, []
+        if text:
+            pending.append(text)
+        if not pending:
             return
-        self.transcript.append(text)
-        del self.transcript[: max(0, len(self.transcript) - self.MAX_REPLAY)]
-        sys.stdout.write(text)
+        columns = shutil.get_terminal_size((80, 24)).columns
+        for item in pending:
+            sys.stdout.write(item(columns) if callable(item) else item)
         sys.stdout.flush()
+        self.transcript.extend(pending)
+        del self.transcript[: max(0, len(self.transcript) - self.MAX_REPLAY)]
 
     def note_width(self, columns: int) -> bool:
         """Record the width being rendered at, and report whether a rebuild is owed.
@@ -121,7 +129,8 @@ class ScrollbackRegion:
         screen = renderer.last_rendered_screen
         assert screen is not None  # app_top_row already refused a renderer without one
         out = renderer.output
-        text = "".join(self._pending)
+        columns = out.get_size().columns
+        text = "".join(item(columns) if callable(item) else item for item in self._pending)
 
         # The app never needs to be scrolled down to reach the pane bottom the way a viewport the
         # caller positions itself would. prompt-toolkit treats `_min_available_height` as a floor
@@ -142,7 +151,7 @@ class ScrollbackRegion:
         out.write_raw(f"\x1b[{top + renderer._cursor_pos.y + 1};{renderer._cursor_pos.x + 1}H")
         out.flush()
 
-        self.transcript.append(text)
+        self.transcript.extend(self._pending)
         del self.transcript[: max(0, len(self.transcript) - self.MAX_REPLAY)]
         self._pending.clear()
 
@@ -154,7 +163,7 @@ class ScrollbackRegion:
         """
         renderer = app.renderer
         out = renderer.output
-        rows = out.get_size().rows
+        rows, columns = out.get_size()
         self._rebuild_owed = False
         self.transcript.extend(self._pending)
         self._pending.clear()
@@ -164,7 +173,8 @@ class ScrollbackRegion:
         # scrollback. Order matches a shell's `clear` followed by `printf '\e[3J'`.
         out.write_raw("\x1b[r\x1b[0m\x1b[H\x1b[2J\x1b[3J\x1b[H")
         replayed = 0
-        for text in self.transcript:
+        for item in self.transcript:
+            text = item(columns) if callable(item) else item
             out.write_raw(text)
             replayed += text.count("\n")
         out.flush()
