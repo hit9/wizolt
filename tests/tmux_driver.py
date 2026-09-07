@@ -35,6 +35,24 @@ async def main(log) -> None:
     # and this driver would quietly measure the old implementation instead of the new one.
     ui.transcript_sink = app.record_scrollback
 
+    async def selector_loop() -> None:
+        """Open and close a selector repeatedly, the way `/effort` is used mid-session.
+
+        A selector makes the app several rows taller and then shorter again, moving the boundary
+        the scroll region is computed from. Doing it more than once matters: the artifacts this
+        exercises only showed up on the second and later cycles.
+        """
+        options = [("", f" option {index}\n") for index in range(8)]
+        while True:
+            await asyncio.sleep(1.7)
+            opened = asyncio.get_running_loop().create_task(app.show_modal(lambda: options, lambda _key, _data="": None))
+            await asyncio.sleep(0.9)
+            app.close_modal(None)
+            await opened
+            if log is not None:
+                log.write("selector cycle\n")
+                log.flush()
+
     async def emit_loop() -> None:
         for n in range(1, total + 1):
             await asyncio.sleep(interval)
@@ -47,7 +65,11 @@ async def main(log) -> None:
         # needs the app still running, and the session is torn down by the test either way.
         await asyncio.Event().wait()
 
-    app.on_ready = lambda: app.app.create_background_task(emit_loop())
+    def start() -> None:
+        app.app.create_background_task(emit_loop())
+        app.app.create_background_task(selector_loop())
+
+    app.on_ready = start
     await app.run()
 
 

@@ -1724,7 +1724,13 @@ class TuiApp:
 
         def render(*args: Any, **kwargs: Any) -> None:
             vanilla_render(*args, **kwargs)
-            if self.scrollback.note_width(renderer.output.get_size().columns):
+            owed = self.scrollback.note_width(renderer.output.get_size().columns)
+            if renderer.full_screen:
+                # An exclusive viewer (/diff) owns the alternate screen. Purging there would
+                # take the primary screen's scrollback with it for a rebuild nobody can see, so
+                # the debt is carried and paid on the first render after the viewer closes.
+                return
+            if owed:
                 # Width changed: every row in the pane was rewrapped, and none of them can be
                 # attributed any more. Rebuild the projection from the transcript instead.
                 self.scrollback.rebuild(app)

@@ -68,6 +68,7 @@ class ScrollbackRegion:
         self.transcript: list[str] = []
         self._pending: list[str] = []
         self._width: int | None = None
+        self._rebuild_owed = False
 
     @property
     def pending(self) -> bool:
@@ -93,16 +94,26 @@ class ScrollbackRegion:
         sys.stdout.flush()
 
     def note_width(self, columns: int) -> bool:
-        """Record the width being rendered at, and report whether it changed."""
-        changed = self._width is not None and self._width != columns
+        """Record the width being rendered at, and report whether a rebuild is owed.
+
+        The debt is sticky. A width change that happens while an exclusive viewer owns the
+        alternate screen cannot be paid off then -- the transcript is not on screen, and purging
+        would destroy the primary screen's scrollback for a rebuild nobody can see -- so it is
+        carried until the app is back on the primary screen.
+        """
+        self._rebuild_owed = self._rebuild_owed or (self._width is not None and self._width != columns)
         self._width = columns
-        return changed
+        return self._rebuild_owed
 
     def flush(self, app: Application) -> None:
         """Write queued transcript above the app. Call only from inside the render cycle."""
         if not self._pending:
             return
         renderer = app.renderer
+        if renderer.full_screen:
+            # An exclusive viewer owns the alternate screen; there is no region above it that
+            # belongs to the transcript. The lines wait for the primary screen to come back.
+            return
         try:
             top = app_top_row(renderer)
         except HeightIsUnknownError:
@@ -110,32 +121,19 @@ class ScrollbackRegion:
         screen = renderer.last_rendered_screen
         assert screen is not None  # app_top_row already refused a renderer without one
         out = renderer.output
-        rows = out.get_size().rows
         text = "".join(self._pending)
 
-        # Scrolling the app down first, when it has not reached the pane bottom yet, is what
-        # lets a session that started mid-screen grow into the bottom instead of pinning the
-        # transcript to the few rows above wherever the app first appeared.
-        moved = 0
-        bottom = top + screen.height
-        if bottom < rows:
-            moved = min(text.count("\n"), rows - bottom)
-            if moved:
-                out.write_raw(f"\x1b[{top + 1};{rows}r")
-                out.write_raw(f"\x1b[{top + 1};1H")
-                out.write_raw("\x1bM" * moved)
-                out.write_raw("\x1b[r")
-                top += moved
-                renderer._min_available_height = rows - top
-
-        if top == 0:
+        # The app never needs to be scrolled down to reach the pane bottom the way a viewport the
+        # caller positions itself would. prompt-toolkit treats `_min_available_height` as a floor
+        # on the rendered height, so the app always spans from `top` to the bottom of the pane --
+        # which is exactly what makes `top` the boundary of the region below.
+        if top <= 0:
             # The app fills the pane; there is no row above it to write into. Hold the lines
             # until it has somewhere to go rather than overwriting the app with them.
             return
 
-        cursor_top = top - moved - 1 if moved else top - 1
         out.write_raw(f"\x1b[1;{top}r")
-        out.write_raw(f"\x1b[{cursor_top + 1};1H")
+        out.write_raw(f"\x1b[{top};1H")
         # The cursor sits on the last row of the region, which already holds a line, so each
         # write has to scroll before it prints. Recorded text ends with its own newline; that
         # trailing one would scroll a blank row in, so it moves to the front instead.
@@ -157,6 +155,7 @@ class ScrollbackRegion:
         renderer = app.renderer
         out = renderer.output
         rows = out.get_size().rows
+        self._rebuild_owed = False
         self.transcript.extend(self._pending)
         self._pending.clear()
         del self.transcript[: max(0, len(self.transcript) - self.MAX_REPLAY)]

@@ -130,6 +130,11 @@ def test_transcript_survives_repeated_resize_cycles(pane):
     prompts = [line for line in lines if line.startswith("> ")]
     assert len(prompts) <= 1, f"stale prompt copies left in scrollback: {len(prompts)}"
 
+    # The driver opens and closes a selector on its own timer while all of this happens. Assert it
+    # actually did: a run where the selector never opened proves nothing about selectors.
+    cycles = log.read_text().count("selector cycle")
+    assert cycles >= 2, f"the selector opened {cycles} times; this run did not exercise it"
+
 
 def _blank_rows_after(pane, cycles: int) -> int:
     """Emit a fixed transcript, then resize `cycles` times, and count the blank rows left."""
