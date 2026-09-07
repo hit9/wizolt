@@ -26,10 +26,12 @@ from wizolt.image import (
     IMAGE_MARKER,
     IMAGE_REFS_KEY,
     IMAGE_TEXT_ONLY_KEY,
+    PASTE_MARKER,
     TOOL_IMAGE_OBSERVATION_KEY,
     TOOL_IMAGE_OBSERVATION_PREFIX,
     ImageInputs,
     ImageRef,
+    PasteRef,
     UserInput,
 )
 from wizolt.model import ModelClient
@@ -554,7 +556,7 @@ def test_tui_deleting_first_atomic_label_removes_the_matching_image(tmp_path):
 def test_image_label_processor_maps_the_whole_label_to_one_source_cell(tmp_path):
     path = image_file(tmp_path / "chip.png")
     value = ImageInputs(cwd=str(tmp_path)).recognize(path.name)
-    processor = tui_module.ImageLabelProcessor(lambda: value.images)
+    processor = tui_module.AttachmentLabelProcessor(lambda: (value.images, ()))
     document = Document(str(value))
     transformation_input = SimpleNamespace(document=document, lineno=0, fragments=[("", str(value))])
 
@@ -752,3 +754,110 @@ async def test_cancelling_admission_quiesces_and_leaves_no_staging_residue(tmp_p
 
     assets = s.images.assets_dir()
     assert not any(name.startswith(".image-") for name in os.listdir(assets))  # staging cleaned up
+
+
+def test_paste_ref_label_formats_line_count_and_size():
+    small = PasteRef(text="abc", lines=1, chars=3)
+    assert small.label(2) == "[Pasted text #2 · 1 line, 3 B]"
+    large = PasteRef(text="x" * 4300, lines=12, chars=4300)
+    assert large.label(1) == "[Pasted text #1 · 12 lines, 4.2 KB]"
+
+
+def _image_ref(name="shot.png"):
+    return ImageRef(ref="a" * 64, name=name, media_type="image/png", width=2, height=2, size=4, source_text=f"shots/{name}")
+
+
+def test_user_input_projection_matrix_splits_images_and_pastes():
+    image = _image_ref()
+    paste = PasteRef(text="full paste body", lines=1, chars=15)
+    value = UserInput(f"keep {IMAGE_MARKER} gap {PASTE_MARKER} end", (image,), (paste,))
+    assert value.display_text() == "keep [Image #1 · shot.png] gap [Pasted text #1 · 1 line, 15 B] end"
+    assert value.original_text() == "keep shots/shot.png gap full paste body end"
+    assert value.history_text() == "keep shots/shot.png gap [Pasted text #1 · 1 line, 15 B] end"
+    assert value.model_text() == "keep [Image #1 · shot.png] gap full paste body end"
+    assert value.queue_draft() == f"keep {IMAGE_MARKER} gap full paste body end"
+
+
+def test_user_input_marker_count_guards_and_backward_compatible_construction():
+    image = _image_ref()
+    paste = PasteRef(text="body", lines=1, chars=4)
+    with pytest.raises(ValueError):
+        UserInput(PASTE_MARKER)
+    with pytest.raises(ValueError):
+        UserInput(IMAGE_MARKER, (), ())
+    assert str(UserInput("plain text")) == "plain text"
+    assert UserInput(IMAGE_MARKER, (image,)).images == (image,)
+    assert UserInput(PASTE_MARKER, (), (paste,)).pastes == (paste,)
+
+
+def test_recognize_preserves_existing_pastes_and_markers(tmp_path):
+    path = image_file(tmp_path / "chip.png")
+    paste = PasteRef(text="pasted\nbody\n", lines=2, chars=12)
+    image_inputs = ImageInputs(cwd=str(tmp_path))
+    image = image_inputs.recognize(path.name).images[0]
+
+    folded = f"see {IMAGE_MARKER} then {PASTE_MARKER} and more"
+    again = image_inputs.recognize(folded, (image,), (paste,))
+    assert again.images == (image,)
+    assert again.pastes == (paste,)
+    assert str(again) == folded
+    assert again.model_text() == "see [Image #1 · chip.png] then pasted\nbody\n and more"
+
+    # The no-replacement and slash-command early returns pass paste chips through unchanged
+    # (a paste ref is only valid while its marker is still in the text).
+    assert image_inputs.recognize(f"plain {PASTE_MARKER}", (), (paste,)).pastes == (paste,)
+    assert image_inputs.recognize(f"/cmd {PASTE_MARKER}", (), (paste,)).pastes == (paste,)
+
+
+def test_message_projection_expands_paste_and_keeps_image_refs(tmp_path):
+    s = session(tmp_path)
+    path = image_file(tmp_path / "shot.png")
+    image = s.images.recognize(path.name).images[0]
+    paste = PasteRef(text="def f():\n    return 1\n", lines=3, chars=22)
+
+    plain = s.images.message(UserInput(f"note: {PASTE_MARKER}", pastes=(paste,)))
+    assert plain == {"role": "user", "content": "note: def f():\n    return 1\n"}
+
+    mixed = s.images.message(UserInput(f"see {IMAGE_MARKER} then {PASTE_MARKER}", (image,), (paste,)))
+    assert mixed["content"] == "see [Image #1 · shot.png] then def f():\n    return 1\n"
+    assert len(mixed[IMAGE_REFS_KEY]) == 1
+
+
+async def test_admit_and_prepare_keep_pastes_without_images(tmp_path):
+    s = session(tmp_path)
+    paste = PasteRef(text="body", lines=1, chars=4)
+    value = UserInput(f"x {PASTE_MARKER}", pastes=(paste,))
+    assert s.images.prepare(value).pastes == (paste,)
+    admitted = await s.images.admit(value)
+    assert admitted.pastes == (paste,)
+
+
+async def test_pasted_input_reaches_the_agent_expanded(tmp_path):
+    s = session(tmp_path)
+    paste = PasteRef(text="def f():\n    return 1\n", lines=3, chars=22)
+    agent = Agent(s, output_fn=lambda text: None)
+    user_message = agent._initial_user_message(UserInput(f"body {PASTE_MARKER}", pastes=(paste,)))
+    assert user_message["content"] == "body def f():\n    return 1\n"
+    assert IMAGE_REFS_KEY not in user_message
+
+
+def test_enqueue_user_input_flattens_paste_into_plain_text(tmp_path):
+    s = session(tmp_path)
+    paste = PasteRef(text="L1\nL2\n", lines=2, chars=6)
+    s.enqueue_user_input(UserInput(f"wrap {PASTE_MARKER} end", pastes=(paste,)))
+    assert len(s.pending_user_inputs) == 1
+    entry = s.pending_user_inputs[0]
+    assert entry.text == "wrap L1\nL2\n end"
+    assert PASTE_MARKER not in entry.text
+    assert PASTE_MARKER not in entry.draft
+    assert isinstance(entry.to_json(), str)  # a snapshot stores the plain expanded string
+    assert entry.user_input().display_text() == "wrap L1\nL2\n end"
+
+
+def test_attachment_label_processor_renders_a_paste_chip():
+    paste = PasteRef(text="x\n" * 30, lines=30, chars=60)
+    processor = tui_module.AttachmentLabelProcessor(lambda: ((), (paste,)))
+    document = Document(str(PASTE_MARKER))
+    transformation_input = SimpleNamespace(document=document, lineno=0, fragments=[("", PASTE_MARKER)])
+    result = processor.apply_transformation(transformation_input)
+    assert "".join(fragment[1] for fragment in result.fragments) == paste.label(1)

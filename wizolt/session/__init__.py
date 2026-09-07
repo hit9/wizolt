@@ -523,11 +523,11 @@ class Session:
         return before - len(self.source_views)
 
     def enqueue_user_input(self, value: str | UserInput) -> None:
-        if isinstance(value, UserInput) and value.images:
+        if isinstance(value, UserInput) and (value.images or value.pastes):
             message = self.images.message(value)
             text = str(message.get("content") or "").strip()
             images = self.images.refs(message)
-            draft = str(value)
+            draft = value.queue_draft()
         else:
             text = Text.clean(str(value).strip())
             images = ()

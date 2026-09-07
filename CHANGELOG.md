@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Pasting a block of text longer than 25 lines or 3000 characters folds it into a
+  `[Pasted text #n]` chip on the input line instead of filling the buffer with it. The full text
+  still goes to the model and to the external editor verbatim; Ctrl-R history recalls the chip,
+  and deleting the chip drops the whole paste.
+
 ## 0.40.0 - 2026-09-05
 
 ### Added

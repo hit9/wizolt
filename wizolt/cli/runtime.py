@@ -284,7 +284,7 @@ class TuiRuntime:
         try:
             return await self.loop.session.images.admit(value)
         except WizoltError as error:
-            self.tui.restore_submission(value.display_text(), str(error))
+            self.tui.restore_submission(value, str(error))
             return None
 
     async def _close_submissions(self) -> None:

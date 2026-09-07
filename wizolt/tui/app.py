@@ -41,7 +41,16 @@ from wizolt.base import (
     WizoltError,
     run_blocking,
 )
-from wizolt.image import IMAGE_MARKER, ImageInputs, ImageRef, UserInput
+from wizolt.image import (
+    IMAGE_MARKER,
+    PASTE_FOLD_MIN_CHARS,
+    PASTE_FOLD_MIN_LINES,
+    PASTE_MARKER,
+    ImageInputs,
+    ImageRef,
+    PasteRef,
+    UserInput,
+)
 from wizolt.mentions import FilePick, MentionSpan, active_mention, encode_file_mention, scan_mentions
 from wizolt.render import UiPrinter
 from wizolt.tui.views import TUI_MODAL_PENDING
@@ -167,25 +176,30 @@ class _AlignedCompletionsMenu(CompletionsMenu):
         self.content.content = _AlignedCompletionsMenuControl()
 
 
-class ImageLabelProcessor(Processor):
-    """Render each one-cell image marker as an atomic, readable inline label."""
+class AttachmentLabelProcessor(Processor):
+    """Render each one-cell image or paste marker as an atomic, readable inline label."""
 
-    def __init__(self, images_fn: Callable[[], tuple[ImageRef, ...]]):
-        self.images_fn = images_fn
+    def __init__(self, attachments_fn: Callable[[], tuple[tuple[ImageRef, ...], tuple[PasteRef, ...]]]):
+        self.attachments_fn = attachments_fn
 
     def apply_transformation(self, transformation_input) -> Transformation:
         ti = transformation_input
-        images = self.images_fn()
-        before = sum(line.count(IMAGE_MARKER) for line in ti.document.lines[: ti.lineno])
+        images, pastes = self.attachments_fn()
+        before_images = sum(line.count(IMAGE_MARKER) for line in ti.document.lines[: ti.lineno])
+        before_pastes = sum(line.count(PASTE_MARKER) for line in ti.document.lines[: ti.lineno])
         source = "".join(fragment[1] for fragment in ti.fragments)
         labels: dict[int, str] = {}
-        ordinal = before
+        image_ordinal = before_images
+        paste_ordinal = before_pastes
         for index, char in enumerate(source):
-            if char == IMAGE_MARKER and ordinal < len(images):
-                ordinal += 1
-                labels[index] = f"[Image #{ordinal} \u00b7 {images[ordinal - 1].name}]"
-        if not labels:
-            return Transformation(ti.fragments)
+            if char == IMAGE_MARKER:
+                image_ordinal += 1
+                if image_ordinal <= len(images):
+                    labels[index] = f"[Image #{image_ordinal} \u00b7 {images[image_ordinal - 1].name}]"
+            elif char == PASTE_MARKER:
+                paste_ordinal += 1
+                if paste_ordinal <= len(pastes):
+                    labels[index] = pastes[paste_ordinal - 1].label(paste_ordinal)
         fragments: StyleAndTextTuples = []
         source_index = 0
         for fragment in ti.fragments:
@@ -278,6 +292,7 @@ class TuiApp:
         self.editor_context_fn = editor_context_fn or (lambda: "")
         self.images = images if images is not None else ImageInputs(cwd=image_cwd)
         self.input_images: tuple[ImageRef, ...] = ()
+        self.input_pastes: tuple[PasteRef, ...] = ()
         self._last_input_text = ""
         self._changing_input = False
         self._search_start_text = ""
@@ -350,13 +365,15 @@ class TuiApp:
         previous_mode, previous_prompt = self.input_mode, self.full_input_prompt()
         previous_document: Document | None = None
         previous_images = self.input_images
+        previous_pastes = self.input_pastes
 
         def switch(document: Document, mode: str, prompt_text: str) -> None:
             nonlocal previous_document
             if previous_document is None:
                 previous_document = self.input_buffer.document
             images = previous_images if mode == previous_mode else ()
-            self._reset_input(UserInput(document.text, images), cursor_position=document.cursor_position)
+            pastes = previous_pastes if mode == previous_mode else ()
+            self._reset_input(UserInput(document.text, images, pastes), cursor_position=document.cursor_position)
             self._set_mode(mode, prompt_text)
 
         switch(Document(""), "approval", prompt)
@@ -567,20 +584,20 @@ class TuiApp:
 
         return self._recognize_input()
 
-    def restore_submission(self, text: str, error: str) -> None:
-        """Admission refused one submitted input (its image vanished or changed): put it back.
+    def restore_submission(self, value: str | UserInput, error: str) -> None:
+        """Admission refused one submitted input (its attachment vanished or changed): put it back.
 
         The draft is restored only when the buffer is still empty -- the user may already be
         typing the next line -- and the error is shown either way."""
 
         self.input_error = str(error)
         if not self.input_buffer.text:
-            self._reset_input(text)
+            self._reset_input(value)
         self.invalidate()
 
     def _append_history(self, value: UserInput) -> None:
         if self.history is not None:
-            self.history.append_string(value.original_text())
+            self.history.append_string(value.history_text())
 
     def _load_buffer_history_now(self) -> None:
         """Copy history entries into the input buffer synchronously when its async loader has not.
@@ -608,7 +625,7 @@ class TuiApp:
         buffer._load_history_task = done  # The next repaint must not copy the entries in again.
 
     def _recognize_input(self) -> UserInput:
-        value = self.images.recognize(self.input_buffer.text, self.input_images)
+        value = self.images.recognize(self.input_buffer.text, self.input_images, self.input_pastes)
         if str(value) != self.input_buffer.text or value.images != self.input_images:
             self._reset_input(value, cursor_position=len(value))
         return value
@@ -620,6 +637,7 @@ class TuiApp:
         self._changing_input = True
         try:
             self.input_images = user_input.images
+            self.input_pastes = user_input.pastes
             self._last_input_text = str(user_input)
             position = len(user_input) if cursor_position is None else cursor_position
             self.input_buffer.reset(Document(str(user_input), cursor_position=position))
@@ -783,6 +801,7 @@ class TuiApp:
         self.input_error = ""
         delta = _edit_delta(old, text)
         self._sync_input_images(old, delta)
+        self._sync_input_pastes(old, delta)
         self._last_input_text = text
         if delta.inserted and delta.inserted[-1].isspace() and self.input_mode in {"chat", "running"}:
             self._recognize_input()
@@ -964,7 +983,7 @@ class TuiApp:
                 mention = encode_file_mention(result.selection)
                 text = document.text[: span.start] + mention + document.text[end:]
                 position = span.start + len(mention)
-                self._reset_input(UserInput(text, self.input_images), cursor_position=position)
+                self._reset_input(UserInput(text, self.input_images, self.input_pastes), cursor_position=position)
                 self.invalidate()
             finally:
                 self._file_picker_active = False
@@ -978,6 +997,14 @@ class TuiApp:
             return
         first = old[: delta.prefix].count(IMAGE_MARKER)
         self.input_images = self.input_images[:first] + self.input_images[first + removed :]
+
+    def _sync_input_pastes(self, old: str, delta: _EditDelta) -> None:
+        """Drop paste refs whose chip an edit removed from the input text."""
+        removed = delta.removed.count(PASTE_MARKER)
+        if not removed:
+            return
+        first = old[: delta.prefix].count(PASTE_MARKER)
+        self.input_pastes = self.input_pastes[:first] + self.input_pastes[first + removed :]
 
     async def show_modal(
         self,
@@ -1158,7 +1185,7 @@ class TuiApp:
     def build_layout(self) -> Layout:
         input_processors: list[Processor] = [
             HighlightIncrementalSearchProcessor(),
-            ImageLabelProcessor(lambda: self.input_images),
+            AttachmentLabelProcessor(lambda: (self.input_images, self.input_pastes)),
             BeforeInput(self.status_fragments),
             CallbackPlaceholder(self.placeholder_text),
         ]
@@ -1335,7 +1362,12 @@ class TuiApp:
         bindings.add("escape", filter=~modal & Condition(lambda: self.input_mode == "approval" and bool(self._approval_actions)))(escape)
 
         def paste(event):
-            event.current_buffer.insert_text(event.data.replace("\r\n", "\n").replace("\r", "\n"))
+            data = event.data.replace("\r\n", "\n").replace("\r", "\n")
+            if self.input_mode in {"chat", "running"} and (data.count("\n") + 1 >= PASTE_FOLD_MIN_LINES or len(data) >= PASTE_FOLD_MIN_CHARS):
+                self.input_pastes = (*self.input_pastes, PasteRef(data, data.count("\n") + 1, len(data)))
+                event.current_buffer.insert_text(PASTE_MARKER)
+            else:
+                event.current_buffer.insert_text(data)
             if self.input_mode in {"chat", "running"}:
                 self._recognize_input()
 
@@ -1559,6 +1591,20 @@ class TuiApp:
                 process.kill()
             await asyncio.shield(process.wait())
 
+    def _refold_pastes(self, text: str, pastes: tuple[PasteRef, ...]) -> tuple[str, tuple[PasteRef, ...]]:
+        """Fold pastes back into chips after an external-editor round trip.
+
+        A paste whose full text still occurs exactly once in the returned text becomes a chip again;
+        text the user edited is left inline, because guessing where a folded edit ended would
+        corrupt what they wrote."""
+        folded = text
+        kept: list[PasteRef] = []
+        for paste in pastes:
+            if folded.count(paste.text) == 1:
+                folded = folded.replace(paste.text, PASTE_MARKER)
+                kept.append(paste)
+        return folded, tuple(kept)
+
     async def _run_input_editor(self) -> None:
         # `in_terminal` suspends the app and restores it afterward (the same primitive
         # prompt_toolkit uses for its own editor support), so a full-screen editor gets a clean
@@ -1567,7 +1613,7 @@ class TuiApp:
         # leaves the input untouched. The editor also receives the agent's recent reply below a
         # scissors line for reference (the full-screen editor hides the scrollback); that context
         # is stripped back out on return.
-        original = UserInput(self.input_buffer.text, self.input_images).original_text()
+        original = UserInput(self.input_buffer.text, self.input_images, self.input_pastes).original_text()
         composed, marker = self._compose_editor_text(original, self.editor_context_fn())
         async with in_terminal():
             edited = await self._edit_text_in_editor(composed)
@@ -1575,7 +1621,8 @@ class TuiApp:
             return
         edited = self._strip_editor_context(edited, marker)
         if edited != original:
-            self._reset_input(edited, cursor_position=len(edited))
+            folded, kept = self._refold_pastes(edited, self.input_pastes)
+            self._reset_input(UserInput(folded, (), kept), cursor_position=len(folded))
             if self.input_mode in {"chat", "running"}:
                 self._recognize_input()
             self.invalidate()

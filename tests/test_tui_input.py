@@ -29,6 +29,7 @@ from wizolt.config import (
     Config,
 )
 from wizolt.engine import Agent
+from wizolt.image import PASTE_FOLD_MIN_CHARS, PASTE_FOLD_MIN_LINES, PASTE_MARKER, PasteRef
 from wizolt.session import Session, SessionSnapshotStore
 from wizolt.tui import CallbackPlaceholder, TuiApp
 
@@ -1009,3 +1010,101 @@ def test_model_retry_wait_status_labels_live_phase(tmp_path):
     command_loop.agent.model.on_retry_wait(True)
     command_loop.agent.model.on_retry_wait(False)
     assert transitions == ["retrying", "working"]
+
+
+def test_interactive_tui_bracketed_paste_stays_inline_below_line_threshold(monkeypatch):
+    app = TuiApp()
+    pasted = "\n".join(f"line {index}" for index in range(PASTE_FOLD_MIN_LINES - 1))
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text(f"\x1b[200~{pasted}\x1b[201~")
+        wait_until(lambda: app.input_buffer.text == pasted)
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+    assert app.input_buffer.text == pasted
+    assert app.input_pastes == ()
+
+
+def test_interactive_tui_bracketed_paste_folds_at_line_threshold(monkeypatch):
+    app = TuiApp()
+    lines = PASTE_FOLD_MIN_LINES
+    pasted = "\n".join(f"line {index}" for index in range(lines))
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text(f"\x1b[200~{pasted}\x1b[201~")
+        wait_until(lambda: app.input_buffer.text == PASTE_MARKER)
+        assert len(app.input_pastes) == 1
+        assert app.input_pastes[0].text == pasted
+        assert app.input_pastes[0].lines == lines
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+    assert app.input_buffer.text == PASTE_MARKER
+    assert app.input_pastes[0].chars == len(pasted)
+
+
+@pytest.mark.parametrize(
+    ("count", "folded"),
+    [(PASTE_FOLD_MIN_CHARS - 1, False), (PASTE_FOLD_MIN_CHARS, True)],
+)
+def test_interactive_tui_bracketed_paste_folds_by_char_threshold(monkeypatch, count, folded):
+    app = TuiApp()
+    pasted = "a" * count
+    expected = PASTE_MARKER if folded else pasted
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text(f"\x1b[200~{pasted}\x1b[201~")
+        wait_until(lambda: app.input_buffer.text == expected)
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+    assert app.input_buffer.text == expected
+    assert bool(app.input_pastes) is folded
+
+
+def test_interactive_tui_backspace_removes_a_paste_chip_and_its_ref(monkeypatch):
+    app = TuiApp()
+    lines = PASTE_FOLD_MIN_LINES
+    pasted = "\n".join(f"line {index}" for index in range(lines))
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text(f"\x1b[200~{pasted}\x1b[201~")
+        wait_until(lambda: app.input_buffer.text == PASTE_MARKER)
+        pipe_input.send_text("\x7f")
+        wait_until(lambda: app.input_buffer.text == "" and not app.input_pastes)
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+    assert app.input_buffer.text == ""
+    assert app.input_pastes == ()
+
+
+def test_refold_pastes_folds_unchanged_text_and_keeps_edits_inline():
+    app = TuiApp()
+    first = PasteRef(text="alpha body", lines=1, chars=10)
+    second = PasteRef(text="gamma tail", lines=1, chars=10)
+    text = f"head\n{first.text}\nmid\n{second.text}\nfoot"
+    folded, kept = app._refold_pastes(text, (first, second))
+    assert folded == f"head\n{PASTE_MARKER}\nmid\n{PASTE_MARKER}\nfoot"
+    assert kept == (first, second)
+
+    # A paste whose text appears more than once has no unique span to fold back.
+    repeated = f"head {second.text} then {second.text}"
+    folded2, kept2 = app._refold_pastes(repeated, (first, second))
+    assert folded2 == repeated
+    assert kept2 == ()
+
+    # A paste the user edited no longer matches its original text and stays inline.
+    edited = f"{first.text[:-1]} chopped"
+    folded3, kept3 = app._refold_pastes(edited, (first, second))
+    assert folded3 == edited
+    assert kept3 == ()

@@ -23,6 +23,11 @@ if TYPE_CHECKING:
 
 
 IMAGE_MARKER = "\ufffc"
+# A bracketed paste longer than either bound stays a one-cell chip on the input line instead of
+# filling it; the full text is restored by the projections that build messages and feed the editor.
+PASTE_FOLD_MIN_LINES = 25
+PASTE_FOLD_MIN_CHARS = 3000
+PASTE_MARKER = "\ufffb"
 IMAGE_REFS_KEY = "_images"
 # Durable image references available to local tools but never projected as provider image blocks.
 # A bridged attachment has already replaced its pixels with text; this marker keeps that projection
@@ -92,29 +97,97 @@ class ImageRef:
         return ImageRef._CONTROL_CHAR_RE.sub("\ufffd", os.path.basename(name))
 
 
+@dataclass(frozen=True)
+class PasteRef:
+    """One bracketed paste folded to a one-cell chip while editing.
+
+    The full text stays in memory for the projection that rebuilds the real message, so nothing
+    extra is written down and no session schema changes."""
+
+    text: str
+    lines: int
+    chars: int
+
+    def label(self, index: int) -> str:
+        size = f"{self.chars / 1024:.1f} KB" if self.chars >= 1024 else f"{self.chars} B"
+        noun = "line" if self.lines == 1 else "lines"
+        return f"[Pasted text #{index} \u00b7 {self.lines} {noun}, {size}]"
+
+
 class UserInput(str):
-    """A draft string whose one-cell image markers map to immutable image references."""
+    """A draft string whose one-cell markers map to immutable image or paste references."""
 
     images: tuple[ImageRef, ...]
+    pastes: tuple[PasteRef, ...]
 
-    def __new__(cls, text: str, images: tuple[ImageRef, ...] = ()) -> Self:
+    def __new__(cls, text: str, images: tuple[ImageRef, ...] = (), pastes: tuple[PasteRef, ...] = ()) -> Self:
         value = super().__new__(cls, text)
         value.images = images
+        value.pastes = pastes
         if text.count(IMAGE_MARKER) != len(images):
             raise ValueError("image marker count does not match image references")
+        if text.count(PASTE_MARKER) != len(pastes):
+            raise ValueError("paste marker count does not match paste references")
         return value
 
     def display_text(self) -> str:
-        return self._expanded(lambda index, image: f"[Image #{index} \u00b7 {image.name}]")
+        """What the user sees echoed: image labels and folded paste chips."""
+        return self._expanded(
+            lambda index, image: f"[Image #{index} \u00b7 {image.name}]",
+            lambda index, paste: paste.label(index),
+        )
 
     def original_text(self) -> str:
-        return self._expanded(lambda _index, image: image.source_text or image.name)
+        """What the user actually typed: image source text and every paste opened in full."""
+        return self._expanded(
+            lambda _index, image: image.source_text or image.name,
+            lambda _index, paste: paste.text,
+        )
 
-    def _expanded(self, replacement: Callable[[int, ImageRef], str]) -> str:
-        parts = str(self).split(IMAGE_MARKER)
-        output = [parts[0]]
-        for index, image in enumerate(self.images, 1):
-            output.extend((replacement(index, image), parts[index]))
+    def history_text(self) -> str:
+        """What Ctrl-R should recall: source text back, pastes kept folded as chips."""
+        return self._expanded(
+            lambda _index, image: image.source_text or image.name,
+            lambda index, paste: paste.label(index),
+        )
+
+    def model_text(self) -> str:
+        """What reaches the model: pastes open into their full text, images stay labels."""
+        return self._expanded(
+            lambda index, image: f"[Image #{index} \u00b7 {image.name}]",
+            lambda _index, paste: paste.text,
+        )
+
+    def queue_draft(self) -> str:
+        """Projection for a queue/snapshot entry: image markers stay (they pair with the entry's
+        image refs on resume), pastes open into full text because queue entries never carry paste refs."""
+        output: list[str] = []
+        pastes = iter(enumerate(self.pastes, 1))
+        for char in str(self):
+            if char == PASTE_MARKER:
+                _index, paste = next(pastes)
+                output.append(paste.text)
+            else:
+                output.append(char)
+        return "".join(output)
+
+    def _expanded(
+        self,
+        image_replacement: Callable[[int, ImageRef], str],
+        paste_replacement: Callable[[int, PasteRef], str],
+    ) -> str:
+        output: list[str] = []
+        images = iter(enumerate(self.images, 1))
+        pastes = iter(enumerate(self.pastes, 1))
+        for char in str(self):
+            if char == IMAGE_MARKER:
+                index, image = next(images)
+                output.append(image_replacement(index, image))
+            elif char == PASTE_MARKER:
+                index, paste = next(pastes)
+                output.append(paste_replacement(index, paste))
+            else:
+                output.append(char)
         return "".join(output)
 
 
@@ -156,11 +229,11 @@ class ImageInputs:
         labels = " ".join(f"[Image #{index} \u00b7 {image.name}]" for index, image in enumerate(images, 1))
         return " ".join(part for part in (labels, content) if part)
 
-    def recognize(self, text: str, existing: tuple[ImageRef, ...] = ()) -> UserInput:
-        """Replace readable local image path tokens with markers, preserving existing markers."""
+    def recognize(self, text: str, existing: tuple[ImageRef, ...] = (), existing_pastes: tuple[PasteRef, ...] = ()) -> UserInput:
+        """Replace readable local image path tokens with markers, preserving existing markers and pastes."""
 
         if text.lstrip().startswith("/") and "\n" not in text:
-            return UserInput(text, existing)
+            return UserInput(text, existing, existing_pastes)
         replacements: list[tuple[int, int, ImageRef]] = []
         known_refs = {image.ref for image in existing}
         for match in self._TOKEN_RE.finditer(text):
@@ -184,7 +257,7 @@ class ImageInputs:
             known_refs.add(image.ref)
             replacements.append((match.start() + leading, match.end() - trailing, image))
         if not replacements:
-            return UserInput(text, existing)
+            return UserInput(text, existing, existing_pastes)
         by_start = {start: (end, image) for start, end, image in replacements}
         old_images = iter(existing)
         found: list[ImageRef] = []
@@ -202,7 +275,7 @@ class ImageInputs:
             if char == IMAGE_MARKER:
                 found.append(next(old_images))
             position += 1
-        return UserInput("".join(output), tuple(found))
+        return UserInput("".join(output), tuple(found), existing_pastes)
 
     async def admit(self, value: str | UserInput) -> UserInput:
         """Verify and store one submitted draft's images; the runtime's admission step.
@@ -214,28 +287,27 @@ class ImageInputs:
         this a cheap idempotent re-check."""
 
         if not isinstance(value, UserInput) or not value.images or self.session is None:
-            return UserInput(str(value))
+            return UserInput(str(value), (), value.pastes) if isinstance(value, UserInput) else UserInput(str(value))
         return await run_blocking(lambda: self.prepare(value))
 
     def prepare(self, value: str | UserInput) -> UserInput:
         """Validate and store a draft's images as session-owned assets."""
 
         if not isinstance(value, UserInput) or not value.images:
-            return UserInput(str(value))
+            return UserInput(str(value), (), value.pastes) if isinstance(value, UserInput) else UserInput(str(value))
         if self.session is None:
             return value
-        return UserInput(str(value), tuple(self._store(image) for image in value.images))
+        return UserInput(str(value), tuple(self._store(image) for image in value.images), value.pastes)
 
     def message(self, value: str | UserInput) -> Json:
         stored = self.prepare(value)
-        if not stored.images:
+        if not stored.images and not stored.pastes:
             return {"role": "user", "content": str(stored)}
-        self.retained_refs.difference_update(image.ref for image in stored.images)
-        return {
-            "role": "user",
-            "content": stored.display_text(),
-            IMAGE_REFS_KEY: [image.to_json() for image in stored.images],
-        }
+        message: Json = {"role": "user", "content": stored.model_text()}
+        if stored.images:
+            self.retained_refs.difference_update(image.ref for image in stored.images)
+            message[IMAGE_REFS_KEY] = [image.to_json() for image in stored.images]
+        return message
 
     async def load(self, path: str, *, source_text: str = "") -> ImageRef:
         """Validate and store one explicit local image for model input, off the loop.
