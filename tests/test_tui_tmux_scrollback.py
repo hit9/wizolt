@@ -52,13 +52,17 @@ def tmux(*args: str, check: bool = True) -> str:
     return result.stdout
 
 
-@pytest.fixture
+@pytest.fixture(params=["on", "off"], ids=["alt-screen-on", "alt-screen-off"])
 def pane(tmp_path, request):
     # One session per test. These run under xdist, and a shared name makes two workers fight
     # over the same pane, which looks exactly like the corruption the test is meant to detect.
     session = f"wizolt-{request.node.name[:32]}-{os.getpid()}"
     tmux("kill-session", "-t", session, check=False)
     tmux("new-session", "-d", "-s", session, "-x", str(WIDE), "-y", str(TALL), "-c", str(tmp_path), "sh")
+    # Both halves of acceptance criterion 11. Nothing here uses the alternate screen, so the
+    # projection must behave identically either way -- and a terminal with it disabled is
+    # exactly where a stray 1049 would go unnoticed until it ate someone's screen.
+    tmux("set-option", "-t", session, "-w", "alternate-screen", request.param)
     time.sleep(0.4)
     try:
         yield Pane(session, tmp_path)

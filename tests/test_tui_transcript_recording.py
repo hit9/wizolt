@@ -14,6 +14,8 @@ unwinding.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from wizolt.render import UiPrinter
@@ -74,3 +76,30 @@ def test_transcript_is_bounded(recorded):
         printer.emit(f"line {line}")
 
     assert len(tui.scrollback.transcript) <= ScrollbackCap
+
+
+async def test_scrollback_writes_yield_between_them():
+    """A burst of completed writes must not hold the event loop for its whole length.
+
+    `ScrollbackWriter._pump` awaits `Queue.get` and then the write. `Queue.get` does not suspend
+    while items are already queued, so if the write does not yield either, the loop body never
+    reaches the scheduler: keys stop responding and the running animation freezes until the
+    burst drains. That is what `run_in_terminal` used to provide for free.
+    """
+    tui = TuiApp()
+    ticks = 0
+
+    async def competing() -> None:
+        nonlocal ticks
+        while True:
+            ticks += 1
+            await asyncio.sleep(0)
+
+    rival = asyncio.get_running_loop().create_task(competing())
+    try:
+        for _ in range(20):
+            await tui.write_to_scrollback(lambda: None)
+    finally:
+        rival.cancel()
+
+    assert ticks >= 20, f"the writer starved everything else on the loop; rival ran {ticks} times"

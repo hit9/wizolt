@@ -514,13 +514,16 @@ class TuiApp:
         Once the application has stopped there is nothing to print above, so the callback runs
         directly: that is the same fallback the direct-output path uses while the runtime unwinds."""
 
-        app = self.app
-        if app is None or not app.is_running:
-            callback()
-            return
-
         callback()
-        self.invalidate()
+        app = self.app
+        if app is not None and app.is_running:
+            self.invalidate()
+        # Yield on every path, even though recording needs no waiting. The writer pumps its queue
+        # in a loop whose only other await is `Queue.get`, which does not suspend while items are
+        # already waiting, so without this a burst of writes would hold the loop for its whole
+        # length and freeze keys and animation until it drained. `run_in_terminal` used to
+        # provide this; recording does not, so it has to be explicit.
+        await asyncio.sleep(0)
 
     def record_scrollback(self, text: str) -> None:
         """The sink `UiPrinter` writes rendered scrollback to while this app owns the terminal.
