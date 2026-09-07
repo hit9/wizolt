@@ -12,7 +12,8 @@ Four objectives, often in tension, explain most decisions below:
 2. **Protocol-neutral.** History is stored in one model; Chat, Responses, and Anthropic formats
    exist only at the send boundary.
 3. **Bounded.** Context, retained output, and previews all have ceilings; nothing grows forever.
-4. **Truthful.** The screen reports real state, and the terminal's own scrollback stays intact.
+4. **Truthful.** The screen reports real state; completed output lives in native scrollback,
+   with the resize/replay trade-off documented under Terminal boundary.
 
 Modules (dependencies point downward only):
 
@@ -109,6 +110,8 @@ is in parentheses.
   owner or fail clearly (Compaction).
 - **Retrying a failure that is not transient.** Cancellation, capability rejection, and validation
   errors are decisions, not glitches (Failure boundaries).
+- **Replacing the scroll region/replay with erase-and-print, estimated row deletion, or resize
+  CPR.** Those approaches already failed repeated real-tmux reflow (Terminal boundary).
 - **Mocking the behavior under test instead of the external boundary** (Test design).
 
 ## Maintenance
@@ -541,14 +544,68 @@ as content-addressed blobs. Persist semantic checkpoints, not object graphs.
   the primary screen; exclusive viewers like `/diff` may use the alternate screen and restore on
   exit.
 
-Preserving native scrollback beats making every transient frame durable: resize/reflow can leave
-preview copies in scrollback — visual artifacts, not history. Do not clear scrollback, persist
-preview rows, or switch to the alternate screen to hide that artifact.
+**The terminal is a projection, not the source of transcript truth.** `tui/scrollback.py` owns
+that projection. Its two mechanisms are inseparable:
 
-On resize the app erases from the terminal's actual cursor and re-anchors at the pane bottom
-before asking for the cursor position report. A multiplexer reflow (tmux zoom/unzoom) moves the
-drawn app before the resize is detected; trusting the drifted report instead makes the prompt
-climb toward the top of the pane and piles stale copies into scrollback.
+- Completed writes scroll through a DEC region anchored at row 1 and ending strictly above the
+  app. Live rows never participate in those writes. Compute the boundary and flush only inside
+  the render cycle, with current geometry; hold output while no safe region exists. After the app
+  stops, drain held writes directly before newer shutdown output; acceptance is not proof that a
+  render occurred.
+- A width change invalidates row ownership. Purge the terminal and replay retained completed
+  output, including startup/restored output and accepted pending writes. Defer the rebuild while
+  an exclusive viewer owns the alternate screen, and pay the debt on return to the primary screen.
+- Re-anchor the app at the pane bottom and give the renderer its origin directly. A resize CPR
+  round trip reintroduces a race; the initial startup probe is a separate case.
+- Record completed rule labels and styles before projection, but draw their length at the current
+  width, including after batching. Do not infer UI rules from runs of dashes in user/model text,
+  and do not replay elapsed-time or other live-state computations.
+
+**Accepted cost:** the first width change removes pre-wizolt shell scrollback. Replay retains at
+most 5,000 writes (a write can contain multiple lines); older output may disappear from terminal
+history on rebuild. This is an ephemeral projection budget, not deletion of durable session
+history. Do not promise that the terminal had already discarded those entries.
+
+**Superseded:** the earlier "never clear scrollback" rule and bottom re-anchor followed by CPR.
+Erase-and-print leaves live rows in terminal text flow; estimated line deletion can destroy
+transcript. Moving ordinary selectors or the whole app to the alternate screen changes the
+accepted product behavior. Alternate-screen selectors also lost primary history across repeated
+transitions; fixed-height selectors sacrificed usability, and floating selectors did not prove
+physical-history preservation. Neither a clean first resize nor stable preferred height establishes
+row ownership. The full investigation remains in Git history before deletion of the issue log.
+
+The projection relies on measured tmux behavior: a row-1 scroll region feeds native history and
+pane reflow keeps the cursor line at the bottom. These are not terminal-protocol guarantees.
+Ordinary text remains captured ANSI output; only completed rules retain adaptive layout, so replay
+does not fully re-render Markdown, tables or code for the new width.
+
+**Guard at two levels.** Unit/model tests cover geometry refusal, deferred replay, output recording,
+ordering and shutdown. Real-tmux tests must cover repeated wide/narrow and tall/short transitions,
+inspect narrow as well as restored-wide captures, and separately assert transcript completeness,
+uniqueness, single-row rules and bounded blank-row growth. Do not substitute a synthetic terminal
+or a clean final wide capture for physical history. Run the acceptance tests against both CI's
+system tmux and its explicitly pinned second version; neither proves all terminal emulators.
+Changes to the renderer, output batching, startup recording or modal ownership must run these
+checks. A regression test must fail against the implementation preceding its fix.
+
+`tests/test_tui_tmux_scrollback.py` currently checks 30 size transitions with split-pane zoom/unzoom,
+slow and rapid pauses, completed marker output, repeated inline modals, prompt/status uniqueness,
+blank-row growth, adaptive rules and ordered output on exit. It runs with alternate-screen support
+on and off. `tests/test_tui_scrollback_region.py` and `tests/test_tui_transcript_recording.py` guard
+geometry, recording and shutdown boundaries with a terminal model or captured output.
+
+**Remaining acceptance coverage:** changing thinking/activity previews, Ask/approval interactions,
+and selector navigation/search still need real-tmux coverage. Future changes at those boundaries
+must additionally verify:
+
+- Seeded transcript markers survive exactly once in `tmux capture-pane -p -S -` through at least
+  30 slow and rapid resize/zoom cycles; shell markers may disappear under the accepted purge.
+- The active frame remains single-copy, total captured rows do not grow with resize count, and
+  repeated selectors remain usable at small, normal and large sizes with previews and long lists.
+- Ctrl-C, Esc, Enter, search and resize remain responsive, with alternate-screen support both on
+  and off, and retained transcript remains accessible after exit.
+
+Passing the existing harness does not prove these remaining interactions or all terminal emulators.
 
 ## Compaction
 

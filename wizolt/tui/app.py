@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any, ClassVar
 
 from prompt_toolkit import search as pt_search
-from prompt_toolkit.application import Application, create_app_session, run_in_terminal
+from prompt_toolkit.application import Application
 from prompt_toolkit.application.run_in_terminal import in_terminal
 from prompt_toolkit.buffer import Buffer, CompletionState
 from prompt_toolkit.completion import CompleteEvent, Completer
@@ -44,7 +44,8 @@ from wizolt.base import (
 from wizolt.image import IMAGE_MARKER, ImageInputs, ImageRef, UserInput
 from wizolt.mentions import FilePick, MentionSpan, active_mention, encode_file_mention, scan_mentions
 from wizolt.paste import PASTE_MARKER, PasteRef
-from wizolt.render import UiPrinter
+from wizolt.render import ScrollbackText, UiPrinter
+from wizolt.tui.scrollback import ScrollbackRegion
 from wizolt.tui.views import TUI_MODAL_PENDING
 
 
@@ -331,6 +332,9 @@ class TuiApp:
         self._approval_focus = 0
         self.status_label: str = ""
         self.modal: TuiModal | None = None
+        # Completed output is recorded, then projected onto the terminal from inside the render
+        # cycle. See tui/scrollback.py: the app's rows must stay out of the terminal's text flow.
+        self.scrollback = ScrollbackRegion()
         self.input_window: Window | None = None
         self.activity_window: Window | None = None
         self.modal_window: Window | None = None
@@ -500,25 +504,42 @@ class TuiApp:
             self.invalidate()
 
     async def write_to_scrollback(self, callback: Callable[[], None]) -> None:
-        """Print above the live application, on its own loop, and return once the terminal took it.
+        """Record one completed write and yield so the renderer can project it.
 
-        `run_in_terminal` owns the erase/write/redraw sequence, while `create_app_session` routes
-        nested prompt-toolkit printers to this application's output. A write failure is raised to
-        the caller -- the writer task -- rather than buried in a background task nobody observes.
+        The write is captured rather than performed, then handed to `ScrollbackRegion`, which
+        writes it into a scroll region above the app during the next render. That keeps the
+        application's rows out of the terminal's text flow entirely -- see `tui/scrollback.py`
+        for why printing above the app the ordinary way cannot survive a tmux reflow.
 
         Once the application has stopped there is nothing to print above, so the callback runs
         directly: that is the same fallback the direct-output path uses while the runtime unwinds."""
 
+        callback()
+        app = self.app
+        if app is not None and app.is_running:
+            self.invalidate()
+        # Yield on every path, even though recording needs no waiting. The writer pumps its queue
+        # in a loop whose only other await is `Queue.get`, which does not suspend while items are
+        # already waiting, so without this a burst of writes would hold the loop for its whole
+        # length and freeze keys and animation until it drained. `run_in_terminal` used to
+        # provide this; recording does not, so it has to be explicit.
+        await asyncio.sleep(0)
+
+    def record_scrollback(self, text: ScrollbackText) -> None:
+        """The sink `UiPrinter` writes rendered scrollback to while this app owns the terminal.
+
+        Every printed row arrives here, including the ones printed before the application starts
+        and after it stops. Those cannot be deferred to a render, so they are recorded and printed
+        straight away; the rest wait for a render that can place them above the app.
+        """
         app = self.app
         if app is None or not app.is_running:
-            callback()
+            self.scrollback.write_direct(text)
             return
-
-        def render() -> None:
-            with create_app_session(output=app.output):
-                callback()
-
-        await run_in_terminal(render)
+        self.scrollback.enqueue(text)
+        # Queued lines only reach the terminal from inside a render, so every caller has to ask
+        # for one -- including the ones that do not go through `write_to_scrollback`.
+        self.invalidate()
 
     def _schedule(self, callback: Callable[..., None], *args: Any) -> None:
         app = self.app
@@ -1661,31 +1682,65 @@ class TuiApp:
         prompt-toolkit's resize path erases from where it last drew and then trusts the cursor
         position report (CPR). A multiplexer reflow (tmux zoom/unzoom) moves the already drawn app
         before the resize is even detected, so that erase misses the moved copy and the CPR answer
-        carries the drifted row: the app creeps toward the top of the pane and every cycle leaves
-        a stale copy behind. Erase from the cursor the terminal actually reports, then park the
-        cursor where an app of the last rendered height belongs and run the stock CPR-and-redraw
-        sequence from there, so the reported position describes the app instead of the drift.
+        carries the drifted row. Re-anchor using the previous app height and the new pane bottom,
+        then hand that origin directly to the renderer without a CPR round trip. Width changes
+        also rebuild the transcript in the render hook; re-anchoring alone cannot undo reflow.
         """
         vanilla_resize = app._on_resize
 
         def on_resize() -> None:
             renderer = app.renderer
             last_screen = renderer.last_rendered_screen
-            # 0-based row of the app's top when it sits flush with the pane bottom.
-            anchored_row = renderer.output.get_size().rows - last_screen.height if last_screen is not None and not renderer.full_screen else -1
-            if anchored_row < 0:
+            if last_screen is None or renderer.full_screen:
                 # Nothing rendered yet, or a full-screen app: the stock path is already right.
                 vanilla_resize()
                 return
-            # Erase starting at the terminal's actual cursor — after a reflow only the terminal
-            # knows where the moved app is, and erase_down() from there clears its every row.
-            renderer.erase(leave_alternate_screen=False)
-            renderer.output.cursor_goto(anchored_row + 1, 1)
+            # Erase from where an app of this height belongs when flush with the pane bottom.
+            # An absolute row can only ever reach the app's own rows; erasing from the drifted
+            # cursor instead reaches the transcript sitting directly above it.
+            rows = renderer.output.get_size().rows
+            height = min(last_screen.height, rows)
+            out = renderer.output
+            out.cursor_goto(rows - height + 1, 1)
+            out.erase_down()
+            out.flush()
             renderer.reset(leave_alternate_screen=False)
-            app._request_absolute_cursor_position()
+            # Hand the renderer its origin rather than asking for it. tmux pins the cursor line
+            # to the pane bottom across a reflow, so the answer is already known, and a CPR
+            # answer describes a screen that the next resize of a drag has already replaced.
+            renderer._min_available_height = height
             app._redraw()
 
         app._on_resize = on_resize
+
+    def _install_scrollback_flush(self, app: Application) -> None:
+        """Project queued transcript onto the terminal at the end of every render.
+
+        This is the only moment the app's absolute position can be derived safely: `_last_size`,
+        `last_rendered_screen` and `_cursor_pos` all describe what is actually on the terminal.
+        Deriving it from the emitting task instead races every resize and writes lines onto rows
+        that belong to something else.
+        """
+        renderer = app.renderer
+        vanilla_render = renderer.render
+
+        def render(*args: Any, **kwargs: Any) -> None:
+            vanilla_render(*args, **kwargs)
+            owed = self.scrollback.note_width(renderer.output.get_size().columns)
+            if renderer.full_screen:
+                # An exclusive viewer (/diff) owns the alternate screen. Purging there would
+                # take the primary screen's scrollback with it for a rebuild nobody can see, so
+                # the debt is carried and paid on the first render after the viewer closes.
+                return
+            if owed:
+                # Width changed: every row in the pane was rewrapped, and none of them can be
+                # attributed any more. Rebuild the projection from the transcript instead.
+                self.scrollback.rebuild(app)
+                vanilla_render(*args, **kwargs)
+            else:
+                self.scrollback.flush(app)
+
+        renderer.render = render  # type: ignore[method-assign]
 
     async def run(self, style: Style | None = None) -> None:  # pragma: no cover — interactive
         app = self._build_application(style)
@@ -1707,6 +1762,9 @@ class TuiApp:
         # Flush anything still queued in the scrollback batching window before the terminal is
         # handed back; a timer fired inside the app loop would never get to run again.
         self.on_app_stop()
+        # The final render may have no geometry to flush against. No live app remains, so
+        # accepted writes must drain directly instead of waiting forever for another frame.
+        self.scrollback.write_direct()
         self.app = None
         # Anything still parked on an input request unblocks as a cancel: a pending approval must
         # not be granted by the app shutting down.
@@ -1724,9 +1782,9 @@ class TuiApp:
             style=style,
             erase_when_done=True,
         )
-        # A persistent primary-screen renderer needs CPR after a terminal resize; otherwise its
-        # stale cursor coordinates can leave the transient footer in tmux scrollback. Keep the
-        # legacy behavior of silently degrading on terminals that do not answer the probe.
+        # The initial render still probes its origin. Resizes use the explicit bottom anchor
+        # below, without CPR. Silently degrade on terminals that do not answer the initial probe.
         app.renderer.cpr_not_supported_callback = lambda: None
         self._install_resize_reanchor(app)
+        self._install_scrollback_flush(app)
         return app

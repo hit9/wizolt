@@ -32,6 +32,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y tmux
+          # The scrollback tests depend on how this exact tmux reflows a pane, so make the
+          # version visible in the log: a silent distro bump would otherwise be invisible
+          # until it broke something. The `tmux-latest` job covers the other end of the range.
+          tmux -V
 
       - name: Install dependencies
         run: uv sync --extra dev
@@ -44,3 +48,44 @@ jobs:
 
       - name: Run tests
         run: uv run pytest -n 4
+
+  # The scrollback projection is built on measured tmux behaviour -- that a top-anchored scroll
+  # region feeds native history, and that a pane keeps its cursor line at the bottom across a
+  # reflow. The matrix above only ever sees whatever tmux the runner image ships (3.4 on Ubuntu
+  # 24.04), which trails releases by years, so this job builds the current tmux and runs the
+  # acceptance tests against it. Bump TMUX_VERSION when a new tmux is released.
+  tmux-latest:
+    runs-on: ubuntu-latest
+    env:
+      TMUX_VERSION: "3.7c"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build tmux ${{ env.TMUX_VERSION }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libevent-dev libncurses-dev bison pkg-config
+          curl -sSL -o tmux.tar.gz "https://github.com/tmux/tmux/releases/download/${TMUX_VERSION}/tmux-${TMUX_VERSION}.tar.gz"
+          tar xzf tmux.tar.gz
+          cd "tmux-${TMUX_VERSION}"
+          ./configure --prefix=/usr/local
+          make -j"$(nproc)"
+          sudo make install
+          hash -r
+          tmux -V
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run the real-tmux acceptance tests
+        run: uv run pytest tests/test_tui_tmux_scrollback.py -q

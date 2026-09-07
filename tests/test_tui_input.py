@@ -264,6 +264,8 @@ def test_interactive_tui_uses_cpr_again_after_resize_without_warning(monkeypatch
     output = CprOutput()
     app = TuiApp()
 
+    heights: list[int] = []
+
     def drive(_pipe_input):
         wait_until(lambda: app.app is not None and output.requests == 1)
         callback = app.app.renderer.cpr_not_supported_callback
@@ -273,14 +275,24 @@ def test_interactive_tui_uses_cpr_again_after_resize_without_warning(monkeypatch
         wait_until(lambda: not app.app.renderer.waiting_for_cpr)
         output.size = Size(rows=40, columns=120)
         app.app.loop.call_soon_threadsafe(app.app._on_resize)
-        wait_until(lambda: output.requests == 2)
-        app.app.loop.call_soon_threadsafe(app.app.renderer.report_absolute_cursor_row, 20)
-        wait_until(lambda: not app.app.renderer.waiting_for_cpr)
+        wait_until(lambda: app.app.renderer._min_available_height > 0)
+        renderer = app.app.renderer
+        heights.append((renderer._min_available_height, renderer.last_rendered_screen.height, renderer.waiting_for_cpr))
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive, output=output)
 
-    assert output.requests == 2
+    # The startup CPR still happens, and answering it must not leave the renderer believing CPR
+    # is unsupported -- that was a real bug, and the first half of this test still guards it.
+    assert output.requests == 1
+    # The resize does not ask again. The app is always flush with the pane bottom, so its origin
+    # is `rows - height` and can be handed to the renderer; a CPR answer would describe a screen
+    # that the next resize of a drag has already replaced. See TuiApp._install_resize_reanchor.
+    available, _height, waiting = heights[0]
+    assert not waiting, "the resize asked for a cursor position report instead of anchoring itself"
+    # The origin was established regardless: without this the renderer would keep treating its
+    # available height as unknown and draw the app from wherever the cursor happened to be.
+    assert available > 0
 
 
 def test_tui_app_accept_handler_fires_on_submit_and_clears_buffer():

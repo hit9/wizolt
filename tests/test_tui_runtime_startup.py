@@ -65,15 +65,22 @@ def test_tui_emits_resumed_history_after_primary_screen_starts(tmp_path, monkeyp
     emitted_while_running = []
     history_emitted = threading.Event()
 
-    def print_formatted(*values, **kwargs):
-        # The batched resume replay arrives as one call with every fragment value as a positional
-        # argument (print_formatted_text accepts *values); scan them all, not just the first.
-        text = "".join(fragment_list_to_text(to_formatted_text(value)) for value in values)
+    # Observe the sink every printed row now passes through. `print_formatted_text` is only
+    # reached when nothing has claimed scrollback, so watching it would miss the TUI's own path
+    # entirely -- and a missed observation here hangs the run, because the driver below never
+    # gets to send EOF.
+    real_print_parts = render_module.UiPrinter.print_parts
+
+    def print_parts(self, parts):
+        # The batched resume replay arrives as one call with every fragment as a separate part;
+        # scan them all, not just the first.
+        text = "".join(fragment_list_to_text(to_formatted_text(part)) for part in parts)
         if "restored answer" in text:
             emitted_while_running.append(command_loop.tui is not None and command_loop.tui.app is not None and command_loop.tui.app.is_running)
             history_emitted.set()
+        real_print_parts(self, parts)
 
-    monkeypatch.setattr(render_module, "print_formatted_text", print_formatted)
+    monkeypatch.setattr(render_module.UiPrinter, "print_parts", print_parts)
 
     with create_pipe_input() as pipe_input:
         monkeypatch.setattr(tui_module, "Application", lambda **kwargs: real_application(input=pipe_input, **(kwargs | {"output": DummyOutput()})))

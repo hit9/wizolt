@@ -393,6 +393,14 @@ class TuiRuntime:
         self.submit_accepted(_Submission(value))
 
     def build_tui(self) -> TuiApp:
+        tui = self._build_tui()
+        # Route every printed row through the app's transcript from here on, including the ones
+        # printed before it starts: a width change rebuilds the terminal from that transcript,
+        # so anything it never saw cannot be put back. See wizolt/tui/scrollback.py.
+        self.loop.ui.transcript_sink = tui.record_scrollback
+        return tui
+
+    def _build_tui(self) -> TuiApp:
         return TuiApp(
             on_chat_submit=self.submit_chat,
             on_running_submit=self.submit_running,
