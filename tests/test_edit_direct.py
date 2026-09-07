@@ -154,6 +154,122 @@ def test_edit_rejects_ambiguous_or_malformed_direct_calls(tmp_path, source, edit
     assert (tmp_path / "code.txt").read_text(encoding="utf-8") == "a\nb\n"
 
 
+# --- the mixed-evidence refusal: it names the edit and answers the retry ----------------------
+
+
+def mixed_refusal(s, key, edits):
+    with pytest.raises(ToolError, match="mixed edit evidence modes") as error:
+        EditTool(s, ["code.txt", key, edits]).parse()
+    return str(error.value), error.value.recovery
+
+
+def test_mixed_refusal_names_the_edit_and_both_repairs(tmp_path):
+    s = session(tmp_path)
+    (tmp_path / "code.txt").write_text("a\nb\n", encoding="utf-8")
+    key = view(s, "code.txt")
+
+    message, _ = mixed_refusal(
+        s,
+        key,
+        [{"op": "replace", "start": 1, "end": 1, "content": "A\n"}, {"op": "replace", "old": "b\n", "content": "B\n"}],
+    )
+
+    # The failing edit is named by position, and both legal repairs are named.
+    assert "edit 2 gives both source and old" in message
+    assert "drop source" in message and "drop old" in message
+    # The sibling edit has no old of its own, so dropping source would strand it: the answer is the split.
+    assert "split the call" in message
+
+
+def test_mixed_refusal_preflights_the_drop_source_reading(tmp_path):
+    s = session(tmp_path)
+    (tmp_path / "code.txt").write_text("a\nb\n", encoding="utf-8")
+    key = view(s, "code.txt")
+
+    message, recovery = mixed_refusal(s, key, [{"op": "replace", "old": "b\n", "content": "B\n"}])
+
+    assert "edit 1 gives both source and old" in message
+    assert "dropping source and resending these edits as one direct call would succeed" in message
+    assert recovery is None  # a mechanical retry needs no view
+    assert (tmp_path / "code.txt").read_text(encoding="utf-8") == "a\nb\n"
+
+
+def test_mixed_refusal_reports_a_target_the_drop_source_reading_cannot_find(tmp_path):
+    s = session(tmp_path)
+    (tmp_path / "code.txt").write_text("a\nb\n", encoding="utf-8")
+    key = view(s, "code.txt")
+
+    message, _ = mixed_refusal(s, key, [{"op": "replace", "old": "zz\n", "content": "Z\n"}])
+
+    assert "dropping source would fail too: direct target missing" in message
+
+
+def test_mixed_refusal_shows_the_ambiguity_the_drop_source_reading_hits(tmp_path):
+    s = session(tmp_path)
+    (tmp_path / "code.txt").write_text("a\na\n", encoding="utf-8")
+    key = view(s, "code.txt")
+
+    message, recovery = mixed_refusal(s, key, [{"op": "replace", "old": "a\n", "content": "A\n"}])
+
+    assert "dropping source would fail too: direct target ambiguous" in message
+    # The same occurrence view the direct mode itself would show, so the retry needs no Read.
+    rendered = render(s, recovery)
+    assert "1 | a" in rendered and "2 | a" in rendered
+
+
+def test_mixed_refusal_names_the_start_end_conflict_inside_the_item(tmp_path):
+    s = session(tmp_path)
+    (tmp_path / "code.txt").write_text("a\nb\n", encoding="utf-8")
+    key = view(s, "code.txt")
+
+    message, _ = mixed_refusal(s, key, [{"op": "replace", "start": 1, "end": 1, "old": "a\n", "content": "A\n"}])
+
+    # start/end cannot ride along into a direct call, so the refusal says which field clashes.
+    assert "dropping source would fail too: replace with old forbids end, start" in message
+
+
+def test_mixed_refusal_makes_no_promise_for_a_malformed_sibling(tmp_path):
+    s = session(tmp_path)
+    (tmp_path / "code.txt").write_text("a\nb\n", encoding="utf-8")
+    key = view(s, "code.txt")
+
+    message, _ = mixed_refusal(
+        s,
+        key,
+        [{"op": "replace", "old": "a\n", "content": "A\n"}, {"op": "replace", "old": "b\n", "content": "B\n", "line": 2}],
+    )
+
+    # The sibling's stray field fails whatever this call is retried as, so no verdict is offered.
+    assert "edit 1 gives both source and old" in message
+    assert "would succeed" not in message and "would fail too" not in message and "split the call" not in message
+
+
+def test_mixed_refusal_names_the_create_rule_for_a_create_sibling(tmp_path):
+    s = session(tmp_path)
+    (tmp_path / "code.txt").write_text("a\nb\n", encoding="utf-8")
+    key = view(s, "code.txt")
+
+    message, _ = mixed_refusal(s, key, [{"op": "replace", "old": "a\n", "content": "A\n"}, {"op": "create", "content": "x\n"}])
+
+    # Splitting the call would not help: create has to stand alone whichever evidence mode it keeps.
+    assert "create cannot be mixed with other edits" in message
+    assert "split the call" not in message
+
+
+def test_mixed_refusal_without_a_readable_target_stands_alone(tmp_path):
+    s = session(tmp_path)
+    (tmp_path / "code.txt").write_text("a\nb\n", encoding="utf-8")
+    key = view(s, "code.txt")
+    (tmp_path / "code.txt").unlink()
+
+    message, recovery = mixed_refusal(s, key, [{"op": "replace", "old": "a\n", "content": "A\n"}])
+
+    # No verdict is offered when the file cannot be consulted: a refusal, never a guess.
+    assert "edit 1 gives both source and old" in message
+    assert "would succeed" not in message and "would fail too" not in message and "split the call" not in message
+    assert recovery is None
+
+
 # --- the pure exact matcher ------------------------------------------------------------------
 
 

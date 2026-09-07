@@ -792,7 +792,7 @@ class TestServerStatusRendering:
 
 
 class TestStatusBarMCPStatus:
-    def test_always_shows_connected_server_count(self):
+    def test_discovering_shows_spinner_and_rising_count(self, monkeypatch):
         raw = {
             "mcp": {
                 "a": {"url": "http://a/mcp", "auto_connect": True},
@@ -803,9 +803,29 @@ class TestStatusBarMCPStatus:
         bootstrap_features(s)
         s.mcp.discovery_status = "discovering"
         s.mcp.tools["a"] = [mcp_tool_info("a", "echo")]
+        # A fixed clock: the frame is read from the same instant the row is rendered, so the
+        # assertion cannot straddle a frame boundary. 0.4s in is the third frame of the cycle.
+        monkeypatch.setattr(time, "monotonic", lambda: 0.4)
+        text = "".join(text for _, text in StatusBar(s).fragments())
+        assert "mcp " + StatusBar.SPINNER_FRAMES[2] + "1" in text
+        assert "mcp 1" not in text  # the plain count is reserved for settled discovery
+        assert "mcp 1/2" not in text
+
+    def test_settled_discovery_shows_plain_count(self):
+        raw = {
+            "mcp": {
+                "a": {"url": "http://a/mcp", "auto_connect": True},
+                "b": {"url": "http://b/mcp", "auto_connect": True},
+            }
+        }
+        s = Session(cwd="/tmp", config=Config.from_dict(raw))
+        bootstrap_features(s)
+        s.mcp.discovery_status = "ready"
+        s.mcp.tools["a"] = [mcp_tool_info("a", "echo")]
         text = "".join(text for _, text in StatusBar(s).fragments())
         assert "mcp 1" in text
-        assert "mcp 1/2" not in text
+        for frame in StatusBar.SPINNER_FRAMES:
+            assert frame not in text
 
     def test_shows_zero_when_no_server_is_connected(self):
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
