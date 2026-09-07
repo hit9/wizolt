@@ -1168,3 +1168,30 @@ def test_interactive_tui_clear_draft_after_fold_drops_paste_refs(monkeypatch):
 
     assert len(app.input_pastes) == 1
     assert UserInput(app.input_buffer.text, (), app.input_pastes).model_text() == block
+
+
+def test_interactive_tui_aborted_search_restores_a_folded_draft(monkeypatch):
+    app = TuiApp()
+    pasted = "\n".join(f"line {index}" for index in range(PASTE_FOLD_MIN_LINES))
+    crashes = []
+
+    def watch(prompt_app):
+        # A key binding that raises never reaches the caller: prompt_toolkit routes it to the loop
+        # exception handler, which takes over the terminal with "Press ENTER to continue".
+        prompt_app._handle_exception = lambda loop, context: crashes.append(context.get("exception"))
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text(f"\x1b[200~{pasted}\x1b[201~")
+        wait_until(lambda: app.input_buffer.text == PASTE_MARKER)
+        pipe_input.send_text("\x12")  # Ctrl-R snapshots the draft and opens the history search.
+        wait_until(lambda: app.app.layout.current_control is app.search_toolbar.control)
+        pipe_input.send_text("\x03")  # Ctrl-C aborts the search and restores that snapshot.
+        wait_until(lambda: app.app.layout.current_control is not app.search_toolbar.control or crashes)
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive, on_application=watch)
+
+    assert crashes == []  # Restoring bare text would rebuild the chip's marker with no reference.
+    assert app.input_buffer.text == PASTE_MARKER
+    assert [paste.text for paste in app.input_pastes] == [pasted]

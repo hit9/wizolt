@@ -291,7 +291,7 @@ class TuiApp:
         self.input_pastes: tuple[PasteRef, ...] = ()
         self._last_input_text = ""
         self._changing_input = False
-        self._search_start_text = ""
+        self._search_start_draft: str | UserInput = ""
         self.input_error = ""
         self.history = history
         self.input_buffer = Buffer(
@@ -643,7 +643,7 @@ class TuiApp:
     def _abort_history_search(self) -> None:
         """Abort an in-flight Ctrl-R search and restore the input as it was before the search started."""
         pt_search.stop_search()
-        self._reset_input(self._search_start_text)
+        self._reset_input(self._search_start_draft)
 
     def quick_hints(self) -> tuple[str, ...]:
         hints = self.quick_hints_fn()
@@ -1380,8 +1380,10 @@ class TuiApp:
                 pt_search.do_incremental_search(direction, count=event.arg)
             else:
                 # Snapshot the input before starting a new search so aborting it (Ctrl-C / Ctrl-U
-                # while searching) can restore exactly what was there, including any draft.
-                self._search_start_text = self.input_buffer.text
+                # while searching) can restore exactly what was there, including any draft. The
+                # whole draft, not just its text: a marker restored without its reference is an
+                # unbalanced input the restore itself would refuse to build.
+                self._search_start_draft = UserInput(self.input_buffer.text, self.input_images, self.input_pastes)
                 pt_search.start_search(direction=direction)
 
         bindings.add("c-r", filter=~modal, eager=True)(history_search)
