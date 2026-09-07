@@ -560,6 +560,8 @@ that projection. Its two mechanisms are inseparable:
 - Record completed rule labels and styles before projection, but draw their length at the current
   width, including after batching. Do not infer UI rules from runs of dashes in user/model text,
   and do not replay elapsed-time or other live-state computations.
+- Record using the output's selected color depth, as direct printing and live viewers do; freeze
+  that choice for replay. A capture buffer must not force true color and change the visible palette.
 
 **Accepted cost:** the first width change removes pre-wizolt shell scrollback. Replay retains at
 most 5,000 writes (a write can contain multiple lines); older output may disappear from terminal

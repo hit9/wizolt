@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Transcript diff colors again match the live `/diff` viewer and the terminal's selected color depth.
+
 ## 0.43.0 - 2026-09-07
 
 ### Fixed

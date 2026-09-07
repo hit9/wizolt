@@ -17,7 +17,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from prompt_toolkit import print_formatted_text
-from prompt_toolkit.application import get_app_or_none
+from prompt_toolkit.application import get_app_or_none, get_app_session
 from prompt_toolkit.data_structures import Size
 from prompt_toolkit.formatted_text import ANSI, FormattedText, StyleAndTextTuples, to_formatted_text
 from prompt_toolkit.output import ColorDepth, create_output
@@ -587,13 +587,14 @@ class UiPrinter:
             print_formatted_text(*parts, sep="", end="", flush=True)
             return
         # Snapshot the batch and the completed labels; replay must never consult live turn state.
+        color_depth = get_app_session().output.get_default_color_depth()
         if any(isinstance(part, HorizontalRule) for part in parts):
-            sink(partial(self.render_to_ansi, list(parts)))
+            sink(partial(self.render_to_ansi, list(parts), color_depth=color_depth))
         else:
-            sink(self.render_to_ansi(parts))
+            sink(self.render_to_ansi(parts, color_depth=color_depth))
 
     @staticmethod
-    def render_to_ansi(parts: list[FormattedText | ANSI | HorizontalRule], columns: int | None = None) -> str:
+    def render_to_ansi(parts: list[FormattedText | ANSI | HorizontalRule], columns: int | None = None, *, color_depth: ColorDepth | None = None) -> str:
         """Render completed fragments and rules to ANSI at the requested terminal width.
 
         Rendering through a real `Vt100_Output` rather than reimplementing the styling keeps
@@ -602,7 +603,10 @@ class UiPrinter:
         """
         buffer = io.StringIO()
         size = Size(rows=24, columns=columns or shutil.get_terminal_size((80, 24)).columns)
-        output = Vt100_Output(buffer, lambda: size, default_color_depth=ColorDepth.TRUE_COLOR)
+        # Match ordinary print_formatted_text and the live viewer. Forcing true color here
+        # bypasses the terminal's palette conversion and makes recorded diff bands darker.
+        depth = color_depth or get_app_session().output.get_default_color_depth()
+        output = Vt100_Output(buffer, lambda: size, default_color_depth=depth)
         fragments = [fragment for part in parts for fragment in (part.fragments(size.columns) if isinstance(part, HorizontalRule) else to_formatted_text(part))]
         render_fragments_to_output(output, fragments, _SCROLLBACK_STYLE)
         return buffer.getvalue()

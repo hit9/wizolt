@@ -15,12 +15,18 @@ unwinding.
 from __future__ import annotations
 
 import asyncio
+import io
+import os
 
 import pytest
-from prompt_toolkit.formatted_text import ANSI, to_formatted_text
+from prompt_toolkit.application import create_app_session
+from prompt_toolkit.data_structures import Size
+from prompt_toolkit.formatted_text import ANSI, FormattedText, to_formatted_text
+from prompt_toolkit.output import ColorDepth
+from prompt_toolkit.output.vt100 import Vt100_Output
 from prompt_toolkit.utils import get_cwidth
 
-from wizolt.render import UiPrinter
+from wizolt.render import HorizontalRule, Theme, UiPrinter
 from wizolt.tui.app import TuiApp
 
 
@@ -131,3 +137,27 @@ def test_recorded_rules_resize_without_recomputing_labels(recorded, monkeypatch,
         assert "done in 1m05s" in rules[1], "replay recomputed a completed turn's elapsed time"
     if width >= 22:
         assert "[worker] 中文完成" in rules[2]
+
+
+@pytest.mark.parametrize("depth", [ColorDepth.DEPTH_1_BIT, ColorDepth.DEPTH_4_BIT, ColorDepth.DEPTH_8_BIT, ColorDepth.TRUE_COLOR])
+@pytest.mark.parametrize("with_rule", [False, True])
+def test_recorded_diff_matches_direct_output_color_depth(monkeypatch, depth, with_rule):
+    monkeypatch.setattr("wizolt.render.shutil.get_terminal_size", lambda *args: os.terminal_size((80, 24)))
+    buffer = io.StringIO()
+    output = Vt100_Output(buffer, lambda: Size(rows=24, columns=80), default_color_depth=depth)
+    printer = UiPrinter()
+    parts = [FormattedText(printer.diff_segments('--- a.py\n+++ a.py\n@@ -1 +1 @@\n-old = 1\n+new = 2'))]
+    if with_rule:
+        parts.append(HorizontalRule(Theme.fg("rule"), "done in 5s", Theme.fg("text")))
+
+    with create_app_session(output=output):
+        printer.print_parts(parts)
+        direct = buffer.getvalue()
+        recorded = []
+        printer.transcript_sink = recorded.append
+        printer.print_parts(parts)
+        # A later projection must retain the palette chosen when the output was accepted.
+        output.default_color_depth = ColorDepth.TRUE_COLOR if depth != ColorDepth.TRUE_COLOR else ColorDepth.DEPTH_8_BIT
+        replayed = "".join(entry(80) if callable(entry) else entry for entry in recorded)
+
+    assert replayed == direct
