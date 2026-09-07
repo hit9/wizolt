@@ -276,6 +276,10 @@ DIRECT_TARGET_AMBIGUOUS = "direct target ambiguous"
 DIRECT_TARGETS_OVERLAP = "direct targets overlap"
 MIXED_EDIT_EVIDENCE = "mixed edit evidence modes"
 
+# Every field one edit item may carry. Both evidence modes draw from this one set; which of them
+# an item is allowed to combine is what the per-mode builders decide.
+EDIT_FIELDS = frozenset({"op", "start", "end", "old", "content"})
+
 # How many occurrences of an ambiguous target are counted before the scan stops. The number only
 # has to tell the model that its excerpt is not unique and roughly how far from unique it is;
 # counting every occurrence of a one-character target in a large file buys nothing for that.
@@ -651,7 +655,7 @@ class EditTool(Tool):
         for index, item in enumerate(raw_edits):
             if not isinstance(item, dict):
                 raise ToolError("each edit must be an object")
-            if unexpected := sorted(set(item) - {"op", "start", "end", "old", "content"}):
+            if unexpected := sorted(set(item) - EDIT_FIELDS):
                 raise ToolError("Edit unexpected field: " + ", ".join(unexpected))
             raw_op = item.get("op")
             if raw_op is None and self._implicit_replace(item, source_name):
@@ -686,13 +690,20 @@ class EditTool(Tool):
         current content: a clean run says the retry is a deletion, a failed one names the edit that
         would fail anyway and shows the same ambiguity view the direct mode itself would. When some
         edit has no old, dropping source strands it, and the answer is the split instead. Outside
-        the workspace or unreadable, the refusal stands alone: a refusal, never a guess.
+        the workspace or unreadable, the refusal stands alone, as it does when a sibling edit that
+        parse has not reached yet is malformed on its own: a refusal, never a guess.
         """
 
         detail = f"edit {index + 1} gives both source and old; drop source to edit by exact text, or drop old and give start/end"
         others = [entry for position, entry in enumerate(raw_edits) if position != index]
-        stranded = any(not isinstance(entry, dict) or "old" not in entry or str(entry.get("op") or "replace") not in {"replace", "delete"} for entry in others)
-        if stranded:
+        if any(isinstance(entry, dict) and str(entry.get("op") or "") == "create" for entry in others):
+            # No evidence mode makes this call legal, so neither repair is the one to name.
+            return source_error(MIXED_EDIT_EVIDENCE, detail + "; create cannot be mixed with other edits")
+        if any(not isinstance(entry, dict) or set(entry) - EDIT_FIELDS or str(entry.get("op") or "replace") not in {"replace", "delete"} for entry in others):
+            # A sibling parse has not reached yet is malformed on its own: whatever this call is
+            # retried as fails on that edit, so no repair is promised here.
+            return source_error(MIXED_EDIT_EVIDENCE, detail)
+        if any("old" not in entry for entry in others):
             return source_error(
                 MIXED_EDIT_EVIDENCE, detail + "; split the call: edits with old become a direct call without source, range edits keep source and drop old"
             )

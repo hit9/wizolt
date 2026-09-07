@@ -82,8 +82,10 @@ A single line beneath the prompt summarizes the session in a fixed order:
 `[yolo]` appears only when enabled, and the index suffix reflects its current state.
 
 The role colors stay still while the values remain live. The context and cache figures refresh
-after requests, and MCP, skill, and index changes appear on the next screen redraw. `/status`
-reports the same session figures in more detail.
+after requests, and MCP, skill, and index changes appear on the next screen redraw. While MCP
+servers are still being contacted the count spins — `mcp ⠹2` — and rises as each one answers; a
+plain `mcp N` means every configured server has settled, so `mcp 0` really is nothing connected.
+`/status` reports the same session figures in more detail.
 
 The working divider above the prompt names the current phase — `thinking`, `responding`, or
 `web search` while a [provider-side tool](tools.md#provider-side-tools) runs inside the request —

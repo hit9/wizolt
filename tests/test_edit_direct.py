@@ -228,6 +228,34 @@ def test_mixed_refusal_names_the_start_end_conflict_inside_the_item(tmp_path):
     assert "dropping source would fail too: replace with old forbids end, start" in message
 
 
+def test_mixed_refusal_makes_no_promise_for_a_malformed_sibling(tmp_path):
+    s = session(tmp_path)
+    (tmp_path / "code.txt").write_text("a\nb\n", encoding="utf-8")
+    key = view(s, "code.txt")
+
+    message, _ = mixed_refusal(
+        s,
+        key,
+        [{"op": "replace", "old": "a\n", "content": "A\n"}, {"op": "replace", "old": "b\n", "content": "B\n", "line": 2}],
+    )
+
+    # The sibling's stray field fails whatever this call is retried as, so no verdict is offered.
+    assert "edit 1 gives both source and old" in message
+    assert "would succeed" not in message and "would fail too" not in message and "split the call" not in message
+
+
+def test_mixed_refusal_names_the_create_rule_for_a_create_sibling(tmp_path):
+    s = session(tmp_path)
+    (tmp_path / "code.txt").write_text("a\nb\n", encoding="utf-8")
+    key = view(s, "code.txt")
+
+    message, _ = mixed_refusal(s, key, [{"op": "replace", "old": "a\n", "content": "A\n"}, {"op": "create", "content": "x\n"}])
+
+    # Splitting the call would not help: create has to stand alone whichever evidence mode it keeps.
+    assert "create cannot be mixed with other edits" in message
+    assert "split the call" not in message
+
+
 def test_mixed_refusal_without_a_readable_target_stands_alone(tmp_path):
     s = session(tmp_path)
     (tmp_path / "code.txt").write_text("a\nb\n", encoding="utf-8")
