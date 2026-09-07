@@ -25,6 +25,13 @@ Both run from inside the render cycle. The application's absolute position is de
 any resize invalidates, so deriving it from the emitting task races every resize and writes lines
 onto rows that belong to something else. `wizolt/tui/scrollback.py` carries the details.
 
+This rests on two measured tmux behaviours rather than on anything the protocol guarantees:
+a scroll region anchored at row 1 feeds rows scrolled off it into native history, and a pane
+keeps its cursor line at the bottom across a reflow, pulling rows back out of history when it
+grows. Both were verified on tmux 3.4 and again on 3.7c; CI runs the acceptance tests against
+the runner's tmux and, in the `tmux-latest` job, against a current tmux built from source. If a
+future tmux changes either behaviour, that job is where it will show up.
+
 **The accepted cost:** purging takes the user's pre-existing shell history with it, so after the
 first width change `Ctrl-b [` no longer reaches what was on screen before wizolt started. This is
 deliberate. The alternative -- deleting a computed number of physical rows -- destroys transcript
