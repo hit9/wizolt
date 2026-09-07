@@ -446,13 +446,15 @@ class EditTool(Tool):
 
     NAME = "Edit"
     DESCRIPTION = (
-        "Create or patch one UTF-8 file; every operation is validated before anything is written. create writes a new or empty file "
-        "and must be the only operation. For an existing file choose one evidence mode for the whole call: "
-        "(1) source=view.N from Read, Search, or InspectCode plus inclusive visible start/end lines; content is the complete replacement "
-        "for that range, while outside lines stay untouched. Insert by replacing one visible line with that line plus the insertion. "
-        "(2) no source, with each old set to exact literal text that occurs once; content replaces it character for character. "
-        "Exact text from Bash output works directly, without Read. Prefer a current source view when already available. "
-        "Batch all known non-overlapping operations for this path in edits; do not mix evidence modes."
+        "Create or patch one UTF-8 file; every operation is validated before anything is written. "
+        "For an existing file pick exactly one evidence mode for the whole call: source=view.N from Read, Search, or InspectCode "
+        "plus inclusive visible start/end lines, or no source with each old set to exact literal text that occurs once -- never both. "
+        "(1) source=view.N plus start/end: content is the complete replacement for that range, while outside lines stay untouched; "
+        "insert by replacing one visible line with that line plus the insertion. "
+        "(2) no source, exact old: content replaces it character for character, and exact text from Bash output works directly, without Read. "
+        "Prefer a current source view when already available. "
+        "create writes a new or empty file and must be the only operation. "
+        "Batch all known non-overlapping operations for this path in edits."
     )
     EXAMPLE = (
         'create file. Example: {"path":"src/app.py","edits":[{"op":"create","content":"print(1)\\n"}]}',
@@ -646,7 +648,7 @@ class EditTool(Tool):
         if not isinstance(raw_edits, list) or not raw_edits:
             raise ToolError("Edit edits must be a non-empty array")
         edits = []
-        for item in raw_edits:
+        for index, item in enumerate(raw_edits):
             if not isinstance(item, dict):
                 raise ToolError("each edit must be an object")
             if unexpected := sorted(set(item) - {"op", "start", "end", "old", "content"}):
@@ -666,7 +668,7 @@ class EditTool(Tool):
             if op == "create":
                 edits.append(self._create_edit(item, len(raw_edits), source_name))
             elif source_name and "old" in item:
-                raise source_error(MIXED_EDIT_EVIDENCE, "one call names a source view or supplies old text, never both")
+                raise self._mixed_evidence_error(index, path, raw_edits)
             elif source_name:
                 edits.append(self._range_edit(item, op))
             elif "old" in item:
@@ -674,6 +676,43 @@ class EditTool(Tool):
             else:
                 raise ToolError(f"{op} needs evidence: source=view.N with start/end, or old set to the exact text it replaces")
         return path, source_name, edits
+
+    def _mixed_evidence_error(self, index: int, path: str, raw_edits: list[Json]) -> ToolError:
+        """The refusal for a call that names a source view and supplies old text.
+
+        The one refusal in parse whose legal retry is not mechanical: dropping either field means
+        rewriting the call around the surviving evidence, so the file is consulted before refusing.
+        When every edit in the call carries old, the drop-source reading is preflighted against the
+        current content: a clean run says the retry is a deletion, a failed one names the edit that
+        would fail anyway and shows the same ambiguity view the direct mode itself would. When some
+        edit has no old, dropping source strands it, and the answer is the split instead. Outside
+        the workspace or unreadable, the refusal stands alone: a refusal, never a guess.
+        """
+
+        detail = f"edit {index + 1} gives both source and old; drop source to edit by exact text, or drop old and give start/end"
+        others = [entry for position, entry in enumerate(raw_edits) if position != index]
+        stranded = any(not isinstance(entry, dict) or "old" not in entry or str(entry.get("op") or "replace") not in {"replace", "delete"} for entry in others)
+        if stranded:
+            return source_error(
+                MIXED_EDIT_EVIDENCE, detail + "; split the call: edits with old become a direct call without source, range edits keep source and drop old"
+            )
+        if not (self.session.in_cwd(path) or self.session.owns_asset(path)) or os.path.isdir(path):
+            return source_error(MIXED_EDIT_EVIDENCE, detail)
+        try:
+            with open(path, encoding="utf-8") as file:
+                original = file.read()
+        except (OSError, UnicodeDecodeError):
+            return source_error(MIXED_EDIT_EVIDENCE, detail)
+        recovery = None
+        try:
+            direct_edits = [self._direct_edit(entry, str(entry.get("op") or "replace")) for entry in raw_edits]
+            resolve_direct(original, direct_edits)
+            verdict = "dropping source and resending these edits as one direct call would succeed"
+        except ToolError as error:
+            verdict = "dropping source would fail too: " + str(error)
+            if isinstance(error, DirectMatchError) and error.category == DIRECT_TARGET_AMBIGUOUS:
+                recovery = self.ambiguity_recovery(original, error.offsets, error.target_length, path)
+        return source_error(MIXED_EDIT_EVIDENCE, f"{detail}; {verdict}", recovery=recovery)
 
     def _create_edit(self, item: Json, count: int, source_name: str) -> Edit:
         if count != 1:
@@ -883,7 +922,7 @@ class EditTool(Tool):
         lines = split_lines(original)
         return self.splice_lines(lines, direct_line_replacements(lines, replacements))
 
-    def ambiguity_recovery(self, original: str, offsets: tuple[int, ...], target_length: int) -> ToolOutput | None:
+    def ambiguity_recovery(self, original: str, offsets: tuple[int, ...], target_length: int, path: str | None = None) -> ToolOutput | None:
         """A bounded view of the places an ambiguous target occurs, or None when none of them fit.
 
         Both boundaries are shown for a multi-line target: the differing context may follow its end,
@@ -912,7 +951,7 @@ class EditTool(Tool):
         spans = SourceSpan.build(lines, ranges)
         if not spans:
             return None
-        path = self.parse()[0]
+        path = path if path is not None else self.parse()[0]
         block = SourceBlock.plain(SourceViewDraft(path, self.session.relpath(path), len(lines), spans, EDIT))
         return ToolOutput(block.render(), (block,))
 

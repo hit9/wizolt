@@ -8,6 +8,10 @@
   is still in flight, so a session with servers configured reads as "connecting" rather than a
   bare `mcp 0`; the count still rises server by server and settles to a plain number when
   discovery finishes.
+- An `Edit` call that mixes a source view with exact `old` text is now told which edit carries
+  both, and whether dropping either half would work: the same edits are checked against the
+  current file, an ambiguous `old` comes back with the view of where it occurs, and a call that
+  mixes both kinds of edit is told to split it in two.
 
 ## 0.41.0 - 2026-09-06
 
