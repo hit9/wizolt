@@ -29,6 +29,7 @@ import sys
 import time
 from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 from typing import NamedTuple
 
 import pytest
@@ -136,7 +137,12 @@ def _settled_capture(pane, attempts: int = 40) -> list[str]:
         if current == previous:
             return current
         previous = current
-    return previous
+    capture_path = pane.path / "unstable-capture.txt"
+    capture_path.write_text("\n".join(previous))
+    raise AssertionError(
+        f"pane did not settle after {attempts} captures; last capture saved to {capture_path}\n"
+        + "Last 40 rows:\n" + "\n".join(previous[-40:])
+    )
 
 
 def _stop_selectors(log: Path, timeout: float = 10.0) -> None:
@@ -146,6 +152,21 @@ def _stop_selectors(log: Path, timeout: float = 10.0) -> None:
     while "selectors stopped\n" not in log.read_text():
         assert time.monotonic() < deadline, "the driver did not settle its selector"
         time.sleep(0.05)
+
+
+@pytest.mark.parametrize("stable", [False, True])
+def test_capture_requires_a_stable_frame(tmp_path, monkeypatch, stable):
+    frames = iter([["first"], ["second"], ["second" if stable else "third"]])
+    pane = SimpleNamespace(path=tmp_path, capture=lambda: next(frames))
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+
+    if stable:
+        assert _settled_capture(pane, attempts=2) == ["second"]
+        assert not (tmp_path / "unstable-capture.txt").exists()
+    else:
+        with pytest.raises(AssertionError, match="pane did not settle"):
+            _settled_capture(pane, attempts=2)
+        assert (tmp_path / "unstable-capture.txt").read_text() == "third"
 
 
 def cycle_size(cycle: int) -> tuple[int, int]:
