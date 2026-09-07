@@ -201,26 +201,53 @@ async def test_job_wait_streams_short_log_incrementally_without_duplicates(tmp_p
 
 
 async def test_job_wait_keeps_streaming_after_log_outgrows_tail_window(tmp_path, monkeypatch):
-    """Once the log passes the 8000-char tail window the `...` prefix breaks suffix matching;
-    the wait then pushes the whole visible tail so the preview keeps rolling instead of freezing."""
+    """Partial writes stream incrementally, then overflow replaces the visible tail.
+
+    The child waits for each phase to be observed: neither callback chunk sizes nor CI scheduling
+    are guaranteed, so a fixed sleep cannot establish which log contents the wait has seen.
+    """
     s = session(tmp_path)
     monkeypatch.setattr(JobTool, "POLL_INTERVAL", 0.01)
     monkeypatch.setattr(JobTool, "LIVE_INTERVAL", 0.01)
-    command = "printf 'a%.0s' {1..6000}; sleep 0.2; printf 'b%.0s' {1..4000}; sleep 0.1"
+    script = """import sys, time
+from pathlib import Path
+for index, text in enumerate(('a' * 4096, 'a' * 1904, 'b' * 4000)):
+    sys.stdout.write(text)
+    sys.stdout.flush()
+    while not Path(f'seen-{index}').exists():
+        time.sleep(0.01)
+"""
+    command = f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}"
     await JobTool(s, [{"action": "start", "command": command}]).call()
     events = []
-    tool = JobTool(s, [{"action": "wait", "job": "job.1", "timeout": 1}])
-    tool.live_output = lambda stream, text: events.append((stream, text))
+    tool = JobTool(s, [{"action": "wait", "job": "job.1", "timeout": 10}])
+    expected_tail = "..." + "a" * 3997 + "b" * 4000
+    prefix = ""
 
-    await tool.call()
+    def observe(stream, text):
+        nonlocal prefix
+        events.append((stream, text))
+        if stream != "output":
+            return
+        prefix += text
+        if prefix == "a" * 4096:
+            (tmp_path / "seen-0").touch()
+        if prefix == "a" * 6000:
+            (tmp_path / "seen-1").touch()
+        if text == expected_tail:
+            (tmp_path / "seen-2").touch()
+
+    tool.live_output = observe
+    try:
+        result = await tool.call()
+    finally:
+        await JobTool(s, [{"action": "kill", "job": "job.1"}]).call()
 
     deltas = [text for stream, text in events if stream == "output"]
     assert events[-1] == ("", "")
-    assert deltas[0] == "a" * 6000  # 窗口内时按增量推送
-    # 日志超过窗口后，推送的是完整的可见尾部：带 `...` 前缀且以最新输出结尾
-    assert deltas[-1].startswith("...") and deltas[-1].endswith("b" * 100)
-    assert len(deltas[-1]) == 8000
-    await JobTool(s, [{"action": "kill", "job": "job.1"}]).call()
+    assert "".join(text for text in deltas if set(text) == {"a"}) == "a" * 6000
+    assert deltas[-1] == expected_tail
+    assert "Status: done" in result and "Exit code: 0" in result
 
 
 async def test_job_wait_stream_clears_when_budget_is_exhausted(tmp_path, monkeypatch):
