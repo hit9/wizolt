@@ -1144,3 +1144,27 @@ def test_interactive_tui_paste_before_an_existing_chip_keeps_reference_order(mon
 
     assert [paste.text for paste in app.input_pastes] == [second, first]
     assert UserInput(app.input_buffer.text, (), app.input_pastes).model_text() == second + first
+
+
+def test_interactive_tui_clear_draft_after_fold_drops_paste_refs(monkeypatch):
+    """Ctrl-C discards the whole draft including its chips, so a later paste must not resurrect the
+    old reference next to the new marker (reference tuples pair with markers by position)."""
+
+    app = TuiApp()
+    block = "\n".join(f"line {index}" for index in range(PASTE_FOLD_MIN_LINES))
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text(f"\x1b[200~{block}\x1b[201~")
+        wait_until(lambda: app.input_buffer.text == PASTE_MARKER)
+        assert len(app.input_pastes) == 1
+        pipe_input.send_text("\x03")  # Chat-mode Ctrl-C clears the draft line.
+        wait_until(lambda: app.input_buffer.text == "" and not app.input_pastes)
+        pipe_input.send_text(f"\x1b[200~{block}\x1b[201~")
+        wait_until(lambda: app.input_buffer.text == PASTE_MARKER)
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+    assert len(app.input_pastes) == 1
+    assert UserInput(app.input_buffer.text, (), app.input_pastes).model_text() == block

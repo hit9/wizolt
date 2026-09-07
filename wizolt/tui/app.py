@@ -1351,7 +1351,7 @@ class TuiApp:
         # which `confirm` reads as a refusal with no reason.
         def escape(event):  # pragma: no cover — interactive path
             if self.input_buffer.text:
-                self.input_buffer.reset(Document(""))
+                self._reset_input("")
             elif self._input_pending is not None:
                 self.resolve_input(None)
 
@@ -1433,14 +1433,14 @@ class TuiApp:
                 return
             if self.input_mode == "chat":
                 if self.input_buffer.text:
-                    self.input_buffer.reset(Document(""))
+                    self._reset_input("")
                 return
             if self.input_mode in {"dispatch", "running"}:
                 # A draft absorbs the first press, the way it already does at the idle prompt. The
                 # queue hint only renders on an empty buffer, so "Ctrl-C interrupts" is shown
                 # exactly when the next press interrupts.
                 if self.input_buffer.text:
-                    self.input_buffer.reset(Document(""))
+                    self._reset_input("")
                     return
                 self.on_interrupt()
 
@@ -1456,7 +1456,7 @@ class TuiApp:
                 # instead of clearing the matched entry.
                 self._abort_history_search()
                 return
-            self.input_buffer.reset(Document(""))
+            self._reset_input("")
 
         bindings.add("c-u", filter=~modal & edits_input, eager=True)(clear_input)
 
