@@ -41,17 +41,9 @@ from wizolt.base import (
     WizoltError,
     run_blocking,
 )
-from wizolt.image import (
-    IMAGE_MARKER,
-    PASTE_FOLD_MIN_CHARS,
-    PASTE_FOLD_MIN_LINES,
-    PASTE_MARKER,
-    ImageInputs,
-    ImageRef,
-    PasteRef,
-    UserInput,
-)
+from wizolt.image import IMAGE_MARKER, ImageInputs, ImageRef, UserInput
 from wizolt.mentions import FilePick, MentionSpan, active_mention, encode_file_mention, scan_mentions
+from wizolt.paste import PASTE_MARKER, PasteRef
 from wizolt.render import UiPrinter
 from wizolt.tui.views import TUI_MODAL_PENDING
 
@@ -184,13 +176,15 @@ class AttachmentLabelProcessor(Processor):
 
     def apply_transformation(self, transformation_input) -> Transformation:
         ti = transformation_input
-        images, pastes = self.attachments_fn()
-        before_images = sum(line.count(IMAGE_MARKER) for line in ti.document.lines[: ti.lineno])
-        before_pastes = sum(line.count(PASTE_MARKER) for line in ti.document.lines[: ti.lineno])
         source = "".join(fragment[1] for fragment in ti.fragments)
+        # Every visible line runs through here on every repaint, most of them holding no marker at
+        # all; the per-character rebuild below is only worth doing once one is on this line.
+        if IMAGE_MARKER not in source and PASTE_MARKER not in source:
+            return Transformation(ti.fragments)
+        images, pastes = self.attachments_fn()
+        image_ordinal = sum(line.count(IMAGE_MARKER) for line in ti.document.lines[: ti.lineno])
+        paste_ordinal = sum(line.count(PASTE_MARKER) for line in ti.document.lines[: ti.lineno])
         labels: dict[int, str] = {}
-        image_ordinal = before_images
-        paste_ordinal = before_pastes
         for index, char in enumerate(source):
             if char == IMAGE_MARKER:
                 image_ordinal += 1
@@ -200,6 +194,8 @@ class AttachmentLabelProcessor(Processor):
                 paste_ordinal += 1
                 if paste_ordinal <= len(pastes):
                     labels[index] = pastes[paste_ordinal - 1].label(paste_ordinal)
+        if not labels:
+            return Transformation(ti.fragments)
         fragments: StyleAndTextTuples = []
         source_index = 0
         for fragment in ti.fragments:
@@ -1362,12 +1358,17 @@ class TuiApp:
         bindings.add("escape", filter=~modal & Condition(lambda: self.input_mode == "approval" and bool(self._approval_actions)))(escape)
 
         def paste(event):
+            buffer = event.current_buffer
             data = event.data.replace("\r\n", "\n").replace("\r", "\n")
-            if self.input_mode in {"chat", "running"} and (data.count("\n") + 1 >= PASTE_FOLD_MIN_LINES or len(data) >= PASTE_FOLD_MIN_CHARS):
-                self.input_pastes = (*self.input_pastes, PasteRef(data, data.count("\n") + 1, len(data)))
-                event.current_buffer.insert_text(PASTE_MARKER)
+            folded = PasteRef.fold(data) if self.input_mode in {"chat", "running"} else None
+            if folded is None:
+                buffer.insert_text(data)
             else:
-                event.current_buffer.insert_text(data)
+                # References are positional: they pair with the markers in text order, so a paste
+                # dropped before an existing chip has to be inserted there, not appended.
+                at = buffer.document.text_before_cursor.count(PASTE_MARKER)
+                self.input_pastes = (*self.input_pastes[:at], folded, *self.input_pastes[at:])
+                buffer.insert_text(PASTE_MARKER)
             if self.input_mode in {"chat", "running"}:
                 self._recognize_input()
 
@@ -1596,14 +1597,22 @@ class TuiApp:
 
         A paste whose full text still occurs exactly once in the returned text becomes a chip again;
         text the user edited is left inline, because guessing where a folded edit ended would
-        corrupt what they wrote."""
-        folded = text
+        corrupt what they wrote. The kept references come back in the order their markers appear,
+        not the order they were pasted -- an editor session is free to reorder the blocks, and a
+        reference tuple out of step with the text would send each block from the wrong place."""
+        spans = sorted(((text.index(paste.text), paste) for paste in pastes if text.count(paste.text) == 1), key=lambda span: span[0])
+        folded: list[str] = []
         kept: list[PasteRef] = []
-        for paste in pastes:
-            if folded.count(paste.text) == 1:
-                folded = folded.replace(paste.text, PASTE_MARKER)
-                kept.append(paste)
-        return folded, tuple(kept)
+        position = 0
+        for at, paste in spans:
+            if at < position:  # Already inside a block folded just above; leave this one inline.
+                continue
+            folded.append(text[position:at])
+            folded.append(PASTE_MARKER)
+            kept.append(paste)
+            position = at + len(paste.text)
+        folded.append(text[position:])
+        return "".join(folded), tuple(kept)
 
     async def _run_input_editor(self) -> None:
         # `in_terminal` suspends the app and restores it afterward (the same primitive

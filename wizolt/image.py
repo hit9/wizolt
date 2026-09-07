@@ -17,17 +17,13 @@ from typing import TYPE_CHECKING, ClassVar, Self
 from PIL import Image, UnidentifiedImageError
 
 from wizolt.base import Json, ModelError, run_blocking
+from wizolt.paste import PASTE_MARKER, PasteRef
 
 if TYPE_CHECKING:
     from wizolt.session import Session
 
 
 IMAGE_MARKER = "\ufffc"
-# A bracketed paste longer than either bound stays a one-cell chip on the input line instead of
-# filling it; the full text is restored by the projections that build messages and feed the editor.
-PASTE_FOLD_MIN_LINES = 25
-PASTE_FOLD_MIN_CHARS = 3000
-PASTE_MARKER = "\ufffb"
 IMAGE_REFS_KEY = "_images"
 # Durable image references available to local tools but never projected as provider image blocks.
 # A bridged attachment has already replaced its pixels with text; this marker keeps that projection
@@ -97,23 +93,6 @@ class ImageRef:
         return ImageRef._CONTROL_CHAR_RE.sub("\ufffd", os.path.basename(name))
 
 
-@dataclass(frozen=True)
-class PasteRef:
-    """One bracketed paste folded to a one-cell chip while editing.
-
-    The full text stays in memory for the projection that rebuilds the real message, so nothing
-    extra is written down and no session schema changes."""
-
-    text: str
-    lines: int
-    chars: int
-
-    def label(self, index: int) -> str:
-        size = f"{self.chars / 1024:.1f} KB" if self.chars >= 1024 else f"{self.chars} B"
-        noun = "line" if self.lines == 1 else "lines"
-        return f"[Pasted text #{index} \u00b7 {self.lines} {noun}, {size}]"
-
-
 class UserInput(str):
     """A draft string whose one-cell markers map to immutable image or paste references."""
 
@@ -161,15 +140,10 @@ class UserInput(str):
     def queue_draft(self) -> str:
         """Projection for a queue/snapshot entry: image markers stay (they pair with the entry's
         image refs on resume), pastes open into full text because queue entries never carry paste refs."""
-        output: list[str] = []
-        pastes = iter(enumerate(self.pastes, 1))
-        for char in str(self):
-            if char == PASTE_MARKER:
-                _index, paste = next(pastes)
-                output.append(paste.text)
-            else:
-                output.append(char)
-        return "".join(output)
+        return self._expanded(
+            lambda _index, _image: IMAGE_MARKER,
+            lambda _index, paste: paste.text,
+        )
 
     def _expanded(
         self,
@@ -238,7 +212,9 @@ class ImageInputs:
         known_refs = {image.ref for image in existing}
         for match in self._TOKEN_RE.finditer(text):
             raw = match.group(0)
-            if IMAGE_MARKER in raw:
+            # A token that swallowed a neighbouring chip is not a path: recognizing one would
+            # replace a span containing that marker and leave the reference tuples unbalanced.
+            if IMAGE_MARKER in raw or PASTE_MARKER in raw:
                 continue
             left_trimmed = raw.lstrip(self._LEADING_PUNCTUATION)
             candidate_raw = left_trimmed.rstrip(self._TRAILING_PUNCTUATION)
@@ -287,14 +263,21 @@ class ImageInputs:
         this a cheap idempotent re-check."""
 
         if not isinstance(value, UserInput) or not value.images or self.session is None:
-            return UserInput(str(value), (), value.pastes) if isinstance(value, UserInput) else UserInput(str(value))
+            return self._without_images(value)
         return await run_blocking(lambda: self.prepare(value))
+
+    @staticmethod
+    def _without_images(value: str | UserInput) -> UserInput:
+        """The draft with nothing stored. Paste chips are not image state and must survive here:
+        dropping them would leave their markers in the text with no reference to reopen."""
+
+        return UserInput(str(value), (), value.pastes) if isinstance(value, UserInput) else UserInput(str(value))
 
     def prepare(self, value: str | UserInput) -> UserInput:
         """Validate and store a draft's images as session-owned assets."""
 
         if not isinstance(value, UserInput) or not value.images:
-            return UserInput(str(value), (), value.pastes) if isinstance(value, UserInput) else UserInput(str(value))
+            return self._without_images(value)
         if self.session is None:
             return value
         return UserInput(str(value), tuple(self._store(image) for image in value.images), value.pastes)

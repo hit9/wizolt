@@ -29,7 +29,8 @@ from wizolt.config import (
     Config,
 )
 from wizolt.engine import Agent
-from wizolt.image import PASTE_FOLD_MIN_CHARS, PASTE_FOLD_MIN_LINES, PASTE_MARKER, PasteRef
+from wizolt.image import UserInput
+from wizolt.paste import PASTE_FOLD_MIN_CHARS, PASTE_FOLD_MIN_LINES, PASTE_MARKER, PasteRef
 from wizolt.session import Session, SessionSnapshotStore
 from wizolt.tui import CallbackPlaceholder, TuiApp
 
@@ -1108,3 +1109,38 @@ def test_refold_pastes_folds_unchanged_text_and_keeps_edits_inline():
     folded3, kept3 = app._refold_pastes(edited, (first, second))
     assert folded3 == edited
     assert kept3 == ()
+
+
+def test_refold_pastes_returns_refs_in_the_order_the_editor_left_them():
+    app = TuiApp()
+    first = PasteRef(text="alpha body", lines=1, chars=10)
+    second = PasteRef(text="gamma tail", lines=1, chars=10)
+    swapped = f"head\n{second.text}\nmid\n{first.text}\nfoot"
+    folded, kept = app._refold_pastes(swapped, (first, second))
+
+    assert folded == f"head\n{PASTE_MARKER}\nmid\n{PASTE_MARKER}\nfoot"
+    # Refs pair with markers by position: kept in pasted order, each block would come back
+    # expanded where the other one used to be.
+    assert kept == (second, first)
+    assert UserInput(folded, (), kept).model_text() == swapped
+
+
+def test_interactive_tui_paste_before_an_existing_chip_keeps_reference_order(monkeypatch):
+    app = TuiApp()
+    first = "\n".join(f"first {index}" for index in range(PASTE_FOLD_MIN_LINES))
+    second = "\n".join(f"second {index}" for index in range(PASTE_FOLD_MIN_LINES))
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text(f"\x1b[200~{first}\x1b[201~")
+        wait_until(lambda: app.input_buffer.text == PASTE_MARKER)
+        pipe_input.send_text("\x01")  # Ctrl-A: the second paste lands before the first chip.
+        wait_until(lambda: app.input_buffer.cursor_position == 0)
+        pipe_input.send_text(f"\x1b[200~{second}\x1b[201~")
+        wait_until(lambda: app.input_buffer.text == PASTE_MARKER * 2)
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+    assert [paste.text for paste in app.input_pastes] == [second, first]
+    assert UserInput(app.input_buffer.text, (), app.input_pastes).model_text() == second + first

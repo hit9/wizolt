@@ -26,15 +26,14 @@ from wizolt.image import (
     IMAGE_MARKER,
     IMAGE_REFS_KEY,
     IMAGE_TEXT_ONLY_KEY,
-    PASTE_MARKER,
     TOOL_IMAGE_OBSERVATION_KEY,
     TOOL_IMAGE_OBSERVATION_PREFIX,
     ImageInputs,
     ImageRef,
-    PasteRef,
     UserInput,
 )
 from wizolt.model import ModelClient
+from wizolt.paste import PASTE_MARKER, PasteRef
 from wizolt.runner import ToolRunner
 from wizolt.session import Session, SessionSnapshotStore
 from wizolt.tools import ViewImageTool
