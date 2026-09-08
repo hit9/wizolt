@@ -75,6 +75,7 @@ class SessionSnapshotCodec:
             "pending_user_inputs_digest": cls.digest([item.to_json() for item in session.pending_user_inputs]),
             "tool_records_len": len(records), "tool_records_digest": cls.digest(records),
             "tool_errors_len": len(errors), "tool_errors_digest": cls.digest(errors),
+            "recent_commands_len": len(session.recent_commands), "recent_commands_digest": cls.digest(session.recent_commands),
             "turn_diffs_len": len(turn_diff_keys), "turn_diffs_keys_digest": cls.digest(turn_diff_keys),
             "transcript_turn_diffs_len": transcript_diff_len, "transcript_turn_diffs_tail_digest": cls.digest(transcript_diff_tail),
             "history_len": len(session.history), "history_keys_digest": cls.digest([seg.key for seg in session.history]),
@@ -184,6 +185,7 @@ class SessionSnapshotCodec:
                 bool(session.pending_user_inputs),
                 bool(session.tool_records),
                 bool(session.tool_errors),
+                bool(session.recent_commands),
                 bool(session.turn_diffs),
                 bool(session.history),
                 bool(session.source_views),
@@ -312,6 +314,7 @@ class SessionSnapshotCodec:
             "source_view_counter": session.source_view_counter,
             "compaction_usage": cls.usage(session.compaction_usage),
             "tool_records": [cls.tool_record(record) for record in session.tool_records], "tool_errors": [cls.tool_error(error) for error in session.tool_errors],
+            "recent_commands": list(session.recent_commands),
             "turn_diffs": [cls.turn_diff(diff, blobs) for diff in session.turn_diffs],
             "transcript_turn_diffs": [cls.transcript_turn_diff(diff) for diff in session.transcript_turn_diffs],
             "history": [cls.history_segment(segment, blobs) for segment in session.history],
@@ -356,6 +359,7 @@ class SessionSnapshotCodec:
             "tool_errors_len",
             "tool_errors_digest",
         )
+        cls.add_sequence_delta(delta, "recent_commands", session.recent_commands, saved, "recent_commands_len", "recent_commands_digest")
         cls.add_turn_diffs_delta(delta, session.turn_diffs, saved, blobs)
         cls.add_transcript_turn_diffs_delta(delta, session.transcript_turn_diffs, saved)
         cls.add_history_delta(delta, session.history, saved, blobs)
@@ -525,6 +529,7 @@ class SessionSnapshotCodec:
         cls.merge_sequence(data, delta, "active_transcript_messages")
         cls.merge_sequence(data, delta, "tool_records")
         cls.merge_sequence(data, delta, "tool_errors")
+        cls.merge_sequence(data, delta, "recent_commands")
         cls.merge_sequence(data, delta, "turn_diffs")
         cls.merge_sequence(data, delta, "transcript_turn_diffs")
         cls.merge_sequence(data, delta, "history")

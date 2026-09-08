@@ -39,7 +39,14 @@ The fill shown in the status bar measures the last request; compaction looks ahe
 The summary is lossy, so each compaction also stores a verbatim excerpt of the messages it
 evicted, as a **history segment**. The session log keeps the originals either way.
 
-<div class="term-shot" role="img" aria-label="Compaction replaces older active conversation with one checkpoint containing the summary, full working state, and a segment pointer. RecallContext can list, search, and retrieve bounded verbatim excerpts, while the append-only session log retains earlier snapshots as the cold source of truth."><span class="fs-goal">─ active context (hot) ────────────────</span><span>  checkpoint       <span class="fs-i fs-dim">summary · goal · plan · facts · checks · seg.N</span></span><span>  recent messages  <span class="fs-i fs-dim">kept as they are</span></span><span class="fs-dim">─ recallable segments (warm) ──────────</span><span>  seg.1 · seg.2    <span class="fs-i fs-dim">listed/searched only when needed</span></span><span class="fs-dim">─ append-only session log (cold) ──────</span><span>  earlier snapshots<span class="fs-i fs-dim"> original messages</span></span><span> </span><span class="fs-dim"><span class="fs-i fs-goal">RecallContext(list/search/get)</span> finds an excerpt</span></div>
+<div class="term-shot" role="img" aria-label="Compaction replaces older active conversation with one checkpoint containing the summary, full working state, recent tool activity, and a segment pointer. RecallContext can list, search, and retrieve bounded verbatim excerpts, while the append-only session log retains earlier snapshots as the cold source of truth."><span class="fs-goal">─ active context (hot) ────────────────</span><span>  checkpoint       <span class="fs-i fs-dim">summary · working state · recent activity · seg.N</span></span><span>  recent messages  <span class="fs-i fs-dim">kept as they are</span></span><span class="fs-dim">─ recallable segments (warm) ──────────</span><span>  seg.1 · seg.2    <span class="fs-i fs-dim">listed/searched only when needed</span></span><span class="fs-dim">─ append-only session log (cold) ──────</span><span>  earlier snapshots<span class="fs-i fs-dim"> original messages</span></span><span> </span><span class="fs-dim"><span class="fs-i fs-goal">RecallContext(list/search/get)</span> finds an excerpt</span></div>
+
+Each checkpoint also includes recent tool activity when available: up to 10 modified file
+paths, 10 foreground command results, and 5 tool failures. Repeated entries move to the
+most recent position. These are historical observations: an error may already be resolved,
+and a command exiting successfully does not mean the task is complete. The agent can view
+more recent activity with `Note(view)`. Command receipts survive compaction and session resume;
+the activity lists are shortened to fit a bounded excerpt.
 
 Each compaction names the span it evicted, in the same reply that writes the summary, so the title
 describes the work rather than whichever message happened to start the window. The agent reaches

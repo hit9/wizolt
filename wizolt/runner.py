@@ -782,6 +782,8 @@ class ToolRunner:
         except Exception as error:  # noqa: BLE001 - tool failures are serialized back to the model.
             return "failed", await self.finish(call, f"ToolError: {error}", failed=True, elapsed=time.monotonic() - started, d=d), None
         message = await self.finish(call, output, elapsed=time.monotonic() - started, turn_diff=tool.turn_diff(), d=d)
+        if isinstance(tool, BashTool) and tool.exit_code is not None:
+            self.session.record_command_result(tool.command(), tool.exit_code)
         await self.update_code_index(call, message)
         return "ok", message, observation
 

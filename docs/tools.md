@@ -105,6 +105,9 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
   - Views or updates the task's goal, plan, success check, and learned facts. Updates are durable
     conversation history, so they preserve append-only prompt-cache prefixes and do not edit files.
 
+    `Note(view)` also shows recent file modifications, command exit results, and tool failures
+    when available. These read-only records describe past activity, not current task status.
+
     <div class="term-shot" role="img" aria-label="A Note update printed in the terminal: goal and check lines, a plan whose items are marked done, in progress, or waiting, and a list of learned facts."><span class="fs-goal">goal: ship the tokenizer fix</span><span class="fs-goal">check: pytest -q passes</span><span class="fs-sel">plan:</span><span class="fs-add">  - [x] reproduce the failing test</span><span class="fs-doing">  - [~] fix the tokenizer</span><span>  - [ ] update the changelog</span><span class="fs-sel">known:</span><span class="fs-add">  + tests run with pytest -q</span></div>
 
     Plan items are marked `[x]` done, `[~]` in progress, `[ ]` waiting, or `[-]` blocked.

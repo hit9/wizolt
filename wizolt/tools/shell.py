@@ -58,6 +58,7 @@ class BashTool(Tool):
         super().__init__(session, args)
         self._process_lock = threading.Lock()
         self._process: subprocess.Popen[bytes] | None = None
+        self.exit_code: int | None = None
 
     def request_stop(self) -> None:
         """Kill the command's whole process group; the runner then waits for `call()` to reap it."""
@@ -313,9 +314,14 @@ class BashTool(Tool):
                     with contextlib.suppress(Exception):
                         pipe.close()
         stdout, stderr = "".join(stdout_parts), "".join(stderr_parts)
+        # exit_code feeds the activity receipt, so it records what the result boundary settled
+        # on: a timed-out command never exited on its own and settles at the reported -1, not at
+        # the signal number the kill produced.
         if timed_out:
+            self.exit_code = -1
             stderr += ("\n" if stderr else "") + "timeout"
             return self.process_result("BashToolResult", -1, stdout, stderr)
+        self.exit_code = proc.returncode or 0
         return self.process_result("BashToolResult", proc.returncode or 0, stdout, stderr)
 
     def promote_to_job(

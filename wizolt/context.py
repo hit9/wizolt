@@ -352,6 +352,8 @@ class ContextManager:
             "Working state (at this compaction; a later Note call supersedes it):",
             self.session.state.format(),
         ]
+        if activity := self.session.recent_activity():
+            rows.extend(("", activity))
         # The whole retained archive, not just the span this compaction stored: each rebuild
         # discards the previous checkpoint, so a line naming only the newest segment leaves the
         # older ones with no trace in context at all. Range and count only -- what to fetch, or

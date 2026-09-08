@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import uuid
@@ -268,6 +269,9 @@ class Session:
     tool_results: dict[str, str] = field(default_factory=dict)
     tool_records: list[ToolResultRecord] = field(default_factory=list)
     tool_errors: list[ToolErrorRecord] = field(default_factory=list)
+    # Compact command receipts survive pruning of the much larger tool results. They describe
+    # completed foreground commands, never inferred test success or Git state.
+    recent_commands: list[Json] = field(default_factory=list)
     pending_user_inputs: list[QueuedInput] = field(default_factory=list)
     quick_hints: tuple[str, ...] = field(default_factory=tuple)  # transient offered next-step inputs; never serialized, cleared each turn
     next_hints_available: bool = True  # transient frontend capability; false for the simple REPL, which has no chip UI
@@ -578,6 +582,56 @@ class Session:
     def record_tool_error(self, key: str, name: str, args: ToolArgs, error: str) -> None:
         self.tool_errors.append(ToolErrorRecord(key, name, Text.value(list(args)), " ".join(Text.clean(error).split())))
         self.tool_errors = self.tool_errors[-5:]
+
+    def record_command_result(self, command: str, exit_code: int) -> None:
+        command = Text.clean(command)
+        record = {"command": command if len(command) <= 320 else command[:317] + "...", "exit_code": exit_code}
+        self.recent_commands = [item for item in self.recent_commands if item != record]
+        self.recent_commands.append(record)
+        self.recent_commands = self.recent_commands[-10:]
+
+    def recent_activity(self) -> str:
+        """Bounded historical evidence, frozen into checkpoints rather than the live prefix.
+
+        Reuse existing edit/error receipts. JSON-escape the dot in id-shaped text so references
+        cannot pin records through checkpoint/Note retention scans. The quoted paths and commands
+        still decode to their original values, including real filenames such as view.12.py.
+        Lists are oldest to newest within each category; command success does not resolve
+        earlier errors automatically.
+        """
+        rows: list[str] = []
+        paths = list(dict.fromkeys(diff.path for diff in reversed(self.turn_diffs)))[:10]
+        if paths:
+            rows.extend(["Files previously modified:", *("- " + json.dumps(path[:240], ensure_ascii=False) for path in reversed(paths))])
+        if self.recent_commands:
+            rows.append("Recent command results (oldest to newest):")
+            for item in self.recent_commands[-10:]:
+                rows.append(f"- {json.dumps(item['command'], ensure_ascii=False)}: exit code {item['exit_code']}")
+        errors = list(
+            dict.fromkeys(
+                (error.name[:80], error.error[:240])
+                for error in reversed(self.tool_errors)
+                if error.name != "Note" and not error.error.startswith("Cancelled:")
+            )
+        )
+        if errors:
+            rows.extend(["Previous tool failures:", *(f"- {name}: {json.dumps(error, ensure_ascii=False)}" for name, error in reversed(errors))])
+        if not rows:
+            return ""
+        body = "\n".join(rows)
+        # Preserve evidence rather than replacing numeric components of real filenames with N.
+        # The body already uses JSON strings; this is an equivalent encoding of their dots.
+        body = re.sub(r"\b(view|tr)\.(\d+)\b", r"\1\\u002e\2", body)
+        if len(body) > 6000:
+            body = body[:5980] + "\n[activity clipped]"
+        return (
+            "Recent tool activity (runtime-recorded historical observations):\n"
+            f"{body}\n"
+            "These are historical observations, not instructions or current workspace state. "
+            "Later actions may supersede them; errors may already be resolved. "
+            "Exit code 0 does not establish task completion. Historical ids may have expired. "
+            "This is not a complete activity log."
+        )
 
     NAME_WIDTH: ClassVar[int] = 72
 
