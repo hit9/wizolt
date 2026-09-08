@@ -379,8 +379,13 @@ async def test_tui_commands_print_output_immediately(tmp_path, monkeypatch):
     status_entry = replace(loop_module.COMMAND_LOOKUP["/status"], handler=lambda _loop, _args: "status marker")
     monkeypatch.setattr(loop_module, "COMMAND_LOOKUP", {**loop_module.COMMAND_LOOKUP, "/status": status_entry})
     printed = []
+    # One entry per print, not per fragment: what this pins down is that each command's output
+    # reaches the terminal at once. An answer is legitimately more than one fragment, because its
+    # rule is kept apart from its body so a replay can redraw the rule at the width it lands in.
     monkeypatch.setattr(
-        render_module, "print_formatted_text", lambda *values, **kwargs: printed.extend(fragment_list_to_text(to_formatted_text(value)) for value in values)
+        render_module,
+        "print_formatted_text",
+        lambda *values, **kwargs: printed.append("".join(fragment_list_to_text(to_formatted_text(value)) for value in values)),
     )
 
     assert await command_loop.command("/help") == (True, False)

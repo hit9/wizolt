@@ -611,7 +611,23 @@ class UiPrinter:
         render_fragments_to_output(output, fragments, _SCROLLBACK_STYLE)
         return buffer.getvalue()
 
+    def _scrollback_print_parts(self, parts: list[FormattedText | ANSI | HorizontalRule]) -> None:
+        """Write one block, which is usually one part but not always.
+
+        An answer is a rule plus its body: two parts, because the rule has to stay a
+        `HorizontalRule` for a replay to redraw it, but one write, because it is one block on
+        screen and the scrollback queue orders writes rather than rows. A single part still goes
+        through `_scrollback_print`, which is the funnel everything else uses.
+        """
+        if len(parts) == 1:
+            self._scrollback_print(parts[0])
+            return
+        self._write_scrollback(parts)
+
     def _scrollback_print(self, fragment: FormattedText | ANSI | HorizontalRule) -> None:
+        self._write_scrollback([fragment])
+
+    def _write_scrollback(self, parts: list[FormattedText | ANSI | HorizontalRule]) -> None:
         """Print above a live application, batching a burst of emits into one suspend.
 
         Outside a live application this drains any queued batch first and then prints
@@ -631,11 +647,11 @@ class UiPrinter:
         # (which would delay it past the suspend's wait-then-return contract).
         if app is None or not app.is_running or app._running_in_terminal:
             self.drain_scrollback()
-            self.print_parts([fragment])
+            self.print_parts(parts)
             return
         loop = app.loop
         assert loop is not None  # a running application always has one; the checker cannot see it
-        self._queue_scrollback(app, [fragment])
+        self._queue_scrollback(app, parts)
 
     def _queue_scrollback(self, app: Any, parts: list[FormattedText | ANSI | HorizontalRule]) -> None:
         with self._scrollback_lock:
@@ -812,8 +828,13 @@ class UiPrinter:
             # than by a blank row Rich prints whether one is needed or not.
             self.separate()
         console = markdown_console(shutil.get_terminal_size().columns)
+        # The rule above an answer is drawn as a HorizontalRule rather than by Rich, so that a
+        # projection can redraw it at the width it is replayed into. Rich bakes the width into the
+        # captured ANSI, and a 100-column rule replayed into a 60-column pane wraps onto a second
+        # row -- the other three rules already avoid this the same way.
+        drew_rule = rule and not self.is_error(text)
         with console.capture() as capture:
-            self.render_message(console, text, role, rule, indent)
+            self.render_message(console, text, role, False, indent)
         cleaned = self.strip_unknown_escapes(self.strip_trailing_pad(capture.get()))
         # A block owns its inside, never its outside: the gap above it is `separate`'s to open and
         # the one below belongs to whatever comes next, so a document that opens on a heading or
@@ -826,11 +847,16 @@ class UiPrinter:
             # output does not butt straight against the transcript above it or the prompt below.
             lines = [line for line in cleaned.split("\n") if self.SGR_RE.sub("", line).strip()]
             cleaned = "\n" + "\n".join(lines) + "\n"
-        self.track_layout(cleaned)
+        # Count the rule's row as Rich's own row was counted, so spacing decisions taken from
+        # `rows_since_rule` and `trailing_blanks` are unchanged by where the rule is drawn.
+        self.track_layout(("─\n" if drew_rule else "") + cleaned)
+        parts: list[FormattedText | ANSI | HorizontalRule] = [ANSI(cleaned)]
+        if drew_rule:
+            parts.insert(0, HorizontalRule(Theme.fg("rule")))
         if self._batch_parts is not None:
-            self._batch_parts.append(ANSI(cleaned))
+            self._batch_parts.extend(parts)
             return
-        self._scrollback_print(ANSI(cleaned))
+        self._scrollback_print_parts(parts)
 
     def emit_phase_rule(self) -> None:
         """Close a stretch of the turn with the same quiet full-width rule the turn ends with,
@@ -917,8 +943,13 @@ class UiPrinter:
     def colorize_mcp_status(cls, text: str) -> str:
         return cls.MCP_STATUS_RE.sub(lambda match: cls.MCP_STATUS_ANSI[match.group(1)] + "●\x1b[39m " + match.group(1), text)
 
+    @staticmethod
+    def is_error(text: str) -> bool:
+        """Whether a message reads as an error, which is drawn without a rule above it."""
+        return text.startswith(("Error:", "ConfigError:", "Unknown command:"))
+
     def render_message(self, console: Console, text: str, role: str, rule: bool, indent: int) -> None:
-        error = text.startswith(("Error:", "ConfigError:", "Unknown command:"))
+        error = self.is_error(text)
         styled_text = self.colorize_mcp_status(text) if role != "user" else text
         if rule and not error:
             console.print(Rule(style="wizolt.rule", characters="─"))

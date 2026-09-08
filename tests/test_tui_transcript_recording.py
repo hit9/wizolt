@@ -161,3 +161,43 @@ def test_recorded_diff_matches_direct_output_color_depth(monkeypatch, depth, wit
         replayed = "".join(entry(80) if callable(entry) else entry for entry in recorded)
 
     assert replayed == direct
+
+
+@pytest.mark.parametrize("width", [40, 60, 100])
+def test_the_rule_above_an_answer_resizes_with_the_projection(recorded, width):
+    """An answer's rule has to be redrawn at replay width, like every other rule.
+
+    It used to be drawn by Rich inside the answer's own capture, which bakes the emit-time width
+    into the recorded bytes: replaying a 100-column rule into a 60-column pane wrapped it onto a
+    second row, so shrinking a tmux pane doubled every divider in the transcript.
+    """
+    printer, tui = recorded
+    printer.emit_answer("the answer body", role="assistant")
+
+    output = "".join(entry(width) if callable(entry) else entry for entry in tui.scrollback.transcript)
+    lines = "".join(text for _, text in to_formatted_text(ANSI(output.replace("\x1b[?7h", "")))).splitlines()
+    rules = [line for line in lines if line and set(line) == {"─"}]
+    assert len(rules) == 1, f"expected exactly one rule row, got {lines}"
+    assert get_cwidth(rules[0]) == width, "the rule kept the width it was recorded at"
+
+
+def test_an_answer_stays_a_single_write(recorded):
+    """Splitting the rule out must not split the answer into two scrollback writes.
+
+    The scrollback queue orders writes, and commands are expected to reach the terminal in one
+    of them; two writes would let something else land between a rule and the body it belongs to.
+    """
+    printer, tui = recorded
+    printer.emit_answer("the answer body", role="assistant")
+
+    assert len(tui.scrollback.transcript) == 1
+
+
+def test_an_error_answer_has_no_rule(recorded):
+    """Errors are drawn without a rule, and moving the rule out must not have changed that."""
+    printer, tui = recorded
+    printer.emit_answer("Error: something failed", role="assistant")
+
+    output = "".join(entry(80) if callable(entry) else entry for entry in tui.scrollback.transcript)
+    lines = "".join(text for _, text in to_formatted_text(ANSI(output.replace("\x1b[?7h", "")))).splitlines()
+    assert not [line for line in lines if line and set(line) == {"─"}], lines
