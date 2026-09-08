@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `Job` can write to a running job's stdin, so a REPL, a debugger, or a command that asks a
+  question can be answered instead of restarted. Opt in with `stdin` on `Job(start)`; jobs
+  without it keep their previous behaviour.
+
+### Changed
+
+- Tool descriptions name the tool to prefer when another one fits better, and no longer repeat
+  values that the parameter's own enum already lists.
+
 ## 0.44.0 - 2026-09-08
 
 ### Added

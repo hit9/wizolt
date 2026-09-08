@@ -90,8 +90,9 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
     Bash output appears as the command runs.
     :::
 * - **`Job`**
-  - Starts or manages background commands: check output, wait, list, or stop. The same jobs are
-    visible through `/ps`.
+  - Starts or manages background commands: check output, wait, list, or stop. A job started with
+    stdin open can also be <span class="marker">answered while it runs</span>, which is how a REPL
+    or a command that asks a question stays usable. The same jobs are visible through `/ps`.
 * - **`Recall`**
   - Retrieves a <span class="marker">complete earlier tool result</span>, or selected line ranges,
     when only a shortened result was placed in the conversation.
