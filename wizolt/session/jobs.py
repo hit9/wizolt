@@ -30,6 +30,9 @@ class BackgroundJob:
     started_at: float
     status: str = "running"
     exit_code: int | None = None
+    # Set once the process leaves "running", so `elapsed()` reports the run's duration instead of
+    # the wall-clock time since it started.
+    finished_at: float | None = None
     # Memory-backed tail populated across BashTool promotion. When set, tail() reads from here
     # instead of log_path. Bounded at BUFFER_LIMIT chars by append_stream().
     stream_buffer: list[str] | None = None
@@ -52,11 +55,12 @@ class BackgroundJob:
         if code is not None:
             self.status = "done"
             self.exit_code = code
+            self.finished_at = time.monotonic()
             if self.process.stdin is not None:
                 self.process.stdin.close()
 
     def elapsed(self) -> float:
-        return time.monotonic() - self.started_at
+        return (self.finished_at if self.finished_at is not None else time.monotonic()) - self.started_at
 
     def kill(self, grace: float = 3.0) -> None:
         """SIGTERM, wait grace seconds, then SIGKILL if still running. Removes the log file."""
@@ -77,6 +81,7 @@ class BackgroundJob:
             if self.status == "running":
                 self.status = "killed"
                 self.exit_code = -1
+                self.finished_at = time.monotonic()
         if self.log_path:
             with contextlib.suppress(OSError):
                 os.unlink(self.log_path)

@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +19,7 @@ from wizolt.engine import Agent
 from wizolt.render import BashLivePreview, LiveSpark, Theme, UiPrinter
 from wizolt.runner import ToolRunner
 from wizolt.session import Session
+from wizolt.session.jobs import BackgroundJob
 from wizolt.tools import BashTool, JobTool, Tool, toolblocks, tooloutput
 from wizolt.tools.toolblocks import ToolDisplay
 
@@ -54,6 +56,25 @@ async def test_job_wait_and_list_report_completed_output(tmp_path):
     assert "--- output ---\ncompleted" in waited
     assert "| id | status | exit | elapsed | command |" in listed
     assert "| job.1 | done | 0 |" in listed and "printf completed |" in listed
+
+
+def test_finished_job_reports_a_frozen_elapsed():
+    """`Job(list)` and `Job(status)` show how long the job ran, not how long ago it started: the
+    clock stops when the process does."""
+    job = BackgroundJob(
+        id="job.1",
+        command="true",
+        process=SimpleNamespace(poll=lambda: 0, stdin=None),
+        log_path="",
+        started_at=time.monotonic(),
+    )
+    job.update_status()
+
+    first = job.elapsed()
+    time.sleep(0.05)
+
+    assert job.status == "done"
+    assert job.elapsed() == first
 
 
 async def test_job_wait_is_bounded_and_says_the_job_is_still_running(tmp_path, monkeypatch):

@@ -18,6 +18,8 @@
 
 ### Fixed
 
+- `Job(list)` and `Job(status)` report a finished job's run time, not the time since it started:
+  the clock stops when the process does.
 - Resuming a session shows the `resuming session…` status again while the transcript is being
   restored; it was cleared before any frame could paint it.
 
