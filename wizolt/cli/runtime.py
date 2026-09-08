@@ -657,6 +657,12 @@ class TuiRuntime:
             resuming = self.loop.session.resumed
             if resuming:
                 self.tui.set_running(RESUME_STATUS_LABEL)
+                # The replay below is one synchronous burst that returns to the loop only after
+                # `set_idle`, so a scheduled render would never see the label. Draw a frame now,
+                # the way the resize handler does.
+                app = self.tui.app
+                assert app is not None
+                app._redraw()
             self.loop.start_session(show_banner=False)
             if resuming:
                 self.tui.set_idle()

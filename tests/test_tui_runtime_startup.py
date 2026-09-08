@@ -10,7 +10,7 @@ from prompt_toolkit.application import Application
 from prompt_toolkit.formatted_text import fragment_list_to_text, to_formatted_text
 from prompt_toolkit.input.defaults import create_pipe_input
 from prompt_toolkit.output import DummyOutput
-from tui_harness import loop, session
+from tui_harness import ResizableOutput, loop, rendered_screen_text, run_interactive_tui, session, wait_until
 
 import wizolt.render as render_module
 import wizolt.tui.app as tui_module
@@ -223,6 +223,7 @@ async def test_tui_run_shows_resuming_status_while_restoring(tmp_path, monkeypat
 
         def __init__(self):
             self.ready.set()
+            self.app = SimpleNamespace(_redraw=lambda: calls.append(("redraw",)))
 
         async def run(self, style=None):
             del style
@@ -249,7 +250,44 @@ async def test_tui_run_shows_resuming_status_while_restoring(tmp_path, monkeypat
     monkeypatch.setattr(command_loop, "refresh_mentions", lambda: None)
 
     assert await runtime.run() == 0
-    assert calls == [("running", RESUME_STATUS_LABEL), ("start_session",), ("idle",)]
+    assert calls == [("running", RESUME_STATUS_LABEL), ("redraw",), ("start_session",), ("idle",)]
+
+
+def test_resume_status_reaches_the_screen_before_the_replay(tmp_path, monkeypatch):
+    """The resuming status is raised and cleared inside one synchronous burst, so it only becomes
+    visible because the runtime waits for a painted frame between the two."""
+    scenario_session = session(tmp_path)
+    scenario_session.resumed = True
+    scenario_session.messages.extend(
+        [
+            {"role": "user", "content": "restored question"},
+            {"role": "assistant", "content": "restored answer"},
+        ]
+    )
+    command_loop = CommandLoop(
+        Agent(scenario_session, output_fn=lambda _text: None),
+        input_fn=lambda prompt="": "",
+        output_fn=lambda _text: None,
+    )
+    command_loop.ui.color = True
+    monkeypatch.setattr(SessionSnapshotStore, "clean_expired", lambda *_args: 0)
+    monkeypatch.setattr(UpdateChecker, "load_cached", lambda _checker: False)
+    output = ResizableOutput()
+    frames = []
+
+    def after_render(app):
+        frames.append(rendered_screen_text(app, output))
+
+    def drive(pipe_input):
+        wait_until(lambda: command_loop.tui is not None and command_loop.tui.input_mode == "chat")
+        pipe_input.send_text("\x04")
+
+    run_interactive_tui(monkeypatch, TuiRuntime(command_loop), drive=drive, output=output, after_render=after_render)
+
+    painted = [text for text in frames if RESUME_STATUS_LABEL in text]
+    assert painted, "the resuming status never reached the screen"
+    assert all("+> " in text for text in painted), "the label must be painted while the replay is still pending"
+    assert RESUME_STATUS_LABEL not in frames[-1], "the label outlived the replay"
 
 
 async def test_tui_dispatch_compact_flushes_queued_followups(tmp_path):

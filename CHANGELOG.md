@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Resuming a session shows the `resuming session…` status again while the transcript is being
+  restored; it was cleared before any frame could paint it.
+
 ## 0.45.0 - 2026-09-08
 
 ### Added
