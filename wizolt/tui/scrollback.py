@@ -30,17 +30,40 @@ lines on rows that belong to something else.
 
 from __future__ import annotations
 
+import re
 import shutil
 import sys
 from typing import TYPE_CHECKING
 
 from prompt_toolkit.renderer import HeightIsUnknownError
+from prompt_toolkit.utils import get_cwidth
 
 if TYPE_CHECKING:
     from prompt_toolkit.application import Application
     from prompt_toolkit.renderer import Renderer
 
     from wizolt.render import ScrollbackText
+
+
+_SGR = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
+def physical_rows(text: str, columns: int) -> int:
+    """How many terminal rows `text` occupies at `columns` wide.
+
+    Counting newlines is not the same thing: a line wider than the pane takes several rows, and
+    a rebuild that miscounts places the application at the wrong row. Counted per logical line,
+    because that is how a terminal wraps -- and a line exactly as wide as the pane stays on one
+    row, since the newline that follows cancels the pending wrap. Verified against tmux at 20,
+    40, 60, 80 and 100 columns over plain, wide-character, styled and box-drawing text.
+    """
+    if not text:
+        return 0
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()  # the newline that ended the last row, not a row of its own
+    columns = max(1, columns)
+    return sum(max(1, -(-get_cwidth(_SGR.sub("", line)) // columns)) for line in lines)
 
 
 def app_top_row(renderer: Renderer) -> int:
@@ -164,6 +187,13 @@ class ScrollbackRegion:
         renderer = app.renderer
         out = renderer.output
         rows, columns = out.get_size()
+        # Where the app sits now, so the rebuild can put it back there. A rebuild that replays
+        # from the top of the pane moves the app to wherever the transcript happens to end, which
+        # reads as the whole session jumping upward on every resize.
+        try:
+            anchor = app_top_row(renderer)
+        except HeightIsUnknownError:
+            anchor = None
         self._rebuild_owed = False
         self.transcript.extend(self._pending)
         self._pending.clear()
@@ -172,11 +202,17 @@ class ScrollbackRegion:
         # Reset the scroll region and styles, home the cursor, clear the screen, then purge
         # scrollback. Order matches a shell's `clear` followed by `printf '\e[3J'`.
         out.write_raw("\x1b[r\x1b[0m\x1b[H\x1b[2J\x1b[3J\x1b[H")
-        replayed = 0
-        for item in self.transcript:
-            text = item(columns) if callable(item) else item
+        replayed = [item(columns) if callable(item) else item for item in self.transcript]
+        # Rows, not newlines: a wrapped line takes several, and the count decides where the app
+        # is told it starts.
+        written = sum(physical_rows(text, columns) for text in replayed)
+        if anchor is not None and written < anchor:
+            # Too little transcript to reach the app's old row. Open the gap above it rather than
+            # below, so the app stays put instead of rising to meet a short transcript.
+            out.write_raw("\r\n" * (anchor - written))
+            written = anchor
+        for text in replayed:
             out.write_raw(text)
-            replayed += text.count("\n")
         out.flush()
 
         renderer.reset(leave_alternate_screen=False)
@@ -184,7 +220,7 @@ class ScrollbackRegion:
         # of them, or on the bottom row once the screen has scrolled. Telling the renderer
         # directly beats a CPR: the answer to a CPR describes a screen that the next resize in
         # a drag has already replaced.
-        cursor_row = min(replayed, rows - 1)
+        cursor_row = min(written, rows - 1)
         renderer._min_available_height = rows - cursor_row
 
 

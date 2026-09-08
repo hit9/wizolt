@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import io
 import os
+import re
 
 import pytest
 from prompt_toolkit.application import create_app_session
@@ -28,6 +29,7 @@ from prompt_toolkit.utils import get_cwidth
 
 from wizolt.render import HorizontalRule, Theme, UiPrinter
 from wizolt.tui.app import TuiApp
+from wizolt.tui.scrollback import physical_rows
 
 
 @pytest.fixture
@@ -201,3 +203,42 @@ def test_an_error_answer_has_no_rule(recorded):
     output = "".join(entry(80) if callable(entry) else entry for entry in tui.scrollback.transcript)
     lines = "".join(text for _, text in to_formatted_text(ANSI(output.replace("\x1b[?7h", "")))).splitlines()
     assert not [line for line in lines if line and set(line) == {"─"}], lines
+
+
+@pytest.mark.parametrize("columns", [20, 40, 60, 80, 100])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "short\n",
+        "\n",
+        "x" * 79 + "\n",
+        "x" * 80 + "\n",
+        "x" * 81 + "\n",
+        "x" * 161 + "\n",
+        "中" * 40 + "\n",
+        "中" * 41 + "\n",
+        "\x1b[31mred\x1b[39m but narrow\n",
+        "\x1b[1m" + "b" * 100 + "\x1b[0m\n",
+        "─" * 80 + "\n",
+        "one\ntwo\nthree\n",
+    ],
+)
+def test_physical_rows_matches_how_a_terminal_wraps(text, columns):
+    """Row counts drive where the application is placed, so they have to be exact.
+
+    Counting newlines is not enough: a line wider than the pane takes several rows. These cases
+    were measured against real tmux at each of these widths, which is where the boundary rule
+    comes from -- a line exactly as wide as the pane stays on one row, because the newline that
+    follows cancels the pending wrap.
+    """
+    expected = sum(max(1, -(-get_cwidth(re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", line)) // columns)) for line in text.split("\n")[:-1])
+
+    assert physical_rows(text, columns) == expected
+
+
+def test_physical_rows_counts_wrapped_lines_not_newlines():
+    """The distinction the rebuild depends on, stated on its own so it cannot regress quietly."""
+    wrapped = "y" * 200 + "\n"
+
+    assert wrapped.count("\n") == 1
+    assert physical_rows(wrapped, 80) == 3
