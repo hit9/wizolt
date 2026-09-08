@@ -27,6 +27,7 @@ from prompt_toolkit.output import ColorDepth
 from prompt_toolkit.output.vt100 import Vt100_Output
 from prompt_toolkit.utils import get_cwidth
 
+from wizolt.base import LogBlock, LogEdge, LogLine, LogRole
 from wizolt.render import HorizontalRule, Theme, UiPrinter
 from wizolt.tui.app import TuiApp
 from wizolt.tui.scrollback import physical_rows
@@ -286,3 +287,30 @@ def test_a_table_is_laid_out_for_the_width_it_lands_in(recorded):
     # it was drawn again rather than replayed.
     assert 40 < widest(100) <= 100
     assert widest(40) <= 40
+
+
+def test_a_diff_block_is_cut_for_the_width_it_lands_in(recorded):
+    """A diff sizes its gutter and changed-text column from the pane.
+
+    Replaying rows built for a wider pane leaves the gutter stranded mid-row once the pane
+    narrows, which is the log-block equivalent of a table breaking its own box.
+    """
+    printer, tui = recorded
+    diff = (
+        "--- a/file.py\n+++ b/file.py\n@@ -1,3 +1,3 @@\n"
+        '-old = "a line long enough that the changed column has to be cut for a narrow pane"\n'
+        '+new = "another line long enough that the changed column has to be cut as well"\n'
+        " context stays"
+    )
+    printer.emit(LogBlock([LogLine("edit", line, LogRole.DIFF, LogEdge.BRANCH) for line in diff.split("\n")]))
+
+    def rows(columns):
+        rendered = "".join(entry(columns) if callable(entry) else entry for entry in tui.scrollback.transcript)
+        text = "".join(fragment for _, fragment in to_formatted_text(ANSI(rendered.replace("\x1b[?7h", ""))))
+        return [line for line in text.splitlines() if line.strip()]
+
+    wide, narrow = rows(120), rows(50)
+    assert max(get_cwidth(line) for line in wide) <= 120
+    assert max(get_cwidth(line) for line in narrow) <= 50, narrow
+    # Cut again for the narrow pane rather than folded: the same diff needs more rows there.
+    assert len(narrow) > len(wide)

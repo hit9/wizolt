@@ -120,6 +120,22 @@ class MessageBlock(WidthDependent):
 
 
 @dataclass(frozen=True)
+class LogBlockCell(WidthDependent):
+    """A completed log block -- tool output, code, a diff -- laid out for the projected width.
+
+    Diffs are the visible case: the gutter and the changed-text column are sized from the pane, so
+    replaying rows built for a wider one leaves the gutter stranded mid-row once the pane narrows.
+    Keeping the block means the diff is cut for the width it lands in.
+    """
+
+    printer: UiPrinter
+    block: LogBlock
+
+    def fragments(self, width: int) -> StyleAndTextTuples:
+        return list(self.printer.log_segments(self.block, width))
+
+
+@dataclass(frozen=True)
 class HorizontalRule(WidthDependent):
     """A completed rule keeps its label and colors, but takes its width from the projection."""
 
@@ -780,10 +796,14 @@ class UiPrinter:
         # close is how far apart they are on screen, and one Bash call with its output goes further
         # than four Reads. A block that wrapped counts the rows it actually took.
         self.track_layout("".join(fragment for _, fragment in segments))
+        # A log block sizes its diff gutter and wrapping from the pane, so it is recorded as itself
+        # and laid out again on replay. Plain text needs no such treatment: `segments` never wraps,
+        # so the terminal re-flows it for free.
+        part: FormattedText | WidthDependent = LogBlockCell(self, text) if isinstance(text, LogBlock) else FormattedText(segments)
         if self._batch_parts is not None:
-            self._batch_parts.append(FormattedText(segments))
+            self._batch_parts.append(part)
             return
-        self._scrollback_print(FormattedText(segments))
+        self._scrollback_print(part)
 
     @staticmethod
     def indent_segments(segments: list[tuple[str, str]], margin: str) -> list[tuple[str, str]]:
@@ -1054,9 +1074,15 @@ class UiPrinter:
         label, text = cls.LOG_ROLES[role]
         return Theme.fg(label), Theme.fg(text)
 
-    def log_segments(self, block: LogBlock) -> list[tuple[str, str]]:
+    def log_segments(self, block: LogBlock, columns: int | None = None) -> list[tuple[str, str]]:
+        """Lay a log block out for `columns`, defaulting to the terminal's current width.
+
+        The width reaches the diff gutter and every wrapped row, so passing it explicitly is what
+        lets a projection lay the block out again for the pane it lands in rather than replaying
+        the rows produced for some earlier one. See `LogBlockCell`.
+        """
         segments: list[tuple[str, str]] = []
-        width = max(1, shutil.get_terminal_size((120, 20)).columns - 1)
+        width = max(1, (columns if columns is not None else shutil.get_terminal_size((120, 20)).columns) - 1)
         entries = [(line, level, self.margin_segments(level, rails)) for line, level, rails in block.walk_rows()]
         index = 0
         while index < len(entries):

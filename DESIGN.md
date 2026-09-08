@@ -603,9 +603,10 @@ pane reflow keeps the cursor line at the bottom. These are not terminal-protocol
 Completed messages are recorded as `MessageBlock` -- their text, role and indent -- and Rich lays
 them out again for the width they are projected into, so Markdown, tables, lists and code re-flow
 on a resize rather than having the bytes of an earlier width re-wrapped by character. Rules do the
-same through `HorizontalRule`. Both derive from `WidthDependent`: subclass it whenever a block's
-layout depends on the width, and record the block rather than its rendering. Output that is not a
-`WidthDependent` is still replayed as captured.
+same through `HorizontalRule`, and log blocks -- tool output, code, diffs -- through `LogBlockCell`, whose diff
+gutter and changed-text column are sized from the pane. All three derive from `WidthDependent`:
+subclass it whenever a block's layout depends on the width, and record the block rather than its
+rendering. Plain text needs no cell, because `segments` never wraps and the terminal re-flows it.
 
 **Guard at two levels.** Unit/model tests cover geometry refusal, deferred replay, output recording,
 ordering and shutdown. Real-tmux tests must cover repeated wide/narrow and tall/short transitions,
