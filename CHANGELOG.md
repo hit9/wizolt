@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- While the agent works, `Tab` holds the draft for the next task instead of queueing it as a
+  follow-up for the current one.
+
 ### Changed
 
 - `Job(wait)` can hold the turn for up to 60 seconds instead of 20.

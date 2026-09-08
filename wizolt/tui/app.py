@@ -248,6 +248,7 @@ class TuiApp:
         *,
         on_chat_submit: Callable[[UserInput], None] | None = None,
         on_running_submit: Callable[[UserInput], None] | None = None,
+        on_queue_next_turn: Callable[[UserInput], None] | None = None,
         on_exit_request: Callable[[], None] | None = None,
         on_force_exit: Callable[[], None] | None = None,
         on_interrupt: Callable[[], None] | None = None,
@@ -270,6 +271,7 @@ class TuiApp:
     ) -> None:
         self.on_chat_submit = on_chat_submit or (lambda _: None)
         self.on_running_submit = on_running_submit or (lambda _: None)
+        self.on_queue_next_turn = on_queue_next_turn or (lambda _: None)
         self.on_exit_request = on_exit_request or (lambda: None)
         self.on_force_exit = on_force_exit or (lambda: None)
         self.on_interrupt = on_interrupt or (lambda: None)
@@ -569,15 +571,7 @@ class TuiApp:
             self.resolve_input(self._approval_actions[self._approval_focus][1] if not text and self._approval_actions else text)
             return False
         if self.input_mode == "running":
-            if text.strip():
-                value = self._submitted_input()
-                if value is None:
-                    return True
-                self._append_history(value)
-                self._reset_input("")
-                self.on_running_submit(value)
-                return True
-            return False
+            return self._submit_running(buffer)
         if self.input_mode == "chat":
             if not text.strip():
                 return False
@@ -590,6 +584,19 @@ class TuiApp:
             self.on_chat_submit(value)
             return True
         return False
+
+    def _submit_running(self, buffer: Buffer, *, next_turn: bool = False) -> bool:
+        """Submit the working prompt's draft. Enter queues a live follow-up for the running turn;
+        Tab holds it back for the next one. Returns whether anything was submitted."""
+        if not buffer.text.strip():
+            return False
+        value = self._submitted_input()
+        if value is None:
+            return True
+        self._append_history(value)
+        self._reset_input("")
+        (self.on_queue_next_turn if next_turn else self.on_running_submit)(value)
+        return True
 
     def _submitted_input(self) -> UserInput:
         """Recognition only; storing the images is the runtime's admission step.
@@ -775,6 +782,11 @@ class TuiApp:
         state = buffer.complete_state
         if not reverse and before.startswith("/") and active_mention(before) is None and state is not None and len(state.completions) == 1:
             buffer.apply_completion(state.completions[0])
+            return
+        if not reverse and self.input_mode == "running" and buffer.complete_state is None and buffer.text.strip():
+            # Tab on a working prompt holds the draft for the next turn rather than completing it;
+            # Enter is what queues it as a live follow-up for this one.
+            self._submit_running(buffer, next_turn=True)
             return
         self.complete_input(buffer, reverse=reverse)
 

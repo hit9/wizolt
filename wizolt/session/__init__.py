@@ -548,7 +548,7 @@ class Session:
         self.source_views = {key: view for key, view in self.source_views.items() if key in referenced}
         return before - len(self.source_views)
 
-    def enqueue_user_input(self, value: str | UserInput) -> None:
+    def enqueue_user_input(self, value: str | UserInput, *, next_turn: bool = False) -> None:
         if isinstance(value, UserInput) and (value.images or value.pastes):
             message = self.images.message(value)
             text = str(message.get("content") or "").strip()
@@ -560,13 +560,16 @@ class Session:
             draft = text
         if not text:
             return
-        self.pending_user_inputs.append(QueuedInput(text, images, draft))
+        self.pending_user_inputs.append(QueuedInput(text, images, draft, next_turn=next_turn))
 
     def claim_user_inputs(self) -> list[QueuedInput]:
         # claim/ack/release is a transaction across model retries; keep this boundary even though each step is small.
-        for item in self.pending_user_inputs:
+        # Input held back for the next turn is skipped: the engine must not see it, so the runtime
+        # can start it as a fresh turn once this one ends.
+        claimed = [item for item in self.pending_user_inputs if not item.next_turn]
+        for item in claimed:
             item.inflight = True
-        return list(self.pending_user_inputs)
+        return claimed
 
     def acknowledge_user_inputs(self, inputs: list[QueuedInput]) -> None:
         self.pending_user_inputs = [item for item in self.pending_user_inputs if item not in inputs]

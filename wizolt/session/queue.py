@@ -18,6 +18,10 @@ class QueuedInput:
     images: tuple[ImageRef, ...] = ()
     draft: str = ""
     inflight: bool = False
+    # Input the user held back with Tab: `claim_user_inputs` skips it, so the engine never sees it
+    # mid-turn and the runtime starts it as a fresh turn instead. Deliberately not persisted: a
+    # resumed queue is already outside any turn, so it becomes the next turn either way.
+    next_turn: bool = False
 
     def to_json(self) -> str | Json:
         if not self.images:

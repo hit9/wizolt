@@ -872,6 +872,20 @@ def test_tui_running_input_queues_one_multiline_message():
     assert app.input_buffer.text == ""
 
 
+def test_tui_running_tab_holds_the_draft_for_the_next_turn():
+    live: list[str] = []
+    held: list[str] = []
+    app = TuiApp(on_running_submit=live.append, on_queue_next_turn=held.append)
+    app.set_running("working")
+    app.input_buffer.insert_text("do this after")
+
+    app.tab_or_complete(app.input_buffer, reverse=False)
+
+    assert held == ["do this after"]
+    assert live == []
+    assert app.input_buffer.text == ""
+
+
 def test_tui_running_input_drops_whitespace_only_draft():
     received: list[str] = []
     app = TuiApp(on_running_submit=received.append)

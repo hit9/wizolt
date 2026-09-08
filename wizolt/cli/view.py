@@ -295,7 +295,7 @@ class View:
     GLOW_REACH: ClassVar[float] = 4.0
     GLOW_STEPS: ClassVar[int] = 12
 
-    QUEUE_EMPTY_HINT = "Enter queues follow-up · Ctrl-C interrupts"
+    QUEUE_EMPTY_HINT = "Enter follow-up · Tab next turn · Ctrl-C interrupts"
     QUEUE_PENDING_HINT = "↑ recalls queued · Ctrl-C interrupts"
 
     # Line-level markdown tokens the live stream preview styles. Block constructs (headings,
@@ -428,8 +428,11 @@ class View:
         def render(items: list[QueuedInput], marker: str, marker_style: str) -> StyleAndTextTuples:
             fragments: StyleAndTextTuples = []
             for item in items:
+                # A held-back input starts the next turn, not this one; its own marker keeps the
+                # two queues apart on screen.
+                item_marker, item_style = ("↪ ", "class:muted") if item.next_turn else (marker, marker_style)
                 for index, line in enumerate(item.text.splitlines()):
-                    fragments.extend([("", "\n"), (marker_style, marker if index == 0 else "  "), (UiPrinter.user_log_style(), line)])
+                    fragments.extend([("", "\n"), (item_style, item_marker if index == 0 else "  "), (UiPrinter.user_log_style(), line)])
             return fragments
 
         sent = [item for item in pending if item.inflight]

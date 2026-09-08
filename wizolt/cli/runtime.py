@@ -47,6 +47,9 @@ class _Submission:
     value: UserInput | None = None
     resume_notice: bool = False
     turn_boundary: asyncio.Future[None] | None = None
+    # Hold this input for the turn after the running one instead of queueing it as a live
+    # follow-up. See QueuedInput.next_turn.
+    next_turn: bool = False
 
 
 class ScrollbackWriter:
@@ -226,6 +229,17 @@ class TuiRuntime:
             self.submit_accepted(_Submission(value))
         self.tui.invalidate()
 
+    def submit_next_turn(self, value: str | UserInput) -> None:
+        """Hold one submitted input for the turn after the running one.
+
+        Unlike `submit_running`, nothing runs it now and the engine never sees it mid-turn: it waits
+        in the queue, which `take_pending_inputs` drains once this turn ends."""
+        value = value if isinstance(value, UserInput) else UserInput(value)
+        if not str(value).strip():
+            return
+        self.submit_accepted(_Submission(value, next_turn=True))
+        self.tui.invalidate()
+
     def recall(self) -> str | UserInput:
         recalled = self.loop.recall_pending_input(self._request_model_retry)
         if recalled:
@@ -267,7 +281,7 @@ class TuiRuntime:
                     if not self.turn_active:
                         self.pending.put_nowait(admitted)
                         continue
-                    self.loop.session.enqueue_user_input(admitted)
+                    self.loop.session.enqueue_user_input(admitted, next_turn=submission.next_turn)
                 uid = await self.loop.session.save_snapshot()
                 if submission.resume_notice:
                     self.loop.emit_resume_line(uid)
@@ -416,6 +430,7 @@ class TuiRuntime:
         return TuiApp(
             on_chat_submit=self.submit_chat,
             on_running_submit=self.submit_running,
+            on_queue_next_turn=self.submit_next_turn,
             on_exit_request=self.request_exit,
             on_force_exit=self.force_exit,
             on_interrupt=self.interrupt,

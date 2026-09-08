@@ -398,3 +398,30 @@ async def test_interrupt_releases_a_claimed_queued_follow_up(tmp_path):
 
     assert [item.text for item in s.pending_user_inputs] == ["follow up"]
     assert not s.has_inflight_user_inputs()
+
+
+async def test_held_next_turn_input_is_never_claimed_as_a_live_follow_up(tmp_path):
+    """Input the user held back for the next turn (Tab) is invisible to the running turn: no
+    request carries it, and it is still queued when the turn ends."""
+    s = session(tmp_path)
+    s.skills = SkillLibrary({})
+    agent = Agent(s, output_fn=lambda text: None)
+    s.enqueue_user_input("held for later", next_turn=True)
+
+    class Model:
+        def __init__(self):
+            self.requests = []
+
+        async def request(self, messages, tools=None):
+            self.requests.append(messages)
+            return {"role": "assistant", "content": "done"}, [], "done"
+
+        def cancel_active_request(self):
+            pass
+
+    agent.model = Model()
+    assert await agent.run("first") == "done"
+
+    assert not any("held for later" in str(message.get("content") or "") for message in agent.model.requests[0])
+    assert [item.text for item in s.pending_user_inputs] == ["held for later"]
+    assert not s.has_inflight_user_inputs()
