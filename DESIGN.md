@@ -556,6 +556,12 @@ that projection. Its two mechanisms are inseparable:
   the render cycle, with current geometry; hold output while no safe region exists. After the app
   stops, drain held writes directly before newer shutdown output; acceptance is not proof that a
   render occurred.
+- At a fresh terminal's top, the renderer's height includes unused space below the live content.
+  New output first advances the live origin into that space, bounded by the layout's preferred
+  height. Erase only the established live region, fill the freed rows, then repaint the live
+  layout at its new origin. Once the space is used, continue through the same DEC region.
+  Guard visible recent output as well as native history: a complete scrollback alone can hide
+  a transcript stuck in the first few screen rows.
 - A width change invalidates row ownership. Purge the terminal and replay retained completed
   output, including startup/restored output and accepted pending writes. Defer the rebuild while
   an exclusive viewer owns the alternate screen, and pay the debt on return to the primary screen.

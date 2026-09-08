@@ -1744,8 +1744,8 @@ class TuiApp:
                 # attributed any more. Rebuild the projection from the transcript instead.
                 self.scrollback.rebuild(app)
                 vanilla_render(*args, **kwargs)
-            else:
-                self.scrollback.flush(app)
+            elif self.scrollback.flush(app):
+                vanilla_render(*args, **kwargs)
 
         renderer.render = render  # type: ignore[method-assign]
 

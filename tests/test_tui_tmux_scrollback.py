@@ -114,6 +114,44 @@ class Pane(NamedTuple):
         return tmux("capture-pane", "-t", self.session, "-p", "-S", "-").split("\n")
 
 
+def test_fresh_window_output_uses_available_screen_before_scrolling(pane):
+    # A new tmux window starts at the top, unlike a shell with a screenful of prior output.
+    # Reaching native history alone is not enough: recent output must remain visible too.
+    alternate_screen = tmux("show-option", "-wv", "-t", pane.session, "alternate-screen").strip()
+    tmux("new-window", "-t", pane.session, "env PS1='FRESH-READY> ' sh")
+    tmux("set-option", "-w", "-t", pane.session, "alternate-screen", alternate_screen)
+    log = pane.path / "fresh.log"
+    deadline = time.monotonic() + 5
+    while "FRESH-READY>" not in tmux("capture-pane", "-t", pane.session, "-p").splitlines():
+        assert time.monotonic() < deadline, "the new window's shell prompt did not appear"
+        time.sleep(0.02)
+    pane.send("echo FRESH-SHELL-CONTEXT")
+    deadline = time.monotonic() + 5
+    while "FRESH-SHELL-CONTEXT" not in tmux("capture-pane", "-t", pane.session, "-p").splitlines():
+        assert time.monotonic() < deadline, "the new window's shell did not finish starting"
+        time.sleep(0.02)
+    pane.send(f"{sys.executable} {DRIVER} 40 0.02 {log} fresh")
+    _wait_for_markers(log, 4)
+    _settled_capture(pane)
+    visible = tmux("capture-pane", "-t", pane.session, "-p")
+    assert "FRESH-SHELL-CONTEXT" in visible, visible
+    for marker in range(1, 5):
+        assert f"MARKER-{marker:04d}" in visible
+
+    log.with_suffix(".more").touch()
+    _wait_for_markers(log, 40)
+    for width, height in [(WIDE, TALL), (NARROW, SHORT), (WIDE, TALL)]:
+        pane.resize(width, height)
+        lines = _settled_capture(pane)
+        seen = Counter(int(m) for m in re.findall(r"MARKER-(\d+)", "\n".join(lines)))
+        assert seen == Counter(range(1, 41))
+        visible = tmux("capture-pane", "-t", pane.session, "-p")
+        assert "MARKER-0040" in visible
+        assert len(re.findall(r"MARKER-\d+", visible)) >= 5
+        assert sum(line == "+>" or line.startswith("+> ") for line in lines) == 1
+        assert "\n".join(lines).count("tmux-driver") == 1
+
+
 @pytest.mark.parametrize("height", [12, 18, 30])
 def test_long_inline_selector_keeps_context_visible(pane, height):
     pane.resize(WIDE, height)

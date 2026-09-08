@@ -78,6 +78,9 @@ async def main(log) -> None:
 
     async def emit_loop() -> None:
         for n in range(1, total + 1):
+            if len(sys.argv) > 4 and sys.argv[4] == "fresh" and n == 5:
+                while not Path(log.name).with_suffix(".more").exists():
+                    await asyncio.sleep(0.02)
             await asyncio.sleep(interval)
             line = f"MARKER-{n:04d} " + "x" * 30
             await app.write_to_scrollback(lambda line=line: ui.emit(line))
@@ -108,7 +111,10 @@ async def main(log) -> None:
             app.app.create_background_task(long_selector_loop())
             return
         app.app.create_background_task(emit_loop())
-        app.app.create_background_task(selector_loop())
+        if len(sys.argv) > 4 and sys.argv[4] == "fresh":
+            app.set_running("working")
+        else:
+            app.app.create_background_task(selector_loop())
 
     app.on_ready = start
     await app.run()

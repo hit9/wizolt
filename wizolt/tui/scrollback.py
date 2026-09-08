@@ -11,8 +11,9 @@ Two things fix it, and both are needed:
 
 * A DEC scroll region strictly above the application (`CSI 1;<top> r`) makes printed lines
   scroll the transcript -- and only the transcript -- off the top into native scrollback.
-  The app's rows never move and are never erased, so prompt-toolkit's own bookkeeping stays
-  valid and no row enters the text flow twice.
+  The app's rows never enter that scroll region. When unused space below the live content can
+  hold new output, erase and repaint only the live layout farther down and hand its new origin
+  to the renderer; otherwise its position stays fixed. No live row enters history twice.
 
 * A width change invalidates every row the terminal holds, because it rewraps all of them.
   Nothing can identify which reflowed rows belong to the app, so this module stops trying:
@@ -161,47 +162,57 @@ class ScrollbackRegion:
         self._width = columns
         return self._rebuild_owed
 
-    def flush(self, app: Application) -> None:
-        """Write queued transcript above the app. Call only from inside the render cycle."""
+    def flush(self, app: Application) -> bool:
+        """Write queued transcript above the app; return whether the live layout needs repainting."""
         if not self._pending:
-            return
+            return False
         renderer = app.renderer
         if renderer.full_screen:
             # An exclusive viewer owns the alternate screen; there is no region above it that
             # belongs to the transcript. The lines wait for the primary screen to come back.
-            return
+            return False
         try:
             top = app_top_row(renderer)
         except HeightIsUnknownError:
-            return
+            return False
         screen = renderer.last_rendered_screen
         assert screen is not None  # app_top_row already refused a renderer without one
         out = renderer.output
-        columns = out.get_size().columns
+        rows, columns = out.get_size()
         text = "".join(item(columns) if callable(item) else item for item in self._pending)
 
-        # The app never needs to be scrolled down to reach the pane bottom the way a viewport the
-        # caller positions itself would. prompt-toolkit treats `_min_available_height` as a floor
-        # on the rendered height, so the app always spans from `top` to the bottom of the pane --
-        # which is exactly what makes `top` the boundary of the region below.
+        # A fresh shell can leave the app near the top with unused space below its content.
+        # Consume that space before scrolling history away. Erase only the known live region;
+        # the existing transcript stays in place, and the new lines fill the rows we just freed.
+        preferred = app.layout.container.preferred_height(columns, rows).preferred
+        advance = min(physical_rows(text, columns), max(0, rows - top - preferred))
+        old_top = top
+        if advance:
+            out.write_raw(f"\x1b[{top + 1};1H\x1b[0m\x1b[J")
+            top += advance
         if top <= 0:
             # The app fills the pane; there is no row above it to write into. Hold the lines
             # until it has somewhere to go rather than overwriting the app with them.
-            return
+            return False
 
         out.write_raw(f"\x1b[1;{top}r")
-        out.write_raw(f"\x1b[{top};1H")
-        # The cursor sits on the last row of the region, which already holds a line, so each
-        # write has to scroll before it prints. Recorded text ends with its own newline; that
-        # trailing one would scroll a blank row in, so it moves to the front instead.
-        out.write_raw("\r\n" + _strip_trailing_newline(text))
+        out.write_raw(f"\x1b[{max(1, old_top)};1H")
+        # Begin below the old transcript tail, filling newly freed rows before scrolling.
+        # Move the recorded trailing newline to the front so it cannot scroll in a blank row.
+        out.write_raw(("\r\n" if old_top else "") + _strip_trailing_newline(text))
         out.write_raw("\x1b[r")
-        out.write_raw(f"\x1b[{top + renderer._cursor_pos.y + 1};{renderer._cursor_pos.x + 1}H")
+        if advance:
+            out.write_raw(f"\x1b[{top + 1};1H")
+            renderer.reset(leave_alternate_screen=False)
+            renderer._min_available_height = rows - top
+        else:
+            out.write_raw(f"\x1b[{top + renderer._cursor_pos.y + 1};{renderer._cursor_pos.x + 1}H")
         out.flush()
 
         self.transcript.extend(self._pending)
         del self.transcript[: max(0, len(self.transcript) - self.MAX_REPLAY)]
         self._pending.clear()
+        return bool(advance)
 
     def rebuild(self, app: Application) -> None:
         """Purge the terminal and re-emit the transcript at the current width.
@@ -250,8 +261,6 @@ class ScrollbackRegion:
 
 
 def _strip_trailing_newline(text: str) -> str:
-    if text.endswith("\r\n"):
-        return text[:-2]
-    if text.endswith("\n"):
-        return text[:-1]
-    return text
+    # Captured terminal output ends in an SGR reset after its newline. Keep those styles,
+    # but remove the newline itself or every flush scrolls an extra blank row into history.
+    return re.sub(r"\r?\n((?:\x1b\[[0-9;]*m)*)$", r"\1", text, count=1)
