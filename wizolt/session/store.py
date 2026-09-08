@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, ClassVar
 from wizolt.base import SESSION_EVENT_KEY, TOOL_OUTPUT_ASSET_SUFFIX, Json, WizoltError
 from wizolt.image import IMAGE_REFS_KEY, ImageRef
 from wizolt.session.codec import SessionSnapshotCodec
-from wizolt.session.ownership import SessionBusyError, SessionLease, SessionOwnershipError, ownership_identity
+from wizolt.session.ownership import SessionLease, SessionOwnershipError
 
 if TYPE_CHECKING:
     from wizolt.config import Config, RuntimeSettings
@@ -108,6 +108,7 @@ class SnapshotWritePlan:
         if self.lease is None:
             raise SessionOwnershipError("snapshot write plan carries no session ownership")
         self.lease.assert_owned(self.ownership_root)
+        self.lease.assert_owned(self.log_path)
         os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
         if self.header_line:
             with open(self.log_path, "w", encoding="utf-8") as file:
@@ -365,16 +366,6 @@ class SessionSnapshotStore:
             return []
 
     @classmethod
-    def ownership_root_path(cls, data_dir: str, cwd: str, uid: str) -> str:
-        """The parent snapshot path a session's ownership family is keyed on.
-
-        A worker `<parent>.w` maps to its parent's log; the canonical (symlink-resolved) form is
-        what the lease hashes, so an alias cannot name a second lock file for the same session.
-        """
-
-        return ownership_identity(cls.session_path(data_dir, cwd, uid))
-
-    @classmethod
     def find_session_path(cls, data_dir: str, uid: str) -> str:
         """Locate a session by UID alone. Projects are few, so a scan beats an index file that can
         drift out of sync with the directories it describes."""
@@ -410,7 +401,7 @@ class SessionSnapshotStore:
                 parent_path = os.path.join(directory, parent_uid + ".jsonl")
                 try:
                     lease = SessionLease.acquire(data_dir, parent_path)
-                except (SessionBusyError, WizoltError):
+                except WizoltError:
                     continue
                 try:
                     parent_exists = os.path.isfile(parent_path)
@@ -490,6 +481,9 @@ class SessionSnapshotStore:
 
     @classmethod
     def load(cls, uid: str, config: Config, settings: RuntimeSettings, cwd: str = "") -> Session:
+        """Decode an inspection snapshot. Writable callers must already own the family lease
+        and attach it before execution; acquiring after this read would permit stale saves.
+        Use Session.load_snapshot for public writable resume."""
         from wizolt.session import QueuedInput, Session, local_timestamp
 
         cwd = cwd or os.getcwd()
@@ -598,6 +592,9 @@ class SessionSnapshotStore:
         )
         session._blobs_written = set(blobs)
         session._snapshot_path = path
+        # Raw decoding is inspection, not writable resume. A caller must attach an already-held
+        # lease (or borrow its parent's) rather than acquire later against a stale baseline.
+        session._ownership_released = True
         return session
 
     @classmethod

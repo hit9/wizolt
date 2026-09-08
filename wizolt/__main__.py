@@ -193,7 +193,6 @@ def main(argv: list[str] | None = None) -> int:
         try:
             while True:
                 if resume:
-                    handed, reserved = reserved, None
                     data = _cli.ConfigFile.load(args.config)
                     catalog = _cli.CatalogRuntime(_cli.Config.data_dir_from(data))
                     config = _cli.Config.from_dict(data, policy=catalog.policy)
@@ -203,8 +202,9 @@ def main(argv: list[str] | None = None) -> int:
                         settings=_cli.RuntimeSettings.from_dict(data, yolo=args.yolo, theme=args.theme),
                         cwd=os.getcwd(),
                         catalog=catalog,
-                        lease=handed,
+                        lease=reserved,
                     )
+                    reserved = None
                 else:
                     current = _cli.Session.from_config_file(path=args.config, yolo=args.yolo, theme=args.theme)
                     # Ownership before any runtime is exposed: tools, model requests, and the first
@@ -223,10 +223,10 @@ def main(argv: list[str] | None = None) -> int:
                 finally:
                     # The runtime closes what the session opened, on the loop that opened it; all that
                     # is left here is the terminal-output gate, in case the runtime never got that far.
+                    reserved = command_loop.resume_lease
                     command_loop.close_background_output()
                     # The final save and teardown are done. Carry a reserved target forward instead of
                     # releasing it; release this session's own lease only now.
-                    reserved = command_loop.resume_lease
                     current.close()
                     current = None
                 resume = command_loop.resume_request
@@ -235,10 +235,12 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             # An abandoned handoff or a startup failure -- a session built but never run, a target
             # that never opened -- must not leak ownership.
-            if current is not None:
-                current.close()
-            if reserved is not None:
-                reserved.close()
+            try:
+                if current is not None:
+                    current.close()
+            finally:
+                if reserved is not None:
+                    reserved.close()
     except _cli.SessionBusyError as error:
         print(str(error), file=sys.stderr)
         return 1

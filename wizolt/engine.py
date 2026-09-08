@@ -144,11 +144,13 @@ class Agent:
         # Ownership before external activity: an embedded caller that never went through the CLI
         # acquires here, so no model request, tool, or snapshot write can run unowned.
         self.session.ensure_ownership()
+        self.session._active_runs += 1
         self._active_task = asyncio.current_task()
         self._active_loop = asyncio.get_running_loop()
         try:
             return await self._run_turn(user_input)
         finally:
+            self.session._active_runs -= 1
             # Cleared together: a late cancel() must find nothing rather than a stale task.
             self._active_task = None
             self._active_loop = None

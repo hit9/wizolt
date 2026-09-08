@@ -8,6 +8,7 @@ from test_worker_handoff import FakeModelClient, _delegate_call, _delegate_runne
 
 from wizolt.cli.worker import worker_command
 from wizolt.prompts import WORKER_PROMPT
+from wizolt.session import Session
 
 
 async def test_worker_config_parses_model_and_reasoning(tmp_path):
@@ -176,7 +177,6 @@ async def test_delegate_spawn_isolates_provider_and_applies_overrides(tmp_path, 
     from wizolt.config import (
         ProviderConfig,
     )
-    from wizolt.session import SessionSnapshotStore
 
     parent = _delegate_session(tmp_path)
     parent.config.providers["alt"] = ProviderConfig(model="m")
@@ -208,7 +208,7 @@ async def test_delegate_spawn_isolates_provider_and_applies_overrides(tmp_path, 
     model.script.append(({"role": "assistant", "content": "two"}, [], "two"))
     parent.config.worker_model = "resumed-model"
     parent.close()  # resume reopens the family in this process; the old owner must let go
-    fresh = SessionSnapshotStore.load(parent.uid, config=parent.config, settings=parent.settings, cwd=str(tmp_path))
+    fresh = Session.load_snapshot(parent.uid, config=parent.config, settings=parent.settings, cwd=str(tmp_path))
     runner = _delegate_runner(fresh)
     await _delegate_call(fresh, runner, action="send", order="o")
     assert fresh.worker.config.provider.model == "resumed-model"
@@ -397,6 +397,7 @@ async def test_delegate_reset_finish_display_worker_root_and_cleared_notice(tmp_
 
     parent = _delegate_session(tmp_path)
     worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
+    worker.borrow_ownership(parent)
     await worker.save_snapshot()
     parent.worker = worker
     outputs = []
@@ -420,6 +421,7 @@ async def test_delegate_reset_finish_worker_rule_label(tmp_path):
 
     parent = _delegate_session(tmp_path)
     worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
+    worker.borrow_ownership(parent)
     await worker.save_snapshot()
     parent.worker = worker
     outputs = []
@@ -555,6 +557,7 @@ async def test_worker_model_discovery_shows_loading_state(tmp_path, monkeypatch)
     transitions = []
     loop.tui = TuiApp()
     loop.tui.set_dispatching = lambda prompt="": transitions.append(prompt)
+
     async def remote_models(_loop, _provider):
         return ("remote-model",)
 
@@ -567,6 +570,7 @@ async def test_worker_model_discovery_shows_loading_state(tmp_path, monkeypatch)
     transitions.clear()
 
     selected = iter(["remote-model"])
+
     async def select(*_args, **_kwargs):
         return next(selected)
 

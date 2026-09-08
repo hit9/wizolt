@@ -24,6 +24,9 @@
 
 ### Fixed
 
+- Failed or cancelled session switches release their reserved session, and failed resume
+  initialization no longer leaves a session locked until the process exits.
+
 - Terminal updates keep resize erasure, transcript replay and the live prompt in one synchronized
   frame on supporting terminals, reducing visible intermediate redraws in long sessions.
 - Switching back to a recent terminal width reuses the transcript layout until new output arrives,

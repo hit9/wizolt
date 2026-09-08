@@ -466,9 +466,8 @@ async def test_worker_borrows_the_parent_capability_and_cannot_release_it(tmp_pa
     await parent.save_snapshot()
 
     foreign = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid="other.w", listed=False)
-    foreign.borrow_ownership(parent)
     with pytest.raises(SessionOwnershipError):
-        foreign.assert_ownership()
+        foreign.borrow_ownership(parent)
 
     with pytest.raises(WizoltError, match="worker session"):
         Session.load_snapshot(worker.uid, config=parent.config, cwd=str(tmp_path))
@@ -561,3 +560,149 @@ async def test_ownership_never_becomes_model_visible_state(tmp_path):
     records = await asyncio.to_thread(read_records, SessionSnapshotStore.session_path(session.config.data_dir, session.cwd, session.uid))
     assert all("lease" not in record and "ownership" not in record for record in records)
     assert all("lease" not in json.dumps(message) for message in session.messages)
+
+
+@pytest.mark.parametrize("failure", ["bootstrap", "missing"])
+async def test_failed_open_releases_reserved_ownership_at_every_stage(tmp_path, monkeypatch, failure):
+    owner = stored_session(tmp_path)
+    await owner.save_snapshot()
+    owner.close()
+    path = SessionSnapshotStore.session_path(owner.config.data_dir, owner.cwd, owner.uid)
+    lease = SessionLease.acquire(owner.config.data_dir, path)
+    if failure == "missing":
+        os.unlink(path)
+    else:
+
+        def fail_bootstrap(_session):
+            raise WizoltError("bootstrap failed")
+
+        monkeypatch.setattr("wizolt.session.bootstrap_features", fail_bootstrap)
+    with pytest.raises(WizoltError):
+        Session.load_snapshot(owner.uid, config=owner.config, cwd=owner.cwd, lease=lease)
+    assert lease.closed
+    acquired = SessionLease.acquire(owner.config.data_dir, path)
+    acquired.close()
+
+
+@pytest.mark.parametrize("failure", [OSError, asyncio.CancelledError])
+async def test_failed_handoff_save_does_not_reserve_or_request_a_switch(tmp_path, monkeypatch, failure):
+    current = stored_session(tmp_path)
+    await current.save_snapshot()
+    target = stored_session(tmp_path, "target")
+    await target.save_snapshot()
+    target.close()
+    loop = picker_loop(current, tmp_path)
+    monkeypatch.setattr(commands_mod, "choice_application", async_callable(lambda *_args, **_kwargs: target.uid))
+
+    async def fail_save():
+        raise failure()
+
+    monkeypatch.setattr(loop, "save_and_emit_resume", fail_save)
+    try:
+        with pytest.raises(failure):
+            await commands_mod.sessions_command(loop, "")
+        assert loop.resume_request == "" and loop.resume_lease is None
+        opened = Session.load_snapshot(target.uid, config=target.config, cwd=target.cwd)
+        opened.close()
+    finally:
+        current.close()
+
+
+async def test_raw_snapshot_inspection_cannot_later_write_a_stale_baseline(tmp_path):
+    owner = stored_session(tmp_path)
+    await owner.save_snapshot()
+    inspected = SessionSnapshotStore.load(owner.uid, owner.config, owner.settings, cwd=owner.cwd)
+    owner.messages.append({"role": "user", "content": "newer"})
+    await owner.save_snapshot()
+    owner.close()
+    with pytest.raises(SessionOwnershipError):
+        await inspected.save_snapshot()
+
+
+async def test_a_write_plan_cannot_target_a_different_session(tmp_path):
+    from dataclasses import replace
+
+    owner = stored_session(tmp_path)
+    await owner.save_snapshot()
+    plan = SessionSnapshotStore(owner).plan()
+    target = tmp_path / "unowned.jsonl"
+    target.write_text("keep me")
+    try:
+        with pytest.raises(SessionOwnershipError):
+            replace(plan, log_path=str(target)).execute()
+        assert target.read_text() == "keep me"
+    finally:
+        owner.close()
+
+
+async def test_close_cannot_release_ownership_during_an_agent_request(tmp_path):
+    owner = stored_session(tmp_path)
+    agent = Agent(owner, output_fn=lambda _: None)
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def request(*_args, **_kwargs):
+        entered.set()
+        await release.wait()
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    agent.model.request = request
+    task = asyncio.create_task(agent.run("work"))
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        with pytest.raises(WizoltError, match="agent run is active"):
+            owner.close()
+        with pytest.raises(SessionBusyError):
+            SessionLease.acquire(owner.config.data_dir, owner.ownership_root_path())
+    finally:
+        release.set()
+        await task
+        owner.close()
+
+
+async def test_main_releases_a_reserved_target_when_config_reload_fails(tmp_path, monkeypatch):
+    import wizolt.__main__ as cli
+    from types import SimpleNamespace
+    from wizolt.config import ConfigError
+
+    current = stored_session(tmp_path, "current")
+    await current.save_snapshot()
+    target = stored_session(tmp_path, "target")
+    await target.save_snapshot()
+    target.close()
+    reserved = SessionLease.acquire(target.config.data_dir, target.ownership_root_path())
+    monkeypatch.setattr(cli.Session, "from_config_file", lambda **_: current)
+    monkeypatch.setattr(cli, "warm_provider_sdks", lambda: None)
+    monkeypatch.setattr(
+        cli,
+        "CommandLoop",
+        lambda _: SimpleNamespace(
+            run=lambda **_: 0,
+            close_background_output=lambda: None,
+            resume_request=target.uid,
+            resume_lease=reserved,
+        ),
+    )
+
+    def fail_config(*_args):
+        raise ConfigError("broken config")
+
+    monkeypatch.setattr(cli.ConfigFile, "load", fail_config)
+    assert cli.main([]) == 2
+    assert reserved.closed
+    assert current._lease is None
+
+
+async def test_a_mismatched_reserved_lease_does_not_unlock_its_owner(tmp_path):
+    owner = stored_session(tmp_path)
+    target = stored_session(tmp_path, "target")
+    await owner.save_snapshot()
+    await target.save_snapshot()
+    target.close()
+    try:
+        with pytest.raises(SessionOwnershipError):
+            Session.load_snapshot(target.uid, config=target.config, cwd=target.cwd, lease=owner.assert_ownership())
+        owner.assert_ownership()
+        with pytest.raises(SessionBusyError):
+            Session.load_snapshot(owner.uid, config=owner.config, cwd=owner.cwd)
+    finally:
+        owner.close()

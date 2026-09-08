@@ -10,6 +10,7 @@ from agent_harness import call
 from test_worker_handoff import FakeModelClient, _delegate_call, _delegate_runner, _delegate_session
 
 from wizolt.base import SESSION_EVENT_KEY, ToolError
+from wizolt.session import Session
 
 
 async def test_delegate_restore_does_not_block_the_event_loop(tmp_path, monkeypatch):
@@ -49,6 +50,7 @@ async def test_cancelled_delegate_reset_finishes_cleanup_before_clearing_runtime
 
     parent = _delegate_session(tmp_path)
     worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
+    worker.borrow_ownership(parent)
     worker.messages.append({"role": "user", "content": "worker request"})
     await worker.save_snapshot()
     parent.worker = worker
@@ -195,6 +197,7 @@ async def test_delegate_reset_stops_worker_jobs_before_dropping_runtime(tmp_path
 
     parent = _delegate_session(tmp_path)
     worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
+    worker.borrow_ownership(parent)
     worker.messages.append({"role": "user", "content": "worker request"})
     await worker.save_snapshot()
     parent.worker = worker
@@ -222,6 +225,7 @@ async def test_delegate_reset_keeps_worker_when_snapshot_delete_fails(tmp_path, 
 
     parent = _delegate_session(tmp_path)
     worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
+    worker.borrow_ownership(parent)
     worker.messages.append({"role": "user", "content": "worker request"})
     await worker.save_snapshot()
     parent.worker = worker
@@ -246,6 +250,7 @@ async def test_delegate_reset_deletes_disk_only_worker_after_parent_resume(tmp_p
 
     parent = _delegate_session(tmp_path)
     worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
+    worker.borrow_ownership(parent)
     worker.messages.append({"role": "user", "content": "worker request"})
     await worker.save_snapshot()
     worker.close()  # disk-only worker: the object is gone, the snapshot stays
@@ -646,7 +651,6 @@ async def test_worker_reset_appends_event_message(tmp_path):
 
 
 async def test_agent_lives_on_worker_and_is_rebuilt_with_it(tmp_path, monkeypatch):
-    from wizolt.session import SessionSnapshotStore
 
     parent = _delegate_session(tmp_path)
     parent.messages.append({"role": "user", "content": "parent request"})
@@ -664,7 +668,7 @@ async def test_agent_lives_on_worker_and_is_rebuilt_with_it(tmp_path, monkeypatc
     # /resume re-enters the same parent: a fresh parent object, worker rebuilt from the snapshot.
     model.script.append(({"role": "assistant", "content": "two"}, [], "two"))
     parent.close()  # /resume reopens the family in this process; the old owner must let go
-    fresh = SessionSnapshotStore.load(parent.uid, config=parent.config, settings=parent.settings, cwd=str(tmp_path))
+    fresh = Session.load_snapshot(parent.uid, config=parent.config, settings=parent.settings, cwd=str(tmp_path))
     assert fresh.worker is None
     runner = _delegate_runner(fresh)
     await _delegate_call(fresh, runner, action="send", order="o")
@@ -676,7 +680,6 @@ async def test_agent_lives_on_worker_and_is_rebuilt_with_it(tmp_path, monkeypatc
 
 
 async def test_snapshot_restored_worker_shares_parent_skills_and_mcp(tmp_path, monkeypatch):
-    from wizolt.session import SessionSnapshotStore
 
     parent = _delegate_session(tmp_path)
     parent.messages.append({"role": "user", "content": "parent request"})
@@ -691,7 +694,7 @@ async def test_snapshot_restored_worker_shares_parent_skills_and_mcp(tmp_path, m
     # Resume: the worker now comes back through SessionSnapshotStore.load, not the fresh-branch.
     model.script.append(({"role": "assistant", "content": "two"}, [], "two"))
     parent.close()  # resume reopens the family in this process; the old owner must let go
-    fresh = SessionSnapshotStore.load(parent.uid, config=parent.config, settings=parent.settings, cwd=str(tmp_path))
+    fresh = Session.load_snapshot(parent.uid, config=parent.config, settings=parent.settings, cwd=str(tmp_path))
     runner = _delegate_runner(fresh)
     await _delegate_call(fresh, runner, action="send", order="o")
     worker = fresh.worker

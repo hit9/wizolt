@@ -542,9 +542,17 @@ async def sessions_command(loop: CommandLoop, args: str) -> str | None:
         lease = SessionLease.acquire(loop.session.config.data_dir, target_path)
     except SessionBusyError as error:
         return str(error)
+    # Publish the handoff only after saving the current session succeeds. On failure or
+    # cancellation this remains the active run and must not strand the target's lease.
+    try:
+        await loop.save_and_emit_resume()
+    except BaseException:
+        lease.close()
+        raise
+    if loop.resume_lease is not None:
+        loop.resume_lease.close()
     loop.resume_request = chosen
     loop.resume_lease = lease
-    await loop.save_and_emit_resume()
     return None
 
 

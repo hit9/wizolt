@@ -123,8 +123,8 @@ class SessionLease:
             fd = os.open(lock_path, flags, 0o600)
         except OSError as error:
             raise WizoltError(f"could not open the session lock file {lock_path}: {error}") from error
-        os.set_inheritable(fd, False)
         try:
+            os.set_inheritable(fd, False)
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as error:
             os.close(fd)

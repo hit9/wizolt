@@ -429,6 +429,9 @@ class DelegateTool(Tool):
             parent.store_turn_diff(diff.key, diff.turn, diff.path, diff.diff, before=diff.before, after=diff.after, round=parent.state.round_count)
 
     async def _spawn_worker(self, parent: Session) -> Session:
+        # Lock before reading the worker, including direct Delegate calls outside Agent.run.
+        # Acquiring only after decode could adopt a baseline written by another live owner.
+        parent.ensure_ownership()
         uid = parent.uid + ".w"
         provider_name = parent.config.worker_provider or parent.config.active_provider
         # replace() is shallow, so the worker needs its own providers dict with a detached copy of
@@ -484,10 +487,6 @@ class DelegateTool(Tool):
         jobs = tuple(worker.jobs.values()) if worker is not None else ()
         # Deletion is a mutation of the parent's family, so it runs under that family's lease --
         # reusing a capability the worker already holds instead of locking a second descriptor.
-        if parent._lease is None and worker is not None and worker._lease is not None:
-            parent._lease = worker._lease
-            parent._lease_borrowed = worker._lease_borrowed
-            parent._ownership_released = False
         parent.ensure_ownership()
 
         def reset_transaction() -> bool:

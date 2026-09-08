@@ -350,6 +350,7 @@ class Session:
     _lease_borrowed: bool = field(default=False, repr=False, compare=False)
     _ownership_released: bool = field(default=False, repr=False, compare=False)
     _snapshot_path: str = field(default="", repr=False, compare=False)
+    _active_runs: int = field(default=0, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self.images = ImageInputs(self)
@@ -788,6 +789,9 @@ class Session:
         if lease is None:
             raise SessionOwnershipError(f"session {self.uid} has no ownership lease")
         lease.assert_owned(self.ownership_root_path())
+        # The frozen read identity alone cannot authorize writes: a changed cwd/uid could make
+        # the store and asset helpers target a different, unlocked session.
+        lease.assert_owned(SessionSnapshotStore.session_path(self.config.data_dir, self.cwd, self.uid))
         return lease
 
     def ensure_ownership(self) -> SessionLease:
@@ -814,21 +818,24 @@ class Session:
     def borrow_ownership(self, parent: Session) -> None:
         """Authorize this worker session with its parent's lease; it can never release it."""
 
-        parent.ensure_ownership()
-        self._lease = parent._lease
+        lease = parent.ensure_ownership()
+        lease.assert_owned(self.ownership_root_path())
+        self._lease = lease
         self._lease_borrowed = True
         self._ownership_released = False
 
     def close(self) -> None:
         """Release this session's ownership. Idempotent; a borrowed lease is not released.
 
-        Refuses while a snapshot write is in flight: the bytes may still be landing, and the
-        runtime that owns the lease must await that write instead of racing it."""
+        Refuses during an agent run or snapshot write: external work and accepted writes must
+        settle before another process can acquire this session."""
 
-        if self.worker is not None:
-            self.worker.close()
+        if self._active_runs:
+            raise WizoltError(f"cannot close session {self.uid} while an agent run is active")
         if self._snapshot_gate is not None and self._snapshot_gate.locked():
             raise WizoltError(f"cannot close session {self.uid} while a snapshot write is in flight")
+        if self.worker is not None:
+            self.worker.close()
         lease, self._lease = self._lease, None
         borrowed, self._lease_borrowed = self._lease_borrowed, False
         self._ownership_released = True
@@ -893,29 +900,29 @@ class Session:
         reserved lease handed in by the interactive handoff is used as-is and closed on failure.
         """
 
-        if config is None:
-            data = ConfigFile.load()
-            catalog = catalog or CatalogRuntime(Config.data_dir_from(data))
-            config = Config.from_dict(data, policy=catalog.policy)
-            if settings is None:
-                settings = RuntimeSettings.from_dict(data)
-        else:
-            catalog = catalog or CatalogRuntime(config.data_dir)
-        if settings is None:
-            settings = RuntimeSettings()
-        cwd = cwd or os.getcwd()
-        resolved = SessionSnapshotStore.resolve_uid(uid, config.data_dir, cwd)
-        if resolved.endswith(".w"):
-            raise WizoltError(f"cannot resume a worker session directly: {resolved}")
-        path = SessionSnapshotStore.find_session_path(config.data_dir, resolved)
-        if not path:
-            raise WizoltError(
-                f"Session snapshot not found: {resolved} under {SessionSnapshotStore.path_for(config.data_dir, SessionSnapshotStore.PROJECTS_DIR)}"
-            )
-        owned_here = lease is None
-        if lease is None:
-            lease = SessionLease.acquire(config.data_dir, path)
+        path = ""
         try:
+            if config is None:
+                data = ConfigFile.load()
+                catalog = catalog or CatalogRuntime(Config.data_dir_from(data))
+                config = Config.from_dict(data, policy=catalog.policy)
+                if settings is None:
+                    settings = RuntimeSettings.from_dict(data)
+            else:
+                catalog = catalog or CatalogRuntime(config.data_dir)
+            if settings is None:
+                settings = RuntimeSettings()
+            cwd = cwd or os.getcwd()
+            resolved = SessionSnapshotStore.resolve_uid(uid, config.data_dir, cwd)
+            if resolved.endswith(".w"):
+                raise WizoltError(f"cannot resume a worker session directly: {resolved}")
+            path = SessionSnapshotStore.find_session_path(config.data_dir, resolved)
+            if not path:
+                raise WizoltError(
+                    f"Session snapshot not found: {resolved} under {SessionSnapshotStore.path_for(config.data_dir, SessionSnapshotStore.PROJECTS_DIR)}"
+                )
+            if lease is None:
+                lease = SessionLease.acquire(config.data_dir, path)
             lease.assert_owned(path)
             if not os.path.isfile(path):
                 # Discovery can race with cleanup; a file that vanished before acquisition is a
@@ -924,17 +931,20 @@ class Session:
                     f"Session snapshot not found: {resolved} under {SessionSnapshotStore.path_for(config.data_dir, SessionSnapshotStore.PROJECTS_DIR)}"
                 )
             session = SessionSnapshotStore.load(resolved, config=config, settings=settings, cwd=cwd)
+            session.catalog = catalog
+            session._lease = lease
+            session._lease_borrowed = False
+            session._ownership_released = False
+            session._snapshot_path = path
+            session.assert_ownership()
+            bootstrap_features(session)
+            return session
         except BaseException:
-            # A reserved lease that does not belong to this target is not ours to close.
-            if owned_here or lease.identity == canonical_snapshot_path(ownership_identity(path)):
+            # A reservation is consumed even if discovery/bootstrap fails, but an explicitly
+            # mismatched capability belongs to another session and must not unlock that owner.
+            if lease is not None and (not path or lease.identity == canonical_snapshot_path(ownership_identity(path))):
                 lease.close()
             raise
-        session.catalog = catalog
-        session._lease = lease
-        session._lease_borrowed = False
-        session._snapshot_path = path
-        bootstrap_features(session)
-        return session
 
 
 def bootstrap_features(session: Session) -> None:

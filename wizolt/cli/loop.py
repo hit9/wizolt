@@ -477,6 +477,8 @@ Full documentation: https://wizolt.readthedocs.io
 
     async def _run_frontend(self, *, show_banner: bool = True) -> int:
         """Select the frontend inside the CLI's single event-loop entry."""
+        # Embedded frontends can execute slash commands before Agent.run acquires ownership.
+        self.session.ensure_ownership()
         if self.interactive_input:
             return await TuiRuntime(self).run(show_banner=show_banner)
         return await self.run_simple(show_banner=show_banner)

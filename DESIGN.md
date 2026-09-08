@@ -538,6 +538,14 @@ dispatching its complete call set; return results before the model may judge or 
 Snapshots are project-scoped JSONL: one full snapshot plus deltas, large repeated text stored once
 as content-addressed blobs. Persist semantic checkpoints, not object graphs.
 
+Session-family ownership spans execution and accepted writes, not just JSONL appends. Acquire
+before decoding a writable baseline; raw store decoding is inspection and cannot later acquire
+ownership to save stale state. Workers borrow the parent's lease before reading their snapshots.
+Validate the actual write path as well as the frozen read identity. Reserved session switches
+become visible only after the current save succeeds, and every abandoned startup/handoff releases
+its reservation. These leases and active-run guards are transient: never serialize them or add
+them to model messages, including compaction requests and checkpoints.
+
 - Checkpoint active turns at stable request/tool boundaries; never serialize a partial protocol
   object visible in a live preview.
 - Claim queued follow-ups for the next request, acknowledge only after it succeeds, release on
