@@ -13,8 +13,8 @@
 - A `Context` tool reports how much of the window is in use and can start a new one with
   `Context(reset)`, which takes effect when the turn ends. `/context` shows the same usage, and
   `/context reset` starts a new window at once. Either way, Note state, recallable segments, stored
-  tool results, background jobs, the workspace, and the code index survive; the conversation does
-  not.
+  tool results, background jobs, the workspace, the code index and the transcript survive. The new
+  model window starts with Note and recent activity; a saved reset request survives a crash.
 
 ### Changed
 

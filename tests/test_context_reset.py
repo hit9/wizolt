@@ -104,8 +104,8 @@ async def test_reset_takes_effect_when_the_turn_ends(tmp_path):
     assert await agent.run("carry on") == "done"
     assert len(agent.model.requests) == 2
 
-    assert s.messages == []
-    assert s.transcript_messages == []
+    assert len(s.messages) == 1 and s.messages[0][SESSION_EVENT_KEY] == "context_reset"
+    assert any(message.get("content") == "earlier work" for message in s.transcript_messages)
     assert s.state.summary == ""
     assert s.state.context_percent == 0
     assert s.state.turn_messages == 0
@@ -145,7 +145,7 @@ async def test_a_snapshot_taken_after_a_reset_resumes_without_the_conversation(t
     # Resume appends its own session event; the conversation itself is gone.
     conversation = [message for message in restored.messages if not message.get(SESSION_EVENT_KEY)]
     assert conversation == []
-    assert [message for message in restored.transcript_messages if not message.get(SESSION_EVENT_KEY)] == []
+    assert any(message.get("content") == "earlier" for message in restored.transcript_messages)
     assert restored.state.goal == "keep me"
     assert restored.context_reset_requested is False
 
@@ -172,13 +172,12 @@ async def test_a_reset_survives_an_interrupted_turn(tmp_path):
     with pytest.raises(asyncio.CancelledError):
         await agent.run("carry on")
 
-    assert s.messages == []
+    assert len(s.messages) == 1 and s.messages[0][SESSION_EVENT_KEY] == "context_reset"
     assert s.context_reset_requested is False
 
 
 async def test_a_reset_after_earlier_snapshots_survives_the_delta_chain(tmp_path):
-    """The transcript is saved as an append-only delta. A reset shortens it, so the next save has to
-    write a replacement rather than a delta a loader would append to the conversation that left."""
+    """Model history is replaced, while the transcript remains append-only across snapshots."""
     s = session(tmp_path)
     for index in range(3):
         s.messages.append({"role": "user", "content": f"turn {index}"})
@@ -192,7 +191,7 @@ async def test_a_reset_after_earlier_snapshots_survives_the_delta_chain(tmp_path
     restored = Session.load_snapshot(s.uid, config=s.config)
 
     assert [message for message in restored.messages if not message.get(SESSION_EVENT_KEY)] == []
-    assert [message for message in restored.transcript_messages if not message.get(SESSION_EVENT_KEY)] == []
+    assert [message["content"] for message in restored.transcript_messages] == ["turn 0", "turn 1", "turn 2"]
     assert restored.state.goal == "keep me"
 
 
@@ -242,5 +241,103 @@ async def test_context_command_reports_the_fill_and_resets_on_request(tmp_path):
 
     assert "25% used" in await commands.context_command(loop, "")
     assert "new context window" in await commands.context_command(loop, "reset")
-    assert s.messages == []
+    assert len(s.messages) == 1 and s.messages[0][SESSION_EVENT_KEY] == "context_reset"
     assert await commands.context_command(loop, "everything") == "Usage: /context [reset]"
+
+
+async def test_reset_seeds_the_next_request_without_rewriting_its_checkpoint(tmp_path):
+    s = session(tmp_path)
+    s.skills = SkillLibrary({})
+    s.messages = [{"role": "user", "content": "obsolete exploration"}]
+    s.transcript_messages = list(s.messages)
+    s.state.goal = "finish parser"
+    s.state.known = ["keep public API"]
+    s.record_command_result("pytest tests/parser.py", 1)
+    s.request_context_reset()
+    s.apply_context_reset()
+    checkpoint = json.loads(json.dumps(s.messages))
+    NoteTool(s, [{"set_goal": "later goal"}]).call()
+    assert s.messages == checkpoint
+
+    class Model:
+        async def request(self, messages, tools=None):
+            text = "\n".join(str(message.get("content", "")) for message in messages)
+            assert "finish parser" in text and "keep public API" in text
+            assert "pytest tests/parser.py" in text
+            assert "obsolete exploration" not in text
+            return {"role": "assistant", "content": "continued"}, [], "continued"
+
+    agent = Agent(s, output_fn=lambda _: None)
+    agent.model = Model()
+    assert await agent.run("continue") == "continued"
+    await s.save_snapshot()
+    restored = Session.load_snapshot(s.uid, config=s.config)
+    assert any(message.get("content") == "obsolete exploration" for message in restored.transcript_messages)
+    assert restored.messages[0] == checkpoint[0]
+
+
+@pytest.mark.parametrize("prior_snapshot", [False, True])
+async def test_pending_reset_survives_a_crash_snapshot_and_applies_once(tmp_path, prior_snapshot):
+    s = session(tmp_path)
+    s.messages = [{"role": "user", "content": "old conversation"}]
+    s.transcript_messages = list(s.messages)
+    s.state.goal = "durable intent"
+    if prior_snapshot:
+        await s.save_snapshot()
+    ContextTool(s, [{"action": "reset"}]).call()
+    # This is the checkpoint after a successful tool batch, before the next model request.
+    await s.save_snapshot()
+    restored = Session.load_snapshot(s.uid, config=s.config)
+    assert not restored.context_reset_requested
+    assert restored.messages[0][SESSION_EVENT_KEY] == "context_reset"
+    assert "durable intent" in restored.messages[0]["content"]
+    assert not any(message.get("content") == "old conversation" for message in restored.messages)
+    assert restored.transcript_messages[0]["content"] == "old conversation"
+    await restored.save_snapshot()
+    again = Session.load_snapshot(s.uid, config=s.config)
+    assert sum(message.get(SESSION_EVENT_KEY) == "context_reset" for message in again.messages) == 1
+
+
+@pytest.mark.parametrize("field", ["_active_turn_messages", "_active_transcript_messages"])
+def test_pending_reset_cannot_clear_an_active_turn(tmp_path, field):
+    s = session(tmp_path)
+    setattr(s, field, [{"role": "user", "content": "active"}])
+    s.request_context_reset()
+    assert not s.apply_context_reset()
+    assert s.context_reset_requested
+    assert getattr(s, field) == [{"role": "user", "content": "active"}]
+
+
+def test_reset_keeps_the_header_stable_and_compaction_reuses_the_new_prefix(tmp_path):
+    from copy import deepcopy
+
+    from wizolt.compaction import Compactor
+    from wizolt.model import ModelClient
+
+    s = session_with_provider(tmp_path)
+    ctx = ContextManager(s)
+    header = deepcopy(ctx.model_messages(s.system_prompt))
+    s.messages = [{"role": "user", "content": "old conversation"}]
+    s.state.goal = "continue the implementation"
+    s.request_context_reset()
+    s.apply_context_reset()
+    after_reset = deepcopy(ctx.model_messages(s.system_prompt))
+    assert after_reset[: len(header)] == header
+    s.messages.extend([{"role": "user", "content": "next task"}, *({"role": "assistant", "content": f"step {i}"} for i in range(15))])
+    live = deepcopy(ctx.model_messages(s.system_prompt))
+    assert live[: len(after_reset)] == after_reset
+    compactor = Compactor(ctx, ModelClient(s))
+    compacted, _ = compactor.parts()
+    request = compactor.request(compacted)
+    assert request is not None
+    messages, tools = request
+    assert messages[:-1] == live[: len(messages) - 1]
+    assert tools == Tool.resolved_schemas(s)
+    # Live state changes may alter only the appended summarization instruction.
+    s.state.goal = "new goal"
+    s.record_command_result("pytest", 0)
+    changed = compactor.request(compacted)
+    assert changed is not None
+    assert changed[0][:-1] == messages[:-1]
+    assert changed[1] == tools
+    assert s.messages[0] == after_reset[len(header)]

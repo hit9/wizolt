@@ -86,7 +86,7 @@ first, and the summary of the one you open. Naming a segment prints its summary
 without the viewer. See
 [Keeping context manageable](context.md#keeping-context-manageable).
 
-**`/context [reset]`** — Shows how much of the context window is in use, or drops the conversation
+**`/context [reset]`** — Shows how much of the context window is in use, or clears the model's conversation
 and starts a new one with `/context reset`. Here the new window begins at once, because the command
 runs outside a turn. Like `/compact`, it is unavailable while the agent is working. See
 [Starting a new window](context.md#starting-a-new-window).

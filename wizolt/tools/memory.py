@@ -407,25 +407,18 @@ class NoteTool(Tool):
 
 
 class ContextTool(Tool):
-    """Report how full the context window is, or start a new one.
-
-    One tool rather than two: the reading and the decision are two halves of the same choice, and a
-    second zero-parameter tool would cost the schema budget again for a call that is always followed
-    by the other one.
-    """
+    """Inspect context usage or request a reset at turn settlement."""
 
     NAME = "Context"
     DESCRIPTION = (
         "Report tokens left in the context window, or start a new one. A reset keeps Note state, "
-        "RecallContext segments, stored results, jobs and the workspace; it drops the conversation."
+        "RecallContext segments, results, jobs and transcript; it drops model conversation after this turn."
     )
     STORES_RESULT = False
     MUTATES = True
 
     def needs_confirmation(self) -> bool:
-        # MUTATES serializes this against other state edits, which is all it needs: the conversation
-        # being dropped is the model's own context, and a reset the user has to approve is one the
-        # model would rarely reach for.
+        # Only model context changes; user-visible history and workspace remain.
         return False
 
     @classmethod
@@ -444,8 +437,8 @@ class ContextTool(Tool):
         # doing -- everything after this point is dropped with the conversation.
         return (
             "Reset scheduled: the conversation is dropped when this turn ends. Note state, RecallContext "
-            "segments, stored results, jobs and the workspace remain. Finish the turn now; work done after "
-            "this call is dropped with the conversation."
+            "segments, stored results, jobs, transcript and workspace remain. Finish the turn now; later "
+            "conversation in this turn is also dropped. Note and recent activity seed the new window."
         )
 
     def action(self) -> str:

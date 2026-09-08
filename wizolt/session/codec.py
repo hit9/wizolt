@@ -183,6 +183,7 @@ class SessionSnapshotCodec:
                 bool(cls.snapshot_messages(session)),
                 bool(cls.snapshot_transcript_messages(session) or cls.active_transcript_messages(session)),
                 bool(session.pending_user_inputs),
+                session.context_reset_requested,
                 bool(session.tool_records),
                 bool(session.tool_errors),
                 bool(session.recent_commands),
@@ -309,6 +310,7 @@ class SessionSnapshotCodec:
             "context_layout_version": session.context_layout_version, "messages": cls.snapshot_messages(session),
             "transcript_messages": cls.snapshot_transcript_messages(session),
             "active_transcript_messages": cls.active_transcript_messages(session), "transcript_sync": TRANSCRIPT_SYNC_VERSION,
+            "context_reset_requested": session.context_reset_requested,
             "pending_user_inputs": [item.to_json() for item in session.pending_user_inputs],
             "state": cls.state(session.state), "usage": cls.usage(session.usage), "tool_counter": session.tool_counter,
             "source_view_counter": session.source_view_counter,
@@ -334,6 +336,7 @@ class SessionSnapshotCodec:
             "created_at": session.created_at,
             "context_layout_version": session.context_layout_version,
             "transcript_sync": TRANSCRIPT_SYNC_VERSION,
+            "context_reset_requested": session.context_reset_requested,
         }
         cls.add_sequence_delta(delta, "messages", cls.snapshot_messages(session), saved, "messages_len", "messages_digest")
         cls.add_append_only_delta(delta, "transcript_messages", cls.snapshot_transcript_messages(session), saved)
@@ -548,7 +551,7 @@ class SessionSnapshotCodec:
             data["pending_user_inputs"] = delta["pending_user_inputs"]
         if "provider_overrides" in delta:
             data["provider_overrides"] = delta["provider_overrides"]
-        for key in ("created_at", "context_layout_version", "transcript_sync"):
+        for key in ("created_at", "context_layout_version", "transcript_sync", "context_reset_requested"):
             if key in delta:
                 data[key] = delta[key]
 

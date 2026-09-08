@@ -275,9 +275,7 @@ class Session:
     pending_user_inputs: list[QueuedInput] = field(default_factory=list)
     quick_hints: tuple[str, ...] = field(default_factory=tuple)  # transient offered next-step inputs; never serialized, cleared each turn
     next_hints_available: bool = True  # transient frontend capability; false for the simple REPL, which has no chip UI
-    # A reset asked for from inside a turn, applied when that turn settles (see apply_context_reset).
-    # Never serialized: a snapshot written mid-turn records the conversation as it stands, and the
-    # turn that requested the reset applies it before any later snapshot is taken.
+    # Durable intent: a crash after the tool result must not lose the promised reset.
     context_reset_requested: bool = False
     # Worker handoff (see DESIGN.md): the second session this one delegates to, and its per-session
     # projection knobs. None of these are persisted — SessionSnapshotCodec.snapshot is an explicit
@@ -601,21 +599,26 @@ class Session:
         return first
 
     def apply_context_reset(self) -> bool:
-        """Start a new context window: drop the conversation, keep everything outside it.
+        """Start a new model window with a frozen working-state checkpoint; retain the transcript.
 
         Note state, compacted segments, stored tool results, jobs, source views, the code index and
         the workspace are not conversation and survive untouched. The usage snapshot goes with the
         conversation it described: leaving it in place would keep the status bar and
         `Context(remaining)` reporting a full window for a context that is now empty.
         """
-        if not self.context_reset_requested:
+        if not self.context_reset_requested or self._active_turn_messages or self._active_transcript_messages:
             return False
         self.context_reset_requested = False
         self.messages.clear()
-        self.transcript_messages.clear()
-        self._active_turn_messages.clear()
-        self._active_transcript_messages.clear()
         self.state.summary = ""
+        checkpoint = self.state_checkpoint_event()
+        checkpoint[SESSION_EVENT_KEY] = "context_reset"
+        checkpoint["content"] = "Context reset. Working-state snapshot below; later Note calls supersede it. Transcript is retained.\n" + checkpoint["content"]
+        if activity := self.recent_activity():
+            checkpoint["content"] += "\n\n" + activity
+        if self.history:
+            checkpoint["content"] += f"\nRecallable history: {self.history[0].key}..{self.history[-1].key}; use RecallContext."
+        self.messages.append(checkpoint)
         self.state.turn_messages = 0
         self.state.context_percent = 0
         usage = self.usage

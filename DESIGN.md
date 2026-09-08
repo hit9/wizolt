@@ -673,6 +673,12 @@ Passing the existing harness does not prove these remaining interactions or all 
 
 ## Compaction
 
+Explicit context reset is a separate cache epoch: apply only after turn settlement, replace model
+history with one frozen working-state/recent-activity checkpoint, and retain the transcript and
+recall stores. Persist the pending request with tool-batch snapshots; loading such a snapshot
+settles the interrupted turn and applies the reset before the resume event. Never erase transcript
+to make model context smaller, or rebuild the reset checkpoint on normal requests.
+
 Compaction is the deliberate persisted exception to send-time-only projection: it replaces old
 active messages with a summary when the effective request, including tools, reaches the input
 budget.
