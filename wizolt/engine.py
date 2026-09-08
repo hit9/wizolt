@@ -88,6 +88,7 @@ class Agent:
         # decision: a reason root line plus an optional described-by child). Wired by the CLI;
         # never enters model context.
         self.on_image_route_notice: Callable[[ImageRouteNotice], None] | None = None
+        self.on_context_reset: Callable[[str], None] | None = None
         # Presentation hook fired once after each tool batch's calls have run and their output is
         # out, reporting whether the batch spoke (carried text) so silent runs can be told from
         # voiced ones. A fact, not a decision: whether that boundary is worth drawing anything is
@@ -302,8 +303,8 @@ class Agent:
                 await self.checkpoint_turn(turn_messages, transcript_messages)
             stopped = f"Stopped after max_agent_steps={self.session.settings.max_steps}"
             self.stopped_at_max_steps = True
-            self.finish_turn(turn_messages, transcript_messages, {"role": "assistant", "content": stopped})
             (self.final_output_fn or self.output_fn)(stopped)
+            self.finish_turn(turn_messages, transcript_messages, {"role": "assistant", "content": stopped})
             return stopped
         except (asyncio.CancelledError, KeyboardInterrupt):
             # Everything awaited above has already performed its own cleanup and quiesced by the
@@ -343,6 +344,10 @@ class Agent:
             self.session._active_turn_messages.clear()
             self.session._active_transcript_messages.clear()
             self.session.state.turn_messages = 0
+            # The turn is settled as far as it got; a reset it asked for still takes effect, so the
+            # snapshot written below is the post-reset state and a resume cannot restore the
+            # conversation the model already decided to drop.
+            self.apply_context_reset()
             await self.session.save_snapshot()
             raise
 
@@ -420,6 +425,14 @@ class Agent:
         self.session._active_turn_messages.clear()
         self.session._active_transcript_messages.clear()
         self.session.state.turn_messages = 0
+        # A reset the model asked for inside this turn lands here, at its settlement: the turn is
+        # now whole and durable, so dropping the conversation cannot orphan a tool call.
+        self.apply_context_reset()
+
+    def apply_context_reset(self) -> None:
+        """Publish the transcript-only notice after the session has applied the reset."""
+        if self.session.apply_context_reset():
+            (self.on_context_reset or self.output_fn)(self.session.transcript_messages[-1]["content"])
 
     def terminal_next_hints(self, tool_calls: list[ToolCall]) -> bool:
         """True when a batch is nothing but NextHints calls — a terminal batch that ends the turn."""
@@ -470,8 +483,8 @@ class Agent:
         if answer:
             # Text exists: the answer becomes its own final message and is published exactly
             # once, unchanged from the plain final-answer path.
-            self.finish_turn(turn_messages, transcript_messages, {"role": "assistant", "content": answer})
             (self.final_output_fn or self.output_fn)(answer)
+            self.finish_turn(turn_messages, transcript_messages, {"role": "assistant", "content": answer})
         else:
             # Tool-only terminal batch: the NextHints tool result ends the history. All three
             # adapters replay a turn whose last message is that tool result once the next
@@ -506,6 +519,7 @@ class Agent:
         turn_messages.append({"role": "user", "content": INTERRUPT_MARKER})
         self.session.messages.extend(turn_messages)
         self.session.transcript_messages.extend(transcript_messages)
+        self.apply_context_reset()
 
     def settle_unanswered_tool_calls(
         self,

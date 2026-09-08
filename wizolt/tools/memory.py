@@ -107,7 +107,7 @@ class RecallContextTool(Tool):
     def params_schema(cls) -> Json:
         # fmt: off
         return cls.object_schema({
-            "action": {"type": "string", "enum": ["list", "get", "search"], "description": "Operation"},
+            "action": {"type": "string", "enum": ["list", "get", "search"]},
             "keys": {"type": "array", "items": {"type": "string", "pattern": "^seg\\.\\d+$"}, "minItems": 1, "description": "Keys to get or search within"},
             "query": {"type": "string", "maxLength": cls.MAX_QUERY_LENGTH, "description": "Regex over segment titles and text"},
             "case_sensitive": {"type": "boolean", "description": "Case-sensitive search; default false"},
@@ -270,7 +270,11 @@ class RecallContextTool(Tool):
 
 class NoteTool(Tool):
     NAME = "Note"
-    DESCRIPTION = "Durable state across context compaction; keep current for non-trivial work. Replacement fields replace; append_known adds. View includes read-only activity history."
+    # Simple work should not pay for a plan-only tool call.
+    DESCRIPTION = (
+        "Durable state across context compaction; keep current for non-trivial work, skipping the "
+        "easiest quarter of tasks. Never a single-step plan. View includes read-only activity history."
+    )
     STORES_RESULT = False
     MUTATES = True
 
@@ -283,11 +287,11 @@ class NoteTool(Tool):
     def params_schema(cls) -> Json:
         # fmt: off
         plan_item = cls.object_schema({
-            "status": {"type": "string", "enum": list(PlanItem.STATUSES), "description": "todo|doing|done|blocked"},
+            "status": {"type": "string", "enum": list(PlanItem.STATUSES)},
             "text": {"type": "string", "description": "Plan step description"},
         }, ["status", "text"])
         return cls.object_schema({
-            "action": {"type": "string", "enum": ["view", "update"], "description": "Operation"},
+            "action": {"type": "string", "enum": ["view", "update"]},
             "fields": {"type": "array", "items": {"type": "string", "enum": ["goal", "plan", "known", "check", "recent_activity"]}, "minItems": 1, "description": "Fields to view; default all available"},
             "set_goal": {"type": "string", "description": "Replace or clear goal"},
             "replace_plan": {"type": "array", "items": plan_item, "description": "Replace plan"},
@@ -400,6 +404,55 @@ class NoteTool(Tool):
             if known:
                 lines.extend(["known:", *(f"  {item}" for item in known)])
         return ["\n".join(lines) or "{}"]
+
+
+class ContextTool(Tool):
+    """Inspect context usage or request a reset at turn settlement."""
+
+    NAME = "Context"
+    DESCRIPTION = (
+        "Report tokens left in the context window, or start a new one. A reset keeps Note state, "
+        "RecallContext segments, results, jobs and transcript; it drops model conversation after this turn."
+    )
+    STORES_RESULT = False
+    MUTATES = True
+
+    def needs_confirmation(self) -> bool:
+        # Only model context changes; user-visible history and workspace remain.
+        return False
+
+    @classmethod
+    def params_schema(cls) -> Json:
+        return cls.object_schema({"action": {"type": "string", "enum": ["remaining", "reset"]}}, ["action"])
+
+    def call(self) -> str:
+        action = self.action()
+        if action == "remaining":
+            return json.dumps(self.session.context_fill(), ensure_ascii=False)
+        if not self.session.request_context_reset():
+            return "Reset is already scheduled for the end of this turn."
+        # The reset lands at turn settlement, not here: the conversation still holds the assistant
+        # message this call is answering, and dropping it mid-batch would leave that message's other
+        # calls without results. Say so, because it decides whether more work in this turn is worth
+        # doing -- everything after this point is dropped with the conversation.
+        return (
+            "Reset scheduled: the conversation is dropped when this turn ends. Note state, RecallContext "
+            "segments, stored results, jobs, transcript and workspace remain. Finish the turn now; later "
+            "conversation in this turn is also dropped. Note and recent activity seed the new window."
+        )
+
+    def action(self) -> str:
+        payload = self.single_dict_arg("Context requires an action")
+        if unexpected := sorted(set(payload) - {"action"}):
+            raise ToolError("Context unexpected field: " + ", ".join(unexpected))
+        action = str(payload.get("action") or "").strip()
+        if action not in {"remaining", "reset"}:
+            raise ToolError("Context action must be remaining or reset")
+        return action
+
+    def short_args(self) -> list[str]:
+        payload = self.args[0] if len(self.args) == 1 and isinstance(self.args[0], dict) else {}
+        return [str(payload.get("action") or "?")]
 
 
 class NextHintsTool(Tool):

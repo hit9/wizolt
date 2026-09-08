@@ -79,7 +79,9 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
     An Edit confirmation previews the proposed change before approval.
     :::
 * - **`Bash`**
-  - Runs one shell command in the project with live output. Commands still running after
+  - Runs one shell command in the project with live output, in the workspace or in a
+    <span class="marker">directory the call names</span>. Relative `workdir` paths start at the
+    workspace; the next call still defaults to the workspace. Commands still running after
     `runtime.bash_wait_timeout` <span class="marker">become background jobs automatically</span>.
 
     :::{figure} ../snapshots/wizolt-bash-live-preview.gif
@@ -90,8 +92,12 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
     Bash output appears as the command runs.
     :::
 * - **`Job`**
-  - Starts or manages background commands: check output, wait, list, or stop. The same jobs are
-    visible through `/ps`.
+  - Starts or manages background commands: check output, wait, list, or stop. A job started with
+    stdin open can also be <span class="marker">answered while it runs</span>, which is how a REPL
+    or a command that asks a question stays usable. Use `python -u -i` for a Python REPL;
+    programs that require a terminal are not supported. Each write accepts all the text or
+    refuses it without sending anything; oversized input reports the limit so you can split it.
+    You can inspect the exact input before approving it. The same jobs are visible through `/ps`.
 * - **`Recall`**
   - Retrieves a <span class="marker">complete earlier tool result</span>, or selected line ranges,
     when only a shortened result was placed in the conversation.
@@ -111,6 +117,11 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
     <div class="term-shot" role="img" aria-label="A Note update printed in the terminal: goal and check lines, a plan whose items are marked done, in progress, or waiting, and a list of learned facts."><span class="fs-goal">goal: ship the tokenizer fix</span><span class="fs-goal">check: pytest -q passes</span><span class="fs-sel">plan:</span><span class="fs-add">  - [x] reproduce the failing test</span><span class="fs-doing">  - [~] fix the tokenizer</span><span>  - [ ] update the changelog</span><span class="fs-sel">known:</span><span class="fs-add">  + tests run with pytest -q</span></div>
 
     Plan items are marked `[x]` done, `[~]` in progress, `[ ]` waiting, or `[-]` blocked.
+* - **`Context`**
+  - Reports the window in use — percent, used and budget tokens, tokens left — or starts a new
+    window with `Context(reset)`. The new window begins when the turn ends, and the rest of that
+    turn goes with the conversation, so the result asks the model to wrap up first. See
+    [Starting a new window](context.md#starting-a-new-window).
 * - **`Ask`**
   - Pauses for a decision that genuinely needs you. A question may include choices and a
     recommended option.

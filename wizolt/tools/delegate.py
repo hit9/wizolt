@@ -32,7 +32,9 @@ if TYPE_CHECKING:
 # while the parent turn is inside a tool call), NextHints (no idle prompt; blurs the turn-ending
 # rule). ViewImage and ToolScript joined: ViewImage reads any local image path, not just user
 # attachments, and ToolScript batches repetitive same-shape calls. Skill and MCP stay: a worker
-# that cannot load skills or call external tools cannot do real work.
+# that cannot load skills or call external tools cannot do real work. Context joined: a worker's
+# turn fills the same window, and the parent's `/worker reset` destroys the worker rather than
+# clearing its conversation.
 WORKER_TOOLS: tuple[str, ...] = (
     "Read",
     "ViewImage",
@@ -45,6 +47,7 @@ WORKER_TOOLS: tuple[str, ...] = (
     "Recall",
     "RecallContext",
     "Note",
+    "Context",
     "Skill",
     "MCP",
 )
@@ -179,7 +182,7 @@ class DelegateTool(Tool):
     def params_schema(cls) -> Json:
         return cls.object_schema(
             {
-                "action": {"type": "string", "enum": ["send", "reset", "status"], "description": "Worker operation"},
+                "action": {"type": "string", "enum": ["send", "reset", "status"]},
                 "order": {
                     "type": "string",
                     "description": "Standalone send order: goal, files, known facts, constraints, boundaries, and verification",

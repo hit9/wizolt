@@ -509,6 +509,7 @@ class SessionSnapshotStore:
             transcript_tool_records=transcript_tool_records,
             tool_errors=SessionSnapshotCodec.tool_errors(data.get("tool_errors", [])),
             recent_commands=data.get("recent_commands", [])[-10:],
+            context_reset_requested=bool(data.get("context_reset_requested", False)),
             turn_diffs=turn_diffs,
             transcript_turn_diffs=transcript_turn_diffs,
             transcript_incomplete=bool(data.get("_transcript_incomplete")),
@@ -549,6 +550,8 @@ class SessionSnapshotStore:
             if session.state.goal or session.state.plan or session.state.known or session.state.check or session.state.summary:
                 session.messages.append(session.state_checkpoint_event())
             session.context_layout_version = CONTEXT_LAYOUT_VERSION
+        # Loaded active-turn messages are settled history; honor a reset promised before a crash.
+        session.apply_context_reset()
         resumed_at = local_timestamp()
         session.messages.append(
             {

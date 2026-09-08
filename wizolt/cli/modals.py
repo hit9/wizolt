@@ -21,7 +21,7 @@ from prompt_toolkit.utils import get_cwidth
 from wizolt.base import DISMISSED, SELECTION_BACK, ApprovalView, Text, ToolCall, ToolError, TurnBox, oneline
 from wizolt.render import UiPrinter, WizoltMarkdown, markdown_console
 from wizolt.session import BackgroundJob, ToolResultRecord
-from wizolt.tools import AskSpec, BashTool, DelegateTool, ToolScript, tooloutput
+from wizolt.tools import AskSpec, BashTool, DelegateTool, JobTool, ToolScript, tooloutput
 from wizolt.tui import (
     ASK_DONE,
     ASK_FREE_TEXT,
@@ -347,11 +347,15 @@ def bash_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView | Non
     one that says how much it is showing."""
     command = bash_command(loop, record)
     streams, note = tooloutput.bash_viewer_output(record.output)
-    if not streams:
+    try:
+        view = BashTool(loop.session, record.args).approval_view()
+    except ToolError:
+        view = None
+    if not streams and view is None:
         # A command that printed nothing has nothing here the transcript does not already show. A
         # script is different: its source is worth reading whether or not it printed anything.
         return None
-    rows = [("key", record.key)]
+    rows = [("key", record.key), *(view.rows if view else [])]
     if code := tooloutput.bash_exit_code(record.output):
         rows.append(("exit", code))
     if note:
@@ -483,6 +487,8 @@ def job_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView:
     if note:
         fallback_rows.append(("shown", note))
     fallback = ApprovalView(f"job · {record.key}", result, "", fallback_rows)
+    if action == "write" and (view := JobTool(loop.session, record.args).approval_view()) is not None:
+        return ApprovalView(f"stdin · {record.key}", view.text, view.lexer, [*fallback_rows, *view.rows], result)
     if job is None:
         return fallback
     job.update_status()
@@ -496,6 +502,8 @@ def job_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView:
         rows.append(("exit", str(job.exit_code)))
     if job.command:
         rows.append(("command", job.command))
+    if job.workdir:
+        rows.append(("workdir", job.workdir))
     for extra in (log_note, note):
         if extra:
             rows.append(("shown", extra))

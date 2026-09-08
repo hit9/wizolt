@@ -1,7 +1,10 @@
 import asyncio
+import json
+import os
 import shlex
 import subprocess
 import sys
+import threading
 import time
 
 import pytest
@@ -669,11 +672,12 @@ async def test_job_start_captures_every_stage_of_a_compound_command(tmp_path):
 async def test_job_start_reclaims_finished_capacity(tmp_path, monkeypatch):
     s = session(tmp_path)
     monkeypatch.setattr(JobTool, "MAX_JOBS", 1)
-    await JobTool(s, [{"action": "start", "command": "true"}]).call()
+    await JobTool(s, [{"action": "start", "command": "true", "stdin": True}]).call()
     s.jobs["job.1"].process.wait(timeout=2)
 
     result = await JobTool(s, [{"action": "start", "command": "true"}]).call()
 
+    assert s.jobs["job.1"].process.stdin.closed
     assert result.startswith("Started job.2")
     s.jobs["job.2"].process.wait(timeout=2)
 
@@ -715,13 +719,14 @@ def test_job_start_uses_bash_highlighting(tmp_path):
 
 async def test_job_status_accepts_bare_numeric_id(tmp_path):
     s = session(tmp_path)
-    await JobTool(s, [{"action": "start", "command": "true"}]).call()
+    await JobTool(s, [{"action": "start", "command": "true", "stdin": True}]).call()
     s.jobs["job.1"].process.wait(timeout=2)
 
     result = await JobTool(s, [{"action": "status", "job": "1"}]).call()
 
     assert "Status: done" in result
     assert "Exit code: 0" in result
+    assert s.jobs["job.1"].process.stdin.closed
 
 
 async def test_job_tail_respects_limits_smaller_than_ellipsis(tmp_path):
@@ -737,22 +742,24 @@ async def test_job_tail_respects_limits_smaller_than_ellipsis(tmp_path):
 
 async def test_kill_finished_job_does_not_signal_stale_process(tmp_path):
     s = session(tmp_path)
-    await JobTool(s, [{"action": "start", "command": "true"}]).call()
+    await JobTool(s, [{"action": "start", "command": "true", "stdin": True}]).call()
     s.jobs["job.1"].process.wait(timeout=2)
 
     result = await JobTool(s, [{"action": "kill", "job": "job.1"}]).call()
 
     assert "status=done" in result
     assert "exit_code=0" in result
+    assert s.jobs["job.1"].process.stdin.closed
 
 
 async def test_ps_hides_jobs_that_finished_without_polling(tmp_path):
     s = session(tmp_path)
-    await JobTool(s, [{"action": "start", "command": "true"}]).call()
+    await JobTool(s, [{"action": "start", "command": "true", "stdin": True}]).call()
     s.jobs["job.1"].process.wait(timeout=2)
     command_loop = CommandLoop(Agent(s), input_fn=lambda prompt="": "", output_fn=lambda text: None)
 
     assert ps_command(command_loop, "") == "No active jobs (1 total)."
+    assert s.jobs["job.1"].process.stdin.closed
 
 
 async def test_tool_runner_approved_live_bash_does_not_repeat_command(tmp_path):
@@ -988,3 +995,264 @@ def test_a_command_just_over_the_line_budget_is_left_whole(tmp_path):
 
     assert "more lines" not in display
     assert "line_3" in display
+
+
+async def test_job_write_drives_a_program_that_reads_stdin(tmp_path):
+    """A job that can be answered is the point of stdin: without it a prompting program is a
+    dead end, and the model can only re-run a script to guess what it wanted."""
+    s = session(tmp_path)
+    await JobTool(s, [{"action": "start", "command": "read first; read second; echo got:$first:$second", "stdin": True}]).call()
+
+    assert await JobTool(s, [{"action": "write", "job": "job.1", "chars": "alpha\n"}]).call() == "Wrote 6 characters to job.1 stdin"
+    await JobTool(s, [{"action": "write", "job": "1", "chars": "beta\n"}]).call()
+    finished = await JobTool(s, [{"action": "wait", "job": "job.1"}]).call()
+
+    assert "got:alpha:beta" in finished
+
+
+async def test_job_write_drives_a_repl_across_calls(tmp_path):
+    """State persists between writes, which is what a fresh `bash -lc` per Bash call cannot do."""
+    s = session(tmp_path)
+    await JobTool(s, [{"action": "start", "command": f"{shlex.quote(sys.executable)} -u -i 2>&1", "stdin": True}]).call()
+
+    await JobTool(s, [{"action": "write", "job": "job.1", "chars": "carried = 6 * 7\n"}]).call()
+    await JobTool(s, [{"action": "write", "job": "job.1", "chars": "print('answer', carried)\n"}]).call()
+    await JobTool(s, [{"action": "write", "job": "job.1", "chars": "exit()\n"}]).call()
+    finished = await JobTool(s, [{"action": "wait", "job": "job.1"}]).call()
+
+    assert "answer 42" in finished
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({"action": "write", "job": "job.1"}, "non-empty chars"),
+        ({"action": "write", "job": "job.1", "chars": ""}, "non-empty chars"),
+        ({"action": "write", "job": "job.1", "chars": "x" * (JobTool.MAX_WRITE_BYTES + 1)}, "limit is"),
+        ({"action": "write"}, "job id required"),
+        ({"action": "write", "job": "job.99", "chars": "x"}, "unknown job"),
+    ],
+)
+async def test_job_write_validation_is_actionable(tmp_path, payload, message):
+    s = session(tmp_path)
+    await JobTool(s, [{"action": "start", "command": "read ignored", "stdin": True}]).call()
+
+    try:
+        with pytest.raises(ToolError, match=message):
+            await JobTool(s, [payload]).call()
+    finally:
+        s.jobs["job.1"].kill()
+
+
+async def test_job_write_to_a_finished_job_says_so(tmp_path):
+    """ "Wrote to a dead job" and "this program ignores stdin" need different next moves, so the
+    error names which one happened rather than surfacing a bare BrokenPipeError."""
+    s = session(tmp_path)
+    await JobTool(s, [{"action": "start", "command": "true", "stdin": True}]).call()
+    await JobTool(s, [{"action": "wait", "job": "job.1"}]).call()
+
+    with pytest.raises(ToolError, match="already exited with code 0"):
+        await JobTool(s, [{"action": "write", "job": "job.1", "chars": "late\n"}]).call()
+
+
+def test_job_write_approval_exposes_the_exact_input_without_expanding_the_title(tmp_path):
+    tool = JobTool(session(tmp_path), [{"action": "write", "job": "job.1", "chars": "sudo-password\n"}])
+
+    assert tool.needs_confirmation()
+    assert tool.short_args() == ["write", "job.1"]
+    assert "sudo-password" not in " ".join(tool.short_args())
+    view = tool.approval_view()
+    assert view is not None and view.lexer == "json"
+    assert json.loads(view.text) == "sudo-password\n"
+
+
+async def test_job_stdin_is_opt_in_so_a_stray_read_still_finishes(tmp_path):
+    """The default must stay /dev/null. On a pipe, a command that reads stdin without anyone
+    intending to answer it waits forever and holds one of MAX_JOBS slots; on /dev/null it sees
+    EOF and finishes. Asking for stdin is asking for that wait."""
+    s = session(tmp_path)
+    # Reads stdin and would wait forever on a pipe; on /dev/null it sees EOF and finishes.
+    await JobTool(s, [{"action": "start", "command": "cat; echo done-anyway"}]).call()
+    finished = await JobTool(s, [{"action": "wait", "job": "job.1"}]).call()
+    assert "done-anyway" in finished
+
+    # A job still running without stdin says which mistake was made, and how to avoid it.
+    await JobTool(s, [{"action": "start", "command": "sleep 30"}]).call()
+    try:
+        with pytest.raises(ToolError, match="no open stdin; start it with stdin=true"):
+            await JobTool(s, [{"action": "write", "job": "job.2", "chars": "late\n"}]).call()
+    finally:
+        await JobTool(s, [{"action": "kill", "job": "job.2"}]).call()
+
+
+async def test_job_write_full_pipe_rejects_atomically_and_recovers(tmp_path):
+    s = session(tmp_path)
+    # The reader waits for a file handshake, so the pipe stays full until explicitly drained.
+    code = (
+        "import pathlib, sys, time; p = pathlib.Path('drain'); "
+        "\nwhile not p.exists(): time.sleep(.005)"
+        "\nsys.stdin.buffer.read(int(p.read_text())); print('drained', flush=True)"
+        "\nprint(sys.stdin.buffer.readline().decode(), end='', flush=True)"
+    )
+    await JobTool(s, [{"action": "start", "command": f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}", "stdin": True}]).call()
+    job = s.jobs["job.1"]
+    # A regression must fail instead of hanging the test worker inside a blocking write.
+    watchdog = threading.Timer(5, job.kill)
+    watchdog.start()
+    try:
+        fd = job.process.stdin.fileno()
+        blocking = os.get_blocking(fd)
+        os.set_blocking(fd, False)
+        filled = 0
+        try:
+            while True:
+                filled += os.write(fd, b"x" * 4096)
+        except BlockingIOError:
+            pass
+        finally:
+            os.set_blocking(fd, blocking)
+        with pytest.raises(ToolError, match="stdin is full; nothing written"):
+            await JobTool(s, [{"action": "write", "job": "1", "chars": "answer\n"}]).call()
+        (tmp_path / "drain").write_text(str(filled))
+        deadline = time.monotonic() + 3
+        while "drained" not in job.tail(100):
+            assert time.monotonic() < deadline, "reader did not drain the pipe"
+            await asyncio.sleep(0.01)
+        result = await JobTool(s, [{"action": "write", "job": "1", "chars": "你好\n"}]).call()
+        assert "Wrote 3 characters" in result
+        await JobTool(s, [{"action": "wait", "job": "1"}]).call()
+        assert job.tail(100) == "drained\n你好\n"
+        assert job.process.stdin.closed
+    finally:
+        watchdog.cancel()
+        job.kill()
+        watchdog.join()
+
+
+async def test_job_write_bounds_utf8_bytes_before_sending_any_input(tmp_path):
+    s = session(tmp_path)
+    await JobTool(s, [{"action": "start", "command": "read answer; echo got:$answer", "stdin": True}]).call()
+    job = s.jobs["job.1"]
+    try:
+        limit = min(JobTool.MAX_WRITE_BYTES, os.fpathconf(job.process.stdin.fileno(), "PC_PIPE_BUF"))
+        with pytest.raises(ToolError, match="UTF-8 bytes; limit is"):
+            await JobTool(s, [{"action": "write", "job": "1", "chars": "中" * (limit // 3 + 1)}]).call()
+        await JobTool(s, [{"action": "write", "job": "1", "chars": "ok\n"}]).call()
+        await JobTool(s, [{"action": "wait", "job": "1"}]).call()
+        assert job.tail(100) == "got:ok\n"
+    finally:
+        job.kill()
+
+
+async def test_job_write_closed_stdin_is_rejected_while_process_still_runs(tmp_path):
+    s = session(tmp_path)
+    await JobTool(s, [{"action": "start", "command": "exec 0<&-; echo ready; sleep 30", "stdin": True}]).call()
+    job = s.jobs["job.1"]
+    try:
+        deadline = time.monotonic() + 3
+        while "ready" not in job.tail(100):
+            assert time.monotonic() < deadline
+            await asyncio.sleep(0.01)
+        with pytest.raises(ToolError, match="closed its stdin"):
+            await JobTool(s, [{"action": "write", "job": "1", "chars": "answer\n"}]).call()
+        assert job.process.poll() is None
+    finally:
+        await JobTool(s, [{"action": "kill", "job": "1"}]).call()
+    assert job.process.stdin.closed
+
+
+async def test_refused_job_write_can_be_inspected_and_sends_nothing(tmp_path):
+    s = session(tmp_path)
+    await JobTool(s, [{"action": "start", "command": "read answer; echo got:$answer", "stdin": True}]).call()
+    replies = iter(["v", "n"])
+    viewed = []
+    runner = ToolRunner(s, ContextManager(s), input_fn=lambda _: next(replies), output_fn=lambda _: None)
+    runner.text_viewer = lambda view: viewed.append(view)
+    try:
+        await runner.run([ToolCall("answer", "Job", [{"action": "write", "job": "1", "chars": "refused\n"}])])
+        assert len(viewed) == 1 and json.loads(viewed[0].text) == "refused\n"
+        await JobTool(s, [{"action": "write", "job": "1", "chars": "accepted\n"}]).call()
+        await JobTool(s, [{"action": "wait", "job": "1"}]).call()
+        assert s.jobs["job.1"].tail(100) == "got:accepted\n"
+    finally:
+        s.jobs["job.1"].kill()
+
+
+async def test_bash_workdir_runs_where_the_call_says(tmp_path):
+    (tmp_path / "sub" / "deep").mkdir(parents=True)
+    s = session(tmp_path)
+
+    assert tooloutput.tagged_output(await BashTool(s, ["pwd"]).call(), "stdout").strip() == str(tmp_path)
+    assert tooloutput.tagged_output(await BashTool(s, ["pwd", "sub"]).call(), "stdout").strip() == str(tmp_path / "sub")
+    assert tooloutput.tagged_output(await BashTool(s, ["pwd", str(tmp_path / "sub" / "deep")]).call(), "stdout").strip() == str(tmp_path / "sub" / "deep")
+    # The directory does not persist: the next call is back in the workspace.
+    assert tooloutput.tagged_output(await BashTool(s, ["pwd"]).call(), "stdout").strip() == str(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("workdir", "message"),
+    [
+        ("nowhere", "does not exist"),
+        ("file.txt", "is not a directory"),
+    ],
+)
+async def test_bash_workdir_errors_say_what_was_resolved(tmp_path, workdir, message):
+    """The resolved path and the relative-to-workspace rule are both in the message, because a
+    path that resolved somewhere unexpected is the likely mistake."""
+    (tmp_path / "file.txt").write_text("x", encoding="utf-8")
+
+    with pytest.raises(ToolError, match=message) as caught:
+        await BashTool(session(tmp_path), ["touch executed", workdir]).call()
+    assert not (tmp_path / "executed").exists()
+
+    assert str(tmp_path / workdir) in str(caught.value)
+    assert "relative paths are taken from the workspace" in str(caught.value)
+
+
+def test_bash_workdir_is_visible_in_the_preview(tmp_path):
+    """The same command means different things in different trees, so approval has to show which."""
+    s = session(tmp_path)
+    (tmp_path / "sub").mkdir()
+
+    assert BashTool(s, ["rm -rf build", "sub"]).short_args() == ['in "sub"', "rm -rf build"]
+    assert BashTool(s, ["rm -rf build"]).short_args() == ["rm -rf build"]
+
+
+def test_bash_payload_keeps_its_single_argument_form_without_a_workdir():
+    """Stored results, ToolScript's `call("Bash", [cmd])` and every existing caller pass one
+    argument; adding an optional second must not change that shape."""
+    assert BashTool.payload_args({"command": "ls"}) == ["ls"]
+    assert BashTool.payload_args({"command": "ls", "workdir": "  "}) == ["ls"]
+    assert BashTool.payload_args({"command": "ls", "workdir": "sub"}) == ["ls", "sub"]
+
+
+async def test_bash_workdir_preserves_spaces_in_directory_names(tmp_path):
+    (tmp_path / "sub").mkdir()
+    (tmp_path / " sub ").mkdir()
+    args = BashTool.payload_args({"command": "printf '<%s>' \"$PWD\"", "workdir": " sub "})
+    output = await BashTool(session(tmp_path), args).call()
+    assert tooloutput.tagged_output(output, "stdout") == f"<{tmp_path / ' sub '}>"
+
+
+def test_long_bash_approval_keeps_workdir_visible_and_command_inspectable(tmp_path):
+    s = session(tmp_path)
+    command = "echo " + "x" * 300
+    tool = BashTool(s, [command, "sub"])
+    display = tooloutput.short_call(s, ToolCall("bash", "Bash", tool.args))
+    assert 'in "sub"' in display
+    assert tool.approval_view().text == command
+    assert ("workdir", '"sub"') in tool.approval_view().rows
+
+
+async def test_bash_promoted_job_retains_its_workdir(tmp_path):
+    (tmp_path / "sub").mkdir()
+    s = session(tmp_path)
+    s.settings.bash_wait_timeout = 0.05
+    try:
+        await BashTool(s, ["sleep 30", "sub"]).call()
+        assert s.jobs["job.1"].workdir == str(tmp_path / "sub")
+        status = await JobTool(s, [{"action": "status", "job": "1"}]).call()
+        assert f'Workdir: "{tmp_path / "sub"}"' in status
+    finally:
+        for job in s.jobs.values():
+            job.kill()

@@ -36,9 +36,10 @@ def _csi() -> Any:
 
 class SearchTool(Tool):
     NAME = "Search"
+    # Put structural navigation guidance at the text-search decision point.
     DESCRIPTION = (
         "Search UTF-8 files with case-insensitive regex, skipping binary, hidden, and gitignored files. Results are editable "
-        "source=view.N blocks. Put every independent query in queries so one investigation takes one call."
+        "source=view.N blocks. Batch independent queries in one call. For symbols, callers or refs use InspectCode."
     )
     EXAMPLE = (
         'Batch an investigation. Example: {"queries":[{"pattern":"class ChatBubble","glob":"*.tsx"},{"pattern":"ChatBubble","path":"src/views","context":2}]}',
@@ -645,7 +646,7 @@ class InspectCodeTool(Tool):
     @classmethod
     def params_schema(cls) -> Json:
         props = {
-            "mode": {"type": "string", "enum": list(cls.MODES), "description": "Query type: find|inspect|outline|refs|impls|callers|callees"},
+            "mode": {"type": "string", "enum": list(cls.MODES)},
             "target": {"type": "string", "description": "Symbol name (find/inspect/refs/impls/callers/callees) or file path (outline)"},
             "limit": {"type": "integer", "minimum": 1, "maximum": cls.MAX_OUTLINE_LIMIT, "description": "Max results"},
             "kind": {"type": "string", "description": "Restrict to a symbol kind, e.g. function, class, method"},

@@ -35,6 +35,7 @@ class BackgroundJob:
     stream_buffer: list[str] | None = None
     stream_lock: threading.Lock | None = None
     stream_truncated: bool = False
+    workdir: str = ""
 
     BUFFER_LIMIT: ClassVar[int] = 32 * 1024  # promoted-job tail cap in chars
 
@@ -51,6 +52,8 @@ class BackgroundJob:
         if code is not None:
             self.status = "done"
             self.exit_code = code
+            if self.process.stdin is not None:
+                self.process.stdin.close()
 
     def elapsed(self) -> float:
         return time.monotonic() - self.started_at

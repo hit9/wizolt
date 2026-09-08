@@ -110,6 +110,8 @@ is in parentheses.
   because checkpoints and Note results are scanned for ids when views and results are pruned.
   Quoted paths and commands still decode to their original values; never replace digits in a
   real filename with a placeholder. Historical ids in activity may already have expired.
+  Explicit Bash working directories are frozen at execution and retained with command receipts
+  and promoted jobs. Equal commands in different directories are different observations.
   This borrows Codex's committed-change evidence principle, not its model-driven cross-session
   memory pipeline.
 
@@ -671,6 +673,14 @@ Passing the existing harness does not prove these remaining interactions or all 
 
 ## Compaction
 
+Explicit context reset is a separate cache epoch: apply only after turn settlement, replace model
+history with one frozen working-state/recent-activity checkpoint, and retain the transcript and
+recall stores. Persist the pending request with tool-batch snapshots; loading such a snapshot
+settles the interrupted turn and applies the reset before the resume event. Never erase transcript
+to make model context smaller, or rebuild the reset checkpoint on normal requests.
+The pending indicator is presentation-only. The completion notice belongs to the durable transcript,
+not model messages; displaying or replaying it must not add anything to the request prefix.
+
 Compaction is the deliberate persisted exception to send-time-only projection: it replaces old
 active messages with a summary when the effective request, including tools, reaches the input
 budget.
@@ -715,6 +725,10 @@ threshold; provider integration tests verify reported usage and acceptance witho
   records (see "One loop owns the session").
 - Tool failures become matched tool results, not broken turns; cancellation settles every
   already-visible call so replay stays valid.
+- Job stdin is opt-in. Writes are unbuffered, nonblocking and at most the platform's `PIPE_BUF`
+  (also capped at 4 KiB), so a full pipe rejects the entire answer without blocking the loop or
+  leaving bytes queued for a later call. `BackgroundJob` closes stdin when it observes exit;
+  the tool exposes the exact input through the existing approval viewer.
 - Edit target validation is a safety boundary, not friction. Under a source view, Edit may target
   only lines the model was shown; changed or ambiguously moved targets stay refused, while a unique
   exact relocation is accepted. Without one, the exact original text the call supplies is a

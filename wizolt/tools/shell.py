@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import codecs
 import contextlib
+import json
 import os
 import re
 import selectors
@@ -18,7 +19,7 @@ import time
 from collections.abc import Callable
 from typing import Any, ClassVar, cast
 
-from wizolt.base import Json, ToolArgs, ToolError, run_blocking
+from wizolt.base import ApprovalView, Json, ToolArgs, ToolError, run_blocking
 from wizolt.session import BackgroundJob, Session
 from wizolt.tools.base import Tool
 
@@ -59,6 +60,7 @@ class BashTool(Tool):
         self._process_lock = threading.Lock()
         self._process: subprocess.Popen[bytes] | None = None
         self.exit_code: int | None = None
+        self.execution_workdir: str | None = None
 
     def request_stop(self) -> None:
         """Kill the command's whole process group; the runner then waits for `call()` to reap it."""
@@ -186,7 +188,8 @@ class BashTool(Tool):
     def params_schema(cls) -> Json:
         # fmt: off
         return cls.object_schema({
-            "command": {"type": "string", "minLength": 1, "pattern": "^[\\s\\S]*\\S[\\s\\S]*$", "description": "Required Bash program; if, loops, functions, and multiline scripts are valid. Bound noisy output"},
+            "command": {"type": "string", "minLength": 1, "pattern": "^[\\s\\S]*\\S[\\s\\S]*$", "description": "Bash program"},
+            "workdir": {"type": "string", "description": "Directory to run in; defaults to the workspace"},
         }, ["command"])
         # fmt: on
 
@@ -195,26 +198,54 @@ class BashTool(Tool):
         command = str(payload.get("command") or "")
         if not command.strip():
             raise ToolError("Bash command must be non-empty")
-        return [command]
+        # `workdir` is a second positional rather than a dict payload so existing callers, stored
+        # results and ToolScript's `call("Bash", [cmd])` keep working unchanged.
+        workdir = str(payload.get("workdir") or "")
+        return [command, workdir] if workdir.strip() else [command]
 
     def command(self) -> str:
-        command = self.strings(min_count=1, max_count=1)[0]
+        command = self.strings(min_count=1, max_count=2)[0]
         if not command.strip():
             raise ToolError("Bash command must be non-empty")
         return command
 
+    def workdir(self) -> str:
+        """Resolve this call's directory without changing the session's working directory."""
+        args = self.strings(min_count=1, max_count=2)
+        requested = args[1] if len(args) > 1 else ""
+        if not requested.strip():
+            return self.session.cwd
+        resolved = os.path.abspath(os.path.join(self.session.cwd, os.path.expanduser(requested)))
+        if not os.path.isdir(resolved):
+            what = "is not a directory" if os.path.exists(resolved) else "does not exist"
+            raise ToolError(f"workdir {requested!r} {what} (resolved to {resolved}); relative paths are taken from the workspace")
+        return resolved
+
     def short_args(self) -> list[str]:
+        args = self.strings(min_count=1, max_count=2)
+        # Put the directory first so a long command cannot clip it out of the approval title.
+        if len(args) > 1 and args[1].strip():
+            return [f"in {json.dumps(args[1], ensure_ascii=False)}", self.command()]
         return [self.command()]
+
+    def approval_view(self) -> ApprovalView | None:
+        args = self.strings(min_count=1, max_count=2)
+        if len(args) > 1 and args[1].strip():
+            return ApprovalView("command", self.command(), "bash", [("workdir", json.dumps(args[1], ensure_ascii=False))])
+        return None
 
     async def call(self) -> str:
         command = self.command()
         bash = shutil.which("bash") or "bash"
         proc = None
         try:
+            cwd = self.workdir()
+            # Freeze before execution: the command may remove or rename its own directory.
+            self.execution_workdir = cwd if len(self.args) > 1 and str(self.args[1]).strip() else None
             # Keep a Popen handle because an auto-promoted command must outlive this event loop;
             # all potentially blocking pipe I/O below is event-loop driven.
             proc = subprocess.Popen(  # noqa: ASYNC220
-                [bash, "-lc", command], cwd=self.session.cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
+                [bash, "-lc", command], cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
             )
             with self._process_lock:
                 self._process = proc
@@ -342,6 +373,7 @@ class BashTool(Tool):
         job = BackgroundJob(
             id=job_id,
             command=self.command(),
+            workdir=self.execution_workdir or "",
             process=proc,
             log_path="",
             started_at=time.monotonic() - self.session.settings.bash_wait_timeout,
@@ -404,9 +436,12 @@ class BashTool(Tool):
 
 class JobTool(Tool):
     NAME = "Job"
-    DESCRIPTION = "Start, inspect, wait for, list, or kill background shell jobs."
+    DESCRIPTION = "Start, inspect, wait for, list, kill, or write stdin to background shell jobs. Writing drives a REPL or answers a prompt across calls."
     MUTATES = True
-    ACTIONS: ClassVar[tuple[str, ...]] = ("start", "status", "wait", "list", "kill")
+    ACTIONS: ClassVar[tuple[str, ...]] = ("start", "status", "wait", "list", "kill", "write")
+    # Atomic nonblocking writes either accept all input or reject it without a partial answer.
+    # The actual byte limit is also bounded by the platform's PIPE_BUF.
+    MAX_WRITE_BYTES: ClassVar[int] = 4096
     MAX_JOBS: ClassVar[int] = 8
     DEFAULT_LIMIT: ClassVar[int] = 4096
     # How long one wait may hold the agent. Backgrounding hands control back and waiting is the one
@@ -435,9 +470,11 @@ class JobTool(Tool):
     def params_schema(cls) -> Json:
         # fmt: off
         return cls.object_schema({
-            "action": {"type": "string", "enum": list(cls.ACTIONS), "description": "Operation to perform"},
-            "command": {"type": "string", "minLength": 1, "description": "Shell command to run for action=start"},
-            "job": {"type": "string", "description": "Job id for action=status, wait, or kill"},
+            "action": {"type": "string", "enum": list(cls.ACTIONS)},
+            "command": {"type": "string", "minLength": 1, "description": "Command to run for start"},
+            "job": {"type": "string", "description": "Job id"},
+            "stdin": {"type": "boolean", "description": "Open stdin on start so write can answer it"},
+            "chars": {"type": "string", "description": "stdin text for write; end with a newline"},
             "timeout": {"type": "integer", "minimum": 0, "description": f"Wait seconds; default {cls.DEFAULT_WAIT}s, capped at {cls.MAX_WAIT}s"},
             "limit": {"type": "integer", "minimum": 1, "description": "Output character limit; default 4096"},
         }, ["action"])
@@ -464,7 +501,18 @@ class JobTool(Tool):
         return action == "wait" or (action == "status" and timeout > 0)
 
     def needs_confirmation(self) -> bool:
-        return self.resolved_action(self.payload()) in {"start", "kill", "wait"}
+        # Answering a program's prompt can authorize the same side effects as starting it.
+        return self.resolved_action(self.payload()) in {"start", "kill", "wait", "write"}
+
+    def approval_view(self) -> ApprovalView | None:
+        payload = self.payload()
+        if self.resolved_action(payload) != "write":
+            return None
+        chars = payload.get("chars")
+        if not isinstance(chars, str) or not chars:
+            return None
+        # Quote control characters so the approval shows exactly what will be sent.
+        return ApprovalView("stdin", json.dumps(chars, ensure_ascii=False), "json", [("job", str(payload.get("job") or ""))])
 
     def short_args(self) -> list[str]:
         payload = self.payload()
@@ -493,6 +541,8 @@ class JobTool(Tool):
             return self._list()
         if action == "kill":
             return await self._kill(payload)
+        if action == "write":
+            return self._write(payload)
         raise ToolError(f"unhandled action: {action!r}")
 
     def _start(self, payload: Json) -> str:
@@ -516,11 +566,40 @@ class JobTool(Tool):
         proc = subprocess.Popen(
             ["bash", "-lc", f"{{ {command}; }} > {shlex.quote(log_path)} 2>&1"],
             cwd=self.session.cwd,
-            stdin=subprocess.DEVNULL,
+            # Default EOF keeps unattended readers from waiting forever for an answer.
+            stdin=subprocess.PIPE if payload.get("stdin") else subprocess.DEVNULL,
+            bufsize=0,
             start_new_session=True,
         )
+        if proc.stdin is not None:
+            os.set_blocking(proc.stdin.fileno(), False)
         self.session.jobs[job_id] = BackgroundJob(id=job_id, command=command, process=proc, log_path=log_path, started_at=time.monotonic())
         return f"Started {job_id}: {command}"
+
+    def _write(self, payload: Json) -> str:
+        """Write one atomic answer; output remains available through status/wait."""
+        job = self._resolve_job(payload)
+        chars = payload.get("chars")
+        if not isinstance(chars, str) or not chars:
+            raise ToolError("write requires non-empty chars; use status to read output without writing")
+        if job.status != "running":
+            raise ToolError(f"{job.id} already exited with code {job.exit_code}; nothing reads its stdin")
+        stream = job.process.stdin
+        if stream is None or stream.closed:
+            raise ToolError(f"{job.id} has no open stdin; start it with stdin=true to answer it")
+        data = chars.encode()
+        limit = min(self.MAX_WRITE_BYTES, os.fpathconf(stream.fileno(), "PC_PIPE_BUF"))
+        if len(data) > limit:
+            raise ToolError(f"chars is {len(data)} UTF-8 bytes; limit is {limit}; split the input into smaller writes")
+        try:
+            os.write(stream.fileno(), data)
+        except BlockingIOError:
+            raise ToolError(f"{job.id} stdin is full; nothing written. Check the job before retrying.") from None
+        except (BrokenPipeError, OSError) as error:
+            job.update_status()
+            detail = f"exited with code {job.exit_code}" if job.status != "running" else "closed its stdin"
+            raise ToolError(f"{job.id} {detail}; write failed ({error.__class__.__name__})") from None
+        return f"Wrote {len(chars)} characters to {job.id} stdin"
 
     @staticmethod
     def requested_timeout(payload: Json) -> int:
@@ -633,6 +712,8 @@ class JobTool(Tool):
         ]
         if job.exit_code is not None:
             lines.append(f"Exit code: {job.exit_code}")
+        if job.workdir:
+            lines.append(f"Workdir: {json.dumps(job.workdir, ensure_ascii=False)}")
         if job.status == "running":
             # A wait that comes back while the job runs returns the same shape as one that comes
             # back because it finished. Without this the output below reads as the final result.

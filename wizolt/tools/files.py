@@ -45,8 +45,8 @@ class ReadTool(Tool):
     def arg_schema(cls) -> Json:
         # fmt: off
         return cls.object_schema({
-            "path": {"type": "string", "description": "File path to read"},
-            "ranges": {"type": "array", "minItems": 1, "items": cls.RANGE_SCHEMA, "description": "Line ranges [[start,end],...], 1-based and inclusive of both ends; end 0 reads from start to the end of the file; omit to read the whole file"},
+            "path": {"type": "string"},
+            "ranges": {"type": "array", "minItems": 1, "items": cls.RANGE_SCHEMA, "description": "Same as the top-level ranges"},
         }, ["path"])
         # fmt: on
 
@@ -56,7 +56,7 @@ class ReadTool(Tool):
         return cls.object_schema({
             "path": {"type": "string", "description": "File path to read (single-file form)"},
             "ranges": {"type": "array", "items": cls.RANGE_SCHEMA, "minItems": 1, "description": "Line ranges [[start,end],...], 1-based and inclusive of both ends; end 0 reads from start to the end of the file; omit to read the whole file"},
-            "files": {"type": "array", "items": cls.arg_schema(), "minItems": 1, "description": "Batch form: list of {path, ranges} to read several files in one call"},
+            "files": {"type": "array", "items": cls.arg_schema(), "minItems": 1, "description": "Batch form: several files in one call"},
         })
         # fmt: on
 

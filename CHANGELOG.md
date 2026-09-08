@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `Bash` takes an optional `workdir`, so a command can run in a subdirectory without prefixing
+  `cd`. It applies to that call only and remains visible in approvals, recent activity and
+  automatically promoted jobs.
+- `Job` can write to a running job's stdin, so a REPL, a debugger, or a command that asks a
+  question can be answered instead of restarted. Opt in with `stdin` on `Job(start)`; jobs
+  without it keep their previous behaviour.
+- A `Context` tool reports how much of the window is in use and can start a new one with
+  `Context(reset)`, which takes effect when the turn ends. `/context` shows the same usage, and
+  `/context reset` starts a new window at once. Either way, Note state, recallable segments, stored
+  tool results, background jobs, the workspace, the code index and the transcript survive. The new
+  model window starts with Note and recent activity; a saved reset request survives a crash.
+  The working divider shows `reset pending` until it takes effect, then a brief `Context reset.`
+  notice appears in the transcript, including on resume.
+
+### Changed
+
+- Tool descriptions name the tool to prefer when another one fits better, and no longer repeat
+  values that the parameter's own enum already lists.
+
+### Fixed
+
+- `Context(remaining)` keeps small nonzero usage visible and uses a consistent local estimate
+  when the provider's token count and budget are incomplete.
+
+- Writing to a job with full stdin returns promptly without sending a partial answer. Completed
+  jobs release their stdin handles, and write approvals and Ctrl-O show the exact input.
+
 ## 0.44.0 - 2026-09-08
 
 ### Added

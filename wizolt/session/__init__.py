@@ -102,6 +102,7 @@ class AgentState:
     code_index_refreshing: bool = False
     code_index_checking: bool = False
     context_percent: int = 0
+    context_tokens: int = 0  # transient projection estimate; do not reconstruct it from a rounded percentage
     turn_step: int = 0
     turn_messages: int = 0
     round_count: int = 0
@@ -275,6 +276,8 @@ class Session:
     pending_user_inputs: list[QueuedInput] = field(default_factory=list)
     quick_hints: tuple[str, ...] = field(default_factory=tuple)  # transient offered next-step inputs; never serialized, cleared each turn
     next_hints_available: bool = True  # transient frontend capability; false for the simple REPL, which has no chip UI
+    # Durable intent: a crash after the tool result must not lose the promised reset.
+    context_reset_requested: bool = False
     # Worker handoff (see DESIGN.md): the second session this one delegates to, and its per-session
     # projection knobs. None of these are persisted — SessionSnapshotCodec.snapshot is an explicit
     # whitelist, so they return to their defaults on load and must be re-set by the delegate caller.
@@ -447,6 +450,25 @@ class Session:
         provider = self.config.provider
         return request_budget_for(provider.context_token_limit(self.settings.max_context_tokens), provider.output_token_budget())
 
+    def context_fill(self) -> Json:
+        """How full the window is, in the terms the status bar reports it.
+
+        The provider-reported pair describes the last real request, so it wins when present and the
+        session's own estimate stands in before any request exists -- the same precedence
+        `StatusBar.fragments` applies, which is what keeps the tool's answer and the status row from
+        disagreeing about the same moment.
+        """
+        usage = self.usage
+        reported = bool(usage.last_prompt_tokens and usage.last_prompt_budget)
+        budget = usage.last_prompt_budget if reported else self.request_token_budget()
+        used = usage.last_prompt_tokens if reported else self.state.context_tokens
+        return {
+            "percent": usage.context_percent(self.state.context_percent),
+            "used": used,
+            "budget": budget,
+            "remaining": max(0, budget - used),
+        }
+
     def data_path(self, *parts: str) -> str:
         root = os.path.expanduser(self.config.data_dir)
         return os.path.abspath(os.path.join(root if os.path.isabs(root) else os.path.join(self.cwd, root), *parts))
@@ -566,6 +588,50 @@ class Session:
     def clear_quick_hints(self) -> None:
         self.quick_hints = ()
 
+    def request_context_reset(self) -> bool:
+        """Ask for the conversation to be dropped when the running turn settles.
+
+        A turn is a transaction (DESIGN.md, "A turn, and its three endings"): clearing history from
+        inside a tool batch would leave the assistant message whose calls are still being answered
+        without its results, and every provider rejects that replay. So the request is recorded here
+        and applied at settlement, by `apply_context_reset`; a batch that asks twice is one reset.
+        """
+        first = not self.context_reset_requested
+        self.context_reset_requested = True
+        return first
+
+    def apply_context_reset(self) -> bool:
+        """Start a new model window with a frozen working-state checkpoint; retain the transcript.
+
+        Note state, compacted segments, stored tool results, jobs, source views, the code index and
+        the workspace are not conversation and survive untouched. The usage snapshot goes with the
+        conversation it described: leaving it in place would keep the status bar and
+        `Context(remaining)` reporting a full window for a context that is now empty.
+        """
+        if not self.context_reset_requested or self._active_turn_messages or self._active_transcript_messages:
+            return False
+        self.context_reset_requested = False
+        self.messages.clear()
+        self.state.summary = ""
+        checkpoint = self.state_checkpoint_event()
+        checkpoint[SESSION_EVENT_KEY] = "context_reset"
+        checkpoint["content"] = "Context reset. Working-state snapshot below; later Note calls supersede it. Transcript is retained.\n" + checkpoint["content"]
+        if activity := self.recent_activity():
+            checkpoint["content"] += "\n\n" + activity
+        if self.history:
+            checkpoint["content"] += f"\nRecallable history: {self.history[0].key}..{self.history[-1].key}; use RecallContext."
+        self.messages.append(checkpoint)
+        self.transcript_messages.append({"role": "notice", "content": "Context reset."})
+        self.state.turn_messages = 0
+        self.state.context_percent = 0
+        self.state.context_tokens = 0
+        usage = self.usage
+        usage.last_prompt_tokens = 0
+        usage.last_prompt_budget = 0
+        usage.last_cached_prompt_tokens = 0
+        usage.last_cache_write_prompt_tokens = 0
+        return True
+
     # The session owns the edit records; `diffs` owns what they mean. Both entry points pass the
     # records and the working directory and read nothing else off the session, which is what let
     # the reconstruction move out whole.
@@ -583,9 +649,11 @@ class Session:
         self.tool_errors.append(ToolErrorRecord(key, name, Text.value(list(args)), " ".join(Text.clean(error).split())))
         self.tool_errors = self.tool_errors[-5:]
 
-    def record_command_result(self, command: str, exit_code: int) -> None:
+    def record_command_result(self, command: str, exit_code: int, *, workdir: str | None = None) -> None:
         command = Text.clean(command)
-        record = {"command": command if len(command) <= 320 else command[:317] + "...", "exit_code": exit_code}
+        record: Json = {"command": command if len(command) <= 320 else command[:317] + "...", "exit_code": exit_code}
+        if workdir is not None:
+            record["workdir"] = Text.clean(workdir)[:240]
         self.recent_commands = [item for item in self.recent_commands if item != record]
         self.recent_commands.append(record)
         self.recent_commands = self.recent_commands[-10:]
@@ -606,7 +674,8 @@ class Session:
         if self.recent_commands:
             rows.append("Recent command results (oldest to newest):")
             for item in self.recent_commands[-10:]:
-                rows.append(f"- {json.dumps(item['command'], ensure_ascii=False)}: exit code {item['exit_code']}")
+                directory = f" (workdir {json.dumps(item['workdir'], ensure_ascii=False)})" if item.get("workdir") else ""
+                rows.append(f"- {json.dumps(item['command'], ensure_ascii=False)}{directory}: exit code {item['exit_code']}")
         errors = list(
             dict.fromkeys(
                 (error.name[:80], error.error[:240])

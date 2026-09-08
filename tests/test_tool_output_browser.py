@@ -1,6 +1,7 @@
 """tool output browser (split from tests/test_command_ui.py)."""
 
 import asyncio
+import json
 import os
 import shutil
 import time
@@ -545,3 +546,21 @@ async def test_tool_output_browser_defers_job_log_read_until_the_row_opens(tmp_p
     await tool_output_viewer(command_loop)
 
     assert reads == []
+
+
+def test_job_write_browser_retains_exact_input_even_without_the_process(tmp_path):
+    command_loop = loop(tmp_path)
+    chars = 'answer\n\t"quoted"\x04'
+    command_loop.session.store_tool_result("Job", [{"action": "write", "job": "job.9", "chars": chars}], "Wrote input")
+    view = job_view(command_loop, command_loop.session.tool_records[-1])
+    assert json.loads(view.text) == chars
+    assert view.lexer == "json" and ("job", "job.9") in view.rows
+    assert view.result == "Wrote input"
+
+
+def test_bash_browser_keeps_workdir_even_without_output(tmp_path):
+    command_loop = loop(tmp_path)
+    command_loop.session.store_tool_result("Bash", ["true", " sub "], Tool.process_result("BashToolResult", 0, "", ""))
+    view = modals_mod.bash_view(command_loop, command_loop.session.tool_records[-1])
+    assert view is not None and view.text == "true"
+    assert ("workdir", '" sub "') in view.rows

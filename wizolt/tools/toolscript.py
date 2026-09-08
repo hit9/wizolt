@@ -154,10 +154,10 @@ class ToolScript(Tool):
     def params_schema(cls) -> Json:
         # fmt: off
         return cls.object_schema({
-            "action": {"type": "string", "enum": ["describe", "call"], "description": "Describe tool shapes or run code"},
+            "action": {"type": "string", "enum": ["describe", "call"]},
             "tools": {
                 "type": "array",
-                "items": {"type": "string", "description": 'a built-in tool name like "Read", or an MCP tool as "server.tool"'},
+                "items": {"type": "string", "description": '"Read", or an MCP tool as "server.tool"'},
                 "minItems": 1,
                 "description": "Tools to describe",
             },

@@ -397,3 +397,20 @@ async def test_tui_commands_print_output_immediately(tmp_path, monkeypatch):
     assert "/provider" in text
     assert "status marker" in text
     assert "wizolt-help" in text
+
+
+def test_reset_pending_divider_preserves_the_working_phase(tmp_path):
+    from copy import deepcopy
+
+    command_loop = loop(tmp_path)
+    command_loop.tui = TuiApp()
+    command_loop.tui.set_running("working")
+    command_loop.model_stream_kind = "output"
+    before = deepcopy(command_loop.agent.context.model_messages(command_loop.session.system_prompt))
+    assert "reset pending" not in fragment_list_to_text(command_loop.view.queue_divider_fragments())
+    command_loop.session.request_context_reset()
+    label = fragment_list_to_text(command_loop.view.queue_divider_fragments())
+    assert "responding" in label and "reset pending" in label
+    assert command_loop.agent.context.model_messages(command_loop.session.system_prompt) == before
+    command_loop.session.apply_context_reset()
+    assert "reset pending" not in fragment_list_to_text(command_loop.view.queue_divider_fragments())

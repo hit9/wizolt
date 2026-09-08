@@ -630,7 +630,11 @@ def test_tool_schemas_are_strict_for_high_risk_tools():
     assert bash_params["properties"]["command"]["pattern"] == r"^[\s\S]*\S[\s\S]*$"
     bash_description = BashTool.schema()["function"]["description"]
     assert "conditionals, loops, functions, pipelines, and multiline scripts" in bash_description
-    assert "if, loops, functions, and multiline scripts are valid" in bash_params["properties"]["command"]["description"]
+    # Said once. The parameter used to repeat that same list and the tool's "Bound noisy output",
+    # which is a whole sentence of the schema budget spent to tell the model what it just read.
+    assert "loops" not in bash_params["properties"]["command"]["description"]
+    # Where the command runs is part of the call, not remembered from an earlier one.
+    assert "workdir" in bash_params["properties"]
 
     edit_params = EditTool.schema()["function"]["parameters"]
     assert edit_params["required"] == ["path", "edits"]
@@ -650,9 +654,14 @@ def test_tool_schemas_are_strict_for_high_risk_tools():
 
     note_params = NoteTool.schema()["function"]["parameters"]
     assert "across context compaction" in NoteTool.schema()["function"]["description"]
-    assert "non-trivial work" in NoteTool.schema()["function"]["description"]
+    note_description = NoteTool.schema()["function"]["description"]
+    assert "non-trivial work" in note_description
+    # Both halves of the threshold, because only the negative half suppresses the reflex to open
+    # every task with a plan. Quantified rather than "when appropriate", which reads as "always".
+    assert "easiest quarter" in note_description and "single-step plan" in note_description
     assert "minItems" not in note_params["properties"]["replace_plan"]
-    assert note_params["properties"]["replace_plan"]["items"]["properties"]["status"]["enum"] == ["todo", "doing", "done", "blocked"]
+    status = note_params["properties"]["replace_plan"]["items"]["properties"]["status"]
+    assert status["enum"] == ["todo", "doing", "done", "blocked"]
     assert "minItems" not in note_params["properties"]["replace_known"]
 
     search_params = SearchTool.schema()["function"]["parameters"]
@@ -998,3 +1007,17 @@ async def test_search_hydration_cancellation_quiesces_before_reporting(tmp_path,
     with pytest.raises(asyncio.CancelledError):
         await search
     assert finished.is_set()
+
+
+def test_search_points_structural_questions_at_the_index():
+    """Where the wrong tool is chosen is where the correction has to be.
+
+    "Who calls this" is a structural question. Answered with a regex it costs several rounds of
+    false positives before the model gives up and asks the index, so Search says so itself rather
+    than relying on the model to infer the split from two capability lists.
+    """
+    from wizolt.tools.search import SearchTool
+
+    description = SearchTool.schema()["function"]["description"]
+    assert "InspectCode" in description
+    assert all(word in description for word in ("symbols", "callers", "refs"))

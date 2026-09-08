@@ -107,6 +107,19 @@ def _status_context_line(tokens: int, budget: int, percent: int) -> str:
     return f"`{progress_bar(tokens, budget)}` `~{Text.abbreviate_count(tokens)} / {Text.abbreviate_count(budget)}` (`{percent}%`)"
 
 
+def _context_reading(loop: CommandLoop) -> tuple[int, int, int]:
+    """(tokens, budget, percent): the one reading `/status` and `/context` both report.
+
+    Recomputed from the current projection rather than read off `state.context_percent`, which is
+    not persisted: a resumed session would otherwise report an empty window while its fixed prefix
+    already fills part of one. The provider's last real request wins when there is one -- `/config`
+    reports the configured max_context_tokens immediately, while these describe one real request
+    and only catch up after the next one."""
+    loop.agent.context.update_current_tokens(loop.session.system_prompt)
+    reading = loop.session.context_fill()
+    return reading["used"], reading["budget"], reading["percent"]
+
+
 def _status_cache_line(counts: ModelUsage) -> str:
     # The read ratios carry the useful signal; the raw token pairs made this the one row that
     # wrapped on a normal terminal. Writes stay, but only when there were any.
@@ -211,15 +224,7 @@ def help(loop: CommandLoop, args: str) -> str:
 
 def status(loop: CommandLoop, args: str) -> str:
     usage = loop.session.usage
-    context_tokens = loop.agent.context.update_current_tokens(loop.agent.session.system_prompt)
-    context_budget = loop.agent.context.request_token_budget()
-    context_percent = usage.context_percent(loop.session.state.context_percent)
-    if usage.last_prompt_tokens and usage.last_prompt_budget:
-        # Display the provider-reported tokens and the budget of the last request alongside the
-        # percentage; `/config` reports the configured max_context_tokens immediately, while these
-        # describe one real request and only catch up after the next one.
-        context_tokens = usage.last_prompt_tokens
-        context_budget = usage.last_prompt_budget
+    context_tokens, context_budget, context_percent = _context_reading(loop)
     index = CodeIndex(loop.session)
     index_status, index_message = index.status(check=False)
     loop.schedule_index_freshness()
@@ -816,6 +821,30 @@ async def compact(loop: CommandLoop, args: str) -> str | LogBlock | None:
     return (
         f"Compacted context: messages {before} -> {len(loop.session.messages)}, "
         f"prior summary inserted, ctx {loop.session.state.context_percent}%{fallback_note}"
+    )
+
+
+async def context_command(loop: CommandLoop, args: str) -> str:
+    """`/context`: report the window's fill, or `/context reset` to drop the conversation now.
+
+    The manual half of the `Context` tool: a person reaches for this when the model has filled its
+    window with exploration it has already distilled into `Note`, and wants the same reset without
+    asking for it in a message."""
+    action = args.strip() or "remaining"
+    if action == "reset":
+        loop.session.request_context_reset()
+        loop.session.apply_context_reset()
+        loop.agent.context.update_current_tokens(loop.session.system_prompt)
+        # The reset rewrote history in place. Persist it now: leaving the session without running
+        # another turn would otherwise resume from the conversation that was just dropped.
+        await loop.session.save_snapshot()
+        return "Context reset."
+    if action != "remaining":
+        return "Usage: /context [reset]"
+    tokens, budget, percent = _context_reading(loop)
+    return (
+        f"Context {percent}% used: ~{Text.abbreviate_count(tokens)} / "
+        f"{Text.abbreviate_count(budget)} tokens, ~{Text.abbreviate_count(max(0, budget - tokens))} left"
     )
 
 

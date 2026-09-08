@@ -68,6 +68,19 @@ newest — and `/compact log seg.N` prints that summary without the viewer.
 Neither form prints the stored excerpt — that is the agent's to retrieve — and a pass that finds
 nothing to evict stores no segment at all, so the compaction count can exceed the segment count.
 
+### Starting a new window
+
+`/context reset` clears the model's conversation and starts a fresh window straight away. `Context(reset)`
+asks for the same thing, but the new window begins after the current turn ends, and the rest of
+that turn goes with the conversation — ask for it when the turn is nearly finished.
+The working divider shows `reset pending` until then. Once the new window starts, a brief
+`Context reset.` notice appears in the transcript and remains visible when you resume.
+
+The new window starts with a snapshot of Note and recent activity, plus a pointer to recallable
+history. The visible transcript, including what a resume replays, remains intact. Stored tool
+results, background jobs, the workspace and the code index also remain. Earlier model messages
+and compaction summaries leave the active window. A scheduled reset survives a saved-session resume.
+
 ### When a summary does not arrive
 
 Compaction always makes room, even when the summary request fails: the same messages leave the
