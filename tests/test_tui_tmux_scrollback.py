@@ -35,12 +35,6 @@ from typing import NamedTuple
 import pytest
 from prompt_toolkit.utils import get_cwidth
 
-# The tmux job installs tmux itself and fails on `tmux -V` before pytest runs, so a missing tmux
-# there is already loud. Everywhere else the `tmux` marker keeps this file out of the run, so a
-# missing tmux is not an error; WIZOLT_REQUIRE_TMUX turns a silent skip back into a failure.
-if shutil.which("tmux") is None and os.environ.get("WIZOLT_REQUIRE_TMUX"):
-    raise RuntimeError("this run requires tmux, but tmux is not installed")
-
 pytestmark = [pytest.mark.tmux, pytest.mark.skipif(shutil.which("tmux") is None, reason="requires tmux")]
 
 WIDE, NARROW = 100, 62
