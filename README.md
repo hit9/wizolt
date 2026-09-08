@@ -30,18 +30,16 @@ Wizolt is the former minacode, which began as the single-file nanocode. The impl
 
 ## Highlights
 
-- **Worker delegation:** hand a bounded task to a second in-process session on its own provider with `/worker`; the `Delegate` tool keeps worker context across delegations until reset.
-- **Forced reply language:** `/language` or `[runtime] language` pins the reply language for the session.
-- **Smarter retries:** exponential backoff with jitter and provider `Retry-After`, shown as a live `retrying` phase with a countdown.
-- **Prompt-cache aware:** stable request prefixes let supported providers reuse work and can reach 90–99% cache hit rates; `/status` shows the reported result.
-- **Code navigation:** jump to definitions, callers, and implementations with a searchable code index.
-- **Live follow-ups:** type while the agent works; `Enter` queues a message for the next model step, while `Ctrl-C` discards a draft or interrupts the task once the input is empty.
-- **Evidence-checked edits:** patch from a numbered source view or exact unique text; stale and ambiguous targets are refused.
-- **Resumable sessions:** conversation, tool calls, diffs, and working memory survive `-c` or `--resume`.
-- **Built-in diff viewer:** `/diff` shows the latest round and the net session result.
-- **MCP and skills:** connect Model Context Protocol servers and load Markdown instruction packs on demand.
-- **Provider-side web search:** opt in to a provider's own search tool (OpenAI, Qwen, Anthropic, Z.AI) and see each search and its sources in the transcript.
-- **Provider compatibility:** OpenAI-compatible APIs and Anthropic.
+- **Prompt caching:** stable request prefixes help supported providers reuse earlier work, including during compaction. Check reported cache usage with `/status`.
+- **Continuity for long tasks:** automatic compaction carries working notes and recent tool activity forward, with older details available for recall. Resume saved conversation, tool history, and diffs with `-c` or `--resume`.
+- **Code navigation:** find definitions, callers, references, and implementations through a searchable code index.
+- **Precise edits:** target a numbered source view or an exact, unique text match. Stale or ambiguous targets are rejected before the edit is applied.
+- **Review changes in place:** `/diff` shows both the latest round's changes and the net result of the session, without leaving the terminal.
+- **Steer work as it happens:** send a follow-up with `Enter`, hold a separate task with `Tab`, or interrupt with `Ctrl-C` once the draft is empty.
+- **Background commands:** let long-running commands continue as jobs, inspect their output, and wait for or stop them when needed.
+- **Worker delegation:** give a bounded task to a worker with its own provider and reusable context. Configure it with `/worker`; the agent delegates through `Delegate`.
+- **Choose your provider:** use OpenAI-compatible Chat Completions or Responses APIs, or Anthropic Messages. Optional provider-side web search shows searches and sources in the transcript.
+- **MCP and skills:** connect external tools through MCP and load reusable Markdown instructions on demand.
 
 ## Install
 
