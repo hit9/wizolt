@@ -1005,3 +1005,17 @@ async def test_search_hydration_cancellation_quiesces_before_reporting(tmp_path,
     with pytest.raises(asyncio.CancelledError):
         await search
     assert finished.is_set()
+
+
+def test_search_points_structural_questions_at_the_index():
+    """Where the wrong tool is chosen is where the correction has to be.
+
+    "Who calls this" is a structural question. Answered with a regex it costs several rounds of
+    false positives before the model gives up and asks the index, so Search says so itself rather
+    than relying on the model to infer the split from two capability lists.
+    """
+    from wizolt.tools.search import SearchTool
+
+    description = SearchTool.schema()["function"]["description"]
+    assert "InspectCode" in description
+    assert all(word in description for word in ("symbols", "callers", "refs"))
