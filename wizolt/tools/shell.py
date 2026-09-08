@@ -404,9 +404,12 @@ class BashTool(Tool):
 
 class JobTool(Tool):
     NAME = "Job"
-    DESCRIPTION = "Start, inspect, wait for, list, or kill background shell jobs."
+    DESCRIPTION = "Start, inspect, wait for, list, kill, or write stdin to background shell jobs. Writing drives a REPL or answers a prompt across calls."
     MUTATES = True
-    ACTIONS: ClassVar[tuple[str, ...]] = ("start", "status", "wait", "list", "kill")
+    ACTIONS: ClassVar[tuple[str, ...]] = ("start", "status", "wait", "list", "kill", "write")
+    # One write, bounded. stdin is a pipe, so a write larger than the pipe buffer blocks until
+    # the program drains it; the agent must not be parked on that.
+    MAX_WRITE_CHARS: ClassVar[int] = 8192
     MAX_JOBS: ClassVar[int] = 8
     DEFAULT_LIMIT: ClassVar[int] = 4096
     # How long one wait may hold the agent. Backgrounding hands control back and waiting is the one
@@ -435,9 +438,10 @@ class JobTool(Tool):
     def params_schema(cls) -> Json:
         # fmt: off
         return cls.object_schema({
-            "action": {"type": "string", "enum": list(cls.ACTIONS), "description": "Operation to perform"},
-            "command": {"type": "string", "minLength": 1, "description": "Shell command to run for action=start"},
-            "job": {"type": "string", "description": "Job id for action=status, wait, or kill"},
+            "action": {"type": "string", "enum": list(cls.ACTIONS)},
+            "command": {"type": "string", "minLength": 1, "description": "Command to run for start"},
+            "job": {"type": "string", "description": "Job id"},
+            "chars": {"type": "string", "description": "stdin text for write; end with a newline to submit a line"},
             "timeout": {"type": "integer", "minimum": 0, "description": f"Wait seconds; default {cls.DEFAULT_WAIT}s, capped at {cls.MAX_WAIT}s"},
             "limit": {"type": "integer", "minimum": 1, "description": "Output character limit; default 4096"},
         }, ["action"])
@@ -464,7 +468,10 @@ class JobTool(Tool):
         return action == "wait" or (action == "status" and timeout > 0)
 
     def needs_confirmation(self) -> bool:
-        return self.resolved_action(self.payload()) in {"start", "kill", "wait"}
+        # `write` is confirmed for the same reason `start` is: answering a running program's prompt
+        # is how a destructive action gets approved, and the text goes straight through. codex gates
+        # its own stdin writes the same way.
+        return self.resolved_action(self.payload()) in {"start", "kill", "wait", "write"}
 
     def short_args(self) -> list[str]:
         payload = self.payload()
@@ -493,6 +500,8 @@ class JobTool(Tool):
             return self._list()
         if action == "kill":
             return await self._kill(payload)
+        if action == "write":
+            return self._write(payload)
         raise ToolError(f"unhandled action: {action!r}")
 
     def _start(self, payload: Json) -> str:
@@ -516,11 +525,47 @@ class JobTool(Tool):
         proc = subprocess.Popen(
             ["bash", "-lc", f"{{ {command}; }} > {shlex.quote(log_path)} 2>&1"],
             cwd=self.session.cwd,
-            stdin=subprocess.DEVNULL,
+            # A pipe rather than DEVNULL: a job the agent can answer is the difference between
+            # driving a REPL, a debugger or a prompting CLI and re-running a script to guess at
+            # what it wanted. Programs that detect a non-tty stay in their non-interactive mode,
+            # which suits a caller that reads output rather than a prompt.
+            stdin=subprocess.PIPE,
             start_new_session=True,
         )
         self.session.jobs[job_id] = BackgroundJob(id=job_id, command=command, process=proc, log_path=log_path, started_at=time.monotonic())
         return f"Started {job_id}: {command}"
+
+    def _write(self, payload: Json) -> str:
+        """Send text to a running job's stdin.
+
+        The counterpart to `start`: a job whose prompts can be answered is what makes a REPL, a
+        debugger or a migration that asks for confirmation usable at all. Output is not returned
+        here -- the job's own log is read with `status`, which already bounds and formats it, so a
+        write stays a write and the caller decides when to look.
+        """
+        job = self._resolve_job(payload)
+        chars = payload.get("chars")
+        if not isinstance(chars, str) or not chars:
+            raise ToolError("write requires non-empty chars; use status to read output without writing")
+        if len(chars) > self.MAX_WRITE_CHARS:
+            raise ToolError(f"chars is {len(chars)} characters; limit is {self.MAX_WRITE_CHARS}")
+        job.update_status()
+        if job.status != "running":
+            raise ToolError(f"{job.id} already exited with code {job.exit_code}; nothing reads its stdin")
+        stream = job.process.stdin
+        if stream is None or stream.closed:
+            raise ToolError(f"{job.id} has no open stdin")
+        try:
+            stream.write(chars.encode())
+            stream.flush()
+        except (BrokenPipeError, OSError) as error:
+            # The program closed stdin or died between the status check above and this write. Say
+            # which, because "wrote to a dead job" and "this program does not read stdin" call for
+            # different next moves.
+            job.update_status()
+            detail = f"exited with code {job.exit_code}" if job.status != "running" else "closed its stdin"
+            raise ToolError(f"{job.id} {detail}; write failed ({error.__class__.__name__})") from None
+        return f"Wrote {len(chars)} characters to {job.id} stdin"
 
     @staticmethod
     def requested_timeout(payload: Json) -> int:

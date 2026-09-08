@@ -988,3 +988,68 @@ def test_a_command_just_over_the_line_budget_is_left_whole(tmp_path):
 
     assert "more lines" not in display
     assert "line_3" in display
+
+
+async def test_job_write_drives_a_program_that_reads_stdin(tmp_path):
+    """A job that can be answered is the point of stdin: without it a prompting program is a
+    dead end, and the model can only re-run a script to guess what it wanted."""
+    s = session(tmp_path)
+    await JobTool(s, [{"action": "start", "command": "read first; read second; echo got:$first:$second"}]).call()
+
+    assert await JobTool(s, [{"action": "write", "job": "job.1", "chars": "alpha\n"}]).call() == "Wrote 6 characters to job.1 stdin"
+    await JobTool(s, [{"action": "write", "job": "1", "chars": "beta\n"}]).call()
+    finished = await JobTool(s, [{"action": "wait", "job": "job.1"}]).call()
+
+    assert "got:alpha:beta" in finished
+
+
+async def test_job_write_drives_a_repl_across_calls(tmp_path):
+    """State persists between writes, which is what a fresh `bash -lc` per Bash call cannot do."""
+    s = session(tmp_path)
+    await JobTool(s, [{"action": "start", "command": f"{shlex.quote(sys.executable)} -u -i 2>&1"}]).call()
+
+    await JobTool(s, [{"action": "write", "job": "job.1", "chars": "carried = 6 * 7\n"}]).call()
+    await JobTool(s, [{"action": "write", "job": "job.1", "chars": "print('answer', carried)\n"}]).call()
+    await JobTool(s, [{"action": "write", "job": "job.1", "chars": "exit()\n"}]).call()
+    finished = await JobTool(s, [{"action": "wait", "job": "job.1"}]).call()
+
+    assert "answer 42" in finished
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({"action": "write", "job": "job.1"}, "non-empty chars"),
+        ({"action": "write", "job": "job.1", "chars": ""}, "non-empty chars"),
+        ({"action": "write", "job": "job.1", "chars": "x" * (JobTool.MAX_WRITE_CHARS + 1)}, "limit is"),
+        ({"action": "write"}, "job id required"),
+        ({"action": "write", "job": "job.99", "chars": "x"}, "unknown job"),
+    ],
+)
+async def test_job_write_validation_is_actionable(tmp_path, payload, message):
+    s = session(tmp_path)
+    await JobTool(s, [{"action": "start", "command": "read ignored"}]).call()
+
+    with pytest.raises(ToolError, match=message):
+        await JobTool(s, [payload]).call()
+
+
+async def test_job_write_to_a_finished_job_says_so(tmp_path):
+    """"Wrote to a dead job" and "this program ignores stdin" need different next moves, so the
+    error names which one happened rather than surfacing a bare BrokenPipeError."""
+    s = session(tmp_path)
+    await JobTool(s, [{"action": "start", "command": "true"}]).call()
+    await JobTool(s, [{"action": "wait", "job": "job.1"}]).call()
+
+    with pytest.raises(ToolError, match="already exited with code 0"):
+        await JobTool(s, [{"action": "write", "job": "job.1", "chars": "late\n"}]).call()
+
+
+def test_job_write_is_confirmed_and_never_echoes_what_was_written(tmp_path):
+    """Answering a prompt is how a destructive action gets approved, so it is gated like `start`.
+    The preview names the job, not the text, which may carry a secret or a whole file."""
+    tool = JobTool(session(tmp_path), [{"action": "write", "job": "job.1", "chars": "sudo-password\n"}])
+
+    assert tool.needs_confirmation()
+    assert tool.short_args() == ["write", "job.1"]
+    assert "sudo-password" not in " ".join(tool.short_args())
