@@ -5,8 +5,8 @@
 ### Added
 
 - `Bash` takes an optional `workdir`, so a command can run in a subdirectory without prefixing
-  `cd`. It applies to that call only: a working directory that outlived its command would change
-  what later commands mean with nothing on screen to show it.
+  `cd`. It applies to that call only and remains visible in approvals, recent activity and
+  automatically promoted jobs.
 - `Job` can write to a running job's stdin, so a REPL, a debugger, or a command that asks a
   question can be answered instead of restarted. Opt in with `stdin` on `Job(start)`; jobs
   without it keep their previous behaviour.

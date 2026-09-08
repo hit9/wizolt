@@ -60,6 +60,7 @@ class BashTool(Tool):
         self._process_lock = threading.Lock()
         self._process: subprocess.Popen[bytes] | None = None
         self.exit_code: int | None = None
+        self.execution_workdir: str | None = None
 
     def request_stop(self) -> None:
         """Kill the command's whole process group; the runner then waits for `call()` to reap it."""
@@ -199,8 +200,8 @@ class BashTool(Tool):
             raise ToolError("Bash command must be non-empty")
         # `workdir` is a second positional rather than a dict payload so existing callers, stored
         # results and ToolScript's `call("Bash", [cmd])` keep working unchanged.
-        workdir = str(payload.get("workdir") or "").strip()
-        return [command, workdir] if workdir else [command]
+        workdir = str(payload.get("workdir") or "")
+        return [command, workdir] if workdir.strip() else [command]
 
     def command(self) -> str:
         command = self.strings(min_count=1, max_count=2)[0]
@@ -209,16 +210,10 @@ class BashTool(Tool):
         return command
 
     def workdir(self) -> str:
-        """Where this command runs: the workspace, or the directory the call asked for.
-
-        Stated per call rather than remembered between them. A `cd` that outlives its command
-        silently changes what every later command means, and the model cannot see that it
-        happened; naming the directory keeps the question answerable from the call alone. codex
-        makes the same choice -- its exec tool takes `workdir` and has no persistent shell.
-        """
+        """Resolve this call's directory without changing the session's working directory."""
         args = self.strings(min_count=1, max_count=2)
-        requested = args[1].strip() if len(args) > 1 else ""
-        if not requested:
+        requested = args[1] if len(args) > 1 else ""
+        if not requested.strip():
             return self.session.cwd
         resolved = os.path.abspath(os.path.join(self.session.cwd, os.path.expanduser(requested)))
         if not os.path.isdir(resolved):
@@ -228,19 +223,29 @@ class BashTool(Tool):
 
     def short_args(self) -> list[str]:
         args = self.strings(min_count=1, max_count=2)
-        # The directory is part of what is being approved: the same command means different things
-        # in different trees, so a preview that hides it hides the risk.
-        return [args[0], *(f"in {args[1]}" for _ in (0,) if len(args) > 1 and args[1].strip())]
+        # Put the directory first so a long command cannot clip it out of the approval title.
+        if len(args) > 1 and args[1].strip():
+            return [f"in {json.dumps(args[1], ensure_ascii=False)}", self.command()]
+        return [self.command()]
+
+    def approval_view(self) -> ApprovalView | None:
+        args = self.strings(min_count=1, max_count=2)
+        if len(args) > 1 and args[1].strip():
+            return ApprovalView("command", self.command(), "bash", [("workdir", json.dumps(args[1], ensure_ascii=False))])
+        return None
 
     async def call(self) -> str:
         command = self.command()
         bash = shutil.which("bash") or "bash"
         proc = None
         try:
+            cwd = self.workdir()
+            # Freeze before execution: the command may remove or rename its own directory.
+            self.execution_workdir = cwd if len(self.args) > 1 and str(self.args[1]).strip() else None
             # Keep a Popen handle because an auto-promoted command must outlive this event loop;
             # all potentially blocking pipe I/O below is event-loop driven.
             proc = subprocess.Popen(  # noqa: ASYNC220
-                [bash, "-lc", command], cwd=self.workdir(), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
+                [bash, "-lc", command], cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
             )
             with self._process_lock:
                 self._process = proc
@@ -368,6 +373,7 @@ class BashTool(Tool):
         job = BackgroundJob(
             id=job_id,
             command=self.command(),
+            workdir=self.execution_workdir or "",
             process=proc,
             log_path="",
             started_at=time.monotonic() - self.session.settings.bash_wait_timeout,
@@ -706,6 +712,8 @@ class JobTool(Tool):
         ]
         if job.exit_code is not None:
             lines.append(f"Exit code: {job.exit_code}")
+        if job.workdir:
+            lines.append(f"Workdir: {json.dumps(job.workdir, ensure_ascii=False)}")
         if job.status == "running":
             # A wait that comes back while the job runs returns the same shape as one that comes
             # back because it finished. Without this the output below reads as the final result.

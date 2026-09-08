@@ -35,6 +35,7 @@ class BackgroundJob:
     stream_buffer: list[str] | None = None
     stream_lock: threading.Lock | None = None
     stream_truncated: bool = False
+    workdir: str = ""
 
     BUFFER_LIMIT: ClassVar[int] = 32 * 1024  # promoted-job tail cap in chars
 

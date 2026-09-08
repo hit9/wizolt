@@ -229,3 +229,25 @@ async def test_timed_out_command_settles_at_the_reported_exit_code(tmp_path):
     assert "exit_code: -1" in message and "timeout" in message
     # The receipt must agree with the result the model saw, not the SIGKILL behind it.
     assert s.recent_commands == [{"command": "sleep 5", "exit_code": -1}]
+
+
+async def test_command_receipts_keep_workdir_across_compaction_and_resume(tmp_path):
+    s = session(tmp_path)
+    s.settings.yolo = True
+    ctx = ContextManager(s)
+    runner = ToolRunner(s, ctx, output_fn=lambda _: None)
+    for directory in ("one", "two"):
+        (tmp_path / directory).mkdir()
+        await runner.run([call("Bash", ["true", directory])])
+    assert len(s.recent_commands) == 2
+    assert [record["workdir"] for record in s.recent_commands] == [str(tmp_path / name) for name in ("one", "two")]
+    # Recording must not try to validate a directory after the command removed it.
+    await runner.run([call("Bash", ["rmdir ../one", "one"])])
+    assert s.recent_commands[-1]["exit_code"] == 0
+    activity = s.recent_activity()
+    ctx.apply_compaction({"summary": "continue"}, [], compacted=[])
+    assert activity in s.messages[0]["content"]
+    await s.save_snapshot()
+    restored = SessionSnapshotStore.load(s.uid, s.config, s.settings, cwd=s.cwd)
+    assert restored.recent_commands == s.recent_commands
+    assert restored.recent_activity() == activity

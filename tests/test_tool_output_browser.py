@@ -556,3 +556,11 @@ def test_job_write_browser_retains_exact_input_even_without_the_process(tmp_path
     assert json.loads(view.text) == chars
     assert view.lexer == "json" and ("job", "job.9") in view.rows
     assert view.result == "Wrote input"
+
+
+def test_bash_browser_keeps_workdir_even_without_output(tmp_path):
+    command_loop = loop(tmp_path)
+    command_loop.session.store_tool_result("Bash", ["true", " sub "], Tool.process_result("BashToolResult", 0, "", ""))
+    view = modals_mod.bash_view(command_loop, command_loop.session.tool_records[-1])
+    assert view is not None and view.text == "true"
+    assert ("workdir", '" sub "') in view.rows

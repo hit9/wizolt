@@ -110,6 +110,8 @@ is in parentheses.
   because checkpoints and Note results are scanned for ids when views and results are pruned.
   Quoted paths and commands still decode to their original values; never replace digits in a
   real filename with a placeholder. Historical ids in activity may already have expired.
+  Explicit Bash working directories are frozen at execution and retained with command receipts
+  and promoted jobs. Equal commands in different directories are different observations.
   This borrows Codex's committed-change evidence principle, not its model-driven cross-session
   memory pipeline.
 

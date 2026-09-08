@@ -583,9 +583,11 @@ class Session:
         self.tool_errors.append(ToolErrorRecord(key, name, Text.value(list(args)), " ".join(Text.clean(error).split())))
         self.tool_errors = self.tool_errors[-5:]
 
-    def record_command_result(self, command: str, exit_code: int) -> None:
+    def record_command_result(self, command: str, exit_code: int, *, workdir: str | None = None) -> None:
         command = Text.clean(command)
-        record = {"command": command if len(command) <= 320 else command[:317] + "...", "exit_code": exit_code}
+        record: Json = {"command": command if len(command) <= 320 else command[:317] + "...", "exit_code": exit_code}
+        if workdir is not None:
+            record["workdir"] = Text.clean(workdir)[:240]
         self.recent_commands = [item for item in self.recent_commands if item != record]
         self.recent_commands.append(record)
         self.recent_commands = self.recent_commands[-10:]
@@ -606,7 +608,8 @@ class Session:
         if self.recent_commands:
             rows.append("Recent command results (oldest to newest):")
             for item in self.recent_commands[-10:]:
-                rows.append(f"- {json.dumps(item['command'], ensure_ascii=False)}: exit code {item['exit_code']}")
+                directory = f" (workdir {json.dumps(item['workdir'], ensure_ascii=False)})" if item.get("workdir") else ""
+                rows.append(f"- {json.dumps(item['command'], ensure_ascii=False)}{directory}: exit code {item['exit_code']}")
         errors = list(
             dict.fromkeys(
                 (error.name[:80], error.error[:240])
