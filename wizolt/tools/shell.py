@@ -58,6 +58,7 @@ class BashTool(Tool):
         super().__init__(session, args)
         self._process_lock = threading.Lock()
         self._process: subprocess.Popen[bytes] | None = None
+        self.exit_code: int | None = None
 
     def request_stop(self) -> None:
         """Kill the command's whole process group; the runner then waits for `call()` to reap it."""
@@ -313,6 +314,7 @@ class BashTool(Tool):
                     with contextlib.suppress(Exception):
                         pipe.close()
         stdout, stderr = "".join(stdout_parts), "".join(stderr_parts)
+        self.exit_code = proc.returncode
         if timed_out:
             stderr += ("\n" if stderr else "") + "timeout"
             return self.process_result("BashToolResult", -1, stdout, stderr)

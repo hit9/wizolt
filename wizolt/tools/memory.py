@@ -270,7 +270,7 @@ class RecallContextTool(Tool):
 
 class NoteTool(Tool):
     NAME = "Note"
-    DESCRIPTION = "Durable goal, plan, facts, and checks across context compaction. Use early and keep current for non-trivial work. Replacement fields replace; append_known adds facts."
+    DESCRIPTION = "Durable state across context compaction; keep current for non-trivial work. Replacement fields replace; append_known adds. View includes read-only activity history."
     STORES_RESULT = False
     MUTATES = True
 
@@ -288,7 +288,7 @@ class NoteTool(Tool):
         }, ["status", "text"])
         return cls.object_schema({
             "action": {"type": "string", "enum": ["view", "update"], "description": "Operation"},
-            "fields": {"type": "array", "items": {"type": "string", "enum": ["goal", "plan", "known", "check"]}, "minItems": 1, "description": "Fields to view; default all"},
+            "fields": {"type": "array", "items": {"type": "string", "enum": ["goal", "plan", "known", "check", "recent_activity"]}, "minItems": 1, "description": "Fields to view; default all available"},
             "set_goal": {"type": "string", "description": "Replace or clear goal"},
             "replace_plan": {"type": "array", "items": plan_item, "description": "Replace plan"},
             "append_known": {"type": "array", "items": {"type": "string"}, "description": "Append facts"},
@@ -357,8 +357,8 @@ class NoteTool(Tool):
         if not isinstance(raw_fields, list) or not raw_fields:
             raise ToolError("Note fields must be a non-empty array")
         fields = list(dict.fromkeys(str(field) for field in raw_fields))
-        if invalid := [field for field in fields if field not in {"goal", "plan", "known", "check"}]:
-            raise ToolError("Note fields must contain only goal, plan, known, check: " + ", ".join(invalid))
+        if invalid := [field for field in fields if field not in {"goal", "plan", "known", "check", "recent_activity"}]:
+            raise ToolError("Note fields must contain only goal, plan, known, check, recent_activity: " + ", ".join(invalid))
         state = self.session.state
         values: Json = {
             "goal": state.goal,
@@ -366,6 +366,9 @@ class NoteTool(Tool):
             "known": list(state.known),
             "check": state.check,
         }
+        values["recent_activity"] = self.session.recent_activity()
+        if "fields" not in data and values["recent_activity"]:
+            fields.append("recent_activity")
         return json.dumps({field: values[field] for field in fields}, ensure_ascii=False)
 
     def data(self) -> Json:

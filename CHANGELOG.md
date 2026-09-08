@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Compaction checkpoints and `Note(view)` include bounded recent file modifications, command
+  exit results, and tool failures to help resume work without relying entirely on manual notes.
+
 ## 0.43.3 - 2026-09-07
 
 ### Fixed

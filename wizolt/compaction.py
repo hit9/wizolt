@@ -286,7 +286,7 @@ class Compactor:
         if cut <= header:
             return None
         tail = compaction_tail(
-            state=ctx.session.state.format(),
+            state="\n\n".join(filter(None, (ctx.session.state.format(), ctx.session.recent_activity()))),
             previous_summary=ctx.session.state.summary,
             recent_count=min(self.COMPACT_RECENT_MESSAGES, len(compacted)),
         )
@@ -305,7 +305,7 @@ class Compactor:
     def input(self, messages: list[Json]) -> str:
         older, recent = self.parts_for(messages)
         return format_compaction_input(
-            state=self.ctx.session.state.format(),
+            state="\n\n".join(filter(None, (self.ctx.session.state.format(), self.ctx.session.recent_activity()))),
             previous_summary=self.ctx.session.state.summary,
             older_messages=self.ctx.messages_text(older),
             recent_messages=self.ctx.messages_text(recent),

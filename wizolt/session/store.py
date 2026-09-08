@@ -508,6 +508,7 @@ class SessionSnapshotStore:
             tool_records=tool_records,
             transcript_tool_records=transcript_tool_records,
             tool_errors=SessionSnapshotCodec.tool_errors(data.get("tool_errors", [])),
+            recent_commands=data.get("recent_commands", [])[-10:],
             turn_diffs=turn_diffs,
             transcript_turn_diffs=transcript_turn_diffs,
             transcript_incomplete=bool(data.get("_transcript_incomplete")),

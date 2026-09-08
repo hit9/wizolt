@@ -96,6 +96,18 @@ endings, and nothing else may append mid-turn.
 Each looks like a cleanup and breaks something the code depends on; the section naming the rule
 is in parentheses.
 
+- **Refreshing recent activity inside an existing checkpoint.** The activity receipt is frozen
+  alongside working state during compaction; normal requests never receive a changing activity
+  prefix. `Note(view)` may append a newer view. File/error observations reuse persisted receipts;
+  ten bounded foreground command receipts survive pruning of larger tool results. Record actual
+  exit codes at result settlement, never infer test success or Git commits from output. Cancelled,
+  refused and background-promoted commands have no completed foreground receipt. The projection
+  keeps up to ten distinct paths, ten command/outcome pairs and five tool errors, oldest to newest
+  within each group, with a 6,000-character body ceiling. It is historical evidence, not a complete
+  side-effect journal or current task status. No new retention roots or potentially expired result
+  references are introduced. This borrows Codex's committed-change evidence principle, not its
+  model-driven cross-session memory pipeline.
+
 - **Lifting a deferred import to module scope.** Startup latency is a feature; the SDKs cost ~0.8s
   and are not needed until the first request (Startup path).
 - **Rewriting stored history in a request transform.** Replay rules, image expansion, and schema
