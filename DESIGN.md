@@ -105,10 +105,13 @@ is in parentheses.
   background-promoted commands have no completed foreground receipt. The projection keeps up to
   ten distinct paths, ten command/outcome pairs and five tool errors, oldest to newest within each
   group, with a 6,000-character body ceiling. It is historical evidence, not a complete
-  side-effect journal or current task status. No new retention roots or potentially expired
-  result references are introduced: activity text is scrubbed of view.N/tr.N ids before freezing,
-  because a checkpoint is scanned for ids when views and results are pruned. This borrows Codex's
-  committed-change evidence principle, not its model-driven cross-session memory pipeline.
+  side-effect journal or current task status. No new retention roots are introduced:
+  dots in id-shaped activity text are JSON-escaped before freezing,
+  because checkpoints and Note results are scanned for ids when views and results are pruned.
+  Quoted paths and commands still decode to their original values; never replace digits in a
+  real filename with a placeholder. Historical ids in activity may already have expired.
+  This borrows Codex's committed-change evidence principle, not its model-driven cross-session
+  memory pipeline.
 
 - **Lifting a deferred import to module scope.** Startup latency is a feature; the SDKs cost ~0.8s
   and are not needed until the first request (Startup path).

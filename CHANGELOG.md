@@ -7,6 +7,11 @@
 - Compaction checkpoints and `Note(view)` include bounded recent file modifications, command
   exit results, and tool failures to help resume work without relying entirely on manual notes.
 
+### Fixed
+
+- Recent activity preserves numeric filenames such as `view.12.py` instead of replacing their
+  numbers with placeholders.
+
 ## 0.43.3 - 2026-09-07
 
 ### Fixed

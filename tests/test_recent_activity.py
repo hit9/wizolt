@@ -165,7 +165,7 @@ def test_note_activity_is_read_only_and_projection_has_a_total_budget(tmp_path):
     assert json.loads(NoteTool(s, [{"fields": ["recent_activity"]}]).call()) == {"recent_activity": before}
 
 
-async def test_frozen_activity_is_scrubbed_of_ids_and_pins_no_retention_root(tmp_path):
+async def test_frozen_activity_escapes_ids_and_pins_no_retention_root(tmp_path):
     (tmp_path / "one.py").write_text("hello\n")
     (tmp_path / "two.py").write_text("world\n")
     s = session(tmp_path)
@@ -179,14 +179,44 @@ async def test_frozen_activity_is_scrubbed_of_ids_and_pins_no_retention_root(tmp
     # records it names.
     await runner.run([call("Edit", ["two.py", view, [{"op": "replace", "start": 1, "end": 1, "content": "x\n"}]])])
     s.record_tool_error("-", "Recall", ["tr.7"], "ToolError: tr.7 is unknown or expired")
-    s.record_command_result("echo " + view, 0)
+    record = s.store_tool_result("Bash", ["echo evidence"], "evidence")
+    s.record_command_result(f"echo {view} {record}", 0)
     activity = s.recent_activity()
-    assert view not in activity and "view.N" in activity
-    assert "tr.7" not in activity and "tr.N" in activity
+    assert view not in activity and r"view\u002e" in activity
+    assert "tr.7" not in activity and r"tr\u002e7" in activity
+    assert record in s.tool_results
     ctx.apply_compaction({"summary": "mismatch"}, [], compacted=s.messages)
     checkpoint = s.messages[0]["content"]
-    assert view not in checkpoint and "view.N" in checkpoint
+    assert view not in checkpoint and r"view\u002e" in checkpoint
     assert view not in s.source_views
+    assert record not in s.tool_results
+
+
+async def test_activity_preserves_id_shaped_filenames_commands_and_errors(tmp_path):
+    s = session(tmp_path)
+    path = "fixtures/view.12.py"
+    command = r'cat "fixtures/tr.7.txt" fixtures/view.12.py literal\u002e'
+    error = 'ToolError: missing "fixtures/tr.7.txt"'
+    s.store_turn_diff("edit", 1, path, "-old\n+new")
+    s.record_command_result(command, 1)
+    s.record_tool_error("error", "Bash", [command], error)
+    activity = s.recent_activity()
+    rows = [row for row in activity.splitlines() if row.startswith("- ")]
+    assert json.loads(rows[0][2:]) == path
+    assert json.loads(rows[1][2:].rsplit(": exit code ", 1)[0]) == command
+    assert json.loads(rows[2].split(": ", 1)[1]) == error
+    assert s.turn_diffs[-1].path == path
+    assert s.recent_commands[-1]["command"] == command
+    note = NoteTool(s, [{"fields": ["recent_activity"]}]).call()
+    assert json.loads(note)["recent_activity"] == activity
+    assert "view.12" not in note and "tr.7" not in note
+    ctx = ContextManager(s)
+    ctx.apply_compaction({"summary": "continue"}, [], compacted=[])
+    assert activity in s.messages[0]["content"]
+    await s.save_snapshot()
+    restored = SessionSnapshotStore.load(s.uid, s.config, s.settings, cwd=s.cwd)
+    assert restored.recent_activity() == activity
+    assert activity in restored.messages[0]["content"]
 
 
 async def test_timed_out_command_settles_at_the_reported_exit_code(tmp_path):

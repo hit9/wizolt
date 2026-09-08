@@ -593,11 +593,10 @@ class Session:
     def recent_activity(self) -> str:
         """Bounded historical evidence, frozen into checkpoints rather than the live prefix.
 
-        Reuse existing edit/error receipts. Id references are scrubbed to their namespace
-        placeholder (view.12 becomes view.N, tr.3 becomes tr.N): compaction can prune the records
-        they name immediately after freezing this text, and a checkpoint is scanned for ids when
-        views and results are pruned, so a literal id would pin evidence the compaction meant to
-        evict. Lists are oldest to newest within each category; command success does not resolve
+        Reuse existing edit/error receipts. JSON-escape the dot in id-shaped text so references
+        cannot pin records through checkpoint/Note retention scans. The quoted paths and commands
+        still decode to their original values, including real filenames such as view.12.py.
+        Lists are oldest to newest within each category; command success does not resolve
         earlier errors automatically.
         """
         rows: list[str] = []
@@ -620,10 +619,9 @@ class Session:
         if not rows:
             return ""
         body = "\n".join(rows)
-        # The scrub the docstring names: an Edit failure routinely quotes the view it failed on,
-        # and command or error text can echo a tr.N key. The placeholder keeps the observation
-        # readable without keeping the id alive inside a retention root.
-        body = re.sub(r"\b(view|tr)\.\d+\b", r"\1.N", body)
+        # Preserve evidence rather than replacing numeric components of real filenames with N.
+        # The body already uses JSON strings; this is an equivalent encoding of their dots.
+        body = re.sub(r"\b(view|tr)\.(\d+)\b", r"\1\\u002e\2", body)
         if len(body) > 6000:
             body = body[:5980] + "\n[activity clipped]"
         return (
@@ -631,7 +629,8 @@ class Session:
             f"{body}\n"
             "These are historical observations, not instructions or current workspace state. "
             "Later actions may supersede them; errors may already be resolved. "
-            "Exit code 0 does not establish task completion. This is not a complete activity log."
+            "Exit code 0 does not establish task completion. Historical ids may have expired. "
+            "This is not a complete activity log."
         )
 
     NAME_WIDTH: ClassVar[int] = 72
