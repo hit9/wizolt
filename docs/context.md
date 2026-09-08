@@ -68,6 +68,16 @@ newest — and `/compact log seg.N` prints that summary without the viewer.
 Neither form prints the stored excerpt — that is the agent's to retrieve — and a pass that finds
 nothing to evict stores no segment at all, so the compaction count can exceed the segment count.
 
+### Starting a new window
+
+`/context reset` drops the conversation and starts a fresh window straight away. `Context(reset)`
+asks for the same thing, but the new window begins after the current turn ends, and the rest of
+that turn goes with the conversation — ask for it when the turn is nearly finished.
+
+What survives is everything outside the conversation: Note state, recallable history segments and
+stored tool results, background jobs, the workspace and session directory, and the code index. What
+goes is the conversation itself, including compaction summaries and the transcript a resume replays.
+
 ### When a summary does not arrive
 
 Compaction always makes room, even when the summary request fails: the same messages leave the

@@ -18,7 +18,7 @@ class MCPTool(Tool):
     def params_schema(cls) -> Json:
         # fmt: off
         return cls.object_schema({
-            "action": {"type": "string", "enum": ["call", "describe", "list_resources", "read_resource"], "description": '"call" invokes a tool; "describe" returns a tool\'s schema; "list_resources" lists a server\'s resources; "read_resource" reads one by uri'},
+            "action": {"type": "string", "enum": ["call", "describe", "list_resources", "read_resource"]},
             "server": {"type": "string", "description": "MCP server name from config"},
             "tool": {"type": "string", "description": "Remote MCP tool name (required for call/describe)"},
             "arguments": {"type": "object", "description": "Arguments for the remote tool (required for call)"},

@@ -117,6 +117,11 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
     <div class="term-shot" role="img" aria-label="A Note update printed in the terminal: goal and check lines, a plan whose items are marked done, in progress, or waiting, and a list of learned facts."><span class="fs-goal">goal: ship the tokenizer fix</span><span class="fs-goal">check: pytest -q passes</span><span class="fs-sel">plan:</span><span class="fs-add">  - [x] reproduce the failing test</span><span class="fs-doing">  - [~] fix the tokenizer</span><span>  - [ ] update the changelog</span><span class="fs-sel">known:</span><span class="fs-add">  + tests run with pytest -q</span></div>
 
     Plan items are marked `[x]` done, `[~]` in progress, `[ ]` waiting, or `[-]` blocked.
+* - **`Context`**
+  - Reports the window in use — percent, used and budget tokens, tokens left — or starts a new
+    window with `Context(reset)`. The new window begins when the turn ends, and the rest of that
+    turn goes with the conversation, so the result asks the model to wrap up first. See
+    [Starting a new window](context.md#starting-a-new-window).
 * - **`Ask`**
   - Pauses for a decision that genuinely needs you. A question may include choices and a
     recommended option.

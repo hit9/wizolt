@@ -10,6 +10,11 @@
 - `Job` can write to a running job's stdin, so a REPL, a debugger, or a command that asks a
   question can be answered instead of restarted. Opt in with `stdin` on `Job(start)`; jobs
   without it keep their previous behaviour.
+- A `Context` tool reports how much of the window is in use and can start a new one with
+  `Context(reset)`, which takes effect when the turn ends. `/context` shows the same usage, and
+  `/context reset` starts a new window at once. Either way, Note state, recallable segments, stored
+  tool results, background jobs, the workspace, and the code index survive; the conversation does
+  not.
 
 ### Changed
 

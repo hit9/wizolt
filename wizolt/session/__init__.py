@@ -275,6 +275,10 @@ class Session:
     pending_user_inputs: list[QueuedInput] = field(default_factory=list)
     quick_hints: tuple[str, ...] = field(default_factory=tuple)  # transient offered next-step inputs; never serialized, cleared each turn
     next_hints_available: bool = True  # transient frontend capability; false for the simple REPL, which has no chip UI
+    # A reset asked for from inside a turn, applied when that turn settles (see apply_context_reset).
+    # Never serialized: a snapshot written mid-turn records the conversation as it stands, and the
+    # turn that requested the reset applies it before any later snapshot is taken.
+    context_reset_requested: bool = False
     # Worker handoff (see DESIGN.md): the second session this one delegates to, and its per-session
     # projection knobs. None of these are persisted — SessionSnapshotCodec.snapshot is an explicit
     # whitelist, so they return to their defaults on load and must be re-set by the delegate caller.
@@ -447,6 +451,24 @@ class Session:
         provider = self.config.provider
         return request_budget_for(provider.context_token_limit(self.settings.max_context_tokens), provider.output_token_budget())
 
+    def context_fill(self) -> Json:
+        """How full the window is, in the terms the status bar reports it.
+
+        The provider-reported pair describes the last real request, so it wins when present and the
+        session's own estimate stands in before any request exists -- the same precedence
+        `StatusBar.fragments` applies, which is what keeps the tool's answer and the status row from
+        disagreeing about the same moment.
+        """
+        usage = self.usage
+        budget = usage.last_prompt_budget or self.request_token_budget()
+        used = usage.last_prompt_tokens or self.state.context_percent * budget // 100
+        return {
+            "percent": usage.context_percent(self.state.context_percent),
+            "used": used,
+            "budget": budget,
+            "remaining": max(0, budget - used),
+        }
+
     def data_path(self, *parts: str) -> str:
         root = os.path.expanduser(self.config.data_dir)
         return os.path.abspath(os.path.join(root if os.path.isabs(root) else os.path.join(self.cwd, root), *parts))
@@ -565,6 +587,43 @@ class Session:
 
     def clear_quick_hints(self) -> None:
         self.quick_hints = ()
+
+    def request_context_reset(self) -> bool:
+        """Ask for the conversation to be dropped when the running turn settles.
+
+        A turn is a transaction (DESIGN.md, "A turn, and its three endings"): clearing history from
+        inside a tool batch would leave the assistant message whose calls are still being answered
+        without its results, and every provider rejects that replay. So the request is recorded here
+        and applied at settlement, by `apply_context_reset`; a batch that asks twice is one reset.
+        """
+        first = not self.context_reset_requested
+        self.context_reset_requested = True
+        return first
+
+    def apply_context_reset(self) -> bool:
+        """Start a new context window: drop the conversation, keep everything outside it.
+
+        Note state, compacted segments, stored tool results, jobs, source views, the code index and
+        the workspace are not conversation and survive untouched. The usage snapshot goes with the
+        conversation it described: leaving it in place would keep the status bar and
+        `Context(remaining)` reporting a full window for a context that is now empty.
+        """
+        if not self.context_reset_requested:
+            return False
+        self.context_reset_requested = False
+        self.messages.clear()
+        self.transcript_messages.clear()
+        self._active_turn_messages.clear()
+        self._active_transcript_messages.clear()
+        self.state.summary = ""
+        self.state.turn_messages = 0
+        self.state.context_percent = 0
+        usage = self.usage
+        usage.last_prompt_tokens = 0
+        usage.last_prompt_budget = 0
+        usage.last_cached_prompt_tokens = 0
+        usage.last_cache_write_prompt_tokens = 0
+        return True
 
     # The session owns the edit records; `diffs` owns what they mean. Both entry points pass the
     # records and the working directory and read nothing else off the session, which is what let

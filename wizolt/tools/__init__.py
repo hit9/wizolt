@@ -8,7 +8,7 @@ from wizolt.tools.base import Tool
 from wizolt.tools.delegate import WORKER_TOOLS, DelegateTool
 from wizolt.tools.files import Edit, EditApplyResult, EditTool, ReadTool, ViewImageTool
 from wizolt.tools.mcp import MCPTool
-from wizolt.tools.memory import NextHintsTool, NoteTool, RecallContextTool, RecallTool
+from wizolt.tools.memory import ContextTool, NextHintsTool, NoteTool, RecallContextTool, RecallTool
 from wizolt.tools.search import CodeIndex, InspectCodeTool, SearchTool
 from wizolt.tools.shell import BashTool, JobTool
 from wizolt.tools.skill import SkillTool
@@ -28,6 +28,7 @@ TOOLS: tuple[type[Tool], ...] = (
     RecallTool,
     RecallContextTool,
     NoteTool,
+    ContextTool,
     NextHintsTool,
     AskTool,
     DelegateTool,
@@ -52,6 +53,7 @@ __all__ = [
     "AskTool",
     "BashTool",
     "CodeIndex",
+    "ContextTool",
     "DelegateTool",
     "Edit",
     "EditApplyResult",

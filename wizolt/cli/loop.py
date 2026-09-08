@@ -114,6 +114,8 @@ class CommandLoop:
 - `/skills` — List installed skills (load with `Skill(name)` or reference inline with `$name`).
 - `/config` — Show active config.
 - `/compact` — Compact context now; `/compact log [seg.N]` reviews what compaction evicted.
+- `/context` — Show how full the context window is; `/context reset` drops the conversation and
+  starts a new window, keeping `Note` state, compacted history, stored results, and jobs.
 - `/name [TEXT]` — Name this session for later, or show the current name.
 - `/sessions [all]` — Browse saved sessions and re-enter one (alias: `/resume`; `all` widens
   past this project).
@@ -143,7 +145,7 @@ class CommandLoop:
 
 ### Tools
 
-Read, ViewImage, InspectCode, Search, Edit, Bash, Job, Recall, Note, Ask, MCP, Skill.
+Read, ViewImage, InspectCode, Search, Edit, Bash, Job, Recall, Note, Context, Ask, MCP, Skill.
 
 `Skill(name)` loads a skill's full instructions on demand (see the SKILLS section / `$skill`).
 
@@ -1332,6 +1334,7 @@ COMMANDS: tuple[Command, ...] = (
     Command("/skills", commands.skills_command, queue_safe=True, render="answer"),
     Command("/config", commands.config),
     Command("/compact", commands.compact),
+    Command("/context", commands.context_command),
     Command("/index", commands.index),
     Command("/provider", commands.provider),
     Command("/model", commands.model),

@@ -343,6 +343,10 @@ class Agent:
             self.session._active_turn_messages.clear()
             self.session._active_transcript_messages.clear()
             self.session.state.turn_messages = 0
+            # The turn is settled as far as it got; a reset it asked for still takes effect, so the
+            # snapshot written below is the post-reset state and a resume cannot restore the
+            # conversation the model already decided to drop.
+            self.session.apply_context_reset()
             await self.session.save_snapshot()
             raise
 
@@ -420,6 +424,9 @@ class Agent:
         self.session._active_turn_messages.clear()
         self.session._active_transcript_messages.clear()
         self.session.state.turn_messages = 0
+        # A reset the model asked for inside this turn lands here, at its settlement: the turn is
+        # now whole and durable, so dropping the conversation cannot orphan a tool call.
+        self.session.apply_context_reset()
 
     def terminal_next_hints(self, tool_calls: list[ToolCall]) -> bool:
         """True when a batch is nothing but NextHints calls — a terminal batch that ends the turn."""
@@ -506,6 +513,7 @@ class Agent:
         turn_messages.append({"role": "user", "content": INTERRUPT_MARKER})
         self.session.messages.extend(turn_messages)
         self.session.transcript_messages.extend(transcript_messages)
+        self.session.apply_context_reset()
 
     def settle_unanswered_tool_calls(
         self,

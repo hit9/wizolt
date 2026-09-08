@@ -222,6 +222,18 @@ def test_worker_toolset_includes_image_and_script_tools():
         assert excluded not in WORKER_TOOLS
 
 
+def test_worker_can_reset_its_own_context(tmp_path):
+    """A worker's turn fills the same window the parent's does, and the parent's `/worker reset`
+    destroys the worker instead of clearing its conversation, so the worker needs the tool itself."""
+    from wizolt.tools.delegate import WORKER_TOOLS
+
+    assert "Context" in WORKER_TOOLS
+    s = session(tmp_path)
+    s.tool_names = WORKER_TOOLS
+    resolved = [schema["function"]["name"] for schema in Tool.resolved_schemas(s)]
+    assert "Context" in resolved
+
+
 def test_worker_schemas_include_viewimage_and_toolscript(tmp_path):
     from wizolt.tools.delegate import WORKER_TOOLS
 
