@@ -251,6 +251,43 @@ def test_physical_rows_counts_wrapped_lines_not_newlines():
     assert physical_rows(wrapped, 80) == 3
 
 
+@pytest.mark.parametrize("text, columns, expected", [
+    ("中" * 9 + "\n", 5, 5),
+    ("中" * 3 + "\n", 3, 3),
+    ("\x1b[31m中中\x1b[0m中\n", 3, 3),
+    ("abcde\u0301\n", 5, 1),
+    ("abcd中\n", 5, 2),
+    ("a\tbcd\r\n", 5, 2),
+    ("abcde\tbcd\r\n", 5, 2),
+    ("abcde\bxx\r\n", 5, 2),
+])
+def test_physical_rows_keeps_wide_glyphs_together(text, columns, expected):
+    assert physical_rows(text, columns) == expected
+
+
+def test_physical_rows_does_not_count_trailing_style_reset_as_a_row():
+    rendered = UiPrinter.render_to_ansi([FormattedText([("fg:red", "hello\n")])], 80)
+    assert physical_rows(rendered, 80) == 1
+    assert physical_rows("\x1b[0m", 80) == 0
+
+
+def test_recorded_log_block_is_independent_of_later_mutation(recorded):
+    printer, tui = recorded
+    child = LogBlock([LogLine("original")])
+    block = LogBlock([child])
+    with printer.batched():
+        printer.emit(block)
+        child.items[:] = [LogLine("mutated child")]
+        child.gutter = True
+        block.items.append(LogLine("mutated parent"))
+    replay = tui.scrollback.transcript[-1]
+    assert callable(replay)
+    for columns in (20, 80):
+        text = replay(columns)
+        assert "original" in text
+        assert "mutated" not in text
+
+
 def test_a_message_is_recorded_as_its_source_not_as_bytes(recorded):
     """The width-change contract: prose, tables and code lay themselves out for the new pane.
 

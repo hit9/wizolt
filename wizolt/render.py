@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -799,7 +800,8 @@ class UiPrinter:
         # A log block sizes its diff gutter and wrapping from the pane, so it is recorded as itself
         # and laid out again on replay. Plain text needs no such treatment: `segments` never wraps,
         # so the terminal re-flows it for free.
-        part: FormattedText | WidthDependent = LogBlockCell(self, text) if isinstance(text, LogBlock) else FormattedText(segments)
+        # Snapshot nested mutable items now, before batching or later replay can observe edits.
+        part: FormattedText | WidthDependent = LogBlockCell(self, deepcopy(text)) if isinstance(text, LogBlock) else FormattedText(segments)
         if self._batch_parts is not None:
             self._batch_parts.append(part)
             return

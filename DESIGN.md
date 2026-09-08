@@ -580,9 +580,9 @@ history on rebuild. This is an ephemeral projection budget, not deletion of dura
 history. Do not promise that the terminal had already discarded those entries.
 
 **Bounded repaint was tried and does not work.** Replacing the purge by redrawing only the rows
-above the app looks reachable, because the row arithmetic it needs is exact: `physical_rows` and
-`wrap_rows` in `tui/scrollback.py` reproduce tmux's own wrapping, verified against a real pane at
-20/40/60/80/100 columns, and rows emitted individually render byte-identically to the text they
+above the app looks reachable: the prototype's `physical_rows` and `wrap_rows` matched tmux's
+wrapping in cases measured at 20/40/60/80/100 columns, and rows emitted individually rendered
+byte-identically to the text they
 were sliced from, styles carried across each split. In a quiet pane it works, and shell history
 survives every width change. It still fails the acceptance suite, for a reason no arithmetic fixes:
 a repaint can only rewrite the visible screen, while the transcript rows that have already scrolled

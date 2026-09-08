@@ -209,6 +209,29 @@ def _wait_for_markers(log: Path, count: int, timeout: float = 30.0) -> None:
     raise AssertionError(f"driver wrote fewer than {count} markers within {timeout}s (log exists: {log.exists()})")
 
 
+@pytest.mark.parametrize("columns", [5, 7])
+def test_physical_rows_matches_tmux_wide_glyph_and_tab_wrapping(pane, columns):
+    from wizolt.tui.scrollback import physical_rows
+
+    pane.resize(columns, TALL)
+    payload = "\x1b[31m" + "中" * 9 + "\r\na\tbcd\r\n\x1b[0m"
+    script = pane.path / "rows.py"
+    script.write_text(
+        "import sys, time\n"
+        f"sys.stdout.write('\\x1b[H\\x1b[2J' + {payload!r} + 'END')\n"
+        "sys.stdout.flush()\ntime.sleep(30)\n"
+    )
+    pane.send(f"{sys.executable} {script}")
+    deadline = time.monotonic() + 15
+    while True:
+        lines = tmux("capture-pane", "-t", pane.session, "-p").splitlines()
+        if "END" in lines:
+            break
+        assert time.monotonic() < deadline, lines
+        time.sleep(0.05)
+    assert lines.index("END") == physical_rows(payload, columns)
+
+
 def _settled_capture(pane, attempts: int = 40) -> list[str]:
     """Capture once the pane stops changing.
 

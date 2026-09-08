@@ -7,6 +7,9 @@
 - Long inline selectors such as `/provider` scroll within the pane, keeping recent output
   visible after closing instead of pushing it all into scrollback.
 - The startup banner is retained when terminal width changes rebuild the transcript.
+- Completed messages and tool output lay out again at the new pane width. Recorded tool output
+  keeps its original content, and replay accounts for wide characters and tabs when positioning
+  the input area.
 
 ## 0.43.1 - 2026-09-07
 

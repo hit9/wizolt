@@ -19,8 +19,8 @@ shell output that was on screen before wizolt started with it. Users see this as
 to the top of the pane, because everything above it is gone rather than because wizolt moved.
 
 **Not fixable by repainting less.** Redrawing only the rows above the app was implemented and
-measured. The arithmetic it needs is exact -- `physical_rows` and `wrap_rows` reproduce tmux's
-own wrapping, verified against a real pane at 20/40/60/80/100 columns -- and in a quiet pane it
+measured. The prototype's `physical_rows` and `wrap_rows` matched tmux's wrapping in the cases
+measured at 20/40/60/80/100 columns, and in a quiet pane it
 works, preserving shell history across every width change. It still fails, because a repaint can
 only rewrite the visible screen while transcript rows that already scrolled into native history
 stay as tmux reflowed them. The two versions disagree at the seam and the acceptance suite loses
@@ -81,10 +81,3 @@ as what they are and laid out again for the pane they are projected into (`Width
 fixed by [PR #18575](https://github.com/openai/codex/pull/18575) -- with a row cap and, by its own
 description, "noticeable streaming lag for very long threads upon resize"; wizolt's replay bound
 predates the change and is not a resize cost.
-
-## Flaky test
-
-`tests/test_tui_tmux_scrollback.py::test_blank_rows_do_not_grow_with_resize_cycles` fails
-intermittently under xdist -- measured at 3 failures in 4 runs on an unmodified tree. It fails
-fast, which distinguishes it from a real regression, but it has already cost one false attribution
-during development. Worth fixing before it costs another.

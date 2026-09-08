@@ -57,13 +57,38 @@ def physical_rows(text: str, columns: int) -> int:
     row, since the newline that follows cancels the pending wrap. Verified against tmux at 20,
     40, 60, 80 and 100 columns over plain, wide-character, styled and box-drawing text.
     """
+    text = _SGR.sub("", text)
     if not text:
         return 0
     lines = text.split("\n")
     if lines and lines[-1] == "":
         lines.pop()  # the newline that ended the last row, not a row of its own
     columns = max(1, columns)
-    return sum(max(1, -(-get_cwidth(_SGR.sub("", line)) // columns)) for line in lines)
+    rows = 0
+    for line in lines:
+        rows += 1
+        used = 0
+        for char in line:
+            if char == "\r":
+                used = 0
+                continue
+            if char == "\b":
+                used = max(0, used - 1)
+                continue
+            if char == "\t":
+                if used < columns:
+                    used = min((used // 8 + 1) * 8, columns - 1)
+                continue
+            width = max(0, get_cwidth(char))
+            if not width:
+                continue
+            # A double-width glyph cannot occupy the last remaining cell. The terminal
+            # wraps it as a whole, leaving that cell unused; dividing total width misses it.
+            if used and used + width > columns:
+                rows += 1
+                used = 0
+            used += width
+    return rows
 
 
 def app_top_row(renderer: Renderer) -> int:
