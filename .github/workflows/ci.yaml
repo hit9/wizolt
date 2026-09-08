@@ -74,7 +74,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run the real-tmux acceptance tests
-        run: uv run pytest tests/test_tui_tmux_scrollback.py -q -m tmux
+        run: uv run pytest -q -m tmux
 
   # The other end of the range: the distro tmux above trails releases by years, so this job builds
   # the current one and runs the same acceptance tests against it. Bump TMUX_VERSION when a new
@@ -114,4 +114,4 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run the real-tmux acceptance tests
-        run: uv run pytest tests/test_tui_tmux_scrollback.py -q -m tmux
+        run: uv run pytest -q -m tmux

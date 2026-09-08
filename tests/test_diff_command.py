@@ -5,6 +5,8 @@ import subprocess
 import sys
 import time
 
+import pytest
+
 import wizolt.cli.commands as commands_mod
 from wizolt.base import ToolCall
 from wizolt.cli import QUEUE_SAFE_COMMANDS, CommandLoop
@@ -51,10 +53,11 @@ async def test_diff_is_allowed_while_agent_works():
     assert "/diff" in QUEUE_SAFE_COMMANDS
 
 
+@pytest.mark.tmux
 async def test_diff_preserves_cli_history_when_tmux_alternate_screen_is_off(tmp_path):
     executable = shutil.which("tmux")
     if executable is None:
-        return
+        pytest.skip("requires tmux")
     socket = "wizolt-test-" + tmp_path.name
     command = [executable, "-L", socket]
     probe = tmp_path / "diff_tmux_probe.py"
@@ -117,13 +120,14 @@ asyncio.run(app.run())
         await asyncio.to_thread(subprocess.run, [*command, "kill-server"], check=False, capture_output=True)
 
 
+@pytest.mark.tmux
 async def test_alternate_screen_probe_reads_the_resolved_window_option(tmp_path):
     """alternate-screen is a window option, so `show-options` reports it only where a window
     overrides it and stays silent for the usual global `set -wg` form in a tmux.conf. The probe
     has to answer for both, or /diff takes over the primary screen and eats the transcript."""
     executable = shutil.which("tmux")
     if executable is None:
-        return
+        pytest.skip("requires tmux")
     socket = "wizolt-test-probe-" + tmp_path.name
     command = [executable, "-L", socket]
     probe = tmp_path / "alternate_screen_probe.py"
