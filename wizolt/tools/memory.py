@@ -107,7 +107,7 @@ class RecallContextTool(Tool):
     def params_schema(cls) -> Json:
         # fmt: off
         return cls.object_schema({
-            "action": {"type": "string", "enum": ["list", "get", "search"], "description": "Operation"},
+            "action": {"type": "string", "enum": ["list", "get", "search"]},
             "keys": {"type": "array", "items": {"type": "string", "pattern": "^seg\\.\\d+$"}, "minItems": 1, "description": "Keys to get or search within"},
             "query": {"type": "string", "maxLength": cls.MAX_QUERY_LENGTH, "description": "Regex over segment titles and text"},
             "case_sensitive": {"type": "boolean", "description": "Case-sensitive search; default false"},
@@ -297,7 +297,7 @@ class NoteTool(Tool):
             "text": {"type": "string", "description": "Plan step description"},
         }, ["status", "text"])
         return cls.object_schema({
-            "action": {"type": "string", "enum": ["view", "update"], "description": "Operation"},
+            "action": {"type": "string", "enum": ["view", "update"]},
             "fields": {"type": "array", "items": {"type": "string", "enum": ["goal", "plan", "known", "check", "recent_activity"]}, "minItems": 1, "description": "Fields to view; default all available"},
             "set_goal": {"type": "string", "description": "Replace or clear goal"},
             "replace_plan": {"type": "array", "items": plan_item, "description": "Replace plan"},

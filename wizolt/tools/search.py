@@ -651,7 +651,7 @@ class InspectCodeTool(Tool):
     @classmethod
     def params_schema(cls) -> Json:
         props = {
-            "mode": {"type": "string", "enum": list(cls.MODES), "description": "Query type: find|inspect|outline|refs|impls|callers|callees"},
+            "mode": {"type": "string", "enum": list(cls.MODES)},
             "target": {"type": "string", "description": "Symbol name (find/inspect/refs/impls/callers/callees) or file path (outline)"},
             "limit": {"type": "integer", "minimum": 1, "maximum": cls.MAX_OUTLINE_LIMIT, "description": "Max results"},
             "kind": {"type": "string", "description": "Restrict to a symbol kind, e.g. function, class, method"},

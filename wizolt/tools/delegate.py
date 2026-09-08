@@ -179,7 +179,7 @@ class DelegateTool(Tool):
     def params_schema(cls) -> Json:
         return cls.object_schema(
             {
-                "action": {"type": "string", "enum": ["send", "reset", "status"], "description": "Worker operation"},
+                "action": {"type": "string", "enum": ["send", "reset", "status"]},
                 "order": {
                     "type": "string",
                     "description": "Standalone send order: goal, files, known facts, constraints, boundaries, and verification",
