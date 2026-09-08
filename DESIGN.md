@@ -577,6 +577,19 @@ most 5,000 writes (a write can contain multiple lines); older output may disappe
 history on rebuild. This is an ephemeral projection budget, not deletion of durable session
 history. Do not promise that the terminal had already discarded those entries.
 
+**Bounded repaint was tried and does not work.** Replacing the purge by redrawing only the rows
+above the app looks reachable, because the row arithmetic it needs is exact: `physical_rows` and
+`wrap_rows` in `tui/scrollback.py` reproduce tmux's own wrapping, verified against a real pane at
+20/40/60/80/100 columns, and rows emitted individually render byte-identically to the text they
+were sliced from, styles carried across each split. In a quiet pane it works, and shell history
+survives every width change. It still fails the acceptance suite, for a reason no arithmetic fixes:
+a repaint can only rewrite the visible screen, while the transcript rows that have already scrolled
+into native history stay as tmux reflowed them. The two versions then disagree at the seam and
+markers are duplicated or lost. Locating our region also needs the reflowed extent of the app's own
+rows, which is the ownership question the purge exists to avoid. Do not retry this without solving
+the seam; a bounded repaint that only redraws the screen cannot be made consistent with history it
+cannot reach.
+
 **Superseded:** the earlier "never clear scrollback" rule and bottom re-anchor followed by CPR.
 Erase-and-print leaves live rows in terminal text flow; estimated line deletion can destroy
 transcript. Moving ordinary selectors or the whole app to the alternate screen changes the
