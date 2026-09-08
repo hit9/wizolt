@@ -24,7 +24,6 @@ from wizolt.mcp.rendering import (
     normalize_result,
     render_describe,
     resources_info,
-    server_lines,
     tool_args_summary,
 )
 from wizolt.mcp.tokens import MCPFileTokenStore
@@ -837,9 +836,6 @@ class MCPManager:
         self.index_truncated = True
         return text[: self.INDEX_TOTAL_LIMIT - 10] + "\n... MCP tools truncated; use /mcp tools for full list."
 
-    def _server_lines(self, server: str, tools: list[MCPToolInfo], resources: list[MCPResourceInfo], *, include_schema: bool = True) -> list[str]:
-        return server_lines(server, tools, resources, include_schema=include_schema, schema_limit=self.INDEX_SCHEMA_LIMIT)
-
     def _index_body(self, configs: list[MCPServerConfig], *, detail: str = "schema") -> list[str]:
         return index_body(
             configs,
@@ -871,52 +867,47 @@ class MCPManager:
     MAX_MENTION_BLOCKS = 50
 
     async def resolve_mentions(self, text: str) -> str:
+        """Connect every mentioned server and report its state, without inlining its tools.
+
+        The connection is the mention's job: a mentioned server joins the tools index every request
+        already carries, and the model picks a tool from there with MCP(action="describe")."""
         configs = {config.name: config for config in self.parse_configs()}
         if not configs:
             return ""
         lower = {name.lower(): name for name in configs}
-        seen: set[tuple[str, str]] = set()
+        seen: set[str] = set()
         blocks: list[str] = []
         for span in scan_mentions(text):
             if span.kind not in {"bare", "mcp"} or not span.complete or not span.payload:
                 continue
-            raw_server, _, raw_tool = span.payload.partition(".")
+            raw_server = span.payload.partition(".")[0]
             name = raw_server if raw_server in configs else lower.get(raw_server.lower())
             if name is None:  # not a configured server — leave the literal @token alone
                 continue
-            key = (name, raw_tool)
-            if key in seen:
+            if name in seen:
                 continue
-            seen.add(key)
-            blocks.append(await self._mention_block(name, raw_tool))
+            seen.add(name)
+            blocks.append(await self._mention_block(name))
             if len(blocks) >= self.MAX_MENTION_BLOCKS:
                 break
         if not blocks:
             return ""
         header = [
             "--- MCP MENTIONS ---",
-            'The user explicitly referenced these MCP servers/tools. Prefer them via MCP(action="call", ...) unless clearly irrelevant.',
+            'The user referenced these MCP servers; they are connected. Use MCP(action="describe", server, tool) for a tool\'s schema, then MCP(action="call", ...).',
             "",
         ]
         return "\n".join(header + blocks).strip()
 
-    async def _mention_block(self, server: str, tool: str) -> str:
+    async def _mention_block(self, server: str) -> str:
         if not self.connected(server) and not self.discovering(server):
             await self.discover_server(server)
         if issue := self.server_issue(server):
             kind, message = issue
             return f"[{server}] {'unavailable' if kind == 'error' else 'skipped'}: {message}"
-        tools = self.tools.get(server, [])
-        resources = self.resources.get(server, [])
-        if not tools and not resources:
+        if not self.tools.get(server) and not self.resources.get(server):
             return f"[{server}] {self._pending_status(server)}"
-        if tool:
-            info = self.tool_info(server, tool)
-            if info is not None:
-                return self._render_describe(server, info)
-            available = ", ".join(t.name for t in tools) or "(none)"
-            return f"[{server}] tool '{tool}' not found; available: {available}"
-        return "\n".join(self._server_lines(server, tools, resources))
+        return f"[{server}] connected"
 
     @classmethod
     def _extract_uris(cls, text: str, limit: int = 5) -> list[str]:

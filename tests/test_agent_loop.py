@@ -81,7 +81,8 @@ async def test_file_mentions_land_as_their_own_user_message(tmp_path):
     assert "fix @file:small.py" in contents  # the user's text is present and never rewritten
     mentions = [content for content in contents if "--- FILE MENTIONS ---" in content]
     assert len(mentions) == 1
-    assert "[small.py] 1 lines" in mentions[0]
+    assert "[small.py]" in mentions[0]
+    assert "print(1)" not in mentions[0]
 
 
 async def test_agent_persists_responses_output_on_final_assistant_message(tmp_path):

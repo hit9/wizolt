@@ -114,10 +114,14 @@ class SkillLibrary:
             if skill is None or skill.name in seen:
                 continue
             seen.add(skill.name)
-            blocks.append(f"[{skill.name}] {skill.description}\n{self.expand(skill)}")
+            blocks.append(f"[{skill.name}] {skill.description or '(no description)'}")
             if len(blocks) >= self.MAX_MENTION_BLOCKS:
                 break
         if not blocks:
             return ""
-        header = ["--- SKILL MENTIONS ---", "The user explicitly referenced these skills; follow their instructions unless clearly irrelevant.", ""]
+        header = [
+            "--- SKILL MENTIONS ---",
+            "The user referenced these skills. Load the one the request needs with Skill(name); the instructions are not inlined.",
+            "",
+        ]
         return "\n".join(header + blocks).strip()

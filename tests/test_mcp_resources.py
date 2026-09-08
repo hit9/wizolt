@@ -1,4 +1,5 @@
 """mcp resources (split from tests/test_mcp_tools.py)."""
+
 from types import SimpleNamespace
 from typing import ClassVar
 
@@ -155,21 +156,21 @@ class TestMCPResources:
         assert "metabase://docs/construct-query.md" in idx
         assert "refs" in idx
 
-    async def test_mention_block_lists_resources(self, monkeypatch):
+    async def test_mention_block_reports_the_connection_without_listing_resources(self, monkeypatch):
         s = await self._server_with_resources(monkeypatch, [_fake_resource(uri="docs://a.md", description="Doc A")])
-        block = await s.mcp._mention_block("test", "")
-        assert "docs://a.md" in block and "read_resource" in block
+        block = await s.mcp._mention_block("test")
+        assert block == "[test] connected"
+        assert "docs://a.md" not in block
 
-    async def test_mention_block_lists_resources_without_tools(self):
+    async def test_mention_block_reports_connected_for_a_resource_only_server(self):
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
         bootstrap_features(s)
         s.mcp.tools["test"] = []
         s.mcp.resources["test"] = [MCPResourceInfo("test", "docs://guide.md", "guide", "Usage guide", "text/markdown")]
 
-        block = await s.mcp._mention_block("test", "")
+        block = await s.mcp._mention_block("test")
 
-        assert "docs://guide.md" in block
-        assert "no tools or resources" not in block
+        assert block == "[test] connected"
 
     def test_resource_only_server_renders_in_index(self):
         """A connected server with resources but zero tools is listed (not dumped into pending)."""
@@ -255,6 +256,7 @@ class TestMCPResources:
         monkeypatch.setattr(s.mcp, "_call_tool", ok)
         out = await MCPTool(s, [{"action": "call", "server": "test", "tool": "query", "arguments": {}}]).call()
         assert "MCPAutoResources" not in out and reads == []
+
 
 class TestToolOutputSchemaCapture:
     def test_output_schema_is_captured_under_either_spelling(self):

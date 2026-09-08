@@ -131,7 +131,7 @@ class TestMCPUserScenarios:
 
         request_text = "\n".join(str(message.get("content", "")) for message in agent.model.requests[-1])
         assert "--- MCP MENTIONS ---" in request_text
-        assert "handbook://operations.md" in request_text
+        assert "[handbook] connected" in request_text
         assert "MCP" in {schema["function"]["name"] for schema in agent.model.tools[-1]}
 
     async def test_reauthorization_replaces_cached_token_and_client_as_one_unit(self, tmp_path, monkeypatch):

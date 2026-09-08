@@ -141,7 +141,8 @@ async def test_agent_expands_file_mentions_in_queued_input_before_sending(tmp_pa
 
     sent = agent.model.messages[0]
     assert any(message.get("content") == LIVE_FOLLOWUP_PREFIX + "inspect @file:queued.txt" for message in sent)
-    assert any("--- FILE MENTIONS ---" in str(message.get("content") or "") and "queued context" in str(message.get("content") or "") for message in sent)
+    assert any("--- FILE MENTIONS ---" in str(message.get("content") or "") and "[queued.txt]" in str(message.get("content") or "") for message in sent)
+    assert not any("queued context" in str(message.get("content") or "") for message in sent)
     assert sum("--- FILE MENTIONS ---" in str(message.get("content") or "") for message in s.messages) == 1
     assert not any("--- FILE MENTIONS ---" in str(message.get("content") or "") for message in s.transcript_messages)
 

@@ -125,12 +125,11 @@ picking one opens its candidates, which narrow as you keep typing. `Tab` highlig
 | Mention | Also written | Effect |
 |---|---|---|
 | `@file:path` | — | Points the agent at a file in the project |
-| `@mcp:server`, `@mcp:server.tool` | `@server`, `@server.tool` | Connects an [MCP](mcp.md) server on demand and points the agent at that server or tool. <span class="marker">The connection remains active until you disconnect it.</span> |
-| `@skill:name` | `$name` | Injects a [skill](skills.md)'s full instructions into the current turn |
+| `@mcp:server`, `@mcp:server.tool` | `@server`, `@server.tool` | Connects an [MCP](mcp.md) server on demand; its tools join the request index. <span class="marker">The connection remains active until you disconnect it.</span> |
+| `@skill:name` | `$name` | Points the agent at a [skill](skills.md); it loads the instructions when they matter |
 
-**Files.** Small in-workspace files are inlined as a FILE MENTIONS block; large ones and anything
-outside the workspace become a pointer telling the agent to Read it. A missing path reports itself
-instead of being silently dropped.
+**Files.** A mention names the file and nothing more: the agent reads what the request needs with
+`Read`. Nothing is inlined, so a large or binary path costs nothing until then.
 
 **Picking files.** Files stay out of the first `@` list: typing or selecting `@file:` opens fzf
 immediately, and `Tab` does the same from an active file mention. Without fzf, a bounded literal

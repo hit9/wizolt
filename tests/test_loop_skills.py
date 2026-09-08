@@ -48,7 +48,7 @@ def test_builtin_wizolt_help_uses_normal_skill_paths(tmp_path):
     assert "## Inspect the implementation" in body
     assert "### Provider-side tools and web search" in body
     assert all(term in body for term in ("builtin_tools", "$web_search", "pause_turn", "OpenRouter"))
-    assert "## Configure providers" in s.skills.resolve_mentions("help with $wizolt-help")
+    assert "[wizolt-help]" in s.skills.resolve_mentions("help with $wizolt-help")
 
 
 def test_project_skills_prefer_wizolt_and_fall_back_to_minacode(tmp_path):
@@ -121,14 +121,14 @@ def test_skill_tool_unknown_lists_available(tmp_path):
     assert "known" in str(excinfo.value)
 
 
-def test_skill_mentions_inject_body(tmp_path):
+def test_skill_mentions_name_the_skill_without_inlining_body(tmp_path):
     _write_skill(tmp_path, "triage", "triage a bug", "Reproduce first.")
     s = session(tmp_path)
 
     resolved = s.skills.resolve_mentions("please $triage this")
     assert "--- SKILL MENTIONS ---" in resolved
     assert "[triage] triage a bug" in resolved
-    assert "Reproduce first." in resolved
+    assert "Reproduce first." not in resolved
     # a bare word without $ is not a mention; an unknown $token is ignored
     assert s.skills.resolve_mentions("triage this") == ""
     assert s.skills.resolve_mentions("$unknown") == ""

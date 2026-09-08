@@ -5,6 +5,9 @@
 ### Changed
 
 - `Job(wait)` can hold the turn for up to 60 seconds instead of 20.
+- Mentions only name what you referenced: `@file` no longer inlines file contents, `@skill` /
+  `$name` no longer paste the skill body, and `@server` connects the server without listing its
+  tools. The agent reads, loads, or describes what the request needs.
 
 ### Fixed
 

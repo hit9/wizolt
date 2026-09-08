@@ -124,9 +124,6 @@ class FileMentions:
     """Discover selectable paths and expand explicit file mentions for a turn."""
 
     CACHE_TTL = 5.0
-    MAX_INLINE_LINES = 400
-    MAX_INLINE_BYTES = 64 * 1024
-    MAX_INLINE_FILES = 10
     MAX_REFERENCES = 50
     GIT_TIMEOUT = 10
 
@@ -393,92 +390,35 @@ class FileMentions:
         return found
 
     def resolve_mentions(self, text: str) -> str:
-        """Build one bounded FILE MENTIONS context block from canonical scanner spans."""
+        """Build one bounded FILE MENTIONS block naming the files the user referenced.
+
+        Mentions only point: no content is inlined, so a stray `@` can never pull a large or binary
+        file into the request. The model reads what the request needs with Read."""
         entries: list[str] = []
         seen: set[str] = set()
-        inline_count = 0
         omitted = 0
         for span in scan_mentions(text):
             if span.kind != "file" or not span.complete or not span.payload:
                 continue
             raw = span.payload
-            path = self.session.resolve_path(raw)
-            identity = os.path.normcase(os.path.realpath(path))
+            identity = os.path.normcase(os.path.realpath(self.session.resolve_path(raw)))
             if identity in seen:
                 continue
             seen.add(identity)
             if len(entries) >= self.MAX_REFERENCES:
                 omitted += 1
                 continue
-            block, inlined = self._file_block(raw, path, allow_inline=inline_count < self.MAX_INLINE_FILES)
-            entries.append(block)
-            inline_count += int(inlined)
+            entries.append(f"[{raw}]")
         if omitted:
             entries.append(f"[{omitted} additional file mention(s) omitted at the {self.MAX_REFERENCES}-reference cap]")
         if not entries:
             return ""
         header = [
             "--- FILE MENTIONS ---",
-            "The user explicitly referenced these files. Treat them as the subject of the request.",
+            "The user referenced these files. Read the ones the request needs; their contents are not inlined.",
             "",
         ]
         return "\n".join([*header, *entries]).strip()
-
-    def _file_block(self, raw: str, path: str, *, allow_inline: bool) -> tuple[str, bool]:
-        try:
-            if os.path.isdir(path):
-                return f"[{raw}] directory; Read it to see its contents", False
-            if not os.path.isfile(path):
-                return f"[{raw}] not found", False
-            if not self.session.in_cwd(path):
-                return f"[{raw}] outside the workspace; Read it", False
-            size = os.path.getsize(path)
-            if not allow_inline:
-                return f"[{raw}] not inlined - the {self.MAX_INLINE_FILES}-file inline cap is reached; Read it if relevant", False
-            if size > self.MAX_INLINE_BYTES:
-                lines = self._line_count(path)
-                return f"[{raw}] {lines} lines, {self._size_label(size)} - too large to inline; Read the part you need", False
-            with open(path, "rb") as handle:
-                data = handle.read(self.MAX_INLINE_BYTES + 1)
-            if self._is_binary(data):
-                return f"[{raw}] binary file, {self._size_label(size)}; Read it with an appropriate tool", False
-            content = data.decode("utf-8")
-            lines = self._line_count_bytes(data)
-            if lines > self.MAX_INLINE_LINES:
-                return f"[{raw}] {lines} lines, {self._size_label(size)} - too large to inline; Read the part you need", False
-            return f"[{raw}] {lines} lines\n{content}", True
-        except (OSError, UnicodeError):
-            return f"[{raw}] unreadable or no longer exists", False
-
-    @staticmethod
-    def _is_binary(data: bytes) -> bool:
-        if b"\0" in data:
-            return True
-        try:
-            data.decode("utf-8")
-        except UnicodeDecodeError:
-            return True
-        return False
-
-    @staticmethod
-    def _line_count_bytes(data: bytes) -> int:
-        return data.count(b"\n") + int(bool(data) and not data.endswith(b"\n"))
-
-    @classmethod
-    def _line_count(cls, path: str) -> int:
-        count = 0
-        total = 0
-        last = b""
-        with open(path, "rb") as handle:
-            while chunk := handle.read(1 << 20):
-                total += len(chunk)
-                count += chunk.count(b"\n")
-                last = chunk[-1:]
-        return count + int(total > 0 and last != b"\n")
-
-    @staticmethod
-    def _size_label(size: int) -> str:
-        return f"{size // 1024} KB" if size >= 1024 else f"{size} B"
 
 
 @dataclass(frozen=True)

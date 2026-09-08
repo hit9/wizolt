@@ -37,7 +37,7 @@ async def run_git(cwd, *args):
 def test_file_mention_parses_and_email_does_not(tmp_path):
     s = session(tmp_path)
     (tmp_path / "a.py").write_text("print(1)\n", encoding="utf-8")
-    assert "[a.py] 1 lines" in s.mentions.resolve_mentions("see @file:a.py")
+    assert "[a.py]" in s.mentions.resolve_mentions("see @file:a.py")
     assert s.mentions.resolve_mentions("mail hit9@icloud.com") == ""  # @ follows a word char
     assert s.mentions.resolve_mentions("see @file:a.py and @file:a.py")  # both captured, deduped
 
@@ -245,32 +245,26 @@ async def test_a_stale_snapshot_is_served_now_and_refreshed_behind_the_caller(tm
 # --- T5: resolver ---
 
 
-def test_resolver_inlines_small_file(tmp_path):
+def test_resolver_names_files_without_inlining(tmp_path):
     s = session(tmp_path)
     (tmp_path / "small.py").write_text("line1\nline2\n", encoding="utf-8")
     block = s.mentions.resolve_mentions("fix @file:small.py")
     assert block.startswith("--- FILE MENTIONS ---")
-    assert "[small.py] 2 lines" in block
-    assert "line1" in block and "line2" in block
-    assert block.count("small.py") == 1  # one block line; the header never names the file
+    assert "[small.py]" in block
+    assert "line1" not in block and "line2" not in block
+    assert block.count("small.py") == 1  # one line; the header never names the file
 
 
-def test_resolver_large_file_becomes_pointer_with_size(tmp_path):
+def test_resolver_never_reads_contents(tmp_path):
     s = session(tmp_path)
-    long_file = tmp_path / "long.py"
-    long_file.write_text("x\n" * (FileMentions.MAX_INLINE_LINES + 1), encoding="utf-8")
-    block = s.mentions.resolve_mentions("see @file:long.py")
-    assert "too large to inline; Read the part you need" in block
-    assert "lines" in block
-    assert "x\n" not in block  # content never inlined
-
-    huge = tmp_path / "huge.bin"
-    huge.write_bytes(b"y" * (FileMentions.MAX_INLINE_BYTES + 1))
-    block = s.mentions.resolve_mentions("see @file:huge.bin")
-    assert "KB" in block and "too large to inline" in block
+    (tmp_path / "long.py").write_text("x\n" * 5000, encoding="utf-8")
+    (tmp_path / "huge.bin").write_bytes(b"y" * (128 * 1024))
+    block = s.mentions.resolve_mentions("see @file:long.py and @file:huge.bin")
+    assert "[long.py]" in block and "[huge.bin]" in block
+    assert "x\n" not in block and "yy" not in block
 
 
-def test_resolver_outside_workspace_never_inlined(tmp_path):
+def test_resolver_names_paths_outside_the_workspace(tmp_path):
     outside_dir = tempfile.mkdtemp()
     try:
         outside = os.path.join(outside_dir, "secret.txt")
@@ -278,44 +272,41 @@ def test_resolver_outside_workspace_never_inlined(tmp_path):
             handle.write("classified content\n")
         s = session(tmp_path)
         block = s.mentions.resolve_mentions(f"see @file:{outside}")
-        assert "outside the workspace; Read it" in block
+        assert f"[{outside}]" in block
         assert "classified content" not in block
     finally:
         shutil.rmtree(outside_dir, ignore_errors=True)
 
 
-def test_resolver_missing_path_reports_itself(tmp_path):
+def test_resolver_names_missing_paths(tmp_path):
     s = session(tmp_path)
-    assert "[missing.py] not found" in s.mentions.resolve_mentions("see @file:missing.py")
+    assert "[missing.py]" in s.mentions.resolve_mentions("see @file:missing.py")
 
 
-def test_resolver_handles_quoted_paths_binary_and_unterminated_last_line(tmp_path):
+def test_resolver_handles_quoted_and_binary_paths(tmp_path):
     s = session(tmp_path)
     (tmp_path / "中文 notes.txt").write_text("one line", encoding="utf-8")
     (tmp_path / "binary.dat").write_bytes(b"abc\0def")
     text = f"see {encode_file_mention('中文 notes.txt')} and @file:binary.dat"
     block = s.mentions.resolve_mentions(text)
-    assert "[中文 notes.txt] 1 lines" in block
-    assert "one line" in block
-    assert "[binary.dat] binary file" in block
+    assert "[中文 notes.txt]" in block
+    assert "[binary.dat]" in block
+    assert "one line" not in block
 
 
-def test_resolver_ten_file_cap_holds(tmp_path):
+def test_resolver_reference_cap_holds(tmp_path):
     s = session(tmp_path)
-    for index in range(12):
-        (tmp_path / f"f{index}.py").write_text(f"content {index}\n", encoding="utf-8")
-    text = " ".join(f"@file:f{index}.py" for index in range(12))
+    text = " ".join(f"@file:f{index}.py" for index in range(FileMentions.MAX_REFERENCES + 2))
     block = s.mentions.resolve_mentions(text)
-    assert block.count("content ") == 10  # first ten inlined
-    assert "[f10.py] not inlined - the 10-file inline cap is reached" in block
-    assert "[f11.py] not inlined - the 10-file inline cap is reached" in block
+    assert block.count("[f") == FileMentions.MAX_REFERENCES
+    assert f"2 additional file mention(s) omitted at the {FileMentions.MAX_REFERENCES}-reference cap" in block
 
 
 def test_resolver_deduplicates_mentions(tmp_path):
     s = session(tmp_path)
     (tmp_path / "a.py").write_text("one\n", encoding="utf-8")
     block = s.mentions.resolve_mentions("@file:a.py and @file:./a.py and " + encode_file_mention(str(tmp_path / "a.py")))
-    assert "[a.py] 1 lines" in block
+    assert "[a.py]" in block
     assert block.count("[a.py]") == 1
 
 

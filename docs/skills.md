@@ -53,15 +53,15 @@ matching version's source code and tests.
 ## Using skills
 
 - **On demand** — wizolt loads a skill itself when it's relevant to your request.
-- **Inline** — type `$name` in a message (Tab-completes) to load a skill yourself
-  <span class="marker">for that turn</span>.
+- **Inline** — type `$name` in a message (Tab-completes) to point the agent at a skill
+  <span class="marker">for that turn</span>; it loads the instructions itself when they matter.
 
 ```{figure} ../snapshots/wizolt-skill-mention.png
-:alt: Using $skill mention to load a skill's instructions inline
+:alt: Using $skill mention to point the agent at a skill
 :width: 600px
 :align: center
 
-Loading a skill with $name inline.
+Pointing the agent at a skill with $name.
 ```
 
 ### Bundled scripts
