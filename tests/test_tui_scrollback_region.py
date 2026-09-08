@@ -315,7 +315,7 @@ def test_resize_presents_one_complete_update_and_releases_it_on_error(monkeypatc
 
 @pytest.mark.parametrize("flush_first", [False, True])
 def test_resize_reuses_layouts_until_new_output_arrives(monkeypatch, wired, flush_first):
-    output, app, printer = wired
+    output, app, _printer = wired
     widths = []
 
     def cell(width):

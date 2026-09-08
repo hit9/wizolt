@@ -660,8 +660,9 @@ async def test_close_cannot_release_ownership_during_an_agent_request(tmp_path):
 
 
 async def test_main_releases_a_reserved_target_when_config_reload_fails(tmp_path, monkeypatch):
-    import wizolt.__main__ as cli
     from types import SimpleNamespace
+
+    import wizolt.__main__ as cli
     from wizolt.config import ConfigError
 
     current = stored_session(tmp_path, "current")

@@ -57,6 +57,12 @@ def read_lines(path) -> list[dict]:
         return [json.loads(line) for line in f if line.strip()]
 
 
+def read_text(path) -> str:
+    """Raw log text, for assertions about what is not on disk."""
+    with open(path, encoding="utf-8") as file:
+        return file.read()
+
+
 async def test_first_save_writes_init_line(tmp_path):
     """First save writes a single init line with full snapshot data."""
     s = session_with_data_dir(tmp_path)
@@ -369,8 +375,7 @@ async def test_input_queued_during_a_save_lands_in_the_next_delta(tmp_path, monk
 
     monkeypatch.undo()
     # The mid-write keystroke was not in the record the worker captured, so it is not on disk yet.
-    with open(log_path(s), encoding="utf-8") as log:
-        assert "typed while saving" not in log.read()
+    assert "typed while saving" not in await asyncio.to_thread(read_text, log_path(s))
     await s.save_snapshot()
     s.close()
     assert [item.text for item in Session.load_snapshot(s.uid, config=s.config).pending_user_inputs] == ["typed while saving"]
