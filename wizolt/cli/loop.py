@@ -274,6 +274,7 @@ Full documentation: https://wizolt.readthedocs.io
         self.agent.context.on_compaction = self.automatic_compaction_status
         self.agent.model.on_retry_wait = self.model_retry_wait_status
         self.agent.on_image_route_notice = self.image_route_notice
+        self.agent.on_context_reset = self.context_reset_notice
         self.agent.on_tool_batch = self.tool_batch_output
         self.agent.tools.output_fn = self.tool_output
         self.agent.tools.input_fn = self.tool_input
@@ -293,6 +294,9 @@ Full documentation: https://wizolt.readthedocs.io
         self.agent.tools.builtin_call = self.builtin_call_output
         self.agent.tools.compaction = self.automatic_compaction_status
         self.agent.tools.script_status = self.toolscript_run_status
+
+    def context_reset_notice(self, text: str) -> None:
+        self.emit(LogBlock.hierarchy(LogLine(text, role=LogRole.META), []))
 
     def image_route_notice(self, notice: ImageRouteNotice) -> None:
         """Show the one gray routing notice for a text-only image delivery decision.
@@ -754,6 +758,10 @@ Full documentation: https://wizolt.readthedocs.io
     ) -> int:
         role = str(message.get("role") or "")
         content = ImageInputs.label_text(message).strip()
+        if role == "notice":
+            if content and not dry_run:
+                self.context_reset_notice(content)
+            return tool_record_index
         if role == "assistant" and content and not dry_run:
             # Every assistant message sits in the content column, final answer included, so a
             # resumed session reads exactly like the live one. The turn's own text all shares that

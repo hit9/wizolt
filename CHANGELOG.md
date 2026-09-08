@@ -15,6 +15,8 @@
   `/context reset` starts a new window at once. Either way, Note state, recallable segments, stored
   tool results, background jobs, the workspace, the code index and the transcript survive. The new
   model window starts with Note and recent activity; a saved reset request survives a crash.
+  The working divider shows `reset pending` until it takes effect, then a brief `Context reset.`
+  notice appears in the transcript, including on resume.
 
 ### Changed
 

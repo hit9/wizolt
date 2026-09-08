@@ -838,7 +838,7 @@ async def context_command(loop: CommandLoop, args: str) -> str:
         # The reset rewrote history in place. Persist it now: leaving the session without running
         # another turn would otherwise resume from the conversation that was just dropped.
         await loop.session.save_snapshot()
-        return "Started a new context window with a working-state snapshot; transcript, Note, RecallContext segments, results, jobs and workspace remain."
+        return "Context reset."
     if action != "remaining":
         return "Usage: /context [reset]"
     tokens, budget, percent = _context_reading(loop)

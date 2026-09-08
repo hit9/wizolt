@@ -678,6 +678,8 @@ history with one frozen working-state/recent-activity checkpoint, and retain the
 recall stores. Persist the pending request with tool-batch snapshots; loading such a snapshot
 settles the interrupted turn and applies the reset before the resume event. Never erase transcript
 to make model context smaller, or rebuild the reset checkpoint on normal requests.
+The pending indicator is presentation-only. The completion notice belongs to the durable transcript,
+not model messages; displaying or replaying it must not add anything to the request prefix.
 
 Compaction is the deliberate persisted exception to send-time-only projection: it replaces old
 active messages with a summary when the effective request, including tools, reaches the input

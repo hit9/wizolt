@@ -621,6 +621,7 @@ class Session:
         if self.history:
             checkpoint["content"] += f"\nRecallable history: {self.history[0].key}..{self.history[-1].key}; use RecallContext."
         self.messages.append(checkpoint)
+        self.transcript_messages.append({"role": "notice", "content": "Context reset."})
         self.state.turn_messages = 0
         self.state.context_percent = 0
         self.state.context_tokens = 0

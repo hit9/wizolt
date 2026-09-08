@@ -212,6 +212,8 @@ class SessionSnapshotCodec:
         if cls.is_internal_message(message) or ImageInputs.is_tool_observation(message):
             return None
         role = str(message.get("role") or "")
+        if role == "notice":
+            return {"role": "notice", "content": ImageInputs.label_text(message)}
         if role == "user":
             return {"role": "user", "content": ImageInputs.label_text(message)}
         if role == "assistant":

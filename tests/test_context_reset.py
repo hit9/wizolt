@@ -181,7 +181,7 @@ async def test_a_reset_after_earlier_snapshots_survives_the_delta_chain(tmp_path
     restored = Session.load_snapshot(s.uid, config=s.config)
 
     assert [message for message in restored.messages if not message.get(SESSION_EVENT_KEY)] == []
-    assert [message["content"] for message in restored.transcript_messages] == ["turn 0", "turn 1", "turn 2"]
+    assert [message["content"] for message in restored.transcript_messages] == ["turn 0", "turn 1", "turn 2", "Context reset."]
     assert restored.state.goal == "keep me"
 
 
@@ -230,7 +230,7 @@ async def test_context_command_reports_the_fill_and_resets_on_request(tmp_path):
     loop = CommandLoop(agent, input_fn=lambda _prompt: "", output_fn=lambda _text: None)
 
     assert "25% used" in await commands.context_command(loop, "")
-    assert "new context window" in await commands.context_command(loop, "reset")
+    assert "Context reset." == await commands.context_command(loop, "reset")
     assert len(s.messages) == 1 and s.messages[0][SESSION_EVENT_KEY] == "context_reset"
     assert await commands.context_command(loop, "everything") == "Usage: /context [reset]"
 
@@ -283,9 +283,11 @@ async def test_pending_reset_survives_a_crash_snapshot_and_applies_once(tmp_path
     assert "durable intent" in restored.messages[0]["content"]
     assert not any(message.get("content") == "old conversation" for message in restored.messages)
     assert restored.transcript_messages[0]["content"] == "old conversation"
+    assert sum(message.get("role") == "notice" for message in restored.transcript_messages) == 1
     await restored.save_snapshot()
     again = Session.load_snapshot(s.uid, config=s.config)
     assert sum(message.get(SESSION_EVENT_KEY) == "context_reset" for message in again.messages) == 1
+    assert sum(message.get("role") == "notice" for message in again.transcript_messages) == 1
 
 
 @pytest.mark.parametrize("field", ["_active_turn_messages", "_active_transcript_messages"])
@@ -357,3 +359,47 @@ async def test_context_command_and_tool_report_identical_estimates_after_reset(t
     assert reading["used"] == expected
     assert reading["remaining"] == reading["budget"] - expected
     assert commands._context_reading(loop) == (reading["used"], reading["budget"], reading["percent"])
+
+
+@pytest.mark.parametrize("ending", ["success", "cancel", "failure"])
+async def test_reset_notice_is_transcript_only_and_published_once(tmp_path, ending):
+    from wizolt.base import ModelError
+
+    s = session(tmp_path)
+    s.skills = SkillLibrary({})
+    output = []
+    agent = Agent(s, output_fn=output.append)
+
+    class Model:
+        calls = 0
+
+        async def request(self, messages, tools=None):
+            assert not any(message.get("role") == "notice" for message in messages)
+            self.calls += 1
+            if self.calls == 1:
+                return {}, [call("Context", [{"action": "reset"}])], ""
+            if ending == "cancel":
+                raise asyncio.CancelledError
+            if ending == "failure":
+                raise ModelError("failed request")
+            return {"role": "assistant", "content": "done"}, [], "done"
+
+    agent.model = Model()
+    if ending == "success":
+        await agent.run("work")
+        assert output[-2:] == ["done", "Context reset."]
+    else:
+        with pytest.raises(asyncio.CancelledError if ending == "cancel" else ModelError):
+            await agent.run("work")
+    assert output.count("Context reset.") == 1
+    notices = [m for m in s.transcript_messages if m.get("role") == "notice"]
+    assert notices == [{"role": "notice", "content": "Context reset."}]
+    assert not any(m.get("role") == "notice" for m in s.messages)
+    await s.save_snapshot()
+    restored = Session.load_snapshot(s.uid, config=s.config)
+    assert [m for m in restored.transcript_messages if m.get("role") == "notice"] == notices
+    replay = []
+    loop = CommandLoop(Agent(restored), input_fn=lambda _: "", output_fn=lambda text: replay.append(str(text)))
+    loop.render_resumed_session()
+    assert "\n".join(replay).count("Context reset.") == 1
+    assert not any(m.get("role") == "notice" for m in restored.messages)

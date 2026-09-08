@@ -411,6 +411,8 @@ class View:
             return [("class:muted", status)]
         else:
             label = status
+        if self.loop.session.context_reset_requested:
+            label += " · reset pending"
         if queued:
             label = f"{label} [ {queued} queued ]"
         prefix = self.waiting_pulse_fragments()
