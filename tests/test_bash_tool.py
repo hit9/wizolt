@@ -52,7 +52,8 @@ async def test_job_wait_and_list_report_completed_output(tmp_path):
     assert "Status: done" in waited
     assert "Exit code: 0" in waited
     assert "--- output ---\ncompleted" in waited
-    assert "| job.1 | done | 0 | printf completed |" in listed
+    assert "| id | status | exit | elapsed | command |" in listed
+    assert "| job.1 | done | 0 |" in listed and "printf completed |" in listed
 
 
 async def test_job_wait_is_bounded_and_says_the_job_is_still_running(tmp_path, monkeypatch):
@@ -370,6 +371,7 @@ async def test_bash_behaviors(tmp_path):
     s = session(tmp_path)
     bash = await BashTool(s, ["printf out; printf err >&2; exit 3"]).call()
     assert "* exit_code: 3" in bash
+    assert "* elapsed: " in bash
     assert "<stdout>\nout\n</stdout>" in bash
     assert "<stderr>\nerr\n</stderr>" in bash
 

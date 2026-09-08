@@ -5,6 +5,8 @@
 ### Changed
 
 - `Job(wait)` can hold the turn for up to 60 seconds instead of 20.
+- `Bash` results and the `Job(list)` table report how long the command or job has been running, so
+  a slow command is distinguishable from a hung one.
 - Mentions only name what you referenced: `@file` no longer inlines file contents, `@skill` /
   `$name` no longer paste the skill body, and `@server` connects the server without listing its
   tools. The agent reads, loads, or describes what the request needs.

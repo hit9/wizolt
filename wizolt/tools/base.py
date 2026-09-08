@@ -274,8 +274,10 @@ class Tool:
             raise ToolError(f"invalid regex: {error}") from error
 
     @staticmethod
-    def process_result(tag: str, code: int, stdout: str, stderr: str) -> str:
+    def process_result(tag: str, code: int, stdout: str, stderr: str, *, elapsed: float | None = None) -> str:
         lines = [f"<{tag}>", f"* exit_code: {code}"]
+        if elapsed is not None:
+            lines.append(f"* elapsed: {elapsed:.1f}s")
         for name, text in (("stdout", stdout), ("stderr", stderr)):
             if text:
                 lines.extend([f"<{name}>", text.rstrip(), f"</{name}>"])

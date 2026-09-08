@@ -61,6 +61,12 @@ class BashTool(Tool):
         self._process: subprocess.Popen[bytes] | None = None
         self.exit_code: int | None = None
         self.execution_workdir: str | None = None
+        # Set by `call`, so the receipt can report how long the command took. A direct
+        # stream_process call (tests) leaves it at 0 and the receipt omits the line.
+        self.started_at = 0.0
+
+    def elapsed(self) -> float | None:
+        return time.monotonic() - self.started_at if self.started_at else None
 
     def request_stop(self) -> None:
         """Kill the command's whole process group; the runner then waits for `call()` to reap it."""
@@ -238,6 +244,7 @@ class BashTool(Tool):
         command = self.command()
         bash = shutil.which("bash") or "bash"
         proc = None
+        self.started_at = time.monotonic()
         try:
             cwd = self.workdir()
             # Freeze before execution: the command may remove or rename its own directory.
@@ -351,9 +358,9 @@ class BashTool(Tool):
         if timed_out:
             self.exit_code = -1
             stderr += ("\n" if stderr else "") + "timeout"
-            return self.process_result("BashToolResult", -1, stdout, stderr)
+            return self.process_result("BashToolResult", -1, stdout, stderr, elapsed=self.elapsed())
         self.exit_code = proc.returncode or 0
-        return self.process_result("BashToolResult", proc.returncode or 0, stdout, stderr)
+        return self.process_result("BashToolResult", proc.returncode or 0, stdout, stderr, elapsed=self.elapsed())
 
     def promote_to_job(
         self,
@@ -423,7 +430,7 @@ class BashTool(Tool):
             f'Keep working; check it later with Job(action="status"|"wait"|"kill", job="{job_id}").'
         )
         partial_stderr = partial_stderr + ("\n" if partial_stderr else "") + note
-        return self.process_result("BashToolResult", -1, partial_stdout, partial_stderr)
+        return self.process_result("BashToolResult", -1, partial_stdout, partial_stderr, elapsed=self.elapsed())
 
     @staticmethod
     def kill_process_group(proc: subprocess.Popen[bytes]) -> None:
@@ -678,8 +685,8 @@ class JobTool(Tool):
         rows = []
         for job in self.session.jobs.values():
             exit_code = job.exit_code if job.status != "running" else "-"
-            rows.append(f"| {job.id} | {job.status} | {exit_code} | {job.command[:60]} |")
-        return "Jobs:\n| id | status | exit | command |\n|---|---|---|---|\n" + "\n".join(rows)
+            rows.append(f"| {job.id} | {job.status} | {exit_code} | {job.elapsed():.1f}s | {job.command[:60]} |")
+        return "Jobs:\n| id | status | exit | elapsed | command |\n|---|---|---|---|---|\n" + "\n".join(rows)
 
     async def _kill(self, payload: Json) -> str:
         job = self._resolve_job(payload)
