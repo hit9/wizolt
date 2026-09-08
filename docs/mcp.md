@@ -56,8 +56,9 @@ want. Ways to connect:
 
 The /mcp interactive server manager.
 ```
-- **`@server`** in a message — connect on demand. The connection remains active until you
-  disconnect it.
+- **`@server`** in a message — connect on demand. A `.tool` suffix connects the same server; name
+  the tool with `MCP(action="describe")` or the tools index. The connection remains active until
+  you disconnect it.
 
 ```{figure} ../snapshots/wizolt-mcp-mention.png
 :alt: Using @server mention to connect an MCP server on demand

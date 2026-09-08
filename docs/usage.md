@@ -127,7 +127,7 @@ picking one opens its candidates, which narrow as you keep typing. `Tab` highlig
 | Mention | Also written | Effect |
 |---|---|---|
 | `@file:path` | — | Points the agent at a file in the project |
-| `@mcp:server`, `@mcp:server.tool` | `@server`, `@server.tool` | Connects an [MCP](mcp.md) server on demand; its tools join the request index. <span class="marker">The connection remains active until you disconnect it.</span> |
+| `@mcp:server`, `@mcp:server.tool` | `@server`, `@server.tool` | Connects an [MCP](mcp.md) server on demand; a `.tool` suffix connects the whole server too, and its tools join the request index. <span class="marker">The connection remains active until you disconnect it.</span> |
 | `@skill:name` | `$name` | Points the agent at a [skill](skills.md); it loads the instructions when they matter |
 
 **Files.** A mention names the file and nothing more: the agent reads what the request needs with

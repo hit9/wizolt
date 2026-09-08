@@ -205,7 +205,7 @@ Skills are ordinary directories containing `SKILL.md` with `name` and `descripti
 2. User skills under `<data_dir>/skills/`, normally `~/.wizolt/skills/`.
 3. Project skills under `.wizolt/skills/`.
 
-Later sources override an earlier skill with the same name. This builtin skill uses the same parser, index, mention syntax, and `Skill` tool as every other skill. The full body stays out of the prompt until the agent selects the skill or the user mentions it with `$wizolt-help`.
+Later sources override an earlier skill with the same name. This builtin skill uses the same parser, index, mention syntax, and `Skill` tool as every other skill. The full body stays out of the prompt until the agent loads the skill with `Skill("wizolt-help")`; a `$wizolt-help` mention only names it.
 
 MCP servers are configured separately and connected as needed. Use `/mcp`, `/mcp connect SERVER`, `/mcp disconnect SERVER`, and `/mcp tools [SERVER]`. Only connect trusted servers because local servers can execute programs and remote tool calls can change external state.
 
