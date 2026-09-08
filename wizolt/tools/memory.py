@@ -270,7 +270,17 @@ class RecallContextTool(Tool):
 
 class NoteTool(Tool):
     NAME = "Note"
-    DESCRIPTION = "Durable state across context compaction; keep current for non-trivial work. Replacement fields replace; append_known adds. View includes read-only activity history."
+    # The two negative rules are quantified on purpose: "use when appropriate" reads as "use", and
+    # a model that opens every task with a one-line plan spends a call to learn nothing. A stated
+    # fraction and a flat prohibition are the forms that suppress the reflex. Paid for by dropping
+    # text the schema already carries -- the field names say which ones replace and which append,
+    # and `status` repeated its own enum -- so the whole-registry budget in
+    # test_model_facing_tool_schemas_stay_concise still holds. That budget is why guidance goes
+    # here rather than in SYSTEM_PROMPT, which has a size guard of its own.
+    DESCRIPTION = (
+        "Durable state across context compaction; keep current for non-trivial work, skipping the "
+        "easiest quarter of tasks. Never a single-step plan. View includes read-only activity history."
+    )
     STORES_RESULT = False
     MUTATES = True
 
@@ -283,7 +293,7 @@ class NoteTool(Tool):
     def params_schema(cls) -> Json:
         # fmt: off
         plan_item = cls.object_schema({
-            "status": {"type": "string", "enum": list(PlanItem.STATUSES), "description": "todo|doing|done|blocked"},
+            "status": {"type": "string", "enum": list(PlanItem.STATUSES)},
             "text": {"type": "string", "description": "Plan step description"},
         }, ["status", "text"])
         return cls.object_schema({

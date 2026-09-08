@@ -650,9 +650,16 @@ def test_tool_schemas_are_strict_for_high_risk_tools():
 
     note_params = NoteTool.schema()["function"]["parameters"]
     assert "across context compaction" in NoteTool.schema()["function"]["description"]
-    assert "non-trivial work" in NoteTool.schema()["function"]["description"]
+    note_description = NoteTool.schema()["function"]["description"]
+    assert "non-trivial work" in note_description
+    # Both halves of the threshold, because only the negative half suppresses the reflex to open
+    # every task with a plan. Quantified rather than "when appropriate", which reads as "always".
+    assert "easiest quarter" in note_description and "single-step plan" in note_description
     assert "minItems" not in note_params["properties"]["replace_plan"]
-    assert note_params["properties"]["replace_plan"]["items"]["properties"]["status"]["enum"] == ["todo", "doing", "done", "blocked"]
+    status = note_params["properties"]["replace_plan"]["items"]["properties"]["status"]
+    assert status["enum"] == ["todo", "doing", "done", "blocked"]
+    # The enum is the description; repeating it in prose costs schema budget on every request.
+    assert "description" not in status
     assert "minItems" not in note_params["properties"]["replace_known"]
 
     search_params = SearchTool.schema()["function"]["parameters"]
