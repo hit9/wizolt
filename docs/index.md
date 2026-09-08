@@ -21,12 +21,12 @@ tracks its own working notes, and <span class="marker">resumes where you left of
 Wizolt is the former minacode, which began as the single-file nanocode. The project history remains
 continuous across those names.
 
-```{figure} ../snapshots/wizolt1.gif
-:alt: wizolt editing code and running tools in one interactive session
+```{figure} ../snapshots/wizolt3.gif
+:alt: wizolt working through a long session: background jobs, an edit preview, and a live status bar
 :width: 600px
 :align: center
 
-Editing code and running tools in one interactive session.
+A long session with background jobs, edits, and the live status bar.
 ```
 
 ```{admonition} Use at your own risk

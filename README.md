@@ -4,7 +4,7 @@
 </h1>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/hit9/wizolt/master/snapshots/wizolt1.gif" alt="wizolt editing code and running tools" width="600">
+  <img src="https://raw.githubusercontent.com/hit9/wizolt/master/snapshots/wizolt3.gif" alt="wizolt working through a long session with background jobs, an edit preview, and a live status bar" width="600">
 </p>
 
 <p align="center">
