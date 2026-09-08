@@ -1,6 +1,7 @@
 """tui runtime output (split from tests/test_tui_runtime.py)."""
 
 import asyncio
+import contextlib
 from types import SimpleNamespace
 
 from model_harness import async_create
@@ -106,6 +107,38 @@ async def test_tui_runtime_emits_answer_when_not_stream_promoted(tmp_path, monke
     await runtime.run_agent_turn("do it")
 
     assert emitted == []  # the engine printed the answer; the runtime does not repeat it
+
+
+async def test_tab_submission_reaches_the_queue_flagged_for_the_next_turn(tmp_path):
+    """`submit_next_turn` is the only link between the Tab callback and the session queue: the
+    item must arrive flagged, or the engine claims it as a live follow-up for the running turn."""
+    scenario_session = session(tmp_path)
+    command_loop = CommandLoop(
+        Agent(scenario_session, output_fn=lambda _text: None),
+        input_fn=lambda prompt="": "",
+        output_fn=lambda _text: None,
+    )
+    runtime = TuiRuntime(command_loop)
+    command_loop.tui = TuiApp()
+    runtime.accepting = True
+    runtime.turn_active = True  # Tab only queues into the session while a turn is running
+
+    runtime.submit_next_turn("held for later")
+    consumer = asyncio.ensure_future(runtime._consume_submissions())
+    try:
+        for _ in range(200):
+            if scenario_session.pending_user_inputs:
+                break
+            await asyncio.sleep(0.01)
+    finally:
+        consumer.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await consumer
+
+    assert [item.text for item in scenario_session.pending_user_inputs] == ["held for later"]
+    assert scenario_session.pending_user_inputs[0].next_turn
+    assert scenario_session.claim_user_inputs() == []  # invisible to the running turn
+    assert [str(item) for item in command_loop.take_pending_inputs()] == ["held for later"]
 
 
 async def test_search_sources_footer_is_indented_like_the_answer_above_it(tmp_path, monkeypatch):

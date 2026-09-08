@@ -104,6 +104,21 @@ def test_fast_slash_typing_keeps_a_current_menu_ready_for_tab():
     assert app.input_buffer.complete_state.complete_index == 0
 
 
+def test_running_tab_completes_when_the_menu_is_open():
+    """An open menu owns Tab: a working prompt must not swallow the completion into the
+    next-turn queue."""
+    held: list[str] = []
+    app = TuiApp(completer=CommandCompleter(), on_queue_next_turn=held.append)
+    app.set_running("working")
+    app.input_buffer.insert_text("/")
+    assert app.input_buffer.complete_state is not None
+
+    app.tab_or_complete(app.input_buffer, reverse=False)
+
+    assert held == []
+    assert app.input_buffer.text.startswith("/")
+
+
 def test_complete_slash_command_submits_on_the_first_enter(monkeypatch):
     received = []
     app = TuiApp(completer=CommandCompleter(), on_chat_submit=received.append)

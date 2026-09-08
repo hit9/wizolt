@@ -77,6 +77,19 @@ def test_editor_and_queued_user_text_use_desert_style(tmp_path, monkeypatch):
     assert any(style == expected and "queued message" in text for style, text in [*sent, *waiting])
 
 
+def test_next_turn_input_renders_with_its_own_marker(tmp_path):
+    command_loop = loop(tmp_path)
+    command_loop.session.enqueue_user_input("live follow-up")
+    command_loop.session.enqueue_user_input("held for later", next_turn=True)
+
+    _, waiting = command_loop.view.followup_fragments()
+    text = "".join(fragment for _, fragment in waiting)
+
+    assert "+ live follow-up" in text
+    assert "↪ held for later" in text
+    assert "+ held for later" not in text
+
+
 def test_activity_blank_line_separates_flushed_followup_from_the_stream(tmp_path):
     command_loop = loop(tmp_path)
     command_loop.session.enqueue_user_input("queued message")
