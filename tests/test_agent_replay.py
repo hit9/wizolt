@@ -386,3 +386,15 @@ async def test_agent_followup_turn_snapshot_resume_invariant(tmp_path, monkeypat
     outputs = {item.get("call_id") for item in replayed if item.get("type") == "function_call_output"}
     assert [item.get("call_id") for item in replayed if item.get("type") == "function_call"] == ["Read-id"]
     assert outputs == {"Read-id"}
+
+
+async def test_held_next_turn_inputs_survive_a_snapshot_one_per_turn(tmp_path):
+    """The flag is persisted: a resumed queue must not merge two held inputs into one turn."""
+    s = session(tmp_path)
+    s.enqueue_user_input("first task", next_turn=True)
+    s.enqueue_user_input("second task", next_turn=True)
+    await s.save_snapshot()
+
+    restored = Session.load_snapshot(s.uid, config=s.config, settings=s.settings)
+
+    assert [(item.text, item.next_turn) for item in restored.pending_user_inputs] == [("first task", True), ("second task", True)]
