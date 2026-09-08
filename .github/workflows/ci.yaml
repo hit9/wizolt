@@ -28,15 +28,6 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install terminal test dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y tmux
-          # The scrollback tests depend on how this exact tmux reflows a pane, so make the
-          # version visible in the log: a silent distro bump would otherwise be invisible
-          # until it broke something. The `tmux-latest` job covers the other end of the range.
-          tmux -V
-
       - name: Install dependencies
         run: uv sync --extra dev
 
@@ -51,13 +42,48 @@ jobs:
 
   # The scrollback projection is built on measured tmux behaviour -- that a top-anchored scroll
   # region feeds native history, and that a pane keeps its cursor line at the bottom across a
-  # reflow. The matrix above only ever sees whatever tmux the runner image ships (3.4 on Ubuntu
-  # 24.04), which trails releases by years, so this job builds the current tmux and runs the
-  # acceptance tests against it. Bump TMUX_VERSION when a new tmux is released.
+  # reflow. Those tests need a real terminal and real time, so the matrix above excludes them; the
+  # two jobs below own them, one at each end of the version range.
+  tmux-shipped:
+    runs-on: ubuntu-latest
+    env:
+      WIZOLT_REQUIRE_TMUX: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install the distribution tmux
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tmux
+          # The scrollback tests depend on how this exact tmux reflows a pane, so make the
+          # version visible in the log: a silent distro bump would otherwise be invisible
+          # until it broke something.
+          tmux -V
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run the real-tmux acceptance tests
+        run: uv run pytest tests/test_tui_tmux_scrollback.py -q -m tmux
+
+  # The other end of the range: the distro tmux above trails releases by years, so this job builds
+  # the current one and runs the same acceptance tests against it. Bump TMUX_VERSION when a new
+  # tmux is released.
   tmux-latest:
     runs-on: ubuntu-latest
     env:
       TMUX_VERSION: "3.7c"
+      WIZOLT_REQUIRE_TMUX: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -88,4 +114,4 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run the real-tmux acceptance tests
-        run: uv run pytest tests/test_tui_tmux_scrollback.py -q
+        run: uv run pytest tests/test_tui_tmux_scrollback.py -q -m tmux

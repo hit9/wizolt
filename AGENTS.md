@@ -31,6 +31,8 @@ Keep this file short. It is an entry point, not a second design document.
 ## Project workflow
 
 - **Tests:** run targeted tests while iterating and `uv run pytest` before completing behavior changes.
+  That run excludes the real-tmux acceptance tests (they need a terminal and real time); run
+  `uv run pytest -m tmux` when a change touches the terminal projection.
 - **Quality:** run `uv run ruff check wizolt`, `uv run ruff format --check wizolt`, and `uv run pyright`.
 - **Docs:** on user-facing doc changes, update the English source and build `html`
   (`make -C docs html`).
