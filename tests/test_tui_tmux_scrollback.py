@@ -312,13 +312,16 @@ def _blank_rows_after(pane, cycles: int) -> int:
     # Let the whole transcript land before resizing, so both arms compare the same content and
     # the only difference between them is how many times the pane was resized.
     _wait_for_markers(log, 40)
+    # Settle the selector before resizing, not after. The driver opens it on its own timer, so a
+    # resize can land while it is open; shrinking the pane then pushes its rows into native
+    # history, where they stay. That leaves option rows in the capture no later close can remove,
+    # and their rows in the count this returns. Selectors under resize are what
+    # `test_transcript_survives_repeated_resize_cycles` is for; what this measures is resizes.
+    _stop_selectors(log)
     for cycle in range(cycles):
         pane.resize(*cycle_size(cycle))
         time.sleep(0.15)
     pane.resize(WIDE, TALL)
-    # Compare the same live UI state. An open selector has eight option rows where the closed
-    # app has blank padding, so raw blank counts otherwise differ even with no further resize.
-    _stop_selectors(log)
     lines = _settled_capture(pane)
     assert not any(" option " in line for line in lines), "the selector was still visible:\n" + "\n".join(lines)
     assert sum(line == ">" or line.startswith("> ") for line in lines) == 1, "prompt missing or duplicated"

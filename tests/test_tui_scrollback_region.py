@@ -242,3 +242,36 @@ def test_accepted_output_survives_exit_before_the_next_render(monkeypatch, wired
     if final_write:
         assert recorded.index("accepted just before exit") < recorded.index("later shutdown output")
         assert printed.index("accepted just before exit") < printed.index("later shutdown output")
+
+
+def test_a_rebuild_leaves_the_app_on_the_row_it_was_on(monkeypatch, wired):
+    """A width change must not move the session up the pane.
+
+    The rebuild replays from the top, so with a transcript shorter than the space above the app
+    the app would land wherever the transcript happens to end -- rising a little further on every
+    resize, which reads as the whole session creeping toward the top. It opens the gap above the
+    transcript instead, so the app keeps its row.
+    """
+    output, app, printer = wired
+    rows = []
+
+    def drive(_pipe_input):
+        wait_until(lambda: any(line.startswith(UiPrinter.PROMPT_PREFIX) for line in output.lines))
+        emit_and_wait(app, printer, "one short line")
+        rows.append(app_top_row(app.app.renderer))
+        for columns in (60, 90, 70):
+            output.size = Size(rows=ROWS, columns=columns)
+            app.app.loop.call_soon_threadsafe(app.app._on_resize)
+            wait_until(lambda columns=columns: app.app.renderer._last_size.columns == columns)
+            wait_until(lambda: not app.scrollback.pending)
+            rows.append(app_top_row(app.app.renderer))
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_tui(monkeypatch, app, output, drive)
+
+    assert len(set(rows)) == 1, f"the app moved between width changes: {rows}"
+
+# The rebuild's switch from counting newlines to counting rows has no test here on purpose. With
+# the anchoring above in place, a short transcript is padded to the app's row either way, so the
+# two counts agree wherever the app can be placed at all. `physical_rows` is pinned directly, at
+# widths measured against tmux, in `test_tui_transcript_recording.py`.

@@ -163,7 +163,13 @@ def test_recorded_diff_matches_direct_output_color_depth(monkeypatch, depth, wit
         output.default_color_depth = ColorDepth.TRUE_COLOR if depth != ColorDepth.TRUE_COLOR else ColorDepth.DEPTH_8_BIT
         replayed = "".join(entry(80) if callable(entry) else entry for entry in recorded)
 
-    assert replayed == direct
+    # Compared as what the terminal will show rather than byte for byte: the two paths differ by a
+    # redundant repeated reset, which no terminal renders differently. Styles are still compared,
+    # so a colour or attribute that changed on replay would still fail.
+    def shown(rendered: str) -> list[tuple[str, str]]:
+        return [(style, text) for style, text in to_formatted_text(ANSI(rendered)) if text]
+
+    assert shown(replayed) == shown(direct)
 
 
 @pytest.mark.parametrize("width", [40, 60, 100])
@@ -314,3 +320,53 @@ def test_a_diff_block_is_cut_for_the_width_it_lands_in(recorded):
     assert max(get_cwidth(line) for line in narrow) <= 50, narrow
     # Cut again for the narrow pane rather than folded: the same diff needs more rows there.
     assert len(narrow) > len(wide)
+
+
+@pytest.mark.parametrize(
+    "emit",
+    [
+        pytest.param(lambda printer: printer.emit_answer("a message with **bold** and a list\n\n- one\n- two\n", role="assistant"), id="message"),
+        pytest.param(lambda printer: printer.emit_answer("plain answer", role="assistant", rule=False), id="message-no-rule"),
+        pytest.param(lambda printer: printer.emit_phase_rule(), id="phase-rule"),
+        pytest.param(lambda printer: printer.emit_worker_rule("[worker] busy"), id="worker-rule"),
+        pytest.param(lambda printer: printer.emit("a plain line"), id="plain"),
+        pytest.param(
+            lambda printer: printer.emit(LogBlock([LogLine("edit", line, LogRole.DIFF, LogEdge.BRANCH) for line in ["--- a", "+++ b", "@@ -1 +1 @@", "-x", "+y"]])),
+            id="diff",
+        ),
+    ],
+)
+def test_replay_at_the_emit_width_is_what_was_printed(monkeypatch, emit):
+    """Re-rendering must not change ordinary output, only what a resize does with it.
+
+    Every block now lays itself out from its source rather than replaying bytes, which is only
+    safe if asking for the width it was emitted at gives back exactly what went to the terminal.
+    Without this, every recorded block is a chance for the projection to drift from the session.
+    """
+    monkeypatch.setattr("wizolt.render.shutil.get_terminal_size", lambda *args: os.terminal_size((80, 24)))
+    buffer = io.StringIO()
+    output = Vt100_Output(buffer, lambda: Size(rows=24, columns=80), default_color_depth=ColorDepth.TRUE_COLOR)
+
+    def fresh() -> UiPrinter:
+        # A separate printer per arm. `separate` and `track_layout` carry spacing state between
+        # emits, so reusing one would compare a first emit against a second.
+        printer = UiPrinter()
+        printer.color = True
+        return printer
+
+    with create_app_session(output=output):
+        emit(fresh())  # prints straight to the terminal, because no sink has claimed scrollback
+        direct = buffer.getvalue()
+        recorded: list = []
+        recording = fresh()
+        recording.transcript_sink = recorded.append
+        emit(recording)
+        replayed = "".join(entry(80) if callable(entry) else entry for entry in recorded)
+
+    # Compared as what the terminal will show rather than byte for byte: the two paths differ by a
+    # redundant repeated reset, which no terminal renders differently. Styles are still compared,
+    # so a colour or attribute that changed on replay would still fail.
+    def shown(rendered: str) -> list[tuple[str, str]]:
+        return [(style, text) for style, text in to_formatted_text(ANSI(rendered)) if text]
+
+    assert shown(replayed) == shown(direct)
