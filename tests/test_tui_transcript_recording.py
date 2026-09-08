@@ -242,3 +242,47 @@ def test_physical_rows_counts_wrapped_lines_not_newlines():
 
     assert wrapped.count("\n") == 1
     assert physical_rows(wrapped, 80) == 3
+
+
+def test_a_message_is_recorded_as_its_source_not_as_bytes(recorded):
+    """The width-change contract: prose, tables and code lay themselves out for the new pane.
+
+    Recording Rich's output freezes the width it was produced at, so a narrower pane can only
+    re-wrap those bytes by character and a wider one leaves them short. Recording the message
+    itself means the same Rich render runs again for the width it lands in.
+    """
+    printer, tui = recorded
+    document = "A paragraph with enough words in it to wrap differently at one width than another, and then some more.\n"
+    printer.emit_answer(document, role="assistant")
+
+    at_100 = "".join(entry(100) if callable(entry) else entry for entry in tui.scrollback.transcript)
+    at_50 = "".join(entry(50) if callable(entry) else entry for entry in tui.scrollback.transcript)
+
+    def rows(rendered):
+        text = "".join(fragment for _, fragment in to_formatted_text(ANSI(rendered.replace("\x1b[?7h", ""))))
+        return [line for line in text.splitlines() if line.strip()]
+
+    wide, narrow = rows(at_100), rows(at_50)
+    assert all(get_cwidth(line) <= 100 for line in wide)
+    assert all(get_cwidth(line) <= 50 for line in narrow), narrow
+    # Re-flowed, not re-wrapped: laying the same words out narrower takes more rows, and none of
+    # them is a broken remainder of a wider one.
+    assert len(narrow) > len(wide)
+
+
+def test_a_table_is_laid_out_for_the_width_it_lands_in(recorded):
+    """Rich draws table borders to the console width, which is the most visible thing a replay of
+    frozen bytes gets wrong: the box keeps its old width and wraps."""
+    printer, tui = recorded
+    wide_cell = "a description long enough that the box cannot fit a narrow pane"
+    printer.emit_answer(f"| column | meaning |\n| --- | --- |\n| alpha | {wide_cell} |\n", role="assistant")
+
+    def widest(columns):
+        rendered = "".join(entry(columns) if callable(entry) else entry for entry in tui.scrollback.transcript)
+        text = "".join(fragment for _, fragment in to_formatted_text(ANSI(rendered.replace("\x1b[?7h", ""))))
+        return max(get_cwidth(line) for line in text.splitlines() if line.strip())
+
+    # The box is wider than the narrow pane when laid out for the wide one, so this only holds if
+    # it was drawn again rather than replayed.
+    assert 40 < widest(100) <= 100
+    assert widest(40) <= 40

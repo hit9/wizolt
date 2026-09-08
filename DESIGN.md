@@ -600,8 +600,12 @@ row ownership. The full investigation remains in Git history before deletion of 
 
 The projection relies on measured tmux behavior: a row-1 scroll region feeds native history and
 pane reflow keeps the cursor line at the bottom. These are not terminal-protocol guarantees.
-Ordinary text remains captured ANSI output; only completed rules retain adaptive layout, so replay
-does not fully re-render Markdown, tables or code for the new width.
+Completed messages are recorded as `MessageBlock` -- their text, role and indent -- and Rich lays
+them out again for the width they are projected into, so Markdown, tables, lists and code re-flow
+on a resize rather than having the bytes of an earlier width re-wrapped by character. Rules do the
+same through `HorizontalRule`. Both derive from `WidthDependent`: subclass it whenever a block's
+layout depends on the width, and record the block rather than its rendering. Output that is not a
+`WidthDependent` is still replayed as captured.
 
 **Guard at two levels.** Unit/model tests cover geometry refusal, deferred replay, output recording,
 ordering and shutdown. Real-tmux tests must cover repeated wide/narrow and tall/short transitions,

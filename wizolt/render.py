@@ -63,8 +63,64 @@ except ImportError:  # pragma: no cover - optional highlighting dependency
 ScrollbackText = str | Callable[[int], str]
 
 
+class WidthDependent:
+    """A completed block that keeps its source and lays itself out for the width it lands in.
+
+    The projection replays recorded bytes, and bytes carry the width they were rendered at: a
+    table laid out for 120 columns re-wraps by character into 80, and one laid out for 60 stays
+    narrow in 120. Anything that subclasses this is re-rendered instead of replayed, which is what
+    lets a resize re-flow it. Everything else is still replayed as captured.
+    """
+
+    def fragments(self, width: int) -> StyleAndTextTuples:
+        raise NotImplementedError
+
+    def __pt_formatted_text__(self) -> StyleAndTextTuples:
+        return self.fragments(shutil.get_terminal_size((80, 20)).columns)
+
+
 @dataclass(frozen=True)
-class HorizontalRule:
+class MessageBlock(WidthDependent):
+    """A completed message, laid out by Rich for the width it is projected into.
+
+    This is the piece that makes a resize re-flow prose, lists, tables and code instead of just
+    re-wrapping the bytes Rich produced at some earlier width. It keeps what the message *is* --
+    its text, who said it, its indent -- and runs the same render the live path runs, so a replay
+    at the emit width is byte-identical to what was printed and a replay at another width is what
+    Rich would have produced there.
+    """
+
+    printer: UiPrinter
+    text: str
+    role: str
+    indent: int
+    compact: bool
+
+    def ansi(self, width: int) -> str:
+        printer = self.printer
+        console = markdown_console(width)
+        with console.capture() as capture:
+            printer.render_message(console, self.text, self.role, False, self.indent)
+        cleaned = printer.strip_unknown_escapes(printer.strip_trailing_pad(capture.get()))
+        # A block owns its inside, never its outside: the gap above it is `separate`'s to open and
+        # the one below belongs to whatever comes next, so a document that opens on a heading or
+        # closes on a list cannot smuggle in blank rows of its own.
+        cleaned = cleaned.strip("\n") + "\n"
+        if self.compact:
+            # Rich markdown pads a blank line after every heading plus a whitespace row above and
+            # below each table box; /status wants the heading tight against its table, so drop
+            # internal blank lines -- but keep one blank row at each boundary so the command's
+            # output does not butt straight against the transcript above it or the prompt below.
+            lines = [line for line in cleaned.split("\n") if printer.SGR_RE.sub("", line).strip()]
+            cleaned = "\n" + "\n".join(lines) + "\n"
+        return cleaned
+
+    def fragments(self, width: int) -> StyleAndTextTuples:
+        return to_formatted_text(ANSI(self.ansi(width)))
+
+
+@dataclass(frozen=True)
+class HorizontalRule(WidthDependent):
     """A completed rule keeps its label and colors, but takes its width from the projection."""
 
     rule_style: str
@@ -92,9 +148,6 @@ class HorizontalRule:
             parts = [(self.rule_style, lead), (self.label_style, label), (self.rule_style, (" " + "─" * (trail - 1)) if trail else "")]
         parts.append(("", "\n\n" if self.blank_after else "\n"))
         return parts
-
-    def __pt_formatted_text__(self) -> StyleAndTextTuples:
-        return self.fragments(shutil.get_terminal_size((80, 20)).columns)
 
 
 def progress_bar(value: int, total: int, width: int = 14) -> str:
@@ -495,12 +548,12 @@ class UiPrinter:
         # so a burst of output (the restored-transcript replay) is printed by a single
         # print_formatted_text call and flushes once. Under the TUI each call coordinates with the
         # renderer, so batching turns a hundred of those into one. Only the colored path batches.
-        self._batch_parts: list[FormattedText | ANSI | HorizontalRule] | None = None
+        self._batch_parts: list[FormattedText | ANSI | WidthDependent] | None = None
         # Scrollback window: while a prompt_toolkit application is live, each print_formatted_text
         # suspends it (erase the whole rendered output, print above it, repaint), which makes the
         # animated divider visibly blink on every emit. A short window batches a burst of emits
         # (a tool result's lines) into one suspend; outside a live application nothing changes.
-        self._scrollback_parts: list[FormattedText | ANSI | HorizontalRule] = []
+        self._scrollback_parts: list[FormattedText | ANSI | WidthDependent] = []
         self._scrollback_scheduled = False
         self._scrollback_generation = 0
         # Parts/scheduling state are touched from the app loop and late synchronous fallback
@@ -574,7 +627,7 @@ class UiPrinter:
         if parts:
             self.print_parts(parts)
 
-    def print_parts(self, parts: list[FormattedText | ANSI | HorizontalRule]) -> None:
+    def print_parts(self, parts: list[FormattedText | ANSI | WidthDependent]) -> None:
         """Send completed output, retaining width-dependent rules for terminal replay.
 
         Every printed row passes through here, which is what lets the TUI rebuild the terminal
@@ -588,13 +641,13 @@ class UiPrinter:
             return
         # Snapshot the batch and the completed labels; replay must never consult live turn state.
         color_depth = get_app_session().output.get_default_color_depth()
-        if any(isinstance(part, HorizontalRule) for part in parts):
+        if any(isinstance(part, WidthDependent) for part in parts):
             sink(partial(self.render_to_ansi, list(parts), color_depth=color_depth))
         else:
             sink(self.render_to_ansi(parts, color_depth=color_depth))
 
     @staticmethod
-    def render_to_ansi(parts: list[FormattedText | ANSI | HorizontalRule], columns: int | None = None, *, color_depth: ColorDepth | None = None) -> str:
+    def render_to_ansi(parts: list[FormattedText | ANSI | WidthDependent], columns: int | None = None, *, color_depth: ColorDepth | None = None) -> str:
         """Render completed fragments and rules to ANSI at the requested terminal width.
 
         Rendering through a real `Vt100_Output` rather than reimplementing the styling keeps
@@ -607,11 +660,11 @@ class UiPrinter:
         # bypasses the terminal's palette conversion and makes recorded diff bands darker.
         depth = color_depth or get_app_session().output.get_default_color_depth()
         output = Vt100_Output(buffer, lambda: size, default_color_depth=depth)
-        fragments = [fragment for part in parts for fragment in (part.fragments(size.columns) if isinstance(part, HorizontalRule) else to_formatted_text(part))]
+        fragments = [fragment for part in parts for fragment in (part.fragments(size.columns) if isinstance(part, WidthDependent) else to_formatted_text(part))]
         render_fragments_to_output(output, fragments, _SCROLLBACK_STYLE)
         return buffer.getvalue()
 
-    def _scrollback_print_parts(self, parts: list[FormattedText | ANSI | HorizontalRule]) -> None:
+    def _scrollback_print_parts(self, parts: list[FormattedText | ANSI | WidthDependent]) -> None:
         """Write one block, which is usually one part but not always.
 
         An answer is a rule plus its body: two parts, because the rule has to stay a
@@ -624,10 +677,10 @@ class UiPrinter:
             return
         self._write_scrollback(parts)
 
-    def _scrollback_print(self, fragment: FormattedText | ANSI | HorizontalRule) -> None:
+    def _scrollback_print(self, fragment: FormattedText | ANSI | WidthDependent) -> None:
         self._write_scrollback([fragment])
 
-    def _write_scrollback(self, parts: list[FormattedText | ANSI | HorizontalRule]) -> None:
+    def _write_scrollback(self, parts: list[FormattedText | ANSI | WidthDependent]) -> None:
         """Print above a live application, batching a burst of emits into one suspend.
 
         Outside a live application this drains any queued batch first and then prints
@@ -653,7 +706,7 @@ class UiPrinter:
         assert loop is not None  # a running application always has one; the checker cannot see it
         self._queue_scrollback(app, parts)
 
-    def _queue_scrollback(self, app: Any, parts: list[FormattedText | ANSI | HorizontalRule]) -> None:
+    def _queue_scrollback(self, app: Any, parts: list[FormattedText | ANSI | WidthDependent]) -> None:
         with self._scrollback_lock:
             self._scrollback_parts.extend(parts)
             if self._scrollback_scheduled:
@@ -693,7 +746,7 @@ class UiPrinter:
             if parts:
                 self._flush_batch(parts)
 
-    def _flush_batch(self, parts: list[FormattedText | ANSI | HorizontalRule]) -> None:
+    def _flush_batch(self, parts: list[FormattedText | ANSI | WidthDependent]) -> None:
         """Flush a collected batch through the scrollback path, keeping the batch a single print.
 
         Inside a live application the parts join the same queue as ordinary emits -- landing after
@@ -827,30 +880,16 @@ class UiPrinter:
             # behind -- through the printer, which knows whether a gap is already there, rather
             # than by a blank row Rich prints whether one is needed or not.
             self.separate()
-        console = markdown_console(shutil.get_terminal_size().columns)
         # The rule above an answer is drawn as a HorizontalRule rather than by Rich, so that a
         # projection can redraw it at the width it is replayed into. Rich bakes the width into the
         # captured ANSI, and a 100-column rule replayed into a 60-column pane wraps onto a second
         # row -- the other three rules already avoid this the same way.
         drew_rule = rule and not self.is_error(text)
-        with console.capture() as capture:
-            self.render_message(console, text, role, False, indent)
-        cleaned = self.strip_unknown_escapes(self.strip_trailing_pad(capture.get()))
-        # A block owns its inside, never its outside: the gap above it is `separate`'s to open and
-        # the one below belongs to whatever comes next, so a document that opens on a heading or
-        # closes on a list cannot smuggle in blank rows of its own.
-        cleaned = cleaned.strip("\n") + "\n"
-        if compact:
-            # Rich markdown pads a blank line after every heading plus a whitespace row above and
-            # below each table box; /status wants the heading tight against its table, so drop
-            # internal blank lines -- but keep one blank row at each boundary so the command's
-            # output does not butt straight against the transcript above it or the prompt below.
-            lines = [line for line in cleaned.split("\n") if self.SGR_RE.sub("", line).strip()]
-            cleaned = "\n" + "\n".join(lines) + "\n"
+        block = MessageBlock(self, text, role, indent, compact)
         # Count the rule's row as Rich's own row was counted, so spacing decisions taken from
         # `rows_since_rule` and `trailing_blanks` are unchanged by where the rule is drawn.
-        self.track_layout(("─\n" if drew_rule else "") + cleaned)
-        parts: list[FormattedText | ANSI | HorizontalRule] = [ANSI(cleaned)]
+        self.track_layout(("─\n" if drew_rule else "") + block.ansi(shutil.get_terminal_size().columns))
+        parts: list[FormattedText | ANSI | WidthDependent] = [block]
         if drew_rule:
             parts.insert(0, HorizontalRule(Theme.fg("rule")))
         if self._batch_parts is not None:

@@ -127,11 +127,13 @@ def test_choice_view_state_fragments_preserve_headers_and_preview():
 
 def test_emit_answer_compact_keeps_boundary_blank_rows(monkeypatch):
     out = []
-    monkeypatch.setattr(render_module, "print_formatted_text", lambda text, **kwargs: out.append(getattr(text, "value", str(text))))
+    monkeypatch.setattr(render_module, "print_formatted_text", lambda part, **kwargs: out.append(part))
     ui = UiPrinter(output_fn=lambda text: None)
     ui.color = True
     ui.emit_answer("### Parent\n| status | value |\n| --- | --- |\n| model | `x` |\n", rule=False, compact=True)
-    rendered = out[0]
+    # A message is recorded as the block it is, not as the bytes Rich made of it at one width, so
+    # ask it for its layout. The spacing rule under test is the same either way.
+    rendered = out[0].ansi(80)
     visible = [line for line in rendered.split("\n") if UiPrinter.SGR_RE.sub("", line).strip()]
     # One blank row at each boundary keeps the command off the transcript above and the prompt
     # below; every internal Rich padding row is gone.
