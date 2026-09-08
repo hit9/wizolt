@@ -45,7 +45,7 @@ def test_default_user_paths_prefer_wizolt_then_minacode_then_nanocode(isolate_ho
 def test_continue_flags_resume_latest_session_in_current_project(tmp_path, monkeypatch, flag):
     config = Config(data_dir=str(tmp_path / "data"))
     settings = RuntimeSettings()
-    resumed = SimpleNamespace(settings=settings, mcp=None)
+    resumed = SimpleNamespace(settings=settings, mcp=None, close=lambda: None)
     selected = []
 
     monkeypatch.setattr(ConfigFile, "load", lambda _path: {})
@@ -54,11 +54,12 @@ def test_continue_flags_resume_latest_session_in_current_project(tmp_path, monke
     monkeypatch.setattr(
         Session,
         "load_snapshot",
-        classmethod(lambda _cls, uid, config=None, settings=None, cwd="", catalog=None: selected.append((uid, config, settings, cwd)) or resumed),
+        classmethod(lambda _cls, uid, config=None, settings=None, cwd="", catalog=None, lease=None: selected.append((uid, config, settings, cwd)) or resumed),
     )
 
     class Loop:
         resume_request = ""
+        resume_lease = None
 
         def run(self):
             return 0
@@ -87,7 +88,10 @@ def test_resume_request_starts_the_next_run_on_the_chosen_session(tmp_path, monk
     monkeypatch.setattr(
         Session,
         "load_snapshot",
-        classmethod(lambda _cls, uid, config=None, settings=None, cwd="", catalog=None: loaded.append(uid) or SimpleNamespace(settings=settings, mcp=None)),
+        classmethod(
+            lambda _cls, uid, config=None, settings=None, cwd="", catalog=None, lease=None: loaded.append(uid)
+            or SimpleNamespace(settings=settings, mcp=None, close=lambda: None)
+        ),
     )
     closed = []
     handovers = iter(["second-uid", ""])
@@ -95,6 +99,7 @@ def test_resume_request_starts_the_next_run_on_the_chosen_session(tmp_path, monk
     class Loop:
         def __init__(self, _agent):
             self.resume_request = ""
+            self.resume_lease = None
 
         def run(self):
             self.resume_request = next(handovers)

@@ -164,6 +164,7 @@ async def test_agent_stops_after_sixth_textual_tool_call_without_persisting_resp
         {"role": "user", "content": FAILED_TURN_MARKER.format(error="Model emitted Bash as text 6 times; none of the textual calls were executed.")},
     ]
     assert s._active_turn_messages == []
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config)
     # Drop only what the load itself appended: the corrections are session events too, and they are
     # exactly what this asserts survived.

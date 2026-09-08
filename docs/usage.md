@@ -224,6 +224,12 @@ session by name after moving directories. When a query matches more than one ses
 Resuming replays the conversation into your scrollback, including the diff each edit made. Long
 diffs are trimmed there; `/diff` always has the full text.
 
+One wizolt runs a session at a time. Resuming a session another instance is already running stops
+with `Session <uid> is already in use by another Wizolt instance.`, and picking a busy session in
+`/sessions` reports the same line while keeping the current one open. Close the other instance, or
+run a different session. Every writer needs this version: an older binary running the same session
+does not honor the lock.
+
 ### Names
 
 Every session has a name, so you have something to recognize it by later. It starts as the first

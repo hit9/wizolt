@@ -1111,6 +1111,7 @@ async def test_direct_edit_arguments_survive_a_snapshot_and_resume(tmp_path, mon
     await runner(s).run([direct_call("e0", "code.txt", edits)])
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=config, cwd=str(tmp_path))
 
     stored = next(record for record in restored.tool_records if record.name == "Edit")

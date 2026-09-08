@@ -38,6 +38,7 @@ async def test_resume_replays_full_transcript_after_model_context_and_retained_r
     s.turn_diffs.clear()
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
     output = []
     CommandLoop(Agent(restored, output_fn=output.append), output_fn=output.append).render_resumed_session()
@@ -75,6 +76,7 @@ async def test_compact_command_persists_the_compacted_history(tmp_path):
     assert len(s.messages) < before
 
     # The compacted history is on disk, not just in memory.
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
     persisted = restored.messages[:-1]  # load appends one new resume event
     assert persisted == s.messages
@@ -92,6 +94,7 @@ async def test_history_segments_persist_and_restore(tmp_path):
     s.history.append(HistorySegment(key="seg.1", title="earlier task", text="user:\nfind the bug\n\nassistant:\nfixed it"))
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
 
     assert len(restored.history) == 1
@@ -108,6 +111,7 @@ async def test_history_delta_appends_new_segments(tmp_path):
     s.history.append(HistorySegment(key="seg.2", title="second", text="two"))
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
     assert [segment.key for segment in restored.history] == ["seg.1", "seg.2"]
 
@@ -133,6 +137,7 @@ async def test_history_delta_rewrites_when_saved_segments_change(tmp_path):
     lines = read_jsonl(log_path(s))
     assert any("history_replace" in line and [seg["key"] for seg in line["history_replace"]] == ["seg.2", "seg.1"] for line in lines)
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
     assert [segment.key for segment in restored.history] == ["seg.2", "seg.1"]
 
@@ -143,6 +148,7 @@ async def test_resume_recomputes_the_context_percent(tmp_path):
     s.messages.append({"role": "user", "content": "x" * 40000})
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
     assert restored.state.context_percent == 0
 

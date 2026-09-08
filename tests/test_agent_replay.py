@@ -360,6 +360,7 @@ async def test_agent_followup_turn_snapshot_resume_invariant(tmp_path, monkeypat
     assert await agent.run("initial request") == "done"
 
     await s.save_snapshot()
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, settings=s.settings)
 
     # The live follow-up and the correction each appear once as durable user messages
@@ -395,6 +396,7 @@ async def test_held_next_turn_inputs_survive_a_snapshot_one_per_turn(tmp_path):
     s.enqueue_user_input("second task", next_turn=True)
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, settings=s.settings)
 
     assert [(item.text, item.next_turn) for item in restored.pending_user_inputs] == [("first task", True), ("second task", True)]

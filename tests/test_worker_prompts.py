@@ -49,6 +49,7 @@ async def test_worker_snapshot_hidden_from_listing_and_latest(tmp_path):
     await parent.save_snapshot()  # latest -> parent.uid
     worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
     worker.messages.append({"role": "user", "content": "worker request"})
+    worker.borrow_ownership(parent)
     await worker.save_snapshot()
 
     assert worker.uid.endswith(".w")
@@ -68,6 +69,7 @@ async def test_clean_expired_removes_worker_when_parent_expires_later_in_scan(tm
     parent.settings.session_retention_days = 1
     worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
     worker.messages.append({"role": "user", "content": "worker request"})
+    worker.borrow_ownership(parent)
     await worker.save_snapshot()  # create first: the worker is visited before its parent below
     parent.messages.append({"role": "user", "content": "parent request"})
     await parent.save_snapshot()
@@ -86,6 +88,7 @@ async def test_clean_expired_removes_worker_when_parent_expires_later_in_scan(tm
     monkeypatch.setattr("wizolt.session.os.scandir", worker_first)
     cleaner = session(tmp_path)
     cleaner.settings.session_retention_days = 1
+    parent.close()  # an expired family is one nobody is running; the worker's lease is borrowed
 
     assert SessionSnapshotStore.clean_expired(cleaner.config.data_dir, cleaner.uid, cleaner.settings.session_retention_days) >= 2
     assert not os.path.isfile(parent_path)
@@ -143,6 +146,7 @@ async def test_resolve_uid_prefix_skips_worker_snapshot(tmp_path):
     await parent.save_snapshot()
     worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
     worker.messages.append({"role": "user", "content": "worker request"})
+    worker.borrow_ownership(parent)
     await worker.save_snapshot()
 
     resolved = SessionSnapshotStore.resolve_uid(parent.uid[:12], parent.config.data_dir, str(tmp_path))

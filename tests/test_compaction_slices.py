@@ -53,6 +53,7 @@ async def test_pruned_history_survives_a_snapshot_round_trip(tmp_path):
         context.store_history_segment([{"role": "user", "content": f"span {index}"}], scope="history", trigger="auto", fallback=False)
         await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config)
 
     assert [segment.key for segment in restored.history] == [segment.key for segment in s.history]

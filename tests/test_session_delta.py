@@ -56,6 +56,7 @@ async def test_transcript_appends_when_model_messages_are_replaced(tmp_path):
     assert delta["messages_replace"] == s.messages
     assert delta["transcript_messages"] == [{"role": "assistant", "content": "original answer"}]
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
     assert restored.messages[0]["content"] == "compacted context"
     assert [message["content"] for message in restored.transcript_messages] == ["original request", "original answer"]

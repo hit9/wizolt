@@ -471,6 +471,9 @@ class DelegateTool(Tool):
         worker.skills = parent.skills
         worker.mcp = parent.mcp
         worker.catalog = parent.catalog
+        # The worker writes the same family the parent owns; it borrows that lease rather than
+        # taking a second descriptor on it, and can never release the parent's.
+        worker.borrow_ownership(parent)
         return worker
 
     async def _reset(self) -> str:
@@ -479,6 +482,13 @@ class DelegateTool(Tool):
         uid = worker.uid if worker is not None else parent.uid + ".w"
         directory = SessionSnapshotStore.project_dir(parent.config.data_dir, parent.cwd)
         jobs = tuple(worker.jobs.values()) if worker is not None else ()
+        # Deletion is a mutation of the parent's family, so it runs under that family's lease --
+        # reusing a capability the worker already holds instead of locking a second descriptor.
+        if parent._lease is None and worker is not None and worker._lease is not None:
+            parent._lease = worker._lease
+            parent._lease_borrowed = worker._lease_borrowed
+            parent._ownership_released = False
+        parent.ensure_ownership()
 
         def reset_transaction() -> bool:
             snapshot_path = os.path.join(directory, uid + ".jsonl")

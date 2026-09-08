@@ -102,6 +102,7 @@ async def test_session_stores_content_addressed_image_and_persists_refs(tmp_path
     assert os.path.isfile(asset)
     assert await asyncio.to_thread(Path(asset).read_bytes) == path.read_bytes()
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config)
     assert restored.messages[0] == message
     assert ContextManager(restored).messages_text(restored.messages[:1]) == "user:\ndescribe [Image #1 · screen.png]"
@@ -140,6 +141,7 @@ async def test_session_queue_round_trips_images_and_garbage_collects_assets(tmp_
     s.enqueue_user_input(value)
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config)
     queued = restored.pending_user_inputs[0]
     assert queued.text == "[Image #1 · queued.jpg]"
@@ -147,8 +149,8 @@ async def test_session_queue_round_trips_images_and_garbage_collects_assets(tmp_
 
     assets = os.path.join(SessionSnapshotStore.project_dir(s.config.data_dir, s.cwd), s.uid + ".assets")
     assert os.path.isdir(assets)
-    s.pending_user_inputs.clear()
-    await s.save_snapshot()
+    restored.pending_user_inputs.clear()
+    await restored.save_snapshot()
     assert not os.path.exists(assets)
 
 
@@ -276,6 +278,7 @@ async def test_expired_session_removes_its_image_assets(tmp_path):
     assets = log[: -len(".jsonl")] + ".assets"
     stale = time.time() - 3 * 86400
     os.utime(log, (stale, stale))
+    old.close()  # an expired session is one nobody is running
     current = session(tmp_path)
     current.settings.session_retention_days = 1
 
@@ -431,6 +434,7 @@ async def test_agent_persists_view_image_observation_without_replaying_it_as_use
     assert rendered == []
 
     await s.save_snapshot()
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config)
     restored_observation = next(message for message in restored.messages if ImageInputs.is_tool_observation(message))
     assert ImageInputs.is_tool_observation(restored_observation)

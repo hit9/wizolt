@@ -4,6 +4,11 @@
 
 ### Added
 
+- Only one wizolt runs a session at a time. Resuming a session another instance is already running
+  stops with `Session <uid> is already in use by another Wizolt instance.`, and picking a busy
+  session in `/sessions` reports the same line while keeping the current session open. Retention
+  skips a session that is still running. Every writer needs this version: an older binary running
+  the same session does not honor the lock.
 - While the agent works, `Tab` holds the draft for the next task instead of queueing it as a
   follow-up for the current one; each held input starts a turn of its own, in order, waits in the
   queue as `↪ next turn`, and is counted apart from the follow-ups waiting for the next model step.

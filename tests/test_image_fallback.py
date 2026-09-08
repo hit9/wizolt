@@ -408,6 +408,7 @@ async def test_learned_evidence_not_serialized_and_observation_survives_resume(t
     assert s.image_route.state() == "text_only_learned"
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     resumed = Session.load_snapshot(s.uid, config=s.config)
     # learned evidence is runtime-only: a resumed session starts unknown again
     assert resumed.image_route.state() == "unknown"

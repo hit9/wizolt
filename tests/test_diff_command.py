@@ -505,6 +505,7 @@ async def test_resume_renders_turn_diffs_from_the_snapshot(tmp_path):
     s.store_turn_diff("tr.1", 1, "x.py", "--- x.py\n+++ x.py\n@@ -1 +1 @@\n-old\n+new\n", before="old\n", after="new\n", round=1)
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     loaded = Session.load_snapshot(s.uid, config=s.config, settings=s.settings, cwd=str(tmp_path))
     result = await diff_command(loop(loaded), "")
 

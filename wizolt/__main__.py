@@ -34,6 +34,7 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "ConfigFile": ("wizolt.config", "ConfigFile"),
     "RuntimeSettings": ("wizolt.config", "RuntimeSettings"),
     "Session": ("wizolt.session", "Session"),
+    "SessionBusyError": ("wizolt.session", "SessionBusyError"),
     "Theme": ("wizolt.render", "Theme"),
     "UpdateChecker": ("wizolt.cli.update", "UpdateChecker"),
     "UpdateStatus": ("wizolt.base", "UpdateStatus"),
@@ -185,37 +186,62 @@ def main(argv: list[str] | None = None) -> int:
         # object graph at another Session: everything below is built around one, and this is the
         # only moment nothing is running. Teardown stays in the `finally` that already does it.
         resume = args.resume or ("latest" if args.continue_project else "")
-        while True:
-            if resume:
-                data = _cli.ConfigFile.load(args.config)
-                catalog = _cli.CatalogRuntime(_cli.Config.data_dir_from(data))
-                config = _cli.Config.from_dict(data, policy=catalog.policy)
-                session = _cli.Session.load_snapshot(
-                    resume,
-                    config=config,
-                    settings=_cli.RuntimeSettings.from_dict(data, yolo=args.yolo, theme=args.theme),
-                    cwd=os.getcwd(),
-                    catalog=catalog,
-                )
-            else:
-                session = _cli.Session.from_config_file(path=args.config, yolo=args.yolo, theme=args.theme)
-            _cli.Theme.set_mode(_cli.Theme.resolve(session.settings.theme))
-            warm_provider_sdks()
-            command_loop = _cli.CommandLoop(_cli.Agent(session))
-            try:
-                if banner_preprinted:
-                    command_loop.preprinted_output = preprinted_output
-                    code = command_loop.run(show_banner=False)
-                    banner_preprinted = False
+        # A lease reserved by `/resume` in the previous run: the target is already owned when the
+        # next run opens it, so a handoff never has a window in which another runtime could take it.
+        reserved = None
+        current = None
+        try:
+            while True:
+                if resume:
+                    handed, reserved = reserved, None
+                    data = _cli.ConfigFile.load(args.config)
+                    catalog = _cli.CatalogRuntime(_cli.Config.data_dir_from(data))
+                    config = _cli.Config.from_dict(data, policy=catalog.policy)
+                    current = _cli.Session.load_snapshot(
+                        resume,
+                        config=config,
+                        settings=_cli.RuntimeSettings.from_dict(data, yolo=args.yolo, theme=args.theme),
+                        cwd=os.getcwd(),
+                        catalog=catalog,
+                        lease=handed,
+                    )
                 else:
-                    code = command_loop.run()
-            finally:
-                # The runtime closes what the session opened, on the loop that opened it; all that
-                # is left here is the terminal-output gate, in case the runtime never got that far.
-                command_loop.close_background_output()
-            resume = command_loop.resume_request
-            if not resume:
-                return code
+                    current = _cli.Session.from_config_file(path=args.config, yolo=args.yolo, theme=args.theme)
+                    # Ownership before any runtime is exposed: tools, model requests, and the first
+                    # save all happen under this lease.
+                    current.ensure_ownership()
+                _cli.Theme.set_mode(_cli.Theme.resolve(current.settings.theme))
+                warm_provider_sdks()
+                command_loop = _cli.CommandLoop(_cli.Agent(current))
+                try:
+                    if banner_preprinted:
+                        command_loop.preprinted_output = preprinted_output
+                        code = command_loop.run(show_banner=False)
+                        banner_preprinted = False
+                    else:
+                        code = command_loop.run()
+                finally:
+                    # The runtime closes what the session opened, on the loop that opened it; all that
+                    # is left here is the terminal-output gate, in case the runtime never got that far.
+                    command_loop.close_background_output()
+                    # The final save and teardown are done. Carry a reserved target forward instead of
+                    # releasing it; release this session's own lease only now.
+                    reserved = command_loop.resume_lease
+                    current.close()
+                    current = None
+                resume = command_loop.resume_request
+                if not resume:
+                    return code
+        finally:
+            # An abandoned handoff or a startup failure -- a session built but never run, a target
+            # that never opened -- must not leak ownership.
+            if current is not None:
+                current.close()
+            if reserved is not None:
+                reserved.close()
+    except _cli.SessionBusyError as error:
+        print(str(error), file=sys.stderr)
+        return 1
     except _cli.ConfigError as error:
         print("ConfigError: " + str(error), file=sys.stderr)
         return 2

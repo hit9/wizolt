@@ -117,6 +117,7 @@ async def test_agent_persists_responses_output_on_final_assistant_message(tmp_pa
     assert s.messages[-1]["_responses_output"][0]["type"] == "reasoning"
     assert s.transcript_messages[-1] == {"role": "assistant", "content": "done"}
     await s.save_snapshot()
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, settings=s.settings)
     restored_assistant = next(message for message in reversed(restored.messages) if message.get("role") == "assistant")
     assert restored_assistant["_responses_output"] == s.messages[-1]["_responses_output"]
@@ -145,6 +146,7 @@ async def test_interrupted_turn_persists_completed_tool_batches_for_resume(tmp_p
     assert [message["role"] for message in s.transcript_messages] == ["user", "assistant", "tool"]
     assert s.messages[-1]["content"] == INTERRUPT_MARKER
     assert s._active_turn_messages == []
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, settings=s.settings)
     messages = [message for message in restored.messages if not SessionSnapshotCodec.is_internal_message(message)]
     assert [message["role"] for message in messages] == ["user", "assistant", "tool", "user"]
@@ -181,6 +183,7 @@ async def test_interrupted_turn_before_any_output_is_retracted(tmp_path):
     assert s.transcript_messages == []
     assert s._active_turn_messages == []
     assert s._active_transcript_messages == []
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, settings=s.settings)
     messages = [message for message in restored.messages if not SessionSnapshotCodec.is_internal_message(message)]
     assert messages == []
@@ -212,6 +215,7 @@ async def test_interrupted_unfinished_tool_call_gets_semantic_transcript_result(
         "result_key": "",
         "status": "failed",
     }
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, settings=s.settings)
     assert restored.transcript_messages[-1] == s.transcript_messages[-1]
 
@@ -252,6 +256,7 @@ async def test_current_turn_compaction_does_not_rewrite_visible_transcript(tmp_p
     assert s.transcript_messages[-1]["content"] == "done"
 
     await s.save_snapshot()
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, settings=s.settings)
     assert [message["role"] for message in restored.transcript_messages] == ["user", "assistant", "tool", "assistant"]
     assert restored.transcript_messages[0]["content"] == "read the file"

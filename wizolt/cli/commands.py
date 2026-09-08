@@ -56,7 +56,7 @@ from wizolt.providers.compat import builtin_tools_issue
 from wizolt.providers.schema import CatalogSyncError
 from wizolt.providers.sync import CATALOG_URL
 from wizolt.render import markdown_table, progress_bar
-from wizolt.session import Session, SessionEntry, SessionSnapshotStore
+from wizolt.session import Session, SessionBusyError, SessionEntry, SessionLease, SessionSnapshotStore
 from wizolt.tools import CodeIndex
 
 if TYPE_CHECKING:
@@ -531,7 +531,19 @@ async def sessions_command(loop: CommandLoop, args: str) -> str | None:
     await preview_cache.settle()
     if not isinstance(chosen, str) or chosen == loop.session.uid:
         return None
+    # Reserve the target before announcing the handoff, so a busy session is an ordinary command
+    # error and this one stays open. The lease travels to the next run with the request; there is
+    # no release-and-reacquire probe, so no window exists in which another runtime could take it.
+    target = by_uid.get(chosen)
+    target_path = target.path if target is not None else SessionSnapshotStore.find_session_path(loop.session.config.data_dir, chosen)
+    if not target_path:
+        return f"Session snapshot not found: {chosen}"
+    try:
+        lease = SessionLease.acquire(loop.session.config.data_dir, target_path)
+    except SessionBusyError as error:
+        return str(error)
     loop.resume_request = chosen
+    loop.resume_lease = lease
     await loop.save_and_emit_resume()
     return None
 

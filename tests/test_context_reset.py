@@ -130,6 +130,7 @@ async def test_a_snapshot_taken_after_a_reset_resumes_without_the_conversation(t
     s.apply_context_reset()
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config)
 
     # Resume appends its own session event; the conversation itself is gone.
@@ -178,6 +179,7 @@ async def test_a_reset_after_earlier_snapshots_survives_the_delta_chain(tmp_path
     s.apply_context_reset()
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config)
 
     assert [message for message in restored.messages if not message.get(SESSION_EVENT_KEY)] == []
@@ -193,6 +195,7 @@ async def test_recall_and_note_still_work_after_a_reset_and_resume(tmp_path):
     s.apply_context_reset()
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config)
 
     assert "evicted span" in RecallContextTool(restored, [{"action": "get", "keys": ["seg.1"]}]).call()
@@ -261,6 +264,7 @@ async def test_reset_seeds_the_next_request_without_rewriting_its_checkpoint(tmp
     agent.model = Model()
     assert await agent.run("continue") == "continued"
     await s.save_snapshot()
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config)
     assert any(message.get("content") == "obsolete exploration" for message in restored.transcript_messages)
     assert restored.messages[0] == checkpoint[0]
@@ -277,6 +281,7 @@ async def test_pending_reset_survives_a_crash_snapshot_and_applies_once(tmp_path
     ContextTool(s, [{"action": "reset"}]).call()
     # This is the checkpoint after a successful tool batch, before the next model request.
     await s.save_snapshot()
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config)
     assert not restored.context_reset_requested
     assert restored.messages[0][SESSION_EVENT_KEY] == "context_reset"
@@ -285,6 +290,7 @@ async def test_pending_reset_survives_a_crash_snapshot_and_applies_once(tmp_path
     assert restored.transcript_messages[0]["content"] == "old conversation"
     assert sum(message.get("role") == "notice" for message in restored.transcript_messages) == 1
     await restored.save_snapshot()
+    restored.close()  # release the writer before reloading
     again = Session.load_snapshot(s.uid, config=s.config)
     assert sum(message.get(SESSION_EVENT_KEY) == "context_reset" for message in again.messages) == 1
     assert sum(message.get("role") == "notice" for message in again.transcript_messages) == 1
@@ -396,6 +402,7 @@ async def test_reset_notice_is_transcript_only_and_published_once(tmp_path, endi
     assert notices == [{"role": "notice", "content": "Context reset."}]
     assert not any(m.get("role") == "notice" for m in s.messages)
     await s.save_snapshot()
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config)
     assert [m for m in restored.transcript_messages if m.get("role") == "notice"] == notices
     replay = []

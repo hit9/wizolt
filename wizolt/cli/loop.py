@@ -50,7 +50,7 @@ from wizolt.image import ImageInputs, UserInput
 from wizolt.mentions import FilePick
 from wizolt.prompts import LIVE_FOLLOWUP_PREFIX
 from wizolt.render import BashLivePreview, StatusBar, UiPrinter, search_sources_footer
-from wizolt.session import QueuedInput, SessionSnapshotCodec, SessionSnapshotStore, ToolResultRecord
+from wizolt.session import QueuedInput, SessionLease, SessionSnapshotCodec, SessionSnapshotStore, ToolResultRecord
 from wizolt.tools import TOOL_REGISTRY, CodeIndex, tool_payload, toolblocks, tooloutput
 from wizolt.tools.delegate import worker_provider_config
 from wizolt.tools.toolblocks import ToolDisplay
@@ -212,8 +212,10 @@ Full documentation: https://wizolt.readthedocs.io
         # finishes and becomes a stored record. Empty whenever no script is running.
         self.script_running_code = ""
         # Set to the uid this run should hand over to. `main` reads it after run() returns and
-        # builds the next CommandLoop around that session.
+        # builds the next CommandLoop around that session. The reserved lease travels with it, so
+        # the target is already owned when the next run opens it -- never release-and-reacquire.
         self.resume_request = ""
+        self.resume_lease: SessionLease | None = None
         self.background_output_lock = threading.Lock()
         self.background_output_open = True
         # Session-scoped background work this loop owns: startup maintenance, mention discovery,

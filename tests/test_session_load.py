@@ -27,6 +27,7 @@ async def test_oversized_snapshots_are_dropped_before_reaching_the_log(tmp_path)
 
     assert not [line for line in lines if "blob" in line]
     assert (entry["before_blob"], entry["after_blob"]) == ("", "")
+    s.close()  # release the writer before reloading
     assert Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path)).turn_diffs[0].before == ""
 
 async def test_rewriting_the_retained_window_does_not_rewrite_snapshots(tmp_path):
@@ -54,6 +55,7 @@ async def test_resumed_session_does_not_rewrite_existing_blobs(tmp_path):
     s.store_turn_diff("tr.1", 1, "x.py", "-old\n+new\n", before="old\n", after="new\n", round=1)
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
     restored.store_turn_diff("tr.2", 2, "x.py", "-new\n+newer\n", before="new\n", after="newer\n", round=2)
     await restored.save_snapshot()
@@ -75,6 +77,7 @@ async def test_load_merges_init_and_deltas(tmp_path):
     s.messages.append({"role": "user", "content": "q2"})
     await s.save_snapshot()  # delta (no new tool results)
 
+    s.close()  # release the writer before reloading
     s2 = Session.load_snapshot(s.uid, config=s.config)
     # All messages across all lines
     assert [m["content"] for m in s2.messages[:3]] == ["q1", "a1", "q2"]
@@ -93,6 +96,7 @@ async def test_load_preserves_uid(tmp_path):
     s.messages.append({"role": "user", "content": "hello"})
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     s2 = Session.load_snapshot(s.uid, config=s.config)
     assert s2.uid == s.uid
 
@@ -102,6 +106,7 @@ async def test_load_with_latest_alias(tmp_path):
     s.messages.append({"role": "user", "content": "hello"})
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     s2 = Session.load_snapshot("latest", config=s.config, cwd=str(tmp_path))
     assert s2.uid == s.uid
 
@@ -111,6 +116,7 @@ async def test_load_with_last_alias(tmp_path):
     s.messages.append({"role": "user", "content": "hello"})
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     s2 = Session.load_snapshot("last", config=s.config, cwd=str(tmp_path))
     assert s2.uid == s.uid
 
@@ -176,6 +182,7 @@ async def test_load_finds_a_session_by_uid_from_any_directory(tmp_path):
     s.messages.append({"role": "user", "content": "hello"})
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     loaded = Session.load_snapshot(s.uid, config=config, cwd=str(tmp_path))
 
     assert loaded.uid == s.uid
@@ -225,6 +232,7 @@ async def test_load_rejects_an_unknown_format_version(tmp_path):
     await asyncio.to_thread(rewrite_log, log_path(s), lines)
 
     with pytest.raises(WizoltError, match="Unsupported session format v99"):
+        s.close()  # release the writer before reloading
         Session.load_snapshot(s.uid, config=s.config)
 
 async def test_load_appends_local_time_resume_event(tmp_path, monkeypatch):
@@ -234,6 +242,7 @@ async def test_load_appends_local_time_resume_event(tmp_path, monkeypatch):
     await s.save_snapshot()
 
     monkeypatch.setattr("wizolt.session.local_timestamp", lambda value=None: "2026-07-30T15:04:05+08:00")
+    s.close()  # release the writer before reloading
     s2 = Session.load_snapshot(s.uid, config=s.config)
     assert len(s2.messages) == 2  # hello + resume marker
     assert s2.messages[-1] == {
@@ -248,6 +257,7 @@ async def test_save_after_load_produces_a_delta(tmp_path):
     s.messages.append({"role": "user", "content": "hello"})
     await s.save_snapshot()  # init (line 1)
 
+    s.close()  # release the writer before reloading
     s2 = Session.load_snapshot(s.uid, config=s.config)
     # s2 now has messages = [hello, resume_marker]
     s2.messages.append({"role": "assistant", "content": "post-resume"})
@@ -268,12 +278,14 @@ async def test_repeated_resume_preserves_history(tmp_path):
 
     expected = ["m1"]
     for role, content in (("assistant", "a1"), ("user", "m2"), ("assistant", "a2")):
+        s.close()  # release the writer before reloading
         s = Session.load_snapshot(s.uid, config=s.config)
         assert visible_contents(s.messages) == expected
         s.messages.append({"role": role, "content": content})
         await s.save_snapshot()
         expected.append(content)
 
+    s.close()  # release the writer before reloading
     loaded = Session.load_snapshot(s.uid, config=s.config)
     assert visible_contents(loaded.messages) == expected
     assert sum(message.get(SESSION_EVENT_KEY) == "resumed" for message in loaded.messages) == 4
@@ -284,6 +296,7 @@ async def test_resume_marker_is_never_persisted(tmp_path):
     s.messages.append({"role": "user", "content": "m1"})
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     resumed = Session.load_snapshot(s.uid, config=s.config)
     resumed.messages = [
         {"role": "system", "content": f"[Session resumed: uid={s.uid}]"},
@@ -312,6 +325,7 @@ def test_load_discards_persisted_resume_markers(tmp_path):
         mode="a",
     )
 
+    s.close()  # release the writer before reloading
     loaded = Session.load_snapshot(s.uid, config=s.config)
 
     assert visible_contents(loaded.messages) == ["m1", "a1"]
@@ -327,6 +341,7 @@ async def test_old_context_layout_migrates_with_one_full_state_checkpoint(tmp_pa
     s.messages.append({"role": "user", "content": "original request"})
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     migrated = Session.load_snapshot(s.uid, config=s.config)
     checkpoints = [message for message in migrated.messages if message.get(SESSION_EVENT_KEY) == "state_checkpoint"]
     assert migrated.context_layout_version == 2
@@ -336,6 +351,7 @@ async def test_old_context_layout_migrates_with_one_full_state_checkpoint(tmp_pa
     assert "Check: one checkpoint" in checkpoints[0]["content"]
 
     await migrated.save_snapshot()
+    migrated.close()  # release the writer before reloading
     resumed_again = Session.load_snapshot(s.uid, config=s.config)
     assert sum(message.get(SESSION_EVENT_KEY) == "state_checkpoint" for message in resumed_again.messages) == 1
 
@@ -372,6 +388,7 @@ def test_real_legacy_snapshot_without_layout_field_converts_numeric_local_time(t
 
     monkeypatch.setattr("wizolt.session.local_timestamp", timestamp)
 
+    s.close()  # release the writer before reloading
     loaded = Session.load_snapshot(s.uid, config=s.config)
 
     assert timestamp_calls == [legacy_created_at, None]
@@ -395,6 +412,7 @@ async def test_tool_results_roundtrip(tmp_path):
     s.store_tool_result("Read", ["f.py"], "code")
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     s2 = Session.load_snapshot(s.uid, config=s.config)
     assert s2.tool_results["tr.1"] == "hi"
     assert s2.tool_results["tr.2"] == "code"
@@ -406,6 +424,7 @@ async def test_tool_records_roundtrip(tmp_path):
     s.store_tool_result("Search", ["x"], "match")
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     s2 = Session.load_snapshot(s.uid, config=s.config)
     assert len(s2.tool_records) == 2
     assert s2.tool_records[0].key == "tr.1"
@@ -420,6 +439,7 @@ async def test_tool_errors_roundtrip(tmp_path):
     s.record_tool_error("tr.1", "Bash", ["bad"], "command not found")
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     s2 = Session.load_snapshot(s.uid, config=s.config)
     assert len(s2.tool_errors) == 1
     assert s2.tool_errors[0].key == "tr.1"
@@ -439,6 +459,7 @@ async def test_usage_roundtrip_with_prompt_and_completion_tokens(tmp_path):
     s.usage.last_cache_write_prompt_tokens = 7
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     s2 = Session.load_snapshot(s.uid, config=s.config)
     assert s2.usage.calls == 3
     assert s2.usage.prompt_tokens == 100
@@ -460,6 +481,7 @@ async def test_agent_state_roundtrip(tmp_path):
     s.state.round_count = 7
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     s2 = Session.load_snapshot(s.uid, config=s.config)
     assert s2.state.goal == "fix bug"
     assert [vars(item) for item in s2.state.plan] == [{"status": "todo", "text": "step 1"}, {"status": "todo", "text": "step 2"}]
@@ -480,6 +502,7 @@ async def test_multiple_deltas_accumulate_correctly(tmp_path):
     s.messages.append({"role": "assistant", "content": "a2"})
     await s.save_snapshot()  # delta 3
 
+    s.close()  # release the writer before reloading
     s2 = Session.load_snapshot(s.uid, config=s.config)
     assert visible_contents(s2.messages) == ["m1", "a1", "m2", "a2"]
 
@@ -493,6 +516,7 @@ async def test_multiple_deltas_with_tool_calls(tmp_path):
     s.store_tool_result("Bash", ["pwd"], "/tmp")
     await s.save_snapshot()  # delta 2: tr.3
 
+    s.close()  # release the writer before reloading
     s2 = Session.load_snapshot(s.uid, config=s.config)
     assert s2.tool_results["tr.1"] == "# a"
     assert s2.tool_results["tr.2"] == "hit"
@@ -545,6 +569,7 @@ async def test_clean_expired_sessions_removes_old_files_and_latest(tmp_path):
     old_path = log_path(old)
     stale_time = time.time() - 8 * 86400
     os.utime(old_path, (stale_time, stale_time))
+    old.close()  # an expired session is one nobody is running
 
     assert SessionSnapshotStore.clean_expired(s.config.data_dir, s.uid, s.settings.session_retention_days) == 1
 

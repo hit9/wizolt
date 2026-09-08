@@ -203,6 +203,7 @@ async def test_clearing_recalled_message_leaves_it_deleted(tmp_path):
     await s.save_snapshot()
 
     assert queued_texts(s) == ["first"]
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config)
     assert queued_texts(restored) == ["first"]
 

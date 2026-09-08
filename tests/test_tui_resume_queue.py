@@ -29,6 +29,7 @@ def test_resumed_tui_auto_dispatches_persisted_queue_as_one_request(tmp_path, mo
     # Setup, before the scenario's own loop exists: the test later drives the runtime coroutine
     # directly on its own process-level loop.
     asyncio.run(saved.save_snapshot())
+    saved.close()  # release the writer before reloading
     restored = Session.load_snapshot(saved.uid, config=saved.config)
     command_loop = CommandLoop(
         Agent(restored, output_fn=lambda _text: None),

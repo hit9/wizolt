@@ -180,6 +180,7 @@ async def test_multiple_failed_images_survive_snapshot_as_text_only_assets(tmp_p
     with pytest.raises(ModelError):
         await agent.run(s.images.recognize("compare one.png two.png"))
     await s.save_snapshot()
+    s.close()  # release the writer before reloading
     resumed = Session.load_snapshot(s.uid, config=s.config)
 
     failed = resumed.messages[0]

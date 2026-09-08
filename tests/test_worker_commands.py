@@ -207,6 +207,7 @@ async def test_delegate_spawn_isolates_provider_and_applies_overrides(tmp_path, 
     await parent.worker.save_snapshot()
     model.script.append(({"role": "assistant", "content": "two"}, [], "two"))
     parent.config.worker_model = "resumed-model"
+    parent.close()  # resume reopens the family in this process; the old owner must let go
     fresh = SessionSnapshotStore.load(parent.uid, config=parent.config, settings=parent.settings, cwd=str(tmp_path))
     runner = _delegate_runner(fresh)
     await _delegate_call(fresh, runner, action="send", order="o")

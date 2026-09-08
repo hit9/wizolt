@@ -139,6 +139,7 @@ def ctrl_c_queue_scenario(cwd, results):
             driver.join(timeout=1)
             if driver.is_alive():
                 driver_errors.append("driver did not exit")
+        command_loop.session.close()  # the run is over; the reload needs its lease released
         restored_session = Session.load_snapshot(command_loop.session.uid, config=config)
         results.put(
             {

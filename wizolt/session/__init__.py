@@ -19,6 +19,7 @@ from wizolt.base import (
     Text,
     ToolArgs,
     UpdateStatus,
+    WizoltError,
     run_blocking,
 )
 from wizolt.config import PROVIDER_API_CHOICES, Config, ConfigFile, RuntimeSettings, SystemInfo, request_budget_for
@@ -30,6 +31,13 @@ from wizolt.session.codec import TRANSCRIPT_SYNC_VERSION, SessionSnapshotCodec
 from wizolt.session.diffs import net_diff_sections
 from wizolt.session.images import ImageRoute
 from wizolt.session.jobs import BackgroundJob
+from wizolt.session.ownership import (
+    SessionBusyError,
+    SessionLease,
+    SessionOwnershipError,
+    canonical_snapshot_path,
+    ownership_identity,
+)
 from wizolt.session.queue import QueuedInput
 from wizolt.session.store import (
     CONTEXT_LAYOUT_VERSION,
@@ -41,7 +49,10 @@ from wizolt.source import SourceView, SourceViewDraft
 
 __all__ = [
     "TRANSCRIPT_SYNC_VERSION",
+    "SessionBusyError",
     "SessionEntry",
+    "SessionLease",
+    "SessionOwnershipError",
     "SessionSnapshotCodec",
     "SessionSnapshotStore",
     "local_timestamp",
@@ -333,6 +344,12 @@ class Session:
     # an asyncio primitive is meaningful only to the loop that created it.
     _snapshot_gate: asyncio.Lock | None = field(default=None, repr=False, compare=False)
     _snapshot_gate_loop: asyncio.AbstractEventLoop | None = field(default=None, repr=False, compare=False)
+    # Exclusive ownership of this session family. Transient runtime state: never serialized,
+    # compared, prompted, or rendered, and `SessionSnapshotCodec` is an explicit whitelist.
+    _lease: SessionLease | None = field(default=None, repr=False, compare=False)
+    _lease_borrowed: bool = field(default=False, repr=False, compare=False)
+    _ownership_released: bool = field(default=False, repr=False, compare=False)
+    _snapshot_path: str = field(default="", repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self.images = ImageInputs(self)
@@ -755,6 +772,69 @@ class Session:
     def clip_name(cls, text: str) -> str:
         return Text.clip_width(" ".join(str(text).split()), cls.NAME_WIDTH)
 
+    def ownership_root_path(self) -> str:
+        """The parent snapshot path this session's ownership family is keyed on.
+
+        A worker `<parent>.w` names its parent's log; a resumed session keeps the path it was
+        loaded from, so an alias or a cross-project search cannot key a different lock file."""
+
+        path = self._snapshot_path or SessionSnapshotStore.session_path(self.config.data_dir, self.cwd, self.uid)
+        return ownership_identity(path)
+
+    def assert_ownership(self) -> SessionLease:
+        """Return the live lease that authorizes writes, or raise."""
+
+        lease = self._lease
+        if lease is None:
+            raise SessionOwnershipError(f"session {self.uid} has no ownership lease")
+        lease.assert_owned(self.ownership_root_path())
+        return lease
+
+    def ensure_ownership(self) -> SessionLease:
+        """Acquire the family lease if this runtime does not hold one yet.
+
+        A fresh in-memory session may acquire at its first save, but only if its own log does not
+        already exist: constructing an object with an existing UID must never authorize truncating
+        that session's log. A released session is never silently reacquired -- it must be reopened
+        from disk so its state is not stale."""
+
+        if self._lease is not None:
+            return self.assert_ownership()
+        if self._ownership_released:
+            raise SessionOwnershipError(f"session {self.uid} was closed; reopen it from disk before writing again")
+        path = self._snapshot_path or SessionSnapshotStore.session_path(self.config.data_dir, self.cwd, self.uid)
+        lease = SessionLease.acquire(self.config.data_dir, ownership_identity(path))
+        if not self.resumed and not self._snapshot_saved and os.path.exists(path):
+            lease.close()
+            raise WizoltError(f"session snapshot already exists for uid {self.uid}: {path}")
+        self._snapshot_path = path
+        self._lease = lease
+        return lease
+
+    def borrow_ownership(self, parent: Session) -> None:
+        """Authorize this worker session with its parent's lease; it can never release it."""
+
+        parent.ensure_ownership()
+        self._lease = parent._lease
+        self._lease_borrowed = True
+        self._ownership_released = False
+
+    def close(self) -> None:
+        """Release this session's ownership. Idempotent; a borrowed lease is not released.
+
+        Refuses while a snapshot write is in flight: the bytes may still be landing, and the
+        runtime that owns the lease must await that write instead of racing it."""
+
+        if self.worker is not None:
+            self.worker.close()
+        if self._snapshot_gate is not None and self._snapshot_gate.locked():
+            raise WizoltError(f"cannot close session {self.uid} while a snapshot write is in flight")
+        lease, self._lease = self._lease, None
+        borrowed, self._lease_borrowed = self._lease_borrowed, False
+        self._ownership_released = True
+        if lease is not None and not borrowed:
+            lease.close()
+
     def _save_gate(self) -> asyncio.Lock:
         """The per-session save gate, bound to the loop that is running now.
 
@@ -786,6 +866,7 @@ class Session:
         records again."""
 
         async with self._save_gate():
+            self.ensure_ownership()
             self.refresh_name()
             store = SessionSnapshotStore(self)
             plan = store.plan()
@@ -802,7 +883,16 @@ class Session:
         settings: RuntimeSettings | None = None,
         cwd: str = "",
         catalog: CatalogRuntime | None = None,
+        lease: SessionLease | None = None,
     ) -> Session:
+        """Open a stored session for writable use, under its exclusive ownership lease.
+
+        Aliases resolve to a concrete file before the lease is taken, existence and identity are
+        revalidated under it, and only then is the snapshot decoded -- so a contended open leaves
+        the log untouched and never builds state from a baseline another owner may have moved. A
+        reserved lease handed in by the interactive handoff is used as-is and closed on failure.
+        """
+
         if config is None:
             data = ConfigFile.load()
             catalog = catalog or CatalogRuntime(Config.data_dir_from(data))
@@ -813,8 +903,36 @@ class Session:
             catalog = catalog or CatalogRuntime(config.data_dir)
         if settings is None:
             settings = RuntimeSettings()
-        session = SessionSnapshotStore.load(uid, config=config, settings=settings, cwd=cwd)
+        cwd = cwd or os.getcwd()
+        resolved = SessionSnapshotStore.resolve_uid(uid, config.data_dir, cwd)
+        if resolved.endswith(".w"):
+            raise WizoltError(f"cannot resume a worker session directly: {resolved}")
+        path = SessionSnapshotStore.find_session_path(config.data_dir, resolved)
+        if not path:
+            raise WizoltError(
+                f"Session snapshot not found: {resolved} under {SessionSnapshotStore.path_for(config.data_dir, SessionSnapshotStore.PROJECTS_DIR)}"
+            )
+        owned_here = lease is None
+        if lease is None:
+            lease = SessionLease.acquire(config.data_dir, path)
+        try:
+            lease.assert_owned(path)
+            if not os.path.isfile(path):
+                # Discovery can race with cleanup; a file that vanished before acquisition is a
+                # normal not-found, not a reason to fall back to a decoded baseline.
+                raise WizoltError(
+                    f"Session snapshot not found: {resolved} under {SessionSnapshotStore.path_for(config.data_dir, SessionSnapshotStore.PROJECTS_DIR)}"
+                )
+            session = SessionSnapshotStore.load(resolved, config=config, settings=settings, cwd=cwd)
+        except BaseException:
+            # A reserved lease that does not belong to this target is not ours to close.
+            if owned_here or lease.identity == canonical_snapshot_path(ownership_identity(path)):
+                lease.close()
+            raise
         session.catalog = catalog
+        session._lease = lease
+        session._lease_borrowed = False
+        session._snapshot_path = path
         bootstrap_features(session)
         return session
 

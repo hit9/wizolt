@@ -195,6 +195,7 @@ async def test_snapshot_default_load_validates_config_against_the_active_cached_
     }
     monkeypatch.setattr(ConfigFile, "load", classmethod(lambda _cls, _path=None: raw_config))
 
+    saved.close()  # release the writer before reloading
     resumed = Session.load_snapshot(saved.uid, cwd=str(tmp_path))
 
     assert resumed.config.provider.chat_reasoning == "future-dialect"

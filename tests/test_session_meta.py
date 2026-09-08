@@ -46,6 +46,7 @@ async def test_session_name_latches_then_follows_the_goal(tmp_path):
     await s.save_snapshot()
     # A name the user chose is never replaced by a derived one.
     assert (s.name, s.state.name_source) == ("token store cleanup", "user")
+    s.close()  # release the writer before reloading
     assert Session.load_snapshot(s.uid, config=s.config).name == "token store cleanup"
 
 async def test_session_name_does_not_change_when_goal_changes(tmp_path):
@@ -63,6 +64,7 @@ async def test_session_name_does_not_change_when_goal_changes(tmp_path):
     await s.save_snapshot()
     # Goal changed, but the name was already latched from the first goal — stays put.
     assert (s.name, s.state.name_source) == ("rewrite the tokenizer", "goal")
+    s.close()  # release the writer before reloading
     assert Session.load_snapshot(s.uid, config=s.config).name == "rewrite the tokenizer"
 
 async def test_session_name_survives_compaction_dropping_the_opening_message(tmp_path):
@@ -134,6 +136,7 @@ async def test_expired_sessions_take_their_sidecar_with_them(tmp_path):
     meta = SessionSnapshotStore.meta_path(config.data_dir, stale.cwd, stale.uid)
     old = time.time() - 40 * 86400
     os.utime(SessionSnapshotStore.session_path(config.data_dir, stale.cwd, stale.uid), (old, old))
+    stale.close()  # an expired session is one nobody is running
     s.settings.session_retention_days = 30
 
     assert SessionSnapshotStore.clean_expired(s.config.data_dir, s.uid, s.settings.session_retention_days) == 1
@@ -152,6 +155,7 @@ async def test_resume_accepts_a_name_or_uid_prefix(tmp_path):
 
     # A search from another directory still finds it: the user moved, the session did not.
     assert SessionSnapshotStore.resolve_uid("status bar", config.data_dir, str(tmp_path)) == s.uid
+    s.close()  # release the writer before reloading
     assert Session.load_snapshot("status bar", config=config, cwd=str(project)).uid == s.uid
 
 async def test_ambiguous_resume_names_its_candidates(tmp_path):
@@ -219,6 +223,7 @@ async def test_history_segment_persists_effective_model(tmp_path):
     s.history.append(HistorySegment(key="seg.1", title="earlier task", text="user:\nfind the bug", model="compactor-x"))
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
 
     assert restored.history[0].model == "compactor-x"

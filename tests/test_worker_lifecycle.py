@@ -248,6 +248,7 @@ async def test_delegate_reset_deletes_disk_only_worker_after_parent_resume(tmp_p
     worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
     worker.messages.append({"role": "user", "content": "worker request"})
     await worker.save_snapshot()
+    worker.close()  # disk-only worker: the object is gone, the snapshot stays
     snapshot = SessionSnapshotStore.session_path(parent.config.data_dir, str(tmp_path), worker.uid)
     assert parent.worker is None and os.path.isfile(snapshot)
 
@@ -628,6 +629,7 @@ async def test_worker_reset_appends_event_message(tmp_path):
     parent.messages.append({"role": "user", "content": "parent request"})
     worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
     worker.messages.append({"role": "user", "content": "worker request"})
+    worker.borrow_ownership(parent)  # a live worker writes the parent's family, never its own lease
     await worker.save_snapshot()
     parent.worker = worker
     await parent.save_snapshot()
@@ -661,6 +663,7 @@ async def test_agent_lives_on_worker_and_is_rebuilt_with_it(tmp_path, monkeypatc
 
     # /resume re-enters the same parent: a fresh parent object, worker rebuilt from the snapshot.
     model.script.append(({"role": "assistant", "content": "two"}, [], "two"))
+    parent.close()  # /resume reopens the family in this process; the old owner must let go
     fresh = SessionSnapshotStore.load(parent.uid, config=parent.config, settings=parent.settings, cwd=str(tmp_path))
     assert fresh.worker is None
     runner = _delegate_runner(fresh)
@@ -687,6 +690,7 @@ async def test_snapshot_restored_worker_shares_parent_skills_and_mcp(tmp_path, m
 
     # Resume: the worker now comes back through SessionSnapshotStore.load, not the fresh-branch.
     model.script.append(({"role": "assistant", "content": "two"}, [], "two"))
+    parent.close()  # resume reopens the family in this process; the old owner must let go
     fresh = SessionSnapshotStore.load(parent.uid, config=parent.config, settings=parent.settings, cwd=str(tmp_path))
     runner = _delegate_runner(fresh)
     await _delegate_call(fresh, runner, action="send", order="o")

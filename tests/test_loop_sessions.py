@@ -142,6 +142,7 @@ async def test_sessions_command_hands_the_chosen_session_to_the_next_run(tmp_pat
     s.messages.append({"role": "user", "content": "current work"})
     await s.save_snapshot()
     target = await stored_session(tmp_path, "the one we want", name="picked")
+    target.close()  # the picker reserves the target's lease; a live writer would hold it
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
     loop.tui = TuiApp()
     loop.interactive_input = True
@@ -231,6 +232,7 @@ async def test_sessions_picker_runs_full_screen_with_styled_rows_and_summaries(t
     target = await stored_session(tmp_path, "the one we want", name="picked")
     target.messages.append({"role": "assistant", "content": "the latest answer"})
     await target.save_snapshot()
+    target.close()  # the picker reserves the target's lease; a live writer would hold it
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
     loop.tui = TuiApp()
     loop.interactive_input = True
@@ -412,6 +414,7 @@ async def test_name_command_shows_and_sets_the_session_name(tmp_path):
     assert (await name_command(loop, "divider polish")).startswith("Session named: divider polish")
     assert await name_command(loop, "") == "Session name: divider polish (set by you)"
     # The rename is durable on its own, without waiting for the next turn to save.
+    s.close()  # release the writer before reloading
     assert Session.load_snapshot(s.uid, config=s.config).name == "divider polish"
 
 

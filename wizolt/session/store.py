@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, ClassVar
 from wizolt.base import SESSION_EVENT_KEY, TOOL_OUTPUT_ASSET_SUFFIX, Json, WizoltError
 from wizolt.image import IMAGE_REFS_KEY, ImageRef
 from wizolt.session.codec import SessionSnapshotCodec
+from wizolt.session.ownership import SessionBusyError, SessionLease, SessionOwnershipError, ownership_identity
 
 if TYPE_CHECKING:
     from wizolt.config import Config, RuntimeSettings
@@ -91,14 +92,22 @@ class SnapshotWritePlan:
     snapshot_saved: Json
     blobs_written: frozenset[str]
     meta_written: Json
+    # The family identity this plan belongs to and the live capability that authorized it. Both are
+    # transient: a plan retained after its runtime closed must not write, so `execute` revalidates.
+    ownership_root: str = ""
+    lease: SessionLease | None = None
 
     def execute(self) -> SnapshotWriteReceipt:
         """Write the log, the pointer, the sidecar, and collect assets. Runs on a worker.
 
         Append order is the format: the header opens the file, new blob lines precede the record
         that references them, and the record closes the write. A failure here leaves the markers
-        alone, so the next save recomputes the same delta rather than skipping it."""
+        alone, so the next save recomputes the same delta rather than skipping it. Ownership is
+        checked here, on the executing side, so a plan cannot outlive the capability that made it."""
 
+        if self.lease is None:
+            raise SessionOwnershipError("snapshot write plan carries no session ownership")
+        self.lease.assert_owned(self.ownership_root)
         os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
         if self.header_line:
             with open(self.log_path, "w", encoding="utf-8") as file:
@@ -175,6 +184,7 @@ class SessionSnapshotStore:
         session = self.session
         if not session._snapshot_saved and not SessionSnapshotCodec.has_content(session):
             return None
+        lease = session.assert_ownership()
         blobs: dict[str, str] = {}
         if not session._snapshot_saved:
             header_line = self._jsonl(self.header(session))
@@ -206,6 +216,8 @@ class SessionSnapshotStore:
             snapshot_saved=SessionSnapshotCodec.marker(session),
             blobs_written=frozenset(session._blobs_written | new_blobs.keys()),
             meta_written=meta,
+            ownership_root=session.ownership_root_path(),
+            lease=lease,
         )
 
     def commit(self, plan: SnapshotWritePlan, receipt: SnapshotWriteReceipt) -> None:
@@ -353,6 +365,16 @@ class SessionSnapshotStore:
             return []
 
     @classmethod
+    def ownership_root_path(cls, data_dir: str, cwd: str, uid: str) -> str:
+        """The parent snapshot path a session's ownership family is keyed on.
+
+        A worker `<parent>.w` maps to its parent's log; the canonical (symlink-resolved) form is
+        what the lease hashes, so an alias cannot name a second lock file for the same session.
+        """
+
+        return ownership_identity(cls.session_path(data_dir, cwd, uid))
+
+    @classmethod
     def find_session_path(cls, data_dir: str, uid: str) -> str:
         """Locate a session by UID alone. Projects are few, so a scan beats an index file that can
         drift out of sync with the directories it describes."""
@@ -373,38 +395,52 @@ class SessionSnapshotStore:
                 entries = list(os.scandir(directory))
             except OSError:
                 continue
-            expiring_parents: set[str] = set()
+            families: dict[str, list[os.DirEntry[str]]] = {}
             for entry in entries:
                 if not entry.name.endswith(".jsonl") or not entry.is_file():
                     continue
                 uid = entry.name[:-6]
-                if uid == current_uid or uid.endswith(".w"):
-                    continue
-                with contextlib.suppress(OSError):
-                    if entry.stat().st_mtime < cutoff:
-                        expiring_parents.add(uid)
+                families.setdefault(uid.removesuffix(".w"), []).append(entry)
             stale_latest = False
-            for entry in entries:
-                if not entry.name.endswith(".jsonl") or not entry.is_file():
+            for parent_uid, members in families.items():
+                # An idle but live session is protected even when its log looks old, so the family
+                # lease is taken before anything is removed and eligibility is re-read under it.
+                if parent_uid == current_uid:
                     continue
-                uid = entry.name[:-6]
-                if uid == current_uid:
+                parent_path = os.path.join(directory, parent_uid + ".jsonl")
+                try:
+                    lease = SessionLease.acquire(data_dir, parent_path)
+                except (SessionBusyError, WizoltError):
                     continue
                 try:
-                    # A worker outlives its parent only by accident: once the parent log is gone the
-                    # worker is an orphan and expires even if its own mtime is fresh.
-                    orphan_worker = uid.endswith(".w") and (uid[:-2] in expiring_parents or not os.path.isfile(os.path.join(directory, uid[:-2] + ".jsonl")))
-                    if entry.stat().st_mtime >= cutoff and not orphan_worker:
-                        continue
-                    os.unlink(entry.path)
-                    shutil.rmtree(os.path.join(directory, uid + ".assets"), ignore_errors=True)
-                    # The sidecar describes a log that no longer exists; it expires with it.
-                    with contextlib.suppress(OSError):
-                        os.unlink(os.path.join(directory, uid + cls.META_SUFFIX))
-                    removed += 1
-                    stale_latest = stale_latest or cls.read_latest(directory) == uid
-                except OSError:
-                    continue
+                    parent_exists = os.path.isfile(parent_path)
+                    parent_expired = False
+                    if parent_exists:
+                        with contextlib.suppress(OSError):
+                            parent_expired = os.stat(parent_path).st_mtime < cutoff
+                    for entry in members:
+                        uid = entry.name[:-6]
+                        try:
+                            # A worker outlives its parent only by accident: once the parent log is
+                            # gone the worker is an orphan and expires even if its own mtime is fresh.
+                            if uid.endswith(".w"):
+                                expired = not parent_exists or parent_expired or entry.stat().st_mtime < cutoff
+                            else:
+                                expired = parent_expired
+                            if not expired:
+                                continue
+                            os.unlink(entry.path)
+                            shutil.rmtree(os.path.join(directory, uid + ".assets"), ignore_errors=True)
+                            # The sidecar describes a log that no longer exists; it expires with it.
+                            with contextlib.suppress(OSError):
+                                os.unlink(os.path.join(directory, uid + cls.META_SUFFIX))
+                            removed += 1
+                            stale_latest = stale_latest or cls.read_latest(directory) == uid
+                        except OSError:
+                            continue
+                finally:
+                    # The lock file stays; only the lease is released.
+                    lease.close()
             if stale_latest:
                 cls.clear_latest_dir(directory)
             cls.prune_empty(directory)
@@ -561,6 +597,7 @@ class SessionSnapshotStore:
             }
         )
         session._blobs_written = set(blobs)
+        session._snapshot_path = path
         return session
 
     @classmethod

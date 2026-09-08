@@ -176,6 +176,7 @@ async def test_resume_event_keeps_old_breakpoint_and_becomes_part_of_the_next_on
 
     assert await Agent(session, output_fn=lambda _text: None).run("first request") == "before resume"
     await session.save_snapshot()
+    session.close()  # release the writer before reloading
     resumed = Session.load_snapshot(session.uid, config=session.config, cwd=session.cwd)
     resumed.skills = SkillLibrary({})
     agent = Agent(resumed, output_fn=lambda _text: None)

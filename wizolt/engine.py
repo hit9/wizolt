@@ -141,6 +141,9 @@ class Agent:
             raise asyncio.CancelledError
 
     async def run(self, user_input: str | UserInput) -> str:
+        # Ownership before external activity: an embedded caller that never went through the CLI
+        # acquires here, so no model request, tool, or snapshot write can run unowned.
+        self.session.ensure_ownership()
         self._active_task = asyncio.current_task()
         self._active_loop = asyncio.get_running_loop()
         try:

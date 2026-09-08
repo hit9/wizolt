@@ -336,6 +336,7 @@ async def test_compaction_usage_survives_a_resume(tmp_path):
     s.compaction_usage.add({"prompt_tokens": 95_000, "completion_tokens": 700, "total_tokens": 95_700}, 200_000)
     await s.save_snapshot()
 
+    s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=config, cwd=str(tmp_path))
 
     assert restored.compaction_usage.total_tokens == 95_700
