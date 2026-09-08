@@ -519,3 +519,110 @@ async def test_the_loop_keeps_running_while_the_browser_is_open(tmp_path, monkey
         runtime.request_shutdown()
 
     await run_until(runtime, browse)
+
+
+@pytest.mark.parametrize("manual", [True, False], ids=["manual", "automatic"])
+@pytest.mark.parametrize("foreign_thread", [False, True], ids=["owner-loop", "foreign-thread"])
+async def test_ctrl_c_cancels_compaction_and_allows_the_next_turn(tmp_path, monkeypatch, manual, foreign_thread):
+    from copy import deepcopy
+
+    from wizolt.base import Billing
+    from wizolt.config import ProviderConfig
+
+    command_loop = command_loop_for(tmp_path)
+    command_loop.tui = TuiApp()
+    runtime = TuiRuntime(command_loop)
+    session = command_loop.session
+    session.config.providers = {"default": ProviderConfig(model="test", url="http://test", key="test")}
+    session.messages = [
+        {"role": "user", "content": "old request"},
+        *({"role": "assistant", "content": f"old answer {i}"} for i in range(12)),
+        {"role": "user", "content": "latest request"},
+    ]
+    original = deepcopy(session.messages)
+    if not manual:
+        session.settings.max_context_tokens = 1  # force the real automatic compaction path
+    started, cancelling, release, closed = (asyncio.Event() for _ in range(4))
+    calls = []
+
+    async def request(_messages, _tools, **kwargs):
+        calls.append(kwargs.get("billing", Billing.MAIN))
+        if calls[-1] == Billing.COMPACTION:
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelling.set()
+                await release.wait()  # cancellation must await provider cleanup
+                raise
+            finally:
+                closed.set()
+        return {"role": "assistant", "content": "next answer"}, [], "next answer"
+
+    monkeypatch.setattr(command_loop.agent.model, "api_request", request)
+    emitted = []
+    monkeypatch.setattr(command_loop, "emit_turn", emitted.append)
+    work = asyncio.create_task(runtime.dispatch("/compact") if manual else runtime.run_agent_turn("continue"))
+    try:
+        await asyncio.wait_for(started.wait(), 5)
+        if foreign_thread:
+            await asyncio.to_thread(runtime.interrupt)
+        else:
+            runtime.interrupt()
+        await asyncio.wait_for(cancelling.wait(), 5)
+        assert command_loop.tui.status_label == "cancelling"
+        assert not work.done()
+        runtime.interrupt()  # a second press must not interrupt cleanup
+        release.set()
+        await asyncio.wait_for(work, 5)
+        assert closed.is_set()
+        assert command_loop.tui.input_mode == "chat"
+        assert not runtime.cancel_pending
+        assert runtime.command_task is None
+        assert emitted == ["Cancelled"]
+        assert session.state.compaction_entry == ""
+        assert not command_loop.compaction_active
+        assert calls == [Billing.COMPACTION]
+        if manual:
+            assert session.messages == original
+            assert session.state.compaction_count == 0
+        else:
+            assert session.state.compaction_count == 1  # automatic cancellation retains its safe trim
+
+        session.settings.max_context_tokens = 256 * 1024
+        await asyncio.wait_for(runtime.run_agent_turn("try again"), 5)
+        assert session.messages[-1]["content"] == "next answer"
+        assert calls == [Billing.COMPACTION, Billing.MAIN]
+        assert command_loop.tui.input_mode == "chat"
+    finally:
+        release.set()
+        if not work.done():
+            work.cancel()
+        await asyncio.gather(work, return_exceptions=True)
+        await command_loop.close_resources()
+
+
+async def test_dispatch_does_not_swallow_runtime_shutdown(tmp_path, monkeypatch):
+    """A command may handle Ctrl-C locally; cancelling the runtime must still terminate it."""
+    command_loop = command_loop_for(tmp_path)
+    command_loop.tui = TuiApp()
+    runtime = TuiRuntime(command_loop)
+    started, closed = asyncio.Event(), asyncio.Event()
+
+    async def command(_text):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            return True, False  # /compact reports a local cancellation this way
+        finally:
+            closed.set()
+
+    monkeypatch.setattr(command_loop, "command", command)
+    work = asyncio.create_task(runtime.dispatch("/compact"))
+    await asyncio.wait_for(started.wait(), 5)
+    work.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await work
+    assert closed.is_set()
+    assert runtime.command_task is None

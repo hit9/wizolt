@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Ctrl-C during `/compact` cancels the summary request and restores the prompt after cleanup,
+  instead of remaining on `cancelling` while the request continues.
+
 ## 0.43.2 - 2026-09-07
 
 ### Fixed

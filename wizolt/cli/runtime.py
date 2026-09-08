@@ -157,6 +157,7 @@ class TuiRuntime:
         self.accepting = False
         self.turn_active = False
         self.cancel_pending = False
+        self.command_task: asyncio.Task | None = None
         self.force_exit_timer: threading.Timer | None = None
         self.error: BaseException | None = None
         # The loop this runtime owns, and everything it started on it. Every task created here is
@@ -181,15 +182,21 @@ class TuiRuntime:
     def interrupt(self) -> None:
         """Ctrl-C from the TUI: ask the active turn to cancel, and say so on the status line.
 
-        No process signal: the turn is a task, and `Agent.cancel()` schedules its cancellation on
-        the loop that owns it. The status stays on `cancelling` until the turn has quiesced and
+        Commands such as /compact run outside Agent.run, so cancel their own task when present.
+        Otherwise `Agent.cancel()` schedules cancellation on the turn's loop. The status stays
+        on `cancelling` until the work has quiesced and
         settled, which is the honest state -- an uncooperative tool may still be unwinding."""
 
         if self.cancel_pending:
             return
         self.cancel_pending = True
         self.tui.set_running("cancelling")
-        self.loop.agent.cancel()
+        task = self.command_task
+        if task is not None:
+            with contextlib.suppress(RuntimeError):
+                task.get_loop().call_soon_threadsafe(task.cancel)
+        else:
+            self.loop.agent.cancel()
 
     def _request_model_retry(self) -> None:
         """`/resend`: ask the model client to drop the exact attempt in flight and send it again.
@@ -450,9 +457,18 @@ class TuiRuntime:
         user_input = user_input if isinstance(user_input, UserInput) else UserInput(user_input)
         self.loop.ui.emit_answer(user_input.display_text(), role="user", rule=False)
         try:
-            handled, exit_now = await self.loop.command(user_input.strip())
-        except (KeyboardInterrupt, WizoltError) as error:
-            self.loop.emit_turn("Cancelled" if isinstance(error, KeyboardInterrupt) else f"Error: {error}")
+            # Isolate command cancellation from the input loop: swallowing CancelledError in
+            # /compact must not leave the next model turn running on a cancelling parent task.
+            self.command_task = asyncio.create_task(self.loop.command(user_input.strip()))
+            try:
+                handled, exit_now = await self.command_task
+            finally:
+                self.command_task = None
+            self.loop.agent.raise_if_cancelled()
+        except (asyncio.CancelledError, KeyboardInterrupt, WizoltError) as error:
+            # Runtime shutdown still propagates, even if the command caught its cancellation.
+            self.loop.agent.raise_if_cancelled()
+            self.loop.emit_turn(f"Error: {error}" if isinstance(error, WizoltError) else "Cancelled")
             self.submit_next(self.loop.take_pending_inputs())
             self.reset_turn()
             return True

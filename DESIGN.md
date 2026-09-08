@@ -274,6 +274,10 @@ then reports upward: a cancelled turn has already stopped touching files, proces
 the time the reader sees `Cancelled`. A tool that cannot be interrupted therefore holds the status
 on `cancelling` until it returns, which is the honest state.
 
+Awaited slash commands have a separate runtime-owned task: `/compact` does not enter `Agent.run`,
+so Ctrl-C must cancel the command task itself. Await its cleanup before restoring the prompt;
+never cancel the input loop for a command interrupt or swallow cancellation of that loop at shutdown.
+
 Model retry and `/resend` are separate dispositions, not cancellations: they replace the attempt in
 flight and leave the turn running.
 
