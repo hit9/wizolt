@@ -639,6 +639,20 @@ gutter and changed-text column are sized from the pane. All three derive from `W
 subclass it whenever a block's layout depends on the width, and record the block rather than its
 rendering. Plain text needs no cell, because `segments` never wraps and the terminal re-flows it.
 
+Synchronized output (`CSI ?2026 h/l`) encloses resize erasure, replay and the final live render.
+Only the outermost scope ends it, including on exceptions: a resize invokes render synchronously.
+Defer the output's intermediate flushes until that scope ends, so expensive history layout happens
+before the terminal receives the begin marker and starts its synchronization timeout.
+This changes presentation timing, never replay retention or geometry; unsupported terminals keep
+ordinary rendering. Synchronization can time out, so it is not a guarantee of flicker-free replay.
+See the [terminal protocol](https://github.com/contour-terminal/vt-extensions/blob/master/synchronized-output.md).
+
+Replay caches the complete ANSI text and physical-row count for the two most recent widths, only
+while the transcript is unchanged. Direct writes, flushed output and pending output incorporated
+by a rebuild invalidate both entries. Each cached layout is capped at one million characters
+(at most roughly 8 MiB combined); oversized layouts still replay in full without being cached.
+This cache belongs only to terminal projection, never session persistence or model requests.
+
 **Guard at two levels.** Unit/model tests cover geometry refusal, deferred replay, output recording,
 ordering and shutdown. Real-tmux tests must cover repeated wide/narrow and tall/short transitions,
 inspect narrow as well as restored-wide captures, and separately assert transcript completeness,

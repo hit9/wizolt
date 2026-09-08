@@ -96,7 +96,7 @@ class ReflowingTerminal(ResizableOutput):
         performed. Only the sequences wizolt emits are handled: purging scrollback and clearing
         the screen, which is what a width change does before replaying the transcript.
         """
-        for match in re.finditer(r"\x1b\[([0-9;]*)([A-Za-z])|([^\x1b]+)", data):
+        for match in re.finditer(r"\x1b\[([?0-9;]*)([A-Za-z])|([^\x1b]+)", data):
             params, final, text = match.groups()
             if text is not None:
                 self.write(text)

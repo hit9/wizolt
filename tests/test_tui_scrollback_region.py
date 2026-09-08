@@ -250,6 +250,115 @@ def test_accepted_output_survives_exit_before_the_next_render(monkeypatch, wired
         assert printed.index("accepted just before exit") < printed.index("later shutdown output")
 
 
+@pytest.mark.parametrize("broken_replay", [False, True])
+def test_resize_presents_one_complete_update_and_releases_it_on_error(monkeypatch, wired, broken_replay):
+    output, app, printer = wired
+    events = []
+    active = False
+    write_raw = output.write_raw
+    erase_down = output.erase_down
+
+    def record_raw(text):
+        nonlocal active
+        if text == "\x1b[?2026h":
+            assert not active, "nested render started a second terminal update"
+            active = True
+            events.append("begin")
+        elif text == "\x1b[?2026l":
+            assert active
+            active = False
+            events.append("end")
+        write_raw(text)
+
+    def record_erase():
+        events.append(("erase", active))
+        erase_down()
+
+    monkeypatch.setattr(output, "write_raw", record_raw)
+    monkeypatch.setattr(output, "erase_down", record_erase)
+    monkeypatch.setattr(output, "flush", lambda: events.append(("flush", active)))
+
+    async def resize():
+        await wait_for(lambda: app.app.renderer.last_rendered_screen is not None)
+        if broken_replay:
+
+            def bad_cell(_columns):
+                raise ValueError("layout failed")
+
+            app.scrollback.enqueue(bad_cell)
+        events.clear()
+        output.size = Size(rows=ROWS, columns=60)
+        if broken_replay:
+            with pytest.raises(ValueError, match="layout failed"):
+                app.app._on_resize()
+        else:
+            app.app._on_resize()
+            assert any("retained transcript" in line for line in output.lines)
+            assert any(line.startswith(UiPrinter.PROMPT_PREFIX) for line in output.lines)
+        assert events[0] == "begin"
+        assert events[-2:] == ["end", ("flush", False)]
+        assert sum(isinstance(event, tuple) and event[0] == "flush" for event in events) == 1
+        assert events.count("begin") == events.count("end") == 1
+        assert ("erase", True) in events
+        assert ("erase", False) not in events
+        assert all(event != ("flush", False) for event in events[1:-2])
+        assert not active
+        app.app.exit()
+
+    def drive(_pipe_input):
+        wait_until(lambda: any(line.startswith(UiPrinter.PROMPT_PREFIX) for line in output.lines))
+        emit_and_wait(app, printer, "retained transcript")
+        asyncio.run_coroutine_threadsafe(resize(), app.app.loop).result(timeout=10)
+
+    run_tui(monkeypatch, app, output, drive)
+
+
+@pytest.mark.parametrize("flush_first", [False, True])
+def test_resize_reuses_layouts_until_new_output_arrives(monkeypatch, wired, flush_first):
+    output, app, printer = wired
+    widths = []
+
+    def cell(width):
+        widths.append(width)
+        return f"layout at {width}\n"
+
+    async def resize_and_check():
+        await wait_for(lambda: app.app.renderer.last_rendered_screen is not None)
+        app.record_scrollback(cell)
+        for width in (60, 90, 60, 90):
+            output.size = Size(rows=ROWS, columns=width)
+            app.app._on_resize()
+            assert any(f"layout at {width}" in line for line in output.lines)
+        assert widths == [60, 90]
+        app.record_scrollback("new output\n")
+        if flush_first:
+            app.app._redraw()
+        output.size = Size(rows=ROWS, columns=60)
+        app.app._on_resize()
+        assert widths == [60, 90, 60]
+        assert any("new output" in line for line in output.lines)
+        app.app.exit()
+
+    def drive(_pipe_input):
+        wait_until(lambda: any(line.startswith(UiPrinter.PROMPT_PREFIX) for line in output.lines))
+        asyncio.run_coroutine_threadsafe(resize_and_check(), app.app.loop).result(timeout=10)
+
+    run_tui(monkeypatch, app, output, drive)
+
+
+def test_layout_cache_is_bounded_and_direct_output_invalidates_it(monkeypatch, capsys):
+    region = ScrollbackRegion()
+    monkeypatch.setattr(region, "MAX_CACHED_LAYOUT_CHARS", 10)
+    region.write_direct("short\n")
+    for width in (60, 80, 60, 90):
+        assert region._replay_layout(width) == ("short\n", 1)
+    assert list(region._layouts) == [60, 90]
+    region.write_direct("longer than the cache budget\n")
+    assert not region._layouts
+    assert region._replay_layout(60) == ("short\nlonger than the cache budget\n", 2)
+    assert not region._layouts
+
+
 def test_a_rebuild_leaves_the_app_on_the_row_it_was_on(monkeypatch, wired):
     """A width change must not move the session up the pane.
 

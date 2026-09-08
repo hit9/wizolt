@@ -9,7 +9,7 @@ import shlex
 import tempfile
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
@@ -337,6 +337,7 @@ class TuiApp:
         # Completed output is recorded, then projected onto the terminal from inside the render
         # cycle. See tui/scrollback.py: the app's rows must stay out of the terminal's text flow.
         self.scrollback = ScrollbackRegion()
+        self._screen_update_active = False
         self.input_window: Window | None = None
         self.activity_window: Window | None = None
         self.modal_window: Window | None = None
@@ -1707,6 +1708,32 @@ class TuiApp:
             if self.input_mode == "running":
                 self.invalidate()
 
+    @contextlib.contextmanager
+    def _screen_update(self, app: Application) -> Iterator[None]:
+        """Present a complete frame, including resize erasure and transcript replay.
+
+        Resize calls render synchronously, so only the outer scope may end the update.
+        Unsupported terminals ignore the private mode and retain ordinary rendering.
+        """
+        if self._screen_update_active:
+            yield
+            return
+        out = app.renderer.output
+        flush = out.flush
+        # prompt-toolkit buffers writes, but render/reset/replay each flush along the way.
+        # Hold those flushes until layout is finished: starting the terminal's sync timeout
+        # before expensive history layout lets it expire while the frame is still incomplete.
+        out.flush = lambda: None  # type: ignore[method-assign]
+        self._screen_update_active = True
+        try:
+            out.write_raw("\x1b[?2026h")
+            yield
+        finally:
+            self._screen_update_active = False
+            out.flush = flush  # type: ignore[method-assign]
+            out.write_raw("\x1b[?2026l")
+            out.flush()
+
     def _install_resize_reanchor(self, app: Application) -> None:
         """Handle terminal resizes by re-anchoring the app at the pane bottom.
 
@@ -1720,27 +1747,28 @@ class TuiApp:
         vanilla_resize = app._on_resize
 
         def on_resize() -> None:
-            renderer = app.renderer
-            last_screen = renderer.last_rendered_screen
-            if last_screen is None or renderer.full_screen:
-                # Nothing rendered yet, or a full-screen app: the stock path is already right.
-                vanilla_resize()
-                return
-            # Erase from where an app of this height belongs when flush with the pane bottom.
-            # An absolute row can only ever reach the app's own rows; erasing from the drifted
-            # cursor instead reaches the transcript sitting directly above it.
-            rows = renderer.output.get_size().rows
-            height = min(last_screen.height, rows)
-            out = renderer.output
-            out.cursor_goto(rows - height + 1, 1)
-            out.erase_down()
-            out.flush()
-            renderer.reset(leave_alternate_screen=False)
-            # Hand the renderer its origin rather than asking for it. tmux pins the cursor line
-            # to the pane bottom across a reflow, so the answer is already known, and a CPR
-            # answer describes a screen that the next resize of a drag has already replaced.
-            renderer._min_available_height = height
-            app._redraw()
+            with self._screen_update(app):
+                renderer = app.renderer
+                last_screen = renderer.last_rendered_screen
+                if last_screen is None or renderer.full_screen:
+                    # Nothing rendered yet, or a full-screen app: the stock path is already right.
+                    vanilla_resize()
+                    return
+                # Erase from where an app of this height belongs when flush with the pane bottom.
+                # An absolute row can only ever reach the app's own rows; erasing from the drifted
+                # cursor instead reaches the transcript sitting directly above it.
+                rows = renderer.output.get_size().rows
+                height = min(last_screen.height, rows)
+                out = renderer.output
+                out.cursor_goto(rows - height + 1, 1)
+                out.erase_down()
+                out.flush()
+                renderer.reset(leave_alternate_screen=False)
+                # Hand the renderer its origin rather than asking for it. tmux pins the cursor line
+                # to the pane bottom across a reflow, so the answer is already known, and a CPR
+                # answer describes a screen that the next resize of a drag has already replaced.
+                renderer._min_available_height = height
+                app._redraw()
 
         app._on_resize = on_resize
 
@@ -1756,20 +1784,21 @@ class TuiApp:
         vanilla_render = renderer.render
 
         def render(*args: Any, **kwargs: Any) -> None:
-            vanilla_render(*args, **kwargs)
-            owed = self.scrollback.note_width(renderer.output.get_size().columns)
-            if renderer.full_screen:
-                # An exclusive viewer (/diff) owns the alternate screen. Purging there would
-                # take the primary screen's scrollback with it for a rebuild nobody can see, so
-                # the debt is carried and paid on the first render after the viewer closes.
-                return
-            if owed:
-                # Width changed: every row in the pane was rewrapped, and none of them can be
-                # attributed any more. Rebuild the projection from the transcript instead.
-                self.scrollback.rebuild(app)
+            with self._screen_update(app):
                 vanilla_render(*args, **kwargs)
-            elif self.scrollback.flush(app):
-                vanilla_render(*args, **kwargs)
+                owed = self.scrollback.note_width(renderer.output.get_size().columns)
+                if renderer.full_screen:
+                    # An exclusive viewer (/diff) owns the alternate screen. Purging there would
+                    # take the primary screen's scrollback with it for a rebuild nobody can see, so
+                    # the debt is carried and paid on the first render after the viewer closes.
+                    return
+                if owed:
+                    # Width changed: every row in the pane was rewrapped, and none of them can be
+                    # attributed any more. Rebuild the projection from the transcript instead.
+                    self.scrollback.rebuild(app)
+                    vanilla_render(*args, **kwargs)
+                elif self.scrollback.flush(app):
+                    vanilla_render(*args, **kwargs)
 
         renderer.render = render  # type: ignore[method-assign]
 

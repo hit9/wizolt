@@ -19,6 +19,11 @@
 
 ### Fixed
 
+- Terminal updates keep resize erasure, transcript replay and the live prompt in one synchronized
+  frame on supporting terminals, reducing visible intermediate redraws in long sessions.
+- Switching back to a recent terminal width reuses the transcript layout until new output arrives,
+  speeding up repeated pane zooms in long sessions.
+
 - `Job(list)` and `Job(status)` report a finished job's run time, not the time since it started:
   the clock stops when the process does.
 - Resuming a session shows the `resuming session…` status again while the transcript is being

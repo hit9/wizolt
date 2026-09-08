@@ -115,12 +115,15 @@ class ScrollbackRegion:
     # Bound retained writes, not physical rows (a batch can contain many lines). Older entries
     # cannot be restored after a purge, even if the terminal retained a larger native history.
     MAX_REPLAY = 5000
+    # Two recently visited widths, at most ~8 MiB of Unicode text in total.
+    MAX_CACHED_LAYOUT_CHARS = 1_000_000
 
     def __init__(self) -> None:
         self.transcript: list[ScrollbackText] = []
         self._pending: list[ScrollbackText] = []
         self._width: int | None = None
         self._rebuild_owed = False
+        self._layouts: dict[int, tuple[str, int]] = {}
 
     @property
     def pending(self) -> bool:
@@ -147,6 +150,7 @@ class ScrollbackRegion:
         for item in pending:
             sys.stdout.write(item(columns) if callable(item) else item)
         sys.stdout.flush()
+        self._layouts.clear()
         self.transcript.extend(pending)
         del self.transcript[: max(0, len(self.transcript) - self.MAX_REPLAY)]
 
@@ -210,9 +214,24 @@ class ScrollbackRegion:
         out.flush()
 
         self.transcript.extend(self._pending)
+        self._layouts.clear()
         del self.transcript[: max(0, len(self.transcript) - self.MAX_REPLAY)]
         self._pending.clear()
         return bool(advance)
+
+    def _replay_layout(self, columns: int) -> tuple[str, int]:
+        """Reuse complete layouts while the recorded transcript stays unchanged."""
+        cached = self._layouts.pop(columns, None)
+        if cached is not None:
+            self._layouts[columns] = cached
+            return cached
+        replayed = [item(columns) if callable(item) else item for item in self.transcript]
+        layout = ("".join(replayed), sum(physical_rows(text, columns) for text in replayed))
+        if len(layout[0]) <= self.MAX_CACHED_LAYOUT_CHARS:
+            if len(self._layouts) == 2:
+                del self._layouts[next(iter(self._layouts))]
+            self._layouts[columns] = layout
+        return layout
 
     def rebuild(self, app: Application) -> None:
         """Purge the terminal and re-emit the transcript at the current width.
@@ -231,6 +250,8 @@ class ScrollbackRegion:
         except HeightIsUnknownError:
             anchor = None
         self._rebuild_owed = False
+        if self._pending:
+            self._layouts.clear()
         self.transcript.extend(self._pending)
         self._pending.clear()
         del self.transcript[: max(0, len(self.transcript) - self.MAX_REPLAY)]
@@ -238,17 +259,15 @@ class ScrollbackRegion:
         # Reset the scroll region and styles, home the cursor, clear the screen, then purge
         # scrollback. Order matches a shell's `clear` followed by `printf '\e[3J'`.
         out.write_raw("\x1b[r\x1b[0m\x1b[H\x1b[2J\x1b[3J\x1b[H")
-        replayed = [item(columns) if callable(item) else item for item in self.transcript]
         # Rows, not newlines: a wrapped line takes several, and the count decides where the app
         # is told it starts.
-        written = sum(physical_rows(text, columns) for text in replayed)
+        replayed, written = self._replay_layout(columns)
         if anchor is not None and written < anchor:
             # Too little transcript to reach the app's old row. Open the gap above it rather than
             # below, so the app stays put instead of rising to meet a short transcript.
             out.write_raw("\r\n" * (anchor - written))
             written = anchor
-        for text in replayed:
-            out.write_raw(text)
+        out.write_raw(replayed)
         out.flush()
 
         renderer.reset(leave_alternate_screen=False)
