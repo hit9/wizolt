@@ -669,7 +669,7 @@ async def test_job_start_captures_every_stage_of_a_compound_command(tmp_path):
 async def test_job_start_reclaims_finished_capacity(tmp_path, monkeypatch):
     s = session(tmp_path)
     monkeypatch.setattr(JobTool, "MAX_JOBS", 1)
-    await JobTool(s, [{"action": "start", "command": "true"}]).call()
+    await JobTool(s, [{"action": "start", "command": "true", "stdin": True}]).call()
     s.jobs["job.1"].process.wait(timeout=2)
 
     result = await JobTool(s, [{"action": "start", "command": "true"}]).call()
@@ -715,7 +715,7 @@ def test_job_start_uses_bash_highlighting(tmp_path):
 
 async def test_job_status_accepts_bare_numeric_id(tmp_path):
     s = session(tmp_path)
-    await JobTool(s, [{"action": "start", "command": "true"}]).call()
+    await JobTool(s, [{"action": "start", "command": "true", "stdin": True}]).call()
     s.jobs["job.1"].process.wait(timeout=2)
 
     result = await JobTool(s, [{"action": "status", "job": "1"}]).call()
@@ -737,7 +737,7 @@ async def test_job_tail_respects_limits_smaller_than_ellipsis(tmp_path):
 
 async def test_kill_finished_job_does_not_signal_stale_process(tmp_path):
     s = session(tmp_path)
-    await JobTool(s, [{"action": "start", "command": "true"}]).call()
+    await JobTool(s, [{"action": "start", "command": "true", "stdin": True}]).call()
     s.jobs["job.1"].process.wait(timeout=2)
 
     result = await JobTool(s, [{"action": "kill", "job": "job.1"}]).call()
@@ -748,7 +748,7 @@ async def test_kill_finished_job_does_not_signal_stale_process(tmp_path):
 
 async def test_ps_hides_jobs_that_finished_without_polling(tmp_path):
     s = session(tmp_path)
-    await JobTool(s, [{"action": "start", "command": "true"}]).call()
+    await JobTool(s, [{"action": "start", "command": "true", "stdin": True}]).call()
     s.jobs["job.1"].process.wait(timeout=2)
     command_loop = CommandLoop(Agent(s), input_fn=lambda prompt="": "", output_fn=lambda text: None)
 
@@ -994,7 +994,7 @@ async def test_job_write_drives_a_program_that_reads_stdin(tmp_path):
     """A job that can be answered is the point of stdin: without it a prompting program is a
     dead end, and the model can only re-run a script to guess what it wanted."""
     s = session(tmp_path)
-    await JobTool(s, [{"action": "start", "command": "read first; read second; echo got:$first:$second"}]).call()
+    await JobTool(s, [{"action": "start", "command": "read first; read second; echo got:$first:$second", "stdin": True}]).call()
 
     assert await JobTool(s, [{"action": "write", "job": "job.1", "chars": "alpha\n"}]).call() == "Wrote 6 characters to job.1 stdin"
     await JobTool(s, [{"action": "write", "job": "1", "chars": "beta\n"}]).call()
@@ -1006,7 +1006,7 @@ async def test_job_write_drives_a_program_that_reads_stdin(tmp_path):
 async def test_job_write_drives_a_repl_across_calls(tmp_path):
     """State persists between writes, which is what a fresh `bash -lc` per Bash call cannot do."""
     s = session(tmp_path)
-    await JobTool(s, [{"action": "start", "command": f"{shlex.quote(sys.executable)} -u -i 2>&1"}]).call()
+    await JobTool(s, [{"action": "start", "command": f"{shlex.quote(sys.executable)} -u -i 2>&1", "stdin": True}]).call()
 
     await JobTool(s, [{"action": "write", "job": "job.1", "chars": "carried = 6 * 7\n"}]).call()
     await JobTool(s, [{"action": "write", "job": "job.1", "chars": "print('answer', carried)\n"}]).call()
@@ -1028,7 +1028,7 @@ async def test_job_write_drives_a_repl_across_calls(tmp_path):
 )
 async def test_job_write_validation_is_actionable(tmp_path, payload, message):
     s = session(tmp_path)
-    await JobTool(s, [{"action": "start", "command": "read ignored"}]).call()
+    await JobTool(s, [{"action": "start", "command": "read ignored", "stdin": True}]).call()
 
     with pytest.raises(ToolError, match=message):
         await JobTool(s, [payload]).call()
@@ -1038,7 +1038,7 @@ async def test_job_write_to_a_finished_job_says_so(tmp_path):
     """"Wrote to a dead job" and "this program ignores stdin" need different next moves, so the
     error names which one happened rather than surfacing a bare BrokenPipeError."""
     s = session(tmp_path)
-    await JobTool(s, [{"action": "start", "command": "true"}]).call()
+    await JobTool(s, [{"action": "start", "command": "true", "stdin": True}]).call()
     await JobTool(s, [{"action": "wait", "job": "job.1"}]).call()
 
     with pytest.raises(ToolError, match="already exited with code 0"):
@@ -1053,3 +1053,22 @@ def test_job_write_is_confirmed_and_never_echoes_what_was_written(tmp_path):
     assert tool.needs_confirmation()
     assert tool.short_args() == ["write", "job.1"]
     assert "sudo-password" not in " ".join(tool.short_args())
+
+
+async def test_job_stdin_is_opt_in_so_a_stray_read_still_finishes(tmp_path):
+    """The default must stay /dev/null. On a pipe, a command that reads stdin without anyone
+    intending to answer it waits forever and holds one of MAX_JOBS slots; on /dev/null it sees
+    EOF and finishes. Asking for stdin is asking for that wait."""
+    s = session(tmp_path)
+    # Reads stdin and would wait forever on a pipe; on /dev/null it sees EOF and finishes.
+    await JobTool(s, [{"action": "start", "command": "cat; echo done-anyway"}]).call()
+    finished = await JobTool(s, [{"action": "wait", "job": "job.1"}]).call()
+    assert "done-anyway" in finished
+
+    # A job still running without stdin says which mistake was made, and how to avoid it.
+    await JobTool(s, [{"action": "start", "command": "sleep 30"}]).call()
+    try:
+        with pytest.raises(ToolError, match="no open stdin; start it with stdin=true"):
+            await JobTool(s, [{"action": "write", "job": "job.2", "chars": "late\n"}]).call()
+    finally:
+        await JobTool(s, [{"action": "kill", "job": "job.2"}]).call()

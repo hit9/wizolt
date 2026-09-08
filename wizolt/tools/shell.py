@@ -441,7 +441,8 @@ class JobTool(Tool):
             "action": {"type": "string", "enum": list(cls.ACTIONS)},
             "command": {"type": "string", "minLength": 1, "description": "Command to run for start"},
             "job": {"type": "string", "description": "Job id"},
-            "chars": {"type": "string", "description": "stdin text for write; end with a newline to submit a line"},
+            "stdin": {"type": "boolean", "description": "Open stdin on start so write can answer it"},
+            "chars": {"type": "string", "description": "stdin text for write; end with a newline"},
             "timeout": {"type": "integer", "minimum": 0, "description": f"Wait seconds; default {cls.DEFAULT_WAIT}s, capped at {cls.MAX_WAIT}s"},
             "limit": {"type": "integer", "minimum": 1, "description": "Output character limit; default 4096"},
         }, ["action"])
@@ -525,11 +526,13 @@ class JobTool(Tool):
         proc = subprocess.Popen(
             ["bash", "-lc", f"{{ {command}; }} > {shlex.quote(log_path)} 2>&1"],
             cwd=self.session.cwd,
-            # A pipe rather than DEVNULL: a job the agent can answer is the difference between
-            # driving a REPL, a debugger or a prompting CLI and re-running a script to guess at
-            # what it wanted. Programs that detect a non-tty stay in their non-interactive mode,
-            # which suits a caller that reads output rather than a prompt.
-            stdin=subprocess.PIPE,
+            # Opt-in, because the choice changes what happens to a command nobody intends to
+            # answer: on /dev/null a stray read of stdin sees EOF and the command finishes, while
+            # on a pipe it waits for input that never comes and holds one of MAX_JOBS slots until
+            # it is killed. Asking for stdin is asking for that wait. Programs that detect a
+            # non-tty stay in their non-interactive mode either way, which suits a caller that
+            # reads a log rather than a prompt.
+            stdin=subprocess.PIPE if payload.get("stdin") else subprocess.DEVNULL,
             start_new_session=True,
         )
         self.session.jobs[job_id] = BackgroundJob(id=job_id, command=command, process=proc, log_path=log_path, started_at=time.monotonic())
@@ -554,7 +557,7 @@ class JobTool(Tool):
             raise ToolError(f"{job.id} already exited with code {job.exit_code}; nothing reads its stdin")
         stream = job.process.stdin
         if stream is None or stream.closed:
-            raise ToolError(f"{job.id} has no open stdin")
+            raise ToolError(f"{job.id} has no open stdin; start it with stdin=true to answer it")
         try:
             stream.write(chars.encode())
             stream.flush()
