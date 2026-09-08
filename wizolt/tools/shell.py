@@ -449,7 +449,7 @@ class JobTool(Tool):
     # Ctrl-C. Keep every individual wait short; a still-running job remains addressable and can be
     # checked again later without parking the agent for minutes at a time.
     DEFAULT_WAIT: ClassVar[int] = 20
-    MAX_WAIT: ClassVar[int] = 20
+    MAX_WAIT: ClassVar[int] = 60
     POLL_INTERVAL: ClassVar[float] = 0.1
     # How often the job's log tail is streamed into the live preview while a wait polls. Aligned
     # with the preview's own TICK so the two repaint together; the poll slices stay finer because

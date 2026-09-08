@@ -109,16 +109,16 @@ async def test_job_wait_honours_a_longer_model_timeout_up_to_the_ceiling(tmp_pat
     assert JobTool(s, [{"action": "wait", "job": "job.1", "timeout": "1m"}]).blocks_agent() is False
 
 
-def test_job_wait_budget_is_always_capped_at_twenty_seconds(tmp_path):
+def test_job_wait_budget_is_always_capped_at_sixty_seconds(tmp_path):
     tool = JobTool(session(tmp_path), [{"action": "wait", "job": "job.1"}])
 
     assert tool.wait_budget({}) == 20
     assert tool.wait_budget({"timeout": 0}) == 20
     assert tool.wait_budget({"timeout": 19}) == 19
     assert tool.wait_budget({"timeout": 20}) == 20
-    assert tool.wait_budget({"timeout": 21}) == 20
-    assert tool.wait_budget({"timeout": 3600}) == 20
-    assert "capped at 20s" in JobTool.params_schema()["properties"]["timeout"]["description"]
+    assert tool.wait_budget({"timeout": 61}) == 60
+    assert tool.wait_budget({"timeout": 3600}) == 60
+    assert "capped at 60s" in JobTool.params_schema()["properties"]["timeout"]["description"]
 
 
 def test_bash_schema_guides_composition_and_tool_choice_without_assuming_ripgrep():

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- `Job(wait)` can hold the turn for up to 60 seconds instead of 20.
+
 ### Fixed
 
 - Resuming a session shows the `resuming session…` status again while the transcript is being
