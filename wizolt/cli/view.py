@@ -386,7 +386,7 @@ class View:
             *dashes(lead + body_len, trail),
         ]
 
-    def queue_divider_fragments(self, queued: int = 0) -> StyleAndTextTuples:
+    def queue_divider_fragments(self, queued: int = 0, next_turn: int = 0) -> StyleAndTextTuples:
         tui = self.loop.tui
         status = tui.status_label if tui is not None and tui.status_label else "working"
         if status in {"working", "retrying", "compacting context"}:
@@ -413,8 +413,13 @@ class View:
             label = status
         if self.loop.session.context_reset_requested:
             label += " · reset pending"
-        if queued:
-            label = f"{label} [ {queued} queued ]"
+        counts = [f"{queued} queued"] if queued else []
+        if next_turn:
+            # Held-back inputs are invisible to the running turn, so they must not inflate the
+            # count of follow-ups waiting for the next model step.
+            counts.append(f"{next_turn} next turn")
+        if counts:
+            label = f"{label} [ {' · '.join(counts)} ]"
         prefix = self.waiting_pulse_fragments()
         worker = self.loop.session.worker
         if worker is not None and worker._active_turn_messages:
@@ -441,7 +446,10 @@ class View:
         transcript = render(sent, UiPrinter.USER_LOG_PREFIX, "class:prompt")
         # The divider is a standing boundary for the whole turn. Only messages that have not entered
         # a model request remain below it; sent messages render above it until the request commits them.
-        waiting = self.queue_divider_fragments(len(queued))
+        waiting = self.queue_divider_fragments(
+            sum(1 for item in queued if not item.next_turn),
+            sum(1 for item in queued if item.next_turn),
+        )
         if queued:
             # A blank row lifts the queued block off the divider, so the queue reads as its own
             # region below the boundary instead of a list glued to the divider's label.

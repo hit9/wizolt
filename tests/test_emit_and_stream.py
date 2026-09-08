@@ -80,6 +80,8 @@ def test_editor_and_queued_user_text_use_desert_style(tmp_path, monkeypatch):
 
 def test_next_turn_input_renders_with_its_own_marker(tmp_path):
     command_loop = loop(tmp_path)
+    command_loop.tui = TuiApp()
+    command_loop.tui.set_running("working")
     command_loop.session.enqueue_user_input("live follow-up")
     command_loop.session.enqueue_user_input("held for later", next_turn=True)
 
@@ -89,6 +91,8 @@ def test_next_turn_input_renders_with_its_own_marker(tmp_path):
     assert "+ live follow-up" in text
     assert "↪ next turn · held for later" in text
     assert "+ held for later" not in text
+    # The divider counts the two queues apart: a held input is invisible to the running turn.
+    assert "[ 1 queued · 1 next turn ]" in text
 
 
 def test_next_turn_input_renders_an_image_label(tmp_path):

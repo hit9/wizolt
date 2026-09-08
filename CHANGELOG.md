@@ -5,8 +5,8 @@
 ### Added
 
 - While the agent works, `Tab` holds the draft for the next task instead of queueing it as a
-  follow-up for the current one; each held input starts a turn of its own, in order, and waits in
-  the queue as `↪ next turn`.
+  follow-up for the current one; each held input starts a turn of its own, in order, waits in the
+  queue as `↪ next turn`, and is counted apart from the follow-ups waiting for the next model step.
 
 ### Changed
 
