@@ -163,3 +163,39 @@ def test_note_activity_is_read_only_and_projection_has_a_total_budget(tmp_path):
         NoteTool(s, [{"recent_activity": "everything passed"}]).call()
     assert s.recent_activity() == before
     assert json.loads(NoteTool(s, [{"fields": ["recent_activity"]}]).call()) == {"recent_activity": before}
+
+
+async def test_frozen_activity_is_scrubbed_of_ids_and_pins_no_retention_root(tmp_path):
+    (tmp_path / "one.py").write_text("hello\n")
+    (tmp_path / "two.py").write_text("world\n")
+    s = session(tmp_path)
+    s.settings.yolo = True
+    ctx = ContextManager(s)
+    runner = ToolRunner(s, ctx, output_fn=lambda _: None)
+    await runner.run([call("Read", [{"path": "one.py"}])])
+    view = next(iter(s.source_views))
+    # An Edit naming the view for a different path fails with the id quoted; a Recall failure can
+    # quote a tr.N key; a command can echo one. None may survive into text that outlives the
+    # records it names.
+    await runner.run([call("Edit", ["two.py", view, [{"op": "replace", "start": 1, "end": 1, "content": "x\n"}]])])
+    s.record_tool_error("-", "Recall", ["tr.7"], "ToolError: tr.7 is unknown or expired")
+    s.record_command_result("echo " + view, 0)
+    activity = s.recent_activity()
+    assert view not in activity and "view.N" in activity
+    assert "tr.7" not in activity and "tr.N" in activity
+    ctx.apply_compaction({"summary": "mismatch"}, [], compacted=s.messages)
+    checkpoint = s.messages[0]["content"]
+    assert view not in checkpoint and "view.N" in checkpoint
+    assert view not in s.source_views
+
+
+async def test_timed_out_command_settles_at_the_reported_exit_code(tmp_path):
+    s = session(tmp_path)
+    s.settings.yolo = True
+    s.settings.shell_timeout = 0.2
+    s.settings.bash_wait_timeout = 0
+    runner = ToolRunner(s, ContextManager(s), output_fn=lambda _: None)
+    message = (await runner.run([call("Bash", ["sleep 5"])]))[0]["content"]
+    assert "exit_code: -1" in message and "timeout" in message
+    # The receipt must agree with the result the model saw, not the SIGKILL behind it.
+    assert s.recent_commands == [{"command": "sleep 5", "exit_code": -1}]

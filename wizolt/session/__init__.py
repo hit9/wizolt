@@ -593,9 +593,12 @@ class Session:
     def recent_activity(self) -> str:
         """Bounded historical evidence, frozen into checkpoints rather than the live prefix.
 
-        Reuse existing edit/error receipts. Do not name tr.N/view.N references here: compaction
-        can prune them immediately after freezing this text. Lists are oldest to newest within
-        each category; command success does not resolve earlier errors automatically.
+        Reuse existing edit/error receipts. Id references are scrubbed to their namespace
+        placeholder (view.12 becomes view.N, tr.3 becomes tr.N): compaction can prune the records
+        they name immediately after freezing this text, and a checkpoint is scanned for ids when
+        views and results are pruned, so a literal id would pin evidence the compaction meant to
+        evict. Lists are oldest to newest within each category; command success does not resolve
+        earlier errors automatically.
         """
         rows: list[str] = []
         paths = list(dict.fromkeys(diff.path for diff in reversed(self.turn_diffs)))[:10]
@@ -617,6 +620,10 @@ class Session:
         if not rows:
             return ""
         body = "\n".join(rows)
+        # The scrub the docstring names: an Edit failure routinely quotes the view it failed on,
+        # and command or error text can echo a tr.N key. The placeholder keeps the observation
+        # readable without keeping the id alive inside a retention root.
+        body = re.sub(r"\b(view|tr)\.\d+\b", r"\1.N", body)
         if len(body) > 6000:
             body = body[:5980] + "\n[activity clipped]"
         return (
