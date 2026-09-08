@@ -1,10 +1,10 @@
 import asyncio
 import json
 import os
-import threading
 import shlex
 import subprocess
 import sys
+import threading
 import time
 
 import pytest
@@ -1176,3 +1176,56 @@ async def test_refused_job_write_can_be_inspected_and_sends_nothing(tmp_path):
         assert s.jobs["job.1"].tail(100) == "got:accepted\n"
     finally:
         s.jobs["job.1"].kill()
+
+
+async def test_bash_workdir_runs_where_the_call_says(tmp_path):
+    """Stated per call rather than remembered between them.
+
+    A `cd` that outlives its command silently changes what every later command means, and nothing
+    in a later call shows that it happened. codex makes the same choice: its exec tool takes a
+    `workdir` and has no persistent shell.
+    """
+    (tmp_path / "sub" / "deep").mkdir(parents=True)
+    s = session(tmp_path)
+
+    assert str(tmp_path) in await BashTool(s, ["pwd"]).call()
+    assert str(tmp_path / "sub") in await BashTool(s, ["pwd", "sub"]).call()
+    assert str(tmp_path / "sub" / "deep") in await BashTool(s, ["pwd", str(tmp_path / "sub" / "deep")]).call()
+    # The directory does not persist: the next call is back in the workspace.
+    assert str(tmp_path) in await BashTool(s, ["pwd"]).call()
+
+
+@pytest.mark.parametrize(
+    ("workdir", "message"),
+    [
+        ("nowhere", "does not exist"),
+        ("file.txt", "is not a directory"),
+    ],
+)
+async def test_bash_workdir_errors_say_what_was_resolved(tmp_path, workdir, message):
+    """The resolved path and the relative-to-workspace rule are both in the message, because a
+    path that resolved somewhere unexpected is the likely mistake."""
+    (tmp_path / "file.txt").write_text("x", encoding="utf-8")
+
+    with pytest.raises(ToolError, match=message) as caught:
+        BashTool(session(tmp_path), ["pwd", workdir]).workdir()
+
+    assert str(tmp_path / workdir) in str(caught.value)
+    assert "relative paths are taken from the workspace" in str(caught.value)
+
+
+def test_bash_workdir_is_visible_in_the_preview(tmp_path):
+    """The same command means different things in different trees, so approval has to show which."""
+    s = session(tmp_path)
+    (tmp_path / "sub").mkdir()
+
+    assert BashTool(s, ["rm -rf build", "sub"]).short_args() == ["rm -rf build", "in sub"]
+    assert BashTool(s, ["rm -rf build"]).short_args() == ["rm -rf build"]
+
+
+def test_bash_payload_keeps_its_single_argument_form_without_a_workdir():
+    """Stored results, ToolScript's `call("Bash", [cmd])` and every existing caller pass one
+    argument; adding an optional second must not change that shape."""
+    assert BashTool.payload_args({"command": "ls"}) == ["ls"]
+    assert BashTool.payload_args({"command": "ls", "workdir": "  "}) == ["ls"]
+    assert BashTool.payload_args({"command": "ls", "workdir": "sub"}) == ["ls", "sub"]

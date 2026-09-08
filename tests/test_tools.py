@@ -630,7 +630,11 @@ def test_tool_schemas_are_strict_for_high_risk_tools():
     assert bash_params["properties"]["command"]["pattern"] == r"^[\s\S]*\S[\s\S]*$"
     bash_description = BashTool.schema()["function"]["description"]
     assert "conditionals, loops, functions, pipelines, and multiline scripts" in bash_description
-    assert "if, loops, functions, and multiline scripts are valid" in bash_params["properties"]["command"]["description"]
+    # Said once. The parameter used to repeat that same list and the tool's "Bound noisy output",
+    # which is a whole sentence of the schema budget spent to tell the model what it just read.
+    assert "loops" not in bash_params["properties"]["command"]["description"]
+    # Where the command runs is part of the call, not remembered from an earlier one.
+    assert "workdir" in bash_params["properties"]
 
     edit_params = EditTool.schema()["function"]["parameters"]
     assert edit_params["required"] == ["path", "edits"]

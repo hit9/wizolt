@@ -187,7 +187,8 @@ class BashTool(Tool):
     def params_schema(cls) -> Json:
         # fmt: off
         return cls.object_schema({
-            "command": {"type": "string", "minLength": 1, "pattern": "^[\\s\\S]*\\S[\\s\\S]*$", "description": "Required Bash program; if, loops, functions, and multiline scripts are valid. Bound noisy output"},
+            "command": {"type": "string", "minLength": 1, "pattern": "^[\\s\\S]*\\S[\\s\\S]*$", "description": "Bash program"},
+            "workdir": {"type": "string", "description": "Directory to run in; defaults to the workspace"},
         }, ["command"])
         # fmt: on
 
@@ -196,16 +197,40 @@ class BashTool(Tool):
         command = str(payload.get("command") or "")
         if not command.strip():
             raise ToolError("Bash command must be non-empty")
-        return [command]
+        # `workdir` is a second positional rather than a dict payload so existing callers, stored
+        # results and ToolScript's `call("Bash", [cmd])` keep working unchanged.
+        workdir = str(payload.get("workdir") or "").strip()
+        return [command, workdir] if workdir else [command]
 
     def command(self) -> str:
-        command = self.strings(min_count=1, max_count=1)[0]
+        command = self.strings(min_count=1, max_count=2)[0]
         if not command.strip():
             raise ToolError("Bash command must be non-empty")
         return command
 
+    def workdir(self) -> str:
+        """Where this command runs: the workspace, or the directory the call asked for.
+
+        Stated per call rather than remembered between them. A `cd` that outlives its command
+        silently changes what every later command means, and the model cannot see that it
+        happened; naming the directory keeps the question answerable from the call alone. codex
+        makes the same choice -- its exec tool takes `workdir` and has no persistent shell.
+        """
+        args = self.strings(min_count=1, max_count=2)
+        requested = args[1].strip() if len(args) > 1 else ""
+        if not requested:
+            return self.session.cwd
+        resolved = os.path.abspath(os.path.join(self.session.cwd, os.path.expanduser(requested)))
+        if not os.path.isdir(resolved):
+            what = "is not a directory" if os.path.exists(resolved) else "does not exist"
+            raise ToolError(f"workdir {requested!r} {what} (resolved to {resolved}); relative paths are taken from the workspace")
+        return resolved
+
     def short_args(self) -> list[str]:
-        return [self.command()]
+        args = self.strings(min_count=1, max_count=2)
+        # The directory is part of what is being approved: the same command means different things
+        # in different trees, so a preview that hides it hides the risk.
+        return [args[0], *(f"in {args[1]}" for _ in (0,) if len(args) > 1 and args[1].strip())]
 
     async def call(self) -> str:
         command = self.command()
@@ -215,7 +240,7 @@ class BashTool(Tool):
             # Keep a Popen handle because an auto-promoted command must outlive this event loop;
             # all potentially blocking pipe I/O below is event-loop driven.
             proc = subprocess.Popen(  # noqa: ASYNC220
-                [bash, "-lc", command], cwd=self.session.cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
+                [bash, "-lc", command], cwd=self.workdir(), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
             )
             with self._process_lock:
                 self._process = proc

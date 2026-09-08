@@ -79,7 +79,8 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
     An Edit confirmation previews the proposed change before approval.
     :::
 * - **`Bash`**
-  - Runs one shell command in the project with live output. Commands still running after
+  - Runs one shell command in the project with live output, in the workspace or in a
+    <span class="marker">directory the call names</span>. Commands still running after
     `runtime.bash_wait_timeout` <span class="marker">become background jobs automatically</span>.
 
     :::{figure} ../snapshots/wizolt-bash-live-preview.gif
