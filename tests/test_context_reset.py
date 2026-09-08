@@ -38,16 +38,6 @@ def test_context_remaining_reports_the_status_bar_figure(tmp_path):
         "remaining": 2766,
     }
 
-    fresh = session(tmp_path)
-    fresh.state.context_percent = 25
-    budget = fresh.request_token_budget()
-    assert fresh.context_fill() == {
-        "percent": 25,
-        "used": 25 * budget // 100,
-        "budget": budget,
-        "remaining": budget - 25 * budget // 100,
-    }
-
 
 def test_context_tool_rejects_anything_but_the_two_actions(tmp_path):
     s = session(tmp_path)
@@ -341,3 +331,29 @@ def test_reset_keeps_the_header_stable_and_compaction_reuses_the_new_prefix(tmp_
     assert changed[0][:-1] == messages[:-1]
     assert changed[1] == tools
     assert s.messages[0] == after_reset[len(header)]
+
+
+@pytest.mark.parametrize(("reported_used", "reported_budget"), [(0, 0), (1234, 0), (0, 4000)])
+def test_remaining_uses_exact_projection_when_provider_pair_is_missing(tmp_path, reported_used, reported_budget):
+    s = session(tmp_path)
+    ctx = ContextManager(s)
+    messages = [{"role": "user", "content": "small request"}]
+    ctx.update_percent(messages, None)
+    estimated = ctx.request_tokens(messages, None)
+    assert 0 < estimated < s.request_token_budget() // 100
+    s.usage.last_prompt_tokens = reported_used
+    s.usage.last_prompt_budget = reported_budget
+    reading = json.loads(ContextTool(s, [{"action": "remaining"}]).call())
+    assert reading == {"percent": 0, "used": estimated, "budget": s.request_token_budget(), "remaining": s.request_token_budget() - estimated}
+
+
+async def test_context_command_and_tool_report_identical_estimates_after_reset(tmp_path):
+    s = session_with_provider(tmp_path)
+    agent = Agent(s, output_fn=lambda _: None)
+    loop = CommandLoop(agent, input_fn=lambda _: "", output_fn=lambda _: None)
+    await commands.context_command(loop, "reset")
+    reading = json.loads(ContextTool(s, [{"action": "remaining"}]).call())
+    expected = agent.context.request_tokens(agent.context.model_messages(s.system_prompt), Tool.resolved_schemas(s))
+    assert reading["used"] == expected
+    assert reading["remaining"] == reading["budget"] - expected
+    assert commands._context_reading(loop) == (reading["used"], reading["budget"], reading["percent"])

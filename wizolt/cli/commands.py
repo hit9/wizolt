@@ -115,12 +115,9 @@ def _context_reading(loop: CommandLoop) -> tuple[int, int, int]:
     already fills part of one. The provider's last real request wins when there is one -- `/config`
     reports the configured max_context_tokens immediately, while these describe one real request
     and only catch up after the next one."""
-    usage = loop.session.usage
-    tokens = loop.agent.context.update_current_tokens(loop.session.system_prompt)
-    budget = loop.agent.context.request_token_budget()
-    if usage.last_prompt_tokens and usage.last_prompt_budget:
-        tokens, budget = usage.last_prompt_tokens, usage.last_prompt_budget
-    return tokens, budget, usage.context_percent(loop.session.state.context_percent)
+    loop.agent.context.update_current_tokens(loop.session.system_prompt)
+    reading = loop.session.context_fill()
+    return reading["used"], reading["budget"], reading["percent"]
 
 
 def _status_cache_line(counts: ModelUsage) -> str:

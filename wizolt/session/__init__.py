@@ -102,6 +102,7 @@ class AgentState:
     code_index_refreshing: bool = False
     code_index_checking: bool = False
     context_percent: int = 0
+    context_tokens: int = 0  # transient projection estimate; do not reconstruct it from a rounded percentage
     turn_step: int = 0
     turn_messages: int = 0
     round_count: int = 0
@@ -458,8 +459,9 @@ class Session:
         disagreeing about the same moment.
         """
         usage = self.usage
-        budget = usage.last_prompt_budget or self.request_token_budget()
-        used = usage.last_prompt_tokens or self.state.context_percent * budget // 100
+        reported = bool(usage.last_prompt_tokens and usage.last_prompt_budget)
+        budget = usage.last_prompt_budget if reported else self.request_token_budget()
+        used = usage.last_prompt_tokens if reported else self.state.context_tokens
         return {
             "percent": usage.context_percent(self.state.context_percent),
             "used": used,
@@ -621,6 +623,7 @@ class Session:
         self.messages.append(checkpoint)
         self.state.turn_messages = 0
         self.state.context_percent = 0
+        self.state.context_tokens = 0
         usage = self.usage
         usage.last_prompt_tokens = 0
         usage.last_prompt_budget = 0

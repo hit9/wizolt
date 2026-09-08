@@ -23,6 +23,9 @@
 
 ### Fixed
 
+- `Context(remaining)` keeps small nonzero usage visible and uses a consistent local estimate
+  when the provider's token count and budget are incomplete.
+
 - Writing to a job with full stdin returns promptly without sending a partial answer. Completed
   jobs release their stdin handles, and write approvals and Ctrl-O show the exact input.
 

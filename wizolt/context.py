@@ -170,13 +170,15 @@ class ContextManager:
         return self.estimated_tokens(messages) + (self.estimated_tokens(tools) if tools else 0)
 
     def update_percent(self, messages: list[Json], tools: list[Json] | None = None) -> int:
-        self.session.state.context_percent = min(100, self.request_tokens(messages, tools) * 100 // self.request_token_budget())
+        self.session.state.context_tokens = self.request_tokens(messages, tools)
+        self.session.state.context_percent = min(100, self.session.state.context_tokens * 100 // self.request_token_budget())
         return self.session.state.context_percent
 
     def update_current_tokens(self, base_system: str) -> int:
         messages = self.model_messages(base_system, self.session._active_turn_messages)
         tools = Tool.resolved_schemas(self.session)
         tokens = self.request_tokens(messages, tools)
+        self.session.state.context_tokens = tokens
         self.session.state.context_percent = min(100, tokens * 100 // self.request_token_budget())
         return tokens
 
