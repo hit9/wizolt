@@ -18,7 +18,7 @@ import asyncio
 import pytest
 from prompt_toolkit.data_structures import Size
 from test_tui_resize import ReflowingTerminal
-from tui_harness import run_interactive_tui, wait_until
+from tui_harness import run_interactive_tui, wait_for, wait_until
 
 from wizolt.render import UiPrinter
 from wizolt.tui.app import TuiApp
@@ -148,11 +148,17 @@ def test_lines_are_held_rather_than_written_over_an_app_that_fills_the_pane(monk
     output, app, printer = wired
     held = []
 
+    async def shrink_to_app_height():
+        # Terminal writes precede publication of last_rendered_screen. Read geometry on the
+        # application's loop, between renders, rather than racing it from the driver thread.
+        await wait_for(lambda: app.app.renderer.last_rendered_screen is not None)
+        output.size = Size(rows=app.app.renderer.last_rendered_screen.height, columns=80)
+        app.app._on_resize()
+
     def drive(_pipe_input):
         wait_until(lambda: any(line.startswith(UiPrinter.PROMPT_PREFIX) for line in output.lines))
         # A pane exactly as tall as the app leaves no region above it.
-        output.size = Size(rows=app.app.renderer.last_rendered_screen.height, columns=80)
-        app.app.loop.call_soon_threadsafe(app.app._on_resize)
+        asyncio.run_coroutine_threadsafe(shrink_to_app_height(), app.app.loop).result(timeout=10)
         wait_until(lambda: app.app.renderer._last_size == output.size)
 
         app.app.loop.call_soon_threadsafe(printer.emit, "held while cramped")
@@ -270,6 +276,7 @@ def test_a_rebuild_leaves_the_app_on_the_row_it_was_on(monkeypatch, wired):
     run_tui(monkeypatch, app, output, drive)
 
     assert len(set(rows)) == 1, f"the app moved between width changes: {rows}"
+
 
 # The rebuild's switch from counting newlines to counting rows has no test here on purpose. With
 # the anchoring above in place, a short transcript is padded to the app's row either way, so the
