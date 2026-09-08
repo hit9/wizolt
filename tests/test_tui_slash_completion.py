@@ -141,6 +141,19 @@ def test_running_tab_opens_the_argument_menu_for_a_slash_command(monkeypatch):
     assert held == []
 
 
+def test_running_tab_holds_a_draft_whose_first_line_looks_like_a_path():
+    """The slash guard reads the current line, so a multi-line draft that merely starts with a
+    path still holds for the next turn."""
+    held: list[str] = []
+    app = TuiApp(completer=CommandCompleter(), on_queue_next_turn=held.append)
+    app.set_running("working")
+    app.input_buffer.insert_text("/usr/local/lib\n这个目录看下")
+
+    app.tab_or_complete(app.input_buffer, reverse=False)
+
+    assert held == ["/usr/local/lib\n这个目录看下"]
+
+
 def test_complete_slash_command_submits_on_the_first_enter(monkeypatch):
     received = []
     app = TuiApp(completer=CommandCompleter(), on_chat_submit=received.append)

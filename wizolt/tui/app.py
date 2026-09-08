@@ -779,6 +779,7 @@ class TuiApp:
             if buffer.complete_state is None:
                 self._refresh_file_completions(buffer)
         before = buffer.document.text_before_cursor
+        line_before = before.rsplit("\n", 1)[-1]
         state = buffer.complete_state
         if not reverse and before.startswith("/") and active_mention(before) is None and state is not None and len(state.completions) == 1:
             buffer.apply_completion(state.completions[0])
@@ -789,13 +790,14 @@ class TuiApp:
             and state is None
             and buffer.text.strip()
             and target is None
-            and not before.startswith("/")
+            and not line_before.startswith("/")
             and active_mention(before) is None
         ):
             # Tab on a working prompt holds the draft for the next turn rather than completing it;
             # Enter is what queues it as a live follow-up for this one. A slash command or an active
             # mention keeps Tab: its menu may still be loading, and swallowing the keystroke would
-            # queue a half-typed command instead of completing it.
+            # queue a half-typed command instead of completing it. The slash test reads the current
+            # line, so a multi-line draft that merely starts with a path still holds.
             self._submit_running(buffer, next_turn=True)
             return
         self.complete_input(buffer, reverse=reverse)
