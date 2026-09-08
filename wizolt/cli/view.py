@@ -296,7 +296,7 @@ class View:
     GLOW_STEPS: ClassVar[int] = 12
 
     QUEUE_EMPTY_HINT = "Enter follow-up · Tab next turn · Ctrl-C interrupts"
-    QUEUE_PENDING_HINT = "↑ recalls queued · Ctrl-C interrupts"
+    QUEUE_PENDING_HINT = "↑ recalls queued · Tab next turn · Ctrl-C interrupts"
 
     # Line-level markdown tokens the live stream preview styles. Block constructs (headings,
     # lists, fenced code) are deliberately not parsed: the preview shows partial streaming text,

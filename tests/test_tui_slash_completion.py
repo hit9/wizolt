@@ -119,6 +119,28 @@ def test_running_tab_completes_when_the_menu_is_open():
     assert app.input_buffer.text.startswith("/")
 
 
+def test_running_tab_opens_the_argument_menu_for_a_slash_command(monkeypatch):
+    """`/mcp ` closes the menu as it is typed, so the next Tab has to reopen it rather than hold
+    the half-typed command for the next turn. Driven through the app because opening the menu
+    schedules the completer on the running loop."""
+    held: list[str] = []
+    app = TuiApp(completer=CommandCompleter(), on_queue_next_turn=held.append)
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        assert app.app is not None
+        app.app.loop.call_soon_threadsafe(app.set_running, "working")
+        pipe_input.send_text("/mcp ")
+        wait_until(lambda: app.input_buffer.text == "/mcp ")
+        pipe_input.send_text("\t")
+        wait_until(lambda: app.input_buffer.complete_state is not None)
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+    assert held == []
+
+
 def test_complete_slash_command_submits_on_the_first_enter(monkeypatch):
     received = []
     app = TuiApp(completer=CommandCompleter(), on_chat_submit=received.append)

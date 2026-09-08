@@ -162,6 +162,20 @@ def test_file_picker_tab_replaces_only_active_span(monkeypatch):
     run_interactive_tui(monkeypatch, app, drive=drive)
 
 
+def test_running_tab_keeps_completing_an_active_file_mention():
+    """A file mention owns Tab even before its candidates arrive: with no picker and a completion
+    that is still loading, the keystroke must not hold the half-typed path for the next turn."""
+    held: list[str] = []
+    app = TuiApp(file_picker_available_fn=lambda: False, file_complete_fn=lambda _query, _ready: None, on_queue_next_turn=held.append)
+    app.set_running("working")
+    app.input_buffer.insert_text("look at @file:ap")
+
+    app.tab_or_complete(app.input_buffer, reverse=False)
+
+    assert held == []
+    assert app.input_buffer.text == "look at @file:ap"
+
+
 def test_file_picker_opens_after_typing_without_tab(monkeypatch):
     queries = []
 

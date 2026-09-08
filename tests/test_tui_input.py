@@ -926,7 +926,7 @@ def test_tui_running_queue_hint_shows_recall_and_interrupt(tmp_path):
     command_loop.tui.set_running("working")
     command_loop.session.enqueue_user_input("queued")
 
-    assert command_loop.view.tui_input_hint() == "↑ recalls queued · Ctrl-C interrupts"
+    assert command_loop.view.tui_input_hint() == "↑ recalls queued · Tab next turn · Ctrl-C interrupts"
 
 
 def test_edit_delta_frames_minimal_edit():
