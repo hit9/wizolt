@@ -428,11 +428,12 @@ class View:
         def render(items: list[QueuedInput], marker: str, marker_style: str) -> StyleAndTextTuples:
             fragments: StyleAndTextTuples = []
             for item in items:
-                # A held-back input starts the next turn, not this one; its own marker keeps the
-                # two queues apart on screen.
-                item_marker, item_style = ("↪ ", "class:muted") if item.next_turn else (marker, marker_style)
+                # A held-back input starts the next turn, not this one; its own marker and label
+                # keep the two queues apart on screen.
+                item_marker, item_style = ("↪ next turn · ", "class:muted") if item.next_turn else (marker, marker_style)
+                indent = " " * get_cwidth(item_marker)
                 for index, line in enumerate(item.text.splitlines()):
-                    fragments.extend([("", "\n"), (item_style, item_marker if index == 0 else "  "), (UiPrinter.user_log_style(), line)])
+                    fragments.extend([("", "\n"), (item_style, item_marker if index == 0 else indent), (UiPrinter.user_log_style(), line)])
             return fragments
 
         sent = [item for item in pending if item.inflight]

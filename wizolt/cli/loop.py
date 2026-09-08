@@ -50,7 +50,7 @@ from wizolt.image import ImageInputs, UserInput
 from wizolt.mentions import FilePick
 from wizolt.prompts import LIVE_FOLLOWUP_PREFIX
 from wizolt.render import BashLivePreview, StatusBar, UiPrinter, search_sources_footer
-from wizolt.session import SessionSnapshotCodec, SessionSnapshotStore, ToolResultRecord
+from wizolt.session import QueuedInput, SessionSnapshotCodec, SessionSnapshotStore, ToolResultRecord
 from wizolt.tools import TOOL_REGISTRY, CodeIndex, tool_payload, toolblocks, tooloutput
 from wizolt.tools.delegate import worker_provider_config
 from wizolt.tools.toolblocks import ToolDisplay
@@ -426,10 +426,22 @@ Full documentation: https://wizolt.readthedocs.io
         await self.command(text)
 
     def take_pending_inputs(self) -> list[UserInput]:
-        """Remove and return queued inputs that are not currently being flushed."""
-        texts = [item.user_input() for item in self.session.pending_user_inputs if not item.inflight]
-        self.session.pending_user_inputs = [item for item in self.session.pending_user_inputs if item.inflight]
-        return texts
+        """Remove and return the queued inputs that open the next turn.
+
+        A held-back input (`QueuedInput.next_turn`) starts a turn of its own, so it is taken one at a
+        time: later held inputs stay queued for the following boundaries. Plain follow-ups still
+        leave together."""
+        taken: list[QueuedInput] = []
+        for item in self.session.pending_user_inputs:
+            if item.inflight:
+                continue
+            if taken and item.next_turn:
+                break  # hold it for the following boundary
+            taken.append(item)
+            if item.next_turn:
+                break
+        self.session.pending_user_inputs = [item for item in self.session.pending_user_inputs if item not in taken]
+        return [item.user_input() for item in taken]
 
     def recall_pending_input(self, on_inflight: Callable[[], None]) -> str | UserInput:
         """Move the newest queued input back to the editor, retrying if it was already claimed.

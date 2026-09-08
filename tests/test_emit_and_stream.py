@@ -15,7 +15,9 @@ import wizolt.render as render_module
 from wizolt.base import (
     Text,
 )
+from wizolt.image import ImageRef
 from wizolt.render import BashLivePreview, Theme, UiPrinter
+from wizolt.session import QueuedInput
 from wizolt.tui import TuiApp
 
 
@@ -86,8 +88,30 @@ def test_next_turn_input_renders_with_its_own_marker(tmp_path):
     text = "".join(fragment for _, fragment in waiting)
 
     assert "+ live follow-up" in text
-    assert "↪ held for later" in text
+    assert "↪ next turn · held for later" in text
     assert "+ held for later" not in text
+
+
+def test_next_turn_input_renders_an_image_label(tmp_path):
+    command_loop = loop(tmp_path)
+    image = ImageRef(ref="a" * 64, name="screenshot.png", media_type="image/png", width=32, height=24, size=1024)
+    command_loop.session.pending_user_inputs.append(QueuedInput("[Image #1 · screenshot.png]", (image,), "\ufffc", next_turn=True))
+
+    _, waiting = command_loop.view.followup_fragments()
+    text = "".join(fragment for _, fragment in waiting)
+
+    assert "↪ next turn · [Image #1 · screenshot.png]" in text
+
+
+def test_next_turn_multiline_input_indents_continuation_lines_under_its_label(tmp_path):
+    command_loop = loop(tmp_path)
+    command_loop.session.enqueue_user_input("first line\nsecond line", next_turn=True)
+
+    _, waiting = command_loop.view.followup_fragments()
+    lines = "".join(fragment for _, fragment in waiting).splitlines()
+    second = next(line for line in lines if "second line" in line)
+
+    assert second == " " * get_cwidth("↪ next turn · ") + "second line"
 
 
 def test_activity_blank_line_separates_flushed_followup_from_the_stream(tmp_path):

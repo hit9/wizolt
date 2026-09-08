@@ -7,17 +7,18 @@ answering questions, and reviewing changes.
 ## Follow-ups
 
 You can keep typing while wizolt works. `Enter` submits a follow-up that joins the current task if
-another model step begins; otherwise it becomes the next task. `Tab` submits the draft for the next
-task only, leaving the current one alone. A draft still in the editor is never submitted by
-interrupting — the first `Ctrl-C` discards it instead.
+another model step begins; otherwise it becomes the next task. `Tab` holds the draft back for a task
+of its own after this one, and each `Tab` starts one turn, in order. A draft still in the editor is
+never submitted by interrupting — the first `Ctrl-C` discards it instead.
 
 <div class="term-shot" role="img" aria-label="Terminal view: wizolt is working on a request while two follow-up messages wait below a divider reading 'working, 2 queued'."><span class="fs-user">• refactor the MCP manager</span><span class="fs-tool">  Read wizolt.py</span><span class="fs-tool">  Edit wizolt.py</span><span><span class="fs-i fs-rule">--</span><span class="fs-i fs-glow">-</span><span class="fs-i fs-rule"> </span><span class="fs-i fs-add">●</span><span class="fs-i fs-rule"> </span><span class="fs-i fs-working">working (12s) [ 2 queued ]</span><span class="fs-i fs-rule"> ------------------------------</span></span><span class="fs-queued">+ also update the tests</span><span class="fs-queued">+ and bump the version</span><span class="fs-prompt">&gt; <span class="fs-caret">▏</span></span><span class="fs-hint">  ↑ recalls queued · Ctrl-C interrupts</span></div>
 
-A `+` below the divider is waiting for the next model step, and `↪` is held for the next task. At
-that boundary — after the current tool-call batch, when there is one — all waiting follow-ups are
-sent together, in order, with the next model request and move above the divider as normal user
-messages. They remain retryable internally until that request completes successfully; a failed
-request moves them back below the divider as queued input.
+A `+` below the divider is waiting for the next model step, and `↪ next turn` is held for a task of
+its own after this one. At that boundary — after the current tool-call batch, when there is one —
+all waiting follow-ups are sent together, in order, with the next model request and move above the
+divider as normal user messages. A held `↪` starts the next turn on its own, one at a time. They
+remain retryable internally until that request completes successfully; a failed request moves them
+back below the divider as queued input.
 
 | Key | When | Effect |
 |---|---|---|

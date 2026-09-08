@@ -141,6 +141,29 @@ async def test_tab_submission_reaches_the_queue_flagged_for_the_next_turn(tmp_pa
     assert [str(item) for item in command_loop.take_pending_inputs()] == ["held for later"]
 
 
+def test_take_pending_inputs_drains_one_held_input_per_turn(tmp_path):
+    """Each Tab-submitted input starts a turn of its own: the boundary takes the first one and
+    leaves the rest queued for the boundaries that follow."""
+    command_loop = loop(tmp_path)
+    command_loop.session.enqueue_user_input("first task", next_turn=True)
+    command_loop.session.enqueue_user_input("second task", next_turn=True)
+
+    assert [str(item) for item in command_loop.take_pending_inputs()] == ["first task"]
+    assert [item.text for item in command_loop.session.pending_user_inputs] == ["second task"]
+    assert [str(item) for item in command_loop.take_pending_inputs()] == ["second task"]
+    assert command_loop.session.pending_user_inputs == []
+
+
+def test_take_pending_inputs_batches_plain_followups_before_a_held_input(tmp_path):
+    command_loop = loop(tmp_path)
+    command_loop.session.enqueue_user_input("follow-up one")
+    command_loop.session.enqueue_user_input("follow-up two")
+    command_loop.session.enqueue_user_input("held task", next_turn=True)
+
+    assert [str(item) for item in command_loop.take_pending_inputs()] == ["follow-up one", "follow-up two"]
+    assert [item.text for item in command_loop.session.pending_user_inputs] == ["held task"]
+
+
 async def test_search_sources_footer_is_indented_like_the_answer_above_it(tmp_path, monkeypatch):
     """The footer belongs to the answer, and the engine publishes that answer through
     emit_agent_output at CONTENT_LEVEL. At column 0 the sources would hang off the left of the
