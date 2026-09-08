@@ -13,6 +13,11 @@
 - Tool descriptions name the tool to prefer when another one fits better, and no longer repeat
   values that the parameter's own enum already lists.
 
+### Fixed
+
+- Writing to a job with full stdin returns promptly without sending a partial answer. Completed
+  jobs release their stdin handles, and write approvals and Ctrl-O show the exact input.
+
 ## 0.44.0 - 2026-09-08
 
 ### Added

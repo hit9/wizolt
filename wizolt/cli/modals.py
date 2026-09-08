@@ -21,7 +21,7 @@ from prompt_toolkit.utils import get_cwidth
 from wizolt.base import DISMISSED, SELECTION_BACK, ApprovalView, Text, ToolCall, ToolError, TurnBox, oneline
 from wizolt.render import UiPrinter, WizoltMarkdown, markdown_console
 from wizolt.session import BackgroundJob, ToolResultRecord
-from wizolt.tools import AskSpec, BashTool, DelegateTool, ToolScript, tooloutput
+from wizolt.tools import AskSpec, BashTool, DelegateTool, JobTool, ToolScript, tooloutput
 from wizolt.tui import (
     ASK_DONE,
     ASK_FREE_TEXT,
@@ -483,6 +483,8 @@ def job_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView:
     if note:
         fallback_rows.append(("shown", note))
     fallback = ApprovalView(f"job · {record.key}", result, "", fallback_rows)
+    if action == "write" and (view := JobTool(loop.session, record.args).approval_view()) is not None:
+        return ApprovalView(f"stdin · {record.key}", view.text, view.lexer, [*fallback_rows, *view.rows], result)
     if job is None:
         return fallback
     job.update_status()

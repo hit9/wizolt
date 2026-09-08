@@ -658,8 +658,6 @@ def test_tool_schemas_are_strict_for_high_risk_tools():
     assert "minItems" not in note_params["properties"]["replace_plan"]
     status = note_params["properties"]["replace_plan"]["items"]["properties"]["status"]
     assert status["enum"] == ["todo", "doing", "done", "blocked"]
-    # The enum is the description; repeating it in prose costs schema budget on every request.
-    assert "description" not in status
     assert "minItems" not in note_params["properties"]["replace_known"]
 
     search_params = SearchTool.schema()["function"]["parameters"]

@@ -1,4 +1,7 @@
 import asyncio
+import json
+import os
+import threading
 import shlex
 import subprocess
 import sys
@@ -674,6 +677,7 @@ async def test_job_start_reclaims_finished_capacity(tmp_path, monkeypatch):
 
     result = await JobTool(s, [{"action": "start", "command": "true"}]).call()
 
+    assert s.jobs["job.1"].process.stdin.closed
     assert result.startswith("Started job.2")
     s.jobs["job.2"].process.wait(timeout=2)
 
@@ -722,6 +726,7 @@ async def test_job_status_accepts_bare_numeric_id(tmp_path):
 
     assert "Status: done" in result
     assert "Exit code: 0" in result
+    assert s.jobs["job.1"].process.stdin.closed
 
 
 async def test_job_tail_respects_limits_smaller_than_ellipsis(tmp_path):
@@ -744,6 +749,7 @@ async def test_kill_finished_job_does_not_signal_stale_process(tmp_path):
 
     assert "status=done" in result
     assert "exit_code=0" in result
+    assert s.jobs["job.1"].process.stdin.closed
 
 
 async def test_ps_hides_jobs_that_finished_without_polling(tmp_path):
@@ -753,6 +759,7 @@ async def test_ps_hides_jobs_that_finished_without_polling(tmp_path):
     command_loop = CommandLoop(Agent(s), input_fn=lambda prompt="": "", output_fn=lambda text: None)
 
     assert ps_command(command_loop, "") == "No active jobs (1 total)."
+    assert s.jobs["job.1"].process.stdin.closed
 
 
 async def test_tool_runner_approved_live_bash_does_not_repeat_command(tmp_path):
@@ -1021,7 +1028,7 @@ async def test_job_write_drives_a_repl_across_calls(tmp_path):
     [
         ({"action": "write", "job": "job.1"}, "non-empty chars"),
         ({"action": "write", "job": "job.1", "chars": ""}, "non-empty chars"),
-        ({"action": "write", "job": "job.1", "chars": "x" * (JobTool.MAX_WRITE_CHARS + 1)}, "limit is"),
+        ({"action": "write", "job": "job.1", "chars": "x" * (JobTool.MAX_WRITE_BYTES + 1)}, "limit is"),
         ({"action": "write"}, "job id required"),
         ({"action": "write", "job": "job.99", "chars": "x"}, "unknown job"),
     ],
@@ -1030,12 +1037,15 @@ async def test_job_write_validation_is_actionable(tmp_path, payload, message):
     s = session(tmp_path)
     await JobTool(s, [{"action": "start", "command": "read ignored", "stdin": True}]).call()
 
-    with pytest.raises(ToolError, match=message):
-        await JobTool(s, [payload]).call()
+    try:
+        with pytest.raises(ToolError, match=message):
+            await JobTool(s, [payload]).call()
+    finally:
+        s.jobs["job.1"].kill()
 
 
 async def test_job_write_to_a_finished_job_says_so(tmp_path):
-    """"Wrote to a dead job" and "this program ignores stdin" need different next moves, so the
+    """ "Wrote to a dead job" and "this program ignores stdin" need different next moves, so the
     error names which one happened rather than surfacing a bare BrokenPipeError."""
     s = session(tmp_path)
     await JobTool(s, [{"action": "start", "command": "true", "stdin": True}]).call()
@@ -1045,14 +1055,15 @@ async def test_job_write_to_a_finished_job_says_so(tmp_path):
         await JobTool(s, [{"action": "write", "job": "job.1", "chars": "late\n"}]).call()
 
 
-def test_job_write_is_confirmed_and_never_echoes_what_was_written(tmp_path):
-    """Answering a prompt is how a destructive action gets approved, so it is gated like `start`.
-    The preview names the job, not the text, which may carry a secret or a whole file."""
+def test_job_write_approval_exposes_the_exact_input_without_expanding_the_title(tmp_path):
     tool = JobTool(session(tmp_path), [{"action": "write", "job": "job.1", "chars": "sudo-password\n"}])
 
     assert tool.needs_confirmation()
     assert tool.short_args() == ["write", "job.1"]
     assert "sudo-password" not in " ".join(tool.short_args())
+    view = tool.approval_view()
+    assert view is not None and view.lexer == "json"
+    assert json.loads(view.text) == "sudo-password\n"
 
 
 async def test_job_stdin_is_opt_in_so_a_stray_read_still_finishes(tmp_path):
@@ -1072,3 +1083,96 @@ async def test_job_stdin_is_opt_in_so_a_stray_read_still_finishes(tmp_path):
             await JobTool(s, [{"action": "write", "job": "job.2", "chars": "late\n"}]).call()
     finally:
         await JobTool(s, [{"action": "kill", "job": "job.2"}]).call()
+
+
+async def test_job_write_full_pipe_rejects_atomically_and_recovers(tmp_path):
+    s = session(tmp_path)
+    # The reader waits for a file handshake, so the pipe stays full until explicitly drained.
+    code = (
+        "import pathlib, sys, time; p = pathlib.Path('drain'); "
+        "\nwhile not p.exists(): time.sleep(.005)"
+        "\nsys.stdin.buffer.read(int(p.read_text())); print('drained', flush=True)"
+        "\nprint(sys.stdin.buffer.readline().decode(), end='', flush=True)"
+    )
+    await JobTool(s, [{"action": "start", "command": f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}", "stdin": True}]).call()
+    job = s.jobs["job.1"]
+    # A regression must fail instead of hanging the test worker inside a blocking write.
+    watchdog = threading.Timer(5, job.kill)
+    watchdog.start()
+    try:
+        fd = job.process.stdin.fileno()
+        blocking = os.get_blocking(fd)
+        os.set_blocking(fd, False)
+        filled = 0
+        try:
+            while True:
+                filled += os.write(fd, b"x" * 4096)
+        except BlockingIOError:
+            pass
+        finally:
+            os.set_blocking(fd, blocking)
+        with pytest.raises(ToolError, match="stdin is full; nothing written"):
+            await JobTool(s, [{"action": "write", "job": "1", "chars": "answer\n"}]).call()
+        (tmp_path / "drain").write_text(str(filled))
+        deadline = time.monotonic() + 3
+        while "drained" not in job.tail(100):
+            assert time.monotonic() < deadline, "reader did not drain the pipe"
+            await asyncio.sleep(0.01)
+        result = await JobTool(s, [{"action": "write", "job": "1", "chars": "你好\n"}]).call()
+        assert "Wrote 3 characters" in result
+        await JobTool(s, [{"action": "wait", "job": "1"}]).call()
+        assert job.tail(100) == "drained\n你好\n"
+        assert job.process.stdin.closed
+    finally:
+        watchdog.cancel()
+        job.kill()
+        watchdog.join()
+
+
+async def test_job_write_bounds_utf8_bytes_before_sending_any_input(tmp_path):
+    s = session(tmp_path)
+    await JobTool(s, [{"action": "start", "command": "read answer; echo got:$answer", "stdin": True}]).call()
+    job = s.jobs["job.1"]
+    try:
+        limit = min(JobTool.MAX_WRITE_BYTES, os.fpathconf(job.process.stdin.fileno(), "PC_PIPE_BUF"))
+        with pytest.raises(ToolError, match="UTF-8 bytes; limit is"):
+            await JobTool(s, [{"action": "write", "job": "1", "chars": "中" * (limit // 3 + 1)}]).call()
+        await JobTool(s, [{"action": "write", "job": "1", "chars": "ok\n"}]).call()
+        await JobTool(s, [{"action": "wait", "job": "1"}]).call()
+        assert job.tail(100) == "got:ok\n"
+    finally:
+        job.kill()
+
+
+async def test_job_write_closed_stdin_is_rejected_while_process_still_runs(tmp_path):
+    s = session(tmp_path)
+    await JobTool(s, [{"action": "start", "command": "exec 0<&-; echo ready; sleep 30", "stdin": True}]).call()
+    job = s.jobs["job.1"]
+    try:
+        deadline = time.monotonic() + 3
+        while "ready" not in job.tail(100):
+            assert time.monotonic() < deadline
+            await asyncio.sleep(0.01)
+        with pytest.raises(ToolError, match="closed its stdin"):
+            await JobTool(s, [{"action": "write", "job": "1", "chars": "answer\n"}]).call()
+        assert job.process.poll() is None
+    finally:
+        await JobTool(s, [{"action": "kill", "job": "1"}]).call()
+    assert job.process.stdin.closed
+
+
+async def test_refused_job_write_can_be_inspected_and_sends_nothing(tmp_path):
+    s = session(tmp_path)
+    await JobTool(s, [{"action": "start", "command": "read answer; echo got:$answer", "stdin": True}]).call()
+    replies = iter(["v", "n"])
+    viewed = []
+    runner = ToolRunner(s, ContextManager(s), input_fn=lambda _: next(replies), output_fn=lambda _: None)
+    runner.text_viewer = lambda view: viewed.append(view)
+    try:
+        await runner.run([ToolCall("answer", "Job", [{"action": "write", "job": "1", "chars": "refused\n"}])])
+        assert len(viewed) == 1 and json.loads(viewed[0].text) == "refused\n"
+        await JobTool(s, [{"action": "write", "job": "1", "chars": "accepted\n"}]).call()
+        await JobTool(s, [{"action": "wait", "job": "1"}]).call()
+        assert s.jobs["job.1"].tail(100) == "got:accepted\n"
+    finally:
+        s.jobs["job.1"].kill()

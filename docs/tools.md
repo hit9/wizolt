@@ -92,7 +92,10 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
 * - **`Job`**
   - Starts or manages background commands: check output, wait, list, or stop. A job started with
     stdin open can also be <span class="marker">answered while it runs</span>, which is how a REPL
-    or a command that asks a question stays usable. The same jobs are visible through `/ps`.
+    or a command that asks a question stays usable. Use `python -u -i` for a Python REPL;
+    programs that require a terminal are not supported. Each write accepts all the text or
+    refuses it without sending anything; oversized input reports the limit so you can split it.
+    You can inspect the exact input before approving it. The same jobs are visible through `/ps`.
 * - **`Recall`**
   - Retrieves a <span class="marker">complete earlier tool result</span>, or selected line ranges,
     when only a shortened result was placed in the conversation.

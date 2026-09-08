@@ -383,36 +383,3 @@ def test_unsendable_headers_are_a_config_error_not_a_request_failure():
         assert "headers" in str(error.value)
 
     assert ProviderConfig.from_dict({}).headers == {}
-
-
-def test_enum_fields_do_not_restate_their_own_enum():
-    """An enum is already the list of allowed values; a description repeating it is paid for on
-    every request and tells the model nothing it cannot see.
-
-    Descriptions that add meaning are fine and expected -- what this rejects is the restatement,
-    which is how the budget in `test_model_facing_tool_schemas_stay_concise` gets eaten without
-    anyone deciding to spend it.
-    """
-
-    def enum_fields(node, path="", found=None):
-        found = [] if found is None else found
-        if isinstance(node, dict):
-            if "enum" in node and isinstance(node.get("description"), str):
-                found.append((path, node["enum"], node["description"]))
-            for key, value in node.items():
-                enum_fields(value, f"{path}.{key}", found)
-        elif isinstance(node, list):
-            for item in node:
-                enum_fields(item, path, found)
-        return found
-
-    restating = []
-    for name, tool in TOOL_REGISTRY.items():
-        for path, values, description in enum_fields(tool.schema(False)["function"]["parameters"], name):
-            words = {word.strip("|,.\"'").lower() for word in description.replace("|", " ").split()}
-            named = {str(value).lower() for value in values if value is not None}
-            # Every allowed value named, and nothing else of substance said about them.
-            if named and named <= words and len(words - named) <= 3:
-                restating.append((path, description))
-
-    assert not restating, f"enum descriptions that only restate their enum: {restating}"

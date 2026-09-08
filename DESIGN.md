@@ -715,6 +715,10 @@ threshold; provider integration tests verify reported usage and acceptance witho
   records (see "One loop owns the session").
 - Tool failures become matched tool results, not broken turns; cancellation settles every
   already-visible call so replay stays valid.
+- Job stdin is opt-in. Writes are unbuffered, nonblocking and at most the platform's `PIPE_BUF`
+  (also capped at 4 KiB), so a full pipe rejects the entire answer without blocking the loop or
+  leaving bytes queued for a later call. `BackgroundJob` closes stdin when it observes exit;
+  the tool exposes the exact input through the existing approval viewer.
 - Edit target validation is a safety boundary, not friction. Under a source view, Edit may target
   only lines the model was shown; changed or ambiguously moved targets stay refused, while a unique
   exact relocation is accepted. Without one, the exact original text the call supplies is a

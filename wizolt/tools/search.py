@@ -36,12 +36,7 @@ def _csi() -> Any:
 
 class SearchTool(Tool):
     NAME = "Search"
-    # The last sentence is the point of this description. Text search answers "where does this
-    # string appear"; a question about symbols, callers or references is structural, and grepping
-    # it costs several rounds of false positives before the model gives up and asks the index.
-    # Saying so where the wrong choice is made is cheaper than any amount of prompt guidance.
-    # Paid for by matching Read's shorter phrasing for the same batching rule, so the registry's
-    # schema budget (test_model_facing_tool_schemas_stay_concise) is unchanged.
+    # Put structural navigation guidance at the text-search decision point.
     DESCRIPTION = (
         "Search UTF-8 files with case-insensitive regex, skipping binary, hidden, and gitignored files. Results are editable "
         "source=view.N blocks. Batch independent queries in one call. For symbols, callers or refs use InspectCode."

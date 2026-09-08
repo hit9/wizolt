@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import codecs
 import contextlib
+import json
 import os
 import re
 import selectors
@@ -18,7 +19,7 @@ import time
 from collections.abc import Callable
 from typing import Any, ClassVar, cast
 
-from wizolt.base import Json, ToolArgs, ToolError, run_blocking
+from wizolt.base import ApprovalView, Json, ToolArgs, ToolError, run_blocking
 from wizolt.session import BackgroundJob, Session
 from wizolt.tools.base import Tool
 
@@ -407,9 +408,9 @@ class JobTool(Tool):
     DESCRIPTION = "Start, inspect, wait for, list, kill, or write stdin to background shell jobs. Writing drives a REPL or answers a prompt across calls."
     MUTATES = True
     ACTIONS: ClassVar[tuple[str, ...]] = ("start", "status", "wait", "list", "kill", "write")
-    # One write, bounded. stdin is a pipe, so a write larger than the pipe buffer blocks until
-    # the program drains it; the agent must not be parked on that.
-    MAX_WRITE_CHARS: ClassVar[int] = 8192
+    # Atomic nonblocking writes either accept all input or reject it without a partial answer.
+    # The actual byte limit is also bounded by the platform's PIPE_BUF.
+    MAX_WRITE_BYTES: ClassVar[int] = 4096
     MAX_JOBS: ClassVar[int] = 8
     DEFAULT_LIMIT: ClassVar[int] = 4096
     # How long one wait may hold the agent. Backgrounding hands control back and waiting is the one
@@ -469,10 +470,18 @@ class JobTool(Tool):
         return action == "wait" or (action == "status" and timeout > 0)
 
     def needs_confirmation(self) -> bool:
-        # `write` is confirmed for the same reason `start` is: answering a running program's prompt
-        # is how a destructive action gets approved, and the text goes straight through. codex gates
-        # its own stdin writes the same way.
+        # Answering a program's prompt can authorize the same side effects as starting it.
         return self.resolved_action(self.payload()) in {"start", "kill", "wait", "write"}
+
+    def approval_view(self) -> ApprovalView | None:
+        payload = self.payload()
+        if self.resolved_action(payload) != "write":
+            return None
+        chars = payload.get("chars")
+        if not isinstance(chars, str) or not chars:
+            return None
+        # Quote control characters so the approval shows exactly what will be sent.
+        return ApprovalView("stdin", json.dumps(chars, ensure_ascii=False), "json", [("job", str(payload.get("job") or ""))])
 
     def short_args(self) -> list[str]:
         payload = self.payload()
@@ -526,45 +535,36 @@ class JobTool(Tool):
         proc = subprocess.Popen(
             ["bash", "-lc", f"{{ {command}; }} > {shlex.quote(log_path)} 2>&1"],
             cwd=self.session.cwd,
-            # Opt-in, because the choice changes what happens to a command nobody intends to
-            # answer: on /dev/null a stray read of stdin sees EOF and the command finishes, while
-            # on a pipe it waits for input that never comes and holds one of MAX_JOBS slots until
-            # it is killed. Asking for stdin is asking for that wait. Programs that detect a
-            # non-tty stay in their non-interactive mode either way, which suits a caller that
-            # reads a log rather than a prompt.
+            # Default EOF keeps unattended readers from waiting forever for an answer.
             stdin=subprocess.PIPE if payload.get("stdin") else subprocess.DEVNULL,
+            bufsize=0,
             start_new_session=True,
         )
+        if proc.stdin is not None:
+            os.set_blocking(proc.stdin.fileno(), False)
         self.session.jobs[job_id] = BackgroundJob(id=job_id, command=command, process=proc, log_path=log_path, started_at=time.monotonic())
         return f"Started {job_id}: {command}"
 
     def _write(self, payload: Json) -> str:
-        """Send text to a running job's stdin.
-
-        The counterpart to `start`: a job whose prompts can be answered is what makes a REPL, a
-        debugger or a migration that asks for confirmation usable at all. Output is not returned
-        here -- the job's own log is read with `status`, which already bounds and formats it, so a
-        write stays a write and the caller decides when to look.
-        """
+        """Write one atomic answer; output remains available through status/wait."""
         job = self._resolve_job(payload)
         chars = payload.get("chars")
         if not isinstance(chars, str) or not chars:
             raise ToolError("write requires non-empty chars; use status to read output without writing")
-        if len(chars) > self.MAX_WRITE_CHARS:
-            raise ToolError(f"chars is {len(chars)} characters; limit is {self.MAX_WRITE_CHARS}")
-        job.update_status()
         if job.status != "running":
             raise ToolError(f"{job.id} already exited with code {job.exit_code}; nothing reads its stdin")
         stream = job.process.stdin
         if stream is None or stream.closed:
             raise ToolError(f"{job.id} has no open stdin; start it with stdin=true to answer it")
+        data = chars.encode()
+        limit = min(self.MAX_WRITE_BYTES, os.fpathconf(stream.fileno(), "PC_PIPE_BUF"))
+        if len(data) > limit:
+            raise ToolError(f"chars is {len(data)} UTF-8 bytes; limit is {limit}; split the input into smaller writes")
         try:
-            stream.write(chars.encode())
-            stream.flush()
+            os.write(stream.fileno(), data)
+        except BlockingIOError:
+            raise ToolError(f"{job.id} stdin is full; nothing written. Check the job before retrying.") from None
         except (BrokenPipeError, OSError) as error:
-            # The program closed stdin or died between the status check above and this write. Say
-            # which, because "wrote to a dead job" and "this program does not read stdin" call for
-            # different next moves.
             job.update_status()
             detail = f"exited with code {job.exit_code}" if job.status != "running" else "closed its stdin"
             raise ToolError(f"{job.id} {detail}; write failed ({error.__class__.__name__})") from None

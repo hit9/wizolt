@@ -51,6 +51,8 @@ class BackgroundJob:
         if code is not None:
             self.status = "done"
             self.exit_code = code
+            if self.process.stdin is not None:
+                self.process.stdin.close()
 
     def elapsed(self) -> float:
         return time.monotonic() - self.started_at
