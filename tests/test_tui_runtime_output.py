@@ -154,6 +154,20 @@ def test_take_pending_inputs_drains_one_held_input_per_turn(tmp_path):
     assert command_loop.session.pending_user_inputs == []
 
 
+def test_take_pending_inputs_holds_an_input_queued_behind_a_plain_one(tmp_path):
+    """A plain follow-up queued before a held input still leaves first; the held input waits, and
+    anything queued behind it joins the held input's turn."""
+    command_loop = loop(tmp_path)
+    command_loop.session.enqueue_user_input("plain C")
+    command_loop.session.enqueue_user_input("held A", next_turn=True)
+    command_loop.session.enqueue_user_input("plain D")
+
+    assert [str(item) for item in command_loop.take_pending_inputs()] == ["plain C"]
+    assert [item.text for item in command_loop.session.pending_user_inputs] == ["held A", "plain D"]
+    assert [str(item) for item in command_loop.take_pending_inputs()] == ["held A"]
+    assert [item.text for item in command_loop.session.pending_user_inputs] == ["plain D"]
+
+
 def test_take_pending_inputs_batches_plain_followups_before_a_held_input(tmp_path):
     command_loop = loop(tmp_path)
     command_loop.session.enqueue_user_input("follow-up one")

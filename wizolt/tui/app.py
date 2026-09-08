@@ -783,7 +783,7 @@ class TuiApp:
         if not reverse and before.startswith("/") and active_mention(before) is None and state is not None and len(state.completions) == 1:
             buffer.apply_completion(state.completions[0])
             return
-        if not reverse and self.input_mode == "running" and buffer.complete_state is None and buffer.text.strip():
+        if not reverse and self.input_mode == "running" and state is None and buffer.text.strip():
             # Tab on a working prompt holds the draft for the next turn rather than completing it;
             # Enter is what queues it as a live follow-up for this one.
             self._submit_running(buffer, next_turn=True)

@@ -8,6 +8,7 @@ import time
 import pytest
 from prompt_toolkit.formatted_text import to_formatted_text
 from prompt_toolkit.utils import get_cwidth
+from test_images import image_file
 from test_ui_render import HIGHLIGHT_SAMPLES
 from tui_harness import loop
 
@@ -15,9 +16,7 @@ import wizolt.render as render_module
 from wizolt.base import (
     Text,
 )
-from wizolt.image import ImageRef
 from wizolt.render import BashLivePreview, Theme, UiPrinter
-from wizolt.session import QueuedInput
 from wizolt.tui import TuiApp
 
 
@@ -94,8 +93,9 @@ def test_next_turn_input_renders_with_its_own_marker(tmp_path):
 
 def test_next_turn_input_renders_an_image_label(tmp_path):
     command_loop = loop(tmp_path)
-    image = ImageRef(ref="a" * 64, name="screenshot.png", media_type="image/png", width=32, height=24, size=1024)
-    command_loop.session.pending_user_inputs.append(QueuedInput("[Image #1 · screenshot.png]", (image,), "\ufffc", next_turn=True))
+    scenario_session = command_loop.session
+    path = image_file(tmp_path / "screenshot.png")
+    scenario_session.enqueue_user_input(scenario_session.images.recognize(path.name), next_turn=True)
 
     _, waiting = command_loop.view.followup_fragments()
     text = "".join(fragment for _, fragment in waiting)
@@ -111,7 +111,7 @@ def test_next_turn_multiline_input_indents_continuation_lines_under_its_label(tm
     lines = "".join(fragment for _, fragment in waiting).splitlines()
     second = next(line for line in lines if "second line" in line)
 
-    assert second == " " * get_cwidth("↪ next turn · ") + "second line"
+    assert second == " " * 14 + "second line"  # 14 = the display width of "↪ next turn · ", spelled out so a marker change that forgets the indent fails here
 
 
 def test_activity_blank_line_separates_flushed_followup_from_the_stream(tmp_path):
