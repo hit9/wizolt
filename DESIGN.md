@@ -572,7 +572,9 @@ that projection. Its two mechanisms are inseparable:
   Direct runtime callers install the sink before printing their banner, still before terminal
   probing. Early visibility must not bypass recording: replay cannot recover unrecorded output.
 
-**Accepted cost:** the first width change removes pre-wizolt shell scrollback. Replay retains at
+**Accepted cost:** the first width change removes pre-wizolt shell scrollback. `KNOWN_ISSUES.md`
+records what that costs users, and the evidence that the reference implementation of this design
+pays the same price. Replay retains at
 most 5,000 writes (a write can contain multiple lines); older output may disappear from terminal
 history on rebuild. This is an ephemeral projection budget, not deletion of durable session
 history. Do not promise that the terminal had already discarded those entries.
