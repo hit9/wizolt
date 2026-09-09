@@ -373,6 +373,9 @@ def test_resume_redraw_keeps_tool_pairing_after_truncation(tmp_path, monkeypatch
 
 
 async def test_tui_commands_print_output_immediately(tmp_path, monkeypatch):
+    skill_dir = tmp_path / ".wizolt" / "skills" / "release-notes"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("---\nname: release-notes\ndescription: draft release notes\n---\nbody\n", encoding="utf-8")
     command_loop = loop(tmp_path)
     command_loop.ui.color = True
     # Dispatch calls the registry's callable directly, so patch the registry entry (not the
@@ -397,7 +400,7 @@ async def test_tui_commands_print_output_immediately(tmp_path, monkeypatch):
     text = "".join(printed)
     assert "/provider" in text
     assert "status marker" in text
-    assert "wizolt-help" in text
+    assert "release-notes" in text
 
 
 def test_reset_pending_divider_preserves_the_working_phase(tmp_path):

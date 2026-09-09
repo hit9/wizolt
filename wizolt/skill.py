@@ -19,11 +19,11 @@ class Skill:
     description: str
     body: str
     dir: str
-    source: str  # "builtin", "user", or "project"
+    source: str  # "user" or "project"
 
 
 class SkillLibrary:
-    """Skills discovered from builtin, user, and project skill directories.
+    """Skills discovered from user and project skill directories.
 
     Each skill is a Markdown file with `name`/`description` frontmatter; the index (name + description)
     rides the cache-stable prefix so the model knows what exists, and the full body is pulled into the
@@ -40,15 +40,12 @@ class SkillLibrary:
     @classmethod
     def load(cls, session: Session) -> SkillLibrary:
         skills: dict[str, Skill] = {}
-        # Later roots override earlier ones: projects can customize user skills, and users can
-        # customize the read-only skills shipped with wizolt.
-        builtin_skills = os.path.join(os.path.dirname(__file__), "builtin_skills")
+        # Later roots override earlier ones: projects can customize user skills.
         project_skills = next(
             (path for directory in (".wizolt", ".minacode", ".nanocode") if os.path.isdir(path := os.path.join(session.cwd, directory, "skills"))),
             os.path.join(session.cwd, ".wizolt", "skills"),
         )
         for root, source in (
-            (builtin_skills, "builtin"),
             (session.data_path("skills"), "user"),
             (project_skills, "project"),
         ):

@@ -8,6 +8,11 @@
   transcript scrolled out of sight while the session, its context and any queued input carried on
   unchanged. The key now does nothing; `Ctrl-U` still clears the input line.
 
+### Removed
+
+- The builtin `wizolt-help` skill is gone, so the agent no longer loads a wizolt manual on its
+  own. Project and user skills are unchanged, and `/skills` lists only what you installed.
+
 ## 0.46.0 - 2026-09-08
 
 ### Added

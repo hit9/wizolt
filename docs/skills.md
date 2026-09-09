@@ -34,21 +34,14 @@ on demand.
 
 ### Where skills come from
 
-wizolt discovers skills from three sources:
+wizolt discovers skills from two sources:
 
-- Builtin skills shipped with wizolt
 - `.wizolt/skills/` — project-local, checked in with the repo
 - `~/.wizolt/skills/` — your personal skills, available everywhere (under
   `<data_dir>/skills/` when `paths.data_dir` is customized)
 
-When names collide, project skills override user skills, and user skills override builtins.
+When names collide, project skills override user skills.
 List what's available and which source won with `/skills`.
-
-Every installation includes **`wizolt-help`**, a compact manual for installation,
-configuration, providers, commands, sessions, tools, safety, and troubleshooting. The agent can
-load it when a question concerns wizolt, or you can request it explicitly with
-`$wizolt-help`. If the manual does not settle the question, it directs the agent to inspect the
-matching version's source code and tests.
 
 ## Using skills
 
