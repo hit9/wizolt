@@ -104,7 +104,6 @@ class ResolvedProvider:
     reasoning_recipe: str = "off"
     reasoning_mandatory: bool = False
     output_max_tokens: int = 0
-    catalog_version: int = 0
 
 
 @dataclass(frozen=True)
@@ -113,7 +112,6 @@ class BuiltinToolsIssue:
 
     reason: Literal["wire", "entry"]
     configured: tuple[str, ...]
-    supported_wires: tuple[str, ...] = ()
     supported_entries: tuple[str, ...] = ()
 
 
@@ -158,7 +156,7 @@ def builtin_tools_issue(resolved: ResolvedProvider, entries: tuple[Mapping[str, 
     configured = tuple(_builtin_tool_label(entry) for entry in entries)
     rules = policy.get(resolved.api)
     if rules is None:
-        return BuiltinToolsIssue("wire", configured, supported_wires=tuple(sorted(policy)))
+        return BuiltinToolsIssue("wire", configured)
     unsupported = tuple(_builtin_tool_label(entry) for entry in entries if not any(_matches_builtin_tool_rule(entry, rule) for rule in rules))
     if unsupported:
         return BuiltinToolsIssue("entry", unsupported, supported_entries=tuple(_builtin_tool_label(rule) for rule in rules))
@@ -637,7 +635,6 @@ class ProviderPolicy:
             reasoning_recipe=reasoning_recipe,
             reasoning_mandatory=self.reasoning_mandatory(config, model),
             output_max_tokens=output_max_tokens,
-            catalog_version=self.snapshot.version,
         )
 
     # -- request recipes ----------------------------------------------------

@@ -1,6 +1,5 @@
 """context budget (split from tests/test_context.py)."""
 import json
-import threading
 from types import SimpleNamespace
 
 from agent_harness import session, session_with_provider
@@ -137,7 +136,6 @@ async def test_compaction_uses_configured_context_budget(tmp_path):
         def __init__(self, session):
             self.session = session
             self.input = None
-            self.cancel_requested = threading.Event()
 
         async def api_request(self, messages, _tools, **_kwargs):
             # The inline form carries the conversation as messages; the flattened text is only
@@ -207,7 +205,6 @@ async def test_tool_schemas_can_trigger_compaction_before_context_ceiling(tmp_pa
         def __init__(self, session):
             self.session = session
             self.called = False
-            self.cancel_requested = threading.Event()
 
         async def api_request(self, _messages, _tools, **_kwargs):
             self.called = True

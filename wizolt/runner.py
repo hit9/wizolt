@@ -230,8 +230,6 @@ class ToolRunner:
         # semaphore belongs to the loop that created it, and this runner outlives any single loop.
         self._capacity: asyncio.Semaphore | None = None
         self._gateway: _NestedGateway | None = None
-        # The cancellation token of the ToolScript currently running, if any.
-        self._script_budget: object | None = None
 
     @contextlib.contextmanager
     def nested(self):

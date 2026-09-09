@@ -110,13 +110,6 @@ def module_level_wizolt_imports(path: pathlib.Path) -> list[str]:
     return targets
 
 
-def _annotate(tree: ast.AST) -> ast.AST:
-    for parent in ast.walk(tree):
-        for child in ast.iter_child_nodes(parent):
-            child._parent = parent
-    return tree
-
-
 def all_sources() -> dict[str, pathlib.Path]:
     return {
         "wizolt." + path.relative_to(WIZOLT).as_posix()[:-3].replace("/", "."): path

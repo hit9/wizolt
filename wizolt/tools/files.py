@@ -1072,7 +1072,7 @@ class EditTool(Tool):
         """The fresh view after a successful edit: every changed hunk plus up to three unchanged
         context lines on either side, as one new view the model can continue editing from."""
         ranges = []
-        for clear_start, clear_end, start, end in changes:
+        for _, _, start, end in changes:
             # A deletion has no changed line left to show, so the view covers the seam it left
             # behind: without it the block would be empty and the model would have to Read again
             # just to keep editing the file it only just changed.

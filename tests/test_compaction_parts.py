@@ -5,8 +5,6 @@ class _StubModel:
     """Compactor requires a model; planning-only tests never touch it."""
 
 
-import threading
-
 import pytest
 from agent_harness import session, session_with_provider
 
@@ -182,7 +180,6 @@ async def test_interrupted_current_turn_compaction_falls_back_before_cancelling(
     class InterruptedModel:
         def __init__(self, session):
             self.session = session
-            self.cancel_requested = threading.Event()
 
         async def api_request(self, *_args, **_kwargs):
             raise KeyboardInterrupt

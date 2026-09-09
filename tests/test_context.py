@@ -2,7 +2,6 @@
 history index it leaves behind."""
 
 import json
-import threading
 
 from agent_harness import session_with_provider
 
@@ -33,7 +32,6 @@ class _CountingModel:
     def __init__(self, session):
         self.calls = 0
         self.session = session
-        self.cancel_requested = threading.Event()
         self.last_compaction_model = ""
 
     async def api_request(self, _messages, _tools, *, allow_stream, response_timeout, provider, json_object, billing=Billing.MAIN):

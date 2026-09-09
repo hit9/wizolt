@@ -6,7 +6,6 @@ class _StubModel:
 
 
 import json
-import threading
 
 import pytest
 from agent_harness import session, session_with_provider
@@ -317,7 +316,6 @@ async def test_reasoning_boundary_matches_the_live_request_in_every_slice_shape(
     class CapturingModel:
         def __init__(self, session):
             self.session = session
-            self.cancel_requested = threading.Event()
             self.last_compaction_model = ""
 
         async def api_request(self, messages, _tools, *, allow_stream, response_timeout, provider, json_object, billing=Billing.MAIN):
@@ -352,7 +350,6 @@ async def test_flat_payload_is_not_built_when_the_inline_form_is_used(tmp_path, 
     class FakeModel:
         def __init__(self, session):
             self.session = session
-            self.cancel_requested = threading.Event()
             self.last_compaction_model = ""
 
         async def api_request(self, _messages, _tools, *, allow_stream, response_timeout, provider, json_object, billing=Billing.MAIN):
