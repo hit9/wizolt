@@ -1,8 +1,5 @@
 """loop skills (split from tests/test_loop_commands.py)."""
 
-import os
-import tomllib
-
 import pytest
 from agent_harness import session
 from test_loop_commands import _write_skill
@@ -36,21 +33,6 @@ def test_skill_library_index_and_lookup(tmp_path):
     assert s.skills.get("missing") is None
 
 
-def test_builtin_wizolt_help_uses_normal_skill_paths(tmp_path):
-    s = session(tmp_path)
-
-    skill = s.skills.get("wizolt-help")
-    assert skill is not None
-    assert skill.source == "builtin"
-    assert "troubleshoot wizolt" in skill.description
-    assert "- wizolt-help:" in s.skills.index()
-    body = SkillTool(s, ["wizolt-help"]).call()
-    assert "## Inspect the implementation" in body
-    assert "### Provider-side tools and web search" in body
-    assert all(term in body for term in ("builtin_tools", "$web_search", "pause_turn", "OpenRouter"))
-    assert "[wizolt-help]" in s.skills.resolve_mentions("help with $wizolt-help")
-
-
 def test_project_skills_prefer_wizolt_and_fall_back_to_minacode(tmp_path):
     legacy = tmp_path / ".minacode" / "skills" / "guide"
     legacy.mkdir(parents=True)
@@ -66,38 +48,20 @@ def test_project_skills_prefer_wizolt_and_fall_back_to_minacode(tmp_path):
     assert skill.description == "current"
 
 
-def test_every_builtin_skill_is_declared_as_package_data(tmp_path):
-    """A builtin skill only exists for installed users if the wheel carries its SKILL.md.
-
-    Running from a checkout hides an omission completely, so the packaging declaration is checked
-    here rather than discovered as a missing skill after release."""
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    builtin_root = os.path.join(repo_root, "wizolt", "builtin_skills")
-    with open(os.path.join(repo_root, "pyproject.toml"), "rb") as handle:
-        packaging = tomllib.load(handle)["tool"]["setuptools"]
-    patterns = packaging["package-data"]["wizolt"]
-
-    assert "wizolt.builtin_skills" in packaging["packages"]
-    assert "builtin_skills/*/SKILL.md" in patterns
-    for entry in sorted(os.listdir(builtin_root)):
-        if os.path.isdir(os.path.join(builtin_root, entry)) and entry != "__pycache__":
-            assert os.path.isfile(os.path.join(builtin_root, entry, "SKILL.md")), entry
-
-
-def test_skill_project_overrides_user_and_user_overrides_builtin(tmp_path):
-    user_skill = tmp_path / "data" / "skills" / "wizolt-help"
+def test_skill_project_overrides_user(tmp_path):
+    user_skill = tmp_path / "data" / "skills" / "guide"
     user_skill.mkdir(parents=True)
-    (user_skill / "SKILL.md").write_text("---\nname: wizolt-help\ndescription: user version\n---\nuser body\n", encoding="utf-8")
+    (user_skill / "SKILL.md").write_text("---\nname: guide\ndescription: user version\n---\nuser body\n", encoding="utf-8")
 
     user_session = session(tmp_path)
-    skill = user_session.skills.get("wizolt-help")
+    skill = user_session.skills.get("guide")
     assert skill.source == "user"
     assert skill.description == "user version"
 
-    _write_skill(tmp_path, "wizolt-help", "project version", "project body")
+    _write_skill(tmp_path, "guide", "project version", "project body")
 
     project_session = session(tmp_path)
-    skill = project_session.skills.get("wizolt-help")
+    skill = project_session.skills.get("guide")
     assert skill.source == "project"
     assert skill.description == "project version"
 
@@ -153,12 +117,12 @@ def test_skill_tool_absent_only_when_no_skills(tmp_path):
 
 def test_skills_command_lists_installed(tmp_path):
     base = CommandLoop(Agent(session(tmp_path), output_fn=lambda t: None), output_fn=lambda t: None)
-    assert "### Skills · 1" in skills_command(base, "")
-    assert "| `wizolt-help` | builtin |" in skills_command(base, "")
+    assert skills_command(base, "").startswith("No skills installed.")
 
     _write_skill(tmp_path, "release-notes", "Draft a CHANGELOG entry.", "body")
     loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda t: None), output_fn=lambda t: None)
     output = skills_command(loop, "")
+    assert "### Skills · 1" in output
     assert "| skill | source | description |" in output
     assert "| `release-notes` | project | Draft a CHANGELOG entry. |" in output
 
@@ -189,7 +153,7 @@ def test_status_and_bar_show_skill_count(tmp_path):
     loop = CommandLoop(Agent(s, output_fn=lambda t: None), output_fn=lambda t: None)
 
     count = len(s.skills.skills)
-    assert count == 3
+    assert count == 2
     rendered = status(loop, "")
     assert "mcp `1`" in rendered
     assert f"skills `{count}`" in rendered

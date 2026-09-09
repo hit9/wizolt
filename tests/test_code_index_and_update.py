@@ -6,6 +6,7 @@ import time
 from types import SimpleNamespace
 
 import code_symbol_index as csi
+import httpx2
 import pytest
 from test_core_logic import data_session, session
 
@@ -181,14 +182,14 @@ def test_update_status_compares_normalized_versions():
 
 def mock_pypi(monkeypatch, handler, seen: dict | None = None):
     """Route the checker's async client at `handler`, recording how it was constructed."""
-    real = update_module.httpx2.AsyncClient
+    real = httpx2.AsyncClient
 
     def client(**kwargs):
         if seen is not None:
             seen.update(kwargs)
-        return real(**kwargs, transport=update_module.httpx2.MockTransport(handler))
+        return real(**kwargs, transport=httpx2.MockTransport(handler))
 
-    monkeypatch.setattr(update_module.httpx2, "AsyncClient", client)
+    monkeypatch.setattr(httpx2, "AsyncClient", client)
 
 
 async def test_update_check_uses_the_bounded_timeout_and_user_agent(monkeypatch):
@@ -197,7 +198,7 @@ async def test_update_check_uses_the_bounded_timeout_and_user_agent(monkeypatch)
     def handler(request):
         seen["url"] = str(request.url)
         seen["user_agent"] = request.headers.get("user-agent")
-        return update_module.httpx2.Response(200, content=b'{"info":{"version":"9.8.7"}}')
+        return httpx2.Response(200, content=b'{"info":{"version":"9.8.7"}}')
 
     mock_pypi(monkeypatch, handler, seen)
 
@@ -207,10 +208,33 @@ async def test_update_check_uses_the_bounded_timeout_and_user_agent(monkeypatch)
     assert seen["timeout"] == UpdateChecker.TIMEOUT
 
 
+def test_update_sync_probe_uses_the_bounded_timeout_and_user_agent(monkeypatch):
+    """The standalone `wizolt update` probe carries the same bounds as the background one."""
+    seen: dict = {}
+
+    def handler(request):
+        seen["url"] = str(request.url)
+        seen["user_agent"] = request.headers.get("user-agent")
+        return httpx2.Response(200, content=b'{"info":{"version":"9.8.7"}}')
+
+    real = httpx2.Client
+
+    def client(**kwargs):
+        seen.update(kwargs)
+        return real(**kwargs, transport=httpx2.MockTransport(handler))
+
+    monkeypatch.setattr(httpx2, "Client", client)
+
+    assert UpdateChecker.fetch_latest_sync() == "9.8.7"
+    assert seen["url"] == UpdateChecker.PYPI_URL
+    assert seen["user_agent"] == HTTP_USER_AGENT
+    assert seen["timeout"] == UpdateChecker.TIMEOUT
+
+
 async def test_update_check_records_a_malformed_response_as_a_status_error(tmp_path, monkeypatch):
     """A proxy that answers with HTML is an expected failure: it leaves a status, not a crash."""
     s = data_session(tmp_path)
-    mock_pypi(monkeypatch, lambda _request: update_module.httpx2.Response(200, content=b"<html>nope</html>"))
+    mock_pypi(monkeypatch, lambda _request: httpx2.Response(200, content=b"<html>nope</html>"))
 
     await UpdateChecker(s).check()
 
@@ -222,7 +246,7 @@ async def test_update_check_records_a_timeout_as_a_status_error(tmp_path, monkey
     s = data_session(tmp_path)
 
     def times_out(request):
-        raise update_module.httpx2.ConnectTimeout("timed out", request=request)
+        raise httpx2.ConnectTimeout("timed out", request=request)
 
     mock_pypi(monkeypatch, times_out)
 
@@ -259,7 +283,7 @@ async def test_cancelling_the_update_check_closes_the_client(tmp_path, monkeypat
     s = data_session(tmp_path)
     entered = asyncio.Event()
     closed = []
-    real = update_module.httpx2.AsyncClient
+    real = httpx2.AsyncClient
 
     class TrackedClient(real):
         async def get(self, *args, **kwargs):
@@ -270,7 +294,7 @@ async def test_cancelling_the_update_check_closes_the_client(tmp_path, monkeypat
             closed.append(True)
             return await super().__aexit__(*args)
 
-    monkeypatch.setattr(update_module.httpx2, "AsyncClient", TrackedClient)
+    monkeypatch.setattr(httpx2, "AsyncClient", TrackedClient)
 
     check = asyncio.ensure_future(UpdateChecker(s).check())
     await entered.wait()

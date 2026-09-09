@@ -18,8 +18,6 @@ import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-import httpx2
-
 from wizolt.base import HTTP_USER_AGENT, Text, run_blocking
 from wizolt.providers.catalog import CatalogCodec, decode_bundled
 from wizolt.providers.compat import ProviderPolicy
@@ -302,6 +300,8 @@ class CatalogRuntime:
 
         The body is bounded while it streams: a remote that answers with a gigabyte must not first
         become a gigabyte in memory to be rejected for being one."""
+
+        import httpx2  # deferred import: the fetch runs in the background, off the startup path
 
         headers = {"User-Agent": HTTP_USER_AGENT, "Accept": "application/json"}
         if probe.etag:

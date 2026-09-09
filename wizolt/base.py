@@ -618,7 +618,6 @@ class LogBlock:
 
 @dataclass
 class TurnBox:
-    ROOT_LEVEL: ClassVar[int] = 0
     CONTENT_LEVEL: ClassVar[int] = 1
     SEPARATOR: ClassVar[str] = ""
     messages: list[Json]

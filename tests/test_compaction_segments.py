@@ -8,7 +8,6 @@ class _StubModel:
 import asyncio
 import json
 import os
-import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -175,7 +174,6 @@ async def test_prepare_messages_captures_history_and_turn_segments_in_one_pass(t
         def __init__(self, session):
             self.session = session
             self.calls = 0
-            self.cancel_requested = threading.Event()
 
         async def api_request(self, _messages, _tools, **_kwargs):
             self.calls += 1
@@ -272,7 +270,6 @@ async def test_manual_compact_inserts_summary_before_latest_user(tmp_path):
 
         def __init__(self, session):
             self.session = session
-            self.cancel_requested = threading.Event()
 
         async def api_request(self, _messages, _tools, **_kwargs):
             assert transitions == ["compacting context"]
@@ -315,7 +312,6 @@ async def test_manual_compact_names_the_segment_with_the_compactor_title(tmp_pat
 
         def __init__(self, session):
             self.session = session
-            self.cancel_requested = threading.Event()
 
         async def api_request(self, _messages, _tools, **_kwargs):
             return "", "", json.dumps({"title": "Tokenizer extraction", "summary": "summary"})
@@ -630,7 +626,6 @@ async def test_repeated_compaction_keeps_one_request_and_one_checkpoint(tmp_path
         def __init__(self, session):
             self.session = session
             self.calls = 0
-            self.cancel_requested = threading.Event()
 
         async def api_request(self, _messages, _tools, **_kwargs):
             self.calls += 1

@@ -73,10 +73,10 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["wizolt", "wizolt.builtin_skills", "wizolt.cli", "wizolt.model", "wizolt.mcp", "wizolt.providers", "wizolt.session", "wizolt.source", "wizolt.tools", "wizolt.tui"]
+packages = ["wizolt", "wizolt.cli", "wizolt.model", "wizolt.mcp", "wizolt.providers", "wizolt.session", "wizolt.source", "wizolt.tools", "wizolt.tui"]
 
 [tool.setuptools.package-data]
-wizolt = ["builtin_skills/*/SKILL.md", "providers/catalog.json"]
+wizolt = ["providers/catalog.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -21,6 +21,24 @@ from wizolt.render import StatusBar
 from wizolt.session import Session, SessionSnapshotCodec
 
 
+def test_parse_json_object_repairs_a_malformed_compactor_payload():
+    """Almost-JSON compactor output is repaired into the object it plainly meant to be."""
+    assert ModelClient.parse_json_object('{"summary": "kept"') == {"summary": "kept"}
+    assert ModelClient.parse_json_object('summary follows: {"summary": "kept"}') == {"summary": "kept"}
+
+
+@pytest.mark.parametrize("text", ["not json at all", "[1, 2]"])
+def test_parse_json_object_rejects_payloads_with_no_object_to_recover(text):
+    """Prose and non-object JSON have no object to recover, so the compactor reply is rejected."""
+    with pytest.raises(ModelError, match="compactor returned invalid JSON"):
+        ModelClient.parse_json_object(text)
+
+
+def test_parse_json_object_rejects_an_empty_compactor_payload():
+    with pytest.raises(ModelError, match="compactor returned empty output"):
+        ModelClient.parse_json_object("   ")
+
+
 def test_compaction_config_fields_parse_and_default_empty():
     config = Config.from_dict(
         {

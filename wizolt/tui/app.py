@@ -1515,6 +1515,12 @@ class TuiApp:
 
         bindings.add("c-u", filter=~modal & edits_input, eager=True)(clear_input)
 
+        # Ctrl-L is swallowed rather than left to prompt_toolkit, whose default `clear-screen`
+        # wipes the visible screen and redraws the prompt at the top. Here that only looks like a
+        # reset: the transcript above scrolls out of sight while the session, its context, and any
+        # queued follow-up carry on unchanged, so the key costs more confusion than it buys.
+        bindings.add("c-l", filter=~modal, eager=True)(lambda _: None)
+
         def ctrl_d(event):  # pragma: no cover — interactive path
             if self.input_mode == "approval" and self._input_pending is not None:
                 # EOF on an empty approval line cancels rather than submitting "", which confirm()

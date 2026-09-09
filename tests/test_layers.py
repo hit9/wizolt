@@ -67,7 +67,6 @@ LAYERS = {
     "wizolt.mcp.manager": 6,
     "wizolt.skill": 6,
     "wizolt.mentions": 6,
-    "wizolt.builtin_skills": 6,
     "wizolt.session": 7,
     "wizolt.source": 8,
     "wizolt.image": 8,
@@ -108,13 +107,6 @@ def module_level_wizolt_imports(path: pathlib.Path) -> list[str]:
                 if alias.name.startswith("wizolt"):
                     targets.append(alias.name)
     return targets
-
-
-def _annotate(tree: ast.AST) -> ast.AST:
-    for parent in ast.walk(tree):
-        for child in ast.iter_child_nodes(parent):
-            child._parent = parent
-    return tree
 
 
 def all_sources() -> dict[str, pathlib.Path]:

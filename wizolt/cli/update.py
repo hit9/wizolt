@@ -9,8 +9,6 @@ import sys
 import time
 from typing import ClassVar
 
-import httpx2
-
 from wizolt.base import (
     HTTP_USER_AGENT,
     Text,
@@ -85,6 +83,8 @@ class UpdateChecker:
     @staticmethod
     async def fetch_latest() -> str:
         """The PyPI probe, on the caller's loop. Cancelling it closes the client and the request."""
+        import httpx2  # deferred import: the probe runs in the background, off the startup path
+
         # `async with`, which is how HTTPX documents the async client: the connection pool has to be
         # closed, and a cancellation here must not leave a socket to a finalizer. httpx2 rather
         # than httpx: it is the continuation of the same project, and it is already the client the
@@ -97,6 +97,8 @@ class UpdateChecker:
     @staticmethod
     def fetch_latest_sync() -> str:
         """The same probe for `wizolt update`, which is a standalone synchronous command."""
+        import httpx2  # deferred import: only the update command ever reaches this probe
+
         with httpx2.Client(timeout=UpdateChecker.TIMEOUT, headers=UpdateChecker.HEADERS) as client:
             response = client.get(UpdateChecker.PYPI_URL)
             response.raise_for_status()
