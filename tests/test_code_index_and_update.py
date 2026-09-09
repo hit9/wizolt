@@ -208,6 +208,29 @@ async def test_update_check_uses_the_bounded_timeout_and_user_agent(monkeypatch)
     assert seen["timeout"] == UpdateChecker.TIMEOUT
 
 
+def test_update_sync_probe_uses_the_bounded_timeout_and_user_agent(monkeypatch):
+    """The standalone `wizolt update` probe carries the same bounds as the background one."""
+    seen: dict = {}
+
+    def handler(request):
+        seen["url"] = str(request.url)
+        seen["user_agent"] = request.headers.get("user-agent")
+        return httpx2.Response(200, content=b'{"info":{"version":"9.8.7"}}')
+
+    real = httpx2.Client
+
+    def client(**kwargs):
+        seen.update(kwargs)
+        return real(**kwargs, transport=httpx2.MockTransport(handler))
+
+    monkeypatch.setattr(httpx2, "Client", client)
+
+    assert UpdateChecker.fetch_latest_sync() == "9.8.7"
+    assert seen["url"] == UpdateChecker.PYPI_URL
+    assert seen["user_agent"] == HTTP_USER_AGENT
+    assert seen["timeout"] == UpdateChecker.TIMEOUT
+
+
 async def test_update_check_records_a_malformed_response_as_a_status_error(tmp_path, monkeypatch):
     """A proxy that answers with HTML is an expected failure: it leaves a status, not a crash."""
     s = data_session(tmp_path)
