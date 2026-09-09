@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `Ctrl-L` no longer clears the screen. Wiping the visible rows only looked like a reset: the
+  transcript scrolled out of sight while the session, its context and any queued input carried on
+  unchanged. The key now does nothing; `Ctrl-U` still clears the input line.
+
 ## 0.46.0 - 2026-09-08
 
 ### Added
