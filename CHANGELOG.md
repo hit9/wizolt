@@ -4,6 +4,9 @@
 
 ### Changed
 
+- wizolt reaches the prompt about 40 ms sooner: the HTTP client, the image decoder, and the JSON
+  repair module now load on first use -- a background version probe, an attached image, a
+  malformed model reply -- instead of during startup.
 - `Ctrl-L` no longer clears the screen. Wiping the visible rows only looked like a reset: the
   transcript scrolled out of sight while the session, its context and any queued input carried on
   unchanged. The key now does nothing; `Ctrl-U` still clears the input line.

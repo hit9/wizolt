@@ -14,8 +14,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, ClassVar, Self
 
-from PIL import Image, UnidentifiedImageError
-
 from wizolt.base import Json, ModelError, run_blocking
 from wizolt.paste import PASTE_MARKER, PasteRef
 
@@ -496,6 +494,8 @@ class ImageInputs:
 
     @staticmethod
     def _inspect(path: str, *, source_text: str = "", strict: bool = True) -> ImageRef | None:
+        from PIL import Image, UnidentifiedImageError  # deferred import: image decoding is not part of startup
+
         try:
             if not os.path.isfile(path):
                 raise OSError("not a regular file")

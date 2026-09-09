@@ -14,8 +14,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
-from json_repair import repair_json
-
 # Aliased because the module name `anthropic` shadows the third-party SDK package of the same
 # name imported inside function bodies.
 from wizolt.base import (
@@ -542,6 +540,10 @@ class ModelClient:
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
+            # Deferred import: only malformed model JSON pays for the repair module, so neither
+            # startup nor a well-formed response carries it.
+            from json_repair import repair_json
+
             data = repair_json(text, return_objects=True)
         if isinstance(data, dict):
             return data

@@ -7,7 +7,6 @@ from pathlib import Path
 import httpx2
 import pytest
 
-import wizolt.providers.sync as sync_module
 from wizolt.base import ConfigError
 from wizolt.config import Config, ConfigFile, ProviderConfig
 from wizolt.providers.catalog import CatalogCodec, decode_bundled
@@ -44,7 +43,7 @@ def mock_catalog_http(monkeypatch, handler, requests: list | None = None):
 
         return real(**kwargs, transport=httpx2.MockTransport(record))
 
-    monkeypatch.setattr(sync_module.httpx2, "AsyncClient", client)
+    monkeypatch.setattr(httpx2, "AsyncClient", client)
 
 
 def serving(payload: bytes, etag: str = '"catalog-test"'):
@@ -415,6 +414,7 @@ async def test_cancelling_a_blocked_request_writes_no_cache_and_closes_the_clien
     runtime = CatalogRuntime(str(tmp_path))
     entered = asyncio.Event()
     closed = []
+
     class TrackedClient(REAL_ASYNC_CLIENT):
         def stream(self, *args, **kwargs):
             outer = self
@@ -434,7 +434,7 @@ async def test_cancelling_a_blocked_request_writes_no_cache_and_closes_the_clien
             closed.append(True)
             return await super().__aexit__(*args)
 
-    monkeypatch.setattr(sync_module.httpx2, "AsyncClient", TrackedClient)
+    monkeypatch.setattr(httpx2, "AsyncClient", TrackedClient)
 
     fetch = asyncio.ensure_future(runtime.fetch())
     await entered.wait()
@@ -492,7 +492,7 @@ async def test_the_loop_advances_while_the_catalog_response_is_blocked(tmp_path,
         await release.wait()
         return slow(request)
 
-    monkeypatch.setattr(sync_module.httpx2, "AsyncClient", lambda **kwargs: REAL_ASYNC_CLIENT(**kwargs, transport=httpx2.MockTransport(gated)))
+    monkeypatch.setattr(httpx2, "AsyncClient", lambda **kwargs: REAL_ASYNC_CLIENT(**kwargs, transport=httpx2.MockTransport(gated)))
     beats = 0
 
     async def heartbeat():
