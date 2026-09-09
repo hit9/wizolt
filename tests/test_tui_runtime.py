@@ -1,5 +1,4 @@
-"""TuiRuntime behavior: command dispatch, the follow-up queue, streamed response promotion,
-resume, and session housekeeping at startup."""
+"""Shared TuiRuntime test helpers; the behavior tests live in the test_tui_runtime_* modules."""
 
 
 def history_file(path, entries, line="x" * 200):
