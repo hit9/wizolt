@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "version": 2026090501,
-  "updated_at": "2026-09-05",
+  "version": 2026090901,
+  "updated_at": "2026-09-09",
   "maintenance_scope": "well_known_and_necessary_specializations_only",
   "defaults": {
     "effort_order": [
@@ -787,6 +787,7 @@
       "id": "model.trait-09",
       "match": {
         "prefixes": [
+          "deepseek-flash",
           "deepseek-v4-"
         ]
       },
@@ -800,9 +801,13 @@
           "max"
         ]
       },
-      "why": "DeepSeek serves medium and xhigh as high",
+      "why": "DeepSeek V4.1 Flash and V4 serve medium and xhigh as high",
       "evidence": [
-        "https://api-docs.deepseek.com/guides/thinking_mode/"
+        "https://api-docs.deepseek.com/guides/thinking_mode/",
+        "https://api-docs.deepseek.com/zh-cn/updates/"
+      ],
+      "notes": [
+        "deepseek-flash is the V4.1 Flash id; deepseek-v4-flash and deepseek-v4-flash-vision-exp are compatibility aliases routed to it."
       ]
     },
     {
@@ -1167,17 +1172,19 @@
     {
       "id": "model.text-only-02",
       "match": {
-        "pattern": "deepseek-v4-(?:flash|pro)(?:-(?!vision)|$)"
+        "pattern": "deepseek-v4-pro(?:-|$)"
       },
       "set": {
         "image.input": "text_only"
       },
-      "why": "Documented DeepSeek text model family; the vision variants never match",
+      "why": "V4 Pro is the remaining documented DeepSeek text-only model; the V4 Flash ids now route to natively multimodal V4.1 Flash",
       "evidence": [
         "https://api-docs.deepseek.com/quick_start/pricing",
-        "https://api-docs.deepseek.com/guides/vision"
+        "https://api-docs.deepseek.com/guides/vision",
+        "https://api-docs.deepseek.com/zh-cn/updates/"
       ],
       "notes": [
+        "Drop this rule once deepseek-v4-pro is routed to the multimodal V4.1 Flash on 2026-09-14.",
         "Rules are anchored to complete documented families or exact IDs; matching is case-insensitive.",
         "A gateway id in canonical vendor/model form is matched by its model part only when the vendor is canonical (see model_id_forms); a custom alias stays unknown and is probed.",
         "Claude stays unknown/main-first and is never in the negative list."

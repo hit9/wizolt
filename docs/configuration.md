@@ -21,7 +21,7 @@ active = "default"
 [provider.default]
 url = "https://api.deepseek.com"
 key = "sk-..."
-model = "deepseek-v4-flash"
+model = "deepseek-flash"
 ```
 
 These three fields are enough for most endpoints. wizolt selects the usual protocol and applies
@@ -78,7 +78,7 @@ them. `headers` sends whatever the provider documents alongside every request fr
 [provider.cmd]
 url = "https://api.commandcode.ai/provider/v1"
 key = "..."
-model = "deepseek/deepseek-v4-flash"
+model = "deepseek/deepseek-flash"
 headers = { x-cmd-zdr = "1" }   # Command Code: route only to zero-retention upstreams
 ```
 
@@ -135,7 +135,7 @@ Switching model or provider can leave an effort the new model has no level for. 
 to the nearest one and says so once:
 
 ```
-Reasoning medium is not offered by deepseek-v4-flash, using high
+Reasoning medium is not offered by deepseek-flash, using high
 ```
 
 ### Effort levels a model accepts
@@ -196,7 +196,7 @@ provider = "vision"
 [provider.vision]
 url = "https://api.deepseek.com"
 key = "sk-..."
-model = "deepseek-v4-flash-vision-exp"
+model = "deepseek-flash"
 ```
 
 An attached image is first sent to the active model unless wizolt knows it rejects images:

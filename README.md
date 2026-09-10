@@ -59,7 +59,7 @@ active = "default"
 [provider.default]
 url = "https://api.deepseek.com"
 key = "sk-..."
-model = "deepseek-v4-flash"
+model = "deepseek-flash"
 ```
 
 Then run:

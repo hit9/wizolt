@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The compatibility catalog knows DeepSeek V4.1 Flash. `deepseek-flash` offers the three thinking
+  levels it actually serves -- `low`, `high`, `max` -- instead of the four an unknown model on the
+  endpoint would get, and the V4 Flash ids are no longer text-only now that they route to a natively
+  multimodal model, so an attached image goes to the model itself rather than through `[vision]`.
+  `deepseek-v4-pro` keeps its own levels and stays text-only until DeepSeek routes it away.
+- The configuration examples in the README and the docs name `deepseek-flash`, the id DeepSeek now
+  lists; `deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` still resolve for existing configs.
+
 ## 0.47.0 - 2026-09-09
 
 ### Changed
