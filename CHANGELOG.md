@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Upgraded the `code-symbol-index` dependency from 0.5.1 to 0.5.4. Reference and caller queries skip
+  unchanged files, so `InspectCode` answers faster on a large project; the next `/index` fills in
+  those shortcuts for files it already knows, without reparsing them. The index now records the Git
+  commit it was built from, so a commit or a branch switch leaves `/status` reporting
+  `stale: Git checkout changed; index may be stale` even when no source file changed, until
+  `/index` runs an incremental refresh.
+
 ## 0.48.0 - 2026-09-09
 
 ### Changed

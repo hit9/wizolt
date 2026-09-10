@@ -267,16 +267,16 @@ wheels = [
 
 [[package]]
 name = "code-symbol-index"
-version = "0.5.1"
+version = "0.5.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pathspec" },
     { name = "tree-sitter" },
     { name = "tree-sitter-language-pack" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/76/12/f3f40f0c48e8cd0c0b97d2fd2293d848296c0b59fe0c96fd4a6fd676f044/code_symbol_index-0.5.1.tar.gz", hash = "sha256:d04fef98c4165c7f6c648e59947f49777dc9468021150b3a51d381d18111dffe", size = 67604, upload-time = "2026-08-18T06:37:44.416Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f2/14/191a19b11a8bf3dc72a8ca5ad873ff341e158be1f9b6a3392518f40c8cc2/code_symbol_index-0.5.4.tar.gz", hash = "sha256:f7c0498576ecf9ef44cc6375ff0de394ee8fb89e1f01526e09c5ca631e93fefb", size = 85273, upload-time = "2026-09-10T11:27:29.949Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/69/20/14b872cb737b780c4277a17b58dc140f521738a1cfb84566c408a6c7b228/code_symbol_index-0.5.1-py3-none-any.whl", hash = "sha256:6a8c40b3d53ee90f43796524d2ed75e9a604c5f9512fad8d6c059750504a6f22", size = 50493, upload-time = "2026-08-18T06:37:42.857Z" },
+    { url = "https://files.pythonhosted.org/packages/48/c2/be6431c96d3bb622f73c743a4832450c2980874e49c1bc628691b18e00b5/code_symbol_index-0.5.4-py3-none-any.whl", hash = "sha256:acfdb179ae4e95c65ff219fba2b9977b744b10eb418358d386cde512c02e403a", size = 58856, upload-time = "2026-09-10T11:27:31.35Z" },
 ]
 
 [[package]]
@@ -1746,7 +1746,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=1.0.0" },
-    { name = "code-symbol-index", specifier = ">=0.5.1" },
+    { name = "code-symbol-index", specifier = ">=0.5.4" },
     { name = "fastmcp-slim", extras = ["client"], specifier = ">=3,<4" },
     { name = "httpx2", specifier = ">=2.12.0" },
     { name = "json-repair" },

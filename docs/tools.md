@@ -255,7 +255,7 @@ current state:
 | State | Meaning |
 |---|---|
 | **synced** | Index is current and ready |
-| **stale** | Out of date; wait for background refresh or run `/index` |
+| **stale** | Out of date; small batches of changed files refresh themselves after a turn, a commit or branch switch needs `/index` |
 | **syncing** | A background refresh is in progress |
 | **missing** | No index exists yet; run `/index` |
 | **error** | The index failed to build or sync; `/status` shows the details |
