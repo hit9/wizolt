@@ -17,6 +17,11 @@
   endpoint `output_config.effort`.
 - Reasoning survives a tool loop on Ark's Responses endpoint, which withholds the sealed block
   unless the request asks for it. wizolt now asks.
+- Answers on Volcengine Ark are no longer cut off around 4K. Ark caps a request that names no output
+  limit there, which truncates an ordinary turn mid-sentence or mid tool-call JSON; wizolt now sends
+  the 128K Ark recommends for agent use, or the model's own lower ceiling where it has one (32K on
+  Doubao Seed 1.6, 1.8, Character and Code Preview). `provider.max_tokens` still wins when set, and
+  an endpoint with no documented limit keeps its own default.
 
 ### Changed
 

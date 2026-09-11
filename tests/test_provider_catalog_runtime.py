@@ -121,6 +121,18 @@ def test_codec_requires_knowledge_provenance(remove):
         CatalogCodec().decode(catalog_payload(data), "cached")
 
 
+@pytest.mark.parametrize("value", (0, -1, 4_000_001, "128000", True))
+def test_codec_rejects_an_output_cap_that_is_not_a_sane_token_count(value):
+    """The declared cap goes on the wire as written, so a string or a nonsense number would reach
+    the endpoint as a rejected request instead of a catalog error."""
+    data = catalog_data()
+    provider = next(entry for entry in data["providers"] if entry["id"] == "provider.volcengine")
+    next(rule for rule in provider["model_rules"] if "output.max_tokens" in rule["set"])["set"]["output.max_tokens"] = value
+
+    with pytest.raises(CatalogFormatError, match="output.max_tokens"):
+        CatalogCodec().decode(catalog_payload(data), "cached")
+
+
 def test_codec_rejects_policy_references_to_unknown_reasoning_dialects():
     data = catalog_data()
     rule = next(rule for rule in data["model_rules"] if "reasoning.dialect" in rule["set"])

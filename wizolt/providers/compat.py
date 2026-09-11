@@ -613,7 +613,9 @@ class ProviderPolicy:
         configured_max_tokens = getattr(config, "max_tokens", 0)
         if isinstance(configured_max_tokens, bool) or not isinstance(configured_max_tokens, int):
             configured_max_tokens = 0
-        catalog_max_tokens = wire_defaults.get("max_tokens", 0)
+        # A host that caps an unspecified request low enough to cut an ordinary agent turn short
+        # declares the cap to send instead; the wire default is the fallback for the rest.
+        catalog_max_tokens = self._resolver.field_value(provider, model, "output.max_tokens") or wire_defaults.get("max_tokens", 0)
         if isinstance(catalog_max_tokens, bool) or not isinstance(catalog_max_tokens, int):
             catalog_max_tokens = 0
         output_max_tokens = configured_max_tokens or catalog_max_tokens

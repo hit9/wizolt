@@ -84,8 +84,10 @@ def chat_params(
     # retry are what carry the providers left out.
     if json_object and resolved.json_response_format:
         params["response_format"] = {"type": "json_object"}
-    if provider.max_tokens > 0:
-        params["max_tokens"] = provider.max_tokens
+    # The configured cap, or the one a host documents for a request that names none. Left out
+    # entirely when neither exists, so an endpoint's own default still applies.
+    if resolved.output_max_tokens > 0:
+        params["max_tokens"] = resolved.output_max_tokens
     if request_tools := [*(tools or []), *builtin_tools(resolved)]:
         params["tools"] = request_tools
         params["tool_choice"] = "auto"

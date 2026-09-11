@@ -52,6 +52,10 @@ MAX_EVIDENCE_URL_LENGTH = 2048
 MAX_DOCUMENT_BYTES = 4 * 1024 * 1024
 MAX_VERSION = 2**53 - 1
 MAX_POLICY_LEVELS = 32
+# An output cap a catalog may declare for an endpoint that defaults to a small one. The ceiling is
+# a sanity bound on the document, not a model's limit; the declared value must be one the endpoint
+# accepts for every model the rule matches.
+MAX_OUTPUT_TOKENS = 4_000_000
 MAX_RECIPE_STEPS = 64
 MAX_RECIPE_PATHS = 16
 
@@ -72,6 +76,7 @@ POLICY_PATHS = frozenset(
         "reasoning.mandatory",
         "history.reasoning",
         "image.input",
+        "output.max_tokens",
         "responses.reasoning_models",
         "cache.prompt_key",
         "json.response_format",
@@ -357,6 +362,9 @@ class CatalogCodec:
         elif path in ("reasoning.mandatory", "cache.prompt_key", "json.response_format", "strict.tools", "strict.beta", "temperature.suppress"):
             if not isinstance(value, bool):
                 raise CatalogFormatError(f"{where}.{path} must be a boolean")
+        elif path == "output.max_tokens":
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 < value <= MAX_OUTPUT_TOKENS:
+                raise CatalogFormatError(f"{where}.{path} must be an integer between 1 and {MAX_OUTPUT_TOKENS}")
         elif path == "history.reasoning":
             if value not in HISTORY_MODES:
                 raise CatalogFormatError(f"{where}.{path} must be one of {sorted(HISTORY_MODES)}")

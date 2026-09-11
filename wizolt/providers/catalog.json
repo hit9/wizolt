@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 2026091102,
+  "version": 2026091103,
   "updated_at": "2026-09-11",
   "maintenance_scope": "well_known_and_necessary_specializations_only",
   "defaults": {
@@ -2142,6 +2142,51 @@
             "Chat takes thinking.type and reasoning_effort, Responses reasoning.effort, and the Anthropic-compatible endpoint output_config.effort.",
             "Responses does not return the sealed reasoning unless the request asks for it, so the recipe adds the include.",
             "Volcengine documents neither prompt_cache_key nor a cache-key parameter; Ark caches on the rendered prefix."
+          ]
+        },
+        {
+          "id": "provider-rule.ark.output-32k",
+          "match": {
+            "prefixes": [
+              "doubao-seed-1-6",
+              "doubao-seed-1-8",
+              "doubao-seed-character",
+              "doubao-seed-code-preview"
+            ]
+          },
+          "set": {
+            "output.max_tokens": 32000
+          },
+          "why": "Ark answers 4k unless asked; these models cap the answer at 32k",
+          "evidence": [
+            "https://www.volcengine.com/docs/82379/1330310",
+            "https://www.volcengine.com/docs/82379/2636748"
+          ]
+        },
+        {
+          "id": "provider-rule.ark.output-128k",
+          "match": {
+            "prefixes": [
+              "doubao-seed-evolving",
+              "doubao-seed-2-1",
+              "doubao-seed-2-0",
+              "deepseek-v4",
+              "glm-5-2",
+              "glm-5-3",
+              "glm-4-7"
+            ]
+          },
+          "set": {
+            "output.max_tokens": 128000
+          },
+          "why": "Ark answers 4k unless asked; these models take the 128k an agent turn wants",
+          "evidence": [
+            "https://www.volcengine.com/docs/82379/1330310",
+            "https://www.volcengine.com/docs/82379/2636748"
+          ],
+          "notes": [
+            "Ark's guidance for agent use is an explicit cap of at least 128000; every model here documents a larger ceiling than that.",
+            "A model Ark hosts that is not listed keeps Ark's own default, since its ceiling is unknown and an over-large cap is rejected outright."
           ]
         },
         {

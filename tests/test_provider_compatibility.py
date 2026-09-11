@@ -351,6 +351,26 @@ def test_ark_offers_only_the_depths_a_model_distinguishes(model, levels):
     assert resolve(provider).reasoning_recipe == "ark.thinking-effort"
 
 
+@pytest.mark.parametrize(
+    ("model", "cap"),
+    (
+        ("doubao-seed-evolving", 128_000),
+        ("deepseek-v4-flash", 128_000),
+        ("glm-5-3-flash-260828", 128_000),
+        # These cap the answer at 32k, so the agent recommendation does not fit and the ceiling wins.
+        ("doubao-seed-1-8-251228", 32_000),
+        ("doubao-seed-1-6-251015", 32_000),
+        # A model whose ceiling is not documented keeps Ark's own default rather than a guess.
+        ("doubao-seed-translation-250915", 0),
+    ),
+)
+def test_ark_declares_the_output_cap_each_model_takes(model, cap):
+    """Ark answers 4k when a request names none, which truncates an ordinary agent turn."""
+    assert resolve(ProviderConfig(url=ARK, model=model)).output_max_tokens == cap
+    # A configured cap is the user's call in both directions, including below the documented one.
+    assert resolve(ProviderConfig(url=ARK, model=model, max_tokens=4_096)).output_max_tokens == 4_096
+
+
 def test_ark_sends_no_prompt_cache_key(tmp_path):
     """Ark documents neither the parameter nor a cache key; its prefix cache needs no help."""
     client = ModelClient(session(tmp_path))

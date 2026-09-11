@@ -204,8 +204,8 @@ class ResponsesWire:
             # DESIGN.md "Cache epochs and breakpoints".
             "store": False,
         }
-        if provider.max_tokens > 0:
-            params["max_output_tokens"] = provider.max_tokens
+        if resolved.output_max_tokens > 0:
+            params["max_output_tokens"] = resolved.output_max_tokens
         if request_tools := [*responses_module.responses_tool_schemas(tools or []), *self._client.builtin_tools(resolved)]:
             params["tools"] = request_tools
             params["tool_choice"] = "auto"

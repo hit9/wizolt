@@ -445,6 +445,18 @@ class ModelClient:
             if on_retry_wait is not None:
                 on_retry_wait(False)
 
+    def output_cap_label(self, provider: ProviderConfig, *, fallback: str) -> str:
+        """Name the cap the request actually carried, and where it came from.
+
+        An unconfigured cap is not always absent: a host whose unspecified default would cut an
+        ordinary turn short has one documented in the catalog, and naming `provider.max_tokens` for
+        it would point at a setting the user never wrote."""
+
+        if provider.max_tokens > 0:
+            return f"provider.max_tokens={provider.max_tokens}"
+        catalog_cap = self.resolved(provider).output_max_tokens
+        return f"the documented output limit for this endpoint ({catalog_cap})" if catalog_cap > 0 else fallback
+
     def truncated_output_error(self, usage: Any) -> ModelOutputTruncated:
         """Report a generation the provider cut off at the output cap before it produced anything.
 
@@ -454,7 +466,7 @@ class ModelClient:
         A truncation that still carried text is left alone: the partial answer is visible, and the
         cut is its own evidence."""
         provider = self.session.config.provider
-        cap = f"provider.max_tokens={provider.max_tokens}" if provider.max_tokens > 0 else "the provider's own default output limit"
+        cap = self.output_cap_label(provider, fallback="the provider's own default output limit")
         completion = ModelUsage.field(usage, "completion_tokens", "output_tokens")
         reasoning = ModelUsage.field(usage, "completion_tokens_details.reasoning_tokens", "output_tokens_details.reasoning_tokens")
         spent = f" after {completion} output tokens" if completion else ""
@@ -468,9 +480,10 @@ class ModelClient:
         from usage; anything else names both settings instead of pushing max_tokens blindly."""
         provider = self.session.config.provider
         completion = ModelUsage.field(usage, "completion_tokens", "output_tokens")
-        if provider.max_tokens > 0 and completion >= provider.max_tokens:
+        sent_cap = self.resolved(provider).output_max_tokens
+        if sent_cap > 0 and completion >= sent_cap:
             return self.truncated_output_error(usage)
-        cap = f"provider.max_tokens={provider.max_tokens}" if provider.max_tokens > 0 else "the provider's default output cap"
+        cap = self.output_cap_label(provider, fallback="the provider's default output cap")
         spent = f" after {completion} output tokens" if completion else ""
         return ModelError(
             f"Generation stopped empty with `finish_reason=length`{spent}: either the output hit {cap} or "

@@ -79,6 +79,20 @@ async def test_chat_length_without_a_configured_cap_names_both_settings(tmp_path
     assert s.usage.completion_tokens == 16_384
 
 
+async def test_chat_output_cap_from_the_catalog_is_named_as_the_catalog_s(tmp_path, monkeypatch):
+    """A cap the user never wrote must not be reported as their setting: the request carried the
+    limit the endpoint documents, and the message says so before telling them what to raise."""
+    s = _session(tmp_path, stream=False, url="https://ark.cn-beijing.volces.com/api/v3", model="doubao-seed-evolving")
+    model = ModelClient(s)
+    monkeypatch.setattr(model, "client", _MockClientFactory([_chat_completion("", "length", completion_tokens=128_000)]))
+
+    with pytest.raises(ModelOutputTruncated) as error:
+        await model.request([{"role": "user", "content": "hi"}], None)
+
+    assert "documented output limit for this endpoint (128000)" in str(error.value)
+    assert "provider.max_tokens=" not in str(error.value)
+
+
 async def test_chat_output_cap_reached_after_text_keeps_the_partial_answer(tmp_path, monkeypatch):
     """A visible partial answer is its own evidence of the cut; only an empty one needs explaining."""
     model = ModelClient(_session(tmp_path, stream=False))
@@ -473,6 +487,52 @@ async def test_chat_stream_keeps_the_sealed_reasoning_chunk_for_replay(tmp_path,
     assert assistant["encrypted_content"] == "sealed-block"
     assert assistant["reasoning_content"] == "summary"
     assert streamed == [("reasoning", "summary"), ("output", "answer"), ("", "")]
+
+
+async def test_chat_sends_the_output_cap_a_host_documents_for_an_unspecified_request(tmp_path, monkeypatch):
+    """Ark answers 4k when a request names no cap, which cuts an ordinary agent turn in half. The
+    cap it documents for the model goes out instead -- and a configured one still wins."""
+    s = _session(tmp_path, url="https://ark.cn-beijing.volces.com/api/v3", model="doubao-seed-evolving", reasoning="high")
+    model = ModelClient(s)
+    chunk = {
+        "id": "c",
+        "object": "chat.completion.chunk",
+        "created": 1,
+        "model": "doubao-seed-evolving",
+        "choices": [{"index": 0, "delta": {"content": "ok"}, "finish_reason": "stop"}],
+    }
+    factory = _StreamClientFactory([chunk])
+    model.on_stream = lambda _kind, _delta: None
+    monkeypatch.setattr(model, "client", factory)
+
+    await model.request([{"role": "user", "content": "ask"}], [])
+    body = json.loads(factory.calls[0].content)
+    assert body["max_tokens"] == 128_000
+    assert body["thinking"] == {"type": "enabled"}
+    assert body["reasoning_effort"] == "high"
+
+    s.config.provider.max_tokens = 8_000
+    await model.request([{"role": "user", "content": "ask"}], [])
+    assert json.loads(factory.calls[1].content)["max_tokens"] == 8_000
+
+
+async def test_chat_omits_the_output_cap_where_no_one_documents_one(tmp_path, monkeypatch):
+    """An endpoint without a documented cap keeps its own default; wizolt invents no number."""
+    model = ModelClient(_session(tmp_path))
+    chunk = {
+        "id": "c",
+        "object": "chat.completion.chunk",
+        "created": 1,
+        "model": "gpt-4",
+        "choices": [{"index": 0, "delta": {"content": "ok"}, "finish_reason": "stop"}],
+    }
+    factory = _StreamClientFactory([chunk])
+    model.on_stream = lambda _kind, _delta: None
+    monkeypatch.setattr(model, "client", factory)
+
+    await model.request([{"role": "user", "content": "ask"}], [])
+
+    assert "max_tokens" not in json.loads(factory.calls[0].content)
 
 
 def test_non_streaming_chat_preserves_all_reasoning_shapes(tmp_path):

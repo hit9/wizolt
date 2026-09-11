@@ -56,7 +56,7 @@ Most users can leave these unset.
 | `reasoning` | `medium` | Reasoning effort: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`; change it during a session with `/reason` |
 | `available_models` | — | Additional models shown by `/model` |
 | `temperature` | — | Sampling temperature; omitted by default |
-| `max_tokens` | `0` | Output-token cap per model request, reasoning included; `0` leaves it to the provider (Anthropic sends a conservative 8K). 16K is still reserved from the input budget for the answer, trading against `max_context_tokens` one for one |
+| `max_tokens` | `0` | Output-token cap per model request, reasoning included; `0` uses the cap the endpoint is known to need (Anthropic 8K, Volcengine Ark 128K or the model's lower ceiling) and otherwise leaves it to the provider. 16K is still reserved from the input budget for the answer, trading against `max_context_tokens` one for one |
 | `max_context_tokens` | `0` | How much of *this* entry's model window to use; `0` inherits `runtime.max_context_tokens`. Set it per entry when entries point at models with different windows |
 | `timeout` | `120` | Transport inactivity timeout in seconds |
 | `response_timeout` | `600` | Total generation limit in seconds; `0` disables it |
