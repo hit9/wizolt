@@ -47,7 +47,10 @@ def chat_messages(
             key: value for key, value in message.items() if key not in (*PROVIDER_ECHO_KEYS, IMAGE_REFS_KEY, TOOL_IMAGE_OBSERVATION_KEY, SESSION_EVENT_KEY)
         }
         if message.get("role") == "assistant" and not keeps_reasoning(resolved.reasoning_history, message, index, latest_user):
-            for key in ("reasoning_content", "reasoning", "reasoning_details"):
+            # `encrypted_content` is the same turn's reasoning in sealed form: a host that returns
+            # both ignores the plaintext when it is present, so dropping one without the other
+            # would replay exactly the reasoning the contract says to drop.
+            for key in ("reasoning_content", "reasoning", "reasoning_details", "encrypted_content"):
                 clean.pop(key, None)
         if message.get("role") == "user" and images.refs(message):
             clean["content"] = images.chat_content(message, text_only=text_only, payloads=image_payloads)
@@ -124,6 +127,7 @@ async def reassemble_stream(
     """
     content: list[str] = []
     reasoning_content: list[str] = []
+    encrypted_content: list[str] = []
     reasoning: list[str] = []
     reasoning_details: list[Json] = []
     tool_calls: dict[int, Json] = {}
@@ -177,6 +181,11 @@ async def reassemble_stream(
             delta = message_field(choice, "delta")
             reasoning_content_delta = str(message_field(delta, "reasoning_content") or "")
             reasoning_delta = str(message_field(delta, "reasoning") or "")
+            # Sealed reasoning arrives on its own chunk, after the thinking text and before the
+            # answer, with content and reasoning_content both empty. It carries no readable text
+            # to stream: it is collected for replay only.
+            if encrypted_delta := str(message_field(delta, "encrypted_content") or ""):
+                encrypted_content.append(encrypted_delta)
             if reasoning_content_delta:
                 reasoning_content.append(reasoning_content_delta)
                 emit("reasoning", reasoning_content_delta)
@@ -222,6 +231,8 @@ async def reassemble_stream(
     message: Json = {"content": "".join(content) or None}
     if reasoning_content:
         message["reasoning_content"] = "".join(reasoning_content)
+    if encrypted_content:
+        message["encrypted_content"] = "".join(encrypted_content)
     if reasoning:
         message["reasoning"] = "".join(reasoning)
     if reasoning_details:

@@ -439,16 +439,55 @@ async def test_chat_stream_preserves_openrouter_reasoning_alias_and_details(tmp_
     assert streamed == [("reasoning", "think "), ("reasoning", "more"), ("output", "done"), ("", "")]
 
 
+async def test_chat_stream_keeps_the_sealed_reasoning_chunk_for_replay(tmp_path, monkeypatch):
+    """Some hosts return the thinking a model actually reads back sealed, in a chunk of its own.
+
+    It arrives after the readable summary and before the answer, with content and reasoning_content
+    empty, and carries no text to show. Dropping it costs the next turn its reasoning without any
+    error to notice, so it is collected and replayed even though nothing streams it."""
+    model = ModelClient(_session(tmp_path))
+    chunks = [
+        {"id": "c", "object": "chat.completion.chunk", "created": 1, "model": "gpt-4", "choices": [{"index": 0, "delta": {"reasoning_content": "summary"}}]},
+        {
+            "id": "c",
+            "object": "chat.completion.chunk",
+            "created": 1,
+            "model": "gpt-4",
+            "choices": [{"index": 0, "delta": {"content": "", "reasoning_content": "", "encrypted_content": "sealed-block"}}],
+        },
+        {
+            "id": "c",
+            "object": "chat.completion.chunk",
+            "created": 1,
+            "model": "gpt-4",
+            "choices": [{"index": 0, "delta": {"content": "answer"}, "finish_reason": "stop"}],
+        },
+    ]
+    streamed = []
+    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    monkeypatch.setattr(model, "client", _StreamClientFactory(chunks))
+
+    assistant, _, content = await model.request([{"role": "user", "content": "ask"}], [])
+
+    assert content == "answer"
+    assert assistant["encrypted_content"] == "sealed-block"
+    assert assistant["reasoning_content"] == "summary"
+    assert streamed == [("reasoning", "summary"), ("output", "answer"), ("", "")]
+
+
 def test_non_streaming_chat_preserves_all_reasoning_shapes(tmp_path):
     model = ModelClient(_session(tmp_path))
     details = [{"type": "reasoning.summary", "summary": "short", "id": "r", "format": "openai-responses-v1", "index": 0}]
 
-    assert model.assistant_message({"content": "answer", "reasoning_content": "native", "reasoning": "alias", "reasoning_details": details}) == {
+    assert model.assistant_message(
+        {"content": "answer", "reasoning_content": "native", "reasoning": "alias", "reasoning_details": details, "encrypted_content": "sealed"}
+    ) == {
         "role": "assistant",
         "content": "answer",
         "reasoning_content": "native",
         "reasoning": "alias",
         "reasoning_details": details,
+        "encrypted_content": "sealed",
     }
 
 
@@ -468,7 +507,12 @@ def test_non_streaming_chat_preserves_all_reasoning_shapes(tmp_path):
 )
 def test_chat_reasoning_history_follows_provider_contract(tmp_path, url, model, keeps_final):
     client = ModelClient(_session(tmp_path, url=url, model=model))
-    reasoning = {"reasoning_content": "native", "reasoning": "alias", "reasoning_details": [{"type": "reasoning.text", "text": "detail"}]}
+    reasoning = {
+        "reasoning_content": "native",
+        "reasoning": "alias",
+        "reasoning_details": [{"type": "reasoning.text", "text": "detail"}],
+        "encrypted_content": "sealed",
+    }
     history = [
         {"role": "user", "content": "question"},
         {"role": "assistant", "content": "final", **reasoning},
@@ -486,9 +530,12 @@ def test_chat_reasoning_history_follows_provider_contract(tmp_path, url, model, 
     assert ("reasoning_content" in converted[1]) is keeps_final
     assert ("reasoning" in converted[1]) is keeps_final
     assert ("reasoning_details" in converted[1]) is keeps_final
+    # The sealed half outranks the plaintext wherever a host returns both, so it goes when they go.
+    assert ("encrypted_content" in converted[1]) is keeps_final
     assert converted[3]["reasoning_content"] == "native"
     assert converted[3]["reasoning"] == "alias"
     assert converted[3]["reasoning_details"] == reasoning["reasoning_details"]
+    assert converted[3]["encrypted_content"] == "sealed"
 
 
 def test_only_deepseek_keeps_completed_tool_reasoning_across_user_turns(tmp_path):

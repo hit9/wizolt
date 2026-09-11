@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Thinking that a Chat endpoint returns sealed (`encrypted_content`) is kept and replayed. Volcengine
+  Ark returns only a readable summary beside a sealed block that holds the reasoning the model
+  actually reads back, and wizolt was dropping the block: every tool result arrived with the
+  thinking behind it gone, silently, while the thinking tokens were still billed. Doubao Seed
+  2.0 Lite and newer are affected. The block follows the same replay contract as the rest of the
+  reasoning, so a provider that drops reasoning between turns drops both halves together.
+
 ## 0.48.2 - 2026-09-10
 
 ### Changed

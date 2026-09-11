@@ -707,7 +707,10 @@ class ModelClient:
 
     def assistant_message(self, message: Any) -> Json:
         data: Json = {"role": "assistant", "content": self.message_field(message, "content")}
-        for key in ("reasoning_content", "reasoning"):
+        # `encrypted_content` is the sealed form of the same reasoning, and the half the model
+        # actually reads back: a host that returns both treats the plaintext as a summary and
+        # ignores it once the sealed block is present. It is replayed verbatim or not at all.
+        for key in ("reasoning_content", "reasoning", "encrypted_content"):
             value = self.message_field(message, key)
             if value:
                 data[key] = Text.value(value)
