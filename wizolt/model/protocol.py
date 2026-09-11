@@ -212,9 +212,10 @@ class ResponsesWire:
             params["parallel_tool_calls"] = True
         if prompt_cache_key := self._client.prompt_cache_key(provider, tools):
             params["prompt_cache_key"] = prompt_cache_key
-        # Stateless requests return encrypted reasoning items by default, so the replay below needs
-        # no `include`; effort goes through the request-recipe fold like the chat path, and a host
-        # that defines an explicit "off" spelling still gets it when reasoning is off.
+        # Stateless requests return encrypted reasoning items by default on the wire's own API, so
+        # the replay below needs no `include` here; a host that withholds them until asked says so
+        # in its catalog recipe. Effort goes through the same request-recipe fold as the chat path,
+        # and a host that defines an explicit "off" spelling still gets it when reasoning is off.
         if resolved.responses_reasoning and provider.reasoning == "off" and resolved.reasoning_effort is None:
             raise ModelError("reasoning off is not defined for this Responses model; use a supported effort or configure a documented provider endpoint")
         # Fold user extensions first. A catalog recipe may then add managed extra_body paths

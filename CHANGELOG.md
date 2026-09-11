@@ -10,6 +10,22 @@
   thinking behind it gone, silently, while the thinking tokens were still billed. Doubao Seed
   2.0 Lite and newer are affected. The block follows the same replay contract as the rest of the
   reasoning, so a provider that drops reasoning between turns drops both halves together.
+- Models on Volcengine Ark are sent the thinking settings `/reason` shows. Ark's own thinking toggle
+  and effort field were never on the request for Doubao models, so every level in the menu produced
+  the same call, and `off` left thinking running -- Ark keeps it on by default. Chat now carries
+  `thinking` and `reasoning_effort`, Responses `reasoning.effort`, and the Anthropic-compatible
+  endpoint `output_config.effort`.
+- Reasoning survives a tool loop on Ark's Responses endpoint, which withholds the sealed block
+  unless the request asks for it. wizolt now asks.
+
+### Changed
+
+- `/reason` on Volcengine Ark offers the depths each model tells apart instead of a fixed four.
+  Doubao Seed keeps `low`, `medium`, `high`; DeepSeek V4 and GLM-5.2 offer `high` and `max` there,
+  the V4 GA snapshots and GLM-5.3 Flash `low`, `high` and `max`, and an unrecognized model the full
+  five Ark accepts. `minimal` is gone from the menu: on Ark it means off, which `off` already says.
+- Requests to Ark no longer carry a `prompt_cache_key`. Volcengine documents no such parameter;
+  its cache keys on the prefix the request renders, which is unaffected.
 
 ## 0.48.2 - 2026-09-10
 

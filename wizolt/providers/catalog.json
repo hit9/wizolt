@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "version": 2026090901,
-  "updated_at": "2026-09-09",
+  "version": 2026091101,
+  "updated_at": "2026-09-11",
   "maintenance_scope": "well_known_and_necessary_specializations_only",
   "defaults": {
     "effort_order": [
@@ -27,6 +27,7 @@
       "thinking": "thinking.with-effort",
       "thinking_toggle": "thinking.toggle",
       "thinking_effort": "thinking.effort",
+      "ark_thinking": "ark.thinking-effort",
       "enable_thinking": "enable-thinking",
       "mandatory_thinking": "mandatory"
     },
@@ -317,6 +318,127 @@
             {
               "path": [
                 "extra_body",
+                "thinking",
+                "type"
+              ],
+              "value": "disabled"
+            }
+          ]
+        }
+      ]
+    },
+    "ark.thinking-effort": {
+      "id": "ark.thinking-effort",
+      "description": "Toggle Ark's thinking field, send the effort in each wire's spelling, and ask Responses for the sealed reasoning it does not return by default.",
+      "steps": [
+        {
+          "when": {
+            "wire": "chat",
+            "reasoning_enabled": true
+          },
+          "set": [
+            {
+              "path": [
+                "extra_body",
+                "thinking",
+                "type"
+              ],
+              "value": "enabled"
+            },
+            {
+              "path": [
+                "reasoning_effort"
+              ],
+              "value": {
+                "source": "resolved_effort"
+              }
+            }
+          ]
+        },
+        {
+          "when": {
+            "wire": "chat",
+            "reasoning_enabled": false
+          },
+          "set": [
+            {
+              "path": [
+                "extra_body",
+                "thinking",
+                "type"
+              ],
+              "value": "disabled"
+            }
+          ]
+        },
+        {
+          "when": {
+            "wire": "responses",
+            "resolved_effort": {
+              "present": true
+            }
+          },
+          "set": [
+            {
+              "path": [
+                "reasoning"
+              ],
+              "value": {
+                "effort": {
+                  "source": "resolved_effort"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "when": {
+            "wire": "responses",
+            "reasoning_enabled": true
+          },
+          "set": [
+            {
+              "path": [
+                "include"
+              ],
+              "value": [
+                "reasoning.encrypted_content"
+              ]
+            }
+          ]
+        },
+        {
+          "when": {
+            "wire": "anthropic",
+            "reasoning_enabled": true
+          },
+          "set": [
+            {
+              "path": [
+                "thinking",
+                "type"
+              ],
+              "value": "enabled"
+            },
+            {
+              "path": [
+                "output_config",
+                "effort"
+              ],
+              "value": {
+                "source": "resolved_effort"
+              }
+            }
+          ]
+        },
+        {
+          "when": {
+            "wire": "anthropic",
+            "reasoning_enabled": false
+          },
+          "set": [
+            {
+              "path": [
                 "thinking",
                 "type"
               ],
@@ -1996,33 +2118,144 @@
       "hosts": [
         "volces.com"
       ],
-      "defaults": {},
+      "defaults": {
+        "cache.prompt_key": false
+      },
       "model_rules": [
         {
-          "id": "provider-rule.levels-0.pattern",
+          "id": "provider-rule.ark.contract",
           "match": {
             "pattern": ".*"
           },
           "set": {
+            "reasoning.recipe": "ark.thinking-effort",
+            "reasoning.dialect": "ark_thinking",
+            "reasoning.off": "minimal"
+          },
+          "why": "Ark owns one thinking contract for every model it hosts: a thinking toggle plus an effort field, with minimal as the off spelling",
+          "evidence": [
+            "https://www.volcengine.com/docs/82379/1449737",
+            "https://www.volcengine.com/docs/82379/2636748"
+          ],
+          "notes": [
+            "Thinking is on by default for every model Ark labels a reasoning model, so leaving the toggle out does not turn it off.",
+            "Chat takes thinking.type and reasoning_effort, Responses reasoning.effort, and the Anthropic-compatible endpoint output_config.effort.",
+            "Responses does not return the sealed reasoning unless the request asks for it, so the recipe adds the include.",
+            "Volcengine documents neither prompt_cache_key nor a cache-key parameter; Ark caches on the rendered prefix."
+          ]
+        },
+        {
+          "id": "provider-rule.ark.levels-doubao",
+          "match": {
+            "prefixes": [
+              "doubao-seed-evolving",
+              "doubao-seed-2-1",
+              "doubao-seed-2-0",
+              "doubao-seed-1-8",
+              "doubao-seed-1-6",
+              "doubao-seed-character"
+            ]
+          },
+          "set": {
             "reasoning.levels": [
-              "minimal",
               "low",
               "medium",
               "high"
             ]
           },
-          "why": "Volcengine Ark gives every model it hosts these four levels",
+          "why": "Doubao Seed on Ark serves xhigh and max as high, leaving three depths",
           "evidence": [
-            "https://www.volcengine.com/docs/82379/1330310"
+            "https://www.volcengine.com/docs/82379/1449737"
+          ]
+        },
+        {
+          "id": "provider-rule.ark.levels-high-max",
+          "match": {
+            "prefixes": [
+              "deepseek-v4-pro-260425",
+              "deepseek-v4-flash-260425",
+              "glm-5-2-260617"
+            ]
+          },
+          "set": {
+            "reasoning.levels": [
+              "high",
+              "max"
+            ]
+          },
+          "why": "Ark folds low and medium into high on these snapshots, and xhigh into max",
+          "evidence": [
+            "https://www.volcengine.com/docs/82379/1449737"
+          ]
+        },
+        {
+          "id": "provider-rule.ark.levels-deepseek-ga",
+          "match": {
+            "prefixes": [
+              "deepseek-v4-pro-ga",
+              "deepseek-v4-flash-ga"
+            ]
+          },
+          "set": {
+            "reasoning.levels": [
+              "low",
+              "high",
+              "max"
+            ]
+          },
+          "why": "Ark serves medium as low and xhigh as high on the V4 GA snapshots",
+          "evidence": [
+            "https://www.volcengine.com/docs/82379/1449737"
+          ]
+        },
+        {
+          "id": "provider-rule.ark.levels-glm-5-3",
+          "match": {
+            "prefixes": [
+              "glm-5-3-flash"
+            ]
+          },
+          "set": {
+            "reasoning.levels": [
+              "low",
+              "high",
+              "max"
+            ]
+          },
+          "why": "GLM-5.3 Flash on Ark folds the seven values onto low, high and max",
+          "evidence": [
+            "https://www.volcengine.com/docs/82379/1449737"
+          ]
+        },
+        {
+          "id": "provider-rule.ark.levels-rest",
+          "match": {
+            "pattern": ".*"
+          },
+          "set": {
+            "reasoning.levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "why": "Ark takes all five depths on every model that accepts the effort field",
+          "evidence": [
+            "https://www.volcengine.com/docs/82379/1449737"
           ]
         }
       ],
-      "why": "Ark applies one endpoint-owned effort scale to every hosted model, overriding upstream model scales",
+      "why": "Ark applies one endpoint-owned thinking contract and effort scale to every hosted model, overriding upstream model scales",
       "evidence": [
-        "https://www.volcengine.com/docs/82379/1330310"
+        "https://www.volcengine.com/docs/82379/1449737",
+        "https://www.volcengine.com/docs/82379/2636748"
       ],
       "notes": [
-        "DeepSeek and GLM therefore use Ark's four levels here rather than their upstream scales."
+        "DeepSeek and GLM therefore use Ark's scale here rather than their upstream scales.",
+        "Ark documents a per-model mapping from the seven effort values it accepts; a model listed above is offered only the depths that differ from one another.",
+        "none and minimal are Ark's off spellings, so neither is offered as a level."
       ]
     },
     {

@@ -287,6 +287,72 @@ def test_zai_older_reasoning_families_use_only_thinking_toggle(url, tmp_path):
     client.apply_provider_params(params, provider)
     assert params == {"temperature": 0.6, "extra_body": {"thinking": {"type": "enabled"}}}
 
+ARK = "https://ark.cn-beijing.volces.com/api/v3"
+
+
+def test_ark_sends_its_thinking_contract_on_every_wire(tmp_path):
+    """Ark leaves thinking on for the models it labels reasoning models, so an unsent toggle is not
+    off. Each of its three endpoints spells the toggle and the depth differently, and only Responses
+    has to be asked for the sealed reasoning it otherwise withholds."""
+    client = ModelClient(session(tmp_path))
+    provider = ProviderConfig(url=ARK, model="doubao-seed-evolving", reasoning="high")
+    assert resolve(provider).chat_reasoning == "ark_thinking"
+
+    params = {}
+    client.apply_provider_params(params, provider)
+    assert params == {"reasoning_effort": "high", "extra_body": {"thinking": {"type": "enabled"}}}
+
+    provider.reasoning = "off"
+    params = {}
+    client.apply_provider_params(params, provider)
+    assert params == {"extra_body": {"thinking": {"type": "disabled"}}}
+
+    responses = ProviderConfig(url=f"{ARK}/responses", model="doubao-seed-evolving", reasoning="high")
+    params = {}
+    client.apply_provider_params(params, responses)
+    assert params == {"reasoning": {"effort": "high"}, "include": ["reasoning.encrypted_content"]}
+
+    responses.reasoning = "off"
+    params = {}
+    client.apply_provider_params(params, responses)
+    assert params == {"reasoning": {"effort": "minimal"}}
+
+    messages = ProviderConfig(url=f"{ARK}/compatible/v1/messages", model="doubao-seed-evolving", reasoning="high")
+    params = {}
+    client.apply_provider_params(params, messages)
+    assert params == {"thinking": {"type": "enabled"}, "output_config": {"effort": "high"}}
+
+
+@pytest.mark.parametrize(
+    ("model", "levels"),
+    (
+        # Ark takes all five depths from every model that accepts the field, and documents which of
+        # them it folds together per model. Only the ones that still differ are worth offering.
+        ("doubao-seed-evolving", ("low", "medium", "high")),
+        ("doubao-seed-2-0-lite-260428", ("low", "medium", "high")),
+        ("deepseek-v4-flash-260425", ("high", "max")),
+        ("glm-5-2-260617", ("high", "max")),
+        ("deepseek-v4-flash-ga-260731", ("low", "high", "max")),
+        ("glm-5-3-flash-260828", ("low", "high", "max")),
+        ("doubao-seed-unreleased", ("low", "medium", "high", "xhigh", "max")),
+    ),
+)
+def test_ark_offers_only_the_depths_a_model_distinguishes(model, levels):
+    provider = ProviderConfig(url=ARK, model=model, reasoning="high")
+
+    assert reasoning_choices(provider) == ("off", *levels)
+    # An upstream scale does not survive the trip through Ark: DeepSeek and GLM use Ark's.
+    assert resolve(provider).reasoning_recipe == "ark.thinking-effort"
+
+
+def test_ark_sends_no_prompt_cache_key(tmp_path):
+    """Ark documents neither the parameter nor a cache key; its prefix cache needs no help."""
+    client = ModelClient(session(tmp_path))
+    provider = ProviderConfig(url=ARK, model="doubao-seed-evolving", reasoning="high")
+
+    assert resolve(provider).prompt_cache_key is False
+    assert client.prompt_cache_key(provider, None) == ""
+
 @pytest.mark.parametrize(
     ("url", "model"),
     (
