@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 2026091101,
+  "version": 2026091102,
   "updated_at": "2026-09-11",
   "maintenance_scope": "well_known_and_necessary_specializations_only",
   "defaults": {
@@ -2174,7 +2174,7 @@
             "prefixes": [
               "deepseek-v4-pro-260425",
               "deepseek-v4-flash-260425",
-              "glm-5-2-260617"
+              "glm-5-2"
             ]
           },
           "set": {
@@ -2192,8 +2192,8 @@
           "id": "provider-rule.ark.levels-deepseek-ga",
           "match": {
             "prefixes": [
-              "deepseek-v4-pro-ga",
-              "deepseek-v4-flash-ga"
+              "deepseek-v4-pro",
+              "deepseek-v4-flash"
             ]
           },
           "set": {
@@ -2205,7 +2205,12 @@
           },
           "why": "Ark serves medium as low and xhigh as high on the V4 GA snapshots",
           "evidence": [
-            "https://www.volcengine.com/docs/82379/1449737"
+            "https://www.volcengine.com/docs/82379/1449737",
+            "https://www.volcengine.com/docs/82379/1330310"
+          ],
+          "notes": [
+            "The earlier 260425 snapshots fold their levels differently and are matched by the rule above this one.",
+            "Ark's model list carries dated ids and links each to its family, whose current member is the GA snapshot, so a version-less deepseek-v4-pro or deepseek-v4-flash lands here."
           ]
         },
         {

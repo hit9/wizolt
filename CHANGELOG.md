@@ -21,9 +21,10 @@
 ### Changed
 
 - `/reason` on Volcengine Ark offers the depths each model tells apart instead of a fixed four.
-  Doubao Seed keeps `low`, `medium`, `high`; DeepSeek V4 and GLM-5.2 offer `high` and `max` there,
-  the V4 GA snapshots and GLM-5.3 Flash `low`, `high` and `max`, and an unrecognized model the full
-  five Ark accepts. `minimal` is gone from the menu: on Ark it means off, which `off` already says.
+  Doubao Seed keeps `low`, `medium`, `high`; the April DeepSeek V4 snapshots and GLM-5.2 offer
+  `high` and `max` there, the V4 GA snapshots -- which is what a version-less `deepseek-v4-pro` or
+  `deepseek-v4-flash` resolves to -- and GLM-5.3 Flash `low`, `high` and `max`, and an unrecognized
+  model the full five Ark accepts. `minimal` is gone from the menu: on Ark it means off, which `off` already says.
 - Requests to Ark no longer carry a `prompt_cache_key`. Volcengine documents no such parameter;
   its cache keys on the prefix the request renders, which is unaffected.
 

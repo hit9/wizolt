@@ -334,6 +334,12 @@ def test_ark_sends_its_thinking_contract_on_every_wire(tmp_path):
         ("glm-5-2-260617", ("high", "max")),
         ("deepseek-v4-flash-ga-260731", ("low", "high", "max")),
         ("glm-5-3-flash-260828", ("low", "high", "max")),
+        # A version-less family id is served from the family's current snapshot, which is GA --
+        # and the dated snapshot that folds its levels differently still matches itself.
+        ("deepseek-v4-pro", ("low", "high", "max")),
+        ("deepseek-v4-flash", ("low", "high", "max")),
+        ("deepseek-v4-pro-260425", ("high", "max")),
+        ("glm-5-2", ("high", "max")),
         ("doubao-seed-unreleased", ("low", "medium", "high", "xhigh", "max")),
     ),
 )
