@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A `Bash` command run in a `workdir` is no longer printed twice. The confirmation block (and the
+  block yolo draws before the call) repeated the command one row below the call line that already
+  shows it, behind a line-number gutter. A command the call line has to clip keeps its excerpt.
+
 ## 0.49.1 - 2026-09-13
 
 ### Changed

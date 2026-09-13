@@ -135,10 +135,20 @@ def approval_legend(actions: list[tuple[str, str]], view_label: str = "") -> str
     return " · ".join(segments) + " · else reason"
 
 
-def view_excerpt_children(view: ApprovalView, status: str, form: list[tuple[str, str]], actions: list[tuple[str, str]]) -> list[LogLine]:
+def view_excerpt_children(view: ApprovalView, status: str, form: list[tuple[str, str]], actions: list[tuple[str, str]], call_line: str) -> list[LogLine]:
     """The opening lines of an approval view, syntax-highlighted, under a header naming what is
     clipped. CODE-role lines are lexed as one block by the renderer, so a construct spanning
-    lines (a triple-quoted string) still highlights correctly inside the excerpt."""
+    lines (a triple-quoted string) still highlights correctly inside the excerpt.
+
+    Nothing is excerpted when `call_line` already carries the whole view text. Bash is that case:
+    its call line *is* `Bash in "<workdir>" <command>`, so the excerpt printed the command again
+    one row below itself, behind a line-number gutter. A command the call line had to clip is the
+    one that still needs the excerpt -- that line could only show its opening. `short_call`
+    collapses the whitespace of a one-line command, so the collapsed form counts as carried too."""
+    text = view.text.strip()
+    carried = call_line.rstrip()
+    if text and (carried.endswith(text) or ("\n" not in text and carried.endswith(" ".join(text.split())))):
+        return []
     lines = view.text.rstrip().splitlines()
     if not lines:
         return []
@@ -214,7 +224,7 @@ def approval_display(
             children.append(LogLine("preview", role=LogRole.META, edge=LogEdge.BRANCH))
             children.extend(LogLine("", line, LogRole.DIFF, LogEdge.CONTINUE) for line in preview_lines)
     elif (view := tool.approval_view()) is not None:
-        children.extend(view_excerpt_children(view, status, form or [], actions or approval_actions(tool, False)))
+        children.extend(view_excerpt_children(view, status, form or [], actions or approval_actions(tool, False), root.text))
     return LogBlock.hierarchy(root, children)
 
 

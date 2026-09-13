@@ -915,6 +915,31 @@ async def test_tool_runner_prints_bash_header_before_live_output(tmp_path):
     assert "live" in s.tool_records[-1].output
 
 
+async def test_tool_runner_yolo_bash_with_workdir_prints_the_command_once(tmp_path):
+    """Under yolo the runner draws the call line before the call runs and hangs the output under it.
+    Bash's approval block used to be drawn in between for a preview it did not have: it carried a
+    second copy of the command the call line already shows, so the command landed twice in a row."""
+    (tmp_path / "sub").mkdir()
+    s = session(tmp_path)
+    s.settings.yolo = True
+    events = []
+    runner = ToolRunner(
+        s,
+        ContextManager(s),
+        input_fn=lambda prompt: (_ for _ in ()).throw(AssertionError("unexpected prompt")),
+        output_fn=lambda text: events.append(("display", str(text))),
+    )
+    runner.live_start = lambda: events.append(("start", ""))
+    runner.live_output = lambda stream, text: events.append((stream, text))
+
+    await runner.run([ToolCall("bash", "Bash", ["mkdir made", "sub"])])
+
+    assert events[0] == ("display", '  Bash  in "sub" mkdir made')
+    assert sum("mkdir made" in text for kind, text in events if kind == "display") == 1
+    assert sum("Bash" in text for kind, text in events if kind == "display") == 1
+    assert (tmp_path / "sub" / "made").is_dir()
+
+
 async def test_tool_runner_starts_bash_live_preview_before_output(tmp_path):
     s = session(tmp_path)
     s.settings.yolo = True
@@ -1265,6 +1290,58 @@ def test_long_bash_approval_keeps_workdir_visible_and_command_inspectable(tmp_pa
     assert 'in "sub"' in display
     assert tool.approval_view().text == command
     assert ("workdir", '"sub"') in tool.approval_view().rows
+
+
+def _bash_approval_lines(tmp_path, args: list[str], status: str = "confirm") -> list[LogLine]:
+    """The rows of this call's approval block, before the renderer paints them."""
+    s = session(tmp_path)
+    block = toolblocks.approval_display(s, ToolCall("bash", "Bash", args), BashTool(s, args), status)
+    return [line for line, _ in block.walk()]
+
+
+def test_bash_approval_does_not_repeat_a_command_its_call_line_shows(tmp_path):
+    """The call line for Bash *is* the command (`Bash in "<workdir>" <command>`), so excerpting
+    the approval view under it printed the same command twice, one row apart."""
+    args = ["uv run pytest -q 2>&1 | tail -8", "sub"]
+
+    lines = _bash_approval_lines(tmp_path, args)
+
+    assert [line.text for line in lines] == ['in "sub" uv run pytest -q 2>&1 | tail -8']
+    # The view is untouched: `v` and the Ctrl-O browser still open the command in full.
+    assert BashTool(session(tmp_path), args).approval_view().text == args[0]
+
+
+def test_bash_approval_does_not_repeat_a_command_the_call_line_collapsed(tmp_path):
+    """`short_call` collapses a one-line command's whitespace, so `echo  hi` reaches the call line
+    as `echo hi`; the excerpt would have answered with the raw form of the same words."""
+    lines = _bash_approval_lines(tmp_path, ["echo  hi", "sub"])
+
+    assert [line.text for line in lines] == ['in "sub" echo hi']
+
+
+def test_bash_approval_does_not_repeat_a_multi_line_command_the_call_line_printed(tmp_path):
+    """A command within the call line's own row budget is already on screen in full, so the
+    numbered excerpt was a second copy of it."""
+    command = "set -e\ncd sub\nmake test"
+
+    lines = _bash_approval_lines(tmp_path, [command, "sub"])
+
+    assert [line.text for line in lines] == [f'in "sub" {command}']
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["echo " + "x" * 300, "\n".join(f"echo {index}" for index in range(6))],
+    ids=["one unreasonably long line", "more lines than the call line shows"],
+)
+def test_bash_approval_still_excerpts_a_command_its_call_line_had_to_clip(tmp_path, command):
+    """The other side of the rule: a command the call line could not show in full is exactly what
+    the excerpt and `v` are for, so clipping the call line must not clip the excerpt away."""
+    lines = _bash_approval_lines(tmp_path, [command, "sub"])
+
+    # CODE rows are the excerpt's own (the viewer's rows are not in the block); the call line
+    # carries the command as part of its own longer text, so an exact match means the excerpt.
+    assert [line.text for line in lines if line.role is LogRole.CODE] == command.splitlines()[: toolblocks.VIEW_EXCERPT_LINES]
 
 
 async def test_bash_promoted_job_retains_its_workdir(tmp_path):
