@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.49.1 - 2026-09-13
+
+### Changed
+
+- Upgraded the `code-symbol-index` dependency from 0.5.4 to 0.6.0. `InspectCode` caller and callee
+  answers get more accurate: two methods on one line no longer share a caller, a nested function
+  body (a Python `def`, a lambda, a closure) no longer contributes its calls to the enclosing
+  function, and passing a function as a value is no longer a call relation. When a declaration and
+  a definition share a name, `inspect`, `refs`, `callers` and `callees` prefer the one with a body
+  -- a Rust trait method over its bare declaration, a Swift protocol member over its conformance.
+  Indexing picks up symbols it used to miss: Python chained and class-body bindings, TypeScript
+  interface members and destructuring, Rust trait and extern functions, C/C++ declarator forms
+  among them. The next `/index` pays a one-time extraction-rule upgrade that re-reads unchanged
+  files and reports how many it upgraded; queries can return more matches than before, and reading
+  alone never migrates.
+
 ## 0.49.0 - 2026-09-11
 
 ### Fixed

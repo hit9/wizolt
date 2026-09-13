@@ -267,16 +267,16 @@ wheels = [
 
 [[package]]
 name = "code-symbol-index"
-version = "0.5.4"
+version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pathspec" },
     { name = "tree-sitter" },
     { name = "tree-sitter-language-pack" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f2/14/191a19b11a8bf3dc72a8ca5ad873ff341e158be1f9b6a3392518f40c8cc2/code_symbol_index-0.5.4.tar.gz", hash = "sha256:f7c0498576ecf9ef44cc6375ff0de394ee8fb89e1f01526e09c5ca631e93fefb", size = 85273, upload-time = "2026-09-10T11:27:29.949Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/62/4c/ecd39cf6712dcf1cb7c714b19eadb6443f7e326e163735b53300aa3a15b6/code_symbol_index-0.6.0.tar.gz", hash = "sha256:1942737177829be58a8b22489defc85567b52018a29e50c2ee1b43d64943a0a8", size = 127204, upload-time = "2026-09-13T10:19:35.686Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/48/c2/be6431c96d3bb622f73c743a4832450c2980874e49c1bc628691b18e00b5/code_symbol_index-0.5.4-py3-none-any.whl", hash = "sha256:acfdb179ae4e95c65ff219fba2b9977b744b10eb418358d386cde512c02e403a", size = 58856, upload-time = "2026-09-10T11:27:31.35Z" },
+    { url = "https://files.pythonhosted.org/packages/67/aa/e73d8e9a9614f188652abe4dfe2b8cd97ac16cc4d9c6e1c6e9d7b10fd2fc/code_symbol_index-0.6.0-py3-none-any.whl", hash = "sha256:06cd144d10d953608fd30fc3d0891a7e24ebf3575621b66ac140a617e30defc2", size = 80425, upload-time = "2026-09-13T10:19:36.831Z" },
 ]
 
 [[package]]
@@ -1717,7 +1717,7 @@ wheels = [
 
 [[package]]
 name = "wizolt"
-version = "0.49.0"
+version = "0.49.1"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -1746,7 +1746,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=1.0.0" },
-    { name = "code-symbol-index", specifier = ">=0.5.4" },
+    { name = "code-symbol-index", specifier = ">=0.6.0" },
     { name = "fastmcp-slim", extras = ["client"], specifier = ">=3,<4" },
     { name = "httpx2", specifier = ">=2.12.0" },
     { name = "json-repair" },
