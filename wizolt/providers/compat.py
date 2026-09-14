@@ -543,6 +543,18 @@ class ProviderPolicy:
         model = (model or str(getattr(config, "model", ""))).lower()
         return self._resolver.text_only(self._provider_for(config), model)
 
+    def max_tokens_per_image(self, config: PolicyConfig | None, model: str = "") -> int:
+        """The documented per-image token ceiling, or 0 when this route caps nothing.
+
+        A provider that rescales every image to a fixed budget (DeepSeek) charges the same for a
+        thumbnail and an 8K screenshot, so the generic tile estimate has to be clamped or the
+        context budget runs far ahead of what the route will actually bill.
+        """
+
+        model = (model or str(getattr(config, "model", ""))).lower()
+        value = self._resolver.field_value(self._provider_for(config), model, "image.max_tokens_per_image")
+        return int(value) if isinstance(value, int) and value > 0 else 0
+
     # -- resolve ------------------------------------------------------------
 
     def resolve(self, config: PolicyConfig) -> ResolvedProvider:

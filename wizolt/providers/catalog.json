@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "version": 2026091103,
-  "updated_at": "2026-09-11",
+  "version": 2026091302,
+  "updated_at": "2026-09-13",
   "maintenance_scope": "well_known_and_necessary_specializations_only",
   "defaults": {
     "effort_order": [
@@ -1254,44 +1254,6 @@
       ]
     },
     {
-      "id": "model.text-only-00",
-      "match": {
-        "pattern": "deepseek-chat(?:-|$)"
-      },
-      "set": {
-        "image.input": "text_only"
-      },
-      "why": "Documented DeepSeek text model family; the vision variants never match",
-      "evidence": [
-        "https://api-docs.deepseek.com/quick_start/pricing",
-        "https://api-docs.deepseek.com/guides/vision"
-      ],
-      "notes": [
-        "Rules are anchored to complete documented families or exact IDs; matching is case-insensitive.",
-        "A gateway id in canonical vendor/model form is matched by its model part only when the vendor is canonical (see model_id_forms); a custom alias stays unknown and is probed.",
-        "Claude stays unknown/main-first and is never in the negative list."
-      ]
-    },
-    {
-      "id": "model.text-only-01",
-      "match": {
-        "pattern": "deepseek-reasoner(?:-|$)"
-      },
-      "set": {
-        "image.input": "text_only"
-      },
-      "why": "Documented DeepSeek text model family; the vision variants never match",
-      "evidence": [
-        "https://api-docs.deepseek.com/quick_start/pricing",
-        "https://api-docs.deepseek.com/guides/vision"
-      ],
-      "notes": [
-        "Rules are anchored to complete documented families or exact IDs; matching is case-insensitive.",
-        "A gateway id in canonical vendor/model form is matched by its model part only when the vendor is canonical (see model_id_forms); a custom alias stays unknown and is probed.",
-        "Claude stays unknown/main-first and is never in the negative list."
-      ]
-    },
-    {
       "id": "model.text-only-02",
       "match": {
         "pattern": "deepseek-v4-pro(?:-|$)"
@@ -1299,14 +1261,15 @@
       "set": {
         "image.input": "text_only"
       },
-      "why": "V4 Pro is the remaining documented DeepSeek text-only model; the V4 Flash ids now route to natively multimodal V4.1 Flash",
+      "why": "V4 Pro is documented as not supporting image understanding; the V4 Flash ids now route to natively multimodal V4.1 Flash",
       "evidence": [
         "https://api-docs.deepseek.com/quick_start/pricing",
         "https://api-docs.deepseek.com/guides/vision",
         "https://api-docs.deepseek.com/zh-cn/updates/"
       ],
       "notes": [
-        "Drop this rule once deepseek-v4-pro is routed to the multimodal V4.1 Flash on 2026-09-14.",
+        "Not a dated rule any more: pricing confirms deepseek-v4-pro keeps serving past 2026-09-14 at unchanged billing, and lists deepseek-flash as the only image-understanding id.",
+        "deepseek-chat and deepseek-reasoner used to be text_only here and no longer are: both route to V4-Flash, which is offline and served by multimodal V4.1 Flash. Probed 2026-09-13 -- deepseek-chat named the colour of a solid magenta PNG, so it perceives images, not merely accepts the block. deepseek-reasoner is the thinking half of the same base and was not probed separately; it now falls back to the runtime probe rather than to a falsified claim.",
         "Rules are anchored to complete documented families or exact IDs; matching is case-insensitive.",
         "A gateway id in canonical vendor/model form is matched by its model part only when the vendor is canonical (see model_id_forms); a custom alias stays unknown and is probed.",
         "Claude stays unknown/main-first and is never in the negative list."
@@ -1915,19 +1878,22 @@
         "cache.prompt_key": false,
         "json.response_format": true,
         "strict.tools": true,
-        "strict.beta": true
+        "strict.beta": true,
+        "image.max_tokens_per_image": 1024
       },
       "model_rules": [],
       "builtin_tools_by_wire": {},
-      "why": "DeepSeek uses thinking.type plus its own effort scale, omits OpenAI prompt_cache_key, and requires beta routing for strict function schemas",
+      "why": "DeepSeek uses thinking.type plus its own effort scale, omits OpenAI prompt_cache_key, requires beta routing for strict function schemas, and rescales every image to a fixed 1024-token ceiling",
       "evidence": [
         "https://api-docs.deepseek.com/guides/thinking_mode/",
         "https://api-docs.deepseek.com/api/create-chat-completion/",
-        "https://api-docs.deepseek.com/guides/tool_calls"
+        "https://api-docs.deepseek.com/guides/tool_calls",
+        "https://api-docs.deepseek.com/guides/vision"
       ],
       "notes": [
         "Ordinary turns may omit prior reasoning, but assistant tool-call messages must retain it.",
-        "DeepSeek's Chat schema accepts function tools only, so no provider-side tools are admitted."
+        "DeepSeek's Chat schema accepts function tools only, so no provider-side tools are admitted.",
+        "Images are downscaled before reaching the model, so one image costs at most 1024 tokens whatever its original size; the generic 512px-tile estimate would otherwise run roughly 10x high on a large screenshot."
       ]
     },
     {

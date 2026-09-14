@@ -95,7 +95,7 @@ async def test_view_image_without_vision_returns_direct_model_observation(tmp_pa
 )
 async def test_vision_observe_wire_protocol_uses_configured_entry(tmp_path, monkeypatch, api, image_type, text_type):
     """The [vision] wire shape is protocol-specific, reached only when the route bridges."""
-    s = session(tmp_path, model="deepseek-chat", vision=True, vision_api=api)
+    s = session(tmp_path, model="deepseek-v4-pro", vision=True, vision_api=api)
     image_file(tmp_path / "shot.png")
     captured = {}
 
@@ -120,7 +120,7 @@ async def test_vision_observe_wire_protocol_uses_configured_entry(tmp_path, monk
 
 
 async def test_static_text_only_view_image_bridges_with_default_question(tmp_path, monkeypatch):
-    s = session(tmp_path, model="deepseek-chat", vision=True)
+    s = session(tmp_path, model="deepseek-v4-pro", vision=True)
     image_file(tmp_path / "shot.png")
     captured = {}
 
@@ -173,7 +173,7 @@ async def test_vision_observe_joins_totals_but_keeps_main_last_snapshot(tmp_path
 
 
 async def test_vision_bridge_requires_runner_and_reports_errors(tmp_path, monkeypatch):
-    s = session(tmp_path, model="deepseek-chat", vision=True)
+    s = session(tmp_path, model="deepseek-v4-pro", vision=True)
     image_file(tmp_path / "shot.png")
     with pytest.raises(ToolError, match="requires ToolRunner"):
         await ViewImageTool(s, ["shot.png"]).call()

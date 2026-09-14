@@ -477,10 +477,12 @@ class ImageInputs:
         return parts
 
     def estimated_tokens(self, messages: list[Json]) -> int:
+        session = self.session
+        cap = session.policy.max_tokens_per_image(session.config.provider) if session is not None else 0
         total = 0
         for message in messages:
             images = self.input_refs(message)
-            total += sum(self._estimated_tokens(image) for image in images)
+            total += sum(self._estimated_tokens(image, cap) for image in images)
             if images:
                 total += (len("\n\n" + self.asset_context(images)) + 3) // 4
         return total
@@ -621,8 +623,13 @@ class ImageInputs:
             return False
 
     @staticmethod
-    def _estimated_tokens(image: ImageRef) -> int:
-        """Use the common 512px-tile estimate without putting encoded bytes in context."""
+    def _estimated_tokens(image: ImageRef, cap: int = 0) -> int:
+        """Use the common 512px-tile estimate without putting encoded bytes in context.
+
+        `cap` is the route's documented per-image ceiling (0 when it has none): a provider that
+        rescales every image to a fixed budget bills that ceiling no matter how large the original.
+        """
 
         tiles = max(1, (image.width + 511) // 512) * max(1, (image.height + 511) // 512)
-        return 85 + 170 * tiles
+        estimate = 85 + 170 * tiles
+        return min(estimate, cap) if cap else estimate

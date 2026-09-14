@@ -56,6 +56,10 @@ MAX_POLICY_LEVELS = 32
 # a sanity bound on the document, not a model's limit; the declared value must be one the endpoint
 # accepts for every model the rule matches.
 MAX_OUTPUT_TOKENS = 4_000_000
+# Sanity bound on a declared per-image token ceiling. A provider that rescales every image to a
+# fixed budget bills that ceiling whatever the original size, so the generic tile estimate is
+# clamped to it; a document declaring more than this is describing something else.
+MAX_IMAGE_TOKENS = 100_000
 MAX_RECIPE_STEPS = 64
 MAX_RECIPE_PATHS = 16
 
@@ -76,6 +80,7 @@ POLICY_PATHS = frozenset(
         "reasoning.mandatory",
         "history.reasoning",
         "image.input",
+        "image.max_tokens_per_image",
         "output.max_tokens",
         "responses.reasoning_models",
         "cache.prompt_key",
@@ -365,6 +370,9 @@ class CatalogCodec:
         elif path == "output.max_tokens":
             if isinstance(value, bool) or not isinstance(value, int) or not 0 < value <= MAX_OUTPUT_TOKENS:
                 raise CatalogFormatError(f"{where}.{path} must be an integer between 1 and {MAX_OUTPUT_TOKENS}")
+        elif path == "image.max_tokens_per_image":
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 < value <= MAX_IMAGE_TOKENS:
+                raise CatalogFormatError(f"{where}.{path} must be an integer between 1 and {MAX_IMAGE_TOKENS}")
         elif path == "history.reasoning":
             if value not in HISTORY_MODES:
                 raise CatalogFormatError(f"{where}.{path} must be one of {sorted(HISTORY_MODES)}")

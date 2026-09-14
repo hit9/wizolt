@@ -153,11 +153,11 @@ def test_codec_requires_every_recipe_case_to_have_a_result():
 
 def test_image_auto_is_not_text_only():
     data = catalog_data()
-    rule = next(rule for rule in data["model_rules"] if rule["id"] == "model.text-only-00")
+    rule = next(rule for rule in data["model_rules"] if rule["id"] == "model.text-only-02")
     rule["set"]["image.input"] = "auto"
     policy = ProviderPolicy(CatalogCodec().decode(catalog_payload(data), "cached"))
 
-    assert policy.text_only(ProviderConfig(model="deepseek-chat")) is False
+    assert policy.text_only(ProviderConfig(model="deepseek-v4-pro")) is False
 
 
 def test_provider_image_rules_and_ignore_mode_take_part_in_resolution():

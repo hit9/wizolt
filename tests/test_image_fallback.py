@@ -87,9 +87,14 @@ def run_with(s, model):
 @pytest.mark.parametrize(
     ("model", "expected"),
     [
-        ("deepseek-chat", True),
+        ("deepseek-v4-pro", True),
         ("glm-5", True),
         # Regression: these documented image-capable families must remain on the main route.
+        # deepseek-chat/-reasoner route to V4-Flash, which is offline and served by multimodal
+        # V4.1 Flash; a 2026-09-13 probe had deepseek-chat name the colour of a solid PNG.
+        ("deepseek-chat", False),
+        ("deepseek-reasoner", False),
+        ("deepseek-flash", False),
         ("kimi-k3", False),
         ("kimi-k2.7-code", False),
         ("k3", False),
@@ -108,10 +113,10 @@ def test_static_text_only_catalog_positives_and_negatives(model, expected):
 @pytest.mark.parametrize(
     ("model", "expected"),
     [
-        ("deepseek/deepseek-chat", True),
+        ("deepseek/deepseek-v4-pro", True),
         ("z-ai/glm-5", True),
         # a non-canonical vendor prefix keeps the ID unknown, so it is probed on the main model
-        ("my-gateway/deepseek-chat", False),
+        ("my-gateway/deepseek-v4-pro", False),
         ("deepseek/glm-5v", False),
     ],
 )
@@ -123,10 +128,10 @@ def test_resolve_folds_static_text_only_evidence():
     def resolved(model):
         return resolve(ProviderConfig(url="http://main.test", key="key", model=model))
 
-    assert resolved("deepseek-chat").text_only is True
-    assert resolved("deepseek/deepseek-chat").text_only is True
+    assert resolved("deepseek-v4-pro").text_only is True
+    assert resolved("deepseek/deepseek-v4-pro").text_only is True
     assert resolved("glm-5v").text_only is False
-    assert resolved("my-gateway/deepseek-chat").text_only is False
+    assert resolved("my-gateway/deepseek-v4-pro").text_only is False
 
 
 def test_route_identity_keys_learned_evidence_per_main_route(tmp_path):
@@ -177,7 +182,7 @@ async def test_eligible_400_attachment_falls_back_through_vision_once(tmp_path):
 
 
 async def test_static_text_only_attachment_goes_directly_to_vision(tmp_path):
-    s = session(tmp_path, model="deepseek-chat", vision=True)
+    s = session(tmp_path, model="deepseek-v4-pro", vision=True)
     image_file(tmp_path / "shot.png")
     model = FallbackModel([("done", [])])
     agent, notices = run_with(s, model)
@@ -193,7 +198,7 @@ async def test_static_text_only_attachment_goes_directly_to_vision(tmp_path):
 
 
 async def test_static_text_only_without_vision_keeps_raw_attempt_and_original_error(tmp_path):
-    s = session(tmp_path, model="deepseek-chat", vision=False)
+    s = session(tmp_path, model="deepseek-v4-pro", vision=False)
     image_file(tmp_path / "shot.png")
     model = FallbackModel([ModelError("Error code: 400 - no vision configured")])
     agent, _ = run_with(s, model)
@@ -423,7 +428,7 @@ async def test_learned_evidence_not_serialized_and_observation_survives_resume(t
 
 
 async def test_static_vision_failure_emits_no_notice(tmp_path):
-    s = session(tmp_path, model="deepseek-chat", vision=True)
+    s = session(tmp_path, model="deepseek-v4-pro", vision=True)
     image_file(tmp_path / "shot.png")
 
     class FailingVision(FallbackModel):

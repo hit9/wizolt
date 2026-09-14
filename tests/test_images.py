@@ -510,6 +510,29 @@ def test_context_estimates_image_from_dimensions_without_base64(tmp_path):
     assert context.estimated_tokens([message]) == context.estimated_tokens([settled_plain])
 
 
+def test_context_clamps_the_image_estimate_to_a_route_that_caps_per_image_tokens(tmp_path):
+    # DeepSeek downscales every image to a fixed 1024-token budget, so a 4096x4096 screenshot costs
+    # the same as a thumbnail; the generic tile estimate would put ~11k tokens on the budget.
+    config = Config(data_dir=str(tmp_path / "data"))
+    config.providers = {"default": ProviderConfig(url="https://api.deepseek.com", key="test", model="deepseek-flash")}
+    s = Session(cwd=str(tmp_path), config=config)
+    image_file(tmp_path / "huge.png", size=(4096, 4096))
+    message = s.images.message(s.images.recognize("huge.png"))
+    plain = {"role": "user", "content": message["content"]}
+
+    [image] = s.images.refs(message)
+    asset_tokens = (len("\n\n" + s.images.asset_context((image,))) + 3) // 4
+    capped = ContextManager(s).estimated_tokens([message]) - ContextManager(s).estimated_tokens([plain])
+    assert capped == 1024 + asset_tokens
+
+    other_config = Config(data_dir=str(tmp_path / "data-uncapped"))
+    other_config.providers = {"default": ProviderConfig(url="http://test", key="test", model="vision")}
+    uncapped = Session(cwd=str(tmp_path), config=other_config)
+    other = uncapped.images.message(uncapped.images.recognize("huge.png"))
+    other_plain = {"role": "user", "content": other["content"]}
+    assert ContextManager(uncapped).estimated_tokens([other]) - ContextManager(uncapped).estimated_tokens([other_plain]) > 10_000
+
+
 def test_tui_replaces_image_path_with_atomic_label_and_keeps_history_readable(tmp_path):
     s = session(tmp_path)
     path = image_file(tmp_path / "ui.png")
