@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.49.3 - 2026-09-14
+
+### Fixed
+
+- Images reach `deepseek-chat` and `deepseek-reasoner` again. Both ids route to the
+  multimodal V4.1 Flash, but the catalog still declared them text-only, so every image was
+  silently diverted to the vision provider instead of going to the main model. They now take the
+  main route like other image-capable models.
+- The context budget no longer over-counts images on DeepSeek. DeepSeek downscales every image
+  and bills at most 1024 tokens for it whatever its size, while the generic 512px-tile estimate
+  put about 11k tokens on a large screenshot and tripped compaction early. Routes without a
+  documented cap are estimated as before.
+
 ## 0.49.2 - 2026-09-13
 
 ### Fixed
