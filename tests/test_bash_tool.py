@@ -189,13 +189,25 @@ async def test_job_wait_is_interruptible_and_leaves_the_job_running(tmp_path, mo
 
 async def test_job_wait_streams_log_tail_to_live_output(tmp_path, monkeypatch):
     """A wait streams the job's log tail into the live preview in increments, and closes the
-    region when the wait ends."""
+    region when the wait ends.
+
+    The child outlives its own output and exits only once the wait has seen it: a job that merely
+    sleeps for a fixed spell can finish before the poll loop takes its first look on a loaded
+    runner, and the wait would then stream nothing through no fault of the code under test.
+    """
     s = session(tmp_path)
     monkeypatch.setattr(JobTool, "POLL_INTERVAL", 0.01)
-    await JobTool(s, [{"action": "start", "command": "printf 'line one\\nline two\\n'; sleep 0.1"}]).call()
+    command = "printf 'line one\\nline two\\n'; while [ ! -f seen ]; do sleep 0.01; done"
+    await JobTool(s, [{"action": "start", "command": command}]).call()
     events = []
-    tool = JobTool(s, [{"action": "wait", "job": "job.1", "timeout": 1}])
-    tool.live_output = lambda stream, text: events.append((stream, text))
+    tool = JobTool(s, [{"action": "wait", "job": "job.1", "timeout": 5}])
+
+    def observe(stream, text):
+        events.append((stream, text))
+        if stream == "output":
+            (tmp_path / "seen").touch()  # release the child, ending the wait
+
+    tool.live_output = observe
 
     await tool.call()
 
@@ -213,15 +225,31 @@ async def test_job_wait_streams_short_log_incrementally_without_duplicates(tmp_p
     s = session(tmp_path)
     monkeypatch.setattr(JobTool, "POLL_INTERVAL", 0.01)
     monkeypatch.setattr(JobTool, "LIVE_INTERVAL", 0.01)
-    await JobTool(s, [{"action": "start", "command": "printf 'one\\n'; sleep 0.1; printf 'two\\n'; sleep 0.1"}]).call()
+    # Each phase waits to be observed rather than sleeping a fixed spell: that is what makes the
+    # two increments separate reads of the log, instead of one read that happened to catch both.
+    command = "printf 'one\\n'; while [ ! -f seen-0 ]; do sleep 0.01; done; printf 'two\\n'; while [ ! -f seen-1 ]; do sleep 0.01; done"
+    await JobTool(s, [{"action": "start", "command": command}]).call()
     events = []
-    tool = JobTool(s, [{"action": "wait", "job": "job.1", "timeout": 1}])
-    tool.live_output = lambda stream, text: events.append((stream, text))
+    tool = JobTool(s, [{"action": "wait", "job": "job.1", "timeout": 5}])
+    prefix = ""
+
+    def observe(stream, text):
+        nonlocal prefix
+        events.append((stream, text))
+        if stream != "output":
+            return
+        prefix += text
+        if prefix == "one\n":
+            (tmp_path / "seen-0").touch()
+        if prefix == "one\ntwo\n":
+            (tmp_path / "seen-1").touch()
+
+    tool.live_output = observe
 
     await tool.call()
 
     deltas = [text for stream, text in events if stream == "output"]
-    assert "".join(deltas) == "one\ntwo\n"
+    assert deltas == ["one\n", "two\n"]  # each increment exactly once, never a repeated frame
     await JobTool(s, [{"action": "kill", "job": "job.1"}]).call()
 
 
