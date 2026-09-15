@@ -223,6 +223,18 @@ def test_bash_live_preview_frame_rows():
     assert not any(LogEdge.BRANCH.value in line for line in lines)
 
 
+def test_bash_live_preview_shows_only_the_tail_lines():
+    preview = BashLivePreview()
+    preview.active = True
+    preview.text = "".join(f"line{i}\n" for i in range(10))
+
+    lines = ["".join(text for _, text in row) for row in preview.frame_rows()]
+
+    # The body rows carry the rail prefix; the tail the frame kept is what matters.
+    body = [line.rsplit("line", 1)[1] for line in lines if "line" in line]
+    assert body == [str(i) for i in range(10 - BashLivePreview.HEIGHT, 10)]
+
+
 def test_bash_live_preview_text_accumulation():
     preview = BashLivePreview()
     preview.active = True

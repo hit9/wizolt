@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The live Bash/Job output preview shows the last 5 lines instead of 6.
+
 ## 0.49.3 - 2026-09-14
 
 ### Fixed

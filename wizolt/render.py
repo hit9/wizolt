@@ -1544,7 +1544,7 @@ class LiveSpark:
 
 
 class BashLivePreview:
-    HEIGHT: ClassVar[int] = 6
+    HEIGHT: ClassVar[int] = 5
     MAX_CHARS: ClassVar[int] = 8000
     # Heartbeat tick so the elapsed timer advances even while a command produces no output
     # (e.g. quiet long-runners or `... | tail` that buffers until EOF), so the terminal never
