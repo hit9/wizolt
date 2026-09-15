@@ -247,6 +247,30 @@ async def test_tool_output_viewer_keeps_the_search_filter_across_an_escape(tmp_p
     assert sum("read-only" in frame for frame in frames) == 4
 
 
+async def test_tool_output_list_keeps_a_no_matches_row_among_the_rows(tmp_path, monkeypatch):
+    """A search with no matches has no query prompt line to peel off: the view returns early with a
+    `no matches` row instead. Taken for the prompt, that row was moved below the key legend, which
+    both stranded it there and left the sheet with no row where the rows belong."""
+    command_loop = loop(tmp_path)
+    for index in range(3):
+        command_loop.session.store_tool_result(
+            "Bash",
+            [f"printf command-{index}"],
+            Tool.process_result("BashToolResult", 0, f"output {index}", ""),
+        )
+    modal = ModalHarness(["/", "z", "q"], consumed=True)
+    command_loop.tui = modal
+    with monkeypatch.context() as patch:
+        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 20)))
+        await tool_output_viewer(command_loop)
+
+    frames = ["".join(value for _, value in frame) for frame in modal.frames]
+    listing = [frame for frame in frames if "no matches" in frame][-1]
+    rows = listing.rstrip("\n").splitlines()
+    assert rows[-1].strip().startswith("j/k move")  # the legend still closes the sheet
+    assert rows.index("  no matches") < len(rows) - 1  # the row sits with the rows, not under the legend
+
+
 async def test_tool_output_viewer_folds_a_multiline_command_into_one_row(tmp_path, monkeypatch):
     """A row is one row. `short_call` keeps a multi-line command whole for the transcript, and a
     `git commit -m` with a real message would otherwise spill its row over several lines, carrying

@@ -569,7 +569,11 @@ async def _tool_output_list(loop: CommandLoop, entries: list[OutputEntry], state
         body = state.fragments("", label_fn=lambda choice: parts.get(choice, []))
         rows_onward = body[3:]  # past the view's own title, help, and blank rows
         # The open search prompt, when there is one, stays the last line: the input continues it.
-        prompt = rows_onward[-1:] if state.searching else []
+        # A query with no matches is the one case with no prompt line to peel off -- the view
+        # returns early with a "no matches" row instead, and that row belongs with the others,
+        # not stranded below the legend as if it were the query itself.
+        no_matches = bool(state.query) and not state.enabled()
+        prompt = rows_onward[-1:] if state.searching and not no_matches else []
         rows_onward = rows_onward[:-1] if prompt else rows_onward
         return [
             ("class:choice.title", f"  Tool output · latest {len(entries)}\n"),
