@@ -227,6 +227,12 @@ table.docutils th { background: var(--nc-surface); color: var(--nc-fg-strong); }
 /* Working divider, mirroring cli/view.py: the label is ansimagenta bold, the rule is
    divider.rule, and the comet head fades from divider.glow into it. */
 .fs-working { color: #c678dd; font-weight: 600; }
+/* The Ctrl-O sheet's title and its verdict column, mirroring Theme.DARK: choice.title is
+   accent bold, choice.output.ok/fail are success/error bold. Its rules are class:rule, so
+   this sheet's .fs-rule is the same dim the transcript's dividers use. */
+.fs-title { color: #56b6c2; font-weight: 700; }
+.fs-ok { color: #98c379; font-weight: 600; }
+.fs-fail { color: #e06c75; font-weight: 600; }
 .fs-rule { color: #4b5563; }
 .fs-glow { color: #67e8f9; }
 .fs-diff-add { background: #003b00; }

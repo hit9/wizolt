@@ -528,44 +528,58 @@ async def _tool_output_list(loop: CommandLoop, entries: list[OutputEntry], state
     width = max(20, shutil.get_terminal_size((120, 20)).columns - 12)
     parts: dict[str, StyleAndTextTuples] = {}
     labels: dict[str, str] = {}
-    # Two cells wide so the verdict column lines up whether or not a row has one.
+    # Two cells wide so the verdict column lines up whether or not a row has one. The key and
+    # tool-name cells are padded to the widest entry, so the four columns line up row to row.
     status_marks = {
         "ok": ("class:choice.output.ok", "✓ "),
         "fail": ("class:choice.output.fail", "✗ "),
         "": ("", "  "),
     }
+    key_width = max((get_cwidth(entry.key) for entry in entries), default=1)
+    name_width = max((get_cwidth(entry.name) for entry in entries), default=1)
     for index, entry in enumerate(entries):
         mark = status_marks[entry.status]
-        head = f"{entry.key}  "
+        key_cell = entry.key.ljust(key_width) + "  "
+        name_cell = entry.name.ljust(name_width) + "  "
         # Folded to one line before it is measured. `short_call` keeps a multi-line command whole,
         # which is right in the transcript and wrong here: a row is one row, and an embedded newline
         # spills it over several, taking the numbering and the selection bar with it. `git commit -m`
         # with a real message is the everyday case. The full command is a keypress away in the viewer.
         detail = oneline(entry.detail.removeprefix(entry.name).strip(), 400)
-        detail = Text.clip_width(detail, max(8, width - get_cwidth(head + entry.name) - 1 - 2))
-        labels[str(index)] = f"{head}{entry.name} {detail}".rstrip()
+        detail = Text.clip_width(detail, max(8, width - get_cwidth(key_cell + name_cell) - 2))
+        labels[str(index)] = (key_cell + name_cell + detail).rstrip()
         parts[str(index)] = [
             mark,
-            ("class:choice.live" if entry.live else "class:choice.meta", head),
-            ("class:choice.tool", entry.name + " "),
+            ("class:choice.live" if entry.live else "class:choice.meta", key_cell),
+            ("class:choice.tool", name_cell),
             ("", detail),
         ]
     # Leave room for the rule, the help row, the counter, and the input region below.
     height = shutil.get_terminal_size((120, 24)).lines
     state = state or ChoiceViewState(tuple(labels), labels, set(), max_rows=max(5, min(20, height - 10)))
 
-    def rule(label: str) -> StyleAndTextTuples:
-        cols = shutil.get_terminal_size((80, 20)).columns
-        rule_width = max(20, min(72, cols - 2))
-        lead = "──── "
-        trail = " " + "─" * max(3, rule_width - get_cwidth(lead + label) - 1)
-        # The modal's container already draws a blank row above the modal, so the rule carries no
-        # leading break of its own.
-        return [("class:choice.disabled", lead + label + trail + "\n")]
-
     def fragments() -> StyleAndTextTuples:
-        list_fragments = state.fragments("", label_fn=lambda choice: parts.get(choice, []))
-        return [*rule(f"Tool output · latest {len(entries)}"), *list_fragments[1:]]
+        """The sheet: the title on its own line over a full-width rule, the aligned rows, and the
+        keys under them.
+
+        The rule carries no label of its own -- the title above it is the label -- and a blank row
+        sits on each side of it, so the boundary is a break in the page rather than a line drawn
+        through it."""
+        cols = shutil.get_terminal_size((80, 20)).columns
+        body = state.fragments("", label_fn=lambda choice: parts.get(choice, []))
+        rows_onward = body[3:]  # past the view's own title, help, and blank rows
+        # The open search prompt, when there is one, stays the last line: the input continues it.
+        prompt = rows_onward[-1:] if state.searching else []
+        rows_onward = rows_onward[:-1] if prompt else rows_onward
+        return [
+            ("class:choice.title", f"  Tool output · latest {len(entries)}\n"),
+            ("class:rule", "  " + "─" * max(3, cols - 4) + "\n"),
+            ("", "\n"),
+            *rows_onward,
+            ("", "\n"),
+            ("class:choice.disabled", "  j/k move, / search, Enter open, Esc/q close\n"),
+            *prompt,
+        ]
 
     def handle_key(key: str, data: str) -> Any:
         if key in {"c-o", "q"}:
@@ -646,11 +660,20 @@ def _approval_text_view(
 
     def separator(width: int, label: str = "") -> StyleAndTextTuples:
         """The rule between the viewer's sections, optionally naming the one it opens. Labeled or
-        not, it runs to the same right edge, so the sections read as one document."""
+        not, it runs to the same right edge, so the sections read as one document. The label takes
+        the accent a heading takes; the dashes keep the dim tone every other rule in the app uses."""
+        dashes = max(0, width - 4)
         if not label:
-            return [("", margin), ("class:rule", "─" * max(0, width - 4))]
+            return [("class:rule", margin + "─" * dashes)]
+        # A label wider than the terminal would push the rule past its right edge, where the modal
+        # window (which never wraps) would simply cut it off.
+        label = Text.clip_width(label, max(4, dashes - 8))
         lead = f"── {label} "
-        return [("", margin), ("class:rule", lead + "─" * max(0, width - 4 - get_cwidth(lead)))]
+        return [
+            ("class:rule", margin + "── "),
+            ("class:choice.title", label),
+            ("class:rule", " " + "─" * max(0, dashes - get_cwidth(lead))),
+        ]
 
     def layout(width: int) -> list[StyleAndTextTuples]:
         """Field header rows, a separator, the whole text, and -- when the call has already run --
@@ -673,11 +696,10 @@ def _approval_text_view(
                     ),
                 )
             )
-        # A blank line on each side of a rule sets the fields apart from the body, and the
-        # body from the result: three sections instead of one wall of text.
-        lines.append([])
-        lines.append(separator(width))
-        lines.append([])
+        # Every rule is flanked by a blank row: a rule with text tight against it reads as a line
+        # struck through the page rather than a break in it, and a section rule with its body tight
+        # underneath reads as a heading with no white space around it.
+        lines.extend([[], separator(width, view.label.split(" · ")[0]), []])
         lines.extend(code_rows(view.text, view.lexer, width, margin) if view.lexer else markdown_rows(view.text, width))
         if view.result.strip():
             # Plain, unlexed, and whole: this is the result exactly as the model received it, and a
@@ -692,6 +714,8 @@ def _approval_text_view(
 
     def size() -> tuple[int, int]:
         columns, rows = shutil.get_terminal_size((120, 24))
+        # Four rows of chrome: the title line, the rule under it, the blank above the body, and the
+        # legend. The body gets what is left, less the status bar's row and one row of slack.
         return max(20, columns), max(3, rows - 6)
 
     def viewport() -> int:
@@ -709,7 +733,13 @@ def _approval_text_view(
             legend = "  ↑/↓ scroll · Ctrl-U/D half-page · PgUp/Dn page · g/G top/bottom · Esc/q back · c-o close"
         if get_cwidth(legend) > width:
             legend = "  ↑/↓ · Ctrl-U/D · g/G · Esc/q back · c-o close" if back_on_escape else "  ↑/↓ · Ctrl-U/D · g/G · Esc/q close"
-        parts: StyleAndTextTuples = [("class:choice.disabled", f"  {view.label[:1].upper() + view.label[1:]} · read-only\n")]
+        parts: StyleAndTextTuples = [
+            ("class:choice.title", f"  {view.label[:1].upper() + view.label[1:]} · read-only\n"),
+            # The rule under the title carries no label of its own -- the title is the label -- and at
+            # the app's dim weight that only works with a blank row below it.
+            ("class:rule", margin + "─" * max(0, width - 4) + "\n"),
+            ("", "\n"),
+        ]
         for line in lines[scroll : scroll + height]:
             parts.extend(line)
             parts.append(("", "\n"))

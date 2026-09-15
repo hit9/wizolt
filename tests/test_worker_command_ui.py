@@ -364,7 +364,7 @@ async def test_tool_output_viewer_opens_a_stored_script_in_the_scrolling_viewer(
     await tool_output_viewer(command_loop)
 
     listing = "".join(value for _, value in modal.frames[0])
-    assert "ToolScript call 30 lines" in listing
+    assert "ToolScript  call 30 lines" in listing
     frames = ["".join(value for _, value in frame) for frame in modal.frames]
     viewer = [frame for frame in frames if "Script · tr.1 · read-only" in frame]
     assert viewer, "the entry hands off to the read-only script viewer"

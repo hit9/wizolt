@@ -36,12 +36,15 @@ async def test_tool_output_viewer_browses_recent_calls_through_a_viewport_and_op
         await tool_output_viewer(command_loop)
 
     listing = "".join(value for _, value in modal.frames[0])
-    assert listing.startswith("──── Tool output · latest 12 ")
-    assert get_cwidth(listing.splitlines()[0]) == 48
+    assert listing.startswith("  Tool output · latest 12\n")  # the title stands on its own line
+    assert get_cwidth(listing.splitlines()[1]) == 48  # over a rule that spans the sheet
+    # A blank row flanks the rule, and the key legend closes the sheet.
+    rows = listing.rstrip("\n").splitlines()
+    assert rows[2] == "" and rows[-2] == "" and rows[-1].strip().startswith("j/k move")
     assert "command-11" in listing and "command-2" in listing
     # A twenty-row terminal draws ten of the twelve: the rest are a scroll away, not dropped, and
     # the counter is what says so. `true` printed nothing and is not an entry at all.
-    assert "Bash printf command-1\n" not in listing and "Bash printf command-0\n" not in listing and "Bash true" not in listing
+    assert "Bash  printf command-1\n" not in listing and "Bash  printf command-0\n" not in listing and "Bash  true" not in listing
     assert "showing 1-10 of 12" in listing
     # The second entry opens in the scrolling viewer: the command as its body, the streams below.
     frames = ["".join(value for _, value in frame) for frame in modal.frames]
@@ -89,9 +92,9 @@ async def test_tool_output_browser_lists_past_the_old_fifty_entry_cap(tmp_path, 
         await tool_output_viewer(command_loop)
 
     listing = "".join(value for _, value in modal.frames[0])
-    assert listing.startswith("──── Tool output · latest 55 ")
+    assert listing.startswith("  Tool output · latest 55\n")
     assert "showing 1-10 of 55" in listing
-    assert "Bash printf 54" in listing  # the newest is in view
+    assert "Bash  printf 54" in listing  # the newest is in view
 
 
 async def test_tool_output_browser_keeps_every_stored_record_with_a_running_script(tmp_path, monkeypatch):
@@ -110,7 +113,7 @@ async def test_tool_output_browser_keeps_every_stored_record_with_a_running_scri
         await tool_output_viewer(command_loop)
 
     listing = "".join(value for _, value in modal.frames[0])
-    assert listing.startswith("──── Tool output · latest 401 ")
+    assert listing.startswith("  Tool output · latest 401\n")
     assert "showing 1-10 of 401" in listing
     assert "ToolScript" in listing  # the running script's live entry is listed too
 
@@ -376,7 +379,7 @@ async def test_tool_output_viewer_offers_the_script_that_is_still_running(tmp_pa
     await tool_output_viewer(command_loop)
 
     listing = "".join(value for _, value in modal.frames[0])
-    assert "running  ToolScript call 2 lines" in listing  # first row, above the stored Bash entry
+    assert "ToolScript  call 2 lines" in listing  # first row, above the stored Bash entry
     assert listing.index("running") < listing.index("Bash")
     frames = ["".join(value for _, value in frame) for frame in modal.frames]
     viewer = [frame for frame in frames if "read-only" in frame]
@@ -404,7 +407,7 @@ async def test_tool_output_list_rows_are_coloured_by_part(tmp_path):
 
     row = [(style, text) for style, text in modal.frames[0] if text.strip()]
     assert ("class:choice.meta", "tr.1  ") in row
-    assert ("class:choice.tool", "Bash ") in row
+    assert ("class:choice.tool", "Bash  ") in row  # padded to the widest tool name
     assert ("", "printf hi-0") in row
     # The selected row is left as one reverse bar rather than repainted part by part.
     assert not [style for style, _ in row if "choice.selected" in style and ("meta" in style or "tool" in style)]

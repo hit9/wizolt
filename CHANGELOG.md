@@ -14,6 +14,11 @@
   `~modal` filter, so while a viewer or selector was open the key fell through to
   prompt_toolkit's default clear-screen and wiped the transcript -- the one place it was
   supposed to never reach.
+- The `Ctrl-O` tool-output sheet and its detail viewer now name themselves on their own line
+  over a full-width rule, with a blank row between each rule and the text it frames, so the
+  sheet reads as a separate page instead of one more block of transcript. The list's verdict,
+  key, and tool-name columns are aligned row to row, and the detail viewer's section rules name
+  their section (`── output`, `── result`).
 
 ## 0.49.3 - 2026-09-14
 

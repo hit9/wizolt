@@ -610,12 +610,16 @@ async def test_delegate_order_viewer_header_separator(monkeypatch):
     await approval_text_viewer(loop, ApprovalView("order", "order", "", [("title", "fix things")]))
 
     lines = "".join(text for _, text in captured["fragments_fn"]()).splitlines()
-    separators = [line for line in lines if line.strip() and set(line) <= {"─", " "}]
-    assert separators
-    assert all(get_cwidth(line) == 118 for line in separators)  # content width: 120 minus the two-space margins
-    order_row = [index for index, line in enumerate(lines) if line.strip() == "order"]
-    assert order_row
-    assert lines.index(separators[0]) < order_row[0]  # separator sits after the fields, before the body
+    # Two rules frame the page, both at the content width (120 minus the two-space margins): the
+    # title's own, and the one that opens the body under its section's name.
+    rules = [index for index, line in enumerate(lines) if line.lstrip().startswith("─")]
+    assert len(rules) == 2
+    assert all(get_cwidth(lines[index]) == 118 for index in rules)
+    order_row = next(index for index, line in enumerate(lines) if line.strip() == "order")
+    assert lines[rules[0] - 1] == "  Order · read-only"  # the title stands on its own line
+    assert lines[rules[0] + 1] == "" and lines[rules[1] + 1] == ""  # a blank row flanks each rule
+    assert "── order " in lines[rules[1]]  # and the body's rule carries the section's name
+    assert rules[0] < order_row and rules[1] < order_row
 
 
 async def test_delegate_order_viewer_markdown_fits_narrow_terminal(monkeypatch):
