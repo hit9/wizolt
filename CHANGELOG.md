@@ -5,11 +5,12 @@
 ### Changed
 
 - The live Bash/Job output preview shows the last 5 lines instead of 6.
-- A finished `Bash` result matches every other tool call: the stored `tr.N` key rides the call
-  line (`Bash cmd → tr.N`), and the output tail follows directly beneath. A
-  `… +N more lines · Ctrl-O for more` row appears only when lines were dropped; a complete
-  result adds no chrome row at all. The separate `output` head row, the elision marker row, and
-  the `stored` row are gone.
+- A finished `Bash` result drops its `output` head row and its `stored` label. The output tail
+  (three lines per stream, labeled only when both streams ran) hangs directly under the call
+  line, and the stored `tr.N` key closes the block -- on the same row as the
+  `… +N more lines · Ctrl-O for more` trailer when the bound dropped lines, and alone when
+  nothing was dropped. A replayed call, whose call line is drawn afresh, keeps the key on that
+  line instead.
 - `Ctrl-L` is now swallowed inside modals too. The key binding that disabled it carried a
   `~modal` filter, so while a viewer or selector was open the key fell through to
   prompt_toolkit's default clear-screen and wiped the transcript -- the one place it was
