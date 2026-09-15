@@ -5,6 +5,10 @@
 ### Changed
 
 - The live Bash/Job output preview shows the last 5 lines instead of 6.
+- A finished `Bash` result prints one chrome row instead of three: the stored `tr.N` key leads
+  it, followed by the count of elided lines and `Ctrl-O`. The body is the tail of the streams
+  with no `stdout:`/`stderr:` label when only one ran, and the separate `output`, `stored`, and
+  `... N lines omitted ...` rows are gone.
 
 ## 0.49.3 - 2026-09-14
 

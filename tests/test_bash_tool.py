@@ -797,10 +797,10 @@ async def test_tool_runner_approved_live_bash_does_not_repeat_command(tmp_path):
     display = [text for kind, text in events if kind == "display"]
     assert display[0].startswith("  Bash  ")
     assert "approval required" not in display[0]
-    assert display[-1].startswith("    ├ output")
-    assert "Ctrl-O for more" in display[-1]
-    assert "    └ stored tr." in display[-1]
-    assert display[-1].endswith("[approved]")
+    assert display[-1].startswith("    ├ tr.")  # the head row leads with the stored key
+    assert "Ctrl-O" in display[-1]
+    assert "stored" not in display[-1]  # no closing stored row anymore
+    assert "approved" in display[-1]  # the output tail closes the rail
     assert sum(text.startswith("  Bash  ") for text in display) == 1
     assert sum("printf approved" in text for text in display) == 1
 
@@ -826,6 +826,24 @@ def test_tool_runner_bash_preview_omits_past_limit(tmp_path):
     assert preview[-1] == lines[-1]
 
 
+def test_bash_tail_preview_keeps_the_tail_and_reports_elided(tmp_path):
+    stdout = "\n".join(f"line {index}" for index in range(10))
+    output = Tool.process_result("BashToolResult", 0, stdout, "")
+
+    rows, elided = tooloutput.bash_tail_preview(output, 3)
+
+    assert rows == ["line 7", "line 8", "line 9"]  # the tail, with no marker row inside
+    assert elided == 7
+
+
+def test_bash_tail_preview_labels_streams_only_when_both_ran(tmp_path):
+    single = Tool.process_result("BashToolResult", 0, "out", "")
+    both = Tool.process_result("BashToolResult", 0, "out", "err")
+
+    assert tooloutput.bash_tail_preview(single, 3) == (["out"], 0)
+    assert tooloutput.bash_tail_preview(both, 3) == (["stdout:", "out", "stderr:", "err"], 0)
+
+
 def test_tool_runner_compact_bash_result_keeps_bounded_output_without_live_frame(tmp_path):
     s = session(tmp_path)
     output = Tool.process_result("BashToolResult", 0, "visible output", "")
@@ -841,8 +859,9 @@ def test_tool_runner_compact_bash_result_keeps_bounded_output_without_live_frame
         )
     )
 
-    assert display.startswith("    ├ output Ctrl-O for more")
-    assert "visible output" in display
+    assert display.startswith("    ├ tr.1 Ctrl-O")
+    assert "stdout:" not in display  # a single stream needs no label
+    assert display.endswith("    └ visible output")  # the tail closes the rail, no stored row
 
 
 async def test_tool_runner_failed_live_bash_does_not_repeat_command(tmp_path, monkeypatch):
@@ -869,12 +888,13 @@ def test_tool_runner_finish_display_bounds_bash_output(tmp_path):
     display = str(toolblocks.finish_display(s, ToolCall("bash", "Bash", ["printf lots"]), "tr.1", output, failed=False))
 
     assert display.startswith("  Bash  printf lots\n")
-    assert "    ├ output Ctrl-O for more" in display
-    assert "out 0" in display
-    assert "... 17 lines omitted ..." in display
+    assert "    ├ tr.1 +17 lines Ctrl-O" in display
+    assert "out 0" not in display  # the head of the output is elided, not kept
+    assert "stdout:" in display and "stderr:" in display  # both streams ran, so both are labeled
     assert "out 18" in display and "out 19" in display
     assert "err" in display
-    assert display.endswith("    └ stored tr.1")
+    assert display.endswith("    └ err")
+    assert "stored" not in display
 
 
 def test_tool_runner_finish_display_keeps_bounded_bash_output_after_live_preview(tmp_path):
@@ -883,9 +903,9 @@ def test_tool_runner_finish_display_keeps_bounded_bash_output_after_live_preview
 
     display = str(toolblocks.finish_display(s, ToolCall("bash", "Bash", ["printf live"]), "tr.1", output, failed=False))
 
-    assert "    ├ output Ctrl-O for more" in display
+    assert "    ├ tr.1 Ctrl-O" in display
     assert "live output" in display
-    assert display.endswith("    └ stored tr.1")
+    assert display.endswith("    └ live output")
 
 
 async def test_tool_runner_prints_bash_header_before_live_output(tmp_path):
@@ -906,10 +926,10 @@ async def test_tool_runner_prints_bash_header_before_live_output(tmp_path):
     assert events[1] == ("start", "")
     assert ("stdout", "live") in events
     assert events[-1][0] == "display"
-    assert "    ├ output" in events[-1][1]
-    assert "Ctrl-O for more" in events[-1][1]
+    assert "    ├ tr." in events[-1][1]  # the stored key leads the head row
+    assert "Ctrl-O" in events[-1][1]
     assert "live" in events[-1][1]
-    assert "    └ stored tr." in events[-1][1]
+    assert "    └ stored tr." not in events[-1][1]
     assert sum("printf live" in text for kind, text in events if kind == "display") == 1
     assert sum("Bash" in text for kind, text in events if kind == "display") == 1
     assert "live" in s.tool_records[-1].output

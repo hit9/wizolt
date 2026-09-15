@@ -57,6 +57,28 @@ def bash_result_preview(output: str, line_limit: int, char_limit: int | None = N
     return "\n".join(sections)
 
 
+def bash_tail_preview(output: str, line_limit: int, char_limit: int | None = None) -> tuple[list[str], int]:
+    """The transcript's Bash block: each stream's tail, labeled only when both streams ran.
+
+    The tail, not preview_lines' head/tail split: the last lines are the conclusion -- a summary
+    row, a traceback's final line -- while the head of a long output is what the command itself
+    already echoed. Returns the body rows and how many lines the bound dropped, so the head row
+    can carry the count instead of spending a marker row of its own."""
+    present = [(name, tagged_output(output, name).strip()) for name in ("stdout", "stderr")]
+    present = [(name, text) for name, text in present if text]
+    rows: list[str] = []
+    elided = 0
+    for name, text in present:
+        lines = [clip_preview_line(line, char_limit) for line in text.splitlines()]
+        if len(lines) > line_limit:
+            elided += len(lines) - line_limit
+            lines = lines[-line_limit:]
+        if len(present) > 1:
+            rows.append(name + ":")
+        rows.extend(lines)
+    return rows, elided
+
+
 def viewer_text(text: str) -> tuple[str, str]:
     """Arbitrary result text bounded for a scrolling viewer, with a note saying what the bound
     dropped. The same head/tail elision the transcript preview uses, at a size meant to be read
