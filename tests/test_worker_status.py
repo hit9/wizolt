@@ -1,11 +1,14 @@
 """worker status (split from tests/test_worker_handoff.py)."""
 
+import os
+import shutil
+
 from test_worker_handoff import FakeModelClient, _delegate_call, _delegate_runner, _delegate_session
 
 from wizolt.cli.worker import worker_command
 
 
-async def test_status_bar_follows_the_inflight_worker(tmp_path):
+async def test_status_bar_follows_the_inflight_worker(tmp_path, monkeypatch):
     from wizolt.config import (
         Config,
         ProviderConfig,
@@ -13,6 +16,9 @@ async def test_status_bar_follows_the_inflight_worker(tmp_path):
     from wizolt.render import StatusBar
     from wizolt.session import Session
 
+    # The row clips to the terminal width, and CI runs at 80 columns: pin a wide one so these
+    # assertions read the whole row instead of its ellipsis.
+    monkeypatch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((200, 24)))
     parent = _delegate_session(tmp_path)
     parent.usage.last_prompt_tokens = 200
     parent.usage.last_prompt_budget = 400
@@ -293,6 +299,9 @@ async def test_status_bar_names_the_worker_model_during_a_real_delegation(tmp_pa
     """
     from wizolt.render import StatusBar
 
+    # The row clips to the terminal width, and CI runs at 80 columns: pin a wide one so these
+    # assertions read the whole row instead of its ellipsis.
+    monkeypatch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((200, 24)))
     parent = _delegate_session(tmp_path)
     parent.config.provider.model = "parent-model"
     parent.config.worker_model = "worker-model"
