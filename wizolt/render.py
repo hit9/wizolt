@@ -1740,7 +1740,13 @@ class StatusBar:
         return f"↓ {round(state.stream_chars / 4 / elapsed)} tok/s"
 
     def active_session(self) -> Session:
-        """The session whose stream the working divider describes."""
+        """The session whose work this row describes: the worker while a delegation is in flight,
+        the parent otherwise.
+
+        The in-flight predicate is the engine's own: `_active_turn_messages` is filled when a turn
+        starts and cleared in finish_turn, so a live but idle worker never shadows the parent. The
+        working divider marks the same condition with its `[worker]` prefix.
+        """
         worker = self.session.worker
         return worker if worker is not None and bool(worker._active_turn_messages) else self.session
 
@@ -1769,21 +1775,32 @@ class StatusBar:
         return text
 
     def fragments(self) -> StyleAndTextTuples:
-        """Render the stable status row in its fixed group order and semantic colors."""
-        config = self.session.config
+        """Render the stable status row in its fixed group order and semantic colors.
+
+        Identity and usage are read off `active_session()`, so during a delegation the row answers
+        the question the reader actually has -- which model is running now, and how full its
+        context is -- instead of describing a parent that is parked inside a tool call. The
+        `[worker]` marker says whose numbers these are; they return to the parent's the moment the
+        worker answers. The session-wide groups (mcp, skills, index, yolo) stay the parent's:
+        the worker shares those objects, and yolo is the runtime's own flag.
+        """
+        source = self.active_session()
+        config = source.config
         provider = config.provider
         model = provider.model.rsplit("/", 1)[-1] or "(no model)"
-        usage = self.session.usage
+        usage = source.usage
         if usage.last_prompt_tokens and usage.last_prompt_budget:
             ctx_percent = min(100, usage.last_prompt_tokens * 100 // usage.last_prompt_budget)
         else:
-            ctx_percent = self.session.state.context_percent
+            ctx_percent = source.state.context_percent
         cache_percent = usage.last_cached_prompt_tokens * 100 // usage.last_prompt_tokens if usage.last_prompt_tokens else 0
         skill_count = len(self.session.skills.skills) if self.session.skills else 0
 
         identity: list[tuple[str, str]] = []
         if self.session.settings.yolo:
             identity.append(("[yolo] ", "yolo"))
+        if source is not self.session:
+            identity.append(("[worker] ", "worker"))
         identity.extend([(config.active_provider + "/" + model, "provider"), (" · ", "sep"), (provider.reasoning, "reason")])
         groups: list[list[tuple[str, str]]] = [
             identity,

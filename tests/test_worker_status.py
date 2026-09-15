@@ -5,7 +5,7 @@ from test_worker_handoff import FakeModelClient, _delegate_call, _delegate_runne
 from wizolt.cli.worker import worker_command
 
 
-async def test_status_bar_stays_on_parent_session_while_worker_runs(tmp_path):
+async def test_status_bar_follows_the_inflight_worker(tmp_path):
     from wizolt.config import (
         Config,
         ProviderConfig,
@@ -18,10 +18,14 @@ async def test_status_bar_stays_on_parent_session_while_worker_runs(tmp_path):
     parent.usage.last_prompt_budget = 400
     parent.usage.last_cached_prompt_tokens = 50
     bar = StatusBar(parent)
-    original = "".join(text for _, text in bar.fragments())
+
+    def row():
+        return "".join(text for _, text in bar.fragments())
+
+    original = row()
     parent_lead = parent.config.active_provider + "/" + (parent.config.provider.model.rsplit("/", 1)[-1] or "(no model)")
     assert parent_lead in original and "[worker]" not in original
-    assert "ctx 50% · cache 25%" in original
+    assert "ctx 50% \u00b7 cache 25%" in original
 
     # A live but idle worker does not take over the bar: marker, provider/model, and usage all
     # apply only while a delegation is in flight (the engine clears _active_turn_messages in
@@ -33,11 +37,19 @@ async def test_status_bar_stays_on_parent_session_while_worker_runs(tmp_path):
     worker.usage.last_prompt_budget = 100
     worker.usage.last_cached_prompt_tokens = 25
     parent.worker = worker
-    assert "".join(text for _, text in bar.fragments()) == original
+    assert row() == original
 
-    # Worker identity and progress belong to the working divider, not this stable session summary.
+    # In flight: the row names the model actually running and its context, behind a [worker] marker.
     worker._active_turn_messages.append({"role": "user", "content": "order"})
-    assert "".join(text for _, text in bar.fragments()) == original
+    delegating = row()
+    assert "[worker] default/worker-model" in delegating
+    assert "ctx 50% \u00b7 cache 50%" in delegating
+    assert parent_lead not in delegating
+
+    # Session-wide groups stay the parent's, and the row returns to the parent when the worker answers.
+    assert "skills " in delegating and "index" in delegating
+    worker._active_turn_messages.clear()
+    assert row() == original
 
 
 async def test_working_divider_marks_inflight_worker(tmp_path):
@@ -270,3 +282,52 @@ async def test_worker_output_passes_memory_shaped_text_through_for_highlighting(
     assert outputs[0] is note
     assert isinstance(outputs[1], LogBlock)
     assert isinstance(outputs[2], LogBlock)
+
+
+async def test_status_bar_names_the_worker_model_during_a_real_delegation(tmp_path, monkeypatch):
+    """Regression guard: the row must describe the request actually on the wire.
+
+    Sampled from inside the worker's model request, through the real Delegate path, so a change
+    that quietly re-points the bar's identity or usage back at the parent session fails here
+    rather than only in the unit-level test that drives `_active_turn_messages` by hand.
+    """
+    from wizolt.render import StatusBar
+
+    parent = _delegate_session(tmp_path)
+    parent.config.provider.model = "parent-model"
+    parent.config.worker_model = "worker-model"
+    parent.usage.last_prompt_tokens = 200
+    parent.usage.last_prompt_budget = 400
+    parent.usage.last_cached_prompt_tokens = 50
+    bar = StatusBar(parent)
+
+    def row():
+        return "".join(text for _, text in bar.fragments())
+
+    idle = row()
+    assert "default/parent-model" in idle and "ctx 50% · cache 25%" in idle
+
+    sampled: list[str] = []
+
+    class SamplingModel(FakeModelClient):
+        async def request(self, messages, request_tools=None):
+            worker = parent.worker
+            assert worker is not None
+            worker.usage.last_prompt_tokens = 30
+            worker.usage.last_prompt_budget = 100
+            worker.usage.last_cached_prompt_tokens = 15
+            sampled.append(row())
+            return await super().request(messages, request_tools)
+
+    model = SamplingModel([({"role": "assistant", "content": "done"}, [], "done")])
+    monkeypatch.setattr("wizolt.engine.ModelClient", lambda _session: model)
+
+    await _delegate_call(parent, _delegate_runner(parent), action="send", order="inspect it")
+
+    assert len(sampled) == 1
+    assert "[worker] default/worker-model" in sampled[0]
+    assert "parent-model" not in sampled[0]
+    # The worker's own fill and cache ratio, never the parent's.
+    assert "ctx 30% · cache 50%" in sampled[0]
+    # The delegation is over: the row is the parent's again, unchanged from before the send.
+    assert row() == idle

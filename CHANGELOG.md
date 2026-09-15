@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- The status bar follows the worker again while a delegation is in flight: it leads with a
+  `[worker]` marker and shows the worker's provider/model, effort, and its own `ctx`/`cache`
+  instead of the parent's, which describe a session parked inside a tool call. Simplifying the
+  bar had reduced it to the parent's values for every phase; the session-wide groups (mcp,
+  skills, index, yolo) stay the parent's, and the row returns to the parent's numbers the moment
+  the worker answers.
+
 ## 0.49.4 - 2026-09-15
 
 ### Changed
