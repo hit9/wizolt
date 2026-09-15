@@ -1519,7 +1519,10 @@ class TuiApp:
         # wipes the visible screen and redraws the prompt at the top. Here that only looks like a
         # reset: the transcript above scrolls out of sight while the session, its context, and any
         # queued follow-up carry on unchanged, so the key costs more confusion than it buys.
-        bindings.add("c-l", filter=~modal, eager=True)(lambda _: None)
+        # No `~modal` filter: with one, the binding goes quiet while a modal is open and the
+        # focused buffer's own default clear-screen fires instead -- the exact wipe this exists
+        # to prevent, resurfacing precisely where the transcript matters most.
+        bindings.add("c-l", eager=True)(lambda _: None)
 
         def ctrl_d(event):  # pragma: no cover — interactive path
             if self.input_mode == "approval" and self._input_pending is not None:

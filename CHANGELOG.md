@@ -5,10 +5,14 @@
 ### Changed
 
 - The live Bash/Job output preview shows the last 5 lines instead of 6.
-- A finished `Bash` result prints one chrome row instead of three: the stored `tr.N` key leads
-  it, followed by the count of elided lines and `Ctrl-O`. The body is the tail of the streams
-  with no `stdout:`/`stderr:` label when only one ran, and the separate `output`, `stored`, and
-  `... N lines omitted ...` rows are gone.
+- A finished `Bash` result prints one chrome row instead of three: `output` anchors the row,
+  the elision says `… +N more lines`, `Ctrl-O for more` is the door, and the stored `tr.N` key
+  closes it as a citation. The body is the tail of the streams with no `stdout:`/`stderr:` label
+  when only one ran, and the separate `stored` and `... N lines omitted ...` rows are gone.
+- `Ctrl-L` is now swallowed inside modals too. The key binding that disabled it carried a
+  `~modal` filter, so while a viewer or selector was open the key fell through to
+  prompt_toolkit's default clear-screen and wiped the transcript -- the one place it was
+  supposed to never reach.
 
 ## 0.49.3 - 2026-09-14
 

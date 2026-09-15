@@ -292,16 +292,19 @@ def finish_display(
         if summary:
             children.append(LogLine("", summary, LogRole.META, LogEdge.END))
     elif call.name == "Bash":
-        # One chrome row for any length of output, holding only what the transcript cannot show:
-        # the stored key to cite, the count the tail bound dropped, and the door to the rest. It
-        # replaces both the old `output` head row and the `stored` row that used to close the
-        # block. The body is the tail of the streams -- the conclusion, not the echo of the command
-        # -- labeled only when both streams ran, and its last row takes the closing edge because
-        # no stored row follows it anymore.
+        # One chrome row around any length of output, replacing the old `output` head row, the
+        # elision marker row, and the `stored` row. `output` anchors what the rows below are; the
+        # elision uses the same `… +N more lines` vocabulary every other truncated view uses; the
+        # key closes the row as a citation. The body is the tail of the streams -- the conclusion,
+        # not the echo of the command -- labeled only when both streams ran, and its last row takes
+        # the closing edge because no stored row follows it anymore.
         rows, elided = tooloutput.bash_tail_preview(output, tooloutput.BASH_TRANSCRIPT_PREVIEW_LINES)
         if rows:
-            more = f" +{elided} lines" if elided else ""
-            children.append(LogLine(key + more if key else more.strip(), "Ctrl-O", LogRole.META, LogEdge.BRANCH))
+            parts = [f"… +{elided} more lines"] if elided else []
+            parts.append("Ctrl-O for more")
+            if key:
+                parts.append(key)
+            children.append(LogLine("output", " · ".join(parts), LogRole.META, LogEdge.BRANCH))
             children.extend(LogLine("", line, LogRole.OUTPUT, LogEdge.CONTINUE) for line in rows[:-1])
             children.append(LogLine("", rows[-1], LogRole.OUTPUT, LogEdge.END))
             bash_key_in_head = True
