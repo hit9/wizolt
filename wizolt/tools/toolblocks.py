@@ -281,9 +281,10 @@ def finish_display(
         else:
             root = log_root("[worker] ◀", LogRole.WORKER, d.batch_suffix, call)
     children = []
-    # Set by the Bash branch when its head row carries the stored key, so the generic stored row
-    # below stays away -- the block closes on the output tail instead.
-    bash_key_in_head = False
+    # Set by the Bash branch: it always places its own key -- on the call line like every other
+    # tool, or in the block's closing row when the runner already drew the call line above a
+    # live preview -- so the generic stored row below never follows a Bash block.
+    bash_key_handled = False
     if failed:
         label = "refused" if "user refused" in output else "error"
         children.append(LogLine(label, oneline(output, 220), LogRole.ERROR, LogEdge.END))
@@ -292,22 +293,26 @@ def finish_display(
         if summary:
             children.append(LogLine("", summary, LogRole.META, LogEdge.END))
     elif call.name == "Bash":
-        # One chrome row around any length of output, replacing the old `output` head row, the
-        # elision marker row, and the `stored` row. `output` anchors what the rows below are; the
-        # elision uses the same `… +N more lines` vocabulary every other truncated view uses; the
-        # key closes the row as a citation. The body is the tail of the streams -- the conclusion,
-        # not the echo of the command -- labeled only when both streams ran, and its last row takes
-        # the closing edge because no stored row follows it anymore.
+        # The output tail leads; the key rides the call line (`→ tr.N`) like every other tool, so
+        # a complete result costs no extra row -- the trailer exists only when the bound dropped
+        # lines, and then it says how many and where the rest is. The one exception is a nested
+        # block (d.nested_display), whose call line the runner already drew above the live
+        # preview: there the key cannot ride it and closes the block instead, as the old stored
+        # row did.
         rows, elided = tooloutput.bash_tail_preview(output, tooloutput.BASH_TRANSCRIPT_PREVIEW_LINES)
+        nested_key = (key + tag).strip() if (key or tag) and d.nested_display else ""
         if rows:
-            parts = [f"… +{elided} more lines"] if elided else []
-            parts.append("Ctrl-O for more")
-            if key:
-                parts.append(key)
-            children.append(LogLine("output", " · ".join(parts), LogRole.META, LogEdge.BRANCH))
-            children.extend(LogLine("", line, LogRole.OUTPUT, LogEdge.CONTINUE) for line in rows[:-1])
-            children.append(LogLine("", rows[-1], LogRole.OUTPUT, LogEdge.END))
-            bash_key_in_head = True
+            children.append(LogLine("", rows[0], LogRole.OUTPUT, LogEdge.BRANCH))
+            children.extend(LogLine("", line, LogRole.OUTPUT, LogEdge.CONTINUE) for line in rows[1:])
+            closing = " · ".join(part for part in (f"… +{elided} more lines · Ctrl-O for more" if elided else "", nested_key) if part)
+            if closing:
+                children.append(LogLine("", closing, LogRole.META, LogEdge.END))
+            else:
+                # Nothing was dropped and the key rides the call line: the body itself closes.
+                children[-1] = LogLine("", rows[-1], LogRole.OUTPUT, LogEdge.END)
+        elif nested_key:
+            children.append(LogLine("", nested_key, LogRole.META, LogEdge.END))
+        bash_key_handled = True
     elif call.name == "ToolScript":
         # Closes the bracket the nested calls were indented under: how many of them there were,
         # how long the script took, and the first lines of what it printed -- the printed output
@@ -365,10 +370,12 @@ def finish_display(
         # line is the engine's, not a tool's). TOOL, not sibling children's META: the stored
         # row is bookkeeping, this is a real request on another paid entry.
         children.append(LogLine("described by", d.vision_entry, LogRole.TOOL, LogEdge.BRANCH))
-    if tree and not failed and not bash_key_in_head:
+    if tree and not failed and not bash_key_handled:
         children.append(LogLine("stored" if key else "done", key + tag if key else tag.strip(), LogRole.META, LogEdge.END))
-    elif not tree and root is not None:
-        # root can be None only on the Delegate worker_rule path, where tree is always True.
+    elif root is not None and not d.nested_display and (not tree or bash_key_handled):
+        # root is never shown for a nested block (the runner drew its call line already) or on
+        # the Delegate worker_rule path, where tree is always True -- both keep whatever key
+        # display their own path chose, and neither reaches the root-tail rewrite.
         tail = ((" → " + key) if key else "") + tag
         root = LogLine(root.label, root.text, root.role, meta=root.meta + tail, syntax=root.syntax)
     return LogBlock.hierarchy(None if d.nested_display else root, children)

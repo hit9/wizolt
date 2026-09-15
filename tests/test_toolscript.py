@@ -657,7 +657,7 @@ class TestScriptLogShape:
         s = _mcp_session(tmp_path)
         blocks = await self._blocks(s, 'print(call("Bash", {"command": "printf one; printf two"}))\n')
         rows = [row for block in blocks for row in "".join(text for _, text in UiPrinter(output_fn=lambda _text: None).log_segments(block)).splitlines()]
-        start = next(index for index, row in enumerate(rows) if row.endswith("Bash printf one; printf two"))
+        start = next(index for index, row in enumerate(rows) if "Bash printf one; printf two → tr.1" in row)
         end = next(index for index, row in enumerate(rows) if "calls 1" in row)  # the script's own result line closes the region
         nested = rows[start:end]
         assert len(nested) > 1, nested  # the call plus the block it logged under itself

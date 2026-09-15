@@ -797,10 +797,8 @@ async def test_tool_runner_approved_live_bash_does_not_repeat_command(tmp_path):
     display = [text for kind, text in events if kind == "display"]
     assert display[0].startswith("  Bash  ")
     assert "approval required" not in display[0]
-    assert display[-1].startswith("    ├ output Ctrl-O for more · tr.")  # the head row carries the door and the key
-    assert "stored" not in display[-1]  # no closing stored row anymore
-    assert "stored" not in display[-1]  # no closing stored row anymore
-    assert "approved" in display[-1]  # the output tail closes the rail
+    # Nested: the runner already drew the call line, so the body leads and the key closes.
+    assert display[-1] == "    ├ approved\n    └ tr.1 [approved]"
     assert sum(text.startswith("  Bash  ") for text in display) == 1
     assert sum("printf approved" in text for text in display) == 1
 
@@ -859,9 +857,7 @@ def test_tool_runner_compact_bash_result_keeps_bounded_output_without_live_frame
         )
     )
 
-    assert display.startswith("    ├ output Ctrl-O for more · tr.1")
-    assert "stdout:" not in display  # a single stream needs no label
-    assert display.endswith("    └ visible output")  # the tail closes the rail, no stored row
+    assert display == "    ├ visible output\n    └ tr.1"  # nested: the body, then the key closing the block
 
 
 async def test_tool_runner_failed_live_bash_does_not_repeat_command(tmp_path, monkeypatch):
@@ -887,13 +883,12 @@ def test_tool_runner_finish_display_bounds_bash_output(tmp_path):
 
     display = str(toolblocks.finish_display(s, ToolCall("bash", "Bash", ["printf lots"]), "tr.1", output, failed=False))
 
-    assert display.startswith("  Bash  printf lots\n")
-    assert "    ├ output … +17 more lines · Ctrl-O for more · tr.1" in display
+    assert display.startswith("  Bash  printf lots → tr.1\n")
     assert "out 0" not in display  # the head of the output is elided, not kept
     assert "stdout:" in display and "stderr:" in display  # both streams ran, so both are labeled
     assert "out 18" in display and "out 19" in display
     assert "err" in display
-    assert display.endswith("    └ err")
+    assert display.endswith("    └ … +17 more lines · Ctrl-O for more")  # the trailer only exists because lines were dropped
     assert "stored" not in display
 
 
@@ -903,9 +898,8 @@ def test_tool_runner_finish_display_keeps_bounded_bash_output_after_live_preview
 
     display = str(toolblocks.finish_display(s, ToolCall("bash", "Bash", ["printf live"]), "tr.1", output, failed=False))
 
-    assert "    ├ output Ctrl-O for more · tr.1" in display
-    assert "live output" in display
-    assert display.endswith("    └ live output")
+    assert "  Bash  printf live → tr.1\n" in display
+    assert display.endswith("    └ live output")  # nothing was dropped, so the body itself closes the block
 
 
 async def test_tool_runner_prints_bash_header_before_live_output(tmp_path):
@@ -926,10 +920,7 @@ async def test_tool_runner_prints_bash_header_before_live_output(tmp_path):
     assert events[1] == ("start", "")
     assert ("stdout", "live") in events
     assert events[-1][0] == "display"
-    assert "    ├ output" in events[-1][1]  # the head row anchors on `output`
-    assert "Ctrl-O for more" in events[-1][1]
-    assert "live" in events[-1][1]
-    assert "    └ stored tr." not in events[-1][1]
+    assert events[-1][1] == "    ├ live\n    └ tr.1"  # nested: the body, then the key closing the block
     assert sum("printf live" in text for kind, text in events if kind == "display") == 1
     assert sum("Bash" in text for kind, text in events if kind == "display") == 1
     assert "live" in s.tool_records[-1].output
@@ -1049,8 +1040,8 @@ def test_a_multi_line_command_is_clipped_on_its_call_line(tmp_path):
     rows = display.split("\n")
     assert rows[0] == "  Bash  python3 - <<'PYEOF'"
     assert [row.strip() for row in rows[1:3]] == ["line_0 = 0", "line_1 = 1"]
-    assert rows[3].strip().startswith("… +39 more lines")
-    assert len(rows) == 5  # the clipped call, then the stored row closing the tree
+    assert rows[3].strip().startswith("… +39 more lines → tr.1")
+    assert len(rows) == 4  # the clipped call line with the key on it, and no row after it
 
 
 def test_a_command_just_over_the_line_budget_is_left_whole(tmp_path):

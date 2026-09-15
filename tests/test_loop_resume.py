@@ -171,7 +171,7 @@ async def test_resumed_session_renders_saved_tool_records_without_matching_tool_
     assert f"Restored session: {s.uid}" in text
     assert "  compacted answer\n  final detail" in text  # the answer sits in the content column
     assert "user:" not in text and "assistant:" not in text
-    assert "  Bash  wc -l wizolt.py\n    └ stored tr.1" in text
+    assert "  Bash  wc -l wizolt.py → tr.1" in text  # the key rides the call line like other tools
     assert "999 wizolt.py" not in text
 
 async def test_resumed_session_separates_turn_boxes(tmp_path):
