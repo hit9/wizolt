@@ -127,6 +127,10 @@ and, where the values are a fixed set, the values. Example: `/set provider.respo
 
 ## While a turn runs
 
+Commands that only read the session answer without interrupting it: `/status`, `/ps`, `/diff`,
+`/skills`, `/help`, `/config`, `/catalog`, and `/mcp`'s tool list, along with the `/yolo` toggle.
+Any other one waits for the turn, and `/resend` is the one that interrupts the request itself.
+
 **`/resend`** — Cancel and re-send the model request in flight, without restarting the turn.
 Use it when a response stalls. It only applies while a request is waiting, not while the agent
 runs a tool. The divider reports the retry and returns to `working`; automatic retries look the

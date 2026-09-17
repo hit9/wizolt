@@ -210,6 +210,34 @@ async def test_queue_command_runs_readonly(tmp_path):
     assert out and not any("unavailable" in t for t in out)
 
 
+@pytest.mark.parametrize("text", ["/help", "/config", "/catalog", "/catalog status"])
+async def test_queue_command_runs_the_other_read_only_reports(tmp_path, text):
+    """Reading how the session is set up costs the running turn nothing, so it needs no interrupt."""
+    s = session(tmp_path)
+    out = []
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda *a, **k: "", output_fn=out.append)
+
+    await loop.run_queued_command(text)
+
+    assert s.pending_user_inputs == []
+    assert out and not any("available while the agent is working" in t for t in out)
+
+
+@pytest.mark.parametrize("text", ["/catalog sync", "/model"])
+async def test_queue_command_still_refuses_a_mutating_form(tmp_path, text):
+    """A queue-safe command is only safe in the form that reports: its mutating form still waits,
+    whether it picks a new model or syncs a catalog the running turn resolves its policy
+    against."""
+    s = session(tmp_path)
+    out = []
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda *a, **k: "", output_fn=out.append)
+
+    await loop.run_queued_command(text)
+
+    assert any("available while the agent is working" in t for t in out)
+    assert s.pending_user_inputs == []
+
+
 async def test_queue_command_runs_yolo_toggle(tmp_path):
     """/yolo flips the runtime flag from the queue while the agent works."""
     s = session(tmp_path)

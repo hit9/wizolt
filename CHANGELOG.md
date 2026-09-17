@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `/help`, `/config`, and `/catalog` answer while a turn is working, the way `/status` and `/diff`
+  already did: reading how the session is set up no longer needs an interrupt. Their mutating
+  forms still wait -- `/catalog sync` is refused mid-turn, as `/mcp connect` already was.
+
 ## 0.49.5 - 2026-09-15
 
 ### Fixed

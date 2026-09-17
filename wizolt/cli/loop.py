@@ -420,11 +420,11 @@ Full documentation: https://wizolt.readthedocs.io
         if entry is None or not entry.queue_safe:
             self.emit_turn(f"{name} is unavailable while the agent is working; press Ctrl-C to run it.")
             return
-        if name == "/mcp":
-            sub = text.partition(" ")[2].split()
-            if sub and sub[0] != "tools":
-                self.emit_turn("Only read-only /mcp (status, tools) is available while the agent is working.")
-                return
+        allowed, refusal = QUEUED_SUBCOMMANDS.get(name, (frozenset(), ""))
+        sub = text.partition(" ")[2].split()
+        if allowed and sub and sub[0] not in allowed:
+            self.emit_turn(refusal)
+            return
         await self.command(text)
 
     def take_pending_inputs(self) -> list[UserInput]:
@@ -1350,13 +1350,13 @@ Full documentation: https://wizolt.readthedocs.io
 
 # fmt: off
 COMMANDS: tuple[Command, ...] = (
-    Command("/help", commands.help, render="answer"),
+    Command("/help", commands.help, queue_safe=True, render="answer"),
     Command("/status", commands.status, queue_safe=True, render="compact"),
-    Command("/catalog", commands.catalog_command, render="answer"),
+    Command("/catalog", commands.catalog_command, queue_safe=True, render="answer"),
     Command("/ps", commands.ps_command, queue_safe=True, render="answer"),
     Command("/diff", commands.diff_command, queue_safe=True, render="answer"),
     Command("/skills", commands.skills_command, queue_safe=True, render="answer"),
-    Command("/config", commands.config),
+    Command("/config", commands.config, queue_safe=True),
     Command("/compact", commands.compact),
     Command("/context", commands.context_command),
     Command("/index", commands.index),
@@ -1379,3 +1379,11 @@ COMMANDS: tuple[Command, ...] = (
 CommandLoop.COMMANDS = tuple(dict.fromkeys(name for command in COMMANDS for name in (command.name, *command.aliases))) + ("/exit", "/quit")
 COMMAND_LOOKUP = {name: command for command in COMMANDS for name in (command.name, *command.aliases)}
 QUEUE_SAFE_COMMANDS = frozenset(command.name for command in COMMANDS if command.queue_safe)
+# The forms of a queue-safe command that are not read-only. A command can report without changing
+# anything and still have a form that does: `/catalog sync` fetches and activates a snapshot the
+# running turn resolves its policy against, and `/mcp connect` rewires the tool registry under it.
+# A bare invocation is always the reporting form, which is what a bare `/mcp` opens.
+QUEUED_SUBCOMMANDS: dict[str, tuple[frozenset[str], str]] = {
+    "/catalog": (frozenset({"status"}), "Only /catalog (status) is available while the agent is working."),
+    "/mcp": (frozenset({"tools", "status"}), "Only read-only /mcp (status, tools) is available while the agent is working."),
+}

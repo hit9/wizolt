@@ -88,7 +88,9 @@ async def test_catalog_command_adds_the_sync_error_prefix_once(tmp_path, monkeyp
     monkeypatch.setattr(command_loop.session.catalog, "sync", fail)
 
     assert await catalog_command(command_loop, "sync") == "catalog sync failed: offline"
-    assert "/catalog" not in QUEUE_SAFE_COMMANDS
+    # Reading the catalog is safe while the agent works; syncing is not, and the queue gate refuses
+    # that form (see test_loop_queue_ui).
+    assert "/catalog" in QUEUE_SAFE_COMMANDS
 
 
 async def test_choice_navigation_uses_shared_modal_protocol(tmp_path):
