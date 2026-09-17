@@ -5,8 +5,10 @@ from types import SimpleNamespace
 from test_tui_app import _StubJob, quick_hint_app
 from tui_harness import ResizableOutput, loop, rendered_screen_text, run_interactive_tui, wait_until
 
+from wizolt.base import oneline
 from wizolt.cli import hints
 from wizolt.cli.hints import HintPicker
+from wizolt.tools import NextHintsTool
 from wizolt.tui import TuiApp
 
 
@@ -386,6 +388,174 @@ def test_quick_hint_pick_and_send_still_work_after_wrapping(monkeypatch):
     run_interactive_tui(monkeypatch, app, text="\t\r\t\r\r\x04")
 
     assert received == ["run the tests and check the coverage\n构建文档并同步中文 locale 目录"]
+
+LONG_HINT = "run the full test suite, then check the coverage report, and commit only what passed"
+SECOND_LONG = "review the diff hunk by hunk and write down anything you are still unsure about"
+
+
+def test_quick_hint_row_shortens_a_long_chip_but_the_pick_keeps_it_whole():
+    """The row below the input stays a row; what `Enter` puts in the input is the suggestion the
+    user chose, never the display form of it."""
+    assert len(LONG_HINT) > TuiApp.QUICK_HINT_MAX_CHARS
+    app, submitted = quick_hint_app((LONG_HINT, "show the diff"))
+    label = oneline(LONG_HINT, TuiApp.QUICK_HINT_MAX_CHARS)
+    assert label.endswith("...") and len(label) <= TuiApp.QUICK_HINT_MAX_CHARS
+    assert ("class:quickhint", f" {label} ") in app.quick_hint_fragments()
+
+    app.quick_hint_focus = 0
+    assert app._pick_quick_hint(app.input_buffer)
+    assert app.input_buffer.text == LONG_HINT
+    assert app.quick_hints() == (LONG_HINT, "show the diff")  # the session keeps it whole
+    assert ("class:quickhint", f" \u2713 {label} ") in app.quick_hint_fragments()
+
+    # The input still agrees with its picks, which is what makes Tab and Enter decide from one
+    # snapshot; a truncated pick would have broken this the moment it was inserted.
+    assert app._live_quick_hints(app.input_buffer) == (LONG_HINT, "show the diff")
+    app.tab_or_complete(app.input_buffer, reverse=False)  # Tab resumes after the picked chip
+    assert app.quick_hint_focus == 1
+    assert submitted == []
+
+
+def test_quick_hint_chip_shortens_only_past_the_cap():
+    """Boundary: a suggestion exactly as long as the cap is drawn whole; one more character is not."""
+    cap = TuiApp.QUICK_HINT_MAX_CHARS
+    exact = "x" * cap
+    over = "y" * (cap + 1)
+
+    lines = "".join(text for _, text in TuiApp._flow_quick_hints((exact, over), columns=0, focus=-1, picked=()))
+
+    assert f" {exact} " in lines
+    assert f" {'y' * (cap - 3)}... " in lines
+    assert "y" * (cap - 2) not in lines  # the tail is dropped from the row only
+
+
+def test_quick_hint_flow_shortens_only_the_long_chip():
+    parts = TuiApp._flow_quick_hints(("show the diff", LONG_HINT), columns=0, focus=-1, picked=())
+    assert parts == [
+        ("class:quickhint", " show the diff "),
+        ("class:quickhint.sep", " \u2502 "),
+        ("class:quickhint", f" {oneline(LONG_HINT, TuiApp.QUICK_HINT_MAX_CHARS)} "),
+    ]
+
+
+def test_quick_hint_long_suggestions_combine_and_send_whole():
+    app, submitted = quick_hint_app((LONG_HINT, SECOND_LONG))
+    app.quick_hint_focus = 0
+    assert app._pick_quick_hint(app.input_buffer)
+    app.tab_or_complete(app.input_buffer, reverse=False)
+    assert app._pick_quick_hint(app.input_buffer)
+
+    assert app.input_buffer.text == f"{LONG_HINT}\n{SECOND_LONG}"
+    assert app.quick_hint_picked == [LONG_HINT, SECOND_LONG]
+    assert app._accept(app.input_buffer)
+    assert [str(value) for value in submitted] == [f"{LONG_HINT}\n{SECOND_LONG}"]
+
+
+def test_quick_hint_unpicking_a_long_chip_matches_the_whole_text():
+    app, _ = quick_hint_app((LONG_HINT,))
+    app.quick_hint_focus = 0
+    assert app._pick_quick_hint(app.input_buffer)
+    assert app.input_buffer.text == LONG_HINT
+
+    app.quick_hint_focus = 0
+    assert app._pick_quick_hint(app.input_buffer)  # the picker finds it by the whole suggestion
+    assert app.input_buffer.text == ""
+    assert app.quick_hint_picked == []
+
+
+def test_quick_hint_long_suggestions_send_whole_through_real_bindings(monkeypatch):
+    received = []
+    app = None
+
+    def submit(text):
+        received.append(str(text))
+        app.set_idle()
+
+    app = TuiApp(on_chat_submit=submit, quick_hints_fn=lambda: (LONG_HINT, SECOND_LONG))
+    app.set_idle()
+
+    run_interactive_tui(monkeypatch, app, text="\t\r\t\r\r\x04")
+
+    assert received == [f"{LONG_HINT}\n{SECOND_LONG}"]
+
+
+def test_quick_hint_long_suggestions_stay_pickable_at_narrow_width(monkeypatch):
+    """At a narrow terminal the row wraps, and a shortened chip may even spill across lines; every
+    suggestion still reaches the picker and the submission is still the whole text."""
+    received = []
+    app = None
+    frames = []
+
+    def submit(text):
+        received.append(str(text))
+        app.set_idle()
+
+    app = TuiApp(on_chat_submit=submit, quick_hints_fn=lambda: (LONG_HINT, SECOND_LONG))
+    app.set_idle()
+    output = ResizableOutput(rows=14, columns=30)
+
+    run_interactive_tui(
+        monkeypatch,
+        app,
+        text="\t\r\t\r\r\x04",
+        output=output,
+        after_render=lambda application: frames.append(rendered_screen_text(application, output)),
+    )
+
+    assert received == [f"{LONG_HINT}\n{SECOND_LONG}"]
+    # Wrapping eats the whitespace at a break, so compare compact forms: the second chip's drawn
+    # label reached the screen, shortened rather than grown.
+    drawn = "".join("".join(frame.split()) for frame in frames)
+    assert "".join(oneline(SECOND_LONG, TuiApp.QUICK_HINT_MAX_CHARS).split()) in drawn
+
+
+def test_quick_hint_two_suggestions_may_share_one_drawn_label():
+    """The one visible consequence of shortening on screen only: suggestions that agree for their
+    first forty-five characters look alike on the row, and each still picks its own whole text."""
+    prefix = "check the whole diff and the test output before deciding what to do next about it"
+    first = prefix + " today"
+    second = prefix + " tomorrow"
+    assert oneline(first, TuiApp.QUICK_HINT_MAX_CHARS) == oneline(second, TuiApp.QUICK_HINT_MAX_CHARS)
+
+    app, _ = quick_hint_app((first, second))
+    drawn = [text for _, text in app.quick_hint_fragments()]
+    assert len(drawn) == 3 and drawn[0] == drawn[2]
+    app.quick_hint_focus = 1
+    assert app._pick_quick_hint(app.input_buffer)
+    assert app.input_buffer.text == second
+
+
+def test_quick_hint_cap_counts_characters_not_cells():
+    """Wide text is cut by characters, exactly as the tool used to cut it; the pick is whole."""
+    wide = (
+        "\u8fd0\u884c\u5b8c\u6574\u7684\u6d4b\u8bd5\u5957\u4ef6\u5e76\u68c0\u67e5\u8986\u76d6\u7387\u62a5\u544a\u7136\u540e\u518d\u63d0\u4ea4\u5df2\u7ecf\u901a\u8fc7\u7684\u5168\u90e8\u6539\u52a8"
+        "\u8fd0\u884c\u5b8c\u6574\u7684\u6d4b\u8bd5\u5957\u4ef6\u5e76\u68c0\u67e5\u8986\u76d6\u7387\u62a5\u544a\u7136\u540e\u518d\u63d0\u4ea4\u5df2\u7ecf\u901a\u8fc7\u7684\u5168\u90e8\u6539\u52a8"
+    )
+    label = oneline(wide, TuiApp.QUICK_HINT_MAX_CHARS)
+    assert len(label) <= TuiApp.QUICK_HINT_MAX_CHARS and label.endswith("...")
+    assert "".join(text for _, text in TuiApp._flow_quick_hints((wide,), columns=0, focus=-1, picked=())) == f" {label} "
+
+    app, _ = quick_hint_app((wide,))
+    app.quick_hint_focus = 0
+    assert app._pick_quick_hint(app.input_buffer)
+    assert app.input_buffer.text == wide
+
+
+def test_quick_hint_suggestion_rides_the_tool_and_the_row_into_the_input(tmp_path):
+    """The whole chain in one test: the tool stores the suggestion whole, the row draws it
+    shortened, and `Enter` puts the suggestion itself in the input."""
+    command_loop = loop(tmp_path)
+    long = "run the full test suite, then check the coverage report, and commit only what passed"
+    NextHintsTool(command_loop.session, [{"inputs": [long]}]).call()
+    app = TuiApp(quick_hints_fn=lambda: command_loop.session.quick_hints)
+    app.set_idle()
+
+    assert app.quick_hints() == (long,)
+    assert ("class:quickhint", f" {oneline(long, TuiApp.QUICK_HINT_MAX_CHARS)} ") in app.quick_hint_fragments()
+    app.quick_hint_focus = 0
+    assert app._pick_quick_hint(app.input_buffer)
+    assert app.input_buffer.text == long
+
 
 def test_quick_hint_placeholder_hints_keys_until_focused():
     app, _ = quick_hint_app()

@@ -260,9 +260,12 @@ class Tool:
         return start, end
 
     @staticmethod
-    def compact(value: Any, limit: int = 120) -> str:
+    def compact(value: Any, limit: int | None = 120) -> str:
+        """One line of text, cut to `limit` characters; `limit=None` keeps every character."""
         text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, separators=(",", ":"))
         text = " ".join(text.split())
+        if limit is None:
+            return text
         return text if len(text) <= limit else text[: limit - 3] + "..."
 
     @staticmethod

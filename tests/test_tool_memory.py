@@ -263,6 +263,34 @@ def test_suggest_tool_dedupes_and_caps(tmp_path):
     assert s.quick_hints == ("a", "b", "c", "d")
 
 
+def test_suggest_tool_keeps_a_long_suggestion_whole_on_one_line(tmp_path):
+    """The row below the input shortens a chip that does not fit; the suggestion itself is what
+    `Enter` picks, so nothing may cut it on the way into the session."""
+    s = session(tmp_path)
+    long = "run the full test suite, then check the coverage report, and commit only what passed"
+    assert len(long) > 48
+
+    NextHintsTool(s, [{"inputs": [long, "show the diff"]}]).call()
+
+    assert s.quick_hints == (long, "show the diff")
+
+
+def test_suggest_tool_flattens_a_suggestion_to_one_line(tmp_path):
+    """Picked suggestions are joined with a newline, so one carrying its own breaks would break the
+    input's agreement with its picks; whitespace collapses at the source."""
+    s = session(tmp_path)
+
+    NextHintsTool(s, [{"inputs": ["first\nsecond\tthird"]}]).call()
+
+    assert s.quick_hints == ("first second third",)
+
+
+def test_suggest_tool_dedupes_after_flattening(tmp_path):
+    s = session(tmp_path)
+    NextHintsTool(s, [{"inputs": ["run  the   tests", "run the tests"]}]).call()
+    assert s.quick_hints == ("run the tests",)
+
+
 def test_suggest_tool_validates_before_writing(tmp_path):
     s = session(tmp_path)
     with pytest.raises(ToolError, match="inputs must be an array"):

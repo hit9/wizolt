@@ -464,7 +464,6 @@ class NextHintsTool(Tool):
     STORES_RESULT = False
     SILENT = True
     MAX_HINTS: ClassVar[int] = 4
-    MAX_LEN: ClassVar[int] = 48
 
     @classmethod
     def params_schema(cls) -> Json:
@@ -481,7 +480,9 @@ class NextHintsTool(Tool):
         raw = data.get("inputs")
         if not isinstance(raw, list) or not all(isinstance(item, str) for item in raw):
             raise ToolError('NextHints inputs must be an array of strings, e.g. {"inputs":["run the tests"]}')
-        hints = list(dict.fromkeys(Tool.compact(item, self.MAX_LEN) for item in raw if item.strip()))[: self.MAX_HINTS]
+        # One line each, and the whole line: the input row shortens a chip that does not fit, but
+        # `Enter` must put the suggestion the user is choosing into the input, not its display form.
+        hints = list(dict.fromkeys(Tool.compact(item, None) for item in raw if item.strip()))[: self.MAX_HINTS]
         if not hints:
             raise ToolError("NextHints inputs must contain at least one non-empty string")
         # Merge rather than replace: a batch of several NextHints calls offers every suggestion,

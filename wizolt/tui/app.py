@@ -39,6 +39,7 @@ from wizolt.base import (
     LogBlock,
     LogEdge,
     WizoltError,
+    oneline,
     run_blocking,
 )
 from wizolt.image import IMAGE_MARKER, ImageInputs, ImageRef, UserInput
@@ -242,6 +243,9 @@ class TuiApp:
     # Quick-hint chips wrap to a new line after this many per row, matching the tool's 2-4 range
     # with the upper end always reachable: four short hints never crowd one line.
     MAX_QUICK_HINTS_PER_ROW: ClassVar[int] = 3
+    # A chip longer than this is drawn shortened, so the row stays a row; what `Enter` picks is the
+    # whole suggestion, because that is what the input sends. Counted in characters, not cells.
+    QUICK_HINT_MAX_CHARS: ClassVar[int] = 48
 
     def __init__(
         self,
@@ -710,15 +714,18 @@ class TuiApp:
 
         A row ends when it holds `MAX_QUICK_HINTS_PER_ROW` chips or the next chip would not fit
         in the remaining width. `columns` is the width in cells (0 = unknown: ignore width and
-        let the window wrap as a fallback). Chips never wrap mid-text except for one extreme:
-        a single chip wider than the whole terminal overflows its own row and the window's own
-        `wrap_lines` splits it; every ordinary chip stays whole and distinguishable.
+        let the window wrap as a fallback). A chip is drawn shortened past `QUICK_HINT_MAX_CHARS`
+        -- a suggestion long enough to be cut is still picked whole, and `picked` is read against
+        the suggestion itself. Chips never wrap mid-text except for one extreme: a single chip
+        wider than the whole terminal overflows its own row and the window's own `wrap_lines`
+        splits it.
         """
         parts: StyleAndTextTuples = []
         line_width = 0
         chips_on_row = 0
         for index, hint in enumerate(hints):
-            chip = f" \u2713 {hint} " if hint in picked else f" {hint} "
+            label = oneline(hint, TuiApp.QUICK_HINT_MAX_CHARS)
+            chip = f" \u2713 {label} " if hint in picked else f" {label} "
             chip_width = get_cwidth(chip)
             if index:
                 if chips_on_row >= TuiApp.MAX_QUICK_HINTS_PER_ROW or (columns and line_width + 3 + chip_width > columns):

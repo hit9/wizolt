@@ -12,6 +12,12 @@
   already did: reading how the session is set up no longer needs an interrupt. Their mutating
   forms still wait -- `/catalog sync` is refused mid-turn, as `/mcp connect` already was.
 
+### Fixed
+
+- A next-step suggestion longer than the chip row was shortened everywhere, so picking it put the
+  shortened text in the input. The row still shortens what it draws; the input gets the whole
+  suggestion.
+
 ## 0.49.5 - 2026-09-15
 
 ### Fixed
