@@ -95,6 +95,9 @@ class CommandLoop:
     # terminal with the whole transcript and push the prompt out of reach; the earlier turns stay
     # in the session, so the next request still sees them.
     MAX_REDRAWN_TURNS: ClassVar[int] = 20
+    # The backstop on the post-turn index convergence: a tree rewritten as fast as it is indexed
+    # keeps the index stale for `/index sync` rather than looping for the rest of the session.
+    MAX_INDEX_PASSES: ClassVar[int] = 25
     EDITOR_CONTEXT_MAX_LINES: ClassVar[int] = 200
     EDITOR_CONTEXT_ELLIPSIS: ClassVar[str] = "# [... earlier lines of this reply omitted ...]"
     EDITOR_CONTEXT_SEPARATOR: ClassVar[str] = "# --- (earlier reply) ---"
@@ -295,6 +298,9 @@ Full documentation: https://wizolt.readthedocs.io
         self.agent.tools.retry_wait = self.model_retry_wait_status
         self.agent.tools.builtin_call = self.builtin_call_output
         self.agent.tools.compaction = self.automatic_compaction_status
+        # The worker's own edits update the index as they happen, but its session is not this one:
+        # a delegation hands its return back here, so the parent converges on the same tree.
+        self.agent.tools.index_freshness = self.schedule_index_freshness
         self.agent.tools.script_status = self.toolscript_run_status
 
     def context_reset_notice(self, text: str) -> None:
@@ -516,7 +522,23 @@ Full documentation: https://wizolt.readthedocs.io
         Never awaited on the answer path: the check walks and hashes the working tree, and a turn's
         answer must not wait behind it. `update_pending` coalesces repeated triggers itself."""
 
-        self.spawn_background(CodeIndex(self.session).update_pending(), name="code-index-freshness")
+        self.spawn_background(self.converge_code_index(), name="code-index-freshness")
+
+    async def converge_code_index(self) -> None:
+        """Apply the post-turn drift check until the index converges.
+
+        A pass re-indexes at most `CodeIndex.AUTO_UPDATE_LIMIT` files: the third-party update walks
+        each file synchronously, and a whole-tree rebuild stays the user's explicit `/index sync`.
+        What changed is what happens past that bound -- the pass used to give up and leave the index
+        stale, so a delegation that touched twenty-odd files read as an index nobody maintains. Now
+        the loop keeps taking bounded passes, with a pause between them, until nothing is pending.
+        `MAX_INDEX_PASSES` is the backstop, not the goal."""
+
+        for _ in range(self.MAX_INDEX_PASSES):
+            verdict = await CodeIndex(self.session).update_pending()
+            if verdict != CodeIndex.MORE_PENDING:
+                return
+            await asyncio.sleep(CodeIndex.CONVERGE_PAUSE)
 
     def refresh_mentions(self) -> asyncio.Task | None:
         """One mention-candidate scan at a time, owned here.

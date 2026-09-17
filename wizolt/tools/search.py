@@ -451,12 +451,17 @@ class CodeIndex:
 
     Freshness is opportunistic. Checking the working tree hashes files and is slow on a large
     repository, so it runs on a background thread after a turn, never in the path of an answer, and a
-    flag keeps scans from stacking up. A few changed files are re-indexed automatically; beyond that
-    the index is marked stale for an explicit sync, because a large rebuild is the user's time to
-    spend.
+    flag keeps scans from stacking up. Changed files are re-indexed a batch at a time, and a caller
+    that keeps taking passes until nothing is pending converges on its own; a whole-tree rebuild
+    stays explicit, because that is the user's time to spend.
     """
 
     AUTO_UPDATE_LIMIT: ClassVar[int] = 20
+    # What a pass returns when it applied a batch and left more pending: the caller takes another.
+    MORE_PENDING: ClassVar[str] = "more pending"
+    # How long a caller waits between batches. Each pass walks and hashes the tree, so a tight loop
+    # would spend the whole session's idle time on indexing.
+    CONVERGE_PAUSE: ClassVar[float] = 1.0
     # fmt: off
     SYMBOLS: ClassVar[dict[str, str]] = {
         "ready": "✓", "synced": "✓", "stale": "*", "syncing": "~",
@@ -571,10 +576,12 @@ class CodeIndex:
         return await self._update(paths)
 
     async def update_pending(self) -> str:
-        """Check the working tree for drift and apply a small update, off the answer path.
+        """Check the working tree for drift and apply one batch, off the answer path.
 
         The `check=True` scan walks and hashes the tree, so it and the update it may trigger go to
-        a worker; the coalescing flag and every status field are set here, on the loop."""
+        a worker; the coalescing flag and every status field are set here, on the loop. A count
+        above `AUTO_UPDATE_LIMIT` is served a batch at a time rather than refused: the pass says
+        `MORE_PENDING` and the caller decides when to come back."""
 
         if self.session.state.code_index_checking or self.session.state.code_index_refreshing:
             return ""
@@ -591,9 +598,14 @@ class CodeIndex:
                 return ""
             pending = getattr(data, "pending_changes", None)
             files = [str(path) for path in getattr(data, "pending_files", ()) or () if path]
-            if not files or len(files) > self.AUTO_UPDATE_LIMIT or (isinstance(pending, int) and pending > self.AUTO_UPDATE_LIMIT):
+            if not files:
                 return ""
-            return await self._update(self.update_paths([self.session.resolve_path(path) for path in files]))
+            more = len(files) > self.AUTO_UPDATE_LIMIT or (isinstance(pending, int) and pending > self.AUTO_UPDATE_LIMIT)
+            batch = self.update_paths([self.session.resolve_path(path) for path in files[: self.AUTO_UPDATE_LIMIT]])
+            result = await self._update(batch)
+            # A pass that applied nothing (a failure, or another refresh holding the flag) must not
+            # ask for another: the next pass would meet the same tree and do the same thing.
+            return self.MORE_PENDING if more and result.startswith("updated") else result
         finally:
             self.session.state.code_index_checking = False
 

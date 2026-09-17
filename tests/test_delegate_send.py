@@ -276,3 +276,27 @@ async def test_send_rejects_worker_calls_to_excluded_tools(tmp_path, monkeypatch
     assert "NextHints is not available in this session" in second
     assert "Cannot read image" in str(model.requests[2])
     assert "done" in result
+
+
+async def test_delegate_send_cues_the_parent_code_index_freshness(tmp_path, monkeypatch):
+    """The worker's own edits update the index as they happen, but they land in the worker's
+    session: the send hands its return back to the parent's drift check, which is what refreshes
+    the status bar. A runner with nothing wired must simply not schedule anything."""
+    from wizolt.context import ContextManager
+    from wizolt.runner import ToolRunner
+
+    parent = _delegate_session(tmp_path)
+    model = FakeModelClient([({"role": "assistant", "content": "done"}, [], "done")])
+    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    cues = []
+    runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
+    runner.index_freshness = lambda: cues.append(parent.uid)
+
+    await _delegate_call(parent, runner, action="send", order="Touch a few files, then report. " * 8)
+    assert cues == [parent.uid]
+
+    # A runner outside CommandLoop has no owner to hand the cue to, and that is not an error. The
+    # worker left alive by the send above is the cheapest way to reach the same `finally` again.
+    headless = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
+    assert headless.index_freshness is None
+    await _delegate_call(parent, headless, action="reset")

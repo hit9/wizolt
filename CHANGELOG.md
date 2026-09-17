@@ -4,6 +4,10 @@
 
 ### Changed
 
+- A change set larger than the post-turn index batch no longer leaves the index stale until you
+  run `/index`: the batches keep coming in the background until the index has caught up, and a
+  delegation cues that check as it returns instead of waiting for the end of the turn, so the
+  status bar stops showing a stale marker over files that were already indexed.
 - `/help`, `/config`, and `/catalog` answer while a turn is working, the way `/status` and `/diff`
   already did: reading how the session is set up no longer needs an interrupt. Their mutating
   forms still wait -- `/catalog sync` is refused mid-turn, as `/mcp connect` already was.

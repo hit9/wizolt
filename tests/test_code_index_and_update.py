@@ -40,7 +40,7 @@ def test_code_index_update_paths_only_keeps_workspace_files(tmp_path):
     assert paths == [str(inside)]
 
 
-async def test_code_index_update_pending_updates_small_batches_and_skips_large_batches(tmp_path, monkeypatch):
+async def test_code_index_update_pending_serves_a_count_over_the_limit_in_batches(tmp_path, monkeypatch):
     (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
     updates = []
 
@@ -55,7 +55,30 @@ async def test_code_index_update_pending_updates_small_batches_and_skips_large_b
     assert await CodeIndex(session(tmp_path)).update_pending() == "updated 1 file(s)"
     assert updates == [(str(tmp_path), [str(tmp_path / "a.py")])]
 
+    # A count past the bound is no longer refused: the pass applies one batch and says another is
+    # owed, so a caller that keeps coming back converges instead of leaving the index stale.
     updates.clear()
+    monkeypatch.setattr(
+        csi,
+        "status",
+        lambda root, *, check=False, max_pending_files=20: SimpleNamespace(
+            status="stale",
+            message="",
+            reason="changed",
+            pending_changes=CodeIndex.AUTO_UPDATE_LIMIT + 1,
+            pending_files=tuple(f"f{index}.py" for index in range(CodeIndex.AUTO_UPDATE_LIMIT + 1)),
+        ),
+    )
+    for index in range(CodeIndex.AUTO_UPDATE_LIMIT + 1):
+        (tmp_path / f"f{index}.py").write_text("x = 1\n", encoding="utf-8")
+
+    assert await CodeIndex(session(tmp_path)).update_pending() == CodeIndex.MORE_PENDING
+    assert len(updates[0][1]) == CodeIndex.AUTO_UPDATE_LIMIT
+
+
+async def test_code_index_update_pending_does_not_ask_again_after_a_failed_batch(tmp_path, monkeypatch):
+    """A pass that applied nothing must not claim progress: the next one would meet the same tree."""
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
     monkeypatch.setattr(
         csi,
         "status",
@@ -63,8 +86,83 @@ async def test_code_index_update_pending_updates_small_batches_and_skips_large_b
             status="stale", message="", reason="changed", pending_changes=CodeIndex.AUTO_UPDATE_LIMIT + 1, pending_files=("a.py",) * 21
         ),
     )
-    assert await CodeIndex(session(tmp_path)).update_pending() == ""
-    assert updates == []
+
+    def fail(paths, *, root):
+        raise RuntimeError("index busy")
+
+    monkeypatch.setattr(csi, "update", fail)
+
+    assert await CodeIndex(session(tmp_path)).update_pending() == "index busy"
+
+
+async def test_converge_code_index_keeps_taking_passes_until_nothing_is_pending(tmp_path, monkeypatch):
+    """The loop's side of the contract: a pass that says `MORE_PENDING` is followed by another, and
+    the drift check stops at the first verdict that is not it."""
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    s = session(tmp_path)
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
+    monkeypatch.setattr(CodeIndex, "CONVERGE_PAUSE", 0)
+    verdicts = iter([CodeIndex.MORE_PENDING, CodeIndex.MORE_PENDING, "updated 1 file(s)"])
+    calls = []
+
+    async def update_pending(_index):
+        calls.append(_index.session is s)
+        return next(verdicts)
+
+    monkeypatch.setattr(CodeIndex, "update_pending", update_pending)
+
+    await loop.converge_code_index()
+
+    assert calls == [True, True, True]
+
+
+async def test_converge_code_index_gives_up_at_the_pass_cap(tmp_path, monkeypatch):
+    """A tree rewritten as fast as it is indexed must not loop for the rest of the session."""
+    s = session(tmp_path)
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
+    monkeypatch.setattr(CodeIndex, "CONVERGE_PAUSE", 0)
+    passes = []
+
+    async def update_pending(_index):
+        passes.append(1)
+        return CodeIndex.MORE_PENDING
+
+    monkeypatch.setattr(CodeIndex, "update_pending", update_pending)
+
+    await loop.converge_code_index()
+
+    assert len(passes) == loop.MAX_INDEX_PASSES
+
+
+async def test_converge_code_index_catches_up_a_change_set_larger_than_one_batch(tmp_path, monkeypatch):
+    """Against the real index library, because the batching decision reads its own contract for
+    what counts as pending: twenty-one changed files used to be refused outright, which left an
+    index nobody maintained until `/index`."""
+    for index in range(CodeIndex.AUTO_UPDATE_LIMIT + 1):
+        (tmp_path / f"m{index}.py").write_text(f"def symbol_{index}():\n    return 0\n", encoding="utf-8")
+    csi.index(str(tmp_path))
+    assert csi.status(str(tmp_path)).files == CodeIndex.AUTO_UPDATE_LIMIT + 1
+    for index in range(CodeIndex.AUTO_UPDATE_LIMIT + 1):
+        (tmp_path / f"m{index}.py").write_text(f"def symbol_{index}():\n    return {index}\n", encoding="utf-8")
+    assert csi.status(str(tmp_path), check=True).pending_changes == CodeIndex.AUTO_UPDATE_LIMIT + 1
+
+    s = session(tmp_path)
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
+    monkeypatch.setattr(CodeIndex, "CONVERGE_PAUSE", 0)
+
+    await loop.converge_code_index()
+
+    after = csi.status(str(tmp_path), check=True)
+    assert after.status == "ready" and not after.pending_files
+    assert s.state.code_index_status == "synced"  # the parent's own status bar is what was stale
+
+
+def test_schedule_index_freshness_is_the_runner_cue(tmp_path):
+    """The delegation hands its changes back through this exact callable, so the two must not drift."""
+    s = session(tmp_path)
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
+
+    assert loop.agent.tools.index_freshness == loop.schedule_index_freshness
 
 
 async def test_code_index_sync_uses_python_api_and_updates_status(tmp_path, monkeypatch):

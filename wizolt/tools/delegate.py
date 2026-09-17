@@ -375,6 +375,13 @@ class DelegateTool(Tool):
         finally:
             # Merge diffs even when interrupted, or the user never sees what the worker did.
             self._merge_diffs(worker, parent, before_diffs)
+            # The worker indexed its own edits as it made them, but this session's drift check and
+            # its status bar know nothing about them: hand the post-turn pass its cue as the
+            # delegation returns, so the index converges while the turn continues instead of at its
+            # end -- and never carrying a stale marker the reader has to interpret.
+            if runner.index_freshness is not None:
+                with contextlib.suppress(Exception):  # a cancelled turn must not fail on a bookkeeping cue
+                    runner.index_freshness()
         if failure is not None:
             # Folded to one bounded, quote-free line at the source rather than where it is read.
             # `status` renders it as an attribute of the envelope the model parses, and a provider

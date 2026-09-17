@@ -248,14 +248,14 @@ source file; subsequent builds sync from the previous snapshot and are much fast
 `force` to rebuild from scratch.
 
 When an index already exists, wizolt refreshes it in the background at startup. After an
-agent turn, it <span class="marker">automatically updates small batches of changed source
-files</span>; run `/index` when a large set of changes leaves it stale. `/status` shows the
-current state:
+agent turn — and as a delegation returns — it <span class="marker">updates the changed source
+files in the background, a batch at a time</span>. A commit or a branch switch is a large change
+set to index: run `/index`. `/status` shows the current state:
 
 | State | Meaning |
 |---|---|
 | **synced** | Index is current and ready |
-| **stale** | Out of date; small batches of changed files refresh themselves after a turn, a commit or branch switch needs `/index` |
+| **stale** | Out of date; changed files refresh themselves in the background after a turn, `/index` is for a commit, a branch switch, or a whole-tree rebuild |
 | **syncing** | A background refresh is in progress |
 | **missing** | No index exists yet; run `/index` |
 | **error** | The index failed to build or sync; `/status` shows the details |

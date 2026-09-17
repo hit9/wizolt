@@ -212,6 +212,10 @@ class ToolRunner:
         self.retry_wait: Callable[[bool], None] | None = None
         self.builtin_call: Callable[[str, str], None] | None = None
         self.compaction: Callable[[bool, str], None] | None = None
+        # The post-turn code-index freshness pass, owned by the CLI loop. A delegation reads it to
+        # hand its own changes back to the parent's drift check; None (headless, or a runner outside
+        # CommandLoop) simply means no check is scheduled.
+        self.index_freshness: Callable[[], None] | None = None
         # Injected by CommandLoop: a ToolScript body is the one stretch of a turn where nothing is
         # streaming and no single tool line is pending, so the divider would otherwise sit on
         # "working" for the whole batch. The source rides along so Ctrl-O can offer the script
