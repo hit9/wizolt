@@ -76,6 +76,22 @@ async def test_code_index_update_pending_serves_a_count_over_the_limit_in_batche
     assert len(updates[0][1]) == CodeIndex.AUTO_UPDATE_LIMIT
 
 
+async def test_code_index_update_pending_leaves_a_stale_index_without_a_file_list_alone(tmp_path, monkeypatch):
+    """A drift count with no paths to name is not a batch: nothing is updated and no pass is owed."""
+    updates = []
+    monkeypatch.setattr(
+        csi,
+        "status",
+        lambda root, *, check=False, max_pending_files=20: SimpleNamespace(status="stale", message="", reason="changed", pending_changes=3, pending_files=()),
+    )
+    monkeypatch.setattr(csi, "update", lambda paths, *, root: updates.append(paths))
+    s = session(tmp_path)
+
+    assert await CodeIndex(s).update_pending() == ""
+    assert updates == []
+    assert s.state.code_index_checking is False  # the coalescing gate is released for the next trigger
+
+
 async def test_code_index_update_pending_does_not_ask_again_after_a_failed_batch(tmp_path, monkeypatch):
     """A pass that applied nothing must not claim progress: the next one would meet the same tree."""
     (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
