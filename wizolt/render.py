@@ -1400,7 +1400,8 @@ class UiPrinter:
         def number(old: int | None, new: int | None, background: str = "") -> None:
             old_text = "" if old is None else str(old)
             new_text = "" if new is None else str(new)
-            segments.append((("ansibrightblack " + background).strip(), f"{old_text:>4} {new_text:>4} | "))
+            # The same box-drawing stroke as the tree rail beside it, so the two verticals match.
+            segments.append((("ansibrightblack " + background).strip(), f"{old_text:>4} {new_text:>4} │ "))
 
         def append_hl(prefix: str, prefix_style: str, content_hl: list[tuple[str, str]], suffix: str, background: str = "") -> None:
             def styled(style: str) -> str:

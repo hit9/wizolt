@@ -144,9 +144,9 @@ def test_diff_segments_syntax_highlights_python(tmp_path):
     assert any("pass" in t and s == "fg:default bg:#520000" for s, t in segments)
 
     # Changed-line gutters join the background band; context stays unfilled.
-    assert any("|" in text and style == "ansibrightblack bg:#003b00" for style, text in segments)
-    assert any("|" in text and style == "ansibrightblack bg:#520000" for style, text in segments)
-    assert any("1" in text and "|" in text and "bg:" not in style for style, text in segments)
+    assert any("│" in text and style == "ansibrightblack bg:#003b00" for style, text in segments)
+    assert any("│" in text and style == "ansibrightblack bg:#520000" for style, text in segments)
+    assert any("1" in text and "│" in text and "bg:" not in style for style, text in segments)
     assert any(text == "def" and "bg:" not in style for style, text in segments)
 
     live = ui.segment_lines(ui.diff_segments_live(diff, row_width=40))
