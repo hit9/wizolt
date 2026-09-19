@@ -98,14 +98,18 @@ def test_diff_colors_survive_the_palette_reorganization(monkeypatch):
     """Diff colors are pinned, not derived: reshuffling the palette must not move them."""
     assert Theme.DIFF_DARK == {
         "diff.added.bg": "bg:#003b00",
+        "diff.added.emph": "bg:#1c7a1c",
         "diff.added.fg": "fg:default",
         "diff.removed.bg": "bg:#520000",
+        "diff.removed.emph": "bg:#9c1c1c",
         "diff.removed.fg": "fg:default",
     }
     assert Theme.DIFF_LIGHT == {
         "diff.added.bg": "bg:#d1f0d1",
+        "diff.added.emph": "bg:#8fd88f",
         "diff.added.fg": "fg:#003b00",
         "diff.removed.bg": "bg:#f5c8c8",
+        "diff.removed.emph": "bg:#e88f8f",
         "diff.removed.fg": "fg:#520000",
     }
     for mode, expected in (("dark", Theme.DIFF_DARK), ("light", Theme.DIFF_LIGHT)):

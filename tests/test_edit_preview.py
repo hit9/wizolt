@@ -33,6 +33,24 @@ def test_approval_segments_highlight_inline_edit_preview():
     assert "\n\n" not in rendered
 
 
+def test_diff_marks_the_words_a_modified_line_changed():
+    """A removed line and the added line replacing it put the heavier band under the words that
+    differ, and only there; the rest of each line keeps its ordinary band."""
+    segments = UiPrinter().diff_segments("@@ -1 +1 @@\n-total = price * count\n+total = price * quantity")
+    added_emph, removed_emph = Theme.diff_style("diff.added.emph"), Theme.diff_style("diff.removed.emph")
+
+    assert [text for style, text in segments if style.endswith(removed_emph)] == ["count"]
+    assert [text for style, text in segments if style.endswith(added_emph)] == ["quantity"]
+    assert any("price" in text and style.endswith(Theme.diff_style("diff.added.bg")) for style, text in segments)
+
+
+def test_diff_leaves_a_rewritten_line_unmarked():
+    """A pair that shares too little is a rewrite, not an edit: no words are singled out."""
+    segments = UiPrinter().diff_segments("@@ -1 +1 @@\n-import os\n+return render(frame, width)")
+
+    assert not any(style.endswith((Theme.diff_style("diff.added.emph"), Theme.diff_style("diff.removed.emph"))) for style, _ in segments)
+
+
 async def test_auto_approved_edit_keeps_preview_pre_line(tmp_path, monkeypatch):
     # Edit's "auto …" pre-line carries the approval preview; the result line is tagged [auto].
     s = session(tmp_path)
@@ -126,7 +144,7 @@ def test_diff_segments_gracefully_degrades_without_lexer(tmp_path):
     segments = ui.diff_segments(diff)
 
     assert any(t == "-" and s == "ansired bg:#520000" for s, t in segments)
-    assert any("old" in t and s == "fg:default bg:#520000" for s, t in segments)
+    assert any("old" in t and s == "fg:default " + Theme.diff_style("diff.removed.emph") for s, t in segments)
     assert any(t == "+" and s == "ansigreen bg:#003b00" for s, t in segments)
 
 

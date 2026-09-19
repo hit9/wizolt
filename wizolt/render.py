@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import difflib
 import io
 import math
 import os
@@ -15,6 +16,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
+from itertools import accumulate, pairwise
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from prompt_toolkit import print_formatted_text
@@ -279,16 +281,22 @@ class Theme:
     # Diff colors are pinned, not derived. They were tuned against real diffs in both appearances
     # and a palette reshuffle must never move them, so they stay their own fixed mapping in the
     # frameworks' own spelling — the one place the palette deliberately does not own.
+    # `emph` is the heavier band under the words a modified line actually changed; the line keeps
+    # its `bg` everywhere else.
     DIFF_DARK: ClassVar[dict[str, str]] = {
         "diff.added.bg": "bg:#003b00",
+        "diff.added.emph": "bg:#1c7a1c",
         "diff.added.fg": "fg:default",
         "diff.removed.bg": "bg:#520000",
+        "diff.removed.emph": "bg:#9c1c1c",
         "diff.removed.fg": "fg:default",
     }
     DIFF_LIGHT: ClassVar[dict[str, str]] = {
         "diff.added.bg": "bg:#d1f0d1",
+        "diff.added.emph": "bg:#8fd88f",
         "diff.added.fg": "fg:#003b00",
         "diff.removed.bg": "bg:#f5c8c8",
+        "diff.removed.emph": "bg:#e88f8f",
         "diff.removed.fg": "fg:#520000",
     }
 
@@ -1324,8 +1332,52 @@ class UiPrinter:
         except Exception:  # noqa: BLE001 - third-party lexer execution must degrade to plain rendering.
             return None
 
-    # Width taken by the line-number gutter emitted inside diff_segments (`NNNN NNNN | `).
+    # Width taken by the line-number gutter emitted inside diff_segments (`NNNN NNNN │ `).
     DIFF_GUTTER_WIDTH: ClassVar[int] = 12
+    # Word-level emphasis compares a removed line with the added line that replaces it. Lines this
+    # long are skipped (a minified blob gains nothing from it), and a pair sharing less than this
+    # much is a rewrite, where marking nearly every word would only restate the whole-line band.
+    DIFF_EMPHASIS_MAX_CHARS: ClassVar[int] = 400
+    DIFF_EMPHASIS_MIN_RATIO: ClassVar[float] = 0.5
+    DIFF_WORD_RE: ClassVar[re.Pattern] = re.compile(r"\w+|\s+|[^\w\s]")
+
+    @classmethod
+    def changed_spans(cls, old: str, new: str) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
+        """The character ranges of `old` and `new` that differ, compared word by word.
+
+        Empty on both sides when the pair is too long or too different to be a modified line."""
+        if max(len(old), len(new)) > cls.DIFF_EMPHASIS_MAX_CHARS:
+            return [], []
+        old_words = cls.DIFF_WORD_RE.findall(old)
+        new_words = cls.DIFF_WORD_RE.findall(new)
+        matcher = difflib.SequenceMatcher(None, old_words, new_words, autojunk=False)
+        if matcher.ratio() < cls.DIFF_EMPHASIS_MIN_RATIO:
+            return [], []
+        old_offsets = [0, *accumulate(len(word) for word in old_words)]
+        new_offsets = [0, *accumulate(len(word) for word in new_words)]
+        old_spans: list[tuple[int, int]] = []
+        new_spans: list[tuple[int, int]] = []
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "equal":
+                continue
+            if i1 < i2:
+                old_spans.append((old_offsets[i1], old_offsets[i2]))
+            if j1 < j2:
+                new_spans.append((new_offsets[j1], new_offsets[j2]))
+        return old_spans, new_spans
+
+    @staticmethod
+    def split_at_spans(content: list[tuple[str, str]], spans: list[tuple[int, int]]) -> list[tuple[str, str, bool]]:
+        """Split styled pieces at the span edges, flagging each piece that falls inside a span."""
+        result: list[tuple[str, str, bool]] = []
+        offset = 0
+        for style, piece in content:
+            cuts = sorted({0, len(piece), *(min(max(edge - offset, 0), len(piece)) for span in spans for edge in span)})
+            for start, end in pairwise(cuts):
+                inside = any(low <= offset + start and offset + end <= high for low, high in spans)
+                result.append((style, piece[start:end], inside))
+            offset += len(piece)
+        return result
 
     def diff_segments(self, text: str, row_width: int | None = None) -> list[tuple[str, str]]:
         return self._diff_segments(text, row_width=row_width, live=False)
@@ -1386,6 +1438,30 @@ class UiPrinter:
                 if hl_index < len(highlighted):
                     hl_by_index[line_index] = highlighted[hl_index]
 
+        # A run of removed lines followed by a run of added lines is a modification; its lines are
+        # paired in order, the way `git diff --word-diff` and diff-highlight read a hunk, and each
+        # pair marks the words it changed.
+        def changed(line: str, sign: str) -> bool:
+            return line.startswith(sign) and not line.startswith(sign * 3)
+
+        spans_by_index: dict[int, list[tuple[int, int]]] = {}
+        run = 0
+        while run < len(lines):
+            if not changed(lines[run], "-"):
+                run += 1
+                continue
+            removed_end = run
+            while removed_end < len(lines) and changed(lines[removed_end], "-"):
+                removed_end += 1
+            added_end = removed_end
+            while added_end < len(lines) and changed(lines[added_end], "+"):
+                added_end += 1
+            for old_index, new_index in zip(range(run, removed_end), range(removed_end, added_end), strict=False):
+                old_spans, new_spans = self.changed_spans(lines[old_index][1:], lines[new_index][1:])
+                spans_by_index[old_index] = old_spans
+                spans_by_index[new_index] = new_spans
+            run = added_end
+
         def hunk_start(part: str, prefix: str) -> int | None:
             if not part.startswith(prefix):
                 return None
@@ -1403,13 +1479,21 @@ class UiPrinter:
             # The same box-drawing stroke as the tree rail beside it, so the two verticals match.
             segments.append((("ansibrightblack " + background).strip(), f"{old_text:>4} {new_text:>4} │ "))
 
-        def append_hl(prefix: str, prefix_style: str, content_hl: list[tuple[str, str]], suffix: str, background: str = "") -> None:
-            def styled(style: str) -> str:
-                return (style + " " + background).strip()
+        def append_hl(
+            prefix: str,
+            prefix_style: str,
+            content_hl: list[tuple[str, str]],
+            suffix: str,
+            background: str = "",
+            spans: list[tuple[int, int]] | None = None,
+            emphasis: str = "",
+        ) -> None:
+            def styled(style: str, band: str = background) -> str:
+                return (style + " " + band).strip()
 
             segments.append((styled(prefix_style), prefix))
-            for style, piece in content_hl:
-                segments.append((styled(style), piece))
+            for style, piece, inside in self.split_at_spans(content_hl, spans or []):
+                segments.append((styled(style, emphasis if inside else background), piece))
             width = get_cwidth(prefix) + sum(get_cwidth(fragment[1]) for fragment in content_hl)
             padding = " " * max(0, changed_width - width) if background and changed_width is not None else ""
             segments.append((background if padding else "", padding + suffix))
@@ -1430,12 +1514,13 @@ class UiPrinter:
                 background = Theme.diff_style("diff.added.bg")
                 number(None, new_line, background)
                 content_hl = hl_by_index.get(index) or [(Theme.diff_style("diff.added.fg"), line[1:])]
-                append_hl("+", "ansigreen", content_hl, suffix, background)
+                append_hl("+", "ansigreen", content_hl, suffix, background, spans_by_index.get(index), Theme.diff_style("diff.added.emph"))
                 new_line = None if new_line is None else new_line + 1
             elif line.startswith("-"):
                 background = Theme.diff_style("diff.removed.bg")
                 number(old_line, None, background)
-                append_hl("-", "ansired", [(Theme.diff_style("diff.removed.fg"), line[1:])], suffix, background)
+                content_hl = [(Theme.diff_style("diff.removed.fg"), line[1:])]
+                append_hl("-", "ansired", content_hl, suffix, background, spans_by_index.get(index), Theme.diff_style("diff.removed.emph"))
                 old_line = None if old_line is None else old_line + 1
             elif line.startswith(" "):
                 number(old_line, new_line)
