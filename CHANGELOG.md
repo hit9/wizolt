@@ -20,6 +20,8 @@
   answer it was given instead of an empty `└ answer` label.
 - `Note` and `Ask` call lines read as the prose they are: the argument highlighter no longer
   tints their words and dims every comma and semicolon.
+- The docs picture of a finished Bash call and the `Ctrl-O` result sheet broke into lines again
+  instead of running together into one overflowing row.
 
 ## 0.49.6 - 2026-09-18
 
