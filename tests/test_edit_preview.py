@@ -44,6 +44,13 @@ def test_diff_marks_the_words_a_modified_line_changed():
     assert any("price" in text and style.endswith(Theme.diff_style("diff.added.bg")) for style, text in segments)
 
 
+def test_diff_marks_nothing_when_the_runs_do_not_pair_up():
+    """Three removed lines replaced by one: no line is paired with whatever sits at its offset."""
+    segments = UiPrinter().diff_segments("@@ -1,3 +1 @@\n-## Unreleased\n-\n-### Added\n+## 0.49.6 - 2026-09-18")
+
+    assert not any(style.endswith((Theme.diff_style("diff.added.emph"), Theme.diff_style("diff.removed.emph"))) for style, _ in segments)
+
+
 def test_diff_leaves_a_rewritten_line_unmarked():
     """A pair that shares too little is a rewrite, not an edit: no words are singled out."""
     segments = UiPrinter().diff_segments("@@ -1 +1 @@\n-import os\n+return render(frame, width)")

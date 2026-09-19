@@ -1438,9 +1438,10 @@ class UiPrinter:
                 if hl_index < len(highlighted):
                     hl_by_index[line_index] = highlighted[hl_index]
 
-        # A run of removed lines followed by a run of added lines is a modification; its lines are
-        # paired in order, the way `git diff --word-diff` and diff-highlight read a hunk, and each
-        # pair marks the words it changed.
+        # A run of removed lines followed by an added run of the same length is a modification: its
+        # lines are paired in order and each pair marks the words it changed. Runs of different
+        # lengths are left alone, as diff-highlight does -- pairing them by position would match a
+        # line against whatever happens to sit at the same offset.
         def changed(line: str, sign: str) -> bool:
             return line.startswith(sign) and not line.startswith(sign * 3)
 
@@ -1456,10 +1457,11 @@ class UiPrinter:
             added_end = removed_end
             while added_end < len(lines) and changed(lines[added_end], "+"):
                 added_end += 1
-            for old_index, new_index in zip(range(run, removed_end), range(removed_end, added_end), strict=False):
-                old_spans, new_spans = self.changed_spans(lines[old_index][1:], lines[new_index][1:])
-                spans_by_index[old_index] = old_spans
-                spans_by_index[new_index] = new_spans
+            if removed_end - run == added_end - removed_end:
+                for old_index, new_index in zip(range(run, removed_end), range(removed_end, added_end), strict=True):
+                    old_spans, new_spans = self.changed_spans(lines[old_index][1:], lines[new_index][1:])
+                    spans_by_index[old_index] = old_spans
+                    spans_by_index[new_index] = new_spans
             run = added_end
 
         def hunk_start(part: str, prefix: str) -> int | None:

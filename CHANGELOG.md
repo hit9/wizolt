@@ -9,7 +9,7 @@
   transcript line.
 - An Edit's diff hangs straight off its call line; the `preview` caption above it is gone.
 - A diff marks the words a modified line actually changed: when removed lines are followed by
-  the added lines replacing them, each pair puts a heavier red/green band under the differing
+  as many added lines replacing them, each pair puts a heavier red/green band under the differing
   words, so a one-token edit no longer reads as two whole lines of color. A pair that shares
   little is a rewrite and keeps the plain line bands.
 
