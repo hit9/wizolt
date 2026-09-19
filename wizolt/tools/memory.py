@@ -277,6 +277,8 @@ class NoteTool(Tool):
     )
     STORES_RESULT = False
     MUTATES = True
+    # The call line is the note's own prose, which the argument lexer would tint word by word.
+    LOG_LEXER = ""
 
     def needs_confirmation(self) -> bool:
         # MUTATES serializes Note with other state edits; working-note changes do not need user

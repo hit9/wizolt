@@ -18,6 +18,8 @@
 - A resumed session replays tool calls the way they looked live: `NextHints`, which prints
   nothing while a turn runs, no longer shows up as `NextHints {}` rows, and an `Ask` shows the
   answer it was given instead of an empty `└ answer` label.
+- `Note` and `Ask` call lines read as the prose they are: the argument highlighter no longer
+  tints their words and dims every comma and semicolon.
 
 ## 0.49.6 - 2026-09-18
 

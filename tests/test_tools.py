@@ -708,6 +708,17 @@ async def test_tool_validation_rejects_bad_shapes_without_side_effects(tmp_path)
     assert not (tmp_path / "b.txt").exists()
 
 
+def test_prose_call_lines_are_not_lexed_as_arguments(tmp_path):
+    """Note and Ask carry prose, so its commas and words keep the plain text style."""
+    session(tmp_path)
+    for display in ("Note check: HEAD = 878d86a, tag created; not pushed", "Ask Push now, or wait?"):
+        line = toolblocks.log_root(display)
+        segments = UiPrinter(output_fn=lambda text: None).log_segments(LogBlock([line]))
+
+        assert line.syntax == ""
+        assert (Theme.fg("text"), "  " + display.partition(" ")[2]) in segments
+
+
 def test_uiprinter_highlights_generic_tool_arguments(tmp_path):
     session(tmp_path)
     line = toolblocks.log_root('Search "done in" glob=*.py C=2')
