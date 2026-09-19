@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The `Bash` tool tells the model that every call already starts in the workspace, so commands
+  stop opening with a redundant `cd <workspace> &&` that pushed the part that matters off the
+  transcript line.
+
 ## 0.49.6 - 2026-09-18
 
 ### Changed
