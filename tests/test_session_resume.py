@@ -182,6 +182,34 @@ async def test_resumed_transcript_without_a_stored_diff_shows_the_call_only(tmp_
     assert "preview" not in text
     assert "Edit" in text
 
+async def test_resumed_transcript_replays_calls_the_way_they_ran_live(tmp_path):
+    """A silent tool stays silent on resume, and an Ask shows the answer it was given."""
+    s = session_with_data_dir(tmp_path)
+    s.messages.append({"role": "user", "content": "release it"})
+    ask = '{"questions": [{"question": "Push now?", "choices": ["push", "wait"]}]}'
+    hints = '{"inputs": ["push the tag"]}'
+    s.messages.append(
+        {
+            "role": "assistant",
+            "content": "Released.",
+            "tool_calls": [
+                {"id": "c1", "type": "function", "function": {"name": "Ask", "arguments": ask}},
+                {"id": "c2", "type": "function", "function": {"name": "NextHints", "arguments": hints}},
+            ],
+        }
+    )
+    s.store_tool_result("Ask", [], "wait")
+    await s.save_snapshot()
+
+    s.close()  # release the writer before reloading
+    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    output = []
+    CommandLoop(Agent(restored, output_fn=output.append), output_fn=output.append).render_resumed_session()
+    text = "\n".join(str(item) for item in output)
+
+    assert "answer wait" in text
+    assert "NextHints" not in text
+
 def _bash_raw_call(arguments: str) -> dict:
     return {"id": "c1", "type": "function", "function": {"name": "Bash", "arguments": arguments}}
 

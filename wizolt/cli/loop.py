@@ -869,12 +869,19 @@ Full documentation: https://wizolt.readthedocs.io
         """An Edit shows the diff it made, the way it did when the edit ran live. Live, that preview
         comes from the approval block; here the stored diff text is the same string, so replaying it
         needs no reconstruction."""
+        tool_class = TOOL_REGISTRY.get(call.name)
+        # Live, a silent tool logs nothing unless it failed (ToolRunner.run); a replay shows no more.
+        if tool_class is not None and tool_class.SILENT and not failed:
+            return
         preview = diffs.get(key, "") if call.name == "Edit" else ""
         # Through `tool_output`, like the live call: a replayed call opens its own group with a
         # blank row above it, and its result stays attached underneath. Emitted directly, every
         # call in a turn ran into the one above it and into the narration that introduced them.
         if not preview:
-            self.tool_output(toolblocks.finish_display(self.session, call, key, "failed in saved session" if failed else "", failed=failed))
+            # An Ask's stored result is the user's answer, which its finish block shows live; every
+            # other call replays as its `tr.N` marker alone.
+            output = "failed in saved session" if failed else self.session.tool_results.get(key, "") if call.name == "Ask" else ""
+            self.tool_output(toolblocks.finish_display(self.session, call, key, output, failed=failed))
             return
         # The preview block carries the call line, so the result collapses to its trailing marker
         # underneath it — the same nesting the live approval block produces.

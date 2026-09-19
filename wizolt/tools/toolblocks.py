@@ -334,7 +334,9 @@ def finish_display(
                 for line in tooloutput.preview_lines(body, tooloutput.BASH_TRANSCRIPT_PREVIEW_LINES)
             )
     elif call.name == "Ask":
-        children.append(LogLine("answer", oneline(output, 220), LogRole.META, LogEdge.END))
+        # No answer to show (a replay whose record was compacted away) draws no empty label.
+        if output:
+            children.append(LogLine("answer", oneline(output, 220), LogRole.META, LogEdge.END))
     elif call.name == "Delegate":
         if 'action="reset"' in output:
             # Reset is a one-shot tool call, not a delegation bracket: it keeps its ordinary
