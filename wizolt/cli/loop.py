@@ -895,8 +895,7 @@ Full documentation: https://wizolt.readthedocs.io
         hidden = max(0, len(lines) - self.TRANSCRIPT_DIFF_LINES)
         if hidden:
             lines = lines[: self.TRANSCRIPT_DIFF_LINES]
-        children = [LogLine("preview", role=LogRole.META, edge=LogEdge.BRANCH)]
-        children.extend(LogLine("", line, LogRole.DIFF, LogEdge.CONTINUE) for line in lines)
+        children = [LogLine("", line, LogRole.DIFF, LogEdge.CONTINUE) for line in lines]
         if hidden:
             children.append(LogLine("", f"… {hidden} more lines, see /diff", LogRole.META, LogEdge.CONTINUE))
         return LogBlock.hierarchy(toolblocks.log_root(tooloutput.short_call(self.session, call), LogRole.AUTO, "", call), children)

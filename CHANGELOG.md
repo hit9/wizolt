@@ -7,6 +7,7 @@
 - The `Bash` tool tells the model that every call already starts in the workspace, so commands
   stop opening with a redundant `cd <workspace> &&` that pushed the part that matters off the
   transcript line.
+- An Edit's diff hangs straight off its call line; the `preview` caption above it is gone.
 
 ### Fixed
 

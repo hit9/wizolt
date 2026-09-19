@@ -161,7 +161,6 @@ async def test_resumed_transcript_replays_the_edit_diff(tmp_path):
     """A resumed session shows what each Edit changed, not just that an Edit ran."""
     text = await _resumed_transcript(tmp_path, "--- x.py\n+++ x.py\n@@ -1 +1 @@\n-a\n+b\n")
 
-    assert "preview" in text
     assert "-a" in text and "+b" in text
     assert "stored tr.1" in text
     # The preview block carries the call line, so it is not repeated by the result line.

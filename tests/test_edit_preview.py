@@ -47,7 +47,7 @@ async def test_auto_approved_edit_keeps_preview_pre_line(tmp_path, monkeypatch):
     assert isinstance(out[0], LogBlock)
     root, _ = next(out[0].walk())
     assert root.role is LogRole.AUTO
-    assert "preview" in str(out[0])
+    assert "+NEW" in str(out[0])
     assert str(out[1]).rstrip().endswith("[auto]")
 
 
