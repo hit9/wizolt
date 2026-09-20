@@ -213,9 +213,11 @@ table.docutils th { background: var(--nc-surface); color: var(--nc-fg-strong); }
 .fs-output { color: #5c6370; }  /* tool output: LogRole.OUTPUT renders bright black, like .fs-dim */
 /* Diff rows, mirroring Theme.DARK diff.added/removed in wizolt/render.py: the row carries a
    background and the text keeps the default foreground; only the +/- marker is colored. */
-/* Approval action row, mirroring cli/view.py: actions are ansiyellow, the focused one reversed. */
+/* Approval action row, mirroring cli/view.py: actions are ansiyellow, the focused one banded. */
 .fs-approve { color: #e5c07b; }
-.fs-approve-on { color: #282c34; background: #e5c07b; }
+/* The cursor, mirroring Theme.selection(): one band for every list, whatever the row it lands on
+   is drawn in -- a picker row, a completion, a browser row, or the focused approval action. */
+.fs-selected { color: #ffffff; background: #008ec4; }
 /* Markdown rendered inside a viewer, mirroring Rich's output: headings magenta underlined,
    inline code cyan on a dark band. */
 .fs-md-b { font-weight: 700; }
