@@ -4,6 +4,12 @@
 
 ### Changed
 
+- Every list that has a cursor now marks it the same way: one blue band with white text, in the
+  completion menu, the pickers, the `Ctrl-O` browser, the next-step chips, and the approval
+  actions. Selection used to be reverse video, so the band took its color from whatever the row
+  was drawn in -- green over a tool name, gray over a `tr.N` key -- and the completion menu had no
+  band at all.
+
 - The `Bash` tool tells the model that every call already starts in the workspace, so commands
   stop opening with a redundant `cd <workspace> &&` that pushed the part that matters off the
   transcript line.

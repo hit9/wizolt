@@ -243,6 +243,8 @@ class Theme:
         "status_worker": "#fbbf24",
         "divider_glow": "#67e8f9",
         "divider_rule": "#4b5563",
+        "selection_bg": "#008ec4",
+        "selection_fg": "#ffffff",
         "pygments": "github-dark",
     }
     LIGHT: ClassVar[dict[str, str]] = {
@@ -274,6 +276,8 @@ class Theme:
         "status_worker": "#b45309",
         "divider_glow": "#0e7490",
         "divider_rule": "#9ca3af",
+        "selection_bg": "#008ec4",
+        "selection_fg": "#ffffff",
         "pygments": "default",
     }
     ROLES: ClassVar[tuple[str, ...]] = tuple(key for key in DARK if key != "pygments")
@@ -343,6 +347,17 @@ class Theme:
         computed color. Fragments that can name a class should use one instead.
         """
         return " ".join((f"fg:{cls.color(role)}", *attributes))
+
+    @classmethod
+    def selection(cls, *attributes: str) -> str:
+        """The one band that says "this row is selected", for every list that has a cursor.
+
+        It is a fixed pair rather than `reverse` on purpose: reverse inverts whatever color the row
+        is already drawn in, so the band changed color from row to row -- green over a tool name,
+        gray over a `tr.N` key. One band is one meaning, and it is the same band in the completion
+        menu, the pickers, the browsers, and the approval actions.
+        """
+        return " ".join((f"fg:{cls.color('selection_fg')}", f"bg:{cls.color('selection_bg')}", *attributes))
 
     @classmethod
     def tui_styles(cls) -> dict[str, str]:
