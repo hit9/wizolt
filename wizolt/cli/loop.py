@@ -821,7 +821,7 @@ Full documentation: https://wizolt.readthedocs.io
                     self._silent_batches = 0
                 else:
                     self._silent_batches += 1
-                    if self._silent_batches >= self.TOOL_RUN_RULE_BATCHES:
+                    if self._silent_batches >= self.TOOL_RUN_RULE_BATCHES and self.ui.rule_due(self.MIN_ROWS_BETWEEN_RULES):
                         self.ui.emit_phase_rule()
                         self._silent_batches = 0
             return tool_record_index
@@ -1107,7 +1107,13 @@ Full documentation: https://wizolt.readthedocs.io
             # The blank line parts each block from the one above; it is skipped when the block
             # sits directly under a rule just drawn (the turn's opening rule, or a batch rule),
             # which already provides the seam.
-            if isinstance(text, str) or (text.items and isinstance(text.items[0], LogLine)):
+            #
+            # It is skipped again between two calls that each fit on one line: a run of them is a
+            # list of what the agent did, and a blank row between every pair doubles its height for
+            # nothing. The moment a call brings output, a diff, or narration with it, the gap is
+            # back -- that block needs to be parted from the one above.
+            packed = self.ui.single_line_block(text) and self.ui.emitted_single_line
+            if not packed and (isinstance(text, str) or (text.items and isinstance(text.items[0], LogLine))):
                 self.ui.separate()
             self.emit(text)
 
@@ -1286,7 +1292,12 @@ Full documentation: https://wizolt.readthedocs.io
             if not silent:
                 return
             self._silent_batches += 1
-            if self._silent_batches >= self.TOOL_RUN_RULE_BATCHES:
+            # Both conditions, for the reason the narration rule checks the distance: the batch
+            # count says the silence is long enough to be worth closing, the distance says a rule
+            # this close to the one above would part nothing. A run of one-line calls is four rows,
+            # not a stretch. The count keeps running when the rule is held back, so the seam
+            # arrives on the batch that finally clears the distance.
+            if self._silent_batches >= self.TOOL_RUN_RULE_BATCHES and self.ui.rule_due(self.MIN_ROWS_BETWEEN_RULES):
                 self.ui.emit_phase_rule()
                 self._silent_batches = 0
 

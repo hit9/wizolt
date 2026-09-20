@@ -44,6 +44,7 @@ from wizolt.base import (
     Json,
     LogBlock,
     LogEdge,
+    LogLine,
     LogRole,
     Text,
 )
@@ -608,6 +609,18 @@ class UiPrinter:
         # leaves one blank row. Starts at one, so the first block of a session does not open with a
         # blank row it has nothing to be parted from.
         self.trailing_blanks = 1
+        # Whether the last thing printed was a call that fit on one line with nothing hanging off
+        # it. A run of those reads as a list, so the callers that part blocks with a blank row skip
+        # it between two of them; anything else printed clears the flag and the gap comes back.
+        self.emitted_single_line = False
+
+    @staticmethod
+    def single_line_block(text: str | LogBlock) -> bool:
+        """Whether a block is one log line: a call with no output, no children, no wrapped text."""
+        if not isinstance(text, LogBlock) or len(text.items) != 1:
+            return False
+        line = text.items[0]
+        return isinstance(line, LogLine) and "\n" not in (line.text + line.meta)
 
     def track_layout(self, text: str) -> None:
         """Record what one emit left on screen: rows drawn, and blank rows left at the end.
@@ -627,6 +640,9 @@ class UiPrinter:
             blanks += 1
         # A wholly blank emit extends the run above it; anything with content restarts the count.
         self.trailing_blanks = self.trailing_blanks + blanks if blanks == len(rows) else blanks
+        # Cleared here rather than in `emit`, so output that never goes through it -- an answer, a
+        # rule, a direct write -- also ends a run of one-line calls. `emit` sets it again after.
+        self.emitted_single_line = False
 
     def separate(self, rows: int = 1) -> None:
         """Ensure `rows` blank rows part what comes next from what is already on screen.
@@ -820,6 +836,7 @@ class UiPrinter:
         # close is how far apart they are on screen, and one Bash call with its output goes further
         # than four Reads. A block that wrapped counts the rows it actually took.
         self.track_layout("".join(fragment for _, fragment in segments))
+        self.emitted_single_line = self.single_line_block(text)
         # A log block sizes its diff gutter and wrapping from the pane, so it is recorded as itself
         # and laid out again on replay. Plain text needs no such treatment: `segments` never wraps,
         # so the terminal re-flows it for free.

@@ -9,6 +9,12 @@
   actions. Selection used to be reverse video, so the band took its color from whatever the row
   was drawn in -- green over a tool name, gray over a `tr.N` key -- and the completion menu had no
   band at all.
+- A run of calls that each fit on one line is drawn as a list instead of being parted by a blank
+  row each: a resumed session of mostly one-line calls comes back about 10% shorter, with 40%
+  fewer blank rows. A call that brings output, a diff, or narration still opens its own block.
+- The rule that closes a long silent run of tool batches now also has to be far enough from the
+  rule above it, the way the narration rule already did, so a handful of packed one-line calls no
+  longer ends up sandwiched between two rules a few rows apart.
 
 - The `Bash` tool tells the model that every call already starts in the workspace, so commands
   stop opening with a redundant `cd <workspace> &&` that pushed the part that matters off the
