@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- The status bar shows the worker's context fill, as a `worker ctx N%` group beside the
+  session's own, whenever a worker exists and has already run. A worker that was never delegated
+  to, or was reset, adds nothing; during a delegation the row already shows the worker's figures
+  behind the `[worker]` marker and the extra group is dropped.
+
 ### Changed
 
 - Every list that has a cursor now marks it the same way: one blue band with white text, in the

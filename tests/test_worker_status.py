@@ -33,9 +33,7 @@ async def test_status_bar_follows_the_inflight_worker(tmp_path, monkeypatch):
     assert parent_lead in original and "[worker]" not in original
     assert "ctx 50% \u00b7 cache 25%" in original
 
-    # A live but idle worker does not take over the bar: marker, provider/model, and usage all
-    # apply only while a delegation is in flight (the engine clears _active_turn_messages in
-    # finish_turn), so an idle worker leaves the parent's values exactly as before it existed.
+    # A worker with its own usage and context, attached but idle.
     worker_config = Config()
     worker_config.providers["default"] = ProviderConfig(model="worker-model")
     worker = Session(cwd=str(tmp_path), config=worker_config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
@@ -43,7 +41,23 @@ async def test_status_bar_follows_the_inflight_worker(tmp_path, monkeypatch):
     worker.usage.last_prompt_budget = 100
     worker.usage.last_cached_prompt_tokens = 25
     parent.worker = worker
+    # A live but idle worker does not take over the bar: marker, provider/model, and usage all
+    # apply only while a delegation is in flight (the engine clears _active_turn_messages in
+    # finish_turn), so an idle worker leaves the parent's values exactly as before it existed.
+    # Its one contribution is its own context water level, appended as a separate group.
+    with_worker = row()
+    assert parent_lead in with_worker and "[worker]" not in with_worker
+    assert "ctx 50% \u00b7 cache 25%" in with_worker
+    assert "worker ctx 50%" in with_worker
+
+    # A worker without real context (never delegated to, or reset) adds nothing: the row is
+    # exactly the one from before the worker existed.
+    worker.usage.last_prompt_tokens = 0
+    worker.usage.last_prompt_budget = 0
+    worker.state.context_percent = 0
     assert row() == original
+    worker.usage.last_prompt_tokens = 50
+    worker.usage.last_prompt_budget = 100
 
     # In flight: the row names the model actually running and its context, behind a [worker] marker.
     worker._active_turn_messages.append({"role": "user", "content": "order"})
@@ -51,11 +65,13 @@ async def test_status_bar_follows_the_inflight_worker(tmp_path, monkeypatch):
     assert "[worker] default/worker-model" in delegating
     assert "ctx 50% \u00b7 cache 50%" in delegating
     assert parent_lead not in delegating
+    # The row already shows the worker's numbers behind the marker, so the extra group is gone.
+    assert "worker ctx" not in delegating
 
     # Session-wide groups stay the parent's, and the row returns to the parent when the worker answers.
     assert "skills " in delegating and "index" in delegating
     worker._active_turn_messages.clear()
-    assert row() == original
+    assert row() == with_worker
 
 
 async def test_working_divider_marks_inflight_worker(tmp_path):
@@ -338,5 +354,8 @@ async def test_status_bar_names_the_worker_model_during_a_real_delegation(tmp_pa
     assert "parent-model" not in sampled[0]
     # The worker's own fill and cache ratio, never the parent's.
     assert "ctx 30% · cache 50%" in sampled[0]
-    # The delegation is over: the row is the parent's again, unchanged from before the send.
-    assert row() == idle
+    # The delegation is over: the row returns to the parent's identity and usage, plus the
+    # parked worker's own water level as the one worker fact it now carries.
+    final = row()
+    assert "default/parent-model" in final and "ctx 50% \u00b7 cache 25%" in final
+    assert "[worker]" not in final and "worker ctx 30%" in final

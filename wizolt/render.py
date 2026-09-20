@@ -1894,15 +1894,34 @@ class StatusBar:
             text += f" · {remaining}s"
         return text
 
+    def worker_context_group(self, source: Session) -> list[list[tuple[str, str]]]:
+        """The parked worker's context water level, appended to the parent's row as `worker ctx N%`.
+
+        Shown only while the parent is the active session: in flight the row already carries the
+        worker's numbers behind the `[worker]` marker, and a second group would repeat them. And
+        only when the worker has real context: a worker that was never delegated to, or was
+        reset, adds nothing -- `worker ctx 0%` is noise, not information. Read off the attached
+        worker Session alone; the bar never loads one from disk to fill this row.
+        """
+        worker = self.session.worker
+        if worker is None or source is not self.session:
+            return []
+        percent = worker.usage.context_percent(worker.state.context_percent)
+        if percent <= 0:
+            return []
+        return [[(f"worker ctx {percent}%", "worker")]]
+
     def fragments(self) -> StyleAndTextTuples:
         """Render the stable status row in its fixed group order and semantic colors.
 
         Identity and usage are read off `active_session()`, so during a delegation the row answers
         the question the reader actually has -- which model is running now, and how full its
         context is -- instead of describing a parent that is parked inside a tool call. The
-        `[worker]` marker says whose numbers these are; they return to the parent's the moment the
-        worker answers. The session-wide groups (mcp, skills, index, yolo) stay the parent's:
-        the worker shares those objects, and yolo is the runtime's own flag.
+        `[worker]` marker says whose numbers these are; they return to the parent's the moment
+        the worker answers. The session-wide groups (mcp, skills, index, yolo) stay the parent's:
+        the worker shares those objects, and yolo is the runtime's own flag. The one worker fact
+        shown while the parent runs is its context water level (`worker_context_group`), the
+        number the reader weighs before delegating again.
         """
         source = self.active_session()
         config = source.config
@@ -1926,6 +1945,7 @@ class StatusBar:
             identity,
             [(self.mcp_label(), "mcp"), (" · ", "sep"), (f"skills {skill_count}", "mcp")],
             [(f"ctx {ctx_percent}%", "context"), (" · ", "sep"), (f"cache {cache_percent}%", "context")],
+            *self.worker_context_group(source),
             [("index" + self.index_status(), "index")],
         ]
         fragments: StyleAndTextTuples = []

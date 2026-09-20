@@ -84,6 +84,10 @@ A single line beneath the prompt summarizes the session in a fixed order:
 `[yolo] provider/model · level | mcp N · skills N | ctx N% · cache N% | index*`.
 `[yolo]` appears only when enabled, and the index suffix reflects its current state.
 
+Once a [worker](worker.md) has actually run, its own context fill rides the row too, as
+`worker ctx N%`; a worker that has never been delegated to (or was reset) adds nothing. While a
+delegation is in flight the row shows the worker's figures instead, behind a `[worker]` marker.
+
 The role colors stay still while the values remain live. The context and cache figures refresh
 after requests, and MCP, skill, and index changes appear on the next screen redraw. While MCP
 servers are still being contacted the count spins — `mcp ⠹2` — and rises as each one answers; a
