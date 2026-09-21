@@ -146,6 +146,44 @@ def test_fresh_window_output_uses_available_screen_before_scrolling(pane):
         assert "\n".join(lines).count("tmux-driver") == 1
 
 
+@pytest.mark.xfail(reason="see KNOWN_ISSUES.md: a pane height change cannot remove the rows it already drew", strict=False)
+def test_zoom_on_a_fresh_pane_leaves_one_live_region(pane):
+    """A pane zoom while the app still floats above unused space leaves no copy behind.
+
+    The window-resize case is covered above; a zoom is a different reflow, and the state that
+    matters is the one a session starts in: the app is not flush with the pane bottom, it sits
+    partway down with empty rows below it. Erasing from the bottom of the pane then misses the
+    rows the app actually occupies, and the previous live region -- divider, prompt and status
+    row -- stays on screen as text while the app redraws lower.
+
+    Left executable rather than deleted: it is the reproduction behind the KNOWN_ISSUES entry,
+    and it is what a future attempt has to turn green. Erasing more is not that attempt -- the
+    measurements in that entry are of erasing more making it worse.
+    """
+    log = pane.path / "zoom.log"
+    pane.send(f"{sys.executable} {DRIVER} 60 0.05 {log} fresh")
+    _wait_for_markers(log, 4)
+    # A second pane, so the app's pane can be zoomed and unzoomed the way a user does it.
+    tmux("split-window", "-d", "-v", "-t", pane.session, "sh")
+    log.with_suffix(".more").touch()
+
+    for _ in range(3):
+        tmux("resize-pane", "-Z", "-t", f"{pane.session}.0")
+        time.sleep(0.3)
+        tmux("resize-pane", "-Z", "-t", f"{pane.session}.0")
+        time.sleep(0.3)
+
+    _wait_for_markers(log, 60)
+    lines = _settled_capture(pane)
+    text = "\n".join(lines)
+
+    assert sum(line == "+>" or line.startswith("+> ") for line in lines) == 1, text
+    assert text.count("tmux-driver") == 1, text
+    written = {int(m) for m in re.findall(r"wrote MARKER-(\d+)", log.read_text())}
+    seen = Counter(int(m) for m in re.findall(r"MARKER-(\d+)", text))
+    assert not [marker for marker in written if seen[marker] != 1], (seen, text)
+
+
 @pytest.mark.parametrize("height", [12, 18, 30])
 def test_long_inline_selector_keeps_context_visible(pane, height):
     pane.resize(WIDE, height)

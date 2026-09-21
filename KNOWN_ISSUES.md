@@ -8,8 +8,9 @@ those decisions leave behind.
 ## Terminal resize costs on the primary screen
 
 Wizolt keeps its whole UI on the terminal's primary screen so that completed output lands in
-native terminal and tmux scrollback. Three symptoms follow from that choice. They are real, they
-are reported, and the reference implementation of the same design has all three.
+native terminal and tmux scrollback. Four symptoms follow from that choice. They are real and
+they are reported; the reference implementation of the same design has the three that were
+checked against it.
 
 ### 1. A width change clears the terminal, including pre-wizolt shell history
 
@@ -57,14 +58,39 @@ to.
 [#20063 iTerm2 + zsh: `--no-alt-screen` still does not produce usable native scrollback](https://github.com/openai/codex/issues/20063),
 and [PR #20819](https://github.com/openai/codex/pull/20819) adding a raw scrollback mode.
 
-### 3. The app moves down when the transcript is taller than the space above it
+### 3. A pane height change can leave the previous live region on screen
+
+While a pane still has unused rows below the app -- the state a session starts in, before the
+transcript has filled the pane -- growing it (a tmux zoom, or dragging a split taller) leaves the
+divider, prompt and status row that were already drawn where they are, and the app redraws lower.
+Both are then on screen at once, with a blank gap between them, and after the pane shrinks again
+the stale copy sits in native history where nothing can reach it. An established pane does not
+show this: once the app is flush with the pane bottom, tmux pins that bottom across the reflow and
+the redraw lands on the same rows.
+
+**Not fixable by erasing more.** The resize path erases from where an app of this height belongs
+when flush with the pane bottom. Erasing from where the app was actually last drawn (the
+renderer's own origin, which is higher while the pane has space below) was implemented and
+measured: over six zoom transitions the stale prompt rows went from 6 to 8. Erasing the entire
+screen on every resize took it to 14. This is the artifact the acceptance suite's docstring
+names -- erasing clears cells, it does not remove rows from the text flow -- and each extra
+erase-and-repaint contributes rows of its own. `tests/test_tui_tmux_scrollback.py::
+test_zoom_on_a_fresh_pane_leaves_one_live_region` is the reproduction, kept as an expected
+failure.
+
+**What would remove it** is the purge-and-replay already used for width changes, applied to
+height changes too. That trades symptom 1's cost -- losing pre-wizolt shell scrollback -- for an
+interaction people perform constantly, which is the same trade `DESIGN.md` refuses for closing an
+inline selector. A zoom is not worth a purge.
+
+### 4. The app moves down when the transcript is taller than the space above it
 
 A rebuild keeps the application at the row it was on when there is room, and pads above the
 transcript rather than below it. When the transcript needs more rows than that, the application
 lands below it instead. Pinning it would mean writing only the rows that fit, which costs
 scrollback depth -- the older rows would no longer reach native history at all.
 
-### What would actually remove all three
+### What would actually remove all four
 
 Moving the whole application to the alternate screen and serving conversation history from inside
 wizolt. That is a product decision, not a rendering fix: it gives up native scrollback, so
