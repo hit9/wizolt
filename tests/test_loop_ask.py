@@ -14,7 +14,9 @@ from wizolt.base import (
     DISMISSED,
     SELECTION_BACK,
     LogBlock,
+    LogEdge,
     LogLine,
+    LogRole,
     Text,
     ToolCall,
 )
@@ -325,6 +327,30 @@ async def test_final_answer_takes_no_phase_rule(tmp_path):
     loop.agent_answer_output("Done.")
 
     assert rules == []
+
+
+async def test_a_run_of_one_line_calls_is_packed_into_a_list(tmp_path):
+    """Calls that each fit on one line run together as a list; the blank row comes back for the
+    first one of a run and for any call that brings something with it."""
+    loop = _colored_loop(tmp_path)
+    blanks = []
+    loop.ui.separate = lambda rows=1: blanks.append(rows)
+
+    def one_liner(name):
+        return LogBlock([LogLine(name, "x.py", LogRole.TOOL)])
+
+    loop.tool_output(one_liner("Read"))
+    assert blanks == [1]  # nothing above it was a one-line call, so it still parts itself
+
+    loop.tool_output(one_liner("Search"))
+    assert blanks == [1]  # packed straight under the call above
+
+    with_output = LogBlock.hierarchy(LogLine("Bash", "pytest -q", LogRole.TOOL), [LogLine("", "41 passed", LogRole.OUTPUT, LogEdge.END)])
+    loop.tool_output(with_output)
+    assert blanks == [1, 1]  # a call that brings output is parted from the run above it
+
+    loop.tool_output(one_liner("Read"))
+    assert blanks == [1, 1, 1]  # and the run has to start over under it
 
 
 async def test_tool_batch_closes_a_long_silent_run_with_a_phase_rule(tmp_path):

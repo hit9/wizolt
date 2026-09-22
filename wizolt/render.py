@@ -1934,10 +1934,7 @@ class StatusBar:
         provider = config.provider
         model = provider.model.rsplit("/", 1)[-1] or "(no model)"
         usage = source.usage
-        if usage.last_prompt_tokens and usage.last_prompt_budget:
-            ctx_percent = min(100, usage.last_prompt_tokens * 100 // usage.last_prompt_budget)
-        else:
-            ctx_percent = source.state.context_percent
+        ctx_percent = usage.context_percent(source.state.context_percent)
         cache_percent = usage.last_cached_prompt_tokens * 100 // usage.last_prompt_tokens if usage.last_prompt_tokens else 0
         skill_count = len(self.session.skills.skills) if self.session.skills else 0
 

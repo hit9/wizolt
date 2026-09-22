@@ -820,10 +820,7 @@ Full documentation: https://wizolt.readthedocs.io
                 if content:
                     self._silent_batches = 0
                 else:
-                    self._silent_batches += 1
-                    if self._silent_batches >= self.TOOL_RUN_RULE_BATCHES and self.ui.rule_due(self.MIN_ROWS_BETWEEN_RULES):
-                        self.ui.emit_phase_rule()
-                        self._silent_batches = 0
+                    self.count_silent_batch()
             return tool_record_index
         if role == "user" and content and not ImageInputs.is_tool_observation(message) and not dry_run:
             # The follow-up marker is model-facing context, part of history because it was sent.
@@ -1281,6 +1278,21 @@ Full documentation: https://wizolt.readthedocs.io
         self._silent_batches = 0
         self.ui.emit_phase_rule()
 
+    def count_silent_batch(self) -> None:
+        """Count one tool batch that carried no narration, and draw the batch rule once the run
+        has earned a seam.
+
+        Both conditions, for the reason the narration rule checks the distance: the batch count
+        says the silence is long enough to be worth closing, the distance says a rule this close
+        to the one above would part nothing. A run of one-line calls is four rows, not a stretch.
+        The count keeps running when the rule is held back, so the seam arrives on the batch that
+        finally clears the distance. Held here rather than at each call site, so the live turn and
+        the resumed transcript cannot drift into drawing the seam by different rules."""
+        self._silent_batches += 1
+        if self._silent_batches >= self.TOOL_RUN_RULE_BATCHES and self.ui.rule_due(self.MIN_ROWS_BETWEEN_RULES):
+            self.ui.emit_phase_rule()
+            self._silent_batches = 0
+
     def tool_batch_output(self, silent: bool) -> None:
         """Close a run of tool calls that has gone on long enough without the agent saying
         anything -- the model not recovering is exactly when the transcript needs the seam most,
@@ -1289,17 +1301,8 @@ Full documentation: https://wizolt.readthedocs.io
         no narration; a batch that spoke restarts nothing and counts nothing."""
 
         def output() -> None:
-            if not silent:
-                return
-            self._silent_batches += 1
-            # Both conditions, for the reason the narration rule checks the distance: the batch
-            # count says the silence is long enough to be worth closing, the distance says a rule
-            # this close to the one above would part nothing. A run of one-line calls is four rows,
-            # not a stretch. The count keeps running when the rule is held back, so the seam
-            # arrives on the batch that finally clears the distance.
-            if self._silent_batches >= self.TOOL_RUN_RULE_BATCHES and self.ui.rule_due(self.MIN_ROWS_BETWEEN_RULES):
-                self.ui.emit_phase_rule()
-                self._silent_batches = 0
+            if silent:
+                self.count_silent_batch()
 
         self.with_status_paused(output)
 

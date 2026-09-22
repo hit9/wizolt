@@ -25,11 +25,12 @@
 - The rule that closes a long silent run of tool batches now also has to be far enough from the
   rule above it, the way the narration rule already did, so a handful of packed one-line calls no
   longer ends up sandwiched between two rules a few rows apart.
-
 - The `Bash` tool tells the model that every call already starts in the workspace, so commands
   stop opening with a redundant `cd <workspace> &&` that pushed the part that matters off the
   transcript line.
-- An Edit's diff hangs straight off its call line; the `preview` caption above it is gone.
+- An Edit's diff hangs straight off its call line; the `preview` caption above it is gone. Its
+  line-number gutter is drawn with the same stroke as the rail beside it, so the two verticals
+  line up.
 - A diff marks the words a modified line actually changed: when removed lines are followed by
   as many added lines replacing them, each pair puts a heavier red/green band under the differing
   words, so a one-token edit no longer reads as two whole lines of color. A pair that shares

@@ -178,8 +178,8 @@ async def test_resumed_transcript_without_a_stored_diff_shows_the_call_only(tmp_
     """Edits whose diff has been evicted still render as a plain call line."""
     text = await _resumed_transcript(tmp_path, "")
 
-    assert "preview" not in text
     assert "Edit" in text
+    assert "│" not in text  # no diff rows hanging off the call line
 
 async def test_resumed_transcript_replays_calls_the_way_they_ran_live(tmp_path):
     """A silent tool stays silent on resume, and an Ask shows the answer it was given."""
