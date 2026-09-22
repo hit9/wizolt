@@ -129,7 +129,7 @@ class TestMCPCommands:
 
         async def fake_discover(name):
             assert authenticated
-            s.mcp.tools[name] = [mcp_tool_info(name, "echo")]
+            s.mcp.tools[name] = [mcp_tool_info("echo")]
             s.mcp.resources[name] = []
 
         monkeypatch.setattr(s.mcp, "_authenticate_oauth", fake_auth)
@@ -434,7 +434,7 @@ class TestMCPCommands:
     async def test_mcp_disconnect_removes_connected_server(self):
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
         bootstrap_features(s)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
         s.mcp.resources["test"] = []
         loop = CommandLoop(Agent(s), input_fn=lambda _: "", output_fn=lambda _: None)
 
@@ -444,7 +444,7 @@ class TestMCPCommands:
     async def test_mcp_disconnect_oauth_also_clears_authentication(self, monkeypatch):
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg(auth="oauth")))
         bootstrap_features(s)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
         s.mcp.resources["test"] = []
         cleared = []
         monkeypatch.setattr(s.mcp._oauth_token_store, "clear_server", as_async(cleared.append))

@@ -945,14 +945,9 @@ Full documentation: https://wizolt.readthedocs.io
             self.ui.separate()
             self.emit(f"Resume {name!r} with:\nwizolt --resume {uid}" if name else f"Resume with:\nwizolt --resume {uid}")
 
-    def read_input_sync(
-        self,
-        prompt_text: str = UiPrinter.PROMPT_PREFIX,
-        *,
-        initial_text: str = "",
-    ) -> str:
+    def read_input_sync(self, prompt_text: str = UiPrinter.PROMPT_PREFIX) -> str:
         """Read from the injected/non-TTY input path; interactive terminals use TuiApp."""
-        return initial_text or self.input_fn(prompt_text)
+        return self.input_fn(prompt_text)
 
     async def invoke_input(self, action: Callable[[], Any]) -> Any:
         """Run an injected synchronous input callback without owning its blocking lifetime.

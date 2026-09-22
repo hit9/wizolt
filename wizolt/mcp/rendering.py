@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class MCPToolInfo:
-    server: str
     name: str
     description: str
     input_schema: Json
@@ -29,7 +28,6 @@ class MCPToolInfo:
 
 @dataclass
 class MCPResourceInfo:
-    server: str
     uri: str
     name: str
     description: str
@@ -354,7 +352,7 @@ def extract_uris(text: str, limit: int = 5) -> list[str]:
     return seen
 
 
-def resources_info(server: str, resources: list[Resource]) -> list[MCPResourceInfo]:
+def resources_info(resources: list[Resource]) -> list[MCPResourceInfo]:
     """Snapshot discovered resources into MCPResourceInfo rows, dropping uri-less entries."""
     infos: list[MCPResourceInfo] = []
     for r in resources or []:
@@ -363,7 +361,6 @@ def resources_info(server: str, resources: list[Resource]) -> list[MCPResourceIn
             continue
         infos.append(
             MCPResourceInfo(
-                server=server,
                 uri=uri,
                 name=str(getattr(r, "name", "") or ""),
                 description=str(getattr(r, "description", "") or ""),

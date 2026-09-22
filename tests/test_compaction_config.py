@@ -186,15 +186,11 @@ def _compaction_bar_session(tmp_path, **compaction):
     return s
 
 
-def test_status_bar_stays_on_the_session_during_compaction(tmp_path):
+def test_status_bar_keeps_the_session_entry_when_compaction_has_its_own(tmp_path):
+    """The row names the entry serving the turn; a `[compaction]` provider runs summaries only."""
     s = _compaction_bar_session(tmp_path, provider="cheap", model="haiku", reasoning="off")
-    bar = StatusBar(s)
-    original = "".join(text for _, text in bar.fragments())
 
-    assert original.startswith("default/big-model · high | ")
-
-    s.state.compaction_entry = "cheap/haiku"
-    assert "".join(text for _, text in bar.fragments()) == original
+    assert "".join(text for _, text in StatusBar(s).fragments()).startswith("default/big-model · high | ")
 
 
 def test_status_bar_output_rate_reads_the_stream_that_is_running(tmp_path):
@@ -250,23 +246,6 @@ def test_model_client_counts_streamed_output_per_request(tmp_path):
     assert s.state.stream_chars == 2
 
 
-async def test_compaction_entry_is_cleared_when_the_summary_fails(tmp_path, monkeypatch):
-    """The label is live display state: a timeout, a cancel, or a provider error must not leave a
-    stale row naming a request that is no longer running."""
-    s = _compaction_bar_session(tmp_path, provider="cheap", model="haiku")
-    model = ModelClient(s)
-
-    def explode(*_args, **_kwargs):
-        assert s.state.compaction_entry == "cheap/haiku"  # set while the request is in flight
-        raise ModelError("provider said no")
-
-    monkeypatch.setattr(model, "api_request", explode)
-
-    with pytest.raises(ModelError):
-        await compaction.Compactor(ContextManager(s), model).compact("context")
-    assert s.state.compaction_entry == ""
-
-
 async def test_compaction_refuses_an_incomplete_entry_by_name(tmp_path):
     """The client's own gate checks the active provider, which is the wrong entry when a summary
     runs elsewhere. Without this the SDK reports "Missing credentials", naming nothing the user
@@ -287,7 +266,6 @@ async def test_compaction_refuses_an_incomplete_entry_by_name(tmp_path):
     assert s.missing_config() == []  # the active entry is complete; only the compaction one is not
     with pytest.raises(ModelError, match=r"compaction provider `cheap` is missing key, model"):
         await compaction.Compactor(ContextManager(s), ModelClient(s)).compact("context")
-    assert s.state.compaction_entry == ""  # refused before the request, so no stale status row
 
 
 def test_provider_entry_reports_its_own_missing_fields(tmp_path):

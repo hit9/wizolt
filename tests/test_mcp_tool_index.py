@@ -22,7 +22,6 @@ class TestToolIndexRendering:
     def test_format_tool_line_with_type(self):
         """format_tool_line shows name: type."""
         info = mcp_tool_info(
-            "test",
             "echo",
             input_schema={
                 "type": "object",
@@ -36,7 +35,6 @@ class TestToolIndexRendering:
     def test_format_tool_line_requires_args(self):
         """Required args appear before semicolon."""
         info = mcp_tool_info(
-            "test",
             "echo",
             input_schema={
                 "type": "object",
@@ -55,14 +53,14 @@ class TestToolIndexRendering:
 
     def test_format_tool_line_no_args(self):
         """Tools with no input_schema have empty parens."""
-        info = mcp_tool_info("test", "ping", input_schema={})
+        info = mcp_tool_info("ping", input_schema={})
         line = format_tool_line("test", info, schema_limit=MCPManager.INDEX_SCHEMA_LIMIT)
         assert "ping()" in line
 
     def test_format_tool_line_description_truncation(self):
         """Long description is truncated."""
         long_desc = "x " * 50
-        info = mcp_tool_info("test", "tool", description=long_desc)
+        info = mcp_tool_info("tool", description=long_desc)
         line = format_tool_line("test", info, schema_limit=MCPManager.INDEX_SCHEMA_LIMIT)
         # Description lives on the first line; the schema is appended on a following line.
         summary = line.split("\n")[0]
@@ -163,17 +161,16 @@ class TestToolIndexBudget:
         for tool in ("q0", "q119", "gh0", "gh39", "j0", "j39"):
             assert tool in idx
 
-    def test_tier4_sets_truncated_flag(self):
-        """Tier 4 (even name-only overflows) flags index_truncated so the CLI can warn;
-        tiers 1-3 clear it."""
+    def test_tier4_truncates_and_points_at_the_full_listing(self):
+        """Tier 4 (even name-only overflows) drops whole tools and says where the rest are;
+        tiers 1-3 keep every tool name and shed only schema detail."""
         big = _index_session({x: [(f"{x}_long_tool_name_{i}", 30) for i in range(800)] for x in ("a", "b", "c", "d")})
-        big.mcp.render_tools_index()
-        assert big.mcp.index_truncated is True
+        assert "MCP tools truncated; use /mcp tools for full list." in big.mcp.render_tools_index()
 
         small = _index_session({"a": [("t", 2)]})
-        small.mcp.index_truncated = True  # stale value from a previous render
-        small.mcp.render_tools_index()
-        assert small.mcp.index_truncated is False
+        idx = small.mcp.render_tools_index()
+        assert "MCP tools truncated" not in idx
+        assert "t(" in idx
 
     def test_unconnected_server_stays_out_of_model_index(self):
         s = Session(
@@ -190,7 +187,6 @@ class TestToolIndexBudget:
         bootstrap_features(s)
         s.mcp.tools["github"] = [
             MCPToolInfo(
-                server="github",
                 name="search",
                 description="Search.",
                 input_schema={"type": "object", "properties": {"q": {"type": "string"}}, "required": ["q"]},
@@ -211,7 +207,7 @@ class TestToolIndexBudget:
         assert s.mcp.render_tools_index() == ""
         assert "MCP" not in {schema["function"]["name"] for schema in Tool.resolved_schemas(s)}
 
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
         s.mcp.resources["test"] = []
 
         assert "[test]" in s.mcp.render_tools_index()
@@ -220,7 +216,7 @@ class TestToolIndexBudget:
     async def test_disconnect_removes_server_from_model_context(self):
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
         bootstrap_features(s)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
         s.mcp.resources["test"] = []
 
         result = await s.mcp.disconnect_server("test")
@@ -274,7 +270,6 @@ class TestToolIndexTruncation:
         props = {f"p{i}": {"type": "string"} for i in range(20)}
         required = [f"p{i}" for i in range(20)]
         info = mcp_tool_info(
-            "test",
             "big",
             input_schema={
                 "type": "object",

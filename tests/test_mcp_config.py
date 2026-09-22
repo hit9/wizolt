@@ -562,8 +562,8 @@ class TestMCPManagerDiscovery:
         monkeypatch.setattr(s.mcp, "_list_resources", fake_list)
 
         # Manually add pre-existing stale data
-        s.mcp.tools["manual_server"] = [mcp_tool_info("manual_server", "kept")]
-        s.mcp.tools["stale_server"] = [mcp_tool_info("stale_server", "old")]
+        s.mcp.tools["manual_server"] = [mcp_tool_info("kept")]
+        s.mcp.tools["stale_server"] = [mcp_tool_info("old")]
 
         await s.mcp.discover_auto()
 
@@ -590,7 +590,7 @@ class TestMCPDiscoverServer:
         """discover_server for a server not in config clears its stale tools."""
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
         bootstrap_features(s)
-        s.mcp.tools["gone"] = [mcp_tool_info("gone", "old_tool")]
+        s.mcp.tools["gone"] = [mcp_tool_info("old_tool")]
         await s.mcp.discover_server("gone")
         assert "gone" not in s.mcp.tools
         assert "gone" in s.mcp.server_errors
@@ -606,7 +606,7 @@ class TestMCPPruning:
         """A describe record is retained when its tr.N is referenced in history (normal path)."""
         s = Session(cwd="/tmp")
         bootstrap_features(s)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
         desc = '<MCPDescribe server="test" tool="echo">\n<description>\nEcho back.</description>\n</MCPDescribe>'
         s.store_tool_result("MCP", [{"action": "describe", "server": "test", "tool": "echo"}], desc)
         ctx = ContextManager(s)
@@ -621,7 +621,7 @@ class TestMCPPruning:
         """With the tail digest gone, an unreferenced describe record prunes like any other."""
         s = Session(cwd="/tmp")
         bootstrap_features(s)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
         desc = '<MCPDescribe server="test" tool="echo">\n<description>\nEcho.</description>\n</MCPDescribe>'
         s.store_tool_result("MCP", [{"action": "describe", "server": "test", "tool": "echo"}], desc)
         ctx = ContextManager(s)
@@ -777,7 +777,7 @@ class TestServerStatusRendering:
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
         bootstrap_features(s)
         s.mcp.tools["test"] = []
-        s.mcp.resources["test"] = [MCPResourceInfo("test", "docs://guide", "guide", "Usage guide", "text/plain")]
+        s.mcp.resources["test"] = [MCPResourceInfo("docs://guide", "guide", "Usage guide", "text/plain")]
 
         listing = s.mcp.render_tool_listing("test")
 
@@ -802,7 +802,7 @@ class TestStatusBarMCPStatus:
         s = Session(cwd="/tmp", config=Config.from_dict(raw))
         bootstrap_features(s)
         s.mcp.discovery_status = "discovering"
-        s.mcp.tools["a"] = [mcp_tool_info("a", "echo")]
+        s.mcp.tools["a"] = [mcp_tool_info("echo")]
         # A fixed clock: the frame is read from the same instant the row is rendered, so the
         # assertion cannot straddle a frame boundary. 0.4s in is the third frame of the cycle.
         monkeypatch.setattr(time, "monotonic", lambda: 0.4)
@@ -821,7 +821,7 @@ class TestStatusBarMCPStatus:
         s = Session(cwd="/tmp", config=Config.from_dict(raw))
         bootstrap_features(s)
         s.mcp.discovery_status = "ready"
-        s.mcp.tools["a"] = [mcp_tool_info("a", "echo")]
+        s.mcp.tools["a"] = [mcp_tool_info("echo")]
         text = "".join(text for _, text in StatusBar(s).fragments())
         assert "mcp 1" in text
         for frame in StatusBar.SPINNER_FRAMES:

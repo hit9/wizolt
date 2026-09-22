@@ -327,11 +327,11 @@ class View:
         speed_range = cls.SWEEP_SPEED_RANGE
         return (1.0 - speed_range) * phase + 2.0 * speed_range * phase**3 - speed_range * phase**4
 
-    def sweep_divider_fragments(self, label: str, width: int | None = None, prefix: StyleAndTextTuples | None = None) -> StyleAndTextTuples:
+    def sweep_divider_fragments(self, label: str, prefix: StyleAndTextTuples | None = None) -> StyleAndTextTuples:
         prefix = prefix or []
         prefix_len = sum(get_cwidth(fragment[1]) for fragment in prefix)
         cols = shutil.get_terminal_size((80, 20)).columns
-        width = width if width is not None else max(20, cols - 2)
+        width = max(20, cols - 2)
         lead = 3
         # A comet needs a track long enough to read as motion. When the label is long (the
         # worker's `[worker]` + status + elapsed + rate + queued), widen the rule so both sides

@@ -207,8 +207,8 @@ class ChoiceViewState:
     def enabled(self) -> tuple[str, ...]:
         return tuple(choice for choice in self.visible() if choice not in self.disabled)
 
-    def clamp(self, options: tuple[str, ...] | None = None) -> tuple[str, ...]:
-        options = options if options is not None else self.enabled()
+    def clamp(self) -> tuple[str, ...]:
+        options = self.enabled()
         self.selected = min(max(self.selected, 0), len(options) - 1) if options else 0
         return options
 

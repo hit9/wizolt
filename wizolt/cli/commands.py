@@ -909,19 +909,19 @@ def record_provider_override(session: Session, field: str, value: str) -> None:
     session.provider_overrides.setdefault("providers", {}).setdefault(session.config.active_provider, {})[field] = value
 
 
-def realign_reasoning(loop: CommandLoop, model: str = "") -> str:
-    """Move the stored effort onto `model`'s scale, and say so when it moves.
+def realign_reasoning(loop: CommandLoop) -> str:
+    """Move the stored effort onto the session model's scale, and say so when it moves.
 
     The alternative to saying it is a request that silently sends something other than the effort
     on screen, which is what this replaced. It happens where the scale changes underneath a stored
     choice — switching entry or model — never per request."""
     provider = loop.session.config.provider
-    aligned = loop.session.policy.normalized_reasoning(provider, model)
+    aligned = loop.session.policy.normalized_reasoning(provider, provider.model)
     if aligned == provider.reasoning:
         return ""
     previous, provider.reasoning = provider.reasoning, aligned
     record_provider_override(loop.session, "reasoning", aligned)
-    return f"Reasoning {previous} is not offered by {model or provider.model}, using {aligned}"
+    return f"Reasoning {previous} is not offered by {provider.model}, using {aligned}"
 
 
 def set_provider(loop: CommandLoop, name: str) -> str:

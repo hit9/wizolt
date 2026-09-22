@@ -36,7 +36,7 @@ class TestMCPToolConfirmation:
         raw = mcp_cfg()
         s = Session(cwd="/tmp", config=Config.from_dict(raw))
         bootstrap_features(s)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo", annotations={})]
+        s.mcp.tools["test"] = [mcp_tool_info("echo", annotations={})]
         payload = {"action": "call", "server": "test", "tool": "echo", "arguments": {"text": "hi"}}
         tool = MCPTool(s, [payload])
         assert tool.needs_confirmation() is True
@@ -46,7 +46,7 @@ class TestMCPToolConfirmation:
         raw = mcp_cfg()
         s = Session(cwd="/tmp", config=Config.from_dict(raw))
         bootstrap_features(s)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo", annotations={"destructiveHint": False})]
+        s.mcp.tools["test"] = [mcp_tool_info("echo", annotations={"destructiveHint": False})]
         payload = {"action": "call", "server": "test", "tool": "echo", "arguments": {"text": "hi"}}
         tool = MCPTool(s, [payload])
         assert tool.needs_confirmation() is False
@@ -57,7 +57,7 @@ class TestMCPToolConfirmation:
         s = Session(cwd="/tmp", config=Config.from_dict(raw))
         bootstrap_features(s)
         # Pre-populate tools with readOnlyHint
-        info = mcp_tool_info("test", "echo", annotations={"readOnlyHint": True})
+        info = mcp_tool_info("echo", annotations={"readOnlyHint": True})
         s.mcp.tools["test"] = [info]
 
         payload = {"action": "call", "server": "test", "tool": "echo", "arguments": {"text": "hi"}}
@@ -69,7 +69,7 @@ class TestMCPToolConfirmation:
         raw = mcp_cfg()
         s = Session(cwd="/tmp", config=Config.from_dict(raw))
         bootstrap_features(s)
-        info = mcp_tool_info("test", "delete", annotations={"destructiveHint": True})
+        info = mcp_tool_info("delete", annotations={"destructiveHint": True})
         s.mcp.tools["test"] = [info]
 
         payload = {"action": "call", "server": "test", "tool": "delete", "arguments": {"id": "1"}}
@@ -151,7 +151,7 @@ class TestMCPContextBlocks:
         """MCP TOOLS appears after Environment; no repeated Memory/details block."""
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
         bootstrap_features(s)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
 
         ctx = ContextManager(s)
         msgs = ctx.model_messages("sys")
@@ -213,7 +213,7 @@ class TestDescribeTool:
         raw = mcp_cfg()
         s = Session(cwd="/tmp", config=Config.from_dict(raw))
         bootstrap_features(s)
-        info = mcp_tool_info("test", "echo")
+        info = mcp_tool_info("echo")
         s.mcp.tools["test"] = [info]
 
         result = s.mcp.describe_tool("test", "echo")
@@ -227,7 +227,6 @@ class TestDescribeTool:
         bootstrap_features(s)
         s.mcp.tools["test"] = [
             mcp_tool_info(
-                "test",
                 "echo",
                 output_schema={
                     "type": "object",
@@ -248,7 +247,7 @@ class TestDescribeTool:
         """Most servers declare no outputSchema; they must read exactly as they did before."""
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
         bootstrap_features(s)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
 
         result = s.mcp.describe_tool("test", "echo")
 
@@ -260,7 +259,7 @@ class TestDescribeTool:
         'returns nothing' rather than 'see the schema'."""
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
         bootstrap_features(s)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo", output_schema={"type": "array", "items": {"type": "string"}})]
+        s.mcp.tools["test"] = [mcp_tool_info("echo", output_schema={"type": "array", "items": {"type": "string"}})]
 
         result = s.mcp.describe_tool("test", "echo")
 
@@ -272,7 +271,7 @@ class TestDescribeTool:
         bootstrap_features(s)
         monkeypatch.setattr(s.mcp, "DESCRIBE_ARGUMENT_LIMIT", 3)
         props = {f"f{i}": {"type": "string"} for i in range(10)}
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo", output_schema={"type": "object", "properties": props})]
+        s.mcp.tools["test"] = [mcp_tool_info("echo", output_schema={"type": "object", "properties": props})]
 
         result = s.mcp.describe_tool("test", "echo")
 
@@ -284,7 +283,7 @@ class TestDescribeTool:
         """Unknown tool raises ToolError."""
         s = Session(cwd="/tmp")
         bootstrap_features(s)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
         with pytest.raises(ToolError, match="not found"):
             s.mcp.describe_tool("test", "missing_tool")
 

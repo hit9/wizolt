@@ -54,14 +54,14 @@ async def _run_script(s, code, input_fn=None):
 class TestJsonGate:
     def test_declared_output_schema_gates_yes(self, tmp_path):
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo", output_schema=OUTPUT_SHAPE)]
+        s.mcp.tools["test"] = [mcp_tool_info("echo", output_schema=OUTPUT_SHAPE)]
         out = _describe(s, ["test.echo"])
         assert "json:    yes" in out
         assert "json:    unknown" not in out
 
     def test_undeclared_output_schema_gates_unknown(self, tmp_path):
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
         out = _describe(s, ["test.echo"])
         assert "json:    unknown" in out
         assert "json:    yes" not in out
@@ -71,7 +71,7 @@ class TestRenderingReuse:
     async def test_success_block_is_mcp_describe_plus_json_gate(self, tmp_path):
         """The describe block is exactly MCP(describe)'s rendering with the json line appended."""
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo", output_schema=OUTPUT_SHAPE)]
+        s.mcp.tools["test"] = [mcp_tool_info("echo", output_schema=OUTPUT_SHAPE)]
         describe = await MCPTool(s, [{"action": "describe", "server": "test", "tool": "echo"}]).call()
         assert _describe(s, ["test.echo"]) == describe + "\njson:    yes"
 
@@ -79,7 +79,7 @@ class TestRenderingReuse:
 class TestEntryErrors:
     def test_unknown_server_is_error_entry_and_others_render(self, tmp_path):
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
         out = _describe(s, ["ghost.tool", "test.echo"])
         assert "ghost.tool" in out
         assert "MCP server 'ghost' not found" in out
@@ -88,7 +88,7 @@ class TestEntryErrors:
 
     def test_unknown_tool_is_error_entry_and_others_render(self, tmp_path):
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
         out = _describe(s, ["test.nope", "test.echo"])
         assert "test.nope" in out
         assert "MCP tool 'nope' not found on server 'test'" in out
@@ -106,7 +106,7 @@ class TestEntryErrors:
 class TestMcpPrefix:
     def test_mcp_prefix_and_plain_names_are_equivalent(self, tmp_path):
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo", output_schema=OUTPUT_SHAPE)]
+        s.mcp.tools["test"] = [mcp_tool_info("echo", output_schema=OUTPUT_SHAPE)]
         plain = _describe(s, ["test.echo"])
         prefixed = _describe(s, ["MCP:test.echo"])
         assert plain == prefixed
@@ -116,8 +116,8 @@ class TestMixedBatch:
     def test_mixed_batch_reports_each_entry(self, tmp_path):
         s = _mcp_session(tmp_path)
         s.mcp.tools["test"] = [
-            mcp_tool_info("test", "echo"),
-            mcp_tool_info("test", "lookup", output_schema=OUTPUT_SHAPE),
+            mcp_tool_info("echo"),
+            mcp_tool_info("lookup", output_schema=OUTPUT_SHAPE),
         ]
         out = _describe(s, ["Read", "test.lookup", "ghost.tool", "test.echo"])
         assert "Read\n" in out and "json:    no" in out
@@ -152,7 +152,7 @@ class TestActionValidation:
 class TestRegistration:
     def test_registered_in_resolved_schemas_with_mcp(self, tmp_path):
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
         schemas = {schema["function"]["name"]: schema["function"] for schema in Tool.resolved_schemas(s)}
         params = schemas["ToolScript"]["parameters"]
         assert set(params["properties"]) == {"action", "tools", "code"}
@@ -180,7 +180,7 @@ class TestNestedCalls:
     async def test_message_conservation(self, tmp_path, monkeypatch):
         """N nested calls produce no extra tool messages; results land in session.tool_results."""
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
 
         async def fake_call(config, headers, name, arguments):
             return SimpleNamespace(content=[SimpleNamespace(type="text", text="ok " + str(arguments))])
@@ -207,7 +207,7 @@ class TestNestedCalls:
     async def test_dotted_name_calls_the_mcp_tool(self, tmp_path, monkeypatch):
         """call("server.tool", {...}) is the call("MCP", {...}) form -- same name the listing shows."""
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
 
         async def fake_call(config, headers, name, arguments):
             return SimpleNamespace(content=[SimpleNamespace(type="text", text="ok " + str(arguments))])
@@ -235,7 +235,7 @@ class TestNestedCalls:
 
     async def test_refused_nested_call_aborts_script_but_batch_continues(self, tmp_path):
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
         code = 'call("MCP", {"server": "test", "tool": "echo", "arguments": {}})\nprint("after")\n'
         answers = iter(["y", "n"])
         runner = ToolRunner(s, ContextManager(s), input_fn=lambda prompt: next(answers), output_fn=lambda text: None)
@@ -270,7 +270,7 @@ class TestNestedCalls:
 class TestJsonFormat:
     async def test_declared_schema_with_structured_content_returns_dict(self, tmp_path, monkeypatch):
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "lookup", output_schema={"type": "object"})]
+        s.mcp.tools["test"] = [mcp_tool_info("lookup", output_schema={"type": "object"})]
 
         async def fake_call(config, headers, name, arguments):
             return SimpleNamespace(content=[], structuredContent={"answer": 42})
@@ -283,7 +283,7 @@ class TestJsonFormat:
 
     async def test_undeclared_schema_with_json_text_returns_dict(self, tmp_path, monkeypatch):
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
 
         async def fake_call(config, headers, name, arguments):
             return SimpleNamespace(content=[SimpleNamespace(type="text", text='{"a": 1}')])
@@ -296,7 +296,7 @@ class TestJsonFormat:
 
     async def test_undeclared_schema_with_non_json_text_errors(self, tmp_path, monkeypatch):
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
 
         async def fake_call(config, headers, name, arguments):
             return SimpleNamespace(content=[SimpleNamespace(type="text", text="hello")])
@@ -312,8 +312,8 @@ class TestJsonFormat:
         as a missing payload, every such call raised instead of handing the script its answer."""
         s = _mcp_session(tmp_path)
         s.mcp.tools["test"] = [
-            mcp_tool_info("test", "empty_object", output_schema={"type": "object"}),
-            mcp_tool_info("test", "empty_list", output_schema={"type": "array"}),
+            mcp_tool_info("empty_object", output_schema={"type": "object"}),
+            mcp_tool_info("empty_list", output_schema={"type": "array"}),
         ]
 
         async def fake_call(config, headers, name, arguments):
@@ -331,7 +331,7 @@ class TestJsonFormat:
 
     async def test_declared_schema_without_structured_content_errors(self, tmp_path, monkeypatch):
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "lookup", output_schema={"type": "object"})]
+        s.mcp.tools["test"] = [mcp_tool_info("lookup", output_schema={"type": "object"})]
 
         async def fake_call(config, headers, name, arguments):
             return SimpleNamespace(content=[SimpleNamespace(type="text", text="hello")])
@@ -385,7 +385,7 @@ class TestGate:
     async def test_yolo_skips_nested_confirmation(self, tmp_path, monkeypatch):
         s = _mcp_session(tmp_path)
         s.settings.yolo = True
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
 
         async def fake_call(config, headers, name, arguments):
             return SimpleNamespace(content=[SimpleNamespace(type="text", text="ok")])
@@ -466,7 +466,7 @@ class TestNestedBuiltinCalls:
     async def test_nested_read_returns_text_and_stores_result(self, tmp_path):
         (tmp_path / "f.txt").write_text("hello\n", encoding="utf-8")
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
         code = 't = call("Read", {"path": "f.txt"})\nprint(t)\n'
         runner = _runner(s)
         messages = await runner.run(
@@ -546,7 +546,7 @@ class TestNestedBuiltinCalls:
     async def test_nested_builtin_message_conservation(self, tmp_path):
         (tmp_path / "f.txt").write_text("x\n", encoding="utf-8")
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
         code = 'for i in range(3):\n    call("Read", {"path": "f.txt"})\nprint("done")\n'
         runner = _runner(s)
         messages = await runner.run(
@@ -923,7 +923,7 @@ class TestCallMany:
 
     async def test_json_format_applies_to_every_entry(self, tmp_path, monkeypatch):
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo", annotations={"readOnlyHint": True})]
+        s.mcp.tools["test"] = [mcp_tool_info("echo", annotations={"readOnlyHint": True})]
 
         async def fake_call(config, headers, name, arguments):
             return SimpleNamespace(content=[SimpleNamespace(type="text", text=f'{{"a": {arguments["n"]}}}')])
@@ -970,7 +970,7 @@ class TestScriptCancellation:
         return, closing the gateway completes the worker's future -- otherwise the script waits
         forever and the turn never quiesces."""
         s = _mcp_session(tmp_path)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo", annotations={"readOnlyHint": True})]
+        s.mcp.tools["test"] = [mcp_tool_info("echo", annotations={"readOnlyHint": True})]
         entered = asyncio.Event()
         release = asyncio.Event()
         unwound = asyncio.Event()

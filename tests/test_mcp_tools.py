@@ -21,7 +21,6 @@ def _index_session(servers):
     for name, tools in servers.items():
         s.mcp.tools[name] = [
             MCPToolInfo(
-                server=name,
                 name=tool_name,
                 description="A tool.",
                 input_schema={

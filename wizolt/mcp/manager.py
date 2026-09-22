@@ -83,7 +83,6 @@ class MCPManager:
         self.server_errors: dict[str, str] = {}
         self.server_skips: dict[str, str] = {}
         self.discovery_status: str = "stale"  # stale | discovering | ready | error
-        self.index_truncated: bool = False  # set by render_tools_index when even name-only overflows the cap
         self._configs_cache: list[MCPServerConfig] | None = None
         self._oauth_token_store = MCPFileTokenStore(self.session.data_path("mcp-oauth", "tokens.json"))
         self._oauth_lock: asyncio.Lock | None = None
@@ -297,8 +296,8 @@ class MCPManager:
             return
         try:
             tools, resources = await self._bounded(self._gather_assets(config, headers), timeout=self.discovery_timeout())
-            self.tools[config.name] = self._tools_info(config.name, tools)
-            self.resources[config.name] = self._resources_info(config.name, resources)
+            self.tools[config.name] = self._tools_info(tools)
+            self.resources[config.name] = self._resources_info(resources)
             self.server_errors.pop(config.name, None)
             self.server_skips.pop(config.name, None)
         except BaseException as error:
@@ -363,10 +362,9 @@ class MCPManager:
         text = str(error).strip()
         return text or error.__class__.__name__
 
-    def _tools_info(self, server: str, tools: list[Tool]) -> list[MCPToolInfo]:
+    def _tools_info(self, tools: list[Tool]) -> list[MCPToolInfo]:
         return [
             MCPToolInfo(
-                server=server,
                 name=t.name,
                 description=t.description or "",
                 input_schema=t.inputSchema,
@@ -376,8 +374,8 @@ class MCPManager:
             for t in tools
         ]
 
-    def _resources_info(self, server: str, resources: list[Resource]) -> list[MCPResourceInfo]:
-        return resources_info(server, resources)
+    def _resources_info(self, resources: list[Resource]) -> list[MCPResourceInfo]:
+        return resources_info(resources)
 
     @staticmethod
     def tool_output_schema(tool: Tool) -> Json:
@@ -827,13 +825,11 @@ class MCPManager:
             body = self._index_body(configs, detail=detail)
             text = "\n".join(intro + notes.get(detail, []) + body)
             if len(text) <= self.INDEX_TOTAL_LIMIT:
-                self.index_truncated = False
                 return text
 
         # Tier 4: even name-only overflows, so some tools are dropped entirely (not just
-        # detail). Flag it so the CLI can warn the user — unlike tiers 1-3 these tools are
-        # not callable until the index fits (fewer servers, or consult /mcp tools).
-        self.index_truncated = True
+        # detail) — unlike tiers 1-3 these tools are not callable until the index fits
+        # (fewer servers, or consult /mcp tools).
         return text[: self.INDEX_TOTAL_LIMIT - 10] + "\n... MCP tools truncated; use /mcp tools for full list."
 
     def _index_body(self, configs: list[MCPServerConfig], *, detail: str = "schema") -> list[str]:

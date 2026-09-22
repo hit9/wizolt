@@ -32,10 +32,9 @@ def mcp_cfg(**overrides) -> dict:
     return cfg
 
 
-def mcp_tool_info(server: str, name: str, **kw) -> MCPToolInfo:
+def mcp_tool_info(name: str, **kw) -> MCPToolInfo:
     """Create an MCPToolInfo suitable for tests."""
     return MCPToolInfo(
-        server=server,
         name=name,
         description=kw.pop("description", "A test tool."),
         input_schema=kw.pop(

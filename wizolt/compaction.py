@@ -151,14 +151,10 @@ class Compactor:
         # summary is worth the user's configured wait, and the deterministic trim fallback still
         # catches whatever the provider rejects.
         response_timeout = provider.response_timeout
-        # The status bar reads this to name the entry actually serving the summary; cleared in the
-        # finally so a timeout, a cancel, or a provider error leaves no stale row behind.
+        # Named in every failure the compactor raises below: compaction can run on its own
+        # `[compaction]` provider, so an error has to say which model served the request.
         entry_label = f"{entry_name}/{provider.model}"
-        model.session.state.compaction_entry = entry_label
-        try:
-            data = await self.compact_attempts(messages, provider, response_timeout, entry_label, tools=tools if inline else None, echo_source=echo_source)
-        finally:
-            model.session.state.compaction_entry = ""
+        data = await self.compact_attempts(messages, provider, response_timeout, entry_label, tools=tools if inline else None, echo_source=echo_source)
         model.last_compaction_model = provider.model
         return data
 
@@ -409,16 +405,16 @@ class Compactor:
     def without_summaries(self, messages: list[Json]) -> list[Json]:
         return [message for message in messages if not self.ctx.is_compaction_summary(message)]
 
-    def parts_for(self, messages: list[Json], recent: int | None = None) -> tuple[list[Json], list[Json]]:
+    def parts_for(self, messages: list[Json]) -> tuple[list[Json], list[Json]]:
         """Split messages into a compactable head and a recent tail, never inside a tool exchange.
 
         The cut walks back past a run of tool results and the assistant message that called them, since
         a history with tool calls whose results were summarized away -- or results whose call is gone --
         is rejected by every provider. Giving a few extra messages to the summary is the cheaper loss.
-        That walk can reach zero, which is why a smaller `recent` does not always produce a head: a
-        latest user message followed by one enormous tool result cannot be split here at all, and
-        has to be bounded on the way in instead."""
-        cut = self.safe_cut(messages, max(0, len(messages) - (self.COMPACT_RECENT_MESSAGES if recent is None else recent)))
+        That walk can reach zero, which is why the recent tail is not always produced: a latest user
+        message followed by one enormous tool result cannot be split here at all, and has to be bounded
+        on the way in instead."""
+        cut = self.safe_cut(messages, max(0, len(messages) - self.COMPACT_RECENT_MESSAGES))
         return messages[:cut], messages[cut:]
 
     @classmethod

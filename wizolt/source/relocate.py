@@ -33,11 +33,10 @@ def relocate_target(
     lines: Sequence[str],
     original_index: int,
     target: Sequence[str],
-    max_drift: int = MAX_VIEW_DRIFT,
     before: Sequence[str] = (),
     after: Sequence[str] = (),
 ) -> int | None:
-    """Unique exact relocation of `target` within `max_drift` lines of its original start.
+    """Unique exact relocation of `target` within MAX_VIEW_DRIFT lines of its original start.
 
     Returns the 0-based position of the match, or None when the window holds zero candidates
     (changed or removed) or several (ambiguous). Both are refused rather than guessed.
@@ -49,8 +48,8 @@ def relocate_target(
     """
     if not target:
         return None
-    low = max(0, original_index - max_drift)
-    high = min(len(lines) - len(target) + 1, original_index + max_drift + 1)
+    low = max(0, original_index - MAX_VIEW_DRIFT)
+    high = min(len(lines) - len(target) + 1, original_index + MAX_VIEW_DRIFT + 1)
     candidates = [index for index in range(low, high) if same_position(lines, index, target)]
     if len(candidates) > 1 and (before or after):
         candidates = [index for index in candidates if context_matches(lines, index, target, before, after)]

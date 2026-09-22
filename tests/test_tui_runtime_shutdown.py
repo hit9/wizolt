@@ -580,7 +580,6 @@ async def test_ctrl_c_cancels_compaction_and_allows_the_next_turn(tmp_path, monk
         assert not runtime.cancel_pending
         assert runtime.command_task is None
         assert emitted == ["Cancelled"]
-        assert session.state.compaction_entry == ""
         assert not command_loop.compaction_active
         assert calls == [Billing.COMPACTION]
         if manual:

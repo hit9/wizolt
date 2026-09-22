@@ -166,7 +166,7 @@ class TestMCPResources:
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
         bootstrap_features(s)
         s.mcp.tools["test"] = []
-        s.mcp.resources["test"] = [MCPResourceInfo("test", "docs://guide.md", "guide", "Usage guide", "text/markdown")]
+        s.mcp.resources["test"] = [MCPResourceInfo("docs://guide.md", "guide", "Usage guide", "text/markdown")]
 
         block = await s.mcp._mention_block("test")
 
@@ -177,7 +177,7 @@ class TestMCPResources:
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
         bootstrap_features(s)
         s.mcp.tools["test"] = []
-        s.mcp.resources["test"] = [MCPResourceInfo("test", "docs://guide.md", "guide", "Usage guide", "text/markdown")]
+        s.mcp.resources["test"] = [MCPResourceInfo("docs://guide.md", "guide", "Usage guide", "text/markdown")]
         s.mcp.discovery_status = "ready"
         idx = s.mcp.render_tools_index()
         assert "[test]" in idx
@@ -282,6 +282,6 @@ class TestToolOutputSchemaCapture:
         shape = {"type": "object", "properties": {"total": {"type": "integer"}}}
         tools = [SimpleNamespace(name="echo", description="d", inputSchema={}, outputSchema=shape, annotations=None)]
 
-        (info,) = s.mcp._tools_info("test", tools)
+        (info,) = s.mcp._tools_info(tools)
 
         assert info.output_schema == shape

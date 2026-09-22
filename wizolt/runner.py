@@ -309,7 +309,7 @@ class ToolRunner:
         async with capacity:
             yield
 
-    async def _run_in_executor(self, invoke: Callable[[], _ResultT], tool: Tool | None = None, *, executor=None, bounded: bool = True) -> _ResultT:
+    async def _run_in_executor(self, invoke: Callable[[], _ResultT], tool: Tool | None = None, *, executor=None) -> _ResultT:
         """Run one synchronous tool body on a worker, and never abandon it.
 
         Cancelling the task that is waiting does not cancel the work: the worker keeps running,
@@ -320,8 +320,7 @@ class ToolRunner:
 
         loop = asyncio.get_running_loop()
         async with contextlib.AsyncExitStack() as stack:
-            if bounded:
-                await stack.enter_async_context(self._bounded())
+            await stack.enter_async_context(self._bounded())
             future = loop.run_in_executor(executor, invoke)
             cancel_error: asyncio.CancelledError | None = None
             while not future.done():

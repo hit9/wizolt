@@ -123,7 +123,7 @@ class TestCallToolSuccess:
             return {"type": "text", "text": f"called {name} with {arguments}"}
 
         monkeypatch.setattr(s.mcp, "_call_tool", fake_call)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
 
         result = await s.mcp.call_tool("test", "echo", {"text": "hi"})
         assert "<MCPCall server=" in result
@@ -146,7 +146,7 @@ class TestCallToolSuccess:
             }
 
         monkeypatch.setattr(s.mcp, "_call_tool", fake_call)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "multi")]
+        s.mcp.tools["test"] = [mcp_tool_info("multi")]
 
         result = await s.mcp.call_tool("test", "multi", {})
         assert "part one" in result
@@ -165,6 +165,6 @@ class TestCallToolSuccess:
             return await s.mcp.call_tool("test", "echo", {})
 
         monkeypatch.setattr(s.mcp, "_call_tool", fake_call)
-        s.mcp.tools["test"] = [mcp_tool_info("test", "echo")]
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
 
         assert "ok" in await run_call()
