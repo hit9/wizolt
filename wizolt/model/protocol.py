@@ -129,7 +129,6 @@ class ChatWire:
             text_only = self._client.session.image_route.is_text_only()
         return chat_module.chat_messages(
             messages,
-            provider,
             self._client.resolved(provider),
             self._client.session.images,
             self._client.latest_user_position,

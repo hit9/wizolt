@@ -22,7 +22,6 @@ if TYPE_CHECKING:
 
 def chat_messages(
     messages: list[Json],
-    provider: ProviderConfig,
     resolved: ResolvedProvider,
     images: ImageInputs,
     latest_user_position: Callable[[list[Json]], int],

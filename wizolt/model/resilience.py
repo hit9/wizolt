@@ -226,13 +226,11 @@ def retry_after_delay(error: Exception) -> float | None:
     try:
         seconds = int(text)
     except ValueError:
-        # HTTP-date form (RFC 7231; no zone means GMT). parsedate_to_datetime raises on some
-        # malformed inputs instead of returning None, so treat either outcome as "unparseable".
+        # HTTP-date form (RFC 7231; no zone means GMT). A malformed date raises rather than
+        # coming back as None, so the exception below is the whole unparseable outcome.
         try:
             parsed = email.utils.parsedate_to_datetime(text)
         except (TypeError, ValueError, OverflowError):
-            return None
-        if parsed is None:
             return None
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=UTC)

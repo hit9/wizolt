@@ -294,7 +294,7 @@ async def question_interaction(loop: CommandLoop, specs: list[AskSpec]) -> list[
             raise asyncio.CancelledError from None
         return [DISMISSED] * len(specs)
     answers: list[str] = []
-    for index, spec in enumerate(specs):
+    for index in range(len(specs)):
         picked = state.picked[index]
         if picked is None:
             # Unanswered pages should never reach here (ASK_DONE requires the whole batch

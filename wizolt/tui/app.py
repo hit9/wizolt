@@ -133,7 +133,7 @@ class CallbackPlaceholder(Processor):
         ti = transformation_input
         text = self.text_fn()
         buffer = ti.buffer_control.buffer
-        if not text or buffer is None or buffer.text or ti.lineno != ti.document.line_count - 1:
+        if not text or buffer.text or ti.lineno != ti.document.line_count - 1:
             return Transformation(ti.fragments)
         return Transformation([*ti.fragments, ("class:queue.hint", text)])
 
@@ -589,8 +589,6 @@ class TuiApp:
             if not text.strip():
                 return False
             value = self._submitted_input()
-            if value is None:
-                return True
             self._append_history(value)
             self._reset_input("")
             self.set_dispatching()
@@ -604,8 +602,6 @@ class TuiApp:
         if not buffer.text.strip():
             return False
         value = self._submitted_input()
-        if value is None:
-            return True
         self._append_history(value)
         self._reset_input("")
         (self.on_queue_next_turn if next_turn else self.on_running_submit)(value)
@@ -926,8 +922,6 @@ class TuiApp:
             # slash command must not fight the mention flow for the same keystroke.
             return
 
-        if buffer.completer is None:
-            return
         event = CompleteEvent(completion_requested=True)
         completions = list(buffer.completer.get_completions(buffer.document, event))
         if len(completions) == 1:
@@ -1217,8 +1211,6 @@ class TuiApp:
     def complete_input(buffer: Buffer, *, reverse: bool = False) -> None:
         if buffer.complete_state is not None:
             buffer.complete_previous() if reverse else buffer.complete_next()
-            return
-        if buffer.completer is None:
             return
         event = CompleteEvent(completion_requested=True)
         completions = list(buffer.completer.get_completions(buffer.document, event))

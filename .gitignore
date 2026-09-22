@@ -1,4 +1,5 @@
 build
+.coverage
 docs/_build/
 docs/locale/**/*.mo
 demo*/
