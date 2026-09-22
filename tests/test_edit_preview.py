@@ -51,6 +51,20 @@ def test_diff_marks_nothing_when_the_runs_do_not_pair_up():
     assert not any(style.endswith((Theme.diff_style("diff.added.emph"), Theme.diff_style("diff.removed.emph"))) for style, _ in segments)
 
 
+def test_diff_reads_a_changed_line_starting_with_three_dashes_as_content():
+    """Removing a markdown rule (`---`) makes the diff line `----`, which is not a file header:
+    it keeps the removed band, and the rows under it keep counting from it."""
+    diff = "--- a/r.md\n+++ b/r.md\n@@ -1,3 +1,3 @@\n # Title\n----\n+***\n after"
+    ui = UiPrinter()
+    rows = ui.segment_lines(ui.diff_segments(diff))
+    text = ["".join(part for _, part in row) for row in rows]
+    band = Theme.diff_style("diff.removed.bg")
+
+    assert text[4].startswith("   2      │ ----")  # the removed rule, numbered on the old side
+    assert ("ansired " + band, "-") in rows[4] and any(part == "---" and band in style for style, part in rows[4])
+    assert text[6].startswith("   3    3 ")  # counted, so the context row under it is still line 3
+
+
 def test_diff_leaves_a_rewritten_line_unmarked():
     """A pair that shares too little is a rewrite, not an edit: no words are singled out."""
     segments = UiPrinter().diff_segments("@@ -1 +1 @@\n-import os\n+return render(frame, width)")

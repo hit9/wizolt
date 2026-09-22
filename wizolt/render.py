@@ -1366,6 +1366,13 @@ class UiPrinter:
 
     # Width taken by the line-number gutter emitted inside diff_segments (`NNNN NNNN │ `).
     DIFF_GUTTER_WIDTH: ClassVar[int] = 12
+    # A unified-diff file header, told apart from a removed or added line whose own content starts
+    # with "---" or "+++" by the space that follows the marker in a header and nowhere else (both
+    # git and difflib write `--- <path>`, and `--- ` even when the path is empty). Matching the
+    # marker alone drew a removed markdown rule (`---`, so the diff line is `----`) as a dim
+    # header: no red band, and the row it then never counted shifted every old line number
+    # under it in that hunk.
+    DIFF_HEADER_PREFIXES: ClassVar[tuple[str, ...]] = ("--- ", "+++ ")
     # Word-level emphasis compares a removed line with the added line that replaces it. Lines this
     # long are skipped (a minified blob gains nothing from it), and a pair sharing less than this
     # much is a rewrite, where marking nearly every word would only restate the whole-line band.
@@ -1452,9 +1459,8 @@ class UiPrinter:
         new_code_lines: list[str] = []
         new_code_indices: list[int] = []
         for i, line in enumerate(lines):
-            # Skip the unified-diff file headers / hunk markers (the trailing space avoids matching a
-            # real added line whose content starts with "+++"); feed only actual code to the lexer.
-            if line.startswith(("+++ ", "--- ", "@@ ")):
+            # Skip the unified-diff file headers / hunk markers; feed only actual code to the lexer.
+            if line.startswith((*self.DIFF_HEADER_PREFIXES, "@@ ")):
                 continue
             if line.startswith(("+", " ")):
                 new_code_lines.append(line[1:])
@@ -1475,7 +1481,7 @@ class UiPrinter:
         # lengths are left alone, as diff-highlight does -- pairing them by position would match a
         # line against whatever happens to sit at the same offset.
         def changed(line: str, sign: str) -> bool:
-            return line.startswith(sign) and not line.startswith(sign * 3)
+            return line.startswith(sign) and not line.startswith(self.DIFF_HEADER_PREFIXES)
 
         spans_by_index: dict[int, list[tuple[int, int]]] = {}
         run = 0
@@ -1541,7 +1547,7 @@ class UiPrinter:
                     new_line = hunk_start(parts[2], "+")
                 number(None, None)
                 segments.append(("ansicyan", line + suffix))
-            elif line.startswith(("---", "+++")):
+            elif line.startswith(self.DIFF_HEADER_PREFIXES):
                 number(None, None)
                 segments.append(("ansibrightblack", line + suffix))
             elif line.startswith("+"):
