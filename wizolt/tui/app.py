@@ -446,13 +446,21 @@ class TuiApp:
         if not self._approval_actions or self.input_mode != "approval":
             return []
         typing = bool(self.input_buffer.text)
-        parts: StyleAndTextTuples = [("class:subtle", LogBlock.prefix(2, LogEdge.CONTINUE))]
+        # A rail-only row parts the decision from the call it is about. The rail keeps drawing, so
+        # the two still read as one bracket rather than as two unrelated blocks.
+        parts: StyleAndTextTuples = [
+            ("class:subtle", LogBlock.prefix(2, LogEdge.CONTINUE).rstrip() + "\n"),
+            ("class:subtle", LogBlock.prefix(2, LogEdge.CONTINUE)),
+        ]
         for index, (label, _) in enumerate(self._approval_actions):
             focused = index == self._approval_focus and not typing
             style = "class:approval.action.focused" if focused else "class:approval.action.dim" if typing else "class:approval.action"
             parts.append((style, f" {label} "))
             parts.append(("", "  "))
-        parts.append(("class:approval.action.dim", "  Enter send · Esc back" if typing else "  Tab to move"))
+        # Which key commits is the one thing the row cannot leave unsaid: the band says what is
+        # focused, not that Enter fires it, and Escape refusing outright is worth knowing before
+        # the reason field is reached.
+        parts.append(("class:approval.action.dim", "  Enter send · Esc back" if typing else "  Enter runs it · Tab to move · Esc refuses"))
         return parts
 
     def move_approval_focus(self, delta: int) -> None:

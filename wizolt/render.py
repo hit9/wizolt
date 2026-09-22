@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import difflib
 import io
 import math
 import os
@@ -15,6 +16,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
+from itertools import accumulate, pairwise
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from prompt_toolkit import print_formatted_text
@@ -42,6 +44,7 @@ from wizolt.base import (
     Json,
     LogBlock,
     LogEdge,
+    LogLine,
     LogRole,
     Text,
 )
@@ -241,6 +244,8 @@ class Theme:
         "status_worker": "#fbbf24",
         "divider_glow": "#67e8f9",
         "divider_rule": "#4b5563",
+        "selection_bg": "#008ec4",
+        "selection_fg": "#ffffff",
         "pygments": "github-dark",
     }
     LIGHT: ClassVar[dict[str, str]] = {
@@ -272,6 +277,8 @@ class Theme:
         "status_worker": "#b45309",
         "divider_glow": "#0e7490",
         "divider_rule": "#9ca3af",
+        "selection_bg": "#008ec4",
+        "selection_fg": "#ffffff",
         "pygments": "default",
     }
     ROLES: ClassVar[tuple[str, ...]] = tuple(key for key in DARK if key != "pygments")
@@ -279,16 +286,22 @@ class Theme:
     # Diff colors are pinned, not derived. They were tuned against real diffs in both appearances
     # and a palette reshuffle must never move them, so they stay their own fixed mapping in the
     # frameworks' own spelling — the one place the palette deliberately does not own.
+    # `emph` is the heavier band under the words a modified line actually changed; the line keeps
+    # its `bg` everywhere else.
     DIFF_DARK: ClassVar[dict[str, str]] = {
         "diff.added.bg": "bg:#003b00",
+        "diff.added.emph": "bg:#1c7a1c",
         "diff.added.fg": "fg:default",
         "diff.removed.bg": "bg:#520000",
+        "diff.removed.emph": "bg:#9c1c1c",
         "diff.removed.fg": "fg:default",
     }
     DIFF_LIGHT: ClassVar[dict[str, str]] = {
         "diff.added.bg": "bg:#d1f0d1",
+        "diff.added.emph": "bg:#8fd88f",
         "diff.added.fg": "fg:#003b00",
         "diff.removed.bg": "bg:#f5c8c8",
+        "diff.removed.emph": "bg:#e88f8f",
         "diff.removed.fg": "fg:#520000",
     }
 
@@ -335,6 +348,17 @@ class Theme:
         computed color. Fragments that can name a class should use one instead.
         """
         return " ".join((f"fg:{cls.color(role)}", *attributes))
+
+    @classmethod
+    def selection(cls, *attributes: str) -> str:
+        """The one band that says "this row is selected", for every list that has a cursor.
+
+        It is a fixed pair rather than `reverse` on purpose: reverse inverts whatever color the row
+        is already drawn in, so the band changed color from row to row -- green over a tool name,
+        gray over a `tr.N` key. One band is one meaning, and it is the same band in the completion
+        menu, the pickers, the browsers, and the approval actions.
+        """
+        return " ".join((f"fg:{cls.color('selection_fg')}", f"bg:{cls.color('selection_bg')}", *attributes))
 
     @classmethod
     def tui_styles(cls) -> dict[str, str]:
@@ -585,6 +609,18 @@ class UiPrinter:
         # leaves one blank row. Starts at one, so the first block of a session does not open with a
         # blank row it has nothing to be parted from.
         self.trailing_blanks = 1
+        # Whether the last thing printed was a call that fit on one line with nothing hanging off
+        # it. A run of those reads as a list, so the callers that part blocks with a blank row skip
+        # it between two of them; anything else printed clears the flag and the gap comes back.
+        self.emitted_single_line = False
+
+    @staticmethod
+    def single_line_block(text: str | LogBlock) -> bool:
+        """Whether a block is one log line: a call with no output, no children, no wrapped text."""
+        if not isinstance(text, LogBlock) or len(text.items) != 1:
+            return False
+        line = text.items[0]
+        return isinstance(line, LogLine) and "\n" not in (line.text + line.meta)
 
     def track_layout(self, text: str) -> None:
         """Record what one emit left on screen: rows drawn, and blank rows left at the end.
@@ -604,6 +640,9 @@ class UiPrinter:
             blanks += 1
         # A wholly blank emit extends the run above it; anything with content restarts the count.
         self.trailing_blanks = self.trailing_blanks + blanks if blanks == len(rows) else blanks
+        # Cleared here rather than in `emit`, so output that never goes through it -- an answer, a
+        # rule, a direct write -- also ends a run of one-line calls. `emit` sets it again after.
+        self.emitted_single_line = False
 
     def separate(self, rows: int = 1) -> None:
         """Ensure `rows` blank rows part what comes next from what is already on screen.
@@ -797,6 +836,7 @@ class UiPrinter:
         # close is how far apart they are on screen, and one Bash call with its output goes further
         # than four Reads. A block that wrapped counts the rows it actually took.
         self.track_layout("".join(fragment for _, fragment in segments))
+        self.emitted_single_line = self.single_line_block(text)
         # A log block sizes its diff gutter and wrapping from the pane, so it is recorded as itself
         # and laid out again on replay. Plain text needs no such treatment: `segments` never wraps,
         # so the terminal re-flows it for free.
@@ -1324,8 +1364,59 @@ class UiPrinter:
         except Exception:  # noqa: BLE001 - third-party lexer execution must degrade to plain rendering.
             return None
 
-    # Width taken by the line-number gutter emitted inside diff_segments (`NNNN NNNN | `).
+    # Width taken by the line-number gutter emitted inside diff_segments (`NNNN NNNN │ `).
     DIFF_GUTTER_WIDTH: ClassVar[int] = 12
+    # A unified-diff file header, told apart from a removed or added line whose own content starts
+    # with "---" or "+++" by the space that follows the marker in a header and nowhere else (both
+    # git and difflib write `--- <path>`, and `--- ` even when the path is empty). Matching the
+    # marker alone drew a removed markdown rule (`---`, so the diff line is `----`) as a dim
+    # header: no red band, and the row it then never counted shifted every old line number
+    # under it in that hunk.
+    DIFF_HEADER_PREFIXES: ClassVar[tuple[str, ...]] = ("--- ", "+++ ")
+    # Word-level emphasis compares a removed line with the added line that replaces it. Lines this
+    # long are skipped (a minified blob gains nothing from it), and a pair sharing less than this
+    # much is a rewrite, where marking nearly every word would only restate the whole-line band.
+    DIFF_EMPHASIS_MAX_CHARS: ClassVar[int] = 400
+    DIFF_EMPHASIS_MIN_RATIO: ClassVar[float] = 0.5
+    DIFF_WORD_RE: ClassVar[re.Pattern] = re.compile(r"\w+|\s+|[^\w\s]")
+
+    @classmethod
+    def changed_spans(cls, old: str, new: str) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
+        """The character ranges of `old` and `new` that differ, compared word by word.
+
+        Empty on both sides when the pair is too long or too different to be a modified line."""
+        if max(len(old), len(new)) > cls.DIFF_EMPHASIS_MAX_CHARS:
+            return [], []
+        old_words = cls.DIFF_WORD_RE.findall(old)
+        new_words = cls.DIFF_WORD_RE.findall(new)
+        matcher = difflib.SequenceMatcher(None, old_words, new_words, autojunk=False)
+        if matcher.ratio() < cls.DIFF_EMPHASIS_MIN_RATIO:
+            return [], []
+        old_offsets = [0, *accumulate(len(word) for word in old_words)]
+        new_offsets = [0, *accumulate(len(word) for word in new_words)]
+        old_spans: list[tuple[int, int]] = []
+        new_spans: list[tuple[int, int]] = []
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "equal":
+                continue
+            if i1 < i2:
+                old_spans.append((old_offsets[i1], old_offsets[i2]))
+            if j1 < j2:
+                new_spans.append((new_offsets[j1], new_offsets[j2]))
+        return old_spans, new_spans
+
+    @staticmethod
+    def split_at_spans(content: list[tuple[str, str]], spans: list[tuple[int, int]]) -> list[tuple[str, str, bool]]:
+        """Split styled pieces at the span edges, flagging each piece that falls inside a span."""
+        result: list[tuple[str, str, bool]] = []
+        offset = 0
+        for style, piece in content:
+            cuts = sorted({0, len(piece), *(min(max(edge - offset, 0), len(piece)) for span in spans for edge in span)})
+            for start, end in pairwise(cuts):
+                inside = any(low <= offset + start and offset + end <= high for low, high in spans)
+                result.append((style, piece[start:end], inside))
+            offset += len(piece)
+        return result
 
     def diff_segments(self, text: str, row_width: int | None = None) -> list[tuple[str, str]]:
         return self._diff_segments(text, row_width=row_width, live=False)
@@ -1368,9 +1459,8 @@ class UiPrinter:
         new_code_lines: list[str] = []
         new_code_indices: list[int] = []
         for i, line in enumerate(lines):
-            # Skip the unified-diff file headers / hunk markers (the trailing space avoids matching a
-            # real added line whose content starts with "+++"); feed only actual code to the lexer.
-            if line.startswith(("+++ ", "--- ", "@@ ")):
+            # Skip the unified-diff file headers / hunk markers; feed only actual code to the lexer.
+            if line.startswith((*self.DIFF_HEADER_PREFIXES, "@@ ")):
                 continue
             if line.startswith(("+", " ")):
                 new_code_lines.append(line[1:])
@@ -1386,6 +1476,32 @@ class UiPrinter:
                 if hl_index < len(highlighted):
                     hl_by_index[line_index] = highlighted[hl_index]
 
+        # A run of removed lines followed by an added run of the same length is a modification: its
+        # lines are paired in order and each pair marks the words it changed. Runs of different
+        # lengths are left alone, as diff-highlight does -- pairing them by position would match a
+        # line against whatever happens to sit at the same offset.
+        def changed(line: str, sign: str) -> bool:
+            return line.startswith(sign) and not line.startswith(self.DIFF_HEADER_PREFIXES)
+
+        spans_by_index: dict[int, list[tuple[int, int]]] = {}
+        run = 0
+        while run < len(lines):
+            if not changed(lines[run], "-"):
+                run += 1
+                continue
+            removed_end = run
+            while removed_end < len(lines) and changed(lines[removed_end], "-"):
+                removed_end += 1
+            added_end = removed_end
+            while added_end < len(lines) and changed(lines[added_end], "+"):
+                added_end += 1
+            if removed_end - run == added_end - removed_end:
+                for old_index, new_index in zip(range(run, removed_end), range(removed_end, added_end), strict=True):
+                    old_spans, new_spans = self.changed_spans(lines[old_index][1:], lines[new_index][1:])
+                    spans_by_index[old_index] = old_spans
+                    spans_by_index[new_index] = new_spans
+            run = added_end
+
         def hunk_start(part: str, prefix: str) -> int | None:
             if not part.startswith(prefix):
                 return None
@@ -1400,15 +1516,24 @@ class UiPrinter:
         def number(old: int | None, new: int | None, background: str = "") -> None:
             old_text = "" if old is None else str(old)
             new_text = "" if new is None else str(new)
-            segments.append((("ansibrightblack " + background).strip(), f"{old_text:>4} {new_text:>4} | "))
+            # The same box-drawing stroke as the tree rail beside it, so the two verticals match.
+            segments.append((("ansibrightblack " + background).strip(), f"{old_text:>4} {new_text:>4} │ "))
 
-        def append_hl(prefix: str, prefix_style: str, content_hl: list[tuple[str, str]], suffix: str, background: str = "") -> None:
-            def styled(style: str) -> str:
-                return (style + " " + background).strip()
+        def append_hl(
+            prefix: str,
+            prefix_style: str,
+            content_hl: list[tuple[str, str]],
+            suffix: str,
+            background: str = "",
+            spans: list[tuple[int, int]] | None = None,
+            emphasis: str = "",
+        ) -> None:
+            def styled(style: str, band: str = background) -> str:
+                return (style + " " + band).strip()
 
             segments.append((styled(prefix_style), prefix))
-            for style, piece in content_hl:
-                segments.append((styled(style), piece))
+            for style, piece, inside in self.split_at_spans(content_hl, spans or []):
+                segments.append((styled(style, emphasis if inside else background), piece))
             width = get_cwidth(prefix) + sum(get_cwidth(fragment[1]) for fragment in content_hl)
             padding = " " * max(0, changed_width - width) if background and changed_width is not None else ""
             segments.append((background if padding else "", padding + suffix))
@@ -1422,19 +1547,20 @@ class UiPrinter:
                     new_line = hunk_start(parts[2], "+")
                 number(None, None)
                 segments.append(("ansicyan", line + suffix))
-            elif line.startswith(("---", "+++")):
+            elif line.startswith(self.DIFF_HEADER_PREFIXES):
                 number(None, None)
                 segments.append(("ansibrightblack", line + suffix))
             elif line.startswith("+"):
                 background = Theme.diff_style("diff.added.bg")
                 number(None, new_line, background)
                 content_hl = hl_by_index.get(index) or [(Theme.diff_style("diff.added.fg"), line[1:])]
-                append_hl("+", "ansigreen", content_hl, suffix, background)
+                append_hl("+", "ansigreen", content_hl, suffix, background, spans_by_index.get(index), Theme.diff_style("diff.added.emph"))
                 new_line = None if new_line is None else new_line + 1
             elif line.startswith("-"):
                 background = Theme.diff_style("diff.removed.bg")
                 number(old_line, None, background)
-                append_hl("-", "ansired", [(Theme.diff_style("diff.removed.fg"), line[1:])], suffix, background)
+                content_hl = [(Theme.diff_style("diff.removed.fg"), line[1:])]
+                append_hl("-", "ansired", content_hl, suffix, background, spans_by_index.get(index), Theme.diff_style("diff.removed.emph"))
                 old_line = None if old_line is None else old_line + 1
             elif line.startswith(" "):
                 number(old_line, new_line)
@@ -1774,25 +1900,41 @@ class StatusBar:
             text += f" · {remaining}s"
         return text
 
+    def worker_context_group(self, source: Session) -> list[list[tuple[str, str]]]:
+        """The parked worker's context water level, appended to the parent's row as `worker ctx N%`.
+
+        Shown only while the parent is the active session: in flight the row already carries the
+        worker's numbers behind the `[worker]` marker, and a second group would repeat them. And
+        only when the worker has real context: a worker that was never delegated to, or was
+        reset, adds nothing -- `worker ctx 0%` is noise, not information. Read off the attached
+        worker Session alone; the bar never loads one from disk to fill this row.
+        """
+        worker = self.session.worker
+        if worker is None or source is not self.session:
+            return []
+        percent = worker.usage.context_percent(worker.state.context_percent)
+        if percent <= 0:
+            return []
+        return [[(f"worker ctx {percent}%", "worker")]]
+
     def fragments(self) -> StyleAndTextTuples:
         """Render the stable status row in its fixed group order and semantic colors.
 
         Identity and usage are read off `active_session()`, so during a delegation the row answers
         the question the reader actually has -- which model is running now, and how full its
         context is -- instead of describing a parent that is parked inside a tool call. The
-        `[worker]` marker says whose numbers these are; they return to the parent's the moment the
-        worker answers. The session-wide groups (mcp, skills, index, yolo) stay the parent's:
-        the worker shares those objects, and yolo is the runtime's own flag.
+        `[worker]` marker says whose numbers these are; they return to the parent's the moment
+        the worker answers. The session-wide groups (mcp, skills, index, yolo) stay the parent's:
+        the worker shares those objects, and yolo is the runtime's own flag. The one worker fact
+        shown while the parent runs is its context water level (`worker_context_group`), the
+        number the reader weighs before delegating again.
         """
         source = self.active_session()
         config = source.config
         provider = config.provider
         model = provider.model.rsplit("/", 1)[-1] or "(no model)"
         usage = source.usage
-        if usage.last_prompt_tokens and usage.last_prompt_budget:
-            ctx_percent = min(100, usage.last_prompt_tokens * 100 // usage.last_prompt_budget)
-        else:
-            ctx_percent = source.state.context_percent
+        ctx_percent = usage.context_percent(source.state.context_percent)
         cache_percent = usage.last_cached_prompt_tokens * 100 // usage.last_prompt_tokens if usage.last_prompt_tokens else 0
         skill_count = len(self.session.skills.skills) if self.session.skills else 0
 
@@ -1806,6 +1948,7 @@ class StatusBar:
             identity,
             [(self.mcp_label(), "mcp"), (" · ", "sep"), (f"skills {skill_count}", "mcp")],
             [(f"ctx {ctx_percent}%", "context"), (" · ", "sep"), (f"cache {cache_percent}%", "context")],
+            *self.worker_context_group(source),
             [("index" + self.index_status(), "index")],
         ]
         fragments: StyleAndTextTuples = []

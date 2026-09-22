@@ -29,6 +29,8 @@ class AskTool(Tool):
     EXAMPLE = ('Example: {"questions":[{"question":"Which approach?","choices":["Refactor","Rewrite"],"recommended":0}]}',)
     MUTATES = False
     STORES_RESULT = True
+    # The call line is the question itself: prose, which the argument lexer would tint word by word.
+    LOG_LEXER = ""
     # Injected by ToolRunner: asks the whole batch and awaits the answers. Awaitable because the
     # questions are put to the user on the runtime loop, which must stay responsive while they sit
     # unanswered -- an Ask can wait as long as the user takes.

@@ -77,7 +77,10 @@ async def test_tui_approval_form_row_shows_focus_and_dims_while_typing():
 
     assert all(label in row() for label, _ in ACTIONS)  # every action is visible, none memorized
     assert "class:approval.action.focused" in styles()
-    assert "Tab to move" in row()
+    # The keys that commit and that refuse are named: the band says what is focused, not what fires it.
+    assert "Enter runs it · Tab to move · Esc refuses" in row()
+    # A rail-only row parts the decision from the call above it without cutting the bracket.
+    assert row().startswith("    │\n    │ ")
 
     _active(app, Keys.Tab)[0].handler(type("Event", (), {})())
     focused = [text for style, text in app.approval_form_fragments() if style == "class:approval.action.focused"]

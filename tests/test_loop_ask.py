@@ -14,7 +14,9 @@ from wizolt.base import (
     DISMISSED,
     SELECTION_BACK,
     LogBlock,
+    LogEdge,
     LogLine,
+    LogRole,
     Text,
     ToolCall,
 )
@@ -327,6 +329,30 @@ async def test_final_answer_takes_no_phase_rule(tmp_path):
     assert rules == []
 
 
+async def test_a_run_of_one_line_calls_is_packed_into_a_list(tmp_path):
+    """Calls that each fit on one line run together as a list; the blank row comes back for the
+    first one of a run and for any call that brings something with it."""
+    loop = _colored_loop(tmp_path)
+    blanks = []
+    loop.ui.separate = lambda rows=1: blanks.append(rows)
+
+    def one_liner(name):
+        return LogBlock([LogLine(name, "x.py", LogRole.TOOL)])
+
+    loop.tool_output(one_liner("Read"))
+    assert blanks == [1]  # nothing above it was a one-line call, so it still parts itself
+
+    loop.tool_output(one_liner("Search"))
+    assert blanks == [1]  # packed straight under the call above
+
+    with_output = LogBlock.hierarchy(LogLine("Bash", "pytest -q", LogRole.TOOL), [LogLine("", "41 passed", LogRole.OUTPUT, LogEdge.END)])
+    loop.tool_output(with_output)
+    assert blanks == [1, 1]  # a call that brings output is parted from the run above it
+
+    loop.tool_output(one_liner("Read"))
+    assert blanks == [1, 1, 1]  # and the run has to start over under it
+
+
 async def test_tool_batch_closes_a_long_silent_run_with_a_phase_rule(tmp_path):
     """While the agent works in silence its calls run together; a stretch of silent tool
     batches -- the model never saying anything back -- closes with the same seam, fired after
@@ -335,9 +361,27 @@ async def test_tool_batch_closes_a_long_silent_run_with_a_phase_rule(tmp_path):
     rules = []
     loop.ui.emit_phase_rule = lambda: rules.append(1)
     loop._silent_batches = loop.TOOL_RUN_RULE_BATCHES - 1
+    loop.ui.rows_since_rule = loop.MIN_ROWS_BETWEEN_RULES
 
     loop.tool_batch_output(True)
 
+    assert rules == [1]
+
+
+async def test_a_silent_run_too_close_to_the_rule_above_draws_no_seam(tmp_path):
+    """Long enough by the batch count, but only a few rows of packed one-line calls: a rule there
+    would part nothing. The count keeps running, so the seam lands once the rows are there."""
+    loop = _colored_loop(tmp_path)
+    rules = []
+    loop.ui.emit_phase_rule = lambda: rules.append(1)
+    loop._silent_batches = loop.TOOL_RUN_RULE_BATCHES - 1
+    loop.ui.rows_since_rule = loop.MIN_ROWS_BETWEEN_RULES - 2
+
+    loop.tool_batch_output(True)
+    assert rules == []
+
+    loop.ui.rows_since_rule = loop.MIN_ROWS_BETWEEN_RULES
+    loop.tool_batch_output(True)
     assert rules == [1]
 
 
@@ -535,14 +579,16 @@ async def test_resumed_session_draws_user_narration_and_silent_batch_rules(tmp_p
     assert len(rules) == 2
     assert rules[1] >= CommandLoop.MIN_ROWS_BETWEEN_RULES  # the second narration's rule is far enough
 
-    # A silent run of four tool batches closes with the batch rule.
-    rules = rules_for(
-        [
-            {"role": "user", "content": "q1"},
-            *[{"role": "assistant", "content": "", "tool_calls": [tool_call(i)]} for i in range(1, 5)],
-            {"role": "assistant", "content": "answer"},
-        ],
-        [record()] * 4,
-    )
+    # Four silent batches of one-line calls are four packed rows: long enough by the batch count,
+    # but too close to the rule above to part anything, so no second rule is drawn.
+    silent_run = lambda batches: [
+        {"role": "user", "content": "q1"},
+        *[{"role": "assistant", "content": "", "tool_calls": [tool_call(i)]} for i in range(1, batches + 1)],
+        {"role": "assistant", "content": "answer"},
+    ]
+    assert len(rules_for(silent_run(4), [record()] * 4)) == 1
+
+    # Once the same silence has filled enough rows, the batch rule closes it.
+    rules = rules_for(silent_run(8), [record()] * 8)
     assert len(rules) == 2
     assert rules[1] >= CommandLoop.MIN_ROWS_BETWEEN_RULES  # the silent run's rule is far enough

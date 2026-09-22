@@ -33,6 +33,45 @@ def test_approval_segments_highlight_inline_edit_preview():
     assert "\n\n" not in rendered
 
 
+def test_diff_marks_the_words_a_modified_line_changed():
+    """A removed line and the added line replacing it put the heavier band under the words that
+    differ, and only there; the rest of each line keeps its ordinary band."""
+    segments = UiPrinter().diff_segments("@@ -1 +1 @@\n-total = price * count\n+total = price * quantity")
+    added_emph, removed_emph = Theme.diff_style("diff.added.emph"), Theme.diff_style("diff.removed.emph")
+
+    assert [text for style, text in segments if style.endswith(removed_emph)] == ["count"]
+    assert [text for style, text in segments if style.endswith(added_emph)] == ["quantity"]
+    assert any("price" in text and style.endswith(Theme.diff_style("diff.added.bg")) for style, text in segments)
+
+
+def test_diff_marks_nothing_when_the_runs_do_not_pair_up():
+    """Three removed lines replaced by one: no line is paired with whatever sits at its offset."""
+    segments = UiPrinter().diff_segments("@@ -1,3 +1 @@\n-## Unreleased\n-\n-### Added\n+## 0.49.6 - 2026-09-18")
+
+    assert not any(style.endswith((Theme.diff_style("diff.added.emph"), Theme.diff_style("diff.removed.emph"))) for style, _ in segments)
+
+
+def test_diff_reads_a_changed_line_starting_with_three_dashes_as_content():
+    """Removing a markdown rule (`---`) makes the diff line `----`, which is not a file header:
+    it keeps the removed band, and the rows under it keep counting from it."""
+    diff = "--- a/r.md\n+++ b/r.md\n@@ -1,3 +1,3 @@\n # Title\n----\n+***\n after"
+    ui = UiPrinter()
+    rows = ui.segment_lines(ui.diff_segments(diff))
+    text = ["".join(part for _, part in row) for row in rows]
+    band = Theme.diff_style("diff.removed.bg")
+
+    assert text[4].startswith("   2      │ ----")  # the removed rule, numbered on the old side
+    assert ("ansired " + band, "-") in rows[4] and any(part == "---" and band in style for style, part in rows[4])
+    assert text[6].startswith("   3    3 ")  # counted, so the context row under it is still line 3
+
+
+def test_diff_leaves_a_rewritten_line_unmarked():
+    """A pair that shares too little is a rewrite, not an edit: no words are singled out."""
+    segments = UiPrinter().diff_segments("@@ -1 +1 @@\n-import os\n+return render(frame, width)")
+
+    assert not any(style.endswith((Theme.diff_style("diff.added.emph"), Theme.diff_style("diff.removed.emph"))) for style, _ in segments)
+
+
 async def test_auto_approved_edit_keeps_preview_pre_line(tmp_path, monkeypatch):
     # Edit's "auto …" pre-line carries the approval preview; the result line is tagged [auto].
     s = session(tmp_path)
@@ -47,7 +86,7 @@ async def test_auto_approved_edit_keeps_preview_pre_line(tmp_path, monkeypatch):
     assert isinstance(out[0], LogBlock)
     root, _ = next(out[0].walk())
     assert root.role is LogRole.AUTO
-    assert "preview" in str(out[0])
+    assert "+NEW" in str(out[0])
     assert str(out[1]).rstrip().endswith("[auto]")
 
 
@@ -126,7 +165,7 @@ def test_diff_segments_gracefully_degrades_without_lexer(tmp_path):
     segments = ui.diff_segments(diff)
 
     assert any(t == "-" and s == "ansired bg:#520000" for s, t in segments)
-    assert any("old" in t and s == "fg:default bg:#520000" for s, t in segments)
+    assert any("old" in t and s == "fg:default " + Theme.diff_style("diff.removed.emph") for s, t in segments)
     assert any(t == "+" and s == "ansigreen bg:#003b00" for s, t in segments)
 
 
@@ -144,9 +183,9 @@ def test_diff_segments_syntax_highlights_python(tmp_path):
     assert any("pass" in t and s == "fg:default bg:#520000" for s, t in segments)
 
     # Changed-line gutters join the background band; context stays unfilled.
-    assert any("|" in text and style == "ansibrightblack bg:#003b00" for style, text in segments)
-    assert any("|" in text and style == "ansibrightblack bg:#520000" for style, text in segments)
-    assert any("1" in text and "|" in text and "bg:" not in style for style, text in segments)
+    assert any("│" in text and style == "ansibrightblack bg:#003b00" for style, text in segments)
+    assert any("│" in text and style == "ansibrightblack bg:#520000" for style, text in segments)
+    assert any("1" in text and "│" in text and "bg:" not in style for style, text in segments)
     assert any(text == "def" and "bg:" not in style for style, text in segments)
 
     live = ui.segment_lines(ui.diff_segments_live(diff, row_width=40))

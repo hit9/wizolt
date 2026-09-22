@@ -62,21 +62,16 @@ def test_status_roles_have_palette_entries():
 
 @pytest.mark.parametrize("mode,rule", [("dark", "4b5563"), ("light", "9ca3af")])
 def test_theme_does_not_restyle_frozen_interaction_regions(tmp_path, monkeypatch, mode, rule):
-    """Theme work must not repaint selectors, input hints, thinking, or the divider."""
+    """Theme work must not repaint input hints, thinking, or the divider, and every cursor in the
+    UI must stay the one selection band -- the same pair in both appearances, never `reverse`,
+    which would take its color from whatever the row underneath is drawn in."""
     monkeypatch.setattr(Theme, "_mode", mode)
     style = loop(tmp_path).view.style()
 
-    selected = style.get_attrs_for_style_str("class:choice.selected")
-    assert selected.reverse and selected.color == selected.bgcolor == ""
-    hint = style.get_attrs_for_style_str("class:quickhint")
-    focused_hint = style.get_attrs_for_style_str("class:quickhint.focused")
-    assert hint.color == focused_hint.color == "ansicyan"
-    assert focused_hint.reverse and focused_hint.bgcolor == ""
-    approval = style.get_attrs_for_style_str("class:approval.action.focused")
-    assert approval.color == "ansiyellow" and approval.reverse and approval.bgcolor == ""
-
-    completion = style.get_attrs_for_style_str("class:completion-menu.completion.current")
-    assert completion.color == "ansicyan" and completion.bgcolor == "default"
+    for name in ("choice.selected", "quickhint.focused", "approval.action.focused", "completion-menu.completion.current", "completion-menu.meta.completion.current"):
+        band = style.get_attrs_for_style_str("class:" + name)
+        assert (band.color, band.bgcolor, band.reverse) == ("ffffff", "008ec4", False), name
+    assert style.get_attrs_for_style_str("class:quickhint").color == "ansicyan"
     thinking = style.get_attrs_for_style_str("class:muted")
     assert thinking.color == "ansibrightblack"
     working = style.get_attrs_for_style_str("class:divider.working")
@@ -98,14 +93,18 @@ def test_diff_colors_survive_the_palette_reorganization(monkeypatch):
     """Diff colors are pinned, not derived: reshuffling the palette must not move them."""
     assert Theme.DIFF_DARK == {
         "diff.added.bg": "bg:#003b00",
+        "diff.added.emph": "bg:#1c7a1c",
         "diff.added.fg": "fg:default",
         "diff.removed.bg": "bg:#520000",
+        "diff.removed.emph": "bg:#9c1c1c",
         "diff.removed.fg": "fg:default",
     }
     assert Theme.DIFF_LIGHT == {
         "diff.added.bg": "bg:#d1f0d1",
+        "diff.added.emph": "bg:#8fd88f",
         "diff.added.fg": "fg:#003b00",
         "diff.removed.bg": "bg:#f5c8c8",
+        "diff.removed.emph": "bg:#e88f8f",
         "diff.removed.fg": "fg:#520000",
     }
     for mode, expected in (("dark", Theme.DIFF_DARK), ("light", Theme.DIFF_LIGHT)):
@@ -486,9 +485,11 @@ def test_the_roles_that_carry_text_are_the_terminal_own_colors():
     Contrast, brightness, and taste belong to whoever set up the terminal, and a role drawn in one
     of its own colors inherits all three. A fixed tone can only guess at them, so it is reserved
     for the handful of things that are a specific colour rather than a role: an identity, the
-    syntax tones that pair with a Pygments style, the status footer, and a gradient's endpoints.
+    syntax tones that pair with a Pygments style, the status footer, a gradient's endpoints, and
+    the selection band, which has to stay one colour across every list instead of taking the
+    colour of the row it lands on.
     """
-    fixed = {"user", "syntax_default", "divider_glow", "divider_rule"}
+    fixed = {"user", "syntax_default", "divider_glow", "divider_rule", "selection_bg", "selection_fg"}
     for palette in (Theme.DARK, Theme.LIGHT):
         for role in Theme.ROLES:
             if role in fixed or role.startswith(("status_", "syntax_")):

@@ -437,7 +437,7 @@ async def test_tool_runner_edit_approval_prints_full_inline_preview(tmp_path, mo
 
     await runner.run([call("Edit", ["new.txt", "", [{"op": "create", "content": content}]])])
 
-    assert outputs[0].startswith("  Edit  new.txt\n    ├ preview")
+    assert outputs[0].startswith("  Edit  new.txt\n    │ --- ")
     assert "+line 49" in outputs[0]
     assert "preview truncated" not in outputs[0]
     assert any("[approved]" in output for output in outputs)

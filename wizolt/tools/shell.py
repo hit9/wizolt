@@ -47,7 +47,8 @@ class BashTool(Tool):
     _CONTROL_OPERATOR_RE: ClassVar[re.Pattern] = re.compile(r"&&|\|\||[|;\n]")
     LOG_LEXER = "bash"
     DESCRIPTION = (
-        "Run any Bash program in the workspace with live output and an exit code; conditionals, loops, functions, pipelines, and multiline scripts are valid. "
+        "Run any Bash program with live output and an exit code; conditionals, loops, functions, pipelines, and multiline scripts are valid. "
+        "Each call starts in cwd: never `cd` there first. "
         "Combine dependent steps with &&, ||, or |; emit unrelated work as separate tool calls in the same response. Bound noisy output. "
         "Use InspectCode for symbols and call graphs; use Read/Search when editable numbered source is useful. Write source with Edit, not shell redirection. "
         "Exact output works as Edit old without Read, but is never source=view.N. A long command continues as a Job. Never expose secrets or `.env`."

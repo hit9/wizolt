@@ -1,5 +1,54 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The status bar shows the worker's context fill, as a `worker ctx N%` group beside the
+  session's own, whenever a worker exists and has already run. A worker that was never delegated
+  to, or was reset, adds nothing; during a delegation the row already shows the worker's figures
+  behind the `[worker]` marker and the extra group is dropped.
+
+### Changed
+
+- Every list that has a cursor now marks it the same way: one blue band with white text, in the
+  completion menu, the pickers, the `Ctrl-O` browser, the next-step chips, and the approval
+  actions. Selection used to be reverse video, so the band took its color from whatever the row
+  was drawn in -- green over a tool name, gray over a `tr.N` key -- and the completion menu had no
+  band at all.
+- A run of calls that each fit on one line is drawn as a list instead of being parted by a blank
+  row each: a resumed session of mostly one-line calls comes back about 10% shorter, with 40%
+  fewer blank rows. A call that brings output, a diff, or narration still opens its own block.
+- The approval row says which keys decide -- `Enter runs it · Tab to move · Esc refuses` -- and a
+  rail row parts the actions from the command they are about, so the decision no longer sits
+  glued to the last line of what is being approved.
+- The rule that closes a long silent run of tool batches now also has to be far enough from the
+  rule above it, the way the narration rule already did, so a handful of packed one-line calls no
+  longer ends up sandwiched between two rules a few rows apart.
+- The `Bash` tool tells the model that every call already starts in the workspace, so commands
+  stop opening with a redundant `cd <workspace> &&` that pushed the part that matters off the
+  transcript line.
+- An Edit's diff hangs straight off its call line; the `preview` caption above it is gone. Its
+  line-number gutter is drawn with the same stroke as the rail beside it, so the two verticals
+  line up.
+- A diff marks the words a modified line actually changed: when removed lines are followed by
+  as many added lines replacing them, each pair puts a heavier red/green band under the differing
+  words, so a one-token edit no longer reads as two whole lines of color. A pair that shares
+  little is a rewrite and keeps the plain line bands.
+
+### Fixed
+
+- A resumed session replays tool calls the way they looked live: `NextHints`, which prints
+  nothing while a turn runs, no longer shows up as `NextHints {}` rows, and an `Ask` shows the
+  answer it was given instead of an empty `└ answer` label.
+- `Note` and `Ask` call lines read as the prose they are: the argument highlighter no longer
+  tints their words and dims every comma and semicolon.
+- A removed or added line whose own text starts with `---` or `+++` (a markdown rule, say) is no
+  longer mistaken for a diff file header: it keeps its red or green band, and the line numbers
+  below it in the hunk stay correct.
+- The docs picture of a finished Bash call and the `Ctrl-O` result sheet broke into lines again
+  instead of running together into one overflowing row.
+
 ## 0.49.6 - 2026-09-18
 
 ### Changed

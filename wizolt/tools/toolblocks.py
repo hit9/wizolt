@@ -219,10 +219,9 @@ def approval_display(
         children.extend(delegate_approval_children(tool, form or [], actions))
     elif tool.NAME == "Edit":
         preview = planned_edit.preview(tool) if planned_edit and isinstance(tool, EditTool) else tool.preview()
-        preview_lines = preview.rstrip().splitlines()
-        if preview_lines:
-            children.append(LogLine("preview", role=LogRole.META, edge=LogEdge.BRANCH))
-            children.extend(LogLine("", line, LogRole.DIFF, LogEdge.CONTINUE) for line in preview_lines)
+        # The diff hangs off the call line's rail with no caption: under an Edit it can only be the
+        # change that call makes.
+        children.extend(LogLine("", line, LogRole.DIFF, LogEdge.CONTINUE) for line in preview.rstrip().splitlines())
     elif (view := tool.approval_view()) is not None:
         children.extend(view_excerpt_children(view, status, form or [], actions or approval_actions(tool, False), root.text))
     return LogBlock.hierarchy(root, children)
@@ -334,7 +333,9 @@ def finish_display(
                 for line in tooloutput.preview_lines(body, tooloutput.BASH_TRANSCRIPT_PREVIEW_LINES)
             )
     elif call.name == "Ask":
-        children.append(LogLine("answer", oneline(output, 220), LogRole.META, LogEdge.END))
+        # No answer to show (a replay whose record was compacted away) draws no empty label.
+        if output:
+            children.append(LogLine("answer", oneline(output, 220), LogRole.META, LogEdge.END))
     elif call.name == "Delegate":
         if 'action="reset"' in output:
             # Reset is a one-shot tool call, not a delegation bracket: it keeps its ordinary

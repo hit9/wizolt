@@ -820,10 +820,7 @@ Full documentation: https://wizolt.readthedocs.io
                 if content:
                     self._silent_batches = 0
                 else:
-                    self._silent_batches += 1
-                    if self._silent_batches >= self.TOOL_RUN_RULE_BATCHES:
-                        self.ui.emit_phase_rule()
-                        self._silent_batches = 0
+                    self.count_silent_batch()
             return tool_record_index
         if role == "user" and content and not ImageInputs.is_tool_observation(message) and not dry_run:
             # The follow-up marker is model-facing context, part of history because it was sent.
@@ -869,12 +866,19 @@ Full documentation: https://wizolt.readthedocs.io
         """An Edit shows the diff it made, the way it did when the edit ran live. Live, that preview
         comes from the approval block; here the stored diff text is the same string, so replaying it
         needs no reconstruction."""
+        tool_class = TOOL_REGISTRY.get(call.name)
+        # Live, a silent tool logs nothing unless it failed (ToolRunner.run); a replay shows no more.
+        if tool_class is not None and tool_class.SILENT and not failed:
+            return
         preview = diffs.get(key, "") if call.name == "Edit" else ""
         # Through `tool_output`, like the live call: a replayed call opens its own group with a
         # blank row above it, and its result stays attached underneath. Emitted directly, every
         # call in a turn ran into the one above it and into the narration that introduced them.
         if not preview:
-            self.tool_output(toolblocks.finish_display(self.session, call, key, "failed in saved session" if failed else "", failed=failed))
+            # An Ask's stored result is the user's answer, which its finish block shows live; every
+            # other call replays as its `tr.N` marker alone.
+            output = "failed in saved session" if failed else self.session.tool_results.get(key, "") if call.name == "Ask" else ""
+            self.tool_output(toolblocks.finish_display(self.session, call, key, output, failed=failed))
             return
         # The preview block carries the call line, so the result collapses to its trailing marker
         # underneath it — the same nesting the live approval block produces.
@@ -888,8 +892,7 @@ Full documentation: https://wizolt.readthedocs.io
         hidden = max(0, len(lines) - self.TRANSCRIPT_DIFF_LINES)
         if hidden:
             lines = lines[: self.TRANSCRIPT_DIFF_LINES]
-        children = [LogLine("preview", role=LogRole.META, edge=LogEdge.BRANCH)]
-        children.extend(LogLine("", line, LogRole.DIFF, LogEdge.CONTINUE) for line in lines)
+        children = [LogLine("", line, LogRole.DIFF, LogEdge.CONTINUE) for line in lines]
         if hidden:
             children.append(LogLine("", f"… {hidden} more lines, see /diff", LogRole.META, LogEdge.CONTINUE))
         return LogBlock.hierarchy(toolblocks.log_root(tooloutput.short_call(self.session, call), LogRole.AUTO, "", call), children)
@@ -1101,7 +1104,13 @@ Full documentation: https://wizolt.readthedocs.io
             # The blank line parts each block from the one above; it is skipped when the block
             # sits directly under a rule just drawn (the turn's opening rule, or a batch rule),
             # which already provides the seam.
-            if isinstance(text, str) or (text.items and isinstance(text.items[0], LogLine)):
+            #
+            # It is skipped again between two calls that each fit on one line: a run of them is a
+            # list of what the agent did, and a blank row between every pair doubles its height for
+            # nothing. The moment a call brings output, a diff, or narration with it, the gap is
+            # back -- that block needs to be parted from the one above.
+            packed = self.ui.single_line_block(text) and self.ui.emitted_single_line
+            if not packed and (isinstance(text, str) or (text.items and isinstance(text.items[0], LogLine))):
                 self.ui.separate()
             self.emit(text)
 
@@ -1269,6 +1278,21 @@ Full documentation: https://wizolt.readthedocs.io
         self._silent_batches = 0
         self.ui.emit_phase_rule()
 
+    def count_silent_batch(self) -> None:
+        """Count one tool batch that carried no narration, and draw the batch rule once the run
+        has earned a seam.
+
+        Both conditions, for the reason the narration rule checks the distance: the batch count
+        says the silence is long enough to be worth closing, the distance says a rule this close
+        to the one above would part nothing. A run of one-line calls is four rows, not a stretch.
+        The count keeps running when the rule is held back, so the seam arrives on the batch that
+        finally clears the distance. Held here rather than at each call site, so the live turn and
+        the resumed transcript cannot drift into drawing the seam by different rules."""
+        self._silent_batches += 1
+        if self._silent_batches >= self.TOOL_RUN_RULE_BATCHES and self.ui.rule_due(self.MIN_ROWS_BETWEEN_RULES):
+            self.ui.emit_phase_rule()
+            self._silent_batches = 0
+
     def tool_batch_output(self, silent: bool) -> None:
         """Close a run of tool calls that has gone on long enough without the agent saying
         anything -- the model not recovering is exactly when the transcript needs the seam most,
@@ -1277,12 +1301,8 @@ Full documentation: https://wizolt.readthedocs.io
         no narration; a batch that spoke restarts nothing and counts nothing."""
 
         def output() -> None:
-            if not silent:
-                return
-            self._silent_batches += 1
-            if self._silent_batches >= self.TOOL_RUN_RULE_BATCHES:
-                self.ui.emit_phase_rule()
-                self._silent_batches = 0
+            if silent:
+                self.count_silent_batch()
 
         self.with_status_paused(output)
 

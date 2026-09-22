@@ -288,8 +288,8 @@ class ChoiceViewState:
             prefix = ("> " if selected else "  ") + f"{number:2d}. "
             if label_fn is not None:
                 parts.append((style, prefix))
-                # The selected row stays a solid reverse bar: composing the part colours into it
-                # would repaint the bar in each part's colour rather than highlight the row.
+                # The selected row stays one solid band: composing the part colours into it would
+                # repaint the band in each part's colour rather than highlight the row.
                 # Indexed rather than unpacked: a fragment may carry a third mouse-handler element,
                 # and this row only ever wants the style and the text.
                 parts.extend((style or fragment[0], fragment[1]) for fragment in (label_fn(choice) or [("", label)]))

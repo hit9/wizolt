@@ -161,7 +161,6 @@ async def test_resumed_transcript_replays_the_edit_diff(tmp_path):
     """A resumed session shows what each Edit changed, not just that an Edit ran."""
     text = await _resumed_transcript(tmp_path, "--- x.py\n+++ x.py\n@@ -1 +1 @@\n-a\n+b\n")
 
-    assert "preview" in text
     assert "-a" in text and "+b" in text
     assert "stored tr.1" in text
     # The preview block carries the call line, so it is not repeated by the result line.
@@ -179,8 +178,36 @@ async def test_resumed_transcript_without_a_stored_diff_shows_the_call_only(tmp_
     """Edits whose diff has been evicted still render as a plain call line."""
     text = await _resumed_transcript(tmp_path, "")
 
-    assert "preview" not in text
     assert "Edit" in text
+    assert "│" not in text  # no diff rows hanging off the call line
+
+async def test_resumed_transcript_replays_calls_the_way_they_ran_live(tmp_path):
+    """A silent tool stays silent on resume, and an Ask shows the answer it was given."""
+    s = session_with_data_dir(tmp_path)
+    s.messages.append({"role": "user", "content": "release it"})
+    ask = '{"questions": [{"question": "Push now?", "choices": ["push", "wait"]}]}'
+    hints = '{"inputs": ["push the tag"]}'
+    s.messages.append(
+        {
+            "role": "assistant",
+            "content": "Released.",
+            "tool_calls": [
+                {"id": "c1", "type": "function", "function": {"name": "Ask", "arguments": ask}},
+                {"id": "c2", "type": "function", "function": {"name": "NextHints", "arguments": hints}},
+            ],
+        }
+    )
+    s.store_tool_result("Ask", [], "wait")
+    await s.save_snapshot()
+
+    s.close()  # release the writer before reloading
+    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    output = []
+    CommandLoop(Agent(restored, output_fn=output.append), output_fn=output.append).render_resumed_session()
+    text = "\n".join(str(item) for item in output)
+
+    assert "answer wait" in text
+    assert "NextHints" not in text
 
 def _bash_raw_call(arguments: str) -> dict:
     return {"id": "c1", "type": "function", "function": {"name": "Bash", "arguments": arguments}}
