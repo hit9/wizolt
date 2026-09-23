@@ -10,6 +10,7 @@ from test_tui_runtime import history_file
 from tui_harness import loop
 
 from wizolt.cli import CommandLoop
+from wizolt.cli.resume import ResumeRenderer
 from wizolt.cli.update import UpdateChecker
 from wizolt.config import (
     Config,
@@ -46,7 +47,7 @@ def test_start_session_does_not_scan_or_refresh_code_index(tmp_path, monkeypatch
     command_loop = loop(tmp_path)
     status_checks = []
     monkeypatch.setattr(UpdateChecker, "load_cached", lambda _checker: False)
-    monkeypatch.setattr(CommandLoop, "render_resumed_session", lambda _loop: None)
+    monkeypatch.setattr(ResumeRenderer, "render_resumed_session", lambda _resume: None)
     monkeypatch.setattr(
         CodeIndex,
         "status",

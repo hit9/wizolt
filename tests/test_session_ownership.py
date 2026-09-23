@@ -597,7 +597,7 @@ async def test_failed_handoff_save_does_not_reserve_or_request_a_switch(tmp_path
     async def fail_save():
         raise failure()
 
-    monkeypatch.setattr(loop, "save_and_emit_resume", fail_save)
+    monkeypatch.setattr(loop.resume, "save_and_emit_resume", fail_save)
     try:
         with pytest.raises(failure):
             await commands_mod.sessions_command(loop, "")

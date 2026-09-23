@@ -62,7 +62,7 @@ def test_resume_line_is_separated_and_colored_as_a_saved_session(tmp_path):
     loop.ui._scrollback_print = printed.append
 
     loop.emit("previous output")
-    loop.emit_resume_line(s.uid)
+    loop.resume.emit_resume_line(s.uid)
 
     fragments = [fragment for part in printed for fragment in to_formatted_text(part)]
     assert "".join(text for _, text in fragments) == f"previous output\n\nResume 'work' with:\nwizolt --resume {s.uid}\n"
@@ -78,7 +78,7 @@ def test_resume_line_does_not_double_an_existing_gap(tmp_path):
 
     loop.emit("previous output")
     loop.ui.separate()
-    loop.emit_resume_line(s.uid)
+    loop.resume.emit_resume_line(s.uid)
 
     text = "".join(fragment for part in printed for _, fragment in to_formatted_text(part))
     assert text == f"previous output\n\nResume with:\nwizolt --resume {s.uid}\n"

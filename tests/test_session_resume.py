@@ -5,6 +5,7 @@ from test_session_persistence import _resumed_transcript, log_path, read_jsonl, 
 
 from wizolt.base import SESSION_EVENT_KEY
 from wizolt.cli import CommandLoop
+from wizolt.cli.resume import ResumeRenderer
 from wizolt.cli.commands import compact
 from wizolt.config import ProviderConfig
 from wizolt.engine import Agent
@@ -41,7 +42,7 @@ async def test_resume_replays_full_transcript_after_model_context_and_retained_r
     s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
     output = []
-    CommandLoop(Agent(restored, output_fn=output.append), output_fn=output.append).render_resumed_session()
+    CommandLoop(Agent(restored, output_fn=output.append), output_fn=output.append).resume.render_resumed_session()
     text = "\n".join(str(item) for item in output)
 
     assert "old request that must remain visible" in text
@@ -153,7 +154,7 @@ async def test_resume_recomputes_the_context_percent(tmp_path):
     assert restored.state.context_percent == 0
 
     loop = CommandLoop(Agent(restored, output_fn=lambda _text: None), output_fn=lambda _text: None)
-    loop.render_resumed_session()
+    loop.resume.render_resumed_session()
 
     assert restored.state.context_percent > 0
 
@@ -203,7 +204,7 @@ async def test_resumed_transcript_replays_calls_the_way_they_ran_live(tmp_path):
     s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
     output = []
-    CommandLoop(Agent(restored, output_fn=output.append), output_fn=output.append).render_resumed_session()
+    CommandLoop(Agent(restored, output_fn=output.append), output_fn=output.append).resume.render_resumed_session()
     text = "\n".join(str(item) for item in output)
 
     assert "answer wait" in text
@@ -222,8 +223,8 @@ def test_resumed_transcript_hides_the_live_followup_marker(tmp_path):
     command_loop.ui.emit_answer = lambda text, **kwargs: rendered.append(text)
 
     marked = {"role": "user", "content": LIVE_FOLLOWUP_PREFIX + "also update the tests"}
-    command_loop.render_transcript_message(marked)
-    command_loop.render_transcript_message({"role": "user", "content": "plain request"})
+    command_loop.resume.render_transcript_message(marked)
+    command_loop.resume.render_transcript_message({"role": "user", "content": "plain request"})
 
     assert rendered == ["also update the tests", "plain request"]
 
@@ -231,14 +232,14 @@ def test_transcript_tool_call_parses_multiline_arguments():
     """Argument strings with literal newlines (invalid strict JSON) still parse, so the
     Bash command survives instead of being dropped to {}."""
     raw = _bash_raw_call('{"command": "printf \'line one\nline two\'"}')
-    call = CommandLoop.transcript_tool_call(raw)
+    call = ResumeRenderer.transcript_tool_call(raw)
     assert call is not None
     assert call.args == ["printf 'line one\nline two'"]
 
 def test_transcript_tool_call_does_not_crash_on_unparseable_args():
     """A historical Bash call whose payload fails validation must render, not raise."""
     raw = _bash_raw_call("{not valid json at all")
-    call = CommandLoop.transcript_tool_call(raw)  # must not raise ToolError
+    call = ResumeRenderer.transcript_tool_call(raw)  # must not raise ToolError
     assert call is not None
     assert call.name == "Bash"
 

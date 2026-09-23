@@ -307,7 +307,7 @@ def test_resume_history_prints_before_tui_starts(tmp_path, monkeypatch):
         render_module, "print_formatted_text", lambda *values, **kwargs: printed.extend(fragment_list_to_text(to_formatted_text(value)) for value in values)
     )
 
-    command_loop.render_resumed_session()
+    command_loop.resume.render_resumed_session()
 
     text = "".join(printed)
     assert "most recent question" in text
@@ -330,7 +330,7 @@ def test_resume_redraws_only_the_recent_turns_and_says_so(tmp_path, monkeypatch)
         render_module, "print_formatted_text", lambda *values, **kwargs: printed.extend(fragment_list_to_text(to_formatted_text(value)) for value in values)
     )
 
-    command_loop.render_resumed_session()
+    command_loop.resume.render_resumed_session()
 
     text = "".join(printed)
     assert "3 earlier turns not redrawn (still in context)" in text
@@ -364,7 +364,7 @@ def test_resume_redraw_keeps_tool_pairing_after_truncation(tmp_path, monkeypatch
         render_module, "print_formatted_text", lambda *values, **kwargs: printed.extend(fragment_list_to_text(to_formatted_text(value)) for value in values)
     )
 
-    command_loop.render_resumed_session()
+    command_loop.resume.render_resumed_session()
 
     text = "".join(printed)
     assert "2 earlier turns not redrawn (still in context)" in text

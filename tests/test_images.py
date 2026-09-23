@@ -430,7 +430,7 @@ async def test_agent_persists_view_image_observation_without_replaying_it_as_use
     rendered = []
     command_loop = CommandLoop(agent, output_fn=lambda _text: None)
     command_loop.ui.emit_answer = lambda *args, **kwargs: rendered.append((args, kwargs))
-    command_loop.render_transcript_message(observation)
+    command_loop.resume.render_transcript_message(observation)
     assert rendered == []
 
     await s.save_snapshot()

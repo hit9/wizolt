@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
-import json
 import os
 import re
 import sys
@@ -26,15 +25,12 @@ from prompt_toolkit.history import FileHistory
 
 from wizolt.base import (
     ImageRouteNotice,
-    Json,
     LogBlock,
     LogEdge,
     LogLine,
     LogRole,
     MalformedToolCallError,
     Text,
-    ToolCall,
-    ToolError,
     TurnBox,
     WizoltError,
     __version__,
@@ -42,18 +38,17 @@ from wizolt.base import (
 )
 from wizolt.cli import commands, worker
 from wizolt.cli.modals import approval_text_viewer, question_interaction
+from wizolt.cli.resume import ResumeRenderer
 from wizolt.cli.runtime import ScrollbackWriter, TuiRuntime
 from wizolt.cli.update import UpdateChecker
 from wizolt.cli.view import CommandCompleter, View
 from wizolt.engine import Agent
-from wizolt.image import ImageInputs, UserInput
+from wizolt.image import UserInput
 from wizolt.mentions import FilePick
-from wizolt.prompts import LIVE_FOLLOWUP_PREFIX
 from wizolt.render import BashLivePreview, StatusBar, UiPrinter, search_sources_footer
-from wizolt.session import QueuedInput, SessionLease, SessionSnapshotCodec, SessionSnapshotStore, ToolResultRecord
-from wizolt.tools import TOOL_REGISTRY, CodeIndex, tool_payload, toolblocks, tooloutput
+from wizolt.session import QueuedInput, SessionLease, SessionSnapshotStore
+from wizolt.tools import CodeIndex
 from wizolt.tools.delegate import worker_provider_config
-from wizolt.tools.toolblocks import ToolDisplay
 from wizolt.tui import TuiApp
 
 
@@ -197,6 +192,7 @@ Full documentation: https://wizolt.readthedocs.io
         self.agent = agent
         self.session = agent.session
         self.view = View(self)
+        self.resume = ResumeRenderer(self)
         self.input_fn = input_fn
         self.ui = UiPrinter(output_fn)
         self.preprinted_output = ""
@@ -631,7 +627,7 @@ Full documentation: https://wizolt.readthedocs.io
                 user_input = await self.read_input(initial_text=initial_input)
             except EOFError:
                 self.emit(TurnBox.SEPARATOR)
-                await self.save_and_emit_resume()
+                await self.resume.save_and_emit_resume()
                 return 0
             except KeyboardInterrupt:
                 continue
@@ -701,7 +697,7 @@ Full documentation: https://wizolt.readthedocs.io
         update_due = checker.load_cached()
         if self.session.update.newer_than(__version__):
             self.emit(f"update available: {__version__} -> {self.session.update.latest}. upgrade with `{' '.join(UpdateChecker.upgrade_command())}`.")
-        self.render_resumed_session()
+        self.resume.render_resumed_session()
         # Publish existing availability without scanning the tree; the freshness check already
         # runs after each completed turn.
         CodeIndex(self.session).status()
@@ -737,213 +733,6 @@ Full documentation: https://wizolt.readthedocs.io
         days = self.session.settings.session_retention_days
         sessions = "session" if removed == 1 else "sessions"
         return f"removed {removed} saved {sessions} inactive for over {days} {'day' if days == 1 else 'days'} (runtime.session_retention_days)"
-
-    def render_resumed_session(self) -> None:
-        # Transcript reconstruction owns historical call/result matching and ordering invariants.
-        if not self.session.resumed:
-            return
-        self.session.resumed = False
-        # The percent is derived, not persisted; recompute it or the status bar reads 0% until
-        # the first turn.
-        self.agent.context.update_current_tokens(self.agent.session.system_prompt)
-        transcript = self.session.transcript_messages or self.session.messages
-        tool_results = {
-            str(message.get("tool_call_id") or ""): message for message in transcript if message.get("role") == "tool" and message.get("tool_call_id")
-        }
-        semantic_tool_results = any("status" in message for message in tool_results.values())
-        messages = [message for message in transcript if not SessionSnapshotCodec.is_internal_message(message) and message.get("role") != "tool"]
-        # The replay is a burst of independent emits; batch them into a single print_formatted_text
-        # call so the whole session restores in one flush (and one TUI coordination) instead of one
-        # per line.
-        with self.ui.batched():
-            self.emit(f"Restored session: {self.session.uid}")
-            if self.session.transcript_incomplete:
-                self.emit("Warning: this transcript may omit turns written by an older wizolt version.")
-            if not messages:
-                return
-            transcript_diffs = self.session.transcript_turn_diffs or self.session.turn_diffs
-            diffs = {diff.key: diff.diff for diff in transcript_diffs if diff.key and diff.diff}
-            tool_record_index = 0
-            turns = TurnBox.group(messages)
-            hidden = len(turns) - self.MAX_REDRAWN_TURNS
-            if hidden > 0:
-                # The earliest turns are not redrawn: on a long session they would flood the terminal
-                # and the prompt would scroll out of reach. They stay in the session, so the next
-                # request still sees them; only the redraw is skipped. Tool records still advance
-                # through them so the visible turns pair with their own results.
-                for turn in turns[:hidden]:
-                    for message in turn.messages:
-                        tool_record_index = self.render_transcript_message(message, tool_record_index, diffs, tool_results, dry_run=True)
-                self.emit(f"… {hidden} earlier turn{'s' if hidden > 1 else ''} not redrawn (still in context)")
-                self.emit("")
-                turns = turns[hidden:]
-            for i, turn in enumerate(turns):
-                if i:
-                    self.emit("")
-                for message in turn.messages:
-                    tool_record_index = self.render_transcript_message(message, tool_record_index, diffs, tool_results)
-            if not semantic_tool_results:
-                self.render_remaining_tool_records(tool_record_index, diffs)
-
-    def render_transcript_message(
-        self,
-        message: Json,
-        tool_record_index: int = 0,
-        diffs: dict[str, str] | None = None,
-        tool_results: dict[str, Json] | None = None,
-        *,
-        dry_run: bool = False,
-    ) -> int:
-        role = str(message.get("role") or "")
-        content = ImageInputs.label_text(message).strip()
-        if role == "notice":
-            if content and not dry_run:
-                self.context_reset_notice(content)
-            return tool_record_index
-        if role == "assistant" and content and not dry_run:
-            # Every assistant message sits in the content column, final answer included, so a
-            # resumed session reads exactly like the live one. The turn's own text all shares that
-            # column with the user's message, whose `• ` bullet hangs in the same two-space margin.
-            self.ui.separate()  # the same gap the live narration and answer open with
-            # An assistant message that carries tool calls is interim narration, not the answer:
-            # the resumed session draws the same phase rule above it the live turn did (the rule
-            # opens the text), skipping it only when it would land too close to the rule above.
-            if message.get("tool_calls") and self.ui.rule_due(self.MIN_ROWS_BETWEEN_RULES):
-                self.ui.emit_phase_rule()
-            self.ui.emit_answer(content, role=role, rule=False, indent=TurnBox.CONTENT_LEVEL)
-        if role == "assistant":
-            tool_record_index = self.render_transcript_tool_calls(message, tool_record_index, diffs or {}, tool_results or {}, dry_run=dry_run)
-            if not dry_run and message.get("tool_calls"):
-                # Each tool-bearing assistant message is one batch in the replay: a voiced one
-                # (it carried narration) restarts the silent count, a silent run of four closes
-                # with the same batch rule the live turn drew.
-                if content:
-                    self._silent_batches = 0
-                else:
-                    self.count_silent_batch()
-            return tool_record_index
-        if role == "user" and content and not ImageInputs.is_tool_observation(message) and not dry_run:
-            # The follow-up marker is model-facing context, part of history because it was sent.
-            # The scrollback shows what the user typed, exactly as it looked when they typed it.
-            self.ui.emit_answer(content.removeprefix(LIVE_FOLLOWUP_PREFIX.strip()).lstrip(), role=role, rule=False)
-            # Replay the same opening separator used by a live turn.
-            self.user_turn_rule()
-        return tool_record_index
-
-    def render_transcript_tool_calls(
-        self,
-        message: Json,
-        tool_record_index: int,
-        diffs: dict[str, str],
-        tool_results: dict[str, Json] | None = None,
-        *,
-        dry_run: bool = False,
-    ) -> int:
-        raw_calls = message.get("tool_calls") or []
-        if not isinstance(raw_calls, list):
-            return tool_record_index
-        for raw in raw_calls:
-            call = self.transcript_tool_call(raw)
-            if call is None:
-                continue
-            result = (tool_results or {}).get(call.id)
-            if result is not None and "status" in result:
-                if not dry_run:
-                    self.emit_transcript_tool(call, str(result.get("result_key") or ""), diffs, failed=result.get("status") != "ok")
-                continue
-            record, tool_record_index = self.transcript_tool_record(call, tool_record_index)
-            if not dry_run:
-                self.emit_transcript_tool(call, record.key if record else "", diffs)
-        return tool_record_index
-
-    def render_remaining_tool_records(self, tool_record_index: int, diffs: dict[str, str]) -> None:
-        records = self.session.transcript_tool_records or self.session.tool_records
-        for record in records[tool_record_index:]:
-            call = ToolCall(id="", name=record.name, args=record.args)
-            self.emit_transcript_tool(call, record.key, diffs)
-
-    def emit_transcript_tool(self, call: ToolCall, key: str, diffs: dict[str, str], *, failed: bool = False) -> None:
-        """An Edit shows the diff it made, the way it did when the edit ran live. Live, that preview
-        comes from the approval block; here the stored diff text is the same string, so replaying it
-        needs no reconstruction."""
-        tool_class = TOOL_REGISTRY.get(call.name)
-        # Live, a silent tool logs nothing unless it failed (ToolRunner.run); a replay shows no more.
-        if tool_class is not None and tool_class.SILENT and not failed:
-            return
-        preview = diffs.get(key, "") if call.name == "Edit" else ""
-        # Through `tool_output`, like the live call: a replayed call opens its own group with a
-        # blank row above it, and its result stays attached underneath. Emitted directly, every
-        # call in a turn ran into the one above it and into the narration that introduced them.
-        if not preview:
-            # An Ask's stored result is the user's answer, which its finish block shows live; every
-            # other call replays as its `tr.N` marker alone.
-            output = "failed in saved session" if failed else self.session.tool_results.get(key, "") if call.name == "Ask" else ""
-            self.tool_output(toolblocks.finish_display(self.session, call, key, output, failed=failed))
-            return
-        # The preview block carries the call line, so the result collapses to its trailing marker
-        # underneath it — the same nesting the live approval block produces.
-        self.tool_output(self.transcript_edit_preview(call, preview))
-        self.tool_output(toolblocks.finish_display(self.session, call, key, "", failed=False, d=ToolDisplay(nested_display=True)))
-
-    def transcript_edit_preview(self, call: ToolCall, preview: str) -> LogBlock:
-        lines = preview.rstrip().splitlines()
-        # A long replay would bury the prompt under diffs, so each one is trimmed to a readable
-        # window; `/diff` still holds the full text.
-        hidden = max(0, len(lines) - self.TRANSCRIPT_DIFF_LINES)
-        if hidden:
-            lines = lines[: self.TRANSCRIPT_DIFF_LINES]
-        children = [LogLine("", line, LogRole.DIFF, LogEdge.CONTINUE) for line in lines]
-        if hidden:
-            children.append(LogLine("", f"… {hidden} more lines, see /diff", LogRole.META, LogEdge.CONTINUE))
-        return LogBlock.hierarchy(toolblocks.log_root(tooloutput.short_call(self.session, call), LogRole.AUTO, "", call), children)
-
-    @staticmethod
-    def transcript_tool_call(raw: object) -> ToolCall | None:
-        if not isinstance(raw, dict):
-            return None
-        raw_function = raw.get("function")
-        function = raw_function if isinstance(raw_function, dict) else {}
-        name = str(function.get("name") or "")
-        if not name:
-            return None
-        arguments = function.get("arguments")
-        try:
-            # strict=False tolerates literal newlines in argument strings (e.g. multi-line
-            # git commit messages) that would otherwise be rejected as invalid JSON.
-            payload = json.loads(arguments, strict=False) if isinstance(arguments, str) else (arguments or {})
-        except json.JSONDecodeError:
-            payload = {}
-        try:
-            args = tool_payload(name, payload)
-        except ToolError:
-            # A malformed historical call (e.g. tool args that fail validation) must not crash
-            # the resume; render it without parsed args.
-            args = [payload] if payload else []
-        return ToolCall(id=str(raw.get("id") or ""), name=name, args=args)
-
-    def transcript_tool_record(self, call: ToolCall, tool_record_index: int) -> tuple[ToolResultRecord | None, int]:
-        tool_class = TOOL_REGISTRY.get(call.name)
-        if tool_class is not None and not tool_class.STORES_RESULT:
-            return None, tool_record_index
-        records = self.session.transcript_tool_records or self.session.tool_records
-        while tool_record_index < len(records):
-            record = records[tool_record_index]
-            tool_record_index += 1
-            if record.name == call.name:
-                return record, tool_record_index
-        return None, tool_record_index
-
-    async def save_and_emit_resume(self) -> None:
-        self.emit_resume_line(await self.session.save_snapshot())
-
-    def emit_resume_line(self, uid: str) -> None:
-        """The paste-ready resume line for a session that has just been persisted."""
-        if uid:
-            # The name goes in the sentence, never in the command: the line below is meant to be
-            # pasted, and only the uid is guaranteed to still mean this session tomorrow.
-            name = self.session.name
-            self.ui.separate()
-            self.emit(f"Resume {name!r} with:\nwizolt --resume {uid}" if name else f"Resume with:\nwizolt --resume {uid}")
 
     def read_input_sync(self, prompt_text: str = UiPrinter.PROMPT_PREFIX) -> str:
         """Read from the injected/non-TTY input path; interactive terminals use TuiApp."""
@@ -1362,7 +1151,7 @@ Full documentation: https://wizolt.readthedocs.io
         other handler is local and bounded, and runs directly."""
 
         if text in {"/exit", "/quit", "exit", "quit"}:
-            await self.save_and_emit_resume()
+            await self.resume.save_and_emit_resume()
             return True, True
         if not text.startswith("/"):
             return False, False

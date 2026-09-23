@@ -241,7 +241,7 @@ async def test_exit_during_a_model_request_shuts_down_gracefully(tmp_path, monke
     started, quiesced = asyncio.Event(), asyncio.Event()
     agent = command_loop.agent
     monkeypatch.setattr(agent, "run", lambda user_input: turn_that_unwinds(started, quiesced)(user_input, agent))
-    monkeypatch.setattr(command_loop, "save_and_emit_resume", lambda: None)
+    monkeypatch.setattr(command_loop.resume, "save_and_emit_resume", lambda: None)
 
     session = asyncio.ensure_future(runtime.run())
     await wait_for(lambda: runtime.runtime_loop is not None)

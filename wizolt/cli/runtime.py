@@ -284,7 +284,7 @@ class TuiRuntime:
                     self.loop.session.enqueue_user_input(admitted, next_turn=submission.next_turn)
                 uid = await self.loop.session.save_snapshot()
                 if submission.resume_notice:
-                    self.loop.emit_resume_line(uid)
+                    self.loop.resume.emit_resume_line(uid)
             except BaseException as error:
                 if submission.turn_boundary is not None and not submission.turn_boundary.done():
                     submission.turn_boundary.set_exception(error)

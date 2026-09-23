@@ -547,7 +547,7 @@ async def test_resumed_session_draws_user_narration_and_silent_batch_rules(tmp_p
         rules = []
         real_rule = loop.ui.emit_phase_rule
         loop.ui.emit_phase_rule = lambda: (rules.append(loop.ui.rows_since_rule), real_rule())
-        loop.render_resumed_session()
+        loop.resume.render_resumed_session()
         return rules
 
     tool_call = lambda i: {"id": f"c{i}", "type": "function", "function": {"name": "Bash", "arguments": json.dumps([f"printf {i}"])}}

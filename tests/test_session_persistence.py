@@ -238,7 +238,7 @@ async def _resumed_transcript(tmp_path, diff_text, *, lines_cap=None):
     loop = CommandLoop(Agent(restored, output_fn=output.append), output_fn=output.append)
     if lines_cap is not None:
         loop.TRANSCRIPT_DIFF_LINES = lines_cap
-    loop.render_resumed_session()
+    loop.resume.render_resumed_session()
     return "\n".join(str(item) for item in output)
 
 

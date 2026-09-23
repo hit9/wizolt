@@ -407,6 +407,6 @@ async def test_reset_notice_is_transcript_only_and_published_once(tmp_path, endi
     assert [m for m in restored.transcript_messages if m.get("role") == "notice"] == notices
     replay = []
     loop = CommandLoop(Agent(restored), input_fn=lambda _: "", output_fn=lambda text: replay.append(str(text)))
-    loop.render_resumed_session()
+    loop.resume.render_resumed_session()
     assert "\n".join(replay).count("Context reset.") == 1
     assert not any(m.get("role") == "notice" for m in restored.messages)

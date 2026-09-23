@@ -49,7 +49,7 @@ async def test_resumed_session_does_not_render_tool_results(tmp_path):
     output = []
     loop = CommandLoop(Agent(s, output_fn=output.append), output_fn=output.append)
 
-    loop.render_resumed_session()
+    loop.resume.render_resumed_session()
 
     text = "\n".join(output)
     assert s.resumed is False
@@ -80,7 +80,7 @@ async def test_resumed_session_matches_retried_tool_results_by_call_id(tmp_path)
     output = []
     loop = CommandLoop(Agent(s, output_fn=output.append), output_fn=output.append)
 
-    loop.render_resumed_session()
+    loop.resume.render_resumed_session()
 
     text = "\n".join(output)
     failed = text.index("[failed]")
@@ -96,7 +96,7 @@ async def test_resumed_session_warns_when_older_version_wrote_after_transcript(t
     output = []
     loop = CommandLoop(Agent(s, output_fn=output.append), output_fn=output.append)
 
-    loop.render_resumed_session()
+    loop.resume.render_resumed_session()
 
     assert output[0] == f"Restored session: {s.uid}"
     assert output[1] == "Warning: this transcript may omit turns written by an older wizolt version."
@@ -127,7 +127,7 @@ async def test_resumed_session_hides_internal_checkpoint_and_resume_events(tmp_p
     output = []
     loop = CommandLoop(Agent(s, output_fn=output.append), output_fn=output.append)
 
-    loop.render_resumed_session()
+    loop.resume.render_resumed_session()
 
     text = "\n".join(output)
     assert f"Restored session: {s.uid}" in text
@@ -148,7 +148,7 @@ async def test_resumed_session_with_only_internal_events_still_confirms_restore(
     output = []
     loop = CommandLoop(Agent(s, output_fn=output.append), output_fn=output.append)
 
-    loop.render_resumed_session()
+    loop.resume.render_resumed_session()
 
     assert output == [f"Restored session: {s.uid}"]
 
@@ -165,7 +165,7 @@ async def test_resumed_session_renders_saved_tool_records_without_matching_tool_
     output = []
     loop = CommandLoop(Agent(s, output_fn=output.append), output_fn=output.append)
 
-    loop.render_resumed_session()
+    loop.resume.render_resumed_session()
 
     text = "\n".join(output)
     assert f"Restored session: {s.uid}" in text
@@ -188,7 +188,7 @@ async def test_resumed_session_separates_turn_boxes(tmp_path):
     output = []
     loop = CommandLoop(Agent(s, output_fn=output.append), output_fn=output.append)
 
-    loop.render_resumed_session()
+    loop.resume.render_resumed_session()
 
     # Both answers sit in the content column, where the live turn printed them; the user's `• `
     # bullet hangs in that same two-space margin, so every line of text starts at column 2.
@@ -224,7 +224,7 @@ async def test_a_restored_transcript_is_spaced_like_the_live_turn(tmp_path, monk
     loop = CommandLoop(Agent(s, output_fn=lambda _text: None), output_fn=lambda _text: None)
     loop.ui.color = True
 
-    loop.render_resumed_session()
+    loop.resume.render_resumed_session()
     loop.ui.drain_scrollback()
 
     text = "".join(fragment for part in printed for _, fragment in to_formatted_text(part))
