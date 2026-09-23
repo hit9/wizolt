@@ -9,7 +9,7 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.layout.containers import HSplit
 from prompt_toolkit.layout.mouse_handlers import MouseHandlers
 from prompt_toolkit.layout.screen import Char, Screen, WritePosition
-from tui_harness import ResizableOutput, loop, rendered_screen_text, run_interactive_tui, wait_until
+from tui_harness import ResizableOutput, loop, rendered_screen_text, request_input_from_driver, run_interactive_tui, wait_until
 
 from wizolt.cli import CommandCompleter, CommandLoop
 from wizolt.cli.commands import SET_KEYS, set_value
@@ -394,6 +394,94 @@ def test_esc_enter_still_inserts_a_newline_with_the_menu_open(monkeypatch, keys,
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+APPROVAL_ACTIONS = [("Approve", ""), ("Refuse", "n")]
+
+
+@pytest.mark.parametrize(
+    ("keys", "text", "answer"),
+    [
+        # Esc alone clears the typed reason back to the action row, at once; nothing answered yet.
+        (["\x1b"], "", "pending"),
+        # The newline chord in one burst (Alt+Enter): the reason stays, with a new line.
+        (["\x1b\r"], "because\n", "pending"),
+        # The chord as typed by hand: the Esc clears at once, the Enter puts the reason back.
+        (["\x1b", "\r"], "because\n", "pending"),
+    ],
+    ids=["esc", "alt-enter", "esc-then-enter"],
+)
+def test_approval_esc_clears_the_reason_at_once_and_keeps_the_newline_chord(monkeypatch, keys, text, answer):
+    """The approval prompt's Esc used to wait a full `timeoutlen` before clearing a typed reason,
+    to see whether it began Esc+Enter. It clears at once now, and an Enter straight after restores
+    the reason with a new line, as the chord always did."""
+    app = TuiApp()
+    results = []
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        app.app.loop.call_soon_threadsafe(lambda: app.set_approval_form(APPROVAL_ACTIONS))
+        pending = request_input_from_driver(app)
+        wait_until(lambda: app.input_mode == "approval")
+        pipe_input.send_text("because")
+        wait_until(lambda: app.input_buffer.text == "because")
+        sent = time.monotonic()
+        for key in keys:
+            pipe_input.send_text(key)
+            if len(keys) > 1:
+                time.sleep(0.2)
+        wait_until(lambda: app.input_buffer.text == text)
+        if keys == ["\x1b"]:
+            assert time.monotonic() - sent < 0.3
+        time.sleep(0.1)
+        results.append(pending.result() if pending.done() else "pending")
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+    assert results == [answer]
+
+
+def test_approval_esc_on_an_empty_line_refuses_at_once(monkeypatch):
+    """With nothing typed, Esc cancels the approval -- `confirm` reads that as a refusal -- and it
+    does so as soon as the key arrives."""
+    app = TuiApp()
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        app.app.loop.call_soon_threadsafe(lambda: app.set_approval_form(APPROVAL_ACTIONS))
+        pending = request_input_from_driver(app)
+        wait_until(lambda: app.input_mode == "approval")
+        sent = time.monotonic()
+        pipe_input.send_text("\x1b")
+        assert pending.result(timeout=2) is None
+        assert time.monotonic() - sent < 0.3
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+def test_approval_enter_long_after_esc_answers_normally(monkeypatch):
+    """Past the chord's time, Enter on the cleared line is an ordinary Enter: it runs the focused
+    action (Approve, answered as "")."""
+    app = TuiApp()
+    results = []
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        app.app.loop.call_soon_threadsafe(lambda: app.set_approval_form(APPROVAL_ACTIONS))
+        pending = request_input_from_driver(app)
+        wait_until(lambda: app.input_mode == "approval")
+        pipe_input.send_text("because")
+        wait_until(lambda: app.input_buffer.text == "because")
+        pipe_input.send_text("\x1b")
+        wait_until(lambda: app.input_buffer.text == "")
+        time.sleep(app.app.timeoutlen + 0.2)
+        pipe_input.send_text("\r")
+        results.append(pending.result(timeout=2))
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+    assert results == [""]
 
 
 def test_enter_long_after_esc_sends(monkeypatch):

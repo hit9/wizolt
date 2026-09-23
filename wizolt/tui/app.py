@@ -353,7 +353,10 @@ class TuiApp:
         self.input_pastes: tuple[PasteRef, ...] = ()
         self._last_input_text = ""
         self._changing_input = False
-        self._menu_closed_at = 0.0  # when Esc last closed a completion menu (see `enter`)
+        # When an eager Esc last acted (closed a menu, cleared an approval reason), and the draft it
+        # cleared, if any: Enter straight after it is the Esc+Enter newline chord (see `enter`).
+        self._escape_at = 0.0
+        self._escape_draft: tuple[UserInput, int] | None = None
         self._search_start_draft: str | UserInput = ""
         self.input_error = ""
         self.history = history
@@ -1499,11 +1502,14 @@ class TuiApp:
                 pt_search.accept_search()
                 return
             previous = event.previous_key_sequence
-            if previous and previous[-1].key == Keys.Escape and time.monotonic() - self._menu_closed_at < (self.app.timeoutlen if self.app else 1.0):
-                # Esc+Enter typed while a menu was open: the Esc closed the menu at once, and this
-                # Enter is the chord's second half -- the newline -- not a send. Only when Enter
-                # comes straight after that Esc, within the time the chord is allowed.
-                self._menu_closed_at = 0.0
+            if previous and previous[-1].key == Keys.Escape and time.monotonic() - self._escape_at < (self.app.timeoutlen if self.app else 1.0):
+                # Esc+Enter, where the Esc acted at once (closed a menu, cleared an approval
+                # reason): this Enter is the chord's second half -- the newline -- not a send. Only
+                # straight after that Esc, within the time the chord is allowed. A reason the Esc
+                # cleared comes back first, so the chord adds a line to it as it always did.
+                draft, self._escape_at, self._escape_draft = self._escape_draft, 0.0, None
+                if draft is not None:
+                    self._reset_input(draft[0], cursor_position=draft[1])
                 event.current_buffer.insert_text("\n")
                 return
             # Enter on a focused quick-hint chip picks it into the input and returns focus to the
@@ -1553,23 +1559,27 @@ class TuiApp:
         for key, delta in (("tab", 1), ("right", 1), ("s-tab", -1), ("left", -1)):
             bindings.add(key, filter=~modal & picking, eager=True)(lambda _, delta=delta: self.move_approval_focus(delta))
 
-        # Not eager: an arrow key is an escape sequence, so Escape has to stay ambiguous long enough
-        # for the parser to see whether more bytes follow. With a reason typed it clears back to the
-        # action row; on an empty line there is nothing to take back, so it cancels the approval,
-        # which `confirm` reads as a refusal with no reason.
-        def escape(event):  # pragma: no cover — interactive path
+        # With a reason typed, Esc clears back to the action row; on an empty line there is nothing
+        # to take back, so it cancels the approval, which `confirm` reads as a refusal with no
+        # reason. Eager, like the menu's Esc below: waiting to see whether it began Esc+Enter held
+        # it for a full `timeoutlen`. (Arrow keys are not at stake: the input parser has already
+        # turned their escape sequences into keys before bindings see them.) The cleared reason is
+        # kept, so an Enter straight after -- the newline chord -- puts it back with its new line.
+        def escape(event):
             if self.input_buffer.text:
+                draft = UserInput(self.input_buffer.text, self.input_images, self.input_pastes)
+                self._escape_draft = (draft, self.input_buffer.cursor_position)
+                self._escape_at = time.monotonic()
                 self._reset_input("")
             elif self._input_pending is not None:
                 self.resolve_input(None)
 
-        bindings.add("escape", filter=~modal & Condition(lambda: self.input_mode == InputMode.APPROVAL and bool(self._approval_actions)))(escape)
+        bindings.add("escape", filter=~modal & Condition(lambda: self.input_mode == InputMode.APPROVAL and bool(self._approval_actions)), eager=True)(escape)
 
         # Esc closes an open completion menu at once, undoing a row it had previewed, as the @file:
         # picker closes on Esc. Registered after the approval binding, so an open menu takes Esc
-        # first. Eager: waiting to see whether Esc starts Esc+Enter (a newline) held the menu open
-        # for a full `timeoutlen`. The chord survives in `enter`, which reads an Esc that closed
-        # the menu just before it as the chord's first half.
+        # first. Eager, for the same reason as the approval Esc above; the chord survives in
+        # `enter`, which reads an Esc that closed the menu just before it as the chord's first half.
         def close_menu(event):
             self._cancel_mention_transition()  # a menu about to open must not open after Esc
             self._changing_input = True  # restoring the typed text is not typing: nothing reopens
@@ -1577,7 +1587,7 @@ class TuiApp:
                 event.current_buffer.cancel_completion()
             finally:
                 self._changing_input = False
-            self._menu_closed_at = time.monotonic()
+            self._escape_at, self._escape_draft = time.monotonic(), None  # the text is already back
 
         bindings.add("escape", filter=~modal & has_completions, eager=True)(close_menu)
 

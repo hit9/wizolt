@@ -10,7 +10,8 @@
 - Esc closes the command and mention menu at once and puts back what you typed; Esc then Enter
   still inserts a newline.
 - Esc responds without the half-second pause it had everywhere, such as leaving a picker or a
-  viewer.
+  viewer, or clearing a typed reason at an approval prompt; Esc then Enter still adds the newline
+  the chord always did, with the reason back.
 
 ### Fixed
 
