@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Added
+
+- Long-term memory shared across projects: a `MEMORY.md` under your wizolt data directory
+  (default `~/.wizolt/MEMORY.md`) holding one entry per `## <id> <title>` heading. Every request
+  opens with a small, fixed catalog of the entries so the agent pulls relevant memories into a
+  turn on its own; it reads the file freely and only writes when you explicitly ask it to
+  remember, update, or forget something. `@mem:title` (tab-completing, keyword-filtered, shown
+  without ids) attaches a memory to a message with its full text, `/memory` lists every entry
+  with a copyable reference, and the `Read`/`Edit` tools reach the exact memory file outside the
+  workspace (reads unconfirmed; writes keep the normal confirmation).
+- A global `<data_dir>/AGENTS.md` now rides every request ahead of the project's `AGENTS.md` as
+  a bounded "Global instructions" section; both sources share the existing ~8,000-token
+  instructions cap, and truncation keeps a recognizable piece of each.
+
 ### Changed
 
 - `Read` on a missing or unreadable file now renders as the quiet dim `rejected` one-liner,

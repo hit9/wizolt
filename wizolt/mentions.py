@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from wizolt.session import Session
 
 
-MentionKind = Literal["bare", "file", "mcp", "skill"]
+MentionKind = Literal["bare", "file", "mem", "mcp", "skill"]
 _WORD = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 _IDENTIFIER = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
 _BARE_FILE = re.compile(r"^[A-Za-z0-9_./:+@%=-]+$")
@@ -41,6 +41,17 @@ def encode_file_mention(path: str) -> str:
     """Return the canonical, round-trippable @file form for a display path."""
     payload = path if _BARE_FILE.fullmatch(path) else json.dumps(path, ensure_ascii=False)
     return "@file:" + payload
+
+
+def encode_mem_mention(title: str) -> str:
+    """Return the canonical, round-trippable @mem form for a memory title.
+
+    Titles are free text, so any title containing whitespace (or starting with a quote, which
+    would read as the quoted form) goes out JSON-quoted, exactly like spaced file paths.
+    """
+    bare = bool(title) and not title.startswith('"') and not any(char.isspace() for char in title)
+    payload = title if bare else json.dumps(title, ensure_ascii=False)
+    return "@mem:" + payload
 
 
 def scan_mentions(text: str) -> list[MentionSpan]:
@@ -69,12 +80,12 @@ def active_mention(text_before_cursor: str) -> MentionSpan | None:
 
 def _scan_at(text: str, start: int) -> MentionSpan | None:
     payload_start = start + 1
-    for namespace in ("file", "mcp", "skill"):
+    for namespace in ("file", "mem", "mcp", "skill"):
         prefix = namespace + ":"
         if text.startswith(prefix, payload_start):
             value_start = payload_start + len(prefix)
-            if namespace == "file":
-                return _scan_file(text, start, value_start)
+            if namespace in {"file", "mem"}:
+                return _scan_file(text, start, value_start, namespace)
             end = _identifier_end(text, value_start, dot=namespace == "mcp")
             return MentionSpan(start, end, namespace, text[value_start:end], end > value_start)
     end = _identifier_end(text, payload_start, dot=True)
@@ -91,21 +102,21 @@ def _scan_dollar(text: str, start: int) -> MentionSpan | None:
     return MentionSpan(start, end, "skill", text[payload_start:end])
 
 
-def _scan_file(text: str, start: int, payload_start: int) -> MentionSpan:
+def _scan_file(text: str, start: int, payload_start: int, kind: MentionKind = "file") -> MentionSpan:
     if payload_start >= len(text):
-        return MentionSpan(start, payload_start, "file", "", False)
+        return MentionSpan(start, payload_start, kind, "", False)
     if text[payload_start] != '"':
         end = payload_start
         while end < len(text) and not text[end].isspace():
             end += 1
-        return MentionSpan(start, end, "file", text[payload_start:end], end > payload_start)
+        return MentionSpan(start, end, kind, text[payload_start:end], end > payload_start)
     try:
         payload, consumed = json.JSONDecoder().raw_decode(text[payload_start:])
     except json.JSONDecodeError:
-        return MentionSpan(start, len(text), "file", text[payload_start + 1 :], False)
+        return MentionSpan(start, len(text), kind, text[payload_start + 1 :], False)
     if not isinstance(payload, str):
-        return MentionSpan(start, payload_start + consumed, "file", "", False)
-    return MentionSpan(start, payload_start + consumed, "file", payload)
+        return MentionSpan(start, payload_start + consumed, kind, "", False)
+    return MentionSpan(start, payload_start + consumed, kind, payload)
 
 
 def _identifier_end(text: str, start: int, *, dot: bool = False) -> int:

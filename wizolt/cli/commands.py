@@ -15,6 +15,7 @@ import shlex
 import shutil
 import sys
 import time
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
@@ -23,6 +24,7 @@ from prompt_toolkit.utils import get_cwidth
 
 from wizolt import compaction
 from wizolt.base import (
+    MAX_MEMORY_FILE_BYTES,
     SELECTION_BACK,
     ConfigError,
     LogBlock,
@@ -51,6 +53,7 @@ from wizolt.config import (
     RuntimeSettings,
     compaction_provider_config,
 )
+from wizolt.mentions import encode_mem_mention
 from wizolt.prompts import PREVIOUS_CONTEXT_TRIMMED
 from wizolt.providers.compat import builtin_tools_issue
 from wizolt.providers.schema import CatalogSyncError
@@ -267,8 +270,15 @@ def status(loop: CommandLoop, args: str) -> str:
     ]
     info = loop.session.system_info
     if loop.session.settings.agents_md:
-        source = info.agents_md_source if info is not None else ""
-        runtime.append(f"agents_md on ({source})" if source else "agents_md on (none)")
+        sources = [
+            label
+            for label, present in (
+                ("global", info is not None and bool(info.global_agents_md)),
+                (info.agents_md_source if info is not None else "", info is not None and bool(info.agents_md)),
+            )
+            if present
+        ]
+        runtime.append(f"agents_md on ({' + '.join(sources)})" if sources else "agents_md on (none)")
     else:
         runtime.append("agents_md off")
     update = UpdateChecker(loop.session).status_line().removeprefix("update: ")
@@ -374,6 +384,43 @@ def skills_command(loop: CommandLoop, args: str) -> str:
         [(f"`{skill.name}`", skill.source, skill.description or "(no description)") for skill in skills],
     )
     return "\n".join([f"### Skills · {len(skills)}", "", "Load with `Skill(name)` or reference inline with `$name`.", "", table])
+
+
+def memory_command(loop: CommandLoop, args: str) -> str:
+    """List every global memory entry: title, full body, and a copyable @mem: reference.
+
+    The id never appears here -- titles are what people reference, so duplicates are flagged as
+    unresolvable rather than listed silently.
+    """
+    if args.strip():
+        return "Usage: /memory"
+    store = loop.session.memory
+    if store is None:
+        return "Memory is not available in this session."
+    entries = store.entries()
+    if not entries:
+        return f"No memories yet. They live in `{store.path()}`; ask the agent to remember something and it will add one."
+    lines = [f"### Memories · {len(entries)}", "", f"Shared across projects, stored in `{store.path()}`.", ""]
+    if store.over_cap():
+        lines.append(
+            f"The file is {store.file_size()} bytes, over the {MAX_MEMORY_FILE_BYTES}-byte cap; "
+            "entries past the cap are not listed here. Slim the file to bring them back."
+        )
+        lines.append("")
+    counts = Counter(entry.title for entry in entries)
+    for entry in entries:
+        duplicate = counts[entry.title] > 1
+        heading = f"**{entry.title}**"
+        if duplicate:
+            heading += " — duplicate title: `@mem:` cannot resolve it uniquely, rename one"
+        lines.append(heading)
+        if entry.body:
+            lines.append("")
+            lines.append(entry.body)
+        lines.append("")
+        lines.append(f"`{encode_mem_mention(entry.title)}`")
+        lines.append("")
+    return "\n".join(lines).rstrip()
 
 
 def ps_command(loop: CommandLoop, args: str) -> str:

@@ -87,6 +87,8 @@ class SystemInfo:
     commands: tuple[str, ...]
     agents_md: str = ""  # loaded project-instructions text; "" when no candidate file was found
     agents_md_source: str = ""  # the file it came from, e.g. "AGENTS.md" or "CLAUDE.md"; "" when none
+    global_agents_md: str = ""  # the <data_dir>/AGENTS.md text, shared across projects; "" when absent
+    global_agents_md_source: str = ""  # its absolute path; "" when none
 
     @classmethod
     def load_agents_md(cls, cwd: str) -> tuple[str, str]:
@@ -102,8 +104,22 @@ class SystemInfo:
         return "", ""
 
     @classmethod
-    def detect(cls, cwd: str) -> SystemInfo:
+    def load_global_agents_md(cls, data_dir: str) -> tuple[str, str]:
+        """Read the global <data_dir>/AGENTS.md; return (content, absolute path), or ("", "").
+
+        The global file is exactly AGENTS.md (no CLAUDE.md fallback) and lives outside any project,
+        so it is the one instructions source SystemInfo reads beyond the workspace."""
+        path = os.path.abspath(os.path.join(os.path.expanduser(data_dir), "AGENTS.md"))
+        try:
+            with open(path, encoding="utf-8") as file:
+                return file.read(), path
+        except (OSError, UnicodeDecodeError):
+            return "", ""
+
+    @classmethod
+    def detect(cls, cwd: str, data_dir: str = "") -> SystemInfo:
         agents_md, agents_md_source = cls.load_agents_md(cwd)
+        global_agents_md, global_agents_md_source = cls.load_global_agents_md(data_dir) if data_dir else ("", "")
         return cls(
             cwd=cwd,
             os=platform.system() or sys.platform,
@@ -111,6 +127,8 @@ class SystemInfo:
             commands=tuple(name for name in cls.COMMANDS if shutil.which(name)),
             agents_md=agents_md,
             agents_md_source=agents_md_source,
+            global_agents_md=global_agents_md,
+            global_agents_md_source=global_agents_md_source,
         )
 
 

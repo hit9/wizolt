@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from wizolt.base import (
+    MEMORY_MD_FILENAME,
     SESSION_EVENT_KEY,
     Json,
     ModelUsage,
@@ -67,6 +68,7 @@ __all__ = [
 if TYPE_CHECKING:
     from wizolt.engine import Agent
     from wizolt.mcp import MCPManager
+    from wizolt.memory import MemoryStore
     from wizolt.mentions import FileMentions
     from wizolt.skill import SkillLibrary
 
@@ -135,6 +137,7 @@ class Session:
     mcp: MCPManager | None = None
     skills: SkillLibrary | None = None
     mentions: FileMentions | None = None  # runtime handle; holds the cached @file: path list
+    memory: MemoryStore | None = None  # runtime handle; read-side owner of the global MEMORY.md
     images: ImageInputs = field(init=False, repr=False)
     # The provider/model catalog this session resolves against: snapshot + compiled policy + sync
     # state. Attached by bootstrap_features (which also owns the feature packages), so the session
@@ -177,7 +180,7 @@ class Session:
         if not self.uid:
             self.uid = datetime.now().strftime("%Y%m%d%H%M%S") + "-" + str(uuid.uuid4())[:12]  # noqa: DTZ005 - IDs intentionally use local wall time.
         if self.system_info is None:
-            self.system_info = SystemInfo.detect(self.cwd)
+            self.system_info = SystemInfo.detect(self.cwd, self.config.data_dir)
         # The Delegate registration gate is frozen per session: computed once from the config this
         # session was constructed with, so a runtime /worker provider switch tunes an already-
         # enabled delegation and prepares the next session without flipping the tool block (and
@@ -273,6 +276,21 @@ class Session:
             directory = os.path.realpath(self.images.assets_dir())
             return os.path.commonpath([directory, os.path.realpath(path)]) == directory
         except (ValueError, OSError):
+            return False
+
+    def memory_path(self) -> str:
+        """The exact global memory file this session reads and (on the user's explicit ask) edits."""
+
+        return self.data_path(MEMORY_MD_FILENAME)
+
+    def is_memory_path(self, path: str) -> bool:
+        """True only for the exact global memory file -- the one path Read opens and Edit writes
+        outside the workspace without the out-of-workspace prompt (writes still carry the normal
+        write confirmation). A sibling under the data dir is not the memory file."""
+
+        try:
+            return os.path.normcase(os.path.realpath(path)) == os.path.normcase(os.path.realpath(self.memory_path()))
+        except OSError:
             return False
 
     def request_token_budget(self) -> int:
@@ -785,6 +803,10 @@ def bootstrap_features(session: Session) -> None:
         from wizolt.mentions import FileMentions  # local import: mentions is built on top of session
 
         session.mentions = FileMentions(session)
+    if session.memory is None:
+        from wizolt.memory import MemoryStore  # local import: memory is built on top of session
+
+        session.memory = MemoryStore(session)
     if session.catalog is None:
         from wizolt.providers.sync import CatalogRuntime  # local import: keeps providers above session
 

@@ -79,7 +79,9 @@ class ReadTool(Tool):
         return value
 
     def needs_confirmation(self) -> bool:
-        return any(not (self.session.in_cwd(path) or self.session.owns_asset(path)) for path, _ in self.targets())
+        # The exact global memory file is the one outside-workspace path Read opens freely: the
+        # MEMORY catalog in the prefix already names it, so asking again would be a second consent.
+        return any(not (self.session.in_cwd(path) or self.session.owns_asset(path) or self.session.is_memory_path(path)) for path, _ in self.targets())
 
     def call(self) -> ToolOutput:
         parts: list[str | TextBlock | SourceBlock] = []
@@ -712,7 +714,7 @@ class EditTool(Tool):
             return source_error(
                 MIXED_EDIT_EVIDENCE, detail + "; split the call: edits with old become a direct call without source, range edits keep source and drop old"
             )
-        if not (self.session.in_cwd(path) or self.session.owns_asset(path)) or os.path.isdir(path):
+        if not (self.session.in_cwd(path) or self.session.owns_asset(path) or self.session.is_memory_path(path)) or os.path.isdir(path):
             return source_error(MIXED_EDIT_EVIDENCE, detail)
         try:
             with open(path, encoding="utf-8") as file:
@@ -825,7 +827,7 @@ class EditTool(Tool):
         to answer this way falls back to a bounded window, which tells the model the file is there
         and that the range it wants needs a Read of its own.
         """
-        if not (self.session.in_cwd(path) or self.session.owns_asset(path)) or os.path.isdir(path):
+        if not (self.session.in_cwd(path) or self.session.owns_asset(path) or self.session.is_memory_path(path)) or os.path.isdir(path):
             return None
         try:
             with open(path, encoding="utf-8") as file:

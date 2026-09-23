@@ -464,6 +464,7 @@ class DelegateTool(Tool):
         settings = replace(parent.settings)
         cwd, system_info, created_at = parent.cwd, parent.system_info, parent.created_at
         skills, mcp, catalog = parent.skills, parent.mcp, parent.catalog
+        memory = parent.memory
 
         def restore() -> Session:
             try:
@@ -479,6 +480,7 @@ class DelegateTool(Tool):
                     skills=skills,  # shared objects, never re-discovered
                     mcp=mcp,
                     catalog=catalog,
+                    memory=memory,
                 )
 
         worker = await run_blocking(restore)
@@ -492,6 +494,7 @@ class DelegateTool(Tool):
         worker.skills = parent.skills
         worker.mcp = parent.mcp
         worker.catalog = parent.catalog
+        worker.memory = parent.memory
         # The worker writes the same family the parent owns; it borrows that lease rather than
         # taking a second descriptor on it, and can never release the parent's.
         worker.borrow_ownership(parent)

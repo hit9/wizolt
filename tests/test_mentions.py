@@ -128,7 +128,7 @@ def test_bare_menu_does_not_scan_or_merge_repository_files():
 
 def test_kind_completion_keeps_canonical_at_prefix():
     c = CommandCompleter(mcp_servers=lambda: ("github", "gitlab"), skills=lambda: ("release",), files=lambda: FILES)
-    assert completions(c, "use @") == ["@file:", "@mcp:", "@skill:"]
+    assert completions(c, "use @") == ["@file:", "@mem:", "@mcp:", "@skill:"]
     assert completions(c, "use @file:vie") == ["@file:wizolt/cli/view.py"]
     assert completions(c, "use @mcp:git") == ["@mcp:github", "@mcp:gitlab"]
     assert completions(c, "use @skill:rel") == ["@skill:release"]

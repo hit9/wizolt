@@ -54,7 +54,7 @@ startup.
   registry in `__init__.py` is built on top of every tool module.
 - **Session features (`session/` ↔ mcp/skill/mentions).** `Session` itself is feature-free:
   `__post_init__` never reaches upward. `bootstrap_features()` (deferred imports inside) attaches
-  `MCPManager`/`SkillLibrary`/`FileMentions` when needed, called by `Session.from_config_file` and
+  `MCPManager`/`SkillLibrary`/`FileMentions`/`MemoryStore` when needed, called by `Session.from_config_file` and
   `Session.load_snapshot`; the delegate worker handoff injects the parent's `skills`/`mcp` fields
   explicitly instead, and `session/store.py` still imports its parent package at load time.
 - **Assets (`image.py` ↔ session/).** `session/` imports the image value types at module scope;

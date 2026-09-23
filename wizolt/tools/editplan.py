@@ -151,7 +151,9 @@ class EditBatchPlan:
                 prepared.append((call, tool, path, mode, view, edits))
             except ToolError as error:
                 self.errors[call.id] = (str(error), error.recovery)
-        recoverable_missing_paths = (path for _, _, path, _, _ in missing if self.session.in_cwd(path) or self.session.owns_asset(path))
+        recoverable_missing_paths = (
+            path for _, _, path, _, _ in missing if self.session.in_cwd(path) or self.session.owns_asset(path) or self.session.is_memory_path(path)
+        )
         paths = tuple(dict.fromkeys([*(path for _, _, path, _, _, _ in prepared), *recoverable_missing_paths]))
         snapshots = await run_blocking(lambda: {path: self.snapshot(path) for path in paths}) if paths else {}
         for call, tool, path, source_name, edits in missing:

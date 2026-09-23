@@ -124,19 +124,29 @@ session, or configure runtime behavior on the fly. See the
 
 ## Mentions
 
-Mentions pull something into the turn. Type `@` at the prompt for a list of the three kinds;
+Mentions pull something into the turn. Type `@` at the prompt for a list of the four kinds;
 picking one opens its candidates, which narrow as you keep typing. `Tab` highlights a row; `Enter` commits it into the input without sending, and a second `Enter` sends.
 
-<div class="term-shot" role="img" aria-label="The mention menu in two moments. After typing an at sign the prompt lists the three kinds with a one-line description each. After choosing at-file the file picker opens between two rules, with its own query line, a match counter, a key hint, and two ranked file paths, the first one pointed at."><span class="fs-prompt">&gt; add tests for @<span class="fs-caret">▏</span></span><span><span class="fs-i">                </span><span class="fs-i"> @file:   </span><span class="fs-i fs-dim"> files in this repo </span></span><span><span class="fs-i">                </span><span class="fs-i"> @mcp:    </span><span class="fs-i fs-dim"> MCP servers and tools </span></span><span><span class="fs-i">                </span><span class="fs-i"> @skill:  </span><span class="fs-i fs-dim"> installed skills </span></span><span> </span><span class="fs-prompt">&gt; add tests for @file:<span class="fs-caret">▏</span></span><span class="fs-divider">  ──── file picker ─────────────────────────────────</span><span><span class="fs-i fs-sel">  files&gt; </span><span class="fs-i">mention</span><span class="fs-i fs-caret">▏</span></span><span class="fs-dim">      3/812</span><span class="fs-dim">      Ctrl-N/P or ↑/↓ move · Enter select · Esc close</span><span class="fs-sel">  &gt;   tests/test_mentions.py</span><span>      wizolt/mentions.py</span><span class="fs-divider">  ──────────────────────────────────────────────────</span></div>
+<div class="term-shot" role="img" aria-label="The mention menu in two moments. After typing an at sign the prompt lists the four kinds with a one-line description each. After choosing at-file the file picker opens between two rules, with its own query line, a match counter, a key hint, and two ranked file paths, the first one pointed at."><span class="fs-prompt">&gt; add tests for @<span class="fs-caret">▏</span></span><span><span class="fs-i">                </span><span class="fs-i"> @file:   </span><span class="fs-i fs-dim"> files in this repo </span></span><span><span class="fs-i">                </span><span class="fs-i"> @mem:    </span><span class="fs-i fs-dim"> saved memories </span></span><span><span class="fs-i">                </span><span class="fs-i"> @mcp:    </span><span class="fs-i fs-dim"> MCP servers and tools </span></span><span><span class="fs-i">                </span><span class="fs-i"> @skill:  </span><span class="fs-i fs-dim"> installed skills </span></span><span> </span><span class="fs-prompt">&gt; add tests for @file:<span class="fs-caret">▏</span></span><span class="fs-divider">  ──── file picker ─────────────────────────────────</span><span><span class="fs-i fs-sel">  files&gt; </span><span class="fs-i">mention</span><span class="fs-i fs-caret">▏</span></span><span class="fs-dim">      3/812</span><span class="fs-dim">      Ctrl-N/P or ↑/↓ move · Enter select · Esc close</span><span class="fs-sel">  &gt;   tests/test_mentions.py</span><span>      wizolt/mentions.py</span><span class="fs-divider">  ──────────────────────────────────────────────────</span></div>
 
 | Mention | Also written | Effect |
 |---|---|---|
 | `@file:path` | — | Points the agent at a file in the project |
+| `@mem:title` | — | Attaches a saved memory by title; its body rides with that request |
 | `@mcp:server`, `@mcp:server.tool` | `@server`, `@server.tool` | Connects an [MCP](mcp.md) server on demand; a `.tool` suffix connects the whole server too, and its tools join the request index. <span class="marker">The connection remains active until you disconnect it.</span> |
 | `@skill:name` | `$name` | Points the agent at a [skill](skills.md); it loads the instructions when they matter |
 
 **Files.** A mention names the file and nothing more: the agent reads what the request needs with
 `Read`. Nothing is inlined, so a large or binary path costs nothing until then.
+
+**Memories.** Long-term notes live in one file, `MEMORY.md` under your wizolt data directory
+(`~/.wizolt/MEMORY.md`), and are shared by every project. Each turn opens with a small, fixed
+list of them so the agent can pull in the ones a request touches; `@mem:title` attaches one by
+title and its full text rides with that request. The agent reads the file on its own whenever
+relevant, and only adds or edits an entry when you ask it to remember, update, or forget
+something — plain conversation never writes it. `/memory` shows every entry with its full text
+and a copyable `@mem:` reference. A title with spaces is inserted quoted,
+like `@mem:"deploy notes 2026"`.
 
 **Picking files.** Files stay out of the first `@` list: typing or selecting `@file:` opens fzf
 immediately, and `Tab` does the same from an active file mention. Without fzf, a bounded literal
