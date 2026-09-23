@@ -44,14 +44,8 @@ def encode_file_mention(path: str) -> str:
 
 
 def encode_mem_mention(title: str) -> str:
-    """Return the canonical, round-trippable @mem form for a memory title.
-
-    Titles are free text, so any title containing whitespace (or starting with a quote, which
-    would read as the quoted form) goes out JSON-quoted, exactly like spaced file paths.
-    """
-    bare = bool(title) and not title.startswith('"') and not any(char.isspace() for char in title)
-    payload = title if bare else json.dumps(title, ensure_ascii=False)
-    return "@mem:" + payload
+    """Quote the visible title so text typed immediately after the mention cannot extend it."""
+    return "@mem:" + json.dumps(title, ensure_ascii=False)
 
 
 def scan_mentions(text: str) -> list[MentionSpan]:
@@ -107,7 +101,12 @@ def _scan_file(text: str, start: int, payload_start: int, kind: MentionKind = "f
         return MentionSpan(start, payload_start, kind, "", False)
     if text[payload_start] != '"':
         end = payload_start
-        while end < len(text) and not text[end].isspace():
+        while end < len(text):
+            char = text[end]
+            if kind == "mem" and not (char.isalnum() or char in "_-"):
+                break
+            if kind == "file" and char.isspace():
+                break
             end += 1
         return MentionSpan(start, end, kind, text[payload_start:end], end > payload_start)
     try:

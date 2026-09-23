@@ -397,16 +397,15 @@ def memory_command(loop: CommandLoop, args: str) -> str:
     store = loop.session.memory
     if store is None:
         return "Memory is not available in this session."
+    if store.over_cap():
+        return (
+            f"Memory file `{store.path()}` is {store.file_size()} bytes, over the {MAX_MEMORY_FILE_BYTES}-byte cap. "
+            "No entries were loaded; reduce the file size to use /memory."
+        )
     entries = store.entries()
     if not entries:
         return f"No memories yet. They live in `{store.path()}`; ask the agent to remember something and it will add one."
     lines = [f"### Memories · {len(entries)}", "", f"Shared across projects, stored in `{store.path()}`.", ""]
-    if store.over_cap():
-        lines.append(
-            f"The file is {store.file_size()} bytes, over the {MAX_MEMORY_FILE_BYTES}-byte cap; "
-            "entries past the cap are not listed here. Slim the file to bring them back."
-        )
-        lines.append("")
     counts = Counter(entry.title for entry in entries)
     for entry in entries:
         duplicate = counts[entry.title] > 1

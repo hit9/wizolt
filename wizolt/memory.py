@@ -87,8 +87,9 @@ class MemoryStore:
 
     def read(self) -> str:
         try:
-            with open(self.path(), encoding="utf-8") as file:
-                return file.read()
+            with open(self.path(), "rb") as file:
+                content = file.read(MAX_MEMORY_FILE_BYTES + 1)
+            return content.decode("utf-8") if len(content) <= MAX_MEMORY_FILE_BYTES else ""
         except (OSError, UnicodeDecodeError):
             return ""
 
@@ -124,9 +125,6 @@ class MemoryStore:
         return self._catalog
 
     def _build_catalog(self) -> str:
-        entries = self.entries()
-        if not entries:
-            return ""
         lines = [
             "--- MEMORY ---",
             f"Path: {self.path()}",
@@ -143,10 +141,14 @@ class MemoryStore:
         ]
         if self.over_cap():
             lines.append(
-                f"The file is {self.file_size()} bytes, over the {MAX_MEMORY_FILE_BYTES}-byte cap: "
-                "entries past the cap are not listed here; tell the user to slim the file."
+                f"The file is {self.file_size()} bytes, over the {MAX_MEMORY_FILE_BYTES}-byte cap: no entries were loaded; tell the user to slim the file."
             )
-            lines.append("")
+            return "\n".join(lines)
+        entries = self.entries()
+        if not entries:
+            lines.append("No saved entries yet.")
+            return "\n".join(lines)
+        lines.append("")
         rows = [f"- {entry.id} {entry.title}" for entry in entries]
         total = sum(len(row) + 1 for row in rows)
         if total > MAX_CATALOG_CHARS:
@@ -177,8 +179,10 @@ class MemoryStore:
         spans = [span for span in scan_mentions(text) if span.kind == "mem" and span.complete and span.payload]
         if not spans:
             return ""
+        if self.over_cap():
+            return f"--- MEMORY MENTIONS ---\nThe memory file exceeds its {MAX_MEMORY_FILE_BYTES}-byte cap; tell the user to slim it before using @mem:."
         if not os.path.exists(self.path()):
-            return ""
+            return "--- MEMORY MENTIONS ---\nNo memory file exists; tell the user this @mem: reference cannot be resolved."
         by_title: dict[str, list[MemoryEntry]] = {}
         for entry in self.entries():
             by_title.setdefault(entry.title, []).append(entry)

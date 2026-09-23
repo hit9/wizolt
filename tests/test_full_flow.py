@@ -22,6 +22,7 @@ from wizolt.config import (
 )
 from wizolt.context import ContextManager
 from wizolt.engine import Agent
+from wizolt.memory import MemoryStore
 from wizolt.model import ModelClient
 from wizolt.prompts import COMPACTION_SUMMARY_TITLE, SYSTEM_PROMPT
 from wizolt.session import Session
@@ -68,6 +69,7 @@ def _session(tmp_path, *, api: str = "chat", model: str = "gpt-5.6", reasoning: 
     session = Session(cwd=str(tmp_path), config=config)
     session.settings.yolo = True  # auto-approve mutating tools so the flow runs unattended
     session.skills = SkillLibrary({})  # no skills: keep the system frame deterministic
+    session.memory = MemoryStore(session)
     return session
 
 

@@ -11,7 +11,8 @@
   remember, update, or forget something. `@mem:title` (tab-completing, keyword-filtered, shown
   without ids) attaches a memory to a message with its full text, `/memory` lists every entry
   with a copyable reference, and the `Read`/`Edit` tools reach the exact memory file outside the
-  workspace (reads unconfirmed; writes keep the normal confirmation).
+  workspace (reads unconfirmed; writes keep the normal confirmation). Files over 128 KiB are
+  reported rather than partially loaded.
 - A global `<data_dir>/AGENTS.md` now rides every request ahead of the project's `AGENTS.md` as
   a bounded "Global instructions" section; both sources share the existing ~8,000-token
   instructions cap, and truncation keeps a recognizable piece of each.

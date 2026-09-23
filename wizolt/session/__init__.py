@@ -180,7 +180,7 @@ class Session:
         if not self.uid:
             self.uid = datetime.now().strftime("%Y%m%d%H%M%S") + "-" + str(uuid.uuid4())[:12]  # noqa: DTZ005 - IDs intentionally use local wall time.
         if self.system_info is None:
-            self.system_info = SystemInfo.detect(self.cwd, self.config.data_dir)
+            self.system_info = SystemInfo.detect(self.cwd, self.data_path())
         # The Delegate registration gate is frozen per session: computed once from the config this
         # session was constructed with, so a runtime /worker provider switch tunes an already-
         # enabled delegation and prepares the next session without flipping the tool block (and

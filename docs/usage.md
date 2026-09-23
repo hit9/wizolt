@@ -145,8 +145,9 @@ list of them so the agent can pull in the ones a request touches; `@mem:title` a
 title and its full text rides with that request. The agent reads the file on its own whenever
 relevant, and only adds or edits an entry when you ask it to remember, update, or forget
 something — plain conversation never writes it. `/memory` shows every entry with its full text
-and a copyable `@mem:` reference. A title with spaces is inserted quoted,
-like `@mem:"deploy notes 2026"`.
+and a copyable `@mem:` reference. Completed titles are quoted, as in
+`@mem:"deploy notes 2026"`, so you can keep typing beside them. Files over 128 KiB are not
+indexed or expanded into mentions; `/memory` reports the limit until you reduce the file size.
 
 **Picking files.** Files stay out of the first `@` list: typing or selecting `@file:` opens fzf
 immediately, and `Tab` does the same from an active file mention. Without fzf, a bounded literal

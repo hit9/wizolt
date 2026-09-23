@@ -268,18 +268,21 @@ class ContextManager:
             rows.append(f"- vision: {entry}/{provider.model or '(empty)'} (available as image fallback)")
         if self.session.settings.agents_md:
             # Global first, project after: the more specific instructions win when they disagree.
-            # Both share the one prefix budget; when both exist each gets half, so an oversized
-            # file on one side can never starve the other out of the prefix.
+            # Reserve half for each source, then let either use the other's unused share.
             sources: list[tuple[str, str, str]] = []
             if info.global_agents_md:
                 sources.append(("Global instructions", info.global_agents_md_source, info.global_agents_md))
             if info.agents_md:
                 sources.append(("Project instructions", info.agents_md_source, info.agents_md))
-            share = MAX_AGENTS_MD_TOKENS // max(1, len(sources))
-            for label, source, content in sources:
+            budgets = [MAX_AGENTS_MD_TOKENS // len(sources)] * len(sources) if sources else []
+            totals = [self.estimated_text_tokens(content) for _, _, content in sources]
+            budgets = [min(budget, total) for budget, total in zip(budgets, totals, strict=True)]
+            for index, total in enumerate(totals):
+                budgets[index] += min(MAX_AGENTS_MD_TOKENS - sum(budgets), total - budgets[index])
+            for (label, source, content), budget in zip(sources, budgets, strict=True):
                 rows.append("")
                 rows.append(f"--- {label} ({source}) ---")
-                rows.append(self.bounded_instructions(source, content, share))
+                rows.append(self.bounded_instructions(source, content, budget))
         catalog = self.session.memory.catalog() if self.session.memory is not None else ""
         if catalog:
             rows.append("")

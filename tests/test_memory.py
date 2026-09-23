@@ -101,7 +101,7 @@ def test_mem_mention_scans_bare_and_quoted_forms():
 
 
 def test_encode_mem_mention_round_trips():
-    assert encode_mem_mention("设计讨论使用中文") == "@mem:设计讨论使用中文"
+    assert encode_mem_mention("设计讨论使用中文") == '@mem:"设计讨论使用中文"'
     quoted = encode_mem_mention("共用部署环境 2026")
     assert quoted == '@mem:"共用部署环境 2026"'
     for form in (encode_mem_mention("设计讨论使用中文"), quoted):
@@ -109,6 +109,10 @@ def test_encode_mem_mention_round_trips():
         assert span is not None and span.kind == "mem" and span.complete
     # a leading quote must not produce a bare form that scans as quoted
     assert encode_mem_mention('"odd').startswith('@mem:"')
+    assert encode_mem_mention("部署：提醒") == '@mem:"部署：提醒"'
+    assert active_mention("use @mem:设计讨论使用中文，") is None
+    assert [span.payload for span in scan_mentions("use @mem:设计讨论使用中文，继续")] == ["设计讨论使用中文"]
+    assert [span.payload for span in scan_mentions(encode_mem_mention("设计讨论使用中文") + "继续讨论")] == ["设计讨论使用中文"]
 
 
 # --- catalog ---
@@ -139,9 +143,10 @@ def test_catalog_is_fixed_for_the_session_even_if_the_file_changes(tmp_path):
 
 def test_catalog_empty_without_file_or_entries(tmp_path):
     s = session(tmp_path)
-    assert s.memory.catalog() == ""
+    assert "No saved entries yet" in s.memory.catalog()
+    assert "Edit MEMORY.md only when the user explicitly asks" in s.memory.catalog()
     write_memory(tmp_path, "# only prose, no entries\n")
-    assert session(tmp_path).memory.catalog() == ""
+    assert "No saved entries yet" in session(tmp_path).memory.catalog()
 
 
 def test_catalog_truncation_reports_omitted_entries(tmp_path):
@@ -161,6 +166,8 @@ def test_catalog_warns_when_file_is_over_the_cap(tmp_path):
     s = session(tmp_path)
     catalog = s.memory.catalog()
     assert f"over the {MAX_MEMORY_FILE_BYTES}-byte cap" in catalog
+    assert "no entries were loaded" in catalog
+    assert "- 7f3a91c2" not in catalog
 
 
 # --- @mem: expansion ---
@@ -201,9 +208,15 @@ def test_resolve_mentions_dedupes_and_caps(tmp_path):
     assert f"2 additional memory mention(s) omitted at the {MAX_REFERENCES}-reference cap" in block
 
 
-def test_resolve_mentions_without_file_is_empty(tmp_path):
+def test_resolve_mentions_without_file_reports_missing_memory(tmp_path):
     s = session(tmp_path)
-    assert s.memory.resolve_mentions("@mem:设计讨论使用中文") == ""
+    assert "cannot be resolved" in s.memory.resolve_mentions("@mem:设计讨论使用中文")
+
+
+def test_resolve_mentions_refuses_oversized_file(tmp_path):
+    write_memory(tmp_path, f"## 7f3a91c2 设计讨论使用中文\n{'x' * (MAX_MEMORY_FILE_BYTES + 1)}")
+    s = session(tmp_path)
+    assert "exceeds its" in s.memory.resolve_mentions("@mem:设计讨论使用中文")
 
 
 def test_engine_attaches_memory_mentions_as_session_event(tmp_path):
@@ -225,7 +238,7 @@ def test_mem_completion_lists_titles_in_file_order_without_ids(tmp_path):
     s = session(tmp_path)
     completer = CommandCompleter(memories=s.memory.menu_entries)
     texts = completions(completer, "按 @mem:")
-    assert texts == ["@mem:设计讨论使用中文", "@mem:共用部署环境", "@mem:无正文条目"]
+    assert texts == ['@mem:"设计讨论使用中文"', '@mem:"共用部署环境"', '@mem:"无正文条目"']
     assert not any("7f3a91c2" in text for text in texts)
 
 
@@ -233,9 +246,9 @@ def test_mem_completion_filters_by_title_and_body_keyword(tmp_path):
     write_memory(tmp_path)
     s = session(tmp_path)
     completer = CommandCompleter(memories=s.memory.menu_entries)
-    assert completions(completer, "按 @mem:部署") == ["@mem:共用部署环境"]
-    assert completions(completer, "按 @mem:核实") == ["@mem:共用部署环境"]  # body keyword
-    assert completions(completer, "按 @mem:中文") == ["@mem:设计讨论使用中文"]
+    assert completions(completer, "按 @mem:部署") == ['@mem:"共用部署环境"']
+    assert completions(completer, "按 @mem:核实") == ['@mem:"共用部署环境"']  # body keyword
+    assert completions(completer, "按 @mem:中文") == ['@mem:"设计讨论使用中文"']
     assert completions(completer, "按 @mem:不存在") == []
 
 
@@ -281,7 +294,7 @@ def test_memory_command_lists_titles_bodies_and_references_without_ids(tmp_path)
     assert "### Memories · 3" in rendered
     assert "用户偏好以中文讨论设计方案。" in rendered
     assert "执行部署前应重新核实细节。" in rendered
-    assert "`@mem:设计讨论使用中文`" in rendered
+    assert '`@mem:"设计讨论使用中文"`' in rendered
     assert "7f3a91c2" not in rendered
 
 
@@ -297,6 +310,14 @@ def test_memory_command_empty_and_usage(tmp_path):
     _s, loop = loop_for(tmp_path)
     assert "No memories yet" in memory_command(loop, "")
     assert memory_command(loop, "extra") == "Usage: /memory"
+
+
+def test_memory_command_reports_oversized_file_without_listing_partial_entries(tmp_path):
+    write_memory(tmp_path, f"## 7f3a91c2 设计讨论使用中文\n{'x' * (MAX_MEMORY_FILE_BYTES + 1)}")
+    _s, loop = loop_for(tmp_path)
+    rendered = memory_command(loop, "")
+    assert "No entries were loaded" in rendered
+    assert "设计讨论使用中文" not in rendered
 
 
 # --- global AGENTS.md ---
@@ -326,6 +347,18 @@ def test_environment_global_agents_md_only(tmp_path):
     assert "--- Project instructions" not in env
 
 
+def test_relative_data_dir_global_agents_md_resolves_against_session_cwd(tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "AGENTS.md").write_text("Relative global instruction.\n", encoding="utf-8")
+    config = Config()
+    config.data_dir = "data"
+    s = Session(cwd=str(tmp_path), config=config)
+    bootstrap_features(s)
+    assert "Relative global instruction." in ContextManager(s).environment()
+    assert s.system_info.global_agents_md_source == str(data_dir / "AGENTS.md")
+
+
 def test_environment_agents_md_shared_budget_keeps_both_sources(tmp_path):
     data_dir = tmp_path / "data"
     data_dir.mkdir()
@@ -340,6 +373,18 @@ def test_environment_agents_md_shared_budget_keeps_both_sources(tmp_path):
     assert "global line 0" in global_content
     assert "project line 0" in env.split("--- Project instructions", 1)[1]
     assert context.estimated_text_tokens(global_content) <= MAX_AGENTS_MD_TOKENS // 2
+
+
+def test_environment_unused_instruction_share_goes_to_larger_source(tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "AGENTS.md").write_text("Short global instruction.\n", encoding="utf-8")
+    project = "P" * 20_000  # ~5,000 estimated tokens: fits the combined budget.
+    (tmp_path / "AGENTS.md").write_text(project, encoding="utf-8")
+    s = session(tmp_path)
+    env = ContextManager(s).environment()
+    assert project in env
+    assert "truncated to fit the prefix" not in env
 
 
 def test_environment_memory_catalog_in_environment_and_stable(tmp_path):
