@@ -11,7 +11,9 @@ from prompt_toolkit.data_structures import Size
 from test_tui_input import ctrl_c_queue_scenario
 from tui_harness import ResizableOutput, loop, rendered_screen_text, request_input_from_driver, run_interactive_tui, show_modal_from_driver, wait_until
 
+from wizolt.base import SELECTION_BACK
 from wizolt.cli.commands import select_choice
+from wizolt.cli.modals import choice_application
 from wizolt.prompts import LIVE_FOLLOWUP_PREFIX
 from wizolt.tui import TUI_MODAL_PENDING, TuiApp
 
@@ -223,12 +225,18 @@ def test_interactive_tui_resolved_modal_allows_followup_approval(monkeypatch):
     assert approved == ["y"]
 
 
-@pytest.mark.parametrize("rows", [14, 20, 24, 40])
-def test_a_long_picker_keeps_its_key_legend_on_screen(monkeypatch, tmp_path, rows):
+@pytest.mark.parametrize(
+    ("rows", "preview"),
+    # Fourteen rows leave the modal six: enough for a plain picker's fixed rows and one of list, not
+    # for a three-line preview on top of them.
+    [(14, False), (20, False), (24, False), (40, False), (20, True), (24, True), (40, True)],
+)
+def test_a_long_picker_keeps_its_key_legend_on_screen(monkeypatch, tmp_path, rows, preview):
     """A provider can discover dozens of models. Drawn whole, the /model list outgrew the modal
     region and its last rows -- the key legend among them -- fell off the bottom. The list scrolls
     inside the space instead, so the legend and the counter stay visible wherever the cursor is,
-    and Tab walks the list like j."""
+    and Tab walks the list like j. A preview (the /reason "why these levels" footer) takes its
+    rows from the list, not from the legend."""
     monkeypatch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((80, rows)))
     command_loop = loop(tmp_path)
     command_loop.interactive_input = True
@@ -249,12 +257,14 @@ def test_a_long_picker_keeps_its_key_legend_on_screen(monkeypatch, tmp_path, row
 
     def drive(pipe_input):
         wait_until(lambda: app.app is not None and app.app.is_running)
-        selector = asyncio.run_coroutine_threadsafe(select_choice(command_loop, "Model", choices, disabled=set(labels)), app.app.loop)
-        wait_until(lambda: screen_shows("model-0", legend))
+        preview_fn = (lambda _choice: "Why these levels\\nthe provider's documented scale\\nsource: compat policy") if preview else None
+        tail = ("source: compat policy",) if preview else ()
+        selector = asyncio.run_coroutine_threadsafe(select_choice(command_loop, "Model", choices, disabled=set(labels), preview_fn=preview_fn), app.app.loop)
+        wait_until(lambda: screen_shows("model-0", legend, *tail))
         pipe_input.send_text("\t")  # Tab moves like j
-        wait_until(lambda: screen_shows(legend, "showing"))
+        wait_until(lambda: screen_shows(legend, "showing", *tail))
         pipe_input.send_text("G")  # to the far end of the list
-        wait_until(lambda: screen_shows("remote-39", legend, "of 46"))
+        wait_until(lambda: screen_shows("remote-39", legend, "of 46", *tail))
         pipe_input.send_text("\r")
         result.append(selector.result(timeout=2))
         app.app.loop.call_soon_threadsafe(app.app.exit)
@@ -262,6 +272,43 @@ def test_a_long_picker_keeps_its_key_legend_on_screen(monkeypatch, tmp_path, row
     run_interactive_tui(monkeypatch, app, drive=drive, output=output, after_render=after_render)
 
     assert result == ["remote-39"]
+
+
+@pytest.mark.parametrize("rows", [24, 30, 40])
+def test_an_exclusive_picker_with_a_tall_preview_keeps_its_legend(monkeypatch, tmp_path, rows):
+    """The /sessions picker owns the screen and previews a session's recent messages, often a dozen
+    lines. The list gives up rows to that preview rather than the preview's newest lines and the key
+    legend falling off the bottom. (This fourteen-line preview and the fixed rows need twenty rows
+    before the list gets one, so smaller screens are out of reach.)"""
+    monkeypatch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((80, rows)))
+    command_loop = loop(tmp_path)
+    command_loop.interactive_input = True
+    app = TuiApp()
+    command_loop.tui = app
+    output = ResizableOutput(rows=rows, columns=80)
+    frames = []
+    choices = tuple(f"session-{index}" for index in range(30))
+    preview = "\\n".join(f"message {index}" for index in range(12)) + "\\nnewest message"
+    legend = "j/k/Tab move, Ctrl-D/U page, / search, Esc/q back/cancel"
+    result = []
+
+    def after_render(application):
+        frames.append(rendered_screen_text(application, output))
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        selector = asyncio.run_coroutine_threadsafe(
+            choice_application(command_loop, "Sessions", choices, {}, "", set(), preview_fn=lambda _uid: preview, exclusive=True, max_rows=max(5, min(20, rows - 12))),
+            app.app.loop,
+        )
+        wait_until(lambda: bool(frames) and all(text in frames[-1] for text in ("session-0", "newest message", legend, "showing")))
+        pipe_input.send_text("q")
+        result.append(selector.result(timeout=2))
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive, output=output, after_render=after_render)
+
+    assert result == [SELECTION_BACK]
 
 
 def test_interactive_tui_choice_ctrl_c_reports_cancellation(monkeypatch, tmp_path):

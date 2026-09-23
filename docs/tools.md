@@ -126,7 +126,7 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
   - Pauses for a decision that genuinely needs you. A question may include choices and a
     recommended option.
 
-    <div class="term-shot" role="img" aria-label="An Ask prompt: the question, then a selector listing two choices with the recommended one pre-selected, and a preview line for the highlighted choice."><span class="fs-user">Which approach?</span><span> </span><span>Select:</span><span> </span><span class="fs-sel">   1. Refactor <span class="fs-i fs-add">(recommended)</span>  </span><span class="fs-dim">   2. Rewrite</span><span class="fs-dim">  │ Extract module +87 -12</span><span> </span><span class="fs-dim">  j/k/Tab move, Ctrl-D/U page, / search, Esc/q back/cancel</span></div>
+    <div class="term-shot" role="img" aria-label="An Ask prompt: the question, then a selector listing two choices with the recommended one pre-selected and a row for typing an answer, a preview of the highlighted choice, and the key legend."><span class="fs-title">(1/1) Which approach?</span><span> </span><span class="fs-selected">   1. Refactor (recommended)</span><span><span class="fs-i fs-dim">   2. </span><span class="fs-i">Rewrite</span></span><span><span class="fs-i fs-dim">   3. </span><span class="fs-i">Type freely...</span></span><span class="fs-dim">  ──────────────────────────────────</span><span class="fs-add">  │</span><span><span class="fs-i fs-add">  │ </span><span class="fs-i">Extract module +87 -12</span></span><span> </span><span class="fs-dim">↑↓/jk move · ^D/^U scroll · Enter select · Tab page · n note · / search · Esc cancel</span></div>
 
     Pressing `Esc` declines the question; typing instead of choosing answers in free text.
 * - **`NextHints`**

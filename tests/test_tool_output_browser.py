@@ -6,6 +6,7 @@ import os
 import shutil
 import time
 
+import pytest
 from prompt_toolkit.utils import get_cwidth
 from test_command_ui import ModalHarness
 from tui_harness import loop, session
@@ -17,6 +18,28 @@ from wizolt.engine import Agent
 from wizolt.session import Session
 from wizolt.session.jobs import BackgroundJob
 from wizolt.tools import BashTool, JobTool, Tool, tooloutput
+from wizolt.tui import TuiApp
+
+
+@pytest.mark.parametrize("rows", [20, 26, 40])
+async def test_tool_output_browser_sheet_fits_the_modal_window(tmp_path, monkeypatch, rows):
+    """The sheet -- title, rule, rows, counter, legend -- fits the rows the modal window gets, so
+    the counter and the key legend are never cut off at the bottom (the old cap assumed ten rows of
+    list in a twenty-row terminal, where the window holds ten rows in all). Below twenty rows the
+    window cannot hold the fixed rows plus one of list, and no sizing of the list changes that."""
+    command_loop = loop(tmp_path)
+    for index in range(30):
+        command_loop.session.store_tool_result("Bash", [f"printf {index}"], Tool.process_result("BashToolResult", 0, f"out {index}", ""))
+    modal = ModalHarness(["q"])
+    command_loop.tui = modal
+
+    with monkeypatch.context() as patch:
+        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((80, rows)))
+        await tool_output_viewer(command_loop)
+
+    sheet = "".join(value for _, value in modal.frames[0]).rstrip("\n").splitlines()
+    assert len(sheet) <= TuiApp.modal_rows(rows)
+    assert sheet[-1].strip().startswith("j/k/Tab move") and "showing 1-" in sheet[-3]
 
 
 async def test_tool_output_viewer_browses_recent_calls_through_a_viewport_and_opens_full_output(tmp_path, monkeypatch):
@@ -32,7 +55,7 @@ async def test_tool_output_viewer_browses_recent_calls_through_a_viewport_and_op
     # ``shutil`` is a shared module object also used by pytest's terminal reporter. Restore the
     # patch before pytest reports this test result, rather than waiting for fixture teardown.
     with monkeypatch.context() as patch:
-        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 20)))
+        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
         await tool_output_viewer(command_loop)
 
     listing = "".join(value for _, value in modal.frames[0])
@@ -42,7 +65,7 @@ async def test_tool_output_viewer_browses_recent_calls_through_a_viewport_and_op
     rows = listing.rstrip("\n").splitlines()
     assert rows[2] == "" and rows[-2] == "" and rows[-1].strip().startswith("j/k/Tab move")
     assert "command-11" in listing and "command-2" in listing
-    # A twenty-row terminal draws ten of the twelve: the rest are a scroll away, not dropped, and
+    # A twenty-six-row terminal draws ten of the twelve: the rest are a scroll away, not dropped, and
     # the counter is what says so. `true` printed nothing and is not an entry at all.
     assert "Bash  printf command-1\n" not in listing and "Bash  printf command-0\n" not in listing and "Bash  true" not in listing
     assert "showing 1-10 of 12" in listing
@@ -68,7 +91,7 @@ async def test_tool_output_browser_marks_bash_results_ok_and_fail(tmp_path, monk
     command_loop.tui = modal
 
     with monkeypatch.context() as patch:
-        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 20)))
+        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
         await tool_output_viewer(command_loop)
 
     # The selected row is reversed as a whole, which hides its mark's own color, so the two frames
@@ -88,7 +111,7 @@ async def test_tool_output_browser_lists_past_the_old_fifty_entry_cap(tmp_path, 
     command_loop.tui = modal
 
     with monkeypatch.context() as patch:
-        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 20)))
+        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
         await tool_output_viewer(command_loop)
 
     listing = "".join(value for _, value in modal.frames[0])
@@ -109,7 +132,7 @@ async def test_tool_output_browser_keeps_every_stored_record_with_a_running_scri
     command_loop.tui = modal
 
     with monkeypatch.context() as patch:
-        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 20)))
+        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
         await tool_output_viewer(command_loop)
 
     listing = "".join(value for _, value in modal.frames[0])
@@ -133,7 +156,7 @@ async def test_tool_output_viewer_escape_returns_to_the_list_with_the_cursor_kep
     modal = ModalHarness(["j", "enter", "escape", "enter", "c-o"], consumed=True)
     command_loop.tui = modal
     with monkeypatch.context() as patch:
-        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 20)))
+        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
         await tool_output_viewer(command_loop)
 
     frames = ["".join(value for _, value in frame) for frame in modal.frames]
@@ -167,7 +190,7 @@ async def test_tool_output_viewer_q_in_a_detail_also_returns_to_the_list(tmp_pat
     modal = ModalHarness(["enter", "q", "enter", "c-o"], consumed=True)
     command_loop.tui = modal
     with monkeypatch.context() as patch:
-        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 20)))
+        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
         await tool_output_viewer(command_loop)
 
     frames = ["".join(value for _, value in frame) for frame in modal.frames]
@@ -190,7 +213,7 @@ async def test_tool_output_viewer_ctrl_c_in_a_detail_also_returns_to_the_list(tm
     modal = ModalHarness(["enter", "c-c", "enter", "c-o"], consumed=True)
     command_loop.tui = modal
     with monkeypatch.context() as patch:
-        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 20)))
+        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
         await tool_output_viewer(command_loop)
 
     frames = ["".join(value for _, value in frame) for frame in modal.frames]
@@ -212,7 +235,7 @@ async def test_tool_output_viewer_ctrl_o_in_a_detail_closes_the_browser(tmp_path
     modal = ModalHarness(["j", "enter", "c-o"], consumed=True)
     command_loop.tui = modal
     with monkeypatch.context() as patch:
-        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 20)))
+        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
         await tool_output_viewer(command_loop)
 
     frames = ["".join(value for _, value in frame) for frame in modal.frames]
@@ -235,7 +258,7 @@ async def test_tool_output_viewer_keeps_the_search_filter_across_an_escape(tmp_p
     modal = ModalHarness(["/", *"command-4", "enter", "enter", "escape", "enter", "c-o"], consumed=True)
     command_loop.tui = modal
     with monkeypatch.context() as patch:
-        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 20)))
+        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
         await tool_output_viewer(command_loop)
 
     frames = ["".join(value for _, value in frame) for frame in modal.frames]
@@ -262,7 +285,7 @@ async def test_tool_output_list_keeps_a_no_matches_row_among_the_rows(tmp_path, 
     modal = ModalHarness(["/", "z", "q"], consumed=True)
     command_loop.tui = modal
     with monkeypatch.context() as patch:
-        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 20)))
+        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
         await tool_output_viewer(command_loop)
 
     frames = ["".join(value for _, value in frame) for frame in modal.frames]
@@ -288,7 +311,7 @@ async def test_tool_output_viewer_folds_a_multiline_command_into_one_row(tmp_pat
     # ``shutil`` is a shared module object also used by pytest's terminal reporter. Restore the
     # patch before pytest reports this test result, rather than waiting for fixture teardown.
     with monkeypatch.context() as patch:
-        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((120, 20)))
+        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((120, 26)))
         await tool_output_viewer(command_loop)
 
     listing = "".join(value for _, value in modal.frames[0])

@@ -173,7 +173,11 @@ class _AlignedCompletionsMenu(CompletionsMenu):
         super().__init__(**kwargs)
         assert isinstance(self.content, Window)
         self.content.content = _AlignedCompletionsMenuControl()
-        self.content = HSplit([self.content, Window(FormattedTextControl([("class:completion-menu.hint", self.HINT)]), height=1)])
+        # The float is transparent, so a Window only overwrites the cells its text covers; the rest
+        # of a hint narrower than the menu would show the transcript beneath. `char` makes the
+        # Window blank its whole row first, and the style puts that row on the menu's surface.
+        hint = Window(FormattedTextControl([("class:completion-menu.hint", self.HINT)]), height=1, char=" ", style="class:completion-menu.hint")
+        self.content = HSplit([self.content, hint])
 
 
 class AttachmentLabelProcessor(Processor):

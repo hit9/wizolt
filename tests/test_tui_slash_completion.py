@@ -4,11 +4,14 @@ import pytest
 from prompt_toolkit.buffer import CompletionState
 from prompt_toolkit.completion import Completion
 from prompt_toolkit.document import Document
+from prompt_toolkit.layout.containers import HSplit
+from prompt_toolkit.layout.mouse_handlers import MouseHandlers
+from prompt_toolkit.layout.screen import Char, Screen, WritePosition
 from tui_harness import ResizableOutput, rendered_screen_text, run_interactive_tui, wait_until
 
 from wizolt.cli import CommandCompleter, CommandLoop
 from wizolt.tui import TuiApp
-from wizolt.tui.app import InputMode
+from wizolt.tui.app import InputMode, _AlignedCompletionsMenu
 
 
 def _completions(app):
@@ -71,6 +74,58 @@ def test_completion_menu_closes_on_a_key_hint_row(monkeypatch):
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive, output=output, after_render=after_render)
+
+
+def test_completion_hint_row_spans_the_whole_menu_width(monkeypatch):
+    """The menu floats transparently over the transcript, so a hint row narrower than the menu
+    would let the text beneath show through its right-hand gap. Every cell of the hint row under
+    the menu is blanked and on the menu's surface, as far as the widest item row reaches."""
+    server = "a-server-name-long-enough-to-widen-the-menu-past-the-hint"
+    app = TuiApp(completer=CommandCompleter(mcp_servers=lambda: (server,)))
+    output = ResizableOutput(rows=20, columns=90)
+    checked = []
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("@mcp:")
+        wait_until(lambda: rendered_screen_text(app.app, output).count(server) == 1)
+        screen = app.app.renderer.last_rendered_screen
+        text = rendered_screen_text(app.app, output).splitlines()
+        item_row = next(index for index, line in enumerate(text) if server in line)
+        hint_row = item_row + 1
+        menu_columns = [column for column in range(output.size.columns) if "completion-menu" in screen.data_buffer[item_row][column].style]
+        assert len(menu_columns) > len(_AlignedCompletionsMenu.HINT)
+        for column in menu_columns:
+            cell = screen.data_buffer[hint_row][column]
+            assert "completion-menu.hint" in cell.style, column
+        tail = "".join(screen.data_buffer[hint_row][column].char for column in menu_columns[len(_AlignedCompletionsMenu.HINT) :])
+        assert tail.strip() == ""
+        checked.append(len(menu_columns))
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive, output=output)
+    assert checked
+
+
+def test_completion_hint_row_overwrites_the_text_beneath_it():
+    """A style alone only recolors a cell, it does not clear it: drawn the way a transparent float
+    draws (no background erase) over a line of transcript, the hint row must blank every cell it
+    spans, not only the ones its text covers. On a real screen the prompt sits at the bottom, so
+    the menu flips up over the transcript and a gap there shows old text through."""
+    menu = _AlignedCompletionsMenu()
+    assert isinstance(menu.content, HSplit)
+    hint = menu.content.children[1]
+    width = len(_AlignedCompletionsMenu.HINT) + 12
+    screen = Screen()
+    for column in range(width):
+        screen.data_buffer[0][column] = Char("x", "")
+
+    hint.write_to_screen(screen, MouseHandlers(), WritePosition(0, 0, width, 1), "", erase_bg=False, z_index=None)
+    screen.draw_all_floats()
+
+    row = "".join(screen.data_buffer[0][column].char for column in range(width))
+    assert row == _AlignedCompletionsMenu.HINT + " " * 12
+    assert all("completion-menu.hint" in screen.data_buffer[0][column].style for column in range(width))
 
 
 def test_leading_slash_and_command_rows_render_in_the_same_column(monkeypatch):

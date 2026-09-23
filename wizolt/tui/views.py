@@ -185,6 +185,12 @@ class ChoiceViewState:
     # viewport that follows the selection, because the inline modal grows to fit its content and a
     # forty-row list would push the rest of the screen out of the way to show rows nobody asked for.
     max_rows: int = 0
+    # Rows the whole sheet may take, 0 for no bound. The list gets what is left after the title,
+    # the preview of the selected row, the counter, and the legend, so a tall preview shrinks the
+    # list instead of pushing the legend off the bottom of the modal.
+    height: int = 0
+    # The rows the list was last drawn in: what a page means to Ctrl-D/U and PgDn/PgUp.
+    drawn_rows: int = field(default=0, compare=False)
 
     def visible(self) -> tuple[str, ...]:
         if not self.query:
@@ -221,17 +227,29 @@ class ChoiceViewState:
         self.query = query
         self.selected = 0
 
-    def window(self, visible: tuple[str, ...], options: tuple[str, ...]) -> tuple[int, int]:
-        """The half-open row range of `visible` to draw, centred on the selection.
+    def window(self, visible: tuple[str, ...], options: tuple[str, ...], rows: int | None = None) -> tuple[int, int]:
+        """The half-open row range of `visible` to draw in `rows` (`max_rows` by default), centred
+        on the selection.
 
-        The whole list when it fits or when no cap is set. The selection is clamped to the middle of
+        The whole list when it fits or when `rows` is 0. The selection is clamped to the middle of
         the viewport rather than to its edges, so moving through a long list scrolls it instead of
         walking the cursor to the bottom and stopping."""
-        if self.max_rows <= 0 or len(visible) <= self.max_rows:
+        rows = self.max_rows if rows is None else rows
+        if rows <= 0 or len(visible) <= rows:
             return 0, len(visible)
         target = visible.index(options[self.selected]) if options else 0
-        start = min(max(0, target - self.max_rows // 2), len(visible) - self.max_rows)
-        return start, start + self.max_rows
+        start = min(max(0, target - rows // 2), len(visible) - rows)
+        return start, start + rows
+
+    def list_rows(self, visible: int, chrome: int) -> int:
+        """The rows the list gets: `max_rows`, narrowed to what `height` leaves after `chrome`
+        fixed rows -- and after the counter row a list that does not fit then needs."""
+        if not self.height:
+            return self.max_rows
+        room = self.height - chrome
+        if visible > room:
+            room -= 1
+        return max(1, min(self.max_rows, room) if self.max_rows else room)
 
     def selected_choice(self) -> str | None:
         options = self.clamp()
@@ -268,7 +286,18 @@ class ChoiceViewState:
         ]
         if self.query and not options:
             return [*parts, ("class:choice.disabled", "  no matches\n"), ("", "\n"), ("class:choice.disabled", "  " + keys + "\n")]
-        start, end = self.window(visible, options)
+        # The preview comes first: its height, which follows the selected row, decides the list's.
+        preview: StyleAndTextTuples = []
+        if preview_fn and options:
+            drawn = preview_fn(options[self.selected])
+            # A plain-text preview: every line takes the rail and the preview style.
+            preview = [("class:choice.preview", "  │ " + line + "\n") for line in drawn.replace("\\n", "\n").splitlines()] if isinstance(drawn, str) else drawn
+        preview_text = "".join(fragment[1] for fragment in preview)
+        # The title and blank row above the list, the blank row and legend below it, the search line,
+        # and the preview with its rule.
+        chrome = 4 + self.searching + ((preview_text.count("\n") + (not preview_text.endswith("\n")) + 1) if preview else 0)
+        self.drawn_rows = self.list_rows(len(visible), chrome)
+        start, end = self.window(visible, options, self.drawn_rows)
         rows: list[tuple[str | None, StyleAndTextTuples]] = []  # (option row's style, or None for a header; fragments)
         number = 0
         for index, choice in enumerate(visible):
@@ -311,14 +340,9 @@ class ChoiceViewState:
         if end - start < len(visible):
             # Its own row: joined to the legend, it pushed the line past a narrow terminal's edge.
             parts.append(("class:choice.disabled", f"  showing {start + 1}-{end} of {len(visible)}\n"))
-        if preview_fn and options:
-            preview = preview_fn(options[self.selected])
-            if isinstance(preview, str):
-                # A plain-text preview: every line takes the rail and the preview style.
-                preview = [("class:choice.preview", "  │ " + line + "\n") for line in preview.replace("\\n", "\n").splitlines()]
-            if preview:
-                parts.append(("class:choice.disabled", "  " + "─" * max(10, band - 2) + "\n"))
-                parts.extend(preview)
+        if preview:
+            parts.append(("class:choice.disabled", "  " + "─" * max(10, band - 2) + "\n"))
+            parts.extend(preview)
         parts += [("", "\n"), ("class:choice.disabled", "  " + keys + "\n")]
         if self.searching:
             parts.append(("", "/" + self.query))
@@ -337,7 +361,7 @@ class ChoiceViewState:
             self.move(-len(self.enabled()) if key == "g" else len(self.enabled()))
         elif key in {"c-d", "c-u", "pagedown", "pageup"}:
             # A page is the viewport, or the whole list when it is drawn uncapped; Ctrl-D/U go half.
-            page = self.max_rows or len(self.enabled())
+            page = self.drawn_rows or self.max_rows or len(self.enabled())
             distance = max(1, page if key in {"pagedown", "pageup"} else page // 2)
             self.move(distance if key in {"c-d", "pagedown"} else -distance)
         elif key == "/":

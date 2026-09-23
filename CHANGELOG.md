@@ -9,8 +9,10 @@
 
 ### Fixed
 
-- A long `/model` list, such as many discovered models, scrolls inside the picker instead of
-  pushing its key legend off the bottom of the screen.
+- Pickers keep their key legend on screen: a long list, such as many discovered models in
+  `/model`, scrolls, and a preview, such as `/reason`'s explanation or a session's recent
+  messages in `/sessions`, takes its rows from the list instead of pushing the legend off the
+  bottom.
 - Choosing `@mcp:`, `@skill:`, or `@agents.md:` in the `@` menu with the arrows or Ctrl-N/P and
   then pressing Enter now opens that kind's list, instead of closing the menu. Choosing an MCP
   server opens its tools the same way, when the server is connected.

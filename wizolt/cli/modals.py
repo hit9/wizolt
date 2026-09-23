@@ -45,12 +45,13 @@ if TYPE_CHECKING:
 _TOOL_OUTPUT_BACK = object()
 
 
-def picker_rows() -> int:
-    """Rows a picker draws at once. Uncapped, a long list (the models a provider discovers)
-    outgrows the modal region and cuts off its own bottom rows, the key legend among them; beyond
-    this many it scrolls instead. The five reserved rows are the title, the blank rows around the
-    list, the `showing` counter, and the legend."""
-    return max(1, min(20, TuiApp.modal_rows(shutil.get_terminal_size((80, 24)).lines) - 5))
+def picker_height(*, exclusive: bool = False) -> int:
+    """The rows a picker's whole sheet gets: the modal window's own bound, or for an exclusive
+    one the screen above the status line. Unbounded, a long list (the models a provider
+    discovers) or a tall preview (a session's recent messages) outgrows the window and cuts off
+    its own bottom rows, the key legend among them."""
+    rows = shutil.get_terminal_size((80, 24)).lines
+    return rows - 1 if exclusive else TuiApp.modal_rows(rows)
 
 
 def wrapped_rows(text: str, width: int, margin: str = "  ", style: str = "") -> list[StyleAndTextTuples]:
@@ -132,7 +133,7 @@ async def mcp_manager(loop: CommandLoop) -> None:
         loop.ui.emit_answer(mcp.render_server_status(), indent=TurnBox.CONTENT_LEVEL)
         return
 
-    state = ChoiceViewState(tuple(config.name for config in configs), {}, set(), max_rows=picker_rows())
+    state = ChoiceViewState(tuple(config.name for config in configs), {}, set(), max_rows=20, height=picker_height())
     transitions: dict[str, str] = {}
     errors: dict[str, str] = {}
     # No locks: the rows, the toggles that change them, and the render that reads them all run on
@@ -255,7 +256,7 @@ async def choice_application(
     exclusive: bool = False,
     max_rows: int = 0,
 ) -> str | object | None:
-    state = ChoiceViewState(choices, labels, disabled, max_rows=max_rows or picker_rows())
+    state = ChoiceViewState(choices, labels, disabled, max_rows=max_rows or 20, height=picker_height(exclusive=exclusive))
     options = state.enabled()
     state.selected = options.index(current) if current in options else 0
     if loop.tui is None:
@@ -563,9 +564,8 @@ async def _tool_output_list(loop: CommandLoop, entries: list[OutputEntry], state
             ("class:choice.tool", name_cell),
             ("", detail),
         ]
-    # Leave room for the rule, the help row, the counter, and the input region below.
-    height = shutil.get_terminal_size((120, 24)).lines
-    state = state or ChoiceViewState(tuple(labels), labels, set(), max_rows=max(5, min(20, height - 10)))
+    # The sheet fits the modal less one row: the full-width rule under the title is this browser's own.
+    state = state or ChoiceViewState(tuple(labels), labels, set(), max_rows=20, height=picker_height() - 1)
 
     def fragments() -> StyleAndTextTuples:
         """The sheet: the title on its own line over a full-width rule, the aligned rows, and the
