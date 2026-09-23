@@ -228,7 +228,7 @@ async def test_compaction_fallback_trims_when_model_compact_fails(tmp_path):
     s.messages = [{"role": "user", "content": str(index)} for index in range(10)]
     context = ContextManager(s)
     compaction_phases = []
-    context.on_compaction = lambda active, _error: compaction_phases.append(active)
+    context.hooks.on_compaction = lambda active, _error: compaction_phases.append(active)
 
     class FailingModel:
         last_compaction_model = ""
@@ -367,7 +367,7 @@ async def test_cjk_payload_compacts_where_character_estimate_would_not(tmp_path)
     ]
     context = ContextManager(s)
     compaction_phases = []
-    context.on_compaction = lambda active, _error: compaction_phases.append(active)
+    context.hooks.on_compaction = lambda active, _error: compaction_phases.append(active)
 
     class FakeModel:
         last_compaction_model = ""
@@ -401,7 +401,7 @@ async def test_overdue_usage_triggers_compaction_even_when_estimate_fits(tmp_pat
     ]
     context = ContextManager(s)
     compaction_phases = []
-    context.on_compaction = lambda active, _error: compaction_phases.append(active)
+    context.hooks.on_compaction = lambda active, _error: compaction_phases.append(active)
 
     class FakeModel:
         last_compaction_model = ""

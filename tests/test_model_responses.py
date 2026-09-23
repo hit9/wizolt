@@ -18,7 +18,7 @@ async def test_responses_request_preserves_output_items_and_uses_responses_shape
     s = _session(tmp_path, api="responses", model="gpt-5", stream=False)
     model = ModelClient(s)
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     factory = _MockClientFactory(
         [
             (
@@ -161,7 +161,7 @@ async def test_responses_stream_reports_deltas_and_uses_terminal_response(tmp_pa
     ]
     factory = _StreamClientFactory(events)
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     monkeypatch.setattr(model, "client", factory)
 
     assistant, calls, content = await model.request([{"role": "user", "content": "hi"}], [])
@@ -247,7 +247,7 @@ async def test_responses_stream_without_terminal_event_retries_then_succeeds(tmp
     }
     factory = _SequenceStreamFactory([[delta], [delta, {"type": "response.completed", "response": terminal, "sequence_number": 4}]])
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     monkeypatch.setattr(model, "client", factory)
 
     assistant, calls, content = await model.request([{"role": "user", "content": "hi"}], [])
@@ -274,7 +274,7 @@ async def test_responses_stream_previews_reasoning_in_either_spelling(tmp_path, 
         {"type": "response.completed", "response": terminal, "sequence_number": 4},
     ]
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     monkeypatch.setattr(model, "client", _StreamClientFactory(events))
 
     await model.request([{"role": "user", "content": "hi"}], [])
@@ -315,7 +315,7 @@ async def test_responses_stream_promotes_completed_text_before_tool_arguments_fi
 
     responses = SimpleNamespace(create=async_create(lambda **_params: events()))
     monkeypatch.setattr(model, "client", lambda **kwargs: SimpleNamespace(responses=responses))
-    model.on_stream = lambda kind, delta: timeline.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: timeline.append((kind, delta))
 
     _, calls, content = await model.request([{"role": "user", "content": "make the change"}], None)
 
@@ -356,8 +356,8 @@ async def test_responses_stream_promotes_completed_text_across_provider_call(tmp
 
     responses = SimpleNamespace(create=async_create(lambda **_params: events()))
     monkeypatch.setattr(model, "client", lambda **kwargs: SimpleNamespace(responses=responses))
-    model.on_stream = lambda kind, delta: timeline.append((kind, delta))
-    model.on_builtin_call = lambda label, detail: timeline.append(("builtin", label, detail))
+    model.hooks.on_stream = lambda kind, delta: timeline.append((kind, delta))
+    model.hooks.on_builtin_call = lambda label, detail: timeline.append(("builtin", label, detail))
 
     _, calls, content = await model.request([{"role": "user", "content": "weather?"}], None)
 
@@ -398,7 +398,7 @@ async def test_responses_stream_promotes_when_output_item_added_is_missing(tmp_p
     timeline = []
     responses = SimpleNamespace(create=async_create(lambda **_params: iter(events)))
     monkeypatch.setattr(model, "client", lambda **kwargs: SimpleNamespace(responses=responses))
-    model.on_stream = lambda kind, delta: timeline.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: timeline.append((kind, delta))
 
     _, calls, content = await model.request([{"role": "user", "content": "hi"}], None)
 
@@ -450,7 +450,7 @@ async def test_responses_stream_returns_incomplete_terminal_response_and_clears_
         ]
     )
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     monkeypatch.setattr(model, "client", factory)
 
     assistant, calls, content = await model.request([{"role": "user", "content": "hi"}], [])
@@ -522,7 +522,7 @@ async def test_responses_failed_mock_servers_match_across_stream_modes(tmp_path,
     streaming = ModelClient(_session(tmp_path / "stream", api="responses", model="gpt-5"))
     stream_factory = _StreamClientFactory([{"type": "response.failed", "response": terminal, "sequence_number": 1}])
     streamed = []
-    streaming.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    streaming.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     monkeypatch.setattr(streaming, "client", stream_factory)
 
     with pytest.raises(ModelError, match="Responses request failed"):
@@ -534,7 +534,7 @@ async def test_responses_failed_mock_servers_match_across_stream_modes(tmp_path,
 
     non_streaming = ModelClient(_session(tmp_path / "plain", api="responses", model="gpt-5", stream=False))
     plain_factory = _MockClientFactory([(200, terminal)])
-    non_streaming.on_stream = lambda _kind, _delta: pytest.fail("disabled stream callback was called")
+    non_streaming.hooks.on_stream = lambda _kind, _delta: pytest.fail("disabled stream callback was called")
     monkeypatch.setattr(non_streaming, "client", plain_factory)
 
     with pytest.raises(ModelError, match="Responses request failed"):

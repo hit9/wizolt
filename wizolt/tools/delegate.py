@@ -16,6 +16,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from wizolt.base import MEMORY_PREFIXES, ApprovalView, Json, LogBlock, LogLine, LogRole, ToolError, oneline, run_blocking
+from wizolt.hooks import UiHooks
 from wizolt.prompts import WORKER_PROMPT
 from wizolt.session import Session, SessionSnapshotStore
 from wizolt.tools.base import Tool
@@ -94,9 +95,9 @@ def _worker_stream(runner: ToolRunner):
     model_stream_output would have done with the forwarded kind anyway."""
 
     def stream(kind: str, text: str) -> None:
-        # Read through a local so the None check narrows: the attribute is Optional on the
-        # runner, and on_stream is only wired when it is set, but the checker cannot see that here.
-        model_stream = runner.model_stream
+        # Read through a local so the None check narrows: the field is Optional, and on_stream is
+        # only wired when it is set, but the checker cannot see that here.
+        model_stream = runner.hooks.model_stream
         if model_stream is None:
             return
         if kind == "output_done":
@@ -113,22 +114,32 @@ def _wire_worker_agent(agent: Agent, runner: ToolRunner) -> None:
     The worker session keeps its Agent between sends, while presentation belongs to the current
     ToolRunner. Rebind every time so a worker first used headlessly does not stay headless after it
     is attached to a TUI, and a detached TUI callback is never retained by a later runner.
+
+    The worker gets exactly the hooks the parent's presenter offers for a nested turn -- the
+    worker's own stream, so its thinking is labelled as the worker's, and the call-time seams it
+    shares with the parent. A hook the parent keeps to itself (the Ask selector, the approval
+    form's own state, the index pass the parent runs after the delegation) stays unset here, so
+    the worker keeps its headless default.
     """
     worker_output = _worker_output(runner)
-    agent.output_fn = runner.worker_answer or worker_output
-    agent.final_output_fn = runner.worker_answer
-    agent.model.on_stream = _worker_stream(runner) if runner.model_stream is not None else None
-    agent.model.on_retry_wait = runner.retry_wait
-    agent.model.on_builtin_call = runner.builtin_call
-    agent.context.on_compaction = runner.compaction
+    agent.output_fn = runner.hooks.worker_answer or worker_output
+    agent.final_output_fn = runner.hooks.worker_answer
+    agent.use_hooks(
+        UiHooks(
+            on_stream=_worker_stream(runner) if runner.hooks.model_stream is not None else None,
+            on_retry_wait=runner.hooks.retry_wait,
+            on_builtin_call=runner.hooks.builtin_call,
+            on_compaction=runner.hooks.compaction,
+            live_start=runner.hooks.live_start,
+            live_output=runner.hooks.live_output,
+            approval_form=runner.hooks.approval_form,
+            text_viewer=runner.hooks.text_viewer,
+            cancel_input=runner.hooks.cancel_input,
+            script_status=runner.hooks.script_status,
+        )
+    )
     agent.tools.input_fn = runner.input_fn
     agent.tools.output_fn = worker_output
-    agent.tools.live_start = runner.live_start
-    agent.tools.live_output = runner.live_output
-    agent.tools.approval_form = runner.approval_form
-    agent.tools.text_viewer = runner.text_viewer
-    agent.tools.cancel_input = runner.cancel_input
-    agent.tools.script_status = runner.script_status
 
 
 def worker_provider_config(config: Config, provider_name: str) -> ProviderConfig:
@@ -348,8 +359,8 @@ class DelegateTool(Tool):
         # full-width rule whose yellow label reads the worker's live config and a one-line order
         # summary; without a wired worker_rule, the yellow [worker] line below stands in.
         config = worker.config
-        if runner.worker_rule is not None:
-            runner.worker_rule(f"worker start · {config.active_provider}/{config.provider.model or '(no model)'} · {title or oneline(order, 60)}")
+        if runner.hooks.worker_rule is not None:
+            runner.hooks.worker_rule(f"worker start · {config.active_provider}/{config.provider.model or '(no model)'} · {title or oneline(order, 60)}")
         else:
             runner.output_fn(
                 LogBlock(
@@ -379,9 +390,9 @@ class DelegateTool(Tool):
             # its status bar know nothing about them: hand the post-turn pass its cue as the
             # delegation returns, so the index converges while the turn continues instead of at its
             # end -- and never carrying a stale marker the reader has to interpret.
-            if runner.index_freshness is not None:
+            if runner.hooks.index_freshness is not None:
                 with contextlib.suppress(Exception):  # a cancelled turn must not fail on a bookkeeping cue
-                    runner.index_freshness()
+                    runner.hooks.index_freshness()
         if failure is not None:
             # Folded to one bounded, quote-free line at the source rather than where it is read.
             # `status` renders it as an attribute of the envelope the model parses, and a provider

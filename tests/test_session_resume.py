@@ -5,8 +5,8 @@ from test_session_persistence import _resumed_transcript, log_path, read_jsonl, 
 
 from wizolt.base import SESSION_EVENT_KEY
 from wizolt.cli import CommandLoop
-from wizolt.cli.resume import ResumeRenderer
 from wizolt.cli.commands import compact
+from wizolt.cli.resume import ResumeRenderer
 from wizolt.config import ProviderConfig
 from wizolt.engine import Agent
 from wizolt.model import ModelClient

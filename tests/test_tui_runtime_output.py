@@ -458,7 +458,7 @@ async def test_stream_promotion_waits_for_the_follow_up_it_answers(tmp_path, mon
     monkeypatch.setattr(command_loop, "emit_narration", lambda text: timeline.append(("assistant", text)))
     monkeypatch.setattr(command_loop, "emit_final_answer", lambda text: timeline.append(("assistant", text)))
     monkeypatch.setattr(command_loop, "flush_queued_to_log", lambda texts: timeline.append(("user", list(texts))))
-    command_loop.agent.on_queue_flush = command_loop.flush_queued_to_log
+    command_loop.agent.hooks.on_queue_flush = command_loop.flush_queued_to_log
     command_loop.session.enqueue_user_input("also update the README")
 
     class FakeModel:

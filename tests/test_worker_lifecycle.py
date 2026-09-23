@@ -111,17 +111,17 @@ async def test_worker_agent_wires_lifecycle_callbacks(tmp_path, monkeypatch):
     retry_wait = lambda active: None
     builtin_call = lambda label, detail: None
     compaction = lambda active: None
-    runner.retry_wait = retry_wait
-    runner.builtin_call = builtin_call
-    runner.compaction = compaction
+    runner.hooks.retry_wait = retry_wait
+    runner.hooks.builtin_call = builtin_call
+    runner.hooks.compaction = compaction
 
     await _delegate_call(parent, runner, action="send", order="work")
 
     agent = parent.worker._agent
     assert agent is not None
-    assert agent.model.on_retry_wait is retry_wait
-    assert agent.model.on_builtin_call is builtin_call
-    assert agent.context.on_compaction is compaction
+    assert agent.hooks.on_retry_wait is retry_wait
+    assert agent.hooks.on_builtin_call is builtin_call
+    assert agent.hooks.on_compaction is compaction
 
     # None-guard: without injected callbacks the worker's hooks stay unset.
     parent2 = _delegate_session(tmp_path)
@@ -132,7 +132,7 @@ async def test_worker_agent_wires_lifecycle_callbacks(tmp_path, monkeypatch):
     agent2 = parent2.worker._agent
     assert getattr(agent2.model, "on_retry_wait", None) is None
     assert getattr(agent2.model, "on_builtin_call", None) is None
-    assert agent2.context.on_compaction is None
+    assert agent2.hooks.on_compaction is None
 
 
 async def test_persistent_worker_rebinds_to_the_current_runner(tmp_path, monkeypatch):
@@ -151,15 +151,15 @@ async def test_persistent_worker_rebinds_to_the_current_runner(tmp_path, monkeyp
     attached = _delegate_runner(parent)
     stream = lambda kind, text: None
     script_status = lambda active, code="": None
-    attached.model_stream = stream
-    attached.script_status = script_status
-    attached.approval_form = lambda _actions: True
+    attached.hooks.model_stream = stream
+    attached.hooks.script_status = script_status
+    attached.hooks.approval_form = lambda _actions: True
     await _delegate_call(parent, attached, action="send", order="second")
 
     assert parent.worker._agent is agent
-    assert agent.model.on_stream is not None
-    assert agent.tools.script_status is script_status
-    assert agent.tools.approval_form is attached.approval_form
+    assert agent.hooks.on_stream is not None
+    assert agent.hooks.script_status is script_status
+    assert agent.hooks.approval_form is attached.hooks.approval_form
 
 
 async def test_delegate_reset_clears_context_and_snapshot(tmp_path, monkeypatch):

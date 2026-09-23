@@ -188,7 +188,7 @@ def test_queue_flush_moves_messages_into_log(tmp_path, monkeypatch):
     s = session(tmp_path)
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda _text: None)
     # The agent's flush hook is wired to move queued messages up into the scrollback log.
-    assert loop.agent.on_queue_flush == loop.flush_queued_to_log
+    assert loop.agent.hooks.on_queue_flush == loop.flush_queued_to_log
 
     echoed = []
     monkeypatch.setattr(loop_module, "print_formatted_text", lambda value, **_kwargs: echoed.append("".join(text for _, text in value)))

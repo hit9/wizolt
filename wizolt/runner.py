@@ -9,7 +9,7 @@ import inspect
 import json
 import threading
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any, TypeVar
 
@@ -27,12 +27,12 @@ from wizolt.base import (
     oneline,
 )
 from wizolt.context import ContextManager
+from wizolt.hooks import UiHooks
 from wizolt.model import ModelClient
 from wizolt.session import Session, TurnDiff
 from wizolt.source import SourceBlock, TextBlock, ToolOutput
 from wizolt.tools import (
     TOOL_REGISTRY,
-    AskSpec,
     AskTool,
     BashTool,
     CodeIndex,
@@ -177,59 +177,18 @@ class ToolRunner:
         self.context = context
         self.input_fn = input_fn
         self.output_fn = output_fn
-        self.live_output: Callable[[str, str], None] | None = None
-        self.live_start: Callable[..., None] | None = None
-        self.worker_rule: Callable | None = None
-        # Renders the worker's interim and final model text like an agent answer (markdown), wired by the loop;
-        # None lets the worker publish it through its ordinary output channel (headless).
-        self.worker_answer: Callable[[str], None] | None = None
-        self.question_fn: Callable[[list[AskSpec]], Awaitable[list[str]]] | None = None
-        # Injected by CommandLoop: drives the Delegate confirm-time `c` config loop through the
-        # shared choice selector (see CommandLoop.run_worker_config). None degrades the `c` key to
-        # printing the current worker config only (headless / non-CommandLoop runners).
-        self.worker_config_picker: Callable[[], Awaitable[None] | None] | None = None
-        # Injected by CommandLoop: opens a read-only viewer for the text behind a confirmation --
-        # a Delegate order, a ToolScript body -- for the confirm-time `v`/`view` key (see
-        # cli.modals.approval_text_viewer). None degrades the `v` key to printing the whole text
-        # (headless / non-CommandLoop runners). The return value is the viewer's close signal and is
-        # discarded here; the Ctrl-O browser's reopen loop reads it on its own.
-        self.text_viewer: Callable[[ApprovalView], Awaitable[object] | object] | None = None
+        # The presentation seam: every optional callback the loop injects, in one typed object
+        # (see wizolt.hooks). A field left None keeps this runner's headless default.
+        self.hooks = UiHooks()
         # How many enclosing tool calls are running the calls being logged right now. Nested calls
         # (a ToolScript's call()) are printed one level deeper per enclosing call, so the log shows
         # who made them; see nested().
         self.nesting = 0
-        # Injected by CommandLoop: offers the next approval prompt's actions as a selectable row,
-        # and reports whether it took (see TuiApp.set_approval_form). None, or a False return, means
-        # the answer has to be typed out -- headless runs, piped stdin.
-        self.approval_form: Callable[[list[tuple[str, str]]], bool] | None = None
-        # Injected by CommandLoop for the Delegate worker: ModelClient only streams when on_stream
-        # is set, so an unwired worker would run unstreamed and its thinking would stay invisible.
-        self.model_stream: Callable[[str, str], None] | None = None
-        # Injected by CommandLoop: lifecycle callbacks the worker agent must see, so retry backoff,
-        # provider-side builtin calls, and automatic compaction of the worker show up in the parent
-        # TUI exactly as they do for the main agent. None degrades to the default (unstreamed,
-        # unlogged) behavior for headless runners.
-        self.retry_wait: Callable[[bool], None] | None = None
-        self.builtin_call: Callable[[str, str], None] | None = None
-        self.compaction: Callable[[bool, str], None] | None = None
-        # The post-turn code-index freshness pass, owned by the CLI loop. A delegation reads it to
-        # hand its own changes back to the parent's drift check; None (headless, or a runner outside
-        # CommandLoop) simply means no check is scheduled.
-        self.index_freshness: Callable[[], None] | None = None
-        # Injected by CommandLoop: a ToolScript body is the one stretch of a turn where nothing is
-        # streaming and no single tool line is pending, so the divider would otherwise sit on
-        # "working" for the whole batch. The source rides along so Ctrl-O can offer the script
-        # while it runs. None degrades to no phase label (headless runners).
-        self.script_status: Callable[[bool, str], None] | None = None
         # The client behind explicit ViewImage vision requests, owned
         # here so cancel() reaches the in-flight request. Created lazily -- most sessions never
         # bridge an image tool call -- and shared across calls, since tool calls never overlap a
         # main-model request. See vision_client().
         self._vision_client: ModelClient | None = None
-        # Injected by CommandLoop: resolves a pending TUI approval/Ask prompt with "cancelled", so
-        # a worker parked on the user can be unblocked when the turn is cancelled. None (headless,
-        # piped stdin) means the injected input function owns its own unblocking.
-        self.cancel_input: Callable[[], None] | None = None
         # Loop-bound state for one run() invocation. Never reused across invocations: a
         # semaphore belongs to the loop that created it, and this runner outlives any single loop.
         self._capacity: asyncio.Semaphore | None = None
@@ -289,11 +248,11 @@ class ToolRunner:
 
         with contextlib.suppress(Exception):
             tool.request_stop()
-        if isinstance(tool, AskTool) and self.cancel_input is not None:
+        if isinstance(tool, AskTool) and self.hooks.cancel_input is not None:
             # A worker parked on the user answers nothing on its own: resolve the prompt as
             # cancelled so it returns, which `Ask` reads as a dismissal.
             with contextlib.suppress(Exception):
-                self.cancel_input()
+                self.hooks.cancel_input()
 
     @contextlib.asynccontextmanager
     async def _bounded(self):
@@ -708,11 +667,11 @@ class ToolRunner:
             return "failed", self.reject(call, f"ToolError: {call.error}", d=ToolDisplay(batch_suffix=batch_suffix)), None
         tool = tool_class(self.session, call.args)
         if isinstance(tool, (BashTool, JobTool)):
-            tool.live_output = self.live_output
+            tool.live_output = self.hooks.live_output
         started = time.monotonic()
         d = ToolDisplay(batch_suffix=batch_suffix)
         if isinstance(tool, AskTool):
-            tool.question_fn = self.question_fn
+            tool.question_fn = self.hooks.question_fn
         try:
             d.display = tooloutput.short_call(self.session, call, tool.short_args())
             if plan_error:
@@ -742,7 +701,7 @@ class ToolRunner:
                     output = "Cancelled: user refused tool call" + ((": " + reason) if reason else "")
                     return "refused", await self.finish(call, output, failed=True, elapsed=time.monotonic() - started, d=d), None
                 d.approved = True
-            if isinstance(tool, BashTool) and self.live_start is not None:
+            if isinstance(tool, BashTool) and self.hooks.live_start is not None:
                 if not d.nested_display:
                     self.emit(
                         LogBlock.hierarchy(
@@ -750,8 +709,8 @@ class ToolRunner:
                         )
                     )
                     d.nested_display = True
-                self.live_start()
-            elif isinstance(tool, JobTool) and tool.blocks_agent() and self.live_start is not None:
+                self.hooks.live_start()
+            elif isinstance(tool, JobTool) and tool.blocks_agent() and self.hooks.live_start is not None:
                 # A blocking Job wait streams the job's log into the same live preview as Bash, so
                 # it draws the root line up front and hands the preview the wait budget for the
                 # countdown, exactly like Bash's pre-block.
@@ -762,7 +721,7 @@ class ToolRunner:
                         )
                     )
                     d.nested_display = True
-                self.live_start(tool.wait_budget(tool.payload()))
+                self.hooks.live_start(tool.wait_budget(tool.payload()))
             elif tool.blocks_agent() and not d.nested_display:
                 # A blocking call with no live preview wired up (e.g. headless, or a Job wait
                 # outside the runner) still prints its call line now -- as a leaf the finish block
@@ -854,7 +813,7 @@ class ToolRunner:
                 round=self.session.state.round_count,
             )
         if not (tool_class is not None and tool_class.SILENT) or failed:
-            self.emit(toolblocks.finish_display(self.session, call, key, model_text, failed=failed, elapsed=elapsed, d=d, worker_rule=self.worker_rule))
+            self.emit(toolblocks.finish_display(self.session, call, key, model_text, failed=failed, elapsed=elapsed, d=d, worker_rule=self.hooks.worker_rule))
         return self.tool_message(call, key, model_text, failed=failed, display=d.display, bound=bound, artifact_path=artifact_path)
 
     async def _source_output(self, call: ToolCall, tool_output: ToolOutput, *, retain: bool) -> tuple[str, str]:
@@ -987,7 +946,7 @@ class ToolRunner:
     def declare_approval_form(self, actions: list[tuple[str, str]]) -> bool:
         """Offer the actions to the TUI as a selectable row; report whether it took them. False
         (headless, piped stdin) sends the brief back to printing the typed legend."""
-        return self.approval_form is not None and self.approval_form(actions)
+        return self.hooks.approval_form is not None and self.hooks.approval_form(actions)
 
     async def delegate_config_cycle(self) -> None:
         """The `c` action of a Delegate send prompt: hand the interactive editing to the injected
@@ -999,8 +958,8 @@ class ToolRunner:
         The approval brief above keeps its original rows, so the two together read as a change.
         Without an injected picker (headless, or a runner outside CommandLoop) this just prints the
         current values; the confirmation prompt re-asks either way."""
-        if self.worker_config_picker is not None:
-            result = self.worker_config_picker()
+        if self.hooks.worker_config_picker is not None:
+            result = self.hooks.worker_config_picker()
             if inspect.isawaitable(result):
                 await result
         self.emit(toolblocks.worker_config_block(self.session))
@@ -1009,8 +968,8 @@ class ToolRunner:
         """The `v` action of a confirmation prompt: open a read-only viewer with the full,
         untruncated text behind the call. Without an injected viewer (headless, or a runner outside
         CommandLoop) this prints the whole thing; the confirmation prompt re-asks either way."""
-        if self.text_viewer is not None:
-            result = self.text_viewer(view)
+        if self.hooks.text_viewer is not None:
+            result = self.hooks.text_viewer(view)
             if inspect.isawaitable(result):
                 await result
         else:

@@ -102,7 +102,6 @@ async def test_agent_recovers_after_five_textual_tool_corrections_that_stack_in_
     class Model:
         def __init__(self):
             self.requests = []
-            self.on_stream = lambda kind, text: statuses.append((kind, text))
 
         async def request(self, messages, tools=None):
             self.requests.append(messages)
@@ -113,6 +112,8 @@ async def test_agent_recovers_after_five_textual_tool_corrections_that_stack_in_
             return {"role": "assistant", "content": "done"}, [], "done"
 
     agent.model = Model()
+    # The correction progress rides the agent's stream hook, which a real agent shares with its model.
+    agent.hooks.on_stream = lambda kind, text: statuses.append((kind, text))
 
     assert await agent.run("continue") == "done"
     assert len(agent.model.requests) == engine_module.MAX_TEXTUAL_TOOL_CORRECTIONS + 1

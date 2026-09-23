@@ -80,7 +80,7 @@ class Compactor:
     ) -> bool:
         if not compacted:
             return False
-        on_compaction = self.ctx.on_compaction
+        on_compaction = self.ctx.hooks.on_compaction
         if on_compaction is not None:
             on_compaction(True, "")
         error_detail = ""

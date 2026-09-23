@@ -99,10 +99,10 @@ async def test_worker_model_stream_is_wired_from_the_runner(tmp_path, monkeypatc
     monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
     runner = _delegate_runner(parent)
     calls = []
-    runner.model_stream = lambda kind, text: calls.append((kind, text))
+    runner.hooks.model_stream = lambda kind, text: calls.append((kind, text))
     await _delegate_call(parent, runner, action="send", order="o")
-    on_stream = parent.worker._agent.model.on_stream
-    assert on_stream is not runner.model_stream  # wrapped: `output_done` must not promote
+    on_stream = parent.worker._agent.hooks.on_stream
+    assert on_stream is not runner.hooks.model_stream  # wrapped: `output_done` must not promote
     assert callable(on_stream)
     on_stream("output", "x")
     on_stream("output_done", "t")
@@ -119,14 +119,14 @@ async def test_worker_stream_updates_parent_thinking_and_status_while_request_is
 
     class StreamingModel(FakeModelClient):
         async def request(self, messages, request_tools=None):
-            self.on_stream("reasoning", "checking the worker task")
+            self.hooks.on_stream("reasoning", "checking the worker task")
             observed.append(
                 (
                     "".join(text for _, text in loop.view.model_stream_fragments()),
                     "".join(text for _, text in loop.view.queue_divider_fragments()),
                 )
             )
-            self.on_stream("output", "writing the result")
+            self.hooks.on_stream("output", "writing the result")
             observed.append(
                 (
                     "".join(text for _, text in loop.view.model_stream_fragments()),
@@ -270,7 +270,7 @@ async def test_worker_interim_model_text_routes_to_worker_answer_when_wired(tmp_
     answer_outputs = []
     append_answer = answer_outputs.append
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=log_outputs.append)
-    runner.worker_answer = append_answer
+    runner.hooks.worker_answer = append_answer
 
     await _delegate_call(parent, runner, action="send", order="o")
 

@@ -174,7 +174,7 @@ async def test_delegate_config_cycle_changes_worker_knobs_and_refreshes_live_wor
         return next(answers)
 
     runner = ToolRunner(parent, ContextManager(parent), input_fn=input_fn, output_fn=outputs.append)
-    runner.worker_config_picker = lambda: calls.append(1) or picker()
+    runner.hooks.worker_config_picker = lambda: calls.append(1) or picker()
     confirmed, reason = await runner.confirm(
         ToolCall("delegate-1", "Delegate", [{"action": "send", "order": "o"}]), DelegateTool(parent, [{"action": "send", "order": "o"}])
     )
@@ -223,7 +223,7 @@ async def test_delegate_view_opens_viewer_then_approves(tmp_path):
     seen = []
     answers = iter(["v", "y"])
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda prompt: next(answers), output_fn=lambda text: None)
-    runner.text_viewer = lambda view: seen.append((view.text, view.rows))
+    runner.hooks.text_viewer = lambda view: seen.append((view.text, view.rows))
     confirmed, reason = await runner.confirm(ToolCall("delegate-1", "Delegate", [args]), DelegateTool(parent, [args]))
     assert (confirmed, reason) == (True, "")
     assert len(seen) == 1  # the `v` key opened the viewer exactly once
@@ -249,8 +249,8 @@ async def test_delegate_view_reflects_a_worker_config_changed_by_c(tmp_path):
     seen = []
     answers = iter(["c", "v", "y"])
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda prompt: next(answers), output_fn=lambda text: None)
-    runner.text_viewer = lambda view: seen.append(dict(view.rows))
-    runner.worker_config_picker = lambda: setattr(parent.config, "worker_model", "chosen-in-the-c-cycle")
+    runner.hooks.text_viewer = lambda view: seen.append(dict(view.rows))
+    runner.hooks.worker_config_picker = lambda: setattr(parent.config, "worker_model", "chosen-in-the-c-cycle")
 
     confirmed, _ = await runner.confirm(ToolCall("delegate-1", "Delegate", [args]), DelegateTool(parent, [args]))
 
@@ -290,7 +290,7 @@ async def test_delegate_view_empty_order_is_noop(tmp_path):
     outputs = []
     answers = iter(["v", "y"])
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda prompt: next(answers), output_fn=outputs.append)
-    runner.text_viewer = lambda view: seen.append((view.text, view.rows))
+    runner.hooks.text_viewer = lambda view: seen.append((view.text, view.rows))
     confirmed, reason = await runner.confirm(ToolCall("delegate-1", "Delegate", [args]), DelegateTool(parent, [args]))
     # Nothing to view, so `v` is not an action here and falls through to the one thing any other
     # unrecognized line means at this prompt: a refusal carrying what was typed as its reason.
@@ -343,7 +343,7 @@ async def test_approval_brief_prints_once_however_many_side_trips(tmp_path):
     answers = iter(["v", "c", "v", "y"])
     outputs, prompts = [], []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda prompt: prompts.append(prompt) or next(answers), output_fn=outputs.append)
-    runner.text_viewer = lambda view: None
+    runner.hooks.text_viewer = lambda view: None
     confirmed, _ = await runner.confirm(ToolCall("delegate-1", "Delegate", [args]), DelegateTool(parent, [args]))
 
     assert confirmed is True
@@ -362,7 +362,7 @@ async def test_approval_form_actions_offered_per_tool_and_only_where_they_work(t
     parent = _delegate_session(tmp_path)
     declared = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda prompt: "y", output_fn=lambda text: None)
-    runner.approval_form = lambda actions: bool(declared.append(list(actions))) or True
+    runner.hooks.approval_form = lambda actions: bool(declared.append(list(actions))) or True
 
     # Approve is first because it is the default; Refuse is last because Escape already refuses in
     # one key, while every Tab spent reaching View order is a key the user actually presses.
@@ -385,7 +385,7 @@ async def test_approval_form_actions_offered_per_tool_and_only_where_they_work(t
     assert [len(actions) for actions in declared] == [4, 3, 2]
 
     # Headless: nothing is wired, so nothing is claimed and the typed protocol is what is offered.
-    runner.approval_form = None
+    runner.hooks.approval_form = None
     assert runner.declare_approval_form(send_actions) is False
     assert toolblocks.approval_prompt(True, []) == "Approve delegation? [Y/n/c] "
     assert toolblocks.approval_prompt(False, []) == "Approve? [Y/n or reason] "
@@ -394,8 +394,8 @@ async def test_approval_form_actions_offered_per_tool_and_only_where_they_work(t
     # Every action's answer is a line confirm() already understands, so the two paths cannot drift.
     for _, answer in [("Approve", ""), ("View order", "v"), ("Worker config", "c"), ("Refuse", "n")]:
         typed = ToolRunner(parent, ContextManager(parent), input_fn=lambda prompt, a=answer: a, output_fn=lambda text: None)
-        typed.text_viewer = lambda view: None
-        typed.worker_config_picker = lambda: None
+        typed.hooks.text_viewer = lambda view: None
+        typed.hooks.worker_config_picker = lambda: None
         if answer in {"v", "c"}:
             continue  # these re-ask forever against a constant input_fn; covered by the side-trip test
         assert await typed.confirm(ToolCall("bash-1", "Bash", ["rm -rf build"]), bash) == ((True, "") if answer == "" else (False, ""))

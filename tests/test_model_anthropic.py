@@ -14,7 +14,7 @@ async def test_anthropic_request_success(tmp_path, monkeypatch):
     s = _session(tmp_path, model="claude-3", api="anthropic", stream=False)
     model = ModelClient(s)
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     factory = _AnthropicMockClientFactory(
         [
             (
@@ -151,7 +151,7 @@ async def test_anthropic_stream_reports_thinking_and_text(tmp_path, monkeypatch)
         ]
     )
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     monkeypatch.setattr(model, "anthropic_client", factory)
 
     assistant, calls, content = await model.wire(model.session.config.provider).request([{"role": "user", "content": "hi"}], None)
@@ -184,7 +184,7 @@ async def test_anthropic_stream_promotes_when_tool_precedes_completed_text(tmp_p
 
 
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     client = SimpleNamespace(messages=SimpleNamespace(stream=lambda **_params: AsyncStreamContext(events)))
 
     await model.wire(model.session.config.provider)._stream(client, {})
@@ -207,8 +207,8 @@ async def test_anthropic_stream_promotes_completed_text_before_server_tool(tmp_p
 
 
     timeline = []
-    model.on_stream = lambda kind, delta: timeline.append((kind, delta))
-    model.on_builtin_call = lambda label, detail: timeline.append(("builtin", label, detail))
+    model.hooks.on_stream = lambda kind, delta: timeline.append((kind, delta))
+    model.hooks.on_builtin_call = lambda label, detail: timeline.append(("builtin", label, detail))
     client = SimpleNamespace(messages=SimpleNamespace(stream=lambda **_params: AsyncStreamContext(events)))
 
     await model.wire(model.session.config.provider)._stream(client, {})
@@ -233,7 +233,7 @@ async def test_anthropic_stream_promotes_server_tool_first_text_at_block_complet
 
 
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     client = SimpleNamespace(messages=SimpleNamespace(stream=lambda **_params: AsyncStreamContext(events)))
 
     await model.wire(model.session.config.provider)._stream(client, {})

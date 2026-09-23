@@ -7,7 +7,7 @@ import contextlib
 import inspect
 import json
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 
 from wizolt.base import (
     IMAGE_ROUTE_TEXT_ONLY_STATIC,
@@ -25,6 +25,7 @@ from wizolt.base import (
     oneline,
 )
 from wizolt.context import ContextManager
+from wizolt.hooks import UiHooks
 from wizolt.image import ImageInputs, UserInput
 from wizolt.model import ModelClient, PreparedRequest, resilience
 from wizolt.prompts import (
@@ -84,29 +85,29 @@ class Agent:
         # observation). Cleared when a request is accepted; used to decide 400 eligibility and to
         # observe exactly the current occurrences, never older accepted history.
         self._current_image_messages: list[Json] = []
-        # Presentation hook for image-routing notices (one gray block per text-only delivery
-        # decision: a reason root line plus an optional described-by child). Wired by the CLI;
-        # never enters model context.
-        self.on_image_route_notice: Callable[[ImageRouteNotice], None] | None = None
-        self.on_context_reset: Callable[[str], None] | None = None
-        # Presentation hook fired once after each tool batch's calls have run and their output is
-        # out, reporting whether the batch spoke (carried text) so silent runs can be told from
-        # voiced ones. A fact, not a decision: whether that boundary is worth drawing anything is
-        # the view's to judge. Wired by the CLI; never enters model context.
-        self.on_tool_batch: Callable[[bool], None] | None = None
-        # Awaited between a promoted response and the tool batch that follows it, so the answer is
-        # already permanent scrollback when the batch starts writing under it. Wired by the CLI to
-        # its ordered output queue; without one there is no queue to be ahead of.
-        self.output_barrier: Callable[[], Awaitable[None]] | None = None
+        # The presentation seam: this agent's own reports, plus the model's, the context's and the
+        # tools'. One instance, shared by use_hooks below, so the CLI wires it once and every layer
+        # reads the same object (see wizolt.hooks). A field left None keeps that layer's headless
+        # default.
+        self.use_hooks(UiHooks())
         # Sources the provider's own search reported during the last turn, in the order they appeared.
         # The UI renders them under the answer; the turn's stored messages are left untouched.
         self.turn_sources: list[Json] = []
         # Set when the last run ended because max_steps ran out (not because the model answered).
         # Runtime fact for callers like the Delegate tool; never derived from the answer's wording.
         self.stopped_at_max_steps = False
-        # Called with the queued messages when they are flushed into the turn, so the UI can move
-        # them from the live queue region up into the scrollback log. Set by CommandLoop.
-        self.on_queue_flush: Callable[[list[str]], None] | None = None
+
+    def use_hooks(self, hooks: UiHooks) -> None:
+        """Install the presentation seam on this agent and every layer it owns.
+
+        The one place the sharing is spelled out: assigning `agent.hooks` alone would leave the
+        model, context, and tools reporting into the previous object, which is exactly the bug a
+        second caller (the Delegate worker rebind) would hit.
+        """
+        self.hooks = hooks
+        self.model.hooks = hooks
+        self.context.hooks = hooks
+        self.tools.hooks = hooks
 
     def cancel(self) -> None:
         """Request cancellation of the turn in flight. Safe from a TUI callback on any thread.
@@ -296,8 +297,8 @@ class Agent:
                 tool_batches += 1
                 await self.await_output_barrier()
                 tool_messages = await self.tools.run(tool_calls, batch_suffix=f"·{tool_batches}" if tool_batches > 1 else "")
-                if self.on_tool_batch is not None:
-                    self.on_tool_batch(not content.strip())
+                if self.hooks.on_tool_batch is not None:
+                    self.hooks.on_tool_batch(not content.strip())
                 turn_messages.extend(tool_messages)
                 # ViewImage observations produced by this batch are current image occurrences for
                 # the next main-model request; their refs feed the 400-eligibility check and the
@@ -402,8 +403,8 @@ class Agent:
         A promoted response and the output of the batch that follows it are two producers of the
         same scrollback; without this the batch's first line can land above the answer it follows."""
 
-        if self.output_barrier is not None:
-            await self.output_barrier()
+        if self.hooks.output_barrier is not None:
+            await self.hooks.output_barrier()
 
     def record_sources(self, assistant: Json) -> None:
         """Accumulate provider-side search sources across every request the turn makes.
@@ -437,7 +438,7 @@ class Agent:
     def apply_context_reset(self) -> None:
         """Publish the transcript-only notice after the session has applied the reset."""
         if self.session.apply_context_reset():
-            (self.on_context_reset or self.output_fn)(self.session.transcript_messages[-1]["content"])
+            (self.hooks.on_context_reset or self.output_fn)(self.session.transcript_messages[-1]["content"])
 
     def terminal_next_hints(self, tool_calls: list[ToolCall]) -> bool:
         """True when a batch is nothing but NextHints calls — a terminal batch that ends the turn."""
@@ -475,8 +476,8 @@ class Agent:
         batches = tool_batches + 1
         await self.await_output_barrier()
         result_messages = await self.tools.run(tool_calls, batch_suffix=f"\u00b7{batches}" if batches > 1 else "")
-        if self.on_tool_batch is not None:
-            self.on_tool_batch(not answer)
+        if self.hooks.on_tool_batch is not None:
+            self.hooks.on_tool_batch(not answer)
         turn_messages.extend(result_messages)
         transcript_messages.extend(SessionSnapshotCodec.transcript_messages(result_messages))
         self.raise_if_cancelled()
@@ -647,8 +648,8 @@ class Agent:
     def _emit_image_route_notice(self, notice: ImageRouteNotice) -> None:
         """Publish one gray, non-model routing notice; never enters model context."""
 
-        if self.on_image_route_notice is not None:
-            self.on_image_route_notice(notice)
+        if self.hooks.on_image_route_notice is not None:
+            self.hooks.on_image_route_notice(notice)
 
     def _vision_entry_label(self) -> str:
         """The `[vision]` entry label shown in routing notices, matching ViewImage's rendering."""
@@ -716,8 +717,8 @@ class Agent:
         if len(names) >= MAX_TEXTUAL_TOOL_CORRECTIONS:
             raise self.malformed_tool_call_error([*names, name])
         names.append(name)
-        on_stream = getattr(self.model, "on_stream", None)
-        if callable(on_stream):
+        on_stream = self.hooks.on_stream
+        if on_stream is not None:
             on_stream(f"correcting malformed tool call {len(names)}/{MAX_TEXTUAL_TOOL_CORRECTIONS} · {name}", "")
 
     @staticmethod
@@ -757,8 +758,8 @@ class Agent:
         turn_messages[:] = prepared_turn_messages
         transcript_messages.extend(SessionSnapshotCodec.transcript_messages(messages))
         self.session.acknowledge_user_inputs(pending)
-        if self.on_queue_flush:
-            self.on_queue_flush(texts)
+        if self.hooks.on_queue_flush:
+            self.hooks.on_queue_flush(texts)
 
     @staticmethod
     def assistant_turn_message(assistant: Json, tool_calls: list[ToolCall], content: str) -> Json:

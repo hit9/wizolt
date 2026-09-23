@@ -7,6 +7,7 @@ from agent_harness import session
 from test_worker_handoff import FakeModelClient, _delegate_call, _delegate_runner, _delegate_session, _worker_history_for_compaction
 
 from wizolt.cli.worker import worker_command
+from wizolt.hooks import UiHooks
 from wizolt.prompts import WORKER_PROMPT
 from wizolt.session import Session
 
@@ -303,7 +304,7 @@ async def test_delegate_send_finish_worker_rule_label_and_preview(tmp_path, monk
     outputs = []
     labels = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=outputs.append)
-    runner.worker_rule = lambda label: labels.append(label)
+    runner.hooks.worker_rule = lambda label: labels.append(label)
     status, _, _ = await runner.run_one(ToolCall("delegate-1", "Delegate", [{"action": "send", "order": "o"}]))
     assert status == "ok"
 
@@ -331,7 +332,7 @@ async def test_delegate_send_finish_worker_rule_label_carries_title(tmp_path, mo
     monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
     labels = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
-    runner.worker_rule = lambda label: labels.append(label)
+    runner.hooks.worker_rule = lambda label: labels.append(label)
     status, _, _ = await runner.run_one(ToolCall("delegate-1", "Delegate", [{"action": "send", "order": "o", "title": "fix /status blank line"}]))
     assert status == "ok"
 
@@ -380,7 +381,7 @@ async def test_delegate_send_routes_the_final_report_through_worker_answer(tmp_p
     answers = []
     outputs = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=outputs.append)
-    runner.worker_answer = answers.append
+    runner.hooks.worker_answer = answers.append
     status, _, _ = await runner.run_one(ToolCall("delegate-1", "Delegate", [{"action": "send", "order": "o"}]))
     assert status == "ok"
 
@@ -427,7 +428,7 @@ async def test_delegate_reset_finish_worker_rule_label(tmp_path):
     outputs = []
     labels = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=outputs.append)
-    runner.worker_rule = lambda label: labels.append(label)
+    runner.hooks.worker_rule = lambda label: labels.append(label)
 
     status, _, _ = await runner.run_one(ToolCall("delegate-r", "Delegate", [{"action": "reset"}]))
     assert status == "ok"
@@ -449,7 +450,7 @@ async def test_worker_stream_forwards_output_and_suppresses_output_done_promote(
 
     class StubRunner:
         def __init__(self):
-            self.model_stream = lambda kind, text: calls.append((kind, text))
+            self.hooks = UiHooks(model_stream=lambda kind, text: calls.append((kind, text)))
 
     stream = _worker_stream(StubRunner())
 
@@ -477,7 +478,7 @@ async def test_worker_compaction_triggers_on_budget_overrun(tmp_path, monkeypatc
     worker = _worker_history_for_compaction(parent)
 
     calls = []
-    worker._agent.context.on_compaction = lambda active, _error: calls.append(active)
+    worker._agent.context.hooks.on_compaction = lambda active, _error: calls.append(active)
     messages = await worker._agent.context.prepare_messages(worker._agent.model, WORKER_PROMPT, turn_messages=None)
     # One compaction, with the lifecycle callback bracketing the phase (True then False).
     assert worker.state.compaction_count == 1
@@ -529,7 +530,7 @@ async def test_worker_compaction_persists_and_flows_into_next_delegation(tmp_pat
     # Continuity: the next delegation runs on the compacted context (summary in, oversized
     # history out) and does not re-compact.
     calls = []
-    worker._agent.context.on_compaction = lambda active, _error: calls.append(active)
+    worker._agent.context.hooks.on_compaction = lambda active, _error: calls.append(active)
     await _delegate_call(parent, runner, action="send", order="order two")
     assert calls == []
     assert worker.state.compaction_count == 1

@@ -36,6 +36,7 @@ from wizolt.base import (
     builtin_tool_label,
 )
 from wizolt.config import ProviderConfig
+from wizolt.hooks import UiHooks
 from wizolt.image import IMAGE_REFS_KEY, ImageInputs
 from wizolt.model import resilience, responses
 from wizolt.model.protocol import AnthropicWire, ChatWire, ResponsesWire, WireProtocol
@@ -147,15 +148,9 @@ class ModelClient:
         # True once /resend has claimed the current attempt. A claimed attempt can no longer
         # publish a result, even if the provider answered in the race before cancellation ran.
         self._attempt_claimed = False
-        self.on_stream: Callable[[str, str], None] | None = None
-        # Called with (label, detail) for each provider-side tool call a response reports. Reported
-        # from the parsed result rather than the stream, so a search is logged the same way when
-        # streaming is off and on a frontend that shows no live status at all.
-        self.on_builtin_call: Callable[[str, str], None] | None = None
-        # Lifecycle hook, mirroring ContextManager.on_compaction: True while a retry backoff wait is in
-        # progress, False in a finally block. Lets the orchestration label the phase without model
-        # depending on a renderer.
-        self.on_retry_wait: Callable[[bool], None] | None = None
+        # The presentation seam (see wizolt.hooks). An agent shares its own instance with this
+        # client, so on_stream, on_builtin_call and on_retry_wait are wired where the rest are.
+        self.hooks = UiHooks()
         # The effective model the last compaction summary ran on; "" when the last compaction fell
         # back to deterministic trimming or never ran. Recorded on the HistorySegment by callers.
         self.last_compaction_model = ""
@@ -434,7 +429,7 @@ class ModelClient:
         renderer formats it) and the on_retry_wait phase hook. The retry decision is unchanged (see
         retryable_error); only the pacing is here. The sleep is an ordinary cancellable await, so a
         turn cancelled during a backoff ends here rather than after the deadline."""
-        on_retry_wait = self.on_retry_wait
+        on_retry_wait = self.hooks.on_retry_wait
         if on_retry_wait is not None:
             on_retry_wait(True)
         try:
@@ -542,8 +537,8 @@ class ModelClient:
         if not state.stream_started_at:
             state.stream_started_at = time.monotonic()
         state.stream_chars += len(delta)
-        if self.on_stream is not None:
-            self._request_callback(lambda: self.on_stream(kind, delta) if self.on_stream is not None else None)
+        if self.hooks.on_stream is not None:
+            self._request_callback(lambda: self.hooks.on_stream(kind, delta) if self.hooks.on_stream is not None else None)
 
     @classmethod
     def parse_json_object(cls, text: str) -> Json:
@@ -613,10 +608,10 @@ class ModelClient:
         )
 
     def report_builtin_call(self, name: str, detail: object) -> None:
-        if self.on_builtin_call is not None:
+        if self.hooks.on_builtin_call is not None:
             label = builtin_tool_label(name)
             text = str(detail or "").strip()
-            self._request_callback(lambda: self.on_builtin_call(label, text) if self.on_builtin_call is not None else None)
+            self._request_callback(lambda: self.hooks.on_builtin_call(label, text) if self.hooks.on_builtin_call is not None else None)
 
     @staticmethod
     def collect_sources(*groups: Any) -> list[Json]:

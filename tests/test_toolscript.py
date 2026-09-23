@@ -441,7 +441,7 @@ class TestConfirmationBlockShowsScript:
         tool = ToolScript(s, [{"action": "call", "code": code}])
         assert ("View script", "v") in toolblocks.approval_actions(tool, False)
         views = []
-        runner.text_viewer = views.append
+        runner.hooks.text_viewer = views.append
         replies = iter(["v", "y"])
         runner.input_fn = lambda _prompt: next(replies)
         confirmed, _ = await runner.confirm(ToolCall("ts-1", "ToolScript", tool.args), tool)

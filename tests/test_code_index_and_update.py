@@ -178,7 +178,7 @@ def test_schedule_index_freshness_is_the_runner_cue(tmp_path):
     s = session(tmp_path)
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
 
-    assert loop.agent.tools.index_freshness == loop.schedule_index_freshness
+    assert loop.agent.hooks.index_freshness == loop.schedule_index_freshness
 
 
 async def test_code_index_sync_uses_python_api_and_updates_status(tmp_path, monkeypatch):

@@ -37,7 +37,7 @@ Modules (dependencies point downward only):
                   |
               image.py                     image storage and model projection
                   |
-   base.py   config.py   providers/compat.py  value types, settings, policy
+   base.py  hooks.py  config.py  providers/compat.py   value types, the presentation seam, settings, policy
                   |
             providers/catalog.py           evidence-backed compatibility data
 ```

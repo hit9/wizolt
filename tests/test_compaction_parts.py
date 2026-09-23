@@ -175,7 +175,7 @@ async def test_interrupted_current_turn_compaction_falls_back_before_cancelling(
     context = ContextManager(s)
     turn = [{"role": "user", "content": "request"}, *({"role": "assistant", "content": f"step {index}"} for index in range(20))]
     phases = []
-    context.on_compaction = lambda active, error: phases.append((active, error))
+    context.hooks.on_compaction = lambda active, error: phases.append((active, error))
 
     class InterruptedModel:
         def __init__(self, session):
@@ -234,7 +234,7 @@ async def test_prepare_messages_skips_compaction_when_context_under_budget(tmp_p
     s.messages = [{"role": "user", "content": "old"}, {"role": "assistant", "content": "answer"}]
     context = ContextManager(s)
     compaction_phases = []
-    context.on_compaction = lambda active, _error: compaction_phases.append(active)
+    context.hooks.on_compaction = lambda active, _error: compaction_phases.append(active)
 
     class ExplodingModel:
         def compact(self, text, *_args, **_kwargs):

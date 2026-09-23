@@ -18,7 +18,7 @@ async def test_responses_stream_reports_a_search_in_progress(tmp_path, monkeypat
     s = _session(tmp_path, api="responses", model="gpt-5")
     model = ModelClient(s)
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     events = [
         {"type": "response.output_item.added", "item": {"id": "ws_1", "type": "web_search_call", "status": "in_progress"}},
         {"type": "response.output_text.delta", "delta": "sunny"},
@@ -45,8 +45,8 @@ async def test_responses_stream_reports_a_search_the_terminal_output_drops(tmp_p
     model = ModelClient(s)
     reported = []
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
-    model.on_builtin_call = lambda label, detail: reported.append((label, detail))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_builtin_call = lambda label, detail: reported.append((label, detail))
     events = [
         {"type": "response.output_item.added", "item": {"id": "ws_1", "type": "web_search_call", "status": "in_progress"}},
         {
@@ -78,8 +78,8 @@ async def test_responses_stream_reports_a_search_once_when_the_terminal_output_k
     s = _session(tmp_path, api="responses", model="gpt-5", builtin_tools=(WEB_SEARCH,))
     model = ModelClient(s)
     reported = []
-    model.on_stream = lambda kind, delta: None
-    model.on_builtin_call = lambda label, detail: reported.append((label, detail))
+    model.hooks.on_stream = lambda kind, delta: None
+    model.hooks.on_builtin_call = lambda label, detail: reported.append((label, detail))
     call = {"id": "ws_1", "type": "web_search_call", "status": "completed", "action": {"type": "search", "query": "httpx timeout"}}
     events = [
         {"type": "response.output_item.added", "item": {"id": "ws_1", "type": "web_search_call", "status": "in_progress"}},
@@ -105,8 +105,8 @@ async def test_responses_stream_does_not_double_an_id_less_call_the_terminal_out
     s = _session(tmp_path, api="responses", model="gpt-5", builtin_tools=(WEB_SEARCH,))
     model = ModelClient(s)
     reported = []
-    model.on_stream = lambda kind, delta: None
-    model.on_builtin_call = lambda label, detail: reported.append((label, detail))
+    model.hooks.on_stream = lambda kind, delta: None
+    model.hooks.on_builtin_call = lambda label, detail: reported.append((label, detail))
     call = {"type": "web_search_call", "status": "completed", "action": {"type": "search", "query": "missing id"}}
     events = [
         {"type": "response.output_item.added", "item": {**call, "status": "in_progress"}},
@@ -129,7 +129,7 @@ async def test_anthropic_stream_reports_a_search_in_progress(tmp_path, monkeypat
     s = _session(tmp_path, model="claude-3", api="anthropic")
     model = ModelClient(s)
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     message = {
         "id": "m",
         "type": "message",
@@ -168,8 +168,8 @@ async def test_anthropic_stream_reports_a_search_live_before_the_stream_ends(tmp
     s = _session(tmp_path, model="claude-3", api="anthropic", builtin_tools=({"type": "web_search_20250305", "name": "web_search"},))
     model = ModelClient(s)
     timeline: list[tuple] = []
-    model.on_stream = lambda kind, delta: timeline.append(("stream", kind, delta))
-    model.on_builtin_call = lambda label, detail: timeline.append(("builtin", label, detail))
+    model.hooks.on_stream = lambda kind, delta: timeline.append(("stream", kind, delta))
+    model.hooks.on_builtin_call = lambda label, detail: timeline.append(("builtin", label, detail))
     message = {
         "id": "m",
         "type": "message",
@@ -215,8 +215,8 @@ async def test_anthropic_stream_reads_the_query_carried_on_the_start_block(tmp_p
     s = _session(tmp_path, model="claude-3", api="anthropic", builtin_tools=({"type": "web_search_20250305", "name": "web_search"},))
     model = ModelClient(s)
     reported = []
-    model.on_stream = lambda kind, delta: None
-    model.on_builtin_call = lambda label, detail: reported.append((label, detail))
+    model.hooks.on_stream = lambda kind, delta: None
+    model.hooks.on_builtin_call = lambda label, detail: reported.append((label, detail))
     message = {
         "id": "m",
         "type": "message",
@@ -255,7 +255,7 @@ async def test_responses_result_reports_each_search_for_the_transcript(tmp_path,
     s = _session(tmp_path, api="responses", model="gpt-5", stream=False, builtin_tools=(WEB_SEARCH,))
     model = ModelClient(s)
     reported = []
-    model.on_builtin_call = lambda label, detail: reported.append((label, detail))
+    model.hooks.on_builtin_call = lambda label, detail: reported.append((label, detail))
     output = [
         {"id": "ws_1", "type": "web_search_call", "status": "completed", "action": {"type": "search", "query": "httpx timeout configuration"}},
         {"id": "fc_1", "type": "function_call", "call_id": "c1", "name": "Bash", "arguments": "{}"},
@@ -273,7 +273,7 @@ async def test_anthropic_result_reports_each_search_for_the_transcript(tmp_path,
     s = _session(tmp_path, model="claude-3", api="anthropic", stream=False)
     model = ModelClient(s)
     reported = []
-    model.on_builtin_call = lambda label, detail: reported.append((label, detail))
+    model.hooks.on_builtin_call = lambda label, detail: reported.append((label, detail))
     blocks = [
         {"type": "server_tool_use", "id": "srv_1", "name": "web_search", "input": {"query": "shannon birth date"}},
         {"type": "web_search_tool_result", "tool_use_id": "srv_1", "content": []},
@@ -307,8 +307,8 @@ async def test_searches_are_reported_with_streaming_disabled(tmp_path, monkeypat
     s = _session(tmp_path, api="responses", model="gpt-5", stream=False, builtin_tools=(WEB_SEARCH,))
     model = ModelClient(s)
     reported = []
-    model.on_builtin_call = lambda label, detail: reported.append((label, detail))
-    model.on_stream = None
+    model.hooks.on_builtin_call = lambda label, detail: reported.append((label, detail))
+    model.hooks.on_stream = None
     output = [{"id": "ws_1", "type": "web_search_call", "status": "completed", "action": {"type": "search", "query": "q"}}]
     monkeypatch.setattr(model, "client", _MockClientFactory([(200, _responses_body(output=output))]))
 
@@ -322,7 +322,7 @@ async def test_a_search_without_a_query_still_reports(tmp_path, monkeypatch):
     s = _session(tmp_path, api="responses", model="qwen3-max", stream=False, builtin_tools=(WEB_SEARCH,))
     model = ModelClient(s)
     reported = []
-    model.on_builtin_call = lambda label, detail: reported.append((label, detail))
+    model.hooks.on_builtin_call = lambda label, detail: reported.append((label, detail))
     output = [{"id": "ws_1", "type": "web_search_call", "status": "completed"}]
     monkeypatch.setattr(model, "client", _MockClientFactory([(200, _responses_body(output=output))]))
 

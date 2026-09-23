@@ -55,7 +55,7 @@ async def test_compaction_does_not_publish_internal_model_output(tmp_path, monke
         ]
     )
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     monkeypatch.setattr(model, "client", factory)
 
     result = await compaction.Compactor(ContextManager(s), model).compact("long context")
@@ -153,8 +153,8 @@ async def test_timed_out_request_cannot_emit_after_a_new_request_starts(tmp_path
     release = asyncio.Event()
     stream = []
     builtins = []
-    model.on_stream = lambda kind, text: stream.append((kind, text))
-    model.on_builtin_call = lambda label, detail: builtins.append((label, detail))
+    model.hooks.on_stream = lambda kind, text: stream.append((kind, text))
+    model.hooks.on_builtin_call = lambda label, detail: builtins.append((label, detail))
     finished = []
 
     async def stale_request():
@@ -190,7 +190,7 @@ async def test_cancelled_attempt_cannot_emit_into_the_next_one(tmp_path):
     s = _session(tmp_path, response_timeout=1)
     model = ModelClient(s)
     stream = []
-    model.on_stream = lambda kind, text: stream.append((kind, text))
+    model.hooks.on_stream = lambda kind, text: stream.append((kind, text))
     reached = []
 
     started = asyncio.Event()
@@ -455,7 +455,7 @@ async def test_retry_wait_phase_hook_pairs(tmp_path, monkeypatch):
     factory = _MockClientFactory([(503, _OVERLOADED), (200, _OK)])
     monkeypatch.setattr(model, "client", factory)
     phases: list[bool] = []
-    model.on_retry_wait = phases.append
+    model.hooks.on_retry_wait = phases.append
     _retry_wait_recorder(monkeypatch, factory)
 
     _, _, content = await model.request([{"role": "user", "content": "hi"}], None)
@@ -473,7 +473,7 @@ async def test_retry_wait_phase_hook_resets_on_cancel(tmp_path, monkeypatch):
     factory = _MockClientFactory([(503, _OVERLOADED), (503, _OVERLOADED)])
     monkeypatch.setattr(model, "client", factory)
     phases: list[bool] = []
-    model.on_retry_wait = phases.append
+    model.hooks.on_retry_wait = phases.append
 
     request = asyncio.ensure_future(model.request([{"role": "user", "content": "hi"}], None))
     await _wait_for(lambda: s.state.model_retry_until > 0)

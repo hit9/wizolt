@@ -666,7 +666,7 @@ class TuiRuntime:
             self.scrollback = ScrollbackWriter(self.runtime_loop, self.tui.write_to_scrollback, self.loop.ui.write_direct)
             self.loop.scrollback = self.scrollback
             self.loop.background_output_lock = self.scrollback.lock
-            self.loop.agent.output_barrier = self.scrollback.barrier
+            self.loop.agent.hooks.output_barrier = self.scrollback.barrier
             # Restored transcript lines wait until patch_stdout owns the terminal. The banner
             # was already recorded and printed before the application's initial cursor probe.
             resuming = self.loop.session.resumed
@@ -746,7 +746,7 @@ class TuiRuntime:
             self.loop.close_background_output()
             await settle(writer.close())
         self.loop.scrollback = None
-        self.loop.agent.output_barrier = None
+        self.loop.agent.hooks.output_barrier = None
         try:
             self.tui.exit()
         except BaseException as error:  # noqa: BLE001 - still await the application and release references.

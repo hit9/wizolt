@@ -416,7 +416,7 @@ async def test_engine_routes_the_answer_and_batch_end_to_the_loop(tmp_path):
     loop = _colored_loop(tmp_path)
 
     assert loop.agent.final_output_fn.__func__ is CommandLoop.agent_answer_output
-    assert loop.agent.on_tool_batch.__func__ is CommandLoop.tool_batch_output
+    assert loop.agent.hooks.on_tool_batch.__func__ is CommandLoop.tool_batch_output
 
 
 async def test_phase_rule_renders_as_an_unlabelled_full_width_solid_rule(tmp_path):
@@ -497,8 +497,8 @@ async def test_full_turn_parts_at_user_rule_narration_and_silent_batches(tmp_pat
 
     loop.ui.emit_phase_rule = emit_rule
     silences = []
-    on_batch = loop.agent.on_tool_batch
-    loop.agent.on_tool_batch = lambda silent: (on_batch(silent), silences.append(silent))
+    on_batch = loop.agent.hooks.on_tool_batch
+    loop.agent.hooks.on_tool_batch = lambda silent: (on_batch(silent), silences.append(silent))
 
     class FakeModel:
         on_stream = None

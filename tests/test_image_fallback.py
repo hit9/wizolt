@@ -77,7 +77,7 @@ def run_with(s, model):
     agent.model = model
     agent.vision_observe = model.vision_observe
     notices = []
-    agent.on_image_route_notice = notices.append
+    agent.hooks.on_image_route_notice = notices.append
     return agent, notices
 
 

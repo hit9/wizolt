@@ -130,7 +130,7 @@ async def test_compaction_uses_configured_context_budget(tmp_path):
     ]
     context = ContextManager(s)
     compaction_phases = []
-    context.on_compaction = lambda active, _error: compaction_phases.append(active)
+    context.hooks.on_compaction = lambda active, _error: compaction_phases.append(active)
 
     class FakeModel:
         def __init__(self, session):

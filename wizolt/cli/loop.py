@@ -269,35 +269,38 @@ Full documentation: https://wizolt.readthedocs.io
         )
         self.agent.output_fn = self.agent_output
         self.agent.final_output_fn = self.agent_answer_output
-        self.agent.model.on_stream = self.model_stream_output
-        self.agent.model.on_builtin_call = self.builtin_call_output
-        self.agent.on_queue_flush = self.flush_queued_to_log
-        self.agent.context.on_compaction = self.automatic_compaction_status
-        self.agent.model.on_retry_wait = self.model_retry_wait_status
-        self.agent.on_image_route_notice = self.image_route_notice
-        self.agent.on_context_reset = self.context_reset_notice
-        self.agent.on_tool_batch = self.tool_batch_output
         self.agent.tools.output_fn = self.tool_output
         self.agent.tools.input_fn = self.tool_input
-        self.agent.tools.live_start = self.tool_live_start
-        self.agent.tools.live_output = self.tool_live_output
-        self.agent.tools.model_stream = self.model_stream_output
-        self.agent.tools.question_fn = lambda specs: question_interaction(self, specs)
-        self.agent.tools.worker_rule = self.ui.emit_worker_rule
-        self.agent.tools.worker_answer = self.worker_answer_output
-        self.agent.tools.worker_config_picker = worker.WorkerFlow(self).run_worker_config
-        self.agent.tools.text_viewer = lambda view: approval_text_viewer(self, view)
-        self.agent.tools.approval_form = self.set_approval_form
-        self.agent.tools.cancel_input = self.cancel_tool_input
-        # Worker agent lifecycle callbacks: delegate.py wires these onto the worker agent when set,
-        # so a worker's retry backoff, provider-side builtin calls, and compaction show in this TUI.
-        self.agent.tools.retry_wait = self.model_retry_wait_status
-        self.agent.tools.builtin_call = self.builtin_call_output
-        self.agent.tools.compaction = self.automatic_compaction_status
+        # Everything the loop shows for a turn it did not print itself goes through one object, so
+        # a delegated worker can be handed the same seam (see wizolt.hooks and delegate.py).
+        hooks = self.agent.hooks
+        hooks.on_stream = self.model_stream_output
+        hooks.on_builtin_call = self.builtin_call_output
+        hooks.on_queue_flush = self.flush_queued_to_log
+        hooks.on_compaction = self.automatic_compaction_status
+        hooks.on_retry_wait = self.model_retry_wait_status
+        hooks.on_image_route_notice = self.image_route_notice
+        hooks.on_context_reset = self.context_reset_notice
+        hooks.on_tool_batch = self.tool_batch_output
+        hooks.live_start = self.tool_live_start
+        hooks.live_output = self.tool_live_output
+        hooks.model_stream = self.model_stream_output
+        hooks.question_fn = lambda specs: question_interaction(self, specs)
+        hooks.worker_rule = self.ui.emit_worker_rule
+        hooks.worker_answer = self.worker_answer_output
+        hooks.worker_config_picker = worker.WorkerFlow(self).run_worker_config
+        hooks.text_viewer = lambda view: approval_text_viewer(self, view)
+        hooks.approval_form = self.set_approval_form
+        hooks.cancel_input = self.cancel_tool_input
+        # Worker agent lifecycle callbacks: delegate.py hands these to the worker agent, so a
+        # worker's retry backoff, provider-side builtin calls, and compaction show in this TUI.
+        hooks.retry_wait = self.model_retry_wait_status
+        hooks.builtin_call = self.builtin_call_output
+        hooks.compaction = self.automatic_compaction_status
         # The worker's own edits update the index as they happen, but its session is not this one:
         # a delegation hands its return back here, so the parent converges on the same tree.
-        self.agent.tools.index_freshness = self.schedule_index_freshness
-        self.agent.tools.script_status = self.toolscript_run_status
+        hooks.index_freshness = self.schedule_index_freshness
+        hooks.script_status = self.toolscript_run_status
 
     def context_reset_notice(self, text: str) -> None:
         self.emit(LogBlock.hierarchy(LogLine(text, role=LogRole.META), []))

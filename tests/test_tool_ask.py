@@ -260,7 +260,7 @@ async def test_ask_tool_wired_in_tool_runner(tmp_path):
         return ["test answer"]
 
     runner = ToolRunner(s, ctx, output_fn=lambda text: None)
-    runner.question_fn = fake_question_fn
+    runner.hooks.question_fn = fake_question_fn
     results = await runner.run([ToolCall("q", "Ask", [{"questions": [{"question": "A or B?", "choices": ["A", "B"], "recommended": 0}]}])])
     assert len(results) == 1
     assert results[0]["tool_call_id"] == "q"

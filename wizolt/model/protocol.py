@@ -84,7 +84,7 @@ class ChatWire:
         payloads = await self._client.session.images.load_payloads(messages) if not text_only else {}
         messages = self.messages(messages, text_only=text_only, image_payloads=payloads, provider=provider)
         resolved = self._client.resolved(provider)
-        stream = allow_stream and provider.stream and self._client.on_stream is not None
+        stream = allow_stream and provider.stream and self._client.hooks.on_stream is not None
         params = chat_module.chat_params(
             messages,
             tools,
@@ -188,7 +188,7 @@ class ResponsesWire:
         resolved = self._client.resolved(provider)
         text_only = self._client.session.image_route.is_text_only()
         payloads = await self._client.session.images.load_payloads(messages) if not text_only else {}
-        stream = allow_stream and provider.stream and self._client.on_stream is not None
+        stream = allow_stream and provider.stream and self._client.hooks.on_stream is not None
         params: Json = {
             "model": provider.model,
             "input": self.messages(
@@ -315,7 +315,7 @@ class AnthropicWire:
         payloads = await self._client.session.images.load_payloads(messages) if not text_only else {}
         params = omit_request_fields(self.params(messages, tools, provider, image_payloads=payloads), provider.omit_body)
         client = self._client.anthropic_client(provider=provider)
-        stream = allow_stream and provider.stream and self._client.on_stream is not None
+        stream = allow_stream and provider.stream and self._client.hooks.on_stream is not None
         if stream:
             result = await self._client.call_client(client, lambda: self._stream(client, params), response_timeout=response_timeout)
             streamed = True

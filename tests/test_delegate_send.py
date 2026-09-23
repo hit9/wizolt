@@ -42,7 +42,7 @@ async def test_delegate_send_worker_rule_start_label(tmp_path, monkeypatch):
     monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
     labels = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
-    runner.worker_rule = lambda label: labels.append(label)
+    runner.hooks.worker_rule = lambda label: labels.append(label)
     await _delegate_call(parent, runner, action="send", order=order)
 
     assert labels, "the worker_rule callback never fired"
@@ -63,7 +63,7 @@ async def test_delegate_send_worker_rule_start_label_with_title(tmp_path, monkey
     monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
     labels = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
-    runner.worker_rule = lambda label: labels.append(label)
+    runner.hooks.worker_rule = lambda label: labels.append(label)
     await _delegate_call(parent, runner, action="send", order=order, title="fix /status blank line")
 
     assert labels, "the worker_rule callback never fired"
@@ -107,7 +107,7 @@ async def test_delegate_send_worker_rule_start_label_falls_back_to_order(tmp_pat
     monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
     labels = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
-    runner.worker_rule = lambda label: labels.append(label)
+    runner.hooks.worker_rule = lambda label: labels.append(label)
     await _delegate_call(parent, runner, action="send", order=order)
 
     assert labels, "the worker_rule callback never fired"
@@ -290,7 +290,7 @@ async def test_delegate_send_cues_the_parent_code_index_freshness(tmp_path, monk
     monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
     cues = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
-    runner.index_freshness = lambda: cues.append(parent.uid)
+    runner.hooks.index_freshness = lambda: cues.append(parent.uid)
 
     await _delegate_call(parent, runner, action="send", order="Touch a few files, then report. " * 8)
     assert cues == [parent.uid]
@@ -298,5 +298,5 @@ async def test_delegate_send_cues_the_parent_code_index_freshness(tmp_path, monk
     # A runner outside CommandLoop has no owner to hand the cue to, and that is not an error. The
     # worker left alive by the send above is the cheapest way to reach the same `finally` again.
     headless = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
-    assert headless.index_freshness is None
+    assert headless.hooks.index_freshness is None
     await _delegate_call(parent, headless, action="reset")

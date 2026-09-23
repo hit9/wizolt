@@ -21,6 +21,7 @@ from wizolt.base import (
     Text,
     run_blocking,
 )
+from wizolt.hooks import UiHooks
 from wizolt.image import IMAGE_REFS_KEY, IMAGE_TEXT_ONLY_KEY, TOOL_IMAGE_OBSERVATION_KEY, ImageInputs
 from wizolt.prompts import (
     COMPACTION_SUMMARY_TITLE,
@@ -71,10 +72,11 @@ class ContextManager:
     def __init__(self, session: Session, model: ModelClient | None = None):
         self.session = session
         self.model = model
-        # Automatic compaction runs inside request projection, below the UI layer. This lifecycle
-        # hook lets orchestration expose that real phase without making context depend on a renderer.
-        # False is emitted in a finally block, including model failures that fall back to trimming.
-        self.on_compaction: Callable[[bool, str], None] | None = None
+        # Automatic compaction runs inside request projection, below the UI layer. The on_compaction
+        # field of this manager's hooks lets orchestration expose that real phase without making
+        # context depend on a renderer. False is emitted in a finally block, including model
+        # failures that fall back to trimming.
+        self.hooks = UiHooks()
         # Message count per scope ("history"/"turn") at the last automatic compaction decision. See
         # _auto_compaction_allowed: this is what stops a compaction loop.
         self._auto_compacted_at: dict[str, int] = {}
@@ -239,8 +241,8 @@ class ContextManager:
         """Say that the request is going out over budget. Nothing here can fix it: what is left is
         the latest exchange, which compaction may never drop -- so say so instead of silently
         sending a request the provider is likely to reject."""
-        if self.on_compaction is not None:
-            self.on_compaction(False, "context is over budget and nothing is left to compact: the latest exchange alone exceeds it")
+        if self.hooks.on_compaction is not None:
+            self.hooks.on_compaction(False, "context is over budget and nothing is left to compact: the latest exchange alone exceeds it")
 
     def _overdue_by_usage(self) -> bool:
         """The last completed request filled ~99% of its budget, so the next one compacts even if the

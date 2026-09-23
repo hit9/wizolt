@@ -1033,10 +1033,10 @@ def test_model_retry_wait_status_labels_live_phase(tmp_path):
     command_loop = loop(tmp_path)
     transitions = []
     command_loop.tui = SimpleNamespace(set_running=transitions.append)
-    assert command_loop.agent.model.on_retry_wait == command_loop.model_retry_wait_status
+    assert command_loop.agent.hooks.on_retry_wait == command_loop.model_retry_wait_status
 
-    command_loop.agent.model.on_retry_wait(True)
-    command_loop.agent.model.on_retry_wait(False)
+    command_loop.agent.hooks.on_retry_wait(True)
+    command_loop.agent.hooks.on_retry_wait(False)
     assert transitions == ["retrying", "working"]
 
 

@@ -817,8 +817,8 @@ async def test_tool_runner_approved_live_bash_does_not_repeat_command(tmp_path):
     s = session(tmp_path)
     events = []
     runner = ToolRunner(s, ContextManager(s), input_fn=lambda prompt: "", output_fn=lambda text: events.append(("display", str(text))))
-    runner.live_start = lambda: events.append(("start", ""))
-    runner.live_output = lambda stream, text: events.append((stream, text))
+    runner.hooks.live_start = lambda: events.append(("start", ""))
+    runner.hooks.live_output = lambda stream, text: events.append((stream, text))
 
     await runner.run([ToolCall("bash", "Bash", ["bash -lc 'printf approved'"])])
 
@@ -892,8 +892,8 @@ async def test_tool_runner_failed_live_bash_does_not_repeat_command(tmp_path, mo
     s = session(tmp_path)
     output = []
     runner = ToolRunner(s, ContextManager(s), output_fn=lambda text: output.append(str(text)))
-    runner.live_start = lambda: None
-    runner.live_output = lambda _stream, _text: None
+    runner.hooks.live_start = lambda: None
+    runner.hooks.live_output = lambda _stream, _text: None
     monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("spawn failed")))
 
     await runner.run([ToolCall("bash", "Bash", ["printf duplicate"])])
@@ -939,8 +939,8 @@ async def test_tool_runner_prints_bash_header_before_live_output(tmp_path):
         input_fn=lambda prompt: (_ for _ in ()).throw(AssertionError("unexpected prompt")),
         output_fn=lambda text: events.append(("display", str(text))),
     )
-    runner.live_start = lambda: events.append(("start", ""))
-    runner.live_output = lambda stream, text: events.append((stream, text))
+    runner.hooks.live_start = lambda: events.append(("start", ""))
+    runner.hooks.live_output = lambda stream, text: events.append((stream, text))
 
     await runner.run([ToolCall("bash", "Bash", ["printf live"])])
 
@@ -968,8 +968,8 @@ async def test_tool_runner_yolo_bash_with_workdir_prints_the_command_once(tmp_pa
         input_fn=lambda prompt: (_ for _ in ()).throw(AssertionError("unexpected prompt")),
         output_fn=lambda text: events.append(("display", str(text))),
     )
-    runner.live_start = lambda: events.append(("start", ""))
-    runner.live_output = lambda stream, text: events.append((stream, text))
+    runner.hooks.live_start = lambda: events.append(("start", ""))
+    runner.hooks.live_output = lambda stream, text: events.append((stream, text))
 
     await runner.run([ToolCall("bash", "Bash", ["mkdir made", "sub"])])
 
@@ -984,8 +984,8 @@ async def test_tool_runner_starts_bash_live_preview_before_output(tmp_path):
     s.settings.yolo = True
     events = []
     runner = ToolRunner(s, ContextManager(s), input_fn=lambda prompt: (_ for _ in ()).throw(AssertionError("unexpected prompt")), output_fn=lambda text: None)
-    runner.live_start = lambda: events.append(("start", ""))
-    runner.live_output = lambda stream, text: events.append((stream, text))
+    runner.hooks.live_start = lambda: events.append(("start", ""))
+    runner.hooks.live_output = lambda stream, text: events.append((stream, text))
 
     await runner.run([ToolCall("bash", "Bash", ["printf live"])])
 
@@ -1007,8 +1007,8 @@ async def test_tool_runner_job_wait_starts_live_preview_with_budget(tmp_path, mo
         input_fn=lambda prompt: (_ for _ in ()).throw(AssertionError("unexpected prompt")),
         output_fn=lambda text: None,
     )
-    runner.live_start = lambda budget=None: events.append(("start", budget))
-    runner.live_output = lambda stream, text: events.append((stream, text))
+    runner.hooks.live_start = lambda budget=None: events.append(("start", budget))
+    runner.hooks.live_output = lambda stream, text: events.append((stream, text))
     await JobTool(s, [{"action": "start", "command": "sleep 0.2; printf done"}]).call()
 
     await runner.run([ToolCall("call_1", "Job", [{"action": "wait", "job": "job.1", "timeout": 5}])])
@@ -1254,7 +1254,7 @@ async def test_refused_job_write_can_be_inspected_and_sends_nothing(tmp_path):
     replies = iter(["v", "n"])
     viewed = []
     runner = ToolRunner(s, ContextManager(s), input_fn=lambda _: next(replies), output_fn=lambda _: None)
-    runner.text_viewer = lambda view: viewed.append(view)
+    runner.hooks.text_viewer = lambda view: viewed.append(view)
     try:
         await runner.run([ToolCall("answer", "Job", [{"action": "write", "job": "1", "chars": "refused\n"}])])
         assert len(viewed) == 1 and json.loads(viewed[0].text) == "refused\n"

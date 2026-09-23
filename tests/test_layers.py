@@ -71,6 +71,7 @@ LAYERS = {
     "wizolt.source": 8,
     "wizolt.image": 8,
     "wizolt.base": 9,
+    "wizolt.hooks": 9,
     "wizolt.config": 9,
     "wizolt.providers": 9,
     "wizolt.providers.catalog": 10,

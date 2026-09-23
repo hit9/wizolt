@@ -64,7 +64,7 @@ async def test_over_budget_with_nothing_compactable_is_reported_once(tmp_path):
     ]
     context = ContextManager(s)
     reports = []
-    context.on_compaction = lambda active, error: reports.append((active, error))
+    context.hooks.on_compaction = lambda active, error: reports.append((active, error))
     model = _CountingModel(s)
 
     for _ in range(4):

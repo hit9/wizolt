@@ -108,7 +108,7 @@ async def test_chat_stream_reports_the_cap_when_the_stream_produced_nothing(tmp_
     s = _session(tmp_path)
     s.config.provider.max_tokens = 16_384
     model = ModelClient(s)
-    model.on_stream = lambda _kind, _delta: None
+    model.hooks.on_stream = lambda _kind, _delta: None
     chunks = [
         {"choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}]},
         {"choices": [{"index": 0, "delta": {}, "finish_reason": "length"}], "usage": {"prompt_tokens": 10, "completion_tokens": 16384}},
@@ -125,7 +125,7 @@ async def test_chat_request_success(tmp_path, monkeypatch):
     s = _session(tmp_path, stream=False)
     model = ModelClient(s)
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     factory = _MockClientFactory(
         [
             (
@@ -340,7 +340,7 @@ async def test_chat_stream_reports_reasoning_text_and_complete_tool_calls(tmp_pa
     ]
     factory = _StreamClientFactory(chunks)
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     monkeypatch.setattr(model, "client", factory)
 
     assistant, calls, content = await model.request([{"role": "user", "content": "run"}], [])
@@ -383,7 +383,7 @@ async def test_chat_stream_waits_for_tool_finish_before_promoting_text(tmp_path)
 
     completions = SimpleNamespace(create=async_create(lambda **_params: chunks()))
     client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
-    model.on_stream = lambda kind, delta: timeline.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: timeline.append((kind, delta))
 
     message, _, _ = await ChatWire(model)._stream(client, {})
 
@@ -438,7 +438,7 @@ async def test_chat_stream_preserves_openrouter_reasoning_alias_and_details(tmp_
     ]
     factory = _StreamClientFactory(chunks, base_url="https://openrouter.ai/api/v1")
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     monkeypatch.setattr(model, "client", factory)
 
     assistant, calls, content = await model.request([{"role": "user", "content": "go"}], None)
@@ -478,7 +478,7 @@ async def test_chat_stream_keeps_the_sealed_reasoning_chunk_for_replay(tmp_path,
         },
     ]
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     monkeypatch.setattr(model, "client", _StreamClientFactory(chunks))
 
     assistant, _, content = await model.request([{"role": "user", "content": "ask"}], [])
@@ -502,7 +502,7 @@ async def test_chat_sends_the_output_cap_a_host_documents_for_an_unspecified_req
         "choices": [{"index": 0, "delta": {"content": "ok"}, "finish_reason": "stop"}],
     }
     factory = _StreamClientFactory([chunk])
-    model.on_stream = lambda _kind, _delta: None
+    model.hooks.on_stream = lambda _kind, _delta: None
     monkeypatch.setattr(model, "client", factory)
 
     await model.request([{"role": "user", "content": "ask"}], [])
@@ -527,7 +527,7 @@ async def test_chat_omits_the_output_cap_where_no_one_documents_one(tmp_path, mo
         "choices": [{"index": 0, "delta": {"content": "ok"}, "finish_reason": "stop"}],
     }
     factory = _StreamClientFactory([chunk])
-    model.on_stream = lambda _kind, _delta: None
+    model.hooks.on_stream = lambda _kind, _delta: None
     monkeypatch.setattr(model, "client", factory)
 
     await model.request([{"role": "user", "content": "ask"}], [])
@@ -692,7 +692,7 @@ async def test_chat_stream_keeps_sequential_tool_calls_without_indexes_distinct(
     ]
     factory = _StreamClientFactory(chunks)
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     monkeypatch.setattr(model, "client", factory)
 
     assistant, calls, _ = await model.request([{"role": "user", "content": "read"}], [])
@@ -741,7 +741,7 @@ async def test_chat_stream_rejects_ambiguous_tool_fragments_without_indexes_or_i
         },
     ]
     factory = _StreamClientFactory(chunks)
-    model.on_stream = lambda _kind, _delta: None
+    model.hooks.on_stream = lambda _kind, _delta: None
     monkeypatch.setattr(model, "client", factory)
 
     with pytest.raises(ModelError, match="cannot associate it safely"):
@@ -772,7 +772,7 @@ async def test_chat_stream_clears_failed_attempt_before_retry(tmp_path, monkeypa
         failures=1,
     )
     streamed = []
-    model.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     monkeypatch.setattr(model, "client", factory)
     record_backoff(monkeypatch)
 

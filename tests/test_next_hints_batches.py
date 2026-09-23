@@ -63,7 +63,7 @@ async def test_all_next_hints_batch_with_answer_ends_turn_in_single_model_call(t
 
     agent.model = FakeModel()
     silences = []
-    agent.on_tool_batch = lambda silent: silences.append(silent)
+    agent.hooks.on_tool_batch = lambda silent: silences.append(silent)
     assert await agent.run("do it") == "all done"
     assert len(agent.model.messages) == 1  # finished on the first call, no extra round trip
     assert silences == [False]  # the batch carried the answer, so it is not a silent batch
