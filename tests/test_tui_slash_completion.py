@@ -1,17 +1,27 @@
 """TUI slash-command completion: a leading "/" opens the command list as it is typed."""
 
+import time
+
 import pytest
 from prompt_toolkit.buffer import CompletionState
-from prompt_toolkit.completion import Completion
+from prompt_toolkit.completion import CompleteEvent, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.layout.containers import HSplit
 from prompt_toolkit.layout.mouse_handlers import MouseHandlers
 from prompt_toolkit.layout.screen import Char, Screen, WritePosition
-from tui_harness import ResizableOutput, rendered_screen_text, run_interactive_tui, wait_until
+from tui_harness import ResizableOutput, loop, rendered_screen_text, run_interactive_tui, wait_until
 
 from wizolt.cli import CommandCompleter, CommandLoop
+from wizolt.cli.commands import SET_KEYS, set_value
+from wizolt.cli.worker import WORKER_SUBCOMMANDS
+from wizolt.config import PROVIDER_API_CHOICES
 from wizolt.tui import TuiApp
-from wizolt.tui.app import InputMode, _AlignedCompletionsMenu
+from wizolt.tui.app import InputMode, _AlignedCompletionsMenu, default_completion
+
+
+def _command_rows():
+    """Every command as the menu lists it: one that does nothing bare carries a trailing space."""
+    return [name + " " if name in CommandLoop.NEEDS_ARGUMENT else name for name in CommandLoop.COMMANDS]
 
 
 def _completions(app):
@@ -44,11 +54,12 @@ def test_ctrl_n_and_ctrl_p_move_through_an_open_menu(monkeypatch, mode):
         app.input_mode = mode
         pipe_input.send_text("/")
         wait_until(lambda: app.input_buffer.complete_state is not None)
-        pipe_input.send_text("\x0e\x0e")  # Ctrl-N twice
-        wait_until(lambda: index() == 1)
+        state = app.input_buffer.complete_state
+        pipe_input.send_text("\x0e\x0e")  # Ctrl-N twice: past the default first row, then on
+        wait_until(lambda: index() == 2)
         pipe_input.send_text("\x10")  # Ctrl-P
-        wait_until(lambda: index() == 0)
-        assert app.input_buffer.text == "/help"
+        wait_until(lambda: index() == 1)
+        assert app.input_buffer.text == state.completions[1].text
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive)
@@ -74,6 +85,230 @@ def test_completion_menu_closes_on_a_key_hint_row(monkeypatch):
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive, output=output, after_render=after_render)
+
+
+def test_typing_a_command_highlights_its_first_match_for_enter(monkeypatch):
+    """`/st` and Enter used to send `/st` for "Unknown command". While typing, the menu's first
+    row is drawn in the selection band, and Enter runs that command at once -- a command name is
+    the whole input, so there is nothing left to type after it."""
+    submitted = []
+    app = TuiApp(completer=CommandCompleter(), on_chat_submit=submitted.append)
+    output = ResizableOutput(rows=20, columns=60)
+    band = []
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("/st")
+        wait_until(lambda: default_completion(app.input_buffer.complete_state) is not None)
+        first = app.input_buffer.complete_state.completions[0].text
+        wait_until(lambda: first in rendered_screen_text(app.app, output) and app.input_buffer.text == "/st")
+        # The first row is drawn exactly as a selected row is, and it is the only such row.
+        screen = app.app.renderer.last_rendered_screen
+        rows = rendered_screen_text(app.app, output).splitlines()
+        band.extend(
+            index
+            for index, line in enumerate(rows)
+            if line.strip() and all("completion-menu.completion.current" in screen.data_buffer[index][column].style for column in range(line.index(line.strip()[0]), len(line)))
+        )
+        assert [rows[index].strip() for index in band] == [first]
+        pipe_input.send_text("\r")
+        wait_until(lambda: submitted == [first])
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive, output=output)
+
+
+@pytest.mark.parametrize("name", CommandLoop.COMMANDS)
+def test_every_command_row_says_whether_enter_runs_it(name):
+    """Each command's menu row decides what Enter does: a plain name runs, a name with a trailing
+    space fills in and opens its arguments. Only a command that does nothing bare may carry the
+    space -- anything else would stop Enter from running a command that works on its own."""
+    (row,) = [c.text for c in CommandCompleter().get_completions(Document(name, len(name)), CompleteEvent()) if c.text.rstrip() == name]
+    assert row == (name + " " if name in CommandLoop.NEEDS_ARGUMENT else name)
+
+
+def test_only_set_needs_an_argument_and_bare_it_prints_its_usage(tmp_path):
+    """The one command marked as needing an argument really does nothing without one. Every other
+    command works bare (a picker, a status, a toggle), so its row runs on Enter."""
+    assert CommandLoop.NEEDS_ARGUMENT == {"/set"}
+    assert set_value(loop(tmp_path), "") == "Usage: /set KEY VALUE"
+
+
+@pytest.mark.parametrize(
+    ("text", "marked", "plain"),
+    [
+        # Every `/set` key takes a value; the values end the command.
+        ("/set ", set(SET_KEYS), set()),
+        ("/set provider.temperature ", set(), {"off"}),
+        # `/mcp connect` and `disconnect` take a server; `tools` works bare.
+        ("/mcp ", {"connect", "disconnect"}, {"tools"}),
+        ("/mcp connect ", set(), {"github"}),
+        ("/mcp disconnect ", set(), {"github"}),
+        ("/catalog ", set(), {"status", "sync"}),
+        ("/strict ", set(), {"on", "off"}),
+        ("/compact ", set(), {"log"}),
+        ("/api ", set(), set(PROVIDER_API_CHOICES)),
+        ("/model ", set(), {"model-a"}),
+        ("/provider ", set(), {"prov-a"}),
+        # Every `/worker` subcommand opens its own picker bare, so none is held back.
+        ("/worker ", set(), set(WORKER_SUBCOMMANDS)),
+    ],
+    ids=lambda value: value if isinstance(value, str) else None,
+)
+def test_every_argument_row_says_whether_enter_runs_it(text, marked, plain):
+    """Arguments follow the same rule as command names: a row that needs something after it ends
+    in a space (Enter opens the next level), and a final one does not (Enter runs the command)."""
+    completer = CommandCompleter(mcp_servers=lambda: ("github",), models=lambda: ("model-a",), providers=lambda: ("prov-a",))
+    rows = [c.text for c in completer.get_completions(Document(text, len(text)), CompleteEvent())]
+    assert {row[:-1] for row in rows if row.endswith(" ")} == marked
+    assert {row for row in rows if not row.endswith(" ")} == plain
+
+
+@pytest.mark.parametrize("keys", [["\r"], ["\x1b[B", "\r"], ["\t", "\r"]], ids=["default", "down", "tab"])
+def test_enter_runs_a_highlighted_command(monkeypatch, keys):
+    """However a command row is highlighted -- the default, Down, or Tab -- Enter runs it in one
+    press: a command is the whole input, not a chip inside a sentence."""
+    submitted = []
+    app = TuiApp(completer=CommandCompleter(), on_chat_submit=submitted.append)
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("/st")
+        wait_until(lambda: default_completion(app.input_buffer.complete_state) is not None)
+        completions = [c.text for c in app.input_buffer.complete_state.completions]
+        for key in keys:
+            pipe_input.send_text(key)
+            time.sleep(0.05)
+        expected = completions[1] if keys[0] == "\x1b[B" else completions[0]
+        wait_until(lambda: submitted == [expected])
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+@pytest.mark.parametrize(
+    ("keys", "sent", "text", "menu"),
+    [
+        # A command that does nothing bare fills in and opens its arguments instead of running.
+        (["/set", "\r"], None, "/set ", "provider.temperature "),
+        # ...and so does each step after it, until the last one runs the whole command.
+        (["/set", "\r", "\r", "\r"], "/set provider.temperature off", "", None),
+        # A value with nothing to list leaves the cursor waiting after the space.
+        (["/set provider.max_t", "\r"], None, "/set provider.max_tokens ", None),
+        # Tab onto the only candidate of a step opens the next level too.
+        (["/mcp co", "\t", "\r"], "/mcp connect github", "", None),
+        # A final argument runs the command.
+        (["/catalog s", "\r"], "/catalog status", "", None),
+        # An optional argument does not hold a command back: bare, it opens its own picker.
+        (["/mo", "\r"], "/model", "", None),
+    ],
+    ids=["set", "set-to-the-end", "free-form-value", "tab-single-step", "final-argument", "optional-argument"],
+)
+def test_a_command_that_needs_more_opens_its_next_level(monkeypatch, keys, sent, text, menu):
+    """Running `/set` or `/set provider.max_tokens` half-typed would only print the usage. A row
+    that needs something after it completes with a trailing space, and Enter on it opens the next
+    level (or waits for typing when there is nothing to list) instead of running the command."""
+    submitted = []
+    app = TuiApp(completer=CommandCompleter(mcp_servers=lambda: ("github",)), on_chat_submit=submitted.append)
+
+    def first_row():
+        state = app.input_buffer.complete_state
+        return state.completions[0].text if state is not None and state.completions else None
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        for key in keys:
+            pipe_input.send_text(key)
+            time.sleep(0.2)
+        if sent is None:
+            wait_until(lambda: app.input_buffer.text == text and first_row() == menu)
+            assert submitted == []
+        else:
+            wait_until(lambda: submitted == [sent])
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+@pytest.mark.parametrize(
+    ("typed", "deletes", "expected"),
+    [
+        # A fully typed command has no menu; Backspace brings back the commands it narrows to.
+        ("/ps", 1, ["/ps", "/provider"]),
+        ("/ps", 2, None),  # `/` alone: every command, checked below by count
+        ("use @skill:rele", 3, ["@skill:release", "@skill:review"]),
+        ("use $rele", 2, ["@skill:release", "@skill:review"]),
+    ],
+    ids=["command", "slash-alone", "mention", "dollar"],
+)
+def test_backspace_reopens_the_menu_for_what_is_left(monkeypatch, typed, deletes, expected):
+    """prompt_toolkit drops the menu on any edit, and it used to reopen only on typed characters:
+    `/ps` then Backspace left `/p` with no menu at all."""
+    app = TuiApp(completer=CommandCompleter(skills=lambda: ("release", "review")))
+
+    def listed():
+        state = app.input_buffer.complete_state
+        return None if state is None else [c.text for c in state.completions]
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text(typed)
+        wait_until(lambda: app.input_buffer.text == typed)
+        time.sleep(0.1)
+        pipe_input.send_text("\x7f" * deletes)
+        if expected is None:
+            wait_until(lambda: (listed() or []).count("/ps") == 1 and len(listed() or []) > 5)
+        else:
+            wait_until(lambda: listed() == expected)
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+def test_backspace_reopen_leaves_a_menu_that_navigated_back_alone(monkeypatch):
+    """Shift-Tab past the first row returns the input to what was typed -- the text shrinks just
+    as it does on Backspace, but the menu is mid-browse and keeps its own state, so Tab carries on
+    from the top instead of the menu being rebuilt under it."""
+    app = TuiApp(completer=CommandCompleter())
+
+    def index():
+        state = app.input_buffer.complete_state
+        return "closed" if state is None else state.complete_index
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("/st")
+        wait_until(lambda: index() is None)
+        pipe_input.send_text("\t")  # onto the first row: its text previews into the input
+        wait_until(lambda: index() == 0)
+        pipe_input.send_text("\x1b[Z")  # Shift-Tab back past it: the input shrinks back to `/st`
+        wait_until(lambda: index() is None and app.input_buffer.text == "/st")
+        state = app.input_buffer.complete_state
+        time.sleep(0.1)  # past the deferred reopen
+        assert app.input_buffer.complete_state is state  # the same menu, not a rebuilt one
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+@pytest.mark.parametrize(("key", "index"), [("\x1b[B", 1), ("\x0e", 1), ("\t", 0)], ids=["down", "ctrl-n", "tab"])
+def test_moving_from_the_default_row(monkeypatch, key, index):
+    """Down and Ctrl-N only move, and the default row is already highlighted, so they step to the
+    second row. Tab completes, so it fills in the highlighted row itself."""
+    app = TuiApp(completer=CommandCompleter())
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("/")
+        wait_until(lambda: default_completion(app.input_buffer.complete_state) is not None)
+        completions = app.input_buffer.complete_state.completions
+        pipe_input.send_text(key)
+        wait_until(lambda: app.input_buffer.complete_state is not None and app.input_buffer.complete_state.complete_index == index)
+        assert app.input_buffer.text == completions[index].text
+        assert default_completion(app.input_buffer.complete_state) is None  # a real selection now
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
 
 
 def test_completion_hint_row_spans_the_whole_menu_width(monkeypatch):
@@ -159,7 +394,7 @@ def test_leading_slash_opens_command_completions_and_narrows_while_typing(monkey
         wait_until(lambda: app.app is not None and app.app.is_running)
 
         pipe_input.send_text("/")
-        wait_until(lambda: _completions(app) == list(CommandLoop.COMMANDS))
+        wait_until(lambda: _completions(app) == _command_rows())
 
         # Narrowing happens at a partial match; completing the full word adds nothing, so
         # prompt-toolkit then closes the menu on its own.
@@ -198,7 +433,7 @@ def test_fast_slash_typing_keeps_a_current_menu_ready_for_tab():
     app = TuiApp(completer=CommandCompleter())
 
     app.input_buffer.insert_text("/")
-    assert _completions(app) == list(CommandLoop.COMMANDS)
+    assert _completions(app) == _command_rows()
 
     app.input_buffer.insert_text("p")
     assert _completions(app) == ["/ps", "/provider"]

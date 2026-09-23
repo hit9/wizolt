@@ -11,6 +11,7 @@ from wizolt.agentsmd import MenuRow
 from wizolt.cli import CommandCompleter
 from wizolt.mentions import FilePick, active_mention
 from wizolt.tui import InputMode, TuiApp
+from wizolt.tui.app import default_completion
 
 
 def _recording_picker(queries):
@@ -128,18 +129,23 @@ def test_selecting_partially_typed_name_kind_opens_its_candidate_list(monkeypatc
 
 
 @pytest.mark.parametrize(
-    ("steps", "expected", "next_level"),
+    ("steps", "expected", "next_level", "next_default"),
     [
-        (1, "@mcp:", ["@mcp:github", "@mcp:gitlab"]),
-        (2, "@skill:", ["@skill:release", "@skill:review"]),
-        (3, "@agents.md:", ["@agents.md:", "@agents.md:project"]),
+        (1, "@mcp:", ["@mcp:github", "@mcp:gitlab"], "@mcp:github"),
+        (2, "@skill:", ["@skill:release", "@skill:review"], "@skill:release"),
+        # `@agents.md:` is itself the "All applicable" row, so its list opens with no default.
+        (3, "@agents.md:", ["@agents.md:", "@agents.md:project"], None),
     ],
 )
-def test_enter_on_a_browsed_kind_row_opens_its_candidates(monkeypatch, steps, expected, next_level):
+def test_enter_on_a_browsed_kind_row_opens_its_candidates(monkeypatch, steps, expected, next_level, next_default):
     """Browsing the bare-@ menu already previews the kind into the input, so Enter changes no text;
     it still has to open the kind's own list, and a second Enter picks from that list."""
     rows = [MenuRow("All applicable", "every instructions file below", "@agents.md:"), MenuRow("Project · AGENTS.md", "whole file", "@agents.md:project")]
-    app = TuiApp(completer=CommandCompleter(mcp_servers=lambda: ("github", "gitlab"), skills=lambda: ("release", "review"), agents_rows=lambda: rows))
+    submitted = []
+    app = TuiApp(
+        completer=CommandCompleter(mcp_servers=lambda: ("github", "gitlab"), skills=lambda: ("release", "review"), agents_rows=lambda: rows),
+        on_chat_submit=submitted.append,
+    )
 
     def menu():
         state = app.input_buffer.complete_state
@@ -149,12 +155,18 @@ def test_enter_on_a_browsed_kind_row_opens_its_candidates(monkeypatch, steps, ex
         wait_until(lambda: app.app is not None and app.app.is_running)
         pipe_input.send_text("@")
         wait_until(lambda: menu() is not None)
-        pipe_input.send_text("\x0e" * (steps + 1))  # past @file: onto the kind
+        pipe_input.send_text("\x0e" * steps)  # from the default @file: row onto the kind
         wait_until(lambda: app.input_buffer.text == expected)
         pipe_input.send_text("\r")
         wait_until(lambda: menu() == (next_level, None))
-        pipe_input.send_text("\x0e\x0e\r")  # the second row of the next level
+        default = default_completion(app.input_buffer.complete_state)
+        assert (default.text if default else None) == next_default
+        # The second row of the next level: one step past a default row, two from none. Enter fills
+        # it in and sends nothing -- a mention is part of a message still being written.
+        pipe_input.send_text("\x0e" * (1 if next_default else 2) + "\r")
         wait_until(lambda: app.input_buffer.text == next_level[1] and menu() is None)
+        time.sleep(0.1)
+        assert submitted == []
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive)
@@ -162,9 +174,10 @@ def test_enter_on_a_browsed_kind_row_opens_its_candidates(monkeypatch, steps, ex
 
 def test_enter_on_all_applicable_commits_without_reopening_its_menu(monkeypatch):
     """`@agents.md:` is also the "All applicable" row of its own menu: there it is a finished
-    choice, not a kind to open."""
+    choice, not a kind to open -- Enter fills it in, and neither reopens the menu nor sends."""
     rows = [MenuRow("All applicable", "every instructions file below", "@agents.md:"), MenuRow("Project · AGENTS.md", "whole file", "@agents.md:project")]
-    app = TuiApp(completer=CommandCompleter(agents_rows=lambda: rows))
+    submitted = []
+    app = TuiApp(completer=CommandCompleter(agents_rows=lambda: rows), on_chat_submit=submitted.append)
 
     def drive(pipe_input):
         wait_until(lambda: app.app is not None and app.app.is_running)
@@ -174,6 +187,7 @@ def test_enter_on_all_applicable_commits_without_reopening_its_menu(monkeypatch)
         wait_until(lambda: app.input_buffer.complete_state is None)
         time.sleep(0.2)  # long enough for a wrongly scheduled reopen to land
         assert app.input_buffer.complete_state is None and app.input_buffer.text == "@agents.md:"
+        assert submitted == []
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive)
@@ -181,10 +195,12 @@ def test_enter_on_all_applicable_commits_without_reopening_its_menu(monkeypatch)
 
 def test_picking_an_mcp_server_cascades_into_its_tools(monkeypatch):
     """Enter on a server row commits the server -- a complete mention on its own -- and opens that
-    server's tools with none highlighted, so a second Enter still sends the bare server. Typing the
-    whole name offers the same tools; a server with no known tools has nothing to cascade into."""
+    server's tools with none highlighted, so a second Enter still sends the bare server. Enter on a
+    tool fills it in and sends nothing. Typing the whole name offers the same tools; a server with
+    no known tools has nothing to cascade into."""
     tools = {"github": ("create_issue", "search"), "gitlab": ()}
-    app = TuiApp(completer=CommandCompleter(mcp_servers=lambda: ("github", "gitlab"), mcp_tools=lambda server: tools[server]))
+    submitted = []
+    app = TuiApp(completer=CommandCompleter(mcp_servers=lambda: ("github", "gitlab"), mcp_tools=lambda server: tools[server]), on_chat_submit=submitted.append)
 
     def menu():
         state = app.input_buffer.complete_state
@@ -194,11 +210,14 @@ def test_picking_an_mcp_server_cascades_into_its_tools(monkeypatch):
         wait_until(lambda: app.app is not None and app.app.is_running)
         pipe_input.send_text("@mcp:")
         wait_until(lambda: menu() == (["@mcp:github", "@mcp:gitlab"], None))
-        pipe_input.send_text("\x0e\r")  # Ctrl-N onto github, Enter
+        pipe_input.send_text("\r")  # Enter on the default row, github
         wait_until(lambda: menu() == (["@mcp:github.create_issue", "@mcp:github.search"], None))
         assert app.input_buffer.text == "@mcp:github"
+        assert default_completion(app.input_buffer.complete_state) is None  # the server is the mention
         pipe_input.send_text("\x0e\r")  # into the first tool, Enter commits it and stops there
         wait_until(lambda: app.input_buffer.text == "@mcp:github.create_issue" and menu() is None)
+        time.sleep(0.1)
+        assert submitted == []
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive)
@@ -317,8 +336,18 @@ def test_selecting_partially_typed_file_kind_opens_picker(monkeypatch, typed):
     run_interactive_tui(monkeypatch, app, drive=drive)
 
 
-@pytest.mark.parametrize("key", ["\x1b[B", "\t", "\x0e"], ids=["down", "tab", "ctrl-n"])
-def test_browsing_bare_kind_menu_does_not_launch_file_picker(monkeypatch, key):
+@pytest.mark.parametrize(
+    "steps",
+    [
+        # Tab completes the default row first, then walks on.
+        [("\t", 0), ("\t", 1), ("\t", 2), ("\t", 3)],
+        # Down and Ctrl-N step past the highlighted default, so @file: is reached coming back up.
+        [("\x1b[B", 1), ("\x1b[A", 0), ("\x1b[B", 1), ("\x1b[B", 2), ("\x1b[B", 3)],
+        [("\x0e", 1), ("\x10", 0), ("\x0e", 1), ("\x0e", 2), ("\x0e", 3)],
+    ],
+    ids=["tab", "down", "ctrl-n"],
+)
+def test_browsing_bare_kind_menu_does_not_launch_file_picker(monkeypatch, steps):
     """Highlighting @file: in the bare-@ menu is a preview, not a choice: arrow/Tab/Ctrl-N through
     the four kind rows without the file picker grabbing the terminal, and Enter on a later row
     commits it (the picker only opens on an explicit Enter on @file:). Tab is the one that used to
@@ -341,9 +370,12 @@ def test_browsing_bare_kind_menu_does_not_launch_file_picker(monkeypatch, key):
         pipe_input.send_text("@")
         wait_until(lambda: state() is not None and state()[1] == kinds)
 
-        for expected_index, expected_text in ((0, "@file:"), (1, "@mcp:"), (2, "@skill:"), (3, "@agents.md:")):
+        for key, expected_index in steps:
+            expected_text = kinds[expected_index]
             pipe_input.send_text(key)
             wait_until(lambda text=expected_text, idx=expected_index: app.input_buffer.text == text and state() is not None and state()[0] == idx)
+            if expected_text == "@file:":
+                time.sleep(0.2)  # past the namespace transition delay
             assert state()[1] == kinds  # still browsing the same kind rows
             assert queries == [] and not app._file_picker_active
 
@@ -401,11 +433,11 @@ def test_tab_browses_past_the_file_kind_in_every_direction(monkeypatch, mode):
     run_interactive_tui(monkeypatch, app, drive=drive)
 
 
-@pytest.mark.parametrize("key", ["\x1b[B", "\t", "\x0e"], ids=["down", "tab", "ctrl-n"])
-def test_enter_on_at_file_kind_row_opens_the_file_picker(monkeypatch, key):
+@pytest.mark.parametrize("keys", [[], ["\t"], ["\x1b[B", "\x1b[A"], ["\x0e", "\x10"]], ids=["default", "tab", "down-up", "ctrl-n-p"])
+def test_enter_on_at_file_kind_row_opens_the_file_picker(monkeypatch, keys):
     """Browsing to @file: is inert; an explicit Enter on the row commits the kind and opens the
     picker with an empty query, exactly as typing the namespace does -- however the row was
-    reached."""
+    reached, including as the default row a bare `@` highlights."""
     queries = []
     app = TuiApp(
         completer=CommandCompleter(),
@@ -417,8 +449,13 @@ def test_enter_on_at_file_kind_row_opens_the_file_picker(monkeypatch, key):
         wait_until(lambda: app.app is not None and app.app.is_running)
         pipe_input.send_text("@")
         wait_until(lambda: app.input_buffer.complete_state is not None)
-        pipe_input.send_text(key)
-        wait_until(lambda: app.input_buffer.text == "@file:")
+        for key in keys:
+            pipe_input.send_text(key)
+            time.sleep(0.05)
+        if keys:
+            wait_until(lambda: app.input_buffer.text == "@file:")
+        else:
+            assert default_completion(app.input_buffer.complete_state).text == "@file:"
         time.sleep(0.2)  # past the namespace transition delay
         assert queries == [] and not app._file_picker_active  # preview alone must not open it
         pipe_input.send_text("\r")
@@ -489,21 +526,143 @@ def test_enter_commits_highlighted_completion_without_sending(monkeypatch):
     run_interactive_tui(monkeypatch, app, drive=drive)
 
 
-def test_enter_sends_when_completion_menu_has_no_highlighted_row(monkeypatch):
-    """The menu opens while typing with no row highlighted; Enter there still sends, so a fully
-    typed mention goes out in one press (only Tab-highlighted rows are committed by Enter)."""
+@pytest.mark.parametrize(
+    ("typed", "menu"),
+    [
+        # Nothing longer beside it: no menu at all, as a fully typed command gets none.
+        ("use @skill:release", None),
+        ("use $release", None),
+        # A longer candidate beside it: the menu stays, but with no default row.
+        ("use @skill:release", ["@skill:release", "@skill:release-notes"]),
+        # A whole MCP server: its tools are listed, none by default -- the server is the mention.
+        ("use @mcp:github", ["@mcp:github.create_issue", "@mcp:github.search"]),
+        # A bare alias of a whole server: the same, spelled the short way.
+        ("use @github", None),
+    ],
+    ids=["exact-alone", "exact-dollar", "exact-beside-longer", "whole-server", "bare-server"],
+)
+def test_enter_sends_a_mention_that_is_already_complete(monkeypatch, typed, menu):
+    """The default row is for finishing what was typed. When what was typed is already a
+    complete mention, there is nothing to finish: no row is highlighted and Enter sends it as
+    typed, in one press."""
+    skills = ("release", "release-notes") if menu and "@skill:" in menu[0] else ("release",)
     submitted = []
     app = TuiApp(
-        completer=CommandCompleter(skills=lambda: ("release", "review")),
+        completer=CommandCompleter(skills=lambda: skills, mcp_servers=lambda: ("github",), mcp_tools=lambda _server: ("create_issue", "search")),
+        on_chat_submit=submitted.append,
+    )
+
+    def listed():
+        state = app.input_buffer.complete_state
+        return None if state is None else [c.text for c in state.completions]
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text(typed)
+        wait_until(lambda: app.input_buffer.text == typed)
+        time.sleep(0.2)  # past the namespace transition delay, so the menu has settled
+        assert listed() == menu
+        assert default_completion(app.input_buffer.complete_state) is None
+        pipe_input.send_text("\r")
+        wait_until(lambda: submitted == [typed])
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+@pytest.mark.parametrize(
+    ("typed", "committed"),
+    [
+        ("use @skill:rel", "use @skill:release"),
+        ("use $rev", "use @skill:review"),  # the canonical form, as every completion inserts
+    ],
+)
+def test_enter_on_the_default_row_fills_the_mention_in_without_sending(monkeypatch, typed, committed):
+    """While typing, the menu highlights its first row, and Enter fills that mention in. A mention
+    is a chip inside a sentence, not the whole input as a command is: the prompt stays open for
+    the rest of the message, and a second Enter sends."""
+    submitted = []
+    app = TuiApp(completer=CommandCompleter(skills=lambda: ("release", "review")), on_chat_submit=submitted.append)
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text(typed)
+        wait_until(lambda: default_completion(app.input_buffer.complete_state) is not None)
+        pipe_input.send_text("\r")
+        wait_until(lambda: app.input_buffer.text == committed and app.input_buffer.complete_state is None)
+        time.sleep(0.1)
+        assert submitted == []
+        pipe_input.send_text("\r")
+        wait_until(lambda: submitted == [committed])
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+@pytest.mark.parametrize(
+    ("typed", "filled"),
+    [
+        ("see @file:vie", "see @file:wizolt/cli/view.py"),
+        ("see @mcp:gi", "see @mcp:github"),
+        ("see @mcp:github.se", "see @mcp:github.search"),
+        ("see @skill:re", "see @skill:release"),
+        ("see $re", "see @skill:release"),
+        ("see @agents.md:pro", "see @agents.md:project"),
+        # The bare aliases complete to their canonical forms like the rest.
+        ("see @gi", "see @mcp:github"),
+        ("see @github.se", "see @mcp:github.search"),
+        ("see @rel", "see @skill:release"),
+    ],
+)
+def test_every_mention_form_fills_in_its_default_row_and_never_sends(monkeypatch, typed, filled):
+    """Across every mention form -- file, MCP server and tool, skill, `$`, AGENTS.md, and the bare
+    `@name` aliases -- the first row is highlighted as you type and Enter fills it in, canonical
+    form and all. A mention is a chip inside a sentence: nothing is sent."""
+    rows = [MenuRow("All applicable", "every instructions file below", "@agents.md:"), MenuRow("Project · AGENTS.md", "whole file", "@agents.md:project")]
+    submitted = []
+    app = TuiApp(
+        completer=CommandCompleter(
+            mcp_servers=lambda: ("github",),
+            mcp_tools=lambda _server: ("search",),
+            skills=lambda: ("release",),
+            files=lambda: (("wizolt/cli/view.py", "wizolt/cli/view.py"),),
+            agents_rows=lambda: rows,
+        ),
+        file_picker_available_fn=lambda: False,
         on_chat_submit=submitted.append,
     )
 
     def drive(pipe_input):
         wait_until(lambda: app.app is not None and app.app.is_running)
-        pipe_input.send_text("use @skill:")
-        wait_until(lambda: app.input_buffer.complete_state is not None and app.input_buffer.complete_state.current_completion is None)
+        pipe_input.send_text(typed)
+        wait_until(lambda: (default := default_completion(app.input_buffer.complete_state)) is not None and filled.endswith(default.text))
         pipe_input.send_text("\r")
-        wait_until(lambda: submitted == ["use @skill:"])
+        wait_until(lambda: app.input_buffer.text == filled)
+        time.sleep(0.2)  # past any next-level transition
+        assert submitted == []
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+def test_enter_on_a_default_kind_row_opens_its_list_instead_of_sending(monkeypatch):
+    """A kind is a step toward a mention, not one: Enter on the highlighted `@skill:` fills it in
+    and opens its skills, and sends nothing."""
+    submitted = []
+    app = TuiApp(completer=CommandCompleter(skills=lambda: ("release", "review")), on_chat_submit=submitted.append)
+
+    def listed():
+        state = app.input_buffer.complete_state
+        return None if state is None else [c.text for c in state.completions]
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("use @sk")
+        wait_until(lambda: default_completion(app.input_buffer.complete_state) is not None)
+        pipe_input.send_text("\r")
+        wait_until(lambda: app.input_buffer.text == "use @skill:" and listed() == ["@skill:release", "@skill:review"])
+        time.sleep(0.1)
+        assert submitted == []
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive)

@@ -61,6 +61,19 @@ def scan_mentions(text: str) -> list[MentionSpan]:
     return spans
 
 
+def mention_spellings(typed: str) -> set[str]:
+    """The canonical forms a typed mention already stands for: `$name` is `@skill:name`, and a
+    bare `@name` is `@mcp:name` or `@skill:name`. Completion offers only canonical forms, so this
+    is how a fully typed alias is recognised as complete rather than as the start of a longer one."""
+    if len(typed) < 2 or ":" in typed:
+        return {typed}
+    if typed.startswith("$"):
+        return {typed, "@skill:" + typed[1:]}
+    if typed.startswith("@"):
+        return {typed, "@mcp:" + typed[1:], "@skill:" + typed[1:]}
+    return {typed}
+
+
 def active_mention(text_before_cursor: str) -> MentionSpan | None:
     """Return the editable mention ending at the cursor, if any."""
     spans = scan_mentions(text_before_cursor)

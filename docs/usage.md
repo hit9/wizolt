@@ -119,15 +119,19 @@ normally clears the chip selection state. Quick hints are always available at th
 ## Commands
 
 Type `/` commands at the prompt to inspect state, switch models, manage the
-session, or configure runtime behavior on the fly. See the
+session, or configure runtime behavior on the fly. As you type, the first match is highlighted,
+so `/st` and `Enter` runs `/status`. A command that needs an argument, such as `/set`, fills in
+instead and lists its arguments, down to the value. See the
 [command reference](commands.md) for the full list, or run `/help` in a session.
 
 ## Mentions
 
 Mentions pull something into the turn. Type `@` at the prompt for a list of the four kinds;
 picking one opens its candidates, which narrow as you keep typing, and picking a connected MCP
-server opens its tools. `Tab`, `↑`/`↓`, or `Ctrl-N`/`Ctrl-P` highlights a row; `Enter` commits it
-into the input without sending, and a second `Enter` sends.
+server opens its tools. The first candidate is highlighted as you type; `↑`/`↓` or
+`Ctrl-N`/`Ctrl-P` move the highlight and `Tab` fills in the highlighted row. `Enter` commits it
+into the input without sending, and a second `Enter` sends. A mention you have typed in full,
+such as `$release` or a whole `@mcp:server`, has nothing highlighted, and `Enter` sends it.
 
 <div class="term-shot" role="img" aria-label="The mention menu in two moments. After typing an at sign the prompt lists the four kinds with a one-line description each. After choosing at-file the file picker opens between two rules, with its own query line, a match counter, a key hint, and two ranked file paths, the first one pointed at."><span class="fs-prompt">&gt; add tests for @<span class="fs-caret">▏</span></span><span><span class="fs-i">                </span><span class="fs-i"> @file:   </span><span class="fs-i fs-dim"> files in this repo </span></span><span><span class="fs-i">                </span><span class="fs-i"> @mcp:    </span><span class="fs-i fs-dim"> MCP servers and tools </span></span><span><span class="fs-i">                </span><span class="fs-i"> @skill:  </span><span class="fs-i fs-dim"> installed skills </span></span><span><span class="fs-i">                </span><span class="fs-i"> @agents.md: </span><span class="fs-i fs-dim"> AGENTS.md instructions </span></span><span> </span><span class="fs-prompt">&gt; add tests for @file:<span class="fs-caret">▏</span></span><span class="fs-divider">  ──── file picker ─────────────────────────────────</span><span><span class="fs-i fs-sel">  files&gt; </span><span class="fs-i">mention</span><span class="fs-i fs-caret">▏</span></span><span class="fs-dim">      3/812</span><span class="fs-dim">      Ctrl-N/P or ↑/↓ move · Enter select · Esc close</span><span class="fs-sel">  &gt;   tests/test_mentions.py</span><span>      wizolt/mentions.py</span><span class="fs-divider">  ──────────────────────────────────────────────────</span></div>
 

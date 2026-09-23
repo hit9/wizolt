@@ -63,6 +63,9 @@ class Command:
     aliases: tuple[str, ...] = ()
     queue_safe: bool = False  # may run from the follow-up input while a turn works
     render: str = "plain"  # "plain" | "answer" | "compact"
+    # Does nothing without an argument (it would only print its usage). Picking it from the menu
+    # fills it in and opens its arguments instead of running it bare.
+    needs_argument: bool = False
 
 
 class CommandLoop:
@@ -96,6 +99,7 @@ class CommandLoop:
     # name tuple, and the queue-safe allowlist. `CommandLoop.COMMANDS` is derived from it and
     # assigned right after the registry.
     COMMANDS: ClassVar[tuple[str, ...]]
+    NEEDS_ARGUMENT: ClassVar[frozenset[str]]  # names (aliases too) that do nothing bare
 
     HELP = """### Commands
 
@@ -1193,7 +1197,7 @@ COMMANDS: tuple[Command, ...] = (
     Command("/model", commands.model),
     Command("/reason", commands.reason, aliases=("/effort",)),
     Command("/api", commands.api),
-    Command("/set", commands.set_value),
+    Command("/set", commands.set_value, needs_argument=True),
     Command("/yolo", commands.yolo, queue_safe=True),
     Command("/strict", commands.strict),
     Command("/mcp", commands.mcp_command, queue_safe=True, render="answer"),
@@ -1207,6 +1211,7 @@ COMMANDS: tuple[Command, ...] = (
 
 CommandLoop.COMMANDS = tuple(dict.fromkeys(name for command in COMMANDS for name in (command.name, *command.aliases))) + ("/exit", "/quit")
 COMMAND_LOOKUP = {name: command for command in COMMANDS for name in (command.name, *command.aliases)}
+CommandLoop.NEEDS_ARGUMENT = frozenset(name for name, command in COMMAND_LOOKUP.items() if command.needs_argument)
 QUEUE_SAFE_COMMANDS = frozenset(command.name for command in COMMANDS if command.queue_safe)
 # The forms of a queue-safe command that are not read-only. A command can report without changing
 # anything and still have a form that does: `/catalog sync` fetches and activates a snapshot the

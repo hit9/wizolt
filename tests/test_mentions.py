@@ -80,7 +80,9 @@ def test_matching_substring_and_case_insensitive():
     assert completions(c, "@file:view") == ["@file:wizolt/cli/view.py"]
     assert completions(c, "@file:cli/view") == ["@file:wizolt/cli/view.py"]  # whole-path substring
     assert completions(c, "@file:VIEW") == ["@file:wizolt/cli/view.py"]  # case-insensitive
-    assert completions(c, "@file:wizolt/tui.py") == ["@file:wizolt/tui.py"]
+    # A fully typed path with nothing longer beside it needs no menu: Enter sends it as typed.
+    assert completions(c, "@file:wizolt/tui.py") == []
+    assert completions(c, "@file:wizolt/tui.p") == ["@file:wizolt/tui.py"]
 
 
 def test_matching_ranks_basename_prefix_substring_then_path():

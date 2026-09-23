@@ -15,13 +15,13 @@ from enum import StrEnum
 from typing import Any, ClassVar
 
 from prompt_toolkit import search as pt_search
-from prompt_toolkit.application import Application
+from prompt_toolkit.application import Application, get_app
 from prompt_toolkit.application.run_in_terminal import in_terminal
 from prompt_toolkit.buffer import Buffer, CompletionState
-from prompt_toolkit.completion import CompleteEvent, Completer
+from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition, has_completions, is_done, is_searching
-from prompt_toolkit.formatted_text import StyleAndTextTuples
+from prompt_toolkit.formatted_text import OneStyleAndTextTuple, StyleAndTextTuples
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.keys import Keys
@@ -44,7 +44,7 @@ from wizolt.base import (
     run_blocking,
 )
 from wizolt.image import IMAGE_MARKER, ImageInputs, ImageRef, UserInput
-from wizolt.mentions import FilePick, MentionSpan, active_mention, encode_file_mention, scan_mentions
+from wizolt.mentions import FilePick, MentionSpan, active_mention, encode_file_mention, mention_spellings, scan_mentions
 from wizolt.paste import PASTE_MARKER, PasteRef
 from wizolt.render import ScrollbackText, UiPrinter
 from wizolt.tui.scrollback import ScrollbackRegion
@@ -139,14 +139,45 @@ class CallbackPlaceholder(Processor):
         return Transformation([*ti.fragments, ("class:queue.hint", text)])
 
 
+def default_completion(state: CompletionState | None) -> Completion | None:
+    """The row Enter takes while none is selected: the first one, drawn highlighted, so `/st`
+    and Enter run `/status` rather than the unknown command `/st`.
+
+    None while a row is selected, and whenever what was typed is already a complete answer, so
+    Enter sends it as typed: when it equals a candidate (a fully typed skill beside a longer one),
+    or when every candidate only extends it past a dot (the tools listed under a fully typed MCP
+    server, which is a mention of its own)."""
+    if state is None or state.complete_index is not None or not state.completions:
+        return None
+    before = state.original_document.text_before_cursor
+    first = state.completions[0]
+    typed = before[len(before) + first.start_position :]
+    spellings = mention_spellings(typed)  # `$name` and a bare `@name` are complete aliases too
+    if any(completion.text in spellings for completion in state.completions):
+        return None
+    if all(any(completion.text.startswith(spelling + ".") for spelling in spellings) for completion in state.completions):
+        return None
+    return first
+
+
 class _AlignedCompletionsMenuControl(CompletionsMenuControl):
-    """Render candidates at the replacement column instead of one padded cell later."""
+    """Render candidates at the replacement column instead of one padded cell later, and draw
+    the default row (see `default_completion`) in the selection band."""
 
     def create_content(self, width: int, height: int) -> UIContent:
         content = super().create_content(width, height)
+        default = default_completion(get_app().current_buffer.complete_state) is not None
+
+        def banded(fragment: OneStyleAndTextTuple) -> OneStyleAndTextTuple:
+            # The same classes prompt_toolkit gives the selected row, so it is the same band.
+            style = fragment[0].replace("class:completion-menu.completion ", "class:completion-menu.completion.current ")
+            style = style.replace("class:completion-menu.meta.completion", "class:completion-menu.meta.completion.current")
+            return (style, fragment[1]) if len(fragment) == 2 else (style, fragment[1], fragment[2])
 
         def get_line(index: int) -> StyleAndTextTuples:
             fragments = list(content.get_line(index))
+            if default and index == 0:
+                fragments = [banded(fragment) for fragment in fragments]
             if fragments and fragments[0][1].startswith(" "):
                 fragment = fragments[0]
                 if len(fragment) == 2:
@@ -823,7 +854,7 @@ class TuiApp:
         line_before = before.rsplit("\n", 1)[-1]
         state = buffer.complete_state
         if not reverse and before.startswith("/") and active_mention(before) is None and state is not None and len(state.completions) == 1:
-            buffer.apply_completion(state.completions[0])
+            self.apply_and_continue(buffer, state.completions[0])
             return
         if (
             not reverse
@@ -891,7 +922,10 @@ class TuiApp:
 
     def _offer_mention_completions(self, buffer: Buffer, delta: _EditDelta) -> None:
         self._cancel_mention_transition()
-        if self.input_mode not in {InputMode.CHAT, InputMode.RUNNING} or not delta.inserted:
+        if self.input_mode not in {InputMode.CHAT, InputMode.RUNNING}:
+            return
+        if not delta.inserted:
+            self._reopen_after_delete(buffer)
             return
         span = active_mention(buffer.document.text_before_cursor)
         if span is None:
@@ -981,6 +1015,29 @@ class TuiApp:
         loop = app.loop
         assert loop is not None
         self._mention_transition_timer = loop.call_later(self.MENTION_TRANSITION_DELAY if delay is None else delay, transition)
+
+    def _reopen_after_delete(self, buffer: Buffer) -> None:
+        """Backspace reopens the menu for the command or mention still under the cursor, so
+        `/ps` then Backspace lists `/p`'s commands again. prompt_toolkit drops the menu on any
+        edit, and the menus otherwise open only on typed characters.
+
+        Deferred, because a menu navigating back to what was typed (Shift-Tab past its first row)
+        shrinks the text too: by the time this runs it has restored its own state, and is left
+        alone. A deletion inside an @file: mention with the picker available opens nothing -- the
+        picker opens on typing, never on Backspace."""
+
+        def reopen(current: Buffer) -> None:
+            if current.complete_state is not None:
+                return
+            span = active_mention(current.document.text_before_cursor)
+            if span is None:
+                self._offer_slash_completions(current)
+            elif span.kind != "file":
+                current.start_completion(select_first=False)
+            elif not self.file_picker_available_fn():
+                self._refresh_file_completions(current)
+
+        self._schedule_mention_transition(buffer, reopen, delay=0)
 
     def _schedule_name_completions(self, buffer: Buffer) -> None:
         def show(current: Buffer) -> None:
@@ -1242,14 +1299,36 @@ class TuiApp:
         return [("class:input.error", f"Error: {error}")] if error else []
 
     @staticmethod
+    def step_past_default(buffer: Buffer) -> bool:
+        """Down/Ctrl-N from a highlighted default row: on to the next one. The default is already
+        highlighted, so stepping onto it would look like the key did nothing. (Tab is not a move
+        but a completion, so it fills in the default row instead.)"""
+        state = buffer.complete_state
+        if default_completion(state) is None:
+            return False
+        assert state is not None
+        buffer.go_to_completion(min(1, len(state.completions) - 1))
+        return True
+
+    @staticmethod
+    def apply_and_continue(buffer: Buffer, completion: Completion) -> None:
+        """Apply the one candidate there is, and if it needs something after it (a trailing space:
+        `/mcp connect `, a `/set` key) open that next level, as Enter on its row would."""
+        buffer.apply_completion(completion)
+        if completion.text.endswith(" "):
+            buffer.start_completion(select_first=False)
+
+    @staticmethod
     def complete_input(buffer: Buffer, *, reverse: bool = False) -> None:
+        # Tab from a highlighted default row completes that row (the menu's first), which is where
+        # complete_next lands; only Down and Ctrl-N, which merely move, step past it.
         if buffer.complete_state is not None:
             buffer.complete_previous() if reverse else buffer.complete_next()
             return
         event = CompleteEvent(completion_requested=True)
         completions = list(buffer.completer.get_completions(buffer.document, event))
         if len(completions) == 1:
-            buffer.apply_completion(completions[0])
+            TuiApp.apply_and_continue(buffer, completions[0])
         elif completions:
             if reverse:
                 buffer.start_completion(select_last=True)
@@ -1411,32 +1490,53 @@ class TuiApp:
             buffer = event.current_buffer
             if self._pick_quick_hint(buffer):
                 return
-            # Enter with a completion row highlighted (Tab previews it) commits that row into the
-            # input instead of sending the message: the menu closes, the prompt stays open, and a
-            # second Enter sends. A menu opened by typing alone has no highlighted row, so Enter
-            # still sends there, exactly as it always did.
+            # Enter with a completion row highlighted -- one Tab or the arrows moved to, or the
+            # default row a menu opened by typing highlights -- commits that row into the input
+            # instead of sending the message: the menu closes, the prompt stays open, and a second
+            # Enter sends. With no row highlighted (what was typed is already complete) it sends.
             state = buffer.complete_state
-            if state is not None and state.current_completion is not None:
-                committed = state.current_completion.text
-                origin = active_mention(state.original_document.text_before_cursor)
-                buffer.apply_completion(state.current_completion)
+            completion = (state.current_completion or default_completion(state)) if state is not None else None
+            if state is not None and completion is not None:
+                committed = completion.text
+                before = state.original_document.text_before_cursor
+                origin = active_mention(before)
+                buffer.apply_completion(completion)
+                # A command is the whole input, so Enter on its row runs it in one press. A mention
+                # is a chip inside a sentence still being written: Enter fills it in and the prompt
+                # stays open. A row that is a step (a kind, an MCP server, an argument that needs
+                # more after it) fills in and opens what comes next.
                 if committed == "@file:" and self.app is not None and self.file_picker_available_fn():
                     # @file: is only previewed while the bare-@ kind menu is browsed; an explicit
                     # Enter on the row is the commit that opens the file picker.
                     self._schedule_file_picker(buffer)
-                elif (origin is not None and origin.kind == "bare" and committed in {"@mcp:", "@skill:", "@agents.md:"}) or (
+                    return
+                if (origin is not None and origin.kind == "bare" and committed in {"@file:", "@mcp:", "@skill:", "@agents.md:"}) or (
                     committed.startswith("@mcp:") and "." not in committed and committed != "@mcp:"
                 ):
                     # The next level opens under a committed kind or MCP server. Browsing had
                     # already previewed the row, so the commit changes no text and the typing
-                    # transition never fires. It opens with no row highlighted, so Space or Enter
-                    # keeps a bare server, a complete mention of its own. The origin check matters
-                    # for @agents.md:, which is also the "All applicable" row of its own menu.
+                    # transition never fires. A server's tools open with no default row, so Enter
+                    # again sends the bare server, a complete mention of its own. The origin check
+                    # matters for @agents.md:, which is also the "All applicable" row of its own
+                    # menu -- a final choice there.
                     buffer.start_completion(select_first=False)
-                return
+                    return
+                if origin is not None or not before.startswith("/"):
+                    return  # a mention: filled in, not sent
+                if committed.endswith(" "):
+                    # A command or argument that needs more after it (`/set`, then a key, then a
+                    # value) completes with a trailing space: running it half-typed would only print
+                    # its usage. Open what comes next, or leave the cursor waiting after the space
+                    # when there is nothing to list (a free-form value).
+                    buffer.start_completion(select_first=False)
+                    return
             buffer.validate_and_handle()
 
         bindings.add("enter", filter=~modal, eager=True)(enter)
+        # Down and Ctrl-N step past a highlighted default row, as Tab does (`complete_input`).
+        on_default = Condition(lambda: self.modal is None and default_completion(self.input_buffer.complete_state) is not None)
+        for key in ("down", "c-n"):
+            bindings.add(key, filter=on_default, eager=True)(lambda event: self.step_past_default(event.current_buffer))
         bindings.add("escape", "enter", filter=~modal, eager=True)(lambda event: event.current_buffer.insert_text("\n"))
         for key, reverse in (("tab", False), ("s-tab", True)):
             bindings.add(key, filter=~modal)(lambda event, reverse=reverse: self.tab_or_complete(event.current_buffer, reverse=reverse))

@@ -719,8 +719,10 @@ class TestMCPTabCompletion:
         completions = list(completer.get_completions(doc, None))
         texts = [c.text for c in completions]
         assert "tools" in texts
-        assert "connect" in texts
-        assert "disconnect" in texts
+        # connect and disconnect need a server after them: they complete with a trailing space, so
+        # Enter opens the server list instead of running them bare. tools works without one.
+        assert "connect " in texts
+        assert "disconnect " in texts
         assert "refresh" not in texts
         assert "login" not in texts
         assert "logout" not in texts
@@ -734,7 +736,7 @@ class TestMCPTabCompletion:
         completions = list(completer.get_completions(doc, None))
         texts = [c.text for c in completions]
         assert "tools" not in texts
-        assert texts == ["connect"]
+        assert texts == ["connect "]
 
     def test_mcp_tools_completion_uses_connected_servers(self):
         """/mcp tools completes only connected MCP server names."""

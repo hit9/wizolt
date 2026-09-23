@@ -27,7 +27,7 @@ from wizolt.cli.hints import HintPicker
 from wizolt.cli.runtime import RESUME_STATUS_LABEL, STARTING_STATUS_LABEL
 from wizolt.cli.worker import WORKER_SUBCOMMANDS
 from wizolt.config import PROVIDER_API_CHOICES
-from wizolt.mentions import MentionSpan, active_mention, encode_file_mention
+from wizolt.mentions import MentionSpan, active_mention, encode_file_mention, mention_spellings
 from wizolt.providers.compat import bundled_policy
 from wizolt.render import LiveSpark, Theme, UiPrinter
 from wizolt.session import QueuedInput
@@ -86,7 +86,7 @@ class CommandCompleter(Completer):
         if text.startswith("/set "):
             tail = text[len("/set ") :]
             if " " not in tail:
-                yield from self.matches(SET_KEYS, tail)
+                yield from self.matches(SET_KEYS, tail, more=SET_KEYS)  # every key takes a value
                 return
             key, _, value = tail.partition(" ")
             yield from self.matches(SET_VALUES.get(key, ()), value)
@@ -124,7 +124,7 @@ class CommandCompleter(Completer):
         if text.startswith("/mcp "):
             tail = text[len("/mcp ") :]
             if " " not in tail:
-                yield from self.matches(("connect", "disconnect", "tools"), tail)
+                yield from self.matches(("connect", "disconnect", "tools"), tail, more=("connect", "disconnect"))
                 return
             sub, _, value = tail.partition(" ")
             if sub == "connect":
@@ -147,7 +147,11 @@ class CommandCompleter(Completer):
 
         span = active_mention(text)
         if span is not None:
-            yield from self._mention_completions(span, span.start - len(text))
+            completions = list(self._mention_completions(span, span.start - len(text)))
+            # A fully typed mention with nothing longer beside it needs no menu, as a fully typed
+            # command gets none: Enter sends it as typed.
+            if not (len(completions) == 1 and completions[0].text in mention_spellings(text[span.start :])):
+                yield from completions
             return
 
         if text.startswith("/") and " " not in text:
@@ -155,11 +159,14 @@ class CommandCompleter(Completer):
             # is imported; resolve it lazily to avoid the import cycle.
             from wizolt.cli import CommandLoop
 
-            yield from self.matches(CommandLoop.COMMANDS, text)
+            yield from self.matches(CommandLoop.COMMANDS, text, more=CommandLoop.NEEDS_ARGUMENT)
 
     @staticmethod
-    def matches(values, prefix: str):
-        return (Completion(value, start_position=-len(prefix)) for value in values if value.startswith(prefix))
+    def matches(values, prefix: str, more=()):
+        """Prefix matches. A value in `more` needs something after it (`/set`, a `/set` key, `/mcp
+        connect`): it completes with a trailing space, which is how the input knows to open the next
+        level on Enter instead of running the command half-typed."""
+        return (Completion(value + " " if value in more else value, start_position=-len(prefix), display=value) for value in values if value.startswith(prefix))
 
     def _mention_completions(self, span: MentionSpan, start: int) -> Iterator[Completion]:
         """Complete one scanner-owned span and always insert canonical namespace forms."""

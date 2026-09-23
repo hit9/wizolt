@@ -9,6 +9,8 @@
 
 ### Fixed
 
+- Backspace in a `/` command or a mention reopens its menu: `/ps` then Backspace lists `/p`'s
+  commands again instead of leaving no menu.
 - Pickers keep their key legend on screen: a long list, such as many discovered models in
   `/model`, scrolls, and a preview, such as `/reason`'s explanation or a session's recent
   messages in `/sessions`, takes its rows from the list instead of pushing the legend off the
@@ -23,6 +25,11 @@
 
 ### Changed
 
+- While you type a `/` command or an `@`/`$` mention, the menu highlights its first match and
+  Enter takes it. A command runs at once: `/st` then Enter runs `/status` instead of sending an
+  unknown command. `/set`, which needs an argument, fills in and lists its keys and then its
+  values. A mention fills in and the prompt stays open. A mention typed in full, such as
+  `$release` or a whole `@mcp:server`, has no highlight, and Enter sends it as typed.
 - Pickers mark the selected row with a highlight of one width instead of a `>`, dim the row
   numbers, set section headers in bold, and move the key legend under the list.
 - `/status` and `/catalog` are key/value lists in a rounded outline, with no `field | value`
