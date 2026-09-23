@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.52.0 - 2026-09-23
+
 ### Added
 
 - Pickers such as `/provider`, `/model`, and `/reason` move half a page with Ctrl-D/Ctrl-U and a
