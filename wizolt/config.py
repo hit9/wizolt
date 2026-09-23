@@ -87,6 +87,8 @@ class SystemInfo:
     commands: tuple[str, ...]
     agents_md: str = ""  # loaded project-instructions text; "" when no candidate file was found
     agents_md_source: str = ""  # the file it came from, e.g. "AGENTS.md" or "CLAUDE.md"; "" when none
+    agents_md_global: str = ""  # loaded <data_dir>/AGENTS.md text; "" when the file does not exist
+    agents_md_global_display: str = ""  # what the prefix and menus show, e.g. "~/.wizolt/AGENTS.md"
 
     @classmethod
     def load_agents_md(cls, cwd: str) -> tuple[str, str]:
@@ -102,8 +104,19 @@ class SystemInfo:
         return "", ""
 
     @classmethod
-    def detect(cls, cwd: str) -> SystemInfo:
+    def detect(cls, cwd: str, data_dir: str = "") -> SystemInfo:
+        from wizolt.agentsmd import display_path, global_agents_md_path  # local import: agentsmd sits above config
+
         agents_md, agents_md_source = cls.load_agents_md(cwd)
+        agents_md_global = ""
+        agents_md_global_display = ""
+        if data_dir:
+            try:
+                with open(global_agents_md_path(data_dir), encoding="utf-8") as file:
+                    agents_md_global = file.read()
+                agents_md_global_display = display_path(global_agents_md_path(data_dir))
+            except (OSError, UnicodeDecodeError):
+                pass
         return cls(
             cwd=cwd,
             os=platform.system() or sys.platform,
@@ -111,6 +124,8 @@ class SystemInfo:
             commands=tuple(name for name in cls.COMMANDS if shutil.which(name)),
             agents_md=agents_md,
             agents_md_source=agents_md_source,
+            agents_md_global=agents_md_global,
+            agents_md_global_display=agents_md_global_display,
         )
 
 

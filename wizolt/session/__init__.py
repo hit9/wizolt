@@ -65,6 +65,7 @@ __all__ = [
 ]
 
 if TYPE_CHECKING:
+    from wizolt.agentsmd import AgentsMentions
     from wizolt.engine import Agent
     from wizolt.mcp import MCPManager
     from wizolt.mentions import FileMentions
@@ -135,6 +136,7 @@ class Session:
     mcp: MCPManager | None = None
     skills: SkillLibrary | None = None
     mentions: FileMentions | None = None  # runtime handle; holds the cached @file: path list
+    agents: AgentsMentions | None = None  # runtime handle; resolves @agents.md: references
     images: ImageInputs = field(init=False, repr=False)
     # The provider/model catalog this session resolves against: snapshot + compiled policy + sync
     # state. Attached by bootstrap_features (which also owns the feature packages), so the session
@@ -177,7 +179,7 @@ class Session:
         if not self.uid:
             self.uid = datetime.now().strftime("%Y%m%d%H%M%S") + "-" + str(uuid.uuid4())[:12]  # noqa: DTZ005 - IDs intentionally use local wall time.
         if self.system_info is None:
-            self.system_info = SystemInfo.detect(self.cwd)
+            self.system_info = SystemInfo.detect(self.cwd, self.config.data_dir)
         # The Delegate registration gate is frozen per session: computed once from the config this
         # session was constructed with, so a runtime /worker provider switch tunes an already-
         # enabled delegation and prepares the next session without flipping the tool block (and
@@ -264,6 +266,15 @@ class Session:
             return os.path.commonpath([os.path.realpath(self.cwd), os.path.realpath(path)]) == os.path.realpath(self.cwd)
         except ValueError:
             return False
+
+    def is_global_agents_md(self, path: str) -> bool:
+        """True for the exact `<data_dir>/AGENTS.md`. Reading it is the user pointing at their own
+        instructions file, not the model reaching outside the workspace, so Read skips the
+        out-of-workspace prompt for this one path."""
+
+        from wizolt.agentsmd import is_global_agents_md  # local import: agentsmd sits above session
+
+        return is_global_agents_md(path, self.config.data_dir)
 
     def owns_asset(self, path: str) -> bool:
         """True for a file in this session's own assets directory -- a materialized tool output or a
@@ -785,6 +796,10 @@ def bootstrap_features(session: Session) -> None:
         from wizolt.mentions import FileMentions  # local import: mentions is built on top of session
 
         session.mentions = FileMentions(session)
+    if session.agents is None:
+        from wizolt.agentsmd import AgentsMentions  # local import: agentsmd is built on top of session
+
+        session.agents = AgentsMentions(session)
     if session.catalog is None:
         from wizolt.providers.sync import CatalogRuntime  # local import: keeps providers above session
 

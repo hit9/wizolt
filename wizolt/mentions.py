@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from wizolt.session import Session
 
 
-MentionKind = Literal["bare", "file", "mcp", "skill"]
+MentionKind = Literal["bare", "file", "mcp", "skill", "agents"]
 _WORD = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 _IDENTIFIER = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
 _BARE_FILE = re.compile(r"^[A-Za-z0-9_./:+@%=-]+$")
@@ -69,18 +69,43 @@ def active_mention(text_before_cursor: str) -> MentionSpan | None:
 
 def _scan_at(text: str, start: int) -> MentionSpan | None:
     payload_start = start + 1
-    for namespace in ("file", "mcp", "skill"):
+    for namespace in ("file", "mcp", "skill", "agents.md"):
         prefix = namespace + ":"
         if text.startswith(prefix, payload_start):
             value_start = payload_start + len(prefix)
             if namespace == "file":
                 return _scan_file(text, start, value_start)
+            if namespace == "agents.md":
+                return _scan_agents(text, start, value_start)
             end = _identifier_end(text, value_start, dot=namespace == "mcp")
             return MentionSpan(start, end, namespace, text[value_start:end], end > value_start)
     end = _identifier_end(text, payload_start, dot=True)
     if end == payload_start:
         return MentionSpan(start, end, "bare", "", False)
     return MentionSpan(start, end, "bare", text[payload_start:end])
+
+
+def _scan_agents(text: str, start: int, payload_start: int) -> MentionSpan:
+    """An @agents.md: reference: a quoted JSON string (headings contain spaces) or a bare
+    `scope`/`scope/Heading` token. The empty payload is the valid bare "all applicable" form."""
+
+    if payload_start >= len(text):
+        return MentionSpan(start, payload_start, "agents", "", True)
+    if text[payload_start] != '"':
+        end = payload_start
+        allowed = _IDENTIFIER | {"/"}
+        while end < len(text) and text[end] in allowed:
+            end += 1
+        # The empty payload is the valid "all applicable" form, whether the text ends here or
+        # the reference is followed by whitespace (end == payload_start covers both).
+        return MentionSpan(start, end, "agents", text[payload_start:end], True)
+    try:
+        payload, consumed = json.JSONDecoder().raw_decode(text[payload_start:])
+    except json.JSONDecodeError:
+        return MentionSpan(start, len(text), "agents", text[payload_start + 1 :], False)
+    if not isinstance(payload, str):
+        return MentionSpan(start, payload_start + consumed, "agents", "", False)
+    return MentionSpan(start, payload_start + consumed, "agents", payload)
 
 
 def _scan_dollar(text: str, start: int) -> MentionSpan | None:

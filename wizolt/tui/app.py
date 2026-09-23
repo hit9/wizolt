@@ -907,7 +907,7 @@ class TuiApp:
             elif not picker_available:
                 self._refresh_file_completions(buffer)
             return
-        if span.kind in {"mcp", "skill"}:
+        if span.kind in {"mcp", "skill", "agents"}:
             if not interactive_transition:
                 return
             # Completion selection updates the document before prompt-toolkit publishes the newly
@@ -971,7 +971,7 @@ class TuiApp:
     def _schedule_name_completions(self, buffer: Buffer) -> None:
         def show(current: Buffer) -> None:
             span = active_mention(current.document.text_before_cursor)
-            if span is None or span.kind not in {"mcp", "skill"}:
+            if span is None or span.kind not in {"mcp", "skill", "agents"}:
                 return
             # Keep the selected namespace as real input instead of restoring the first-stage
             # document, then replace that menu with the namespace's own candidates.

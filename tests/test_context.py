@@ -49,4 +49,10 @@ class _CountingModel:
 # this bites hardest: that message is the entire order (docs/worker.md), the worker cannot see the
 # parent's history, and nothing re-sends it.
 
-RUNTIME_GENERATED_EVENTS = ("mcp_mentions", "skill_mentions", "file_mentions", "tool_call_correction")
+RUNTIME_GENERATED_EVENTS = (
+    "mcp_mentions",
+    "skill_mentions",
+    "agents_mentions",
+    "file_mentions",
+    "tool_call_correction",
+)

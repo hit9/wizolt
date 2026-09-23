@@ -9,6 +9,7 @@ import json
 import re
 from collections.abc import Callable
 
+from wizolt.agentsmd import AgentsReferenceError
 from wizolt.base import (
     IMAGE_ROUTE_TEXT_ONLY_STATIC,
     IMAGE_ROUTE_UNKNOWN,
@@ -668,11 +669,19 @@ class Agent:
         for event, resolver in (
             ("mcp_mentions", self.session.mcp.resolve_mentions if self.session.mcp is not None else None),
             ("skill_mentions", self.session.skills.resolve_mentions if self.session.skills is not None else None),
+            ("agents_mentions", self.session.agents.resolve_mentions if self.session.agents is not None else None),
             ("file_mentions", self.session.mentions.resolve_mentions if self.session.mentions is not None else None),
         ):
-            content = resolver(text) if resolver is not None else ""
-            if inspect.isawaitable(content):
-                content = await content
+            if resolver is None:
+                continue
+            try:
+                content = resolver(text)
+                if inspect.isawaitable(content):
+                    content = await content
+            except AgentsReferenceError as error:
+                # A file edited between admission and here can invalidate a reference. The error
+                # is explicit rather than silent; the TUI normally refuses it before sending.
+                content = f"--- AGENTS.MD REFERENCES ---\n{error}"
             if content:
                 # Expansions are not new requests. Marking them keeps compaction's latest-user
                 # boundary on the raw message that caused them, including queued follow-ups.

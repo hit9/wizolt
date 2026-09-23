@@ -301,12 +301,28 @@ class TuiRuntime:
 
         value = value if isinstance(value, UserInput) else UserInput(str(value))
         if not value.images:
+            error = self._agents_reference_error(value)
+            if error is not None:
+                self.tui.restore_submission(value, error)
+                return None
             return value
         try:
-            return await self.loop.session.images.admit(value)
+            admitted = await self.loop.session.images.admit(value)
         except WizoltError as error:
             self.tui.restore_submission(value, str(error))
             return None
+        error = self._agents_reference_error(admitted)
+        if error is not None:
+            self.tui.restore_submission(admitted, error)
+            return None
+        return admitted
+
+    def _agents_reference_error(self, value: UserInput) -> str | None:
+        """Refuse a submission whose `@agents.md:` reference no longer resolves, with the
+        explicit error instead of silently sending an unexpanded citation."""
+
+        agents = self.loop.session.agents
+        return agents.validation_error(str(value)) if agents is not None else None
 
     async def _close_submissions(self) -> None:
         """Stop accepting, let the consumer finish what it already accepted, then end it."""

@@ -267,8 +267,13 @@ def status(loop: CommandLoop, args: str) -> str:
     ]
     info = loop.session.system_info
     if loop.session.settings.agents_md:
-        source = info.agents_md_source if info is not None else ""
-        runtime.append(f"agents_md on ({source})" if source else "agents_md on (none)")
+        sources = []
+        if info is not None:
+            if info.agents_md_global_display:
+                sources.append(info.agents_md_global_display)
+            if info.agents_md_source:
+                sources.append("./" + info.agents_md_source)
+        runtime.append(f"agents_md on ({', '.join(sources)})" if sources else "agents_md on (none)")
     else:
         runtime.append("agents_md off")
     update = UpdateChecker(loop.session).status_line().removeprefix("update: ")

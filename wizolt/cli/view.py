@@ -19,6 +19,7 @@ from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.styles import Style
 from prompt_toolkit.utils import get_cwidth
 
+from wizolt.agentsmd import MenuRow
 from wizolt.base import LogBlock, LogEdge, Text, TurnBox
 from wizolt.cli.commands import SET_KEYS, SET_VALUES
 from wizolt.cli.hints import Context as HintContext
@@ -39,11 +40,12 @@ if TYPE_CHECKING:
 class CommandCompleter(Completer):
     """Prompt-toolkit completer for slash commands, their arguments, and @/$ mentions."""
 
-    # The three kinds offered on a bare "@", each with its one-line meta (SPEC 4.2).
+    # The kinds offered on a bare "@", each with its one-line meta (SPEC 4.2).
     KINDS: ClassVar[tuple[tuple[str, str], ...]] = (
         ("file:", "files in this repo"),
         ("mcp:", "MCP servers and tools"),
         ("skill:", "installed skills"),
+        ("agents.md:", "AGENTS.md instructions and sections"),
     )
     MAX_ROWS = 50  # SPEC R4: cap the menu.
 
@@ -62,6 +64,7 @@ class CommandCompleter(Completer):
         skills: Callable[[], tuple[str, ...]] = tuple,
         files: Callable[[], tuple[tuple[str, str], ...]] = tuple,
         file_matches: Callable[[str], tuple[str, ...]] | None = None,
+        agents_rows: Callable[[], list[MenuRow]] = list,
     ):
         self.providers = providers
         self.models = models
@@ -75,6 +78,7 @@ class CommandCompleter(Completer):
         # (lowercase, original) workspace-relative paths from the session's cached path list.
         self.files = files
         self.file_matches = file_matches
+        self.agents_rows = agents_rows
 
     def get_completions(self, document, complete_event):
         del complete_event
@@ -165,6 +169,8 @@ class CommandCompleter(Completer):
             yield from self._mcp_completions(span.payload, start)
         elif span.kind == "skill":
             yield from self._skill_completions(span.payload, start)
+        elif span.kind == "agents":
+            yield from self._agents_completions(span.payload, start)
         else:
             yield from self._merged_completions(span.payload, start)
 
@@ -239,6 +245,17 @@ class CommandCompleter(Completer):
     def _skill_completions(self, query: str, start: int) -> Iterator[Completion]:
         for name in self._matching_names(self.skills(), query):
             yield Completion(f"@skill:{name}", start_position=start)
+
+    def _agents_completions(self, query: str, start: int) -> Iterator[Completion]:
+        """After "@agents.md:": the bounded menu of files and their sections, filtered by
+        source, heading path, and original text (the `All applicable` row always stays first)."""
+
+        needle = query.strip().strip('"').lower()
+        rows = self.agents_rows()
+        if needle:
+            rows = [row for row in rows if needle in row.display.lower() or needle in row.meta.lower() or needle in row.insert.lower()]
+        for row in rows[: self.MAX_ROWS]:
+            yield Completion(row.insert, start_position=start, display=row.display, display_meta=row.meta)
 
     @staticmethod
     def _matching_names(values, query: str) -> list[str]:

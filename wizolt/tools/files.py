@@ -79,7 +79,13 @@ class ReadTool(Tool):
         return value
 
     def needs_confirmation(self) -> bool:
-        return any(not (self.session.in_cwd(path) or self.session.owns_asset(path)) for path, _ in self.targets())
+        return any(not self._readable_without_prompt(path) for path, _ in self.targets())
+
+    def _readable_without_prompt(self, path: str) -> bool:
+        """Workspace files, session assets, and the exact global AGENTS.md read without a prompt;
+        the global instructions file is the user's own durable store, not model reach."""
+
+        return self.session.in_cwd(path) or self.session.owns_asset(path) or self.session.is_global_agents_md(path)
 
     def call(self) -> ToolOutput:
         parts: list[str | TextBlock | SourceBlock] = []
@@ -712,7 +718,7 @@ class EditTool(Tool):
             return source_error(
                 MIXED_EDIT_EVIDENCE, detail + "; split the call: edits with old become a direct call without source, range edits keep source and drop old"
             )
-        if not (self.session.in_cwd(path) or self.session.owns_asset(path)) or os.path.isdir(path):
+        if not (self.session.in_cwd(path) or self.session.owns_asset(path) or self.session.is_global_agents_md(path)) or os.path.isdir(path):
             return source_error(MIXED_EDIT_EVIDENCE, detail)
         try:
             with open(path, encoding="utf-8") as file:
@@ -825,7 +831,7 @@ class EditTool(Tool):
         to answer this way falls back to a bounded window, which tells the model the file is there
         and that the range it wants needs a Read of its own.
         """
-        if not (self.session.in_cwd(path) or self.session.owns_asset(path)) or os.path.isdir(path):
+        if not (self.session.in_cwd(path) or self.session.owns_asset(path) or self.session.is_global_agents_md(path)) or os.path.isdir(path):
             return None
         try:
             with open(path, encoding="utf-8") as file:

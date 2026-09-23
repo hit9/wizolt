@@ -2,8 +2,23 @@
 
 ## Unreleased
 
+### Added
+
+- `@agents.md:` references cite your durable instructions in a message: all applicable files,
+  one file (`@agents.md:"global"` / `@agents.md:"project"`), or one Markdown section by its
+  heading path (`@agents.md:"global/Contributing/PR body"`). The menu lists each file with its
+  visible path and its sections with an excerpt; the cited original text is attached to that
+  request, bounded to about 8,000 tokens shared by all references.
+- The fixed context prefix now starts with the global `<data_dir>/AGENTS.md` before the project's
+  `AGENTS.md`/`CLAUDE.md`, sharing the existing 8,000-token budget; truncation markers name the
+  file so a `Read` can recover the rest. `/status` shows both sources.
+- `Read` of the exact global `AGENTS.md` path no longer asks for out-of-workspace confirmation;
+  `Edit` of it goes through the ordinary write confirmation.
+
 ### Changed
 
+- A submission whose `@agents.md:` reference is unknown or ambiguous is refused with an explicit
+  error instead of being sent unexpanded; duplicate heading paths are reported as ambiguous.
 - `Read` on a missing or unreadable file now renders as the quiet dim `rejected` one-liner,
   the same as other usage errors it can self-correct, instead of the red `[failed]` block
   reserved for execution failures.

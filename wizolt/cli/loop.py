@@ -129,6 +129,8 @@ class CommandLoop:
 
 - `@server[.tool]` — Point the agent at an MCP server/tool in your message (tab-completes).
 - `$skill` — Reference a skill in your message to load its instructions for that turn (tab-completes).
+- `@agents.md:` — Cite your AGENTS.md instructions, a file (`global`/`project`), or one section
+  by heading in your message (tab-completes).
 
 ### CLI
 
@@ -261,6 +263,7 @@ Full documentation: https://wizolt.readthedocs.io
             mcp_tools=lambda server: tuple(tool.name for tool in self.session.mcp.tools.get(server, [])) if self.session.mcp else (),
             skills=lambda: tuple(skill.name for skill in self.session.skills.all()) if self.session.skills else (),
             file_matches=self.session.mentions.cached_matches if self.session.mentions else None,
+            agents_rows=lambda: self.session.agents.menu_rows() if self.session.agents else [],
         )
         self.agent.output_fn = self.agent_output
         self.agent.final_output_fn = self.agent_answer_output

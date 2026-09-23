@@ -266,27 +266,48 @@ class ContextManager:
         if (entry := self.session.config.vision_provider) and (not self.session.tool_names or "ViewImage" in self.session.tool_names):
             provider = self.session.config.providers[entry]
             rows.append(f"- vision: {entry}/{provider.model or '(empty)'} (available as image fallback)")
-        if self.session.settings.agents_md and info.agents_md:
-            content = info.agents_md
-            total = self.estimated_text_tokens(content)
-            if total > MAX_AGENTS_MD_TOKENS:
-                # Bound the fixed prefix (DESIGN.md): keep the head and tail, mark the middle. The
-                # marker counts against the cap too, so reserve it before splitting the rest between
-                # the excerpts. Reserving against `total` overstates it -- the omitted count printed
-                # is never larger -- which is what makes one pass enough to stay under the cap.
-                def marker_of(omitted: int) -> str:
-                    return f"... ({info.agents_md_source} truncated to fit the prefix; approximately {omitted} tokens omitted) ..."
+        if self.session.settings.agents_md:
+            prefix = self._agents_md_prefix(info)
+            if prefix:
+                rows.append("")
+                rows.extend(prefix)
+        return "\n".join(rows)
 
-                limit = max(2, MAX_AGENTS_MD_TOKENS * 4 - len(marker_of(total)) - 2)  # 2 = the newlines joining the three parts
+    def _agents_md_prefix(self, info) -> list[str]:
+        """The instructions rows of the fixed prefix: global before project, one shared cap.
+
+        Project instructions win on conflict, which the order already expresses (later text is
+        the more specific) and which the budget honors too: an oversized global file is clipped
+        to the room left after reserving what the project source needs, so the project file is
+        never starved by the global one. A source that still does not fit is clipped head/tail
+        with a marker naming its path, so the model knows where the full text lives. The prefix
+        stays fixed for the session -- a new session picks up edits."""
+
+        blocks = [
+            ("Global instructions", info.agents_md_global_display or "AGENTS.md", info.agents_md_global),
+            ("Project instructions", info.agents_md_source, info.agents_md),
+        ]
+        blocks = [(title, source, content) for title, source, content in blocks if source and content]
+        rows: list[str] = []
+        budget = MAX_AGENTS_MD_TOKENS
+        for index, (title, source, content) in enumerate(blocks):
+            # Room the sources after this one need, so the earlier (global) source yields first.
+            reserved = sum(self.estimated_text_tokens(later[2]) for later in blocks[index + 1 :])
+            total = self.estimated_text_tokens(content)
+            if total > max(0, budget - reserved):
+
+                def marker_of(omitted: int, source: str = source) -> str:
+                    return f"... ({source} truncated to fit the prefix; approximately {omitted} tokens omitted) ..."
+
+                limit = max(2, (budget - reserved) * 4 - len(marker_of(total)) - 2)  # 2 = the newlines joining the three parts
                 head_limit = max(1, limit * 2 // 5)
                 head = self.head_excerpt(content, head_limit)
                 tail = self.tail_excerpt(content, max(1, limit - head_limit))
                 omitted = max(0, total - self.estimated_text_tokens(head) - self.estimated_text_tokens(tail))
                 content = "\n".join(part for part in (head.rstrip(), marker_of(omitted), tail.lstrip()) if part)
-            rows.append("")
-            rows.append(f"--- Project instructions ({info.agents_md_source}) ---")
-            rows.append(content)
-        return "\n".join(rows)
+            budget = max(0, budget - self.estimated_text_tokens(content))
+            rows.extend((f"--- {title} ({source}) ---", content))
+        return rows
 
     def messages_text(self, messages: list[Json]) -> str:
         return "\n\n".join(f"{message.get('role', 'message')}:\n{ImageInputs.label_text(message)}" for message in messages) or "(empty)"

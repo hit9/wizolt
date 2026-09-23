@@ -5,6 +5,7 @@ import time
 import pytest
 from tui_harness import run_interactive_tui, wait_until
 
+from wizolt.agentsmd import MenuRow
 from wizolt.cli import CommandCompleter
 from wizolt.mentions import FilePick, active_mention
 from wizolt.tui import TuiApp
@@ -46,7 +47,7 @@ def test_mention_opens_completions_while_typing(monkeypatch):
         wait_until(lambda: completions() == ["@mcp:github"])  # the list narrows as typing continues
 
         pipe_input.send_text(" and @")
-        wait_until(lambda: completions() == ["@file:", "@mcp:", "@skill:"])
+        wait_until(lambda: completions() == ["@file:", "@mcp:", "@skill:", "@agents.md:"])
 
         pipe_input.send_text("mcp:")
         wait_until(lambda: completions() == ["@mcp:github", "@mcp:gitlab", "@mcp:playwright"])
@@ -66,22 +67,33 @@ def test_mention_opens_completions_while_typing(monkeypatch):
 
 
 def test_selecting_mention_kind_opens_its_candidate_list(monkeypatch):
-    app = TuiApp(completer=CommandCompleter(skills=lambda: ("release", "review")))
+    rows = [
+        MenuRow("All applicable", "every instructions file below", "@agents.md:"),
+        MenuRow("global · ~/.wizolt/AGENTS.md", "whole file", "@agents.md:global"),
+    ]
+    app = TuiApp(completer=CommandCompleter(skills=lambda: ("release", "review"), agents_rows=lambda: rows))
 
     def completions():
         state = app.input_buffer.complete_state
         return None if state is None else [c.text for c in state.completions]
 
+    def state():
+        current = app.input_buffer.complete_state
+        return None if current is None else current.complete_index
+
     def drive(pipe_input):
         wait_until(lambda: app.app is not None and app.app.is_running)
         pipe_input.send_text("@")
-        wait_until(lambda: completions() == ["@file:", "@mcp:", "@skill:"])
+        wait_until(lambda: completions() == ["@file:", "@mcp:", "@skill:", "@agents.md:"])
 
-        # Shift-Tab selects the last namespace row. Once that selection settles, its own candidates
-        # replace the parent namespace menu without another key press.
+        # Shift-Tab highlights the last namespace row; Enter commits it as real input, and Tab
+        # then asks that namespace for its own candidates.
         pipe_input.send_text("\x1b[Z")
-        wait_until(lambda: app.input_buffer.text == "@skill:")
-        wait_until(lambda: completions() == ["@skill:release", "@skill:review"])
+        wait_until(lambda: app.input_buffer.text == "@agents.md:")
+        pipe_input.send_text("\r")
+        wait_until(lambda: state() is None and app.input_buffer.text == "@agents.md:")
+        pipe_input.send_text("\t")
+        wait_until(lambda: completions() == [row.insert for row in rows])
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive)
@@ -219,8 +231,8 @@ def test_selecting_partially_typed_file_kind_opens_picker(monkeypatch, typed):
 
 def test_browsing_bare_kind_menu_does_not_launch_file_picker(monkeypatch):
     """Highlighting @file: in the bare-@ menu is a preview, not a choice: arrow/Tab through the
-    three kind rows without the file picker grabbing the terminal, and Enter on a later row
-    commits it (the picker only opens on an explicit Enter on @file:)."""
+    four kind rows without the file picker grabbing the terminal, and Enter on a later row commits
+    it (the picker only opens on an explicit Enter on @file:)."""
     queries = []
     app = TuiApp(
         completer=CommandCompleter(mcp_servers=lambda: ("github",), skills=lambda: ("release", "review")),
@@ -232,21 +244,21 @@ def test_browsing_bare_kind_menu_does_not_launch_file_picker(monkeypatch):
         current = app.input_buffer.complete_state
         return None if current is None else (current.complete_index, [c.text for c in current.completions])
 
-    kinds = ["@file:", "@mcp:", "@skill:"]
+    kinds = ["@file:", "@mcp:", "@skill:", "@agents.md:"]
 
     def drive(pipe_input):
         wait_until(lambda: app.app is not None and app.app.is_running)
         pipe_input.send_text("@")
         wait_until(lambda: state() is not None and state()[1] == kinds)
 
-        for expected_index, expected_text in ((0, "@file:"), (1, "@mcp:"), (2, "@skill:")):
+        for expected_index, expected_text in ((0, "@file:"), (1, "@mcp:"), (2, "@skill:"), (3, "@agents.md:")):
             pipe_input.send_text("\x1b[B")
             wait_until(lambda text=expected_text, idx=expected_index: app.input_buffer.text == text and state() is not None and state()[0] == idx)
-            assert state()[1] == kinds  # still browsing the same three kind rows
+            assert state()[1] == kinds  # still browsing the same kind rows
             assert queries == [] and not app._file_picker_active
 
         pipe_input.send_text("\r")
-        wait_until(lambda: state() is None and app.input_buffer.text == "@skill:")
+        wait_until(lambda: state() is None and app.input_buffer.text == "@agents.md:")
         assert queries == [] and not app._file_picker_active
         app.app.loop.call_soon_threadsafe(app.app.exit)
 

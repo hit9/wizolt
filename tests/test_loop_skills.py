@@ -175,7 +175,7 @@ def test_status_shows_agents_md_state(tmp_path):
     loaded = session(tmp_path)
     loaded_loop = CommandLoop(Agent(loaded, output_fn=lambda text: None), output_fn=lambda text: None)
     rendered = status(loaded_loop, "")
-    assert "agents_md on (AGENTS.md)" in rendered
+    assert "agents_md on (./AGENTS.md)" in rendered
 
     # Disabled at runtime: reports off.
     loaded.settings.agents_md = False
