@@ -5,10 +5,12 @@
 ### Added
 
 - Pickers such as `/provider`, `/model`, and `/reason` move half a page with Ctrl-D/Ctrl-U and a
-  whole page with PgDn/PgUp.
+  whole page with PgDn/PgUp, and Tab/Shift-Tab move like j/k.
 
 ### Fixed
 
+- A long `/model` list, such as many discovered models, scrolls inside the picker instead of
+  pushing its key legend off the bottom of the screen.
 - Choosing `@mcp:`, `@skill:`, or `@agents.md:` in the `@` menu with the arrows or Ctrl-N/P and
   then pressing Enter now opens that kind's list, instead of closing the menu. Choosing an MCP
   server opens its tools the same way, when the server is connected.

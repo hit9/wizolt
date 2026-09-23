@@ -2,6 +2,8 @@
 
 import asyncio
 import multiprocessing
+import os
+import shutil
 import threading
 
 import pytest
@@ -219,6 +221,47 @@ def test_interactive_tui_resolved_modal_allows_followup_approval(monkeypatch):
 
     assert selected == ["chosen"]
     assert approved == ["y"]
+
+
+@pytest.mark.parametrize("rows", [14, 20, 24, 40])
+def test_a_long_picker_keeps_its_key_legend_on_screen(monkeypatch, tmp_path, rows):
+    """A provider can discover dozens of models. Drawn whole, the /model list outgrew the modal
+    region and its last rows -- the key legend among them -- fell off the bottom. The list scrolls
+    inside the space instead, so the legend and the counter stay visible wherever the cursor is,
+    and Tab walks the list like j."""
+    monkeypatch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((80, rows)))
+    command_loop = loop(tmp_path)
+    command_loop.interactive_input = True
+    app = TuiApp()
+    command_loop.tui = app
+    output = ResizableOutput(rows=rows, columns=80)
+    frames = []
+    labels = ("--- Configured ---", "--- Discovered ---")
+    choices = (labels[0], *(f"model-{index}" for index in range(4)), labels[1], *(f"remote-{index}" for index in range(40)))
+    legend = "j/k/Tab move, Ctrl-D/U page, / search, Esc/q back/cancel"
+    result = []
+
+    def after_render(application):
+        frames.append(rendered_screen_text(application, output))
+
+    def screen_shows(*texts):
+        return bool(frames) and all(text in frames[-1] for text in texts)
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        selector = asyncio.run_coroutine_threadsafe(select_choice(command_loop, "Model", choices, disabled=set(labels)), app.app.loop)
+        wait_until(lambda: screen_shows("model-0", legend))
+        pipe_input.send_text("\t")  # Tab moves like j
+        wait_until(lambda: screen_shows(legend, "showing"))
+        pipe_input.send_text("G")  # to the far end of the list
+        wait_until(lambda: screen_shows("remote-39", legend, "of 46"))
+        pipe_input.send_text("\r")
+        result.append(selector.result(timeout=2))
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive, output=output, after_render=after_render)
+
+    assert result == ["remote-39"]
 
 
 def test_interactive_tui_choice_ctrl_c_reports_cancellation(monkeypatch, tmp_path):

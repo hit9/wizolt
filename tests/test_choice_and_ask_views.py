@@ -52,6 +52,23 @@ def test_choice_view_ctrl_d_u_and_page_keys_move_by_the_viewport():
     assert (state.query, state.selected) == ("", 0)
 
 
+def test_choice_view_tab_and_shift_tab_move_like_j_and_k():
+    state = ChoiceViewState(choices=("a", "b", "c"), labels={}, disabled=set())
+
+    state.handle_key("tab")
+    state.handle_key("tab")
+    assert state.selected == 2
+    state.handle_key("tab")
+    assert state.selected == 2  # clamped at the last row, as j is
+    state.handle_key("s-tab")
+    assert state.selected == 1
+
+    # While searching Tab is not query text.
+    state.handle_key("/")
+    state.handle_key("tab")
+    assert state.query == ""
+
+
 def test_choice_view_state_default_filtering():
     state = ChoiceViewState(
         choices=("alpha", "---", "beta", "---", "gamma"),
@@ -151,7 +168,7 @@ def test_choice_view_state_fragments_preserve_headers_and_preview():
     assert "   1. Alpha  \n" in rendered
     assert "  │ first\n  │ second\n" in rendered
     # The key legend closes the sheet instead of sitting between the title and the rows.
-    assert rendered.startswith("  Model\n\n") and rendered.endswith("\n\n  j/k move, Ctrl-D/U page, / search, Esc/q back/cancel\n")
+    assert rendered.startswith("  Model\n\n") and rendered.endswith("\n\n  j/k/Tab move, Ctrl-D/U page, / search, Esc/q back/cancel\n")
 
 
 def test_choice_view_selection_band_keeps_one_width_across_rows():

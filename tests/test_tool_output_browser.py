@@ -40,7 +40,7 @@ async def test_tool_output_viewer_browses_recent_calls_through_a_viewport_and_op
     assert get_cwidth(listing.splitlines()[1]) == 48  # over a rule that spans the sheet
     # A blank row flanks the rule, and the key legend closes the sheet.
     rows = listing.rstrip("\n").splitlines()
-    assert rows[2] == "" and rows[-2] == "" and rows[-1].strip().startswith("j/k move")
+    assert rows[2] == "" and rows[-2] == "" and rows[-1].strip().startswith("j/k/Tab move")
     assert "command-11" in listing and "command-2" in listing
     # A twenty-row terminal draws ten of the twelve: the rest are a scroll away, not dropped, and
     # the counter is what says so. `true` printed nothing and is not an entry at all.
@@ -268,7 +268,7 @@ async def test_tool_output_list_keeps_a_no_matches_row_among_the_rows(tmp_path, 
     frames = ["".join(value for _, value in frame) for frame in modal.frames]
     listing = [frame for frame in frames if "no matches" in frame][-1]
     rows = listing.rstrip("\n").splitlines()
-    assert rows[-1].strip().startswith("j/k move")  # the legend still closes the sheet
+    assert rows[-1].strip().startswith("j/k/Tab move")  # the legend still closes the sheet
     assert rows.index("  no matches") < len(rows) - 1  # the row sits with the rows, not under the legend
 
 

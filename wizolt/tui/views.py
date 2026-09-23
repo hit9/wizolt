@@ -242,7 +242,7 @@ class ChoiceViewState:
         title: str,
         preview_fn: Callable[[str], StyleAndTextTuples | str] | None = None,
         label_fn: Callable[[str], StyleAndTextTuples] | None = None,
-        keys: str = "j/k move, Ctrl-D/U page, / search, Esc/q back/cancel",
+        keys: str = "j/k/Tab move, Ctrl-D/U page, / search, Esc/q back/cancel",
     ) -> StyleAndTextTuples:
         """The list as fragments: the title and a blank row (always the first two fragments), the
         rows, and the `keys` legend closing the sheet. `label_fn` styles one row's label in pieces
@@ -308,6 +308,9 @@ class ChoiceViewState:
             if style:
                 parts.append((style, " " * (band - fragment_list_width(row))))
             parts.append(("", "\n"))
+        if end - start < len(visible):
+            # Its own row: joined to the legend, it pushed the line past a narrow terminal's edge.
+            parts.append(("class:choice.disabled", f"  showing {start + 1}-{end} of {len(visible)}\n"))
         if preview_fn and options:
             preview = preview_fn(options[self.selected])
             if isinstance(preview, str):
@@ -316,8 +319,7 @@ class ChoiceViewState:
             if preview:
                 parts.append(("class:choice.disabled", "  " + "─" * max(10, band - 2) + "\n"))
                 parts.extend(preview)
-        legend = keys + (f" · showing {start + 1}-{end} of {len(visible)}" if end - start < len(visible) else "")
-        parts += [("", "\n"), ("class:choice.disabled", "  " + legend + "\n")]
+        parts += [("", "\n"), ("class:choice.disabled", "  " + keys + "\n")]
         if self.searching:
             parts.append(("", "/" + self.query))
         return parts
@@ -327,9 +329,9 @@ class ChoiceViewState:
             text = data if key == "any" else key
             if len(text) == 1 and text not in "\r\n":
                 self.set_query(self.query + text)
-        elif key in {"j", "down"} and not self.searching:
+        elif key in {"j", "down", "tab"} and not self.searching:
             self.move(1)
-        elif key in {"k", "up"} and not self.searching:
+        elif key in {"k", "up", "s-tab"} and not self.searching:
             self.move(-1)
         elif key in {"g", "G"} and not self.searching:  # less-style: g→first, G→last
             self.move(-len(self.enabled()) if key == "g" else len(self.enabled()))

@@ -1112,6 +1112,12 @@ class TuiApp:
                 self.close_modal(None)
             raise
 
+    @staticmethod
+    def modal_rows(terminal_rows: int) -> int:
+        """The most rows a non-exclusive modal gets: the terminal less the status line and gaps,
+        and less a band of recent output kept visible above it."""
+        return max(1, terminal_rows - 4 - min(6, terminal_rows // 3))
+
     def _activate_modal(self, app: Application, modal: TuiModal, *, exclusive: bool) -> None:
         """Make `modal` the visible one. Runs on the loop, whichever entry point opened it."""
         self.modal = modal
@@ -1123,8 +1129,7 @@ class TuiApp:
             # Keep this bound for the modal's lifetime: re-querying terminal size during layout
             # can change its height halfway through a resize frame. The parent still clips it
             # to the actual space available when the pane shrinks.
-            rows = app.output.get_size().rows
-            target.height = Dimension(max=max(1, rows - 4 - min(6, rows // 3)))
+            target.height = Dimension(max=self.modal_rows(app.output.get_size().rows))
         app.layout.focus(target)
         if exclusive:
             self._use_alternate_screen(True)

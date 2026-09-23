@@ -31,6 +31,7 @@ from wizolt.tui import (
     DiffViewState,
     SegmentLogViewState,
     TabbedViewState,
+    TuiApp,
 )
 
 if TYPE_CHECKING:
@@ -42,6 +43,14 @@ if TYPE_CHECKING:
 # hands this sentinel back and ``tool_output_viewer`` reopens the list around it.
 
 _TOOL_OUTPUT_BACK = object()
+
+
+def picker_rows() -> int:
+    """Rows a picker draws at once. Uncapped, a long list (the models a provider discovers)
+    outgrows the modal region and cuts off its own bottom rows, the key legend among them; beyond
+    this many it scrolls instead. The five reserved rows are the title, the blank rows around the
+    list, the `showing` counter, and the legend."""
+    return max(1, min(20, TuiApp.modal_rows(shutil.get_terminal_size((80, 24)).lines) - 5))
 
 
 def wrapped_rows(text: str, width: int, margin: str = "  ", style: str = "") -> list[StyleAndTextTuples]:
@@ -123,7 +132,7 @@ async def mcp_manager(loop: CommandLoop) -> None:
         loop.ui.emit_answer(mcp.render_server_status(), indent=TurnBox.CONTENT_LEVEL)
         return
 
-    state = ChoiceViewState(tuple(config.name for config in configs), {}, set())
+    state = ChoiceViewState(tuple(config.name for config in configs), {}, set(), max_rows=picker_rows())
     transitions: dict[str, str] = {}
     errors: dict[str, str] = {}
     # No locks: the rows, the toggles that change them, and the render that reads them all run on
@@ -246,7 +255,7 @@ async def choice_application(
     exclusive: bool = False,
     max_rows: int = 0,
 ) -> str | object | None:
-    state = ChoiceViewState(choices, labels, disabled, max_rows=max_rows)
+    state = ChoiceViewState(choices, labels, disabled, max_rows=max_rows or picker_rows())
     options = state.enabled()
     state.selected = options.index(current) if current in options else 0
     if loop.tui is None:
@@ -566,7 +575,7 @@ async def _tool_output_list(loop: CommandLoop, entries: list[OutputEntry], state
         sits on each side of it, so the boundary is a break in the page rather than a line drawn
         through it."""
         cols = shutil.get_terminal_size((80, 20)).columns
-        body = state.fragments("", label_fn=lambda choice: parts.get(choice, []), keys="j/k move, Ctrl-D/U page, / search, Enter open, Esc/q close")
+        body = state.fragments("", label_fn=lambda choice: parts.get(choice, []), keys="j/k/Tab move, Ctrl-D/U page, / search, Enter open, Esc/q close")
         return [
             ("class:choice.title", f"  Tool output · latest {len(entries)}\n"),
             ("class:rule", "  " + "─" * max(3, cols - 4) + "\n"),
