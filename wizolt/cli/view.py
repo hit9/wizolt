@@ -161,6 +161,25 @@ class CommandCompleter(Completer):
 
             yield from self.matches(CommandLoop.COMMANDS, text, more=CommandLoop.NEEDS_ARGUMENT)
 
+    def leads_on(self, before: str, completion: Completion) -> bool:
+        """Whether taking `completion`, offered for the input `before`, is a step toward a longer
+        choice rather than a choice: Enter then fills it in and opens what comes next instead of
+        finishing. The completer produced the row, so it is the one place that knows.
+
+        A command or argument that needs more after it carries a trailing space (see `matches`).
+        A mention kind is a step from the bare `@` menu -- but `@agents.md:` in its own menu is
+        the "All applicable" row, a choice. An MCP server is a step toward its tools, though it is
+        a whole mention too, which is why its tools open with none highlighted."""
+        text = completion.text
+        if text.endswith(" "):
+            return True
+        span = active_mention(before)
+        if span is None:
+            return False
+        if span.kind == "bare" and text in {"@" + kind for kind, _ in self.KINDS}:
+            return True
+        return text.startswith("@mcp:") and "." not in text and self._known_server(text[len("@mcp:") :]) is not None
+
     @staticmethod
     def matches(values, prefix: str, more=()):
         """Prefix matches. A value in `more` needs something after it (`/set`, a `/set` key, `/mcp

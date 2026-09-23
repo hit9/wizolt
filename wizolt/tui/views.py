@@ -8,6 +8,7 @@ from enum import Enum, auto
 from typing import Any, ClassVar, TypeVar
 
 from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples, fragment_list_width, to_formatted_text
+from prompt_toolkit.utils import get_cwidth
 
 from wizolt.base import SELECTION_BACK, SELECTION_FREE_TEXT, Text
 from wizolt.render import UiPrinter, WizoltMarkdown, markdown_console
@@ -80,8 +81,8 @@ class DiffViewState:
             if self.mode is self.Mode.LIST:
                 return None
             self.close_file()
-        elif key in {"down", "j", "up", "k"}:
-            delta = 1 if key in {"down", "j"} else -1
+        elif key in {"down", "j", "c-n", "up", "k", "c-p"}:
+            delta = 1 if key in {"down", "j", "c-n"} else -1
             if self.mode is self.Mode.LIST and file_count:
                 self.move_file(delta, file_count)
             elif self.mode is self.Mode.FILE:
@@ -150,8 +151,8 @@ class SegmentLogViewState:
             if self.mode is self.Mode.LIST:
                 return None
             self.close()
-        elif key in {"down", "j", "up", "k"}:
-            delta = 1 if key in {"down", "j"} else -1
+        elif key in {"down", "j", "c-n", "up", "k", "c-p"}:
+            delta = 1 if key in {"down", "j", "c-n"} else -1
             if self.mode is self.Mode.LIST:
                 self.move(delta, count)
             else:
@@ -260,7 +261,7 @@ class ChoiceViewState:
         title: str,
         preview_fn: Callable[[str], StyleAndTextTuples | str] | None = None,
         label_fn: Callable[[str], StyleAndTextTuples] | None = None,
-        keys: str = "j/k/Tab move, Ctrl-D/U page, / search, Esc/q back/cancel",
+        keys: str = "j/k/Tab move · Ctrl-D/U page · / search · Esc/q back/cancel",
     ) -> StyleAndTextTuples:
         """The list as fragments: the title and a blank row (always the first two fragments), the
         rows, and the `keys` legend closing the sheet. `label_fn` styles one row's label in pieces
@@ -353,9 +354,9 @@ class ChoiceViewState:
             text = data if key == "any" else key
             if len(text) == 1 and text not in "\r\n":
                 self.set_query(self.query + text)
-        elif key in {"j", "down", "tab"} and not self.searching:
+        elif key in {"j", "down", "tab", "c-n"} and not self.searching:
             self.move(1)
-        elif key in {"k", "up", "s-tab"} and not self.searching:
+        elif key in {"k", "up", "s-tab", "c-p"} and not self.searching:
             self.move(-1)
         elif key in {"g", "G"} and not self.searching:  # less-style: g→first, G→last
             self.move(-len(self.enabled()) if key == "g" else len(self.enabled()))
@@ -595,7 +596,9 @@ class AskViewState:
         return lines
 
     def _footer_rows(self, width: int) -> list[list[tuple[str, str]]]:
-        text = "↑↓/jk move · ^D/^U scroll · Enter select · Tab page · n note · / search · Esc cancel" if width >= 84 else "↑↓/jk · Enter · Tab · n · / · Esc"
+        text = "↑↓/jk move · Ctrl-D/U scroll · Enter select · Tab page · n note · / search · Esc cancel"
+        # The short form below the full one's own width, so the legend never wraps onto two rows.
+        text = text if width >= get_cwidth(text) else "↑↓/jk · Enter · Tab · n · / · Esc"
         return Text.wrap_styled([], [], [("class:choice.disabled", text)], width)
 
     def handle_key(self, key: str, data: str = "") -> Any:

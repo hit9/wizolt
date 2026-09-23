@@ -1,7 +1,12 @@
 """choice and ask views (split from tests/test_ui_render.py)."""
 
+import ast
+import re
+from pathlib import Path
+
 from prompt_toolkit.utils import get_cwidth
 
+import wizolt
 import wizolt.render as render_module
 from wizolt.base import (
     SELECTION_BACK,
@@ -9,7 +14,7 @@ from wizolt.base import (
 )
 from wizolt.render import UiPrinter
 from wizolt.tools import AskSpec
-from wizolt.tui import ASK_DONE, ASK_FREE_TEXT, TUI_MODAL_PENDING, AskViewState, ChoiceViewState
+from wizolt.tui import ASK_DONE, ASK_FREE_TEXT, TUI_MODAL_PENDING, AskViewState, ChoiceViewState, DiffViewState, SegmentLogViewState, TabbedViewState
 
 
 def test_choice_view_g_and_shift_g_jump_first_and_last():
@@ -50,6 +55,72 @@ def test_choice_view_ctrl_d_u_and_page_keys_move_by_the_viewport():
     state.handle_key("/")
     state.handle_key("c-d")
     assert (state.query, state.selected) == ("", 0)
+
+
+def _key_legends() -> list[tuple[str, str]]:
+    """Every key legend in the source, as (file, text): the one-line strings that name Esc and a
+    move or scroll key -- the rows closing the pickers, viewers, menus, and the Ask sheet."""
+    root = Path(wizolt.__file__).parent
+    legends = []
+    for path in sorted(root.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                text = node.value
+                if "\n" not in text and len(text) < 160 and "Esc" in text and re.search(r"\b(move|scroll)\b", text):
+                    legends.append((path.name, text))
+    return legends
+
+
+def test_the_legend_scan_finds_every_kind_of_legend():
+    """The scan below is only a guard if it sees the legends: picker, browser, Ask, viewers, and
+    the completion menus' shared keys."""
+    texts = [text for _, text in _key_legends()]
+    for fragment in ("j/k/Tab move", "Enter open · Esc/q close", "Tab page · n note", "Esc/q back · Ctrl-O close", "Ctrl-N/P or ↑/↓ move"):
+        assert any(fragment in text for text in texts), fragment
+
+
+def test_every_key_legend_writes_keys_the_same_way():
+    """One notation across the TUI: key groups apart by ` · `, never commas; control keys as
+    `Ctrl-X`, never `^X` or prompt_toolkit's own `c-x`; the half-page pair as `Ctrl-D/U`, down
+    first as everywhere else; page keys as `PgUp/PgDn`."""
+    for name, text in _key_legends():
+        assert not re.search(r"\b(move|page|search|open|close|select|scroll|cancel), ", text), (name, text)
+        assert not re.search(r"\^[A-Z]", text), (name, text)
+        assert not re.search(r"\bc-[a-z]\b", text), (name, text)
+        assert "Ctrl-U/D" not in text and "PgUp/Dn" not in text, (name, text)
+
+
+def test_choice_view_ctrl_n_and_ctrl_p_move_like_the_completion_menu():
+    """Ctrl-N/P move in every list that moves with arrows -- the completion menus, the @file:
+    picker, and pickers -- and are never typed into a search query."""
+    state = ChoiceViewState(choices=("a", "b", "c"), labels={}, disabled=set())
+
+    state.handle_key("c-n")
+    state.handle_key("c-n")
+    assert state.selected == 2
+    state.handle_key("c-p")
+    assert state.selected == 1
+
+    state.handle_key("/")
+    state.handle_key("c-n")
+    state.handle_key("c-p")
+    assert (state.query, state.selected) == ("", 0)
+
+
+def test_the_other_list_views_take_ctrl_n_and_ctrl_p_too():
+    """The diff viewer's file list and the history viewer's segment list move on Ctrl-N/P as they
+    do on Down/Up, so no list in the TUI is the odd one out."""
+    diff = DiffViewState(view=TabbedViewState(titles=("latest",)))
+    diff.handle_key("c-n", 3, 10)
+    assert diff.file == 1
+    diff.handle_key("c-p", 3, 10)
+    assert diff.file == 0
+
+    segments = SegmentLogViewState()
+    segments.handle_key("c-n", 3, 10)
+    assert segments.selected == 1
+    segments.handle_key("c-p", 3, 10)
+    assert segments.selected == 0
 
 
 def test_choice_view_tab_and_shift_tab_move_like_j_and_k():
@@ -168,7 +239,7 @@ def test_choice_view_state_fragments_preserve_headers_and_preview():
     assert "   1. Alpha  \n" in rendered
     assert "  │ first\n  │ second\n" in rendered
     # The key legend closes the sheet instead of sitting between the title and the rows.
-    assert rendered.startswith("  Model\n\n") and rendered.endswith("\n\n  j/k/Tab move, Ctrl-D/U page, / search, Esc/q back/cancel\n")
+    assert rendered.startswith("  Model\n\n") and rendered.endswith("\n\n  j/k/Tab move · Ctrl-D/U page · / search · Esc/q back/cancel\n")
 
 
 def test_choice_view_selection_band_keeps_one_width_across_rows():
@@ -288,7 +359,7 @@ def test_ask_view_no_matches_keeps_search_visible_and_obeys_height():
 
     rows = _rows(state.fragments(width=120, max_height=5))
 
-    assert rows == ["(1/1) Q?", "", "  no matches", "/missing", "↑↓/jk move · ^D/^U scroll · Enter select · Tab page · n note · / search · Esc cancel"]
+    assert rows == ["(1/1) Q?", "", "  no matches", "/missing", "↑↓/jk move · Ctrl-D/U scroll · Enter select · Tab page · n note · / search · Esc cancel"]
 
 
 def test_ask_view_search_uses_the_blank_row_above_footer_without_losing_capacity():

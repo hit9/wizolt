@@ -246,7 +246,7 @@ def test_a_long_picker_keeps_its_key_legend_on_screen(monkeypatch, tmp_path, row
     frames = []
     labels = ("--- Configured ---", "--- Discovered ---")
     choices = (labels[0], *(f"model-{index}" for index in range(4)), labels[1], *(f"remote-{index}" for index in range(40)))
-    legend = "j/k/Tab move, Ctrl-D/U page, / search, Esc/q back/cancel"
+    legend = "j/k/Tab move · Ctrl-D/U page · / search · Esc/q back/cancel"
     result = []
 
     def after_render(application):
@@ -274,6 +274,32 @@ def test_a_long_picker_keeps_its_key_legend_on_screen(monkeypatch, tmp_path, row
     assert result == ["remote-39"]
 
 
+def test_ctrl_n_and_ctrl_p_reach_a_picker_and_never_its_search(monkeypatch, tmp_path):
+    """The TUI hands Ctrl-N/P to an open modal by name. Before, they fell through to the catch-all
+    key: they did not move, and while searching the raw control character was typed into the
+    query."""
+    command_loop = loop(tmp_path)
+    command_loop.interactive_input = True
+    app = TuiApp()
+    command_loop.tui = app
+    result = []
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        selector = asyncio.run_coroutine_threadsafe(select_choice(command_loop, "Pick", ("alpha", "beta", "gamma")), app.app.loop)
+        wait_until(lambda: app.modal is not None)
+        pipe_input.send_text("/")  # search: a control character here used to become query text
+        pipe_input.send_text("\x0e")
+        pipe_input.send_text("\r")  # leave the search with an empty query
+        pipe_input.send_text("\x0e\x0e\x10\r")  # Ctrl-N twice, Ctrl-P once: the second row
+        result.append(selector.result(timeout=2))
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+    assert result == ["beta"]
+
+
 @pytest.mark.parametrize("rows", [24, 30, 40])
 def test_an_exclusive_picker_with_a_tall_preview_keeps_its_legend(monkeypatch, tmp_path, rows):
     """The /sessions picker owns the screen and previews a session's recent messages, often a dozen
@@ -289,7 +315,7 @@ def test_an_exclusive_picker_with_a_tall_preview_keeps_its_legend(monkeypatch, t
     frames = []
     choices = tuple(f"session-{index}" for index in range(30))
     preview = "\\n".join(f"message {index}" for index in range(12)) + "\\nnewest message"
-    legend = "j/k/Tab move, Ctrl-D/U page, / search, Esc/q back/cancel"
+    legend = "j/k/Tab move · Ctrl-D/U page · / search · Esc/q back/cancel"
     result = []
 
     def after_render(application):

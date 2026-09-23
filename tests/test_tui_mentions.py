@@ -4,7 +4,7 @@ import time
 
 import pytest
 from prompt_toolkit.buffer import CompletionState
-from prompt_toolkit.completion import CompleteEvent
+from prompt_toolkit.completion import CompleteEvent, Completion
 from prompt_toolkit.document import Document
 from tui_harness import run_interactive_tui, wait_until
 
@@ -658,6 +658,82 @@ def test_every_mention_form_fills_in_its_default_row_and_never_sends(monkeypatch
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+@pytest.mark.parametrize(
+    ("before", "row", "step"),
+    [
+        # Commands and arguments: a trailing space marks what needs more after it.
+        ("/se", "/set ", True),
+        ("/st", "/status", False),
+        ("/set pro", "provider.temperature ", True),
+        ("/set provider.temperature ", "off", False),
+        ("/mcp co", "connect ", True),
+        ("/mcp ", "tools", False),
+        # Kinds lead on from the bare `@` menu...
+        ("@", "@file:", True),
+        ("@", "@mcp:", True),
+        ("@sk", "@skill:", True),
+        ("@", "@agents.md:", True),
+        # ...but `@agents.md:` in its own menu is the "All applicable" row, a choice.
+        ("@agents.md:", "@agents.md:", False),
+        # A server leads on to its tools; a tool, a skill, a file, a section are choices.
+        ("@mcp:gi", "@mcp:github", True),
+        ("@gi", "@mcp:github", True),
+        ("@mcp:github.", "@mcp:github.search", False),
+        ("@skill:re", "@skill:release", False),
+        ("$re", "@skill:release", False),
+        ("@file:vi", "@file:wizolt/cli/view.py", False),
+        ("@agents.md:pro", "@agents.md:project", False),
+    ],
+)
+def test_the_completer_decides_which_rows_lead_on(before, row, step):
+    """One place decides whether a row is a step toward a longer choice -- the completer that
+    offered it -- for commands and mentions alike. The TUI only asks."""
+    completer = CommandCompleter(mcp_servers=lambda: ("github",), skills=lambda: ("release",))
+    assert completer.leads_on(before, Completion(row, start_position=0)) is step
+
+
+def test_the_tui_takes_its_steps_from_the_completer(monkeypatch):
+    """The TUI keeps no list of steps of its own: a row its completer calls a step opens the next
+    level on Enter, and one it calls a choice fills in -- whatever the row looks like."""
+
+    class Completer(CommandCompleter):
+        def get_completions(self, document, complete_event):
+            text = document.text_before_cursor
+            if text.endswith("@x"):
+                yield Completion("@x:", start_position=-2)
+            elif text.endswith("@x:"):
+                yield Completion("@x:one", start_position=-3)
+                yield Completion("@x:two", start_position=-3)
+            else:
+                yield from super().get_completions(document, complete_event)
+
+        def leads_on(self, before, completion):
+            return completion.text == "@x:"
+
+    submitted = []
+    app = TuiApp(completer=Completer(), on_chat_submit=submitted.append)
+
+    def listed():
+        state = app.input_buffer.complete_state
+        return None if state is None else [c.text for c in state.completions]
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        def open_menu():
+            # `@x` is not a real mention, so no typing transition opens a menu for it.
+            app.input_buffer.insert_text("@x")
+            app.input_buffer.start_completion(select_first=False)
+
+        app.app.loop.call_soon_threadsafe(open_menu)
+        wait_until(lambda: listed() == ["@x:"])
+        pipe_input.send_text("\r")  # a step: filled in, and its level opens
+        wait_until(lambda: app.input_buffer.text == "@x:" and listed() == ["@x:one", "@x:two"])
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+    assert submitted == []
 
 
 def test_enter_on_a_default_kind_row_opens_its_list_instead_of_sending(monkeypatch):

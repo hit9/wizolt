@@ -5,7 +5,12 @@
 ### Added
 
 - Pickers such as `/provider`, `/model`, and `/reason` move half a page with Ctrl-D/Ctrl-U and a
-  whole page with PgDn/PgUp, and Tab/Shift-Tab move like j/k.
+  whole page with PgDn/PgUp, and Tab/Shift-Tab and Ctrl-N/Ctrl-P move like j/k. Ctrl-N/Ctrl-P
+  also move in the diff and history viewers.
+- Esc closes the command and mention menu at once and puts back what you typed; Esc then Enter
+  still inserts a newline.
+- Esc responds without the half-second pause it had everywhere, such as leaving a picker or a
+  viewer.
 
 ### Fixed
 

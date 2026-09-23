@@ -24,6 +24,8 @@ MentionKind = Literal["bare", "file", "mcp", "skill", "agents"]
 _WORD = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 _IDENTIFIER = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
 _BARE_FILE = re.compile(r"^[A-Za-z0-9_./:+@%=-]+$")
+# The keys every completion menu names: the @file: picker's header and the input's dropdown hint.
+MENU_KEYS = "Ctrl-N/P or ↑/↓ move · Enter select · Esc close"
 
 
 @dataclass(frozen=True)
@@ -510,7 +512,7 @@ class FzfPicker:
             "--height=~60%",
             "--border",
             "--prompt=files> ",
-            "--header=Ctrl-N/P or ↑/↓ move · Enter select · Esc close",
+            "--header=" + MENU_KEYS,
             "--bind=ctrl-n:down,ctrl-p:up",
             "--query",
             query,

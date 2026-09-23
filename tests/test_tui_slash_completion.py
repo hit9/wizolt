@@ -81,7 +81,7 @@ def test_completion_menu_closes_on_a_key_hint_row(monkeypatch):
         wait_until(lambda: any("@mcp:gitlab" in frame for frame in frames))
         lines = next(frame for frame in reversed(frames) if "@mcp:gitlab" in frame).splitlines()
         row = next(index for index, line in enumerate(lines) if "@mcp:gitlab" in line)
-        assert lines[row + 1].strip() == "Ctrl-N/P or ↑/↓ move · Enter select"
+        assert lines[row + 1].strip() == "Ctrl-N/P or ↑/↓ move · Enter select · Esc close"
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive, output=output, after_render=after_render)
@@ -306,6 +306,111 @@ def test_moving_from_the_default_row(monkeypatch, key, index):
         wait_until(lambda: app.input_buffer.complete_state is not None and app.input_buffer.complete_state.complete_index == index)
         assert app.input_buffer.text == completions[index].text
         assert default_completion(app.input_buffer.complete_state) is None  # a real selection now
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+@pytest.mark.parametrize(
+    ("typed", "keys"),
+    [
+        ("/st", []),  # the default row only: nothing to undo
+        ("/st", ["\t"]),  # Tab previewed `/status` into the input: Esc takes it back
+        ("use @skill:re", ["\x1b[B"]),  # a mention, a row moved to with Down
+    ],
+    ids=["default", "tab-preview", "mention"],
+)
+def test_esc_closes_the_menu_and_restores_what_was_typed(monkeypatch, typed, keys):
+    """Esc closes a completion menu, as it does the @file: picker, and puts back the text as it
+    was typed. Restoring it is not typing, so the menu stays closed: neither the Backspace reopen
+    nor a pending transition brings it back."""
+    submitted = []
+    app = TuiApp(completer=CommandCompleter(skills=lambda: ("release", "review")), on_chat_submit=submitted.append)
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text(typed)
+        wait_until(lambda: app.input_buffer.complete_state is not None)
+        for key in keys:
+            pipe_input.send_text(key)
+            time.sleep(0.05)
+        if keys:
+            wait_until(lambda: app.input_buffer.text != typed)
+        pipe_input.send_text("\x1b")
+        wait_until(lambda: app.input_buffer.complete_state is None, timeout=3)
+        assert app.input_buffer.text == typed
+        time.sleep(0.3)  # past any deferred reopen or namespace transition
+        assert app.input_buffer.complete_state is None and submitted == []
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+def test_esc_closes_the_menu_without_waiting(monkeypatch):
+    """Esc used to wait a full `timeoutlen` (a second) to see whether it began Esc+Enter before
+    the menu closed. It closes as soon as the key arrives."""
+    app = TuiApp(completer=CommandCompleter())
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("/st")
+        wait_until(lambda: app.input_buffer.complete_state is not None)
+        sent = time.monotonic()
+        pipe_input.send_text("\x1b")
+        wait_until(lambda: app.input_buffer.complete_state is None)
+        assert time.monotonic() - sent < 0.3
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+@pytest.mark.parametrize(
+    ("keys", "text", "sent"),
+    [
+        # The chord as a terminal sends Alt+Enter: one burst. A newline, not a send.
+        (["\x1b\r"], "/st\n", []),
+        # The chord as a person types it, Esc and then Enter: the same newline.
+        (["\x1b", "\r"], "/st\n", []),
+        # Anything typed between them breaks the chord: Enter sends as usual.
+        (["\x1b", "x", "\r"], "", ["/stx"]),
+    ],
+    ids=["alt-enter", "esc-then-enter", "esc-type-enter"],
+)
+def test_esc_enter_still_inserts_a_newline_with_the_menu_open(monkeypatch, keys, text, sent):
+    """Esc is the first half of Esc+Enter, the newline chord. The menu's Esc closes at once, and
+    Enter straight after it completes the chord, so it still types a newline -- but only straight
+    after, so Esc, more typing, then Enter sends."""
+    submitted = []
+    app = TuiApp(completer=CommandCompleter(), on_chat_submit=submitted.append)
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("/st")
+        wait_until(lambda: app.input_buffer.complete_state is not None)
+        for key in keys:
+            pipe_input.send_text(key)
+            time.sleep(0.2)
+        wait_until(lambda: app.input_buffer.text == text and [str(value) for value in submitted] == sent)
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+def test_enter_long_after_esc_sends(monkeypatch):
+    """The chord has the same time limit it always had (`timeoutlen`): an Enter pressed well after
+    the Esc that closed the menu is an ordinary Enter and sends."""
+    submitted = []
+    app = TuiApp(completer=CommandCompleter(), on_chat_submit=submitted.append)
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("/st")
+        wait_until(lambda: app.input_buffer.complete_state is not None)
+        pipe_input.send_text("\x1b")
+        wait_until(lambda: app.input_buffer.complete_state is None)
+        time.sleep(app.app.timeoutlen + 0.2)
+        pipe_input.send_text("\r")
+        wait_until(lambda: [str(value) for value in submitted] == ["/st"])
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive)

@@ -575,7 +575,7 @@ async def _tool_output_list(loop: CommandLoop, entries: list[OutputEntry], state
         sits on each side of it, so the boundary is a break in the page rather than a line drawn
         through it."""
         cols = shutil.get_terminal_size((80, 20)).columns
-        body = state.fragments("", label_fn=lambda choice: parts.get(choice, []), keys="j/k/Tab move, Ctrl-D/U page, / search, Enter open, Esc/q close")
+        body = state.fragments("", label_fn=lambda choice: parts.get(choice, []), keys="j/k/Tab move · Ctrl-D/U page · / search · Enter open · Esc/q close")
         return [
             ("class:choice.title", f"  Tool output · latest {len(entries)}\n"),
             ("class:rule", "  " + "─" * max(3, cols - 4) + "\n"),
@@ -730,11 +730,11 @@ def _approval_text_view(
         scroll = min(scroll, max(0, len(lines) - height))
         # The full legend needs ~78 cells; drop to the key names alone rather than let it spill past
         # the right edge on a narrow terminal, where the modal window would just cut it off.
-        legend = "  ↑/↓ scroll · Ctrl-U/D half-page · PgUp/Dn page · g/G top/bottom · Esc/q close"
+        legend = "  ↑/↓ scroll · Ctrl-D/U half-page · PgUp/PgDn page · g/G top/bottom · Esc/q close"
         if back_on_escape:
-            legend = "  ↑/↓ scroll · Ctrl-U/D half-page · PgUp/Dn page · g/G top/bottom · Esc/q back · c-o close"
+            legend = "  ↑/↓ scroll · Ctrl-D/U half-page · PgUp/PgDn page · g/G top/bottom · Esc/q back · Ctrl-O close"
         if get_cwidth(legend) > width:
-            legend = "  ↑/↓ · Ctrl-U/D · g/G · Esc/q back · c-o close" if back_on_escape else "  ↑/↓ · Ctrl-U/D · g/G · Esc/q close"
+            legend = "  ↑/↓ · Ctrl-D/U · g/G · Esc/q back · Ctrl-O close" if back_on_escape else "  ↑/↓ · Ctrl-D/U · g/G · Esc/q close"
         parts: StyleAndTextTuples = [
             ("class:choice.title", f"  {view.label[:1].upper() + view.label[1:]} · read-only\n"),
             # The rule under the title carries no label of its own -- the title is the label -- and at
@@ -755,9 +755,9 @@ def _approval_text_view(
         if key in {"q", "c-o", "escape"}:
             return None
         height = viewport()
-        if key in {"down", "j"}:
+        if key in {"down", "j", "c-n"}:
             scroll += 1
-        elif key in {"up", "k"}:
+        elif key in {"up", "k", "c-p"}:
             scroll -= 1
         elif key in {"pagedown", "c-d"}:
             scroll += height if key == "pagedown" else height // 2
@@ -848,7 +848,7 @@ async def diff_viewer(loop: CommandLoop) -> None:
         if state.mode is DiffViewState.Mode.LIST:
             hint = "↑/↓ or j/k move · ←/→ or h/l tab · Enter open · r refresh · Esc/q close"
         else:
-            hint = "↑/↓ scroll · Ctrl-U/D half-page · PgUp/PgDn page · Esc/← back · r refresh · q close"
+            hint = "↑/↓ scroll · Ctrl-D/U half-page · PgUp/PgDn page · Esc/← back · r refresh · q close"
         position = f"{state.file + 1 if sections else 0}/{len(sections)}"
         parts.append(("class:choice.disabled", f"\n  [{mode_hint}] {hint} [{position}]\n"))
         return parts
@@ -950,7 +950,7 @@ async def compaction_log_viewer(loop: CommandLoop) -> None:
         if state.mode is SegmentLogViewState.Mode.LIST:
             hint = "  [list] ↑/↓ or j/k move · Enter open · g/G first/last · Esc/q close"
         else:
-            hint = "  [detail] ↑/↓ scroll · Ctrl-U/D half-page · PgUp/PgDn page · Esc/← back · q close"
+            hint = "  [detail] ↑/↓ scroll · Ctrl-D/U half-page · PgUp/PgDn page · Esc/← back · q close"
         position = f" [{state.selected + 1 if segments else 0}/{len(segments)}]"
         parts.append(("class:choice.disabled", "\n" + Text.clip_width(hint + position, width) + "\n"))
         return parts

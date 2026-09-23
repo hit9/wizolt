@@ -44,7 +44,7 @@ from wizolt.base import (
     run_blocking,
 )
 from wizolt.image import IMAGE_MARKER, ImageInputs, ImageRef, UserInput
-from wizolt.mentions import FilePick, MentionSpan, active_mention, encode_file_mention, mention_spellings, scan_mentions
+from wizolt.mentions import MENU_KEYS, FilePick, MentionSpan, active_mention, encode_file_mention, mention_spellings, scan_mentions
 from wizolt.paste import PASTE_MARKER, PasteRef
 from wizolt.render import ScrollbackText, UiPrinter
 from wizolt.tui.scrollback import ScrollbackRegion
@@ -197,9 +197,7 @@ class _AlignedCompletionsMenuControl(CompletionsMenuControl):
 
 
 class _AlignedCompletionsMenu(CompletionsMenu):
-    # The same keys the @file: picker names in its header, so every menu reads alike. Esc is left
-    # out: nothing binds it to closing this menu.
-    HINT = "Ctrl-N/P or ↑/↓ move · Enter select"
+    HINT = MENU_KEYS  # the @file: picker's header too, so every menu reads alike
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -285,8 +283,9 @@ class TuiApp:
     an awaitable TUI state, while completed output is printed into terminal scrollback.
     """
 
+    ESCAPE_FLUSH: ClassVar[float] = 0.05  # seconds a lone Esc byte waits (see _build_application)
     MODAL_KEYS: ClassVar[tuple[str, ...]] = tuple(
-        "j k h l g G up down left right tab s-tab enter escape q r pagedown pageup c-d c-u c-o backspace c-h /".split()  # noqa: SIM905 - compact key table.
+        "j k h l g G up down left right tab s-tab enter escape q r pagedown pageup c-d c-u c-n c-p c-o backspace c-h /".split()  # noqa: SIM905 - compact key table.
     )
     # Frame budget for the running divider. Motion is smooth only while a moving highlight advances
     # about one cell per frame, so this rate is what `View.QUEUE_SWEEP_CELLS_PER_SEC` follows.
@@ -354,6 +353,7 @@ class TuiApp:
         self.input_pastes: tuple[PasteRef, ...] = ()
         self._last_input_text = ""
         self._changing_input = False
+        self._menu_closed_at = 0.0  # when Esc last closed a completion menu (see `enter`)
         self._search_start_draft: str | UserInput = ""
         self.input_error = ""
         self.history = history
@@ -1312,11 +1312,23 @@ class TuiApp:
         return True
 
     @staticmethod
+    def leads_on(buffer: Buffer, before: str, completion: Completion) -> bool:
+        """Whether `completion` is a step toward a longer choice. The completer that offered it
+        decides (`CommandCompleter.leads_on`); one without an opinion falls back to the trailing
+        space a step carries."""
+        decide = getattr(buffer.completer, "leads_on", None)
+        return decide(before, completion) if decide is not None else completion.text.endswith(" ")
+
+    @staticmethod
     def apply_and_continue(buffer: Buffer, completion: Completion) -> None:
-        """Apply the one candidate there is, and if it needs something after it (a trailing space:
-        `/mcp connect `, a `/set` key) open that next level, as Enter on its row would."""
+        """Apply the one candidate there is, and if it is a command step (`/mcp connect `, a `/set`
+        key) open that next level, as Enter on its row would. A mention step needs no help here:
+        applying it edits the text, and that edit runs the mention's own transition (the kind's
+        list, or the @file: picker)."""
+        before = buffer.document.text_before_cursor
+        step = TuiApp.leads_on(buffer, before, completion) and active_mention(before) is None
         buffer.apply_completion(completion)
-        if completion.text.endswith(" "):
+        if step:
             buffer.start_completion(select_first=False)
 
     @staticmethod
@@ -1486,6 +1498,14 @@ class TuiApp:
             if is_searching():
                 pt_search.accept_search()
                 return
+            previous = event.previous_key_sequence
+            if previous and previous[-1].key == Keys.Escape and time.monotonic() - self._menu_closed_at < (self.app.timeoutlen if self.app else 1.0):
+                # Esc+Enter typed while a menu was open: the Esc closed the menu at once, and this
+                # Enter is the chord's second half -- the newline -- not a send. Only when Enter
+                # comes straight after that Esc, within the time the chord is allowed.
+                self._menu_closed_at = 0.0
+                event.current_buffer.insert_text("\n")
+                return
             # Enter on a focused quick-hint chip picks it into the input and returns focus to the
             # input line, so a second Enter sends.
             buffer = event.current_buffer
@@ -1497,38 +1517,22 @@ class TuiApp:
             state = buffer.complete_state
             completion = (state.current_completion or default_completion(state)) if state is not None else None
             if state is not None and completion is not None:
-                committed = completion.text
                 before = state.original_document.text_before_cursor
-                origin = active_mention(before)
+                step = self.leads_on(buffer, before, completion)
                 buffer.apply_completion(completion)
-                # A command is the whole input, so Enter on its row runs it in one press. A mention
-                # is a chip inside a sentence still being written: Enter fills it in and the prompt
-                # stays open. A row that is a step (a kind, an MCP server, an argument that needs
-                # more after it) fills in and opens what comes next.
-                if committed == "@file:" and self.app is not None and self.file_picker_available_fn():
-                    # @file: is only previewed while the bare-@ kind menu is browsed; an explicit
-                    # Enter on the row is the commit that opens the file picker.
+                # A row that is a step (a command or argument that needs more after it, a mention
+                # kind, an MCP server) fills in and opens what comes next -- or, for a free-form
+                # value, leaves the cursor waiting after its space. Browsing had often previewed
+                # the row already, so the commit changes no text and no typing transition fires.
+                if step and completion.text == "@file:" and self.app is not None and self.file_picker_available_fn():
                     self._schedule_file_picker(buffer)
                     return
-                if (origin is not None and origin.kind == "bare" and committed in {"@file:", "@mcp:", "@skill:", "@agents.md:"}) or (
-                    committed.startswith("@mcp:") and "." not in committed and committed != "@mcp:"
-                ):
-                    # The next level opens under a committed kind or MCP server. Browsing had
-                    # already previewed the row, so the commit changes no text and the typing
-                    # transition never fires. A server's tools open with no default row, so Enter
-                    # again sends the bare server, a complete mention of its own. The origin check
-                    # matters for @agents.md:, which is also the "All applicable" row of its own
-                    # menu -- a final choice there.
+                if step:
                     buffer.start_completion(select_first=False)
                     return
-                if origin is not None or not before.startswith("/"):
-                    return  # a mention: filled in, not sent
-                if committed.endswith(" "):
-                    # A command or argument that needs more after it (`/set`, then a key, then a
-                    # value) completes with a trailing space: running it half-typed would only print
-                    # its usage. Open what comes next, or leave the cursor waiting after the space
-                    # when there is nothing to list (a free-form value).
-                    buffer.start_completion(select_first=False)
+                # A mention is a chip inside a sentence still being written: filled in, not sent.
+                # A command is the whole input, so it runs in the same press.
+                if active_mention(before) is not None or not before.startswith("/"):
                     return
             buffer.validate_and_handle()
 
@@ -1560,6 +1564,22 @@ class TuiApp:
                 self.resolve_input(None)
 
         bindings.add("escape", filter=~modal & Condition(lambda: self.input_mode == InputMode.APPROVAL and bool(self._approval_actions)))(escape)
+
+        # Esc closes an open completion menu at once, undoing a row it had previewed, as the @file:
+        # picker closes on Esc. Registered after the approval binding, so an open menu takes Esc
+        # first. Eager: waiting to see whether Esc starts Esc+Enter (a newline) held the menu open
+        # for a full `timeoutlen`. The chord survives in `enter`, which reads an Esc that closed
+        # the menu just before it as the chord's first half.
+        def close_menu(event):
+            self._cancel_mention_transition()  # a menu about to open must not open after Esc
+            self._changing_input = True  # restoring the typed text is not typing: nothing reopens
+            try:
+                event.current_buffer.cancel_completion()
+            finally:
+                self._changing_input = False
+            self._menu_closed_at = time.monotonic()
+
+        bindings.add("escape", filter=~modal & has_completions, eager=True)(close_menu)
 
         def paste(event):
             buffer = event.current_buffer
@@ -2007,6 +2027,11 @@ class TuiApp:
             style=style,
             erase_when_done=True,
         )
+        # A lone Esc byte is held this long in case it starts an escape sequence (an arrow key).
+        # prompt_toolkit's half second made every Esc -- closing a menu, leaving a viewer -- lag
+        # visibly; a terminal writes a sequence in one burst, so a short flush tells them apart,
+        # the same trade editors make (Neovim, tmux's escape-time).
+        app.ttimeoutlen = self.ESCAPE_FLUSH
         # The initial render still probes its origin. Resizes use the explicit bottom anchor
         # below, without CPR. Silently degrade on terminals that do not answer the initial probe.
         app.renderer.cpr_not_supported_callback = lambda: None
