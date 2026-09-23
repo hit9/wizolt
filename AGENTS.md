@@ -53,7 +53,7 @@ Keep this file short. It is an entry point, not a second design document.
 - **Changelog:** record user-visible changes under `Unreleased`; omit internal-only refactors and
   doc maintenance.
 - **Release (only when requested):** bump `pyproject.toml` and `wizolt/base.py`, move Unreleased
-  entries under the dated version, run tests, quality checks, both doc builds, and `uv build`,
+  entries under the dated version, run tests, quality checks, the doc build, and `uv build`,
   commit `Release X.Y.Z`, and create the lightweight tag `vX.Y.Z`. Do not push or publish.
 
 ## Working rules
