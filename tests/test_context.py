@@ -1,5 +1,4 @@
-"""Context projection and compaction: what a request carries, what compaction keeps, and the
-history index it leaves behind."""
+"""Shared context/compaction test helpers; the behavior tests live in the test_compaction_* modules."""
 
 import json
 
@@ -49,4 +48,5 @@ class _CountingModel:
 # for itself and the request it was expanding gets summarized away mid-turn. The worker is where
 # this bites hardest: that message is the entire order (docs/worker.md), the worker cannot see the
 # parent's history, and nothing re-sends it.
+
 RUNTIME_GENERATED_EVENTS = ("mcp_mentions", "skill_mentions", "file_mentions", "tool_call_correction")

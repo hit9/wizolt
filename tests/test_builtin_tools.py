@@ -1,7 +1,4 @@
-"""Provider-side builtin tools: config parsing, pass-through on every protocol, results, and echoes."""
-
-
-
+"""Shared builtin-tool test helpers; the behavior tests live in the test_builtin_tools_* modules."""
 
 WEB_SEARCH = {"type": "web_search"}
 FUNCTION_TOOL = {
@@ -22,84 +19,6 @@ def _responses_body(status="completed", output=None):
     }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def _chat_body(model="qwen3.8-max-preview"):
     return {
         "id": "c",
@@ -108,27 +27,3 @@ def _chat_body(model="qwen3.8-max-preview"):
         "model": model,
         "choices": [{"index": 0, "message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}],
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -1,6 +1,4 @@
-"""The /mcp command surface: subcommands, tab completion, and end-to-end user scenarios."""
-
-
+"""Shared /mcp command test helpers; the behavior tests live in the test_mcp_* modules."""
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -12,11 +10,6 @@ from wizolt.mcp import MCPFileTokenStore
 def oauth_value(store: MCPFileTokenStore, url: str, collection: str, suffix: str) -> dict | None:
     entry = store.load().get(collection, {}).get(store.token_key(url, suffix))
     return entry.get("value") if entry else None
-
-
-# ---------------------------------------------------------------------------
-# Config parsing
-# ---------------------------------------------------------------------------
 
 
 def oauth_store(tmp_path, states: dict[str, str]) -> MCPFileTokenStore:
@@ -34,26 +27,3 @@ def put_oauth_state(store: MCPFileTokenStore, url: str, label: str) -> None:
         "value": {"client_id": label + "-client", "redirect_uris": ["http://localhost:12345/callback"]}
     }
     store.save(data)
-
-
-
-
-# ---------------------------------------------------------------------------
-# Tab completion
-# ---------------------------------------------------------------------------
-
-
-
-
-# ---------------------------------------------------------------------------
-# MCPManager — discover_server with nonexistent server
-# ---------------------------------------------------------------------------
-
-
-
-
-# ---------------------------------------------------------------------------
-# render_tools_index truncation
-# ---------------------------------------------------------------------------
-
-

@@ -1739,14 +1739,14 @@ class TuiApp:
         # prompt-toolkit buffers writes, but render/reset/replay each flush along the way.
         # Hold those flushes until layout is finished: starting the terminal's sync timeout
         # before expensive history layout lets it expire while the frame is still incomplete.
-        out.flush = lambda: None  # type: ignore[method-assign]
+        out.flush = lambda: None
         self._screen_update_active = True
         try:
             out.write_raw("\x1b[?2026h")
             yield
         finally:
             self._screen_update_active = False
-            out.flush = flush  # type: ignore[method-assign]
+            out.flush = flush
             out.write_raw("\x1b[?2026l")
             out.flush()
 
@@ -1816,7 +1816,7 @@ class TuiApp:
                 elif self.scrollback.flush(app):
                     vanilla_render(*args, **kwargs)
 
-        renderer.render = render  # type: ignore[method-assign]
+        renderer.render = render
 
     async def run(self, style: Style | None = None) -> None:  # pragma: no cover — interactive
         app = self._build_application(style)

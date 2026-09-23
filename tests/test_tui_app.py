@@ -1,4 +1,4 @@
-"""TuiApp behavior: layout, input modes, key bindings, modals, and approval prompts."""
+"""Shared TuiApp test helpers; the behavior tests live in the test_tui_* modules."""
 
 import asyncio
 
@@ -8,20 +8,6 @@ from wizolt.tui import TuiApp
 class _StubJob:
     def __init__(self, status):
         self.status = status
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 ACTIONS = [("Approve", ""), ("View order", "v"), ("Worker config", "c"), ("Refuse", "n")]
@@ -52,130 +38,8 @@ def _active(app, key):
     return [binding for binding in reversed(app.make_bindings().bindings) if binding.keys == (key,) and binding.filter()]
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def quick_hint_app(hints=("run the tests", "show the diff", "commit")):
     submitted = []
     app = TuiApp(on_chat_submit=submitted.append, quick_hints_fn=lambda: hints)
     app.set_idle()
     return app, submitted
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
