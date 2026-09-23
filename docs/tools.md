@@ -126,7 +126,7 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
   - Pauses for a decision that genuinely needs you. A question may include choices and a
     recommended option.
 
-    <div class="term-shot" role="img" aria-label="An Ask prompt: the question, then a selector listing two choices with the recommended one pre-selected, and a preview line for the highlighted choice."><span class="fs-user">Which approach?</span><span> </span><span>Select:</span><span> </span><span class="fs-sel">   1. Refactor <span class="fs-i fs-add">(recommended)</span>  </span><span class="fs-dim">   2. Rewrite</span><span class="fs-dim">  │ Extract module +87 -12</span><span> </span><span class="fs-dim">  j/k move, / search, Esc/q back/cancel</span></div>
+    <div class="term-shot" role="img" aria-label="An Ask prompt: the question, then a selector listing two choices with the recommended one pre-selected, and a preview line for the highlighted choice."><span class="fs-user">Which approach?</span><span> </span><span>Select:</span><span> </span><span class="fs-sel">   1. Refactor <span class="fs-i fs-add">(recommended)</span>  </span><span class="fs-dim">   2. Rewrite</span><span class="fs-dim">  │ Extract module +87 -12</span><span> </span><span class="fs-dim">  j/k move, Ctrl-D/U page, / search, Esc/q back/cancel</span></div>
 
     Pressing `Esc` declines the question; typing instead of choosing answers in free text.
 * - **`NextHints`**

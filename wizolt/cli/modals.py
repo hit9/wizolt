@@ -566,7 +566,7 @@ async def _tool_output_list(loop: CommandLoop, entries: list[OutputEntry], state
         sits on each side of it, so the boundary is a break in the page rather than a line drawn
         through it."""
         cols = shutil.get_terminal_size((80, 20)).columns
-        body = state.fragments("", label_fn=lambda choice: parts.get(choice, []), keys="j/k move, / search, Enter open, Esc/q close")
+        body = state.fragments("", label_fn=lambda choice: parts.get(choice, []), keys="j/k move, Ctrl-D/U page, / search, Enter open, Esc/q close")
         return [
             ("class:choice.title", f"  Tool output · latest {len(entries)}\n"),
             ("class:rule", "  " + "─" * max(3, cols - 4) + "\n"),

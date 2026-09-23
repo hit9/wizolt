@@ -165,10 +165,15 @@ class _AlignedCompletionsMenuControl(CompletionsMenuControl):
 
 
 class _AlignedCompletionsMenu(CompletionsMenu):
+    # The same keys the @file: picker names in its header, so every menu reads alike. Esc is left
+    # out: nothing binds it to closing this menu.
+    HINT = "Ctrl-N/P or ↑/↓ move · Enter select"
+
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         assert isinstance(self.content, Window)
         self.content.content = _AlignedCompletionsMenuControl()
+        self.content = HSplit([self.content, Window(FormattedTextControl([("class:completion-menu.hint", self.HINT)]), height=1)])
 
 
 class AttachmentLabelProcessor(Processor):
@@ -795,7 +800,12 @@ class TuiApp:
             self.cycle_quick_hint_focus(reverse=reverse)
             return
         target = self._file_mention_at_cursor(buffer)
-        if not reverse and target is not None:
+        state = buffer.complete_state
+        origin = active_mention(state.original_document.text_before_cursor) if state is not None else None
+        # A highlighted @file: row in the bare-@ kind menu is a preview being browsed past, not a
+        # choice: Tab moves on to the next kind, and only Enter opens the picker.
+        browsing_kinds = state is not None and state.complete_index is not None and origin is not None and origin.kind == "bare"
+        if not reverse and target is not None and not browsing_kinds:
             span, end = target
             if self.file_picker_available_fn() and self.app is not None:
                 # Commit a visible @file: preview before the picker snapshots the buffer. This also
@@ -1399,11 +1409,21 @@ class TuiApp:
             state = buffer.complete_state
             if state is not None and state.current_completion is not None:
                 committed = state.current_completion.text
+                origin = active_mention(state.original_document.text_before_cursor)
                 buffer.apply_completion(state.current_completion)
                 if committed == "@file:" and self.app is not None and self.file_picker_available_fn():
                     # @file: is only previewed while the bare-@ kind menu is browsed; an explicit
                     # Enter on the row is the commit that opens the file picker.
                     self._schedule_file_picker(buffer)
+                elif (origin is not None and origin.kind == "bare" and committed in {"@mcp:", "@skill:", "@agents.md:"}) or (
+                    committed.startswith("@mcp:") and "." not in committed and committed != "@mcp:"
+                ):
+                    # The next level opens under a committed kind or MCP server. Browsing had
+                    # already previewed the row, so the commit changes no text and the typing
+                    # transition never fires. It opens with no row highlighted, so Space or Enter
+                    # keeps a bare server, a complete mention of its own. The origin check matters
+                    # for @agents.md:, which is also the "All applicable" row of its own menu.
+                    buffer.start_completion(select_first=False)
                 return
             buffer.validate_and_handle()
 
@@ -1465,8 +1485,13 @@ class TuiApp:
         bindings.add("c-o", filter=~modal, eager=True)(lambda _: self.on_expand_output())
 
         # Ctrl-P mirrors Up here: readline treats them as synonyms, and both recall the latest
-        # queued follow-up, or walk history when none is queued, while a turn is working.
+        # queued follow-up, or walk history when none is queued, while a turn is working. An open
+        # completion menu comes first: they move through it, as Ctrl-N and Down do, instead of
+        # replacing the half-typed mention with the queued text.
         def recall(event):
+            if event.current_buffer.complete_state is not None:
+                event.current_buffer.complete_previous(count=event.arg)
+                return
             text = self.on_recall()
             if text:
                 self._reset_input(text, cursor_position=len(text))

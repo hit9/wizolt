@@ -1,5 +1,6 @@
 """TUI slash-command completion: a leading "/" opens the command list as it is typed."""
 
+import pytest
 from prompt_toolkit.buffer import CompletionState
 from prompt_toolkit.completion import Completion
 from prompt_toolkit.document import Document
@@ -7,6 +8,7 @@ from tui_harness import ResizableOutput, rendered_screen_text, run_interactive_t
 
 from wizolt.cli import CommandCompleter, CommandLoop
 from wizolt.tui import TuiApp
+from wizolt.tui.app import InputMode
 
 
 def _completions(app):
@@ -21,6 +23,54 @@ def test_completion_menu_anchors_at_the_replaced_word():
         document = Document(text, cursor_position=len(text))
         app.input_buffer.complete_state = CompletionState(document, [Completion("candidate", start_position=start)])
         assert app._completion_menu_position() == expected
+
+
+@pytest.mark.parametrize("mode", [InputMode.CHAT, InputMode.RUNNING])
+def test_ctrl_n_and_ctrl_p_move_through_an_open_menu(monkeypatch, mode):
+    """Readline's Ctrl-N/Ctrl-P walk the menu in every mode. While a turn runs, Ctrl-P otherwise
+    recalls the queued follow-up; an open menu takes it first, so the draft is never replaced."""
+    app = TuiApp(completer=CommandCompleter())
+    app.on_recall = lambda: "queued follow-up"
+
+    def index():
+        state = app.input_buffer.complete_state
+        return None if state is None else state.complete_index
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        app.input_mode = mode
+        pipe_input.send_text("/")
+        wait_until(lambda: app.input_buffer.complete_state is not None)
+        pipe_input.send_text("\x0e\x0e")  # Ctrl-N twice
+        wait_until(lambda: index() == 1)
+        pipe_input.send_text("\x10")  # Ctrl-P
+        wait_until(lambda: index() == 0)
+        assert app.input_buffer.text == "/help"
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+def test_completion_menu_closes_on_a_key_hint_row(monkeypatch):
+    """Every dropdown -- mentions as much as commands -- names its keys under the last row, the
+    way the @file: picker's header does."""
+    app = TuiApp(completer=CommandCompleter(mcp_servers=lambda: ("github", "gitlab")))
+    output = ResizableOutput(rows=20, columns=60)
+    frames = []
+
+    def after_render(application):
+        frames.append(rendered_screen_text(application, output))
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("@mcp:")
+        wait_until(lambda: any("@mcp:gitlab" in frame for frame in frames))
+        lines = next(frame for frame in reversed(frames) if "@mcp:gitlab" in frame).splitlines()
+        row = next(index for index, line in enumerate(lines) if "@mcp:gitlab" in line)
+        assert lines[row + 1].strip() == "Ctrl-N/P or ↑/↓ move · Enter select"
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive, output=output, after_render=after_render)
 
 
 def test_leading_slash_and_command_rows_render_in_the_same_column(monkeypatch):

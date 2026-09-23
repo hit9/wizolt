@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Added
+
+- Pickers such as `/provider`, `/model`, and `/reason` move half a page with Ctrl-D/Ctrl-U and a
+  whole page with PgDn/PgUp.
+
+### Fixed
+
+- Choosing `@mcp:`, `@skill:`, or `@agents.md:` in the `@` menu with the arrows or Ctrl-N/P and
+  then pressing Enter now opens that kind's list, instead of closing the menu. Choosing an MCP
+  server opens its tools the same way, when the server is connected.
+- Pressing Tab past `@file:` in the `@` menu moves on to the next kind instead of opening the file
+  picker; Enter on `@file:` still opens it.
+- While a turn is running, Ctrl-P and ↑ in an open command or mention menu now move through the
+  menu instead of replacing what you typed with the queued follow-up.
+
 ### Changed
 
 - Pickers mark the selected row with a highlight of one width instead of a `>`, dim the row
@@ -11,7 +26,8 @@
   `/status` gives yolo, steps, index, agents.md, and update a row each instead of one long
   `runtime` row, and highlights only names and figures.
 - The completion menu sits on a background of its own, so its items stand apart from the text
-  around them, and its scrollbar no longer draws a light-grey track that ignores the terminal
+  around them. Its last row names the keys that move through it, as the `@file:` picker already
+  did. Its scrollbar no longer draws a light-grey track that ignores the terminal
   theme.
 
 ## 0.51.1 - 2026-09-23

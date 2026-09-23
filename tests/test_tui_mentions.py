@@ -3,12 +3,14 @@
 import time
 
 import pytest
+from prompt_toolkit.completion import CompleteEvent
+from prompt_toolkit.document import Document
 from tui_harness import run_interactive_tui, wait_until
 
 from wizolt.agentsmd import MenuRow
 from wizolt.cli import CommandCompleter
 from wizolt.mentions import FilePick, active_mention
-from wizolt.tui import TuiApp
+from wizolt.tui import InputMode, TuiApp
 
 
 def _recording_picker(queries):
@@ -125,6 +127,92 @@ def test_selecting_partially_typed_name_kind_opens_its_candidate_list(monkeypatc
     run_interactive_tui(monkeypatch, app, drive=drive)
 
 
+@pytest.mark.parametrize(
+    ("steps", "expected", "next_level"),
+    [
+        (1, "@mcp:", ["@mcp:github", "@mcp:gitlab"]),
+        (2, "@skill:", ["@skill:release", "@skill:review"]),
+        (3, "@agents.md:", ["@agents.md:", "@agents.md:project"]),
+    ],
+)
+def test_enter_on_a_browsed_kind_row_opens_its_candidates(monkeypatch, steps, expected, next_level):
+    """Browsing the bare-@ menu already previews the kind into the input, so Enter changes no text;
+    it still has to open the kind's own list, and a second Enter picks from that list."""
+    rows = [MenuRow("All applicable", "every instructions file below", "@agents.md:"), MenuRow("Project · AGENTS.md", "whole file", "@agents.md:project")]
+    app = TuiApp(completer=CommandCompleter(mcp_servers=lambda: ("github", "gitlab"), skills=lambda: ("release", "review"), agents_rows=lambda: rows))
+
+    def menu():
+        state = app.input_buffer.complete_state
+        return None if state is None else ([c.text for c in state.completions], state.complete_index)
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("@")
+        wait_until(lambda: menu() is not None)
+        pipe_input.send_text("\x0e" * (steps + 1))  # past @file: onto the kind
+        wait_until(lambda: app.input_buffer.text == expected)
+        pipe_input.send_text("\r")
+        wait_until(lambda: menu() == (next_level, None))
+        pipe_input.send_text("\x0e\x0e\r")  # the second row of the next level
+        wait_until(lambda: app.input_buffer.text == next_level[1] and menu() is None)
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+def test_enter_on_all_applicable_commits_without_reopening_its_menu(monkeypatch):
+    """`@agents.md:` is also the "All applicable" row of its own menu: there it is a finished
+    choice, not a kind to open."""
+    rows = [MenuRow("All applicable", "every instructions file below", "@agents.md:"), MenuRow("Project · AGENTS.md", "whole file", "@agents.md:project")]
+    app = TuiApp(completer=CommandCompleter(agents_rows=lambda: rows))
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("@agents.md:")
+        wait_until(lambda: app.input_buffer.complete_state is not None)
+        pipe_input.send_text("\x0e\r")
+        wait_until(lambda: app.input_buffer.complete_state is None)
+        time.sleep(0.2)  # long enough for a wrongly scheduled reopen to land
+        assert app.input_buffer.complete_state is None and app.input_buffer.text == "@agents.md:"
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+def test_picking_an_mcp_server_cascades_into_its_tools(monkeypatch):
+    """Enter on a server row commits the server -- a complete mention on its own -- and opens that
+    server's tools with none highlighted, so a second Enter still sends the bare server. Typing the
+    whole name offers the same tools; a server with no known tools has nothing to cascade into."""
+    tools = {"github": ("create_issue", "search"), "gitlab": ()}
+    app = TuiApp(completer=CommandCompleter(mcp_servers=lambda: ("github", "gitlab"), mcp_tools=lambda server: tools[server]))
+
+    def menu():
+        state = app.input_buffer.complete_state
+        return None if state is None else ([c.text for c in state.completions], state.complete_index)
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("@mcp:")
+        wait_until(lambda: menu() == (["@mcp:github", "@mcp:gitlab"], None))
+        pipe_input.send_text("\x0e\r")  # Ctrl-N onto github, Enter
+        wait_until(lambda: menu() == (["@mcp:github.create_issue", "@mcp:github.search"], None))
+        assert app.input_buffer.text == "@mcp:github"
+        pipe_input.send_text("\x0e\r")  # into the first tool, Enter commits it and stops there
+        wait_until(lambda: app.input_buffer.text == "@mcp:github.create_issue" and menu() is None)
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+    completer = CommandCompleter(mcp_servers=lambda: ("github", "gitlab"), mcp_tools=lambda server: tools[server])
+
+    def offered(text):
+        return [c.text for c in completer.get_completions(Document(text, len(text)), CompleteEvent())]
+
+    assert offered("@mcp:github") == ["@mcp:github.create_issue", "@mcp:github.search"]
+    assert offered("@mcp:gitlab") == []
+    assert offered("@mcp:git") == ["@mcp:github", "@mcp:gitlab"]
+
+
 def test_prose_and_email_do_not_open_completions(monkeypatch):
     """A menu on every keystroke would be noise: only a mention at the cursor opens one, and an
     address is not a mention because the `@` follows a word character."""
@@ -229,10 +317,12 @@ def test_selecting_partially_typed_file_kind_opens_picker(monkeypatch, typed):
     run_interactive_tui(monkeypatch, app, drive=drive)
 
 
-def test_browsing_bare_kind_menu_does_not_launch_file_picker(monkeypatch):
-    """Highlighting @file: in the bare-@ menu is a preview, not a choice: arrow/Tab through the
-    four kind rows without the file picker grabbing the terminal, and Enter on a later row commits
-    it (the picker only opens on an explicit Enter on @file:)."""
+@pytest.mark.parametrize("key", ["\x1b[B", "\t", "\x0e"], ids=["down", "tab", "ctrl-n"])
+def test_browsing_bare_kind_menu_does_not_launch_file_picker(monkeypatch, key):
+    """Highlighting @file: in the bare-@ menu is a preview, not a choice: arrow/Tab/Ctrl-N through
+    the four kind rows without the file picker grabbing the terminal, and Enter on a later row
+    commits it (the picker only opens on an explicit Enter on @file:). Tab is the one that used to
+    slip: on a previewed @file: it read as "open the picker", not "next row"."""
     queries = []
     app = TuiApp(
         completer=CommandCompleter(mcp_servers=lambda: ("github",), skills=lambda: ("release", "review")),
@@ -252,7 +342,7 @@ def test_browsing_bare_kind_menu_does_not_launch_file_picker(monkeypatch):
         wait_until(lambda: state() is not None and state()[1] == kinds)
 
         for expected_index, expected_text in ((0, "@file:"), (1, "@mcp:"), (2, "@skill:"), (3, "@agents.md:")):
-            pipe_input.send_text("\x1b[B")
+            pipe_input.send_text(key)
             wait_until(lambda text=expected_text, idx=expected_index: app.input_buffer.text == text and state() is not None and state()[0] == idx)
             assert state()[1] == kinds  # still browsing the same kind rows
             assert queries == [] and not app._file_picker_active
@@ -265,9 +355,57 @@ def test_browsing_bare_kind_menu_does_not_launch_file_picker(monkeypatch):
     run_interactive_tui(monkeypatch, app, drive=drive)
 
 
-def test_enter_on_at_file_kind_row_opens_the_file_picker(monkeypatch):
+@pytest.mark.parametrize("mode", [InputMode.CHAT, InputMode.RUNNING])
+def test_tab_browses_past_the_file_kind_in_every_direction(monkeypatch, mode):
+    """Tab on a previewed @file: row is "next row", never "open the picker" -- forwards, after
+    Shift-Tab brings the cursor back onto it, and after the menu wraps past its last row -- while a
+    turn is running as much as when idle. Each landing on @file: waits out the namespace transition
+    delay, so a picker scheduled late would still be caught."""
+    queries = []
+    app = TuiApp(
+        completer=CommandCompleter(mcp_servers=lambda: ("github",), skills=lambda: ("release",)),
+        file_picker_available_fn=lambda: True,
+        file_picker_fn=_recording_picker(queries),
+    )
+
+    def at(text, index):
+        state = app.input_buffer.complete_state
+        return app.input_buffer.text == text and state is not None and state.complete_index == index
+
+    def press(key, text, index):
+        pipe.send_text(key)
+        wait_until(lambda: at(text, index))
+        if text == "@file:":
+            time.sleep(0.2)
+            assert at(text, index), "the preview must still be the menu's"
+        assert queries == [] and not app._file_picker_active, f"picker opened on {key!r} to {text}"
+
+    def drive(pipe_input):
+        nonlocal pipe
+        pipe = pipe_input
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        app.input_mode = mode
+        pipe_input.send_text("@")
+        wait_until(lambda: at("@", None))
+        press("\t", "@file:", 0)
+        press("\t", "@mcp:", 1)
+        press("\x1b[Z", "@file:", 0)  # Shift-Tab back onto @file:
+        press("\t", "@mcp:", 1)  # and Tab still moves on
+        press("\t", "@skill:", 2)
+        press("\t", "@agents.md:", 3)
+        press("\t", "@", None)  # past the last row: back to what was typed
+        press("\t", "@file:", 0)  # and round again, still a preview
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    pipe = None
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+@pytest.mark.parametrize("key", ["\x1b[B", "\t", "\x0e"], ids=["down", "tab", "ctrl-n"])
+def test_enter_on_at_file_kind_row_opens_the_file_picker(monkeypatch, key):
     """Browsing to @file: is inert; an explicit Enter on the row commits the kind and opens the
-    picker with an empty query, exactly as typing the namespace does."""
+    picker with an empty query, exactly as typing the namespace does -- however the row was
+    reached."""
     queries = []
     app = TuiApp(
         completer=CommandCompleter(),
@@ -279,8 +417,9 @@ def test_enter_on_at_file_kind_row_opens_the_file_picker(monkeypatch):
         wait_until(lambda: app.app is not None and app.app.is_running)
         pipe_input.send_text("@")
         wait_until(lambda: app.input_buffer.complete_state is not None)
-        pipe_input.send_text("\x1b[B")
+        pipe_input.send_text(key)
         wait_until(lambda: app.input_buffer.text == "@file:")
+        time.sleep(0.2)  # past the namespace transition delay
         assert queries == [] and not app._file_picker_active  # preview alone must not open it
         pipe_input.send_text("\r")
         wait_until(lambda: queries == [""] and not app._file_picker_active)

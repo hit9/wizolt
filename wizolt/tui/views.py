@@ -242,7 +242,7 @@ class ChoiceViewState:
         title: str,
         preview_fn: Callable[[str], StyleAndTextTuples | str] | None = None,
         label_fn: Callable[[str], StyleAndTextTuples] | None = None,
-        keys: str = "j/k move, / search, Esc/q back/cancel",
+        keys: str = "j/k move, Ctrl-D/U page, / search, Esc/q back/cancel",
     ) -> StyleAndTextTuples:
         """The list as fragments: the title and a blank row (always the first two fragments), the
         rows, and the `keys` legend closing the sheet. `label_fn` styles one row's label in pieces
@@ -333,6 +333,11 @@ class ChoiceViewState:
             self.move(-1)
         elif key in {"g", "G"} and not self.searching:  # less-style: g→first, G→last
             self.move(-len(self.enabled()) if key == "g" else len(self.enabled()))
+        elif key in {"c-d", "c-u", "pagedown", "pageup"}:
+            # A page is the viewport, or the whole list when it is drawn uncapped; Ctrl-D/U go half.
+            page = self.max_rows or len(self.enabled())
+            distance = max(1, page if key in {"pagedown", "pageup"} else page // 2)
+            self.move(distance if key in {"c-d", "pagedown"} else -distance)
         elif key == "/":
             self.searching = True
             self.set_query("")
@@ -564,7 +569,7 @@ class AskViewState:
         return lines
 
     def _footer_rows(self, width: int) -> list[list[tuple[str, str]]]:
-        text = "↑↓/jk move · Enter select · Tab page · n note · / search · Esc cancel" if width >= 70 else "↑↓/jk · Enter · Tab · n · / · Esc"
+        text = "↑↓/jk move · ^D/^U scroll · Enter select · Tab page · n note · / search · Esc cancel" if width >= 84 else "↑↓/jk · Enter · Tab · n · / · Esc"
         return Text.wrap_styled([], [], [("class:choice.disabled", text)], width)
 
     def handle_key(self, key: str, data: str = "") -> Any:

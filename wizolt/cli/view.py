@@ -231,7 +231,9 @@ class CommandCompleter(Completer):
         return [path for _, _, _, path in heapq.nsmallest(self.MAX_ROWS, ranked())]
 
     def _mcp_completions(self, query: str, start: int) -> Iterator[Completion]:
-        """After "@mcp:": servers, then "server." expands to that server's tools."""
+        """After "@mcp:": servers, then "server." expands to that server's tools. A payload that
+        already names a server whole offers its tools too, so picking a server cascades into them
+        while the bare server stays a complete mention of its own."""
         server_part, dot, tool_part = query.partition(".")
         if dot:
             server = self._known_server(server_part)
@@ -239,8 +241,13 @@ class CommandCompleter(Completer):
                 for name in self._matching_names(self.mcp_tools(server), tool_part):
                     yield Completion(f"@mcp:{server}.{name}", start_position=start)
             return
+        server = self._known_server(query) if query else None
         for name in self._matching_names(self.mcp_servers(), query):
-            yield Completion(f"@mcp:{name}", start_position=start)
+            if name != server:
+                yield Completion(f"@mcp:{name}", start_position=start)
+        if server is not None:
+            for name in self.mcp_tools(server):
+                yield Completion(f"@mcp:{server}.{name}", start_position=start)
 
     def _skill_completions(self, query: str, start: int) -> Iterator[Completion]:
         for name in self._matching_names(self.skills(), query):
@@ -650,6 +657,7 @@ class View:
                 "completion-menu.completion.current": "noreverse " + Theme.selection(),
                 "completion-menu.meta.completion": f"noreverse bg:{menu_bg} {role('muted')}",
                 "completion-menu.meta.completion.current": "noreverse " + Theme.selection(),
+                "completion-menu.hint": f"noreverse bg:{menu_bg} {role('muted')}",
                 # prompt_toolkit's own scrollbar is a light-grey track under a dark thumb, fixed
                 # colors that match no terminal theme: the track is the menu's surface, the thumb grey.
                 "scrollbar.background": f"noreverse bg:{menu_bg}",

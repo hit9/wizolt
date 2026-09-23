@@ -60,7 +60,6 @@ class Hint:
 HINTS: tuple[Hint, ...] = (
     Hint("Esc then Enter inserts a newline"),
     Hint("Tab completes commands and @mentions"),
-    Hint("Tab or ↑/↓ moves through completions", when=_when_early),
     Hint("↑ or Ctrl-P recalls earlier prompts"),
     Hint("Ctrl-R searches prompt history"),
     Hint("$skill loads a skill inline", when=_when_skills),

@@ -56,6 +56,25 @@ def test_theme_adapters_publish_only_the_styles_the_renderers_reference(monkeypa
             console.get_style(f"wizolt.{role.replace('_', '.')}")  # raises for a name Rich cannot resolve
 
 
+@pytest.mark.parametrize("mode,surface", [("dark", "2b2f36"), ("light", "e8ebef")])
+def test_completion_menu_sits_on_one_surface(tmp_path, monkeypatch, mode, surface):
+    """Every part of the menu that is not the selection band -- rows, meta, the key hint, the
+    scrollbar track -- shares the menu's surface, so it reads as one block over the transcript.
+    The text keeps the terminal's own colors, and the scrollbar no longer shows prompt_toolkit's
+    fixed greys."""
+    monkeypatch.setattr(Theme, "_mode", mode)
+    style = loop(tmp_path).view.style()
+
+    def attrs(name):
+        return style.get_attrs_for_style_str("class:" + name)
+
+    for name in ("completion-menu.completion", "completion-menu.meta.completion", "completion-menu.hint", "scrollbar.background"):
+        assert attrs(name).bgcolor == surface, name
+    assert attrs("completion-menu.completion").color == "default"  # the terminal's own text color
+    assert attrs("completion-menu.hint").color == attrs("completion-menu.meta.completion").color == "ansibrightblack"
+    assert attrs("scrollbar.button").bgcolor == "ansibrightblack"
+
+
 def test_status_roles_have_palette_entries():
     assert all(f"status_{role}" in Theme.ROLES for role in StatusBar.ROLE_KEYS)
 

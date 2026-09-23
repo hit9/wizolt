@@ -27,6 +27,31 @@ def test_choice_view_g_and_shift_g_jump_first_and_last():
     assert state.selected == 0
 
 
+def test_choice_view_ctrl_d_u_and_page_keys_move_by_the_viewport():
+    state = ChoiceViewState(choices=tuple(str(index) for index in range(30)), labels={}, disabled=set(), max_rows=10)
+
+    state.handle_key("c-d")
+    assert state.selected == 5  # half the viewport
+    state.handle_key("pagedown")
+    assert state.selected == 15  # a whole one
+    state.handle_key("c-u")
+    state.handle_key("pageup")
+    assert state.selected == 0  # clamped at the top rather than wrapping
+    state.handle_key("G")
+    state.handle_key("pagedown")
+    assert state.selected == 29  # and at the bottom
+
+    # An uncapped list pages by its own length.
+    short = ChoiceViewState(choices=("a", "b", "c", "d"), labels={}, disabled=set())
+    short.handle_key("c-d")
+    assert short.selected == 2
+
+    # While searching the keys are neither text nor movement.
+    state.handle_key("/")
+    state.handle_key("c-d")
+    assert (state.query, state.selected) == ("", 0)
+
+
 def test_choice_view_state_default_filtering():
     state = ChoiceViewState(
         choices=("alpha", "---", "beta", "---", "gamma"),
@@ -126,7 +151,7 @@ def test_choice_view_state_fragments_preserve_headers_and_preview():
     assert "   1. Alpha  \n" in rendered
     assert "  │ first\n  │ second\n" in rendered
     # The key legend closes the sheet instead of sitting between the title and the rows.
-    assert rendered.startswith("  Model\n\n") and rendered.endswith("\n\n  j/k move, / search, Esc/q back/cancel\n")
+    assert rendered.startswith("  Model\n\n") and rendered.endswith("\n\n  j/k move, Ctrl-D/U page, / search, Esc/q back/cancel\n")
 
 
 def test_choice_view_selection_band_keeps_one_width_across_rows():
@@ -246,7 +271,7 @@ def test_ask_view_no_matches_keeps_search_visible_and_obeys_height():
 
     rows = _rows(state.fragments(width=120, max_height=5))
 
-    assert rows == ["(1/1) Q?", "", "  no matches", "/missing", "↑↓/jk move · Enter select · Tab page · n note · / search · Esc cancel"]
+    assert rows == ["(1/1) Q?", "", "  no matches", "/missing", "↑↓/jk move · ^D/^U scroll · Enter select · Tab page · n note · / search · Esc cancel"]
 
 
 def test_ask_view_search_uses_the_blank_row_above_footer_without_losing_capacity():
