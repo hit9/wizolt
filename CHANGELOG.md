@@ -17,6 +17,9 @@
 
 ### Changed
 
+- `/status` now shows the exact global `AGENTS.md` path, whether it exists, and whether the
+  current session loaded it. The agent sees the path even before the file exists; `Note` is
+  described as session-only working state.
 - AGENTS.md section references now quote titles so Chinese and punctuation round-trip; the menu
   can find sections beyond its first 50 rows by heading or body text. Oversized reference sets
   report their limit instead of silently omitting later citations, and both instruction files

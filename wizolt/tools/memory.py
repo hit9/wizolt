@@ -272,8 +272,9 @@ class NoteTool(Tool):
     NAME = "Note"
     # Simple work should not pay for a plan-only tool call.
     DESCRIPTION = (
-        "Durable state across context compaction; keep current for non-trivial work, skipping the "
-        "easiest quarter of tasks. Never a single-step plan. View includes read-only activity history."
+        "Session-only across context compaction; not global AGENTS.md. "
+        "Keep for non-trivial work; skip easiest quarter. Never a single-step plan. "
+        "View includes read-only activity history."
     )
     STORES_RESULT = False
     MUTATES = True

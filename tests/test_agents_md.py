@@ -9,7 +9,6 @@ from tui_harness import loop as command_loop_for
 from wizolt.agentsmd import (
     MAX_REFERENCES,
     AgentsFile,
-    AgentsMentions,
     AgentsReferenceError,
     MenuRow,
     Reference,
@@ -699,7 +698,9 @@ def test_status_names_both_instruction_sources(tmp_path):
     command_loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
 
     display = display_path(global_agents_md_path(s.config.data_dir))
-    assert f"agents_md on ({display}, ./AGENTS.md)" in status(command_loop, "")
+    result = status(command_loop, "")
+    assert f"agents_md on ({display}, ./AGENTS.md)" in result
+    assert f"| global AGENTS.md | `{global_agents_md_path(s.config.data_dir)}`; disk `present`; context `loaded at session start` |" in result
 
 
 def test_status_names_the_one_source_it_has(tmp_path):
@@ -708,7 +709,26 @@ def test_status_names_the_one_source_it_has(tmp_path):
     assert "agents_md on (./AGENTS.md)" in status(command_loop, "")
 
     s.settings.agents_md = False
-    assert "agents_md off" in status(command_loop, "")
+    result = status(command_loop, "")
+    assert "agents_md off" in result
+    assert "disk `missing`; context `off`" in result
+
+
+def test_status_distinguishes_a_new_global_file_from_one_loaded_at_session_start(tmp_path):
+    s = agents_session(tmp_path)
+    command_loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
+    path = global_agents_md_path(s.config.data_dir)
+
+    assert f"`{path}`; disk `missing`; context `none`" in status(command_loop, "")
+    (tmp_path / "data" / "AGENTS.md").write_text("# Rules\n", encoding="utf-8")
+    assert f"`{path}`; disk `present`; context `next session`" in status(command_loop, "")
+    assert f"- wizolt_global_agents_md: {path}" in ContextManager(s).environment()
+    assert "auto-injected in this session: no" in ContextManager(s).environment()
+
+    next_session = agents_session(tmp_path, global_text="# Rules\n")
+    next_loop = CommandLoop(Agent(next_session, output_fn=lambda text: None), output_fn=lambda text: None)
+    assert f"`{path}`; disk `present`; context `loaded at session start`" in status(next_loop, "")
+    assert "auto-injected in this session: yes" in ContextManager(next_session).environment()
 
 
 # --- completion ---

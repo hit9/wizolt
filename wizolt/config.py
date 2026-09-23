@@ -89,6 +89,7 @@ class SystemInfo:
     agents_md_source: str = ""  # the file it came from, e.g. "AGENTS.md" or "CLAUDE.md"; "" when none
     agents_md_global: str = ""  # loaded <data_dir>/AGENTS.md text; "" when the file does not exist
     agents_md_global_display: str = ""  # what the prefix and menus show, e.g. "~/.wizolt/AGENTS.md"
+    agents_md_global_path: str = ""  # exact wizolt-owned path, even when the file is absent
 
     @classmethod
     def load_agents_md(cls, cwd: str) -> tuple[str, str]:
@@ -110,11 +111,12 @@ class SystemInfo:
         agents_md, agents_md_source = cls.load_agents_md(cwd)
         agents_md_global = ""
         agents_md_global_display = ""
-        if data_dir:
+        agents_md_global_path = global_agents_md_path(data_dir) if data_dir else ""
+        if agents_md_global_path:
             try:
-                with open(global_agents_md_path(data_dir), encoding="utf-8") as file:
+                with open(agents_md_global_path, encoding="utf-8") as file:
                     agents_md_global = file.read()
-                agents_md_global_display = display_path(global_agents_md_path(data_dir))
+                agents_md_global_display = display_path(agents_md_global_path)
             except (OSError, UnicodeDecodeError):
                 pass
         return cls(
@@ -126,6 +128,7 @@ class SystemInfo:
             agents_md_source=agents_md_source,
             agents_md_global=agents_md_global,
             agents_md_global_display=agents_md_global_display,
+            agents_md_global_path=agents_md_global_path,
         )
 
 

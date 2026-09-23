@@ -263,6 +263,13 @@ class ContextManager:
             f"- arch: {info.arch}",
             f"- shell_timeout: {self.session.settings.shell_timeout}s",
         ]
+        if info.agents_md_global_path:
+            loaded = "yes" if self.session.settings.agents_md and info.agents_md_global_display else "no"
+            rows.append(
+                f"- wizolt_global_agents_md: {info.agents_md_global_path} "
+                f"(cross-session user rules; write here when asked to save a global Wizolt rule; "
+                f"auto-injected in this session: {loaded}; @agents.md: can cite current file text)"
+            )
         if (entry := self.session.config.vision_provider) and (not self.session.tool_names or "ViewImage" in self.session.tool_names):
             provider = self.session.config.providers[entry]
             rows.append(f"- vision: {entry}/{provider.model or '(empty)'} (available as image fallback)")

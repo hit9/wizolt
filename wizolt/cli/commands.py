@@ -280,6 +280,18 @@ def status(loop: CommandLoop, args: str) -> str:
     if update not in {"current", "unknown"}:
         runtime.append("update " + update)
     rows.append(("runtime", "; ".join(f"`{value}`" for value in runtime)))
+    if info is not None and info.agents_md_global_path:
+        path = info.agents_md_global_path
+        on_disk = "present" if os.path.isfile(path) else "missing"
+        if not loop.session.settings.agents_md:
+            context = "off"
+        elif info.agents_md_global_display:
+            context = "loaded at session start"
+        elif on_disk == "present":
+            context = "next session"
+        else:
+            context = "none"
+        rows.append(("global AGENTS.md", f"`{path}`; disk `{on_disk}`; context `{context}`"))
 
     rows.append(("model", _status_model_line(loop.session, loop.session.config)))
     rows.append(("context", _status_context_line(context_tokens, context_budget, context_percent)))

@@ -173,11 +173,16 @@ def test_environment_agents_md_absent(tmp_path):
             f"- os: {info.os}",
             f"- arch: {info.arch}",
             f"- shell_timeout: {s.settings.shell_timeout}s",
+            (
+                f"- wizolt_global_agents_md: {info.agents_md_global_path} "
+                "(cross-session user rules; write here when asked to save a global Wizolt rule; "
+                "auto-injected in this session: no; @agents.md: can cite current file text)"
+            ),
         ]
     )
     env = ContextManager(s).environment()
     assert "Project instructions" not in env
-    assert env == baseline  # byte-identical to the pre-injection Environment, no extra blank rows
+    assert env == baseline  # the path remains visible before the file exists
 
 def test_environment_agents_md_cache_stable(tmp_path):
     (tmp_path / "AGENTS.md").write_text("# Rules\nAlways run pytest.\n", encoding="utf-8")
