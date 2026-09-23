@@ -253,7 +253,7 @@ class CommandCompleter(Completer):
         needle = query.strip().strip('"').lower()
         rows = self.agents_rows()
         if needle:
-            rows = [row for row in rows if needle in row.display.lower() or needle in row.meta.lower() or needle in row.insert.lower()]
+            rows = [row for row in rows if any(needle in field.lower() for field in (row.display, row.meta, row.insert, row.search_text))]
         for row in rows[: self.MAX_ROWS]:
             yield Completion(row.insert, start_position=start, display=row.display, display_meta=row.meta)
 

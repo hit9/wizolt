@@ -137,7 +137,7 @@ def test_environment_agents_md_bounded(tmp_path):
     env = context.environment()
     assert "truncated to fit the prefix" in env
     injected = env.split("--- Project instructions (AGENTS.md) ---", 1)[1].lstrip("\n")
-    assert context.estimated_text_tokens(injected) <= MAX_AGENTS_MD_TOKENS
+    assert (len(injected.encode("utf-8")) + 3) // 4 <= MAX_AGENTS_MD_TOKENS
 
 @pytest.mark.parametrize(
     ("label", "text"),
@@ -155,7 +155,7 @@ def test_environment_agents_md_bounding_spends_the_budget_it_is_given(tmp_path, 
     (tmp_path / "AGENTS.md").write_text(text, encoding="utf-8")
     context = ContextManager(session(tmp_path))
     injected = context.environment().split("--- Project instructions (AGENTS.md) ---", 1)[1].lstrip("\n")
-    tokens = context.estimated_text_tokens(injected)
+    tokens = (len(injected.encode("utf-8")) + 3) // 4
 
     assert "truncated to fit the prefix" in injected
     assert tokens <= MAX_AGENTS_MD_TOKENS, f"{label} exceeded the cap"

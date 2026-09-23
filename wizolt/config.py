@@ -336,7 +336,7 @@ class RuntimeSettings:
     worker: bool = False  # register the Delegate tool (see [worker] in ConfigFile.DEFAULT_TEXT)
     theme: str = "auto"
     language: str = "auto"  # forced reply language; "auto" injects nothing (see /language)
-    agents_md: bool = True  # inject the project's AGENTS.md (or CLAUDE.md fallback) into every request
+    agents_md: bool = True  # inject global and project instructions into every request
 
     @classmethod
     def from_dict(cls, data: Json, *, yolo: bool = False, theme: str = "") -> RuntimeSettings:
@@ -619,8 +619,8 @@ model = ""
                                # (flipping it changes the tool block and thus the prompt-cache scope)
 # language = "auto"           # auto follows your messages and injects nothing; set a language
                                # name (e.g. "Chinese") to force the reply language
-# agents_md = true               # inject the project's AGENTS.md (or CLAUDE.md fallback) into every
-                                 # request as a bounded Project-instructions section of Environment
+# agents_md = true               # inject global AGENTS.md and the project's AGENTS.md (or CLAUDE.md
+                                 # fallback) into each request under one shared Environment budget
 
 # [worker]                     # optional: hand tasks to a second wizolt session (Delegate tool)
 # provider = "fast"           # a provider entry; pick one from a DIFFERENT vendor than

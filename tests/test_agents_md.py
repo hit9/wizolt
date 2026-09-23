@@ -104,6 +104,15 @@ def test_a_heading_inside_a_fence_does_not_open_a_section():
     assert "intro" in f.sections()[0].text and "tail" in f.sections()[0].text
 
 
+def test_sections_preserve_original_line_endings_and_blank_lines():
+    content = "   # Parent\r\nfirst\r\n\r\n   ## Child ###\r\nchild\r\n\r\n"
+    f = agents_file(content)
+
+    assert [section.heading for section in f.sections()] == ["Parent", "Parent/Child"]
+    assert f.section_text("Parent") == content
+    assert f.section_text("Parent/Child") == "   ## Child ###\r\nchild\r\n\r\n"
+
+
 def test_tilde_fences_and_longer_closing_fences_close_a_block():
     content = "# Real\n~~~\n# Fake\n~~~~\nstill inside? no\n# Later\nsecond\n"
     f = agents_file(content)
@@ -136,7 +145,7 @@ def test_a_heading_with_no_body_is_still_a_section_with_a_row():
 
     assert [section.text for section in f.sections()] == ["# Empty\n"]
     assert f.section_text("Empty") == "# Empty\n"
-    assert f.menu_rows()[1] == MenuRow("Empty", "project · # Empty", "@agents.md:project/Empty")
+    assert f.menu_rows()[1] == MenuRow("Empty", "project · # Empty", '@agents.md:"project/Empty"', "# Empty\n")
 
 
 def test_loading_a_missing_file_yields_nothing(tmp_path):
@@ -171,7 +180,7 @@ def test_agents_mentions_scan_both_the_bare_and_the_quoted_forms(text, payload, 
 def test_reference_encoding_is_canonical_and_round_trips():
     f = agents_file("# Rules\nbody\n")
     assert f.reference() == "@agents.md:project"
-    assert f.reference("Rules") == "@agents.md:project/Rules"
+    assert f.reference("Rules") == '@agents.md:"project/Rules"'
 
     spaced = agents_file("# PR body\nbody\n")
     encoded = spaced.reference("PR body")
@@ -184,11 +193,27 @@ def test_reference_encoding_is_canonical_and_round_trips():
     assert Reference.spans(nested)[0].payload == "global/Contributing/PR body"
 
 
+def test_section_references_with_unicode_or_punctuation_round_trip_beside_prose():
+    f = agents_file("# 中文规则\nbody\n# C++\nmore\n")
+    for heading in ("中文规则", "C++"):
+        inserted = f.reference(heading)
+        assert inserted == f'@agents.md:"project/{heading}"'
+        assert Reference.spans(inserted + "继续写")[0].heading == heading
+        assert f.section_text(Reference.spans(inserted)[0].heading) is not None
+
+
+def test_incomplete_quoted_reference_is_reported_instead_of_ignored(tmp_path):
+    s = agents_session(tmp_path, project_text=PROJECT_TEXT)
+
+    assert "incomplete @agents.md:" in s.agents.validation_error('cite @agents.md:"project/Rules')
+
+
 def test_mention_scanning_keeps_addresses_and_other_namespaces_apart():
     assert scan_mentions("mail hit9@icloud.com") == []  # `@` follows a word character
     assert scan_mentions("a@b.com") == []
     assert [span.kind for span in scan_mentions("@file:a.py @agents.md:global @skill:release")] == ["file", "agents", "skill"]
     assert [span.payload for span in scan_mentions("@agents.md:global and @agents.md:project/Rules")] == ["global", "project/Rules"]
+    assert [span.payload for span in scan_mentions("@agents.md:project/中文规则")] == ["project/中文规则"]
     assert [span.payload for span in scan_mentions("@agents.md:  then text")] == [""]  # the all-applicable form
 
 
@@ -208,7 +233,7 @@ def test_the_whole_file_row_leads_a_files_own_rows():
 
     assert rows[0] == MenuRow("project · ./AGENTS.md", "whole file", "@agents.md:project")
     assert [row.display for row in rows[1:]] == ["Rules"]
-    assert rows[1].insert == "@agents.md:project/Rules"
+    assert rows[1].insert == '@agents.md:"project/Rules"'
     assert rows[1].meta.startswith("project · ")
     assert "Always run pytest" in rows[1].meta  # the original text, not a paraphrase
 
@@ -241,8 +266,8 @@ def test_the_session_menu_leads_with_all_applicable_then_each_file_and_section(t
         "@agents.md:global",
         '@agents.md:"global/House style"',
         "@agents.md:project",
-        "@agents.md:project/Rules",
-        "@agents.md:project/Contributing",
+        '@agents.md:"project/Rules"',
+        '@agents.md:"project/Contributing"',
     ]
 
 
@@ -253,24 +278,30 @@ def test_the_menu_labels_a_claude_fallback_project_file(tmp_path):
     assert "body" in s.agents.resolve_mentions("@agents.md:project")
 
 
-def test_menu_rows_are_capped(tmp_path):
+def test_menu_filters_before_capping_so_late_sections_remain_findable(tmp_path):
     s = agents_session(tmp_path, project_text="".join(f"# Heading {index}\nbody\n" for index in range(80)))
     rows = s.agents.menu_rows()
+    completer = CommandCompleter(agents_rows=s.agents.menu_rows)
 
-    assert AgentsMentions.MAX_MENU_ROWS == 50
-    assert len(rows) == AgentsMentions.MAX_MENU_ROWS
+    assert len(rows) == 82
     assert rows[0].insert == "@agents.md:"
+    assert len(completions(completer, "cite @agents.md:")) == CommandCompleter.MAX_ROWS
+    assert completions(completer, "cite @agents.md:79") == ['@agents.md:"project/Heading 79"']
 
 
 def test_matching_rows_filter_by_source_heading_and_original_text(tmp_path):
     s = agents_session(tmp_path, global_text=GLOBAL_TEXT, project_text=PROJECT_TEXT)
+    completer = CommandCompleter(agents_rows=s.agents.menu_rows)
 
-    assert [row.insert for row in s.agents.matching_rows("contributing")] == ["@agents.md:", "@agents.md:project/Contributing"]
-    assert [row.insert for row in s.agents.matching_rows("HOUSE STYLE")] == ["@agents.md:", '@agents.md:"global/House style"']
-    assert [row.insert for row in s.agents.matching_rows("Always run")] == ["@agents.md:", "@agents.md:project/Rules"]  # from the excerpt
-    assert [row.insert for row in s.agents.matching_rows("./AGENTS.md")] == ["@agents.md:", "@agents.md:project"]  # from the label
-    assert s.agents.matching_rows("nothing matches this") == [s.agents.menu_rows()[0]]  # All applicable stays
-    assert s.agents.matching_rows("") == s.agents.menu_rows()
+    assert completions(completer, "cite @agents.md:contributing") == ['@agents.md:"project/Contributing"']
+    assert completions(completer, 'cite @agents.md:"HOUSE STYLE') == ['@agents.md:"global/House style"']
+    assert completions(completer, 'cite @agents.md:"Always run') == ['@agents.md:"project/Rules"']
+    assert completions(completer, 'cite @agents.md:"./AGENTS.md') == ["@agents.md:project"]
+    assert completions(completer, "cite @agents.md:nothing") == []
+    assert completions(completer, "cite @agents.md:") == [row.insert for row in s.agents.menu_rows()]
+
+    long_body = agents_session(tmp_path / "long", project_text="# Short\n" + "x" * 120 + " distinctive tail\n")
+    assert completions(CommandCompleter(agents_rows=long_body.agents.menu_rows), "cite @agents.md:distinctive") == ['@agents.md:"project/Short"']
 
 
 # --- resolution ---
@@ -330,14 +361,15 @@ def test_unknown_scope_and_unknown_heading_raise_with_a_helpful_message(tmp_path
     assert 'no section "Nonexistent"' in str(error.value)
     assert "project · ./AGENTS.md" in str(error.value)
     assert s.agents.validation_error("@agents.md:project/Nonexistent") == str(error.value)
+    assert 'needs a section heading after "/"' in s.agents.validation_error("@agents.md:project/")
 
 
 def test_a_reference_with_no_loaded_file_says_so(tmp_path):
     s = agents_session(tmp_path)
 
     assert s.agents.cached_sources() == ()
-    # The bare form cites nothing and attaches no block; a named source is a real error.
-    assert s.agents.resolve_mentions("cite @agents.md:") == ""
+    with pytest.raises(AgentsReferenceError, match="no AGENTS.md source"):
+        s.agents.resolve_mentions("cite @agents.md:")
     assert s.agents.resolve_mentions("no reference") == ""
     assert s.agents.validation_error("@agents.md:global") == 'unknown @agents.md reference "global" (available sources: none is loaded)'
 
@@ -363,16 +395,14 @@ def test_a_nested_heading_resolves_by_its_full_path(tmp_path):
 def test_references_are_capped(tmp_path):
     s = agents_session(tmp_path, project_text="".join(f"# Heading{index}\nbody {index}\n" for index in range(MAX_REFERENCES + 2)))
     text = " ".join(f"@agents.md:project/Heading{index}" for index in range(MAX_REFERENCES + 2))
-    block = s.agents.resolve_mentions(text)
-
-    assert block.count("[project · ./AGENTS.md]") == MAX_REFERENCES
-    assert f"body {MAX_REFERENCES + 1}" not in block  # beyond the cap, and not silently expanded
-    assert f"body {MAX_REFERENCES - 1}" in block
+    with pytest.raises(AgentsReferenceError, match=f"maximum {MAX_REFERENCES}"):
+        s.agents.resolve_mentions(text)
+    assert f"maximum {MAX_REFERENCES}" in s.agents.validation_error(text)
 
 
 def test_a_clipped_reference_keeps_the_head_and_tail_and_names_the_readable_path(tmp_path, monkeypatch):
-    monkeypatch.setattr("wizolt.agentsmd.TOKEN_CAP", 100)  # 400 characters for every reference together
-    content = "# Global\n" + "g" * 400 + "\nfooter rule\n"
+    monkeypatch.setattr("wizolt.agentsmd.TOKEN_CAP", 200)  # 800 characters including labels and notices
+    content = "# Global\n" + "g" * 1000 + "\nfooter rule\n"
     s = agents_session(tmp_path, global_text=content)
     block = s.agents.resolve_mentions("cite @agents.md:global")
 
@@ -383,35 +413,45 @@ def test_a_clipped_reference_keeps_the_head_and_tail_and_names_the_readable_path
     assert block.startswith("--- AGENTS.MD REFERENCES ---")
     body = block.split("--- AGENTS.MD REFERENCES ---", 1)[1]
     assert body.index("# Global") < body.index(marker) < body.index("footer rule")  # head, marker, tail
-    assert "g" * 200 not in block  # the omitted middle really is gone
+    assert "g" * 500 not in block  # the omitted middle really is gone
     label = f"[global · {display_path(global_agents_md_path(s.config.data_dir))}]"
     cited = block.split(label, 1)[1].strip()
-    assert len(cited) <= 400  # the shared budget, not the file, decides how much text is cited
+    assert len(cited) <= 800  # the shared budget, not the file, decides how much text is cited
+    assert len(block) <= 800  # metadata also counts against the shared cap
 
 
 def test_one_shared_cap_clips_oversized_references_with_a_marker_naming_the_file(tmp_path, monkeypatch):
-    monkeypatch.setattr("wizolt.agentsmd.TOKEN_CAP", 40)  # 160 characters for every reference together
-    global_text = "# Global\n" + "g" * 400 + "\n"
-    s = agents_session(tmp_path, global_text=global_text, project_text="# Project\n" + "p" * 400 + "\n")
+    monkeypatch.setattr("wizolt.agentsmd.TOKEN_CAP", 200)  # 800 characters for every reference together
+    global_text = "# Global\n" + "g" * 1000 + "\n"
+    s = agents_session(tmp_path, global_text=global_text, project_text="# Project\n" + "p" * 1000 + "\n")
     block = s.agents.resolve_mentions("cite @agents.md:")
 
     assert "Clipped to fit the shared reference budget; read the full file: " in block
     # The header names both readable paths, and each clipped body says where the rest lives.
     assert f"read the full file: {global_agents_md_path(s.config.data_dir)}, {tmp_path / 'AGENTS.md'}" in block
     assert "global · " + display_path(global_agents_md_path(s.config.data_dir)) in block
-    assert "project · ./AGENTS.md clipped to fit the shared reference budget; read the full file for the rest" in block
     assert "[global · " in block and "[project · ./AGENTS.md]" in block  # the second file is not dropped
-    assert "g" in block  # the first file still contributes what fits
-    assert len(block) < len(global_text) + 400  # bounded: the shared budget is spent once
+    assert "g" in block and "p" in block  # both files receive part of the shared budget
+    assert len(block) <= 800  # labels and paths stay within the cap too
 
 
 def test_a_reference_small_enough_to_fit_is_never_clipped(tmp_path, monkeypatch):
-    monkeypatch.setattr("wizolt.agentsmd.TOKEN_CAP", 40)
+    monkeypatch.setattr("wizolt.agentsmd.TOKEN_CAP", 100)
     s = agents_session(tmp_path, project_text="# Rules\nshort\n")
     block = s.agents.resolve_mentions("@agents.md:project/Rules")
 
     assert "# Rules\nshort" in block
     assert "clipped" not in block.lower()
+
+
+def test_chinese_reference_text_stays_within_the_shared_byte_budget(tmp_path, monkeypatch):
+    monkeypatch.setattr("wizolt.agentsmd.TOKEN_CAP", 200)
+    s = agents_session(tmp_path, global_text="# 规则\n" + "中文偏好" * 500 + "\n")
+
+    block = s.agents.resolve_mentions("@agents.md:global")
+
+    assert "Clipped to fit" in block
+    assert len(block.encode("utf-8")) <= 800
 
 
 # --- the session snapshot versus the disk ---
@@ -478,7 +518,17 @@ def test_the_prefix_clips_both_sources_under_one_shared_cap(tmp_path, monkeypatc
     # One shared budget: each source's rendered body stays within the cap.
     assert context.estimated_text_tokens(global_body) <= 200
     assert context.estimated_text_tokens(project_body) <= 200
-    assert context.estimated_text_tokens(global_body) + context.estimated_text_tokens(project_body) <= 260
+    assert context.estimated_text_tokens(global_body) + context.estimated_text_tokens(project_body) <= 200
+    assert "g" * 100 in global_body and "p" * 100 in project_body  # each source keeps a useful share
+
+
+def test_chinese_instructions_respect_the_prefix_budget(tmp_path, monkeypatch):
+    monkeypatch.setattr("wizolt.context.MAX_AGENTS_MD_TOKENS", 200)
+    s = agents_session(tmp_path, global_text="# 规则\n" + "中文偏好" * 500 + "\n")
+    body = ContextManager(s).environment().split("--- Global instructions", 1)[1].split(") ---\n", 1)[1]
+
+    assert "truncated to fit the prefix" in body
+    assert len(body.encode("utf-8")) <= 800
 
 
 def test_absent_sources_add_no_rows(tmp_path):
@@ -592,6 +642,11 @@ def test_read_of_the_global_agents_md_needs_no_confirmation(tmp_path):
     assert not s.is_global_agents_md(str(other))
     assert "House style" in ReadTool(s, [{"path": global_path}]).call().retained_text  # and it reads
 
+    alias = tmp_path / "global-alias.md"
+    alias.symlink_to(global_path)
+    assert not s.is_global_agents_md(str(alias))
+    assert ReadTool(s, [{"path": str(alias)}]).needs_confirmation() is True
+
 
 def test_edit_recovery_shows_the_global_agents_md_but_not_other_outside_paths(tmp_path):
     s = agents_session(tmp_path, global_text=GLOBAL_TEXT, cwd_name="work")
@@ -610,6 +665,15 @@ def test_edit_recovery_shows_the_global_agents_md_but_not_other_outside_paths(tm
         EditTool(s, [str(outside), "view.99", edits]).call()
     assert "Read or Search again" in str(error.value)
     assert error.value.recovery is None  # an outside path is not projected into a refusal
+
+
+def test_edit_can_create_the_global_file_when_it_does_not_exist(tmp_path):
+    s = agents_session(tmp_path, cwd_name="work")
+    global_path = global_agents_md_path(s.config.data_dir)
+
+    EditTool(s, [global_path, "", [{"op": "create", "content": "# Rule\nKeep it short.\n"}]]).call()
+
+    assert (tmp_path / "data" / "AGENTS.md").read_text(encoding="utf-8") == "# Rule\nKeep it short.\n"
 
 
 def test_edit_mixed_evidence_preflights_the_drop_source_repair_for_the_global_file(tmp_path):

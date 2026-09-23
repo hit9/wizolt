@@ -276,12 +276,9 @@ class ContextManager:
     def _agents_md_prefix(self, info) -> list[str]:
         """The instructions rows of the fixed prefix: global before project, one shared cap.
 
-        Project instructions win on conflict, which the order already expresses (later text is
-        the more specific) and which the budget honors too: an oversized global file is clipped
-        to the room left after reserving what the project source needs, so the project file is
-        never starved by the global one. A source that still does not fit is clipped head/tail
-        with a marker naming its path, so the model knows where the full text lives. The prefix
-        stays fixed for the session -- a new session picks up edits."""
+        Reserve an equal share for each source, then give unused room to the other. A source that
+        still does not fit is clipped head/tail with a marker naming its path. The prefix stays
+        fixed for the session -- a new session picks up edits."""
 
         blocks = [
             ("Global instructions", info.agents_md_global_display or "AGENTS.md", info.agents_md_global),
@@ -289,23 +286,31 @@ class ContextManager:
         ]
         blocks = [(title, source, content) for title, source, content in blocks if source and content]
         rows: list[str] = []
-        budget = MAX_AGENTS_MD_TOKENS
-        for index, (title, source, content) in enumerate(blocks):
-            # Room the sources after this one need, so the earlier (global) source yields first.
-            reserved = sum(self.estimated_text_tokens(later[2]) for later in blocks[index + 1 :])
-            total = self.estimated_text_tokens(content)
-            if total > max(0, budget - reserved):
+
+        def tokens(value: str) -> int:
+            return (len(value.encode("utf-8")) + 3) // 4
+
+        totals = [tokens(content) for _, _, content in blocks]
+        budgets = [min(total, MAX_AGENTS_MD_TOKENS // len(blocks)) for total in totals] if blocks else []
+        for index, total in enumerate(totals):
+            budgets[index] += min(MAX_AGENTS_MD_TOKENS - sum(budgets), total - budgets[index])
+        for (title, source, content), budget in zip(blocks, budgets, strict=True):
+            total = tokens(content)
+            if total > budget:
 
                 def marker_of(omitted: int, source: str = source) -> str:
                     return f"... ({source} truncated to fit the prefix; approximately {omitted} tokens omitted) ..."
 
-                limit = max(2, (budget - reserved) * 4 - len(marker_of(total)) - 2)  # 2 = the newlines joining the three parts
-                head_limit = max(1, limit * 2 // 5)
-                head = self.head_excerpt(content, head_limit)
-                tail = self.tail_excerpt(content, max(1, limit - head_limit))
-                omitted = max(0, total - self.estimated_text_tokens(head) - self.estimated_text_tokens(tail))
-                content = "\n".join(part for part in (head.rstrip(), marker_of(omitted), tail.lstrip()) if part)
-            budget = max(0, budget - self.estimated_text_tokens(content))
+                limit = budget * 4 - len(marker_of(total).encode("utf-8")) - 2  # newlines around the marker
+                if limit <= 0:
+                    content = marker_of(total).encode("utf-8")[: budget * 4].decode("utf-8", errors="ignore")
+                else:
+                    head_limit = max(1, limit * 2 // 5)
+                    encoded = content.encode("utf-8")
+                    head = encoded[:head_limit].decode("utf-8", errors="ignore")
+                    tail = encoded[-max(1, limit - head_limit) :].decode("utf-8", errors="ignore")
+                    omitted = max(0, total - tokens(head) - tokens(tail))
+                    content = "\n".join(part for part in (head.rstrip(), marker_of(omitted), tail.lstrip()) if part)
             rows.extend((f"--- {title} ({source}) ---", content))
         return rows
 

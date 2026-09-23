@@ -29,11 +29,10 @@ if TYPE_CHECKING:
 GLOBAL_FILENAME = "AGENTS.md"
 GLOBAL_SCOPE = "global"
 PROJECT_SCOPE = "project"
-# Shared by the fixed context prefix and every reference expansion in one request (the design's
-# "bound the fixed prefix" rule). Estimated at four characters per token, matching
-# ContextManager.estimated_text_tokens.
+# Shared by the fixed context prefix and every reference expansion in one request. UTF-8 bytes
+# track the request estimator; character counts badly understate Chinese instructions.
 TOKEN_CAP = 8_000
-_CHARS_PER_TOKEN = 4
+_BYTES_PER_TOKEN = 4
 MAX_REFERENCES = 20
 
 
@@ -62,7 +61,7 @@ def is_global_agents_md(path: str, data_dir: str) -> bool:
     """True only for the exact global file. Reading it needs no out-of-workspace prompt."""
 
     try:
-        return os.path.realpath(path) == os.path.realpath(global_agents_md_path(data_dir))
+        return os.path.normcase(os.path.abspath(os.path.expanduser(path))) == os.path.normcase(global_agents_md_path(data_dir))
     except OSError:
         return False
 
@@ -94,6 +93,7 @@ class MenuRow:
     display: str
     meta: str
     insert: str  # the canonical reference text completion inserts
+    search_text: str = ""  # original section text, not rendered in the one-line menu
 
 
 @dataclass(frozen=True)
@@ -108,8 +108,8 @@ class AgentsFile:
     display: str  # what the menu and truncation markers show, e.g. "~/.wizolt/AGENTS.md"
     content: str
 
-    _ATX = re.compile(r"^(#{1,6})(?:\s+(.*))?$")
-    _FENCE = re.compile(r"^(```+|~~~+)\s*")
+    _ATX = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*))?[ \t]*$")
+    _FENCE = re.compile(r"^ {0,3}(```+|~~~+)")
     EXCERPT_LIMIT = 80
 
     @property
@@ -146,45 +146,35 @@ class AgentsFile:
         a parent section's text includes its subsections. Text before the first heading is not
         a section; it belongs to the whole-file reference."""
 
-        # Stack of open sections, outermost first: (level, heading path, body lines, opening line
-        # index). A nested heading extends the stack rather than replacing its parent, so the
-        # parent keeps the text it collected before the subsection and gains the subsection's
-        # rendered text back when it closes. Sections close innermost-first, so the opening
-        # index restores document order (a parent before its own subsections).
-        open_sections: list[tuple[int, tuple[str, ...], list[str], int]] = []
+        # Offsets into the original string preserve whitespace exactly, including final blank
+        # lines and nested sections. The stack holds (level, heading path, opening offset).
+        open_sections: list[tuple[int, tuple[str, ...], int]] = []
         sections: list[tuple[int, Section]] = []
         fence: tuple[str, int] | None = None
+        offset = 0
 
-        def close_one() -> None:
-            _level, path, body, index = open_sections.pop()
-            rendered = Section(path, "\n".join(body).rstrip() + "\n")
-            sections.append((index, rendered))
-            if open_sections:
-                open_sections[-1][2].append(rendered.text)
+        def close_one(end: int) -> None:
+            _level, path, start = open_sections.pop()
+            sections.append((start, Section(path, self.content[start:end])))
 
-        for line_number, line in enumerate(self.content.splitlines()):
+        for line in self.content.splitlines(keepends=True):
+            visible = line.rstrip("\r\n")
             if fence is not None:
-                # A closing fence is the same character, at least as long as the opening, alone.
-                stripped = line.strip()
+                stripped = visible.strip()
                 if stripped and set(stripped) == {fence[0]} and len(stripped) >= fence[1]:
                     fence = None
-            elif (fence_match := self._FENCE.match(line)) is not None:
+            elif (fence_match := self._FENCE.match(visible)) is not None:
                 fence = (fence_match.group(1)[0], len(fence_match.group(1)))
-            elif (heading := self._ATX.match(line)) is not None:
+            elif (heading := self._ATX.match(visible)) is not None:
                 level = len(heading.group(1))
                 while open_sections and open_sections[-1][0] >= level:
-                    close_one()
-                path = (*(entry[1][-1] for entry in open_sections), (heading.group(2) or "").strip())
-                open_sections.append((level, path, [line], line_number))
-                continue
-            elif open_sections:
-                pass
-            else:
-                continue
-            if open_sections:
-                open_sections[-1][2].append(line)
+                    close_one(offset)
+                title = re.sub(r"[ \t]+#+[ \t]*$", "", heading.group(2) or "").strip()
+                path = (*(entry[1][-1] for entry in open_sections), title)
+                open_sections.append((level, path, offset))
+            offset += len(line)
         while open_sections:
-            close_one()
+            close_one(len(self.content))
         return [section for _, section in sorted(sections, key=lambda item: item[0])]
 
     def section_text(self, heading: str) -> str | None:
@@ -204,7 +194,8 @@ class AgentsFile:
     def menu_rows(self) -> list[MenuRow]:
         rows = [MenuRow(self.label, "whole file", self.reference())]
         for section in self.sections():
-            rows.append(MenuRow(section.heading, self._row_meta(section), self.reference(section.heading)))
+            if section.heading:
+                rows.append(MenuRow(section.heading, self._row_meta(section), self.reference(section.heading), section.text))
         return rows
 
     def _row_meta(self, section: Section) -> str:
@@ -216,10 +207,7 @@ class AgentsFile:
     def reference(self, heading: str = "") -> str:
         """The canonical `@agents.md:` form for this file or one of its sections."""
 
-        payload = f"{self.scope}/{heading}" if heading else self.scope
-        if any(ch in payload for ch in ' \t"'):
-            payload = json.dumps(payload, ensure_ascii=False)
-        return "@agents.md:" + payload
+        return "@agents.md:" + (json.dumps(f"{self.scope}/{heading}", ensure_ascii=False) if heading else self.scope)
 
 
 @dataclass(frozen=True)
@@ -230,7 +218,14 @@ class Reference:
 
     @classmethod
     def spans(cls, text: str) -> list[Reference]:
-        return [cls(span.payload) for span in scan_mentions(text) if span.kind == "agents" and span.complete]
+        references = []
+        for span in scan_mentions(text):
+            if span.kind != "agents":
+                continue
+            if not span.complete:
+                raise AgentsReferenceError("incomplete @agents.md: reference; close the quoted title")
+            references.append(cls(span.payload))
+        return references
 
     @property
     def scope(self) -> str:
@@ -250,10 +245,9 @@ class AgentsMentions:
     disk at send time. Raises AgentsReferenceError for unknown or ambiguous references so the
     sender can surface the error instead of silently dropping the citation."""
 
-    MAX_MENU_ROWS = 50
-
     def __init__(self, session: Session) -> None:
         self.session = session
+        self._menu_rows: tuple[MenuRow, ...] | None = None
 
     # -- Sources.
 
@@ -278,7 +272,7 @@ class AgentsMentions:
         if info is None:
             return ()
         files: list[AgentsFile] = []
-        if info.agents_md_global:
+        if info.agents_md_global_display:
             files.append(
                 AgentsFile(
                     GLOBAL_SCOPE,
@@ -287,7 +281,7 @@ class AgentsMentions:
                     info.agents_md_global,
                 )
             )
-        if info.agents_md and info.agents_md_source:
+        if info.agents_md_source:
             files.append(
                 AgentsFile(
                     PROJECT_SCOPE,
@@ -304,21 +298,12 @@ class AgentsMentions:
     # -- Menu.
 
     def menu_rows(self) -> list[MenuRow]:
-        rows = [MenuRow("All applicable", "every instructions file below", "@agents.md:")]
-        for file in self.cached_sources():
-            rows.extend(file.menu_rows())
-        return rows[: self.MAX_MENU_ROWS]
-
-    def matching_rows(self, query: str) -> list[MenuRow]:
-        """Rows matching a query by source, heading path, and original text; `All applicable`
-        always stays first."""
-
-        rows = self.menu_rows()
-        query = query.strip().strip('"').lower()
-        if not query:
-            return rows
-        matched = [row for row in rows[1:] if query in row.display.lower() or query in row.meta.lower()]
-        return [*rows[:1], *matched][: self.MAX_MENU_ROWS]
+        if self._menu_rows is None:
+            rows = [MenuRow("All applicable", "every instructions file below", "@agents.md:")]
+            for file in self.cached_sources():
+                rows.extend(file.menu_rows())
+            self._menu_rows = tuple(rows)
+        return list(self._menu_rows)
 
     # -- Expansion.
 
@@ -326,9 +311,11 @@ class AgentsMentions:
         """Expand every `@agents.md:` reference in the text into one bounded block, or ""."""
 
         files = self.current_sources()
-        references = Reference.spans(text)[:MAX_REFERENCES]
+        references = Reference.spans(text)
         if not references:
             return ""
+        if len(references) > MAX_REFERENCES:
+            raise AgentsReferenceError(f"too many @agents.md: references (maximum {MAX_REFERENCES} per message)")
         expanded: list[tuple[AgentsFile, str]] = []
         seen: set[str] = set()
         for reference in references:
@@ -351,11 +338,15 @@ class AgentsMentions:
 
     def _expand_one(self, reference: Reference, files: tuple[AgentsFile, ...]) -> list[tuple[AgentsFile, str]]:
         if not reference.payload:
+            if not files:
+                raise AgentsReferenceError("no AGENTS.md source is available for @agents.md:; create a global or project instructions file")
             return [(file, file.content) for file in files]
         file = self._file_for(reference.scope, files)
         if file is None:
             where = ", ".join(candidate.scope for candidate in files) or "none is loaded"
             raise AgentsReferenceError(f'unknown @agents.md reference "{reference.payload}" (available sources: {where})')
+        if reference.payload.endswith("/"):
+            raise AgentsReferenceError(f'@agents.md reference "{reference.payload}" needs a section heading after "/"')
         if not reference.heading:
             return [(file, file.content)]
         text = file.section_text(reference.heading)
@@ -364,33 +355,56 @@ class AgentsMentions:
         return [(file, text)]
 
     def _render(self, expanded: list[tuple[AgentsFile, str]]) -> str:
-        """Join the expanded texts under one shared cap; clipped references say so with a path."""
+        """Share the text budget across references; name every clipped or omitted source."""
 
-        budget = TOKEN_CAP * _CHARS_PER_TOKEN
-        clipped: list[str] = []
-        parts: list[str] = []
-        for file, text in expanded:
-            if not text:
-                continue
-            if len(text) > budget:
-                text = self._clip(text, budget, file.label)
-                clipped.append(file.path)
-            budget = max(0, budget - len(text))
-            parts.extend((f"[{file.label}]", text.rstrip(), ""))
         header = [
             "--- AGENTS.MD REFERENCES ---",
             "The user cited these instructions for this request; the original text follows.",
         ]
+        labels = [f"[{file.label}]" for file, _ in expanded]
+        paths = list(dict.fromkeys(file.path for file, _ in expanded))
+        notice = "Clipped to fit the shared reference budget; read the full file: " + ", ".join(paths)
+        max_bytes = TOKEN_CAP * _BYTES_PER_TOKEN
+        # Reserve room for all labels and the longest possible notice before sharing text room.
+        overhead = sum(len(part.encode("utf-8")) for part in (*header, notice, *labels)) + 3 + 3 * len(expanded)
+        if overhead >= max_bytes:
+            message = "--- AGENTS.MD REFERENCES ---\nReferences exceed the shared budget; read the cited AGENTS.md files."
+            return message.encode("utf-8")[:max_bytes].decode("utf-8", errors="ignore")
+        contents = [content or "(empty file)" for _, content in expanded]
+        sizes = [len(content.encode("utf-8")) for content in contents]
+        allocations = [0] * len(contents)
+        remaining = max_bytes - overhead
+        pending = set(range(len(contents)))
+        while pending and remaining:
+            share = max(1, remaining // len(pending))
+            fits = {index for index in pending if sizes[index] <= share}
+            if fits:
+                for index in fits:
+                    allocations[index] = sizes[index]
+                    remaining -= allocations[index]
+                pending -= fits
+            else:
+                for index in sorted(pending):
+                    allocations[index] = min(share, remaining)
+                    remaining -= allocations[index]
+                break
+
+        clipped = list(dict.fromkeys(file.path for (file, _), size, limit in zip(expanded, sizes, allocations, strict=True) if size > limit))
+        parts: list[str] = []
+        for (file, _), label, content, limit in zip(expanded, labels, contents, allocations, strict=True):
+            parts.extend((label, self._clip(content, limit, file.label) if limit else "", ""))
         if clipped:
             header.append("Clipped to fit the shared reference budget; read the full file: " + ", ".join(clipped))
         return "\n".join([*header, "", *parts]).rstrip()
 
     @staticmethod
-    def _clip(text: str, budget_chars: int, label: str) -> str:
-        if len(text) <= budget_chars:
+    def _clip(text: str, budget_bytes: int, label: str) -> str:
+        encoded = text.encode("utf-8")
+        if len(encoded) <= budget_bytes:
             return text
         marker = f"... ({label} clipped to fit the shared reference budget; read the full file for the rest) ..."
-        head_limit = max(1, (budget_chars - len(marker) - 2) * 2 // 5)
-        head = text[:head_limit].rstrip()
-        tail = text[len(text) - max(1, budget_chars - len(head) - len(marker) - 2) :].lstrip()
-        return "\n".join(part for part in (head, marker, tail) if part)
+        if budget_bytes <= len(marker.encode("utf-8")) + 2:
+            return encoded[: max(0, budget_bytes - 3)].decode("utf-8", errors="ignore") + ("…" if budget_bytes >= 3 else "")
+        head_limit = (budget_bytes - len(marker.encode("utf-8")) - 2) * 2 // 5
+        tail_limit = budget_bytes - len(marker.encode("utf-8")) - 2 - head_limit
+        return encoded[:head_limit].decode("utf-8", errors="ignore") + "\n" + marker + "\n" + encoded[-tail_limit:].decode("utf-8", errors="ignore")

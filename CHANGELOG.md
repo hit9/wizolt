@@ -17,6 +17,10 @@
 
 ### Changed
 
+- AGENTS.md section references now quote titles so Chinese and punctuation round-trip; the menu
+  can find sections beyond its first 50 rows by heading or body text. Oversized reference sets
+  report their limit instead of silently omitting later citations, and both instruction files
+  retain a share of the fixed-prefix budget. Chinese text is now counted against both budgets.
 - A submission whose `@agents.md:` reference is unknown or ambiguous is refused with an explicit
   error instead of being sent unexpanded; duplicate heading paths are reported as ambiguous.
 - `Read` on a missing or unreadable file now renders as the quiet dim `rejected` one-liner,

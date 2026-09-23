@@ -141,8 +141,10 @@ everything, and `AGENTS.md` (falling back to `CLAUDE.md`) in the project. Both l
 session start into a fixed prefix of about 8,000 tokens shared between them, so a new session
 picks up your edits. Typing `@agents.md:` lists each file and its headings; a row commits a
 reference like `@agents.md:"global/PR body"` or `@agents.md:project`, and `@agents.md:` alone
-means all applicable files. The cited text is attached to that one request verbatim. Ask the
-agent to update these files in plain words; it never writes them on its own.
+means all applicable files. Search matches headings and their text, even beyond the first 50
+rows. The cited original text is attached to that request within a shared 8,000-token limit;
+clipped references name the file to read. Ask the agent to update these files in plain words; it
+may suggest a rule but never writes one unless you explicitly ask.
 
 **Files.** A mention names the file and nothing more: the agent reads what the request needs with
 `Read`. Nothing is inlined, so a large or binary path costs nothing until then.

@@ -94,7 +94,7 @@ def _scan_agents(text: str, start: int, payload_start: int) -> MentionSpan:
     if text[payload_start] != '"':
         end = payload_start
         allowed = _IDENTIFIER | {"/"}
-        while end < len(text) and text[end] in allowed:
+        while end < len(text) and (text[end] in allowed or text[end].isalnum()):
             end += 1
         # The empty payload is the valid "all applicable" form, whether the text ends here or
         # the reference is followed by whitespace (end == payload_start covers both).
