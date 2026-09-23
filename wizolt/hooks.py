@@ -68,6 +68,8 @@ class UiHooks:
     # Ask's question set. None falls back to the runner's input_fn, which is what a headless
     # embedding wants; a presenter that can show a selector sets it.
     question_fn: QuestionFn | None = None
+    # A delegated worker streams wherever the parent's model does: `_worker_stream` reads the
+    # parent's on_stream and wraps it so the worker's own text cannot be promoted as the answer.
     # The Delegate confirm-time `c` config loop, through the shared choice selector (see
     # CommandLoop.run_worker_config). None degrades `c` to printing the config only.
     worker_config_picker: Callable[[], Awaitable[None] | None] | None = None
@@ -78,9 +80,6 @@ class UiHooks:
     # The next approval prompt's actions as a selectable row (see TuiApp.set_approval_form).
     # None, or a False return, means the answer has to be typed -- headless runs, piped stdin.
     approval_form: Callable[[list[tuple[str, str]]], bool] | None = None
-    # ModelClient streams only when on_stream is set, so a delegated worker whose hooks carry no
-    # stream runs unstreamed and its thinking stays invisible. None is that unstreamed default.
-    model_stream: Callable[[str, str], None] | None = None
     # The worker agent's view of the parent's retry/builtin/compaction reporting.
     retry_wait: Callable[[bool], None] | None = None
     builtin_call: Callable[[str, str], None] | None = None

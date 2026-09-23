@@ -99,10 +99,10 @@ async def test_worker_model_stream_is_wired_from_the_runner(tmp_path, monkeypatc
     monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
     runner = _delegate_runner(parent)
     calls = []
-    runner.hooks.model_stream = lambda kind, text: calls.append((kind, text))
+    runner.hooks.on_stream = lambda kind, text: calls.append((kind, text))
     await _delegate_call(parent, runner, action="send", order="o")
     on_stream = parent.worker._agent.hooks.on_stream
-    assert on_stream is not runner.hooks.model_stream  # wrapped: `output_done` must not promote
+    assert on_stream is not runner.hooks.on_stream  # wrapped: `output_done` must not promote
     assert callable(on_stream)
     on_stream("output", "x")
     on_stream("output_done", "t")

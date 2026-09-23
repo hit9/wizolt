@@ -151,7 +151,7 @@ async def test_persistent_worker_rebinds_to_the_current_runner(tmp_path, monkeyp
     attached = _delegate_runner(parent)
     stream = lambda kind, text: None
     script_status = lambda active, code="": None
-    attached.hooks.model_stream = stream
+    attached.hooks.on_stream = stream
     attached.hooks.script_status = script_status
     attached.hooks.approval_form = lambda _actions: True
     await _delegate_call(parent, attached, action="send", order="second")

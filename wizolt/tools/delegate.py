@@ -97,7 +97,7 @@ def _worker_stream(runner: ToolRunner):
     def stream(kind: str, text: str) -> None:
         # Read through a local so the None check narrows: the field is Optional, and on_stream is
         # only wired when it is set, but the checker cannot see that here.
-        model_stream = runner.hooks.model_stream
+        model_stream = runner.hooks.on_stream
         if model_stream is None:
             return
         if kind == "output_done":
@@ -126,7 +126,7 @@ def _wire_worker_agent(agent: Agent, runner: ToolRunner) -> None:
     agent.final_output_fn = runner.hooks.worker_answer
     agent.use_hooks(
         UiHooks(
-            on_stream=_worker_stream(runner) if runner.hooks.model_stream is not None else None,
+            on_stream=_worker_stream(runner) if runner.hooks.on_stream is not None else None,
             on_retry_wait=runner.hooks.retry_wait,
             on_builtin_call=runner.hooks.builtin_call,
             on_compaction=runner.hooks.compaction,

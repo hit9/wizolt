@@ -284,7 +284,6 @@ Full documentation: https://wizolt.readthedocs.io
         hooks.on_tool_batch = self.tool_batch_output
         hooks.live_start = self.tool_live_start
         hooks.live_output = self.tool_live_output
-        hooks.model_stream = self.model_stream_output
         hooks.question_fn = lambda specs: question_interaction(self, specs)
         hooks.worker_rule = self.ui.emit_worker_rule
         hooks.worker_answer = self.worker_answer_output

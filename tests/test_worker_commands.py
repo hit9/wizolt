@@ -450,7 +450,7 @@ async def test_worker_stream_forwards_output_and_suppresses_output_done_promote(
 
     class StubRunner:
         def __init__(self):
-            self.hooks = UiHooks(model_stream=lambda kind, text: calls.append((kind, text)))
+            self.hooks = UiHooks(on_stream=lambda kind, text: calls.append((kind, text)))
 
     stream = _worker_stream(StubRunner())
 
