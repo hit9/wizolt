@@ -130,8 +130,8 @@ async def test_worker_agent_wires_lifecycle_callbacks(tmp_path, monkeypatch):
     runner2 = _delegate_runner(parent2)
     await _delegate_call(parent2, runner2, action="send", order="work")
     agent2 = parent2.worker._agent
-    assert getattr(agent2.model, "on_retry_wait", None) is None
-    assert getattr(agent2.model, "on_builtin_call", None) is None
+    assert agent2.hooks.on_retry_wait is None
+    assert agent2.hooks.on_builtin_call is None
     assert agent2.hooks.on_compaction is None
 
 
@@ -154,12 +154,16 @@ async def test_persistent_worker_rebinds_to_the_current_runner(tmp_path, monkeyp
     attached.hooks.on_stream = stream
     attached.hooks.script_status = script_status
     attached.hooks.approval_form = lambda _actions: True
+    attached.hooks.question_fn = lambda _specs: (_ for _ in ()).throw(AssertionError("the parent's Ask selector must not reach the worker"))
     await _delegate_call(parent, attached, action="send", order="second")
 
     assert parent.worker._agent is agent
     assert agent.hooks.on_stream is not None
     assert agent.hooks.script_status is script_status
     assert agent.hooks.approval_form is attached.hooks.approval_form
+    # The worker keeps its own Ask path: the parent's selector is not part of what a nested turn
+    # exposes, so a worker that asks falls back to its own input_fn.
+    assert agent.hooks.question_fn is None
 
 
 async def test_delegate_reset_clears_context_and_snapshot(tmp_path, monkeypatch):
