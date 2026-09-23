@@ -17,6 +17,8 @@
 
 ### Changed
 
+- The `@agents.md:` menu now groups headings under each file, indents nested headings, and shows
+  the full heading path in filtered results.
 - Tool rejections now retain their distinct status when a session is resumed, so a missing-file
   `Read` stays a quiet rejection instead of appearing as a red failure.
 - `@agents.md:` completion now reflects files and headings added or edited during the current

@@ -255,7 +255,8 @@ class CommandCompleter(Completer):
         if needle:
             rows = [row for row in rows if any(needle in field.lower() for field in (row.display, row.meta, row.insert, row.search_text))]
         for row in rows[: self.MAX_ROWS]:
-            yield Completion(row.insert, start_position=start, display=row.display, display_meta=row.meta)
+            display = (row.filtered_display or row.display) if needle else row.display
+            yield Completion(row.insert, start_position=start, display=display, display_meta=row.meta)
 
     @staticmethod
     def _matching_names(values, query: str) -> list[str]:

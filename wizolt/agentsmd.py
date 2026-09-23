@@ -20,7 +20,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from wizolt.base import WizoltError
+from wizolt.base import Text, WizoltError
 from wizolt.config import SystemInfo
 from wizolt.mentions import scan_mentions
 
@@ -95,6 +95,7 @@ class MenuRow:
     meta: str
     insert: str  # the canonical reference text completion inserts
     search_text: str = ""  # original section text, not rendered in the one-line menu
+    filtered_display: str = ""  # full heading path when filtering hides its parents
 
 
 @dataclass(frozen=True)
@@ -111,7 +112,7 @@ class AgentsFile:
 
     _ATX = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*))?[ \t]*$")
     _FENCE = re.compile(r"^ {0,3}(```+|~~~+)")
-    EXCERPT_LIMIT = 80
+    EXCERPT_LIMIT = 52  # terminal cells, including the clipping marker
 
     @property
     def label(self) -> str:
@@ -193,17 +194,32 @@ class AgentsFile:
     # -- Menu (this file's rows only; the runtime prepends the "All applicable" row).
 
     def menu_rows(self) -> list[MenuRow]:
-        rows = [MenuRow(self.label, "whole file", self.reference())]
+        rows = [MenuRow(f"{self.scope.title()} · {self.display}", "whole file", self.reference())]
         for section in self.sections():
             if section.heading:
-                rows.append(MenuRow(section.heading, self._row_meta(section), self.reference(section.heading), section.text))
+                heading_line = section.text.splitlines()[0]
+                match = self._ATX.match(heading_line)
+                assert match is not None  # sections() only opens at ATX headings
+                title = "  " * len(section.path) + "#" * len(match.group(1)) + " " + section.path[-1]
+                breadcrumb = " › ".join((self.scope.title(), *section.path))
+                rows.append(MenuRow(title, self._row_meta(section), self.reference(section.heading), section.text, breadcrumb))
         return rows
 
     def _row_meta(self, section: Section) -> str:
-        excerpt = " ".join(section.text.split())
-        if len(excerpt) > self.EXCERPT_LIMIT:
-            excerpt = excerpt[: self.EXCERPT_LIMIT - 1].rstrip() + "…"
-        return f"{self.scope} · {excerpt}" if excerpt else self.scope
+        body = []
+        fence: tuple[str, int] | None = None
+        for line in section.text.splitlines()[1:]:
+            if fence is not None:
+                stripped = line.strip()
+                if stripped and set(stripped) == {fence[0]} and len(stripped) >= fence[1]:
+                    fence = None
+            elif (fence_match := self._FENCE.match(line)) is not None:
+                fence = (fence_match.group(1)[0], len(fence_match.group(1)))
+            elif self._ATX.match(line):
+                break  # a parent's preview must not repeat its child's heading
+            if line.strip():
+                body.append(line.strip())
+        return Text.clip_width(" ".join(body), self.EXCERPT_LIMIT)
 
     def reference(self, heading: str = "") -> str:
         """The canonical `@agents.md:` form for this file or one of its sections."""

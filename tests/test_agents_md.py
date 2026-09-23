@@ -144,7 +144,7 @@ def test_a_heading_with_no_body_is_still_a_section_with_a_row():
 
     assert [section.text for section in f.sections()] == ["# Empty\n"]
     assert f.section_text("Empty") == "# Empty\n"
-    assert f.menu_rows()[1] == MenuRow("Empty", "project · # Empty", '@agents.md:"project/Empty"', "# Empty\n")
+    assert f.menu_rows()[1] == MenuRow("  # Empty", "", '@agents.md:"project/Empty"', "# Empty\n", "Project › Empty")
 
 
 def test_loading_a_missing_file_yields_nothing(tmp_path):
@@ -230,19 +230,40 @@ def test_the_whole_file_row_leads_a_files_own_rows():
     f = agents_file("# Rules\nAlways run pytest.\n")
     rows = f.menu_rows()
 
-    assert rows[0] == MenuRow("project · ./AGENTS.md", "whole file", "@agents.md:project")
-    assert [row.display for row in rows[1:]] == ["Rules"]
+    assert rows[0] == MenuRow("Project · ./AGENTS.md", "whole file", "@agents.md:project")
+    assert [row.display for row in rows[1:]] == ["  # Rules"]
     assert rows[1].insert == '@agents.md:"project/Rules"'
-    assert rows[1].meta.startswith("project · ")
-    assert "Always run pytest" in rows[1].meta  # the original text, not a paraphrase
+    assert rows[1].meta == "Always run pytest."  # the original body, not a paraphrase
 
 
 def test_a_section_row_shows_a_bounded_excerpt_of_the_original_text():
     row = agents_file("# Long\n" + "word " * 60 + "\n").menu_rows()[1]
 
-    assert row.meta.startswith("project · # Long word word")  # the original heading line, then its text
-    assert row.meta.endswith("…")
-    assert len(row.meta) <= len("project · ") + AgentsFile.EXCERPT_LIMIT
+    assert row.meta.startswith("word word")
+    assert row.meta.endswith("...")
+    assert len(row.meta) <= AgentsFile.EXCERPT_LIMIT
+
+
+def test_nested_headings_show_a_tree_and_filtered_results_show_their_path():
+    f = agents_file("# 全局规则\n\n## PR body 要求\n适用范围：后端项目\n", scope="global", display="~/.wizolt/AGENTS.md")
+    rows = f.menu_rows()
+
+    assert [row.display for row in rows] == ["Global · ~/.wizolt/AGENTS.md", "  # 全局规则", "    ## PR body 要求"]
+    assert [row.meta for row in rows] == ["whole file", "", "适用范围：后端项目"]
+    completer = CommandCompleter(agents_rows=f.menu_rows)
+    match = list(completer.get_completions(Document('@agents.md:"PR body'), None))
+    assert (match[-1].display_text, match[-1].display_meta_text, match[-1].text) == (
+        "Global › 全局规则 › PR body 要求",
+        "适用范围：后端项目",
+        '@agents.md:"global/全局规则/PR body 要求"',
+    )
+
+
+def test_a_fenced_heading_stays_in_its_parents_preview():
+    rows = agents_file("# Rules\n```md\n# example\n```\n## Child\nchild body\n").menu_rows()
+
+    assert rows[1].meta == "```md # example ```"
+    assert rows[2].display == "    ## Child"
 
 
 def test_an_unheaded_file_still_offers_its_whole_file_row():
@@ -258,7 +279,14 @@ def test_the_session_menu_leads_with_all_applicable_then_each_file_and_section(t
     rows = s.agents.menu_rows()
 
     assert rows[0] == MenuRow("All applicable", "every instructions file below", "@agents.md:")
-    assert [row.display for row in rows] == ["All applicable", f"global · {display}", "House style", "project · ./AGENTS.md", "Rules", "Contributing"]
+    assert [row.display for row in rows] == [
+        "All applicable",
+        f"Global · {display}",
+        "  # House style",
+        "Project · ./AGENTS.md",
+        "  # Rules",
+        "  # Contributing",
+    ]
     # A heading title with a space is inserted in the quoted, round-trippable form.
     assert [row.insert for row in rows] == [
         "@agents.md:",
@@ -273,7 +301,7 @@ def test_the_session_menu_leads_with_all_applicable_then_each_file_and_section(t
 def test_the_menu_labels_a_claude_fallback_project_file(tmp_path):
     s = agents_session(tmp_path, project_text="# Claude rules\nbody\n", project_name="CLAUDE.md")
 
-    assert [row.display for row in s.agents.menu_rows()] == ["All applicable", "project · ./CLAUDE.md", "Claude rules"]
+    assert [row.display for row in s.agents.menu_rows()] == ["All applicable", "Project · ./CLAUDE.md", "  # Claude rules"]
     assert "body" in s.agents.resolve_mentions("@agents.md:project")
 
 
@@ -461,7 +489,7 @@ def test_the_menu_and_expansion_read_current_file_while_the_prefix_keeps_its_sna
     (tmp_path / "AGENTS.md").write_text("# Rules\nnew body\n\n# Added later\nfresh\n", encoding="utf-8")
 
     assert "old body" in s.system_info.agents_md  # the fixed prefix keeps the session snapshot
-    assert [row.display for row in s.agents.menu_rows()] == ["All applicable", "project · ./AGENTS.md", "Rules", "Added later"]
+    assert [row.display for row in s.agents.menu_rows()] == ["All applicable", "Project · ./AGENTS.md", "  # Rules", "  # Added later"]
     assert completions(CommandCompleter(agents_rows=s.agents.menu_rows), "@agents.md:Added") == ['@agents.md:"project/Added later"']
     assert "Added later" in s.agents.resolve_mentions("@agents.md:project")  # expansion reads the disk
     assert "fresh" in s.agents.resolve_mentions('@agents.md:"project/Added later"')  # a space needs the quoted form
