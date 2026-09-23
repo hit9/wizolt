@@ -129,8 +129,13 @@ class ReadTool(Tool):
         return targets
 
     def read_one(self, path: str, ranges: list[tuple[int, int]]) -> ToolOutput:
-        with open(path, encoding="utf-8") as file:
-            lines = file.readlines()
+        try:
+            with open(path, encoding="utf-8") as file:
+                lines = file.readlines()
+        except FileNotFoundError:
+            raise ToolError(f"no such file: {self.session.relpath(path)}; check the path and retry") from None
+        except OSError as error:
+            raise ToolError(f"cannot read {self.session.relpath(path)}: {error}") from None
         total = len(lines)
         resolved = []
         for requested_start, requested_end in ranges:

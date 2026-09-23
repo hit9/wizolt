@@ -495,6 +495,25 @@ def test_reject_collapses_display(tmp_path):
     assert "Read requires non-empty ranges" in msg
 
 
+def test_read_missing_file_is_a_rejection_not_a_failure(tmp_path):
+    # A missing file is a usage-level error the model self-corrects, like Edit's "file does
+    # not exist": it must raise ToolError so the runner renders the quiet dim one-liner,
+    # not the red [failed] block reserved for execution failures.
+    with pytest.raises(ToolError, match="no such file"):
+        ReadTool(session(tmp_path), [{"path": "missing.py"}]).call()
+    with pytest.raises(ToolError, match="cannot read"):
+        ReadTool(session(tmp_path), [{"path": "."}]).call()
+
+    s = session(tmp_path)
+    out = []
+    runner = ToolRunner(s, ContextManager(s), output_fn=lambda text: out.append(str(text)))
+    messages = asyncio.run(runner.run([ToolCall("c", "Read", [{"path": "missing.py"}])]))
+
+    assert "no such file" in str(messages[0]["content"])
+    assert any("· rejected: no such file" in t for t in out)
+    assert not any("[failed]" in t for t in out)
+
+
 async def test_search_ignores_hidden_and_gitignored_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(shutil, "which", lambda name: None)
     (tmp_path / ".gitignore").write_text("ignored.txt\nignored_dir/\n", encoding="utf-8")

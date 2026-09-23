@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `Read` on a missing or unreadable file now renders as the quiet dim `rejected` one-liner,
+  the same as other usage errors it can self-correct, instead of the red `[failed]` block
+  reserved for execution failures.
+
 ## 0.50.1 - 2026-09-22
 
 ## 0.50.0 - 2026-09-21
