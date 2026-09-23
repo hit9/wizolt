@@ -30,7 +30,7 @@ from wizolt.mentions import MentionSpan, active_mention, encode_file_mention
 from wizolt.providers.compat import bundled_policy
 from wizolt.render import LiveSpark, Theme, UiPrinter
 from wizolt.session import QueuedInput
-from wizolt.tui import TuiApp
+from wizolt.tui import InputMode, TuiApp
 
 if TYPE_CHECKING:
     from wizolt.cli import CommandLoop
@@ -542,10 +542,10 @@ class View:
         tui = self.loop.tui
         if tui is None:
             return ""
-        if tui.input_mode == "running":
+        if tui.input_mode == InputMode.RUNNING:
             has_pending = any(not item.inflight for item in self.loop.session.pending_user_inputs)
             return self.QUEUE_PENDING_HINT if has_pending else self.QUEUE_EMPTY_HINT
-        if tui.input_mode == "chat":
+        if tui.input_mode == InputMode.CHAT:
             return self._hint_picker.pick(self._hint_context(), self.loop.session.state.round_count)
         return ""
 

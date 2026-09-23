@@ -58,6 +58,7 @@ from wizolt.providers.sync import CATALOG_URL
 from wizolt.render import markdown_table, progress_bar
 from wizolt.session import Session, SessionBusyError, SessionEntry, SessionLease, SessionSnapshotStore
 from wizolt.tools import CodeIndex
+from wizolt.tui import InputMode
 
 if TYPE_CHECKING:
     from prompt_toolkit.formatted_text import StyleAndTextTuples
@@ -141,7 +142,7 @@ def _status_cache_line(counts: ModelUsage) -> str:
 def resend_command(loop: CommandLoop, _args: str) -> str | None:
     """Resend the in-flight model request. Available only in the running queue-input region:
     typed while a turn works, it re-requests the current model call (same path as on_retry)."""
-    if loop.tui is None or loop.tui.input_mode != "running":
+    if loop.tui is None or loop.tui.input_mode != InputMode.RUNNING:
         return "/resend re-requests the current model request — type it while a turn is working."
     if loop.session.state.current_model_call_started_at <= 0 or loop.session.state.model_retry_until > 0:
         return "Nothing to resend right now; /resend works while the model is generating."
@@ -156,7 +157,7 @@ async def mcp_command(loop: CommandLoop, args: str) -> str | None:
 
     parts = args.split()
     if not parts:
-        if loop.tui is not None and loop.tui.input_mode != "running":
+        if loop.tui is not None and loop.tui.input_mode != InputMode.RUNNING:
             return await mcp_manager(loop)
         return mcp.render_server_status()
 

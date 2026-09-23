@@ -11,6 +11,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any, ClassVar
 
 from prompt_toolkit import search as pt_search
@@ -222,6 +223,20 @@ class AttachmentLabelProcessor(Processor):
         return Transformation(fragments, source_to_display=source_to_display, display_to_source=display_to_source)
 
 
+class InputMode(StrEnum):
+    """What the input widget is doing right now.
+
+    CHAT: accepting ordinary input. DISPATCH: answering an inline prompt (an approval or an
+    Ask free-text page). RUNNING: a turn owns the screen; input is queued. APPROVAL: like
+    DISPATCH, but the answer is one of the declared actions (shown as chips).
+    """
+
+    CHAT = "chat"
+    DISPATCH = "dispatch"
+    RUNNING = "running"
+    APPROVAL = "approval"
+
+
 class TuiApp:
     """One primary-screen application for live activity, input, selectors, and status.
 
@@ -314,7 +329,7 @@ class TuiApp:
         self.search_toolbar = SearchToolbar()
         self.app: Application | None = None
         self.on_ready: Callable[[], None] = lambda: None
-        self.input_mode = "chat"  # chat | dispatch | running | approval
+        self.input_mode = InputMode.CHAT  # chat | dispatch | running | approval
         self.quick_hint_focus = -1  # -1 = input focused; 0..n-1 = that quick-input chip
         self._quick_hint_resume_focus = -1  # last picked chip; Tab resumes after it once
         self.quick_hint_picked: list[str] = []  # chips picked into the input, in pick order
@@ -374,7 +389,7 @@ class TuiApp:
         previous_images = self.input_images
         previous_pastes = self.input_pastes
 
-        def switch(document: Document, mode: str, prompt_text: str) -> None:
+        def switch(document: Document, mode: InputMode, prompt_text: str) -> None:
             nonlocal previous_document
             if previous_document is None:
                 previous_document = self.input_buffer.document
@@ -383,7 +398,7 @@ class TuiApp:
             self._reset_input(UserInput(document.text, images, pastes), cursor_position=document.cursor_position)
             self._set_mode(mode, prompt_text)
 
-        switch(Document(""), "approval", prompt)
+        switch(Document(""), InputMode.APPROVAL, prompt)
         try:
             return await pending
         finally:
@@ -443,7 +458,7 @@ class TuiApp:
     def approval_form_fragments(self) -> StyleAndTextTuples:
         """The live action row. Dimmed whole once a reason is being typed, because Enter then sends
         the reason rather than firing the focused action -- the row has to stop looking armed."""
-        if not self._approval_actions or self.input_mode != "approval":
+        if not self._approval_actions or self.input_mode != InputMode.APPROVAL:
             return []
         typing = bool(self.input_buffer.text)
         # A rail-only row parts the decision from the call it is about. The rail keeps drawing, so
@@ -470,16 +485,16 @@ class TuiApp:
 
     def set_running(self, label: str) -> None:
         self.status_label = label
-        self._set_mode("running", "+> ")
+        self._set_mode(InputMode.RUNNING, "+> ")
 
     def set_dispatching(self, prompt: str = "") -> None:
-        self._set_mode("dispatch", prompt)
+        self._set_mode(InputMode.DISPATCH, prompt)
 
     def set_idle(self) -> None:
         self.status_label = ""
-        self._set_mode("chat", UiPrinter.PROMPT_PREFIX)
+        self._set_mode(InputMode.CHAT, UiPrinter.PROMPT_PREFIX)
 
-    def _set_mode(self, mode: str, prompt: str) -> None:
+    def _set_mode(self, mode: InputMode, prompt: str) -> None:
         self.input_mode = mode
         # The prompt reaches the input row through BeforeInput, a single-line processor, and
         # BufferControl does not split processor output on "\n" the way FormattedTextControl does --
@@ -491,7 +506,7 @@ class TuiApp:
         self._input_prompt_above = above.split("\n") if separator else []
         self.input_prompt = last
         self._clear_quick_hint_selection()
-        if mode not in {"chat", "running"}:
+        if mode not in {InputMode.CHAT, InputMode.RUNNING}:
             self.input_error = ""
         self.invalidate()
 
@@ -515,7 +530,7 @@ class TuiApp:
         ticker already redraws at the frame rate, so redrawing per token only makes the cadence
         swing with the model's pace; anywhere else there is no ticker, so redraw normally.
         """
-        if self.input_mode != "running":
+        if self.input_mode != InputMode.RUNNING:
             self.invalidate()
 
     async def write_to_scrollback(self, callback: Callable[[], None]) -> None:
@@ -578,14 +593,14 @@ class TuiApp:
 
     def _accept(self, buffer: Buffer) -> bool:
         text = buffer.text
-        if self.input_mode == "approval" and self._input_pending is not None:
+        if self.input_mode == InputMode.APPROVAL and self._input_pending is not None:
             # Enter fires the focused action while the line is empty, and sends the reason once
             # there is one. Both submit a plain string, so the approval loop reads one protocol.
             self.resolve_input(self._approval_actions[self._approval_focus][1] if not text and self._approval_actions else text)
             return False
-        if self.input_mode == "running":
+        if self.input_mode == InputMode.RUNNING:
             return self._submit_running(buffer)
-        if self.input_mode == "chat":
+        if self.input_mode == InputMode.CHAT:
             if not text.strip():
                 return False
             value = self._submitted_input()
@@ -766,7 +781,7 @@ class TuiApp:
         leaves that agreement -- and with no completion menu open, which owns both keys while it
         is up. Refreshing the hints here is what makes the two keys decide from one snapshot.
         """
-        if self.input_mode != "chat":
+        if self.input_mode != InputMode.CHAT:
             return ()
         hints = self.quick_hints()
         if not hints or buffer.complete_state is not None or buffer.text != "\n".join(self.quick_hint_picked):
@@ -798,7 +813,7 @@ class TuiApp:
             return
         if (
             not reverse
-            and self.input_mode == "running"
+            and self.input_mode == InputMode.RUNNING
             and state is None
             and buffer.text.strip()
             and target is None
@@ -834,7 +849,7 @@ class TuiApp:
         return True
 
     def placeholder_text(self) -> str:
-        if self.input_mode == "chat" and self.quick_hints():
+        if self.input_mode == InputMode.CHAT and self.quick_hints():
             return "" if self.quick_hint_focus >= 0 else "Tab cycles suggestions \u00b7 Enter picks \u00b7 Enter sends"
         return self.input_hint_fn()
 
@@ -856,13 +871,13 @@ class TuiApp:
         self._sync_input_images(old, delta)
         self._sync_input_pastes(old, delta)
         self._last_input_text = text
-        if delta.inserted and delta.inserted[-1].isspace() and self.input_mode in {"chat", "running"}:
+        if delta.inserted and delta.inserted[-1].isspace() and self.input_mode in {InputMode.CHAT, InputMode.RUNNING}:
             self._recognize_input()
         self._offer_mention_completions(buffer, delta)
 
     def _offer_mention_completions(self, buffer: Buffer, delta: _EditDelta) -> None:
         self._cancel_mention_transition()
-        if self.input_mode not in {"chat", "running"} or not delta.inserted:
+        if self.input_mode not in {InputMode.CHAT, InputMode.RUNNING} or not delta.inserted:
             return
         span = active_mention(buffer.document.text_before_cursor)
         if span is None:
@@ -914,7 +929,7 @@ class TuiApp:
         candidates can replace its cleared state before the edit is rendered. Delaying that refresh
         makes fast typing visibly close and reopen the menu. Whitespace closes the menu instead of
         immediately opening argument rows; an applied exact completion is filtered out below."""
-        if self.input_mode not in {"chat", "running"}:
+        if self.input_mode not in {InputMode.CHAT, InputMode.RUNNING}:
             return
         before = buffer.document.text_before_cursor
         if not before.startswith("/") or before[-1].isspace() or active_mention(before) is not None:
@@ -945,7 +960,7 @@ class TuiApp:
 
         def transition() -> None:
             self._mention_transition_timer = None
-            if self.input_mode not in {"chat", "running"} or buffer.text != text or buffer.cursor_position != cursor:
+            if self.input_mode not in {InputMode.CHAT, InputMode.RUNNING} or buffer.text != text or buffer.cursor_position != cursor:
                 return
             callback(buffer)
 
@@ -1178,9 +1193,9 @@ class TuiApp:
             self.invalidate()
 
     def status_fragments(self) -> StyleAndTextTuples:
-        if self.input_mode == "dispatch" and self.input_prompt:
+        if self.input_mode == InputMode.DISPATCH and self.input_prompt:
             return [("class:muted", self.input_prompt)]
-        if self.input_mode == "approval" and self.input_prompt:
+        if self.input_mode == InputMode.APPROVAL and self.input_prompt:
             frame = "|/-\\"[int(time.monotonic() / 0.2) % 4]
             connector = LogBlock.prefix(2, LogEdge.CONTINUE)
             prompt = (
@@ -1200,7 +1215,7 @@ class TuiApp:
         row's prefix this is a FormattedTextControl, which does split its text on "\n"."""
         if not self._input_prompt_above:
             return []
-        style = "class:approval" if self.input_mode == "approval" else "class:prompt"
+        style = "class:approval" if self.input_mode == InputMode.APPROVAL else "class:prompt"
         return [(style, "\n".join(self._input_prompt_above))]
 
     def input_error_fragments(self) -> StyleAndTextTuples:
@@ -1265,10 +1280,10 @@ class TuiApp:
         )
         approval_form = ConditionalContainer(
             Window(FormattedTextControl(self.approval_form_fragments), dont_extend_height=True, wrap_lines=True),
-            filter=Condition(lambda: bool(self._approval_actions) and self.input_mode == "approval"),
+            filter=Condition(lambda: bool(self._approval_actions) and self.input_mode == InputMode.APPROVAL),
         )
         self.activity_window = Window(FormattedTextControl(self.activity_fragments_fn), dont_extend_height=True, wrap_lines=True)
-        running = Condition(lambda: self.input_mode == "running")
+        running = Condition(lambda: self.input_mode == InputMode.RUNNING)
         activity = ConditionalContainer(
             self.activity_window,
             filter=running,
@@ -1288,7 +1303,7 @@ class TuiApp:
         self.modal_window = Window(FormattedTextControl(self.modal_fragments, focusable=True), wrap_lines=False, dont_extend_height=True)
         modal_active = Condition(lambda: self.modal is not None)
         exclusive_active = Condition(lambda: self.modal is not None and self.modal.exclusive)
-        idle = Condition(lambda: self.input_mode == "chat")
+        idle = Condition(lambda: self.input_mode == InputMode.CHAT)
         has_quick_hints = idle & Condition(lambda: bool(self.quick_hints()))
         quick_hints_gap = ConditionalContainer(Window(height=1, dont_extend_height=True), filter=has_quick_hints)
         quick_hints_row = ConditionalContainer(
@@ -1355,7 +1370,7 @@ class TuiApp:
     def make_bindings(self) -> KeyBindings:
         bindings = KeyBindings()
         modal = Condition(lambda: self.modal is not None)
-        running = Condition(lambda: self.input_mode == "running" and self.modal is None)
+        running = Condition(lambda: self.input_mode == InputMode.RUNNING and self.modal is None)
 
         for key in self.MODAL_KEYS:
             bindings.add(key, filter=modal, eager=True)(lambda event, key=key: self.dispatch_modal_key(key, event.data))
@@ -1401,7 +1416,7 @@ class TuiApp:
         # typed, Tab completes and the arrows move the cursor, exactly as everywhere else. That is
         # the whole reason actions are selected rather than bound to letters -- no key a reason
         # might start with is ever spent on a shortcut.
-        picking = Condition(lambda: self.input_mode == "approval" and bool(self._approval_actions) and not self.input_buffer.text)
+        picking = Condition(lambda: self.input_mode == InputMode.APPROVAL and bool(self._approval_actions) and not self.input_buffer.text)
         for key, delta in (("tab", 1), ("right", 1), ("s-tab", -1), ("left", -1)):
             bindings.add(key, filter=~modal & picking, eager=True)(lambda _, delta=delta: self.move_approval_focus(delta))
 
@@ -1415,12 +1430,12 @@ class TuiApp:
             elif self._input_pending is not None:
                 self.resolve_input(None)
 
-        bindings.add("escape", filter=~modal & Condition(lambda: self.input_mode == "approval" and bool(self._approval_actions)))(escape)
+        bindings.add("escape", filter=~modal & Condition(lambda: self.input_mode == InputMode.APPROVAL and bool(self._approval_actions)))(escape)
 
         def paste(event):
             buffer = event.current_buffer
             data = event.data.replace("\r\n", "\n").replace("\r", "\n")
-            folded = PasteRef.fold(data) if self.input_mode in {"chat", "running"} else None
+            folded = PasteRef.fold(data) if self.input_mode in {InputMode.CHAT, InputMode.RUNNING} else None
             if folded is None:
                 buffer.insert_text(data)
             else:
@@ -1429,7 +1444,7 @@ class TuiApp:
                 at = buffer.document.text_before_cursor.count(PASTE_MARKER)
                 self.input_pastes = (*self.input_pastes[:at], folded, *self.input_pastes[at:])
                 buffer.insert_text(PASTE_MARKER)
-            if self.input_mode in {"chat", "running"}:
+            if self.input_mode in {InputMode.CHAT, InputMode.RUNNING}:
                 self._recognize_input()
 
         bindings.add(Keys.BracketedPaste, filter=~modal)(paste)
@@ -1466,7 +1481,7 @@ class TuiApp:
         # $VISUAL/$EDITOR (fallback vim) for editing, matching Claude Code's editor bindings. The
         # `c-x c-e` chord means a lone Ctrl-X waits for the second key instead of firing eagerly.
         # In-flight resend has no key; it is the `/resend` command typed in the running input.
-        edits_input = Condition(lambda: self.input_mode in {"chat", "running", "approval"})
+        edits_input = Condition(lambda: self.input_mode in {InputMode.CHAT, InputMode.RUNNING, InputMode.APPROVAL})
 
         def edit_in_editor(_):  # pragma: no cover — interactive path
             self.edit_input_in_editor()
@@ -1490,14 +1505,14 @@ class TuiApp:
                 # pre-search input (readline behavior); it must not clear the matched entry.
                 self._abort_history_search()
                 return
-            if self.input_mode == "approval" and self._input_pending is not None:
+            if self.input_mode == InputMode.APPROVAL and self._input_pending is not None:
                 self.resolve_input(None)
                 return
-            if self.input_mode == "chat":
+            if self.input_mode == InputMode.CHAT:
                 if self.input_buffer.text:
                     self._reset_input("")
                 return
-            if self.input_mode in {"dispatch", "running"}:
+            if self.input_mode in {InputMode.DISPATCH, InputMode.RUNNING}:
                 # A draft absorbs the first press, the way it already does at the idle prompt. The
                 # queue hint only renders on an empty buffer, so "Ctrl-C interrupts" is shown
                 # exactly when the next press interrupts.
@@ -1532,13 +1547,13 @@ class TuiApp:
         bindings.add("c-l", eager=True)(lambda _: None)
 
         def ctrl_d(event):  # pragma: no cover — interactive path
-            if self.input_mode == "approval" and self._input_pending is not None:
+            if self.input_mode == InputMode.APPROVAL and self._input_pending is not None:
                 # EOF on an empty approval line cancels rather than submitting "", which confirm()
                 # would read as the default approve -- the same trap Ctrl-C used to fall into.
                 self.resolve_input(self.input_buffer.text or None)
-            elif self.input_buffer.text and self.input_mode in {"chat", "running"}:
+            elif self.input_buffer.text and self.input_mode in {InputMode.CHAT, InputMode.RUNNING}:
                 self.input_buffer.delete()
-            elif self.input_mode == "chat":
+            elif self.input_mode == InputMode.CHAT:
                 self.on_exit_request()
                 event.app.exit()
 
@@ -1703,7 +1718,7 @@ class TuiApp:
         if edited != original:
             folded, kept = self._refold_pastes(edited, self.input_pastes)
             self._reset_input(UserInput(folded, (), kept), cursor_position=len(folded))
-            if self.input_mode in {"chat", "running"}:
+            if self.input_mode in {InputMode.CHAT, InputMode.RUNNING}:
                 self._recognize_input()
             self.invalidate()
 
@@ -1721,7 +1736,7 @@ class TuiApp:
         """
         while True:
             await asyncio.sleep(self.ANIMATION_INTERVAL)
-            if self.input_mode == "running":
+            if self.input_mode == InputMode.RUNNING:
                 self.invalidate()
 
     @contextlib.contextmanager

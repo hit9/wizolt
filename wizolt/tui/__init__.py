@@ -1,6 +1,6 @@
 """wizolt prompt-toolkit application and interactive view state."""
 
-from wizolt.tui.app import AttachmentLabelProcessor, CallbackPlaceholder, TuiApp, TuiModal
+from wizolt.tui.app import AttachmentLabelProcessor, CallbackPlaceholder, InputMode, TuiApp, TuiModal
 from wizolt.tui.views import (
     ASK_DONE,
     ASK_FREE_TEXT,
@@ -22,6 +22,7 @@ __all__ = [
     "CallbackPlaceholder",
     "ChoiceViewState",
     "DiffViewState",
+    "InputMode",
     "SegmentLogViewState",
     "TabbedViewState",
     "TuiApp",
