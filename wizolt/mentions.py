@@ -79,7 +79,7 @@ def _scan_at(text: str, start: int) -> MentionSpan | None:
         if text.startswith(prefix, payload_start):
             value_start = payload_start + len(prefix)
             if namespace in {"file", "mem"}:
-                return _scan_file(text, start, value_start, namespace)
+                return _scan_text_mention(text, start, value_start, namespace)
             end = _identifier_end(text, value_start, dot=namespace == "mcp")
             return MentionSpan(start, end, namespace, text[value_start:end], end > value_start)
     end = _identifier_end(text, payload_start, dot=True)
@@ -96,7 +96,7 @@ def _scan_dollar(text: str, start: int) -> MentionSpan | None:
     return MentionSpan(start, end, "skill", text[payload_start:end])
 
 
-def _scan_file(text: str, start: int, payload_start: int, kind: MentionKind = "file") -> MentionSpan:
+def _scan_text_mention(text: str, start: int, payload_start: int, kind: MentionKind) -> MentionSpan:
     if payload_start >= len(text):
         return MentionSpan(start, payload_start, kind, "", False)
     if text[payload_start] != '"':

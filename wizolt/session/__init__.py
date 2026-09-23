@@ -804,9 +804,9 @@ def bootstrap_features(session: Session) -> None:
 
         session.mentions = FileMentions(session)
     if session.memory is None:
-        from wizolt.memory import MemoryStore  # local import: memory is built on top of session
+        from wizolt.memory import MemoryStore  # local import: session owns feature bootstrap
 
-        session.memory = MemoryStore(session)
+        session.memory = MemoryStore(session.memory_path())
     if session.catalog is None:
         from wizolt.providers.sync import CatalogRuntime  # local import: keeps providers above session
 

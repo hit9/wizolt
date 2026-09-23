@@ -69,7 +69,7 @@ def _session(tmp_path, *, api: str = "chat", model: str = "gpt-5.6", reasoning: 
     session = Session(cwd=str(tmp_path), config=config)
     session.settings.yolo = True  # auto-approve mutating tools so the flow runs unattended
     session.skills = SkillLibrary({})  # no skills: keep the system frame deterministic
-    session.memory = MemoryStore(session)
+    session.memory = MemoryStore(session.memory_path())
     return session
 
 

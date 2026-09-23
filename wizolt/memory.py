@@ -12,13 +12,9 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
-from wizolt.base import MAX_MEMORY_FILE_BYTES, MEMORY_MD_FILENAME
+from wizolt.base import MAX_MEMORY_FILE_BYTES
 from wizolt.mentions import scan_mentions
-
-if TYPE_CHECKING:
-    from wizolt.session import Session
 
 # One entry heading: eight lowercase-hex id chars, whitespace, then a non-empty title. Anything
 # else under `##` is not an entry -- the parser never guesses where one begins.
@@ -78,12 +74,12 @@ def preview(body: str, limit: int = PREVIEW_CHARS) -> str:
 class MemoryStore:
     """Read-side owner of the global memory file: catalog, mention expansion, menu rows."""
 
-    def __init__(self, session: Session) -> None:
-        self.session = session
+    def __init__(self, path: str) -> None:
+        self._path = path
         self._catalog: str | None = None
 
     def path(self) -> str:
-        return self.session.data_path(MEMORY_MD_FILENAME)
+        return self._path
 
     def read(self) -> str:
         try:
