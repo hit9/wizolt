@@ -105,7 +105,6 @@ class CommandLoop:
 - `/ps` — Show active background jobs.
 - `/diff` — Show latest edits and overall session diff.
 - `/skills` — List installed skills (load with `Skill(name)` or reference inline with `$name`).
-- `/memory` — List saved memories with their bodies and copyable `@mem:` references.
 - `/config` — Show active config.
 - `/compact` — Compact context now; `/compact log [seg.N]` reviews what compaction evicted.
 - `/context` — Show how full the context window is; `/context reset` drops the conversation and
@@ -129,7 +128,6 @@ class CommandLoop:
 ### Mentions
 
 - `@server[.tool]` — Point the agent at an MCP server/tool in your message (tab-completes).
-- `@mem:title` — Attach a saved memory to your message by title (tab-completes); see `/memory`.
 - `$skill` — Reference a skill in your message to load its instructions for that turn (tab-completes).
 
 ### CLI
@@ -263,7 +261,6 @@ Full documentation: https://wizolt.readthedocs.io
             mcp_tools=lambda server: tuple(tool.name for tool in self.session.mcp.tools.get(server, [])) if self.session.mcp else (),
             skills=lambda: tuple(skill.name for skill in self.session.skills.all()) if self.session.skills else (),
             file_matches=self.session.mentions.cached_matches if self.session.mentions else None,
-            memories=self.session.memory.menu_entries if self.session.memory is not None else tuple,
         )
         self.agent.output_fn = self.agent_output
         self.agent.final_output_fn = self.agent_answer_output
@@ -1181,7 +1178,6 @@ COMMANDS: tuple[Command, ...] = (
     Command("/ps", commands.ps_command, queue_safe=True, render="answer"),
     Command("/diff", commands.diff_command, queue_safe=True, render="answer"),
     Command("/skills", commands.skills_command, queue_safe=True, render="answer"),
-    Command("/memory", commands.memory_command, queue_safe=True, render="answer"),
     Command("/config", commands.config, queue_safe=True),
     Command("/compact", commands.compact),
     Command("/context", commands.context_command),

@@ -29,9 +29,6 @@ Each row shows job id, state, command, and elapsed time.
 **`/skills`** — Lists every installed [skill](skills.md) by name, source, and
 description.
 
-**`/memory`** — Lists every saved memory with its full text and a copyable `@mem:`
-reference. See [Mentions](usage.md#mentions).
-
 **`/config`** — Shows the active configuration: provider blocks, runtime settings,
 and their resolved values.
 

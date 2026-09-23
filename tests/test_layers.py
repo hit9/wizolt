@@ -67,7 +67,6 @@ LAYERS = {
     "wizolt.mcp.manager": 6,
     "wizolt.skill": 6,
     "wizolt.mentions": 6,
-    "wizolt.memory": 6,
     "wizolt.session": 7,
     "wizolt.source": 8,
     "wizolt.image": 8,

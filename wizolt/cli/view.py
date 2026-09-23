@@ -26,8 +26,7 @@ from wizolt.cli.hints import HintPicker
 from wizolt.cli.runtime import RESUME_STATUS_LABEL
 from wizolt.cli.worker import WORKER_SUBCOMMANDS
 from wizolt.config import PROVIDER_API_CHOICES
-from wizolt.memory import preview as memory_preview
-from wizolt.mentions import MentionSpan, active_mention, encode_file_mention, encode_mem_mention
+from wizolt.mentions import MentionSpan, active_mention, encode_file_mention
 from wizolt.providers.compat import bundled_policy
 from wizolt.render import LiveSpark, Theme, UiPrinter
 from wizolt.session import QueuedInput
@@ -40,10 +39,9 @@ if TYPE_CHECKING:
 class CommandCompleter(Completer):
     """Prompt-toolkit completer for slash commands, their arguments, and @/$ mentions."""
 
-    # The four kinds offered on a bare "@", each with its one-line meta (SPEC 4.2).
+    # The three kinds offered on a bare "@", each with its one-line meta (SPEC 4.2).
     KINDS: ClassVar[tuple[tuple[str, str], ...]] = (
         ("file:", "files in this repo"),
-        ("mem:", "saved memories"),
         ("mcp:", "MCP servers and tools"),
         ("skill:", "installed skills"),
     )
@@ -64,9 +62,6 @@ class CommandCompleter(Completer):
         skills: Callable[[], tuple[str, ...]] = tuple,
         files: Callable[[], tuple[tuple[str, str], ...]] = tuple,
         file_matches: Callable[[str], tuple[str, ...]] | None = None,
-        # (title, full body) memory rows in file order; the menu filters over both and clips the
-        # preview only for display.
-        memories: Callable[[], tuple[tuple[str, str], ...]] = tuple,
     ):
         self.providers = providers
         self.models = models
@@ -80,7 +75,6 @@ class CommandCompleter(Completer):
         # (lowercase, original) workspace-relative paths from the session's cached path list.
         self.files = files
         self.file_matches = file_matches
-        self.memories = memories
 
     def get_completions(self, document, complete_event):
         del complete_event
@@ -167,8 +161,6 @@ class CommandCompleter(Completer):
         """Complete one scanner-owned span and always insert canonical namespace forms."""
         if span.kind == "file":
             yield from self._file_completions(span.payload, start)
-        elif span.kind == "mem":
-            yield from self._mem_completions(span.payload, start)
         elif span.kind == "mcp":
             yield from self._mcp_completions(span.payload, start)
         elif span.kind == "skill":
@@ -247,21 +239,6 @@ class CommandCompleter(Completer):
     def _skill_completions(self, query: str, start: int) -> Iterator[Completion]:
         for name in self._matching_names(self.skills(), query):
             yield Completion(f"@skill:{name}", start_position=start)
-
-    def _mem_completions(self, query: str, start: int) -> Iterator[Completion]:
-        """After "@mem:": memories in file order, filtered by keyword over title and body.
-
-        Each row shows the title with a one-line body preview; the id never appears. Past the row
-        cap the menu ends in a keep-typing row that reinserts the current query unchanged, so the
-        cap nudges the user to narrow instead of hiding that more matches exist.
-        """
-        lowered = query.lower()
-        matched = [(title, body) for title, body in self.memories() if not lowered or lowered in (title + "\n" + body).lower()]
-        rows = matched[: self.MAX_ROWS - 1] if len(matched) > self.MAX_ROWS else matched
-        for title, body in rows:
-            yield Completion(encode_mem_mention(title), start_position=start, display=title, display_meta=memory_preview(body) or "memory")
-        if len(matched) > len(rows):
-            yield Completion("@mem:" + query, start_position=start, display=f"… {len(matched) - len(rows)} more — keep typing to filter")
 
     @staticmethod
     def _matching_names(values, query: str) -> list[str]:

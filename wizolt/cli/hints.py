@@ -65,7 +65,6 @@ HINTS: tuple[Hint, ...] = (
     Hint("$skill loads a skill inline", when=_when_skills),
     Hint("@server.tool mentions an MCP tool", when=_when_mcp),
     Hint("@file:src/a.py points the agent at a file"),
-    Hint("@mem:title attaches a saved memory"),
     Hint("Ctrl-X Ctrl-E opens $EDITOR"),
     Hint("Ctrl-U clears the line"),
     Hint("Paste an image path to attach it"),

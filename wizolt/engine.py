@@ -669,7 +669,6 @@ class Agent:
             ("mcp_mentions", self.session.mcp.resolve_mentions if self.session.mcp is not None else None),
             ("skill_mentions", self.session.skills.resolve_mentions if self.session.skills is not None else None),
             ("file_mentions", self.session.mentions.resolve_mentions if self.session.mentions is not None else None),
-            ("memory_mentions", self.session.memory.resolve_mentions if self.session.memory is not None else None),
         ):
             content = resolver(text) if resolver is not None else ""
             if inspect.isawaitable(content):

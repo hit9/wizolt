@@ -124,12 +124,6 @@ TOOL_OUTPUT_ASSET_SUFFIX = ".txt"
 # prefix, per DESIGN.md's "bound the fixed prefix" rule; truncation happens in
 # ContextManager.environment, so SystemInfo.detect returns the file verbatim.
 MAX_AGENTS_MD_TOKENS = 8_000
-# The global memory file (<data_dir>/MEMORY.md) is shared across projects and read on every
-# session start (its catalog rides the fixed prefix), so an unbounded file would inflate the
-# prefix for everyone; past the cap the catalog and /memory say so instead of silently hiding
-# entries.
-MEMORY_MD_FILENAME = "MEMORY.md"
-MAX_MEMORY_FILE_BYTES = 128 * 1024
 MODEL_REQUEST_RETRIES = 5
 # Retry pacing: exponential backoff with jitter; RETRY_MAX_DELAY also clamps provider Retry-After
 # values so a single aberrant header cannot stall the CLI for minutes. The wider budget costs

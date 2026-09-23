@@ -266,50 +266,27 @@ class ContextManager:
         if (entry := self.session.config.vision_provider) and (not self.session.tool_names or "ViewImage" in self.session.tool_names):
             provider = self.session.config.providers[entry]
             rows.append(f"- vision: {entry}/{provider.model or '(empty)'} (available as image fallback)")
-        if self.session.settings.agents_md:
-            # Global first, project after: the more specific instructions win when they disagree.
-            # Reserve half for each source, then let either use the other's unused share.
-            sources: list[tuple[str, str, str]] = []
-            if info.global_agents_md:
-                sources.append(("Global instructions", info.global_agents_md_source, info.global_agents_md))
-            if info.agents_md:
-                sources.append(("Project instructions", info.agents_md_source, info.agents_md))
-            budgets = [MAX_AGENTS_MD_TOKENS // len(sources)] * len(sources) if sources else []
-            totals = [self.estimated_text_tokens(content) for _, _, content in sources]
-            budgets = [min(budget, total) for budget, total in zip(budgets, totals, strict=True)]
-            for index, total in enumerate(totals):
-                budgets[index] += min(MAX_AGENTS_MD_TOKENS - sum(budgets), total - budgets[index])
-            for (label, source, content), budget in zip(sources, budgets, strict=True):
-                rows.append("")
-                rows.append(f"--- {label} ({source}) ---")
-                rows.append(self.bounded_instructions(source, content, budget))
-        catalog = self.session.memory.catalog() if self.session.memory is not None else ""
-        if catalog:
+        if self.session.settings.agents_md and info.agents_md:
+            content = info.agents_md
+            total = self.estimated_text_tokens(content)
+            if total > MAX_AGENTS_MD_TOKENS:
+                # Bound the fixed prefix (DESIGN.md): keep the head and tail, mark the middle. The
+                # marker counts against the cap too, so reserve it before splitting the rest between
+                # the excerpts. Reserving against `total` overstates it -- the omitted count printed
+                # is never larger -- which is what makes one pass enough to stay under the cap.
+                def marker_of(omitted: int) -> str:
+                    return f"... ({info.agents_md_source} truncated to fit the prefix; approximately {omitted} tokens omitted) ..."
+
+                limit = max(2, MAX_AGENTS_MD_TOKENS * 4 - len(marker_of(total)) - 2)  # 2 = the newlines joining the three parts
+                head_limit = max(1, limit * 2 // 5)
+                head = self.head_excerpt(content, head_limit)
+                tail = self.tail_excerpt(content, max(1, limit - head_limit))
+                omitted = max(0, total - self.estimated_text_tokens(head) - self.estimated_text_tokens(tail))
+                content = "\n".join(part for part in (head.rstrip(), marker_of(omitted), tail.lstrip()) if part)
             rows.append("")
-            rows.append(catalog)
+            rows.append(f"--- Project instructions ({info.agents_md_source}) ---")
+            rows.append(content)
         return "\n".join(rows)
-
-    def bounded_instructions(self, source: str, content: str, budget_tokens: int) -> str:
-        """One instructions source clipped to its share of the prefix budget, head and tail kept.
-
-        The marker counts against the cap too, so reserve it before splitting the rest between the
-        excerpts. Reserving against `total` overstates it -- the omitted count printed is never
-        larger -- which is what makes one pass enough to stay under the cap.
-        """
-
-        total = self.estimated_text_tokens(content)
-        if total <= budget_tokens:
-            return content
-
-        def marker_of(omitted: int) -> str:
-            return f"... ({source} truncated to fit the prefix; approximately {omitted} tokens omitted) ..."
-
-        limit = max(2, budget_tokens * 4 - len(marker_of(total)) - 2)  # 2 = the newlines joining the three parts
-        head_limit = max(1, limit * 2 // 5)
-        head = self.head_excerpt(content, head_limit)
-        tail = self.tail_excerpt(content, max(1, limit - head_limit))
-        omitted = max(0, total - self.estimated_text_tokens(head) - self.estimated_text_tokens(tail))
-        return "\n".join(part for part in (head.rstrip(), marker_of(omitted), tail.lstrip()) if part)
 
     def messages_text(self, messages: list[Json]) -> str:
         return "\n\n".join(f"{message.get('role', 'message')}:\n{ImageInputs.label_text(message)}" for message in messages) or "(empty)"

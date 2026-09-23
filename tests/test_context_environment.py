@@ -136,7 +136,7 @@ def test_environment_agents_md_bounded(tmp_path):
     context = ContextManager(s)
     env = context.environment()
     assert "truncated to fit the prefix" in env
-    injected = env.split("--- Project instructions (AGENTS.md) ---", 1)[1].split("--- MEMORY ---", 1)[0].strip()
+    injected = env.split("--- Project instructions (AGENTS.md) ---", 1)[1].lstrip("\n")
     assert context.estimated_text_tokens(injected) <= MAX_AGENTS_MD_TOKENS
 
 @pytest.mark.parametrize(
@@ -154,7 +154,7 @@ def test_environment_agents_md_bounding_spends_the_budget_it_is_given(tmp_path, 
     used to leave a quarter of the cap unused, which is a quarter of the project's instructions."""
     (tmp_path / "AGENTS.md").write_text(text, encoding="utf-8")
     context = ContextManager(session(tmp_path))
-    injected = context.environment().split("--- Project instructions (AGENTS.md) ---", 1)[1].split("--- MEMORY ---", 1)[0].strip()
+    injected = context.environment().split("--- Project instructions (AGENTS.md) ---", 1)[1].lstrip("\n")
     tokens = context.estimated_text_tokens(injected)
 
     assert "truncated to fit the prefix" in injected
@@ -177,8 +177,7 @@ def test_environment_agents_md_absent(tmp_path):
     )
     env = ContextManager(s).environment()
     assert "Project instructions" not in env
-    assert env.startswith(baseline + "\n\n--- MEMORY ---\n")
-    assert "No saved entries yet." in env
+    assert env == baseline  # byte-identical to the pre-injection Environment, no extra blank rows
 
 def test_environment_agents_md_cache_stable(tmp_path):
     (tmp_path / "AGENTS.md").write_text("# Rules\nAlways run pytest.\n", encoding="utf-8")
@@ -197,6 +196,5 @@ def test_environment_agents_md_cache_stable_across_worker(tmp_path):
         system_info=parent.system_info,  # shared: skip a SystemInfo.detect
         settings=replace(parent.settings),
         created_at=parent.created_at,  # the Environment layer includes session_started_at
-        memory=parent.memory,
     )
     assert ContextManager(worker).environment() == ContextManager(parent).environment()

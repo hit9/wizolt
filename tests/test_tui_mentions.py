@@ -46,7 +46,7 @@ def test_mention_opens_completions_while_typing(monkeypatch):
         wait_until(lambda: completions() == ["@mcp:github"])  # the list narrows as typing continues
 
         pipe_input.send_text(" and @")
-        wait_until(lambda: completions() == ["@file:", "@mem:", "@mcp:", "@skill:"])
+        wait_until(lambda: completions() == ["@file:", "@mcp:", "@skill:"])
 
         pipe_input.send_text("mcp:")
         wait_until(lambda: completions() == ["@mcp:github", "@mcp:gitlab", "@mcp:playwright"])
@@ -75,7 +75,7 @@ def test_selecting_mention_kind_opens_its_candidate_list(monkeypatch):
     def drive(pipe_input):
         wait_until(lambda: app.app is not None and app.app.is_running)
         pipe_input.send_text("@")
-        wait_until(lambda: completions() == ["@file:", "@mem:", "@mcp:", "@skill:"])
+        wait_until(lambda: completions() == ["@file:", "@mcp:", "@skill:"])
 
         # Shift-Tab selects the last namespace row. Once that selection settles, its own candidates
         # replace the parent namespace menu without another key press.
@@ -90,7 +90,7 @@ def test_selecting_mention_kind_opens_its_candidate_list(monkeypatch):
 @pytest.mark.parametrize(
     ("typed", "namespace", "expected"),
     [
-        ("@mc", "@mcp:", ["@mcp:github", "@mcp:gitlab"]),
+        ("@m", "@mcp:", ["@mcp:github", "@mcp:gitlab"]),
         ("@sk", "@skill:", ["@skill:release", "@skill:review"]),
     ],
 )
@@ -219,7 +219,7 @@ def test_selecting_partially_typed_file_kind_opens_picker(monkeypatch, typed):
 
 def test_browsing_bare_kind_menu_does_not_launch_file_picker(monkeypatch):
     """Highlighting @file: in the bare-@ menu is a preview, not a choice: arrow/Tab through the
-    four kind rows without the file picker grabbing the terminal, and Enter on a later row
+    three kind rows without the file picker grabbing the terminal, and Enter on a later row
     commits it (the picker only opens on an explicit Enter on @file:)."""
     queries = []
     app = TuiApp(
@@ -232,17 +232,17 @@ def test_browsing_bare_kind_menu_does_not_launch_file_picker(monkeypatch):
         current = app.input_buffer.complete_state
         return None if current is None else (current.complete_index, [c.text for c in current.completions])
 
-    kinds = ["@file:", "@mem:", "@mcp:", "@skill:"]
+    kinds = ["@file:", "@mcp:", "@skill:"]
 
     def drive(pipe_input):
         wait_until(lambda: app.app is not None and app.app.is_running)
         pipe_input.send_text("@")
         wait_until(lambda: state() is not None and state()[1] == kinds)
 
-        for expected_index, expected_text in ((0, "@file:"), (1, "@mem:"), (2, "@mcp:"), (3, "@skill:")):
+        for expected_index, expected_text in ((0, "@file:"), (1, "@mcp:"), (2, "@skill:")):
             pipe_input.send_text("\x1b[B")
             wait_until(lambda text=expected_text, idx=expected_index: app.input_buffer.text == text and state() is not None and state()[0] == idx)
-            assert state()[1] == kinds  # still browsing the same four kind rows
+            assert state()[1] == kinds  # still browsing the same three kind rows
             assert queries == [] and not app._file_picker_active
 
         pipe_input.send_text("\r")
