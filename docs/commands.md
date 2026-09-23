@@ -4,8 +4,7 @@
 
 **`/status`** — Shows everything about the runtime at a glance: workspace path,
 session id, active provider and model, calculated compaction-budget fill percentage,
-conversation history, prompt-cache hit ratio, code index state, the global AGENTS.md path and
-whether it is loaded in this session, background jobs,
+conversation history, prompt-cache hit ratio, code index state, the AGENTS.md state, background jobs,
 and whether an update is available.
 
 ```{figure} ../snapshots/wizolt-status-command.png

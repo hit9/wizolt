@@ -139,14 +139,14 @@ picking one opens its candidates, which narrow as you keep typing. `Tab` highlig
 **Instructions.** Two plain files hold your durable instructions: `~/.wizolt/AGENTS.md` for
 everything, and `AGENTS.md` (falling back to `CLAUDE.md`) in the project. Both load once at
 session start into a fixed prefix of about 8,000 tokens shared between them, so a new session
-picks up your edits. Typing `@agents.md:` lists each file and its headings; a row commits a
+picks up your edits. Typing `@agents.md:` lists the current files and their headings, including
+ones added during this session; a row commits a
 reference like `@agents.md:"global/PR body"` or `@agents.md:project`, and `@agents.md:` alone
 means all applicable files. Search matches headings and their text, even beyond the first 50
 rows. The cited original text is attached to that request within a shared 8,000-token limit;
 clipped references name the file to read. Ask the agent to update these files in plain words; it
-may suggest a rule but never writes one unless you explicitly ask.
-`/status` shows the exact global path, whether the file exists now, and whether this session
-loaded it. A file created during a session is loaded automatically in the next session.
+may suggest a rule but never writes one unless you explicitly ask. `/status` shows whether the
+global file is active, missing, or ready for the next session.
 
 **Files.** A mention names the file and nothing more: the agent reads what the request needs with
 `Read`. Nothing is inlined, so a large or binary path costs nothing until then.

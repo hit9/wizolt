@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from wizolt.base import WizoltError
+from wizolt.config import SystemInfo
 from wizolt.mentions import scan_mentions
 
 if TYPE_CHECKING:
@@ -240,20 +241,14 @@ class Reference:
 class AgentsMentions:
     """Session runtime for `@agents.md:` references.
 
-    The completion menu comes from the session-start snapshot (the fixed context prefix's copy,
-    so both stay fixed together), while expansion resolves against the files as they are on
-    disk at send time. Raises AgentsReferenceError for unknown or ambiguous references so the
-    sender can surface the error instead of silently dropping the citation."""
+    The fixed context prefix stays at its session-start snapshot. Completion and expansion read
+    the current files, so a newly written global file can be cited immediately. Raises
+    AgentsReferenceError for unknown or ambiguous references."""
 
     def __init__(self, session: Session) -> None:
         self.session = session
-        self._menu_rows: tuple[MenuRow, ...] | None = None
 
     # -- Sources.
-
-    def _project_source_name(self) -> str:
-        info = self.session.system_info
-        return info.agents_md_source if info is not None else ""
 
     def current_sources(self) -> tuple[AgentsFile, ...]:
         """The sources as they are on disk now, in prefix order (global, then project)."""
@@ -261,35 +256,10 @@ class AgentsMentions:
         files: list[AgentsFile] = []
         if (global_file := AgentsFile.global_file(self.session.config.data_dir)) is not None:
             files.append(global_file)
-        if (project := AgentsFile.project_file(self.session.cwd, self._project_source_name())) is not None:
-            files.append(project)
-        return tuple(files)
-
-    def cached_sources(self) -> tuple[AgentsFile, ...]:
-        """The session-start snapshot of both sources, for the fixed prefix and the menu."""
-
-        info = self.session.system_info
-        if info is None:
-            return ()
-        files: list[AgentsFile] = []
-        if info.agents_md_global_display:
-            files.append(
-                AgentsFile(
-                    GLOBAL_SCOPE,
-                    global_agents_md_path(self.session.config.data_dir),
-                    info.agents_md_global_display or GLOBAL_FILENAME,
-                    info.agents_md_global,
-                )
-            )
-        if info.agents_md_source:
-            files.append(
-                AgentsFile(
-                    PROJECT_SCOPE,
-                    os.path.abspath(os.path.join(self.session.cwd, info.agents_md_source)),
-                    "./" + info.agents_md_source,
-                    info.agents_md,
-                )
-            )
+        for name in SystemInfo.AGENTS_MD_FILES:
+            if (project := AgentsFile.project_file(self.session.cwd, name)) is not None:
+                files.append(project)
+                break
         return tuple(files)
 
     def _file_for(self, scope: str, files: tuple[AgentsFile, ...]) -> AgentsFile | None:
@@ -298,12 +268,10 @@ class AgentsMentions:
     # -- Menu.
 
     def menu_rows(self) -> list[MenuRow]:
-        if self._menu_rows is None:
-            rows = [MenuRow("All applicable", "every instructions file below", "@agents.md:")]
-            for file in self.cached_sources():
-                rows.extend(file.menu_rows())
-            self._menu_rows = tuple(rows)
-        return list(self._menu_rows)
+        rows = [MenuRow("All applicable", "every instructions file below", "@agents.md:")]
+        for file in self.current_sources():
+            rows.extend(file.menu_rows())
+        return rows
 
     # -- Expansion.
 

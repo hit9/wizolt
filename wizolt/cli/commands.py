@@ -266,33 +266,24 @@ def status(loop: CommandLoop, args: str) -> str:
         CodeIndex.status_line(index_status, index_message),
     ]
     info = loop.session.system_info
+    global_path = info.agents_md_global_path if info is not None else ""
+    global_exists = bool(global_path and os.path.isfile(global_path))
     if loop.session.settings.agents_md:
         sources = []
         if info is not None:
-            if info.agents_md_global_display:
-                sources.append(info.agents_md_global_display)
             if info.agents_md_source:
                 sources.append("./" + info.agents_md_source)
-        runtime.append(f"agents_md on ({', '.join(sources)})" if sources else "agents_md on (none)")
+            if info.agents_md_global_display:
+                sources.append("global active" if global_exists else "global active (file removed)")
+            else:
+                sources.append("global next session" if global_exists else "global missing")
+        runtime.append(f"agents.md on ({'; '.join(sources)})")
     else:
-        runtime.append("agents_md off")
+        runtime.append(f"agents.md off (global {'present' if global_exists else 'missing'})")
     update = UpdateChecker(loop.session).status_line().removeprefix("update: ")
     if update not in {"current", "unknown"}:
         runtime.append("update " + update)
     rows.append(("runtime", "; ".join(f"`{value}`" for value in runtime)))
-    if info is not None and info.agents_md_global_path:
-        path = info.agents_md_global_path
-        on_disk = "present" if os.path.isfile(path) else "missing"
-        if not loop.session.settings.agents_md:
-            context = "off"
-        elif info.agents_md_global_display:
-            context = "loaded at session start"
-        elif on_disk == "present":
-            context = "next session"
-        else:
-            context = "none"
-        rows.append(("global AGENTS.md", f"`{path}`; disk `{on_disk}`; context `{context}`"))
-
     rows.append(("model", _status_model_line(loop.session, loop.session.config)))
     rows.append(("context", _status_context_line(context_tokens, context_budget, context_percent)))
     rows.append(("cache", _status_cache_line(usage) if usage.prompt_tokens else "(no requests yet)"))

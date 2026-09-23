@@ -366,7 +366,7 @@ def test_unknown_scope_and_unknown_heading_raise_with_a_helpful_message(tmp_path
 def test_a_reference_with_no_loaded_file_says_so(tmp_path):
     s = agents_session(tmp_path)
 
-    assert s.agents.cached_sources() == ()
+    assert s.agents.current_sources() == ()
     with pytest.raises(AgentsReferenceError, match="no AGENTS.md source"):
         s.agents.resolve_mentions("cite @agents.md:")
     assert s.agents.resolve_mentions("no reference") == ""
@@ -456,25 +456,36 @@ def test_chinese_reference_text_stays_within_the_shared_byte_budget(tmp_path, mo
 # --- the session snapshot versus the disk ---
 
 
-def test_the_menu_uses_the_session_snapshot_while_expansion_reads_the_disk(tmp_path):
+def test_the_menu_and_expansion_read_current_file_while_the_prefix_keeps_its_snapshot(tmp_path):
     s = agents_session(tmp_path, project_text="# Rules\nold body\n")
     (tmp_path / "AGENTS.md").write_text("# Rules\nnew body\n\n# Added later\nfresh\n", encoding="utf-8")
 
-    assert "old body" in s.agents.cached_sources()[0].content  # what the fixed prefix was built from
-    assert [row.display for row in s.agents.menu_rows()] == ["All applicable", "project · ./AGENTS.md", "Rules"]
+    assert "old body" in s.system_info.agents_md  # the fixed prefix keeps the session snapshot
+    assert [row.display for row in s.agents.menu_rows()] == ["All applicable", "project · ./AGENTS.md", "Rules", "Added later"]
+    assert completions(CommandCompleter(agents_rows=s.agents.menu_rows), "@agents.md:Added") == ['@agents.md:"project/Added later"']
     assert "Added later" in s.agents.resolve_mentions("@agents.md:project")  # expansion reads the disk
     assert "fresh" in s.agents.resolve_mentions('@agents.md:"project/Added later"')  # a space needs the quoted form
-    assert "old body" in s.agents.cached_sources()[0].content  # the snapshot never moves
+    assert "old body" in s.system_info.agents_md
 
 
-def test_a_global_file_created_after_session_start_is_expandable_but_not_in_the_menu(tmp_path):
+def test_a_global_file_created_after_session_start_appears_in_the_menu(tmp_path):
     s = agents_session(tmp_path)
+    assert [row.insert for row in s.agents.menu_rows()] == ["@agents.md:"]
     (tmp_path / "data" / "AGENTS.md").write_text("# Global\nlate arrival\n", encoding="utf-8")
 
-    assert s.agents.cached_sources() == ()
-    assert [row.insert for row in s.agents.menu_rows()] == ["@agents.md:"]
+    assert [row.insert for row in s.agents.menu_rows()] == ["@agents.md:", "@agents.md:global", '@agents.md:"global/Global"']
+    assert completions(CommandCompleter(agents_rows=s.agents.menu_rows), "@agents.md:late") == ['@agents.md:"global/Global"']
     assert "late arrival" in s.agents.resolve_mentions("@agents.md:global")
     assert "late arrival" in s.agents.resolve_mentions("@agents.md:")
+
+
+def test_a_project_file_created_after_session_start_appears_in_the_menu(tmp_path):
+    s = agents_session(tmp_path)
+    (tmp_path / "AGENTS.md").write_text("# New project rule\napply it\n", encoding="utf-8")
+
+    assert [row.insert for row in s.agents.menu_rows()] == ["@agents.md:", "@agents.md:project", '@agents.md:"project/New project rule"']
+    assert "apply it" in s.agents.resolve_mentions('@agents.md:"project/New project rule"')
+    assert not s.system_info.agents_md  # the automatic prefix still waits for the next session
 
 
 def test_a_deleted_source_stops_resolving(tmp_path):
@@ -482,7 +493,8 @@ def test_a_deleted_source_stops_resolving(tmp_path):
     (tmp_path / "AGENTS.md").unlink()
 
     assert s.agents.validation_error("@agents.md:project") == 'unknown @agents.md reference "project" (available sources: none is loaded)'
-    assert s.agents.cached_sources()[0].content  # the prefix and menu keep the snapshot
+    assert [row.insert for row in s.agents.menu_rows()] == ["@agents.md:"]
+    assert s.system_info.agents_md  # the prefix still keeps its snapshot
 
 
 # --- the fixed context prefix ---
@@ -697,21 +709,19 @@ def test_status_names_both_instruction_sources(tmp_path):
     s = agents_session(tmp_path, global_text=GLOBAL_TEXT, project_text=PROJECT_TEXT)
     command_loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
 
-    display = display_path(global_agents_md_path(s.config.data_dir))
     result = status(command_loop, "")
-    assert f"agents_md on ({display}, ./AGENTS.md)" in result
-    assert f"| global AGENTS.md | `{global_agents_md_path(s.config.data_dir)}`; disk `present`; context `loaded at session start` |" in result
+    assert "agents.md on (./AGENTS.md; global active)" in result
+    assert "| global AGENTS.md |" not in result
 
 
 def test_status_names_the_one_source_it_has(tmp_path):
     s = agents_session(tmp_path, project_text=PROJECT_TEXT)
     command_loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
-    assert "agents_md on (./AGENTS.md)" in status(command_loop, "")
+    assert "agents.md on (./AGENTS.md; global missing)" in status(command_loop, "")
 
     s.settings.agents_md = False
     result = status(command_loop, "")
-    assert "agents_md off" in result
-    assert "disk `missing`; context `off`" in result
+    assert "agents.md off (global missing)" in result
 
 
 def test_status_distinguishes_a_new_global_file_from_one_loaded_at_session_start(tmp_path):
@@ -719,15 +729,15 @@ def test_status_distinguishes_a_new_global_file_from_one_loaded_at_session_start
     command_loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
     path = global_agents_md_path(s.config.data_dir)
 
-    assert f"`{path}`; disk `missing`; context `none`" in status(command_loop, "")
+    assert "agents.md on (global missing)" in status(command_loop, "")
     (tmp_path / "data" / "AGENTS.md").write_text("# Rules\n", encoding="utf-8")
-    assert f"`{path}`; disk `present`; context `next session`" in status(command_loop, "")
+    assert "agents.md on (global next session)" in status(command_loop, "")
     assert f"- wizolt_global_agents_md: {path}" in ContextManager(s).environment()
     assert "auto-injected in this session: no" in ContextManager(s).environment()
 
     next_session = agents_session(tmp_path, global_text="# Rules\n")
     next_loop = CommandLoop(Agent(next_session, output_fn=lambda text: None), output_fn=lambda text: None)
-    assert f"`{path}`; disk `present`; context `loaded at session start`" in status(next_loop, "")
+    assert "agents.md on (global active)" in status(next_loop, "")
     assert "auto-injected in this session: yes" in ContextManager(next_session).environment()
 
 
