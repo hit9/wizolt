@@ -11,7 +11,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 
 from wizolt.base import (
     MAX_TOOL_OUTPUT_TOKENS,
@@ -515,7 +515,7 @@ class ToolRunner:
         return {"role": "tool", "tool_call_id": call.id, "name": call.name, "content": content}
 
     def skip_message(self, call: ToolCall) -> Json:
-        content = self.tool_message(call, "", "Skipped: previous tool call was refused", failed=True)
+        content = self.tool_message(call, "", "Skipped: previous tool call was refused", status="failed")
         return {"role": "tool", "tool_call_id": call.id, "content": content}
 
     async def run_serial(self, segment: list[ToolCall], batch_suffix: str, state: dict[str, bool], observations: list[Json]) -> list[Json]:
@@ -767,7 +767,7 @@ class ToolRunner:
             if d.nested_display
             else toolblocks.reject_display(self.session, call, output, d=d)
         )
-        return self.tool_message(call, "", text, failed=True, display=d.display, bound=not recovery_output)
+        return self.tool_message(call, "", text, status="rejected", display=d.display, bound=not recovery_output)
 
     async def finish(
         self,
@@ -814,7 +814,7 @@ class ToolRunner:
             )
         if not (tool_class is not None and tool_class.SILENT) or failed:
             self.emit(toolblocks.finish_display(self.session, call, key, model_text, failed=failed, elapsed=elapsed, d=d, worker_rule=self.hooks.worker_rule))
-        return self.tool_message(call, key, model_text, failed=failed, display=d.display, bound=bound, artifact_path=artifact_path)
+        return self.tool_message(call, key, model_text, status="failed" if failed else "ok", display=d.display, bound=bound, artifact_path=artifact_path)
 
     async def _source_output(self, call: ToolCall, tool_output: ToolOutput, *, retain: bool) -> tuple[str, str]:
         """Project source blocks, store the retained plain text, register views, and render.
@@ -868,15 +868,15 @@ class ToolRunner:
         key: str,
         output: str,
         *,
-        failed: bool = False,
+        status: Literal["ok", "failed", "rejected"] = "ok",
         display: str | None = None,
         bound: bool = True,
         artifact_path: str = "",
     ) -> str:
-        head = "tool " + ((key + " ") if key else ("- " if failed else "")) + (display or tooloutput.short_call(self.session, call))
+        head = "tool " + ((key + " ") if key else ("- " if status != "ok" else "")) + (display or tooloutput.short_call(self.session, call))
         rows = [head]
-        if failed:
-            rows.append("status: failed")
+        if status != "ok":
+            rows.append(f"status: {status}")
         body = self.context.bound_output(output, key, path=artifact_path).rstrip() if bound else output.rstrip()
         rows.extend(["output:", body])
         return "\n".join(rows).strip()

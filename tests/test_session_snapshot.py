@@ -115,6 +115,9 @@ def test_transcript_projection_strips_provider_state_and_keeps_semantic_tool_res
     assert SessionSnapshotCodec.transcript_message(
         {"role": "tool", "tool_call_id": "call-2", "content": "tool - Read missing.py\nstatus: failed\noutput:\nmissing"}
     ) == {"role": "tool", "tool_call_id": "call-2", "result_key": "", "status": "failed"}
+    assert SessionSnapshotCodec.transcript_message(
+        {"role": "tool", "tool_call_id": "call-3", "content": "tool - Read missing.py\nstatus: rejected\noutput:\nToolError: no such file: missing.py"}
+    ) == {"role": "tool", "tool_call_id": "call-3", "result_key": "", "status": "rejected", "reason": "no such file: missing.py"}
 
     assistant["tool_calls"][0]["function"]["arguments"] = "x" * (SessionSnapshotCodec.TRANSCRIPT_TOOL_ARGUMENT_CHAR_LIMIT + 1)
     projected = SessionSnapshotCodec.transcript_message(assistant)

@@ -17,6 +17,8 @@
 
 ### Changed
 
+- Tool rejections now retain their distinct status when a session is resumed, so a missing-file
+  `Read` stays a quiet rejection instead of appearing as a red failure.
 - `@agents.md:` completion now reflects files and headings added or edited during the current
   session. `/status` shows the global file state in the existing `agents.md` runtime item.
 - The agent sees the exact global `AGENTS.md` path even before the file exists; `Note` is

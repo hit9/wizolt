@@ -556,7 +556,7 @@ def test_tool_runner_finish_display_keeps_ask_answer(tmp_path):
     assert display.endswith("    └ answer typed answer")
 
 
-def test_tool_runner_reject_records_error_and_returns_failed_message(tmp_path):
+def test_tool_runner_reject_records_error_and_returns_rejected_message(tmp_path):
     s = Session(cwd=str(tmp_path))
     runner = ToolRunner(s, ContextManager(s))
     call = ToolCall("e1", "Bash", ["bad cmd"])
@@ -571,7 +571,7 @@ def test_tool_runner_reject_records_error_and_returns_failed_message(tmp_path):
     assert s.tool_errors[0].name == "Bash"
     assert "command not found" in s.tool_errors[0].error
     # reject returns a plain-text tool-message representation
-    assert "failed" in result.lower()
+    assert "status: rejected" in result
     assert "command not found" in result
 
 
@@ -582,7 +582,7 @@ async def test_run_one_rejects_tools_outside_session_whitelist(tmp_path):
     s.tool_names = ("Read",)
     (message,) = await runner.run([ToolCall("c1", "Bash", ["echo hi"])])
     content = str(message["content"])
-    assert "failed" in content.lower()
+    assert "status: rejected" in content
     assert "ToolError: Bash is not available in this session" in content
 
     # Empty tuple = no filtering (parent behavior): the same call executes.

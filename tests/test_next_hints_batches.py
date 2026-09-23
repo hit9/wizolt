@@ -192,7 +192,7 @@ async def test_failed_tool_only_next_hints_batch_continues_turn(tmp_path):
     assert s.quick_hints == ()  # no hints were stored
     # The failed tool result reached the second request, so the model could read and correct.
     second_context = "\n\n".join(str(message.get("content") or "") for message in agent.model.messages[1])
-    assert "status: failed" in second_context
+    assert "status: rejected" in second_context
     assert "at least one non-empty" in second_context
 
 

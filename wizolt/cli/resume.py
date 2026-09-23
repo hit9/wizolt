@@ -65,6 +65,17 @@ class ResumeRenderer:
         tool_results = {
             str(message.get("tool_call_id") or ""): message for message in transcript if message.get("role") == "tool" and message.get("tool_call_id")
         }
+        # Older snapshots recorded a rejected Read as failed. The retained model result, when
+        # present, still distinguishes the known missing/unreadable-file errors from failures.
+        for message in self.session.messages:
+            result = tool_results.get(str(message.get("tool_call_id") or "")) if message.get("role") == "tool" else None
+            if result is None or result.get("status") != "failed":
+                continue
+            content = str(message.get("content") or "")
+            if content.startswith("tool - Read "):
+                reason = content.partition("\noutput:\n")[2].removeprefix("ToolError:").strip()
+                if reason.startswith(("no such file:", "cannot read ")):
+                    tool_results[str(message["tool_call_id"])] = {**result, "status": "rejected", "reason": reason}
         semantic_tool_results = any("status" in message for message in tool_results.values())
         messages = [message for message in transcript if not SessionSnapshotCodec.is_internal_message(message) and message.get("role") != "tool"]
         # The replay is a burst of independent emits; batch them into a single print_formatted_text
@@ -165,7 +176,13 @@ class ResumeRenderer:
             result = (tool_results or {}).get(call.id)
             if result is not None and "status" in result:
                 if not dry_run:
-                    self.emit_transcript_tool(call, str(result.get("result_key") or ""), diffs, failed=result.get("status") != "ok")
+                    self.emit_transcript_tool(
+                        call,
+                        str(result.get("result_key") or ""),
+                        diffs,
+                        status=str(result.get("status") or "failed"),
+                        reason=str(result.get("reason") or ""),
+                    )
                 continue
             record, tool_record_index = self.transcript_tool_record(call, tool_record_index)
             if not dry_run:
@@ -178,13 +195,16 @@ class ResumeRenderer:
             call = ToolCall(id="", name=record.name, args=record.args)
             self.emit_transcript_tool(call, record.key, diffs)
 
-    def emit_transcript_tool(self, call: ToolCall, key: str, diffs: dict[str, str], *, failed: bool = False) -> None:
+    def emit_transcript_tool(self, call: ToolCall, key: str, diffs: dict[str, str], *, status: str = "ok", reason: str = "") -> None:
         """An Edit shows the diff it made, the way it did when the edit ran live. Live, that preview
         comes from the approval block; here the stored diff text is the same string, so replaying it
         needs no reconstruction."""
         tool_class = TOOL_REGISTRY.get(call.name)
-        # Live, a silent tool logs nothing unless it failed (ToolRunner.run); a replay shows no more.
-        if tool_class is not None and tool_class.SILENT and not failed:
+        # Live, a silent tool logs nothing unless it failed or was rejected; replay shows no more.
+        if tool_class is not None and tool_class.SILENT and status == "ok":
+            return
+        if status == "rejected":
+            self.loop.tool_output(toolblocks.reject_display(self.session, call, reason or "rejected in saved session", d=ToolDisplay()))
             return
         preview = diffs.get(key, "") if call.name == "Edit" else ""
         # Through `tool_output`, like the live call: a replayed call opens its own group with a
@@ -193,8 +213,8 @@ class ResumeRenderer:
         if not preview:
             # An Ask's stored result is the user's answer, which its finish block shows live; every
             # other call replays as its `tr.N` marker alone.
-            output = "failed in saved session" if failed else self.session.tool_results.get(key, "") if call.name == "Ask" else ""
-            self.loop.tool_output(toolblocks.finish_display(self.session, call, key, output, failed=failed))
+            output = "failed in saved session" if status != "ok" else self.session.tool_results.get(key, "") if call.name == "Ask" else ""
+            self.loop.tool_output(toolblocks.finish_display(self.session, call, key, output, failed=status != "ok"))
             return
         # The preview block carries the call line, so the result collapses to its trailing marker
         # underneath it — the same nesting the live approval block produces.

@@ -44,10 +44,11 @@ async def test_agent_tool_error_feedback_is_visible_on_next_model_request(tmp_pa
     assert s.tool_records == []
     second_context = "\n\n".join(message.get("content") or "" for message in agent.model.messages[1])
     assert "tool - Bash" in second_context
-    assert "status: failed" in second_context
+    assert "status: rejected" in second_context
     assert "Bash" in second_context
     failed_result = next(message for message in s.transcript_messages if message.get("role") == "tool")
-    assert failed_result == {"role": "tool", "tool_call_id": "Bash-id", "result_key": "", "status": "failed"}
+    assert failed_result["status"] == "rejected"
+    assert failed_result["reason"]
 
 
 def test_provider_compatibility_and_prompt_cache_key(tmp_path):

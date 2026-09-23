@@ -159,7 +159,7 @@ async def test_one_failing_read_only_call_leaves_its_siblings_alone(tmp_path):
     assert list(contents) == ["ok1", "bad", "ok2"]
     assert "alpha" in contents["ok1"]
     assert "beta" in contents["ok2"]
-    assert "status: failed" in contents["bad"]
+    assert "status: rejected" in contents["bad"]
 
 
 async def test_edit_barrier_splits_a_batch_and_serializes_its_mutations(tmp_path):

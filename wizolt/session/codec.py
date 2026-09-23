@@ -14,7 +14,7 @@ import re
 from dataclasses import asdict, fields
 from typing import TYPE_CHECKING, ClassVar
 
-from wizolt.base import SESSION_EVENT_KEY, Json, ModelUsage, Text, split_lines
+from wizolt.base import SESSION_EVENT_KEY, Json, ModelUsage, Text, oneline, split_lines
 from wizolt.image import ImageInputs
 
 if TYPE_CHECKING:
@@ -244,13 +244,23 @@ class SessionSnapshotCodec:
             if "status" in message:
                 projected["result_key"] = str(message.get("result_key") or "")
                 projected["status"] = str(message.get("status") or "unknown")
+                if projected["status"] == "rejected" and message.get("reason"):
+                    projected["reason"] = oneline(str(message["reason"]), 160)
                 return projected
             content = str(message.get("content") or "")
             if content.startswith("tool "):
-                first_line = content.splitlines()[0]
+                lines = content.splitlines()
+                first_line = lines[0]
                 key_match = re.match(r"tool (tr\.\d+)\b", first_line)
                 projected["result_key"] = key_match.group(1) if key_match else ""
-                projected["status"] = "failed" if first_line.startswith("tool - ") else "ok"
+                if first_line.startswith("tool - "):
+                    projected["status"] = "rejected" if len(lines) > 1 and lines[1] == "status: rejected" else "failed"
+                else:
+                    projected["status"] = "ok"
+                if projected["status"] == "rejected":
+                    reason = content.partition("\noutput:\n")[2].removeprefix("ToolError:").splitlines()
+                    if reason:
+                        projected["reason"] = oneline(reason[0].strip(), 160)
             return projected
         return None
 

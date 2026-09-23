@@ -1,17 +1,20 @@
 """session resume (split from tests/test_session_persistence.py)."""
+import json
 from typing import ClassVar
 
 from test_session_persistence import _resumed_transcript, log_path, read_jsonl, session_with_data_dir
 
-from wizolt.base import SESSION_EVENT_KEY
+from wizolt.base import SESSION_EVENT_KEY, ToolCall
 from wizolt.cli import CommandLoop
 from wizolt.cli.commands import compact
 from wizolt.cli.resume import ResumeRenderer
 from wizolt.config import ProviderConfig
+from wizolt.context import ContextManager
 from wizolt.engine import Agent
 from wizolt.model import ModelClient
 from wizolt.prompts import LIVE_FOLLOWUP_PREFIX
-from wizolt.session import HistorySegment, Session
+from wizolt.runner import ToolRunner
+from wizolt.session import HistorySegment, Session, SessionSnapshotCodec
 
 
 async def test_resume_replays_full_transcript_after_model_context_and_retained_records_are_pruned(tmp_path):
@@ -51,6 +54,60 @@ async def test_resume_replays_full_transcript_after_model_context_and_retained_r
     assert "stored tr.1" in text
     assert "-old" in text and "+new" in text
     assert "compacted model context" not in text
+
+
+async def test_resume_keeps_a_new_read_rejection_quiet(tmp_path):
+    s = session_with_data_dir(tmp_path)
+    result = await ToolRunner(s, ContextManager(s), output_fn=lambda _block: None).run([ToolCall("r1", "Read", [{"path": "missing.py"}])])
+    s.messages.extend(
+        [
+            {"role": "user", "content": "read it"},
+            {
+                "role": "assistant",
+                "tool_calls": [{"id": "r1", "type": "function", "function": {"name": "Read", "arguments": json.dumps({"path": "missing.py"})}}],
+            },
+            *result,
+        ]
+    )
+    s.transcript_messages.extend(SessionSnapshotCodec.transcript_messages(s.messages))
+    await s.save_snapshot()
+
+    s.close()
+    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    output = []
+    CommandLoop(Agent(restored, output_fn=output.append), output_fn=output.append).resume.render_resumed_session()
+    text = "\n".join(map(str, output))
+
+    assert any(message.get("status") == "rejected" for message in restored.transcript_messages)
+    assert "rejected: no such file" in text
+    assert "[failed]" not in text
+
+
+async def test_resume_recognizes_an_old_missing_read_without_hiding_a_real_failure(tmp_path):
+    s = session_with_data_dir(tmp_path)
+    calls = [
+        {"id": "r1", "type": "function", "function": {"name": "Read", "arguments": json.dumps({"path": "missing.py"})}},
+        {"id": "r2", "type": "function", "function": {"name": "Read", "arguments": json.dumps({"path": "broken.py"})}},
+    ]
+    s.messages.extend(
+        [
+            {"role": "user", "content": "read both"},
+            {"role": "assistant", "tool_calls": calls},
+            {"role": "tool", "tool_call_id": "r1", "content": "tool - Read missing.py\nstatus: failed\noutput:\nToolError: no such file: missing.py; check the path and retry"},
+            {"role": "tool", "tool_call_id": "r2", "content": "tool - Read broken.py\nstatus: failed\noutput:\nToolError: unexpected internal failure"},
+        ]
+    )
+    s.transcript_messages.extend(SessionSnapshotCodec.transcript_messages(s.messages))
+    await s.save_snapshot()
+
+    s.close()
+    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    output = []
+    CommandLoop(Agent(restored, output_fn=output.append), output_fn=output.append).resume.render_resumed_session()
+    text = "\n".join(map(str, output))
+
+    assert "rejected: no such file" in text
+    assert "broken.py [failed]" in text
 
 async def test_compact_command_persists_the_compacted_history(tmp_path):
     """/compact rewrites the history in place; without a save, leaving the session would resume
