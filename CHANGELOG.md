@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.51.0 - 2026-09-23
+
 ### Added
 
 - `@agents.md:` references cite your durable instructions in a message: all applicable files,
