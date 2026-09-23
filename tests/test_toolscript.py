@@ -784,6 +784,16 @@ async def test_non_string_tool_name_stays_a_plain_tool_error(tmp_path):
     assert "TypeError" not in content
 
 
+@pytest.mark.parametrize("code", ['print("ok")\n', 'raise RuntimeError("boom")\n'])
+async def test_script_status_brackets_the_script_through_the_runner_hooks(tmp_path, code):
+    """The divider's script phase opens with the running source and always closes, failure too."""
+    runner = _runner(_mcp_session(tmp_path))
+    phases = []
+    runner.hooks.script_status = lambda active, source: phases.append((active, source))
+    await runner.run([ToolCall("ts1", "ToolScript", [{"action": "call", "code": code}])])
+    assert phases == [(True, code), (False, "")]
+
+
 class TestWhitelistGating:
     """A session tool whitelist gates nested calls and describe entries, not just schemas."""
 

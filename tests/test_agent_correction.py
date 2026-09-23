@@ -35,7 +35,6 @@ async def test_agent_corrects_textual_tool_call_with_a_committed_message(tmp_pat
     class Model:
         def __init__(self):
             self.requests = []
-            self.on_stream = None
 
         async def request(self, messages, tools=None):
             self.requests.append((messages, tools))
@@ -71,7 +70,6 @@ async def test_agent_executes_native_call_after_textual_tool_correction_and_repl
     class Model:
         def __init__(self):
             self.requests = []
-            self.on_stream = None
 
         async def request(self, messages, tools=None):
             self.requests.append(messages)
@@ -140,7 +138,6 @@ async def test_agent_stops_after_sixth_textual_tool_call_without_persisting_resp
     class Model:
         def __init__(self):
             self.requests = []
-            self.on_stream = None
 
         async def request(self, messages, tools=None):
             self.requests.append(messages)

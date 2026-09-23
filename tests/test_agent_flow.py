@@ -223,7 +223,6 @@ async def test_agent_keeps_one_tool_block_for_the_whole_turn(tmp_path):
     class FakeModel:
         def __init__(self):
             self.requests = []
-            self.on_stream = None
 
         async def request(self, messages, tools=None):
             self.requests.append((messages, tools))
@@ -267,7 +266,6 @@ async def test_agent_commits_textual_tool_call_correction_to_history(tmp_path):
     class FakeModel:
         def __init__(self):
             self.requests = []
-            self.on_stream = None
 
         async def request(self, messages, tools=None):
             self.requests.append(([dict(message) for message in messages], tools))
@@ -304,7 +302,6 @@ async def test_agent_shares_textual_tool_call_limit_across_corrections(tmp_path)
     class FakeModel:
         def __init__(self):
             self.requests = []
-            self.on_stream = None
 
         async def request(self, messages, tools=None):
             self.requests.append((messages, tools))

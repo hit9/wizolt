@@ -301,7 +301,7 @@ class ToolScript(Tool):
         stderr_buf = io.StringIO()
         capture = _StdoutCapture(stdout_buf, stderr_buf)
         previous_trace = sys.gettrace()
-        script_status = getattr(runner, "script_status", None)
+        script_status = runner.hooks.script_status
         failed = False
         error_text = ""
         try:

@@ -79,3 +79,15 @@ def test_every_hook_field_has_a_reader_in_production():
         read |= set(re.findall(r"\.hooks\.(\w+)", path.read_text()))
     declared = {f.name for f in dataclasses.fields(UiHooks)}
     assert declared - read == set(), f"declared but never read in production: {sorted(declared - read)}"
+
+
+def test_no_hook_is_read_by_name_off_a_layer():
+    """A `getattr(layer, "<hook>", None)` read is invisible to the checker and to the test above.
+
+    ToolScript read `getattr(runner, "script_status", None)` after the field moved into the runner's
+    hooks: always None, so a running script never reached the divider, and nothing failed.
+    """
+    names = "|".join(f.name for f in dataclasses.fields(UiHooks))
+    pattern = re.compile(rf"""(?:getattr|hasattr|setattr)\([^)]*["']({names})["']""")
+    found = [f"{path.relative_to(WIZOLT)}: {match.group(1)}" for path in WIZOLT.rglob("*.py") for match in pattern.finditer(path.read_text())]
+    assert found == []
