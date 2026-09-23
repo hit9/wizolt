@@ -144,16 +144,17 @@ def default_completion(state: CompletionState | None) -> Completion | None:
     and Enter run `/status` rather than the unknown command `/st`.
 
     None while a row is selected, and whenever what was typed is already a complete answer, so
-    Enter sends it as typed: when it equals a candidate (a fully typed skill beside a longer one),
-    or when every candidate only extends it past a dot (the tools listed under a fully typed MCP
-    server, which is a mention of its own)."""
+    Enter sends it as typed: when it equals a candidate, ignoring case as mentions resolve (a fully
+    typed skill beside a longer one, a whole MCP server listed after its tools), or when every
+    candidate only extends it past a dot."""
     if state is None or state.complete_index is not None or not state.completions:
         return None
     before = state.original_document.text_before_cursor
     first = state.completions[0]
     typed = before[len(before) + first.start_position :]
     spellings = mention_spellings(typed)  # `$name` and a bare `@name` are complete aliases too
-    if any(completion.text in spellings for completion in state.completions):
+    folded = {spelling.lower() for spelling in spellings}
+    if any(completion.text.lower() in folded for completion in state.completions):
         return None
     if all(any(completion.text.startswith(spelling + ".") for spelling in spellings) for completion in state.completions):
         return None
@@ -1491,9 +1492,8 @@ class TuiApp:
             if self._pick_quick_hint(buffer):
                 return
             # Enter with a completion row highlighted -- one Tab or the arrows moved to, or the
-            # default row a menu opened by typing highlights -- commits that row into the input
-            # instead of sending the message: the menu closes, the prompt stays open, and a second
-            # Enter sends. With no row highlighted (what was typed is already complete) it sends.
+            # default row a menu opened by typing highlights -- takes that row (what it then does
+            # is below). With no row highlighted (what was typed is already complete) it sends.
             state = buffer.complete_state
             completion = (state.current_completion or default_completion(state)) if state is not None else None
             if state is not None and completion is not None:
@@ -1533,7 +1533,7 @@ class TuiApp:
             buffer.validate_and_handle()
 
         bindings.add("enter", filter=~modal, eager=True)(enter)
-        # Down and Ctrl-N step past a highlighted default row, as Tab does (`complete_input`).
+        # Down and Ctrl-N step past a highlighted default row; Tab instead fills it in (`complete_input`).
         on_default = Condition(lambda: self.modal is None and default_completion(self.input_buffer.complete_state) is not None)
         for key in ("down", "c-n"):
             bindings.add(key, filter=on_default, eager=True)(lambda event: self.step_past_default(event.current_buffer))

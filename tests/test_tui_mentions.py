@@ -3,6 +3,7 @@
 import time
 
 import pytest
+from prompt_toolkit.buffer import CompletionState
 from prompt_toolkit.completion import CompleteEvent
 from prompt_toolkit.document import Document
 from tui_harness import run_interactive_tui, wait_until
@@ -211,7 +212,7 @@ def test_picking_an_mcp_server_cascades_into_its_tools(monkeypatch):
         pipe_input.send_text("@mcp:")
         wait_until(lambda: menu() == (["@mcp:github", "@mcp:gitlab"], None))
         pipe_input.send_text("\r")  # Enter on the default row, github
-        wait_until(lambda: menu() == (["@mcp:github.create_issue", "@mcp:github.search"], None))
+        wait_until(lambda: menu() == (["@mcp:github.create_issue", "@mcp:github.search", "@mcp:github"], None))
         assert app.input_buffer.text == "@mcp:github"
         assert default_completion(app.input_buffer.complete_state) is None  # the server is the mention
         pipe_input.send_text("\x0e\r")  # into the first tool, Enter commits it and stops there
@@ -227,9 +228,23 @@ def test_picking_an_mcp_server_cascades_into_its_tools(monkeypatch):
     def offered(text):
         return [c.text for c in completer.get_completions(Document(text, len(text)), CompleteEvent())]
 
-    assert offered("@mcp:github") == ["@mcp:github.create_issue", "@mcp:github.search"]
-    assert offered("@mcp:gitlab") == []
+    # Tools first, the server itself last: present, so the whole server reads as complete.
+    assert offered("@mcp:github") == ["@mcp:github.create_issue", "@mcp:github.search", "@mcp:github"]
+    assert offered("@mcp:gitlab") == []  # only itself: no menu, as for any fully typed mention
     assert offered("@mcp:git") == ["@mcp:github", "@mcp:gitlab"]
+
+
+@pytest.mark.parametrize("typed", ["@mcp:git", "@mcp:GIT", "@git"])
+def test_a_whole_server_beside_a_longer_one_is_not_swapped_for_it(typed):
+    """With servers `git` and `github`, a fully typed `@mcp:git` is a complete mention. Its menu
+    still lists `@mcp:github`, and it once highlighted it -- the exact row had been dropped from
+    the menu, so the default rule never saw that the input was complete, and Enter swapped `git`
+    for `github`. Case does not matter, as it does not when the mention resolves."""
+    completer = CommandCompleter(mcp_servers=lambda: ("git", "github"), mcp_tools=lambda _server: ())
+    document = Document(typed, len(typed))
+    completions = list(completer.get_completions(document, CompleteEvent()))
+    assert "@mcp:github" in [c.text for c in completions]
+    assert default_completion(CompletionState(document, completions)) is None
 
 
 def test_prose_and_email_do_not_open_completions(monkeypatch):
@@ -535,7 +550,7 @@ def test_enter_commits_highlighted_completion_without_sending(monkeypatch):
         # A longer candidate beside it: the menu stays, but with no default row.
         ("use @skill:release", ["@skill:release", "@skill:release-notes"]),
         # A whole MCP server: its tools are listed, none by default -- the server is the mention.
-        ("use @mcp:github", ["@mcp:github.create_issue", "@mcp:github.search"]),
+        ("use @mcp:github", ["@mcp:github.create_issue", "@mcp:github.search", "@mcp:github"]),
         # A bare alias of a whole server: the same, spelled the short way.
         ("use @github", None),
     ],

@@ -239,8 +239,10 @@ class CommandCompleter(Completer):
 
     def _mcp_completions(self, query: str, start: int) -> Iterator[Completion]:
         """After "@mcp:": servers, then "server." expands to that server's tools. A payload that
-        already names a server whole offers its tools too, so picking a server cascades into them
-        while the bare server stays a complete mention of its own."""
+        already names a server whole offers its tools first, so picking a server cascades into them,
+        then any longer server names, then the server itself: last, so Down reaches a tool first,
+        yet present, so the input reads as a complete mention and Enter keeps it rather than
+        swapping in a longer server (`@mcp:git` beside `@mcp:github`)."""
         server_part, dot, tool_part = query.partition(".")
         if dot:
             server = self._known_server(server_part)
@@ -249,12 +251,14 @@ class CommandCompleter(Completer):
                     yield Completion(f"@mcp:{server}.{name}", start_position=start)
             return
         server = self._known_server(query) if query else None
+        if server is not None:
+            for name in self.mcp_tools(server):
+                yield Completion(f"@mcp:{server}.{name}", start_position=start)
         for name in self._matching_names(self.mcp_servers(), query):
             if name != server:
                 yield Completion(f"@mcp:{name}", start_position=start)
         if server is not None:
-            for name in self.mcp_tools(server):
-                yield Completion(f"@mcp:{server}.{name}", start_position=start)
+            yield Completion(f"@mcp:{server}", start_position=start)
 
     def _skill_completions(self, query: str, start: int) -> Iterator[Completion]:
         for name in self._matching_names(self.skills(), query):
