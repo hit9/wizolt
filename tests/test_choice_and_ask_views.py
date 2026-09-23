@@ -120,9 +120,35 @@ def test_choice_view_state_fragments_preserve_headers_and_preview():
     fragments = state.fragments("Model", lambda _choice: "first\\nsecond")
     rendered = "".join(text for _, text in fragments)
 
-    assert "  ---- Models ----" in rendered
-    assert ">  1. Alpha" in rendered
+    assert ("class:choice.header", "    ---- Models ----") in fragments
+    # The band alone marks the selection: no `>` cursor, and it runs two cells past the label.
+    assert ("class:choice.selected", "Alpha") in fragments and ">" not in rendered
+    assert "   1. Alpha  \n" in rendered
     assert "  │ first\n  │ second\n" in rendered
+    # The key legend closes the sheet instead of sitting between the title and the rows.
+    assert rendered.startswith("  Model\n\n") and rendered.endswith("\n\n  j/k move, / search, Esc/q back/cancel\n")
+
+
+def test_choice_view_selection_band_keeps_one_width_across_rows():
+    state = ChoiceViewState(choices=("a", "much longer label"), labels={}, disabled=set())
+
+    def band() -> str:
+        return "".join(text for style, text in state.fragments("Pick") if style == "class:choice.selected")
+
+    first = band()
+    state.move(1)
+    assert get_cwidth(first) == get_cwidth(band()) == get_cwidth("   2. much longer label  ")
+    # Rows the cursor is not on carry no padding.
+    assert "   2. much longer label\n" in "".join(text for _, text in ChoiceViewState(choices=("a", "much longer label"), labels={}, disabled=set()).fragments("Pick"))
+
+
+def test_markdown_table_with_empty_headings_is_a_key_value_list():
+    console = render_module.markdown_console(60)
+    with console.capture() as capture:
+        console.print(render_module.WizoltMarkdown(render_module.markdown_table(["", ""], [("model", "x"), ("steps", "200")])))
+    rows = [row.rstrip() for row in UiPrinter.SGR_RE.sub("", capture.get()).splitlines() if row.strip()]
+    # No header row: a rounded outline bounds it instead, with no rule between the columns.
+    assert rows == ["╭────────────╮", "│ model  x   │", "│ steps  200 │", "╰────────────╯"]
 
 
 def test_emit_answer_compact_keeps_boundary_blank_rows(monkeypatch):

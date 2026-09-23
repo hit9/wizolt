@@ -566,23 +566,12 @@ async def _tool_output_list(loop: CommandLoop, entries: list[OutputEntry], state
         sits on each side of it, so the boundary is a break in the page rather than a line drawn
         through it."""
         cols = shutil.get_terminal_size((80, 20)).columns
-        body = state.fragments("", label_fn=lambda choice: parts.get(choice, []))
-        rows_onward = body[3:]  # past the view's own title, help, and blank rows
-        # The open search prompt, when there is one, stays the last line: the input continues it.
-        # A query with no matches is the one case with no prompt line to peel off -- the view
-        # returns early with a "no matches" row instead, and that row belongs with the others,
-        # not stranded below the legend as if it were the query itself.
-        no_matches = bool(state.query) and not state.enabled()
-        prompt = rows_onward[-1:] if state.searching and not no_matches else []
-        rows_onward = rows_onward[:-1] if prompt else rows_onward
+        body = state.fragments("", label_fn=lambda choice: parts.get(choice, []), keys="j/k move, / search, Enter open, Esc/q close")
         return [
             ("class:choice.title", f"  Tool output · latest {len(entries)}\n"),
             ("class:rule", "  " + "─" * max(3, cols - 4) + "\n"),
             ("", "\n"),
-            *rows_onward,
-            ("", "\n"),
-            ("class:choice.disabled", "  j/k move, / search, Enter open, Esc/q close\n"),
-            *prompt,
+            *body[2:],  # past the view's own title and blank rows
         ]
 
     def handle_key(key: str, data: str) -> Any:

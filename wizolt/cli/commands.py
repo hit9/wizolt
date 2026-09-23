@@ -101,11 +101,11 @@ SET_VALUES: dict[str, tuple[str, ...]] = {
 
 def _status_model_line(session: Session, config: Config) -> str:
     active = config.provider
-    return f"`{config.active_provider}/{active.model or '(empty)'}`; `{session.policy.resolve(active).api}`; `{active.reasoning}`"
+    return f"`{config.active_provider}/{active.model or '(empty)'}` · {session.policy.resolve(active).api} · reasoning {active.reasoning}"
 
 
 def _status_context_line(tokens: int, budget: int, percent: int) -> str:
-    return f"`{progress_bar(tokens, budget)}` `~{Text.abbreviate_count(tokens)} / {Text.abbreviate_count(budget)}` (`{percent}%`)"
+    return f"{progress_bar(tokens, budget)} `~{Text.abbreviate_count(tokens)} / {Text.abbreviate_count(budget)}` ({percent}%)"
 
 
 def _context_reading(loop: CommandLoop) -> tuple[int, int, int]:
@@ -128,15 +128,13 @@ def _status_cache_line(counts: ModelUsage) -> str:
         write = f" (w {Text.abbreviate_count(written)})" if written else ""
         return f"{label} `{cached * 100 / prompt:.1f}%`{write}"
 
-    return " ".join(
-        [
-            f"`{progress_bar(counts.last_cached_prompt_tokens, counts.last_prompt_tokens)}`",
-            part("last", counts.last_cached_prompt_tokens, counts.last_prompt_tokens, counts.last_cache_write_prompt_tokens) + ";"
-            if counts.last_prompt_tokens
-            else "last `n/a`;",
-            part("session", counts.cached_prompt_tokens, counts.prompt_tokens, counts.cache_write_prompt_tokens),
-        ]
+    last = (
+        part("last", counts.last_cached_prompt_tokens, counts.last_prompt_tokens, counts.last_cache_write_prompt_tokens)
+        if counts.last_prompt_tokens
+        else "last n/a"
     )
+    session = part("session", counts.cached_prompt_tokens, counts.prompt_tokens, counts.cache_write_prompt_tokens)
+    return f"{progress_bar(counts.last_cached_prompt_tokens, counts.last_prompt_tokens)} {last} · {session}"
 
 
 def resend_command(loop: CommandLoop, _args: str) -> str | None:
@@ -260,11 +258,11 @@ def status(loop: CommandLoop, args: str) -> str:
     ]
     if loop.session.state.goal:
         rows.append(("goal", loop.session.state.goal))
-    runtime = [
-        f"yolo {'on' if loop.session.settings.yolo else 'off'}",
-        f"steps {loop.session.settings.max_steps}",
-        CodeIndex.status_line(index_status, index_message),
-    ]
+    # The runtime switches get a row each: joined into one, they were the row that wrapped first.
+    rows.append(("yolo", "on" if loop.session.settings.yolo else "off"))
+    rows.append(("steps", str(loop.session.settings.max_steps)))
+    # Code, because the message can be raw error text that Markdown would otherwise reinterpret.
+    rows.append(("index", "`" + CodeIndex.status_line(index_status, index_message).removeprefix("index").strip() + "`"))
     info = loop.session.system_info
     global_path = info.agents_md_global_path if info is not None else ""
     global_exists = bool(global_path and os.path.isfile(global_path))
@@ -277,21 +275,20 @@ def status(loop: CommandLoop, args: str) -> str:
                 sources.append("global active" if global_exists else "global active (file removed)")
             else:
                 sources.append("global next session" if global_exists else "global missing")
-        runtime.append(f"agents.md on ({'; '.join(sources)})")
+        rows.append(("agents.md", f"on ({'; '.join(sources)})"))
     else:
-        runtime.append(f"agents.md off (global {'present' if global_exists else 'missing'})")
+        rows.append(("agents.md", f"off (global {'present' if global_exists else 'missing'})"))
     update = UpdateChecker(loop.session).status_line().removeprefix("update: ")
     if update not in {"current", "unknown"}:
-        runtime.append("update " + update)
-    rows.append(("runtime", "; ".join(f"`{value}`" for value in runtime)))
+        rows.append(("update", update))
     rows.append(("model", _status_model_line(loop.session, loop.session.config)))
     rows.append(("context", _status_context_line(context_tokens, context_budget, context_percent)))
     rows.append(("cache", _status_cache_line(usage) if usage.prompt_tokens else "(no requests yet)"))
     visible_activity = [(name, value) for name, value in activity if value]
     if visible_activity:
-        rows.append(("activity", "; ".join(f"{name} `{value}`" for name, value in visible_activity)))
+        rows.append(("activity", " · ".join(f"{name} `{value}`" for name, value in visible_activity)))
     if usage.calls:
-        rows.append(("usage", f"calls `{usage.calls}`; total `{Text.abbreviate_count(usage.total_tokens)}`"))
+        rows.append(("usage", f"calls `{usage.calls}` · total `{Text.abbreviate_count(usage.total_tokens)}`"))
     # Summaries are counted apart from the conversation, so each row can be multiplied by one
     # price: the entry they run on may be another account entirely. The row names the model for
     # the same reason, and stays hidden until a summary has actually run.
@@ -301,7 +298,7 @@ def status(loop: CommandLoop, args: str) -> str:
         rows.append(
             (
                 "compaction usage",
-                f"calls `{compaction_usage.calls}`; total `{Text.abbreviate_count(compaction_usage.total_tokens)}`; `{compaction_model}`",
+                f"calls `{compaction_usage.calls}` · total `{Text.abbreviate_count(compaction_usage.total_tokens)}` · `{compaction_model}`",
             )
         )
         # The summary request is built to ride the conversation's own cached prefix, and this is
@@ -311,20 +308,20 @@ def status(loop: CommandLoop, args: str) -> str:
     worker = loop.session.worker
     if worker is None:
         configured = loop.session.config.worker_provider
-        rows.append(("worker", "`off` — `[worker] provider` " + (f"= `{configured}`" if configured else "unset")))
-        return markdown_table(["field", "value"], rows)
+        rows.append(("worker", "off — `[worker] provider` " + (f"= `{configured}`" if configured else "unset")))
+        return markdown_table(["", ""], rows)
     worker_usage = worker.usage
-    state = f"`{'delegating' if worker._active_turn_messages else 'idle'}`, rounds `{worker.state.round_count}`"
+    state = f"{'delegating' if worker._active_turn_messages else 'idle'}, rounds `{worker.state.round_count}`"
     rows.append(("worker", _status_model_line(worker, worker.config)))
     if worker_usage.last_prompt_tokens and worker_usage.last_prompt_budget:
         percent = worker_usage.context_percent()
         context = _status_context_line(worker_usage.last_prompt_tokens, worker_usage.last_prompt_budget, percent)
     else:
         context = "(no requests yet)"
-    rows.append(("worker ctx", f"{context}; {state}"))
+    rows.append(("worker ctx", f"{context} · {state}"))
     if worker_usage.prompt_tokens:
         rows.append(("worker cache", _status_cache_line(worker_usage)))
-    return markdown_table(["field", "value"], rows)
+    return markdown_table(["", ""], rows)
 
 
 async def catalog_command(loop: CommandLoop, args: str) -> str:
@@ -369,7 +366,7 @@ async def catalog_command(loop: CommandLoop, args: str) -> str:
         rows.append(("sync", "last " + time.strftime("%Y-%m-%d %H:%M", time.localtime(state.last_synced_at))))
     rows.append(("remote", CATALOG_URL))
     rows.append(("hint", "run `/catalog sync` to force a remote check"))
-    return markdown_table(["field", "value"], rows)
+    return markdown_table(["", ""], rows)
 
 
 def skills_command(loop: CommandLoop, args: str) -> str:

@@ -159,7 +159,7 @@ def test_status_and_bar_show_skill_count(tmp_path):
     assert f"skills `{count}`" in rendered
     assert f"/ {loop.agent.context.request_token_budget() / 1_000:.1f}K" in rendered
     assert "| cache | (no requests yet) |" in rendered
-    assert "| field | value |" in rendered
+    assert rendered.startswith("|  |  |\n")  # a key/value list: no header row
     bar_text = "".join(text for _, text in StatusBar(s).fragments())
     assert f"skills {count}" in bar_text
 
@@ -168,18 +168,18 @@ def test_status_shows_agents_md_state(tmp_path):
     # No candidate file in cwd: still on, but nothing loaded.
     s = session(tmp_path)
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
-    assert "agents.md on (global missing)" in status(loop, "")
+    assert "| agents.md | on (global missing) |" in status(loop, "")
 
     # Loaded from the project's AGENTS.md.
     (tmp_path / "AGENTS.md").write_text("# Rules\n", encoding="utf-8")
     loaded = session(tmp_path)
     loaded_loop = CommandLoop(Agent(loaded, output_fn=lambda text: None), output_fn=lambda text: None)
     rendered = status(loaded_loop, "")
-    assert "agents.md on (./AGENTS.md; global missing)" in rendered
+    assert "| agents.md | on (./AGENTS.md; global missing) |" in rendered
 
     # Disabled at runtime: reports off.
     loaded.settings.agents_md = False
-    assert "agents.md off (global missing)" in status(loaded_loop, "")
+    assert "| agents.md | off (global missing) |" in status(loaded_loop, "")
 
 
 def test_status_keeps_active_turn_in_context_percentage(tmp_path):
@@ -198,7 +198,7 @@ def test_status_keeps_active_turn_in_context_percentage(tmp_path):
     # and the rendered row shows that recomputed value (not a stale or persisted-only figure).
     assert s.state.context_percent > persisted_percent
     context_row = next(line for line in rendered.splitlines() if line.startswith("| context |"))
-    assert f"`{s.state.context_percent}%`" in context_row
+    assert f"({s.state.context_percent}%)" in context_row
 
 
 def test_status_context_row_uses_last_real_tokens_when_available(tmp_path):
@@ -214,8 +214,8 @@ def test_status_context_row_uses_last_real_tokens_when_available(tmp_path):
         return next(line for line in status(loop, "").splitlines() if line.startswith("| context |"))
 
     assert "`~20.0K / 80.0K`" in context_row()
-    assert "`25%`" in context_row()
-    assert f"`{estimate_percent}%`" not in context_row()
+    assert "(25%)" in context_row()
+    assert f"({estimate_percent}%)" not in context_row()
 
     # The recorded budget, not today's configuration, stays the denominator.
     s.config.provider.max_tokens = 60_000
@@ -235,7 +235,7 @@ def test_status_cache_row_labels_last_and_session_token_counts(tmp_path):
     cache_row = next(line for line in status(loop, "").splitlines() if line.startswith("| cache |"))
 
     # Ratios, not the raw pairs: this was the one row long enough to wrap on a normal terminal.
-    assert "last `99.9%` (w 1.2K); session `83.4%` (w 4.5K)" in cache_row
+    assert "last `99.9%` (w 1.2K) · session `83.4%` (w 4.5K)" in cache_row
     assert "76.1K" not in cache_row
 
 
@@ -249,7 +249,7 @@ async def test_status_command_uses_rich_table_without_outer_rule(tmp_path):
     assert await loop.command("/status") == (True, False)
     assert plain == []
     assert len(rich) == 1
-    assert rich[0][0].startswith("| field | value |")  # one flat table, no section headings
+    assert rich[0][0].startswith("|  |  |\n")  # one flat key/value table, no section headings
     assert "###" not in rich[0][0]
     assert rich[0][0].count("| --- | --- |") == 1
     assert rich[0][1] == {"rule": False, "compact": True, "indent": TurnBox.CONTENT_LEVEL}

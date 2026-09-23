@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any, ClassVar, TypeVar
 
-from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples, to_formatted_text
+from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples, fragment_list_width, to_formatted_text
 
 from wizolt.base import SELECTION_BACK, SELECTION_FREE_TEXT, Text
 from wizolt.render import UiPrinter, WizoltMarkdown, markdown_console
@@ -242,11 +242,13 @@ class ChoiceViewState:
         title: str,
         preview_fn: Callable[[str], StyleAndTextTuples | str] | None = None,
         label_fn: Callable[[str], StyleAndTextTuples] | None = None,
+        keys: str = "j/k move, / search, Esc/q back/cancel",
     ) -> StyleAndTextTuples:
-        """The list as fragments. `label_fn` styles one row's label in pieces instead of printing it
-        flat, for a list whose rows carry more than one kind of thing (the Ctrl-O browser's key,
-        tool name, and arguments). The row's own style wins where it has one, so a selected row
-        stays a solid bar instead of being repainted part by part."""
+        """The list as fragments: the title and a blank row (always the first two fragments), the
+        rows, and the `keys` legend closing the sheet. `label_fn` styles one row's label in pieces
+        instead of printing it flat, for a list whose rows carry more than one kind of thing (the
+        Ctrl-O browser's key, tool name, and arguments). The row's own style wins where it has one,
+        so a selected row stays a solid bar instead of being repainted part by part."""
         visible = self.visible()
         options = self.clamp()
         suffix = (" /" + self.query) if self.query else ""
@@ -260,21 +262,20 @@ class ChoiceViewState:
         # The gap between the modal and whatever was printed above it is the container's job
         # (TuiApp's modal_region draws it for every non-exclusive modal), not this view's, so no
         # view hard-codes its own leading break.
-        parts: StyleAndTextTuples = []
-        parts += [
+        parts: StyleAndTextTuples = [
             ("class:choice.title", ("  " + title if title else "") + suffix + "\n"),
-            ("class:choice.disabled", "  j/k move, / search, Esc/q back/cancel\n"),
             ("", "\n"),
         ]
         if self.query and not options:
-            return [*parts, ("class:choice.disabled", "  no matches\n")]
+            return [*parts, ("class:choice.disabled", "  no matches\n"), ("", "\n"), ("class:choice.disabled", "  " + keys + "\n")]
         start, end = self.window(visible, options)
+        rows: list[tuple[str | None, StyleAndTextTuples]] = []  # (option row's style, or None for a header; fragments)
         number = 0
         for index, choice in enumerate(visible):
             label = self.labels.get(choice, choice)
             if choice in self.disabled:
                 if start <= index < end:
-                    parts.append(("class:choice.disabled", "  " + label + "\n"))
+                    rows.append((None, [("class:choice.header", "  " + label)]))
                 continue
             number += 1
             # Numbering runs over the whole list, not the window: a row keeps the same number
@@ -282,35 +283,41 @@ class ChoiceViewState:
             if not (start <= index < end):
                 continue
             selected = number - 1 == self.selected
-            if selected:
-                parts.append(("[SetCursorPosition]", ""))
             style = "class:choice.selected" if selected else ""
-            prefix = ("> " if selected else "  ") + f"{number:2d}. "
+            # The band alone marks the selection; the number is a digit shortcut, dimmed so the eye
+            # lands on the label.
+            row: StyleAndTextTuples = [("[SetCursorPosition]", "")] if selected else []
+            row += [(style, "  "), (style or "class:choice.number", f"{number:2d}. ")]
             if label_fn is not None:
-                parts.append((style, prefix))
                 # The selected row stays one solid band: composing the part colours into it would
                 # repaint the band in each part's colour rather than highlight the row.
                 # Indexed rather than unpacked: a fragment may carry a third mouse-handler element,
                 # and this row only ever wants the style and the text.
-                parts.extend((style or fragment[0], fragment[1]) for fragment in (label_fn(choice) or [("", label)]))
-                parts.append((style, "\n"))
+                row.extend((style or fragment[0], fragment[1]) for fragment in (label_fn(choice) or [("", label)]))
             elif match := UiPrinter.MCP_STATUS_RE.search(label):
-                parts.append((style, prefix + label[: match.start()]))
                 marker_style = (style + " class:choice.status." + match.group(1)).strip()
-                parts.append((marker_style, "●"))
-                parts.append((style, label[match.start() + 1 :] + "\n"))
+                row += [(style, label[: match.start()]), (marker_style, "●"), (style, label[match.start() + 1 :])]
             else:
-                parts.append((style, prefix + label + "\n"))
-        if end - start < len(visible):
-            parts.append(("class:choice.disabled", f"  showing {start + 1}-{end} of {len(visible)}\n"))
+                row.append((style, label))
+            rows.append((style, row))
+        # The band spans the widest row in view plus a two-cell margin, so it is one block of the
+        # same width wherever the cursor sits instead of stopping wherever its own label ends.
+        band = max((fragment_list_width(row) for style, row in rows if style is not None), default=0) + 2
+        for style, row in rows:
+            parts.extend(row)
+            if style:
+                parts.append((style, " " * (band - fragment_list_width(row))))
+            parts.append(("", "\n"))
         if preview_fn and options:
             preview = preview_fn(options[self.selected])
             if isinstance(preview, str):
                 # A plain-text preview: every line takes the rail and the preview style.
                 preview = [("class:choice.preview", "  │ " + line + "\n") for line in preview.replace("\\n", "\n").splitlines()]
             if preview:
-                parts.append(("class:choice.disabled", "  ──────────────────────────────────\n"))
+                parts.append(("class:choice.disabled", "  " + "─" * max(10, band - 2) + "\n"))
                 parts.extend(preview)
+        legend = keys + (f" · showing {start + 1}-{end} of {len(visible)}" if end - start < len(visible) else "")
+        parts += [("", "\n"), ("class:choice.disabled", "  " + legend + "\n")]
         if self.searching:
             parts.append(("", "/" + self.query))
         return parts
@@ -492,20 +499,20 @@ class AskViewState:
             if choice in page.disabled:
                 rows.extend(
                     Text.wrap_styled(
-                        [("class:choice.disabled", "  ")],
-                        [("class:choice.disabled", "  ")],
-                        [("class:choice.disabled", label)],
+                        [("class:choice.header", "  ")],
+                        [("class:choice.header", "  ")],
+                        [("class:choice.header", label)],
                         width,
                     )
                 )
                 continue
             number += 1
             selected = number - 1 == page.selected
-            prefix = ("> " if selected else "  ") + f"{number:2d}. "
+            number_text = f"{number:2d}. "
             style = "class:choice.selected" if selected else ""
             wrapped = Text.wrap_styled(
-                [(style, prefix)],
-                [(style, " " * len(prefix))],
+                [(style, "  "), (style or "class:choice.number", number_text)],
+                [(style, "  " + " " * len(number_text))],
                 [(style, label)],
                 width,
             )

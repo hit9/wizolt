@@ -478,14 +478,24 @@ class _Table(TableElement):
 
     Rich's `show_edge` draws an empty row above and below the table; with the blank line Markdown
     already puts between blocks, a table ends up floating two rows away from its own paragraph.
-    The header underline is enough to bound it.
+    The header underline is enough to bound it. A table whose headings are all empty is a key/value
+    list (`/status`): with no header to bound it, it takes a rounded outline instead, and no rule
+    between its columns.
     """
+
+    # Rich's box spec, one line per part: top, header row, header rule, body row, row rule, footer
+    # rule, footer row, bottom. The column divider is blank everywhere.
+    KEY_VALUE_BOX = box.Box("╭──╮\n│  │\n├──┤\n│  │\n├──┤\n├──┤\n│  │\n╰──╯\n")
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         del console, options
         table = Table(box=box.SIMPLE, pad_edge=False, style="markdown.table.border", show_edge=False, collapse_padding=True)
         if self.header is not None and self.header.row is not None:
-            for column in self.header.row.cells:
+            cells = self.header.row.cells
+            table.show_header = any(column.content.plain.strip() for column in cells)
+            if not table.show_header:
+                table.box, table.show_edge, table.pad_edge = self.KEY_VALUE_BOX, True, True
+            for column in cells:
                 heading = column.content.copy()
                 heading.stylize("markdown.table.header")
                 table.add_column(heading)

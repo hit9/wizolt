@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Changed
+
+- Pickers mark the selected row with a highlight of one width instead of a `>`, dim the row
+  numbers, set section headers in bold, and move the key legend under the list.
+- `/status` and `/catalog` are key/value lists in a rounded outline, with no `field | value`
+  header.
+  `/status` gives yolo, steps, index, agents.md, and update a row each instead of one long
+  `runtime` row, and highlights only names and figures.
+- The completion menu's scrollbar no longer draws a light-grey track that ignores the terminal
+  theme.
+
 ## 0.51.1 - 2026-09-23
 
 ### Changed

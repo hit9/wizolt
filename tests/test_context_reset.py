@@ -221,7 +221,7 @@ async def test_context_command_reports_the_same_figure_as_status(tmp_path):
     assert match is not None
     percent = int(match.group(1))
     assert percent > 0
-    assert f"`{percent}%`" in status
+    assert f"({percent}%)" in status
 
 
 async def test_context_command_reports_the_fill_and_resets_on_request(tmp_path):

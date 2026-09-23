@@ -137,12 +137,13 @@ async def test_tool_output_viewer_escape_returns_to_the_list_with_the_cursor_kep
         await tool_output_viewer(command_loop)
 
     frames = ["".join(value for _, value in frame) for frame in modal.frames]
-    listings = [frame for frame in frames if "Tool output" in frame]
+    listings = [frame for frame in modal.frames if "Tool output" in "".join(value for _, value in frame)]
     assert len(listings) == 5  # two list passes: three renders, then two on the reopened one
     assert modal.exclusive == [False, True, False, True]  # list, detail, list, detail
 
-    def selected_line(listing: str) -> str:
-        return next(row for row in listing.splitlines() if row.startswith("> "))
+    def selected_line(listing: list) -> str:
+        # The selection band is the only marker a selected row carries.
+        return "".join(value for style, value, *_ in listing if style == "class:choice.selected")
 
     assert "command-4" in selected_line(listings[0])  # first list starts at the newest entry
     assert "command-3" in selected_line(listings[1])  # j moved to the second entry

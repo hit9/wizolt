@@ -164,7 +164,7 @@ async def test_status_reports_worker_delegation_state(tmp_path):
     # No worker session: one `worker` row naming the configured [worker] provider. Everything is
     # one flat table — the session's own rows, the parent's, then the worker's under `worker*`.
     text = await status_text()
-    assert text.lstrip().startswith("| field | value |")  # rendered in the content column
+    assert text.lstrip().startswith("|  |  |\n")  # rendered in the content column
     assert "###" not in text
     assert "[worker] provider" in text and "default" in text
 
@@ -175,7 +175,7 @@ async def test_status_reports_worker_delegation_state(tmp_path):
     # tokens, and the model row mirrors the parent's (provider/model, api, reasoning).
     text = await status_text()
     assert "| worker | `default/" in text
-    assert "| worker ctx | (no requests yet); `idle`, rounds `0` |" in text
+    assert "| worker ctx | (no requests yet) · idle, rounds `0` |" in text
 
     worker.usage.last_prompt_tokens = 50
     worker.usage.last_prompt_budget = 100
@@ -186,11 +186,11 @@ async def test_status_reports_worker_delegation_state(tmp_path):
     # Scope to the worker rows: the parent's own cache row also says "(no requests yet)".
     worker_section = text.split("| worker |", 1)[1]
     assert "~50 / 100" in worker_section and "(no requests yet)" not in worker_section
-    assert "| worker cache | " in worker_section and "last `50.0%`; session `50.0%`" in worker_section
+    assert "| worker cache | " in worker_section and "last `50.0%` · session `50.0%`" in worker_section
 
     worker._active_turn_messages.append({"role": "user", "content": "order"})
     text = await status_text()
-    assert "`delegating`, rounds `0`" in text
+    assert "delegating, rounds `0`" in text
 
 
 async def test_worker_status_command_is_human_readable(tmp_path):

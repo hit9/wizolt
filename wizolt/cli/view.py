@@ -618,6 +618,9 @@ class View:
                 "choice.title": role("accent", "bold"),
                 "choice.selected": Theme.selection(),
                 "choice.disabled": role("muted"),
+                # A section header is set apart from the muted legend by weight, not a new color.
+                "choice.header": role("muted", "bold"),
+                "choice.number": role("muted"),
                 "choice.preview": role("success", "italic"),
                 "choice.explanation": role("accent_secondary"),
                 # The preview's user messages take the same tone as the transcript's `• ` lines.
@@ -644,6 +647,10 @@ class View:
                 "completion-menu.completion.current": "noreverse " + Theme.selection(),
                 "completion-menu.meta.completion": f"noreverse bg:default {role('muted')}",
                 "completion-menu.meta.completion.current": "noreverse " + Theme.selection(),
+                # prompt_toolkit's own scrollbar is a light-grey track under a dark thumb, fixed
+                # colors that match no terminal theme: keep the track clear and draw only the thumb.
+                "scrollbar.background": "noreverse bg:default",
+                "scrollbar.button": f"noreverse bg:{Theme.color('subtle')}",
                 "bottom-toolbar": "noreverse bg:default fg:default",
                 "bottom-toolbar.text": f"noreverse bg:default {role('text')}",
                 "search-toolbar": "noreverse bg:default fg:default",

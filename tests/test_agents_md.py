@@ -738,18 +738,18 @@ def test_status_names_both_instruction_sources(tmp_path):
     command_loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
 
     result = status(command_loop, "")
-    assert "agents.md on (./AGENTS.md; global active)" in result
+    assert "| agents.md | on (./AGENTS.md; global active) |" in result
     assert "| global AGENTS.md |" not in result
 
 
 def test_status_names_the_one_source_it_has(tmp_path):
     s = agents_session(tmp_path, project_text=PROJECT_TEXT)
     command_loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
-    assert "agents.md on (./AGENTS.md; global missing)" in status(command_loop, "")
+    assert "| agents.md | on (./AGENTS.md; global missing) |" in status(command_loop, "")
 
     s.settings.agents_md = False
     result = status(command_loop, "")
-    assert "agents.md off (global missing)" in result
+    assert "| agents.md | off (global missing) |" in result
 
 
 def test_status_distinguishes_a_new_global_file_from_one_loaded_at_session_start(tmp_path):
@@ -757,15 +757,15 @@ def test_status_distinguishes_a_new_global_file_from_one_loaded_at_session_start
     command_loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
     path = global_agents_md_path(s.config.data_dir)
 
-    assert "agents.md on (global missing)" in status(command_loop, "")
+    assert "| agents.md | on (global missing) |" in status(command_loop, "")
     (tmp_path / "data" / "AGENTS.md").write_text("# Rules\n", encoding="utf-8")
-    assert "agents.md on (global next session)" in status(command_loop, "")
+    assert "| agents.md | on (global next session) |" in status(command_loop, "")
     assert f"- wizolt_global_agents_md: {path}" in ContextManager(s).environment()
     assert "auto-injected in this session: no" in ContextManager(s).environment()
 
     next_session = agents_session(tmp_path, global_text="# Rules\n")
     next_loop = CommandLoop(Agent(next_session, output_fn=lambda text: None), output_fn=lambda text: None)
-    assert "agents.md on (global active)" in status(next_loop, "")
+    assert "| agents.md | on (global active) |" in status(next_loop, "")
     assert "auto-injected in this session: yes" in ContextManager(next_session).environment()
 
 
