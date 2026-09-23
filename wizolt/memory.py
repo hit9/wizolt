@@ -1,11 +1,4 @@
-"""Global user memory: MEMORY.md parsing, the session-fixed catalog, and @mem: expansion.
-
-The memory file lives at <data_dir>/MEMORY.md and is shared across projects. Each entry starts
-with a `## <id> <title>` heading and runs to the next one; the id is an internal, stable label
-(eight lowercase hex digits), the title is what people search and reference, so it stays unique.
-Nothing here writes the file: entries are added and edited through the Edit tool under the user's
-explicit ask, exactly like any other file.
-"""
+"""Global user memory: Markdown sections, the session-fixed catalog, and @mem: expansion."""
 
 from __future__ import annotations
 
@@ -16,9 +9,9 @@ from dataclasses import dataclass
 from wizolt.base import MAX_MEMORY_FILE_BYTES
 from wizolt.mentions import scan_mentions
 
-# One entry heading: eight lowercase-hex id chars, whitespace, then a non-empty title. Anything
-# else under `##` is not an entry -- the parser never guesses where one begins.
-ENTRY_HEADING = re.compile(r"^## ([0-9a-f]{8})[ \t]+(.*?)[ \t]*$")
+ENTRY_HEADING = re.compile(r"^##(?:[ \t]+(.*?))?[ \t]*$")
+LEGACY_ID_HEADING = re.compile(r"^[0-9a-f]{8}[ \t]+(.+)$")
+LEGACY_ID_FIELD = re.compile(r"^id:[ \t]*[0-9a-f]{8}$")
 
 # The catalog rides every request's fixed prefix; bound it like the AGENTS.md budget and say when
 # it gave entries up instead of silently dropping them.
@@ -30,35 +23,64 @@ PREVIEW_CHARS = 40
 
 @dataclass(frozen=True)
 class MemoryEntry:
-    """One parsed memory entry: stable id, unique-by-convention title, free-form body ("" allowed)."""
+    """One Markdown section: title for lookup and free-form body ("" allowed)."""
 
-    id: str
     title: str
     body: str
+
+
+def heading_title(raw: str) -> str:
+    """Accept the old `## <id> <title>` form while keeping new titles ID-free."""
+    title = raw.strip()
+    legacy = LEGACY_ID_HEADING.fullmatch(title)
+    return legacy.group(1).strip() if legacy else title
 
 
 def parse_memory(text: str) -> list[MemoryEntry]:
     """Split MEMORY.md into entries, keeping file order; lines before the first entry are ignored."""
 
     entries: list[MemoryEntry] = []
-    current: MemoryEntry | None = None
+    title: str | None = None
     body: list[str] = []
 
     def flush() -> None:
-        nonlocal current, body
-        if current is not None:
-            entries.append(MemoryEntry(current.id, current.title, "\n".join(body).rstrip()))
-        current, body = None, []
+        nonlocal title, body
+        if title is not None:
+            # Early drafts placed an id field under the title. It is metadata, not memory text.
+            first = next((index for index, line in enumerate(body) if line.strip()), None)
+            if first is not None and LEGACY_ID_FIELD.fullmatch(body[first].strip()):
+                body.pop(first)
+            entries.append(MemoryEntry(title, "\n".join(body).strip("\n")))
+        title, body = None, []
 
     for line in text.splitlines():
         match = ENTRY_HEADING.match(line)
-        if match is not None and match.group(2).strip():
+        if match is not None:
             flush()
-            current = MemoryEntry(match.group(1), match.group(2).strip(), "")
-        elif current is not None:
+            title = heading_title(match.group(1) or "") or None
+        elif title is not None:
             body.append(line)
     flush()
     return entries
+
+
+def validate_memory(text: str) -> None:
+    """Describe malformed sections without changing the file; accept legacy headings."""
+    if len(text.encode("utf-8")) > MAX_MEMORY_FILE_BYTES:
+        raise ValueError(f"file exceeds {MAX_MEMORY_FILE_BYTES} bytes; shorten it before saving")
+    titles: set[str] = set()
+    for number, line in enumerate(text.splitlines(), 1):
+        if not line.startswith("##") or line.startswith("###"):
+            continue
+        match = ENTRY_HEADING.match(line)
+        title = heading_title(match.group(1) or "") if match else ""
+        if not title:
+            raise ValueError(f"line {number}: use '## <title>' for each memory")
+        if title in titles:
+            raise ValueError(f"line {number}: duplicate title {title!r}; choose a unique title")
+        titles.add(title)
+    if not titles and text.strip() not in {"", "# MEMORY"}:
+        raise ValueError("no memory sections found; add a '## <title>' heading")
 
 
 def preview(body: str, limit: int = PREVIEW_CHARS) -> str:
@@ -103,6 +125,17 @@ class MemoryStore:
 
         return parse_memory(self.read())
 
+    def problem(self) -> str:
+        """Explain malformed user-edited content without preventing valid sections from loading."""
+        content = self.read()
+        if not content and self.file_size():
+            return "file is not readable as UTF-8"
+        try:
+            validate_memory(content)
+        except ValueError as error:
+            return str(error)
+        return ""
+
     def menu_entries(self) -> tuple[tuple[str, str], ...]:
         """(title, full body) rows in file order, for the @mem: completion menu's keyword filter."""
 
@@ -129,9 +162,10 @@ class MemoryStore:
                 "current request or AGENTS.md instructions. When a request touches long-term preferences, "
                 "standing conventions, or cross-project background, read the file with Read (it needs no "
                 "confirmation). Edit MEMORY.md only when the user explicitly asks to remember, update, or "
-                "forget something; read the file first so other entries are not overwritten, and give every "
-                "new entry a unique title and a random eight-digit lowercase-hex id checked against the ids "
-                "already in the file."
+                "forget something; read the file first so other entries are not overwritten. "
+                "Write each entry as '## <unique title>' followed by its Markdown body; use '###' "
+                "for subheadings inside an entry. No id is needed. Read back after writing to "
+                "verify the new section."
             ),
             "",
         ]
@@ -140,12 +174,15 @@ class MemoryStore:
                 f"The file is {self.file_size()} bytes, over the {MAX_MEMORY_FILE_BYTES}-byte cap: no entries were loaded; tell the user to slim the file."
             )
             return "\n".join(lines)
+        problem = self.problem()
+        if problem:
+            lines.append(f"MEMORY.md needs repair: {problem}")
         entries = self.entries()
         if not entries:
-            lines.append("No saved entries yet.")
+            lines.append("No readable entries." if problem else "No saved entries yet.")
             return "\n".join(lines)
         lines.append("")
-        rows = [f"- {entry.id} {entry.title}" for entry in entries]
+        rows = [f"- {entry.title}" for entry in entries]
         total = sum(len(row) + 1 for row in rows)
         if total > MAX_CATALOG_CHARS:
             kept: list[str] = []

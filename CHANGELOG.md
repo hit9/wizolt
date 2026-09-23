@@ -5,7 +5,7 @@
 ### Added
 
 - Long-term memory shared across projects: a `MEMORY.md` under your wizolt data directory
-  (default `~/.wizolt/MEMORY.md`) holding one entry per `## <id> <title>` heading. Every request
+  (default `~/.wizolt/MEMORY.md`) holding one entry per `## <title>` heading. Every request
   opens with a small, fixed catalog of the entries so the agent pulls relevant memories into a
   turn on its own; it reads the file freely and only writes when you explicitly ask it to
   remember, update, or forget something. `@mem:title` (tab-completing, keyword-filtered, shown

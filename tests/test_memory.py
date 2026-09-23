@@ -3,6 +3,7 @@ the @mem: completion menu, the /memory command, and global AGENTS.md injection."
 
 import asyncio
 
+import pytest
 from agent_harness import session
 from prompt_toolkit.document import Document
 
@@ -13,7 +14,7 @@ from wizolt.cli.view import CommandCompleter
 from wizolt.config import Config
 from wizolt.context import ContextManager
 from wizolt.engine import Agent
-from wizolt.memory import MAX_CATALOG_CHARS, MAX_REFERENCES, MemoryEntry, parse_memory, preview
+from wizolt.memory import MAX_CATALOG_CHARS, MAX_REFERENCES, MemoryEntry, parse_memory, preview, validate_memory
 from wizolt.mentions import active_mention, encode_mem_mention, scan_mentions
 from wizolt.session import Session, bootstrap_features
 from wizolt.tools import EditTool, ReadTool
@@ -22,14 +23,14 @@ MEMORY_MD = """# MEMORY
 
 Notes kept across projects.
 
-## 7f3a91c2 设计讨论使用中文
+## 设计讨论使用中文
 用户偏好以中文讨论设计方案。
 
-## 84bd20e1 共用部署环境
+## 共用部署环境
 多个项目共用部署环境；
 执行部署前应重新核实细节。
 
-## a1b2c3d4 无正文条目
+## 无正文条目
 """
 
 
@@ -66,18 +67,41 @@ def completions(completer, text):
 def test_parse_memory_entries_keep_file_order_and_bodies():
     entries = parse_memory(MEMORY_MD)
     assert entries == [
-        MemoryEntry("7f3a91c2", "设计讨论使用中文", "用户偏好以中文讨论设计方案。"),
-        MemoryEntry("84bd20e1", "共用部署环境", "多个项目共用部署环境；\n执行部署前应重新核实细节。"),
-        MemoryEntry("a1b2c3d4", "无正文条目", ""),
+        MemoryEntry("设计讨论使用中文", "用户偏好以中文讨论设计方案。"),
+        MemoryEntry("共用部署环境", "多个项目共用部署环境；\n执行部署前应重新核实细节。"),
+        MemoryEntry("无正文条目", ""),
     ]
 
 
-def test_parse_memory_skips_non_entry_headings():
-    text = "# Top\nprose before entries\n\n## not-an-id 无 ID\n## abc 短 ID\n## deadbeef\n## 0badc0de 合法条目\n正文\n"
-    entries = parse_memory(text)
-    assert [entry.title for entry in entries] == ["合法条目"]
-    assert entries[0].id == "0badc0de"
-    assert entries[0].body == "正文"
+def test_parse_memory_accepts_legacy_id_and_screenshot_style_metadata():
+    text = "# MEMORY\n\n## 7f3a91c2 旧标题\n旧正文\n\n## PR body 要求\n\nid: 133e87f9\nscope: orion-arm-ai\n\n中文 Markdown。\n"
+    assert parse_memory(text) == [
+        MemoryEntry("旧标题", "旧正文"),
+        MemoryEntry("PR body 要求", "scope: orion-arm-ai\n\n中文 Markdown。"),
+    ]
+
+
+def test_validate_memory_rejects_missing_and_duplicate_titles():
+    with pytest.raises(ValueError, match="line 1"):
+        validate_memory("##\n正文\n")
+    with pytest.raises(ValueError, match="duplicate title"):
+        validate_memory("## 相同标题\n一\n## 相同标题\n二\n")
+    with pytest.raises(ValueError, match="no memory sections"):
+        validate_memory("plain text without a heading\n")
+
+
+def test_new_memory_file_is_available_to_completion_in_the_same_session(tmp_path):
+    s = session(tmp_path)
+    assert "No saved entries yet" in s.memory.catalog()
+    path = write_memory(
+        tmp_path,
+        "# MEMORY\n\n## PR body 要求 (orion-arm-ai 路径下的项目)\n\nid: 133e87f9\nscope: orion-arm-ai\n\nPR body 使用中文 Markdown。\n",
+    )
+    assert path.exists()
+    rows = list(CommandCompleter(memories=s.memory.menu_entries).get_completions(Document("@mem:"), None))
+    assert [row.display_text for row in rows] == ["PR body 要求 (orion-arm-ai 路径下的项目)"]
+    assert "133e87f9" not in rows[0].display_meta_text
+    assert rows[0].text == '@mem:"PR body 要求 (orion-arm-ai 路径下的项目)"'
 
 
 def test_preview_first_nonblank_line_clipped():
@@ -124,10 +148,11 @@ def test_catalog_lists_id_title_and_path_in_file_order(tmp_path):
     catalog = s.memory.catalog()
     assert catalog.startswith("--- MEMORY ---")
     assert f"Path: {s.memory.path()}" in catalog
-    first = catalog.index("- 7f3a91c2 设计讨论使用中文")
-    second = catalog.index("- 84bd20e1 共用部署环境")
-    third = catalog.index("- a1b2c3d4 无正文条目")
+    first = catalog.index("- 设计讨论使用中文")
+    second = catalog.index("- 共用部署环境")
+    third = catalog.index("- 无正文条目")
     assert first < second < third
+    assert "7f3a91c2" not in catalog
     assert "Edit MEMORY.md only when the user explicitly asks" in catalog
 
 
@@ -135,7 +160,7 @@ def test_catalog_is_fixed_for_the_session_even_if_the_file_changes(tmp_path):
     path = write_memory(tmp_path)
     s = session(tmp_path)
     before = s.memory.catalog()
-    path.write_text("## feedface 新条目\n新正文\n", encoding="utf-8")
+    path.write_text("## 新条目\n新正文\n", encoding="utf-8")
     assert s.memory.catalog() == before  # fixed prefix: not re-read
     # send-time resolution does see the new entry
     assert "新正文" in s.memory.resolve_mentions("@mem:新条目")
@@ -146,28 +171,28 @@ def test_catalog_empty_without_file_or_entries(tmp_path):
     assert "No saved entries yet" in s.memory.catalog()
     assert "Edit MEMORY.md only when the user explicitly asks" in s.memory.catalog()
     write_memory(tmp_path, "# only prose, no entries\n")
-    assert "No saved entries yet" in session(tmp_path).memory.catalog()
+    assert "needs repair" in session(tmp_path).memory.catalog()
 
 
 def test_catalog_truncation_reports_omitted_entries(tmp_path):
-    text = "".join(f"## {i:08x} 条目{i}\n正文{i}\n" for i in range(400))
+    text = "".join(f"## 条目{i}\n正文{i}\n" for i in range(800))
     write_memory(tmp_path, text)
     s = session(tmp_path)
     catalog = s.memory.catalog()
     assert "catalog truncated" in catalog
-    assert "of 400 entries omitted" in catalog
+    assert "of 800 entries omitted" in catalog
     # the entry list is capped; the fixed header above it (~800 chars of rules and the path) is not
     assert len(catalog) <= MAX_CATALOG_CHARS + 1200
 
 
 def test_catalog_warns_when_file_is_over_the_cap(tmp_path):
-    text = f"## 7f3a91c2 设计讨论使用中文\n{'x' * (MAX_MEMORY_FILE_BYTES + 1)}\n"
+    text = f"## 设计讨论使用中文\n{'x' * (MAX_MEMORY_FILE_BYTES + 1)}\n"
     write_memory(tmp_path, text)
     s = session(tmp_path)
     catalog = s.memory.catalog()
     assert f"over the {MAX_MEMORY_FILE_BYTES}-byte cap" in catalog
     assert "no entries were loaded" in catalog
-    assert "- 7f3a91c2" not in catalog
+    assert "- 设计讨论使用中文" not in catalog
 
 
 # --- @mem: expansion ---
@@ -199,7 +224,7 @@ def test_resolve_mentions_dedupes_and_caps(tmp_path):
     block = s.memory.resolve_mentions("@mem:设计讨论使用中文 和 @mem:设计讨论使用中文")
     assert block.count("## 设计讨论使用中文") == 1
 
-    many = "".join(f"## {i:08x} 条目{i}\n正文\n" for i in range(MAX_REFERENCES + 2))
+    many = "".join(f"## 条目{i}\n正文\n" for i in range(MAX_REFERENCES + 2))
     write_memory(tmp_path, many)
     store = session(tmp_path).memory
     text = " ".join(f"@mem:条目{i}" for i in range(MAX_REFERENCES + 2))
@@ -214,7 +239,7 @@ def test_resolve_mentions_without_file_reports_missing_memory(tmp_path):
 
 
 def test_resolve_mentions_refuses_oversized_file(tmp_path):
-    write_memory(tmp_path, f"## 7f3a91c2 设计讨论使用中文\n{'x' * (MAX_MEMORY_FILE_BYTES + 1)}")
+    write_memory(tmp_path, f"## 设计讨论使用中文\n{'x' * (MAX_MEMORY_FILE_BYTES + 1)}")
     s = session(tmp_path)
     assert "exceeds its" in s.memory.resolve_mentions("@mem:设计讨论使用中文")
 
@@ -239,7 +264,7 @@ def test_mem_completion_lists_titles_in_file_order_without_ids(tmp_path):
     completer = CommandCompleter(memories=s.memory.menu_entries)
     texts = completions(completer, "按 @mem:")
     assert texts == ['@mem:"设计讨论使用中文"', '@mem:"共用部署环境"', '@mem:"无正文条目"']
-    assert not any("7f3a91c2" in text for text in texts)
+    assert not any("133e87f9" in text for text in texts)
 
 
 def test_mem_completion_filters_by_title_and_body_keyword(tmp_path):
@@ -253,14 +278,14 @@ def test_mem_completion_filters_by_title_and_body_keyword(tmp_path):
 
 
 def test_mem_completion_quotes_titles_with_spaces(tmp_path):
-    write_memory(tmp_path, "## 7f3a91c2 共用部署环境 2026\n正文\n")
+    write_memory(tmp_path, "## 共用部署环境 2026\n正文\n")
     s = session(tmp_path)
     completer = CommandCompleter(memories=s.memory.menu_entries)
     assert completions(completer, "按 @mem:共用") == ['@mem:"共用部署环境 2026"']
 
 
 def test_mem_completion_row_cap_ends_in_keep_typing_notice(tmp_path):
-    text = "".join(f"## {i:08x} 条目{i}\n正文{i}\n" for i in range(CommandCompleter.MAX_ROWS + 10))
+    text = "".join(f"## 条目{i}\n正文{i}\n" for i in range(CommandCompleter.MAX_ROWS + 10))
     write_memory(tmp_path, text)
     s = session(tmp_path)
     completer = CommandCompleter(memories=s.memory.menu_entries)
@@ -295,7 +320,7 @@ def test_memory_command_lists_titles_bodies_and_references_without_ids(tmp_path)
     assert "用户偏好以中文讨论设计方案。" in rendered
     assert "执行部署前应重新核实细节。" in rendered
     assert '`@mem:"设计讨论使用中文"`' in rendered
-    assert "7f3a91c2" not in rendered
+    assert "133e87f9" not in rendered
 
 
 def test_memory_command_flags_duplicate_titles(tmp_path):
@@ -304,6 +329,20 @@ def test_memory_command_flags_duplicate_titles(tmp_path):
     rendered = memory_command(loop, "")
     assert "duplicate title" in rendered
     assert "rename one" in rendered
+    assert "needs repair" in rendered
+
+
+def test_memory_command_hides_legacy_id_field_and_reports_unparseable_file(tmp_path):
+    path = write_memory(tmp_path, "## PR body 要求\n\nid: 133e87f9\nscope: orion-arm-ai\n\n中文 Markdown。\n")
+    _s, loop = loop_for(tmp_path)
+    rendered = memory_command(loop, "")
+    assert "PR body 要求" in rendered
+    assert "中文 Markdown。" in rendered
+    assert "133e87f9" not in rendered
+    path.write_text("remember this but no heading\n", encoding="utf-8")
+    assert "needs repair" in memory_command(loop, "")
+    path.write_bytes(b"\xff")
+    assert "not readable as UTF-8" in memory_command(loop, "")
 
 
 def test_memory_command_empty_and_usage(tmp_path):
@@ -313,7 +352,7 @@ def test_memory_command_empty_and_usage(tmp_path):
 
 
 def test_memory_command_reports_oversized_file_without_listing_partial_entries(tmp_path):
-    write_memory(tmp_path, f"## 7f3a91c2 设计讨论使用中文\n{'x' * (MAX_MEMORY_FILE_BYTES + 1)}")
+    write_memory(tmp_path, f"## 设计讨论使用中文\n{'x' * (MAX_MEMORY_FILE_BYTES + 1)}")
     _s, loop = loop_for(tmp_path)
     rendered = memory_command(loop, "")
     assert "No entries were loaded" in rendered
@@ -394,7 +433,7 @@ def test_environment_memory_catalog_in_environment_and_stable(tmp_path):
     env = context.environment()
     assert "--- MEMORY ---" in env
     assert context.model_messages("sys", [{"role": "user", "content": "request"}])[1]["content"] == "--- Environment ---\n" + env
-    (tmp_path / "data" / "MEMORY.md").write_text("## feedface 新条目\n新正文\n", encoding="utf-8")
+    (tmp_path / "data" / "MEMORY.md").write_text("## 新条目\n新正文\n", encoding="utf-8")
     assert context.environment() == env
 
 
@@ -432,6 +471,6 @@ def test_edit_creates_memory_file_in_existing_data_dir(tmp_path):
     data_dir = tmp_path.parent / (tmp_path.name + "-data")
     data_dir.mkdir(exist_ok=True)
     s = session_with_data(tmp_path, data_dir)
-    tool = EditTool(s, [s.memory_path(), "", [{"op": "create", "content": "## 7f3a91c2 设计讨论使用中文\n用户偏好以中文讨论设计方案。\n"}]])
+    tool = EditTool(s, [s.memory_path(), "", [{"op": "create", "content": "## 设计讨论使用中文\n用户偏好以中文讨论设计方案。\n"}]])
     tool.call()
     assert "设计讨论使用中文" in (data_dir / "MEMORY.md").read_text(encoding="utf-8")

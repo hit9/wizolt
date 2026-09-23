@@ -141,13 +141,16 @@ picking one opens its candidates, which narrow as you keep typing. `Tab` highlig
 
 **Memories.** Long-term notes live in one file, `MEMORY.md` under your wizolt data directory
 (`~/.wizolt/MEMORY.md`), and are shared by every project. Each turn opens with a small, fixed
-list of them so the agent can pull in the ones a request touches; `@mem:title` attaches one by
-title and its full text rides with that request. The agent reads the file on its own whenever
+list of them so the agent can pull in the ones a request touches. Each entry starts with a
+`## Title` heading; use `###` for subheadings inside an entry. No ID is needed. Older files with
+an ID in the heading or an `id:` line still work. `@mem:title` attaches one by title, and its full
+text rides with that request. The agent reads the file on its own whenever
 relevant, and only adds or edits an entry when you ask it to remember, update, or forget
 something — plain conversation never writes it. `/memory` shows every entry with its full text
 and a copyable `@mem:` reference. Completed titles are quoted, as in
 `@mem:"deploy notes 2026"`, so you can keep typing beside them. Files over 128 KiB are not
 indexed or expanded into mentions; `/memory` reports the limit until you reduce the file size.
+If `/memory` reports a format problem, you can ask the agent to repair the plain-text file.
 
 **Picking files.** Files stay out of the first `@` list: typing or selecting `@file:` opens fzf
 immediately, and `Tab` does the same from an active file mention. Without fzf, a bounded literal

@@ -404,8 +404,12 @@ def memory_command(loop: CommandLoop, args: str) -> str:
         )
     entries = store.entries()
     if not entries:
+        if problem := store.problem():
+            return f"Memory file `{store.path()}` needs repair: {problem}. Read and edit the file to recover its entries."
         return f"No memories yet. They live in `{store.path()}`; ask the agent to remember something and it will add one."
     lines = [f"### Memories · {len(entries)}", "", f"Shared across projects, stored in `{store.path()}`.", ""]
+    if problem := store.problem():
+        lines.extend([f"Memory file needs repair: {problem}. Valid sections are shown below.", ""])
     counts = Counter(entry.title for entry in entries)
     for entry in entries:
         duplicate = counts[entry.title] > 1
