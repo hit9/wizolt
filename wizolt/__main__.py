@@ -97,13 +97,22 @@ def run_update() -> int:
         return 1
 
 
-def warm_provider_sdks() -> None:
-    """Import the provider SDKs off the main thread so the prompt accepts input immediately.
+# Muted (bright black, the theme's `muted` role in both palettes) and followed by a carriage
+# return: the app's first frame starts at column 0 and erases below it, so it replaces this line.
+STARTING_LINE = "\x1b[90mstarting…\x1b[0m\r"
+# Removes the line above when startup fails before the app draws a frame.
+ERASE_STARTING_LINE = "\r\x1b[K"
 
-    ModelClient imports them lazily because they cost ~0.8s, which was the whole of the delay
-    before a fresh prompt echoed keystrokes. Loading them here in the background keeps the prompt
-    instant without moving that cost onto the first request: the user's first message takes far
-    longer to type than the import takes to finish.
+
+def warm_imports(modules: list[str]) -> threading.Thread:
+    """Import heavy modules off the main thread so the prompt accepts input immediately.
+
+    ModelClient imports the provider SDKs lazily because they cost ~0.8s, which was the whole of the
+    delay before a fresh prompt echoed keystrokes; `MCPManager` does the same with fastmcp. Loading
+    them here in the background keeps the prompt instant without moving that cost onto the first
+    request: the user's first message takes far longer to type than the import takes to finish.
+    The modules load one after another, so the warm-up competes with the prompt on one thread only.
+    The runtime shows "starting…" until the returned thread has finished.
 
     Racing this thread against the request path is safe, and deliberately so:
 
@@ -127,11 +136,13 @@ def warm_provider_sdks() -> None:
         # Warming is only an optimization, and an uncaught failure here would print a thread
         # traceback over the live prompt. Any real problem resurfaces on the request path, which
         # imports the same modules and reports the failure to the user.
-        with contextlib.suppress(Exception):
-            import anthropic  # noqa: F401 - imported for its side effect of populating sys.modules
-            import openai  # noqa: F401
+        for name in modules:
+            with contextlib.suppress(Exception):
+                importlib.import_module(name)
 
-    threading.Thread(target=load, name="sdk-warmup", daemon=True).start()
+    thread = threading.Thread(target=load, name="import-warmup", daemon=True)
+    thread.start()
+    return thread
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -178,7 +189,9 @@ def main(argv: list[str] | None = None) -> int:
     preprinted_output = ""
     if banner_preprinted:
         preprinted_output = f"wizolt {_cli.__version__}. /help for commands.\n\n"
-        print(preprinted_output, end="", flush=True)
+        # Only the banner is recorded: the starting line lives where the app will draw, and a
+        # width-change replay must never bring it back.
+        print(preprinted_output + STARTING_LINE, end="", flush=True)
 
     _cli.configure_logging()
     try:
@@ -211,8 +224,12 @@ def main(argv: list[str] | None = None) -> int:
                     # save all happen under this lease.
                     current.ensure_ownership()
                 _cli.Theme.set_mode(_cli.Theme.resolve(current.settings.theme))
-                warm_provider_sdks()
+                modules = ["anthropic", "openai"]
+                if current.mcp is not None and any(config.auto_connect for config in current.mcp.parse_configs()):
+                    modules.append("fastmcp.client")
+                warmup = warm_imports(modules)
                 command_loop = _cli.CommandLoop(_cli.Agent(current))
+                command_loop.startup_warmup = warmup
                 try:
                     if banner_preprinted:
                         command_loop.preprinted_output = preprinted_output
@@ -242,14 +259,26 @@ def main(argv: list[str] | None = None) -> int:
                 if reserved is not None:
                     reserved.close()
     except _cli.SessionBusyError as error:
+        erase_starting_line()
         print(str(error), file=sys.stderr)
         return 1
     except _cli.ConfigError as error:
+        erase_starting_line()
         print("ConfigError: " + str(error), file=sys.stderr)
         return 2
     except (_cli.WizoltError, _cli.CatalogError) as error:
+        erase_starting_line()
         print("Error: " + str(error), file=sys.stderr)
         return 1
+
+
+def erase_starting_line() -> None:
+    """Clear a starting line no frame replaced, so an error message does not print over it.
+
+    Harmless once the app has run: its exit leaves the cursor at the start of an empty line."""
+
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        print(ERASE_STARTING_LINE, end="", flush=True)
 
 
 if __name__ == "__main__":

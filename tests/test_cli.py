@@ -1,7 +1,6 @@
 import os
 import subprocess
 import sys
-import time
 from io import StringIO
 from types import SimpleNamespace
 
@@ -53,7 +52,7 @@ def test_cli_runs_session_and_closes_resources(monkeypatch):
     Everything the session opened -- the model client, MCP -- is closed by the runtime, on the loop
     that opened it. Closing MCP here would mean closing it after that loop was already gone."""
     closed = []
-    mcp = SimpleNamespace(close=lambda: closed.append("mcp"))
+    mcp = SimpleNamespace(close=lambda: closed.append("mcp"), parse_configs=list)
     session = SimpleNamespace(settings=SimpleNamespace(theme="dark"), mcp=mcp, ensure_ownership=lambda: None, close=lambda: None)
     monkeypatch.setattr(cli.Session, "from_config_file", lambda **kwargs: session)
     monkeypatch.setattr(cli.Theme, "resolve", lambda theme: f"resolved-{theme}")
@@ -101,7 +100,7 @@ def test_interactive_banner_precedes_session_and_ui_imports(monkeypatch):
     monkeypatch.setattr(cli.Theme, "resolve", lambda theme: theme)
     monkeypatch.setattr(cli.Theme, "set_mode", lambda _theme: None)
     monkeypatch.setattr(cli, "Agent", lambda value: value)
-    monkeypatch.setattr(cli, "warm_provider_sdks", lambda: None)
+    monkeypatch.setattr(cli, "warm_imports", lambda _modules: None)
 
     class FakeLoop:
         resume_request = ""
@@ -121,8 +120,31 @@ def test_interactive_banner_precedes_session_and_ui_imports(monkeypatch):
 
     assert cli.main([]) == 0
     banner = f"wizolt {cli.__version__}. /help for commands.\n\n"
-    assert calls == [("configure", banner), ("run", False, banner)]
-    assert stdout.getvalue() == banner
+    # The starting line is on screen at once, but only the banner is handed over for recording.
+    assert calls == [("configure", banner + cli.STARTING_LINE), ("run", False, banner)]
+    assert stdout.getvalue() == banner + cli.STARTING_LINE
+
+
+def test_interactive_startup_failure_erases_the_starting_line(monkeypatch):
+    class Tty(StringIO):
+        def isatty(self):
+            return True
+
+    stdout = Tty()
+    stderr = StringIO()
+    monkeypatch.setattr(cli.sys, "stdin", Tty())
+    monkeypatch.setattr(cli.sys, "stdout", stdout)
+    monkeypatch.setattr(cli.sys, "stderr", stderr)
+    monkeypatch.setattr(cli, "configure_logging", lambda: None)
+
+    def broken(**_kwargs):
+        raise cli.ConfigError("broken config")
+
+    monkeypatch.setattr(cli.Session, "from_config_file", broken)
+
+    assert cli.main([]) == 2
+    assert stdout.getvalue().endswith(cli.STARTING_LINE + cli.ERASE_STARTING_LINE)
+    assert stderr.getvalue() == "ConfigError: broken config\n"
 
 
 def test_cli_loads_resumed_session_with_runtime_overrides(monkeypatch):
@@ -272,13 +294,11 @@ def test_startup_does_not_import_the_provider_sdks():
     assert result.stdout.strip() == "0"
 
 
-def test_warm_provider_sdks_loads_them_in_the_background():
-    cli.warm_provider_sdks()
-    for _ in range(200):
-        if all(name in sys.modules for name in ("anthropic", "openai")):
-            break
-        time.sleep(0.05)
+def test_warm_imports_loads_them_in_the_background():
+    thread = cli.warm_imports(["anthropic", "openai", "wizolt.no_such_module"])
+    thread.join(timeout=10)
 
+    assert not thread.is_alive()
     assert {"anthropic", "openai"} <= sys.modules.keys()
 
 

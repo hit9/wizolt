@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Changed
+
+- Startup now shows a muted `starting…` from launch until background loading finishes, about a
+  second. You can type the whole time; the label explains why the first keystrokes may echo
+  slowly.
+
+### Fixed
+
+- Input no longer freezes for about half a second at launch when an MCP server has
+  `auto_connect` set.
+
 ## 0.51.0 - 2026-09-23
 
 ### Added

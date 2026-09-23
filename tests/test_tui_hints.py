@@ -20,6 +20,21 @@ def test_tui_chat_input_shows_random_idle_placeholder(tmp_path):
     assert hint in {entry.text for entry in hints.HINTS}
     assert command_loop.view.tui_input_hint() == hint  # stable within a situation (no flicker)
 
+def test_tui_chat_input_says_starting_until_startup_settles(tmp_path):
+    command_loop = loop(tmp_path)
+    command_loop.tui = TuiApp()
+    command_loop.view._hint_picker = HintPicker(choice=lambda pool: pool[-1])
+    command_loop.starting = True
+
+    assert command_loop.view.tui_input_hint() == "starting…"
+    command_loop.tui.set_running("working")
+    assert command_loop.view.tui_input_hint() != "starting…"  # a running turn keeps its queue hint
+
+    command_loop.tui.set_idle()
+    command_loop.starting = False
+    assert command_loop.view.tui_input_hint() == "/sessions resumes a past session"
+
+
 def test_tui_idle_hint_sessions_only_before_work(tmp_path):
     command_loop = loop(tmp_path)
     command_loop.tui = TuiApp()

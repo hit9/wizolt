@@ -22,6 +22,9 @@ from wizolt.tui import TuiApp
 # lead-in before the single-write replay, so the wait reads as a restore in progress rather than a
 # stuck prompt.
 RESUME_STATUS_LABEL = "resuming session…"
+# The idle prompt's placeholder until startup warm-up finishes: typing works, but echo can lag.
+# Matches the CLI's pre-frame line (`__main__.STARTING_LINE`), which the first frame replaces.
+STARTING_STATUS_LABEL = "starting…"
 
 if TYPE_CHECKING:
     from wizolt.cli import CommandLoop
@@ -146,6 +149,9 @@ class ScrollbackWriter:
 
 class TuiRuntime:
     """Own the interactive session timeline while CommandLoop owns session behavior."""
+
+    # How often the startup settle task checks the CLI's import warm-up thread.
+    STARTUP_POLL_INTERVAL = 0.05
 
     def __init__(self, command_loop: CommandLoop):
         self.loop = command_loop
@@ -663,6 +669,7 @@ class TuiRuntime:
         just tasks that take turns -- and a turn's cancellation reaches everything it awaits."""
 
         self.runtime_loop = asyncio.get_running_loop()
+        self.loop.starting = True
         self.loop.open_background()
         self.submissions = asyncio.Queue()
         self.accepting = True
@@ -700,7 +707,8 @@ class TuiRuntime:
             self.spawn(self.loop.discover_mcp(), name="mcp-discovery")
             # Git discovery can cost hundreds of milliseconds in a large worktree. Warm the
             # runtime-only snapshot after the prompt is live so the first picker need not wait.
-            self.loop.refresh_mentions()
+            scan = self.loop.refresh_mentions()
+            self.spawn(self._finish_starting(scan), name="startup-settle")
             self.submit_next(self.loop.take_pending_inputs())
             await self.run_agent_loop()
         finally:
@@ -708,6 +716,21 @@ class TuiRuntime:
         if self.error is not None:
             raise self.error
         return 0
+
+    async def _finish_starting(self, scan: asyncio.Task | None) -> None:
+        """Clear "starting…" once the work that slows the first keystrokes is done: the CLI's
+        import warm-up and the first mention scan. MCP discovery is not waited for: a slow server
+        can take its whole timeout, and /mcp already reports it."""
+
+        warmup = self.loop.startup_warmup
+        # Polled rather than joined on a worker: asyncio.run waits for its executor on exit, so a
+        # worker blocked in join() would hold an early quit until the imports finished.
+        while warmup is not None and warmup.is_alive():
+            await asyncio.sleep(self.STARTUP_POLL_INTERVAL)
+        if scan is not None:
+            await asyncio.wait({scan})
+        self.loop.starting = False
+        self.tui.invalidate()
 
     async def _await_ready(self, application: asyncio.Task) -> None:
         """Wait for the application to be live, or for it to have failed trying."""

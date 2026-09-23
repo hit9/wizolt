@@ -252,6 +252,12 @@ def test_cli_startup_banner_survives_growing_and_shrinking_pane(pane):
     while not any("tmux-startup-model" in line for line in pane.capture()):
         assert time.monotonic() < deadline, "CLI did not start"
         time.sleep(0.05)
+    # The pre-frame starting line and the prompt's starting placeholder both go away once the
+    # import warm-up settles; neither may linger in history or come back on a replay.
+    deadline = time.monotonic() + 15
+    while "starting…" in "\n".join(pane.capture()):
+        assert time.monotonic() < deadline, "CLI never finished starting"
+        time.sleep(0.05)
     for cycle, (width, height) in enumerate([(140, 45), (62, 18), (100, 30)] * 3):
         pane.resize(width, height)
         # Editing (without submitting) confirms a fresh frame after each resize, rather than
@@ -265,6 +271,7 @@ def test_cli_startup_banner_survives_growing_and_shrinking_pane(pane):
             time.sleep(0.05)
         lines = _settled_capture(pane)
         assert "\n".join(lines).count("/help for commands.") == 1
+        assert "starting…" not in "\n".join(lines)
         assert sum(line == ">" or line.startswith("> ") for line in lines) == 1
         assert sum("tmux-startup-model" in line for line in lines) == 1
 

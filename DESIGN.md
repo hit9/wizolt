@@ -211,8 +211,13 @@ Nothing a first keystroke does not need may be imported at startup. Interactive 
 under `TYPE_CHECKING`. Do not lift them back to module scope; `tests/test_cli.py` asserts a fresh
 interpreter loads neither SDK.
 
-`main` warms the deferred SDKs on a daemon thread so deferral does not move the cost to the first
-request; racing is safe because CPython locks imports per module (see `warm_provider_sdks`).
+`main` warms the deferred SDKs (and fastmcp, when a server auto-connects) on a daemon thread so
+deferral does not move the cost to the first request; racing is safe because CPython locks imports
+per module (see `warm_imports`). That thread holds the GIL for about a second, so keystrokes echo
+slowly while it runs: the prompt's placeholder says `starting…` until it and the first mention scan
+finish, and the entry point prints the same muted line, without a newline, for the first frame to
+overwrite. It is never recorded, so replay cannot restore it. MCP code imports fastmcp through
+`run_blocking`, never on the loop: the warm-up can be holding that module's lock.
 
 The entry point writes the interactive banner before importing the session and rendering stacks,
 then tells the first `CommandLoop` not to repeat it. Keep that one static line outside the runtime's

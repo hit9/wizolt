@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import threading
 import time
 from types import SimpleNamespace
 from typing import ClassVar
@@ -379,6 +380,38 @@ class TestMCPManagerDiscovery:
         assert result == "pong"
         assert auth_calls == [(config, True, notify)]
         assert client_args == [("transport", marker, s.mcp.call_timeout(), s.mcp.call_timeout())]
+
+    def test_run_op_imports_fastmcp_off_the_event_loop(self, monkeypatch):
+        """fastmcp takes ~0.45s to import; on the loop thread that freezes the prompt."""
+        import fastmcp.client
+
+        s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
+        bootstrap_features(s)
+        config = s.mcp.find_config("test")
+        import_threads = []
+
+        class Client:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return SimpleNamespace(ping=lambda: asyncio.sleep(0, result="pong"))
+
+            async def __aexit__(self, *_args):
+                return None
+
+        monkeypatch.setattr(MCPManager, "_import_client_modules", staticmethod(lambda: import_threads.append(threading.get_ident())))
+        monkeypatch.setattr(s.mcp, "_transport", lambda *_args: "transport")
+        monkeypatch.setattr(fastmcp.client, "Client", Client)
+
+        async def run():
+            return await s.mcp._run_op(config, {}, lambda client: client.ping()), threading.get_ident()
+
+        result, loop_thread = asyncio.run(run())
+
+        assert result == "pong"
+        assert len(import_threads) == 1
+        assert import_threads[0] != loop_thread
 
     def test_save_closes_fd_when_fdopen_fails(self, tmp_path, monkeypatch):
         """os.fdopen doesn't close its fd on failure — save() must close it or the descriptor leaks."""

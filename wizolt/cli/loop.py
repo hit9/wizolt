@@ -193,6 +193,10 @@ Full documentation: https://wizolt.readthedocs.io
         self.input_fn = input_fn
         self.ui = UiPrinter(output_fn)
         self.preprinted_output = ""
+        # The CLI's background import thread, if it started one. TuiRuntime keeps `starting` set
+        # until it and the first mention scan finish: both compete with the prompt for the GIL.
+        self.startup_warmup: threading.Thread | None = None
+        self.starting = False
         self.status_bar = StatusBar(self.session)
         self.live_preview = BashLivePreview()
         self.model_stream_kind = ""

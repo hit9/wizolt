@@ -24,7 +24,7 @@ from wizolt.base import LogBlock, LogEdge, Text, TurnBox
 from wizolt.cli.commands import SET_KEYS, SET_VALUES
 from wizolt.cli.hints import Context as HintContext
 from wizolt.cli.hints import HintPicker
-from wizolt.cli.runtime import RESUME_STATUS_LABEL
+from wizolt.cli.runtime import RESUME_STATUS_LABEL, STARTING_STATUS_LABEL
 from wizolt.cli.worker import WORKER_SUBCOMMANDS
 from wizolt.config import PROVIDER_API_CHOICES
 from wizolt.mentions import MentionSpan, active_mention, encode_file_mention
@@ -564,6 +564,8 @@ class View:
             has_pending = any(not item.inflight for item in self.loop.session.pending_user_inputs)
             return self.QUEUE_PENDING_HINT if has_pending else self.QUEUE_EMPTY_HINT
         if tui.input_mode == InputMode.CHAT:
+            if self.loop.starting:
+                return STARTING_STATUS_LABEL
             return self._hint_picker.pick(self._hint_context(), self.loop.session.state.round_count)
         return ""
 

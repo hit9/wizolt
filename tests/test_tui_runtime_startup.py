@@ -53,6 +53,42 @@ def test_runtime_adopts_preprinted_cli_banner_without_printing_again(tmp_path, c
     assert capsys.readouterr().out == ""
 
 
+def test_tui_says_starting_until_the_import_warmup_finishes(tmp_path, monkeypatch):
+    command_loop = CommandLoop(
+        Agent(session(tmp_path), output_fn=lambda _text: None),
+        input_fn=lambda prompt="": "",
+        output_fn=lambda _text: None,
+    )
+    monkeypatch.setattr(SessionSnapshotStore, "clean_expired", lambda *_args: 0)
+    monkeypatch.setattr(UpdateChecker, "load_cached", lambda _checker: False)
+    release = threading.Event()
+    command_loop.startup_warmup = threading.Thread(target=release.wait, daemon=True)
+    command_loop.startup_warmup.start()
+    real_application = Application
+    observed = []
+
+    with create_pipe_input() as pipe_input:
+        monkeypatch.setattr(tui_module, "Application", lambda **kwargs: real_application(input=pipe_input, **(kwargs | {"output": DummyOutput()})))
+
+        def drive():
+            wait_until(lambda: command_loop.tui is not None and command_loop.tui.app is not None and command_loop.tui.app.is_running)
+            time.sleep(TuiRuntime.STARTUP_POLL_INTERVAL * 3)
+            observed.append(command_loop.view.tui_input_hint())
+            release.set()
+            wait_until(lambda: not command_loop.starting)
+            observed.append(command_loop.view.tui_input_hint())
+            pipe_input.send_text("\x04")
+
+        driver = threading.Thread(target=drive, daemon=True)
+        driver.start()
+        assert asyncio.run(TuiRuntime(command_loop).run()) == 0
+        driver.join(timeout=1)
+
+    assert not driver.is_alive()
+    assert observed[0] == "starting…"
+    assert observed[1] not in {"", "starting…"}
+
+
 def test_tui_emits_resumed_history_after_primary_screen_starts(tmp_path, monkeypatch):
     scenario_session = session(tmp_path)
     scenario_session.resumed = True
@@ -190,6 +226,9 @@ async def test_tui_runtime_warms_file_mentions_after_startup(tmp_path, monkeypat
         def exit(self):
             done.set()
 
+        def invalidate(self):
+            pass
+
         def write_to_scrollback(self, callback):
             raise AssertionError("this scenario writes nothing")
 
@@ -230,6 +269,9 @@ async def test_tui_run_shows_resuming_status_while_restoring(tmp_path, monkeypat
             self.on_ready()
 
         def exit(self):
+            pass
+
+        def invalidate(self):
             pass
 
         def write_to_scrollback(self, callback):

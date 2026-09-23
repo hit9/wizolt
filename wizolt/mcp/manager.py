@@ -10,7 +10,7 @@ import re
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
-from wizolt.base import Json, ToolError
+from wizolt.base import Json, ToolError, run_blocking
 from wizolt.mcp.config import MCPServerConfig, has_header, parse_config
 from wizolt.mcp.rendering import (
     MCPResourceInfo,
@@ -508,6 +508,13 @@ class MCPManager:
             callback_timeout=self.session.settings.shell_timeout,
         )
 
+    @staticmethod
+    def _import_client_modules() -> None:
+        """Load every fastmcp module `_run_op` reaches, so none of them imports on the loop."""
+        import fastmcp.client
+        import fastmcp.client.auth
+        import fastmcp.client.transports  # noqa: F401
+
     def _transport(self, config: MCPServerConfig, headers: dict[str, str]) -> ClientTransport:
         from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
 
@@ -529,6 +536,9 @@ class MCPManager:
         notify: Callable[[str], None] | None = None,
     ) -> _MCPResultT:
         """Enter a fastmcp Client (with OAuth if config.auth=='oauth') and await one operation."""
+        # fastmcp takes ~0.45s to import. Imported on the loop it would freeze the prompt, and a
+        # startup warm-up still importing it holds the module lock the loop would wait on.
+        await run_blocking(self._import_client_modules)
         from fastmcp.client import Client
 
         timeout = self.call_timeout() if long_timeout or interactive else self.discovery_timeout()
