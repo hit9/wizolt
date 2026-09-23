@@ -246,6 +246,7 @@ class Theme:
         "divider_rule": "#4b5563",
         "selection_bg": "#008ec4",
         "selection_fg": "#ffffff",
+        "menu_bg": "#2b2f36",
         "pygments": "github-dark",
     }
     LIGHT: ClassVar[dict[str, str]] = {
@@ -279,6 +280,7 @@ class Theme:
         "divider_rule": "#9ca3af",
         "selection_bg": "#008ec4",
         "selection_fg": "#ffffff",
+        "menu_bg": "#e8ebef",
         "pygments": "default",
     }
     ROLES: ClassVar[tuple[str, ...]] = tuple(key for key in DARK if key != "pygments")

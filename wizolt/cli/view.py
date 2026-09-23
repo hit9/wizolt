@@ -595,6 +595,7 @@ class View:
         palette, never in a branch here.
         """
         role = Theme.fg
+        menu_bg = Theme.color("menu_bg")
         return Style.from_dict(
             {
                 **Theme.tui_styles(),
@@ -642,14 +643,16 @@ class View:
                 # A tab is not a list row: it keeps the accent it is drawn in and inverts it.
                 "tab.active": role("accent", "bold", "reverse"),
                 "tab.inactive": role("accent"),
-                "completion-menu": "noreverse bg:default",
-                "completion-menu.completion": f"noreverse bg:default {role('text')}",
+                # The menu floats over the transcript and the input, so it sits on a surface of its
+                # own; with the terminal's background it read as more text in the same place.
+                "completion-menu": f"noreverse bg:{menu_bg}",
+                "completion-menu.completion": f"noreverse bg:{menu_bg} {role('text')}",
                 "completion-menu.completion.current": "noreverse " + Theme.selection(),
-                "completion-menu.meta.completion": f"noreverse bg:default {role('muted')}",
+                "completion-menu.meta.completion": f"noreverse bg:{menu_bg} {role('muted')}",
                 "completion-menu.meta.completion.current": "noreverse " + Theme.selection(),
                 # prompt_toolkit's own scrollbar is a light-grey track under a dark thumb, fixed
-                # colors that match no terminal theme: keep the track clear and draw only the thumb.
-                "scrollbar.background": "noreverse bg:default",
+                # colors that match no terminal theme: the track is the menu's surface, the thumb grey.
+                "scrollbar.background": f"noreverse bg:{menu_bg}",
                 "scrollbar.button": f"noreverse bg:{Theme.color('subtle')}",
                 "bottom-toolbar": "noreverse bg:default fg:default",
                 "bottom-toolbar.text": f"noreverse bg:default {role('text')}",

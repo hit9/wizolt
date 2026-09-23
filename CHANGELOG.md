@@ -10,7 +10,8 @@
   header.
   `/status` gives yolo, steps, index, agents.md, and update a row each instead of one long
   `runtime` row, and highlights only names and figures.
-- The completion menu's scrollbar no longer draws a light-grey track that ignores the terminal
+- The completion menu sits on a background of its own, so its items stand apart from the text
+  around them, and its scrollbar no longer draws a light-grey track that ignores the terminal
   theme.
 
 ## 0.51.1 - 2026-09-23
