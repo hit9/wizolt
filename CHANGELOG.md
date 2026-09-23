@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.51.1 - 2026-09-23
+
 ### Changed
 
 - Startup now shows a muted `starting…` from launch until background loading finishes, about a
