@@ -5,10 +5,9 @@ answers. Every field here is that answer, optional because a headless embedding 
 call, a piped run) has none of it. `None` is not "no-op": several fields switch the owning
 layer to a different fallback, which is documented on each one.
 
-One instance is shared by an agent's model, context, and tools, so wiring is one object and
-a delegated worker inherits the parent's seam (`dataclasses.replace`) instead of replaying
-fifteen assignments. Fields are grouped by the layer that reads them; a layer reads only its
-own group.
+One instance is shared by an agent's model, context, and tools, so wiring is one object, and
+a delegated worker is handed a new instance built from the parent's fields in one place
+(`delegate._wire_worker_agent`). Fields are grouped by the layer that reads them.
 """
 
 from __future__ import annotations
@@ -68,8 +67,6 @@ class UiHooks:
     # Ask's question set. None falls back to the runner's input_fn, which is what a headless
     # embedding wants; a presenter that can show a selector sets it.
     question_fn: QuestionFn | None = None
-    # A delegated worker streams wherever the parent's model does: `_worker_stream` reads the
-    # parent's on_stream and wraps it so the worker's own text cannot be promoted as the answer.
     # The Delegate confirm-time `c` config loop, through the shared choice selector (see
     # CommandLoop.run_worker_config). None degrades `c` to printing the config only.
     worker_config_picker: Callable[[], Awaitable[None] | None] | None = None
@@ -80,10 +77,6 @@ class UiHooks:
     # The next approval prompt's actions as a selectable row (see TuiApp.set_approval_form).
     # None, or a False return, means the answer has to be typed -- headless runs, piped stdin.
     approval_form: Callable[[list[tuple[str, str]]], bool] | None = None
-    # The worker agent's view of the parent's retry/builtin/compaction reporting.
-    retry_wait: Callable[[bool], None] | None = None
-    builtin_call: Callable[[str, str], None] | None = None
-    compaction: Callable[[bool, str], None] | None = None
     # The post-turn code-index freshness pass. None (headless, or a runner outside CommandLoop)
     # simply means no check is scheduled.
     index_freshness: Callable[[], None] | None = None

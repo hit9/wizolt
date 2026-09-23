@@ -12,7 +12,8 @@ Keep this file short. It is an entry point, not a second design document.
 
 ## Project map
 
-- `wizolt/engine.py`: the agent turn loop composing context, model, and tools.
+- `wizolt/engine.py`: the agent turn loop composing context, model, and tools; `wizolt/hooks.py`
+  is the one presentation seam (`UiHooks`) the agent shares with them.
 - `wizolt/context.py`, `wizolt/model/`, `wizolt/runner.py`: context projection/compaction,
   provider request protocols (`model/client.py` with the per-API adapters beside it), and the tool
   execution lifecycle.
@@ -24,7 +25,7 @@ Keep this file short. It is an entry point, not a second design document.
 - `wizolt/config.py`, `wizolt/providers/`: config-file settings, the model capability catalog
   (`providers/catalog.py`), and evidence-backed compatibility policy (`providers/compat.py`).
 - `wizolt/cli/`, `wizolt/tui/`, `wizolt/render.py`: commands (`cli/commands.py`,
-  `cli/modals.py`, `/worker`'s flow in `cli/worker.py`), TUI runtime (`cli/runtime.py`), view
+  `cli/modals.py`, `/worker`'s flow in `cli/worker.py`), resume replay (`cli/resume.py`), TUI runtime (`cli/runtime.py`), view
   fragments (`cli/view.py`), interaction, and presentation.
 - `tests/`: behavior-oriented tests grouped by subsystem and boundary.
 

@@ -97,13 +97,13 @@ def _worker_stream(runner: ToolRunner):
     def stream(kind: str, text: str) -> None:
         # Read through a local so the None check narrows: the field is Optional, and on_stream is
         # only wired when it is set, but the checker cannot see that here.
-        model_stream = runner.hooks.on_stream
-        if model_stream is None:
+        on_stream = runner.hooks.on_stream
+        if on_stream is None:
             return
         if kind == "output_done":
-            model_stream("", "")
+            on_stream("", "")
             return
-        model_stream(kind, text)
+        on_stream(kind, text)
 
     return stream
 
@@ -117,9 +117,9 @@ def _wire_worker_agent(agent: Agent, runner: ToolRunner) -> None:
 
     The worker gets exactly the hooks the parent's presenter offers for a nested turn -- the
     worker's own stream, so its thinking is labelled as the worker's, and the call-time seams it
-    shares with the parent. A hook the parent keeps to itself (the Ask selector, the approval
-    form's own state, the index pass the parent runs after the delegation) stays unset here, so
-    the worker keeps its headless default.
+    shares with the parent. A hook the parent keeps to itself (the Ask selector, the index pass
+    the parent runs after the delegation) stays unset here, so the worker keeps its headless
+    default.
     """
     worker_output = _worker_output(runner)
     agent.output_fn = runner.hooks.worker_answer or worker_output
@@ -127,9 +127,9 @@ def _wire_worker_agent(agent: Agent, runner: ToolRunner) -> None:
     agent.use_hooks(
         UiHooks(
             on_stream=_worker_stream(runner) if runner.hooks.on_stream is not None else None,
-            on_retry_wait=runner.hooks.retry_wait,
-            on_builtin_call=runner.hooks.builtin_call,
-            on_compaction=runner.hooks.compaction,
+            on_retry_wait=runner.hooks.on_retry_wait,
+            on_builtin_call=runner.hooks.on_builtin_call,
+            on_compaction=runner.hooks.on_compaction,
             live_start=runner.hooks.live_start,
             live_output=runner.hooks.live_output,
             approval_form=runner.hooks.approval_form,

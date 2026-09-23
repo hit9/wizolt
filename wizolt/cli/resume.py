@@ -10,7 +10,7 @@ the live path and the replay path can be kept in agreement deliberately, not by 
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from wizolt.base import (
     Json,
@@ -24,7 +24,7 @@ from wizolt.base import (
 )
 from wizolt.image import ImageInputs
 from wizolt.prompts import LIVE_FOLLOWUP_PREFIX
-from wizolt.session import SessionSnapshotCodec, ToolResultRecord
+from wizolt.session import Session, SessionSnapshotCodec, ToolResultRecord
 from wizolt.tools import TOOL_REGISTRY, tool_payload, toolblocks, tooloutput
 from wizolt.tools.toolblocks import ToolDisplay
 
@@ -40,11 +40,17 @@ class ResumeRenderer:
     in step with the live turn. Owns nothing itself; the state it displays is session state.
     """
 
+    TRANSCRIPT_DIFF_LINES: ClassVar[int] = 40
+    # Resume redraws at most this many recent turns. A long session would otherwise flood the
+    # terminal with the whole transcript and push the prompt out of reach; the earlier turns stay
+    # in the session, so the next request still sees them.
+    MAX_REDRAWN_TURNS: ClassVar[int] = 20
+
     def __init__(self, loop: CommandLoop) -> None:
         self.loop = loop
 
     @property
-    def session(self):
+    def session(self) -> Session:
         return self.loop.session
 
     def render_resumed_session(self) -> None:
@@ -74,7 +80,7 @@ class ResumeRenderer:
             diffs = {diff.key: diff.diff for diff in transcript_diffs if diff.key and diff.diff}
             tool_record_index = 0
             turns = TurnBox.group(messages)
-            hidden = len(turns) - self.loop.MAX_REDRAWN_TURNS
+            hidden = len(turns) - self.MAX_REDRAWN_TURNS
             if hidden > 0:
                 # The earliest turns are not redrawn: on a long session they would flood the terminal
                 # and the prompt would scroll out of reach. They stay in the session, so the next
@@ -128,7 +134,7 @@ class ResumeRenderer:
                 # (it carried narration) restarts the silent count, a silent run of four closes
                 # with the same batch rule the live turn drew.
                 if content:
-                    loop._silent_batches = 0
+                    loop.restart_silent_batches()
                 else:
                     loop.count_silent_batch()
             return tool_record_index
@@ -199,9 +205,9 @@ class ResumeRenderer:
         lines = preview.rstrip().splitlines()
         # A long replay would bury the prompt under diffs, so each one is trimmed to a readable
         # window; `/diff` still holds the full text.
-        hidden = max(0, len(lines) - self.loop.TRANSCRIPT_DIFF_LINES)
+        hidden = max(0, len(lines) - self.TRANSCRIPT_DIFF_LINES)
         if hidden:
-            lines = lines[: self.loop.TRANSCRIPT_DIFF_LINES]
+            lines = lines[: self.TRANSCRIPT_DIFF_LINES]
         children = [LogLine("", line, LogRole.DIFF, LogEdge.CONTINUE) for line in lines]
         if hidden:
             children.append(LogLine("", f"… {hidden} more lines, see /diff", LogRole.META, LogEdge.CONTINUE))

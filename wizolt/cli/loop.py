@@ -85,11 +85,6 @@ class CommandLoop:
     HUNK_HEADER_RE: ClassVar[re.Pattern] = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
     HELP_HEADING_RE: ClassVar[re.Pattern] = re.compile(r"^### (.+)$", re.MULTILINE)
     HELP_ENTRY_RE: ClassVar[re.Pattern] = re.compile(r"^- (.+?) — ", re.MULTILINE)
-    TRANSCRIPT_DIFF_LINES: ClassVar[int] = 40
-    # Resume redraws at most this many recent turns. A long session would otherwise flood the
-    # terminal with the whole transcript and push the prompt out of reach; the earlier turns stay
-    # in the session, so the next request still sees them.
-    MAX_REDRAWN_TURNS: ClassVar[int] = 20
     # The backstop on the post-turn index convergence: a tree rewritten as fast as it is indexed
     # keeps the index stale for `/index sync` rather than looping for the rest of the session.
     MAX_INDEX_PASSES: ClassVar[int] = 25
@@ -291,11 +286,6 @@ Full documentation: https://wizolt.readthedocs.io
         hooks.text_viewer = lambda view: approval_text_viewer(self, view)
         hooks.approval_form = self.set_approval_form
         hooks.cancel_input = self.cancel_tool_input
-        # Worker agent lifecycle callbacks: delegate.py hands these to the worker agent, so a
-        # worker's retry backoff, provider-side builtin calls, and compaction show in this TUI.
-        hooks.retry_wait = self.model_retry_wait_status
-        hooks.builtin_call = self.builtin_call_output
-        hooks.compaction = self.automatic_compaction_status
         # The worker's own edits update the index as they happen, but its session is not this one:
         # a delegation hands its return back here, so the parent converges on the same tree.
         hooks.index_freshness = self.schedule_index_freshness
@@ -1045,7 +1035,7 @@ Full documentation: https://wizolt.readthedocs.io
         # just drawn, which already provides the seam.
         if text.strip():
             self.ui.separate()
-        self._silent_batches = 0
+        self.restart_silent_batches()
         # The rule opens the text, so the distance check runs before it is drawn; the blank line
         # above already counts, the text's own rows count toward the next rule.
         if self.ui.rule_due(self.MIN_ROWS_BETWEEN_RULES):
@@ -1061,8 +1051,12 @@ Full documentation: https://wizolt.readthedocs.io
 
     def user_turn_rule(self) -> None:
         """Open a live or restored turn with one separator below the user's message."""
-        self._silent_batches = 0
+        self.restart_silent_batches()
         self.ui.emit_phase_rule()
+
+    def restart_silent_batches(self) -> None:
+        """The agent spoke (narration, a voiced batch, a new user turn): the silent run starts over."""
+        self._silent_batches = 0
 
     def count_silent_batch(self) -> None:
         """Count one tool batch that carried no narration, and draw the batch rule once the run

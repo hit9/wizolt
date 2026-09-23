@@ -329,7 +329,7 @@ class TuiApp:
         self.search_toolbar = SearchToolbar()
         self.app: Application | None = None
         self.on_ready: Callable[[], None] = lambda: None
-        self.input_mode = InputMode.CHAT  # chat | dispatch | running | approval
+        self.input_mode = InputMode.CHAT
         self.quick_hint_focus = -1  # -1 = input focused; 0..n-1 = that quick-input chip
         self._quick_hint_resume_focus = -1  # last picked chip; Tab resumes after it once
         self.quick_hint_picked: list[str] = []  # chips picked into the input, in pick order

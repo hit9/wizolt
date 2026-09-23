@@ -16,7 +16,7 @@ Layers, from highest to lowest:
                    |
                 image.py
                    |
-      base.py  config.py  providers/compat.py  providers/sync.py
+      base.py  hooks.py  config.py  providers/compat.py  providers/sync.py
                    |
             providers/catalog.py
                    |

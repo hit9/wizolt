@@ -110,10 +110,10 @@ async def test_worker_agent_wires_lifecycle_callbacks(tmp_path, monkeypatch):
     runner = _delegate_runner(parent)
     retry_wait = lambda active: None
     builtin_call = lambda label, detail: None
-    compaction = lambda active: None
-    runner.hooks.retry_wait = retry_wait
-    runner.hooks.builtin_call = builtin_call
-    runner.hooks.compaction = compaction
+    compaction = lambda active, error: None
+    runner.hooks.on_retry_wait = retry_wait
+    runner.hooks.on_builtin_call = builtin_call
+    runner.hooks.on_compaction = compaction
 
     await _delegate_call(parent, runner, action="send", order="work")
 
