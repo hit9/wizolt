@@ -937,7 +937,7 @@ Full documentation: https://wizolt.readthedocs.io
             if not remaining:
                 return
             text = remaining
-        emit = self.emit_agent_output if interim else self.emit_agent_answer
+        emit = self.emit_narration if interim else self.emit_final_answer
         self.with_status_paused(lambda: emit(text))
 
     def agent_answer_output(self, text: str = "") -> None:
@@ -978,7 +978,7 @@ Full documentation: https://wizolt.readthedocs.io
                 # Queued, not written here: this runs on the runtime loop (a stream callback), and
                 # printing above the application means suspending it. The turn awaits the writer's
                 # barrier before its tool batch, so the promoted answer is on screen first.
-                self.write_scrollback(lambda: self.with_status_paused(lambda: self.emit_agent_output(promote)))
+                self.write_scrollback(lambda: self.with_status_paused(lambda: self.emit_narration(promote)))
 
     def write_scrollback(self, callback: Callable[[], None]) -> None:
         """Publish one completed write into the runtime's ordered queue, or print it directly.
@@ -1030,7 +1030,7 @@ Full documentation: https://wizolt.readthedocs.io
     # batches, not lines. Fired after the batch's output is out, so a batch is never cut in half.
     TOOL_RUN_RULE_BATCHES: ClassVar[int] = 4
 
-    def emit_agent_output(self, text: str) -> None:
+    def emit_narration(self, text: str) -> None:
         """A turn's interim narration, opened by the same full-width rule the turn ends with minus
         the label: the rule lands above the text, so it announces the new phase instead of closing
         the old one, and the narration's own text is the label, so the rule carries none. A rule
@@ -1050,7 +1050,7 @@ Full documentation: https://wizolt.readthedocs.io
             self.ui.emit_phase_rule()
         self.ui.emit_answer(text, rule=False, indent=TurnBox.CONTENT_LEVEL)
 
-    def emit_agent_answer(self, text: str) -> None:
+    def emit_final_answer(self, text: str) -> None:
         """The turn's final answer: the one block of model text the turn-end rule closes, so it
         takes no phase rule of its own."""
         if text.strip():
@@ -1093,7 +1093,7 @@ Full documentation: https://wizolt.readthedocs.io
     def worker_answer_output(self, text: str) -> None:
         """The worker's interim and final model text, rendered like an agent answer (markdown) rather than the
         plain log lines tool execution prints as."""
-        self.with_status_paused(lambda: self.emit_agent_output(text))
+        self.with_status_paused(lambda: self.emit_narration(text))
 
     def _begin_cli_preview(self) -> None:
         """Pause the status bar if running and start the CLI Bash live-preview line."""

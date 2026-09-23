@@ -180,7 +180,7 @@ def test_take_pending_inputs_batches_plain_followups_before_a_held_input(tmp_pat
 
 async def test_search_sources_footer_is_indented_like_the_answer_above_it(tmp_path, monkeypatch):
     """The footer belongs to the answer, and the engine publishes that answer through
-    emit_agent_output at CONTENT_LEVEL. At column 0 the sources would hang off the left of the
+    emit_narration at CONTENT_LEVEL. At column 0 the sources would hang off the left of the
     text they cite."""
     command_loop = loop(tmp_path)
     command_loop.tui = TuiApp()
@@ -309,7 +309,7 @@ async def test_responses_stream_promotes_text_before_blocked_tool_arguments(tmp_
     def emit_promoted(text):
         timeline.append(("white response", text))
 
-    monkeypatch.setattr(command_loop, "emit_agent_output", emit_promoted)
+    monkeypatch.setattr(command_loop, "emit_narration", emit_promoted)
 
     async def request():
         _, _, content = await command_loop.agent.model.request([{"role": "user", "content": "make the change"}], [])
@@ -365,7 +365,7 @@ async def test_provider_tool_stream_promotes_answer_once_into_tui_scrollback(tmp
     responses = SimpleNamespace(create=async_create(lambda **_params: iter(events)))
     monkeypatch.setattr(command_loop.agent.model, "client", lambda **kwargs: SimpleNamespace(responses=responses))
     emitted = []
-    monkeypatch.setattr(command_loop, "emit_agent_output", emitted.append)
+    monkeypatch.setattr(command_loop, "emit_narration", emitted.append)
 
     _, _, content = await command_loop.agent.model.request([{"role": "user", "content": "search"}], None)
     command_loop.agent_output(content)
@@ -406,7 +406,7 @@ async def test_provider_tool_stream_publishes_only_the_text_written_after_the_se
     responses = SimpleNamespace(create=async_create(lambda **_params: iter(events)))
     monkeypatch.setattr(command_loop.agent.model, "client", lambda **kwargs: SimpleNamespace(responses=responses))
     emitted = []
-    monkeypatch.setattr(command_loop, "emit_agent_output", emitted.append)
+    monkeypatch.setattr(command_loop, "emit_narration", emitted.append)
 
     _, _, content = await command_loop.agent.model.request([{"role": "user", "content": "search"}], None)
     command_loop.agent_output(content)
@@ -443,7 +443,7 @@ async def test_turn_end_answer_drops_the_prefix_already_promoted_into_scrollback
 def test_non_tui_stream_completion_keeps_normal_agent_output(tmp_path, monkeypatch):
     command_loop = loop(tmp_path)
     emitted = []
-    monkeypatch.setattr(command_loop, "emit_agent_output", emitted.append)
+    monkeypatch.setattr(command_loop, "emit_narration", emitted.append)
 
     command_loop.model_stream_output("output_done", "completed response")
     command_loop.agent_output("completed response")
@@ -455,8 +455,8 @@ async def test_stream_promotion_waits_for_the_follow_up_it_answers(tmp_path, mon
     command_loop = loop(tmp_path)
     command_loop.tui = TuiApp()  # no running application: scrollback writes run inline
     timeline = []
-    monkeypatch.setattr(command_loop, "emit_agent_output", lambda text: timeline.append(("assistant", text)))
-    monkeypatch.setattr(command_loop, "emit_agent_answer", lambda text: timeline.append(("assistant", text)))
+    monkeypatch.setattr(command_loop, "emit_narration", lambda text: timeline.append(("assistant", text)))
+    monkeypatch.setattr(command_loop, "emit_final_answer", lambda text: timeline.append(("assistant", text)))
     monkeypatch.setattr(command_loop, "flush_queued_to_log", lambda texts: timeline.append(("user", list(texts))))
     command_loop.agent.on_queue_flush = command_loop.flush_queued_to_log
     command_loop.session.enqueue_user_input("also update the README")

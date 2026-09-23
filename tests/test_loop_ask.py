@@ -231,7 +231,7 @@ async def test_command_loop_indents_intermediate_and_final_messages(tmp_path):
     output = []
     loop = CommandLoop(Agent(session(tmp_path), output_fn=output.append), output_fn=output.append)
 
-    loop.emit_agent_output("First line.\nSecond line.")
+    loop.emit_narration("First line.\nSecond line.")
     loop.ui.emit_answer("Done.\nFinal detail.")
 
     assert output == ["  First line.\n  Second line.", "Done.\nFinal detail."]
@@ -249,7 +249,7 @@ async def test_colored_assistant_and_tool_blocks_each_start_with_one_blank_line(
     first_result = LogBlock.hierarchy(None, [LogLine("stored", "tr.1")])
     second = LogBlock.hierarchy(LogLine("Bash", "second"), [])
 
-    loop.emit_agent_output("Working on it.")
+    loop.emit_narration("Working on it.")
     loop.tool_output(first)
     loop.tool_output(first_result)
     loop.tool_output(second)
@@ -278,7 +278,7 @@ async def test_interim_narration_closes_with_a_phase_rule_when_far_from_last_rul
     loop.ui.rows_since_rule = loop.MIN_ROWS_BETWEEN_RULES - 1
     loop.ui.trailing_blanks = 0
 
-    loop.emit_agent_output("Working on it.")
+    loop.emit_narration("Working on it.")
 
     assert rules == [1]
 
@@ -311,7 +311,7 @@ async def test_interim_narration_skips_the_rule_when_too_close_to_the_last_one(t
     loop.ui.emit_phase_rule = lambda: rules.append(1)
     loop.ui.rows_since_rule = 0
 
-    loop.emit_agent_output("Working on it.")
+    loop.emit_narration("Working on it.")
 
     assert rules == []
 
