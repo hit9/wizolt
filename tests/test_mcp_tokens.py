@@ -2,11 +2,45 @@
 
 import asyncio
 import os
+import subprocess
+import sys
+import textwrap
 import threading
 
 import pytest
 
 from wizolt.mcp import MCPFileTokenStore
+
+
+def test_two_processes_writing_logins_at_once_lose_neither(tmp_path):
+    """Guards the token file across wizolt processes, which share one `tokens.json`.
+
+    Each write reads the file, changes one entry, and replaces it. A lock held only within one
+    process let two processes read the same version, and the later replace dropped the other's
+    login -- a server that then asks to be connected again for no visible reason. Two processes
+    write distinct keys here at the same moment; every key must survive."""
+    path = tmp_path / "tokens.json"
+    start = tmp_path / "go"
+    writer = textwrap.dedent(
+        """
+        import os, sys, time
+        from wizolt.mcp import MCPFileTokenStore
+        path, start, name = sys.argv[1:4]
+        store = MCPFileTokenStore(path)
+        while not os.path.exists(start):
+            time.sleep(0.001)
+        for index in range(60):
+            store._put_sync(f"{name}-{index}", {"access_token": name}, collection="mcp-oauth-token", ttl=None)
+        """
+    )
+    writers = [subprocess.Popen([sys.executable, "-c", writer, str(path), str(start), name]) for name in ("a", "b")]
+    start.touch()
+    for process in writers:
+        assert process.wait(timeout=60) == 0
+
+    stored = MCPFileTokenStore(str(path)).load().get("mcp-oauth-token", {})
+    missing = sorted({f"{name}-{index}" for name in ("a", "b") for index in range(60)} - stored.keys())
+    assert missing == []
 
 
 async def test_async_store_roundtrip_delete_and_server_clear(tmp_path):

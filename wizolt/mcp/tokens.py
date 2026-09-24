@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import fcntl
 import json
 import os
 import threading
@@ -25,6 +26,26 @@ class MCPFileTokenStore:
         with self._locks_guard:
             self.lock = self._locks.setdefault(self.path, threading.Lock())
 
+    @contextlib.contextmanager
+    def transaction(self):
+        """Hold the store for one read-modify-write, against this process and every other.
+
+        Every wizolt process shares one token file, and each write reads it, changes one entry, and
+        replaces it. With only a thread lock, two processes read the same version and the later
+        replace dropped the other's login; both also staged into the same `.tmp`, so one's rename
+        could fail -- failing a login -- or publish the other's half-written file. An exclusive
+        `flock` on a sibling `.lock` file, never unlinked, serializes them. It is held for one small
+        JSON read and write, on a worker thread."""
+        with self.lock:
+            directory = os.path.dirname(self.path)
+            os.makedirs(directory, mode=0o700, exist_ok=True)
+            fd = os.open(self.path + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                yield
+            finally:
+                os.close(fd)  # closing the descriptor releases the flock
+
     def token_key(self, server_url: str, suffix: str) -> str:
         return server_url.rstrip("/") + suffix
 
@@ -37,12 +58,12 @@ class MCPFileTokenStore:
     def _has_server_tokens_sync(self, server_url: str) -> bool:
         key = self.token_key(server_url, "/tokens")
         collection = "mcp-oauth-token"
-        with self.lock:
+        with self.transaction():
             entry = self.load().get(collection, {}).get(key)
             return bool(entry and not self.expired(entry))
 
     def _clear_server_sync(self, server_url: str) -> None:
-        with self.lock:
+        with self.transaction():
             data = self.load()
             for collection, key in (
                 ("mcp-oauth-token", self.token_key(server_url, "/tokens")),
@@ -56,7 +77,7 @@ class MCPFileTokenStore:
         return await run_blocking(lambda: self._get_sync(key, collection=collection or self.DEFAULT_COLLECTION))
 
     def _get_sync(self, key: str, *, collection: str) -> Json | None:
-        with self.lock:
+        with self.transaction():
             data = self.load()
             entry = data.get(collection, {}).get(key)
             if entry is None:
@@ -73,7 +94,7 @@ class MCPFileTokenStore:
 
     def _put_sync(self, key: str, value: Json, *, collection: str, ttl: float | None) -> None:
         expires_at = time.time() + float(ttl) if ttl is not None else None
-        with self.lock:
+        with self.transaction():
             data = self.load()
             data.setdefault(collection, {})[key] = {"value": dict(value), "expires_at": expires_at}
             self.save(data)
@@ -82,7 +103,7 @@ class MCPFileTokenStore:
         return await run_blocking(lambda: self._delete_sync(key, collection=collection or self.DEFAULT_COLLECTION))
 
     def _delete_sync(self, key: str, *, collection: str) -> bool:
-        with self.lock:
+        with self.transaction():
             data = self.load()
             removed = data.get(collection, {}).pop(key, None) is not None
             if removed:

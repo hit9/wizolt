@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Two wizolt sessions saving MCP OAuth logins at the same moment keep both. The shared token file
+  was locked only within one process, so one session's login could be dropped, making that server
+  ask to be connected again, or its save could fail and fail the login.
+
 ## 0.54.0 - 2026-09-24
 
 ### Added
