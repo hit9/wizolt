@@ -32,7 +32,6 @@ Wizolt is the former minacode, which began as the single-file nanocode. The impl
 
 - **Prompt caching:** stable request prefixes help supported providers reuse earlier work, including during compaction. Check reported cache usage with `/status`.
 - **Continuity for long tasks:** automatic compaction carries working notes and recent tool activity forward, with older details available for recall. Resume saved conversation, tool history, and diffs with `-c` or `--resume`.
-- **Code navigation:** find definitions, callers, references, and implementations through a searchable code index.
 - **Precise edits:** target a numbered source view or an exact, unique text match. Stale or ambiguous targets are rejected before the edit is applied.
 - **Review changes in place:** `/diff` shows both the latest round's changes and the net result of the session, without leaving the terminal.
 - **Steer work as it happens:** send a follow-up with `Enter`, hold a separate task with `Tab`, or interrupt with `Ctrl-C` once the draft is empty.
