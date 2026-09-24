@@ -177,6 +177,11 @@ class WizoltOAuth(OAuthClientProvider):
                 outgoing = await flow.asend((yield outgoing))
         except StopAsyncIteration:
             return
+        finally:
+            # httpx2 closes this flow once it has its response, so the SDK's is closed here, on
+            # the same task. Left to the loop's generator finalizer it would release the SDK's
+            # context lock from another task: "The current task is not holding this lock".
+            await flow.aclose()
 
     async def redirect(self, authorization_url: str) -> None:
         if self.callback is None:

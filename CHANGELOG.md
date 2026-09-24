@@ -35,6 +35,9 @@
   rotates refresh tokens connects with its resources intact. Its tool and resource listings used to
   both refresh with the same token, and the second was rejected: the resources went missing, or the
   server failed with "authentication required".
+- Two interactive `/mcp connect` runs for the same OAuth server, say from `/mcp` and a batch
+  connect, log in once. The second used to discard the login the first had just completed and start
+  its own, failing the first as "authentication required".
 
 ## 0.53.0 - 2026-09-23
 

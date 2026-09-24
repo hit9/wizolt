@@ -89,6 +89,9 @@ class MCPManager:
         self._oauth_lock: asyncio.Lock | None = None
         self._oauth_lock_loop: asyncio.AbstractEventLoop | None = None
         self._refresh_gates: dict[str, asyncio.Lock] = {}
+        # Completed interactive logins per server URL, so a connect that waited out another's
+        # login can tell that one happened.
+        self._logins: dict[str, int] = {}
         self._refresh_gates_loop: asyncio.AbstractEventLoop | None = None
         self._discovering_servers: dict[str, int] = {}
         self._discovery_failed = False
@@ -222,11 +225,18 @@ class MCPManager:
                     return self._compact_line("error", name, message)
                 return f"MCP server authentication required: {name}; run /mcp connect {name} interactively"
             if interactive:
+                logins = self._logins.get(config.url, 0)
                 if has_tokens:
                     await self.discover_server(name)
                     if not self._oauth_reauthorization_required(name):
                         return self._connect_result(name, compact=_compact)
                 async with self._oauth_gate():
+                    # Another connect to this server logged in while this one waited for the
+                    # gate: use that login. Clearing it would log in twice, and would pull the
+                    # credentials out from under the other connect's discovery.
+                    if self._logins.get(config.url, 0) != logins:
+                        await self.discover_server(name)
+                        return self._connect_result(name, compact=_compact)
                     # The token and registered OAuth client form one credential set. If
                     # either is rejected, discard both so the new random callback port is
                     # registered together with the replacement token.
@@ -236,6 +246,7 @@ class MCPManager:
                             prefix = f"MCP OAuth authentication failed for {name}: "
                             return self._compact_line("error", name, error.removeprefix(prefix))
                         return error
+                    self._logins[config.url] = self._logins.get(config.url, 0) + 1
         await self.discover_server(name)
         return self._connect_result(name, compact=_compact)
 
