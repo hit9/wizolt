@@ -371,10 +371,17 @@ class StreamingASGITransport(httpx2.AsyncBaseTransport):
 
 class Stall:
     """While set, the MCP endpoint takes requests and never answers them: a server gone quiet, or a
-    network that swallows packets. Auth routes keep answering."""
+    network that swallows packets. Auth routes keep answering. `event_stream_only` stalls just the
+    GET event stream, as Metabase does when that GET arrives alongside `notifications/initialized`."""
 
-    def __init__(self):
-        self.on = False
+    def __init__(self, *, on: bool = False, event_stream_only: bool = False):
+        self.on = on
+        self.event_stream_only = event_stream_only
+
+    def holds(self, scope) -> bool:
+        if not self.on or scope["type"] != "http" or scope["path"] != "/mcp":
+            return False
+        return scope["method"] == "GET" or not self.event_stream_only
 
 
 @contextlib.asynccontextmanager
@@ -387,7 +394,7 @@ async def serve_http(monkeypatch, server: MCPServer, *, seen: list | None = None
     async def recording_app(scope, receive, send):
         if seen is not None and scope["type"] == "http":
             seen.append((scope["path"], {key.decode(): value.decode() for key, value in scope["headers"]}))
-        if stall is not None and stall.on and scope["type"] == "http" and scope["path"] == "/mcp":
+        if stall is not None and stall.holds(scope):
             await asyncio.Event().wait()
         await app(scope, receive, send)
 
@@ -767,6 +774,25 @@ async def test_an_oauth_request_abandoned_mid_flight_leaves_no_error_in_the_loop
         restarted = oauth_session(tmp_path)
         restarted.settings.shell_timeout = 1
         assert await restarted.mcp.connect_server("fixture") == "MCP server error: fixture: MCP call timed out after 1s"
+
+
+async def test_a_server_that_never_answers_the_event_stream_still_serves_calls(tmp_path, monkeypatch, era):
+    """Guards the Metabase hang: with a saved login, connect timed out and showed no link.
+
+    After the legacy handshake the client opens an optional GET event stream. Metabase holds that
+    GET without ever sending headers, and the SDK's OAuth flow held its lock until a response's
+    headers arrived -- so every request after the GET, tools/list first, waited on that lock until
+    the deadline. The GET is now authenticated without the SDK's flow, and never blocks the rest.
+    (A modern server opens no such stream; that era passes either way.)"""
+    s = oauth_session(tmp_path)
+    monkeypatch.setattr(MCPManager, "LOGIN_TIMEOUT", 3)  # a regression fails in seconds, not minutes
+
+    async with login_server(monkeypatch, era, stall=Stall(on=True, event_stream_only=True)):
+        s.settings.shell_timeout = 3
+        assert await s.mcp.connect_server("fixture", interactive=True) == CONNECTED
+        assert "echo: hi" in await s.mcp.call_tool("fixture", "echo", {"text": "hi"})
+        # And with the saved login, the path that failed in the report: no browser, just discovery.
+        assert await oauth_session(tmp_path).mcp.connect_server("fixture") == CONNECTED
 
 
 async def test_overlapping_interactive_connects_log_in_once(tmp_path, monkeypatch, era):

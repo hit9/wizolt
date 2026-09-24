@@ -157,6 +157,20 @@ class WizoltOAuth(OAuthClientProvider):
         return not self.context.is_token_valid() and self.context.can_refresh_token()
 
     async def _auth_flow(self, request: httpx2.Request) -> AsyncGenerator[httpx2.Request, httpx2.Response]:
+        if request.method == "GET":
+            # The transport's GET is the optional event stream for server-initiated messages, and
+            # the SDK's flow holds its lock until a response's headers arrive. A server may hold
+            # that GET without ever answering -- Metabase does, when it arrives beside
+            # `notifications/initialized` -- and every request after it then waited on the lock
+            # until the deadline. The stream gets the current token and nothing else: a refused
+            # GET only means no server-initiated messages, and a POST refreshes or logs in.
+            async with self.context.lock:
+                if not self._initialized:
+                    await self._initialize()
+                if self.context.is_token_valid():
+                    self._add_auth_header(request)
+            yield request
+            return
         async with self.context.lock:
             if not self._initialized:
                 await self._initialize()
