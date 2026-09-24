@@ -20,6 +20,12 @@ divider as normal user messages. A held `↪` starts the next turn on its own, o
 remain retryable internally until that request completes successfully; a failed request moves them
 back below the divider as queued input.
 
+While a [delegated worker](worker.md) is running, `Enter` follows up the **worker** instead: the
+queued text — shown with a `[worker]` marker and its own count on the divider — joins the worker's
+next model step. A follow-up the worker never reached (it answered, failed, or was interrupted
+first) falls back to the parent. `Tab` keeps holding for the parent's next task, and `↑` still
+recalls only the parent's queued messages.
+
 | Key | When | Effect |
 |---|---|---|
 | `Enter` | While the agent works | Queue a follow-up for the next model step |

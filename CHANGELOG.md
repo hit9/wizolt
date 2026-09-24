@@ -18,6 +18,10 @@
   and `Enter` drops a suggestion into the draft at the cursor instead of replacing it — as its own
   line at the end of the input, into the sentence mid-line. A chip with a `✓` has its text in the
   input, and `Enter` on it takes that text back out.
+- Follow-ups typed while a delegation runs now reach the worker: `Enter` queues on the running
+  worker — marked `[worker]` on the divider with its own count — and joins its next model step;
+  anything the worker never read falls back to the parent, while `Tab` keeps holding for the
+  parent's next task.
 
 ## 0.52.0 - 2026-09-23
 

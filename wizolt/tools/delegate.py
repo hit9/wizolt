@@ -104,6 +104,23 @@ def _worker_stream(runner: ToolRunner):
     return stream
 
 
+def _worker_queue_flush(runner: ToolRunner):
+    """Echo follow-ups the worker's request consumed into the parent's log, marked as the worker's.
+
+    The live activity region stops showing a queued item the moment its session commits the
+    request that claimed it; without this the user's typed follow-up would vanish from the TUI
+    once the worker read it, with no line in the transcript saying it ever arrived."""
+
+    flush = runner.hooks.on_queue_flush
+    if flush is None:
+        return None
+
+    def flush_worker(texts: list[str]) -> None:
+        flush([f"[worker] {text}" for text in texts])
+
+    return flush_worker
+
+
 def _wire_worker_agent(agent: Agent, runner: ToolRunner) -> None:
     """Bind a persistent worker agent to the runner driving this send.
 
@@ -132,6 +149,7 @@ def _wire_worker_agent(agent: Agent, runner: ToolRunner) -> None:
             text_viewer=runner.hooks.text_viewer,
             cancel_input=runner.hooks.cancel_input,
             script_status=runner.hooks.script_status,
+            on_queue_flush=_worker_queue_flush(runner),
         )
     )
     agent.tools.input_fn = runner.input_fn
@@ -382,6 +400,7 @@ class DelegateTool(Tool):
         finally:
             # Merge diffs even when interrupted, or the user never sees what the worker did.
             self._merge_diffs(worker, parent, before_diffs)
+            self._return_unclaimed_inputs(worker, parent)
         if failure is not None:
             # Folded to one bounded, quote-free line at the source rather than where it is read.
             # `status` renders it as an attribute of the envelope the model parses, and a provider
@@ -404,6 +423,23 @@ class DelegateTool(Tool):
                 "</Delegate>",
             ]
         )
+
+    @staticmethod
+    def _return_unclaimed_inputs(worker: Session, parent: Session) -> None:
+        """Give a delegation's leftover follow-ups back to the parent queue.
+
+        A follow-up queued for the worker that its turn never reached -- it ended, failed, or was
+        interrupted first -- still deserves an answer, and the parent's running turn is the only
+        one that can take it: claimed there as an ordinary live follow-up, nothing is lost or
+        stranded in a worker that may never be sent to again. Nothing routed to a worker carries
+        attachments or a next-turn hold, so every leftover is plain text."""
+
+        leftover = list(worker.pending_user_inputs)
+        if not leftover:
+            return
+        worker.pending_user_inputs = []
+        for item in leftover:
+            parent.enqueue_user_input(item.text)
 
     def _send_facts(self, worker: Session, started: float, before_diffs: int) -> tuple[float, str, int]:
         """Elapsed time, changed-file list, and context fill for one delegation: the facts the

@@ -287,7 +287,15 @@ class TuiRuntime:
                     if not self.turn_active:
                         self.pending.put_nowait(admitted)
                         continue
-                    self.loop.session.enqueue_user_input(admitted, next_turn=submission.next_turn)
+                    # A live follow-up typed while a delegation is running goes to the worker, whose
+                    # next model request claims it from its own queue; anything else (a Tab-held
+                    # input, a command, an attachment) stays with the parent, which is the only
+                    # turn the runtime owns the boundaries of.
+                    worker = self.loop.session.worker
+                    if worker is not None and worker._active_turn_messages and not submission.next_turn and not admitted.images and not admitted.pastes:
+                        worker.enqueue_user_input(admitted)
+                    else:
+                        self.loop.session.enqueue_user_input(admitted, next_turn=submission.next_turn)
                 uid = await self.loop.session.save_snapshot()
                 if submission.resume_notice:
                     self.loop.resume.emit_resume_line(uid)

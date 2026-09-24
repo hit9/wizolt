@@ -485,3 +485,49 @@ async def test_turn_boundary_orders_slow_running_input_before_new_idle_input(tmp
         consumer.cancel()
         with pytest.raises(asyncio.CancelledError):
             await consumer
+
+
+async def test_running_input_routes_to_an_inflight_worker_delegation(tmp_path, monkeypatch):
+    """Enter during a running delegation queues the follow-up on the worker, whose next request
+    claims it; Tab keeps holding for the parent's next turn, and once the send ends plain
+    follow-ups go back to the parent."""
+    command_loop = loop(tmp_path)
+    command_loop.tui = TuiApp()
+    runtime = TuiRuntime(command_loop)
+    runtime.accepting = True
+    runtime.turn_active = True
+    worker = session(tmp_path)
+    worker.uid = command_loop.session.uid + ".w"
+    command_loop.session.worker = worker
+    worker._active_turn_messages.append({"role": "user", "content": "order"})
+
+    async def admit(value):
+        return value if isinstance(value, UserInput) else UserInput(str(value))
+
+    async def save():
+        return command_loop.session.uid
+
+    monkeypatch.setattr(runtime, "_admit_input", admit)
+    monkeypatch.setattr(command_loop.session, "save_snapshot", save)
+    consumer = asyncio.create_task(runtime._consume_submissions())
+    runtime.submissions_task = consumer
+    try:
+        runtime.submit_running("fix the parser too")
+        await runtime.submissions.join()
+        assert [item.text for item in worker.pending_user_inputs] == ["fix the parser too"]
+        assert command_loop.session.pending_user_inputs == []
+
+        runtime.submit_next_turn(UserInput("hold this for the parent"))  # Tab stays with the parent
+        await runtime.submissions.join()
+        assert [item.text for item in command_loop.session.pending_user_inputs] == ["hold this for the parent"]
+        assert [item.text for item in worker.pending_user_inputs] == ["fix the parser too"]
+
+        worker._active_turn_messages.clear()  # the send ended: plain follow-ups go to the parent again
+        runtime.submit_running("and this one")
+        await runtime.submissions.join()
+        assert [item.text for item in command_loop.session.pending_user_inputs] == ["hold this for the parent", "and this one"]
+        assert [item.text for item in worker.pending_user_inputs] == ["fix the parser too"]
+    finally:
+        consumer.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await consumer

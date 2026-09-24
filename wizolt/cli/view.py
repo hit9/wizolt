@@ -441,7 +441,7 @@ class View:
             *dashes(lead + body_len, trail),
         ]
 
-    def queue_divider_fragments(self, queued: int = 0, next_turn: int = 0) -> StyleAndTextTuples:
+    def queue_divider_fragments(self, queued: int = 0, next_turn: int = 0, worker_count: int = 0) -> StyleAndTextTuples:
         tui = self.loop.tui
         status = tui.status_label if tui is not None and tui.status_label else "working"
         if status in {"working", "retrying", "compacting context"}:
@@ -473,6 +473,10 @@ class View:
             # Held-back inputs are invisible to the running turn, so they must not inflate the
             # count of follow-ups waiting for the next model step.
             counts.append(f"{next_turn} next turn")
+        if worker_count:
+            # Follow-ups aimed at the delegating worker: a separate count, not part of `queued`,
+            # so the label says who they are waiting for.
+            counts.append(f"{worker_count} worker")
         if counts:
             label = f"{label} [ {' · '.join(counts)} ]"
         prefix = self.waiting_pulse_fragments()
@@ -484,13 +488,19 @@ class View:
 
     def followup_fragments(self) -> tuple[StyleAndTextTuples, StyleAndTextTuples]:
         pending = list(self.loop.session.pending_user_inputs)
+        worker_session = self.loop.session.worker
+        worker_pending = list(worker_session.pending_user_inputs) if worker_session is not None else []
 
-        def render(items: list[QueuedInput], marker: str, marker_style: str) -> StyleAndTextTuples:
+        def render(items: list[QueuedInput], marker: str, marker_style: str, owner: str = "") -> StyleAndTextTuples:
             fragments: StyleAndTextTuples = []
             for item in items:
                 # A held-back input starts the next turn, not this one; its own marker and label
                 # keep the two queues apart on screen.
                 item_marker, item_style = ("↪ next turn · ", "class:muted") if item.next_turn else (marker, marker_style)
+                if owner:
+                    # A follow-up queued for the delegating worker: the owner prefix is what says
+                    # which side of the handoff the input is waiting on.
+                    item_marker, item_style = owner + item_marker, "class:divider.worker"
                 indent = " " * get_cwidth(item_marker)
                 for index, line in enumerate(item.text.splitlines()):
                     fragments.extend([("", "\n"), (item_style, item_marker if index == 0 else indent), (UiPrinter.user_log_style(), line)])
@@ -498,18 +508,22 @@ class View:
 
         sent = [item for item in pending if item.inflight]
         queued = [item for item in pending if not item.inflight]
-        transcript = render(sent, UiPrinter.USER_LOG_PREFIX, "class:prompt")
+        worker_sent = [item for item in worker_pending if item.inflight]
+        worker_queued = [item for item in worker_pending if not item.inflight]
+        transcript = [*render(sent, UiPrinter.USER_LOG_PREFIX, "class:prompt"), *render(worker_sent, UiPrinter.USER_LOG_PREFIX, "class:prompt", "[worker] ")]
         # The divider is a standing boundary for the whole turn. Only messages that have not entered
         # a model request remain below it; sent messages render above it until the request commits them.
         waiting = self.queue_divider_fragments(
             sum(1 for item in queued if not item.next_turn),
             sum(1 for item in queued if item.next_turn),
+            len(worker_queued),
         )
-        if queued:
+        if queued or worker_queued:
             # A blank row lifts the queued block off the divider, so the queue reads as its own
             # region below the boundary instead of a list glued to the divider's label.
             waiting.append(("", "\n"))
         waiting.extend(render(queued, "+ ", UiPrinter.user_log_style()))
+        waiting.extend(render(worker_queued, "+ ", UiPrinter.user_log_style(), "[worker] "))
         return transcript, waiting
 
     def tui_activity_fragments(self) -> StyleAndTextTuples:

@@ -276,3 +276,63 @@ async def test_send_rejects_worker_calls_to_excluded_tools(tmp_path, monkeypatch
     assert "NextHints is not available in this session" in second
     assert "Cannot read image" in str(model.requests[2])
     assert "done" in result
+
+
+class _QueueingModel(FakeModelClient):
+    """Enqueues one follow-up into the worker's queue on its first request: the user typing
+    mid-delegation, at the only moment the runtime would."""
+
+    def __init__(self, script, worker_of):
+        super().__init__(script)
+        self._worker_of = worker_of
+
+    async def request(self, messages, request_tools=None):
+        if not self.requests and self._worker_of() is not None:
+            self._worker_of().enqueue_user_input("also check the tests")
+        return await super().request(messages, request_tools)
+
+
+async def test_delegate_send_claims_a_followup_queued_mid_run(tmp_path, monkeypatch):
+    """A follow-up queued while the delegation ran reaches the worker's own next model request,
+    and the flush echo marks it as the worker's so the transcript says who read it."""
+    from wizolt.base import ToolCall
+    from wizolt.context import ContextManager
+    from wizolt.runner import ToolRunner
+
+    parent = _delegate_session(tmp_path)
+    note = tmp_path / "note.txt"
+    note.write_text("worker input")
+    model = _QueueingModel(
+        [
+            ({"role": "assistant", "content": ""}, [ToolCall("r1", "Read", [str(note)])], ""),
+            ({"role": "assistant", "content": "done"}, [], "done"),
+        ],
+        lambda: parent.worker,
+    )
+    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    flushed = []
+    runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
+    runner.hooks.on_queue_flush = flushed.append
+    await _delegate_call(parent, runner, action="send", order="read the note")
+
+    second = str(model.requests[1])
+    assert "also check the tests" in second and "Live follow-up" in second  # the worker's request carried it
+    assert flushed == [["[worker] also check the tests"]]  # the echo names the side that read it
+    assert parent.pending_user_inputs == []  # nothing fell back: the worker consumed the follow-up
+
+
+async def test_delegate_send_returns_unclaimed_followups_to_the_parent(tmp_path, monkeypatch):
+    """A follow-up that arrived after the worker's last request is not stranded: when the send
+    ends it falls back to the parent's queue as an ordinary live follow-up."""
+    from wizolt.context import ContextManager
+    from wizolt.runner import ToolRunner
+
+    parent = _delegate_session(tmp_path)
+    model = _QueueingModel([({"role": "assistant", "content": "done"}, [], "done")], lambda: parent.worker)
+    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
+    await _delegate_call(parent, runner, action="send", order="answer at once")
+
+    assert parent.worker is not None
+    assert parent.worker.pending_user_inputs == []
+    assert [item.text for item in parent.pending_user_inputs] == ["also check the tests"]
