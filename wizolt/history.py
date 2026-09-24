@@ -37,6 +37,12 @@ _EXCERPT_ROWS_NOTE = f"Rows: the text as stored at compaction, without message l
 _EXCERPT_CUT_NOTE = "Excerpt: middle omitted at compaction (~{tokens} tokens); original text only in the session log."
 
 
+def _header(*fields: str) -> str:
+    """Header fields joined by ` · `, skipping the ones an older build never recorded -- an empty
+    timestamp or a zero message count would read as a fact rather than as unknown."""
+    return " · ".join(field for field in fields if field)
+
+
 class SegmentDocument:
     """One `history.N.md`: its header, its summary, and the evicted span as rows.
 
@@ -56,7 +62,7 @@ class SegmentDocument:
 
     def render(self) -> str:
         segment = self._segment
-        rows = [f"# {segment.export_name.removesuffix('.md')} · {segment.created_at} · {segment.title}"]
+        rows = ["# " + _header(segment.export_name.removesuffix(".md"), segment.created_at, segment.title)]
         if self._conversation is None:
             rows.extend(self._excerpt_notes())
             body_title, body = "## Excerpt", self._wrap_rows(segment.text)
@@ -150,7 +156,7 @@ class HistoryArchive:
     def _index_entry(segment: HistorySegment) -> str:
         """What `history.md` gains for one segment: what it is, and what it settled."""
         name = segment.export_name
-        rows = [f"{name} · {segment.created_at} · {segment.messages} msgs · {segment.title}"]
+        rows = [_header(name, segment.created_at, f"{segment.messages} msgs" if segment.messages else "", segment.title)]
         if summary := " ".join(segment.summary.split()):
             if len(summary) > SUMMARY_CHARS:
                 summary = summary[:SUMMARY_CHARS] + f"… [+{len(summary) - SUMMARY_CHARS} chars; full summary in {name}]"

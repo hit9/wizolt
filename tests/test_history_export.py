@@ -183,7 +183,7 @@ def test_a_resumed_segments_excerpt_is_exported_by_the_next_compaction(tmp_path)
     assert any(row.startswith('<bounded_output omitted="middle"') for row in rows)  # the old markers survive
     # Backfilled segments are indexed like new ones, oldest first.
     index = read(assets, "history.md")
-    assert index.index("history.1.md · 2026-08-01T09:00:00+08:00 · 0 msgs · old span") < index.index("history.2.md ·")
+    assert index.index("history.1.md · 2026-08-01T09:00:00+08:00 · old span") < index.index("history.2.md ·")
     assert "history.1.md | what it settled" in index
 
 
@@ -196,6 +196,9 @@ def test_an_old_segment_stored_whole_claims_nothing_missing(tmp_path):
     text = read(s.images.assets_dir(), "history.1.md")
     assert "omitted" not in text
     assert "all of it" in text.splitlines()
+    # An older build recorded no timestamp or message count: they are left out, not shown as empty or 0.
+    assert text.splitlines()[0] == "# history.1 · short span"
+    assert "history.1.md · short span" in read(s.images.assets_dir(), "history.md").splitlines()
 
 
 def test_a_segment_without_a_summary_indexes_no_empty_summary_row(tmp_path):
