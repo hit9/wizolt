@@ -567,12 +567,12 @@ def test_leading_slash_and_command_rows_render_in_the_same_column(monkeypatch):
     def drive(pipe_input):
         wait_until(lambda: app.app is not None and app.app.is_running)
         pipe_input.send_text("/")
-        wait_until(lambda: any("/help" in frame for frame in frames))
-        frame = next(frame for frame in reversed(frames) if "/help" in frame)
+        wait_until(lambda: any("/status" in frame for frame in frames))
+        frame = next(frame for frame in reversed(frames) if "/status" in frame)
         lines = frame.splitlines()
         input_line = next(line for line in lines if line.startswith("> "))
-        help_line = next(line for line in lines if "/help" in line)
-        assert help_line.index("/help") == input_line.index("/")
+        command_line = next(line for line in lines if "/status" in line)
+        assert command_line.index("/status") == input_line.index("/")
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive, output=output, after_render=after_render)

@@ -5,7 +5,7 @@
 **`/status`** — Shows everything about the runtime at a glance: workspace path,
 session id, active provider and model, calculated compaction-budget fill percentage,
 conversation history, prompt-cache hit ratio, the AGENTS.md state, background jobs, and whether an
-update is available.
+update is available. Its last row links to the [documentation](https://wizolt.readthedocs.io).
 
 ```{figure} ../snapshots/wizolt-status-command.png
 :alt: The /status command showing workspace, session, provider, and context state
@@ -122,7 +122,7 @@ and, where the values are a fixed set, the values. Example: `/set provider.respo
 ## While a turn runs
 
 Commands that only read the session answer without interrupting it: `/status`, `/ps`, `/diff`,
-`/skills`, `/help`, `/config`, `/catalog`, and `/mcp`'s tool list, along with the `/yolo` toggle.
+`/skills`, `/config`, `/catalog`, and `/mcp`'s tool list, along with the `/yolo` toggle.
 Any other one waits for the turn, and `/resend` is the one that interrupts the request itself.
 
 **`/resend`** — Cancel and re-send the model request in flight, without restarting the turn.
@@ -145,7 +145,8 @@ same, with their attempt and reason, such as `retrying 2/6 · timeout`:
 
 ## Help and exit
 
-**`/help`** — Show the built-in command and tool reference.
+The prompt lists and completes every command as you type, and `/status` ends with the link to the
+[documentation](https://wizolt.readthedocs.io).
 
 **`/exit`, `/quit`** — Leave wizolt. Your session is saved automatically and can
 be resumed with `-c` or `--resume`.

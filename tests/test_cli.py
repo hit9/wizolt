@@ -8,7 +8,6 @@ import pytest
 
 import wizolt
 import wizolt.__main__ as cli
-from wizolt.cli import CommandLoop
 
 
 def test_package_root_exposes_only_version():
@@ -32,10 +31,6 @@ def test_cli_help_links_docs(capsys):
     with pytest.raises(SystemExit):
         cli.main(["--help"])
     assert "https://wizolt.readthedocs.io" in capsys.readouterr().out
-
-
-def test_loop_help_links_docs():
-    assert "https://wizolt.readthedocs.io" in CommandLoop.HELP
 
 
 @pytest.mark.parametrize(("created", "prefix"), [(True, "Created"), (False, "Exists")])
@@ -119,7 +114,7 @@ def test_interactive_banner_precedes_session_and_ui_imports(monkeypatch):
     monkeypatch.setattr(cli, "CommandLoop", FakeLoop)
 
     assert cli.main([]) == 0
-    banner = f"wizolt {cli.__version__}. /help for commands.\n\n"
+    banner = f"wizolt {cli.__version__}. Type / for commands.\n\n"
     # The starting line is on screen at once, but only the banner is handed over for recording.
     assert calls == [("configure", banner + cli.STARTING_LINE), ("run", False, banner)]
     assert stdout.getvalue() == banner + cli.STARTING_LINE

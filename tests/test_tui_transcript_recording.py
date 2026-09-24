@@ -45,9 +45,9 @@ def recorded():
 
 def test_output_printed_before_the_app_starts_is_recorded(recorded):
     printer, tui = recorded
-    printer.emit("wizolt 0.0.0. /help for commands.")
+    printer.emit("wizolt 0.0.0. Type / for commands.")
 
-    assert any("/help for commands." in text for text in tui.scrollback.transcript), (
+    assert any("Type / for commands." in text for text in tui.scrollback.transcript), (
         "the startup banner never reached the transcript, so a width change would erase it"
     )
 

@@ -84,8 +84,8 @@ needs, asks before it changes anything, and shows you what it did.
    Commands work the same way.
 4. **It reports.** The answer lands in your scrollback, and the prompt returns.
 
-From here: `/diff` reviews everything changed so far, `/status` shows where the context stands,
-and `/help` lists every command. Your work is saved as you go — close the terminal and
+From here: `/diff` reviews everything changed so far, and `/status` shows where the context stands
+and links to the full documentation. Your work is saved as you go — close the terminal and
 `wizolt -c` picks the session back up.
 
 ## Command-line flags

@@ -20,6 +20,12 @@
   cites it on the worker's last answer line, and a call that printed nothing leaves no row under the
   row that names it.
 
+### Removed
+
+- `/help` is gone. The command reference lives in the documentation (https://wizolt.readthedocs.io),
+  which `/status` now ends with, and the prompt completes every command as you type. The startup
+  line points at the prompt (`Type / for commands.`) instead of the removed command.
+
 ## 0.53.0 - 2026-09-23
 
 ### Changed

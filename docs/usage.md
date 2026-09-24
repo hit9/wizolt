@@ -131,7 +131,7 @@ Type `/` commands at the prompt to inspect state, switch models, manage the
 session, or configure runtime behavior on the fly. As you type, the first match is highlighted,
 so `/st` and `Enter` runs `/status`. A command that needs an argument, such as `/set`, fills in
 instead and lists its arguments, down to the value. See the
-[command reference](commands.md) for the full list, or run `/help` in a session.
+[command reference](commands.md) for the full list.
 
 ## Mentions
 

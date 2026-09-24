@@ -188,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
     banner_preprinted = sys.stdin.isatty() and sys.stdout.isatty()
     preprinted_output = ""
     if banner_preprinted:
-        preprinted_output = f"wizolt {_cli.__version__}. /help for commands.\n\n"
+        preprinted_output = f"wizolt {_cli.__version__}. Type / for commands.\n\n"
         # Only the banner is recorded: the starting line lives where the app will draw, and a
         # width-change replay must never bring it back.
         print(preprinted_output + STARTING_LINE, end="", flush=True)

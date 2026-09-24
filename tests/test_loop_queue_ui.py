@@ -205,7 +205,7 @@ async def test_queue_command_runs_readonly(tmp_path):
     assert out and not any("unavailable" in t for t in out)
 
 
-@pytest.mark.parametrize("text", ["/help", "/config", "/catalog", "/catalog status"])
+@pytest.mark.parametrize("text", ["/config", "/catalog", "/catalog status"])
 async def test_queue_command_runs_the_other_read_only_reports(tmp_path, text):
     """Reading how the session is set up costs the running turn nothing, so it needs no interrupt."""
     s = session(tmp_path)
