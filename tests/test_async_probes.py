@@ -38,6 +38,10 @@ def build():
 
 
 async def main():
+    # Debug mode also logs any task step over loop.slow_callback_duration (default 0.1s) as "took
+    # N seconds". On a loaded CI runner a healthy step is preempted that long, so raise the bar:
+    # the exit noise this probe asserts on (destroyed-pending tasks) does not come from the timer.
+    asyncio.get_running_loop().slow_callback_duration = 5.0
     session = build()
     agent = Agent(session, output_fn=lambda text: None)
 
@@ -118,6 +122,7 @@ TOOL_REGISTRY["SlowMutation"] = SlowMutation
 
 
 async def main():
+    asyncio.get_running_loop().slow_callback_duration = 5.0
     tmp = tempfile.mkdtemp()
     session = Session(cwd=tmp, config=Config.from_dict({"paths": {"data_dir": tmp + "/data"}}))
     bootstrap_features(session)
