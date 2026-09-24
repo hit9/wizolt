@@ -77,12 +77,14 @@ async def test_tool_runner_refuses_with_direct_reason_input(tmp_path):
     assert "not now" in s.tool_errors[0].error
 
 
-async def test_recall_tool_runner_does_not_create_new_result_keys(tmp_path):
+async def test_unstored_tool_result_does_not_create_a_new_key(tmp_path):
+    """A tool whose output the runner does not retain (`STORES_RESULT = False`) answers the model
+    without spending a tr.N, so a batch of them cannot push the retained window around."""
     s = session(tmp_path)
     key = s.store_tool_result("Read", ["a.txt"], "result")
     runner = ToolRunner(s, ContextManager(s), output_fn=lambda text: None)
 
-    await runner.run([call("Recall", [key])])
+    await runner.run([call("Context", [{"action": "remaining"}])])
     assert [record.key for record in s.tool_records] == [key]
 
 

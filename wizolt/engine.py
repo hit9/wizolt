@@ -97,6 +97,10 @@ class Agent:
         # Set when the last run ended because max_steps ran out (not because the model answered).
         # Runtime fact for callers like the Delegate tool; never derived from the answer's wording.
         self.stopped_at_max_steps = False
+        # Live follow-ups the last run committed into a request the provider rejected: read into
+        # the failed turn, never answered. A follow-up an accepted request carried is answered by
+        # that request's reply and never lands here. The Delegate tool hands these to the parent.
+        self.unanswered_inputs: list[str] = []
 
     def use_hooks(self, hooks: UiHooks) -> None:
         """Install the presentation seam on this agent and every layer it owns.
@@ -165,6 +169,7 @@ class Agent:
         if isinstance(user_input, UserInput) and user_input.images:
             user_input = await self.session.images.admit(user_input)
         self.stopped_at_max_steps = False
+        self.unanswered_inputs = []
         self.turn_sources = []
         self.session.clear_quick_hints()  # a new turn invalidates whatever the previous turn offered
         self.session.state.round_count += 1
@@ -333,6 +338,7 @@ class Agent:
                         failed_request.pending,
                         failed_request.turn_messages,
                     )
+                    self.unanswered_inputs = [item.text for item in failed_request.pending]
                 self.session.images.settle_failed_messages(turn_messages)
             self.session.release_user_inputs()
             # A turn that died from an error still has to leave a legal, marked history: tool

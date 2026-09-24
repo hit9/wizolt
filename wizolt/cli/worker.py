@@ -97,7 +97,7 @@ class WorkerFlow:
         usage = worker.usage
         percent = min(100, usage.last_prompt_tokens * 100 // usage.last_prompt_budget) if usage.last_prompt_budget else worker.state.context_percent
         provider = worker.config.provider
-        state = "delegating" if worker._active_turn_messages else "idle"
+        state = "delegating" if self.loop.session.delegating_worker is not None else "idle"
         return "\n".join(
             [
                 f"worker: {worker.config.active_provider}/{provider.model or '(no model)'}",

@@ -15,8 +15,8 @@
 
 wizolt works in your terminal: you describe a task, and it reads code, edits files, runs
 commands, and reports back. It keeps <span class="marker">stable prompt prefixes</span> so
-supported providers can reuse work, maintains a searchable code index, runs background jobs,
-tracks its own working notes, and <span class="marker">resumes where you left off</span>.
+supported providers can reuse work, runs background jobs, tracks its own working notes, and
+<span class="marker">resumes where you left off</span>.
 
 Wizolt is the former minacode, which began as the single-file nanocode. The project history remains
 continuous across those names.

@@ -57,7 +57,6 @@ from wizolt.providers.schema import CatalogSyncError
 from wizolt.providers.sync import CATALOG_URL
 from wizolt.render import markdown_table, progress_bar
 from wizolt.session import Session, SessionBusyError, SessionEntry, SessionLease, SessionSnapshotStore
-from wizolt.tools import CodeIndex
 from wizolt.tui import InputMode
 
 if TYPE_CHECKING:
@@ -224,17 +223,6 @@ def help(loop: CommandLoop, args: str) -> str:
 def status(loop: CommandLoop, args: str) -> str:
     usage = loop.session.usage
     context_tokens, context_budget, context_percent = _context_reading(loop)
-    index = CodeIndex(loop.session)
-    index_status, index_message = index.status(check=False)
-    loop.schedule_index_freshness()
-    if loop.session.state.code_index_refreshing:
-        index_status, index_message = loop.session.state.code_index_notice or "syncing", ""
-    elif loop.session.state.code_index_error:
-        index_status, index_message = "error", loop.session.state.code_index_error
-    if index_status in {"missing", "unavailable", "error"} and "run /index" not in index_message:
-        index_message = (index_message + "; " if index_message else "") + "run /index"
-    elif index_status == "stale" and "run /index" not in index_message:
-        index_message = (index_message + "; " if index_message else "") + "run /index or wait for auto update"
     connected_mcp = sum(loop.session.mcp.connected(config.name) for config in loop.session.mcp.parse_configs()) if loop.session.mcp else 0
     activity: list[tuple[str, int | str]] = [
         ("history", len(loop.session.messages)),
@@ -261,8 +249,6 @@ def status(loop: CommandLoop, args: str) -> str:
     # The runtime switches get a row each: joined into one, they were the row that wrapped first.
     rows.append(("yolo", "on" if loop.session.settings.yolo else "off"))
     rows.append(("steps", str(loop.session.settings.max_steps)))
-    # Code, because the message can be raw error text that Markdown would otherwise reinterpret.
-    rows.append(("index", "`" + CodeIndex.status_line(index_status, index_message).removeprefix("index").strip() + "`"))
     info = loop.session.system_info
     global_path = info.agents_md_global_path if info is not None else ""
     global_exists = bool(global_path and os.path.isfile(global_path))
@@ -747,7 +733,7 @@ async def compaction_log(loop: CommandLoop, args: str) -> str | LogBlock | None:
     and naming one segment prints its whole summary, which the list can only show a title of.
 
     Neither form prints the stored excerpt. It is the raw conversation the summary already stands
-    for, kept for the model to reach through RecallContext; paging it past a reader hides the one
+    for, exported as history.N.md for the model to grep; paging it past a reader hides the one
     line they came for."""
     key = args.strip()
     segments = loop.session.history
@@ -872,18 +858,6 @@ async def context_command(loop: CommandLoop, args: str) -> str:
         f"Context {percent}% used: ~{Text.abbreviate_count(tokens)} / "
         f"{Text.abbreviate_count(budget)} tokens, ~{Text.abbreviate_count(max(0, budget - tokens))} left"
     )
-
-
-async def index(loop: CommandLoop, args: str) -> str:
-    """`/index`: sync or rebuild the symbol index without freezing the prompt behind it."""
-    value = args.strip()
-    if value not in {"", "force"}:
-        return "Usage: /index [force]"
-    try:
-        loop.status_bar.start()
-        return await CodeIndex(loop.session).sync(force=value == "force")
-    finally:
-        loop.status_bar.stop()
 
 
 async def provider(loop: CommandLoop, args: str) -> str:

@@ -1,271 +1,13 @@
-"""Memory tools: history recall, context recall, and durable notes."""
+"""Memory tools: durable notes and context introspection."""
 
 from __future__ import annotations
 
 import json
-import re
 from typing import ClassVar, cast
 
-from wizolt.base import Json, ToolArgs, ToolError
-from wizolt.session import AgentState, HistorySegment, PlanItem
+from wizolt.base import Json, ToolError
+from wizolt.session import AgentState, PlanItem
 from wizolt.tools.base import Tool
-
-
-class RecallTool(Tool):
-    NAME = "Recall"
-    _KEY_RE: ClassVar[re.Pattern] = re.compile(r"tr\.\d+")
-    DESCRIPTION = (
-        "Recall stored tool output by tr.N, optionally slicing inclusive output lines. A bounded_output marker names a file containing any truncated remainder."
-    )
-    STORES_RESULT = False
-
-    @classmethod
-    def params_schema(cls) -> Json:
-        # fmt: off
-        return cls.object_schema({
-            "keys": {"type": "array", "items": {"type": "string", "pattern": "^tr\\.\\d+$"}, "minItems": 1, "description": 'Stored result keys to recall, e.g. ["tr.3","tr.5"]'},
-            "ranges": {"type": "array", "items": cls.RANGE_SCHEMA, "minItems": 1, "description": "Optional 1-based [start,end] output-line slices, inclusive of both ends, to limit recalled context"},
-        }, ["keys"])
-        # fmt: on
-
-    @classmethod
-    def payload_args(cls, payload: Json) -> ToolArgs:
-        return [{"keys": payload.get("keys", []), **({"ranges": payload["ranges"]} if "ranges" in payload else {})}]
-
-    def call(self) -> str:
-        requests = self.requests()
-        if not requests:
-            raise ToolError("Recall requires at least one key")
-        chunks = ["<RecallToolResult>"]
-        for key, ranges in requests:
-            value = self.session.tool_results.get(key)
-            if value is None:
-                chunks.append(f"* {key}: missing")
-                continue
-            chunks.append(f"<Result key={json.dumps(key)}>")
-            chunks.append(self.slice(value, ranges).rstrip())
-            chunks.append("</Result>")
-        chunks.append("</RecallToolResult>")
-        return "\n".join(chunks)
-
-    def short_args(self) -> list[str]:
-        rows = []
-        for key, ranges in self.requests():
-            row = key
-            if ranges:
-                row += " " + ",".join(f"{start}:{end}" for start, end in ranges)
-            rows.append(row)
-        return ["; ".join(rows)]
-
-    def requests(self) -> list[tuple[str, tuple[tuple[int, int], ...]]]:
-        payload = self.single_dict_arg("Recall requires keys")
-        if unexpected := sorted(set(payload) - {"keys", "ranges"}):
-            raise ToolError("Recall unexpected field: " + ", ".join(unexpected))
-        raw_keys = payload.get("keys")
-        if not isinstance(raw_keys, list) or not raw_keys:
-            raise ToolError("Recall requires keys")
-        ranges = self.parse_ranges(payload)
-        keys = []
-        for item in raw_keys:
-            key = str(item).strip()
-            if not self._KEY_RE.fullmatch(key):
-                raise ToolError("Recall key must look like tr.N")
-            keys.append(key)
-        return list(dict.fromkeys((key, ranges) for key in keys))
-
-    def parse_ranges(self, payload: Json) -> tuple[tuple[int, int], ...]:
-        raw = payload.get("ranges")
-        if raw is None:
-            return ()
-        if not isinstance(raw, list) or not raw:
-            raise ToolError("Recall ranges must be a non-empty array")
-        return tuple(self.line_range(item, "Recall range") for item in raw)
-
-    @staticmethod
-    def slice(value: str, ranges: tuple[tuple[int, int], ...]) -> str:
-        if not ranges:
-            return value
-        lines = value.splitlines()
-        # Ranges are 1-based and inclusive, like every other line range the model works with.
-        return "\n".join("\n".join(lines[max(start, 1) - 1 : end]) for start, end in ranges if end >= max(start, 1))
-
-
-class RecallContextTool(Tool):
-    NAME = "RecallContext"
-    _KEY_RE: ClassVar[re.Pattern] = re.compile(r"seg\.\d+")
-    DESCRIPTION = "List compacted history segments, retrieve them by seg.N key, or regex-search their titles and text; query alternation A|B|C is allowed."
-    DEFAULT_LIMIT = 20
-    MAX_LIMIT = 100
-    MAX_QUERY_LENGTH = 500
-    EXAMPLE = (
-        'Retrieve segments. Example: {"action":"get","keys":["seg.1","seg.2"]}',
-        'Search segments. Example: {"action":"search","query":"cache prefix|task memory","limit":10}',
-    )
-    STORES_RESULT = False
-
-    @classmethod
-    def params_schema(cls) -> Json:
-        # fmt: off
-        return cls.object_schema({
-            "action": {"type": "string", "enum": ["list", "get", "search"]},
-            "keys": {"type": "array", "items": {"type": "string", "pattern": "^seg\\.\\d+$"}, "minItems": 1, "description": "Keys to get or search within"},
-            "query": {"type": "string", "maxLength": cls.MAX_QUERY_LENGTH, "description": "Regex over segment titles and text"},
-            "case_sensitive": {"type": "boolean", "description": "Case-sensitive search; default false"},
-            "limit": {"type": "integer", "minimum": 1, "maximum": cls.MAX_LIMIT, "description": f"Result limit; default {cls.DEFAULT_LIMIT}"},
-            "before": {"type": "string", "pattern": "^seg\\.\\d+$", "description": "List segments older than this key"},
-        })
-        # fmt: on
-
-    @classmethod
-    def payload_args(cls, payload: Json) -> ToolArgs:
-        return [payload]
-
-    def call(self) -> str:
-        request = self.request()
-        if request["action"] == "list":
-            return self.list_segments(request)
-        if request["action"] == "search":
-            return self.search(request)
-        keys = request["keys"]
-        segments = {segment.key: segment for segment in self.session.history}
-        chunks = ["<RecallContextResult>"]
-        for key in keys:
-            segment = segments.get(key)
-            if segment is None:
-                chunks.append(f"* {key}: {self.missing_reason(key)}")
-                continue
-            chunks.append(f"<Segment key={json.dumps(key)} title={json.dumps(segment.title)}>")
-            # The checkpoint summary as it stood at this compaction, which is not the one in
-            # context: each compaction folds the previous summary into the next, so the live one
-            # has been through a pass per compaction, while this copy has been through exactly
-            # one. Empty for a segment trimmed without a model reply.
-            if segment.summary:
-                chunks.append(f"<SummaryAtCompaction>\n{segment.summary.rstrip()}\n</SummaryAtCompaction>")
-            chunks.append(segment.text.rstrip())
-            chunks.append("</Segment>")
-        chunks.append("</RecallContextResult>")
-        return "\n".join(chunks)
-
-    def short_args(self) -> list[str]:
-        request = self.request()
-        if request["action"] == "list":
-            suffix = f" before {request['before']}" if request["before"] else ""
-            return [f"list {request['limit']}{suffix}"]
-        if request["action"] == "search":
-            scope = " in " + ",".join(request["keys"]) if request["keys"] else ""
-            return [json.dumps(request["query"], ensure_ascii=False) + scope]
-        return ["; ".join(request["keys"])]
-
-    def request(self) -> Json:
-        payload = {key: value for key, value in self.single_dict_arg("RecallContext requires an action, keys, or query").items() if value is not None}
-        if unexpected := sorted(set(payload) - {"action", "keys", "query", "case_sensitive", "limit", "before"}):
-            raise ToolError("RecallContext unexpected field: " + ", ".join(unexpected))
-        if payload.get("keys") == []:
-            payload.pop("keys")
-        if isinstance(payload.get("query"), str) and not payload["query"].strip():
-            payload.pop("query")
-        action = payload.get("action")
-        if action is None:
-            action = "search" if payload.get("query") is not None else "get" if payload.get("keys") is not None else "list"
-        if action not in {"list", "get", "search"}:
-            raise ToolError("RecallContext action must be list, get, or search")
-        if action != "search" and payload.get("case_sensitive") is False:
-            payload.pop("case_sensitive")
-        if action == "get" and payload.get("limit") == self.DEFAULT_LIMIT:
-            payload.pop("limit")
-        raw_keys = payload.get("keys")
-        if raw_keys is not None and (not isinstance(raw_keys, list) or not raw_keys):
-            raise ToolError("RecallContext keys must be a non-empty array")
-        keys = []
-        for item in raw_keys or []:
-            key = str(item).strip()
-            if not self._KEY_RE.fullmatch(key):
-                raise ToolError("RecallContext key must look like seg.N")
-            keys.append(key)
-        query = payload.get("query")
-        if query is not None and (not isinstance(query, str) or not query.strip()):
-            raise ToolError("RecallContext query must be a non-empty regex")
-        query = query.strip() if isinstance(query, str) else ""
-        if len(query) > self.MAX_QUERY_LENGTH:
-            raise ToolError(f"RecallContext query must be at most {self.MAX_QUERY_LENGTH} characters")
-        case_sensitive = payload.get("case_sensitive", False)
-        if not isinstance(case_sensitive, bool):
-            raise ToolError("RecallContext case_sensitive must be boolean")
-        limit = payload.get("limit", self.DEFAULT_LIMIT)
-        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1 or limit > self.MAX_LIMIT:
-            raise ToolError(f"RecallContext limit must be 1..{self.MAX_LIMIT}")
-        before = str(payload.get("before") or "").strip()
-        if before and not self._KEY_RE.fullmatch(before):
-            raise ToolError("RecallContext before must look like seg.N")
-        if action == "list":
-            if keys or query or "case_sensitive" in payload:
-                raise ToolError("RecallContext list accepts only limit and before")
-        elif action == "get":
-            if not keys:
-                raise ToolError("RecallContext get requires keys")
-            if query or "case_sensitive" in payload or "limit" in payload or before:
-                raise ToolError("RecallContext get accepts only keys")
-        else:
-            if not query:
-                raise ToolError("RecallContext search requires query")
-            if before:
-                raise ToolError("RecallContext before is only valid for list")
-        return {
-            "action": action,
-            "keys": list(dict.fromkeys(keys)),
-            "query": query,
-            "case_sensitive": case_sensitive,
-            "limit": limit,
-            "before": before,
-        }
-
-    def missing_reason(self, key: str) -> str:
-        """Why a key resolved to nothing: dropped by the retention bound, or never issued.
-
-        Only the retained window is recallable, so a key older than it is gone for good. Saying so
-        stops the retry that "missing" invites, and points at what is still there instead."""
-        oldest = self.session.history[0].key if self.session.history else ""
-        if oldest and int(key.split(".", 1)[1]) < int(oldest.split(".", 1)[1]):
-            return f"dropped; only the newest {len(self.session.history)} segments are kept, from {oldest}"
-        return "missing"
-
-    def list_segments(self, request: Json) -> str:
-        segments = list(reversed(self.session.history))
-        if request["before"]:
-            before_number = int(str(request["before"]).split(".", 1)[1])
-            segments = [segment for segment in segments if int(segment.key.split(".", 1)[1]) < before_number]
-        selected = segments[: request["limit"]]
-        result: Json = {
-            "segments": [{"key": segment.key, "title": segment.title} for segment in selected],
-            "total": len(self.session.history),
-            "returned": len(selected),
-        }
-        if len(segments) > len(selected) and selected:
-            result["next_before"] = selected[-1].key
-        return json.dumps(result, ensure_ascii=False)
-
-    def search(self, request: Json) -> str:
-        regex = self.compile_regex(request["query"], case_sensitive=request["case_sensitive"])
-        by_key = {segment.key: segment for segment in self.session.history}
-        segments = [by_key[key] for key in request["keys"] if key in by_key] if request["keys"] else self.session.history
-        rows = []
-        for segment in segments:
-            if regex.search(segment.title):
-                rows.append(self.match_row(segment, "title", segment.title))
-            for line_number, line in enumerate(segment.text.splitlines(), 1):
-                if regex.search(line):
-                    rows.append(self.match_row(segment, str(line_number), line))
-                if len(rows) >= request["limit"]:
-                    break
-            if len(rows) >= request["limit"]:
-                break
-        rows = rows[: request["limit"]]
-        header = f"<RecallContextSearchResult query={json.dumps(request['query'])} matches={len(rows)}>"
-        return "\n".join([header, *rows, "</RecallContextSearchResult>"])
-
-    @staticmethod
-    def match_row(segment: HistorySegment, location: str, text: str) -> str:
-        return f"- {segment.key} {location} title={json.dumps(segment.title)}: {Tool.compact(text, 300)}"
 
 
 class NoteTool(Tool):
@@ -415,7 +157,7 @@ class ContextTool(Tool):
     NAME = "Context"
     DESCRIPTION = (
         "Report tokens left in the context window, or start a new one. A reset keeps Note state, "
-        "RecallContext segments, results, jobs and transcript; it drops model conversation after this turn."
+        "compacted history files, results, jobs and transcript; it drops model conversation after this turn."
     )
     STORES_RESULT = False
     MUTATES = True
@@ -439,8 +181,8 @@ class ContextTool(Tool):
         # calls without results. Say so, because it decides whether more work in this turn is worth
         # doing -- everything after this point is dropped with the conversation.
         return (
-            "Reset scheduled: the conversation is dropped when this turn ends. Note state, RecallContext "
-            "segments, stored results, jobs, transcript and workspace remain. Finish the turn now; later "
+            "Reset scheduled: the conversation is dropped when this turn ends. Note state, compacted history "
+            "files, stored results, jobs, transcript and workspace remain. Finish the turn now; later "
             "conversation in this turn is also dropped. Note and recent activity seed the new window."
         )
 

@@ -278,25 +278,151 @@ async def test_send_rejects_worker_calls_to_excluded_tools(tmp_path, monkeypatch
     assert "done" in result
 
 
-async def test_delegate_send_cues_the_parent_code_index_freshness(tmp_path, monkeypatch):
-    """The worker's own edits update the index as they happen, but they land in the worker's
-    session: the send hands its return back to the parent's drift check, which is what refreshes
-    the status bar. A runner with nothing wired must simply not schedule anything."""
+class _QueueingModel(FakeModelClient):
+    """Enqueues one follow-up into the worker's queue on its first request: the user typing
+    mid-delegation, at the only moment the runtime would."""
+
+    def __init__(self, script, worker_of):
+        super().__init__(script)
+        self._worker_of = worker_of
+
+    async def request(self, messages, request_tools=None):
+        if not self.requests and self._worker_of() is not None:
+            self._worker_of().enqueue_user_input("also check the tests")
+        return await super().request(messages, request_tools)
+
+
+async def test_delegate_send_claims_a_followup_queued_mid_run(tmp_path, monkeypatch):
+    """A follow-up queued while the delegation ran reaches the worker's own next model request,
+    and the flush echo marks it as the worker's so the transcript says who read it."""
+    from wizolt.base import ToolCall
     from wizolt.context import ContextManager
     from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
-    model = FakeModelClient([({"role": "assistant", "content": "done"}, [], "done")])
+    note = tmp_path / "note.txt"
+    note.write_text("worker input")
+    model = _QueueingModel(
+        [
+            ({"role": "assistant", "content": ""}, [ToolCall("r1", "Read", [str(note)])], ""),
+            ({"role": "assistant", "content": "done"}, [], "done"),
+        ],
+        lambda: parent.worker,
+    )
     monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
-    cues = []
+    flushed = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
-    runner.hooks.index_freshness = lambda: cues.append(parent.uid)
+    runner.hooks.on_queue_flush = flushed.append
+    await _delegate_call(parent, runner, action="send", order="read the note")
 
-    await _delegate_call(parent, runner, action="send", order="Touch a few files, then report. " * 8)
-    assert cues == [parent.uid]
+    second = str(model.requests[1])
+    assert "also check the tests" in second and "Live follow-up" in second  # the worker's request carried it
+    assert flushed == [["also check the tests"]]  # echoed plainly: it lands between the worker's rules
+    assert parent.pending_user_inputs == []  # nothing fell back: the worker consumed the follow-up
 
-    # A runner outside CommandLoop has no owner to hand the cue to, and that is not an error. The
-    # worker left alive by the send above is the cheapest way to reach the same `finally` again.
-    headless = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
-    assert headless.hooks.index_freshness is None
-    await _delegate_call(parent, headless, action="reset")
+
+async def test_delegate_send_returns_unclaimed_followups_to_the_parent(tmp_path, monkeypatch):
+    """A follow-up that arrived after the worker's last request is not stranded: when the send
+    ends it falls back to the parent's queue as an ordinary live follow-up."""
+    from wizolt.context import ContextManager
+    from wizolt.runner import ToolRunner
+
+    parent = _delegate_session(tmp_path)
+    model = _QueueingModel([({"role": "assistant", "content": "done"}, [], "done")], lambda: parent.worker)
+    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
+    await _delegate_call(parent, runner, action="send", order="answer at once")
+
+    assert parent.worker is not None
+    assert parent.worker.pending_user_inputs == []
+    assert [item.text for item in parent.pending_user_inputs] == ["also check the tests"]
+
+
+async def test_delegate_failure_hands_consumed_followups_back(tmp_path, monkeypatch):
+    """A follow-up the worker's failed request already committed is not answered: the send hands
+    it back to the parent instead of leaving the user with an echo and no reply. The failing
+    request is the *second* one, so the follow-up really was claimed and acknowledged into the
+    worker's dead turn -- nothing is left in the worker's queue to find it by."""
+    from wizolt.base import ModelError, ToolCall, ToolError
+    from wizolt.context import ContextManager
+    from wizolt.runner import ToolRunner
+
+    parent = _delegate_session(tmp_path)
+    note = tmp_path / "note.txt"
+    note.write_text("worker input")
+
+    class Failing(FakeModelClient):
+        async def request(self, messages, request_tools=None):
+            if not self.requests:  # first step: enqueue the follow-up, hand back a tool call
+                parent.worker.enqueue_user_input("also check the tests")
+                self.requests.append(messages)
+                return {"role": "assistant", "content": ""}, [ToolCall("r1", "Read", [str(note)])], ""
+            raise ModelError("provider exploded")  # second step: the one that carries it fails
+
+    model = Failing([])
+    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    flushed = []
+    runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
+    runner.hooks.on_queue_flush = flushed.append
+    with pytest.raises(ToolError, match="provider exploded"):
+        await _delegate_call(parent, runner, action="send", order="do the thing")
+
+    # The failing request really did carry it (the echo proves the claim), yet nothing is left
+    # in the worker's queue to find it by.
+    assert flushed == [["also check the tests"]]
+    assert parent.worker is not None and parent.worker.pending_user_inputs == []
+    assert [item.text for item in parent.pending_user_inputs] == ["also check the tests"]
+
+
+async def test_delegate_failure_keeps_followups_an_accepted_request_answered(tmp_path, monkeypatch):
+    """A follow-up an accepted request carried was answered by that request's reply: a later
+    failure in the same send must not hand it to the parent, which would do the work twice."""
+    from wizolt.base import ModelError, ToolCall, ToolError
+    from wizolt.context import ContextManager
+    from wizolt.runner import ToolRunner
+
+    parent = _delegate_session(tmp_path)
+    note = tmp_path / "note.txt"
+    note.write_text("worker input")
+
+    class AnswersThenFails(FakeModelClient):
+        async def request(self, messages, request_tools=None):
+            self.requests.append(messages)
+            if len(self.requests) == 1:  # the user types while the first step runs
+                parent.worker.enqueue_user_input("also check the tests")
+            if len(self.requests) <= 2:  # the second request carries the follow-up and is accepted
+                return {"role": "assistant", "content": ""}, [ToolCall(f"r{len(self.requests)}", "Read", [str(note)])], ""
+            raise ModelError("provider exploded")  # a later step fails with nothing new in it
+
+    model = AnswersThenFails([])
+    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
+    with pytest.raises(ToolError, match="provider exploded"):
+        await _delegate_call(parent, runner, action="send", order="do the thing")
+
+    assert "also check the tests" in str(model.requests[1])  # the accepted request carried it
+    assert parent.pending_user_inputs == []  # answered by the worker, so never repeated
+
+
+async def test_delegate_clears_a_stale_inflight_marker(tmp_path, monkeypatch):
+    """A send that dies before the engine's first settlement leaves the in-flight marker set;
+    the send's own teardown clears it, or later follow-ups would keep routing to a dead turn."""
+    from wizolt.base import ModelError, ToolError
+    from wizolt.context import ContextManager
+    from wizolt.runner import ToolRunner
+
+    parent = _delegate_session(tmp_path)
+
+    class DiesInSetup(FakeModelClient):
+        async def request(self, messages, request_tools=None):
+            parent.worker._active_turn_messages.append({"role": "user", "content": "stale"})
+            raise ModelError("died before settling")
+
+    model = DiesInSetup([])
+    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
+    with pytest.raises(ToolError, match="died before settling"):
+        await _delegate_call(parent, runner, action="send", order="do the thing")
+
+    assert parent.worker is not None
+    assert parent.worker._active_turn_messages == []

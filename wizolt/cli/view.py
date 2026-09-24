@@ -352,6 +352,7 @@ class View:
 
     QUEUE_EMPTY_HINT = "Enter follow-up · Tab next turn · Ctrl-C interrupts"
     QUEUE_PENDING_HINT = "↑ recalls queued · Tab next turn · Ctrl-C interrupts"
+    QUEUE_WORKER_HINT = "follow-up queued for the worker · Ctrl-C interrupts"
 
     # Line-level markdown tokens the live stream preview styles. Block constructs (headings,
     # lists, fenced code) are deliberately not parsed: the preview shows partial streaming text,
@@ -382,14 +383,14 @@ class View:
         speed_range = cls.SWEEP_SPEED_RANGE
         return (1.0 - speed_range) * phase + 2.0 * speed_range * phase**3 - speed_range * phase**4
 
-    def sweep_divider_fragments(self, label: str, prefix: StyleAndTextTuples | None = None) -> StyleAndTextTuples:
+    def sweep_divider_fragments(self, label: str, prefix: StyleAndTextTuples | None = None, label_style: str = "class:divider.working") -> StyleAndTextTuples:
         prefix = prefix or []
         prefix_len = sum(get_cwidth(fragment[1]) for fragment in prefix)
         cols = shutil.get_terminal_size((80, 20)).columns
         width = max(20, cols - 2)
         lead = 3
         # A comet needs a track long enough to read as motion. When the label is long (the
-        # worker's `[worker]` + status + elapsed + rate + queued), widen the rule so both sides
+        # status + elapsed + rate + queued counts), widen the rule so both sides
         # keep at least MIN_TRAIL dashes instead of clipping the label; the terminal width is
         # the ceiling, and the trail shrinks only when even that cannot fit.
         min_trail = 12
@@ -436,7 +437,7 @@ class View:
             *dashes(0, lead),
             ("class:queue.rule", " "),
             *prefix,
-            ("class:divider.working", label),
+            (label_style, label),
             ("class:queue.rule", " "),
             *dashes(lead + body_len, trail),
         ]
@@ -475,15 +476,15 @@ class View:
             counts.append(f"{next_turn} next turn")
         if counts:
             label = f"{label} [ {' · '.join(counts)} ]"
-        prefix = self.waiting_pulse_fragments()
-        worker = self.loop.session.worker
-        if worker is not None and worker._active_turn_messages:
-            # The same in-flight predicate as the status bar's worker marker.
-            prefix = [("class:divider.worker", "[worker] "), *prefix]
-        return self.sweep_divider_fragments(label, prefix=prefix)
+        # While the worker runs, the label takes the worker's color and no name: the status bar's
+        # `worker ·` lead is the one place that says it in words, and the color ties this line to it.
+        label_style = "class:divider.worker" if self.loop.session.delegating_worker is not None else "class:divider.working"
+        return self.sweep_divider_fragments(label, prefix=self.waiting_pulse_fragments(), label_style=label_style)
 
     def followup_fragments(self) -> tuple[StyleAndTextTuples, StyleAndTextTuples]:
         pending = list(self.loop.session.pending_user_inputs)
+        worker_session = self.loop.session.worker
+        worker_pending = list(worker_session.pending_user_inputs) if worker_session is not None else []
 
         def render(items: list[QueuedInput], marker: str, marker_style: str) -> StyleAndTextTuples:
             fragments: StyleAndTextTuples = []
@@ -498,18 +499,24 @@ class View:
 
         sent = [item for item in pending if item.inflight]
         queued = [item for item in pending if not item.inflight]
-        transcript = render(sent, UiPrinter.USER_LOG_PREFIX, "class:prompt")
+        worker_sent = [item for item in worker_pending if item.inflight]
+        worker_queued = [item for item in worker_pending if not item.inflight]
+        # A follow-up routed to the delegating worker wears the worker's color on its marker, the
+        # one thing that tells it from the parent's; the divider above already names the worker.
+        transcript = [*render(sent, UiPrinter.USER_LOG_PREFIX, "class:prompt"), *render(worker_sent, UiPrinter.USER_LOG_PREFIX, "class:divider.worker")]
         # The divider is a standing boundary for the whole turn. Only messages that have not entered
         # a model request remain below it; sent messages render above it until the request commits them.
+        # The worker's queued follow-ups count as queued too: their colored marker says whose they are.
         waiting = self.queue_divider_fragments(
-            sum(1 for item in queued if not item.next_turn),
+            sum(1 for item in queued if not item.next_turn) + len(worker_queued),
             sum(1 for item in queued if item.next_turn),
         )
-        if queued:
+        if queued or worker_queued:
             # A blank row lifts the queued block off the divider, so the queue reads as its own
             # region below the boundary instead of a list glued to the divider's label.
             waiting.append(("", "\n"))
         waiting.extend(render(queued, "+ ", UiPrinter.user_log_style()))
+        waiting.extend(render(worker_queued, "+ ", "class:divider.worker"))
         return transcript, waiting
 
     def tui_activity_fragments(self) -> StyleAndTextTuples:
@@ -598,8 +605,15 @@ class View:
         if tui is None:
             return ""
         if tui.input_mode == InputMode.RUNNING:
-            has_pending = any(not item.inflight for item in self.loop.session.pending_user_inputs)
-            return self.QUEUE_PENDING_HINT if has_pending else self.QUEUE_EMPTY_HINT
+            if any(not item.inflight for item in self.loop.session.pending_user_inputs):
+                return self.QUEUE_PENDING_HINT
+            worker = self.loop.session.worker
+            if worker is not None and any(not item.inflight for item in worker.pending_user_inputs):
+                # Queued for the delegating worker, not the parent: `↑` cannot recall it, so the
+                # hint names where the text went instead of promising a recall that would not
+                # find it and hide the fact that the queue is not empty.
+                return self.QUEUE_WORKER_HINT
+            return self.QUEUE_EMPTY_HINT
         if tui.input_mode == InputMode.CHAT:
             if self.loop.starting:
                 return STARTING_STATUS_LABEL

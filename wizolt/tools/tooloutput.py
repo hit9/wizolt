@@ -12,7 +12,6 @@ from wizolt.tools.base import Tool
 
 BASH_TRANSCRIPT_PREVIEW_LINES = 3
 BASH_PREVIEW_LINE_LIMIT = 220
-EDIT_PATH_RE = re.compile(r'<Edit\s+path=(".*?")')
 MCP_CALL_RE = re.compile(r"(?s)<MCPCall\b[^>]*>\n?(.*?)\n?</MCPCall>\s*$")
 # The envelope DelegateTool._send returns for a finished delegation: attributes in fixed order,
 # the worker's answer wrapped in <worker> tags. Parsed with a couple of string scans — the

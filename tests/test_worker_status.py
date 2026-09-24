@@ -30,7 +30,7 @@ async def test_status_bar_follows_the_inflight_worker(tmp_path, monkeypatch):
 
     original = row()
     parent_lead = parent.config.active_provider + "/" + (parent.config.provider.model.rsplit("/", 1)[-1] or "(no model)")
-    assert parent_lead in original and "[worker]" not in original
+    assert parent_lead in original and "worker ·" not in original
     assert "ctx 50% \u00b7 cache 25%" in original
 
     # A worker with its own usage and context, attached but idle.
@@ -46,7 +46,7 @@ async def test_status_bar_follows_the_inflight_worker(tmp_path, monkeypatch):
     # finish_turn), so an idle worker leaves the parent's values exactly as before it existed.
     # Its one contribution is its own context water level, appended as a separate group.
     with_worker = row()
-    assert parent_lead in with_worker and "[worker]" not in with_worker
+    assert parent_lead in with_worker and "worker ·" not in with_worker
     assert "ctx 50% \u00b7 cache 25%" in with_worker
     assert "worker ctx 50%" in with_worker
 
@@ -59,17 +59,18 @@ async def test_status_bar_follows_the_inflight_worker(tmp_path, monkeypatch):
     worker.usage.last_prompt_tokens = 50
     worker.usage.last_prompt_budget = 100
 
-    # In flight: the row names the model actually running and its context, behind a [worker] marker.
+    # In flight: the row names the model actually running and its context, behind a `worker ·` lead.
     worker._active_turn_messages.append({"role": "user", "content": "order"})
     delegating = row()
-    assert "[worker] default/worker-model" in delegating
+    assert "worker · default/worker-model" in delegating
+    assert "[worker]" not in delegating
     assert "ctx 50% \u00b7 cache 50%" in delegating
     assert parent_lead not in delegating
     # The row already shows the worker's numbers behind the marker, so the extra group is gone.
     assert "worker ctx" not in delegating
 
     # Session-wide groups stay the parent's, and the row returns to the parent when the worker answers.
-    assert "skills " in delegating and "index" in delegating
+    assert "skills " in delegating
     worker._active_turn_messages.clear()
     assert row() == with_worker
 
@@ -85,12 +86,14 @@ async def test_working_divider_marks_inflight_worker(tmp_path):
     worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
     parent.worker = worker
 
-    def label():
-        return "".join(text for _, text in loop.view.queue_divider_fragments())
+    def label_style():
+        return next(style for style, text in loop.view.queue_divider_fragments() if text.startswith("working"))
 
-    assert "[worker]" not in label()
+    assert label_style() == "class:divider.working"
     worker._active_turn_messages.append({"role": "user", "content": "order"})
-    assert "[worker]" in label()
+    # The worker's color, and no name: the status bar's `worker ·` lead is the one place it is written.
+    assert label_style() == "class:divider.worker"
+    assert "worker" not in "".join(text for _, text in loop.view.queue_divider_fragments())
 
 
 async def test_worker_model_stream_is_wired_from_the_runner(tmp_path, monkeypatch):
@@ -123,14 +126,14 @@ async def test_worker_stream_updates_parent_thinking_and_status_while_request_is
             observed.append(
                 (
                     "".join(text for _, text in loop.view.model_stream_fragments()),
-                    "".join(text for _, text in loop.view.queue_divider_fragments()),
+                    loop.view.queue_divider_fragments(),
                 )
             )
             self.hooks.on_stream("output", "writing the result")
             observed.append(
                 (
                     "".join(text for _, text in loop.view.model_stream_fragments()),
-                    "".join(text for _, text in loop.view.queue_divider_fragments()),
+                    loop.view.queue_divider_fragments(),
                 )
             )
             return await super().request(messages, request_tools)
@@ -141,9 +144,9 @@ async def test_worker_stream_updates_parent_thinking_and_status_while_request_is
     await _delegate_call(parent, loop.agent.tools, action="send", order="inspect it")
 
     assert "checking the worker task" in observed[0][0]
-    assert "thinking" in observed[0][0] and "[worker]" in observed[0][1]
+    assert "thinking" in observed[0][0] and any(style == "class:divider.worker" and text.startswith("thinking") for style, text in observed[0][1])
     assert "writing the result" in observed[1][0]
-    assert "responding" in observed[1][0] and "[worker]" in observed[1][1]
+    assert "responding" in observed[1][0] and any(style == "class:divider.worker" and text.startswith("responding") for style, text in observed[1][1])
 
 
 async def test_status_reports_worker_delegation_state(tmp_path):
@@ -350,7 +353,7 @@ async def test_status_bar_names_the_worker_model_during_a_real_delegation(tmp_pa
     await _delegate_call(parent, _delegate_runner(parent), action="send", order="inspect it")
 
     assert len(sampled) == 1
-    assert "[worker] default/worker-model" in sampled[0]
+    assert "worker · default/worker-model" in sampled[0]
     assert "parent-model" not in sampled[0]
     # The worker's own fill and cache ratio, never the parent's.
     assert "ctx 30% · cache 50%" in sampled[0]
@@ -358,4 +361,4 @@ async def test_status_bar_names_the_worker_model_during_a_real_delegation(tmp_pa
     # parked worker's own water level as the one worker fact it now carries.
     final = row()
     assert "default/parent-model" in final and "ctx 50% \u00b7 cache 25%" in final
-    assert "[worker]" not in final and "worker ctx 30%" in final
+    assert "worker ·" not in final and "worker ctx 30%" in final

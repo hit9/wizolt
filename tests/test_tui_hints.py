@@ -1,7 +1,10 @@
 """tui hints (split from tests/test_tui_app.py)."""
+
 import threading
 from types import SimpleNamespace
 
+from prompt_toolkit.buffer import CompletionState
+from prompt_toolkit.completion import Completion
 from test_tui_app import _StubJob, quick_hint_app
 from tui_harness import ResizableOutput, loop, rendered_screen_text, run_interactive_tui, wait_until
 
@@ -19,6 +22,7 @@ def test_tui_chat_input_shows_random_idle_placeholder(tmp_path):
     hint = command_loop.view.tui_input_hint()
     assert hint in {entry.text for entry in hints.HINTS}
     assert command_loop.view.tui_input_hint() == hint  # stable within a situation (no flicker)
+
 
 def test_tui_chat_input_says_starting_until_startup_settles(tmp_path):
     command_loop = loop(tmp_path)
@@ -47,6 +51,7 @@ def test_tui_idle_hint_sessions_only_before_work(tmp_path):
     command_loop.session.store_tool_result("Bash", ["ls"], "ok")
     assert command_loop.view.tui_input_hint() == "Type / for commands"  # last technique hint
 
+
 def test_tui_idle_hint_favors_diff_right_after_editing(tmp_path):
     command_loop = loop(tmp_path)
     command_loop.tui = TuiApp()
@@ -62,6 +67,7 @@ def test_tui_idle_hint_favors_diff_right_after_editing(tmp_path):
     command_loop.session.state.round_count = 2
     assert command_loop.view.tui_input_hint() == "Type / for commands"
 
+
 def test_tui_idle_hint_ps_while_jobs_running(tmp_path):
     command_loop = loop(tmp_path)
     command_loop.tui = TuiApp()
@@ -75,6 +81,7 @@ def test_tui_idle_hint_ps_while_jobs_running(tmp_path):
 
     command_loop.session.jobs["j1"] = _StubJob("done")  # finished -> hint clears
     assert command_loop.view.tui_input_hint() == "Type / for commands"
+
 
 def test_tui_hint_context_projects_availability(tmp_path):
     command_loop = loop(tmp_path)
@@ -92,6 +99,7 @@ def test_tui_hint_context_projects_availability(tmp_path):
     ctx = command_loop.view._hint_context()
     assert ctx.skills_available and ctx.mcp_connected and ctx.jobs_running
 
+
 def test_tui_idle_hint_rerolls_each_turn(tmp_path):
     command_loop = loop(tmp_path)
     command_loop.tui = TuiApp()
@@ -103,12 +111,14 @@ def test_tui_idle_hint_rerolls_each_turn(tmp_path):
     command_loop.session.state.round_count = 2
     assert command_loop.view.tui_input_hint() == "second"  # a new turn re-rolls
 
+
 def test_quick_hint_tab_cycles_focus_and_wraps():
     app, _ = quick_hint_app()
     assert app.quick_hint_focus == -1
     for expected in (0, 1, 2, -1):
         app.tab_or_complete(app.input_buffer, reverse=False)
         assert app.quick_hint_focus == expected
+
 
 def test_quick_hint_shift_tab_cycles_focus_backwards_and_wraps():
     app, _ = quick_hint_app()
@@ -117,16 +127,32 @@ def test_quick_hint_shift_tab_cycles_focus_backwards_and_wraps():
         app.tab_or_complete(app.input_buffer, reverse=True)
         assert app.quick_hint_focus == expected
 
-def test_quick_hint_tab_falls_through_to_completion_with_text():
+
+def test_quick_hint_tab_cycles_with_a_typed_draft():
+    """What this change is for: Tab used to stand down once the input held typed text, leaving
+    the chips unreachable from a draft."""
     app, _ = quick_hint_app()
-    app.input_buffer.insert_text("/mod")
+    app.input_buffer.insert_text("hello")
+    app.tab_or_complete(app.input_buffer, reverse=False)
+    assert app.quick_hint_focus == 0
+    app.tab_or_complete(app.input_buffer, reverse=False)
+    assert app.quick_hint_focus == 1
+
+
+def test_quick_hint_tab_completes_while_a_menu_is_open():
+    """A completion menu owns Tab while it is up, chips included."""
+    app, _ = quick_hint_app()
+    app.input_buffer.insert_text("hello")
+    app.input_buffer.complete_state = CompletionState(app.input_buffer.document, [])  # a menu is open
     app.tab_or_complete(app.input_buffer, reverse=False)
     assert app.quick_hint_focus == -1
+
 
 def test_quick_hint_tab_ignored_without_hints():
     app, _ = quick_hint_app(())
     app.tab_or_complete(app.input_buffer, reverse=False)
     assert app.quick_hint_focus == -1
+
 
 def test_quick_hint_enter_picks_chip_and_returns_focus():
     app, submitted = quick_hint_app()
@@ -138,6 +164,7 @@ def test_quick_hint_enter_picks_chip_and_returns_focus():
     app._accept(app.input_buffer)  # a second Enter sends
     assert [str(value) for value in submitted] == ["show the diff"]
 
+
 def test_quick_hint_pick_ignored_with_completion_menu_open():
     app, submitted = quick_hint_app()
     app.quick_hint_focus = 1
@@ -146,6 +173,7 @@ def test_quick_hint_pick_ignored_with_completion_menu_open():
     assert submitted == []
     assert app.input_buffer.text == ""
 
+
 def test_quick_hint_pick_ignored_while_running():
     app, submitted = quick_hint_app()
     app.quick_hint_focus = 0
@@ -153,10 +181,12 @@ def test_quick_hint_pick_ignored_while_running():
     assert app._pick_quick_hint(app.input_buffer) is False
     assert submitted == []
 
+
 def test_quick_hint_enter_on_empty_unfocused_input_does_nothing():
     app, submitted = quick_hint_app()
     app._accept(app.input_buffer)
     assert submitted == []
+
 
 def test_quick_hint_enter_picks_chips_one_per_tab_and_sends():
     """Enter picks the focused chip and returns to the prompt; Tab to the next chip and Enter
@@ -169,10 +199,13 @@ def test_quick_hint_enter_picks_chips_one_per_tab_and_sends():
     app.tab_or_complete(app.input_buffer, reverse=False)  # resumes after picked chip 0 -> 1
     assert app._pick_quick_hint(app.input_buffer)  # Enter picks "show the diff"
     assert app.input_buffer.text == "run the tests\nshow the diff"
-    assert app.quick_hint_picked == ["run the tests", "show the diff"]
+    picked = app.quick_hint_fragments()  # a chip is checked while its text is in the input
+    assert ("class:quickhint", " \u2713 run the tests ") in picked
+    assert ("class:quickhint", " \u2713 show the diff ") in picked
     assert submitted == []
     assert app._accept(app.input_buffer)  # a final Enter sends
     assert [str(value) for value in submitted] == ["run the tests\nshow the diff"]
+
 
 def test_quick_hint_enter_keys_pick_and_send_through_real_bindings(monkeypatch):
     """The wiring, not just the methods: Tab focuses, Enter picks and returns to the prompt, and
@@ -193,6 +226,7 @@ def test_quick_hint_enter_keys_pick_and_send_through_real_bindings(monkeypatch):
 
     assert received == ["run the tests\nshow the diff"]
 
+
 def test_quick_hint_space_is_plain_through_real_bindings(monkeypatch):
     """Space no longer picks a focused chip: it reaches the buffer as an ordinary character."""
     received = []
@@ -210,6 +244,7 @@ def test_quick_hint_space_is_plain_through_real_bindings(monkeypatch):
 
     assert received == [" ok"]
 
+
 def test_quick_hint_enter_again_unpicks_chip():
     app, _ = quick_hint_app()
     app.quick_hint_focus = 0
@@ -217,8 +252,9 @@ def test_quick_hint_enter_again_unpicks_chip():
     assert app.input_buffer.text == "run the tests"
     app.quick_hint_focus = 0  # cycling back to a picked chip makes Enter a toggle
     assert app._pick_quick_hint(app.input_buffer)  # Enter toggles it off
-    assert app.quick_hint_picked == []
     assert app.input_buffer.text == ""
+    assert ("class:quickhint", " run the tests ") in app.quick_hint_fragments()  # no check mark
+
 
 def test_quick_hint_pick_uses_one_hint_snapshot():
     states = iter((("old hint",), ()))
@@ -229,6 +265,7 @@ def test_quick_hint_pick_uses_one_hint_snapshot():
     app._pick_quick_hint(app.input_buffer)
     assert app.input_buffer.text == "old hint"
 
+
 def test_quick_hint_tab_cycles_while_picked():
     app, _ = quick_hint_app()
     app.quick_hint_focus = 0
@@ -237,30 +274,31 @@ def test_quick_hint_tab_cycles_while_picked():
         app.tab_or_complete(app.input_buffer, reverse=False)
         assert app.quick_hint_focus == expected
 
-def test_quick_hint_manual_edit_drops_picked_and_sends_edited_text():
+
+def test_quick_hint_manual_edit_returns_focus_to_the_input_and_sends_edited_text():
     app, submitted = quick_hint_app()
     app.quick_hint_focus = 0
     app._pick_quick_hint(app.input_buffer)  # pick -> buffer = "run the tests"
+    app.quick_hint_focus = 0  # as if the user Tabbed back to the chip before typing
     app.input_buffer.insert_text("!")
-    assert app.quick_hint_picked == []
-    assert app.quick_hint_focus == -1
+    assert app.quick_hint_focus == -1  # typing hands Enter back to sending
     assert app.input_buffer.text == "run the tests!"
     app._accept(app.input_buffer)
     assert [str(value) for value in submitted] == ["run the tests!"]
 
-def test_quick_hint_hints_change_resets_picked_keeps_text():
+
+def test_quick_hint_hints_change_resets_focus_keeps_text():
     hints = ["run the tests", "show the diff"]
     submitted = []
     app = TuiApp(on_chat_submit=submitted.append, quick_hints_fn=lambda: tuple(hints))
     app.set_idle()
     app.quick_hint_focus = 0
     app._pick_quick_hint(app.input_buffer)  # pick -> buffer = "run the tests"
-    assert app.quick_hint_picked == ["run the tests"]
     hints[:] = ["commit", "push"]
-    app.quick_hints()  # lazy comparison resets the picked state
-    assert app.quick_hint_picked == []
+    app.quick_hints()  # lazy comparison resets the focus
     assert app.quick_hint_focus == -1
     assert app.input_buffer.text == "run the tests"
+
 
 def test_quick_hint_tab_refreshes_hints_before_deciding_to_cycle():
     hints = ["old hint"]
@@ -272,9 +310,9 @@ def test_quick_hint_tab_refreshes_hints_before_deciding_to_cycle():
 
     app.tab_or_complete(app.input_buffer, reverse=False)
 
-    assert app.quick_hint_picked == []
-    assert app.quick_hint_focus == -1
+    assert app.quick_hint_focus == 0  # cycled onto the refreshed chip, reachable from a draft too
     assert app.input_buffer.text == "old hint"
+
 
 async def test_quick_hint_external_edit_drops_picked_state(monkeypatch):
     app, _ = quick_hint_app()
@@ -288,8 +326,8 @@ async def test_quick_hint_external_edit_drops_picked_state(monkeypatch):
     await app._run_input_editor()
 
     assert app.input_buffer.text == "edited text"
-    assert app.quick_hint_picked == []
     assert app.quick_hint_focus == -1
+
 
 def test_quick_hint_fragments_mark_picked_chips():
     app, _ = quick_hint_app(("a", "b"))
@@ -299,6 +337,7 @@ def test_quick_hint_fragments_mark_picked_chips():
     assert ("class:quickhint", " \u2713 a ") in fragments
     assert ("class:quickhint", " b ") in fragments
 
+
 def test_quick_hint_fragments_highlight_focused_chip():
     app, _ = quick_hint_app(("a", "b"))
     # With no terminal width (the app is not running) chips stay on one horizontal row,
@@ -306,6 +345,7 @@ def test_quick_hint_fragments_highlight_focused_chip():
     assert app.quick_hint_fragments() == [("class:quickhint", " a "), ("class:quickhint.sep", " \u2502 "), ("class:quickhint", " b ")]
     app.quick_hint_focus = 0
     assert ("class:quickhint.focused", " a ") in app.quick_hint_fragments()
+
 
 def test_quick_hints_all_visible_at_narrow_width(monkeypatch):
     """Chips flow left to right and wrap only between chips once the row is full, so all three
@@ -334,6 +374,7 @@ def test_quick_hints_all_visible_at_narrow_width(monkeypatch):
     # the break, so compare compact forms: one frame must show every hint's full text.
     compact_frames = ["".join(frame.split()) for frame in frames]
     assert any(all("".join(hint.split()) in screen for hint in hints) for screen in compact_frames), "no single rendered frame showed every hint"
+
 
 def test_quick_hint_flow_lays_chips_horizontally_and_wraps_between_chips():
     """The wrap-aware layout keeps as many chips as fit on one row and only breaks between
@@ -382,6 +423,7 @@ def test_quick_hint_flow_lays_chips_horizontally_and_wraps_between_chips():
     cap_and_width = flow(("a", "b", "c", "d"), columns=5, focus=-1, picked=())
     assert "".join(text for _, text in cap_and_width) == " a \n b \n c \n d "
 
+
 def test_quick_hint_pick_and_send_still_work_after_wrapping(monkeypatch):
     """Chips that wrap onto multiple visual lines keep Tab focus, Enter pick/unpick, and the
     final Enter submission."""
@@ -404,6 +446,7 @@ def test_quick_hint_pick_and_send_still_work_after_wrapping(monkeypatch):
 
     assert received == ["run the tests and check the coverage\n构建文档并同步中文 locale 目录"]
 
+
 LONG_HINT = "run the full test suite, then check the coverage report, and commit only what passed"
 SECOND_LONG = "review the diff hunk by hunk and write down anything you are still unsure about"
 
@@ -423,8 +466,8 @@ def test_quick_hint_row_shortens_a_long_chip_but_the_pick_keeps_it_whole():
     assert app.quick_hints() == (LONG_HINT, "show the diff")  # the session keeps it whole
     assert ("class:quickhint", f" \u2713 {label} ") in app.quick_hint_fragments()
 
-    # The input still agrees with its picks, which is what makes Tab and Enter decide from one
-    # snapshot; a truncated pick would have broken this the moment it was inserted.
+    # The whole suggestion is in the input, so the chip stays checked and Tab still resumes after
+    # it; a truncated pick would have lost the tail the moment it was inserted.
     assert app._live_quick_hints(app.input_buffer) == (LONG_HINT, "show the diff")
     app.tab_or_complete(app.input_buffer, reverse=False)  # Tab resumes after the picked chip
     assert app.quick_hint_focus == 1
@@ -461,7 +504,7 @@ def test_quick_hint_long_suggestions_combine_and_send_whole():
     assert app._pick_quick_hint(app.input_buffer)
 
     assert app.input_buffer.text == f"{LONG_HINT}\n{SECOND_LONG}"
-    assert app.quick_hint_picked == [LONG_HINT, SECOND_LONG]
+    assert ("class:quickhint", f" \u2713 {oneline(LONG_HINT, TuiApp.QUICK_HINT_MAX_CHARS)} ") in app.quick_hint_fragments()
     assert app._accept(app.input_buffer)
     assert [str(value) for value in submitted] == [f"{LONG_HINT}\n{SECOND_LONG}"]
 
@@ -475,7 +518,7 @@ def test_quick_hint_unpicking_a_long_chip_matches_the_whole_text():
     app.quick_hint_focus = 0
     assert app._pick_quick_hint(app.input_buffer)  # the picker finds it by the whole suggestion
     assert app.input_buffer.text == ""
-    assert app.quick_hint_picked == []
+    assert ("class:quickhint", f" {oneline(LONG_HINT, TuiApp.QUICK_HINT_MAX_CHARS)} ") in app.quick_hint_fragments()
 
 
 def test_quick_hint_long_suggestions_send_whole_through_real_bindings(monkeypatch):
@@ -578,13 +621,17 @@ def test_quick_hint_placeholder_hints_keys_until_focused():
     app.quick_hint_focus = 0
     assert app.placeholder_text() == ""
 
-def test_quick_hint_pick_ignored_when_input_was_edited():
-    app, _ = quick_hint_app()
-    app.quick_hint_focus = 0
+
+def test_quick_hint_pick_appends_to_a_typed_draft_as_its_own_line():
+    app, submitted = quick_hint_app()
     app.input_buffer.insert_text("hello")
-    assert app._pick_quick_hint(app.input_buffer) is False
-    assert app.quick_hint_picked == []
-    assert app.quick_hint_focus == 0  # unchanged, so Enter falls through to sending
+    app.quick_hint_focus = 1
+    assert app._pick_quick_hint(app.input_buffer)
+    assert app.input_buffer.text == "hello\nshow the diff"
+    assert ("class:quickhint", " \u2713 show the diff ") in app.quick_hint_fragments()
+    app._accept(app.input_buffer)
+    assert [str(value) for value in submitted] == ["hello\nshow the diff"]
+
 
 def test_quick_hint_enter_without_focus_sends():
     """Enter with no focused chip sends; it never unpicks picked text."""
@@ -596,14 +643,176 @@ def test_quick_hint_enter_without_focus_sends():
     assert [str(value) for value in submitted] == ["run the tests"]
     assert app.quick_hint_focus == -1  # sending clears the quick-hint state
 
+
 def test_quick_hint_placeholder_falls_back_without_hints():
     app, _ = quick_hint_app(())
     assert app.placeholder_text() == app.input_hint_fn()
 
-def test_quick_hint_mode_change_resets_focus_and_picked():
+
+def test_quick_hint_mode_change_resets_focus():
     app, _ = quick_hint_app()
     app.quick_hint_focus = 2
-    app.quick_hint_picked = ["run the tests"]
     app.set_running("working")
     assert app.quick_hint_focus == -1
-    assert app.quick_hint_picked == []
+
+
+def test_quick_hint_pick_after_a_space_joins_the_sentence():
+    app, _ = quick_hint_app()
+    app.input_buffer.insert_text("then ")  # the space already separates; no newline is added
+    app.quick_hint_focus = 0
+    assert app._pick_quick_hint(app.input_buffer)
+    assert app.input_buffer.text == "then run the tests"
+
+
+def test_quick_hint_pick_mid_word_spaces_both_sides():
+    """The cursor inside a word owes a space on both sides of the chip, not just the front:
+    gluing onto the word after the cursor is the same bug as gluing onto the one before it."""
+    app, _ = quick_hint_app()
+    app.input_buffer.insert_text("helloworld")
+    app.input_buffer.cursor_position = 5  # inside "helloworld"
+    app.quick_hint_focus = 0
+    assert app._pick_quick_hint(app.input_buffer)
+    assert app.input_buffer.text == "hello run the tests world"
+
+
+def test_quick_hint_pick_inserts_mid_line_at_the_cursor():
+    app, _ = quick_hint_app()
+    app.input_buffer.insert_text("hello world")
+    app.input_buffer.cursor_position = 5  # between "hello" and " world"
+    app.quick_hint_focus = 0
+    assert app._pick_quick_hint(app.input_buffer)
+    assert app.input_buffer.text == "hello run the tests world"
+    assert app.input_buffer.cursor_position == len("hello run the tests")
+    assert app.quick_hint_focus == -1  # focus is back on the input line
+
+
+def test_quick_hint_unpick_takes_only_the_suggestion_back_out():
+    app, _ = quick_hint_app()
+    app.input_buffer.insert_text("hello")
+    app.quick_hint_focus = 0
+    app._pick_quick_hint(app.input_buffer)
+    assert app.input_buffer.text == "hello\nrun the tests"
+    app.quick_hint_focus = 0
+    assert app._pick_quick_hint(app.input_buffer)  # Enter on the checked chip takes it back out
+    assert app.input_buffer.text == "hello"
+    assert ("class:quickhint", " run the tests ") in app.quick_hint_fragments()  # the check mark is gone
+
+
+def test_quick_hint_typed_draft_and_pick_send_through_real_bindings(monkeypatch):
+    """The reported dead end, end to end: typing no longer strands the chips -- Tab still
+    reaches them, Enter drops one in after the draft, and the next Enter sends both."""
+    received = []
+    app = None
+
+    def submit(text):
+        received.append(str(text))
+        app.set_idle()
+
+    app = TuiApp(on_chat_submit=submit, quick_hints_fn=lambda: ("run the tests", "show the diff", "commit"))
+    app.set_idle()
+
+    run_interactive_tui(monkeypatch, app, text="hi\t\r\r\x04")
+
+    assert received == ["hi\nrun the tests"]
+
+
+def test_quick_hint_unpick_through_real_bindings(monkeypatch):
+    """Enter on a checked chip takes its text back out: after pick and unpick the input is empty
+    again, and what the user types then is what sends."""
+    received = []
+    app = None
+
+    def submit(text):
+        received.append(str(text))
+        app.set_idle()
+
+    app = TuiApp(on_chat_submit=submit, quick_hints_fn=lambda: ("run the tests", "show the diff", "commit"))
+    app.set_idle()
+
+    # Tab to chip 0, Enter picks it; three more Tabs wrap the focus -1 -> 1 -> 2 -> -1, a fourth
+    # reaches chip 0 again, and Enter unpicks it.
+    run_interactive_tui(monkeypatch, app, text="\t\r\t\t\t\t\rok\r\x04")
+
+    assert received == ["ok"]
+
+
+def test_quick_hint_tab_yields_to_command_argument_completion():
+    """A command line keeps Tab: chip presence must not take the argument rows away, which is
+    the window right after a space closed the menu (3e46c3a regressed this)."""
+
+    class Rows:
+        def get_completions(self, document, event):
+            return [Completion("dashscope", 0), Completion("openai", 0)] if document.text_before_cursor.startswith("/model") else []
+
+    app = TuiApp(quick_hints_fn=lambda: ("run the tests", "show the diff"), completer=Rows())
+    app.set_idle()
+    app.input_buffer.insert_text("/model ")
+    completed = []
+    app.complete_input = lambda buffer, *, reverse=False: completed.append(reverse)
+    app.tab_or_complete(app.input_buffer, reverse=False)
+    assert app.quick_hint_focus == -1  # the chip row yielded
+    assert completed == [False]  # and Tab reached the completion path instead
+
+
+def test_quick_hint_tab_yields_to_a_mention_and_a_file_target():
+    app, _ = quick_hint_app()
+    app.input_buffer.insert_text("@skill:")
+    assert app._draft_completes(app.input_buffer) is True
+    app.tab_or_complete(app.input_buffer, reverse=False)
+    assert app.quick_hint_focus == -1
+
+
+def test_quick_hint_prose_draft_still_cycles_chips():
+    app, _ = quick_hint_app()
+    app.input_buffer.insert_text("explain this ")
+    assert app._draft_completes(app.input_buffer) is False
+    app.tab_or_complete(app.input_buffer, reverse=False)
+    assert app.quick_hint_focus == 0
+
+
+def test_quick_hint_mid_word_text_is_not_picked():
+    """A suggestion inside a longer word is not that suggestion standing in the input: the chip
+    stays unchecked and Enter inserts instead of cutting the word apart."""
+    app, _ = quick_hint_app(("commit",))
+    app.input_buffer.insert_text("we recommitted the fix")
+    assert app.quick_hint_fragments() == [("class:quickhint", " commit ")]
+    app.quick_hint_focus = 0
+    assert app._pick_quick_hint(app.input_buffer)
+    assert app.input_buffer.text == "we recommitted the fix\ncommit"
+
+
+def test_quick_hint_nested_suggestions_only_the_outer_one_is_picked():
+    """Two chips where one text contains the other: the inner occurrence is the outer one's
+    words, so only the outer chip reads as picked and Enter on the inner one inserts."""
+    outer = "run the tests and check the coverage"
+    app, _ = quick_hint_app(("run the tests", outer))
+    app.input_buffer.insert_text(outer)
+    assert app.quick_hint_fragments() == [
+        ("class:quickhint", " run the tests "),  # inner occurrence: the outer chip's own words
+        ("class:quickhint.sep", " \u2502 "),
+        ("class:quickhint", f" \u2713 {outer} "),
+    ]
+
+    app.quick_hint_focus = 0  # the shorter chip
+    assert app._pick_quick_hint(app.input_buffer)
+    assert app.input_buffer.text == f"{outer}\nrun the tests"
+
+
+def test_quick_hint_unpick_takes_its_own_separator_back():
+    """Picking adds a separator; unpicking takes exactly that one back, so a round trip restores
+    the draft -- the two separators of a mid-word pick collapse to one, not zero or two."""
+    app, _ = quick_hint_app(("run the tests",))
+
+    def roundtrip(text, cursor=None):
+        app._reset_input(text, cursor_position=cursor)
+        app.quick_hint_focus = 0
+        assert app._pick_quick_hint(app.input_buffer)
+        app.quick_hint_focus = 0
+        assert app._pick_quick_hint(app.input_buffer)
+        return app.input_buffer.text
+
+    assert roundtrip("helloworld", 5) == "hello world"
+    assert roundtrip("hello world") == "hello world"
+    assert roundtrip("first\nsecond", 6) == "first\nsecond"  # a pick at a line start keeps the break
+    assert roundtrip("then ") == "then"
+    assert roundtrip("") == ""

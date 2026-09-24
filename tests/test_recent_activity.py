@@ -174,11 +174,11 @@ async def test_frozen_activity_escapes_ids_and_pins_no_retention_root(tmp_path):
     runner = ToolRunner(s, ctx, output_fn=lambda _: None)
     await runner.run([call("Read", [{"path": "one.py"}])])
     view = next(iter(s.source_views))
-    # An Edit naming the view for a different path fails with the id quoted; a Recall failure can
+    # An Edit naming the view for a different path fails with the id quoted; a failed tool can
     # quote a tr.N key; a command can echo one. None may survive into text that outlives the
     # records it names.
     await runner.run([call("Edit", ["two.py", view, [{"op": "replace", "start": 1, "end": 1, "content": "x\n"}]])])
-    s.record_tool_error("-", "Recall", ["tr.7"], "ToolError: tr.7 is unknown or expired")
+    s.record_tool_error("-", "Bash", ["cat tr.7"], "ToolError: tr.7 is unknown or expired")
     record = s.store_tool_result("Bash", ["echo evidence"], "evidence")
     s.record_command_result(f"echo {view} {record}", 0)
     activity = s.recent_activity()

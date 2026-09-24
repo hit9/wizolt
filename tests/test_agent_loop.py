@@ -337,7 +337,7 @@ async def test_interrupted_turn_settles_once_and_matches_every_visible_tool_call
 
     class Model:
         async def request(self, messages, tools=None):
-            return {}, [call("Read", [{"path": "a", "ranges": [[0, 0]]}]), call("Recall", [{"key": "tr.1"}])], ""
+            return {}, [call("Read", [{"path": "a", "ranges": [[0, 0]]}]), call("ViewImage", [{"path": "b.png"}])], ""
 
         def cancel_active_request(self):
             pass
@@ -357,7 +357,7 @@ async def test_interrupted_turn_settles_once_and_matches_every_visible_tool_call
 
     assert [message["content"] for message in s.messages if message["content"] == INTERRUPT_MARKER] == [INTERRUPT_MARKER]
     answered = [message["tool_call_id"] for message in s.messages if message.get("role") == "tool"]
-    assert sorted(answered) == ["Read-id", "Recall-id"]
+    assert sorted(answered) == ["Read-id", "ViewImage-id"]
     assert len(answered) == len(set(answered))
 
 

@@ -1,6 +1,6 @@
 """Delegate: hand a bounded task to the worker, a second in-process wizolt session.
 
-The worker is a full wizolt session — compaction, Recall, tr.N, Job, Skill, MCP, image, diff,
+The worker is a full wizolt session — compaction, tr.N, Job, Skill, MCP, image, diff,
 confirmation, snapshots, protocol adapters — projected from the parent's state with its own system
 prompt and a reduced tool list. Serial, one worker at a time, one-way: the worker has no tool that
 points back at the parent. See DESIGN.md's worker-handoff section.
@@ -39,14 +39,10 @@ if TYPE_CHECKING:
 WORKER_TOOLS: tuple[str, ...] = (
     "Read",
     "ViewImage",
-    "Search",
-    "InspectCode",
     "Edit",
     "Bash",
     "Job",
     "ToolScript",
-    "Recall",
-    "RecallContext",
     "Note",
     "Context",
     "Skill",
@@ -136,6 +132,10 @@ def _wire_worker_agent(agent: Agent, runner: ToolRunner) -> None:
             text_viewer=runner.hooks.text_viewer,
             cancel_input=runner.hooks.cancel_input,
             script_status=runner.hooks.script_status,
+            # A follow-up the worker's request consumed leaves the live region the moment it is
+            # committed; echoing it into the parent's log keeps a line saying it arrived. It lands
+            # between the delegation's own rules, so it needs no mark of whose it is.
+            on_queue_flush=runner.hooks.on_queue_flush,
         )
     )
     agent.tools.input_fn = runner.input_fn
@@ -374,6 +374,7 @@ class DelegateTool(Tool):
                 )
             )
         failure: Exception | None = None
+        answer = ""
         try:
             # Awaited directly: the worker's turn is a task of this one, so cancelling the
             # parent cancels the worker's own model request and tool batch by propagation --
@@ -386,13 +387,12 @@ class DelegateTool(Tool):
         finally:
             # Merge diffs even when interrupted, or the user never sees what the worker did.
             self._merge_diffs(worker, parent, before_diffs)
-            # The worker indexed its own edits as it made them, but this session's drift check and
-            # its status bar know nothing about them: hand the post-turn pass its cue as the
-            # delegation returns, so the index converges while the turn continues instead of at its
-            # end -- and never carrying a stale marker the reader has to interpret.
-            if runner.hooks.index_freshness is not None:
-                with contextlib.suppress(Exception):  # a cancelled turn must not fail on a bookkeeping cue
-                    runner.hooks.index_freshness()
+            self._return_unanswered_inputs(agent, worker, parent)
+            # The engine clears the in-flight marker on every settled ending; anything still
+            # there means the send died before its first settlement (a snapshot write failing
+            # under the first checkpoint), and leaving it would keep routing live follow-ups to
+            # a worker whose turn is over.
+            worker._active_turn_messages.clear()
         if failure is not None:
             # Folded to one bounded, quote-free line at the source rather than where it is read.
             # `status` renders it as an attribute of the envelope the model parses, and a provider
@@ -415,6 +415,22 @@ class DelegateTool(Tool):
                 "</Delegate>",
             ]
         )
+
+    @staticmethod
+    def _return_unanswered_inputs(agent: Agent, worker: Session, parent: Session) -> None:
+        """Give the parent queue every follow-up routed to the worker that the worker never answered.
+
+        Two kinds: ones still queued, which the worker's turn never reached because it ended,
+        failed, or was interrupted first; and ones a request carried that the provider rejected,
+        which the engine committed to the failed turn unanswered (`Agent.unanswered_inputs`). The
+        parent's running turn is the only one that can still take them, as ordinary live
+        follow-ups. Nothing routed to a worker carries attachments or a next-turn hold, so each is
+        plain text. A follow-up an accepted request carried was answered and is not returned."""
+
+        texts = [*agent.unanswered_inputs, *(item.text for item in worker.pending_user_inputs)]
+        worker.pending_user_inputs = []
+        for text in texts:
+            parent.enqueue_user_input(text)
 
     def _send_facts(self, worker: Session, started: float, before_diffs: int) -> tuple[float, str, int]:
         """Elapsed time, changed-file list, and context fill for one delegation: the facts the

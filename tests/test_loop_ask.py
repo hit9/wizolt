@@ -342,7 +342,7 @@ async def test_a_run_of_one_line_calls_is_packed_into_a_list(tmp_path):
     loop.tool_output(one_liner("Read"))
     assert blanks == [1]  # nothing above it was a one-line call, so it still parts itself
 
-    loop.tool_output(one_liner("Search"))
+    loop.tool_output(one_liner("Read"))
     assert blanks == [1]  # packed straight under the call above
 
     with_output = LogBlock.hierarchy(LogLine("Bash", "pytest -q", LogRole.TOOL), [LogLine("", "41 passed", LogRole.OUTPUT, LogEdge.END)])

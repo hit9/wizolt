@@ -96,7 +96,6 @@ def ctrl_c_queue_scenario(cwd, results):
 
     command_loop.agent.model = RecordingModel()
     SessionSnapshotStore.clean_expired = lambda _session: 0
-    CommandLoop.schedule_index_freshness = lambda _loop: None
     UpdateChecker.load_cached = lambda _checker: False
     real_application = Application
 

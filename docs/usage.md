@@ -20,6 +20,12 @@ divider as normal user messages. A held `↪` starts the next turn on its own, o
 remain retryable internally until that request completes successfully; a failed request moves them
 back below the divider as queued input.
 
+While a [delegated worker](worker.md) is running, `Enter` follows up the **worker** instead: the
+queued text — its marker in the worker's color, like the divider's label — joins the worker's
+next model step. A follow-up the worker never reached, or reached in a request that then failed,
+falls back to the parent as queued input. `Tab` keeps holding for the parent's next task, and `↑`
+still recalls only the parent's queued messages.
+
 | Key | When | Effect |
 |---|---|---|
 | `Enter` | While the agent works | Queue a follow-up for the next model step |
@@ -81,15 +87,15 @@ a separate fixed-size snapshot.
 ## Status bar
 
 A single line beneath the prompt summarizes the session in a fixed order:
-`[yolo] provider/model · level | mcp N · skills N | ctx N% · cache N% | index*`.
-`[yolo]` appears only when enabled, and the index suffix reflects its current state.
+`[yolo] provider/model · level | mcp N · skills N | ctx N% · cache N%`.
+`[yolo]` appears only when enabled.
 
 Once a [worker](worker.md) has actually run, its own context fill rides the row too, as
 `worker ctx N%`; a worker that has never been delegated to (or was reset) adds nothing. While a
-delegation is in flight the row shows the worker's figures instead, behind a `[worker]` marker.
+delegation is in flight the row shows the worker's figures instead, led by `worker ·`.
 
 The role colors stay still while the values remain live. The context and cache figures refresh
-after requests, and MCP, skill, and index changes appear on the next screen redraw. While MCP
+after requests, and MCP and skill changes appear on the next screen redraw. While MCP
 servers are still being contacted the count spins — `mcp ⠹2` — and rises as each one answers; a
 plain `mcp N` means every configured server has settled, so `mcp 0` really is nothing connected.
 `/status` reports the same session figures in more detail.
@@ -100,7 +106,7 @@ with the time spent so far beside it, and an estimated output speed while text i
 `responding (12s · ↓ 48 tok/s)`. The `↓` marks the speed as the model's incoming stream; it is
 still an estimate, and it disappears between requests and on providers that do not stream.
 
-<div class="term-shot" role="img" aria-label="A static, semantically colored status bar: yolo mode, provider and model with reasoning level, MCP and skill counts, context and cache percentages, then the index state."><span><span class="fs-i sb-yolo">[yolo] </span><span class="fs-i sb-base">dashscope/qwen3.7-plus</span><span class="fs-i sb-sep"> · </span><span class="fs-i sb-reason">high</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-mcp">mcp 2 · skills 3</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-ctx">ctx 23% · cache 98%</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-index">index✓</span></span></div>
+<div class="term-shot" role="img" aria-label="A static, semantically colored status bar: yolo mode, provider and model with reasoning level, MCP and skill counts, and context and cache percentages."><span><span class="fs-i sb-yolo">[yolo] </span><span class="fs-i sb-base">dashscope/qwen3.7-plus</span><span class="fs-i sb-sep"> · </span><span class="fs-i sb-reason">high</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-mcp">mcp 2 · skills 3</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-ctx">ctx 23% · cache 98%</span></span></div>
 
 ## Quick hints
 
@@ -111,10 +117,13 @@ for a chip is drawn shortened; picking it puts the whole suggestion in the input
 
 <div class="term-shot" role="img" aria-label="The idle prompt after an answer: the answer text, an empty prompt with a caret, and one row of three suggestion chips separated by grey bars, the middle one highlighted in reverse."><span>Everything is ready to review.</span><span> </span><span class="fs-prompt">&gt; <span class="fs-caret">▏</span></span><span> </span><span><span class="fs-i fs-sel"> run the tests </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-on"> show the diff </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-sel"> commit the work </span></span></div>
 
-`Tab` cycles between the input and the chips. `Enter` on a chip picks it into the input and
-returns to the prompt, so `Tab` to the next chip and `Enter` again combines several suggestions;
-a final `Enter` sends. Focus a picked chip and press `Enter` to unpick it. Editing the text
-normally clears the chip selection state. Quick hints are always available at the TUI prompt.
+`Tab` cycles between the input and the chips, empty input or typed draft alike; a command line,
+an `@` mention, or an open menu keeps `Tab` for what it completes — including the argument rows a
+space just closed. `Enter` on a chip drops its text in at the cursor — a new line at the end of
+the input, into the sentence mid-line — and returns to the prompt, so `Tab` to the next chip and
+`Enter` again combines several suggestions; a final `Enter` sends. A chip with a `✓` has its text
+standing in the input as its own words: focus it and press `Enter` to take that text back out.
+Quick hints are always available at the TUI prompt.
 
 ## Commands
 

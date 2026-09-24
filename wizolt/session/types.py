@@ -56,11 +56,6 @@ class AgentState:
     # either: the name follows the user and the goal, not whatever a tool call happens to write.
     name: str = ""
     name_source: str = ""  # "" | user | goal | input
-    code_index_status: str = ""
-    code_index_error: str = ""
-    code_index_notice: str = ""
-    code_index_refreshing: bool = False
-    code_index_checking: bool = False
     context_percent: int = 0
     context_tokens: int = 0  # transient projection estimate; do not reconstruct it from a rounded percentage
     turn_step: int = 0
@@ -174,16 +169,17 @@ class TurnDiff:
 
 @dataclass
 class HistorySegment:
-    """One compacted span of conversation, retained for later recall. The evicted messages are
-    captured once at compaction time (never re-summarized), so repeated compaction cannot compound
-    loss; a bounded verbatim excerpt is stored as a content-addressed blob, and `RecallContext`
-    lists, searches, or retrieves it on demand.
+    """One compacted span of conversation, kept for two readers. `text` is a bounded verbatim
+    excerpt: `/compact log` shows it to the user, and the compaction that produced the segment
+    writes it to `history.N.md` for the model, which reads that file rather than this text. The
+    evicted messages are captured once at compaction time (never re-summarized), so repeated
+    compaction cannot compound loss.
 
-    The fields after `text` describe the compaction that produced the segment, for `/compact log`:
-    the model never sees them (RecallContext returns key/title/text), and they are what makes an
-    eviction reviewable afterwards. `summary` is the checkpoint summary as it stood at this
-    compaction -- the live checkpoint carries only the newest one, so without this copy every
-    earlier summary would be unreachable once the next compaction replaced it."""
+    The fields after `text` describe the compaction that produced the segment, for `/compact log`
+    and for the export's index entry; they are what makes an eviction reviewable afterwards.
+    `summary` is the checkpoint summary as it stood at this compaction -- the live checkpoint
+    carries only the newest one, so without this copy every earlier summary would be unreachable
+    once the next compaction replaced it."""
 
     key: str
     title: str
@@ -195,3 +191,12 @@ class HistorySegment:
     messages: int = 0  # evicted message count
     summary: str = ""
     model: str = ""  # effective model the summary ran on; empty = fell back to trimming
+
+    _KEY_RE: ClassVar[re.Pattern] = re.compile(r"seg\.(\d+)")
+
+    @property
+    def export_name(self) -> str:
+        """`history.N.md` for `seg.N`, the file wizolt.history exports this segment to; "" for a
+        key that does not parse, which has no file."""
+        match = self._KEY_RE.fullmatch(self.key)
+        return f"history.{match.group(1)}.md" if match else ""

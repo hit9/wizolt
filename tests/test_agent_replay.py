@@ -177,7 +177,6 @@ def test_parallel_safe_classification(tmp_path):
         return runner.parallel_safe(ToolCall(id="x", name=name, args=args))
 
     assert safe("Read", [{"path": "f.txt"}])
-    assert safe("Search", [{"pattern": "x"}])
     assert not safe("Bash", ["git status --short"])  # Bash streams live output, so it stays serial
     assert not safe("Bash", ["git commit -m x"])  # mutating command
     assert not safe("Bash", ["echo hi"])  # live-output command

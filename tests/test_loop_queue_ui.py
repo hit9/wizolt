@@ -16,12 +16,7 @@ from wizolt.cli import CommandLoop
 from wizolt.context import ContextManager
 from wizolt.engine import Agent
 from wizolt.runner import ToolRunner
-from wizolt.tools import CodeIndex
 from wizolt.tui import TuiApp
-
-
-async def ignore_index_update(_index, _paths):
-    return ""
 
 
 def test_queue_live_region_shows_divider_and_pending(tmp_path):
@@ -431,7 +426,6 @@ async def test_default_pipe_input_restores_blocking_when_reader_removal_fails(tm
 async def test_tool_runner_edit_approval_prints_full_inline_preview(tmp_path, monkeypatch):
     s = session(tmp_path)
     outputs = []
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     runner = ToolRunner(s, ContextManager(s), input_fn=lambda prompt: "y", output_fn=lambda text: outputs.append(str(text)))
     content = "".join(f"line {index}\n" for index in range(50))
 
@@ -441,3 +435,54 @@ async def test_tool_runner_edit_approval_prints_full_inline_preview(tmp_path, mo
     assert "+line 49" in outputs[0]
     assert "preview truncated" not in outputs[0]
     assert any("[approved]" in output for output in outputs)
+
+
+def test_queue_live_region_marks_worker_followups(tmp_path):
+    """Follow-ups queued for a delegating worker are told apart by their marker's color alone --
+    the status bar is where the worker is named -- count as queued, and move above the divider
+    once the worker's request claims them."""
+    from wizolt.config import Config
+    from wizolt.session import Session
+
+    s = session(tmp_path)
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
+    worker = Session(cwd=s.cwd, config=Config(), settings=s.settings, uid=s.uid + ".w", listed=False)
+    loop.session.worker = worker
+    worker._active_turn_messages.append({"role": "user", "content": "order"})
+    worker.enqueue_user_input("check the queue")
+
+    sent, waiting = loop.view.followup_fragments()
+    waiting_text = "".join(t for _, t in waiting)
+    assert "+ check the queue" in waiting_text
+    assert ("class:divider.worker", "+ ") in waiting  # the worker's color on the marker
+    assert "worker" not in waiting_text  # colored, never named, below the divider
+    assert "1 queued" in waiting_text
+
+    worker.claim_user_inputs()
+    sent, waiting = loop.view.followup_fragments()
+    sent_text = "".join(t for _, t in sent)
+    waiting_text = "".join(t for _, t in waiting)
+    assert "\u2022 check the queue" in sent_text and "worker" not in sent_text
+    assert ("class:divider.worker", "\u2022 ") in sent
+    assert "queued" not in waiting_text
+
+
+def test_worker_queue_hint_names_where_the_text_went(tmp_path):
+    """A follow-up waiting on the worker is not recalled by `↑`, so the running hint says so
+    instead of claiming the queue is empty."""
+    from wizolt.config import Config
+    from wizolt.session import Session
+
+    s = session(tmp_path)
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
+    tui = TuiApp()
+    loop.tui = tui
+    tui.set_running("working")
+    worker = Session(cwd=s.cwd, config=Config(), settings=s.settings, uid=s.uid + ".w", listed=False)
+    s.worker = worker
+
+    assert loop.view.tui_input_hint() == loop.view.QUEUE_EMPTY_HINT
+    worker.enqueue_user_input("check the worker queue")
+    assert loop.view.tui_input_hint() == loop.view.QUEUE_WORKER_HINT
+    s.enqueue_user_input("and a parent one")  # the parent's own queue wins the recall promise
+    assert loop.view.tui_input_hint() == loop.view.QUEUE_PENDING_HINT

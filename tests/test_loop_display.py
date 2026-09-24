@@ -198,8 +198,8 @@ async def test_clearing_recalled_message_leaves_it_deleted(tmp_path):
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
 
     assert loop.recall_pending_input(lambda: None) == "delete me"
-    # Recall mutates the queue; persisting it is the runtime's submission consumer, which is what
-    # the await stands in for here.
+    # recall_pending_input mutates the queue; persisting it is the runtime's submission consumer,
+    # which is what the await stands in for here.
     await s.save_snapshot()
 
     assert queued_texts(s) == ["first"]

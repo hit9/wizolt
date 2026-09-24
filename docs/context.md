@@ -22,9 +22,10 @@ most providers bill the search on top of the tokens.
 
 ## Keeping context manageable
 
-Large tool results are shortened before they enter the conversation; the agent can retrieve the
-complete result later with `Recall`. Repeated skill instructions and MCP descriptions are replaced
-with references to their first full copy instead of being sent in full again.
+Large tool results are shortened before they enter the conversation; the marker says which file
+holds the whole output, and the agent reads it back itself — grep, or `Read` with `ranges`. Repeated
+skill instructions and MCP descriptions are replaced with references to their first full copy
+instead of being sent in full again.
 
 ### Compaction
 
@@ -36,10 +37,12 @@ The threshold leaves room for what the next request carries besides the conversa
 the model may write, and the tool definitions — so compaction happens before the window is full.
 The fill shown in the status bar measures the last request; compaction looks ahead to the next.
 
-The summary is lossy, so each compaction also stores a verbatim excerpt of the messages it
-evicted, as a **history segment**. The session log keeps the originals either way.
+The summary is lossy, so each compaction also writes the conversation it evicted to `history.N.md`,
+a file of its own beside the session's other assets, and appends an entry to `history.md`, the
+index that says what each file holds. Your messages and the agent's replies are copied in full;
+each tool call is kept as a one-line label, without its output.
 
-<div class="term-shot" role="img" aria-label="Compaction replaces older active conversation with one checkpoint containing the summary, full working state, recent tool activity, and a segment pointer. RecallContext can list, search, and retrieve bounded verbatim excerpts, while the append-only session log retains earlier snapshots as the cold source of truth."><span class="fs-goal">─ active context (hot) ────────────────</span><span>  checkpoint       <span class="fs-i fs-dim">summary · working state · recent activity · seg.N</span></span><span>  recent messages  <span class="fs-i fs-dim">kept as they are</span></span><span class="fs-dim">─ recallable segments (warm) ──────────</span><span>  seg.1 · seg.2    <span class="fs-i fs-dim">listed/searched only when needed</span></span><span class="fs-dim">─ append-only session log (cold) ──────</span><span>  earlier snapshots<span class="fs-i fs-dim"> original messages</span></span><span> </span><span class="fs-dim"><span class="fs-i fs-goal">RecallContext(list/search/get)</span> finds an excerpt</span></div>
+<div class="term-shot" role="img" aria-label="Compaction replaces older active conversation with one checkpoint containing the summary, full working state, and recent tool activity, plus the path of a history.md index. Beside it sit one history.N.md file per compaction, holding that span verbatim for grep or Read, while the append-only session log retains earlier snapshots as the cold source of truth."><span class="fs-goal">─ active context (hot) ────────────────</span><span>  checkpoint       <span class="fs-i fs-dim">summary · working state · recent activity</span></span><span>  recent messages  <span class="fs-i fs-dim">kept as they are</span></span><span class="fs-dim">─ history files (warm) ────────────────</span><span>  history.N.md     <span class="fs-i fs-dim">one file per evicted span, read on demand</span></span><span class="fs-dim">─ append-only session log (cold) ──────</span><span>  earlier snapshots<span class="fs-i fs-dim"> original messages</span></span><span> </span><span class="fs-dim"><span class="fs-i fs-goal">history.md</span> indexes every span</span></div>
 
 Each checkpoint also includes recent tool activity when available: up to 10 modified file
 paths, 10 foreground command results, and 5 tool failures. Repeated entries move to the
@@ -49,13 +52,13 @@ more recent activity with `Note(view)`. Command receipts survive compaction and 
 the activity lists are shortened to fit a bounded excerpt.
 
 Each compaction names the span it evicted, in the same reply that writes the summary, so the title
-describes the work rather than whichever message happened to start the window. The agent reaches
-segments through `RecallContext` — listing, searching, or retrieving one — and none of them take
-up room in a request until it does.
+describes the work rather than whichever message happened to start the window. The agent reaches a
+span by grepping those files; none of it takes up room in a request until it does.
 
-Only the newest 50 segments stay recallable; a session that compacts more often drops its oldest
-spans. `seg.N` keys keep counting, so the agent is told a segment is gone rather than handed a
-different one.
+Only the newest 50 spans keep their files; a session that compacts more often drops its oldest
+ones. `history.md` is append-only, so it still describes a span whose file is gone. A session
+started before this version gets its older spans written at its next compaction, as the shortened
+excerpts those versions kept.
 
 Run `/compact` to compact immediately rather than waiting for the threshold, for example before
 starting a large refactor. `/status` reports how many compactions a session has done.
@@ -76,17 +79,17 @@ that turn goes with the conversation — ask for it when the turn is nearly fini
 The working divider shows `reset pending` until then. Once the new window starts, a brief
 `Context reset.` notice appears in the transcript and remains visible when you resume.
 
-The new window starts with a snapshot of Note and recent activity, plus a pointer to recallable
-history. The visible transcript, including what a resume replays, remains intact. Stored tool
-results, background jobs, the workspace and the code index also remain. Earlier model messages
-and compaction summaries leave the active window. A scheduled reset survives a saved-session resume.
+The new window starts with a snapshot of Note and recent activity, plus the path of the compacted
+history index. The visible transcript, including what a resume replays, remains intact. Stored tool
+results, background jobs and the workspace also remain. Earlier model messages and compaction
+summaries leave the active window. A scheduled reset survives a saved-session resume.
 
 ### When a summary does not arrive
 
 Compaction always makes room, even when the summary request fails: the same messages leave the
-context, with no summary written in their place. Work is not lost — the segment is still stored
-and the agent can still recall it — but the checkpoint carries less, so tell wizolt what matters
-if a long task continues past one.
+context, with no summary written in their place. Work is not lost — the span is still written to
+`history.N.md` and stays readable — but the checkpoint carries less, so tell wizolt what matters if
+a long task continues past one.
 
 `/compact log` marks such a pass `no summary`, and `/compact` reports the reason on the spot. The
 usual causes are a summarizer that cannot fit the span, one slower than its `response_timeout`, one

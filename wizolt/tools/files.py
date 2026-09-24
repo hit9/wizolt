@@ -37,7 +37,7 @@ class ReadTool(Tool):
     NAME = "Read"
     DESCRIPTION = (
         "Read UTF-8 file ranges. Each file returns editable 1-based lines and a source=view.N; "
-        "large output is bounded and remains available through Recall(tr.N). Batch independent files in one call."
+        "large output is bounded; the truncation marker names the file holding the rest. Batch independent files in one call."
     )
     EXAMPLE = ('Batch files and ranges. Example: {"files":[{"path":"src/app.py","ranges":[[1,80],[120,180]]},{"path":"README.md","ranges":[[1,40]]}]}',)
 
@@ -151,7 +151,7 @@ class ReadTool(Tool):
             end = max(start, total if requested_end == 0 else min(total, requested_end))
             if end > start:
                 resolved.append((start + 1, end))
-        block = SourceBlock.plain(SourceViewDraft(path, self.session.relpath(path), total, SourceSpan.build(lines, resolved), READ))
+        block = SourceBlock(SourceViewDraft(path, self.session.relpath(path), total, SourceSpan.build(lines, resolved), READ))
         return ToolOutput(block.render(), (block,))
 
 
@@ -462,7 +462,7 @@ class EditTool(Tool):
     NAME = "Edit"
     DESCRIPTION = (
         "Create or patch one UTF-8 file; every operation is validated before anything is written. "
-        "For an existing file pick exactly one evidence mode for the whole call: source=view.N from Read, Search, or InspectCode "
+        "For an existing file pick exactly one evidence mode for the whole call: source=view.N from Read "
         "plus inclusive visible start/end lines, or no source with each old set to exact literal text that occurs once -- never both. "
         "(1) source=view.N plus start/end: content is the complete replacement for that range, while outside lines stay untouched; "
         "insert by replacing one visible line with that line plus the insertion. "
@@ -815,7 +815,7 @@ class EditTool(Tool):
         view = self.session.get_source_view(source_name)
         if view is None:
             recovery = self.current_view_recovery(path, edits) if recover_missing else None
-            hint = "use the fresh view below" if recovery else "Read or Search again to obtain a current view"
+            hint = "use the fresh view below" if recovery else "Read again to obtain a current view"
             raise source_error(SOURCE_MISSING, f"{source_name} is unknown or expired; {hint}", recovery=recovery)
         if view.path != path:
             # Deliberately no fresh view: the model named two different files in one call, and
@@ -846,7 +846,7 @@ class EditTool(Tool):
         spans = SourceSpan.build(lines, ranges)
         if sum(len(span.lines) for span in spans) > self.RECOVERY_MAX_LINES:
             spans = SourceViewDraft.spans_around(lines, ranges[0][0] - 1)
-        block = SourceBlock.plain(SourceViewDraft(path, self.session.relpath(path), len(lines), spans, EDIT))
+        block = SourceBlock(SourceViewDraft(path, self.session.relpath(path), len(lines), spans, EDIT))
         return ToolOutput(block.render(), (block,))
 
     @classmethod
@@ -974,7 +974,7 @@ class EditTool(Tool):
         if not spans:
             return None
         path = path if path is not None else self.parse()[0]
-        block = SourceBlock.plain(SourceViewDraft(path, self.session.relpath(path), len(lines), spans, EDIT))
+        block = SourceBlock(SourceViewDraft(path, self.session.relpath(path), len(lines), spans, EDIT))
         return ToolOutput(block.render(), (block,))
 
     @staticmethod
@@ -1076,7 +1076,7 @@ class EditTool(Tool):
         ranges = [(start + 1, end) if end > start else (max(1, start), min(len(lines), start + 1)) for start, end, _ in replacements]
         display = view.display_path if view else self.session.relpath(path)
         draft = SourceViewDraft(view.path if view else path, display, len(lines), SourceSpan.build(lines, ranges), EDIT)
-        block = SourceBlock.plain(draft)
+        block = SourceBlock(draft)
         return ToolOutput(block.render(), (block,))
 
     def fresh_block(self, path: str, lines: list[str], changes: list[tuple[int, int, int, int]]) -> SourceBlock:
@@ -1088,7 +1088,7 @@ class EditTool(Tool):
             # behind: without it the block would be empty and the model would have to Read again
             # just to keep editing the file it only just changed.
             ranges.append((max(1, start - 2), min(len(lines), max(end, start) + 3)))
-        return SourceBlock.plain(SourceViewDraft(path, self.session.relpath(path), len(lines), SourceSpan.build(lines, ranges), EDIT))
+        return SourceBlock(SourceViewDraft(path, self.session.relpath(path), len(lines), SourceSpan.build(lines, ranges), EDIT))
 
     def content_lines(self, content: str, followed_by_more: bool) -> list[str]:
         content = self.normalize_text(content)

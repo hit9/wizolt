@@ -161,7 +161,7 @@ class EditBatchPlan:
                 if snapshot is not None and snapshot.exists and not snapshot.is_directory
                 else None
             )
-            hint = "use the fresh view below" if recovery else "Read or Search again to obtain a current view"
+            hint = "use the fresh view below" if recovery else "Read again to obtain a current view"
             self.errors[call.id] = (f"source missing {source_name} is unknown or expired; {hint}", recovery)
 
         def plan_prepared() -> None:

@@ -376,7 +376,6 @@ class TuiApp:
         self.input_mode = InputMode.CHAT
         self.quick_hint_focus = -1  # -1 = input focused; 0..n-1 = that quick-input chip
         self._quick_hint_resume_focus = -1  # last picked chip; Tab resumes after it once
-        self.quick_hint_picked: list[str] = []  # chips picked into the input, in pick order
         self._last_quick_hints: tuple[str, ...] | None = None  # hints seen by the last quick_hints() call
         self._file_picker_active = False
         self._mention_transition_timer: asyncio.TimerHandle | None = None
@@ -722,10 +721,9 @@ class TuiApp:
             self._reset_input(value, cursor_position=len(value))
         return value
 
-    def _reset_input(self, value: str | UserInput, *, cursor_position: int | None = None, preserve_quick_hints: bool = False) -> None:
+    def _reset_input(self, value: str | UserInput, *, cursor_position: int | None = None) -> None:
         user_input = value if isinstance(value, UserInput) else UserInput(value)
-        if not preserve_quick_hints:
-            self._clear_quick_hint_selection()
+        self._clear_quick_hint_selection()
         self._changing_input = True
         try:
             self.input_images = user_input.images
@@ -753,13 +751,48 @@ class TuiApp:
     def _clear_quick_hint_selection(self) -> None:
         self.quick_hint_focus = -1
         self._quick_hint_resume_focus = -1
-        self.quick_hint_picked = []
 
     def quick_hint_fragments(self) -> StyleAndTextTuples:
         hints = self.quick_hints()
         if not hints:
             return []
-        return self._flow_quick_hints(hints, self._quick_hint_columns(), self.quick_hint_focus, tuple(self.quick_hint_picked))
+        # A chip is picked exactly while its suggestion stands in the input as its own text, so
+        # the check mark follows the text wherever the user moves it -- and disappears with an
+        # edit that erases it or buries it inside a longer suggestion.
+        picked = tuple(self._picked_hint_spans(self.input_buffer.text, hints))
+        return self._flow_quick_hints(hints, self._quick_hint_columns(), self.quick_hint_focus, picked)
+
+    @staticmethod
+    def _hint_span(text: str, hint: str) -> tuple[int, int] | None:
+        """The first occurrence of `hint` in `text` that sits on word boundaries, or None.
+
+        A suggestion pasted inside a longer word ("commit" inside "recommitted") is not the
+        suggestion standing in the input; only a boundary-delimited occurrence is."""
+
+        start = text.find(hint)
+        while start != -1:
+            end = start + len(hint)
+            before_ok = start == 0 or not text[start - 1].isalnum()
+            after_ok = end == len(text) or not text[end].isalnum()
+            if before_ok and after_ok:
+                return start, end
+            start = text.find(hint, start + 1)
+        return None
+
+    @classmethod
+    def _picked_hint_spans(cls, text: str, hints: tuple[str, ...]) -> dict[str, tuple[int, int]]:
+        """Each hint whose own word-bounded text stands in the input, and where it stands.
+
+        An occurrence buried inside another suggestion's occurrence does not count: two chips
+        where one text contains the other must not both claim the same words, or unpicking the
+        shorter one would gut the longer one's text."""
+
+        spans = {hint: span for hint in hints if (span := cls._hint_span(text, hint)) is not None}
+        return {
+            hint: span
+            for hint, span in spans.items()
+            if not any(other != hint and len(other) > len(hint) and spans[other][0] <= span[0] and span[1] <= spans[other][1] for other in spans)
+        }
 
     def _quick_hint_columns(self) -> int:
         """The terminal width in cells the hint row is rendered into; 0 when unknown."""
@@ -821,21 +854,34 @@ class TuiApp:
     def _live_quick_hints(self, buffer: Buffer) -> tuple[str, ...]:
         """The chips Tab and Enter act on, or () when the chip row is not in play.
 
-        It is in play on a chat prompt that still holds exactly the picked text -- any manual edit
-        leaves that agreement -- and with no completion menu open, which owns both keys while it
-        is up. Refreshing the hints here is what makes the two keys decide from one snapshot.
+        It is in play on any chat prompt that has suggestions, whatever the input holds -- a
+        typed draft can still take one -- and with no completion menu open, which owns both keys
+        while it is up. Refreshing the hints here is what makes the two keys decide from one
+        snapshot.
         """
         if self.input_mode != InputMode.CHAT:
             return ()
         hints = self.quick_hints()
-        if not hints or buffer.complete_state is not None or buffer.text != "\n".join(self.quick_hint_picked):
+        if not hints or buffer.complete_state is not None:
             return ()
         return hints
 
+    def _draft_completes(self, buffer: Buffer) -> bool:
+        """Whether Tab on this draft belongs to the completion machinery rather than the chips.
+
+        A command line and an active mention are what the completer serves wherever the cursor
+        sits in them, and a file mention at the cursor opens the picker; chips are for prose
+        drafts, so they yield the key the moment any of those is in play -- including the window
+        after a space closed the menu, where the argument rows are one Tab away."""
+        if self._file_mention_at_cursor(buffer) is not None:
+            return True
+        before = buffer.document.text_before_cursor
+        return before.startswith("/") or active_mention(before) is not None
+
     def tab_or_complete(self, buffer: Buffer, *, reverse: bool) -> None:
-        # On an idle prompt whose text is only picked suggestions Tab/Shift-Tab cycle the quick
-        # inputs; anywhere else they complete.
-        if self._live_quick_hints(buffer):
+        # On a prose draft with suggestions up, Tab/Shift-Tab cycle the quick inputs; a command,
+        # mention, or menu -- anything completion owns -- keeps the key.
+        if self._live_quick_hints(buffer) and not self._draft_completes(buffer):
             self.cycle_quick_hint_focus(reverse=reverse)
             return
         target = self._file_mention_at_cursor(buffer)
@@ -879,20 +925,45 @@ class TuiApp:
         self.complete_input(buffer, reverse=reverse)
 
     def _pick_quick_hint(self, buffer: Buffer) -> bool:
-        """Toggle the chip Tab has focused into the input; True when the chip row was in play.
+        """Toggle the focused chip's text in and out of the input; True when the chip row was in play.
 
-        Enter picks and returns focus to the input line, so a second Enter sends. The pick is
-        a toggle: a chip already picked is unpicked."""
+        Enter inserts the suggestion at the cursor -- on its own line at the end of the input, into
+        the sentence mid-line -- and returns focus to the input line, so a second Enter sends. A
+        chip whose suggestion stands in the input (word-bounded, not buried inside another
+        suggestion) is drawn with a check mark; Enter takes that text back out, separators
+        included, so unpicking removes exactly what picking put in. A chip the user typed in by
+        hand reads as picked too, and Enter removes it the same way.
+        """
         hints = self._live_quick_hints(buffer)
         if not hints or not 0 <= self.quick_hint_focus < len(hints):
             return False
         picked_focus = self.quick_hint_focus
         hint = hints[picked_focus]
-        if hint in self.quick_hint_picked:
-            self.quick_hint_picked.remove(hint)
+        text = buffer.text
+        cursor = buffer.cursor_position
+        span = self._picked_hint_spans(text, hints).get(hint)
+        if span is not None:
+            start, end = span
+            # Take back one separator, and only where the chip is bounded by whitespace or the
+            # text's edge on both sides, so unpicking never eats interior spacing the draft already
+            # had. The space after goes first -- the only separator a pick puts after a chip -- so a
+            # line break before it (a pick at the start of a line) survives the round trip.
+            left = text[start - 1] if start else ""
+            right = text[end] if end < len(text) else ""
+            if right == " " and (not left or left.isspace()):
+                end += 1
+            elif left.isspace() and (not right or right.isspace()):
+                start -= 1
+            kept = cursor if cursor <= start else max(start, cursor - (end - start))
+            self._reset_input(text[:start] + text[end:], cursor_position=kept)
         else:
-            self.quick_hint_picked.append(hint)
-        self._reset_input("\n".join(self.quick_hint_picked), preserve_quick_hints=True)
+            before, after = text[:cursor], text[cursor:]
+            # A space is owed on each side that would otherwise glue onto the chip; at the end of
+            # the input the chip starts a fresh line instead, and an input already ending in a
+            # line break needs nothing before it either.
+            lead = "" if not before or before[-1].isspace() else ("\n" if not after else " ")
+            tail = "" if not after or after[0].isspace() else " "
+            self._reset_input(before + lead + hint + tail + after, cursor_position=cursor + len(lead + hint + tail))
         self.quick_hint_focus = -1
         self._quick_hint_resume_focus = picked_focus
         return True
@@ -911,10 +982,11 @@ class TuiApp:
         old = self._last_input_text
         if old == text:
             return
-        if self.quick_hint_picked and text != "\n".join(self.quick_hint_picked):
-            # A manual edit leaves the picked-chip agreement: drop the picks so Tab stops cycling
-            # chips and the edited text is what sends.
-            self._clear_quick_hint_selection()
+        if self.quick_hint_focus != -1 or self._quick_hint_resume_focus != -1:
+            # Typing is aimed at the input line: hand Enter back its send, so a chip focused before
+            # the edit never swallows the keystroke, and let Tab reach the chips from the start.
+            self.quick_hint_focus = -1
+            self._quick_hint_resume_focus = -1
         self.input_error = ""
         delta = _edit_delta(old, text)
         self._sync_input_images(old, delta)

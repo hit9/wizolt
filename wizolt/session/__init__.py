@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from wizolt.base import (
+    HISTORY_INDEX_ASSET,
     SESSION_EVENT_KEY,
     Json,
     ModelUsage,
@@ -147,7 +148,6 @@ class Session:
     # a resumed session starts unknown unless the catalog supplies static evidence.
     learned_text_only_routes: set[tuple[str, str, str, str]] = field(default_factory=set, repr=False)
     image_route: ImageRoute = field(init=False, repr=False)
-    _gitignore_cache: dict[str, tuple[int, list[str]]] = field(default_factory=dict)
     uid: str = ""
     resumed: bool = False
     created_at: str = field(default_factory=local_timestamp)
@@ -187,6 +187,17 @@ class Session:
         # passed to SessionSnapshotStore.load is the caller's freshly built one.
         self.worker_tool_enabled = bool(self.config.worker_provider)
         self.apply_provider_overrides()
+
+    @property
+    def delegating_worker(self) -> Session | None:
+        """The worker while a delegation is in flight, else None.
+
+        The in-flight predicate is the engine's own: `_active_turn_messages` is filled when a turn
+        starts and cleared when it settles, so a live but idle worker is not delegating. The status
+        bar, the working divider, `/worker`, and follow-up routing all ask this one question.
+        """
+        worker = self.worker
+        return worker if worker is not None and worker._active_turn_messages else None
 
     @property
     def policy(self) -> ProviderPolicy:
@@ -347,10 +358,9 @@ class Session:
         Only the runner's main thread calls this, in model tool-call order, so keys are
         deterministic regardless of parallel completion order. A key is never reused: the counter
         is monotonic and re-registering an existing key is refused. Identical drafts within one
-        call share one key, so one Search call with several queries pointing at the same file
-        resolves to a single view id. Drafts from earlier calls are never reused: they were
-        captured from a different read, and their `total_lines` no longer describes what this call
-        showed the model.
+        call share one key, so one call that names the same file twice resolves to a single view id.
+        Drafts from earlier calls are never reused: they were captured from a different read, and
+        their `total_lines` no longer describes what this call showed the model.
         """
         keys: list[str] = []
         existing: dict[tuple[object, ...], str] = {}
@@ -451,11 +461,22 @@ class Session:
         self.context_reset_requested = True
         return first
 
+    def compacted_history_line(self) -> str:
+        """The checkpoint line naming the compacted-history index, or "" while there is none.
+
+        Called only while a checkpoint is being built -- a compaction rebuild or a context reset --
+        and the text is frozen into that message. Rebuilding it on a later projection would move the
+        prefix of a request already cached. Asking the disk here is what keeps the line honest: an
+        older session that never exported, or an export that could not be written, names nothing.
+        """
+        index = os.path.join(self.images.assets_dir(), HISTORY_INDEX_ASSET)
+        return f"Compacted history: {index} (one history.N.md per compaction beside it)" if os.path.isfile(index) else ""
+
     def apply_context_reset(self) -> bool:
         """Start a new model window with a frozen working-state checkpoint; retain the transcript.
 
-        Note state, compacted segments, stored tool results, jobs, source views, the code index and
-        the workspace are not conversation and survive untouched. The usage snapshot goes with the
+        Note state, compacted-history exports, stored tool results, jobs, source views and the
+        workspace are not conversation and survive untouched. The usage snapshot goes with the
         conversation it described: leaving it in place would keep the status bar and
         `Context(remaining)` reporting a full window for a context that is now empty.
         """
@@ -469,8 +490,10 @@ class Session:
         checkpoint["content"] = "Context reset. Working-state snapshot below; later Note calls supersede it. Transcript is retained.\n" + checkpoint["content"]
         if activity := self.recent_activity():
             checkpoint["content"] += "\n\n" + activity
-        if self.history:
-            checkpoint["content"] += f"\nRecallable history: {self.history[0].key}..{self.history[-1].key}; use RecallContext."
+        # This checkpoint replaces the conversation, so the last compaction's line naming the
+        # exports is no longer in context unless this one names them again.
+        if line := self.compacted_history_line():
+            checkpoint["content"] += "\n" + line
         self.messages.append(checkpoint)
         self.transcript_messages.append({"role": "notice", "content": "Context reset."})
         self.state.turn_messages = 0

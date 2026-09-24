@@ -49,7 +49,6 @@ from wizolt.base import (
     Text,
 )
 from wizolt.session import Session
-from wizolt.tools import CodeIndex
 
 if TYPE_CHECKING:
     from pygments.style import Style as PygmentsStyle
@@ -239,7 +238,6 @@ class Theme:
         "status_reason": "#a5b4fc",
         "status_mcp": "#93c5fd",
         "status_context": "#facc15",
-        "status_index": "#94a3b8",
         "status_yolo": "#c084fc",
         "status_worker": "#fbbf24",
         "divider_glow": "#67e8f9",
@@ -273,7 +271,6 @@ class Theme:
         "status_reason": "#5b21b6",
         "status_mcp": "#1e40af",
         "status_context": "#a16207",
-        "status_index": "#475569",
         "status_yolo": "#7e22ce",
         "status_worker": "#b45309",
         "divider_glow": "#0e7490",
@@ -1803,7 +1800,7 @@ class StatusBar:
     """
 
     RETRY_NOTICE_DURATION: ClassVar[float] = 2.0
-    ROLE_KEYS: ClassVar[tuple[str, ...]] = ("provider", "reason", "mcp", "context", "index", "yolo", "worker")
+    ROLE_KEYS: ClassVar[tuple[str, ...]] = ("provider", "reason", "mcp", "context", "yolo", "worker")
     SPINNER_FRAMES: ClassVar[str] = "⠋⠙⠹⠸⠼⠴⠦⠧"
 
     @classmethod
@@ -1881,12 +1878,10 @@ class StatusBar:
         """The session whose work this row describes: the worker while a delegation is in flight,
         the parent otherwise.
 
-        The in-flight predicate is the engine's own: `_active_turn_messages` is filled when a turn
-        starts and cleared in finish_turn, so a live but idle worker never shadows the parent. The
-        working divider marks the same condition with its `[worker]` prefix.
+        A live but idle worker never shadows the parent (`Session.delegating_worker`). The working
+        divider marks the same condition by drawing its label in the worker's color.
         """
-        worker = self.session.worker
-        return worker if worker is not None and bool(worker._active_turn_messages) else self.session
+        return self.session.delegating_worker or self.session
 
     def model_attempt_status(self) -> str:
         attempt = self.session.state.current_model_attempt
@@ -1916,7 +1911,7 @@ class StatusBar:
         """The parked worker's context water level, appended to the parent's row as `worker ctx N%`.
 
         Shown only while the parent is the active session: in flight the row already carries the
-        worker's numbers behind the `[worker]` marker, and a second group would repeat them. And
+        worker's numbers behind its `worker ·` lead, and a second group would repeat them. And
         only when the worker has real context: a worker that was never delegated to, or was
         reset, adds nothing -- `worker ctx 0%` is noise, not information. Read off the attached
         worker Session alone; the bar never loads one from disk to fill this row.
@@ -1935,8 +1930,8 @@ class StatusBar:
         Identity and usage are read off `active_session()`, so during a delegation the row answers
         the question the reader actually has -- which model is running now, and how full its
         context is -- instead of describing a parent that is parked inside a tool call. The
-        `[worker]` marker says whose numbers these are; they return to the parent's the moment
-        the worker answers. The session-wide groups (mcp, skills, index, yolo) stay the parent's:
+        `worker ·` lead says whose numbers these are; they return to the parent's the moment
+        the worker answers. The session-wide groups (mcp, skills, yolo) stay the parent's:
         the worker shares those objects, and yolo is the runtime's own flag. The one worker fact
         shown while the parent runs is its context water level (`worker_context_group`), the
         number the reader weighs before delegating again.
@@ -1954,14 +1949,13 @@ class StatusBar:
         if self.session.settings.yolo:
             identity.append(("[yolo] ", "yolo"))
         if source is not self.session:
-            identity.append(("[worker] ", "worker"))
+            identity.extend([("worker", "worker"), (" · ", "sep")])
         identity.extend([(config.active_provider + "/" + model, "provider"), (" · ", "sep"), (provider.reasoning, "reason")])
         groups: list[list[tuple[str, str]]] = [
             identity,
             [(self.mcp_label(), "mcp"), (" · ", "sep"), (f"skills {skill_count}", "mcp")],
             [(f"ctx {ctx_percent}%", "context"), (" · ", "sep"), (f"cache {cache_percent}%", "context")],
             *self.worker_context_group(source),
-            [("index" + self.index_status(), "index")],
         ]
         fragments: StyleAndTextTuples = []
         for group in groups:
@@ -2015,11 +2009,3 @@ class StatusBar:
                 clipped.append((style, char))
                 used += char_width
         return clipped or [("", "")]
-
-    def index_status(self) -> str:
-        if self.session.state.code_index_error:
-            return CodeIndex.label("error")
-        if self.session.state.code_index_refreshing:
-            notice = self.session.state.code_index_notice or "syncing"
-            return CodeIndex.label(notice)
-        return CodeIndex.label(self.session.state.code_index_status)

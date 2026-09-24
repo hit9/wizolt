@@ -190,11 +190,11 @@ def test_strict_tools_schema_is_valid_and_does_not_mutate_classvars():
     after = {name: json.dumps(tool.params_schema()) for name, tool in TOOL_REGISTRY.items()}
     assert before == after  # deepcopy keeps shared ClassVar schemas intact
 
-    search_context = TOOL_REGISTRY["Search"].schema(True)["function"]["parameters"]["properties"]["context"]
-    assert "null" in search_context["type"]
+    job_timeout = TOOL_REGISTRY["Job"].schema(True)["function"]["parameters"]["properties"]["timeout"]
+    assert "null" in job_timeout["type"]
     # Optional array/object params use anyOf (never object/array inside a type union).
-    search_queries = TOOL_REGISTRY["Search"].schema(True)["function"]["parameters"]["properties"]["queries"]
-    assert search_queries["anyOf"][1] == {"type": "null"}
+    read_files = TOOL_REGISTRY["Read"].schema(True)["function"]["parameters"]["properties"]["files"]
+    assert read_files["anyOf"][1] == {"type": "null"}
 
 
 def test_strict_tools_skips_free_form_object_schemas():
@@ -216,7 +216,7 @@ def test_chat_tool_call_parsing_handles_valid_invalid_and_non_object_payloads(tm
             SimpleNamespace(id="ok", function=SimpleNamespace(name="Bash", arguments=json.dumps({"command": "pwd"}))),
             SimpleNamespace(id="second", function=SimpleNamespace(name="Bash", arguments=json.dumps({"command": "whoami"}))),
             SimpleNamespace(id="bad-json", function=SimpleNamespace(name="Read", arguments="{")),
-            SimpleNamespace(id="list-payload", function=SimpleNamespace(name="Recall", arguments=json.dumps(["tr.1"]))),
+            SimpleNamespace(id="list-payload", function=SimpleNamespace(name="Bash", arguments=json.dumps(["tr.1"]))),
         ]
     )
 
@@ -227,7 +227,7 @@ def test_chat_tool_call_parsing_handles_valid_invalid_and_non_object_payloads(tm
     assert calls[2].id == "bad-json"
     assert calls[2].name == "Read"
     assert calls[2].args == []
-    assert calls[3] == ToolCall(id="list-payload", name="Recall", args=[["tr.1"]])
+    assert calls[3] == ToolCall(id="list-payload", name="Bash", args=[["tr.1"]])
 
 
 async def test_model_request_retries_retryable_errors_and_reports_attempts(tmp_path, monkeypatch):

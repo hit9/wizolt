@@ -248,7 +248,6 @@ table.docutils th { background: var(--nc-surface); color: var(--nc-fg-strong); }
 .sb-reason { color: #a5b4fc; }
 .sb-mcp { color: #93c5fd; }
 .sb-ctx { color: #facc15; }
-.sb-index { color: #94a3b8; }
 .sb-yolo { color: #c084fc; }
 .sb-warn { color: #fb7185; }
 .sb-worker { color: #fbbf24; } /* worker identity color, mirroring render.py Theme.DARK status.worker */

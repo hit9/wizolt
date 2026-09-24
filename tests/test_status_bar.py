@@ -48,13 +48,12 @@ def test_status_bar_has_fixed_order_and_no_working_only_fields(tmp_path):
     s.config.provider.model = "vendor/model"
     s.config.provider.reasoning = "high"
     s.state.context_percent = 23
-    s.state.code_index_status = "stale"
     s.state.turn_step = s.settings.max_steps
     s.update.latest = "99.0.0"
 
     text = status_text(StatusBar(s))
 
-    assert text == f"[yolo] default/model · high | mcp 0 · skills {len(s.skills.skills)} | ctx 23% · cache 0% | index*"
+    assert text == f"[yolo] default/model · high | mcp 0 · skills {len(s.skills.skills)} | ctx 23% · cache 0%"
     assert all(word not in text for word in ("worker", "compaction", "jobs", "update", "step", "retry", "attempt"))
 
 
@@ -71,7 +70,6 @@ def test_status_bar_keeps_semantic_colors(tmp_path):
     assert by_text[s.config.provider.reasoning] == Theme.fg("status_reason")
     assert by_text["mcp 0"] == Theme.fg("status_mcp")
     assert by_text["ctx 0%"] == Theme.fg("status_context")
-    assert by_text["index"] == Theme.fg("status_index")
 
 
 def test_status_bar_clips_wide_model_name_by_display_width(tmp_path, monkeypatch):

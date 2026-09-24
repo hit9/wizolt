@@ -4,11 +4,11 @@
 
 **`/status`** — Shows everything about the runtime at a glance: workspace path,
 session id, active provider and model, calculated compaction-budget fill percentage,
-conversation history, prompt-cache hit ratio, code index state, the AGENTS.md state, background jobs,
-and whether an update is available.
+conversation history, prompt-cache hit ratio, the AGENTS.md state, background jobs, and whether an
+update is available.
 
 ```{figure} ../snapshots/wizolt-status-command.png
-:alt: The /status command showing workspace, session, provider, context, and code index state
+:alt: The /status command showing workspace, session, provider, and context state
 :width: 600px
 :align: center
 
@@ -37,13 +37,6 @@ publication date, maintenance scope, source, bundled/cached versions, and the la
 `status` is an explicit alias for the default view. `sync` checks GitHub immediately instead of
 waiting for the automatic check, which runs at most once every 72 hours. See
 [Compatibility catalog](catalog.md) for source selection, activation, and failure behavior.
-
-## The code index
-
-**`/index [force]`** — Build or rebuild the code symbol index that powers
-`InspectCode`. The first build walks every source file; later syncs are fast. Add
-`force` to rebuild from scratch. See [Code symbol index](tools.md#code-symbol-index)
-for details.
 
 ## Switching models
 
@@ -83,7 +76,8 @@ long sessions within budget on its own, but `/compact` trims on demand.
 
 **`/compact log [seg.N]`** — Review what compaction kept: the stored segments newest
 first, and the summary of the one you open. Naming a segment prints its summary
-without the viewer. See
+without the viewer. Each row is a `history.N.md` file the agent can read back, kept
+beside the `history.md` index. See
 [Keeping context manageable](context.md#keeping-context-manageable).
 
 **`/context [reset]`** — Shows how much of the context window is in use, or clears the model's conversation

@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, ClassVar
 
-from wizolt.base import SESSION_EVENT_KEY, TOOL_OUTPUT_ASSET_SUFFIX, Json, WizoltError
+from wizolt.base import HISTORY_INDEX_ASSET, SESSION_EVENT_KEY, TOOL_OUTPUT_ASSET_SUFFIX, Json, WizoltError
 from wizolt.image import IMAGE_REFS_KEY, ImageRef
 from wizolt.session.codec import SessionSnapshotCodec
 from wizolt.session.ownership import SessionLease, SessionOwnershipError
@@ -264,6 +264,11 @@ class SessionSnapshotStore:
         # promises that path. Retain one for as long as its tool result is retained, so the two
         # expire together and the promise is never left pointing at a deleted file.
         refs.update(key + TOOL_OUTPUT_ASSET_SUFFIX for key in session.tool_results)
+        # Compacted-history exports live in the same directory. `history.md` is the append-only
+        # index and is kept for the session's whole life; each `history.N.md` is kept only while its
+        # segment is, so a segment dropped by the retention bound takes its export with it.
+        refs.add(HISTORY_INDEX_ASSET)
+        refs.update(name for segment in session.history if (name := segment.export_name))
         return refs
 
     @staticmethod

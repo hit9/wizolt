@@ -287,7 +287,19 @@ class TuiRuntime:
                     if not self.turn_active:
                         self.pending.put_nowait(admitted)
                         continue
-                    self.loop.session.enqueue_user_input(admitted, next_turn=submission.next_turn)
+                    # A live follow-up typed while a delegation is running goes to the worker, whose
+                    # next model request claims it from its own queue; anything else (a Tab-held
+                    # input, a command, an attachment) stays with the parent, which is the only
+                    # turn the runtime owns the boundaries of.
+                    worker = self.loop.session.delegating_worker
+                    if worker is not None and not submission.next_turn and not admitted.images and not admitted.pastes:
+                        worker.enqueue_user_input(admitted)
+                        # The parent's save below no longer carries this input (it left the
+                        # parent's queue), so persist the worker's queue itself: until the
+                        # worker's next checkpoint the text would live in no snapshot at all.
+                        await worker.save_snapshot()
+                    else:
+                        self.loop.session.enqueue_user_input(admitted, next_turn=submission.next_turn)
                 uid = await self.loop.session.save_snapshot()
                 if submission.resume_notice:
                     self.loop.resume.emit_resume_line(uid)
@@ -558,7 +570,6 @@ class TuiRuntime:
             answer = f"Error: {error}"
         finally:
             self.loop.session.state.manual_model_retry_requested = False
-            self.loop.schedule_index_freshness()
         try:
             if cancelled:
                 self.loop.model_stream_output("", "")

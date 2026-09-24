@@ -12,33 +12,40 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 
-from wizolt.source.view import EDIT, READ, SEARCH, SourceSpan, SourceViewDraft
+from wizolt.source.view import EDIT, READ, SourceSpan, SourceViewDraft
+
+
+def _omission_note(budget_tokens: int, estimated_tokens: int, omitted_tokens: int, file: str) -> str:
+    """The one marker every bounded tool result carries where its middle was dropped.
+
+    Facts only -- the budget, the size, what was omitted, and the file holding the full text when
+    one was written; what to do about the omission is the model's own call. `file` is empty when no
+    artifact was written, and the marker then names none rather than one still in flight.
+    """
+    attrs = f'omitted="middle" max_tokens="{budget_tokens}" estimated_tokens="{estimated_tokens}" omitted_tokens="{omitted_tokens}"'
+    attrs += f" file={_quote(file)}" if file else ""
+    return f"<bounded_output {attrs}/>"
 
 
 @dataclass(frozen=True)
 class TextBlock:
-    """A non-source output part whose omitted middle is retained under the result's tr.N key."""
+    """A non-source output part whose omitted middle was written to the result's tr.N.txt file."""
 
     head: str
     tail: str
     estimated_tokens: int
     omitted_tokens: int
     budget_tokens: int
-    note_recall: str = ""
     note_file: str = ""
-    note_hint: str = ""
 
     def render(self) -> str:
-        attrs = f'omitted="middle" max_tokens="{self.budget_tokens}" estimated_tokens="{self.estimated_tokens}" omitted_tokens="{self.omitted_tokens}"'
-        for name, value in (("recall", self.note_recall), ("file", self.note_file), ("hint", self.note_hint)):
-            attrs += f" {name}={_quote(value)}" if value else ""
-        note = f"<bounded_output {attrs}/>"
+        note = _omission_note(self.budget_tokens, self.estimated_tokens, self.omitted_tokens, self.note_file)
         return "\n".join(part for part in (self.head.rstrip(), note, self.tail.lstrip()) if part)
 
 
 @dataclass(frozen=True)
 class SourceBlock:
-    """A draft plus per-line markers (e.g. Search's `>` match / ` ` context prefix).
+    """A draft rendered as numbered lines.
 
     `bounded` records a projection clip: the visible spans are head spans followed by tail spans,
     and `split_span` is the index of the first tail span. The omitted middle is not part of any
@@ -46,25 +53,17 @@ class SourceBlock:
     """
 
     draft: SourceViewDraft
-    markers: tuple[str, ...]  # one marker per line across all spans, in order
     bounded: bool = False
     estimated_tokens: int = 0
     omitted_tokens: int = 0
     budget_tokens: int = 0  # the projection budget the block was clipped to
     split_span: int = 0  # index of the first tail span when bounded
-    note_recall: str = ""  # tr.N key the full retained output lives under, filled by the runner
     note_file: str = ""  # materialized asset path for the full retained output, filled by the runner
-    note_hint: str = ""  # what the model should do with the omitted middle
-
-    @classmethod
-    def plain(cls, draft: SourceViewDraft) -> SourceBlock:
-        """A block with no markers: everything Read, InspectCode, and Edit produce."""
-        return cls(draft, ("",) * draft.line_count)
 
     @classmethod
     def around(cls, path: str, display_path: str, lines: Sequence[str], center: int, producer: str = EDIT) -> SourceBlock:
-        """A plain block of the current lines around 0-based `center`, for a failed Edit."""
-        return cls.plain(SourceViewDraft.around(path, display_path, lines, center, producer))
+        """A block of the current lines around 0-based `center`, for a failed Edit."""
+        return cls(SourceViewDraft.around(path, display_path, lines, center, producer))
 
     def render(self, key: str = "") -> str:
         """Render this block with ordinary numbered lines.
@@ -79,23 +78,14 @@ class SourceBlock:
             # empty block it is rather than failing while building an error message.
             return "\n".join([self._open_tag(key), "(empty file)" if draft.total_lines == 0 else "(no lines selected)", self._close_tag()])
         width = len(str(max(span.end for span in draft.spans)))
-        rows: list[str] = []
-        for index, (span, offset, line) in enumerate(self._rows()):
-            marker = self.markers[index] if index < len(self.markers) else ""
-            rows.append(f"{marker}{span.start + offset:>{width}} | {line.rstrip(chr(10))}")
+        rows = [_numbered(span.start + offset, width, line) for span in draft.spans for offset, line in enumerate(span.lines)]
         if not self.bounded:
             return "\n".join([self._open_tag(key), *rows, self._close_tag()])
         head = sum(len(span.lines) for span in draft.spans[: self.split_span])
         return "\n".join([self._open_tag(key), *rows[:head], self._note(), *rows[head:], self._close_tag()])
 
-    def _rows(self) -> list[tuple[SourceSpan, int, str]]:
-        return [(span, offset, line) for span in self.draft.spans for offset, line in enumerate(span.lines)]
-
     def _note(self) -> str:
-        attrs = f'omitted="middle" max_tokens="{self.budget_tokens}" estimated_tokens="{self.estimated_tokens}" omitted_tokens="{self.omitted_tokens}"'
-        for name, value in (("recall", self.note_recall), ("file", self.note_file), ("hint", self.note_hint)):
-            attrs += f' {name}="{value}"' if value else ""
-        return f"<bounded_output {attrs}/>"
+        return _omission_note(self.budget_tokens, self.estimated_tokens, self.omitted_tokens, self.note_file)
 
     def _open_tag(self, key: str) -> str:
         draft = self.draft
@@ -103,12 +93,10 @@ class SourceBlock:
         ranges = draft.ranges_label()
         if draft.producer == READ:
             return f"<Read path={_quote(draft.display_path)}{source} lines={_quote(ranges)} total_lines={draft.total_lines}>"
-        if draft.producer == SEARCH:
-            return f"<file path={_quote(draft.display_path)}{source} lines={_quote(ranges)}>"
         return f"<source path={_quote(draft.display_path)}{source} lines={_quote(ranges)}>"
 
     def _close_tag(self) -> str:
-        return {READ: "</Read>", SEARCH: "</file>"}.get(self.draft.producer, "</source>")
+        return "</Read>" if self.draft.producer == READ else "</source>"
 
     def overhead(self, estimate: Callable[[str], int]) -> int:
         """What this block costs before a single line of source: its tags and its omission note.
@@ -121,6 +109,10 @@ class SourceBlock:
 
 def _quote(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _numbered(number: int, width: int, line: str) -> str:
+    return f"{number:>{width}} | {line.rstrip(chr(10))}"
 
 
 @dataclass(frozen=True)
@@ -177,9 +169,8 @@ class ToolOutput:
         safe to run before view ids are allocated.
 
         The budget is a target, not a hard cap: `estimate` is approximate, and the runner adds the
-        recall key, asset path, and hint to each omission note afterwards, which it cannot know
-        before finding out that anything was clipped. The overshoot is bounded by one note per
-        clipped block.
+        asset path to each omission note afterwards, which it cannot know before finding out that
+        anything was clipped. The overshoot is bounded by one note per clipped block.
         """
         if not self.has_source or estimate(self.render([None] * len(self.drafts))) <= max_tokens:
             return self
@@ -240,8 +231,8 @@ def _tail_excerpt(text: str, limit: int) -> str:
     return snapped if len(snapped) >= limit // 2 else window
 
 
-# (span index, offset in span, marker, line): one rendered row, kept addressable while clipping.
-_Row = tuple[int, int, str, str]
+# (span index, offset in span, line): one rendered row, kept addressable while clipping.
+_Row = tuple[int, int, str]
 
 
 def _clip(block: SourceBlock, budget: int, estimate: Callable[[str], int]) -> SourceBlock:
@@ -258,9 +249,8 @@ def _clip(block: SourceBlock, budget: int, estimate: Callable[[str], int]) -> So
     costs: list[int] = []  # a row's cost is asked for repeatedly; a large file has many rows
     for span_index, span in enumerate(draft.spans):
         for offset, line in enumerate(span.lines):
-            marker = block.markers[len(rows)] if len(rows) < len(block.markers) else ""
-            rows.append((span_index, offset, marker, line))
-            costs.append(estimate(f"{marker}{span.start + offset:>{width}} | {line.rstrip(chr(10))}"))
+            rows.append((span_index, offset, line))
+            costs.append(estimate(_numbered(span.start + offset, width, line)))
 
     head = 0  # rows taken from the front
     used = 0
@@ -277,17 +267,15 @@ def _clip(block: SourceBlock, budget: int, estimate: Callable[[str], int]) -> So
         return block  # everything fit after all (estimates differ slightly); nothing is omitted
 
     spans: list[SourceSpan] = []
-    markers: list[str] = []
     head_spans = 0
     position = 0
     for span_index, group in _group(chosen):
         if position + len(group) <= head:
             head_spans += 1
         position += len(group)
-        spans.append(SourceSpan(draft.spans[span_index].start + group[0][1], tuple(row[3] for row in group)))
-        markers.extend(row[2] for row in group)
-    clipped = SourceBlock(SourceViewDraft(draft.path, draft.display_path, draft.total_lines, tuple(spans), draft.producer), tuple(markers))
-    return replace(clipped, bounded=True, split_span=head_spans)
+        spans.append(SourceSpan(draft.spans[span_index].start + group[0][1], tuple(row[2] for row in group)))
+    clipped = SourceViewDraft(draft.path, draft.display_path, draft.total_lines, tuple(spans), draft.producer)
+    return SourceBlock(clipped, bounded=True, split_span=head_spans)
 
 
 def _group(rows: Sequence[_Row]) -> list[tuple[int, list[_Row]]]:
