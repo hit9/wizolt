@@ -440,7 +440,7 @@ class TestMCPManagerDiscovery:
         assert result == "pong"
         assert auth_calls == [(config, True, notify)]
         assert transport_args == [(config, {}, marker)]
-        assert client_args == [("transport", s.mcp.call_timeout(), "wizolt")]
+        assert client_args == [("transport", s.mcp.login_timeout(), "wizolt")]
         assert closed == [True]
 
     def test_run_op_imports_the_sdk_off_the_event_loop(self, monkeypatch):

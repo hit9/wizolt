@@ -88,8 +88,13 @@ call separately, and only what the script prints returns to the conversation. Se
 ### Authentication
 
 - **Bearer token** — set `bearer_token_env_var` (or a custom header via `env_http_headers`).
-- **OAuth** — set `auth = "oauth"`. Connecting runs the authorization flow; disconnecting
-  clears the saved login.
+- **OAuth** — set `auth = "oauth"`. `/mcp connect` opens the sign-in page in your browser and
+  shows its link; you have 5 minutes to finish. The login is saved, so later sessions connect
+  without it, and disconnecting clears it.
+
+  Without a local browser (over SSH, in a container), open the link on any machine and sign in.
+  The browser then fails to load a `http://localhost:…/callback` page: copy that address and run
+  `curl '<address>'` where wizolt runs.
 
 ```{admonition} Trust
 :class: warning

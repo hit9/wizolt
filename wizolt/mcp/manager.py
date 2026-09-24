@@ -67,6 +67,7 @@ class MCPManager:
 
     RAW_OUTPUT_LIMIT: ClassVar[int] = 200_000
     DISCOVERY_TIMEOUT: ClassVar[int] = 10
+    LOGIN_TIMEOUT: ClassVar[int] = 300
     MAX_DISCOVERY_WORKERS: ClassVar[int] = 8
     DESCRIBE_DESCRIPTION_LIMIT: ClassVar[int] = 1_000
     DESCRIBE_ARGUMENT_LIMIT: ClassVar[int] = 50
@@ -379,6 +380,13 @@ class MCPManager:
     def discovery_timeout(self) -> int:
         return min(self.call_timeout(), self.DISCOVERY_TIMEOUT)
 
+    def login_timeout(self) -> int:
+        """The deadline for an interactive login, which includes a person signing in.
+
+        Not `shell_timeout`: that bounds a command, and a login may mean opening the link on
+        another machine, signing in there, and bringing the redirect back by hand."""
+        return max(self.call_timeout(), self.LOGIN_TIMEOUT)
+
     @staticmethod
     def _sole_error(error: BaseException) -> BaseException:
         """The one error inside nested single-error groups, or `error` itself.
@@ -551,7 +559,7 @@ class MCPManager:
             MCPServerTokens(self._oauth_token_store, config.url),
             interactive=interactive,
             notify=notify,
-            callback_timeout=self.session.settings.shell_timeout,
+            callback_timeout=self.login_timeout(),
             refresh_gate=self._refresh_gate(config.url),
         )
 
@@ -633,7 +641,13 @@ class MCPManager:
 
         from wizolt.base import __version__
 
-        timeout = self.call_timeout() if long_timeout or interactive else self.discovery_timeout()
+        # An interactive login runs inside the connection's first request -- the SDK signs in when
+        # that request is refused -- so the request's own read timeout must outlast the person
+        # signing in, not just the outer deadline.
+        if interactive:
+            timeout = self.login_timeout()
+        else:
+            timeout = self.call_timeout() if long_timeout else self.discovery_timeout()
         auth = self.oauth_client(config, interactive=interactive, notify=notify) if config.auth == "oauth" else None
         try:
             transport = self._transport(config, headers, auth)
@@ -863,17 +877,28 @@ class MCPManager:
         headers = self._build_mcp_headers(config)
         if isinstance(headers, str):
             return headers
+        shown: list[str] = []
+
+        def show(text: str) -> None:
+            shown.append(text)
+            if notify:
+                notify(text)
+
+        timeout = self.login_timeout()
         try:
-            await self._bounded(self._run_op(config, headers, lambda c: c.list_tools(), interactive=True, notify=notify))
+            await self._bounded(self._run_op(config, headers, lambda c: c.list_tools(), interactive=True, notify=show), timeout=timeout)
         except Exception as error:  # noqa: BLE001 - OAuth probes cross third-party MCP transports.
-            text = self.error_text(error, timeout=self.call_timeout())
+            text = self.error_text(error, timeout=timeout)
             self.set_server_error(config.name, text)
-            return self.oauth_auth_failure(config, text)
+            return self.oauth_auth_failure(config, text, url_shown=bool(shown))
         self.server_errors.pop(config.name, None)
         return None
 
     @staticmethod
-    def oauth_auth_failure(config: MCPServerConfig, error: str) -> str:
+    def oauth_auth_failure(config: MCPServerConfig, error: str, *, url_shown: bool = False) -> str:
+        if url_shown:
+            # The login got as far as the browser; what the user needs is how to try again.
+            return f"MCP OAuth authentication failed for {config.name}: {error}\nRun /mcp connect {config.name} to try again."
         return "\n".join(
             [
                 "MCP OAuth authentication failed for " + config.name + ": " + error,

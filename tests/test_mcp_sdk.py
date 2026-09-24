@@ -28,6 +28,7 @@ from pydantic import BaseModel
 
 from wizolt.base import ToolError
 from wizolt.config import Config
+from wizolt.mcp import MCPManager
 from wizolt.session import Session, bootstrap_features
 
 URL = "http://127.0.0.1:8000/mcp"
@@ -699,18 +700,46 @@ async def test_a_login_nobody_completes_times_out_and_leaves_nothing_behind(tmp_
     import webbrowser
 
     s = oauth_session(tmp_path)
-    s.settings.shell_timeout = 2
+    monkeypatch.setattr(MCPManager, "LOGIN_TIMEOUT", 2)
+    s.settings.shell_timeout = 1
     notices: list[str] = []
 
     async with login_server(monkeypatch, era):
         monkeypatch.setattr(webbrowser, "open", lambda _url: False)
         result = await s.mcp.connect_server("fixture", interactive=True, notify=notices.append)
 
-    assert result.startswith("MCP OAuth authentication failed for fixture: ")
+    # The URL was shown, so the message says how to try again, not that there was no URL.
+    assert result == "MCP OAuth authentication failed for fixture: MCP call timed out after 2s\nRun /mcp connect fixture to try again."
     assert len(notices) == 1 and notices[0].startswith("Open this URL to authorize MCP server `fixture`:\nhttp://127.0.0.1:8000/authorize?")
     port = int(parse_qs(urlsplit(notices[0].split("\n", 1)[1]).query)["redirect_uri"][0].rsplit(":", 1)[1].split("/")[0])
     with contextlib.closing(__import__("socket").socket()) as probe:
         probe.bind(("127.0.0.1", port))  # free again
+
+
+async def test_a_manual_login_may_take_longer_than_shell_timeout(tmp_path, monkeypatch, era):
+    """Guards the headless login that timed out after the callback arrived.
+
+    On a headless machine the user opens the link on another computer, signs in, and brings the
+    redirect back by hand. The login used to share `shell_timeout` (60s by default) with the
+    request it runs inside, so a callback that arrived late in that window was received -- the
+    loopback page said "Authorization complete" -- and the login still failed as a timeout. It has
+    its own deadline now: here the callback arrives after `shell_timeout` and the login succeeds."""
+    import webbrowser
+
+    s = oauth_session(tmp_path)
+    s.settings.shell_timeout = 1
+    monkeypatch.setattr(MCPManager, "LOGIN_TIMEOUT", 10)
+
+    async with login_server(monkeypatch, era) as (_auth, browser):
+        urls: list[str] = []
+        monkeypatch.setattr(webbrowser, "open", lambda url: urls.append(url) or False)  # headless
+        login = asyncio.create_task(s.mcp.connect_server("fixture", interactive=True))
+        while not urls:
+            await asyncio.sleep(0.05)
+        await asyncio.sleep(2)  # signing in elsewhere, then pasting the redirect into curl
+        await asyncio.to_thread(browser.open, urls[0])
+
+        assert await login == CONNECTED
 
 
 async def test_an_oauth_request_abandoned_mid_flight_leaves_no_error_in_the_loop(tmp_path, monkeypatch, era):

@@ -38,6 +38,11 @@
 - Two interactive `/mcp connect` runs for the same OAuth server, say from `/mcp` and a batch
   connect, log in once. The second used to discard the login the first had just completed and start
   its own, failing the first as "authentication required".
+- An MCP OAuth login has 5 minutes to finish instead of `shell_timeout` (60 seconds by default),
+  so signing in on another machine and bringing the redirect back works. A login that arrived late
+  used to be accepted ("Authorization complete") and still fail as a timeout, reported as "No
+  authorization URL was provided"; a failed login whose link was shown now says to run
+  `/mcp connect` again.
 
 ## 0.53.0 - 2026-09-23
 
