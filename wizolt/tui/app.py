@@ -904,8 +904,12 @@ class TuiApp:
             self._reset_input(text.replace(removal, "", 1), cursor_position=kept)
         else:
             before, after = text[:cursor], text[cursor:]
-            separator = "" if not before or before[-1].isspace() else ("\n" if not after else " ")
-            self._reset_input(before + separator + hint + after, cursor_position=cursor + len(separator + hint))
+            # A space is owed on each side that would otherwise glue onto the chip; at the end of
+            # the input the chip starts a fresh line instead, and an input already ending in a
+            # line break needs nothing before it either.
+            lead = "" if not before or before[-1].isspace() else ("\n" if not after else " ")
+            tail = "" if not after or after[0].isspace() else " "
+            self._reset_input(before + lead + hint + tail + after, cursor_position=cursor + len(lead + hint + tail))
         self.quick_hint_focus = -1
         self._quick_hint_resume_focus = picked_focus
         return True

@@ -663,6 +663,17 @@ def test_quick_hint_pick_after_a_space_joins_the_sentence():
     assert app.input_buffer.text == "then run the tests"
 
 
+def test_quick_hint_pick_mid_word_spaces_both_sides():
+    """The cursor inside a word owes a space on both sides of the chip, not just the front:
+    gluing onto the word after the cursor is the same bug as gluing onto the one before it."""
+    app, _ = quick_hint_app()
+    app.input_buffer.insert_text("helloworld")
+    app.input_buffer.cursor_position = 5  # inside "helloworld"
+    app.quick_hint_focus = 0
+    assert app._pick_quick_hint(app.input_buffer)
+    assert app.input_buffer.text == "hello run the tests world"
+
+
 def test_quick_hint_pick_inserts_mid_line_at_the_cursor():
     app, _ = quick_hint_app()
     app.input_buffer.insert_text("hello world")
