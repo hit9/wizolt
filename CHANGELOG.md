@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- wizolt no longer depends on Pillow, which cuts about 22 MB (a quarter) from an install. Images
+  are recognized from their own headers, with the same formats as before (PNG, JPEG, WebP, and
+  single-frame GIF) and the same refusals, including files cut short. A file whose header is
+  valid but whose image data is damaged now reaches the provider, which refuses it itself.
+
 ## 0.54.1 - 2026-09-24
 
 ### Fixed
