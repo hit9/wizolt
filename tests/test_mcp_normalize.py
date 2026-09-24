@@ -65,7 +65,7 @@ class TestNormalizeResult:
     def test_object_model_dump(self):
         """Object with model_dump is serialized."""
         s = session("/tmp")
-        obj = SimpleNamespace(model_dump=lambda mode="json": {"result": "ok", "value": 42})
+        obj = SimpleNamespace(model_dump=lambda mode="json", **_options: {"result": "ok", "value": 42})
         result = s.mcp.normalize_result(obj)
         assert "ok" in result
         assert "42" in result

@@ -31,6 +31,8 @@ from wizolt.mentions import scan_mentions
 from wizolt.session import Session
 
 if TYPE_CHECKING:
+    import anyio
+    import httpx2
     from mcp.client import Client, Transport
     from mcp.client.stdio import StdioServerParameters
     from mcp.types import BlobResourceContents, CallToolResult, Resource, TextResourceContents, Tool
@@ -86,10 +88,13 @@ class MCPManager:
         self._oauth_token_store = MCPFileTokenStore(self.session.data_path("mcp-oauth", "tokens.json"))
         self._oauth_lock: asyncio.Lock | None = None
         self._oauth_lock_loop: asyncio.AbstractEventLoop | None = None
+        self._refresh_gates: dict[str, asyncio.Lock] = {}
+        self._refresh_gates_loop: asyncio.AbstractEventLoop | None = None
         self._discovering_servers: dict[str, int] = {}
         self._discovery_failed = False
-        # Operations in flight on the runtime loop, so shutdown has something to cancel and await.
-        self._tasks: set[asyncio.Task] = set()
+        # Operations in flight on the runtime loop, each with the anyio scope that cancels it, so
+        # shutdown has something to cancel and await.
+        self._tasks: dict[asyncio.Task, anyio.CancelScope] = {}
         self._closed = False
 
     def parse_configs(self) -> list[MCPServerConfig]:
@@ -308,14 +313,22 @@ class MCPManager:
             self.set_server_error(config.name, self.error_text(error, timeout=self.discovery_timeout()))
 
     async def _gather_assets(self, config: MCPServerConfig, headers: dict[str, str]) -> tuple[list[Tool], list[Resource]]:
-        """Fetch tools and resources concurrently. Tool failure aborts discovery; resources are best-effort."""
-        tools_co = self._list_tools(config, headers)
-        resources_co = self._list_resources(config, headers)
-        tools, resources = await asyncio.gather(tools_co, resources_co, return_exceptions=True)
-        if isinstance(tools, BaseException):
-            raise tools
-        if isinstance(resources, BaseException):
-            resources = []
+        """Fetch tools and resources concurrently. Tool failure aborts discovery; resources are best-effort.
+
+        An anyio task group, not `asyncio.gather`: a cancelled gather cancels its children natively,
+        and each child is a client whose teardown must only be cancelled through anyio (see _settle)."""
+        import anyio
+
+        resources: list[Resource] = []
+
+        async def list_resources() -> None:
+            nonlocal resources
+            with contextlib.suppress(Exception):
+                resources = await self._list_resources(config, headers)
+
+        async with anyio.create_task_group() as group:
+            group.start_soon(list_resources)
+            tools = await self._list_tools(config, headers)
         return tools, resources
 
     def set_server_error(self, name: str, error: str) -> None:
@@ -355,11 +368,18 @@ class MCPManager:
     def discovery_timeout(self) -> int:
         return min(self.call_timeout(), self.DISCOVERY_TIMEOUT)
 
-    def error_text(self, error: BaseException, *, timeout: int | None = None) -> str:
-        # The SDK's transports run in task groups, so a refused connection arrives wrapped in a
-        # group whose own message says only how many errors it holds.
+    @staticmethod
+    def _sole_error(error: BaseException) -> BaseException:
+        """The one error inside nested single-error groups, or `error` itself.
+
+        The SDK's client and transports run in task groups, so a refused connection arrives wrapped
+        in groups whose own message says only how many errors they hold."""
         while isinstance(error, BaseExceptionGroup) and len(error.exceptions) == 1:
             error = error.exceptions[0]
+        return error
+
+    def error_text(self, error: BaseException, *, timeout: int | None = None) -> str:
+        error = self._sole_error(error)
         if isinstance(error, TimeoutError):
             return f"timeout after {timeout or self.call_timeout()}s"
         text = str(error).strip()
@@ -400,7 +420,8 @@ class MCPManager:
         if isinstance(annotations, dict):
             return annotations
         if hasattr(annotations, "model_dump"):
-            data = annotations.model_dump(mode="json", exclude_none=True)
+            # By alias: the SDK's fields are snake_case, and the hints are read by their wire names.
+            data = annotations.model_dump(mode="json", by_alias=True, exclude_none=True)
             return data if isinstance(data, dict) else {}
         return {}
 
@@ -446,31 +467,49 @@ class MCPManager:
             # or the caller's un-awaited coroutine would surface as a warning at collection.
             coroutine.close()
             raise ToolError("MCP manager is closed")
+        import anyio
+
         timeout = self.call_timeout() if timeout is None else timeout
-        task = asyncio.ensure_future(coroutine)
-        self._tasks.add(task)
+        scope = anyio.CancelScope()
+
+        async def scoped() -> _MCPResultT | None:
+            with scope:
+                return await coroutine
+            return None  # cancelled through the scope; the caller already has its answer
+
+        task = asyncio.ensure_future(scoped())
+        self._tasks[task] = scope
         try:
             done, _ = await asyncio.wait({task}, timeout=timeout)
             if done:
-                return task.result()
+                result = task.result()
+                if scope.cancelled_caught:
+                    raise ToolError("MCP manager is closed")
+                return result  # pyright: ignore[reportReturnType] - None only when cancelled
             await self._settle(task)
             raise ToolError(f"MCP call timed out after {timeout}s")
         except asyncio.CancelledError:
             await self._settle(task)
             raise
         finally:
-            self._tasks.discard(task)
+            self._tasks.pop(task, None)
 
-    @staticmethod
-    async def _settle(task: asyncio.Task) -> None:
+    async def _settle(self, task: asyncio.Task) -> None:
         """Cancel one operation and wait for its client to finish unwinding.
+
+        Cancelled through its anyio scope, never `task.cancel()`: the SDK tears a client down inside
+        a shielded scope -- a stdio server gets a grace period, then is killed -- and a native cancel
+        breaks through that shield. Landing mid-teardown, from a deadline or `close()` after an
+        earlier cancel, it stopped the kill, and the transport then waited on the server's stdout
+        until the server exited on its own. Cancelling a scope twice is harmless.
 
         `wait` rather than awaiting the task: the caller already has the answer that matters -- a
         timeout, or its own cancellation -- and a client whose teardown then fails on its own (an
         HTTP read timeout on the request it was abandoning) must neither replace that answer nor be
         left unretrieved for the loop's exception handler to print during collection."""
 
-        task.cancel()
+        if scope := self._tasks.get(task):
+            scope.cancel()
         await asyncio.wait({task})
         if not task.cancelled():
             task.exception()
@@ -486,8 +525,8 @@ class MCPManager:
             return
         self._closed = True
         pending = list(self._tasks)
-        for task in pending:
-            task.cancel()
+        for scope in self._tasks.values():
+            scope.cancel()  # through the scope, for the reason `_settle` gives
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
         self._tasks.clear()
@@ -502,7 +541,18 @@ class MCPManager:
             interactive=interactive,
             notify=notify,
             callback_timeout=self.session.settings.shell_timeout,
+            refresh_gate=self._refresh_gate(config.url),
         )
+
+    def _refresh_gate(self, server_url: str) -> asyncio.Lock:
+        """The lock that lets one operation at a time refresh a server's token; see WizoltOAuth.
+
+        Rebound with the loop, like `_oauth_gate`: a lock belongs to the loop that created it."""
+
+        loop = asyncio.get_running_loop()
+        if self._refresh_gates_loop is not loop:
+            self._refresh_gates, self._refresh_gates_loop = {}, loop
+        return self._refresh_gates.setdefault(server_url, asyncio.Lock())
 
     @staticmethod
     def _import_client_modules() -> None:
@@ -526,11 +576,29 @@ class MCPManager:
             env = {**os.environ, **config.env} if config.env else None
             return StdioServerParameters(command=config.command, args=list(config.args), env=env)
 
+        from mcp.shared.exceptions import MCPError
+
+        refused: list[str] = []
+
+        async def record_refusal(response: httpx2.Response) -> None:
+            if response.status_code >= 400 and response.request.method == "POST" and str(response.request.url) == config.url:
+                refused.append(f"HTTP {response.status_code} {response.reason_phrase}".strip())
+
         @contextlib.asynccontextmanager
         async def http_transport():
             # The transport does not close an HTTP client it was handed, so it is entered here.
             async with create_mcp_http_client(headers=headers, auth=auth) as http, streamable_http_client(config.url, http_client=http) as streams:
-                yield streams
+                http.event_hooks["response"].append(record_refusal)
+                try:
+                    yield streams
+                except Exception as error:
+                    # An error status without a JSON-RPC body reaches the session as a stand-in
+                    # that drops the status, and "401 Unauthorized" vs "502 Bad Gateway" is what
+                    # tells a wrong token from an outage (and what reauthorization looks for).
+                    inner = self._sole_error(error)
+                    if refused and isinstance(inner, MCPError) and inner.error.message == "Server returned an error response":
+                        raise MCPError(inner.error.code, refused[-1]) from error
+                    raise
 
         return http_transport()
 
@@ -548,6 +616,7 @@ class MCPManager:
         # The SDK takes ~0.25s to import. Imported on the loop it would freeze the prompt, and a
         # startup warm-up still importing it holds the module lock the loop would wait on.
         await run_blocking(self._import_client_modules)
+        import anyio
         from mcp.client import Client
         from mcp.types import Implementation
 
@@ -558,7 +627,8 @@ class MCPManager:
         try:
             transport = self._transport(config, headers, auth)
             async with Client(transport, read_timeout_seconds=timeout, client_info=Implementation(name="wizolt", version=__version__)) as client:
-                return await asyncio.wait_for(operation(client), timeout=timeout)
+                with anyio.fail_after(timeout):  # anyio, not wait_for: see _settle
+                    return await operation(client)
         finally:
             if auth is not None:
                 await auth.aclose()

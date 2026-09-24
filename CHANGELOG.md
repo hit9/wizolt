@@ -29,6 +29,13 @@
   which `/status` now ends with, and the prompt completes every command as you type. The startup
   line points at the prompt (`Type / for commands.`) instead of the removed command.
 
+### Fixed
+
+- After a restart with an expired OAuth access token, an MCP server whose authorization server
+  rotates refresh tokens connects with its resources intact. Its tool and resource listings used to
+  both refresh with the same token, and the second was rejected: the resources went missing, or the
+  server failed with "authentication required".
+
 ## 0.53.0 - 2026-09-23
 
 ### Changed

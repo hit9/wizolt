@@ -8,11 +8,14 @@ import asyncio
 import contextlib
 import socket
 import webbrowser
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable
 from urllib.parse import parse_qs, urlsplit
 
+import anyio
+import httpx2
 from mcp.client.auth import OAuthClientProvider
 from mcp.shared.auth import AuthorizationCodeResult, OAuthClientMetadata
+from mcp.shared.inbound import MCP_PROTOCOL_VERSION_HEADER
 
 from wizolt.base import run_blocking
 from wizolt.mcp.tokens import MCPServerTokens
@@ -51,11 +54,16 @@ class LoopbackCallback:
             await self.close()
 
     async def close(self) -> None:
-        if self.server is not None:
-            self.server.close()
-            await self.server.wait_closed()
-            self.server = None
+        # Runs while the operation is being cancelled, which anyio keeps re-delivering to an
+        # unshielded await: release the port first, then wait out the connections shielded. The
+        # server owns the socket once started, so it closes it; a closed socket first breaks that.
+        server, self.server = self.server, None
+        if server is not None:
+            server.close()
         self.socket.close()
+        if server is not None:
+            with anyio.CancelScope(shield=True):
+                await server.wait_closed()
 
     async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
@@ -100,7 +108,13 @@ class WizoltOAuth(OAuthClientProvider):
 
     Only an interactive `/mcp connect` may start a browser login. Every other operation refreshes
     or fails with the message that tells the user to run it, so a background discovery never opens
-    a browser nobody asked for."""
+    a browser nobody asked for.
+
+    One provider serves one operation, and operations on a server run concurrently -- discovery
+    lists tools and resources at once. Left alone, each would refresh an expired token with the
+    same refresh token, and a server that rotates refresh tokens rejects every use after the first:
+    the loser drops its credentials and fails as unauthenticated. `refresh_gate`, shared by every
+    provider for the server, lets one refresh while the rest wait and then load what it stored."""
 
     def __init__(
         self,
@@ -111,9 +125,11 @@ class WizoltOAuth(OAuthClientProvider):
         interactive: bool,
         notify: Callable[[str], None] | None,
         callback_timeout: float,
+        refresh_gate: asyncio.Lock,
     ):
         self.server_name = server_name
         self.storage = storage
+        self.refresh_gate = refresh_gate
         self.interactive = interactive
         self.notify = notify
         self.callback_timeout = callback_timeout
@@ -136,6 +152,31 @@ class WizoltOAuth(OAuthClientProvider):
         await super()._initialize()
         if self.context.current_tokens and self.context.current_tokens.expires_in:
             self.context.token_expiry_time = await self.storage.get_token_expiry()
+
+    def needs_refresh(self) -> bool:
+        return not self.context.is_token_valid() and self.context.can_refresh_token()
+
+    async def _auth_flow(self, request: httpx2.Request) -> AsyncGenerator[httpx2.Request, httpx2.Response]:
+        async with self.context.lock:
+            if not self._initialized:
+                await self._initialize()
+            stale = self.needs_refresh()
+        if stale:
+            async with self.refresh_gate:
+                # Another operation may have refreshed while this one waited: its token is stored.
+                await self._initialize()
+                if self.needs_refresh():
+                    self.context.protocol_version = request.headers.get(MCP_PROTOCOL_VERSION_HEADER)
+                    await self._handle_refresh_response((yield await self._refresh_token()))
+        # The SDK's flow now finds a valid token, or none -- a failed refresh clears it -- and
+        # handles the request, including a 401, as it always does.
+        flow = super()._auth_flow(request)
+        try:
+            outgoing = await anext(flow)
+            while True:
+                outgoing = await flow.asend((yield outgoing))
+        except StopAsyncIteration:
+            return
 
     async def redirect(self, authorization_url: str) -> None:
         if self.callback is None:
