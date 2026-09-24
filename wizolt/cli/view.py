@@ -352,6 +352,7 @@ class View:
 
     QUEUE_EMPTY_HINT = "Enter follow-up · Tab next turn · Ctrl-C interrupts"
     QUEUE_PENDING_HINT = "↑ recalls queued · Tab next turn · Ctrl-C interrupts"
+    QUEUE_WORKER_HINT = "follow-up queued for the worker · Ctrl-C interrupts"
 
     # Line-level markdown tokens the live stream preview styles. Block constructs (headings,
     # lists, fenced code) are deliberately not parsed: the preview shows partial streaming text,
@@ -612,8 +613,15 @@ class View:
         if tui is None:
             return ""
         if tui.input_mode == InputMode.RUNNING:
-            has_pending = any(not item.inflight for item in self.loop.session.pending_user_inputs)
-            return self.QUEUE_PENDING_HINT if has_pending else self.QUEUE_EMPTY_HINT
+            if any(not item.inflight for item in self.loop.session.pending_user_inputs):
+                return self.QUEUE_PENDING_HINT
+            worker = self.loop.session.worker
+            if worker is not None and any(not item.inflight for item in worker.pending_user_inputs):
+                # Queued for the delegating worker, not the parent: `↑` cannot recall it, so the
+                # hint names where the text went instead of promising a recall that would not
+                # find it and hide the fact that the queue is not empty.
+                return self.QUEUE_WORKER_HINT
+            return self.QUEUE_EMPTY_HINT
         if tui.input_mode == InputMode.CHAT:
             if self.loop.starting:
                 return STARTING_STATUS_LABEL

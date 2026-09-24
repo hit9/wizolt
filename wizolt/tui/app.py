@@ -756,11 +756,43 @@ class TuiApp:
         hints = self.quick_hints()
         if not hints:
             return []
-        # A chip is picked exactly while its whole suggestion is in the input, so the check mark
-        # follows the text wherever the user moves it -- and disappears with an edit that erases it.
-        text = self.input_buffer.text
-        picked = tuple(hint for hint in hints if hint in text)
+        # A chip is picked exactly while its suggestion stands in the input as its own text, so
+        # the check mark follows the text wherever the user moves it -- and disappears with an
+        # edit that erases it or buries it inside a longer suggestion.
+        picked = tuple(hint for hint in self._picked_hint_spans(self.input_buffer.text, hints))
         return self._flow_quick_hints(hints, self._quick_hint_columns(), self.quick_hint_focus, picked)
+
+    @staticmethod
+    def _hint_span(text: str, hint: str) -> tuple[int, int] | None:
+        """The first occurrence of `hint` in `text` that sits on word boundaries, or None.
+
+        A suggestion pasted inside a longer word ("commit" inside "recommitted") is not the
+        suggestion standing in the input; only a boundary-delimited occurrence is."""
+
+        start = text.find(hint)
+        while start != -1:
+            end = start + len(hint)
+            before_ok = start == 0 or not text[start - 1].isalnum()
+            after_ok = end == len(text) or not text[end].isalnum()
+            if before_ok and after_ok:
+                return start, end
+            start = text.find(hint, start + 1)
+        return None
+
+    @classmethod
+    def _picked_hint_spans(cls, text: str, hints: tuple[str, ...]) -> dict[str, tuple[int, int]]:
+        """Each hint whose own word-bounded text stands in the input, and where it stands.
+
+        An occurrence buried inside another suggestion's occurrence does not count: two chips
+        where one text contains the other must not both claim the same words, or unpicking the
+        shorter one would gut the longer one's text."""
+
+        spans = {hint: span for hint in hints if (span := cls._hint_span(text, hint)) is not None}
+        return {
+            hint: span
+            for hint, span in spans.items()
+            if not any(other != hint and len(other) > len(hint) and spans[other][0] <= span[0] and span[1] <= spans[other][1] for other in spans)
+        }
 
     def _quick_hint_columns(self) -> int:
         """The terminal width in cells the hint row is rendered into; 0 when unknown."""
@@ -834,10 +866,22 @@ class TuiApp:
             return ()
         return hints
 
+    def _draft_completes(self, buffer: Buffer) -> bool:
+        """Whether Tab on this draft belongs to the completion machinery rather than the chips.
+
+        A command line and an active mention are what the completer serves wherever the cursor
+        sits in them, and a file mention at the cursor opens the picker; chips are for prose
+        drafts, so they yield the key the moment any of those is in play -- including the window
+        after a space closed the menu, where the argument rows are one Tab away."""
+        if self._file_mention_at_cursor(buffer) is not None:
+            return True
+        before = buffer.document.text_before_cursor
+        return before.startswith("/") or active_mention(before) is not None
+
     def tab_or_complete(self, buffer: Buffer, *, reverse: bool) -> None:
-        # On any chat prompt with suggestions up, Tab/Shift-Tab cycle the quick inputs; anywhere
-        # else they complete.
-        if self._live_quick_hints(buffer):
+        # On a prose draft with suggestions up, Tab/Shift-Tab cycle the quick inputs; a command,
+        # mention, or menu -- anything completion owns -- keeps the key.
+        if self._live_quick_hints(buffer) and not self._draft_completes(buffer):
             self.cycle_quick_hint_focus(reverse=reverse)
             return
         target = self._file_mention_at_cursor(buffer)
@@ -885,10 +929,10 @@ class TuiApp:
 
         Enter inserts the suggestion at the cursor -- on its own line at the end of the input, into
         the sentence mid-line -- and returns focus to the input line, so a second Enter sends. A
-        chip whose text is in the input is drawn with a check mark; Enter on it takes that text
-        back out, preferring the separator a pick added so unpicking removes exactly what picking
-        put in. A chip the user typed in by hand reads as picked too, and Enter removes it the
-        same way.
+        chip whose suggestion stands in the input (word-bounded, not buried inside another
+        suggestion) is drawn with a check mark; Enter takes that text back out, separators
+        included, so unpicking removes exactly what picking put in. A chip the user typed in by
+        hand reads as picked too, and Enter removes it the same way.
         """
         hints = self._live_quick_hints(buffer)
         if not hints or not 0 <= self.quick_hint_focus < len(hints):
@@ -897,11 +941,22 @@ class TuiApp:
         hint = hints[picked_focus]
         text = buffer.text
         cursor = buffer.cursor_position
-        removal = next((candidate for candidate in (f" {hint}", f"\n{hint}", hint) if candidate in text), None)
-        if removal is not None:
-            start = text.index(removal)
-            kept = cursor if cursor <= start else max(start, cursor - len(removal))
-            self._reset_input(text.replace(removal, "", 1), cursor_position=kept)
+        span = self._picked_hint_spans(text, hints).get(hint)
+        if span is not None:
+            start, end = span
+            # Take one separator back on each side the pick added one: a doubled separator
+            # collapses to the left, and a lone one only at the text's edges, so unpicking
+            # never eats interior spacing the draft already had.
+            new_start, new_end = start, end
+            if start > 0 and end < len(text) and text[start - 1].isspace() and text[end].isspace():
+                new_start -= 1
+            elif start == 0 and end < len(text) and text[end] == " ":
+                new_end += 1
+            elif end == len(text) and start > 0 and text[start - 1] in " \n":
+                new_start -= 1
+            removed = (end - start) + (start - new_start) + (new_end - end)
+            kept = cursor if cursor <= new_start else max(new_start, cursor - removed)
+            self._reset_input(text[:new_start] + text[new_end:], cursor_position=kept)
         else:
             before, after = text[:cursor], text[cursor:]
             # A space is owed on each side that would otherwise glue onto the chip; at the end of

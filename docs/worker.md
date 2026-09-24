@@ -137,7 +137,7 @@ Otherwise the model simply saw no task worth handing over, which is the normal c
   ratio — so a delegation never blurs into the parent's numbers.
 - **You can talk to a running worker.** `Enter` while a delegation runs queues the text on the
   worker — it joins the worker's next model step, marked `[worker]` on the divider. If the worker
-  answered, failed, or was interrupted before reading it, the text falls back to the parent.
+  answered, failed, or was interrupted before answering it, the text falls back to the parent.
   `Tab` still holds a draft for the parent's next task.
 - **Its sessions are not yours to manage.** Worker snapshots ride along with the parent's and
   never appear in `/sessions`; when the parent's snapshot expires, the worker's goes with it.

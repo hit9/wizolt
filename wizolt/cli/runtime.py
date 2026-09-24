@@ -294,6 +294,10 @@ class TuiRuntime:
                     worker = self.loop.session.worker
                     if worker is not None and worker._active_turn_messages and not submission.next_turn and not admitted.images and not admitted.pastes:
                         worker.enqueue_user_input(admitted)
+                        # The parent's save below no longer carries this input (it left the
+                        # parent's queue), so persist the worker's queue itself: until the
+                        # worker's next checkpoint the text would live in no snapshot at all.
+                        await worker.save_snapshot()
                     else:
                         self.loop.session.enqueue_user_input(admitted, next_turn=submission.next_turn)
                 uid = await self.loop.session.save_snapshot()

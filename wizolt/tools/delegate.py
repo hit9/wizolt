@@ -104,24 +104,27 @@ def _worker_stream(runner: ToolRunner):
     return stream
 
 
-def _worker_queue_flush(runner: ToolRunner):
+def _worker_queue_flush(runner: ToolRunner, last_flushed: list[str] | None = None):
     """Echo follow-ups the worker's request consumed into the parent's log, marked as the worker's.
 
     The live activity region stops showing a queued item the moment its session commits the
     request that claimed it; without this the user's typed follow-up would vanish from the TUI
-    once the worker read it, with no line in the transcript saying it ever arrived."""
+    once the worker read it, with no line in the transcript saying it ever arrived. With
+    `last_flushed`, the batch the worker's latest request consumed is also recorded there, so a
+    send that dies can hand those texts back to the parent (they were read, but never answered)."""
 
     flush = runner.hooks.on_queue_flush
-    if flush is None:
-        return None
 
     def flush_worker(texts: list[str]) -> None:
-        flush([f"[worker] {text}" for text in texts])
+        if last_flushed is not None:
+            last_flushed[:] = [text for text in texts if text.strip()]
+        if flush is not None:
+            flush([f"[worker] {text}" for text in texts])
 
     return flush_worker
 
 
-def _wire_worker_agent(agent: Agent, runner: ToolRunner) -> None:
+def _wire_worker_agent(agent: Agent, runner: ToolRunner, last_flushed: list[str] | None = None) -> None:
     """Bind a persistent worker agent to the runner driving this send.
 
     The worker session keeps its Agent between sends, while presentation belongs to the current
@@ -149,7 +152,7 @@ def _wire_worker_agent(agent: Agent, runner: ToolRunner) -> None:
             text_viewer=runner.hooks.text_viewer,
             cancel_input=runner.hooks.cancel_input,
             script_status=runner.hooks.script_status,
-            on_queue_flush=_worker_queue_flush(runner),
+            on_queue_flush=_worker_queue_flush(runner, last_flushed),
         )
     )
     agent.tools.input_fn = runner.input_fn
@@ -362,8 +365,11 @@ class DelegateTool(Tool):
             )
             worker._agent = agent
         # The Agent is persistent but the runner/UI driving it need not be. This also wires a
-        # resumed or previously headless worker before its first streamed token.
-        _wire_worker_agent(agent, runner)
+        # resumed or previously headless worker before its first streamed token. `last_flushed`
+        # collects the follow-ups the worker's latest request consumed, so a send that dies with
+        # them unanswered can hand them back to the parent below.
+        last_flushed: list[str] = []
+        _wire_worker_agent(agent, runner, last_flushed)
         started = time.monotonic()
         before_diffs = len(worker.turn_diffs)
         before_in = worker.usage.prompt_tokens
@@ -388,6 +394,8 @@ class DelegateTool(Tool):
                 )
             )
         failure: Exception | None = None
+        answered = False
+        answer = ""
         try:
             # Awaited directly: the worker's turn is a task of this one, so cancelling the
             # parent cancels the worker's own model request and tool batch by propagation --
@@ -395,12 +403,23 @@ class DelegateTool(Tool):
             # The engine publishes the final answer through the agent's output_fn, so a
             # worker's report lands in the parent scrollback like its interim messages.
             answer = await agent.run(order)
+            answered = True
         except Exception as error:  # noqa: BLE001 - the worker's failure becomes a ToolError envelope below, after the finally block merged its diffs
             failure = error
         finally:
             # Merge diffs even when interrupted, or the user never sees what the worker did.
             self._merge_diffs(worker, parent, before_diffs)
             self._return_unclaimed_inputs(worker, parent)
+            # The engine clears the in-flight marker on every settled ending; anything still
+            # there means the send died before its first settlement (a snapshot write failing
+            # under the first checkpoint), and leaving it would keep routing live follow-ups to
+            # a worker whose turn is over. Follow-ups the last request consumed but the worker
+            # never answered go back to the parent too: committed to the worker's failed turn
+            # is not answered, and the parent's running turn can still take them.
+            worker._active_turn_messages.clear()
+            if not answered:
+                for text in last_flushed:
+                    parent.enqueue_user_input(text)
         if failure is not None:
             # Folded to one bounded, quote-free line at the source rather than where it is read.
             # `status` renders it as an attribute of the envelope the model parses, and a provider

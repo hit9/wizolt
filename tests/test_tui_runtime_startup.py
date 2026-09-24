@@ -504,11 +504,19 @@ async def test_running_input_routes_to_an_inflight_worker_delegation(tmp_path, m
     async def admit(value):
         return value if isinstance(value, UserInput) else UserInput(str(value))
 
+    saves: list[str] = []
+
     async def save():
+        saves.append("parent")
         return command_loop.session.uid
+
+    async def save_worker():
+        saves.append("worker")
+        return worker.uid
 
     monkeypatch.setattr(runtime, "_admit_input", admit)
     monkeypatch.setattr(command_loop.session, "save_snapshot", save)
+    monkeypatch.setattr(worker, "save_snapshot", save_worker)
     consumer = asyncio.create_task(runtime._consume_submissions())
     runtime.submissions_task = consumer
     try:
@@ -527,6 +535,9 @@ async def test_running_input_routes_to_an_inflight_worker_delegation(tmp_path, m
         await runtime.submissions.join()
         assert [item.text for item in command_loop.session.pending_user_inputs] == ["hold this for the parent", "and this one"]
         assert [item.text for item in worker.pending_user_inputs] == ["fix the parser too"]
+        # Routed to the worker, the text left the parent's queue: the worker's own snapshot has
+        # to carry it, or a crash before its next checkpoint would lose the follow-up outright.
+        assert saves == ["worker", "parent", "parent", "parent"]
     finally:
         consumer.cancel()
         with pytest.raises(asyncio.CancelledError):

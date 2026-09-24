@@ -4,6 +4,7 @@ import threading
 from types import SimpleNamespace
 
 from prompt_toolkit.buffer import CompletionState
+from prompt_toolkit.completion import Completion
 from test_tui_app import _StubJob, quick_hint_app
 from tui_harness import ResizableOutput, loop, rendered_screen_text, run_interactive_tui, wait_until
 
@@ -733,3 +734,84 @@ def test_quick_hint_unpick_through_real_bindings(monkeypatch):
     run_interactive_tui(monkeypatch, app, text="\t\r\t\t\t\t\rok\r\x04")
 
     assert received == ["ok"]
+
+
+def test_quick_hint_tab_yields_to_command_argument_completion():
+    """A command line keeps Tab: chip presence must not take the argument rows away, which is
+    the window right after a space closed the menu (3e46c3a regressed this)."""
+
+    class Rows:
+        def get_completions(self, document, event):
+            return [Completion("dashscope", 0), Completion("openai", 0)] if document.text_before_cursor.startswith("/model") else []
+
+    app = TuiApp(quick_hints_fn=lambda: ("run the tests", "show the diff"), completer=Rows())
+    app.set_idle()
+    app.input_buffer.insert_text("/model ")
+    completed = []
+    app.complete_input = lambda buffer, *, reverse=False: completed.append(reverse)
+    app.tab_or_complete(app.input_buffer, reverse=False)
+    assert app.quick_hint_focus == -1  # the chip row yielded
+    assert completed == [False]  # and Tab reached the completion path instead
+
+
+def test_quick_hint_tab_yields_to_a_mention_and_a_file_target():
+    app, _ = quick_hint_app()
+    app.input_buffer.insert_text("@skill:")
+    assert app._draft_completes(app.input_buffer) is True
+    app.tab_or_complete(app.input_buffer, reverse=False)
+    assert app.quick_hint_focus == -1
+
+
+def test_quick_hint_prose_draft_still_cycles_chips():
+    app, _ = quick_hint_app()
+    app.input_buffer.insert_text("explain this ")
+    assert app._draft_completes(app.input_buffer) is False
+    app.tab_or_complete(app.input_buffer, reverse=False)
+    assert app.quick_hint_focus == 0
+
+
+def test_quick_hint_mid_word_text_is_not_picked():
+    """A suggestion inside a longer word is not that suggestion standing in the input: the chip
+    stays unchecked and Enter inserts instead of cutting the word apart."""
+    app, _ = quick_hint_app(("commit",))
+    app.input_buffer.insert_text("we recommitted the fix")
+    assert app.quick_hint_fragments() == [("class:quickhint", " commit ")]
+    app.quick_hint_focus = 0
+    assert app._pick_quick_hint(app.input_buffer)
+    assert app.input_buffer.text == "we recommitted the fix\ncommit"
+
+
+def test_quick_hint_nested_suggestions_only_the_outer_one_is_picked():
+    """Two chips where one text contains the other: the inner occurrence is the outer one's
+    words, so only the outer chip reads as picked and Enter on the inner one inserts."""
+    outer = "run the tests and check the coverage"
+    app, _ = quick_hint_app(("run the tests", outer))
+    app.input_buffer.insert_text(outer)
+    assert app.quick_hint_fragments() == [
+        ("class:quickhint", " run the tests "),  # inner occurrence: the outer chip's own words
+        ("class:quickhint.sep", " \u2502 "),
+        ("class:quickhint", f" \u2713 {outer} "),
+    ]
+
+    app.quick_hint_focus = 0  # the shorter chip
+    assert app._pick_quick_hint(app.input_buffer)
+    assert app.input_buffer.text == f"{outer}\nrun the tests"
+
+
+def test_quick_hint_unpick_takes_its_own_separator_back():
+    """Picking adds a separator; unpicking takes exactly that one back, so a round trip restores
+    the draft -- the two separators of a mid-word pick collapse to one, not zero or two."""
+    app, _ = quick_hint_app(("run the tests",))
+
+    def roundtrip(text, cursor=None):
+        app._reset_input(text, cursor_position=cursor)
+        app.quick_hint_focus = 0
+        assert app._pick_quick_hint(app.input_buffer)
+        app.quick_hint_focus = 0
+        assert app._pick_quick_hint(app.input_buffer)
+        return app.input_buffer.text
+
+    assert roundtrip("helloworld", 5) == "hello world"
+    assert roundtrip("hello world") == "hello world"
+    assert roundtrip("then ") == "then"
+    assert roundtrip("") == ""

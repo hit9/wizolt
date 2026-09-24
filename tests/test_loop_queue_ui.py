@@ -461,3 +461,24 @@ def test_queue_live_region_marks_worker_followups(tmp_path):
     waiting_text = "".join(t for _, t in waiting)
     assert "[worker] \u2022 check the worker queue" in sent_text
     assert "1 worker" not in waiting_text
+
+
+def test_worker_queue_hint_names_where_the_text_went(tmp_path):
+    """A follow-up waiting on the worker is not recalled by `↑`, so the running hint says so
+    instead of claiming the queue is empty."""
+    from wizolt.config import Config
+    from wizolt.session import Session
+
+    s = session(tmp_path)
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
+    tui = TuiApp()
+    loop.tui = tui
+    tui.set_running("working")
+    worker = Session(cwd=s.cwd, config=Config(), settings=s.settings, uid=s.uid + ".w", listed=False)
+    s.worker = worker
+
+    assert loop.view.tui_input_hint() == loop.view.QUEUE_EMPTY_HINT
+    worker.enqueue_user_input("check the worker queue")
+    assert loop.view.tui_input_hint() == loop.view.QUEUE_WORKER_HINT
+    s.enqueue_user_input("and a parent one")  # the parent's own queue wins the recall promise
+    assert loop.view.tui_input_hint() == loop.view.QUEUE_PENDING_HINT

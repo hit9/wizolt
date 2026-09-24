@@ -22,9 +22,9 @@ back below the divider as queued input.
 
 While a [delegated worker](worker.md) is running, `Enter` follows up the **worker** instead: the
 queued text — shown with a `[worker]` marker and its own count on the divider — joins the worker's
-next model step. A follow-up the worker never reached (it answered, failed, or was interrupted
-first) falls back to the parent. `Tab` keeps holding for the parent's next task, and `↑` still
-recalls only the parent's queued messages.
+next model step. A follow-up the worker never reached, or reached in a request that then failed,
+falls back to the parent as queued input. `Tab` keeps holding for the parent's next task, and `↑`
+still recalls only the parent's queued messages.
 
 | Key | When | Effect |
 |---|---|---|
@@ -117,12 +117,13 @@ for a chip is drawn shortened; picking it puts the whole suggestion in the input
 
 <div class="term-shot" role="img" aria-label="The idle prompt after an answer: the answer text, an empty prompt with a caret, and one row of three suggestion chips separated by grey bars, the middle one highlighted in reverse."><span>Everything is ready to review.</span><span> </span><span class="fs-prompt">&gt; <span class="fs-caret">▏</span></span><span> </span><span><span class="fs-i fs-sel"> run the tests </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-on"> show the diff </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-sel"> commit the work </span></span></div>
 
-`Tab` cycles between the input and the chips, empty input or typed draft alike; while a
-completion menu is open, the menu has `Tab` instead. `Enter` on a chip drops its text in at the
-cursor — a new line at the end of the input, into the sentence mid-line — and returns to the
-prompt, so `Tab` to the next chip and `Enter` again combines several suggestions; a final
-`Enter` sends. A chip with a `✓` has its text in the input: focus it and press `Enter` to take
-that text back out. Quick hints are always available at the TUI prompt.
+`Tab` cycles between the input and the chips, empty input or typed draft alike; a command line,
+an `@` mention, or an open menu keeps `Tab` for what it completes — including the argument rows a
+space just closed. `Enter` on a chip drops its text in at the cursor — a new line at the end of
+the input, into the sentence mid-line — and returns to the prompt, so `Tab` to the next chip and
+`Enter` again combines several suggestions; a final `Enter` sends. A chip with a `✓` has its text
+standing in the input as its own words: focus it and press `Enter` to take that text back out.
+Quick hints are always available at the TUI prompt.
 
 ## Commands
 

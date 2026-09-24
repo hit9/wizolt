@@ -19,9 +19,14 @@
   line at the end of the input, into the sentence mid-line. A chip with a `✓` has its text in the
   input, and `Enter` on it takes that text back out.
 - Follow-ups typed while a delegation runs now reach the worker: `Enter` queues on the running
-  worker — marked `[worker]` on the divider with its own count — and joins its next model step;
-  anything the worker never read falls back to the parent, while `Tab` keeps holding for the
-  parent's next task.
+  worker — marked `[worker]` on the divider with its own count, and persisted with the worker's
+  own snapshot — and joins its next model step; anything the worker never answered falls back to
+  the parent, while `Tab` keeps holding for the parent's next task.
+- Quick-hint chips no longer take `Tab` from a command line, an `@` mention, or an open menu —
+  including the argument rows a space just closed.
+- A chip reads as picked only while its suggestion stands in the input as its own words: a
+  suggestion buried inside a longer word or inside a longer suggestion no longer shows a check
+  mark, and picking and unpicking a chip now leaves the draft exactly as it found it.
 
 ## 0.52.0 - 2026-09-23
 
