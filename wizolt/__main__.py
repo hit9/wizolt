@@ -108,7 +108,7 @@ def warm_imports(modules: list[str]) -> threading.Thread:
     """Import heavy modules off the main thread so the prompt accepts input immediately.
 
     ModelClient imports the provider SDKs lazily because they cost ~0.8s, which was the whole of the
-    delay before a fresh prompt echoed keystrokes; `MCPManager` does the same with fastmcp. Loading
+    delay before a fresh prompt echoed keystrokes; `MCPManager` does the same with the MCP SDK. Loading
     them here in the background keeps the prompt instant without moving that cost onto the first
     request: the user's first message takes far longer to type than the import takes to finish.
     The modules load one after another, so the warm-up competes with the prompt on one thread only.
@@ -226,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
                 _cli.Theme.set_mode(_cli.Theme.resolve(current.settings.theme))
                 modules = ["anthropic", "openai"]
                 if current.mcp is not None and any(config.auto_connect for config in current.mcp.parse_configs()):
-                    modules.append("fastmcp.client")
+                    modules.append("mcp.client")
                 warmup = warm_imports(modules)
                 command_loop = _cli.CommandLoop(_cli.Agent(current))
                 command_loop.startup_warmup = warmup

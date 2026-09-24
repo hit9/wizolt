@@ -11,7 +11,7 @@ def test_fresh_interpreter_import_chain_stays_light():
         "import wizolt.base;"
         "import wizolt.__main__;"
         "assert 'prompt_toolkit' not in sys.modules, 'base must not import prompt_toolkit';"
-        "heavy = {'anthropic', 'openai', 'fastmcp'} & set(sys.modules);"
+        "heavy = {'anthropic', 'openai', 'mcp'} & set(sys.modules);"
         "assert not heavy, heavy"
     )
     subprocess.run([sys.executable, "-c", probe], check=True, capture_output=True)

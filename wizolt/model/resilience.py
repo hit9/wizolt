@@ -67,11 +67,11 @@ def _billing_marker_hit(text: str) -> bool:
 def _transport_errors() -> tuple[type[BaseException], ...]:
     """Transport error base classes of every httpx generation present in the environment.
 
-    The provider SDKs moved to httpx2 (openai 3.x, anthropic 1.x) while the MCP client transports
-    still speak plain httpx, so both generations run in one process. They are separate exception
-    hierarchies — httpx2.TransportError is not a subclass of httpx.TransportError — so matching
-    only one silently drops the other's dropped-connection errors out of the retry path. Either
-    import may be absent once one side of the migration finishes; the tuple just gets shorter."""
+    The provider SDKs and the MCP SDK all speak httpx2 now (openai 3.x, anthropic 1.x, mcp 2.x),
+    and wizolt installs no plain httpx. It is still matched when something else in the environment
+    brings it in: the two are separate exception hierarchies — httpx2.TransportError is not a
+    subclass of httpx.TransportError — so matching only one would silently drop the other's
+    dropped-connection errors out of the retry path. An absent import just shortens the tuple."""
     errors: list[type[BaseException]] = []
     for name in ("httpx", "httpx2"):
         with contextlib.suppress(ImportError):

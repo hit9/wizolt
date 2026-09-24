@@ -120,7 +120,7 @@ class TestMCPContextBlocks:
         class FakeTool:
             name = "echo"
             description = "Echo"
-            inputSchema: ClassVar[dict] = {"type": "object", "properties": {"t": {"type": "string"}}, "required": ["t"]}
+            input_schema: ClassVar[dict] = {"type": "object", "properties": {"t": {"type": "string"}}, "required": ["t"]}
             annotations = None
 
         async def fake_list(url, headers):
@@ -351,3 +351,55 @@ class TestCallTool:
             await s.mcp.call_tool("test", "echo", {})
         with pytest.raises(ToolError, match="requires authentication"):
             await s.mcp.list_resources("test")
+
+    async def test_tool_that_reports_an_error_fails_the_call_with_its_message(self, monkeypatch):
+        from mcp.types import CallToolResult, TextContent
+
+        s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
+        bootstrap_features(s)
+        s.mcp.tools["test"] = [mcp_tool_info("echo")]
+        results = {
+            "echo": CallToolResult(content=[TextContent(type="text", text="rate limited")], is_error=True),
+            "bare": CallToolResult(content=[], is_error=True),
+            "fine": CallToolResult(content=[TextContent(type="text", text="ok")]),
+        }
+        monkeypatch.setattr(s.mcp, "_run_op", lambda _config, _headers, _operation, **_kw: as_async(lambda: results[tool])())
+
+        tool = "echo"
+        with pytest.raises(ToolError, match=r"^MCP call failed: rate limited$"):
+            await s.mcp.call_tool("test", "echo", {})
+        tool = "bare"
+        with pytest.raises(ToolError, match=r"Tool 'echo' returned an error"):
+            await s.mcp.call_tool("test", "echo", {})
+        tool = "fine"
+        assert "ok" in await s.mcp.call_tool("test", "echo", {})
+
+    async def test_discovery_lists_every_page_a_server_returns(self, monkeypatch):
+        from types import SimpleNamespace
+
+        s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
+        bootstrap_features(s)
+        pages = {None: (["a", "b"], "p2"), "p2": (["c"], None)}
+
+        async def list_tools(*, cursor=None):
+            names, next_cursor = pages[cursor]
+            tools = [SimpleNamespace(name=name, description="", input_schema={}, annotations=None) for name in names]
+            return SimpleNamespace(tools=tools, next_cursor=next_cursor)
+
+        async def list_resources(*, cursor=None):
+            return SimpleNamespace(resources=[], next_cursor=None)
+
+        client = SimpleNamespace(list_tools=list_tools, list_resources=list_resources)
+        monkeypatch.setattr(s.mcp, "_run_op", lambda _config, _headers, operation, **_kw: operation(client))
+
+        await s.mcp.discover_server("test")
+
+        assert [tool.name for tool in s.mcp.tools["test"]] == ["a", "b", "c"]
+
+    def test_connection_error_is_reported_without_its_task_group_wrapper(self):
+        s = Session(cwd="/tmp")
+        bootstrap_features(s)
+        refused = ExceptionGroup("unhandled errors in a TaskGroup", [ConnectionError("All connection attempts failed")])
+
+        assert s.mcp.error_text(BaseExceptionGroup("outer", [refused])) == "All connection attempts failed"
+        assert "2 sub-exceptions" in s.mcp.error_text(ExceptionGroup("two", [ValueError("a"), ValueError("b")]))

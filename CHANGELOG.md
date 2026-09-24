@@ -19,6 +19,9 @@
   citation rides the last row the call already prints (`└ 41 passed in 2.10s · tr.3`), a delegation
   cites it on the worker's last answer line, and a call that printed nothing leaves no row under the
   row that names it.
+- MCP servers are reached through the official `mcp` SDK instead of `fastmcp`, which cuts about 24
+  packages from the install (including a second HTTP stack and `keyring`). MCP-over-HTTP now
+  verifies TLS against the OS trust store like model requests do. Existing OAuth logins carry over.
 
 ### Removed
 

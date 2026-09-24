@@ -207,16 +207,16 @@ instead.
 
 Nothing a first keystroke does not need may be imported at startup. Interactive startup was once
 939ms — 934ms imports, 5ms work. The heavy SDKs import at their point of use: `MCPManager` defers
-`fastmcp` (~0.35s), `ModelClient` defers `anthropic`/`openai` (~0.8s together), names declared
+the `mcp` SDK (~0.25s), `ModelClient` defers `anthropic`/`openai` (~0.8s together), names declared
 under `TYPE_CHECKING`. Do not lift them back to module scope; `tests/test_cli.py` asserts a fresh
 interpreter loads neither SDK.
 
-`main` warms the deferred SDKs (and fastmcp, when a server auto-connects) on a daemon thread so
+`main` warms the deferred SDKs (and the MCP SDK, when a server auto-connects) on a daemon thread so
 deferral does not move the cost to the first request; racing is safe because CPython locks imports
 per module (see `warm_imports`). That thread holds the GIL for about a second, so keystrokes echo
 slowly while it runs: the prompt's placeholder says `starting…` until it and the first mention scan
 finish, and the entry point prints the same muted line, without a newline, for the first frame to
-overwrite. It is never recorded, so replay cannot restore it. MCP code imports fastmcp through
+overwrite. It is never recorded, so replay cannot restore it. MCP code imports the SDK through
 `run_blocking`, never on the loop: the warm-up can be holding that module's lock.
 
 The entry point writes the interactive banner before importing the session and rendering stacks,
@@ -231,9 +231,15 @@ history, and all later output retain the ordinary command-loop and ordered-scrol
 servers, but it restarts stdio processes and cannot preserve legacy process-lifetime servers. A
 future revision should use one managed client runtime per server with explicit
 connect/reconnect/cancellation/close ownership. MCP is moving toward a sessionless protocol
-([SEP-2567](https://modelcontextprotocol.io/seps/2567-sessionless-mcp)); keep the current FastMCP 3
-dependency until that support is stable, and do not add roots, sampling, extension, or
+([SEP-2567](https://modelcontextprotocol.io/seps/2567-sessionless-mcp)); the official `mcp` SDK
+(2.x) negotiates it, and wizolt uses only its client. Do not add roots, sampling, extension, or
 provider-specific machinery without a demonstrated use case.
+
+The SDK's OAuth provider leaves the browser and the redirect to the client: `mcp/oauth.py` opens
+the browser and serves a one-shot loopback callback, and only an interactive `/mcp connect` may do
+either. Tokens stay in the key layout fastmcp wrote (`mcp/tokens.py`), so earlier logins still
+load; the absolute expiry beside each token is what lets a restarted session refresh instead of
+logging in again.
 
 ## One loop owns the session
 

@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import anthropic
-import httpx
+import httpx2
 import openai
 import pytest
 from model_harness import AsyncCloseable, _MockClientFactory, _session, record_backoff
@@ -325,7 +325,7 @@ async def test_retry_after_seconds_preferred_over_backoff(tmp_path, monkeypatch)
     """A numeric Retry-After header wins over the algorithm (7s, not the 1-3s first-band)."""
     s = _session(tmp_path)
     model = ModelClient(s)
-    factory = _MockClientFactory([httpx.Response(503, json=_OVERLOADED, headers={"retry-after": "7"}), (200, _OK)])
+    factory = _MockClientFactory([httpx2.Response(503, json=_OVERLOADED, headers={"retry-after": "7"}), (200, _OK)])
     monkeypatch.setattr(model, "client", factory)
     waits = _retry_wait_recorder(monkeypatch, factory)
 
@@ -339,7 +339,7 @@ async def test_retry_after_clamped_to_max_delay(tmp_path, monkeypatch):
     """A provider claim beyond the ceiling is truncated, so one aberrant header cannot stall the CLI."""
     s = _session(tmp_path)
     model = ModelClient(s)
-    factory = _MockClientFactory([httpx.Response(503, json=_OVERLOADED, headers={"retry-after": "300"}), (200, _OK)])
+    factory = _MockClientFactory([httpx2.Response(503, json=_OVERLOADED, headers={"retry-after": "300"}), (200, _OK)])
     monkeypatch.setattr(model, "client", factory)
     waits = _retry_wait_recorder(monkeypatch, factory)
 
@@ -354,7 +354,7 @@ async def test_retry_after_http_date_respected(tmp_path, monkeypatch):
     s = _session(tmp_path)
     model = ModelClient(s)
     stamp = email.utils.format_datetime(datetime.now(UTC) + timedelta(seconds=20), usegmt=True)
-    factory = _MockClientFactory([httpx.Response(503, json=_OVERLOADED, headers={"retry-after": stamp}), (200, _OK)])
+    factory = _MockClientFactory([httpx2.Response(503, json=_OVERLOADED, headers={"retry-after": stamp}), (200, _OK)])
     monkeypatch.setattr(model, "client", factory)
     waits = _retry_wait_recorder(monkeypatch, factory)
 
@@ -372,7 +372,7 @@ async def test_retry_after_invalid_falls_back_to_backoff(tmp_path, monkeypatch, 
     """Empty, negative, and unparseable headers are silently ignored and the algorithm is used."""
     s = _session(tmp_path)
     model = ModelClient(s)
-    factory = _MockClientFactory([httpx.Response(503, json=_OVERLOADED, headers={"retry-after": value}), (200, _OK)])
+    factory = _MockClientFactory([httpx2.Response(503, json=_OVERLOADED, headers={"retry-after": value}), (200, _OK)])
     monkeypatch.setattr(model, "client", factory)
     monkeypatch.setattr(resilience.random, "random", lambda: 0.5)
     waits = _retry_wait_recorder(monkeypatch, factory)
@@ -387,7 +387,7 @@ async def test_retry_after_absurd_value_does_not_stall(tmp_path, monkeypatch):
     """A huge header value is clamped rather than waited out; the request still succeeds."""
     s = _session(tmp_path)
     model = ModelClient(s)
-    factory = _MockClientFactory([httpx.Response(503, json=_OVERLOADED, headers={"retry-after": "999999999"}), (200, _OK)])
+    factory = _MockClientFactory([httpx2.Response(503, json=_OVERLOADED, headers={"retry-after": "999999999"}), (200, _OK)])
     monkeypatch.setattr(model, "client", factory)
     waits = _retry_wait_recorder(monkeypatch, factory)
 
@@ -514,7 +514,7 @@ def test_streamed_httpx_transport_error_is_retryable():
     Stream.__stream__ does not wrap them as APIConnectionError) are the same class of transient
     failure and must retry. Regression for "Error: peer closed connection without sending
     complete message body (incomplete chunked read)" surfacing on the first attempt."""
-    cause = httpx.RemoteProtocolError("peer closed connection without sending complete message body (incomplete chunked read)")
+    cause = httpx2.RemoteProtocolError("peer closed connection without sending complete message body (incomplete chunked read)")
     error = ModelError(str(cause))
     error.__cause__ = cause
     assert resilience.retryable_error(error) is True
@@ -523,7 +523,7 @@ def test_streamed_httpx_transport_error_is_retryable():
 
 def test_streamed_httpx_read_error_is_retryable():
     """A connection dropped mid-stream (httpx.ReadError) is transient, like ConnectionResetError."""
-    cause = httpx.ReadError("peer closed connection without sending bytes")
+    cause = httpx2.ReadError("peer closed connection without sending bytes")
     error = ModelError(str(cause))
     error.__cause__ = cause
     assert resilience.retryable_error(error) is True
@@ -532,10 +532,9 @@ def test_streamed_httpx_read_error_is_retryable():
 @pytest.mark.parametrize("module_name", ["httpx", "httpx2"])
 def test_streamed_transport_error_is_retryable_for_every_httpx_generation(module_name):
     """Transport errors are matched by type across both httpx generations. openai 3.x and
-    anthropic 1.x raise httpx2's hierarchy, which shares no base class with httpx's, while the
-    MCP client transports still raise httpx's, so matching only one generation silently drops the
-    other's dropped-connection errors out of the retry path. The message deliberately carries no
-    retryable wording, so this pins the isinstance branch rather than the error-text fallback."""
+    anthropic 1.x raise httpx2's hierarchy, which shares no base class with httpx's; plain httpx is
+    matched too wherever it is installed. The message deliberately carries no retryable wording, so
+    this pins the isinstance branch rather than the error-text fallback."""
     module = pytest.importorskip(module_name)
     cause = module.ReadError("stream ended")
     error = ModelError(str(cause))
@@ -552,7 +551,7 @@ async def test_streamed_httpx_error_retries_then_succeeds(tmp_path, monkeypatch)
     model = ModelClient(s)
     record_backoff(monkeypatch)
 
-    cause = httpx.RemoteProtocolError("peer closed connection without sending complete message body (incomplete chunked read)")
+    cause = httpx2.RemoteProtocolError("peer closed connection without sending complete message body (incomplete chunked read)")
     calls = {"n": 0}
 
     async def api_request(_messages, _tools, **_kw):
@@ -577,19 +576,19 @@ def _error_with_cause(cause: Exception) -> ModelError:
 
 
 def _openai_429(body: dict) -> openai.RateLimitError:
-    request = httpx.Request("POST", "http://test/v1/chat/completions")
+    request = httpx2.Request("POST", "http://test/v1/chat/completions")
     return openai.RateLimitError(
         message="Error code: 429",
-        response=httpx.Response(429, request=request),
+        response=httpx2.Response(429, request=request),
         body=body,
     )
 
 
 def _anthropic_429(body: dict) -> anthropic.RateLimitError:
-    request = httpx.Request("POST", "http://test/v1/messages")
+    request = httpx2.Request("POST", "http://test/v1/messages")
     return anthropic.RateLimitError(
         message="Error code: 429",
-        response=httpx.Response(429, request=request),
+        response=httpx2.Response(429, request=request),
         body=body,
     )
 

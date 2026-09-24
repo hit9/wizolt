@@ -3,7 +3,7 @@
 import json
 from types import SimpleNamespace
 
-import httpx
+import httpx2
 import pytest
 from model_harness import _MockClientFactory, _session, _StreamClientFactory, async_create, record_backoff
 from openai import AsyncOpenAI
@@ -181,16 +181,16 @@ class _SequenceStreamFactory:
 
     def __init__(self, streams: list[list[dict]]):
         self.streams = streams
-        self.calls: list[httpx.Request] = []
+        self.calls: list[httpx2.Request] = []
 
     def __call__(self, **kwargs) -> AsyncOpenAI:
-        def respond(request: httpx.Request) -> httpx.Response:
+        def respond(request: httpx2.Request) -> httpx2.Response:
             self.calls.append(request)
             events = self.streams[min(len(self.calls) - 1, len(self.streams) - 1)]
             body = "".join(f"data: {json.dumps(event)}\n\n" for event in events) + "data: [DONE]\n\n"
-            return httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+            return httpx2.Response(200, text=body, headers={"content-type": "text/event-stream"})
 
-        http_client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+        http_client = httpx2.AsyncClient(transport=httpx2.MockTransport(respond))
         return AsyncOpenAI(api_key="sk-test", base_url="http://test", http_client=http_client, max_retries=0)
 
 

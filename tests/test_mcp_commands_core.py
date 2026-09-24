@@ -48,7 +48,7 @@ class TestMCPCommands:
         class FakeTool:
             name = "echo"
             description = "Echo"
-            inputSchema: ClassVar[dict] = {"type": "object", "properties": {}, "required": []}
+            input_schema: ClassVar[dict] = {"type": "object", "properties": {}, "required": []}
             annotations = None
 
         async def fake_list(url, headers):
@@ -71,7 +71,7 @@ class TestMCPCommands:
         class FakeTool:
             name = "echo"
             description = "Echo"
-            inputSchema: ClassVar[dict] = {"type": "object", "properties": {}, "required": []}
+            input_schema: ClassVar[dict] = {"type": "object", "properties": {}, "required": []}
             annotations = None
 
         async def fake_list(url, headers):
@@ -182,7 +182,7 @@ class TestMCPCommands:
         monkeypatch.setattr(s.mcp, "_authenticate_oauth", as_async(lambda *_args, **_kwargs: pytest.fail("valid credentials triggered login")))
 
         async def tools(_config, _headers):
-            return [SimpleNamespace(name="echo", description="Echo", inputSchema={}, annotations=None)]
+            return [SimpleNamespace(name="echo", description="Echo", input_schema={}, annotations=None)]
 
         async def resources(_config, _headers):
             return []
@@ -352,7 +352,7 @@ class TestMCPCommands:
         )
 
         async def tools(_config, _headers):
-            return [SimpleNamespace(name="echo", description="Echo", inputSchema={}, annotations=None)]
+            return [SimpleNamespace(name="echo", description="Echo", input_schema={}, annotations=None)]
 
         async def no_resources(_config, _headers):
             return []

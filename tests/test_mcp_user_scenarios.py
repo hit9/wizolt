@@ -25,7 +25,7 @@ class TestMCPUserScenarios:
         return SimpleNamespace(
             name=name,
             description=description,
-            inputSchema={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+            input_schema={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
             annotations=None,
         )
 

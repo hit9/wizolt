@@ -19,6 +19,7 @@ from wizolt.config import (
 )
 from wizolt.context import ContextManager
 from wizolt.mcp import MCPFileTokenStore, MCPManager, MCPResourceInfo, MCPServerConfig
+from wizolt.mcp.tokens import MCPServerTokens
 from wizolt.render import StatusBar
 from wizolt.session import Session, bootstrap_features
 
@@ -132,15 +133,18 @@ class TestStdioConfig:
         assert "args must be a string list" in parse_one({"mcp": {"x": {"command": "npx", "args": "nope"}}}).error
 
     def test_transport_selection(self):
-        """_transport builds a stdio transport for command servers, http otherwise."""
-        from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
+        """_transport launches command servers over stdio with the inherited environment, http otherwise."""
+        from mcp.client.stdio import StdioServerParameters
 
-        s = Session(cwd="/tmp", config=Config.from_dict({"mcp": {"x": {"command": "npx", "args": ["srv"]}}}))
+        s = Session(cwd="/tmp", config=Config.from_dict({"mcp": {"x": {"command": "npx", "args": ["srv"], "env": {"TOKEN": "t"}}}}))
         bootstrap_features(s)
-        assert isinstance(s.mcp._transport(s.mcp.parse_configs()[0], {}), StdioTransport)
+        params = s.mcp._transport(s.mcp.parse_configs()[0], {})
+        assert isinstance(params, StdioServerParameters)
+        assert (params.command, params.args) == ("npx", ["srv"])
+        assert params.env is not None and params.env["TOKEN"] == "t" and params.env.get("PATH") == os.environ.get("PATH")
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
         bootstrap_features(s)
-        assert isinstance(s.mcp._transport(s.mcp.parse_configs()[0], {}), StreamableHttpTransport)
+        assert not isinstance(s.mcp._transport(s.mcp.parse_configs()[0], {}), StdioServerParameters)
 
 
 # ---------------------------------------------------------------------------
@@ -295,72 +299,128 @@ class TestMCPManagerDiscovery:
 
         assert await roundtrip() == {"v": 1}
 
-    async def test_clear_server_matches_fastmcp_oauth_storage_contract(self, tmp_path):
+    async def test_clear_server_removes_everything_the_oauth_provider_stored(self, tmp_path):
         from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
         url = "https://mcp.example.com/mcp"
-        s = Session(cwd=str(tmp_path), config=Config.from_dict({"mcp": {"test": {"url": url, "auth": "oauth"}}}))
-        bootstrap_features(s)
         store = MCPFileTokenStore(str(tmp_path / "tokens.json"))
-        s.mcp._oauth_token_store = store
-        auth = s.mcp.oauth_client(s.mcp.find_config("test"))
-        auth._bind(url)
-        adapter = auth.token_storage_adapter
+        tokens = MCPServerTokens(store, url)
 
-        async def roundtrip():
-            await adapter.set_tokens(OAuthToken(access_token="stale", token_type="Bearer", expires_in=3600))
-            await adapter.set_client_info(OAuthClientInformationFull(client_id="old-client", redirect_uris=["http://localhost:12345/callback"]))
-            assert await adapter.get_tokens() is not None
-            assert await adapter.get_client_info() is not None
-            await s.mcp._oauth_token_store.clear_server(url)
-            return await adapter.get_tokens(), await adapter.get_client_info(), await adapter.get_token_expiry()
+        await tokens.set_tokens(OAuthToken(access_token="stale", token_type="Bearer", expires_in=3600))
+        await tokens.set_client_info(OAuthClientInformationFull(client_id="old-client", redirect_uris=["http://localhost:12345/callback"]))
+        assert (await tokens.get_tokens()).access_token == "stale"
+        assert (await tokens.get_client_info()).client_id == "old-client"
+        assert await store.has_server_tokens(url) is True
+        await store.clear_server(url)
 
-        assert await roundtrip() == (None, None, None)
+        assert (await tokens.get_tokens(), await tokens.get_client_info(), await tokens.get_token_expiry()) == (None, None, None)
 
-    def test_oauth_redirect_requires_explicit_interactive_connection(self):
+    async def test_login_stored_by_fastmcp_still_loads(self, tmp_path):
+        """wizolt used fastmcp before the MCP SDK; a login it wrote must survive the upgrade."""
+        url = "https://mcp.example.com/mcp"
+        store = MCPFileTokenStore(str(tmp_path / "tokens.json"))
+        expires_at = time.time() + 600
+        await store.put(url + "/tokens", {"access_token": "a", "token_type": "Bearer", "expires_in": 3600, "refresh_token": "r"}, collection="mcp-oauth-token")
+        await store.put(url + "/token_expiry", {"expires_at": expires_at}, collection="mcp-oauth-token-expiry")
+        await store.put(url + "/client_info", {"client_id": "c", "redirect_uris": ["http://localhost:1/callback"]}, collection="mcp-oauth-client-info")
+        tokens = MCPServerTokens(store, url)
+
+        assert (await tokens.get_tokens()).refresh_token == "r"
+        assert (await tokens.get_client_info()).client_id == "c"
+        assert await tokens.get_token_expiry() == pytest.approx(expires_at)
+
+    async def test_reloaded_token_keeps_its_absolute_expiry(self, tmp_path):
+        """An expired access token must look expired after a restart, so the provider refreshes it
+        instead of sending it, being rejected, and starting a browser login."""
+        from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
+
+        s = Session(cwd=str(tmp_path), config=Config.from_dict(mcp_cfg(auth="oauth")))
+        bootstrap_features(s)
+        config = s.mcp.find_config("test")
+        tokens = MCPServerTokens(s.mcp._oauth_token_store, config.url)
+        await tokens.set_tokens(OAuthToken(access_token="a", token_type="Bearer", expires_in=3600, refresh_token="r"))
+        await tokens.set_client_info(OAuthClientInformationFull(client_id="c", redirect_uris=["http://localhost:1/callback"]))
+        await s.mcp._oauth_token_store.put(config.url + "/token_expiry", {"expires_at": time.time() - 1}, collection="mcp-oauth-token-expiry")
+
+        auth = s.mcp.oauth_client(config)
+        await auth._initialize()
+
+        assert auth.context.is_token_valid() is False
+        assert auth.context.can_refresh_token() is True
+
+    async def test_oauth_redirect_requires_explicit_interactive_connection(self):
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg(auth="oauth")))
         bootstrap_features(s)
         auth = s.mcp.oauth_client(s.mcp.find_config("test"), interactive=False)
 
         with pytest.raises(RuntimeError, match=r"authentication required; run /mcp connect test"):
-            asyncio.run(auth.redirect_handler("https://login.example/authorize"))
+            await auth.redirect("https://login.example/authorize")
 
-    def test_interactive_oauth_redirect_notifies_before_delegating(self, monkeypatch):
-        from fastmcp.client.auth import OAuth
+    async def test_interactive_oauth_login_notifies_opens_the_browser_and_receives_the_callback(self, monkeypatch):
+        import webbrowser
+
+        import httpx2
 
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg(auth="oauth")))
         bootstrap_features(s)
-        notices = []
-        delegated = []
-
-        async def redirect(_auth, url):
-            delegated.append(url)
-
-        monkeypatch.setattr(OAuth, "redirect_handler", redirect)
+        notices, opened = [], []
+        monkeypatch.setattr(webbrowser, "open", opened.append)
         auth = s.mcp.oauth_client(s.mcp.find_config("test"), interactive=True, notify=notices.append)
+        redirect_uri = auth.context.client_metadata.redirect_uris[0]
 
-        asyncio.run(auth.redirect_handler("https://login.example/authorize"))
+        await auth.redirect("https://login.example/authorize")
+        async with httpx2.AsyncClient() as http:
+            stray = await http.get(f"http://127.0.0.1:{auth.callback.port}/favicon.ico")
+            page = await http.get(f"http://127.0.0.1:{auth.callback.port}/callback", params={"code": "c0de", "state": "s"})
+        result = await auth.receive()
 
+        assert str(redirect_uri) == f"http://localhost:{auth.callback.port}/callback"
         assert notices == ["Open this URL to authorize MCP server `test`:\nhttps://login.example/authorize"]
-        assert delegated == ["https://login.example/authorize"]
+        assert opened == ["https://login.example/authorize"]
+        assert stray.status_code == 404
+        assert page.status_code == 200 and "Authorization complete" in page.text
+        assert (result.code, result.state) == ("c0de", "s")
+
+    async def test_denied_oauth_login_fails_with_the_servers_reason(self, monkeypatch):
+        import webbrowser
+
+        import httpx2
+
+        s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg(auth="oauth")))
+        bootstrap_features(s)
+        monkeypatch.setattr(webbrowser, "open", lambda _url: None)
+        auth = s.mcp.oauth_client(s.mcp.find_config("test"), interactive=True)
+
+        await auth.redirect("https://login.example/authorize")
+        async with httpx2.AsyncClient() as http:
+            await http.get(f"http://127.0.0.1:{auth.callback.port}/callback", params={"error": "access_denied", "error_description": "user said no"})
+
+        with pytest.raises(RuntimeError, match="authorization denied: user said no"):
+            await auth.receive()
 
     def test_interactive_run_op_builds_interactive_oauth_client(self, monkeypatch):
-        import fastmcp.client
+        import mcp.client
 
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg(auth="oauth")))
         bootstrap_features(s)
         config = s.mcp.find_config("test")
-        marker = object()
+        closed = []
+        marker = SimpleNamespace(aclose=lambda: asyncio.sleep(0, result=closed.append(True)))
         auth_calls = []
+        transport_args = []
         client_args = []
 
         def oauth_client(received, *, interactive=False, notify=None):
             auth_calls.append((received, interactive, notify))
             return marker
 
+        def transport(*args):
+            transport_args.append(args)
+            return "transport"
+
         class Client:
-            def __init__(self, transport, *, auth, timeout, init_timeout):
-                client_args.append((transport, auth, timeout, init_timeout))
+            def __init__(self, transport, *, read_timeout_seconds, client_info):
+                client_args.append((transport, read_timeout_seconds, client_info.name))
 
             async def __aenter__(self):
                 return SimpleNamespace(ping=lambda: asyncio.sleep(0, result="pong"))
@@ -372,18 +432,20 @@ class TestMCPManagerDiscovery:
             return None
 
         monkeypatch.setattr(s.mcp, "oauth_client", oauth_client)
-        monkeypatch.setattr(s.mcp, "_transport", lambda *_args: "transport")
-        monkeypatch.setattr(fastmcp.client, "Client", Client)
+        monkeypatch.setattr(s.mcp, "_transport", transport)
+        monkeypatch.setattr(mcp.client, "Client", Client)
 
         result = asyncio.run(s.mcp._run_op(config, {}, lambda client: client.ping(), interactive=True, notify=notify))
 
         assert result == "pong"
         assert auth_calls == [(config, True, notify)]
-        assert client_args == [("transport", marker, s.mcp.call_timeout(), s.mcp.call_timeout())]
+        assert transport_args == [(config, {}, marker)]
+        assert client_args == [("transport", s.mcp.call_timeout(), "wizolt")]
+        assert closed == [True]
 
-    def test_run_op_imports_fastmcp_off_the_event_loop(self, monkeypatch):
-        """fastmcp takes ~0.45s to import; on the loop thread that freezes the prompt."""
-        import fastmcp.client
+    def test_run_op_imports_the_sdk_off_the_event_loop(self, monkeypatch):
+        """The MCP SDK takes ~0.25s to import; on the loop thread that freezes the prompt."""
+        import mcp.client
 
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
         bootstrap_features(s)
@@ -402,7 +464,7 @@ class TestMCPManagerDiscovery:
 
         monkeypatch.setattr(MCPManager, "_import_client_modules", staticmethod(lambda: import_threads.append(threading.get_ident())))
         monkeypatch.setattr(s.mcp, "_transport", lambda *_args: "transport")
-        monkeypatch.setattr(fastmcp.client, "Client", Client)
+        monkeypatch.setattr(mcp.client, "Client", Client)
 
         async def run():
             return await s.mcp._run_op(config, {}, lambda client: client.ping()), threading.get_ident()
@@ -565,7 +627,7 @@ class TestMCPManagerDiscovery:
         class FakeTool:
             name = "echo"
             description = "Echo input"
-            inputSchema: ClassVar[dict] = {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
+            input_schema: ClassVar[dict] = {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
             annotations = None
 
         async def fake_list(url, headers):
@@ -697,7 +759,7 @@ class TestServerStatusRendering:
         class FakeTool:
             name = "echo"
             description = "Echo"
-            inputSchema: ClassVar[dict] = {"type": "object", "properties": {}, "required": []}
+            input_schema: ClassVar[dict] = {"type": "object", "properties": {}, "required": []}
             annotations = None
 
         async def fake_list(url, headers):
@@ -752,7 +814,7 @@ class TestServerStatusRendering:
         class FakeTool:
             name = "echo"
             description = "Echo input back"
-            inputSchema: ClassVar[dict] = {"type": "object", "properties": {"t": {"type": "string"}}, "required": ["t"]}
+            input_schema: ClassVar[dict] = {"type": "object", "properties": {"t": {"type": "string"}}, "required": ["t"]}
             annotations = None
 
         async def fake_list(url, headers):

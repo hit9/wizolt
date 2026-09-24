@@ -59,7 +59,6 @@ def configure_logging() -> None:
     actionable "authentication required" message; suppress this logger's ERROR-level
     traceback spam (incl. the RuntimeError wizolt raises as control flow).
     """
-    logging.getLogger("fastmcp.client.auth.oauth").setLevel(logging.WARNING)
     logging.getLogger("mcp.client.auth.oauth2").setLevel(logging.CRITICAL)
     # MCP client transports log expected-and-already-surfaced failures (httpx ReadTimeout on a
     # slow server, dropped SSE/stdio frames, JSON-RPC parse errors) at ERROR with full

@@ -26,17 +26,16 @@ from wizolt.mcp.rendering import (
     resources_info,
     tool_args_summary,
 )
-from wizolt.mcp.tokens import MCPFileTokenStore
+from wizolt.mcp.tokens import MCPFileTokenStore, MCPServerTokens
 from wizolt.mentions import scan_mentions
 from wizolt.session import Session
 
 if TYPE_CHECKING:
-    from fastmcp.client import Client
-    from fastmcp.client.auth import OAuth
-    from fastmcp.client.client import CallToolResult
-    from fastmcp.client.tasks import ResourceTask, ToolTask
-    from fastmcp.client.transports import ClientTransport
-    from mcp.types import BlobResourceContents, Resource, TextResourceContents, Tool
+    from mcp.client import Client, Transport
+    from mcp.client.stdio import StdioServerParameters
+    from mcp.types import BlobResourceContents, CallToolResult, Resource, TextResourceContents, Tool
+
+    from wizolt.mcp.oauth import WizoltOAuth
 
 _MCPResultT = TypeVar("_MCPResultT")
 
@@ -357,6 +356,10 @@ class MCPManager:
         return min(self.call_timeout(), self.DISCOVERY_TIMEOUT)
 
     def error_text(self, error: BaseException, *, timeout: int | None = None) -> str:
+        # The SDK's transports run in task groups, so a refused connection arrives wrapped in a
+        # group whose own message says only how many errors it holds.
+        while isinstance(error, BaseExceptionGroup) and len(error.exceptions) == 1:
+            error = error.exceptions[0]
         if isinstance(error, TimeoutError):
             return f"timeout after {timeout or self.call_timeout()}s"
         text = str(error).strip()
@@ -367,7 +370,7 @@ class MCPManager:
             MCPToolInfo(
                 name=t.name,
                 description=t.description or "",
-                input_schema=t.inputSchema,
+                input_schema=t.input_schema,
                 output_schema=self.tool_output_schema(t),
                 annotations=self.tool_annotations(t),
             )
@@ -434,7 +437,7 @@ class MCPManager:
         A task rather than a bare await so `close()` has something to cancel: an operation
         started by a turn that is gone must still be brought down before the loop closes.
 
-        `wait_for` cancels the operation and *awaits* it, so the FastMCP client's `async with` has
+        `wait_for` cancels the operation and *awaits* it, so the MCP client's `async with` has
         unwound -- process reaped, HTTP session closed -- by the time the timeout is raised here.
         Cancellation from outside travels the same way, which is why neither is special-cased."""
 
@@ -475,7 +478,7 @@ class MCPManager:
     async def close(self) -> None:
         """Cancel and await everything this manager still has in flight.
 
-        Called by the runtime's shutdown, on the loop that owns those tasks -- a FastMCP client
+        Called by the runtime's shutdown, on the loop that owns those tasks -- an MCP client
         must not be left to the interpreter's teardown, where an in-flight cleanup (an HTTP session
         termination, a DNS lookup in the default executor) races the executor's own atexit."""
 
@@ -489,41 +492,47 @@ class MCPManager:
             await asyncio.gather(*pending, return_exceptions=True)
         self._tasks.clear()
 
-    def oauth_client(self, config: MCPServerConfig, *, interactive: bool = False, notify: Callable[[str], None] | None = None) -> OAuth:
-        from fastmcp.client.auth import OAuth
-
-        class WizoltOAuth(OAuth):
-            async def redirect_handler(self, authorization_url: str) -> None:
-                if not interactive:
-                    raise RuntimeError("authentication required; run /mcp connect " + config.name)
-                if notify:
-                    notify("Open this URL to authorize MCP server `" + config.name + "`:\n" + authorization_url)
-                await super().redirect_handler(authorization_url)
+    def oauth_client(self, config: MCPServerConfig, *, interactive: bool = False, notify: Callable[[str], None] | None = None) -> WizoltOAuth:
+        from wizolt.mcp.oauth import WizoltOAuth
 
         return WizoltOAuth(
-            # FastMCP types this as its full AsyncKeyValue protocol, although TokenStorageAdapter
-            # only calls get/put/delete. MCPFileTokenStore deliberately implements that used subset.
-            token_storage=self._oauth_token_store,  # pyright: ignore[reportArgumentType]
-            client_name="wizolt",
+            config.name,
+            config.url,
+            MCPServerTokens(self._oauth_token_store, config.url),
+            interactive=interactive,
+            notify=notify,
             callback_timeout=self.session.settings.shell_timeout,
         )
 
     @staticmethod
     def _import_client_modules() -> None:
-        """Load every fastmcp module `_run_op` reaches, so none of them imports on the loop."""
-        import fastmcp.client
-        import fastmcp.client.auth
-        import fastmcp.client.transports  # noqa: F401
+        """Load every MCP SDK module `_run_op` reaches, so none of them imports on the loop."""
+        import mcp.client
+        import mcp.client.stdio
+        import mcp.client.streamable_http
+        import mcp.shared._httpx_utils  # noqa: F401
 
-    def _transport(self, config: MCPServerConfig, headers: dict[str, str]) -> ClientTransport:
-        from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
+        import wizolt.mcp.oauth  # noqa: F401
+
+    def _transport(self, config: MCPServerConfig, headers: dict[str, str], auth: WizoltOAuth | None = None) -> StdioServerParameters | Transport:
+        from mcp.client.stdio import StdioServerParameters
+        from mcp.client.streamable_http import streamable_http_client
+        from mcp.shared._httpx_utils import create_mcp_http_client
 
         if config.command:
-            # The MCP SDK replaces (not merges) the subprocess environment when env is set,
-            # so layer the configured vars over the inherited environment to keep PATH etc.
+            # The SDK layers env over a small safe subset of the environment, not all of it, so
+            # layer the configured vars over the inherited environment to keep what a server
+            # launched from the user's shell would see.
             env = {**os.environ, **config.env} if config.env else None
-            return StdioTransport(command=config.command, args=list(config.args), env=env)
-        return StreamableHttpTransport(config.url, headers=headers)
+            return StdioServerParameters(command=config.command, args=list(config.args), env=env)
+
+        @contextlib.asynccontextmanager
+        async def http_transport():
+            # The transport does not close an HTTP client it was handed, so it is entered here.
+            async with create_mcp_http_client(headers=headers, auth=auth) as http, streamable_http_client(config.url, http_client=http) as streams:
+                yield streams
+
+        return http_transport()
 
     async def _run_op(
         self,
@@ -535,30 +544,66 @@ class MCPManager:
         interactive: bool = False,
         notify: Callable[[str], None] | None = None,
     ) -> _MCPResultT:
-        """Enter a fastmcp Client (with OAuth if config.auth=='oauth') and await one operation."""
-        # fastmcp takes ~0.45s to import. Imported on the loop it would freeze the prompt, and a
+        """Enter an MCP Client (with OAuth if config.auth=='oauth') and await one operation."""
+        # The SDK takes ~0.25s to import. Imported on the loop it would freeze the prompt, and a
         # startup warm-up still importing it holds the module lock the loop would wait on.
         await run_blocking(self._import_client_modules)
-        from fastmcp.client import Client
+        from mcp.client import Client
+        from mcp.types import Implementation
+
+        from wizolt.base import __version__
 
         timeout = self.call_timeout() if long_timeout or interactive else self.discovery_timeout()
         auth = self.oauth_client(config, interactive=interactive, notify=notify) if config.auth == "oauth" else None
-        async with Client(self._transport(config, headers), auth=auth, timeout=timeout, init_timeout=timeout) as client:
-            return await asyncio.wait_for(operation(client), timeout=timeout)
+        try:
+            transport = self._transport(config, headers, auth)
+            async with Client(transport, read_timeout_seconds=timeout, client_info=Implementation(name="wizolt", version=__version__)) as client:
+                return await asyncio.wait_for(operation(client), timeout=timeout)
+        finally:
+            if auth is not None:
+                await auth.aclose()
+
+    # The SDK hands back one page per request; a server that paginates would otherwise show only
+    # its first page of tools. Bounded so a server echoing the same cursor cannot spin forever.
+    MAX_LIST_PAGES: ClassVar[int] = 250
 
     async def _list_tools(self, config: MCPServerConfig, headers: dict[str, str]) -> list[Tool]:
-        return await self._run_op(config, headers, lambda client: client.list_tools())
+        async def list_all(client: Client) -> list[Tool]:
+            tools: list[Tool] = []
+            cursor: str | None = None
+            for _ in range(self.MAX_LIST_PAGES):
+                page = await client.list_tools(cursor=cursor)
+                tools.extend(page.tools)
+                if not (cursor := page.next_cursor):
+                    break
+            return tools
+
+        return await self._run_op(config, headers, list_all)
 
     async def _list_resources(self, config: MCPServerConfig, headers: dict[str, str]) -> list[Resource]:
-        return await self._run_op(config, headers, lambda client: client.list_resources())
+        async def list_all(client: Client) -> list[Resource]:
+            resources: list[Resource] = []
+            cursor: str | None = None
+            for _ in range(self.MAX_LIST_PAGES):
+                page = await client.list_resources(cursor=cursor)
+                resources.extend(page.resources)
+                if not (cursor := page.next_cursor):
+                    break
+            return resources
 
-    async def _call_tool(self, config: MCPServerConfig, headers: dict[str, str], name: str, arguments: Json) -> CallToolResult | ToolTask:
-        return await self._run_op(config, headers, lambda client: client.call_tool(name, arguments), long_timeout=True)
+        return await self._run_op(config, headers, list_all)
 
-    async def _read_resource(
-        self, config: MCPServerConfig, headers: dict[str, str], uri: str
-    ) -> list[TextResourceContents | BlobResourceContents] | ResourceTask:
-        return await self._run_op(config, headers, lambda client: client.read_resource(uri), long_timeout=True)
+    async def _call_tool(self, config: MCPServerConfig, headers: dict[str, str], name: str, arguments: Json) -> CallToolResult:
+        result = await self._run_op(config, headers, lambda client: client.call_tool(name, arguments), long_timeout=True)
+        if result.is_error:
+            # A tool that ran and failed is still a failed call to the model, not a result to read.
+            text = next((getattr(item, "text", "") for item in result.content if getattr(item, "type", "") == "text"), "")
+            raise ToolError(text or f"Tool '{name}' returned an error")
+        return result
+
+    async def _read_resource(self, config: MCPServerConfig, headers: dict[str, str], uri: str) -> list[TextResourceContents | BlobResourceContents]:
+        result = await self._run_op(config, headers, lambda client: client.read_resource(uri), long_timeout=True)
+        return list(result.contents)
 
     def _build_mcp_headers(self, config: MCPServerConfig) -> dict[str, str] | str:
         headers: dict[str, str] = {}

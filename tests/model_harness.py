@@ -1,19 +1,15 @@
 """Shared harness for the ModelClient test modules.
 
-The mock client factories intercept OpenAI/Anthropic SDK HTTP calls with httpx.MockTransport so
-the wire formats can be exercised without hitting real providers."""
+The mock client factories intercept OpenAI/Anthropic SDK HTTP calls with httpx2.MockTransport so
+the wire formats can be exercised without hitting real providers. Both SDKs speak httpx2, and
+Anthropic validates the client against it, so the transport, the requests it delivers, and the
+responses built from the fixture queue all come from that module."""
 
 import json
 
-import anthropic._base_client as _bc
-import httpx
+import httpx2
 from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
-
-# Anthropic 1.x validates the client against its own vendored httpx2 module, so the mock
-# transport, the requests it delivers, and the responses built from the fixture queue must
-# all come from that same module. Older SDKs use plain httpx; fall back to it.
-sdk_httpx = getattr(_bc, "httpx2", None) or httpx
 
 from wizolt.config import (
     Config,
@@ -26,28 +22,24 @@ from wizolt.session import Session, bootstrap_features
 class _MockClientFactory:
     """Factory that returns a fresh async OpenAI client on each call, all sharing one request log."""
 
-    # The httpx module whose Request/Response types this factory speaks. The OpenAI path uses
-    # plain httpx; the Anthropic subclass switches to the SDK's own module.
-    response_module = httpx
-
     def __init__(self, responses: list, base_url: str = "http://test"):
         self.responses = list(responses)
-        self.calls: list[httpx.Request] = []
+        self.calls: list[httpx2.Request] = []
         self.base_url = base_url
 
-    def _next_response(self, request: httpx.Request) -> httpx.Response:
+    def _next_response(self, request: httpx2.Request) -> httpx2.Response:
         self.calls.append(request)
         response = self.responses.pop(0)
-        if isinstance(response, self.response_module.Response):
+        if isinstance(response, httpx2.Response):
             return response
         if isinstance(response, int):
-            return self.response_module.Response(response)
+            return httpx2.Response(response)
         status, body = response
-        return self.response_module.Response(status, json=body)
+        return httpx2.Response(status, json=body)
 
     def __call__(self, **kwargs) -> AsyncOpenAI:
-        transport = httpx.MockTransport(self._next_response)
-        http_client = httpx.AsyncClient(transport=transport)
+        transport = httpx2.MockTransport(self._next_response)
+        http_client = httpx2.AsyncClient(transport=transport)
         return AsyncOpenAI(
             api_key="sk-test",
             base_url=kwargs.get("base_url", self.base_url),
@@ -59,31 +51,29 @@ class _MockClientFactory:
 class _StreamClientFactory:
     def __init__(self, events: list[dict], base_url: str = "http://test", failures: int = 0):
         self.events = events
-        self.calls: list[httpx.Request] = []
+        self.calls: list[httpx2.Request] = []
         self.base_url = base_url
         self.failures = failures
 
     def __call__(self, **kwargs) -> AsyncOpenAI:
-        def respond(request: httpx.Request) -> httpx.Response:
+        def respond(request: httpx2.Request) -> httpx2.Response:
             self.calls.append(request)
             if self.failures:
                 self.failures -= 1
-                return httpx.Response(500, json={"error": {"message": "temporary failure", "type": "server_error"}})
+                return httpx2.Response(500, json={"error": {"message": "temporary failure", "type": "server_error"}})
             body = "".join(f"data: {json.dumps(event)}\n\n" for event in self.events) + "data: [DONE]\n\n"
-            return httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+            return httpx2.Response(200, text=body, headers={"content-type": "text/event-stream"})
 
-        http_client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+        http_client = httpx2.AsyncClient(transport=httpx2.MockTransport(respond))
         return AsyncOpenAI(api_key="sk-test", base_url=self.base_url, http_client=http_client, max_retries=0)
 
 
 class _AnthropicMockClientFactory(_MockClientFactory):
     """Factory that returns fresh async Anthropic clients over the shared mocked response queue."""
 
-    response_module = sdk_httpx
-
     def __call__(self, **kwargs) -> AsyncAnthropic:
-        transport = sdk_httpx.MockTransport(self._next_response)
-        http_client = sdk_httpx.AsyncClient(transport=transport)
+        transport = httpx2.MockTransport(self._next_response)
+        http_client = httpx2.AsyncClient(transport=transport)
         return AsyncAnthropic(
             api_key="sk-test",
             base_url=kwargs.get("base_url", self.base_url),
@@ -95,16 +85,16 @@ class _AnthropicMockClientFactory(_MockClientFactory):
 class _AnthropicStreamClientFactory:
     def __init__(self, events: list[tuple[str, dict]], base_url: str = "http://test"):
         self.events = events
-        self.calls: list[httpx.Request] = []
+        self.calls: list[httpx2.Request] = []
         self.base_url = base_url
 
     def __call__(self, **kwargs) -> AsyncAnthropic:
-        def respond(request: httpx.Request) -> httpx.Response:
+        def respond(request: httpx2.Request) -> httpx2.Response:
             self.calls.append(request)
             body = "".join(f"event: {name}\ndata: {json.dumps(event)}\n\n" for name, event in self.events)
-            return sdk_httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+            return httpx2.Response(200, text=body, headers={"content-type": "text/event-stream"})
 
-        http_client = sdk_httpx.AsyncClient(transport=sdk_httpx.MockTransport(respond))
+        http_client = httpx2.AsyncClient(transport=httpx2.MockTransport(respond))
         return AsyncAnthropic(api_key="sk-test", base_url=self.base_url, http_client=http_client, max_retries=0)
 
 
