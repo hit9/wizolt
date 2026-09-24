@@ -194,7 +194,7 @@ def language_directive(language: str) -> str:
     )
 
 
-GIT_ATTRIBUTION_FOOTER = "🤖 Generated with [wizolt](https://wizolt.readthedocs.io)"
+GIT_ATTRIBUTION_FOOTER = "Generated with [wizolt](https://wizolt.readthedocs.io)."
 
 
 def git_attribution_directive(enabled: bool) -> str:

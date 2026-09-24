@@ -4,9 +4,10 @@
 
 ### Added
 
-- The commit messages and pull-request bodies wizolt writes end with
-  `🤖 Generated with [wizolt](https://wizolt.readthedocs.io)`. Turn it off for the session with
-  `/set runtime.attribution off`, or for good with `[runtime] attribution = false`.
+- wizolt asks the model to end the commit messages and pull-request bodies it writes with
+  `Generated with [wizolt](https://wizolt.readthedocs.io).`, once, after the body. It is a request
+  in the prompt rather than a rewrite of your git commands, so it can be missed. Turn it off for the
+  session with `/set runtime.attribution off`, or for good with `[runtime] attribution = false`.
 
 ### Changed
 
