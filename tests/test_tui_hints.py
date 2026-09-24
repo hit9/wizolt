@@ -813,5 +813,6 @@ def test_quick_hint_unpick_takes_its_own_separator_back():
 
     assert roundtrip("helloworld", 5) == "hello world"
     assert roundtrip("hello world") == "hello world"
+    assert roundtrip("first\nsecond", 6) == "first\nsecond"  # a pick at a line start keeps the break
     assert roundtrip("then ") == "then"
     assert roundtrip("") == ""

@@ -342,7 +342,7 @@ async def test_delegate_failure_hands_consumed_followups_back(tmp_path, monkeypa
     """A follow-up the worker's failed request already committed is not answered: the send hands
     it back to the parent instead of leaving the user with an echo and no reply. The failing
     request is the *second* one, so the follow-up really was claimed and acknowledged into the
-    worker's dead turn -- the case `_return_unclaimed_inputs` alone cannot see."""
+    worker's dead turn -- nothing is left in the worker's queue to find it by."""
     from wizolt.base import ModelError, ToolCall, ToolError
     from wizolt.context import ContextManager
     from wizolt.runner import ToolRunner
@@ -368,10 +368,40 @@ async def test_delegate_failure_hands_consumed_followups_back(tmp_path, monkeypa
         await _delegate_call(parent, runner, action="send", order="do the thing")
 
     # The failing request really did carry it (the echo proves the claim), yet nothing is left
-    # in the worker's queue for _return_unclaimed_inputs to find.
+    # in the worker's queue to find it by.
     assert flushed == [["[worker] also check the tests"]]
     assert parent.worker is not None and parent.worker.pending_user_inputs == []
     assert [item.text for item in parent.pending_user_inputs] == ["also check the tests"]
+
+
+async def test_delegate_failure_keeps_followups_an_accepted_request_answered(tmp_path, monkeypatch):
+    """A follow-up an accepted request carried was answered by that request's reply: a later
+    failure in the same send must not hand it to the parent, which would do the work twice."""
+    from wizolt.base import ModelError, ToolCall, ToolError
+    from wizolt.context import ContextManager
+    from wizolt.runner import ToolRunner
+
+    parent = _delegate_session(tmp_path)
+    note = tmp_path / "note.txt"
+    note.write_text("worker input")
+
+    class AnswersThenFails(FakeModelClient):
+        async def request(self, messages, request_tools=None):
+            self.requests.append(messages)
+            if len(self.requests) == 1:  # the user types while the first step runs
+                parent.worker.enqueue_user_input("also check the tests")
+            if len(self.requests) <= 2:  # the second request carries the follow-up and is accepted
+                return {"role": "assistant", "content": ""}, [ToolCall(f"r{len(self.requests)}", "Read", [str(note)])], ""
+            raise ModelError("provider exploded")  # a later step fails with nothing new in it
+
+    model = AnswersThenFails([])
+    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
+    with pytest.raises(ToolError, match="provider exploded"):
+        await _delegate_call(parent, runner, action="send", order="do the thing")
+
+    assert "also check the tests" in str(model.requests[1])  # the accepted request carried it
+    assert parent.pending_user_inputs == []  # answered by the worker, so never repeated
 
 
 async def test_delegate_clears_a_stale_inflight_marker(tmp_path, monkeypatch):

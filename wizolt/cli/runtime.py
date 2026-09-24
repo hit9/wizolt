@@ -291,8 +291,8 @@ class TuiRuntime:
                     # next model request claims it from its own queue; anything else (a Tab-held
                     # input, a command, an attachment) stays with the parent, which is the only
                     # turn the runtime owns the boundaries of.
-                    worker = self.loop.session.worker
-                    if worker is not None and worker._active_turn_messages and not submission.next_turn and not admitted.images and not admitted.pastes:
+                    worker = self.loop.session.delegating_worker
+                    if worker is not None and not submission.next_turn and not admitted.images and not admitted.pastes:
                         worker.enqueue_user_input(admitted)
                         # The parent's save below no longer carries this input (it left the
                         # parent's queue), so persist the worker's queue itself: until the

@@ -481,9 +481,7 @@ class View:
         if counts:
             label = f"{label} [ {' · '.join(counts)} ]"
         prefix = self.waiting_pulse_fragments()
-        worker = self.loop.session.worker
-        if worker is not None and worker._active_turn_messages:
-            # The same in-flight predicate as the status bar's worker marker.
+        if self.loop.session.delegating_worker is not None:
             prefix = [("class:divider.worker", "[worker] "), *prefix]
         return self.sweep_divider_fragments(label, prefix=prefix)
 

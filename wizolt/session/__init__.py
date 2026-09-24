@@ -189,6 +189,17 @@ class Session:
         self.apply_provider_overrides()
 
     @property
+    def delegating_worker(self) -> Session | None:
+        """The worker while a delegation is in flight, else None.
+
+        The in-flight predicate is the engine's own: `_active_turn_messages` is filled when a turn
+        starts and cleared when it settles, so a live but idle worker is not delegating. The status
+        bar, the working divider, `/worker`, and follow-up routing all ask this one question.
+        """
+        worker = self.worker
+        return worker if worker is not None and worker._active_turn_messages else None
+
+    @property
     def policy(self) -> ProviderPolicy:
         """The selected catalog policy, with a lazy bundled fallback for bare test/library sessions."""
 

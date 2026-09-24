@@ -1878,12 +1878,10 @@ class StatusBar:
         """The session whose work this row describes: the worker while a delegation is in flight,
         the parent otherwise.
 
-        The in-flight predicate is the engine's own: `_active_turn_messages` is filled when a turn
-        starts and cleared in finish_turn, so a live but idle worker never shadows the parent. The
-        working divider marks the same condition with its `[worker]` prefix.
+        A live but idle worker never shadows the parent (`Session.delegating_worker`). The working
+        divider marks the same condition with its `[worker]` prefix.
         """
-        worker = self.session.worker
-        return worker if worker is not None and bool(worker._active_turn_messages) else self.session
+        return self.session.delegating_worker or self.session
 
     def model_attempt_status(self) -> str:
         attempt = self.session.state.current_model_attempt

@@ -759,7 +759,7 @@ class TuiApp:
         # A chip is picked exactly while its suggestion stands in the input as its own text, so
         # the check mark follows the text wherever the user moves it -- and disappears with an
         # edit that erases it or buries it inside a longer suggestion.
-        picked = tuple(hint for hint in self._picked_hint_spans(self.input_buffer.text, hints))
+        picked = tuple(self._picked_hint_spans(self.input_buffer.text, hints))
         return self._flow_quick_hints(hints, self._quick_hint_columns(), self.quick_hint_focus, picked)
 
     @staticmethod
@@ -944,19 +944,18 @@ class TuiApp:
         span = self._picked_hint_spans(text, hints).get(hint)
         if span is not None:
             start, end = span
-            # Take one separator back on each side the pick added one: a doubled separator
-            # collapses to the left, and a lone one only at the text's edges, so unpicking
-            # never eats interior spacing the draft already had.
-            new_start, new_end = start, end
-            if start > 0 and end < len(text) and text[start - 1].isspace() and text[end].isspace():
-                new_start -= 1
-            elif start == 0 and end < len(text) and text[end] == " ":
-                new_end += 1
-            elif end == len(text) and start > 0 and text[start - 1] in " \n":
-                new_start -= 1
-            removed = (end - start) + (start - new_start) + (new_end - end)
-            kept = cursor if cursor <= new_start else max(new_start, cursor - removed)
-            self._reset_input(text[:new_start] + text[new_end:], cursor_position=kept)
+            # Take back one separator, and only where the chip is bounded by whitespace or the
+            # text's edge on both sides, so unpicking never eats interior spacing the draft already
+            # had. The space after goes first -- the only separator a pick puts after a chip -- so a
+            # line break before it (a pick at the start of a line) survives the round trip.
+            left = text[start - 1] if start else ""
+            right = text[end] if end < len(text) else ""
+            if right == " " and (not left or left.isspace()):
+                end += 1
+            elif left.isspace() and (not right or right.isspace()):
+                start -= 1
+            kept = cursor if cursor <= start else max(start, cursor - (end - start))
+            self._reset_input(text[:start] + text[end:], cursor_position=kept)
         else:
             before, after = text[:cursor], text[cursor:]
             # A space is owed on each side that would otherwise glue onto the chip; at the end of
