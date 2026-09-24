@@ -37,6 +37,9 @@ TOOL_IMAGE_OBSERVATION_PREFIX = "[Tool image observation]"
 ATTACHMENT_VISION_OBSERVATION_PREFIX = "[Attachment image observation]"
 FAILED_IMAGE_CONTEXT_PREFIX = "[Image input failed; local assets remain available through ViewImage]"
 IMAGE_ASSET_CONTEXT_PREFIX = "[Attached image assets]"
+# The largest file the recognizer will open: every vision API refuses more, so one is refused
+# before it is read rather than after it has all arrived in memory.
+MAX_IMAGE_BYTES = 20_000_000
 
 
 @dataclass(frozen=True)
@@ -494,6 +497,11 @@ class ImageInputs:
         try:
             if not os.path.isfile(path):
                 raise OSError("not a regular file")
+            # A header lives in the first bytes, and no provider accepts an image past this size;
+            # both checks run before the read, so a huge file -- one `recognize` meets on every
+            # keystroke of an edit -- is refused without ever entering memory.
+            if os.path.getsize(path) > MAX_IMAGE_BYTES:
+                raise ValueError(f"image file is larger than {MAX_IMAGE_BYTES} bytes")
             with open(path, "rb") as file:
                 data = file.read()
             image_format, width, height, frames = ImageHeader(data).read()

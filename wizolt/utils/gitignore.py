@@ -84,6 +84,17 @@ class GitIgnore:
             else:
                 # A file rule also matches a directory of that name, so the walk prunes the subtree.
                 body += "(?:/|$)"
+        else:
+            # A directory rule matches the directory itself -- and so everything under it, since
+            # the walk never descends into an ignored directory -- but nothing else: matches()
+            # already appends the slash of a directory, so requiring one here keeps "bin/" from
+            # swallowing "bin.py", "binary.py", or a plain file that happens to be named "bin".
+            if segments[-1] == "**":
+                # `dir/**/` names the directories under dir, at least one segment deep: never dir
+                # itself, never a file sitting directly inside it.
+                body += "[^/]+/"
+            else:
+                body += "/"
         prefix = "" if rooted or segments[0] == "**" else "(?:[^/]+/)*"
         return re.compile("^" + prefix + body), ignores
 
@@ -100,7 +111,11 @@ class GitIgnore:
                 index += 2
                 continue
             if char == "*":
-                parts.append("[^/]*")
+                # A lone * names what is inside the directory ("dir/*"), and an empty match there
+                # would also decide the directory itself, pruning the subtree before a later
+                # negation could reach its files. A * with literal neighbors ("venv*") matches
+                # the empty tail, as in Git: it still decides the bare literal.
+                parts.append("[^/]+" if segment == "*" else "[^/]*")
             elif char == "?":
                 parts.append("[^/]")
             elif char == "[":

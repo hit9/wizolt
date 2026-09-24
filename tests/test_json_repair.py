@@ -52,3 +52,46 @@ def test_pathological_nesting_is_not_a_crash():
     """An output that is nothing but open braces is not a summary; the reader walks past it
     instead of raising through the compaction, however deep the stack allows."""
     repair_json_object('{"a": ' * 600)
+
+
+def test_nesting_past_the_depth_cap_stops_descending():
+    """The reference refuses nesting past its own supported depth outright; the built-in reader
+    stops descending at its cap, so pathological output never spends a real stack or arrives as
+    a four-thousand-deep summary -- and the brace it steps past leaves nothing glued to a key."""
+    result = repair_json_object('{"a": ' * 4000 + "1" + "}" * 4000)
+    assert isinstance(result, dict)
+    nested, depth = result, 0
+    while isinstance(nested, dict):
+        nested = nested["a"]
+        depth += 1
+    assert depth < 100  # the input nests 4000 deep; the cap stopped the descent far above
+
+    keys = set()
+    stack = [result]
+    while stack:
+        for key, value in stack.pop().items():
+            keys.add(key)
+            if isinstance(value, dict):
+                stack.append(value)
+    assert keys == {"a"}  # the brace the cap stepped past left nothing glued to a key
+
+
+def test_depth_cap_leftovers_never_touch_the_shallow_keys():
+    """Objects and arrays alternating past the cap leave braces glued to keys in the garbage
+    below -- accepted: that text is nobody's summary, and the shallow keys a compaction reads
+    ("summary" and its siblings) stay clean above it."""
+    result = repair_json_object('{"summary": "kept", "a": ' + '["b": ' * 2000 + "1" + "]" * 2000 + "}")
+    assert result["summary"] == "kept"
+
+
+def test_brace_soup_costs_no_more_than_a_capped_number_of_passes():
+    """Every open brace once cost a pass over the whole text -- quadratic on malformed output;
+    the attempt cap keeps it linear, and the answer is still that there is no object."""
+    assert repair_json_object("{a" * 4096) is None
+
+
+def test_a_real_object_behind_many_stray_braces_still_wins():
+    """The cap leaves room for the prose-and-code shapes a compaction reply actually has; the
+    summary after them is still the object that comes back."""
+    text = "options {a, b} and {c} — " * 8 + 'the summary: {"summary": "kept"}'
+    assert repair_json_object(text) == {"summary": "kept"}

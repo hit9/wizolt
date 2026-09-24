@@ -29,9 +29,14 @@ class _NotAnObject(Exception):
 class _Reader:
     """One pass over the text, holding only a cursor: every method reads forward and never back."""
 
+    # Nesting past this is not a compaction summary; the parse gives up rather than spending a
+    # real stack on it. The reference reader refuses the same input outright.
+    MAX_DEPTH = 64
+
     def __init__(self, text: str, index: int):
         self.text = text
         self.index = index
+        self.depth = 0
 
     def char(self) -> str:
         return self.text[self.index] if self.index < len(self.text) else ""
@@ -96,9 +101,23 @@ class _Reader:
         if char in _CLOSERS:
             return self.quoted()
         if char == "{":
-            return self.object()
+            if self.depth >= self.MAX_DEPTH:
+                # Deeper than any summary: step past the brace and read nothing, so what follows
+                # becomes this object's own next content instead of a brace glued to a key.
+                self.index += 1
+                return ""
+            self.depth += 1
+            value = self.object()
+            self.depth -= 1
+            return value
         if char == "[":
-            return self.array()
+            if self.depth >= self.MAX_DEPTH:
+                self.index += 1
+                return ""
+            self.depth += 1
+            value = self.array()
+            self.depth -= 1
+            return value
         run = self.bare(stop)
         if _NUMBER.fullmatch(run):
             return float(run) if any(mark in run for mark in ".eE") else int(run)
@@ -184,10 +203,17 @@ def repair_json_object(text: str) -> dict[str, Any] | None:
     Reading starts at each `{` in turn, so prose around the object is skipped; a start that reads
     no object at all (prose's stray braces, code samples) gives way to the next `{`. An object
     cut down to nothing but its braces is still an object: the compactor plainly answered, just
-    before the output ran out, and an empty summary is the compaction echo check's to catch."""
+    before the output ran out, and an empty summary is the compaction echo check's to catch.
+
+    Each `{` costs one pass bounded by the whole text, so a malformed text of many braces could
+    in principle go quadratic; the attempt cap keeps that linear on input size."""
+    attempts = 0
     for start, char in enumerate(text):
         if char != "{":
             continue
+        attempts += 1
+        if attempts > 256:
+            return None
         try:
             return _Reader(text, start).object()
         except _NotAnObject:

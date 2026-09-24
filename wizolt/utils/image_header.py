@@ -117,6 +117,8 @@ class ImageHeader:
                 raise ValueError("JPEG segment length is corrupt")
             segment = self.take(position, length)
             if marker in self.JPEG_FRAME_MARKERS:
+                if len(segment) < 7:  # the frame header needs precision plus four size bytes
+                    raise ValueError("JPEG frame header is corrupt")
                 height, width = struct.unpack(">HH", segment[3:7])
                 size = (width, height)
             if marker == 0xDA:  # start of scan: the headers are complete

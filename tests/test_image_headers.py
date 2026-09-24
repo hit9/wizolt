@@ -16,7 +16,7 @@ import pytest
 from PIL import Image
 
 from wizolt.base import ModelError
-from wizolt.image import ImageInputs
+from wizolt.image import MAX_IMAGE_BYTES, ImageInputs
 
 
 def recognized(tmp_path, name: str, data: bytes):
@@ -121,6 +121,16 @@ def test_garbage_behind_a_plausible_signature_is_refused(tmp_path, junk):
     assert recognized(tmp_path, "junk.png", junk) is None
 
 
+def test_a_jpeg_frame_header_cut_short_is_refused(tmp_path):
+    """A frame segment too short for precision and the two size words is corruption -- refused
+    like any other damage, never a struct error through the recognizer."""
+    for length in range(2, 7):
+        data = b"\xff\xd8\xff\xc0" + struct.pack(">H", length) + b"\x00" * max(length - 2, 0)
+        assert recognized(tmp_path, f"short-{length}.jpg", data) is None
+        with pytest.raises(ModelError, match="Cannot read image"):
+            ImageInputs._inspect(str(tmp_path / f"short-{length}.jpg"))
+
+
 def test_an_image_too_large_to_be_real_is_refused(tmp_path):
     """Pillow refused decompression bombs; a header claiming 20000x20000 pixels still is."""
     header = struct.pack(">IIBBBBB", 20000, 20000, 8, 2, 0, 0, 0)
@@ -130,6 +140,18 @@ def test_an_image_too_large_to_be_real_is_refused(tmp_path):
     assert recognized(tmp_path, "bomb.png", data) is None
     with pytest.raises(ModelError, match="Cannot read image"):
         ImageInputs._inspect(str(tmp_path / "bomb.png"))
+
+
+def test_a_file_larger_than_any_provider_accepts_is_refused_without_reading_it(tmp_path):
+    """Recognition runs on every edit of the input line, so a huge file is refused before it is
+    read, not after it has all arrived in memory. Sparse, so the test writes one header."""
+    path = tmp_path / "huge.png"
+    with open(path, "wb") as file:
+        file.seek(MAX_IMAGE_BYTES)
+        file.write(b"\x89PNG\r\n\x1a\n")
+    assert ImageInputs(cwd=str(tmp_path)).recognize(path.name).images == ()
+    with pytest.raises(ModelError, match="larger than"):
+        ImageInputs._inspect(str(path))
 
 
 def test_recognizing_images_does_not_load_pillow(tmp_path):
