@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- A finished call no longer spends a row on its `tr.N` key and its `[auto]`/`[approved]` tag: the
+  citation rides the last row the call already prints (`└ 41 passed in 2.10s · tr.3`), a delegation
+  cites it on the worker's last answer line, and a call that printed nothing leaves no row under the
+  row that names it.
+
 ## 0.53.0 - 2026-09-23
 
 ### Changed

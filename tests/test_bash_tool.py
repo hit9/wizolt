@@ -824,8 +824,8 @@ async def test_tool_runner_approved_live_bash_does_not_repeat_command(tmp_path):
     display = [text for kind, text in events if kind == "display"]
     assert display[0].startswith("  Bash  ")
     assert "approval required" not in display[0]
-    # Nested: the runner already drew the call line, so the body leads and the key closes.
-    assert display[-1] == "    ├ approved\n    └ tr.1 [approved]"
+    # Nested: the runner already drew the call line, so the body cites the key on its own row.
+    assert display[-1] == "    └ approved · tr.1 [approved]"
     assert sum(text.startswith("  Bash  ") for text in display) == 1
     assert sum("printf approved" in text for text in display) == 1
 
@@ -884,7 +884,41 @@ def test_tool_runner_compact_bash_result_keeps_bounded_output_without_live_frame
         )
     )
 
-    assert display == "    ├ visible output\n    └ tr.1"  # nested: the body, then the key closing the block
+    # Nested: the call line is the runner's, so the output's own row closes the block.
+    assert display == "    └ visible output · tr.1"
+
+
+async def test_tool_runner_silent_bash_leaves_no_row_under_its_call_line(tmp_path):
+    s = session(tmp_path)
+    events = []
+    runner = ToolRunner(s, ContextManager(s), input_fn=lambda prompt: "", output_fn=lambda text: events.append(("display", str(text))))
+    runner.hooks.live_start = lambda: events.append(("start", ""))
+    runner.hooks.live_output = lambda stream, text: events.append((stream, text))
+
+    await runner.run([ToolCall("bash", "Bash", ["true"])])
+
+    # The call line is the whole block: nothing under it, not even a blank row.
+    assert [text for kind, text in events if kind == "display"] == ["  Bash  true"]
+
+
+def test_tool_runner_a_silent_bash_call_prints_no_row_at_all(tmp_path):
+    s = session(tmp_path)
+    output = Tool.process_result("BashToolResult", 1, "", "")  # `rg` with no match prints nothing
+
+    display = str(
+        toolblocks.finish_display(
+            s,
+            ToolCall("bash", "Bash", ["rg nope"]),
+            "tr.1",
+            output,
+            failed=False,
+            d=ToolDisplay(nested_display=True),
+        )
+    )
+
+    # Nothing is printed: the call line above already says the call ran, and a citation row of its
+    # own would point at an empty result.
+    assert display == ""
 
 
 async def test_tool_runner_failed_live_bash_does_not_repeat_command(tmp_path, monkeypatch):
@@ -947,7 +981,7 @@ async def test_tool_runner_prints_bash_header_before_live_output(tmp_path):
     assert events[1] == ("start", "")
     assert ("stdout", "live") in events
     assert events[-1][0] == "display"
-    assert events[-1][1] == "    ├ live\n    └ tr.1"  # nested: the body, then the key closing the block
+    assert events[-1][1] == "    └ live · tr.1"  # nested: the output row closes the block, citing the key
     assert sum("printf live" in text for kind, text in events if kind == "display") == 1
     assert sum("Bash" in text for kind, text in events if kind == "display") == 1
     assert "live" in s.tool_records[-1].output
