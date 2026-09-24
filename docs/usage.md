@@ -111,10 +111,12 @@ for a chip is drawn shortened; picking it puts the whole suggestion in the input
 
 <div class="term-shot" role="img" aria-label="The idle prompt after an answer: the answer text, an empty prompt with a caret, and one row of three suggestion chips separated by grey bars, the middle one highlighted in reverse."><span>Everything is ready to review.</span><span> </span><span class="fs-prompt">&gt; <span class="fs-caret">▏</span></span><span> </span><span><span class="fs-i fs-sel"> run the tests </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-on"> show the diff </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-sel"> commit the work </span></span></div>
 
-`Tab` cycles between the input and the chips. `Enter` on a chip picks it into the input and
-returns to the prompt, so `Tab` to the next chip and `Enter` again combines several suggestions;
-a final `Enter` sends. Focus a picked chip and press `Enter` to unpick it. Editing the text
-normally clears the chip selection state. Quick hints are always available at the TUI prompt.
+`Tab` cycles between the input and the chips, empty input or typed draft alike; while a
+completion menu is open, the menu has `Tab` instead. `Enter` on a chip drops its text in at the
+cursor — a new line at the end of the input, into the sentence mid-line — and returns to the
+prompt, so `Tab` to the next chip and `Enter` again combines several suggestions; a final
+`Enter` sends. A chip with a `✓` has its text in the input: focus it and press `Enter` to take
+that text back out. Quick hints are always available at the TUI prompt.
 
 ## Commands
 

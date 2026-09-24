@@ -14,6 +14,10 @@
   in the session's asset directory. The checkpoint names the index, so an evicted span is read back
   with `Read` or `Bash` rather than through a tool. A resumed older session gets its earlier spans
   written, as shortened excerpts, at its next compaction.
+- Quick-hint chips are reachable whatever the input holds: `Tab` cycles them even after you type,
+  and `Enter` drops a suggestion into the draft at the cursor instead of replacing it — as its own
+  line at the end of the input, into the sentence mid-line. A chip with a `✓` has its text in the
+  input, and `Enter` on it takes that text back out.
 
 ## 0.52.0 - 2026-09-23
 
