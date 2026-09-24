@@ -530,16 +530,32 @@ def test_streamed_httpx_read_error_is_retryable():
 
 
 @pytest.mark.parametrize("module_name", ["httpx", "httpx2"])
-def test_streamed_transport_error_is_retryable_for_every_httpx_generation(module_name):
+def test_streamed_transport_error_is_retryable_for_every_httpx_generation(module_name, monkeypatch):
     """Transport errors are matched by type across both httpx generations. openai 3.x and
     anthropic 1.x raise httpx2's hierarchy, which shares no base class with httpx's; plain httpx is
-    matched too wherever it is installed. The message deliberately carries no retryable wording, so
-    this pins the isinstance branch rather than the error-text fallback."""
-    module = pytest.importorskip(module_name)
-    cause = module.ReadError("stream ended")
-    error = ModelError(str(cause))
-    error.__cause__ = cause
-    assert resilience.retryable_error(error) is True
+    matched too wherever something else installs it. The message deliberately carries no retryable
+    wording, so this pins the isinstance branch rather than the error-text fallback.
+
+    wizolt itself no longer installs plain httpx, so that half runs against a stand-in module with
+    httpx's shape -- a TransportError base and a ReadError under it -- rather than skipping."""
+    import sys
+    import types
+
+    if module_name == "httpx" and "httpx" not in sys.modules:
+        stand_in = types.ModuleType("httpx")
+        stand_in.TransportError = type("TransportError", (Exception,), {})  # pyright: ignore[reportAttributeAccessIssue]
+        stand_in.ReadError = type("ReadError", (stand_in.TransportError,), {})  # pyright: ignore[reportAttributeAccessIssue]
+        monkeypatch.setitem(sys.modules, "httpx", stand_in)
+    resilience._transport_errors.cache_clear()
+    try:
+        module = __import__(module_name)
+        cause = module.ReadError("stream ended")
+        error = ModelError(str(cause))
+        error.__cause__ = cause
+        assert resilience.retryable_error(error) is True
+    finally:
+        # The matched classes are cached for the process; the stand-in must not outlive this test.
+        resilience._transport_errors.cache_clear()
 
 
 async def test_streamed_httpx_error_retries_then_succeeds(tmp_path, monkeypatch):

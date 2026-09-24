@@ -599,8 +599,14 @@ class MCPManager:
 
         refused: list[str] = []
 
+        import httpx2
+
+        # Parsed, not the configured string: a request's URL is normalized (lowercase host, no
+        # default port), so `https://Host:443/mcp` would never match its own requests as text.
+        endpoint = httpx2.URL(config.url)
+
         async def record_refusal(response: httpx2.Response) -> None:
-            if response.status_code >= 400 and response.request.method == "POST" and str(response.request.url) == config.url:
+            if response.status_code >= 400 and response.request.method == "POST" and response.request.url == endpoint:
                 refused.append(f"HTTP {response.status_code} {response.reason_phrase}".strip())
 
         @contextlib.asynccontextmanager
@@ -692,8 +698,10 @@ class MCPManager:
         result = await self._run_op(config, headers, lambda client: client.call_tool(name, arguments), long_timeout=True)
         if result.is_error:
             # A tool that ran and failed is still a failed call to the model, not a result to read.
-            text = next((getattr(item, "text", "") for item in result.content if getattr(item, "type", "") == "text"), "")
-            raise ToolError(text or f"Tool '{name}' returned an error")
+            # All of what it reported, rendered as a result would be -- every text block, or the
+            # structured payload when it sent no text -- since the detail (a second line, a
+            # `retry_after`) is the model's only clue to what to do next.
+            raise ToolError(self.normalize_result(result).strip() or f"Tool '{name}' returned an error")
         return result
 
     async def _read_resource(self, config: MCPServerConfig, headers: dict[str, str], uri: str) -> list[TextResourceContents | BlobResourceContents]:

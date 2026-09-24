@@ -6,7 +6,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import socket
+import sys
+import threading
 import webbrowser
 from collections.abc import AsyncGenerator, Callable
 from urllib.parse import parse_qs, urlsplit
@@ -17,7 +20,6 @@ from mcp.client.auth import OAuthClientProvider
 from mcp.shared.auth import AuthorizationCodeResult, OAuthClientMetadata
 from mcp.shared.inbound import MCP_PROTOCOL_VERSION_HEADER
 
-from wizolt.base import run_blocking
 from wizolt.mcp.tokens import MCPServerTokens
 
 CALLBACK_PAGE = (
@@ -203,7 +205,22 @@ class WizoltOAuth(OAuthClientProvider):
         await self.callback.start()
         if self.notify:
             self.notify("Open this URL to authorize MCP server `" + self.server_name + "`:\n" + authorization_url)
-        await run_blocking(lambda: webbrowser.open(authorization_url))
+        if self.can_open_browser():
+            # Launched, not awaited: `webbrowser.open` may block on the launcher, and neither the
+            # wait for the callback nor a shutdown should wait on it. The link above is the path
+            # that always works.
+            threading.Thread(target=webbrowser.open, args=(authorization_url,), name="wizolt-oauth-browser", daemon=True).start()
+
+    @staticmethod
+    def can_open_browser() -> bool:
+        """Whether a graphical browser can exist here.
+
+        Without a display, `webbrowser` falls back to a console browser (lynx, w3m, www-browser)
+        and waits for it to exit -- on the very terminal wizolt is drawing -- so a login over SSH or
+        in a container shows the link instead."""
+        if sys.platform in ("darwin", "win32"):
+            return True
+        return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
     async def receive(self) -> AuthorizationCodeResult:
         assert self.callback is not None, "only an interactive login redirects"

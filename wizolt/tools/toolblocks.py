@@ -308,8 +308,9 @@ def finish_display(
         # lines, and then it says how many and where the rest is. A nested block (d.nested_display)
         # has no call line of its own left to ride: the runner drew it above the live preview, so
         # the citation rides the body's last row instead. It never takes a row of its own -- one
-        # holding nothing but `tr.N` is bookkeeping to step over -- and a call that printed nothing
-        # leaves the block with nothing left to say, which is what the call line above already says.
+        # holding nothing but `tr.N` is bookkeeping to step over -- so a call that printed nothing
+        # shows no key at all. That is the trade: the call line above was drawn before the call ran
+        # and cannot carry it, and an empty result has nothing to open; Ctrl-O still lists it.
         rows, elided = tooloutput.bash_tail_preview(output, tooloutput.BASH_TRANSCRIPT_PREVIEW_LINES)
         citation = (key + tag).strip() if d.nested_display else ""
         if rows:

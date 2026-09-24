@@ -41,6 +41,12 @@
 - An OAuth MCP server that never answers the optional event stream, as Metabase does, connects and
   lists its tools. Every call after that stream used to wait behind it until the deadline, so
   connecting failed with "MCP call timed out after 10s", even with a valid saved login.
+- A failed MCP tool call shows the model everything the tool reported: every text block, or its
+  structured details when it sent no text. It used to keep only the first text block, and without
+  one said only "returned an error", which hid details like when to retry.
+- `/mcp connect` no longer starts a console browser (lynx, w3m) on wizolt's own terminal on a
+  machine without a display, and waiting for the browser can no longer hold up the login. Over SSH
+  or in a container it shows the sign-in link instead.
 - An MCP OAuth login has 5 minutes to finish instead of `shell_timeout` (60 seconds by default),
   so signing in on another machine and bringing the redirect back works. A login that arrived late
   used to be accepted ("Authorization complete") and still fail as a timeout, reported as "No

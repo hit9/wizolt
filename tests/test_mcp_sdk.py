@@ -173,6 +173,40 @@ async def test_a_failing_tool_fails_the_call_with_the_servers_message(inproc):
         await inproc.mcp.call_tool("fixture", "missing", {})
 
 
+async def test_a_failed_tool_call_keeps_the_whole_of_what_it_reported(tmp_path, monkeypatch):
+    """An error result is the model's only clue to what went wrong and whether to retry. It used to
+    be cut to the first text block -- or, with none, to a generic "returned an error" -- so a
+    structured `retry_after` or a second line of detail never reached the model. fastmcp did the
+    same; the SDK's plain result makes the rest available."""
+    from mcp.types import CallToolResult, TextContent
+
+    server = MCPServer("errors")
+
+    @server.tool(description="Fails with structured detail only.")
+    def throttled() -> CallToolResult:
+        return CallToolResult(content=[], structured_content={"error": "rate limited", "retry_after": 5}, is_error=True)
+
+    @server.tool(description="Fails with two text blocks.")
+    def invalid() -> CallToolResult:
+        return CallToolResult(content=[TextContent(type="text", text="invalid query"), TextContent(type="text", text="column `x` does not exist")], is_error=True)
+
+    @server.tool(description="Fails with nothing to say.")
+    def silent() -> CallToolResult:
+        return CallToolResult(content=[], is_error=True)
+
+    s = session(tmp_path, {"errors": {"url": URL}})
+    monkeypatch.setattr(s.mcp, "_transport", lambda *_args: server)
+    await s.mcp.connect_server("errors")
+
+    with pytest.raises(ToolError) as throttled_error:
+        await s.mcp.call_tool("errors", "throttled", {})
+    assert '"retry_after": 5' in str(throttled_error.value) and "rate limited" in str(throttled_error.value)
+    with pytest.raises(ToolError, match=r"invalid query\ncolumn `x` does not exist"):
+        await s.mcp.call_tool("errors", "invalid", {})
+    with pytest.raises(ToolError, match=r"^MCP call failed: Tool 'silent' returned an error$"):
+        await s.mcp.call_tool("errors", "silent", {})
+
+
 async def test_resources_read_as_text_or_a_binary_marker(inproc):
     await inproc.mcp.connect_server("fixture")
 
@@ -458,6 +492,13 @@ async def test_an_http_error_names_its_status_or_the_servers_own_message(tmp_pat
     s = session(tmp_path, {"fixture": {"url": URL}})
 
     assert await s.mcp.connect_server("fixture") == "MCP server error: fixture: " + shown
+    # The configured URL as a user may write it: httpx2 renders the request's URL normalized,
+    # lowercase host and no default port, and the status must survive the spelling. A lost 401
+    # is also a stale login that /mcp connect no longer recognizes.
+    spelled = session(tmp_path, {"fixture": {"url": "http://LocalHost:80/mcp"}})
+    assert await spelled.mcp.connect_server("fixture") == "MCP server error: fixture: " + shown
+    if status == 401:
+        assert spelled.mcp._oauth_reauthorization_required("fixture")
 
 
 # ---------------------------------------------------------------------------
@@ -555,10 +596,22 @@ def oauth_server(auth: MemoryAuthServer, era: str = "modern", *, issuer: str = "
 
 
 @contextlib.asynccontextmanager
-async def login_server(monkeypatch, era: str, auth: MemoryAuthServer | None = None, *, stall: Stall | None = None, **server_options):
-    """Serve an OAuth-protected fixture and stand a scripted browser in for the user's."""
+async def login_server(
+    monkeypatch, era: str, auth: MemoryAuthServer | None = None, *, stall: Stall | None = None, headless: bool = False, **server_options
+):
+    """Serve an OAuth-protected fixture and stand a scripted browser in for the user's.
+
+    A desktop by default: a display, so wizolt launches the browser. `headless` takes the display
+    away, as over SSH or in a container, and wizolt must then launch nothing and show the link."""
+    import sys
     import webbrowser
 
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    if headless:
+        monkeypatch.delenv("DISPLAY", raising=False)
+    else:
+        monkeypatch.setenv("DISPLAY", ":0")
     auth = auth or MemoryAuthServer()
     browser = Browser(asyncio.get_running_loop(), auth)
     monkeypatch.setattr(webbrowser, "open", browser.open)
@@ -704,16 +757,15 @@ async def test_a_server_that_refuses_registration_fails_the_login_with_a_reason(
 async def test_a_login_nobody_completes_times_out_and_leaves_nothing_behind(tmp_path, monkeypatch, era):
     """A headless machine: no browser opens, so no callback arrives. The URL is still shown, the
     login ends at the deadline, and the loopback port is released for the next attempt."""
-    import webbrowser
-
     s = oauth_session(tmp_path)
     monkeypatch.setattr(MCPManager, "LOGIN_TIMEOUT", 2)
     s.settings.shell_timeout = 1
     notices: list[str] = []
 
-    async with login_server(monkeypatch, era):
-        monkeypatch.setattr(webbrowser, "open", lambda _url: False)
+    async with login_server(monkeypatch, era, headless=True) as (_auth, browser):
         result = await s.mcp.connect_server("fixture", interactive=True, notify=notices.append)
+
+    assert browser.opened == []  # no display: nothing launched, not even a console browser
 
     # The URL was shown, so the message says how to try again, not that there was no URL.
     assert result == "MCP OAuth authentication failed for fixture: MCP call timed out after 2s\nRun /mcp connect fixture to try again."
@@ -731,20 +783,17 @@ async def test_a_manual_login_may_take_longer_than_shell_timeout(tmp_path, monke
     request it runs inside, so a callback that arrived late in that window was received -- the
     loopback page said "Authorization complete" -- and the login still failed as a timeout. It has
     its own deadline now: here the callback arrives after `shell_timeout` and the login succeeds."""
-    import webbrowser
-
     s = oauth_session(tmp_path)
     s.settings.shell_timeout = 1
     monkeypatch.setattr(MCPManager, "LOGIN_TIMEOUT", 10)
 
-    async with login_server(monkeypatch, era) as (_auth, browser):
-        urls: list[str] = []
-        monkeypatch.setattr(webbrowser, "open", lambda url: urls.append(url) or False)  # headless
-        login = asyncio.create_task(s.mcp.connect_server("fixture", interactive=True))
-        while not urls:
+    async with login_server(monkeypatch, era, headless=True) as (_auth, browser):
+        notices: list[str] = []
+        login = asyncio.create_task(s.mcp.connect_server("fixture", interactive=True, notify=notices.append))
+        while not notices:
             await asyncio.sleep(0.05)
         await asyncio.sleep(2)  # signing in elsewhere, then pasting the redirect into curl
-        await asyncio.to_thread(browser.open, urls[0])
+        await asyncio.to_thread(browser.open, notices[0].split("\n", 1)[1])  # the user, by hand
 
         assert await login == CONNECTED
 

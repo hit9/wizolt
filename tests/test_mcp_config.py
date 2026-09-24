@@ -356,27 +356,48 @@ class TestMCPManagerDiscovery:
         with pytest.raises(RuntimeError, match=r"authentication required; run /mcp connect test"):
             await auth.redirect("https://login.example/authorize")
 
-    async def test_interactive_oauth_login_notifies_opens_the_browser_and_receives_the_callback(self, monkeypatch):
+    @pytest.mark.parametrize("display", [":0", ""], ids=["desktop", "headless"])
+    async def test_interactive_oauth_login_notifies_opens_the_browser_and_receives_the_callback(self, monkeypatch, display):
+        """Guards the browser launch. With a display it is launched and never waited on: a
+        launcher that hangs must not hold the login. Without one (Linux over SSH, a container) it
+        is not launched at all, because `webbrowser` would fall back to a console browser and wait
+        for it on wizolt's own terminal. The link is shown either way."""
+        import sys
+        import threading
         import webbrowser
 
         import httpx2
 
+        monkeypatch.setattr(sys, "platform", "linux")
+        monkeypatch.setenv("DISPLAY", display)
+        monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg(auth="oauth")))
         bootstrap_features(s)
         notices, opened = [], []
-        monkeypatch.setattr(webbrowser, "open", opened.append)
+        launched, never = threading.Event(), threading.Event()
+
+        def hanging_launcher(url):
+            opened.append(url)
+            launched.set()
+            never.wait(5)  # a launcher that does not come back
+
+        monkeypatch.setattr(webbrowser, "open", hanging_launcher)
         auth = s.mcp.oauth_client(s.mcp.find_config("test"), interactive=True, notify=notices.append)
         redirect_uri = auth.context.client_metadata.redirect_uris[0]
 
-        await auth.redirect("https://login.example/authorize")
+        await asyncio.wait_for(auth.redirect("https://login.example/authorize"), 2)
         async with httpx2.AsyncClient() as http:
             stray = await http.get(f"http://127.0.0.1:{auth.callback.port}/favicon.ico")
             page = await http.get(f"http://127.0.0.1:{auth.callback.port}/callback", params={"code": "c0de", "state": "s"})
         result = await auth.receive()
+        never.set()
 
         assert str(redirect_uri) == f"http://localhost:{auth.callback.port}/callback"
         assert notices == ["Open this URL to authorize MCP server `test`:\nhttps://login.example/authorize"]
-        assert opened == ["https://login.example/authorize"]
+        if display:
+            assert await asyncio.to_thread(launched.wait, 2) and opened == ["https://login.example/authorize"]
+        else:
+            assert opened == []
         assert stray.status_code == 404
         assert page.status_code == 200 and "Authorization complete" in page.text
         assert (result.code, result.state) == ("c0de", "s")
