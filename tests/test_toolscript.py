@@ -986,11 +986,16 @@ class TestScriptCancellation:
         unwound = asyncio.Event()
 
         async def slow_call(config, headers, name, arguments):
+            import anyio
+
             entered.set()
             try:
                 await asyncio.Event().wait()  # a server that never answers
             except asyncio.CancelledError:
-                await release.wait()  # a client that takes its time closing
+                # A client that takes its time closing -- shielded, as the SDK's teardown is,
+                # since the manager cancels through anyio, which re-delivers to anything else.
+                with anyio.CancelScope(shield=True):
+                    await release.wait()
                 unwound.set()
                 raise
 

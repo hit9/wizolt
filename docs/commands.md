@@ -5,15 +5,9 @@
 **`/status`** — Shows everything about the runtime at a glance: workspace path,
 session id, active provider and model, calculated compaction-budget fill percentage,
 conversation history, prompt-cache hit ratio, the AGENTS.md state, background jobs, and whether an
-update is available.
+update is available. Its last row links to the [documentation](https://wizolt.readthedocs.io).
 
-```{figure} ../snapshots/wizolt-status-command.png
-:alt: The /status command showing workspace, session, provider, and context state
-:width: 600px
-:align: center
-
-The /status output at a glance.
-```
+<div class="term-shot" role="img" aria-label="The /status command: a boxed two-column table of the workspace, session, yolo, step limit, AGENTS.md state, model, a context fill bar, cache hit ratios, request usage, and worker state, with the documentation link as its last row."><span class="fs-user">• /status</span><span> </span><span><span class="fs-i">  </span><span class="fs-i fs-dim">╭──────────────────────────────────────────────────────────╮</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> workspace </span><span class="fs-i fs-dim"> </span><span class="fs-i fs-sel">~/dev/github/wizolt</span><span class="fs-i">                           </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> session   </span><span class="fs-i fs-dim"> </span><span class="fs-i fs-sel">20260923101532-4c64ec94-a1f</span><span class="fs-i">                   </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> yolo      </span><span class="fs-i fs-dim"> </span><span class="fs-i">off                                           </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> steps     </span><span class="fs-i fs-dim"> </span><span class="fs-i">400                                           </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> agents.md </span><span class="fs-i fs-dim"> </span><span class="fs-i">on (./AGENTS.md; global active)               </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> model     </span><span class="fs-i fs-dim"> </span><span class="fs-i fs-sel">openai/gpt-5.6</span><span class="fs-i"> · responses · reasoning medium </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> context   </span><span class="fs-i fs-dim"> </span><span class="fs-i">[███▋░░░░░░░░░░] </span><span class="fs-i fs-sel">~62.4K / 240.5K</span><span class="fs-i"> (26%)        </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> cache     </span><span class="fs-i fs-dim"> </span><span class="fs-i">total </span><span class="fs-i fs-sel">92.7%</span><span class="fs-i"> · last </span><span class="fs-i fs-sel">97.2%</span><span class="fs-i">                      </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> usage     </span><span class="fs-i fs-dim"> </span><span class="fs-i">calls </span><span class="fs-i fs-sel">215</span><span class="fs-i"> · total </span><span class="fs-i fs-sel">13.8M</span><span class="fs-i">                       </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> worker    </span><span class="fs-i fs-dim"> </span><span class="fs-i">off — </span><span class="fs-i fs-sel">[worker] provider</span><span class="fs-i"> unset                 </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> docs      </span><span class="fs-i fs-dim"> </span><span class="fs-i">https://wizolt.readthedocs.io                 </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">╰──────────────────────────────────────────────────────────╯</span></span></div>
 
 **`/diff`** — Review changes from the latest turn or the whole session. See
 [Reviewing changes](usage.md#reviewing-changes).
@@ -122,7 +116,7 @@ and, where the values are a fixed set, the values. Example: `/set provider.respo
 ## While a turn runs
 
 Commands that only read the session answer without interrupting it: `/status`, `/ps`, `/diff`,
-`/skills`, `/help`, `/config`, `/catalog`, and `/mcp`'s tool list, along with the `/yolo` toggle.
+`/skills`, `/config`, `/catalog`, and `/mcp`'s tool list, along with the `/yolo` toggle.
 Any other one waits for the turn, and `/resend` is the one that interrupts the request itself.
 
 **`/resend`** — Cancel and re-send the model request in flight, without restarting the turn.
@@ -145,7 +139,8 @@ same, with their attempt and reason, such as `retrying 2/6 · timeout`:
 
 ## Help and exit
 
-**`/help`** — Show the built-in command and tool reference.
+The prompt lists and completes every command as you type, and `/status` ends with the link to the
+[documentation](https://wizolt.readthedocs.io).
 
 **`/exit`, `/quit`** — Leave wizolt. Your session is saved automatically and can
 be resumed with `-c` or `--resume`.

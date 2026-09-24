@@ -84,12 +84,14 @@ SET_HANDLERS: dict[str, SetHandler] = {
     "runtime.shell_timeout": ("settings", "shell_timeout", lambda v: max(1, int(v))),
     "runtime.bash_wait_timeout": ("settings", "bash_wait_timeout", lambda v: max(0, int(v))),
     "runtime.worker": ("settings", "worker", lambda v: v == "on"),
+    "runtime.attribution": ("settings", "attribution", lambda v: v == "on"),
 }
 SET_KEYS = tuple(SET_HANDLERS)
 # Keys whose values are a closed set: rejected by /set when unknown, and offered whole as completions.
 SET_CHOICES: dict[str, tuple[str, ...]] = {
     "provider.stream": ("on", "off"),
     "runtime.worker": ("on", "off"),
+    "runtime.attribution": ("on", "off"),
 }
 SET_VALUES: dict[str, tuple[str, ...]] = {
     "provider.temperature": ("off",),
@@ -211,15 +213,6 @@ async def select_api(loop: CommandLoop, model: str) -> str | object | None:
     return await select_choice(loop, "Request API", PROVIDER_API_CHOICES, labels=labels, current=current)
 
 
-def help(loop: CommandLoop, args: str) -> str:
-    text = loop.HELP.rstrip()
-    if loop.ui.color:
-        return text
-    text = text.replace("`", "")
-    text = loop.HELP_HEADING_RE.sub(r"\1:", text)
-    return loop.HELP_ENTRY_RE.sub(r"  \1  ", text)
-
-
 def status(loop: CommandLoop, args: str) -> str:
     usage = loop.session.usage
     context_tokens, context_budget, context_percent = _context_reading(loop)
@@ -295,18 +288,21 @@ def status(loop: CommandLoop, args: str) -> str:
     if worker is None:
         configured = loop.session.config.worker_provider
         rows.append(("worker", "off — `[worker] provider` " + (f"= `{configured}`" if configured else "unset")))
-        return markdown_table(["", ""], rows)
-    worker_usage = worker.usage
-    state = f"{'delegating' if worker._active_turn_messages else 'idle'}, rounds `{worker.state.round_count}`"
-    rows.append(("worker", _status_model_line(worker, worker.config)))
-    if worker_usage.last_prompt_tokens and worker_usage.last_prompt_budget:
-        percent = worker_usage.context_percent()
-        context = _status_context_line(worker_usage.last_prompt_tokens, worker_usage.last_prompt_budget, percent)
     else:
-        context = "(no requests yet)"
-    rows.append(("worker ctx", f"{context} · {state}"))
-    if worker_usage.prompt_tokens:
-        rows.append(("worker cache", _status_cache_line(worker_usage)))
+        worker_usage = worker.usage
+        state = f"{'delegating' if worker._active_turn_messages else 'idle'}, rounds `{worker.state.round_count}`"
+        rows.append(("worker", _status_model_line(worker, worker.config)))
+        if worker_usage.last_prompt_tokens and worker_usage.last_prompt_budget:
+            percent = worker_usage.context_percent()
+            context = _status_context_line(worker_usage.last_prompt_tokens, worker_usage.last_prompt_budget, percent)
+        else:
+            context = "(no requests yet)"
+        rows.append(("worker ctx", f"{context} · {state}"))
+        if worker_usage.prompt_tokens:
+            rows.append(("worker cache", _status_cache_line(worker_usage)))
+    # The command reference lives in the documentation, so every /status ends with where to read
+    # it. Last row: the rows above are the session's own facts.
+    rows.append(("docs", "https://wizolt.readthedocs.io"))
     return markdown_table(["", ""], rows)
 
 
@@ -462,6 +458,7 @@ def config(loop: CommandLoop, args: str) -> str:
             f"runtime.yolo: {'on' if loop.session.settings.yolo else 'off'}",
             f"runtime.worker: {'on' if loop.session.settings.worker else 'off'}",
             f"runtime.language: {loop.session.settings.language}",
+            f"runtime.attribution: {'on' if loop.session.settings.attribution else 'off'}",
             f"runtime.agents_md: {'on' if loop.session.settings.agents_md else 'off'}",
             f"worker.provider: {loop.session.config.worker_provider or '(off)'}",
             f"worker.model: {loop.session.config.worker_model or '(inherit)'}",

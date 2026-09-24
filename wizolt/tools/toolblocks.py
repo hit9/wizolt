@@ -95,6 +95,17 @@ def log_root(display: str, role: LogRole = LogRole.TOOL, batch_suffix: str = "",
     return LogLine(name, args, role, meta=meta, syntax=syntax)
 
 
+def cited(line: LogLine, citation: str) -> LogLine:
+    """`line` closing its block, with `citation` (a `tr.N` key and its tag) as dim meta.
+
+    The last row of a block is where a citation belongs when the block has no call line of its
+    own to hang it on -- a nested call, whose call line the runner already drew above the live
+    preview. A row holding nothing but the key is bookkeeping the reader has to step over, so no
+    block spends one.
+    """
+    return LogLine(line.label, line.text, line.role, LogEdge.END, meta=line.meta + ((" · " + citation) if citation else ""), syntax=line.syntax)
+
+
 def field_pairs(rows: list[tuple[str, str]]) -> list[tuple[str, str]]:
     """Pad each label to the widest label in the block, CJK-safe (visible width via
     get_cwidth), so the values start on one column."""
@@ -294,23 +305,23 @@ def finish_display(
     elif call.name == "Bash":
         # The output tail leads; the key rides the call line (`→ tr.N`) like every other tool, so
         # a complete result costs no extra row -- the trailer exists only when the bound dropped
-        # lines, and then it says how many and where the rest is. The one exception is a nested
-        # block (d.nested_display), whose call line the runner already drew above the live
-        # preview: there the key cannot ride it and closes the block instead, as the old stored
-        # row did.
+        # lines, and then it says how many and where the rest is. A nested block (d.nested_display)
+        # has no call line of its own left to ride: the runner drew it above the live preview, so
+        # the citation rides the body's last row instead. It never takes a row of its own -- one
+        # holding nothing but `tr.N` is bookkeeping to step over -- so a call that printed nothing
+        # shows no key at all. That is the trade: the call line above was drawn before the call ran
+        # and cannot carry it, and an empty result has nothing to open; Ctrl-O still lists it.
         rows, elided = tooloutput.bash_tail_preview(output, tooloutput.BASH_TRANSCRIPT_PREVIEW_LINES)
-        nested_key = (key + tag).strip() if (key or tag) and d.nested_display else ""
+        citation = (key + tag).strip() if d.nested_display else ""
         if rows:
             children.append(LogLine("", rows[0], LogRole.OUTPUT, LogEdge.BRANCH))
             children.extend(LogLine("", line, LogRole.OUTPUT, LogEdge.CONTINUE) for line in rows[1:])
-            closing = " · ".join(part for part in (f"… +{elided} more lines · Ctrl-O for more" if elided else "", nested_key) if part)
-            if closing:
+            if elided:
+                closing = " · ".join(part for part in (f"… +{elided} more lines · Ctrl-O for more", citation) if part)
                 children.append(LogLine("", closing, LogRole.META, LogEdge.END))
             else:
-                # Nothing was dropped and the key rides the call line: the body itself closes.
-                children[-1] = LogLine("", rows[-1], LogRole.OUTPUT, LogEdge.END)
-        elif nested_key:
-            children.append(LogLine("", nested_key, LogRole.META, LogEdge.END))
+                # Nothing was dropped: the output's own last row closes the block, citing the key.
+                children[-1] = cited(children[-1], citation)
         bash_key_handled = True
     elif call.name == "ToolScript":
         # Closes the bracket the nested calls were indented under: how many of them there were,
@@ -372,7 +383,15 @@ def finish_display(
         # row is bookkeeping, this is a real request on another paid entry.
         children.append(LogLine("described by", d.vision_entry, LogRole.TOOL, LogEdge.BRANCH))
     if tree and not failed and not bash_key_handled:
-        children.append(LogLine("stored" if key else "done", key + tag if key else tag.strip(), LogRole.META, LogEdge.END))
+        citation = key + tag if key else tag.strip()
+        if children and citation:
+            # The block has a body of its own: the citation cites its last row rather than closing
+            # the block with a row that holds nothing else.
+            children[-1] = cited(children[-1], citation)
+        elif citation:
+            # Nothing but the citation to show -- a replayed call whose result the transcript does
+            # not keep. There it is the block's content, not bookkeeping, so it keeps its row.
+            children.append(LogLine("stored" if key else "done", citation, LogRole.META, LogEdge.END))
     elif root is not None and not d.nested_display and (not tree or bash_key_handled):
         # root is never shown for a nested block (the runner drew its call line already) or on
         # the Delegate worker_rule path, where tree is always True -- both keep whatever key

@@ -51,7 +51,7 @@ def mcp_tool_info(name: str, **kw) -> MCPToolInfo:
 
 
 def _fake_resource(uri="docs://x.md", name="x", description="A doc", mime="text/markdown"):
-    return SimpleNamespace(uri=uri, name=name, description=description, mimeType=mime)
+    return SimpleNamespace(uri=uri, name=name, description=description, mime_type=mime)
 
 
 def as_async(fn):

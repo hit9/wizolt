@@ -208,8 +208,13 @@ class ToolRunner:
     def emit(self, block: str | LogBlock) -> None:
         """Print a log block at the current nesting depth. Wrapping a block in another LogBlock is
         exactly one indent level to LogBlock.walk, so depth costs nothing but the wrapper. Plain
-        strings (a tool display that renders itself, e.g. Note) carry no tree to indent."""
+        strings (a tool display that renders itself, e.g. Note) carry no tree to indent.
+
+        A block with no line in it prints no line either: a call that returned nothing, under a
+        call line the runner already drew, is not a blank row in the transcript."""
         if isinstance(block, LogBlock):
+            if not block.items:
+                return
             for _ in range(self.nesting):
                 block = LogBlock([self.rooted(block)], gutter=True)
         self.output_fn(block)

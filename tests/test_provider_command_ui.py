@@ -227,6 +227,9 @@ async def test_reason_strict_and_set_commands_validate_values(tmp_path):
     assert command_loop.session.config.provider.stream is False
     stream_values = [item.text for item in CommandCompleter().get_completions(Document("/set provider.stream "), None)]
     assert stream_values == ["on", "off"]
+    assert set_value(command_loop, "runtime.attribution maybe") == "Invalid value for runtime.attribution"
+    assert set_value(command_loop, "runtime.attribution off") == "Set runtime.attribution"
+    assert command_loop.session.settings.attribution is False
     assert set_value(command_loop, "provider.image_input off") == "Unknown config key: provider.image_input"
 
 

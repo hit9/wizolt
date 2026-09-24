@@ -290,7 +290,9 @@ async def test_delegate_send_finish_display_summary_and_preview(tmp_path, monkey
     assert "steps 1" in rendered and "(none)" in rendered
     assert "the worker answer" in rendered
     assert "<Delegate" not in rendered and "<worker>" not in rendered and "</worker>" not in rendered
-    assert any(item.label == "stored" for item, _ in finish.walk())
+    rows = [item for item, _ in finish.walk()]
+    assert rows[-1].label != "stored"  # the citation never gets a row of its own
+    assert "tr." in rows[-1].meta  # it cites the answer's last line instead
 
 
 async def test_delegate_send_finish_worker_rule_label_and_preview(tmp_path, monkeypatch):
@@ -317,7 +319,9 @@ async def test_delegate_send_finish_worker_rule_label_and_preview(tmp_path, monk
     finish = next(block for block in blocks if any(item.role is LogRole.OUTPUT for item, _ in block.walk()))
     rendered = str(finish)
     assert "the worker answer" in rendered
-    assert any(item.label == "stored" for item, _ in finish.walk())
+    rows = [item for item, _ in finish.walk()]
+    assert rows[-1].label != "stored"  # the citation never gets a row of its own
+    assert "tr." in rows[-1].meta  # it cites the answer's last line instead
     # The done summary lives in the rule label now, not as a child line of the finish block.
     assert not any(item.label == "done" and item.text.startswith("steps ") for item, _ in finish.walk())
 

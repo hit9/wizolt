@@ -270,7 +270,7 @@ def test_cli_startup_banner_survives_growing_and_shrinking_pane(pane):
             assert time.monotonic() < deadline, "CLI did not render the new draft"
             time.sleep(0.05)
         lines = _settled_capture(pane)
-        assert "\n".join(lines).count("/help for commands.") == 1
+        assert "\n".join(lines).count("Type / for commands.") == 1
         assert "starting…" not in "\n".join(lines)
         assert sum(line == ">" or line.startswith("> ") for line in lines) == 1
         assert sum("tmux-startup-model" in line for line in lines) == 1

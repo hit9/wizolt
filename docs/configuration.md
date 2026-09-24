@@ -222,7 +222,8 @@ Optional; the defaults shown are used when omitted.
 | `theme` | `auto` | Terminal color scheme: `auto`, `light`, or `dark`; overridden by `--theme`. `auto` reads `COLORFGBG` and falls back to `dark` |
 | `worker` | `false` | Let the model delegate to a second in-process session; see below |
 | `language` | `auto` | Force the reply language (`auto` follows your messages and injects nothing); set a name like `Chinese` to append a fixed `LANGUAGE OVERRIDE` block to the system prompt. Change for the current session with `/language` |
-| `agents_md` | `true` | Inject your instructions into every request: the global `~/.wizolt/AGENTS.md` followed by the project's `AGENTS.md` (falling back to `CLAUDE.md`), together bounded to about 8,000 tokens |
+| `attribution` | `true` | Ask the model to end every commit message and pull-request body it writes with `Generated with [wizolt](https://wizolt.readthedocs.io).` — a prompt-level request, not a guarantee. `/set runtime.attribution off` stops it for the session, `false` for good |
+| `agents_md` | `true` | Inject your instructions into every request, as one block of their own ahead of the skills and MCP indexes: the global `~/.wizolt/AGENTS.md` followed by the project's `./AGENTS.md` (falling back to `./CLAUDE.md`), together bounded to about 8,000 tokens |
 
 Selected tuning values can be changed for the current session with `/set` (Tab completion
 lists the supported keys). `/yolo` toggles `yolo`.

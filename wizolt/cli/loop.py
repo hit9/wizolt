@@ -85,8 +85,6 @@ class CommandLoop:
     """
 
     HUNK_HEADER_RE: ClassVar[re.Pattern] = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
-    HELP_HEADING_RE: ClassVar[re.Pattern] = re.compile(r"^### (.+)$", re.MULTILINE)
-    HELP_ENTRY_RE: ClassVar[re.Pattern] = re.compile(r"^- (.+?) — ", re.MULTILINE)
     EDITOR_CONTEXT_MAX_LINES: ClassVar[int] = 200
     EDITOR_CONTEXT_ELLIPSIS: ClassVar[str] = "# [... earlier lines of this reply omitted ...]"
     EDITOR_CONTEXT_SEPARATOR: ClassVar[str] = "# --- (earlier reply) ---"
@@ -96,57 +94,6 @@ class CommandLoop:
     # assigned right after the registry.
     COMMANDS: ClassVar[tuple[str, ...]]
     NEEDS_ARGUMENT: ClassVar[frozenset[str]]  # names (aliases too) that do nothing bare
-
-    HELP = """### Commands
-
-- `/help` — Show this help.
-- `/status` — Show runtime status.
-- `/catalog [status|sync]` — Show the provider catalog in use, or force a sync.
-- `/ps` — Show active background jobs.
-- `/diff` — Show latest edits and overall session diff.
-- `/skills` — List installed skills (load with `Skill(name)` or reference inline with `$name`).
-- `/config` — Show active config.
-- `/compact` — Compact context now; `/compact log [seg.N]` reviews what compaction evicted.
-- `/context` — Show how full the context window is; `/context reset` drops the conversation and
-  starts a new window, keeping `Note` state, compacted history, stored results, and jobs.
-- `/name [TEXT]` — Name this session for later, or show the current name.
-- `/sessions [all]` — Browse saved sessions and re-enter one (alias: `/resume`; `all` widens
-  past this project).
-- `/resend` — Resend the in-flight model request (type it while a turn is working).
-- `/provider [NAME]` — Select or show the active provider.
-- `/model [MODEL]` — Select or set the active model.
-- `/reason [EFFORT]` — Select or set reasoning effort (alias: `/effort`).
-- `/api [API]` — Select or set the request protocol used to reach the model.
-- `/set KEY VALUE` — Set `provider.*` and `runtime.*`.
-- `/language [NAME]` — Force or show the reply language; auto follows your messages.
-- `/yolo` — Toggle tool confirmations.
-- `/strict` — Toggle strict tool-call schemas where supported.
-- `/mcp` — Manage MCP server connections.
-- `/exit`, `/quit` — Exit.
-
-### Mentions
-
-- `@server[.tool]` — Point the agent at an MCP server/tool in your message (tab-completes).
-- `$skill` — Reference a skill in your message to load its instructions for that turn (tab-completes).
-- `@agents.md:` — Cite your AGENTS.md instructions, a file (`global`/`project`), or one section
-  by heading in your message (tab-completes).
-
-### CLI
-
-- `-c`, `--last`, `--latest` — Resume the latest session in the current project.
-- `--resume [UID]` — Resume a saved session by uid, name, or uid prefix; defaults to latest
-  (`last` also works).
-
-### Tools
-
-Read, ViewImage, Edit, Bash, Job, Note, Context, Ask, MCP, Skill.
-
-`Skill(name)` loads a skill's full instructions on demand (see the SKILLS section / `$skill`).
-
-### Documentation
-
-Full documentation: https://wizolt.readthedocs.io
-"""
 
     DIFF_MAX_BYTES: ClassVar[int] = 50_000
     DIFF_MAX_LINES: ClassVar[int] = 1_200
@@ -654,7 +601,7 @@ Full documentation: https://wizolt.readthedocs.io
 
     def emit_banner(self) -> None:
         """Write the one static line that can safely precede interactive terminal setup."""
-        self.emit(f"wizolt {__version__}. /help for commands.")
+        self.emit(f"wizolt {__version__}. Type / for commands.")
 
     def start_session(self, *, show_banner: bool = True) -> None:
         """Initialize output and background services shared by both command-loop frontends."""
@@ -1147,7 +1094,6 @@ Full documentation: https://wizolt.readthedocs.io
 
 # fmt: off
 COMMANDS: tuple[Command, ...] = (
-    Command("/help", commands.help, queue_safe=True, render="answer"),
     Command("/status", commands.status, queue_safe=True, render="compact"),
     Command("/catalog", commands.catalog_command, queue_safe=True, render="answer"),
     Command("/ps", commands.ps_command, queue_safe=True, render="answer"),

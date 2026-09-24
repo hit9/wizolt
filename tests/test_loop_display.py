@@ -115,9 +115,9 @@ def test_turn_output_shares_one_column_and_session_chrome_does_not(tmp_path):
     margin = LogBlock.margin(TurnBox.CONTENT_LEVEL)
 
     loop.emit_turn("Cancelled")
-    loop.emit(f"wizolt {__version__}. /help for commands.")
+    loop.emit(f"wizolt {__version__}. Type / for commands.")
 
-    assert output == [f"{margin}Cancelled", f"wizolt {__version__}. /help for commands."]
+    assert output == [f"{margin}Cancelled", f"wizolt {__version__}. Type / for commands."]
 
 
 def test_tui_completion_applies_single_match():

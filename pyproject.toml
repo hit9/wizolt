@@ -37,8 +37,13 @@ dependencies = [
     # pair would land on plain httpx, a combination retryable_error's transport-error matching is
     # tested against but the rest of the tree no longer is.
     "anthropic>=1.0.0",
+    # Direct, not transitive: MCPManager cancels MCP operations through anyio scopes, the only
+    # cancellation the SDK's shielded client teardown respects.
+    "anyio>=4.0",
     "json-repair",
-    "fastmcp-slim[client]>=3,<4",
+    # The official SDK, not fastmcp: 2.x is on httpx2 like the provider SDKs, so MCP-over-HTTP
+    # verifies TLS the same way, and wizolt uses only its client.
+    "mcp>=2.2,<3",
     # Direct, not transitive: the update check imports httpx2 itself. The provider SDKs bring it
     # in too, but a dependency wizolt imports is wizolt's to declare.
     "httpx2>=2.12.0",
@@ -54,7 +59,6 @@ dependencies = [
     "pygments>=2.16",
     "rich>=13.0",
     "socksio>=1.0.0",
-    "websockets>=15.0.1",
 ]
 
 [project.urls]

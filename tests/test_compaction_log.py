@@ -295,8 +295,7 @@ async def test_viewer_reports_an_empty_store(tmp_path):
 # --- discoverability --------------------------------------------------------------------------
 
 
-async def test_compact_log_is_documented_and_not_queue_safe():
-    assert "/compact log" in CommandLoop.HELP
+async def test_compact_stays_out_of_the_queue_safe_allowlist():
     # Reading the log is harmless, but /compact itself rewrites context: the registry is per
     # command, so the whole command stays out of the mid-turn allowlist.
     assert "/compact" not in QUEUE_SAFE_COMMANDS

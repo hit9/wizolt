@@ -12,10 +12,10 @@ from wizolt.base import (
     LogRole,
     ModelError,
 )
-from wizolt.cli import COMMANDS, CommandLoop
 from wizolt.cli.commands import (
     api,
     config,
+    status,
 )
 from wizolt.model import ModelClient
 from wizolt.tui import TUI_MODAL_PENDING
@@ -30,17 +30,9 @@ def diff_loop(tmp_path):
     return command_loop
 
 
-# The registry is the single source of command metadata; HELP stays a hand-written literal with
-# manual wrapping and non-command sections, so every registered name and alias must appear in it.
-# `/worker` is a pre-existing gap: it is registered in master's COMMAND_HANDLERS but missing from
-# master's HELP literal. It is listed here so the omission stays visible instead of silent; any
-# new registered command missing from HELP fails this test unless explicitly added to the set.
-HELP_OMISSIONS = frozenset({"/worker"})
-
-
-async def test_registry_names_and_aliases_appear_in_help():
-    missing = {name for command in COMMANDS for name in (command.name, *command.aliases) if name not in CommandLoop.HELP}
-    assert missing <= HELP_OMISSIONS, f"registered commands missing from HELP: {sorted(missing - HELP_OMISSIONS)}"
+async def test_status_ends_with_the_documentation_link(tmp_path):
+    """The command list lives in the docs now, so every /status ends with the one place to read it."""
+    assert status(loop(tmp_path), "").splitlines()[-1] == "| docs | https://wizolt.readthedocs.io |"
 
 
 async def test_image_route_notice_matches_view_image_tree_vocabulary(tmp_path):

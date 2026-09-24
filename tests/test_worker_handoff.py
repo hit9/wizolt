@@ -6,8 +6,9 @@ from agent_harness import session
 from wizolt.engine import Agent
 
 
-async def _requested_system(tmp_path, custom=None):
+async def _requested_system(tmp_path, custom=None, attribution=True):
     s = session(tmp_path)
+    s.settings.attribution = attribution
     if custom is not None:
         s.system_prompt = custom
     agent = Agent(s, output_fn=lambda text: None)

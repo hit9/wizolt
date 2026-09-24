@@ -75,7 +75,7 @@ class TestToolIndexRendering:
         class FakeTool:
             name = "echo"
             description = "Echo"
-            inputSchema: ClassVar[dict] = {"type": "object", "properties": {"t": {"type": "string"}}, "required": ["t"]}
+            input_schema: ClassVar[dict] = {"type": "object", "properties": {"t": {"type": "string"}}, "required": ["t"]}
             annotations = None
 
         async def fake_list(url, headers):
@@ -236,7 +236,7 @@ class TestToolIndexTruncation:
         class FakeTool:
             name = "tool"
             description = "Desc"
-            inputSchema: ClassVar[dict] = {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}
+            input_schema: ClassVar[dict] = {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}
             annotations = None
 
         many_tools = []
@@ -247,7 +247,7 @@ class TestToolIndexTruncation:
                 {
                     "name": f"tool{i}",
                     "description": "x" * 80,
-                    "inputSchema": {"type": "object", "properties": {"p": {"type": "string", "description": "x" * 100}}, "required": ["p"]},
+                    "input_schema": {"type": "object", "properties": {"p": {"type": "string", "description": "x" * 100}}, "required": ["p"]},
                     "annotations": None,
                 },
             )()

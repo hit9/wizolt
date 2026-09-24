@@ -7,9 +7,12 @@ import json
 import os
 import threading
 import time
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from wizolt.base import Json, run_blocking
+
+if TYPE_CHECKING:
+    from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
 
 class MCPFileTokenStore:
@@ -65,7 +68,6 @@ class MCPFileTokenStore:
             value = entry.get("value")
             return dict(value) if isinstance(value, dict) else None
 
-    # Called dynamically through the MCP OAuth token-storage protocol; static call graphs will not see it.
     async def put(self, key: str, value: Json, *, collection: str | None = None, ttl: float | None = None) -> None:
         await run_blocking(lambda: self._put_sync(key, value, collection=collection or self.DEFAULT_COLLECTION, ttl=ttl))
 
@@ -125,3 +127,53 @@ class MCPFileTokenStore:
         os.replace(tmp, self.path)
         with contextlib.suppress(OSError):
             os.chmod(self.path, 0o600)
+
+
+class MCPServerTokens:
+    """One server's view of the store, in the shape the MCP SDK's `TokenStorage` protocol calls.
+
+    The keys and collections are the ones fastmcp wrote, so a login made before the switch to the
+    SDK still loads. The absolute expiry is kept beside the token because the token's own
+    `expires_in` is relative to when it was issued and means nothing after a restart."""
+
+    TOKEN_TTL: ClassVar[int] = 60 * 60 * 24 * 365  # the refresh token may outlive the access token
+
+    def __init__(self, store: MCPFileTokenStore, server_url: str):
+        self.store = store
+        self.server_url = server_url
+
+    async def get_tokens(self) -> OAuthToken | None:
+        from mcp.shared.auth import OAuthToken
+
+        value = await self.store.get(self.store.token_key(self.server_url, "/tokens"), collection="mcp-oauth-token")
+        return OAuthToken.model_validate(value) if value else None
+
+    async def set_tokens(self, tokens: OAuthToken) -> None:
+        await self.store.put(self.store.token_key(self.server_url, "/tokens"), tokens.model_dump(mode="json"), collection="mcp-oauth-token", ttl=self.TOKEN_TTL)
+        if tokens.expires_in is not None:
+            await self.store.put(
+                self.store.token_key(self.server_url, "/token_expiry"),
+                {"expires_at": time.time() + int(tokens.expires_in)},
+                collection="mcp-oauth-token-expiry",
+                ttl=self.TOKEN_TTL,
+            )
+
+    async def get_token_expiry(self) -> float | None:
+        value = await self.store.get(self.store.token_key(self.server_url, "/token_expiry"), collection="mcp-oauth-token-expiry")
+        expires_at = (value or {}).get("expires_at")
+        return float(expires_at) if isinstance(expires_at, int | float) else None
+
+    async def get_client_info(self) -> OAuthClientInformationFull | None:
+        from mcp.shared.auth import OAuthClientInformationFull
+
+        value = await self.store.get(self.store.token_key(self.server_url, "/client_info"), collection="mcp-oauth-client-info")
+        return OAuthClientInformationFull.model_validate(value) if value else None
+
+    async def set_client_info(self, client_info: OAuthClientInformationFull) -> None:
+        expires_at = client_info.client_secret_expires_at
+        await self.store.put(
+            self.store.token_key(self.server_url, "/client_info"),
+            client_info.model_dump(mode="json"),
+            collection="mcp-oauth-client-info",
+            ttl=expires_at - time.time() if expires_at else None,
+        )

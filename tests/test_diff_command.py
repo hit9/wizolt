@@ -45,10 +45,6 @@ async def test_diff_is_in_completer_commands():
     assert "/diff" in CommandLoop.COMMANDS
 
 
-async def test_diff_appears_in_help():
-    assert "/diff" in CommandLoop.HELP
-
-
 async def test_diff_is_allowed_while_agent_works():
     assert "/diff" in QUEUE_SAFE_COMMANDS
 

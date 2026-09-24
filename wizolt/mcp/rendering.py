@@ -272,9 +272,9 @@ def structured_content(result: Any) -> str:
 
 
 def dump_object(item: Any) -> str:
-    """Render a non-str/dict MCP item: pydantic-style model_dump as JSON, else str()."""
+    """Render a non-str/dict MCP item: a pydantic model as its wire JSON, else str()."""
     if hasattr(item, "model_dump"):
-        return json.dumps(item.model_dump(mode="json"), ensure_ascii=False, indent=2)
+        return json.dumps(item.model_dump(mode="json", by_alias=True, exclude_none=True), ensure_ascii=False, indent=2)
     return str(item)
 
 
@@ -289,7 +289,7 @@ def normalize_resource(result: Any, *, raw_output_limit: int) -> str:
             continue
         blob = getattr(item, "blob", None)
         if blob is not None:
-            mime = str(getattr(item, "mimeType", "") or "application/octet-stream")
+            mime = str(getattr(item, "mime_type", "") or "application/octet-stream")
             parts.append(f"<binary mimeType={json.dumps(mime)} bytes={len(blob)}/>")
             continue
         parts.append(dump_object(item))
@@ -326,7 +326,7 @@ def normalize_result(result: Any, *, raw_output_limit: int) -> str:
         if item_type == "text":
             parts.append(str(getattr(item, "text", "") or ""))
         elif item_type == "resource":
-            parts.append(str(getattr(item, "resource", "") or ""))
+            parts.append(dump_object(getattr(item, "resource", "") or ""))
         else:
             parts.append(dump_object(item))
     text = join_bounded(parts, raw_output_limit=raw_output_limit)
@@ -364,7 +364,7 @@ def resources_info(resources: list[Resource]) -> list[MCPResourceInfo]:
                 uri=uri,
                 name=str(getattr(r, "name", "") or ""),
                 description=str(getattr(r, "description", "") or ""),
-                mime_type=str(getattr(r, "mimeType", "") or ""),
+                mime_type=str(getattr(r, "mime_type", "") or ""),
             )
         )
     return infos

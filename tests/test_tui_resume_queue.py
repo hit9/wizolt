@@ -390,13 +390,11 @@ async def test_tui_commands_print_output_immediately(tmp_path, monkeypatch):
         lambda *values, **kwargs: printed.append("".join(fragment_list_to_text(to_formatted_text(value)) for value in values)),
     )
 
-    assert await command_loop.command("/help") == (True, False)
     assert await command_loop.command("/status") == (True, False)
     assert await command_loop.command("/skills") == (True, False)
 
-    assert len(printed) == 3
+    assert len(printed) == 2
     text = "".join(printed)
-    assert "/provider" in text
     assert "status marker" in text
     assert "release-notes" in text
 

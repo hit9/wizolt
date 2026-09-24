@@ -27,6 +27,7 @@ from wizolt.prompts import (
     COMPACTION_SUMMARY_TITLE,
     CURRENT_TURN_CONTEXT_TRIMMED,
     PREVIOUS_CONTEXT_TRIMMED,
+    git_attribution_directive,
     language_directive,
 )
 from wizolt.session import HistorySegment, Session, local_timestamp
@@ -83,21 +84,24 @@ class ContextManager:
         self._auto_compacted_at: dict[str, int] = {}
 
     def model_header(self, base_system: str) -> list[Json]:
-        """Everything ahead of the conversation: system, environment, skills, MCP tools.
+        """Everything ahead of the conversation: system, environment, instructions, skills, MCP tools.
 
         Factored out because it is exactly the span a provider caches, and the compaction request
         reuses it verbatim so its summary rides the same prefix the turn just paid for."""
         content = base_system.strip()
-        # A forced reply language appends one fixed block to the system tail: stable text that
-        # depends only on the value, so the cacheable system prefix is unchanged.
-        directive = language_directive(self.session.settings.language)
-        if directive:
-            content += "\n\n" + directive
+        # Each setting that appends one fixed block to the system tail: stable text that depends only
+        # on the value, so the cacheable system prefix is unchanged.
+        for directive in (
+            language_directive(self.session.settings.language),
+            git_attribution_directive(self.session.settings.attribution),
+        ):
+            if directive:
+                content += "\n\n" + directive
         messages: list[Json] = [
             {"role": "system", "content": content},
             {"role": "user", "content": "--- Environment ---\n" + (self.environment() or "(empty)")},
         ]
-        for context in (self.skills_context(), self.mcp_tools_context()):
+        for context in (self.instructions_context(), self.skills_context(), self.mcp_tools_context()):
             if context:
                 messages.append({"role": "user", "content": context})
         return messages
@@ -274,40 +278,44 @@ class ContextManager:
         if (entry := self.session.config.vision_provider) and (not self.session.tool_names or "ViewImage" in self.session.tool_names):
             provider = self.session.config.providers[entry]
             rows.append(f"- vision: {entry}/{provider.model or '(empty)'} (available as image fallback)")
-        if self.session.settings.agents_md:
-            prefix = self._agents_md_prefix(info)
-            if prefix:
-                rows.append("")
-                rows.extend(prefix)
         return "\n".join(rows)
 
-    def _agents_md_prefix(self, info) -> list[str]:
-        """The instructions rows of the fixed prefix: global before project, one shared cap.
+    def instructions_context(self) -> str:
+        """The user's instruction files as one fixed prefix message of their own: the user's file
+        first, then the project's, each under a header naming its level and the file it came from
+        (`user · ~/.wizolt/AGENTS.md`, `project · ./AGENTS.md`), so a clipped block and a Read point
+        at the same file.
 
-        Reserve an equal share for each source, then give unused room to the other. A source that
-        still does not fit is clipped head/tail with a marker naming its path. The prefix stays
-        fixed for the session -- a new session picks up edits."""
+        One shared cap: each source is reserved an equal share, then unused room goes to the other.
+        A source that still does not fit is clipped head/tail with a marker naming its path. The
+        message stays fixed for the session -- a new session picks up edits."""
 
-        blocks = [
-            ("Global instructions", info.agents_md_global_display or "AGENTS.md", info.agents_md_global),
-            ("Project instructions", info.agents_md_source, info.agents_md),
-        ]
-        blocks = [(title, source, content) for title, source, content in blocks if source and content]
+        if not self.session.settings.agents_md:
+            return ""
+        info = self.session.system_info
+        assert info is not None
+        # Each block names its own level and file, so "which one said this" is readable instead of
+        # inferred from the path shape: `user` is the data dir's cross-session file, `project` is the
+        # one SystemInfo.detect found in the session's cwd (workspace-relative, as /status shows it).
+        global_label = f"user · {info.agents_md_global_display}" if info.agents_md_global_display else ""
+        project_label = f"project · ./{info.agents_md_source}" if info.agents_md_source else ""
+        blocks = [(global_label, info.agents_md_global), (project_label, info.agents_md)]
+        blocks = [(label, content) for label, content in blocks if label and content]
         rows: list[str] = []
 
         def tokens(value: str) -> int:
             return (len(value.encode("utf-8")) + 3) // 4
 
-        totals = [tokens(content) for _, _, content in blocks]
+        totals = [tokens(content) for _, content in blocks]
         budgets = [min(total, MAX_AGENTS_MD_TOKENS // len(blocks)) for total in totals] if blocks else []
         for index, total in enumerate(totals):
             budgets[index] += min(MAX_AGENTS_MD_TOKENS - sum(budgets), total - budgets[index])
-        for (title, source, content), budget in zip(blocks, budgets, strict=True):
+        for (label, content), budget in zip(blocks, budgets, strict=True):
             total = tokens(content)
             if total > budget:
 
-                def marker_of(omitted: int, source: str = source) -> str:
-                    return f"... ({source} truncated to fit the prefix; approximately {omitted} tokens omitted) ..."
+                def marker_of(omitted: int, label: str = label) -> str:
+                    return f"... ({label} truncated to fit the prefix; approximately {omitted} tokens omitted) ..."
 
                 limit = budget * 4 - len(marker_of(total).encode("utf-8")) - 2  # newlines around the marker
                 if limit <= 0:
@@ -319,8 +327,8 @@ class ContextManager:
                     tail = encoded[-max(1, limit - head_limit) :].decode("utf-8", errors="ignore")
                     omitted = max(0, total - tokens(head) - tokens(tail))
                     content = "\n".join(part for part in (head.rstrip(), marker_of(omitted), tail.lstrip()) if part)
-            rows.extend((f"--- {title} ({source}) ---", content))
-        return rows
+            rows.append(f"--- AGENTS.md ({label}) ---\n{content.strip()}")
+        return "\n\n".join(rows)
 
     def messages_text(self, messages: list[Json]) -> str:
         return "\n\n".join(f"{message.get('role', 'message')}:\n{ImageInputs.label_text(message)}" for message in messages) or "(empty)"

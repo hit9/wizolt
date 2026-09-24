@@ -26,17 +26,18 @@ from wizolt.mcp.rendering import (
     resources_info,
     tool_args_summary,
 )
-from wizolt.mcp.tokens import MCPFileTokenStore
+from wizolt.mcp.tokens import MCPFileTokenStore, MCPServerTokens
 from wizolt.mentions import scan_mentions
 from wizolt.session import Session
 
 if TYPE_CHECKING:
-    from fastmcp.client import Client
-    from fastmcp.client.auth import OAuth
-    from fastmcp.client.client import CallToolResult
-    from fastmcp.client.tasks import ResourceTask, ToolTask
-    from fastmcp.client.transports import ClientTransport
-    from mcp.types import BlobResourceContents, Resource, TextResourceContents, Tool
+    import anyio
+    import httpx2
+    from mcp.client import Client, Transport
+    from mcp.client.stdio import StdioServerParameters
+    from mcp.types import BlobResourceContents, CallToolResult, Resource, TextResourceContents, Tool
+
+    from wizolt.mcp.oauth import WizoltOAuth
 
 _MCPResultT = TypeVar("_MCPResultT")
 
@@ -66,6 +67,7 @@ class MCPManager:
 
     RAW_OUTPUT_LIMIT: ClassVar[int] = 200_000
     DISCOVERY_TIMEOUT: ClassVar[int] = 10
+    LOGIN_TIMEOUT: ClassVar[int] = 300
     MAX_DISCOVERY_WORKERS: ClassVar[int] = 8
     DESCRIBE_DESCRIPTION_LIMIT: ClassVar[int] = 1_000
     DESCRIBE_ARGUMENT_LIMIT: ClassVar[int] = 50
@@ -87,10 +89,16 @@ class MCPManager:
         self._oauth_token_store = MCPFileTokenStore(self.session.data_path("mcp-oauth", "tokens.json"))
         self._oauth_lock: asyncio.Lock | None = None
         self._oauth_lock_loop: asyncio.AbstractEventLoop | None = None
+        self._refresh_gates: dict[str, asyncio.Lock] = {}
+        # Completed interactive logins per server URL, so a connect that waited out another's
+        # login can tell that one happened.
+        self._logins: dict[str, int] = {}
+        self._refresh_gates_loop: asyncio.AbstractEventLoop | None = None
         self._discovering_servers: dict[str, int] = {}
         self._discovery_failed = False
-        # Operations in flight on the runtime loop, so shutdown has something to cancel and await.
-        self._tasks: set[asyncio.Task] = set()
+        # Operations in flight on the runtime loop, each with the anyio scope that cancels it, so
+        # shutdown has something to cancel and await.
+        self._tasks: dict[asyncio.Task, anyio.CancelScope] = {}
         self._closed = False
 
     def parse_configs(self) -> list[MCPServerConfig]:
@@ -218,11 +226,18 @@ class MCPManager:
                     return self._compact_line("error", name, message)
                 return f"MCP server authentication required: {name}; run /mcp connect {name} interactively"
             if interactive:
+                logins = self._logins.get(config.url, 0)
                 if has_tokens:
                     await self.discover_server(name)
                     if not self._oauth_reauthorization_required(name):
                         return self._connect_result(name, compact=_compact)
                 async with self._oauth_gate():
+                    # Another connect to this server logged in while this one waited for the
+                    # gate: use that login. Clearing it would log in twice, and would pull the
+                    # credentials out from under the other connect's discovery.
+                    if self._logins.get(config.url, 0) != logins:
+                        await self.discover_server(name)
+                        return self._connect_result(name, compact=_compact)
                     # The token and registered OAuth client form one credential set. If
                     # either is rejected, discard both so the new random callback port is
                     # registered together with the replacement token.
@@ -232,6 +247,7 @@ class MCPManager:
                             prefix = f"MCP OAuth authentication failed for {name}: "
                             return self._compact_line("error", name, error.removeprefix(prefix))
                         return error
+                    self._logins[config.url] = self._logins.get(config.url, 0) + 1
         await self.discover_server(name)
         return self._connect_result(name, compact=_compact)
 
@@ -309,14 +325,22 @@ class MCPManager:
             self.set_server_error(config.name, self.error_text(error, timeout=self.discovery_timeout()))
 
     async def _gather_assets(self, config: MCPServerConfig, headers: dict[str, str]) -> tuple[list[Tool], list[Resource]]:
-        """Fetch tools and resources concurrently. Tool failure aborts discovery; resources are best-effort."""
-        tools_co = self._list_tools(config, headers)
-        resources_co = self._list_resources(config, headers)
-        tools, resources = await asyncio.gather(tools_co, resources_co, return_exceptions=True)
-        if isinstance(tools, BaseException):
-            raise tools
-        if isinstance(resources, BaseException):
-            resources = []
+        """Fetch tools and resources concurrently. Tool failure aborts discovery; resources are best-effort.
+
+        An anyio task group, not `asyncio.gather`: a cancelled gather cancels its children natively,
+        and each child is a client whose teardown must only be cancelled through anyio (see _settle)."""
+        import anyio
+
+        resources: list[Resource] = []
+
+        async def list_resources() -> None:
+            nonlocal resources
+            with contextlib.suppress(Exception):
+                resources = await self._list_resources(config, headers)
+
+        async with anyio.create_task_group() as group:
+            group.start_soon(list_resources)
+            tools = await self._list_tools(config, headers)
         return tools, resources
 
     def set_server_error(self, name: str, error: str) -> None:
@@ -356,7 +380,25 @@ class MCPManager:
     def discovery_timeout(self) -> int:
         return min(self.call_timeout(), self.DISCOVERY_TIMEOUT)
 
+    def login_timeout(self) -> int:
+        """The deadline for an interactive login, which includes a person signing in.
+
+        Not `shell_timeout`: that bounds a command, and a login may mean opening the link on
+        another machine, signing in there, and bringing the redirect back by hand."""
+        return max(self.call_timeout(), self.LOGIN_TIMEOUT)
+
+    @staticmethod
+    def _sole_error(error: BaseException) -> BaseException:
+        """The one error inside nested single-error groups, or `error` itself.
+
+        The SDK's client and transports run in task groups, so a refused connection arrives wrapped
+        in groups whose own message says only how many errors they hold."""
+        while isinstance(error, BaseExceptionGroup) and len(error.exceptions) == 1:
+            error = error.exceptions[0]
+        return error
+
     def error_text(self, error: BaseException, *, timeout: int | None = None) -> str:
+        error = self._sole_error(error)
         if isinstance(error, TimeoutError):
             return f"timeout after {timeout or self.call_timeout()}s"
         text = str(error).strip()
@@ -367,7 +409,7 @@ class MCPManager:
             MCPToolInfo(
                 name=t.name,
                 description=t.description or "",
-                input_schema=t.inputSchema,
+                input_schema=t.input_schema,
                 output_schema=self.tool_output_schema(t),
                 annotations=self.tool_annotations(t),
             )
@@ -397,7 +439,8 @@ class MCPManager:
         if isinstance(annotations, dict):
             return annotations
         if hasattr(annotations, "model_dump"):
-            data = annotations.model_dump(mode="json", exclude_none=True)
+            # By alias: the SDK's fields are snake_case, and the hints are read by their wire names.
+            data = annotations.model_dump(mode="json", by_alias=True, exclude_none=True)
             return data if isinstance(data, dict) else {}
         return {}
 
@@ -434,7 +477,7 @@ class MCPManager:
         A task rather than a bare await so `close()` has something to cancel: an operation
         started by a turn that is gone must still be brought down before the loop closes.
 
-        `wait_for` cancels the operation and *awaits* it, so the FastMCP client's `async with` has
+        `wait_for` cancels the operation and *awaits* it, so the MCP client's `async with` has
         unwound -- process reaped, HTTP session closed -- by the time the timeout is raised here.
         Cancellation from outside travels the same way, which is why neither is special-cased."""
 
@@ -443,31 +486,49 @@ class MCPManager:
             # or the caller's un-awaited coroutine would surface as a warning at collection.
             coroutine.close()
             raise ToolError("MCP manager is closed")
+        import anyio
+
         timeout = self.call_timeout() if timeout is None else timeout
-        task = asyncio.ensure_future(coroutine)
-        self._tasks.add(task)
+        scope = anyio.CancelScope()
+
+        async def scoped() -> _MCPResultT | None:
+            with scope:
+                return await coroutine
+            return None  # cancelled through the scope; the caller already has its answer
+
+        task = asyncio.ensure_future(scoped())
+        self._tasks[task] = scope
         try:
             done, _ = await asyncio.wait({task}, timeout=timeout)
             if done:
-                return task.result()
+                result = task.result()
+                if scope.cancelled_caught:
+                    raise ToolError("MCP manager is closed")
+                return result  # pyright: ignore[reportReturnType] - None only when cancelled
             await self._settle(task)
             raise ToolError(f"MCP call timed out after {timeout}s")
         except asyncio.CancelledError:
             await self._settle(task)
             raise
         finally:
-            self._tasks.discard(task)
+            self._tasks.pop(task, None)
 
-    @staticmethod
-    async def _settle(task: asyncio.Task) -> None:
+    async def _settle(self, task: asyncio.Task) -> None:
         """Cancel one operation and wait for its client to finish unwinding.
+
+        Cancelled through its anyio scope, never `task.cancel()`: the SDK tears a client down inside
+        a shielded scope -- a stdio server gets a grace period, then is killed -- and a native cancel
+        breaks through that shield. Landing mid-teardown, from a deadline or `close()` after an
+        earlier cancel, it stopped the kill, and the transport then waited on the server's stdout
+        until the server exited on its own. Cancelling a scope twice is harmless.
 
         `wait` rather than awaiting the task: the caller already has the answer that matters -- a
         timeout, or its own cancellation -- and a client whose teardown then fails on its own (an
         HTTP read timeout on the request it was abandoning) must neither replace that answer nor be
         left unretrieved for the loop's exception handler to print during collection."""
 
-        task.cancel()
+        if scope := self._tasks.get(task):
+            scope.cancel()
         await asyncio.wait({task})
         if not task.cancelled():
             task.exception()
@@ -475,7 +536,7 @@ class MCPManager:
     async def close(self) -> None:
         """Cancel and await everything this manager still has in flight.
 
-        Called by the runtime's shutdown, on the loop that owns those tasks -- a FastMCP client
+        Called by the runtime's shutdown, on the loop that owns those tasks -- an MCP client
         must not be left to the interpreter's teardown, where an in-flight cleanup (an HTTP session
         termination, a DNS lookup in the default executor) races the executor's own atexit."""
 
@@ -483,47 +544,88 @@ class MCPManager:
             return
         self._closed = True
         pending = list(self._tasks)
-        for task in pending:
-            task.cancel()
+        for scope in self._tasks.values():
+            scope.cancel()  # through the scope, for the reason `_settle` gives
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
         self._tasks.clear()
 
-    def oauth_client(self, config: MCPServerConfig, *, interactive: bool = False, notify: Callable[[str], None] | None = None) -> OAuth:
-        from fastmcp.client.auth import OAuth
-
-        class WizoltOAuth(OAuth):
-            async def redirect_handler(self, authorization_url: str) -> None:
-                if not interactive:
-                    raise RuntimeError("authentication required; run /mcp connect " + config.name)
-                if notify:
-                    notify("Open this URL to authorize MCP server `" + config.name + "`:\n" + authorization_url)
-                await super().redirect_handler(authorization_url)
+    def oauth_client(self, config: MCPServerConfig, *, interactive: bool = False, notify: Callable[[str], None] | None = None) -> WizoltOAuth:
+        from wizolt.mcp.oauth import WizoltOAuth
 
         return WizoltOAuth(
-            # FastMCP types this as its full AsyncKeyValue protocol, although TokenStorageAdapter
-            # only calls get/put/delete. MCPFileTokenStore deliberately implements that used subset.
-            token_storage=self._oauth_token_store,  # pyright: ignore[reportArgumentType]
-            client_name="wizolt",
-            callback_timeout=self.session.settings.shell_timeout,
+            config.name,
+            config.url,
+            MCPServerTokens(self._oauth_token_store, config.url),
+            interactive=interactive,
+            notify=notify,
+            callback_timeout=self.login_timeout(),
+            refresh_gate=self._refresh_gate(config.url),
         )
+
+    def _refresh_gate(self, server_url: str) -> asyncio.Lock:
+        """The lock that lets one operation at a time refresh a server's token; see WizoltOAuth.
+
+        Rebound with the loop, like `_oauth_gate`: a lock belongs to the loop that created it."""
+
+        loop = asyncio.get_running_loop()
+        if self._refresh_gates_loop is not loop:
+            self._refresh_gates, self._refresh_gates_loop = {}, loop
+        return self._refresh_gates.setdefault(server_url, asyncio.Lock())
 
     @staticmethod
     def _import_client_modules() -> None:
-        """Load every fastmcp module `_run_op` reaches, so none of them imports on the loop."""
-        import fastmcp.client
-        import fastmcp.client.auth
-        import fastmcp.client.transports  # noqa: F401
+        """Load every MCP SDK module `_run_op` reaches, so none of them imports on the loop."""
+        import mcp.client
+        import mcp.client.stdio
+        import mcp.client.streamable_http
+        import mcp.shared._httpx_utils  # noqa: F401
 
-    def _transport(self, config: MCPServerConfig, headers: dict[str, str]) -> ClientTransport:
-        from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
+        import wizolt.mcp.oauth  # noqa: F401
+
+    def _transport(self, config: MCPServerConfig, headers: dict[str, str], auth: WizoltOAuth | None = None) -> StdioServerParameters | Transport:
+        from mcp.client.stdio import StdioServerParameters
+        from mcp.client.streamable_http import streamable_http_client
+        from mcp.shared._httpx_utils import create_mcp_http_client
 
         if config.command:
-            # The MCP SDK replaces (not merges) the subprocess environment when env is set,
-            # so layer the configured vars over the inherited environment to keep PATH etc.
+            # The SDK layers env over a small safe subset of the environment, not all of it, so
+            # layer the configured vars over the inherited environment to keep what a server
+            # launched from the user's shell would see.
             env = {**os.environ, **config.env} if config.env else None
-            return StdioTransport(command=config.command, args=list(config.args), env=env)
-        return StreamableHttpTransport(config.url, headers=headers)
+            return StdioServerParameters(command=config.command, args=list(config.args), env=env)
+
+        from mcp.shared.exceptions import MCPError
+
+        refused: list[str] = []
+
+        import httpx2
+
+        # Parsed, not the configured string: a request's URL is normalized (lowercase host, no
+        # default port), so `https://Host:443/mcp` would never match its own requests as text.
+        endpoint = httpx2.URL(config.url)
+
+        async def record_refusal(response: httpx2.Response) -> None:
+            if response.status_code >= 400 and response.request.method == "POST" and response.request.url == endpoint:
+                refused.append(f"HTTP {response.status_code} {response.reason_phrase}".strip())
+
+        @contextlib.asynccontextmanager
+        async def http_transport():
+            # The transport does not close an HTTP client it was handed, so it is entered here.
+            async with create_mcp_http_client(headers=headers, auth=auth) as http, streamable_http_client(config.url, http_client=http) as streams:
+                http.event_hooks["response"].append(record_refusal)
+                try:
+                    yield streams
+                except Exception as error:
+                    # An error status without a JSON-RPC body reaches the session as a stand-in
+                    # that drops the status, and "401 Unauthorized" vs "502 Bad Gateway" is what
+                    # tells a wrong token from an outage (and what reauthorization looks for).
+                    inner = self._sole_error(error)
+                    if refused and isinstance(inner, MCPError) and inner.error.message == "Server returned an error response":
+                        raise MCPError(inner.error.code, refused[-1]) from error
+                    raise
+
+        return http_transport()
 
     async def _run_op(
         self,
@@ -535,30 +637,76 @@ class MCPManager:
         interactive: bool = False,
         notify: Callable[[str], None] | None = None,
     ) -> _MCPResultT:
-        """Enter a fastmcp Client (with OAuth if config.auth=='oauth') and await one operation."""
-        # fastmcp takes ~0.45s to import. Imported on the loop it would freeze the prompt, and a
+        """Enter an MCP Client (with OAuth if config.auth=='oauth') and await one operation."""
+        # The SDK takes ~0.25s to import. Imported on the loop it would freeze the prompt, and a
         # startup warm-up still importing it holds the module lock the loop would wait on.
         await run_blocking(self._import_client_modules)
-        from fastmcp.client import Client
+        import anyio
+        from mcp.client import Client
+        from mcp.types import Implementation
 
-        timeout = self.call_timeout() if long_timeout or interactive else self.discovery_timeout()
+        from wizolt.base import __version__
+
+        # An interactive login runs inside the connection's first request -- the SDK signs in when
+        # that request is refused -- so the request's own read timeout must outlast the person
+        # signing in, not just the outer deadline.
+        if interactive:
+            timeout = self.login_timeout()
+        else:
+            timeout = self.call_timeout() if long_timeout else self.discovery_timeout()
         auth = self.oauth_client(config, interactive=interactive, notify=notify) if config.auth == "oauth" else None
-        async with Client(self._transport(config, headers), auth=auth, timeout=timeout, init_timeout=timeout) as client:
-            return await asyncio.wait_for(operation(client), timeout=timeout)
+        try:
+            transport = self._transport(config, headers, auth)
+            async with Client(transport, read_timeout_seconds=timeout, client_info=Implementation(name="wizolt", version=__version__)) as client:
+                with anyio.fail_after(timeout):  # anyio, not wait_for: see _settle
+                    return await operation(client)
+        finally:
+            if auth is not None:
+                await auth.aclose()
+
+    # The SDK hands back one page per request; a server that paginates would otherwise show only
+    # its first page of tools. Bounded so a server echoing the same cursor cannot spin forever.
+    MAX_LIST_PAGES: ClassVar[int] = 250
 
     async def _list_tools(self, config: MCPServerConfig, headers: dict[str, str]) -> list[Tool]:
-        return await self._run_op(config, headers, lambda client: client.list_tools())
+        async def list_all(client: Client) -> list[Tool]:
+            tools: list[Tool] = []
+            cursor: str | None = None
+            for _ in range(self.MAX_LIST_PAGES):
+                page = await client.list_tools(cursor=cursor)
+                tools.extend(page.tools)
+                if not (cursor := page.next_cursor):
+                    break
+            return tools
+
+        return await self._run_op(config, headers, list_all)
 
     async def _list_resources(self, config: MCPServerConfig, headers: dict[str, str]) -> list[Resource]:
-        return await self._run_op(config, headers, lambda client: client.list_resources())
+        async def list_all(client: Client) -> list[Resource]:
+            resources: list[Resource] = []
+            cursor: str | None = None
+            for _ in range(self.MAX_LIST_PAGES):
+                page = await client.list_resources(cursor=cursor)
+                resources.extend(page.resources)
+                if not (cursor := page.next_cursor):
+                    break
+            return resources
 
-    async def _call_tool(self, config: MCPServerConfig, headers: dict[str, str], name: str, arguments: Json) -> CallToolResult | ToolTask:
-        return await self._run_op(config, headers, lambda client: client.call_tool(name, arguments), long_timeout=True)
+        return await self._run_op(config, headers, list_all)
 
-    async def _read_resource(
-        self, config: MCPServerConfig, headers: dict[str, str], uri: str
-    ) -> list[TextResourceContents | BlobResourceContents] | ResourceTask:
-        return await self._run_op(config, headers, lambda client: client.read_resource(uri), long_timeout=True)
+    async def _call_tool(self, config: MCPServerConfig, headers: dict[str, str], name: str, arguments: Json) -> CallToolResult:
+        result = await self._run_op(config, headers, lambda client: client.call_tool(name, arguments), long_timeout=True)
+        if result.is_error:
+            # A tool that ran and failed is still a failed call to the model, not a result to read.
+            # All of what it reported, rendered as a result would be -- every text block, or the
+            # structured payload when it sent no text -- since the detail (a second line, a
+            # `retry_after`) is the model's only clue to what to do next.
+            raise ToolError(self.normalize_result(result).strip() or f"Tool '{name}' returned an error")
+        return result
+
+    async def _read_resource(self, config: MCPServerConfig, headers: dict[str, str], uri: str) -> list[TextResourceContents | BlobResourceContents]:
+        result = await self._run_op(config, headers, lambda client: client.read_resource(uri), long_timeout=True)
+        return list(result.contents)
 
     def _build_mcp_headers(self, config: MCPServerConfig) -> dict[str, str] | str:
         headers: dict[str, str] = {}
@@ -737,17 +885,28 @@ class MCPManager:
         headers = self._build_mcp_headers(config)
         if isinstance(headers, str):
             return headers
+        shown: list[str] = []
+
+        def show(text: str) -> None:
+            shown.append(text)
+            if notify:
+                notify(text)
+
+        timeout = self.login_timeout()
         try:
-            await self._bounded(self._run_op(config, headers, lambda c: c.list_tools(), interactive=True, notify=notify))
+            await self._bounded(self._run_op(config, headers, lambda c: c.list_tools(), interactive=True, notify=show), timeout=timeout)
         except Exception as error:  # noqa: BLE001 - OAuth probes cross third-party MCP transports.
-            text = self.error_text(error, timeout=self.call_timeout())
+            text = self.error_text(error, timeout=timeout)
             self.set_server_error(config.name, text)
-            return self.oauth_auth_failure(config, text)
+            return self.oauth_auth_failure(config, text, url_shown=bool(shown))
         self.server_errors.pop(config.name, None)
         return None
 
     @staticmethod
-    def oauth_auth_failure(config: MCPServerConfig, error: str) -> str:
+    def oauth_auth_failure(config: MCPServerConfig, error: str, *, url_shown: bool = False) -> str:
+        if url_shown:
+            # The login got as far as the browser; what the user needs is how to try again.
+            return f"MCP OAuth authentication failed for {config.name}: {error}\nRun /mcp connect {config.name} to try again."
         return "\n".join(
             [
                 "MCP OAuth authentication failed for " + config.name + ": " + error,

@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import httpx
+import httpx2
 from openai import AsyncOpenAI
 
 
@@ -63,7 +63,7 @@ class OpenAIMockServer:
         prompt_tokens = self._tokens({"tools": tools, "items": items})
         return prompt_tokens, cached_tokens, cache_write_tokens
 
-    def _handle(self, request: httpx.Request) -> httpx.Response:
+    def _handle(self, request: httpx2.Request) -> httpx2.Response:
         body = json.loads(request.content.decode("utf-8"))
         self.requests.append(body)
         responses = request.url.path.endswith("/responses")
@@ -144,13 +144,13 @@ class OpenAIMockServer:
                     },
                 },
             }
-        return httpx.Response(200, json=response)
+        return httpx2.Response(200, json=response)
 
     def client(self) -> AsyncOpenAI:
-        transport = httpx.MockTransport(self._handle)
+        transport = httpx2.MockTransport(self._handle)
         return AsyncOpenAI(
             api_key="sk-test",
             base_url="http://test",
-            http_client=httpx.AsyncClient(transport=transport),
+            http_client=httpx2.AsyncClient(transport=transport),
             max_retries=0,
         )

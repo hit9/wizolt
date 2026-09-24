@@ -46,9 +46,9 @@ def handled_command(exit_now=False, handled=True):
 
 def test_runtime_adopts_preprinted_cli_banner_without_printing_again(tmp_path, capsys):
     command_loop = loop(tmp_path)
-    command_loop.preprinted_output = "wizolt 0.0.0. /help for commands.\n\n"
+    command_loop.preprinted_output = "wizolt 0.0.0. Type / for commands.\n\n"
     tui = TuiRuntime(command_loop).build_tui()
-    assert tui.scrollback.transcript == ["wizolt 0.0.0. /help for commands.\n\n"]
+    assert tui.scrollback.transcript == ["wizolt 0.0.0. Type / for commands.\n\n"]
     assert command_loop.preprinted_output == ""
     assert capsys.readouterr().out == ""
 
@@ -122,13 +122,13 @@ def test_tui_emits_resumed_history_after_primary_screen_starts(tmp_path, monkeyp
         # The batched resume replay arrives as one call with every fragment as a separate part;
         # scan them all, not just the first.
         text = "".join(fragment_list_to_text(to_formatted_text(part)) for part in parts)
-        if "/help for commands." in text:
+        if "Type / for commands." in text:
             banner_states.append((self.transcript_sink is not None, command_loop.tui.app is None))
         if "restored answer" in text:
             emitted_while_running.append(command_loop.tui is not None and command_loop.tui.app is not None and command_loop.tui.app.is_running)
             history_emitted.set()
         real_print_parts(self, parts)
-        if "/help for commands." in text:
+        if "Type / for commands." in text:
             banner_records.append("".join(command_loop.tui.scrollback.transcript))
 
     monkeypatch.setattr(render_module.UiPrinter, "print_parts", print_parts)
@@ -153,7 +153,7 @@ def test_tui_emits_resumed_history_after_primary_screen_starts(tmp_path, monkeyp
     assert emitted_while_running == [True]
     assert banner_states == [(True, True)], "banner must be recorded before terminal setup"
     assert len(banner_records) == 1
-    assert banner_records[0].count("/help for commands.") == 1
+    assert banner_records[0].count("Type / for commands.") == 1
 
 
 def test_batched_emits_join_the_scrollback_queue_in_order(monkeypatch):
@@ -190,7 +190,7 @@ def test_batched_emits_join_the_scrollback_queue_in_order(monkeypatch):
     assert "".join(printed) == "queued first\nbatched second\nbatched third\n"
 
 
-@pytest.mark.parametrize("entered", [" /help", "exit "])
+@pytest.mark.parametrize("entered", [" /status", "exit "])
 async def test_tui_runtime_strips_input_before_command_dispatch(tmp_path, entered):
     command_loop = loop(tmp_path)
     dispatched = []
@@ -413,7 +413,7 @@ async def test_tui_dispatch_command_with_empty_queue_stays_idle(tmp_path):
     command_loop.tui = TuiApp()
     runtime = TuiRuntime(command_loop)
 
-    assert await runtime.dispatch("/help")
+    assert await runtime.dispatch("/status")
 
     assert runtime.pending.qsize() == 0
     assert command_loop.session.pending_user_inputs == []

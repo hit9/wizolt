@@ -512,7 +512,7 @@ async def test_full_turn_parts_at_user_rule_narration_and_silent_batches(tmp_pat
                 return {}, [ToolCall("c1", "Bash", ["printf nar1"])], "先看入口。"
             if self.calls == 2:
                 return {}, [ToolCall("c2", "Bash", ["printf nar2"])], "这里接着读。"
-            if self.calls <= 6:
+            if self.calls <= 10:
                 return {}, [ToolCall(f"c{self.calls}", "Bash", ["printf silent"])], ""
             return {"role": "assistant", "content": "改完了。"}, [], "改完了。"
 
@@ -528,7 +528,7 @@ async def test_full_turn_parts_at_user_rule_narration_and_silent_batches(tmp_pat
     assert rules[0] == 0
     assert rules[1] >= loop.MIN_ROWS_BETWEEN_RULES
     assert rules[2] >= loop.MIN_ROWS_BETWEEN_RULES
-    assert silences == [False, False, True, True, True, True]  # narration batches voiced, the rest silent
+    assert silences == [False, False, *[True] * 8]  # narration batches voiced, the rest silent
 
 
 async def test_resumed_session_draws_user_narration_and_silent_batch_rules(tmp_path):

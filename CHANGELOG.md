@@ -1,5 +1,58 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- wizolt asks the model to end the commit messages and pull-request bodies it writes with
+  `Generated with [wizolt](https://wizolt.readthedocs.io).`, once, after the body. It is a request
+  in the prompt rather than a rewrite of your git commands, so it can be missed. Turn it off for the
+  session with `/set runtime.attribution off`, or for good with `[runtime] attribution = false`.
+
+### Changed
+
+- Your instructions are a block of their own ahead of the skills and MCP indexes, each headed by the
+  level and the file it came from (`user · ~/.wizolt/AGENTS.md`, `project · ./AGENTS.md`), and the
+  system prompt now states plainly that these blocks are the user's standing orders rather than
+  context to weigh.
+- A finished call no longer spends a row on its `tr.N` key and its `[auto]`/`[approved]` tag: the
+  citation rides the last row the call already prints (`└ 41 passed in 2.10s · tr.3`), a delegation
+  cites it on the worker's last answer line, and a call that printed nothing leaves no row under the
+  row that names it.
+- MCP servers are reached through the official `mcp` SDK instead of `fastmcp`, which cuts about 24
+  packages from the install (including a second HTTP stack and `keyring`). MCP-over-HTTP now
+  verifies TLS against the OS trust store like model requests do. Existing OAuth logins carry over.
+
+### Removed
+
+- `/help` is gone. The command reference lives in the documentation (https://wizolt.readthedocs.io),
+  which `/status` now ends with, and the prompt completes every command as you type. The startup
+  line points at the prompt (`Type / for commands.`) instead of the removed command.
+
+### Fixed
+
+- After a restart with an expired OAuth access token, an MCP server whose authorization server
+  rotates refresh tokens connects with its resources intact. Its tool and resource listings used to
+  both refresh with the same token, and the second was rejected: the resources went missing, or the
+  server failed with "authentication required".
+- Two interactive `/mcp connect` runs for the same OAuth server, say from `/mcp` and a batch
+  connect, log in once. The second used to discard the login the first had just completed and start
+  its own, failing the first as "authentication required".
+- An OAuth MCP server that never answers the optional event stream, as Metabase does, connects and
+  lists its tools. Every call after that stream used to wait behind it until the deadline, so
+  connecting failed with "MCP call timed out after 10s", even with a valid saved login.
+- A failed MCP tool call shows the model everything the tool reported: every text block, or its
+  structured details when it sent no text. It used to keep only the first text block, and without
+  one said only "returned an error", which hid details like when to retry.
+- `/mcp connect` no longer starts a console browser (lynx, w3m) on wizolt's own terminal on a
+  machine without a display, and waiting for the browser can no longer hold up the login. Over SSH
+  or in a container it shows the sign-in link instead.
+- An MCP OAuth login has 5 minutes to finish instead of `shell_timeout` (60 seconds by default),
+  so signing in on another machine and bringing the redirect back works. A login that arrived late
+  used to be accepted ("Authorization complete") and still fail as a timeout, reported as "No
+  authorization URL was provided"; a failed login whose link was shown now says to run
+  `/mcp connect` again.
+
 ## 0.53.0 - 2026-09-23
 
 ### Changed

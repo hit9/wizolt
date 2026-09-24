@@ -23,7 +23,7 @@ class TestMCPResources:
         class FakeTool:
             name = "query"
             description = "Run a program."
-            inputSchema: ClassVar[dict] = {"type": "object", "properties": {"operations": {"type": "array"}}, "required": ["operations"]}
+            input_schema: ClassVar[dict] = {"type": "object", "properties": {"operations": {"type": "array"}}, "required": ["operations"]}
             annotations = None
 
         async def fake_tools(url, headers):
@@ -60,7 +60,7 @@ class TestMCPResources:
         class FakeTool:
             name = "t"
             description = "d"
-            inputSchema: ClassVar[dict] = {"type": "object", "properties": {}}
+            input_schema: ClassVar[dict] = {"type": "object", "properties": {}}
             annotations = None
 
         async def fake_tools(url, headers):
@@ -104,7 +104,7 @@ class TestMCPResources:
 
     def test_normalize_resource_blob(self):
         mgr = MCPManager.__new__(MCPManager)
-        out = mgr.normalize_resource([SimpleNamespace(text=None, blob=b"\x00\x01", mimeType="application/pdf")])
+        out = mgr.normalize_resource([SimpleNamespace(text=None, blob=b"\x00\x01", mime_type="application/pdf")])
         assert "binary" in out and "application/pdf" in out
 
     def test_action_defaults_to_call_when_omitted(self):
@@ -139,7 +139,7 @@ class TestMCPResources:
         class FakeTool:
             name = "query"
             description = "Run a program. " + "x" * 200 + " See metabase://docs/construct-query.md for syntax."
-            inputSchema: ClassVar[dict] = {"type": "object", "properties": {}}
+            input_schema: ClassVar[dict] = {"type": "object", "properties": {}}
             annotations = None
 
         async def fake_tools(url, headers):
@@ -198,7 +198,7 @@ class TestMCPResources:
 
         class FakeTool:
             name = "query"
-            inputSchema: ClassVar[dict] = {"type": "object", "properties": {}}
+            input_schema: ClassVar[dict] = {"type": "object", "properties": {}}
             annotations = None
 
         FakeTool.description = description
@@ -280,7 +280,7 @@ class TestToolOutputSchemaCapture:
     def test_discovery_carries_the_schema_into_the_cached_tool_info(self, tmp_path):
         s = session(tmp_path)
         shape = {"type": "object", "properties": {"total": {"type": "integer"}}}
-        tools = [SimpleNamespace(name="echo", description="d", inputSchema={}, outputSchema=shape, annotations=None)]
+        tools = [SimpleNamespace(name="echo", description="d", input_schema={}, output_schema=shape, annotations=None)]
 
         (info,) = s.mcp._tools_info(tools)
 

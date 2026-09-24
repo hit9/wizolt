@@ -72,7 +72,7 @@ async def test_close_cancels_an_operation_and_waits_for_its_client(tmp_path, mon
     await s.mcp.close()
 
     assert unwound.is_set()
-    assert s.mcp._tasks == set()
+    assert not s.mcp._tasks
     with pytest.raises((asyncio.CancelledError, ToolError)):
         await call
 
