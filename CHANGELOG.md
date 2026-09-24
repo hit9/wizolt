@@ -12,6 +12,10 @@
   built-in parser that accepts the same damage: prose around the object, output cut short,
   missing quotes, single quotes, trailing commas, and Python-style literals. Two objects in one
   reply now keep the first instead of failing the parse.
+- wizolt no longer depends on pathspec. In a workspace with no Git and no ripgrep, @-completion
+  still honors nested .gitignore files through a small built-in reader that decides each path
+  the same way, with one documented difference: `dir/**` no longer marks the directory `dir`
+  itself ignored, which changes nothing about the files the walk returns.
 
 ## 0.54.1 - 2026-09-24
 

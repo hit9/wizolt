@@ -1177,7 +1177,6 @@ dependencies = [
     { name = "httpx2" },
     { name = "mcp" },
     { name = "openai" },
-    { name = "pathspec" },
     { name = "prompt-toolkit" },
     { name = "pygments" },
     { name = "rich" },
@@ -1187,6 +1186,7 @@ dependencies = [
 [package.optional-dependencies]
 dev = [
     { name = "json-repair" },
+    { name = "pathspec" },
     { name = "pillow" },
     { name = "pyright" },
     { name = "pytest" },
@@ -1203,7 +1203,7 @@ requires-dist = [
     { name = "json-repair", marker = "extra == 'dev'", specifier = ">=0.63" },
     { name = "mcp", specifier = ">=2.2,<3" },
     { name = "openai", specifier = ">=3.0.0" },
-    { name = "pathspec", specifier = ">=1.0" },
+    { name = "pathspec", marker = "extra == 'dev'", specifier = ">=1.0" },
     { name = "pillow", marker = "extra == 'dev'", specifier = ">=11.0" },
     { name = "prompt-toolkit", specifier = ">=3.0.53" },
     { name = "pygments", specifier = ">=2.16" },
