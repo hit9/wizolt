@@ -27,6 +27,7 @@ from wizolt.prompts import (
     COMPACTION_SUMMARY_TITLE,
     CURRENT_TURN_CONTEXT_TRIMMED,
     PREVIOUS_CONTEXT_TRIMMED,
+    git_attribution_directive,
     language_directive,
 )
 from wizolt.session import HistorySegment, Session, local_timestamp
@@ -88,11 +89,14 @@ class ContextManager:
         Factored out because it is exactly the span a provider caches, and the compaction request
         reuses it verbatim so its summary rides the same prefix the turn just paid for."""
         content = base_system.strip()
-        # A forced reply language appends one fixed block to the system tail: stable text that
-        # depends only on the value, so the cacheable system prefix is unchanged.
-        directive = language_directive(self.session.settings.language)
-        if directive:
-            content += "\n\n" + directive
+        # Each setting that appends one fixed block to the system tail: stable text that depends only
+        # on the value, so the cacheable system prefix is unchanged.
+        for directive in (
+            language_directive(self.session.settings.language),
+            git_attribution_directive(self.session.settings.attribution),
+        ):
+            if directive:
+                content += "\n\n" + directive
         messages: list[Json] = [
             {"role": "system", "content": content},
             {"role": "user", "content": "--- Environment ---\n" + (self.environment() or "(empty)")},

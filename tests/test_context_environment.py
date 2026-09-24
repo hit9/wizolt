@@ -11,6 +11,7 @@ from wizolt.base import (
 )
 from wizolt.context import ContextManager
 from wizolt.prompts import (
+    GIT_ATTRIBUTION_FOOTER,
     SYSTEM_PROMPT,
 )
 from wizolt.session import Session
@@ -20,6 +21,7 @@ from wizolt.skill import SkillLibrary
 def test_model_messages_are_ordered_context_messages(tmp_path):
     s = session(tmp_path)
     s.skills = SkillLibrary({})  # no skills: assert the base frame ordering
+    s.settings.attribution = False  # its tail block has its own test; keep this frame bare
     s.messages.extend([{"role": "user", "content": "old request"}, {"role": "assistant", "content": "old answer"}])
     turn = [
         {"role": "user", "content": "current request"},
@@ -41,6 +43,7 @@ def test_model_messages_are_ordered_context_messages(tmp_path):
 def test_language_auto_injects_nothing_byte_identical(tmp_path):
     s = session(tmp_path)
     s.skills = SkillLibrary({})  # no skills: assert the base frame
+    s.settings.attribution = False  # asserted bare: the tail block has its own test
     turn = [{"role": "user", "content": "request"}]
     messages = ContextManager(s).model_messages(SYSTEM_PROMPT, turn)
 
@@ -50,6 +53,7 @@ def test_language_auto_injects_nothing_byte_identical(tmp_path):
 
 def test_language_directive_appends_stable_block_to_system_tail(tmp_path):
     s = session(tmp_path)
+    s.settings.attribution = False  # the language block is what ends the system prompt here
     turn = [{"role": "user", "content": "request"}]
     context = ContextManager(s)
     auto_messages = context.model_messages(SYSTEM_PROMPT, turn)
@@ -66,6 +70,27 @@ def test_language_directive_appends_stable_block_to_system_tail(tmp_path):
     assert forced_messages[1:] == auto_messages[1:]
     # the block is a pure function of the value: repeated projections are identical
     assert context.model_messages(SYSTEM_PROMPT, turn) == forced_messages
+
+def test_attribution_directive_appends_a_stable_block_by_default(tmp_path):
+    s = session(tmp_path)
+    turn = [{"role": "user", "content": "request"}]
+    context = ContextManager(s)
+
+    s.settings.attribution = False
+    bare = context.model_messages(SYSTEM_PROMPT, turn)
+    s.settings.attribution = True
+    messages = context.model_messages(SYSTEM_PROMPT, turn)
+
+    system = messages[0]["content"]
+    assert bare[0]["content"] == SYSTEM_PROMPT.strip()  # off injects nothing
+    assert system.startswith(SYSTEM_PROMPT.strip() + "\n\nGIT ATTRIBUTION:")
+    assert "Commit messages and pull requests" in system
+    assert GIT_ATTRIBUTION_FOOTER in system
+    assert system.count("GIT ATTRIBUTION:") == 1
+    # only the system tail changes: everything after it is byte-identical to the bare request
+    assert messages[1:] == bare[1:]
+    # the block is a pure function of the flag: repeated projections are identical
+    assert context.model_messages(SYSTEM_PROMPT, turn) == messages
 
 def test_environment_uses_cached_system_info(tmp_path, monkeypatch):
     calls = []

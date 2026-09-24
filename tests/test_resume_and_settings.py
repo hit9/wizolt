@@ -150,6 +150,12 @@ def test_runtime_language_defaults_normalizes_and_validates():
         RuntimeSettings.clean_language("x" * 65)
 
 
+def test_runtime_attribution_is_on_by_default_and_parses_off():
+    assert RuntimeSettings().attribution is True
+    assert RuntimeSettings.from_dict({}).attribution is True
+    assert RuntimeSettings.from_dict({"runtime": {"attribution": False}}).attribution is False
+
+
 def test_runtime_settings_default_context_budget_is_256k():
     assert RuntimeSettings().max_context_tokens == 256 * 1024
     assert RuntimeSettings.from_dict({}).max_context_tokens == 256 * 1024

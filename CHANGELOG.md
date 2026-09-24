@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- The commit messages and pull-request bodies wizolt writes end with
+  `🤖 Generated with [wizolt](https://wizolt.readthedocs.io)`. Turn it off for the session with
+  `/set runtime.attribution off`, or for good with `[runtime] attribution = false`.
+
 ### Changed
 
 - A finished call no longer spends a row on its `tr.N` key and its `[auto]`/`[approved]` tag: the

@@ -28,17 +28,19 @@ def test_tool_names_filter_resolved_schemas_and_keep_registry_order(tmp_path):
 
 
 async def test_system_prompt_comes_from_session(tmp_path):
-    _, system = await _requested_system(tmp_path, custom="CUSTOM WORKER ROLE")
+    _, system = await _requested_system(tmp_path, custom="CUSTOM WORKER ROLE", attribution=False)
     assert system == "CUSTOM WORKER ROLE"
 
-    _, parent_system = await _requested_system(tmp_path)
+    _, parent_system = await _requested_system(tmp_path, attribution=False)
     assert parent_system == SYSTEM_PROMPT.strip()
 
 
 async def test_system_prompt_default_matches_prompts_module(tmp_path):
-    _, system = await _requested_system(tmp_path)
+    _, system = await _requested_system(tmp_path, attribution=False)
     assert system == SYSTEM_PROMPT.strip()
-    assert ContextManager(session(tmp_path)).model_messages(SYSTEM_PROMPT)[0]["content"] == SYSTEM_PROMPT.strip()
+    s = session(tmp_path)
+    s.settings.attribution = False  # asserted bare: the tail block has its own test
+    assert ContextManager(s).model_messages(SYSTEM_PROMPT)[0]["content"] == SYSTEM_PROMPT.strip()
 
 
 async def test_worker_snapshot_hidden_from_listing_and_latest(tmp_path):

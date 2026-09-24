@@ -339,6 +339,7 @@ class RuntimeSettings:
     worker: bool = False  # register the Delegate tool (see [worker] in ConfigFile.DEFAULT_TEXT)
     theme: str = "auto"
     language: str = "auto"  # forced reply language; "auto" injects nothing (see /language)
+    attribution: bool = True  # ask the model to sign the commits and PR bodies it writes
     agents_md: bool = True  # inject global and project instructions into every request
 
     @classmethod
@@ -355,6 +356,7 @@ class RuntimeSettings:
             worker=Config.bool(runtime, "worker", False),
             theme=theme or Config.str(runtime, "theme", "auto"),
             language=RuntimeSettings.clean_language(Config.str(runtime, "language", "auto")),
+            attribution=Config.bool(runtime, "attribution", True),
             agents_md=Config.bool(runtime, "agents_md", True),
         )
 
@@ -622,6 +624,8 @@ model = ""
                                # (flipping it changes the tool block and thus the prompt-cache scope)
 # language = "auto"           # auto follows your messages and injects nothing; set a language
                                # name (e.g. "Chinese") to force the reply language
+# attribution = true           # ask the model to end the commit messages and pull requests it
+                               # writes with a "Generated with wizolt" line
 # agents_md = true               # inject global AGENTS.md and the project's AGENTS.md (or CLAUDE.md
                                  # fallback) into each request under one shared Environment budget
 

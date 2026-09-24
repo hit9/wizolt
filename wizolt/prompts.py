@@ -182,3 +182,21 @@ def language_directive(language: str) -> str:
         "language rule above. An explicit per-task language request still overrides this. Keep "
         "code, identifiers, paths, and commands verbatim."
     )
+
+
+GIT_ATTRIBUTION_FOOTER = "🤖 Generated with [wizolt](https://wizolt.readthedocs.io)"
+
+
+def git_attribution_directive(enabled: bool) -> str:
+    """The fixed GIT ATTRIBUTION block appended to the system prompt when the model should sign the
+    commits and pull requests it writes, or "" when it should not. A pure function of the flag: no
+    timestamps, session state, or other volatile text, so the system prefix stays prompt-cache
+    stable."""
+    if not enabled:
+        return ""
+    return (
+        "GIT ATTRIBUTION:\n"
+        f"- Commit messages and pull requests you write end with `{GIT_ATTRIBUTION_FOOTER}`, exactly "
+        "once, after the body; the link is intended, and an existing commit or pull request is never "
+        "rewritten just to add it."
+    )
