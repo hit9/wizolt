@@ -15,7 +15,7 @@ from wizolt.prompts import (
     SYSTEM_PROMPT,
 )
 from wizolt.session import Session
-from wizolt.skill import SkillLibrary
+from wizolt.skill import Skill, SkillLibrary
 
 
 def test_model_messages_are_ordered_context_messages(tmp_path):
@@ -116,53 +116,74 @@ def test_environment_uses_cached_system_info(tmp_path, monkeypatch):
     assert "- detected_commands (available via Bash): bash, rg, sed" in first
     assert "- detected_commands (available via Bash): bash, rg, sed" in second
 
-def test_environment_injects_agents_md(tmp_path):
+def test_agents_md_rides_a_message_of_its_own(tmp_path):
     (tmp_path / "AGENTS.md").write_text("# Rules\nAlways run pytest.\n", encoding="utf-8")
     s = session(tmp_path)
     context = ContextManager(s)
-    env = context.environment()
-    assert "--- Project instructions (AGENTS.md) ---" in env
-    assert "# Rules\nAlways run pytest." in env
+
+    instructions = context.instructions_context()
+    assert instructions.startswith("--- AGENTS.md (./AGENTS.md) ---\n# Rules\nAlways run pytest.")
+    assert "--- AGENTS.md (" not in context.environment()  # the facts message keeps only the global path row
+    assert "Always run pytest." not in context.environment()
+
     messages = context.model_messages(SYSTEM_PROMPT, [{"role": "user", "content": "request"}])
     assert messages[1]["content"].startswith("--- Environment ---")
-    assert messages[1]["content"] == "--- Environment ---\n" + env
-    assert "--- Project instructions (AGENTS.md) ---" in messages[1]["content"]
-    # still the same Environment user message: the injected section sits after the header
-    assert messages[1]["content"].index("--- Project instructions (AGENTS.md) ---") > messages[1]["content"].index("--- Environment ---")
-    assert messages[1]["content"].count("--- Project instructions") == 1
+    assert messages[2]["content"] == instructions
+    assert messages[3]["content"] == "request"
 
-def test_environment_falls_back_to_claude_md(tmp_path):
+
+def test_agents_md_falls_back_to_claude_md(tmp_path):
     (tmp_path / "CLAUDE.md").write_text("# Claude rules\nAlways run pytest.\n", encoding="utf-8")
     s = session(tmp_path)
-    env = ContextManager(s).environment()
-    assert "--- Project instructions (CLAUDE.md) ---" in env
-    assert "# Claude rules\nAlways run pytest." in env
 
-def test_environment_agents_md_precedence(tmp_path):
+    instructions = ContextManager(s).instructions_context()
+    assert instructions.startswith("--- AGENTS.md (./CLAUDE.md) ---\n# Claude rules\nAlways run pytest.")
+
+
+def test_agents_md_precedence(tmp_path):
     (tmp_path / "AGENTS.md").write_text("agents content\n", encoding="utf-8")
     (tmp_path / "CLAUDE.md").write_text("claude content\n", encoding="utf-8")
     s = session(tmp_path)
-    env = ContextManager(s).environment()
-    assert "--- Project instructions (AGENTS.md) ---" in env
-    assert "agents content" in env
-    assert "claude content" not in env
 
-def test_environment_agents_md_disabled(tmp_path):
+    instructions = ContextManager(s).instructions_context()
+    assert "agents content" in instructions and "claude content" not in instructions
+    assert "CLAUDE.md" not in instructions
+
+
+def test_agents_md_disabled(tmp_path):
     (tmp_path / "AGENTS.md").write_text("# Rules\nAlways run pytest.\n", encoding="utf-8")
     s = session(tmp_path)
     s.settings.agents_md = False
-    env = ContextManager(s).environment()
-    assert "Project instructions" not in env
-    assert "# Rules" not in env
+    context = ContextManager(s)
 
-def test_environment_agents_md_bounded(tmp_path):
+    assert context.instructions_context() == ""
+    roles = [message["role"] for message in context.model_messages(SYSTEM_PROMPT, [{"role": "user", "content": "request"}])]
+    assert roles == ["system", "user", "user"]  # no instructions message at all
+
+
+def test_agents_md_bounded(tmp_path):
     (tmp_path / "AGENTS.md").write_text("\n".join(f"line {i}" for i in range(20000)), encoding="utf-8")
     s = session(tmp_path)
     context = ContextManager(s)
-    env = context.environment()
-    assert "truncated to fit the prefix" in env
-    injected = env.split("--- Project instructions (AGENTS.md) ---", 1)[1].lstrip("\n")
+
+    instructions = context.instructions_context()
+    assert "truncated to fit the prefix" in instructions
+    injected = instructions.split("--- AGENTS.md (./AGENTS.md) ---", 1)[1].lstrip("\n")
     assert (len(injected.encode("utf-8")) + 3) // 4 <= MAX_AGENTS_MD_TOKENS
+
+
+def test_instructions_sit_between_the_environment_and_the_skills_index(tmp_path):
+    (tmp_path / "AGENTS.md").write_text("# Rules\n", encoding="utf-8")
+    s = session(tmp_path)
+    skill = Skill(name="demo", description="demo skill", body="body", dir=str(tmp_path), source="project")
+    s.skills = SkillLibrary({"demo": skill})
+
+    messages = ContextManager(s).model_messages(SYSTEM_PROMPT, [{"role": "user", "content": "request"}])
+
+    assert messages[1]["content"].startswith("--- Environment ---")
+    assert messages[2]["content"].startswith("--- AGENTS.md (./AGENTS.md) ---")
+    assert messages[3]["content"].startswith("--- SKILLS ---")
+    assert messages[4]["content"] == "request"
 
 @pytest.mark.parametrize(
     ("label", "text"),
@@ -173,13 +194,13 @@ def test_environment_agents_md_bounded(tmp_path):
         ("barely over the cap", "z" * (MAX_AGENTS_MD_TOKENS * 4 + 10)),
     ],
 )
-def test_environment_agents_md_bounding_spends_the_budget_it_is_given(tmp_path, label, text):
+def test_agents_md_bounding_spends_the_budget_it_is_given(tmp_path, label, text):
     """Bounding has a cap to respect and a budget to spend. Reserving the marker up front instead of
     shrinking until it fits keeps a large file near its whole allowance -- overshooting the shrink
     used to leave a quarter of the cap unused, which is a quarter of the project's instructions."""
     (tmp_path / "AGENTS.md").write_text(text, encoding="utf-8")
     context = ContextManager(session(tmp_path))
-    injected = context.environment().split("--- Project instructions (AGENTS.md) ---", 1)[1].lstrip("\n")
+    injected = context.instructions_context().split("--- AGENTS.md (./AGENTS.md) ---", 1)[1].lstrip("\n")
     tokens = (len(injected.encode("utf-8")) + 3) // 4
 
     assert "truncated to fit the prefix" in injected

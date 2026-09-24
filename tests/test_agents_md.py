@@ -530,30 +530,44 @@ def test_a_deleted_source_stops_resolving(tmp_path):
 
 def test_the_prefix_puts_global_before_project(tmp_path):
     s = agents_session(tmp_path, global_text=GLOBAL_TEXT, project_text=PROJECT_TEXT)
-    env = ContextManager(s).environment()
+    context = ContextManager(s)
+    instructions = context.instructions_context()
 
     display = display_path(global_agents_md_path(s.config.data_dir))
-    assert f"--- Global instructions ({display}) ---" in env
-    assert "--- Project instructions (AGENTS.md) ---" in env
-    assert env.index("--- Global instructions") < env.index("--- Project instructions")
-    assert env.index("House style") < env.index("Always run pytest.")
-    assert env.startswith("- cwd: ")  # the rows of the Environment body, not a second header
+    assert f"--- AGENTS.md ({display}) ---" in instructions
+    assert "--- AGENTS.md (./AGENTS.md) ---" in instructions
+    assert instructions.index(f"--- AGENTS.md ({display}) ---") < instructions.index("--- AGENTS.md (./AGENTS.md) ---")
+    assert instructions.index("House style") < instructions.index("Always run pytest.")
+    # the block opens on its own header: the file it came from, no rows above it
+    assert instructions.startswith(f"--- AGENTS.md ({display}) ---\n")
+    assert "House style" not in context.environment()  # the facts message no longer carries them
+
+
+def test_the_instructions_ride_one_message_of_their_own(tmp_path):
+    s = agents_session(tmp_path, global_text=GLOBAL_TEXT, project_text=PROJECT_TEXT)
+    context = ContextManager(s)
+    messages = context.model_messages("sys", [{"role": "user", "content": "request"}])
+
+    assert [message["role"] for message in messages[:3]] == ["system", "user", "user"]
+    assert messages[1]["content"].startswith("--- Environment ---")
+    assert messages[2]["content"] == context.instructions_context()
+    assert messages[3]["content"] == "request"
 
 
 def test_the_prefix_clips_both_sources_under_one_shared_cap(tmp_path, monkeypatch):
     monkeypatch.setattr("wizolt.context.MAX_AGENTS_MD_TOKENS", 200)
     s = agents_session(tmp_path, global_text="# Global\n" + "g" * 4000 + "\n", project_text="# Project\n" + "p" * 4000 + "\n")
     context = ContextManager(s)
-    env = context.environment()
-    global_part = env.split("--- Global instructions", 1)[1].split("--- Project instructions", 1)[0]
-    global_body = global_part.split(") ---\n", 1)[1]
-    project_body = env.split("--- Project instructions (AGENTS.md) ---", 1)[1].strip("\n")
+    display = display_path(global_agents_md_path(s.config.data_dir))
+    text = context.instructions_context()
+    global_body = text.split(f"--- AGENTS.md ({display}) ---\n", 1)[1].split("--- AGENTS.md (./AGENTS.md) ---", 1)[0].rstrip()
+    project_body = text.split("--- AGENTS.md (./AGENTS.md) ---", 1)[1].strip("\n")
 
     assert "truncated to fit the prefix" in global_body
-    assert display_path(global_agents_md_path(s.config.data_dir)) in global_body  # the marker names the file
+    assert display in global_body  # the marker names the file
     # The project source is reserved its room first: the global source yields, not the project.
     assert "# Project" in project_body
-    assert "(AGENTS.md truncated to fit the prefix;" in project_body  # the marker names its own file too
+    assert "(./AGENTS.md truncated to fit the prefix;" in project_body  # the marker names its own file too
     # One shared budget: each source's rendered body stays within the cap.
     assert context.estimated_text_tokens(global_body) <= 200
     assert context.estimated_text_tokens(project_body) <= 200
@@ -564,30 +578,34 @@ def test_the_prefix_clips_both_sources_under_one_shared_cap(tmp_path, monkeypatc
 def test_chinese_instructions_respect_the_prefix_budget(tmp_path, monkeypatch):
     monkeypatch.setattr("wizolt.context.MAX_AGENTS_MD_TOKENS", 200)
     s = agents_session(tmp_path, global_text="# 规则\n" + "中文偏好" * 500 + "\n")
-    body = ContextManager(s).environment().split("--- Global instructions", 1)[1].split(") ---\n", 1)[1]
+    display = display_path(global_agents_md_path(s.config.data_dir))
+    body = ContextManager(s).instructions_context().split(f"--- AGENTS.md ({display}) ---\n", 1)[1]
 
     assert "truncated to fit the prefix" in body
     assert len(body.encode("utf-8")) <= 800
 
 
-def test_absent_sources_add_no_rows(tmp_path):
+def test_absent_sources_inject_no_message(tmp_path):
     s = agents_session(tmp_path)
     context = ContextManager(s)
 
-    enabled = context.environment()
-    assert "instructions" not in enabled
+    assert context.instructions_context() == ""
     s.settings.agents_md = False
-    assert context.environment() == enabled  # byte-identical with the feature on or off
+    assert context.instructions_context() == ""  # the same empty string with the feature on or off
+    roles = [message["role"] for message in context.model_messages("sys", [{"role": "user", "content": "request"}])]
+    assert roles == ["system", "user", "user"]  # environment then the request: no instructions message
 
 
-def test_only_the_loaded_source_gets_a_prefix_row(tmp_path):
+def test_only_the_loaded_source_gets_a_block(tmp_path):
     global_only = agents_session(tmp_path, global_text=GLOBAL_TEXT, cwd_name="work")
-    env = ContextManager(global_only).environment()
-    assert "--- Global instructions" in env and "--- Project instructions" not in env
+    text = ContextManager(global_only).instructions_context()
+    assert f"--- AGENTS.md ({display_path(global_agents_md_path(global_only.config.data_dir))}) ---" in text
+    assert "--- AGENTS.md (./" not in text
 
     project_only = agents_session(tmp_path / "other", project_text=PROJECT_TEXT)
-    env = ContextManager(project_only).environment()
-    assert "--- Global instructions" not in env and "--- Project instructions (AGENTS.md) ---" in env
+    text = ContextManager(project_only).instructions_context()
+    assert "--- AGENTS.md (./AGENTS.md) ---" in text
+    assert f"--- AGENTS.md ({display_path(global_agents_md_path(project_only.config.data_dir))}) ---" not in text
 
 
 # --- the agent turn ---

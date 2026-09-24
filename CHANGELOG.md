@@ -10,6 +10,9 @@
 
 ### Changed
 
+- Your instructions are a block of their own ahead of the skills and MCP indexes, headed by the file
+  each one came from (`~/.wizolt/AGENTS.md`, `./AGENTS.md`), and the system prompt now states plainly
+  that these blocks are the user's standing orders rather than context to weigh.
 - A finished call no longer spends a row on its `tr.N` key and its `[auto]`/`[approved]` tag: the
   citation rides the last row the call already prints (`└ 41 passed in 2.10s · tr.3`), a delegation
   cites it on the worker's last answer line, and a call that printed nothing leaves no row under the
