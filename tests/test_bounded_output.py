@@ -215,7 +215,7 @@ def test_working_context_does_not_repeat_durable_tool_errors(tmp_path):
 def _block(name, count, start=1):
     lines = tuple(f"{name} line {index}\n" for index in range(count))
     draft = SourceViewDraft(f"/w/{name}.py", f"{name}.py", start + count - 1, (SourceSpan(start, lines),), READ)
-    return SourceBlock.plain(draft)
+    return SourceBlock(draft)
 
 
 def test_projection_spends_one_budget_across_blocks_and_keeps_small_literal_parts(tmp_path):
@@ -248,7 +248,7 @@ def test_projection_keeps_evidence_when_literal_parts_alone_fill_the_budget(tmp_
     assert isinstance(projected.parts[0], TextBlock)
     assert "<bounded_output" in projected.parts[0].render()
     assert projected.parts[1].bounded
-    assert projected.parts[1].draft.line_count >= 1
+    assert any(span.lines for span in projected.parts[1].draft.spans)
 
 
 async def test_large_edit_diff_and_source_share_the_normal_output_budget(tmp_path, monkeypatch):

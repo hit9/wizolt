@@ -57,8 +57,6 @@ def test_base_tool_helpers_validate_shared_argument_contracts(tmp_path):
     assert Tool.line_range([1, "3"]) == (1, 3)
     assert Tool.line_range(["0", "0"]) == (0, 0)
     assert Tool.compact({"key": "a long value"}, 16) == '{"key":"a lon...'
-    assert Tool.compile_regex("needle").search("NEEDLE")
-    assert not Tool.compile_regex("needle", case_sensitive=True).search("NEEDLE")
 
     with pytest.raises(ToolError, match="requires 1 string args"):
         DemoTool(session(tmp_path), []).strings(min_count=1, max_count=1)
@@ -78,8 +76,6 @@ def test_base_tool_helpers_validate_shared_argument_contracts(tmp_path):
         Tool.line_range(["9" * 5000, 2])
     with pytest.raises(ToolError, match="range values must be >= 0"):
         Tool.line_range([-1, 2])
-    with pytest.raises(ToolError, match="invalid regex"):
-        Tool.compile_regex("[")
 
     assert ViewImageTool in TOOLS
     assert TOOL_REGISTRY["ViewImage"] is ViewImageTool

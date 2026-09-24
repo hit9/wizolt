@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import json
-import re
 from typing import Any, ClassVar
 
 from wizolt.base import ApprovalView, Json, ToolArgs, ToolError
@@ -17,7 +16,7 @@ class Tool:
 
     A subclass declares itself through class attributes and implements `call`. Those attributes are
     not documentation — the runner reads them: `MUTATES` decides whether a call needs confirmation,
-    `STORES_RESULT` whether its output is retained for recall, `PRODUCES_MODEL_OBSERVATION` whether it
+    `STORES_RESULT` whether its output is retained under a `tr.N` key, `PRODUCES_MODEL_OBSERVATION` whether it
     contributes more than text. `DESCRIPTION` and `EXAMPLE` are prompt surface and cost context on
     every request.
 
@@ -267,14 +266,6 @@ class Tool:
         if limit is None:
             return text
         return text if len(text) <= limit else text[: limit - 3] + "..."
-
-    @staticmethod
-    def compile_regex(pattern: str, *, case_sensitive: bool = False, multiline: bool = False) -> re.Pattern[str]:
-        try:
-            flags = (0 if case_sensitive else re.IGNORECASE) | (re.MULTILINE if multiline else 0)
-            return re.compile(pattern, flags)
-        except re.error as error:
-            raise ToolError(f"invalid regex: {error}") from error
 
     @staticmethod
     def process_result(tag: str, code: int, stdout: str, stderr: str, *, elapsed: float | None = None) -> str:

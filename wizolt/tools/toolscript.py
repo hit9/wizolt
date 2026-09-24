@@ -73,7 +73,7 @@ class _ScriptTimeBudget:
         def trace(frame, event, arg):
             # None for a foreign frame, not `trace`: what a global trace call returns becomes that
             # frame's local trace, so returning the tracer here would fire a Python callback on
-            # every line of every tool the script reaches -- Read, Search, the MCP transport --
+            # every line of every tool the script reaches -- Read, Edit, the MCP transport --
             # to immediately return. Script frames are still offered at their own call event.
             if frame.f_code.co_filename != SCRIPT_FILENAME:
                 return None
@@ -141,7 +141,7 @@ class ToolScript(Tool):
         "call raises on failure. MCP calls may use format='json'; built-ins use text. Do not start threads."
     )
     EXAMPLE = (
-        'Aggregate many same-shape calls into one line. Example: {"action":"call","code":"hits = 0\\nfor path in (\\"a.py\\", \\"b.py\\", \\"c.py\\", \\"d.py\\"):\\n    hits += call(\\"Search\\", {\\"pattern\\": \\"TODO\\", \\"path\\": path}).count(\\"TODO\\")\\nprint(hits)"}',
+        'Aggregate many same-shape calls into one line. Example: {"action":"call","code":"hits = 0\\nfor path in (\\"a.py\\", \\"b.py\\", \\"c.py\\", \\"d.py\\"):\\n    hits += call(\\"Read\\", {\\"path\\": path}).count(\\"TODO\\")\\nprint(hits)"}',
         'Learn call shapes before scripting them. Example: {"action":"describe","tools":["Read","server.tool"]}',
     )
     MUTATES = True

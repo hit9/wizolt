@@ -29,7 +29,7 @@ def checkpoint(messages: list[Json]) -> str:
     return next(str(message["content"]) for message in messages if str(message.get("content") or "").startswith(COMPACTION_SUMMARY_TITLE))
 
 
-def test_segment_file_lays_out_the_header_summary_and_rows(tmp_path):
+def test_segment_file_lays_out_the_header_summary_and_rows():
     segment = HistorySegment(key="seg.3", title="Parser refactor", created_at="2026-08-13T13:12:00+08:00", messages=3)
     segment.summary = "what the span settled"
     compacted = [
@@ -94,7 +94,7 @@ def test_checkpoints_and_session_events_are_not_rows():
     assert "old summary" not in text
 
 
-def test_images_are_reduced_to_their_text_label(tmp_path):
+def test_images_are_reduced_to_their_text_label():
     image = ImageRef(ref="a" * 64, name="shot.png", media_type="image/png", width=10, height=10, size=1).to_json()
     compacted = [{"role": "user", "content": "look here", IMAGE_REFS_KEY: [image]}]
 
@@ -154,8 +154,12 @@ def test_a_resumed_segments_excerpt_is_exported_by_the_next_compaction(tmp_path)
         title="old span",
         created_at="2026-08-01T09:00:00+08:00",
         text=(
-            "user:\nold work\n\n"
-            '<bounded_output omitted="middle" max_tokens="6000" estimated_tokens="9000" omitted_tokens="9192" recall="seg.1"/>'
+            # A tool result's own marker from an older build (recall key, hint) sits in the head,
+            # ahead of the bare marker `store_history_segment` left where it cut the whole span.
+            "user:\nold work\n\ntool:\ntool tr.3 Bash cat big\noutput:\nhead\n"
+            '<bounded_output omitted="middle" max_tokens="6000" estimated_tokens="6050" omitted_tokens="50" recall="tr.3" hint="Recall it"/>'
+            "\ntail\n\n"
+            '<bounded_output omitted="middle" max_tokens="6000" estimated_tokens="9000" omitted_tokens="9192"/>'
             "\nuser:\nlate work"
         ),
         summary="what it settled",
@@ -168,12 +172,77 @@ def test_a_resumed_segments_excerpt_is_exported_by_the_next_compaction(tmp_path)
     ContextManager(s).apply_compaction({"summary": "new work"}, [], compacted=[{"role": "user", "content": "new task"}])
 
     rows = read(assets, "history.1.md").splitlines()
+    assert rows[0] == "# history.1 · 2026-08-01T09:00:00+08:00 · old span"
+    assert rows[1] == f"Rows: the text as stored at compaction, without message labels. Long rows wrap at {WRAP_CHARS} chars."
+    # The span's own cut, not the tool result's smaller one that appears first.
     assert rows[2] == "Excerpt: middle omitted at compaction (~9192 tokens); original text only in the session log."
     assert "## Summary at compaction" in rows and "what it settled" in rows
     assert "## Excerpt" in rows
     assert "old work" in rows and "late work" in rows
     assert not any(row.startswith(("u1 | ", "a1 | ")) for row in rows)  # no message structure to label
-    assert any(row.startswith('<bounded_output omitted="middle"') for row in rows)  # the old marker survives
+    assert any(row.startswith('<bounded_output omitted="middle"') for row in rows)  # the old markers survive
+    # Backfilled segments are indexed like new ones, oldest first.
+    index = read(assets, "history.md")
+    assert index.index("history.1.md · 2026-08-01T09:00:00+08:00 · 0 msgs · old span") < index.index("history.2.md ·")
+    assert "history.1.md | what it settled" in index
+
+
+def test_an_old_segment_stored_whole_claims_nothing_missing(tmp_path):
+    s = session(tmp_path)
+    s.history.append(HistorySegment(key="seg.1", title="short span", text="user:\nall of it"))
+
+    ContextManager(s).apply_compaction({"summary": "new"}, [], compacted=[{"role": "user", "content": "task"}])
+
+    text = read(s.images.assets_dir(), "history.1.md")
+    assert "omitted" not in text
+    assert "all of it" in text.splitlines()
+
+
+def test_a_segment_without_a_summary_indexes_no_empty_summary_row(tmp_path):
+    s = session(tmp_path)
+    s.history.append(HistorySegment(key="seg.1", title="trimmed span", text="user:\nwork"))
+
+    ContextManager(s).apply_compaction({"summary": "new"}, [], compacted=[{"role": "user", "content": "task"}])
+
+    index = read(s.images.assets_dir(), "history.md").splitlines()
+    assert not any(row.startswith("history.1.md |") for row in index)
+    assert "## Summary at compaction" not in read(s.images.assets_dir(), "history.1.md")
+
+
+def test_a_successful_tool_output_never_reads_as_a_status():
+    compacted = [{"role": "tool", "content": "tool tr.7 Bash cat deploy.yaml\noutput:\nstatus: failed\nretries: 3\n"}]
+
+    rows = [row for row in history.SegmentDocument(HistorySegment(key="seg.1", title="t"), compacted).render().splitlines() if row.startswith("t1 | ")]
+
+    assert rows == ["t1 | tool tr.7 Bash cat deploy.yaml"]
+
+
+def test_an_existing_segment_file_is_never_rewritten(tmp_path):
+    """Backfill only fills gaps: a file already exported stays byte for byte, and gains no second
+    index entry, however many compactions follow."""
+    s = session(tmp_path)
+    context = ContextManager(s)
+    context.apply_compaction({"summary": "one"}, [], compacted=[{"role": "user", "content": "first"}])
+    assets = s.images.assets_dir()
+    first = read(assets, "history.1.md")
+
+    context.apply_compaction({"summary": "two"}, [], compacted=[{"role": "user", "content": "second"}])
+
+    assert read(assets, "history.1.md") == first
+    assert read(assets, "history.md").count("history.1.md ·") == 1
+
+
+def test_a_compaction_that_exports_nothing_still_names_the_existing_index(tmp_path):
+    """Each rebuild replaces the previous checkpoint, and with it the line naming the index; a
+    compaction with no span of its own must name it again or the model loses every export."""
+    s = session(tmp_path)
+    context = ContextManager(s)
+    context.apply_compaction({"summary": "one"}, [], compacted=[{"role": "user", "content": "first"}])
+
+    context.apply_compaction({"summary": "two"}, [{"role": "user", "content": "kept"}])
+
+    assert [segment.key for segment in s.history] == ["seg.1"]
+    assert f"Compacted history: {os.path.join(s.images.assets_dir(), 'history.md')}" in checkpoint(s.messages)
 
 
 async def test_the_checkpoint_omits_the_path_when_the_export_cannot_be_written(tmp_path, monkeypatch):
@@ -270,6 +339,25 @@ async def test_the_checkpoint_is_written_once_and_then_only_read(tmp_path):
     assert later[: len(settled)] == settled
     assert "Compacted history:" in checkpoint(later)
     assert os.path.isfile(os.path.join(s.images.assets_dir(), "history.1.md"))
+
+
+def test_the_index_line_is_decided_when_the_checkpoint_is_written_and_never_after(tmp_path):
+    """The line depends on the disk, so it is read exactly once: when the checkpoint is built. An
+    index that appears later must not change a checkpoint already sent, or every request after it
+    would miss the cache from that message on."""
+    s = session(tmp_path)
+    context = ContextManager(s)
+    s.request_context_reset()
+    s.apply_context_reset()
+    before = context.model_messages("system", [])
+
+    os.makedirs(s.images.assets_dir(), exist_ok=True)
+    with open(os.path.join(s.images.assets_dir(), "history.md"), "w", encoding="utf-8") as file:
+        file.write("history.1.md · later\n")
+    after = context.model_messages("system", [])
+
+    assert after == before
+    assert "Compacted history:" not in str(before)
 
 
 async def test_a_truncated_marker_is_projected_unchanged(tmp_path):

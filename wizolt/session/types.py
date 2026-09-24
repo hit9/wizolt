@@ -191,3 +191,12 @@ class HistorySegment:
     messages: int = 0  # evicted message count
     summary: str = ""
     model: str = ""  # effective model the summary ran on; empty = fell back to trimming
+
+    _KEY_RE: ClassVar[re.Pattern] = re.compile(r"seg\.(\d+)")
+
+    @property
+    def export_name(self) -> str:
+        """`history.N.md` for `seg.N`, the file wizolt.history exports this segment to; "" for a
+        key that does not parse, which has no file."""
+        match = self._KEY_RE.fullmatch(self.key)
+        return f"history.{match.group(1)}.md" if match else ""

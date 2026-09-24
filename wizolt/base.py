@@ -120,6 +120,10 @@ MAX_TOOL_OUTPUT_TOKENS = 6_000
 # Extension of the file a truncated tool result is materialized to, named after the result's key.
 # ContextManager.materialize_output writes it; the session store's asset collector retains it.
 TOOL_OUTPUT_ASSET_SUFFIX = ".txt"
+# The append-only index of compacted-history exports, beside each segment's `history.N.md` in the
+# same assets directory. wizolt.history writes both; the session store's asset collector retains
+# them, and the checkpoint names this index.
+HISTORY_INDEX_ASSET = "history.md"
 # Cap on the AGENTS.md (or CLAUDE.md fallback) content injected into every request's fixed
 # prefix, per DESIGN.md's "bound the fixed prefix" rule; truncation happens in
 # ContextManager.environment, so SystemInfo.detect returns the file verbatim.

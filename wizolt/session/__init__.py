@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from wizolt.base import (
+    HISTORY_INDEX_ASSET,
     SESSION_EVENT_KEY,
     Json,
     ModelUsage,
@@ -449,6 +450,17 @@ class Session:
         self.context_reset_requested = True
         return first
 
+    def compacted_history_line(self) -> str:
+        """The checkpoint line naming the compacted-history index, or "" while there is none.
+
+        Called only while a checkpoint is being built -- a compaction rebuild or a context reset --
+        and the text is frozen into that message. Rebuilding it on a later projection would move the
+        prefix of a request already cached. Asking the disk here is what keeps the line honest: an
+        older session that never exported, or an export that could not be written, names nothing.
+        """
+        index = os.path.join(self.images.assets_dir(), HISTORY_INDEX_ASSET)
+        return f"Compacted history: {index} (one history.N.md per compaction beside it)" if os.path.isfile(index) else ""
+
     def apply_context_reset(self) -> bool:
         """Start a new model window with a frozen working-state checkpoint; retain the transcript.
 
@@ -467,16 +479,10 @@ class Session:
         checkpoint["content"] = "Context reset. Working-state snapshot below; later Note calls supersede it. Transcript is retained.\n" + checkpoint["content"]
         if activity := self.recent_activity():
             checkpoint["content"] += "\n\n" + activity
-        if self.history:
-            # Fixed text, written once, here: the exports are produced at compaction time, and a line
-            # rebuilt from the segment list or from the filesystem on a later projection would move
-            # the prefix of an already-sent checkpoint. The path comes from the session's identity
-            # rather than from the disk, so nothing mutable enters the text -- and this checkpoint
-            # replaces the conversation, so the last compaction's own line is no longer in context.
-            from wizolt.history import HistoryArchive  # local import: wizolt.history imports wizolt.session
-
-            index = HistoryArchive(self.images.assets_dir()).index_path
-            checkpoint["content"] += f"\nCompacted history: {index} (one history.N.md per compaction beside it)"
+        # This checkpoint replaces the conversation, so the last compaction's line naming the
+        # exports is no longer in context unless this one names them again.
+        if line := self.compacted_history_line():
+            checkpoint["content"] += "\n" + line
         self.messages.append(checkpoint)
         self.transcript_messages.append({"role": "notice", "content": "Context reset."})
         self.state.turn_messages = 0

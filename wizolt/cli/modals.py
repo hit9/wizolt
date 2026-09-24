@@ -119,7 +119,7 @@ def segment_story(segment: HistorySegment) -> tuple[str, str]:
     if segment.model:
         headline += f" · model {segment.model}"
     if segment.fallback:
-        return headline, "Summarizing failed, so this was trimmed without a summary — what it dropped survives only in the excerpt the agent can recall."
+        return headline, "Summarizing failed, so this was trimmed without a summary — what it dropped survives only in the agent's compacted-history file."
     return headline, ""
 
 

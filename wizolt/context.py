@@ -30,6 +30,7 @@ from wizolt.prompts import (
     language_directive,
 )
 from wizolt.session import HistorySegment, Session, local_timestamp
+from wizolt.source import TextBlock
 from wizolt.tools import Tool
 
 if TYPE_CHECKING:
@@ -365,7 +366,7 @@ class ContextManager:
         del self.session.history[: -self.MAX_HISTORY_SEGMENTS]  # newest kept; a shorter list is left alone
         return segment
 
-    def _summary_block(self, index_path: str = "") -> list[Json]:
+    def _summary_block(self) -> list[Json]:
         """One durable checkpoint containing everything needed after the compacted prefix.
 
         This is the rebuild half of compaction, and it does not read the cache: it replaces the
@@ -391,13 +392,11 @@ class ContextManager:
         ]
         if activity := self.session.recent_activity():
             rows.extend(("", activity))
-        # The index path, written only when the export for this compaction landed: the model reaches
-        # every retained span through those files, and a line naming a file that is not there is
-        # worse than no line at all. The text is built here, at the rebuild that replaces the head of
-        # the conversation, and never again -- regenerating it from `session.history` or from the
-        # filesystem on some later projection would change the prefix of a request already cached.
-        if index_path:
-            rows.extend(("", f"Compacted history: {index_path} (one history.N.md per compaction beside it)"))
+        # Every earlier compaction's line leaves context with the checkpoint this one replaces, so the
+        # index is named again whenever it exists -- even when this compaction exported nothing.
+        # Built here, at the rebuild, and never again (see `Session.compacted_history_line`).
+        if line := self.session.compacted_history_line():
+            rows.extend(("", line))
         return [{"role": "user", "content": "\n".join(rows), SESSION_EVENT_KEY: "compaction_checkpoint"}]
 
     def apply_compaction(
@@ -441,11 +440,11 @@ class ContextManager:
             segment.summary = self.session.state.summary
             segment.title = title or segment.title
         # Exported after the summary request returned and before the checkpoint is built: nothing
-        # here can touch the cached prefix of that request, and the `Compacted history:` line below
-        # is only written once this compaction's own file and index entry have landed.
-        archive = history.HistoryArchive(self.session.images.assets_dir())
-        exported = segment is not None and archive.export(segment, compacted or [], self.session.history)
-        summary_block = self._summary_block(archive.index_path if exported else "")
+        # here can touch the cached prefix of that request, and the checkpoint below names the
+        # index only once it exists on disk.
+        if segment is not None and compacted:
+            history.HistoryArchive(self.session.images.assets_dir()).export(segment, compacted, self.session.history)
+        summary_block = self._summary_block()
         if turn_messages is None:
             self.session.messages = summary_block + keep
             prune_context = (self.session.messages if data is not None else [*keep]) + (tool_messages or [])
@@ -516,13 +515,8 @@ class ContextManager:
         return self.estimated_text_tokens(text) > MAX_TOOL_OUTPUT_TOKENS
 
     def bound_output(self, text: str, *, path: str = "") -> str:
-        """The model-facing form of a long tool result: a head, a tail, and a marker between.
-
-        The marker states facts -- what was omitted, how much, and the file holding the full text
-        when one was written -- and nothing else: what to do about the omission is the model's own
-        call. `path` is empty when no artifact was written (or the write failed), and the marker
-        then carries no `file=` attribute rather than naming a file still in flight.
-        """
+        """The model-facing form of a long tool result: a head, a tail, and the omission marker
+        between them, which names `path` when the full text was written there."""
         estimated = self.estimated_text_tokens(text)
         if estimated <= MAX_TOOL_OUTPUT_TOKENS:
             return text
@@ -532,11 +526,7 @@ class ContextManager:
         head = self.head_excerpt(text, head_limit)
         tail = self.tail_excerpt(text, tail_limit)
         omitted_tokens = max(0, estimated - self.estimated_text_tokens(head) - self.estimated_text_tokens(tail))
-        note = f'<bounded_output omitted="middle" max_tokens="{MAX_TOOL_OUTPUT_TOKENS}"'
-        note += f' estimated_tokens="{estimated}" omitted_tokens="{omitted_tokens}"'
-        note += f' file="{path}"' if path else ""
-        note += "/>"
-        return "\n".join(part for part in (head.rstrip(), note, tail.lstrip()) if part)
+        return TextBlock(head, tail, estimated, omitted_tokens, MAX_TOOL_OUTPUT_TOKENS, path).render()
 
     async def materialize_output(self, key: str, text: str) -> str:
         """Write the full tool output next to the truncated marker as a navigable artifact.

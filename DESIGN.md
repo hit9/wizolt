@@ -254,7 +254,7 @@ cancellation reach all of it.
   on a loop that has closed is not a lock.
 - Threads remain only at genuinely synchronous boundaries — potentially material local file work,
   a ToolScript body, and the bounded termination of a persistent background `Popen` handle —
-  reached through the managed executor or `base.run_blocking`. Search, mention discovery, fzf, the
+  reached through the managed executor or `base.run_blocking`. Mention discovery, fzf, the
   external editor, and `Job` waits are native async operations; foreground Bash pipes are
   event-loop readers. Edit prepares immutable snapshots, plans potentially material file changes,
   and performs its checked batch transaction through `run_blocking`, then installs receipts on the
@@ -527,9 +527,10 @@ dispatching its complete call set; return results before the model may judge or 
   compaction prunes records nothing surviving references.
 - Compaction exports each evicted span as a plain-text `history.N.md` (message text in full, tool
   calls as label lines), beside the append-only `history.md` index that says what every span holds.
-  The index path is written into the
-  checkpoint once, at the rebuild; nothing lists segments in a request, and grep or `Read` inside a
-  span file is how one comes back.
+  A retained segment with no file yet (an older session's, or a failed write) is backfilled as its
+  stored excerpt at the next compaction. A checkpoint (compaction rebuild or context reset) names
+  the index when it exists on disk at that moment, and that text is frozen with the checkpoint;
+  nothing lists segments in a request, and grep or `Read` inside a span file is how one comes back.
 - The export is a derived copy written at compaction time, in the same directory as the `tr.N.txt`
   outputs and under the same rules: never read back into a request, never a scan of the jsonl.
 - `AgentState` is the durable semantic view of goal/plan/known/checks; `Note(update)` changes it

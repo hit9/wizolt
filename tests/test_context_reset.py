@@ -189,10 +189,11 @@ async def test_a_reset_after_earlier_snapshots_survives_the_delta_chain(tmp_path
 
 
 async def test_history_and_note_state_survive_a_reset_and_resume(tmp_path):
-    """A reset drops the conversation, not the retained history: the compacted span is still there
-    after the resume, and the next compaction exports it as history.1.md."""
+    """A reset drops the conversation, not the retained history or its exports: the compacted span
+    is still there after the resume, and the reset checkpoint names the index again, because it
+    replaced the compaction checkpoint that carried the path."""
     s = session(tmp_path)
-    ContextManager(s).store_history_segment([{"role": "user", "content": "evicted span"}], scope="history", trigger="auto", fallback=False)
+    ContextManager(s).apply_compaction({"summary": "s"}, [], compacted=[{"role": "user", "content": "evicted span"}])
     s.state.goal = "keep me"
     s.request_context_reset()
     s.apply_context_reset()
@@ -203,12 +204,23 @@ async def test_history_and_note_state_survive_a_reset_and_resume(tmp_path):
 
     assert [segment.key for segment in restored.history] == ["seg.1"]
     assert "evicted span" in restored.history[0].text
-    # The new window names where those exports live: this checkpoint replaced the conversation, so
-    # the compaction checkpoint that carried the path is no longer in context.
     index = os.path.join(restored.images.assets_dir(), "history.md")
-    checkpoint = next(message for message in restored.messages if message.get(SESSION_EVENT_KEY))
+    checkpoint = next(message for message in restored.messages if message.get(SESSION_EVENT_KEY) == "context_reset")
     assert f"Compacted history: {index} (one history.N.md per compaction beside it)" in checkpoint["content"]
+    assert os.path.isfile(os.path.join(restored.images.assets_dir(), "history.1.md"))  # survived the save's asset GC
     assert json.loads(NoteTool(restored, [{"action": "view", "fields": ["goal"]}]).call()) == {"goal": "keep me"}
+
+
+def test_a_reset_names_no_index_that_was_never_written(tmp_path):
+    """An older session's segments have no exports until its next compaction, so a reset before
+    then must not point the model at a file that is not there."""
+    s = session(tmp_path)
+    ContextManager(s).store_history_segment([{"role": "user", "content": "evicted span"}], scope="history", trigger="auto", fallback=False)
+    s.request_context_reset()
+    s.apply_context_reset()
+
+    assert s.history
+    assert "Compacted history:" not in s.messages[-1]["content"]
 
 
 async def test_context_command_reports_the_same_figure_as_status(tmp_path):

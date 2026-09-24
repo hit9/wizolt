@@ -37,9 +37,10 @@ The threshold leaves room for what the next request carries besides the conversa
 the model may write, and the tool definitions — so compaction happens before the window is full.
 The fill shown in the status bar measures the last request; compaction looks ahead to the next.
 
-The summary is lossy, so each compaction also writes the messages it evicted to `history.N.md`, a
-file of its own beside the session's other assets, and appends one line per span to `history.md`,
-the index that says what each file holds.
+The summary is lossy, so each compaction also writes the conversation it evicted to `history.N.md`,
+a file of its own beside the session's other assets, and appends an entry to `history.md`, the
+index that says what each file holds. Your messages and the agent's replies are copied in full;
+each tool call is kept as a one-line label, without its output.
 
 <div class="term-shot" role="img" aria-label="Compaction replaces older active conversation with one checkpoint containing the summary, full working state, and recent tool activity, plus the path of a history.md index. Beside it sit one history.N.md file per compaction, holding that span verbatim for grep or Read, while the append-only session log retains earlier snapshots as the cold source of truth."><span class="fs-goal">─ active context (hot) ────────────────</span><span>  checkpoint       <span class="fs-i fs-dim">summary · working state · recent activity</span></span><span>  recent messages  <span class="fs-i fs-dim">kept as they are</span></span><span class="fs-dim">─ history files (warm) ────────────────</span><span>  history.N.md     <span class="fs-i fs-dim">one file per evicted span, read on demand</span></span><span class="fs-dim">─ append-only session log (cold) ──────</span><span>  earlier snapshots<span class="fs-i fs-dim"> original messages</span></span><span> </span><span class="fs-dim"><span class="fs-i fs-goal">history.md</span> indexes every span</span></div>
 
@@ -55,7 +56,9 @@ describes the work rather than whichever message happened to start the window. T
 span by grepping those files; none of it takes up room in a request until it does.
 
 Only the newest 50 spans keep their files; a session that compacts more often drops its oldest
-ones. `history.md` is append-only, so it still describes a span whose file is gone.
+ones. `history.md` is append-only, so it still describes a span whose file is gone. A session
+started before this version gets its older spans written at its next compaction, as the shortened
+excerpts those versions kept.
 
 Run `/compact` to compact immediately rather than waiting for the threshold, for example before
 starting a large refactor. `/status` reports how many compactions a session has done.
