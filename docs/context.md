@@ -78,8 +78,8 @@ The working divider shows `reset pending` until then. Once the new window starts
 
 The new window starts with a snapshot of Note and recent activity, plus the path of the compacted
 history index. The visible transcript, including what a resume replays, remains intact. Stored tool
-results, background jobs, the workspace and the code index also remain. Earlier model messages
-and compaction summaries leave the active window. A scheduled reset survives a saved-session resume.
+results, background jobs and the workspace also remain. Earlier model messages and compaction
+summaries leave the active window. A scheduled reset survives a saved-session resume.
 
 ### When a summary does not arrive
 

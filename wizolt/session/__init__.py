@@ -452,8 +452,8 @@ class Session:
     def apply_context_reset(self) -> bool:
         """Start a new model window with a frozen working-state checkpoint; retain the transcript.
 
-        Note state, compacted-history exports, stored tool results, jobs, source views, the code index
-        and the workspace are not conversation and survive untouched. The usage snapshot goes with the
+        Note state, compacted-history exports, stored tool results, jobs, source views and the
+        workspace are not conversation and survive untouched. The usage snapshot goes with the
         conversation it described: leaving it in place would keep the status bar and
         `Context(remaining)` reporting a full window for a context that is now empty.
         """

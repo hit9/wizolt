@@ -15,7 +15,6 @@ from wizolt.cli import CommandLoop
 from wizolt.cli.modals import select_choice
 from wizolt.engine import Agent
 from wizolt.session import SessionSnapshotStore, ToolResultRecord
-from wizolt.tools import CodeIndex
 
 
 async def test_empty_exit_does_not_print_resume_command(tmp_path):
@@ -296,8 +295,6 @@ async def test_simple_repl_ctrl_c_output_matches_interrupted_phase(tmp_path, mon
         agent.run = interrupted
     command_loop = CommandLoop(agent, input_fn=read_input, output_fn=output.append)
     monkeypatch.setattr(loop_module.UpdateChecker, "load_cached", lambda _checker: False)
-    monkeypatch.setattr(CodeIndex, "status", lambda _index: False)
-    monkeypatch.setattr(CommandLoop, "schedule_index_freshness", lambda _loop: None)
 
     assert await command_loop.run_simple() == 0
 
@@ -328,8 +325,6 @@ async def test_simple_repl_publishes_the_final_answer_exactly_once(tmp_path, mon
     agent.run = run
     command_loop = CommandLoop(agent, input_fn=read_input, output_fn=output.append)
     monkeypatch.setattr(loop_module.UpdateChecker, "load_cached", lambda _checker: False)
-    monkeypatch.setattr(CodeIndex, "status", lambda _index: False)
-    monkeypatch.setattr(CommandLoop, "schedule_index_freshness", lambda _loop: None)
 
     assert await command_loop.run_simple() == 0
 

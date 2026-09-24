@@ -48,7 +48,6 @@ def test_resumed_tui_auto_dispatches_persisted_queue_as_one_request(tmp_path, mo
 
     command_loop.agent.model = RecordingModel()
     monkeypatch.setattr(SessionSnapshotStore, "clean_expired", lambda *_args: 0)
-    monkeypatch.setattr(CommandLoop, "schedule_index_freshness", lambda _loop: None)
     monkeypatch.setattr(UpdateChecker, "load_cached", lambda _checker: False)
     real_application = Application
 
@@ -95,7 +94,6 @@ def test_processed_queued_message_does_not_return_to_input(tmp_path, monkeypatch
 
     command_loop.agent.model = RecordingModel()
     monkeypatch.setattr(SessionSnapshotStore, "clean_expired", lambda *_args: 0)
-    monkeypatch.setattr(CommandLoop, "schedule_index_freshness", lambda _loop: None)
     monkeypatch.setattr(UpdateChecker, "load_cached", lambda _checker: False)
     real_application = Application
 

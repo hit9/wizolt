@@ -44,7 +44,6 @@ Rate limits, timeouts, and server errors do retry, counting up on the divider as
 |---|---|
 | `source target changed` | The file changed after it was read, so the edit was refused rather than misapplied. Retry from the fresh source view in the error; use `Read` if no view was returned |
 | Confirmation every time | The default for writing files and running commands. `/yolo` turns it off; read [Safety](safety.md) first |
-| Code index `stale` or `?` | Run `/index`. `InspectCode` answers from whatever was indexed; `Read` and `Bash` do not need it |
 
 ## Sessions
 

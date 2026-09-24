@@ -21,7 +21,6 @@ from wizolt.config import Config
 from wizolt.context import ContextManager
 from wizolt.runner import ToolRunner
 from wizolt.session import Session, SessionSnapshotStore
-from wizolt.tools import CodeIndex
 from wizolt.tools.editplan import EditBatchPlan
 from wizolt.tools.files import (
     MODE_CREATE,
@@ -698,10 +697,6 @@ def test_confirmation_policy_does_not_depend_on_the_evidence_mode(tmp_path):
 # --- batch planning and stale writes -------------------------------------------------------------
 
 
-async def ignore_index_update(_index, _paths):
-    return ""
-
-
 def runner(s):
     return ToolRunner(s, ContextManager(s), output_fn=lambda text: None)
 
@@ -709,7 +704,6 @@ def runner(s):
 def yolo_session(cwd, monkeypatch):
     s = session(cwd)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     return s
 
 
@@ -946,22 +940,6 @@ async def test_cancelling_a_direct_edit_settles_its_write_rather_than_abandoning
     assert path.read_text(encoding="utf-8") == "a\nB\n"
 
 
-async def test_a_direct_edit_updates_the_symbol_index_like_any_other(tmp_path, monkeypatch):
-    s = session(tmp_path)
-    s.settings.yolo = True
-    (tmp_path / "code.py").write_text("def run():\n    return 1\n", encoding="utf-8")
-    updated = []
-
-    async def record_update(_index, paths):
-        updated.append(tuple(paths))
-        return ""
-
-    monkeypatch.setattr(CodeIndex, "update", record_update)
-    await runner(s).run([direct_call("e", "code.py", [{"op": "replace", "old": "return 1\n", "content": "return 2\n"}])])
-
-    assert updated and any("code.py" in paths for paths in updated)
-
-
 # --- deterministic generated coverage against a reference splice ---------------------------------
 
 
@@ -1105,7 +1083,6 @@ async def test_direct_edit_arguments_survive_a_snapshot_and_resume(tmp_path, mon
     config = Config(data_dir=str(tmp_path))
     s = Session(cwd=str(tmp_path), config=config)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     (tmp_path / "code.txt").write_text("a\nb\n", encoding="utf-8")
     edits = [{"op": "replace", "old": "b\n", "content": "B\n"}]
     await runner(s).run([direct_call("e0", "code.txt", edits)])

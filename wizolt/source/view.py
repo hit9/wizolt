@@ -29,7 +29,6 @@ PLANNED_EDIT_STALE = "planned edit stale"
 
 # Producers that may mint source views.
 READ = "Read"
-INSPECT = "InspectCode"
 EDIT = "Edit"
 
 _VIEW_KEY_RE = re.compile(r"^view\.(\d+)$")
@@ -106,7 +105,7 @@ class SourceViewDraft:
     display_path: str  # stable model-facing path
     total_lines: int
     spans: tuple[SourceSpan, ...]
-    producer: str  # Read, InspectCode, or Edit
+    producer: str  # Read or Edit
 
     @property
     def line_count(self) -> int:

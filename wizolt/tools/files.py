@@ -462,7 +462,7 @@ class EditTool(Tool):
     NAME = "Edit"
     DESCRIPTION = (
         "Create or patch one UTF-8 file; every operation is validated before anything is written. "
-        "For an existing file pick exactly one evidence mode for the whole call: source=view.N from Read or InspectCode "
+        "For an existing file pick exactly one evidence mode for the whole call: source=view.N from Read "
         "plus inclusive visible start/end lines, or no source with each old set to exact literal text that occurs once -- never both. "
         "(1) source=view.N plus start/end: content is the complete replacement for that range, while outside lines stay untouched; "
         "insert by replacing one visible line with that line plus the insertion. "

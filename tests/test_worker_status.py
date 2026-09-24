@@ -69,7 +69,7 @@ async def test_status_bar_follows_the_inflight_worker(tmp_path, monkeypatch):
     assert "worker ctx" not in delegating
 
     # Session-wide groups stay the parent's, and the row returns to the parent when the worker answers.
-    assert "skills " in delegating and "index" in delegating
+    assert "skills " in delegating
     worker._active_turn_messages.clear()
     assert row() == with_worker
 

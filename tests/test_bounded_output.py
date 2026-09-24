@@ -13,11 +13,7 @@ from wizolt.base import (
 from wizolt.context import ContextManager
 from wizolt.runner import ToolRunner
 from wizolt.source import READ, SourceBlock, SourceSpan, SourceViewDraft, TextBlock, ToolOutput
-from wizolt.tools import CodeIndex, ReadTool
-
-
-async def ignore_index_update(_index, _paths):
-    return ""
+from wizolt.tools import ReadTool
 
 
 def estimate(text: str) -> int:
@@ -193,7 +189,6 @@ async def test_bounded_read_cannot_authorize_its_omitted_middle(tmp_path, monkey
     assert head.end + 1 < tail.start
     guessed = head.end + 1  # a real line of the file, but one the model was never shown
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     await runner.run([ToolCall("edit", "Edit", ["large.txt", "view.1", [{"op": "replace", "start": guessed, "end": guessed, "content": "x\n"}]])])
 
     assert s.tool_errors and "source range unseen" in s.tool_errors[0].error
@@ -267,7 +262,6 @@ async def test_large_edit_diff_and_source_share_the_normal_output_budget(tmp_pat
     read = ReadTool(s, [{"path": "large.py"}]).call()
     source = s.register_source_drafts(list(read.drafts))[0]
     body = "".join(f"line_{index} = {index}\n" for index in range(12000))
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
 
     result = EditTool(s, ["large.py", source, [{"op": "replace", "start": 1, "end": 1, "content": body}]]).call()
     message = await runner.finish(call("Edit", ["large.py", source, []]), result)

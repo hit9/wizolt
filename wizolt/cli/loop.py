@@ -47,7 +47,6 @@ from wizolt.image import UserInput
 from wizolt.mentions import FilePick
 from wizolt.render import BashLivePreview, StatusBar, UiPrinter, search_sources_footer
 from wizolt.session import QueuedInput, SessionLease, SessionSnapshotStore
-from wizolt.tools import CodeIndex
 from wizolt.tools.delegate import worker_provider_config
 from wizolt.tui import TuiApp
 
@@ -88,9 +87,6 @@ class CommandLoop:
     HUNK_HEADER_RE: ClassVar[re.Pattern] = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
     HELP_HEADING_RE: ClassVar[re.Pattern] = re.compile(r"^### (.+)$", re.MULTILINE)
     HELP_ENTRY_RE: ClassVar[re.Pattern] = re.compile(r"^- (.+?) — ", re.MULTILINE)
-    # The backstop on the post-turn index convergence: a tree rewritten as fast as it is indexed
-    # keeps the index stale for `/index sync` rather than looping for the rest of the session.
-    MAX_INDEX_PASSES: ClassVar[int] = 25
     EDITOR_CONTEXT_MAX_LINES: ClassVar[int] = 200
     EDITOR_CONTEXT_ELLIPSIS: ClassVar[str] = "# [... earlier lines of this reply omitted ...]"
     EDITOR_CONTEXT_SEPARATOR: ClassVar[str] = "# --- (earlier reply) ---"
@@ -117,7 +113,6 @@ class CommandLoop:
 - `/sessions [all]` — Browse saved sessions and re-enter one (alias: `/resume`; `all` widens
   past this project).
 - `/resend` — Resend the in-flight model request (type it while a turn is working).
-- `/index [force]` — Sync or rebuild code symbol index.
 - `/provider [NAME]` — Select or show the active provider.
 - `/model [MODEL]` — Select or set the active model.
 - `/reason [EFFORT]` — Select or set reasoning effort (alias: `/effort`).
@@ -144,7 +139,7 @@ class CommandLoop:
 
 ### Tools
 
-Read, ViewImage, InspectCode, Edit, Bash, Job, Note, Context, Ask, MCP, Skill.
+Read, ViewImage, Edit, Bash, Job, Note, Context, Ask, MCP, Skill.
 
 `Skill(name)` loads a skill's full instructions on demand (see the SKILLS section / `$skill`).
 
@@ -222,10 +217,10 @@ Full documentation: https://wizolt.readthedocs.io
         self.resume_lease: SessionLease | None = None
         self.background_output_lock = threading.Lock()
         self.background_output_open = True
-        # Session-scoped background work this loop owns: startup maintenance, mention discovery,
-        # code-index freshness, the interactive picker. Loop-bound state, so it is opened once the
-        # frontend has entered its loop and closed before that invocation returns -- a task must
-        # never outlive the loop that can settle it, and none of it survives into a later run.
+        # Session-scoped background work this loop owns: startup maintenance, mention discovery, the
+        # interactive picker. Loop-bound state, so it is opened once the frontend has entered its
+        # loop and closed before that invocation returns -- a task must never outlive the loop that
+        # can settle it, and none of it survives into a later run.
         self._background: set[asyncio.Task] = set()
         self._background_open = False
         # The one in-flight mention scan, coalescing every caller onto it. Kept here rather than on
@@ -297,9 +292,6 @@ Full documentation: https://wizolt.readthedocs.io
         hooks.text_viewer = lambda view: approval_text_viewer(self, view)
         hooks.approval_form = self.set_approval_form
         hooks.cancel_input = self.cancel_tool_input
-        # The worker's own edits update the index as they happen, but its session is not this one:
-        # a delegation hands its return back here, so the parent converges on the same tree.
-        hooks.index_freshness = self.schedule_index_freshness
         hooks.script_status = self.toolscript_run_status
 
     def context_reset_notice(self, text: str) -> None:
@@ -515,30 +507,6 @@ Full documentation: https://wizolt.readthedocs.io
         if self.session.mentions is not None:
             self.session.mentions.refresh_owner = self.refresh_mentions
 
-    def schedule_index_freshness(self) -> None:
-        """Admit the post-turn code-index check. Both frontends go through here.
-
-        Never awaited on the answer path: the check walks and hashes the working tree, and a turn's
-        answer must not wait behind it. `update_pending` coalesces repeated triggers itself."""
-
-        self.spawn_background(self.converge_code_index(), name="code-index-freshness")
-
-    async def converge_code_index(self) -> None:
-        """Apply the post-turn drift check until the index converges.
-
-        A pass re-indexes at most `CodeIndex.AUTO_UPDATE_LIMIT` files: the third-party update walks
-        each file synchronously, and a whole-tree rebuild stays the user's explicit `/index sync`.
-        What changed is what happens past that bound -- the pass used to give up and leave the index
-        stale, so a delegation that touched twenty-odd files read as an index nobody maintains. Now
-        the loop keeps taking bounded passes, with a pause between them, until nothing is pending.
-        `MAX_INDEX_PASSES` is the backstop, not the goal."""
-
-        for _ in range(self.MAX_INDEX_PASSES):
-            verdict = await CodeIndex(self.session).update_pending()
-            if verdict != CodeIndex.MORE_PENDING:
-                return
-            await asyncio.sleep(CodeIndex.CONVERGE_PAUSE)
-
     def refresh_mentions(self) -> asyncio.Task | None:
         """One mention-candidate scan at a time, owned here.
 
@@ -659,7 +627,6 @@ Full documentation: https://wizolt.readthedocs.io
                 except WizoltError as error:
                     answer = f"Error: {error}"
             finally:
-                self.schedule_index_freshness()
                 self.status_bar.stop()
             # Same rule as TuiRuntime.run_agent_turn: the engine publishes its own final answer
             # through output_fn, so only an error it raised before publishing prints here.
@@ -701,9 +668,6 @@ Full documentation: https://wizolt.readthedocs.io
         if self.session.update.newer_than(__version__):
             self.emit(f"update available: {__version__} -> {self.session.update.latest}. upgrade with `{' '.join(UpdateChecker.upgrade_command())}`.")
         self.resume.render_resumed_session()
-        # Publish existing availability without scanning the tree; the freshness check already
-        # runs after each completed turn.
-        CodeIndex(self.session).status()
         if update_due:
             self.spawn_background(checker.check(), name="update-check")
         self.spawn_background(self.clean_expired_sessions(), name="session-cleanup")
@@ -1192,7 +1156,6 @@ COMMANDS: tuple[Command, ...] = (
     Command("/config", commands.config, queue_safe=True),
     Command("/compact", commands.compact),
     Command("/context", commands.context_command),
-    Command("/index", commands.index),
     Command("/provider", commands.provider),
     Command("/model", commands.model),
     Command("/reason", commands.reason, aliases=("/effort",)),

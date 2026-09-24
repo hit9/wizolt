@@ -77,9 +77,6 @@ class UiHooks:
     # The next approval prompt's actions as a selectable row (see TuiApp.set_approval_form).
     # None, or a False return, means the answer has to be typed -- headless runs, piped stdin.
     approval_form: Callable[[list[tuple[str, str]]], bool] | None = None
-    # The post-turn code-index freshness pass. None (headless, or a runner outside CommandLoop)
-    # simply means no check is scheduled.
-    index_freshness: Callable[[], None] | None = None
     # A ToolScript body is the one stretch where nothing streams and no single tool line is
     # pending, so the divider would sit on "working" for the whole batch. The running source
     # rides along so Ctrl-O can offer the script while it runs. None degrades to no phase label.

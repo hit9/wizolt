@@ -53,7 +53,7 @@ class SourceBlock:
 
     @classmethod
     def plain(cls, draft: SourceViewDraft) -> SourceBlock:
-        """A block with no markers: everything Read, InspectCode, and Edit produce."""
+        """A block with no markers: everything Read and Edit produce."""
         return cls(draft, ("",) * draft.line_count)
 
     @classmethod

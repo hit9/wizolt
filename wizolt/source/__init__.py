@@ -14,7 +14,6 @@ from wizolt.source.output import SourceBlock, TextBlock, ToolOutput
 from wizolt.source.relocate import context_matches, relocate_target, same_position
 from wizolt.source.view import (
     EDIT,
-    INSPECT,
     MAX_VIEW_DRIFT,
     PLANNED_EDIT_STALE,
     READ,
@@ -32,7 +31,6 @@ from wizolt.source.view import (
 
 __all__ = [
     "EDIT",
-    "INSPECT",
     "MAX_VIEW_DRIFT",
     "PLANNED_EDIT_STALE",
     "READ",

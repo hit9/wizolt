@@ -81,15 +81,15 @@ a separate fixed-size snapshot.
 ## Status bar
 
 A single line beneath the prompt summarizes the session in a fixed order:
-`[yolo] provider/model · level | mcp N · skills N | ctx N% · cache N% | index*`.
-`[yolo]` appears only when enabled, and the index suffix reflects its current state.
+`[yolo] provider/model · level | mcp N · skills N | ctx N% · cache N%`.
+`[yolo]` appears only when enabled.
 
 Once a [worker](worker.md) has actually run, its own context fill rides the row too, as
 `worker ctx N%`; a worker that has never been delegated to (or was reset) adds nothing. While a
 delegation is in flight the row shows the worker's figures instead, behind a `[worker]` marker.
 
 The role colors stay still while the values remain live. The context and cache figures refresh
-after requests, and MCP, skill, and index changes appear on the next screen redraw. While MCP
+after requests, and MCP and skill changes appear on the next screen redraw. While MCP
 servers are still being contacted the count spins — `mcp ⠹2` — and rises as each one answers; a
 plain `mcp N` means every configured server has settled, so `mcp 0` really is nothing connected.
 `/status` reports the same session figures in more detail.
@@ -100,7 +100,7 @@ with the time spent so far beside it, and an estimated output speed while text i
 `responding (12s · ↓ 48 tok/s)`. The `↓` marks the speed as the model's incoming stream; it is
 still an estimate, and it disappears between requests and on providers that do not stream.
 
-<div class="term-shot" role="img" aria-label="A static, semantically colored status bar: yolo mode, provider and model with reasoning level, MCP and skill counts, context and cache percentages, then the index state."><span><span class="fs-i sb-yolo">[yolo] </span><span class="fs-i sb-base">dashscope/qwen3.7-plus</span><span class="fs-i sb-sep"> · </span><span class="fs-i sb-reason">high</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-mcp">mcp 2 · skills 3</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-ctx">ctx 23% · cache 98%</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-index">index✓</span></span></div>
+<div class="term-shot" role="img" aria-label="A static, semantically colored status bar: yolo mode, provider and model with reasoning level, MCP and skill counts, and context and cache percentages."><span><span class="fs-i sb-yolo">[yolo] </span><span class="fs-i sb-base">dashscope/qwen3.7-plus</span><span class="fs-i sb-sep"> · </span><span class="fs-i sb-reason">high</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-mcp">mcp 2 · skills 3</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-ctx">ctx 23% · cache 98%</span></span></div>
 
 ## Quick hints
 

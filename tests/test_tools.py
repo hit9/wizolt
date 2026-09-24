@@ -1,7 +1,6 @@
 import asyncio
 import os
 
-import code_symbol_index as csi
 import pytest
 
 from wizolt.base import (
@@ -23,9 +22,7 @@ from wizolt.tools import (
     TOOL_REGISTRY,
     TOOLS,
     BashTool,
-    CodeIndex,
     EditTool,
-    InspectCodeTool,
     MCPTool,
     NoteTool,
     ReadTool,
@@ -218,25 +215,6 @@ async def test_mcp_tool_handles_missing_manager_and_invalid_arguments(tmp_path):
         await MCPTool(s, [{"action": "call", "server": "docs", "tool": "read", "arguments": []}]).call()
 
 
-def test_code_index_failure_helpers_keep_session_state_consistent(tmp_path, monkeypatch):
-    s = session(tmp_path)
-    index = CodeIndex(s)
-    monkeypatch.setattr(csi, "status", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("status failed")))
-
-    assert CodeIndex.status_line("ready") == "index✓ synced"
-    assert CodeIndex.status_line("error", "broken") == "index! error: broken"
-    assert index.status() == ("error", "status failed")
-    assert s.state.code_index_status == "error"
-    assert s.state.code_index_error == "status failed"
-    assert index.fail(" update failed ") == "update failed"
-    assert s.state.code_index_notice == "error"
-
-    index.finish()
-    assert s.state.code_index_notice == ""
-    assert s.state.code_index_error == ""
-    assert s.state.code_index_status == "synced"
-
-
 async def test_read_success_paths(tmp_path):
     (tmp_path / "sample.py").write_text("alpha\nNeedle\nomega\n", encoding="utf-8")
     (tmp_path / "blob.bin").write_bytes(b"a\0b")
@@ -404,14 +382,14 @@ def test_parallel_safe_false_for_tools_outside_whitelist(tmp_path):
     s = session(tmp_path)
     runner = ToolRunner(s, ContextManager(s))
 
-    # InspectCode is normally parallel-safe, but the whitelist excludes it, so it falls back to
-    # serial run_one (where the whitelist gate rejects it) instead of execute_readonly.
+    # Read is normally parallel-safe, but the whitelist excludes it, so it falls back to serial
+    # run_one (where the whitelist gate rejects it) instead of execute_readonly.
     s.tool_names = ("Bash",)
-    assert not runner.parallel_safe(ToolCall("c1", "InspectCode", ["find", "Tool"]))
+    assert not runner.parallel_safe(ToolCall("c1", "Read", [{"path": "a.txt"}]))
 
     # Empty tuple = no filtering: parallel-safety is decided as before.
     s.tool_names = ()
-    assert runner.parallel_safe(ToolCall("c2", "InspectCode", ["find", "Tool"]))
+    assert runner.parallel_safe(ToolCall("c2", "Read", [{"path": "a.txt"}]))
 
 
 def test_tool_runner_short_call_formats_note(tmp_path):
@@ -451,7 +429,7 @@ def test_tool_schemas_are_strict_for_high_risk_tools():
     edit_params = EditTool.schema()["function"]["parameters"]
     assert edit_params["required"] == ["path", "edits"]
     assert set(edit_params["properties"]) == {"edits", "path", "source"}
-    assert "source=view.N from Read or InspectCode" in EditTool.schema()["function"]["description"]
+    assert "source=view.N from Read " in EditTool.schema()["function"]["description"]
     edits_schema = edit_params["properties"]["edits"]
     assert edits_schema["items"]["required"] == ["op"]
     assert edits_schema["items"]["properties"]["op"]["enum"] == ["create", "replace", "delete"]
@@ -504,8 +482,6 @@ async def test_tool_validation_rejects_bad_shapes_without_side_effects(tmp_path)
         EditTool(s, ["a.txt", [{"op": "bogus", "content": "a\n"}]]).call()
     with pytest.raises(ToolError):
         await BashTool(s, []).call()
-    with pytest.raises(ToolError):
-        InspectCodeTool(s, ["inspect", "two words"]).call()
 
     assert not (tmp_path / "a.txt").exists()
     assert not (tmp_path / "b.txt").exists()

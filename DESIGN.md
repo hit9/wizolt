@@ -272,9 +272,9 @@ cancellation reach all of it.
 
 **Session-scoped background work has one owner.** `CommandLoop.open_background()` /
 `spawn_background()` / `close_background()` admit, retain, and settle everything a session starts
-outside the turn: the update check, the catalog refresh, the retention sweep, mention discovery and
-completion, and post-turn code-index freshness. Both frontends open it after entering their loop
-and close it before returning, in the shutdown order above (after the turn, before model/MCP). It
+outside the turn: the update check, the catalog refresh, the retention sweep, and mention discovery
+and completion. Both frontends open it after entering their loop and close it before returning, in
+the shutdown order above (after the turn, before model/MCP). It
 rejects work once closed and closes the refused coroutine, so nothing can call back into a session
 that is gone. Coalescing state for shared work — the single mention scan — lives here rather than
 on `Session`, because a task is loop-bound and the session outlives loops.
@@ -385,7 +385,7 @@ turn, and tool schemas.
   active turn
   ```
 
-  No rebuilt Memory, history-index, current-date, recent-error, or code-index-status block is
+  No rebuilt Memory, history-index, current-date, or recent-error block is
   inserted before the tail: those values already exist in matched tool history, are queried on
   demand, or are runtime/UI state.
 - Treat cache-prefix stability as the first review criterion for system prompt, tool schema or
@@ -715,8 +715,8 @@ Compaction is the deliberate persisted exception to send-time-only projection: i
 active messages with a summary when the effective request, including tools, reaches the input
 budget.
 
-It rewrites only model messages and their recall indexes — never the completed transcript or its
-tool/diff replay metadata, even when the active turn is compacted.
+It rewrites only model messages and their retained tool records and source views — never the
+completed transcript or its tool/diff replay metadata, even when the active turn is compacted.
 
 - Compact prior history first; the active turn only if the rebuilt request is still too large.
 - Keep the latest user boundary and a recent tail; never split assistant tool calls from their

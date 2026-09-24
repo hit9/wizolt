@@ -35,7 +35,6 @@ from wizolt.tools import (
     TOOL_REGISTRY,
     AskTool,
     BashTool,
-    CodeIndex,
     DelegateTool,
     EditTool,
     JobTool,
@@ -575,9 +574,9 @@ class ToolRunner:
 
     def parallel_safe(self, call: ToolCall) -> bool:
         # A call may run concurrently only if it neither mutates state nor blocks on interactive
-        # input: read-only, auto-approved, non-interactive tools (Read/ViewImage/InspectCode,
-        # read-only MCP). Edit is coordinated serially by EditBatchPlan;
-        # Bash streams live output and mutates; Ask blocks on the user.
+        # input: read-only, auto-approved, non-interactive tools (Read/ViewImage, read-only MCP).
+        # Edit is coordinated serially by EditBatchPlan; Bash streams live output and mutates; Ask
+        # blocks on the user.
         tool_class = TOOL_REGISTRY.get(call.name)
         if (
             (self.session.tool_names and call.name not in self.session.tool_names)
@@ -740,7 +739,6 @@ class ToolRunner:
         message = await self.finish(call, output, elapsed=time.monotonic() - started, turn_diff=tool.turn_diff(), d=d)
         if isinstance(tool, BashTool) and tool.exit_code is not None:
             self.session.record_command_result(tool.command(), tool.exit_code, workdir=tool.execution_workdir)
-        await self.update_code_index(call, message)
         return "ok", message, observation
 
     def reject(
@@ -876,15 +874,6 @@ class ToolRunner:
         body = self.context.bound_output(output, path=artifact_path).rstrip() if bound else output.rstrip()
         rows.extend(["output:", body])
         return "\n".join(rows).strip()
-
-    async def update_code_index(self, call: ToolCall, output: str) -> None:
-        if call.name != "Edit":
-            return
-        paths = [str(call.args[0])] if call.args and isinstance(call.args[0], str) else []
-        for match in tooloutput.EDIT_PATH_RE.finditer(output):
-            with contextlib.suppress(json.JSONDecodeError):
-                paths.append(str(json.loads(match.group(1))))
-        await CodeIndex(self.session).update(list(dict.fromkeys(paths)))
 
     async def confirm(self, call: ToolCall, tool: Tool, batch_suffix: str = "", planned_edit: EditBatchPlan.PlannedEdit | None = None) -> tuple[bool, str]:
         always_option = isinstance(tool, DelegateTool) and tool.always_confirms()

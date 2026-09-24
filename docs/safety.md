@@ -18,7 +18,7 @@ commands yourself.
   calls — ask before they act. <span class="marker">This is on by default</span>; `--yolo` and
   `/yolo` turn it off.
 - **Verified edits.** Every edit says what it expects to change — a numbered source view from
-  `Read` or `InspectCode`, or the exact original text of the target — and is rejected
+  `Read`, or the exact original text of the target — and is rejected
   if the file no longer matches, or if the text it named appears more than once. The agent can't
   silently patch the wrong lines. See [Tools](tools.md).
 - **Reviewable changes.** `/diff` shows exactly what changed this round and across the

@@ -10,14 +10,12 @@ from test_tui_runtime import history_file
 from tui_harness import loop
 
 from wizolt.cli import CommandLoop
-from wizolt.cli.resume import ResumeRenderer
 from wizolt.cli.update import UpdateChecker
 from wizolt.config import (
     Config,
 )
 from wizolt.engine import Agent
 from wizolt.session import Session, SessionSnapshotStore, bootstrap_features
-from wizolt.tools import CodeIndex
 from wizolt.tui import TuiApp
 
 
@@ -41,21 +39,6 @@ def test_scrollback_without_a_runtime_writer_uses_direct_output(tmp_path):
     command_loop.write_scrollback(lambda: emitted.append("direct"))
 
     assert emitted == ["direct"]
-
-
-def test_start_session_does_not_scan_or_refresh_code_index(tmp_path, monkeypatch):
-    command_loop = loop(tmp_path)
-    status_checks = []
-    monkeypatch.setattr(UpdateChecker, "load_cached", lambda _checker: False)
-    monkeypatch.setattr(ResumeRenderer, "render_resumed_session", lambda _resume: None)
-    monkeypatch.setattr(
-        CodeIndex,
-        "status",
-        lambda _index, *, check=False, max_pending_files=20: status_checks.append(check) or ("ready", ""),
-    )
-    command_loop.start_session()
-
-    assert status_checks == [False]
 
 
 async def test_startup_discovers_mcp_without_blocking_the_prompt(tmp_path, monkeypatch):

@@ -9,11 +9,7 @@ from wizolt.base import ToolCall, ToolError
 from wizolt.context import ContextManager
 from wizolt.runner import ToolRunner
 from wizolt.source import ToolOutput
-from wizolt.tools import CodeIndex, EditTool, ReadTool
-
-
-async def ignore_index_update(_index, _paths):
-    return ""
+from wizolt.tools import EditTool, ReadTool
 
 
 def rendered(out, s):
@@ -117,7 +113,6 @@ def test_success_fresh_block_clamps_to_file_bounds(tmp_path):
 async def test_failed_edit_error_text_keeps_fresh_view_for_the_model(tmp_path, monkeypatch):
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "code.txt"
     path.write_text("a\nb\nc\nd\n", encoding="utf-8")
     key = view(s, "code.txt")
@@ -134,7 +129,6 @@ async def test_failed_edit_error_text_keeps_fresh_view_for_the_model(tmp_path, m
 async def test_batch_stale_range_does_not_guess_after_prior_shift(tmp_path, monkeypatch):
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "code.txt"
     path.write_text("a\nb\nc\n", encoding="utf-8")
     key = view(s, "code.txt")
@@ -173,7 +167,6 @@ async def test_deletion_fresh_view_shows_the_seam_it_left(tmp_path, monkeypatch)
     # covers the seam instead, and is a real view: the next edit can name it.
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "code.txt"
     path.write_text("a\nb\nc\nd\n", encoding="utf-8")
     key = view(s, "code.txt")
@@ -194,7 +187,6 @@ async def test_deleting_the_whole_file_leaves_an_empty_file_view(tmp_path, monke
     # Deleting every line leaves a view with no spans; the emptied file is then written with create.
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     (tmp_path / "code.txt").write_text("a\nb\n", encoding="utf-8")
     key = view(s, "code.txt")
     runner = ToolRunner(s, ContextManager(s), output_fn=lambda text: None)
@@ -213,7 +205,6 @@ async def test_empty_file_create_rejects_once_another_writer_filled_it(tmp_path,
     # that is no longer empty by the time it runs: the non-empty file is refused, not clobbered.
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "empty.txt"
     path.write_text("", encoding="utf-8")
     path.write_text("written elsewhere\n", encoding="utf-8")
@@ -232,7 +223,6 @@ async def test_expired_view_is_answered_with_the_current_lines_it_asked_for(tmp_
     retry. The returned view is a real one: the same edit against it applies."""
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "app.py"
     path.write_text("".join(f"line {index}\n" for index in range(1, 21)), encoding="utf-8")
     key = view(s, "app.py")
@@ -321,7 +311,6 @@ async def test_unseen_edit_range_returns_a_view_that_can_be_retried_directly(tmp
     """A bad range costs one rejected Edit, not a rejected Edit plus a separate Read."""
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "image.py"
     path.write_text("".join(f"line {number}\n" for number in range(1, 221)), encoding="utf-8")
     rendered(ReadTool(s, [{"path": "image.py", "ranges": [[1, 20]]}]).call(), s)
@@ -348,7 +337,6 @@ async def test_unseen_multi_edit_recovery_covers_every_target_for_one_retry(tmp_
     not just the first operation whose range validation failed."""
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "base.py"
     path.write_text("".join(f"line {number}\n" for number in range(1, 701)), encoding="utf-8")
     rendered(ReadTool(s, [{"path": "base.py", "ranges": [[300, 386], [595, 620]]}]).call(), s)

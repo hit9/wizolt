@@ -7,11 +7,6 @@ from wizolt.base import LogBlock, LogEdge, LogLine, LogRole, ToolCall
 from wizolt.context import ContextManager
 from wizolt.render import Theme, UiPrinter
 from wizolt.runner import ToolRunner
-from wizolt.tools import CodeIndex
-
-
-async def ignore_index_update(_index, _paths):
-    return ""
 
 
 def test_approval_segments_highlight_inline_edit_preview():
@@ -76,7 +71,6 @@ async def test_auto_approved_edit_keeps_preview_pre_line(tmp_path, monkeypatch):
     # Edit's "auto …" pre-line carries the approval preview; the result line is tagged [auto].
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     (tmp_path / "a.txt").write_text("hello\nworld\n", encoding="utf-8")
     key = view(s, "a.txt")
     out = []
@@ -93,7 +87,6 @@ async def test_auto_approved_edit_keeps_preview_pre_line(tmp_path, monkeypatch):
 async def test_batch_edit_no_change_reports_no_change(tmp_path, monkeypatch):
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "code.txt"
     path.write_text("a\nb\n", encoding="utf-8")
     key = view(s, "code.txt")
@@ -109,7 +102,6 @@ async def test_batch_edit_no_change_reports_no_change(tmp_path, monkeypatch):
 async def test_batch_edit_stale_reports_source_target_changed(tmp_path, monkeypatch):
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "code.txt"
     path.write_text("a\nb\n", encoding="utf-8")
     key = view(s, "code.txt")
@@ -121,32 +113,6 @@ async def test_batch_edit_stale_reports_source_target_changed(tmp_path, monkeypa
     assert s.tool_errors
     assert "source target changed" in s.tool_errors[0].error
     assert path.read_text(encoding="utf-8") == "a\nB\n"
-
-
-async def test_code_index_updates_after_file_mutation_tools(tmp_path, monkeypatch):
-    s = session(tmp_path)
-    s.settings.yolo = True
-    updated = []
-
-    async def record_update(_index, paths):
-        updated.extend(paths)
-        return ""
-
-    monkeypatch.setattr(CodeIndex, "update", record_update)
-    runner = ToolRunner(
-        s,
-        ContextManager(s),
-        input_fn=lambda prompt: (_ for _ in ()).throw(AssertionError("unexpected prompt")),
-        output_fn=lambda text: None,
-    )
-
-    await runner.run([ToolCall("empty", "Edit", ["empty.py", "", [{"op": "create", "content": ""}]])])
-    await runner.run([ToolCall("create", "Edit", ["made.py", "", [{"op": "create", "content": "print(1)\n"}]])])
-    key = view(s, "made.py")
-    await runner.run([ToolCall("edit", "Edit", ["made.py", key, [{"op": "replace", "start": 1, "end": 1, "content": "print(2)\n"}]])])
-
-    assert (tmp_path / "made.py").read_text(encoding="utf-8") == "print(2)\n"
-    assert updated == ["empty.py", "made.py", "made.py"]
 
 
 def test_diff_segments_gracefully_degrades_without_header_path(tmp_path):

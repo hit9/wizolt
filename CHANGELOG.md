@@ -4,6 +4,9 @@
 
 ### Changed
 
+- The built-in symbol index is gone: no `InspectCode` tool, no `/index` command, no index state in
+  `/status` or the status bar, and no `code-symbol-index` dependency. Looking a symbol up is now
+  whatever you run yourself — `Bash` with `rg`, or tooling of your own.
 - Three tools are gone: `Recall`, `RecallContext`, and `Search`. A shortened tool result now names
   the file holding the whole output instead of a key to page it back with, so the agent reads or
   greps that file; `Bash` with `rg` covers what `Search` did.

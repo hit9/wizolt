@@ -6,12 +6,8 @@ from test_edit_tool import session, view
 from wizolt.base import ToolCall, ToolError
 from wizolt.context import ContextManager
 from wizolt.runner import ToolRunner
-from wizolt.tools import CodeIndex, EditTool
+from wizolt.tools import EditTool
 from wizolt.tools.files import Edit
-
-
-async def ignore_index_update(_index, _paths):
-    return ""
 
 
 def runner(s):
@@ -25,7 +21,6 @@ def rendered(out, s):
 async def test_tool_runner_batch_edit_rejects_consumed_target(tmp_path, monkeypatch):
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "code.txt"
     path.write_text("a\nb\nc\n", encoding="utf-8")
     key = view(s, "code.txt")
@@ -45,7 +40,6 @@ async def test_tool_runner_batch_edit_rejects_consumed_target(tmp_path, monkeypa
 async def test_tool_runner_planned_edit_writes_adjacent_duplicates_without_warning(tmp_path, monkeypatch):
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "code.txt"
     path.write_text("a\nb\nc\n", encoding="utf-8")
     key = view(s, "code.txt")
@@ -60,7 +54,6 @@ async def test_tool_runner_planned_edit_writes_adjacent_duplicates_without_warni
 async def test_tool_runner_batch_edit_rejects_create_mixed_with_patch_ops(tmp_path, monkeypatch):
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     await runner(s).run(
         [
             ToolCall(
@@ -79,7 +72,6 @@ async def test_tool_runner_batch_edit_rejects_create_mixed_with_patch_ops(tmp_pa
 async def test_tool_runner_batch_edit_rejects_directory_target(tmp_path, monkeypatch):
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "pkg"
     path.write_text("x\n", encoding="utf-8")
     key = view(s, "pkg")
@@ -94,7 +86,6 @@ async def test_tool_runner_batch_edit_rejects_directory_target(tmp_path, monkeyp
 async def test_tool_runner_batch_edit_rejects_duplicate_create_same_file(tmp_path, monkeypatch):
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     await runner(s).run(
         [
             ToolCall("create", "Edit", ["dup.txt", "", [{"op": "create", "content": "one\n"}]]),
@@ -110,7 +101,6 @@ async def test_tool_runner_batch_edit_rejects_duplicate_create_same_file(tmp_pat
 async def test_tool_runner_batch_edit_rejects_patch_missing_file_without_create(tmp_path, monkeypatch):
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "missing.txt"
     path.write_text("x\n", encoding="utf-8")
     key = view(s, "missing.txt")
@@ -161,7 +151,6 @@ async def test_edit_creates_file_in_existing_external_directory(tmp_path, monkey
     external.mkdir()
     s = session(workspace)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     await runner(s).run([ToolCall("create", "Edit", ["../external/new.py", "", [{"op": "create", "content": "value = 1\n"}]])])
 
     assert (external / "new.py").read_text(encoding="utf-8") == "value = 1\n"
@@ -231,7 +220,6 @@ async def test_batch_insert_far_from_later_target_keeps_edit_alive(tmp_path, mon
     origin mapping: insert into line 4, then replace original line 2."""
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "code.txt"
     path.write_text("a\nb\nc\nd\ne\n", encoding="utf-8")
     key = view(s, "code.txt")
@@ -345,7 +333,6 @@ async def test_batch_refuses_two_insertions_at_one_point(tmp_path, monkeypatch):
     and are refused before anything is written."""
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "code.txt"
     path.write_text("a\nb\nc\nd\n", encoding="utf-8")
     key = view(s, "code.txt")
@@ -377,7 +364,6 @@ async def test_batch_accepts_two_views_of_one_path(tmp_path, monkeypatch):
     as the text behind it still matches what the file held when planning began."""
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "code.txt"
     path.write_text("a\nb\nc\nd\n", encoding="utf-8")
     whole = view(s, "code.txt")
@@ -401,7 +387,6 @@ async def test_batch_relocates_a_view_line_the_file_no_longer_has_room_for(tmp_p
     present, still unique -- is found where it actually is."""
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "code.txt"
     path.write_text("a\nb\nc\nd\ne\n", encoding="utf-8")
     key = view(s, "code.txt")
@@ -422,7 +407,6 @@ async def test_batch_trusts_a_tracked_index_when_an_earlier_edit_changed_a_neigh
     text and the second call lands -- the neighbour check applies only to an assumed coordinate."""
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "code.py"
     path.write_text("a\npass\npass\npass\nb\npass\n", encoding="utf-8")
     key = view(s, "code.py")
@@ -444,7 +428,6 @@ async def test_batch_untracked_target_still_needs_its_neighbours(tmp_path, monke
     enough while the target repeats and the neighbours disagree, and the call is refused."""
     s = session(tmp_path)
     s.settings.yolo = True
-    monkeypatch.setattr(CodeIndex, "update", ignore_index_update)
     path = tmp_path / "code.py"
     path.write_text("x\npass\npass\npass\npass\npass\n", encoding="utf-8")
     key = view(s, "code.py")

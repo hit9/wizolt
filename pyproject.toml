@@ -37,7 +37,6 @@ dependencies = [
     # pair would land on plain httpx, a combination retryable_error's transport-error matching is
     # tested against but the rest of the tree no longer is.
     "anthropic>=1.0.0",
-    "code-symbol-index>=0.6.0",
     "json-repair",
     "fastmcp-slim[client]>=3,<4",
     # Direct, not transitive: the update check imports httpx2 itself. The provider SDKs bring it

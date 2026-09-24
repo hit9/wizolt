@@ -558,7 +558,6 @@ class TuiRuntime:
             answer = f"Error: {error}"
         finally:
             self.loop.session.state.manual_model_retry_requested = False
-            self.loop.schedule_index_freshness()
         try:
             if cancelled:
                 self.loop.model_stream_output("", "")

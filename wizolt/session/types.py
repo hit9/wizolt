@@ -56,11 +56,6 @@ class AgentState:
     # either: the name follows the user and the goal, not whatever a tool call happens to write.
     name: str = ""
     name_source: str = ""  # "" | user | goal | input
-    code_index_status: str = ""
-    code_index_error: str = ""
-    code_index_notice: str = ""
-    code_index_refreshing: bool = False
-    code_index_checking: bool = False
     context_percent: int = 0
     context_tokens: int = 0  # transient projection estimate; do not reconstruct it from a rounded percentage
     turn_step: int = 0
