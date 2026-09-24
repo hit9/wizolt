@@ -149,7 +149,7 @@ def test_bash_schema_guides_composition_and_tool_choice_without_assuming_ripgrep
     assert "dependent steps with &&, ||, or |" in text
     assert "unrelated work as separate tool calls in the same response" in text
     assert "Use InspectCode for symbols and call graphs" in text
-    assert "Read/Search when editable numbered source is useful" in text
+    assert "use Read when editable numbered source is useful" in text
     assert "Write source with Edit, not shell redirection" in text
     assert "continues as a Job" in text
     assert "prefer rg" not in text.lower()

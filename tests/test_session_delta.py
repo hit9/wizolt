@@ -29,7 +29,7 @@ async def test_second_save_writes_delta_with_only_new_data(tmp_path):
     await s.save_snapshot()  # init
 
     s.messages.append({"role": "assistant", "content": "reply"})
-    s.store_tool_result("Search", ["pat"], "result")
+    s.store_tool_result("Bash", ["rg pat"], "result")
     await s.save_snapshot()  # delta
 
     lines = read_jsonl(log_path(s))
@@ -79,7 +79,7 @@ async def test_materialized_tool_output_survives_the_asset_collector(tmp_path):
     s = session_with_data_dir(tmp_path)
     large = "\n".join(f"line {index}" for index in range(20000))
     key = s.store_tool_result("Bash", ["big"], large)
-    marker = ContextManager(s).bound_output(large, key, path=await ContextManager(s).materialize_output(key, large))
+    marker = ContextManager(s).bound_output(large, path=await ContextManager(s).materialize_output(key, large))
     path = os.path.join(s.images.assets_dir(), key + ".txt")
     assert f'file="{path}"' in marker
 

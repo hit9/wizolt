@@ -495,13 +495,13 @@ async def test_text_observed_through_bash_can_be_edited_without_a_read(tmp_path)
     assert "return value * 2" in render(s, out)
 
 
-async def test_text_observed_through_search_can_be_edited_without_a_source_view(tmp_path):
-    from wizolt.tools.search import SearchTool
+async def test_text_observed_through_a_bash_grep_can_be_edited_without_a_source_view(tmp_path):
+    from wizolt.tools.shell import BashTool
 
     s = session(tmp_path)
     (tmp_path / "sample.py").write_text("alpha\nNeedle\nomega\n", encoding="utf-8")
-    found = await SearchTool(s, [{"pattern": "Needle", "path": "."}]).call()
-    assert "2 | Needle" in found.retained_text
+    found = await BashTool(s, ["grep -n Needle sample.py"]).call()
+    assert "2:Needle" in found  # the exact line the model can now copy into `old`
 
     edit(s, "sample.py", [{"op": "replace", "old": "Needle\n", "content": "Thread\n"}])
 

@@ -869,15 +869,15 @@ async def diff_viewer(loop: CommandLoop) -> None:
 
 async def compaction_log_viewer(loop: CommandLoop) -> None:
     """Read-only viewer for `/compact log`: the stored compaction segments newest first, and the
-    summary plus verbatim excerpt of the one opened with Enter. This is the user's half of what
-    `RecallContext` gives the model — same segments, nothing here writes.
+    summary plus verbatim excerpt of the one opened with Enter. This is the user's half of the
+    `history.N.md` export the model reads — same segments, nothing here writes.
 
     List mode: ↑/↓ or j/k move, Enter/→ opens, g/G first/last, Esc/q closes.
     Detail mode: ↑/↓ scroll one line, Ctrl-U/D half a page, PgUp/PgDn a page, Esc/← back, q closes.
     """
     if loop.tui is None:
         return
-    segments = list(reversed(loop.session.history))  # newest first, like RecallContext(list)
+    segments = list(reversed(loop.session.history))  # newest first, like the history.md index
     state = SegmentLogViewState()
     detail: dict[tuple[str, int], list[StyleAndTextTuples]] = {}
 
@@ -910,8 +910,8 @@ async def compaction_log_viewer(loop: CommandLoop) -> None:
 
     def detail_rows(segment: HistorySegment, width: int) -> list[StyleAndTextTuples]:
         """What the compaction was, then what it kept. The stored excerpt stays in the segment for
-        the model's RecallContext, but it is the raw conversation the summary already stands for —
-        showing it here buried the one thing worth reading."""
+        the model's history.N.md export, but it is the raw conversation the summary already stands
+        for — showing it here buried the one thing worth reading."""
         when, _, _ = segment_columns(segment)
         headline, caveat = segment_story(segment)
         rows: list[StyleAndTextTuples] = [

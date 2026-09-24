@@ -352,9 +352,10 @@ async def test_full_flow_compacts_before_answering(tmp_path, monkeypatch):
     # The working state is labelled a snapshot rather than kept current: correcting the checkpoint
     # later would rewrite the head of the conversation and start another cache epoch.
     assert "Working state (at this compaction; a later Note call supersedes it):\nGoal: continue" in contents[conversation]
-    # The retained archive by range and count, so the model knows it exists without being told to
-    # read it; naming only the newest segment left the older ones with no trace after a rebuild.
-    assert "Recallable history: seg.1 (1 segment)" in contents[conversation]
+    # The exported history index, by absolute path: the files that hold the evicted conversation are
+    # greppable, and the rebuild is where the model is told they exist.
+    index = session.images.assets_dir() + "/history.md"
+    assert f"Compacted history: {index} (one history.N.md per compaction beside it)" in contents[conversation]
     # goal/plan/known/check are Note's: a summarizer that volunteers replacements is ignored.
     assert "invented" not in contents[conversation]
     assert (session.state.goal, session.state.known, session.state.check) == ("continue", ["durable fact"], "tests")

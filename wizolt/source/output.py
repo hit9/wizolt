@@ -12,33 +12,30 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 
-from wizolt.source.view import EDIT, READ, SEARCH, SourceSpan, SourceViewDraft
+from wizolt.source.view import EDIT, READ, SourceSpan, SourceViewDraft
 
 
 @dataclass(frozen=True)
 class TextBlock:
-    """A non-source output part whose omitted middle is retained under the result's tr.N key."""
+    """A non-source output part whose omitted middle was written to the result's tr.N.txt file."""
 
     head: str
     tail: str
     estimated_tokens: int
     omitted_tokens: int
     budget_tokens: int
-    note_recall: str = ""
     note_file: str = ""
-    note_hint: str = ""
 
     def render(self) -> str:
         attrs = f'omitted="middle" max_tokens="{self.budget_tokens}" estimated_tokens="{self.estimated_tokens}" omitted_tokens="{self.omitted_tokens}"'
-        for name, value in (("recall", self.note_recall), ("file", self.note_file), ("hint", self.note_hint)):
-            attrs += f" {name}={_quote(value)}" if value else ""
+        attrs += f" file={_quote(self.note_file)}" if self.note_file else ""
         note = f"<bounded_output {attrs}/>"
         return "\n".join(part for part in (self.head.rstrip(), note, self.tail.lstrip()) if part)
 
 
 @dataclass(frozen=True)
 class SourceBlock:
-    """A draft plus per-line markers (e.g. Search's `>` match / ` ` context prefix).
+    """A draft plus per-line markers (e.g. `>` on a match line, ` ` on its context).
 
     `bounded` records a projection clip: the visible spans are head spans followed by tail spans,
     and `split_span` is the index of the first tail span. The omitted middle is not part of any
@@ -52,9 +49,7 @@ class SourceBlock:
     omitted_tokens: int = 0
     budget_tokens: int = 0  # the projection budget the block was clipped to
     split_span: int = 0  # index of the first tail span when bounded
-    note_recall: str = ""  # tr.N key the full retained output lives under, filled by the runner
     note_file: str = ""  # materialized asset path for the full retained output, filled by the runner
-    note_hint: str = ""  # what the model should do with the omitted middle
 
     @classmethod
     def plain(cls, draft: SourceViewDraft) -> SourceBlock:
@@ -93,8 +88,7 @@ class SourceBlock:
 
     def _note(self) -> str:
         attrs = f'omitted="middle" max_tokens="{self.budget_tokens}" estimated_tokens="{self.estimated_tokens}" omitted_tokens="{self.omitted_tokens}"'
-        for name, value in (("recall", self.note_recall), ("file", self.note_file), ("hint", self.note_hint)):
-            attrs += f' {name}="{value}"' if value else ""
+        attrs += f' file="{self.note_file}"' if self.note_file else ""
         return f"<bounded_output {attrs}/>"
 
     def _open_tag(self, key: str) -> str:
@@ -103,12 +97,10 @@ class SourceBlock:
         ranges = draft.ranges_label()
         if draft.producer == READ:
             return f"<Read path={_quote(draft.display_path)}{source} lines={_quote(ranges)} total_lines={draft.total_lines}>"
-        if draft.producer == SEARCH:
-            return f"<file path={_quote(draft.display_path)}{source} lines={_quote(ranges)}>"
         return f"<source path={_quote(draft.display_path)}{source} lines={_quote(ranges)}>"
 
     def _close_tag(self) -> str:
-        return {READ: "</Read>", SEARCH: "</file>"}.get(self.draft.producer, "</source>")
+        return "</Read>" if self.draft.producer == READ else "</source>"
 
     def overhead(self, estimate: Callable[[str], int]) -> int:
         """What this block costs before a single line of source: its tags and its omission note.
@@ -177,9 +169,8 @@ class ToolOutput:
         safe to run before view ids are allocated.
 
         The budget is a target, not a hard cap: `estimate` is approximate, and the runner adds the
-        recall key, asset path, and hint to each omission note afterwards, which it cannot know
-        before finding out that anything was clipped. The overshoot is bounded by one note per
-        clipped block.
+        asset path to each omission note afterwards, which it cannot know before finding out that
+        anything was clipped. The overshoot is bounded by one note per clipped block.
         """
         if not self.has_source or estimate(self.render([None] * len(self.drafts))) <= max_tokens:
             return self

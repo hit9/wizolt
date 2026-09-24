@@ -1,7 +1,5 @@
 import asyncio
-import json
 import os
-import shutil
 
 import code_symbol_index as csi
 import pytest
@@ -20,7 +18,7 @@ from wizolt.config import (
 from wizolt.context import ContextManager
 from wizolt.render import Theme, UiPrinter
 from wizolt.runner import ToolRunner
-from wizolt.session import HistorySegment, Session
+from wizolt.session import Session
 from wizolt.tools import (
     TOOL_REGISTRY,
     TOOLS,
@@ -31,9 +29,6 @@ from wizolt.tools import (
     MCPTool,
     NoteTool,
     ReadTool,
-    RecallContextTool,
-    RecallTool,
-    SearchTool,
     SkillTool,
     Tool,
     ViewImageTool,
@@ -151,22 +146,6 @@ def test_strict_schema_handles_optional_enum_union_and_container_without_mutatio
     assert strict["properties"]["items"] == {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]}
 
 
-@pytest.mark.parametrize(
-    ("args", "message"),
-    [
-        ([], "at least one query object"),
-        (["needle"], "query objects"),
-        ([{"pattern": "needle", "extra": True}], "unexpected field"),
-        ([{"pattern": ""}], "requires pattern"),
-        ([{"pattern": "needle", "context": True}], "context must be"),
-        ([{"pattern": "needle", "context": SearchTool.MAX_CONTEXT + 1}], "context must be"),
-    ],
-)
-def test_search_request_validation_is_actionable(tmp_path, args, message):
-    with pytest.raises(ToolError, match=message):
-        SearchTool(session(tmp_path), args).requests()
-
-
 def test_skill_tool_without_library_reports_missing_capability(tmp_path):
     s = session(tmp_path)
     s.skills = None
@@ -216,15 +195,13 @@ async def test_reading_a_materialized_tool_output_needs_no_confirmation(tmp_path
     s = Session(cwd=str(workspace), config=Config(data_dir=str(tmp_path / "data")))
     large = "\n".join(f"line {index}" for index in range(20000))
     key = s.store_tool_result("Bash", ["big"], large)
-    ContextManager(s).bound_output(large, key, path=await ContextManager(s).materialize_output(key, large))
+    ContextManager(s).bound_output(large, path=await ContextManager(s).materialize_output(key, large))
     asset = os.path.join(s.images.assets_dir(), key + ".txt")
     outside = tmp_path / "elsewhere.txt"
     outside.write_text("private\n", encoding="utf-8")
 
     assert ReadTool(s, [{"path": asset}]).needs_confirmation() is False
-    assert SearchTool(s, [{"path": asset, "pattern": "line 5"}]).needs_confirmation() is False
     assert ReadTool(s, [{"path": str(outside)}]).needs_confirmation() is True
-    assert SearchTool(s, [{"path": str(outside), "pattern": "private"}]).needs_confirmation() is True
     # Reading it really does return the full output the marker promised.
     assert "line 19999" in ReadTool(s, [{"path": asset}]).call().retained_text
 
@@ -260,7 +237,7 @@ def test_code_index_failure_helpers_keep_session_state_consistent(tmp_path, monk
     assert s.state.code_index_status == "synced"
 
 
-async def test_read_and_search_success_paths(tmp_path):
+async def test_read_success_paths(tmp_path):
     (tmp_path / "sample.py").write_text("alpha\nNeedle\nomega\n", encoding="utf-8")
     (tmp_path / "blob.bin").write_bytes(b"a\0b")
     s = session(tmp_path)
@@ -277,19 +254,10 @@ async def test_read_and_search_success_paths(tmp_path):
     assert "3 | omega" in full_default.retained_text
     assert "total_lines=3" in full_default.retained_text  # Read reports the line count
 
-    found = await SearchTool(s, [{"pattern": "needle", "path": "."}]).call()
-    assert '<Search pattern="needle" matches=1>' in found.retained_text
-    assert '<file path="sample.py"' in found.retained_text
-    assert "2 | Needle" in found.retained_text
 
-    multiline = await SearchTool(s, [{"pattern": "alpha\\nNeedle", "path": "sample.py"}]).call()
-    assert '<file path="sample.py"' in multiline.retained_text
-    assert "1 | alpha" in multiline.retained_text
-
-
-async def test_read_search_and_edit_report_one_based_line_numbers(tmp_path):
-    """Read, Search, and Edit must number lines the way `grep -n`, tracebacks, and diffs do, so
-    a line number seen in one place can be used in another without adjustment."""
+async def test_read_and_edit_report_one_based_line_numbers(tmp_path):
+    """Read and Edit must number lines the way `grep -n`, tracebacks, and diffs do, so a line
+    number seen in one place can be used in another without adjustment."""
     s = session(tmp_path)
     lines = ["alpha", "beta", "Needle", "omega"]  # grep -n numbers these 1..4
     (tmp_path / "sample.py").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -300,12 +268,6 @@ async def test_read_search_and_edit_report_one_based_line_numbers(tmp_path):
     assert "2 | beta" in read.retained_text
     assert "3 | Needle" in read.retained_text
     assert "alpha" not in read.retained_text and "omega" not in read.retained_text
-
-    # Search agrees with Read on the same line, through both the ripgrep and the Python backend.
-    found = await SearchTool(s, [{"pattern": "needle", "path": "."}]).call()
-    assert "3 | Needle" in found.retained_text
-    multiline = await SearchTool(s, [{"pattern": "beta\\nNeedle", "path": "sample.py"}]).call()
-    assert "2 | beta" in multiline.retained_text
 
     # A view taken from that output edits the line it names, and nothing shifts by one.
     key = s.register_source_drafts(list(read.drafts))[0]
@@ -353,134 +315,6 @@ def test_one_based_edit_targets_never_shift_the_wrong_line(tmp_path):
     assert (tmp_path / "dup.py").read_text(encoding="utf-8") == "head\nONE\nsame\n"
 
 
-def test_recall_behaviors(tmp_path):
-    s = session(tmp_path)
-    first = s.store_tool_result("Read", ["a.txt"], "a0\na1\na2\n")
-    second = s.store_tool_result("Search", [{"pattern": "b"}], "b0\nb1\n")
-
-    sliced = RecallTool(s, [{"keys": [first, second], "ranges": [[2, 2]]}]).call()
-    assert "a1" in sliced and "a0" not in sliced
-    assert "b1" in sliced and "b0" not in sliced
-
-    common_range = RecallTool(s, [{"keys": [first], "ranges": [[0, 1]]}]).call()
-    assert "a0" in common_range and "a1" not in common_range
-
-    # Digit-string endpoints (some providers stringify numbers) parse like integers.
-    string_endpoints = RecallTool(s, [{"keys": [first], "ranges": [["1", "2"]]}]).call()
-    assert "a0" in string_endpoints and "a1" in string_endpoints and "a2" not in string_endpoints
-
-    with pytest.raises(ToolError):
-        RecallTool(s, [{"key": first, "ranges": [[2, "bad"]]}]).call()
-
-
-def test_recall_history_regex_searches_titles_and_text(tmp_path):
-    s = session(tmp_path)
-    s.history.extend(
-        [
-            HistorySegment(key="seg.1", title="cache work", text="user:\nStable prefix design"),
-            HistorySegment(key="seg.2", title="notes", text="assistant:\nTask Memory placement"),
-            HistorySegment(key="seg.3", title="unrelated", text="assistant:\nNothing relevant"),
-        ]
-    )
-
-    result = RecallContextTool(s, [{"query": "stable prefix|task memory"}]).call()
-
-    assert '<RecallContextSearchResult query="stable prefix|task memory" matches=2>' in result
-    assert "seg.1 2" in result
-    assert "Stable prefix design" in result
-    assert "seg.2 2" in result
-    assert "Task Memory placement" in result
-    assert "seg.3" not in result
-
-
-def test_recall_history_regex_supports_key_scope_case_and_limit(tmp_path):
-    s = session(tmp_path)
-    s.history.extend(
-        [
-            HistorySegment(key="seg.1", title="one", text="Needle first"),
-            HistorySegment(key="seg.2", title="two", text="needle second\nneedle third"),
-            HistorySegment(key="seg.3", title="three", text="needle fourth"),
-        ]
-    )
-
-    result = RecallContextTool(
-        s,
-        [{"keys": ["seg.1", "seg.2"], "query": "needle", "case_sensitive": True, "limit": 1}],
-    ).call()
-
-    assert "matches=1" in result
-    assert "seg.1" not in result
-    assert "seg.2 1" in result
-    assert "needle second" in result
-    assert "needle third" not in result
-    assert "seg.3" not in result
-
-
-def test_recall_history_regex_validates_search_arguments(tmp_path):
-    s = session(tmp_path)
-
-    for payload in ({"query": "["}, {"query": "x", "limit": 0}, {"keys": ["seg.1"], "case_sensitive": True}):
-        with pytest.raises(ToolError):
-            RecallContextTool(s, [payload]).call()
-
-
-def test_recall_history_lists_newest_segments_with_pagination(tmp_path):
-    s = session(tmp_path)
-    s.history.extend(HistorySegment(key=f"seg.{index}", title=f"task {index}") for index in range(1, 5))
-
-    first = json.loads(RecallContextTool(s, [{"action": "list", "limit": 2}]).call())
-    second = json.loads(RecallContextTool(s, [{"action": "list", "limit": 2, "before": first["next_before"]}]).call())
-
-    assert first == {
-        "segments": [{"key": "seg.4", "title": "task 4"}, {"key": "seg.3", "title": "task 3"}],
-        "total": 4,
-        "returned": 2,
-        "next_before": "seg.3",
-    }
-    assert second["segments"] == [{"key": "seg.2", "title": "task 2"}, {"key": "seg.1", "title": "task 1"}]
-    assert "next_before" not in second
-
-
-@pytest.mark.parametrize(
-    ("payload", "message"),
-    [
-        ({"action": "unknown"}, "action must be"),
-        ({"action": "list", "keys": ["seg.1"]}, "list accepts only"),
-        ({"action": "get", "keys": ["seg.1"], "limit": 1}, "get accepts only"),
-        ({"action": "search"}, "search requires query"),
-        ({"action": "search", "query": "x", "before": "seg.1"}, "before is only valid"),
-        ({"action": "list", "before": "bad"}, "before must look like"),
-    ],
-)
-def test_recall_history_actions_reject_conflicting_fields(tmp_path, payload, message):
-    with pytest.raises(ToolError, match=message):
-        RecallContextTool(session(tmp_path), [payload]).call()
-
-
-def test_recall_history_rejects_bad_key_format(tmp_path):
-    s = session(tmp_path)
-
-    with pytest.raises(ToolError):
-        RecallContextTool(s, [{"keys": ["tr.1"]}]).call()
-
-
-def test_recall_history_reports_missing_segment(tmp_path):
-    s = session(tmp_path)
-
-    assert "seg.9: missing" in RecallContextTool(s, [{"keys": ["seg.9"]}]).call()
-
-
-def test_recall_history_returns_segment_text(tmp_path):
-    s = session(tmp_path)
-    s.history.append(HistorySegment(key="seg.1", title="task", text="user:\nfind bug"))
-
-    result = RecallContextTool(s, [{"keys": ["seg.1"]}]).call()
-
-    assert "<RecallContextResult>" in result
-    assert 'key="seg.1"' in result
-    assert "find bug" in result
-
-
 def test_reject_collapses_display(tmp_path):
     s = session(tmp_path)
     out = []
@@ -514,36 +348,11 @@ def test_read_missing_file_is_a_rejection_not_a_failure(tmp_path):
     assert not any("[failed]" in t for t in out)
 
 
-async def test_search_ignores_hidden_and_gitignored_paths(tmp_path, monkeypatch):
-    monkeypatch.setattr(shutil, "which", lambda name: None)
-    (tmp_path / ".gitignore").write_text("ignored.txt\nignored_dir/\n", encoding="utf-8")
-    (tmp_path / "visible.txt").write_text("needle\n", encoding="utf-8")
-    (tmp_path / ".hidden.txt").write_text("needle\n", encoding="utf-8")
-    (tmp_path / ".hidden_dir").mkdir()
-    (tmp_path / ".hidden_dir" / "inside.txt").write_text("needle\n", encoding="utf-8")
-    (tmp_path / "ignored.txt").write_text("needle\n", encoding="utf-8")
-    (tmp_path / "ignored_dir").mkdir()
-    (tmp_path / "ignored_dir" / "inside.txt").write_text("needle\n", encoding="utf-8")
-    s = session(tmp_path)
-
-    found = await SearchTool(s, [{"pattern": "needle", "path": "."}]).call()
-    direct_hidden = await SearchTool(s, [{"pattern": "needle", "path": ".hidden.txt"}]).call()
-    direct_ignored = await SearchTool(s, [{"pattern": "needle", "path": "ignored_dir/inside.txt"}]).call()
-
-    assert "visible.txt" in found.retained_text
-    assert ".hidden" not in found.retained_text
-    assert "ignored" not in found.retained_text
-    assert ".hidden.txt" not in direct_hidden.retained_text
-    assert "ignored_dir/inside.txt" not in direct_ignored.retained_text
-
-
 def test_single_and_batch_payload_shapes_are_supported():
     assert tool_payload("Read", {"path": "a.py"}) == [{"path": "a.py", "ranges": [[1, 0]]}]
     assert tool_payload("Read", {"path": "a.py", "ranges": [0, 2]}) == [{"path": "a.py", "ranges": [[0, 2]]}]
     assert tool_payload("Read", {"files": [{"path": "a.py", "ranges": [[0, 1]]}]}) == [{"path": "a.py", "ranges": [[0, 1]]}]
     assert ReadTool(Session(cwd="."), [{"path": "wizolt.py"}]).targets()[0][1] == [(1, 0)]
-    assert tool_payload("Search", {"pattern": "TODO"}) == [{"pattern": "TODO"}]
-    assert tool_payload("Search", {"queries": [{"pattern": "TODO"}]}) == [{"pattern": "TODO"}]
     assert tool_payload("Note", {"set_goal": "ship"}) == [{"set_goal": "ship"}]
 
 
@@ -595,35 +404,19 @@ def test_parallel_safe_false_for_tools_outside_whitelist(tmp_path):
     s = session(tmp_path)
     runner = ToolRunner(s, ContextManager(s))
 
-    # Search is normally parallel-safe, but the whitelist excludes it, so it falls back to
+    # InspectCode is normally parallel-safe, but the whitelist excludes it, so it falls back to
     # serial run_one (where the whitelist gate rejects it) instead of execute_readonly.
     s.tool_names = ("Bash",)
-    assert not runner.parallel_safe(ToolCall("c1", "Search", [{"pattern": "x"}]))
+    assert not runner.parallel_safe(ToolCall("c1", "InspectCode", ["find", "Tool"]))
 
     # Empty tuple = no filtering: parallel-safety is decided as before.
     s.tool_names = ()
-    assert runner.parallel_safe(ToolCall("c2", "Search", [{"pattern": "x"}]))
+    assert runner.parallel_safe(ToolCall("c2", "InspectCode", ["find", "Tool"]))
 
 
-def test_tool_runner_short_call_formats_search_and_recall(tmp_path):
+def test_tool_runner_short_call_formats_note(tmp_path):
     s = session(tmp_path)
     runner = ToolRunner(s, ContextManager(s), output_fn=lambda text: None)
-
-    search = tooloutput.short_call(
-        runner.session,
-        ToolCall(
-            "s",
-            "Search",
-            [
-                {"pattern": "done in", "glob": "*.py"},
-                {"pattern": "elapsed.*s]", "path": "tests", "context": 2},
-            ],
-        ),
-    )
-    assert search == 'Search "done in" glob=*.py; "elapsed.*s]" path=tests C=2'
-
-    recall = tooloutput.short_call(runner.session, ToolCall("r", "Recall", [{"keys": ["tr.4", "tr.5"], "ranges": [[0, 80]]}]))
-    assert recall == "Recall tr.4 0:80; tr.5 0:80"
 
     s.state.known = ["existing"]
     note = tooloutput.short_call(
@@ -658,15 +451,12 @@ def test_tool_schemas_are_strict_for_high_risk_tools():
     edit_params = EditTool.schema()["function"]["parameters"]
     assert edit_params["required"] == ["path", "edits"]
     assert set(edit_params["properties"]) == {"edits", "path", "source"}
-    assert "source=view.N from Read, Search, or InspectCode" in EditTool.schema()["function"]["description"]
+    assert "source=view.N from Read or InspectCode" in EditTool.schema()["function"]["description"]
     edits_schema = edit_params["properties"]["edits"]
     assert edits_schema["items"]["required"] == ["op"]
     assert edits_schema["items"]["properties"]["op"]["enum"] == ["create", "replace", "delete"]
     assert "never omit" in edits_schema["items"]["properties"]["op"]["description"]
     assert "every item requires op" in edits_schema["description"]
-
-    recall_keys = RecallTool.schema()["function"]["parameters"]["properties"]["keys"]
-    assert recall_keys["items"]["pattern"] == r"^tr\.\d+$"
 
     read_params = ReadTool.schema()["function"]["parameters"]
     assert {"path", "ranges", "files"} <= set(read_params["properties"])
@@ -682,10 +472,6 @@ def test_tool_schemas_are_strict_for_high_risk_tools():
     status = note_params["properties"]["replace_plan"]["items"]["properties"]["status"]
     assert status["enum"] == ["todo", "doing", "done", "blocked"]
     assert "minItems" not in note_params["properties"]["replace_known"]
-
-    search_params = SearchTool.schema()["function"]["parameters"]
-    assert {"pattern", "queries"} <= set(search_params["properties"])
-    assert search_params["properties"]["queries"]["items"]["properties"]["context"]["type"] == "integer"
 
     def walk(value):
         if isinstance(value, dict):
@@ -719,8 +505,6 @@ async def test_tool_validation_rejects_bad_shapes_without_side_effects(tmp_path)
     with pytest.raises(ToolError):
         await BashTool(s, []).call()
     with pytest.raises(ToolError):
-        await SearchTool(s, [{"pattern": "["}]).call()
-    with pytest.raises(ToolError):
         InspectCodeTool(s, ["inspect", "two words"]).call()
 
     assert not (tmp_path / "a.txt").exists()
@@ -740,7 +524,7 @@ def test_prose_call_lines_are_not_lexed_as_arguments(tmp_path):
 
 def test_uiprinter_highlights_generic_tool_arguments(tmp_path):
     session(tmp_path)
-    line = toolblocks.log_root('Search "done in" glob=*.py C=2')
+    line = toolblocks.log_root('Read "done in" glob=*.py C=2')
 
     assert line.syntax == "tool-args"
     segments = UiPrinter(output_fn=lambda text: None).log_segments(LogBlock([line]))
@@ -801,64 +585,14 @@ async def test_mixed_batch_whitelisted_tool_runs_and_excluded_rejected(tmp_path)
     runner = ToolRunner(s, ContextManager(s), input_fn=lambda prompt: "y")
 
     calls = [
-        ToolCall("s1", "Search", [{"pattern": "hello"}]),
+        ToolCall("s1", "ViewImage", [{"path": "a.png"}]),
         ToolCall("r1", "Read", [{"path": "a.txt"}]),
-        ToolCall("s2", "Search", [{"pattern": "hello"}]),
+        ToolCall("s2", "ViewImage", [{"path": "a.png"}]),
     ]
     contents = {message["tool_call_id"]: str(message["content"]) for message in await runner.run(calls)}
     assert "hello" in contents["r1"]
-    assert "Search is not available in this session" in contents["s1"]
-    assert "Search is not available in this session" in contents["s2"]
-
-
-async def test_search_shares_one_view_per_file_across_queries(tmp_path, monkeypatch):
-    """A batched Search unions every query's visible rows for one path into one view, so two
-    queries hitting the same file cannot hand the model two ids for the same snapshot -- or two
-    renderings of it that disagree. The Python backend and ripgrep must agree on that shape."""
-    (tmp_path / "a.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
-    (tmp_path / "b.py").write_text("alpha\n", encoding="utf-8")
-
-    for rg_available in (True, False):
-        s = session(tmp_path)
-        if not rg_available:
-            monkeypatch.setattr(shutil, "which", lambda name: None)
-        out = await SearchTool(s, [{"pattern": "alpha", "path": "."}, {"pattern": "gamma", "path": "."}]).call()
-        keys = s.register_source_drafts(list(out.drafts))
-        text = out.render(keys)
-
-        # Three blocks (a.py twice, b.py once) but two views: a.py's blocks share one id.
-        assert len(keys) == 3
-        assert len(set(keys)) == 2
-        assert len(s.source_views) == 2
-        a_view = next(v for v in s.source_views.values() if v.display_path == "a.py")
-        assert [line for span in a_view.spans for line in span.lines] == ["alpha\n", "gamma\n"]
-        assert text.count(f'source="{a_view.key}"') == 2
-        monkeypatch.undo()
-
-
-async def test_search_rows_come_from_the_file_not_the_candidate_finder(tmp_path, monkeypatch):
-    """ripgrep only nominates (path, line) candidates. If the file changes before the rows are
-    captured, the view must show the file as it is now -- pairing a view id with the text rg
-    printed earlier would let an Edit validate against content that no longer exists."""
-    path = tmp_path / "a.py"
-    path.write_text("needle\nsecond\n", encoding="utf-8")
-    s = session(tmp_path)
-    tool = SearchTool(s, [{"pattern": "needle", "path": "."}])
-    original = SearchTool.find_candidates
-
-    async def stale(self, request):
-        rows = await original(self, request)
-        path.write_text("header\nneedle\nsecond\n", encoding="utf-8")  # shifts every candidate line
-        return rows
-
-    monkeypatch.setattr(SearchTool, "find_candidates", stale)
-    out = await tool.call()
-    key = s.register_source_drafts(list(out.drafts))[0]
-    view_obj = s.get_source_view(key)
-
-    assert view_obj.total_lines == 3
-    assert [(span.start, span.lines) for span in view_obj.spans] == [(2, ("needle\n",))]
-    assert "2 | needle" in out.retained_text
+    assert "ViewImage is not available in this session" in contents["s1"]
+    assert "ViewImage is not available in this session" in contents["s2"]
 
 
 def test_read_merges_one_view_per_path_across_request_items(tmp_path):
@@ -890,164 +624,3 @@ def test_read_merges_one_view_per_path_across_request_items(tmp_path):
     with pytest.raises(ToolError, match="source range unseen"):
         a_view.range_lines(6, 9)
 
-
-async def test_search_skips_a_candidate_it_cannot_hydrate(tmp_path):
-    """ripgrep nominates a path; the view has to come from reading that path now. When the read
-    fails -- the file was removed, or grew past the size limit, between discovery and capture --
-    the path is dropped from the result rather than reported with text nothing can vouch for."""
-    (tmp_path / "keep.py").write_text("needle here\n", encoding="utf-8")
-    (tmp_path / "vanishes.py").write_text("needle here\n", encoding="utf-8")
-    s = session(tmp_path)
-    tool = SearchTool(s, [{"pattern": "needle", "path": "."}])
-    original = SearchTool.find_candidates
-
-    async def then_remove(self, request):
-        rows = await original(self, request)
-        os.unlink(tmp_path / "vanishes.py")
-        return rows
-
-    SearchTool.find_candidates = then_remove
-    try:
-        out = await tool.call()
-    finally:
-        SearchTool.find_candidates = original
-
-    keys = s.register_source_drafts(list(out.drafts))
-    assert [s.get_source_view(key).display_path for key in keys] == ["keep.py"]
-    assert "vanishes.py" not in out.retained_text
-    assert '<Search pattern="needle" matches=1>' in out.retained_text
-
-
-async def test_search_stop_hook_kills_and_reaps_its_child(tmp_path):
-    """Search spends its time inside ripgrep, so cancelling the turn has to reach that process.
-
-    The child is owned rather than run through `subprocess.run`, which gives no handle to kill:
-    a stop kills it, `_run_rg` still reaps it before returning, and no further child is started."""
-    from wizolt.tools import SearchTool
-
-    s = session(tmp_path)
-    tool = SearchTool(s, [{"pattern": "x"}])
-    task = asyncio.create_task(tool._run_rg(["sleep", "30"]))
-    async with asyncio.timeout(2):
-        while tool._process is None:
-            await asyncio.sleep(0.01)
-    assert tool._process is not None, "the child never started"
-    child = tool._process
-
-    tool.request_stop()
-    result = await asyncio.wait_for(task, 5)
-
-    assert child.returncode is not None  # reaped, not left as a zombie
-    assert result is not None and result[0] != 0
-    # Once stopped, no further ripgrep invocation is started at all.
-    assert await tool._run_rg(["sleep", "30"]) is None
-
-
-async def test_search_python_fallback_quiesces_before_cancellation_returns(tmp_path, monkeypatch):
-    import threading
-
-    tool = SearchTool(session(tmp_path), [{"pattern": "x"}])
-    started = threading.Event()
-    ended = threading.Event()
-
-    def scan(_request, _patterns):
-        started.set()
-        while not tool._stopped:
-            ended.wait(0.01)
-        ended.set()
-        return []
-
-    monkeypatch.setattr(tool, "python_candidates", scan)
-    task = asyncio.create_task(tool._python_candidates({}, []))
-    async with asyncio.timeout(2):
-        while not started.is_set():
-            await asyncio.sleep(0.01)
-    task.cancel()
-
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    assert ended.is_set()
-
-
-async def test_search_hydration_blocked_still_lets_a_heartbeat_advance(tmp_path, monkeypatch):
-    """A search whose file reads are stuck in a worker must not stall the loop: hydration is one
-    `run_blocking` call, so the loop stays free while the worker is blocked on disk."""
-    import threading
-
-    (tmp_path / "a.py").write_text("needle\n", encoding="utf-8")
-    s = session(tmp_path)
-    tool = SearchTool(s, [{"pattern": "needle", "path": "."}])
-    entered, release = threading.Event(), threading.Event()
-    real_read = SearchTool.read_current
-
-    def slow_read(self, path):
-        entered.set()
-        release.wait(5)
-        return real_read(self, path)
-
-    monkeypatch.setattr(SearchTool, "read_current", slow_read)
-
-    beats = 0
-
-    async def heartbeat():
-        nonlocal beats
-        while True:
-            beats += 1
-            await asyncio.sleep(0.001)
-
-    pulse = asyncio.create_task(heartbeat())
-    search = asyncio.create_task(tool.call())
-    await asyncio.to_thread(entered.wait, 5)
-    await asyncio.sleep(0.02)
-    assert beats > 0, "the loop stalled behind the hydration worker"
-    release.set()
-    out = await search
-    pulse.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await pulse
-    assert "needle" in out.retained_text
-
-
-async def test_search_hydration_cancellation_quiesces_before_reporting(tmp_path, monkeypatch):
-    """Cancelling a search whose hydration worker is mid-read waits for that worker -- it must not
-    be abandoned holding a file open -- then reports the cancellation."""
-    import threading
-
-    (tmp_path / "a.py").write_text("needle\n", encoding="utf-8")
-    s = session(tmp_path)
-    tool = SearchTool(s, [{"pattern": "needle", "path": "."}])
-    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
-    real_read = SearchTool.read_current
-
-    def slow_read(self, path):
-        entered.set()
-        try:
-            release.wait(5)
-            return real_read(self, path)
-        finally:
-            finished.set()
-
-    monkeypatch.setattr(SearchTool, "read_current", slow_read)
-    search = asyncio.create_task(tool.call())
-    await asyncio.to_thread(entered.wait, 5)
-    search.cancel()
-    await asyncio.sleep(0.05)
-    assert not finished.is_set()  # run_blocking kept waiting rather than abandoning the worker
-    release.set()
-    with pytest.raises(asyncio.CancelledError):
-        await search
-    assert finished.is_set()
-
-
-def test_search_points_structural_questions_at_the_index():
-    """Where the wrong tool is chosen is where the correction has to be.
-
-    "Who calls this" is a structural question. Answered with a regex it costs several rounds of
-    false positives before the model gives up and asks the index, so Search says so itself rather
-    than relying on the model to infer the split from two capability lists.
-    """
-    from wizolt.tools.search import SearchTool
-
-    description = SearchTool.schema()["function"]["description"]
-    assert "InspectCode" in description
-    assert all(word in description for word in ("symbols", "callers", "refs"))

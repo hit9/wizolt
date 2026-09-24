@@ -1,6 +1,6 @@
 """Delegate: hand a bounded task to the worker, a second in-process wizolt session.
 
-The worker is a full wizolt session — compaction, Recall, tr.N, Job, Skill, MCP, image, diff,
+The worker is a full wizolt session — compaction, tr.N, Job, Skill, MCP, image, diff,
 confirmation, snapshots, protocol adapters — projected from the parent's state with its own system
 prompt and a reduced tool list. Serial, one worker at a time, one-way: the worker has no tool that
 points back at the parent. See DESIGN.md's worker-handoff section.
@@ -39,14 +39,11 @@ if TYPE_CHECKING:
 WORKER_TOOLS: tuple[str, ...] = (
     "Read",
     "ViewImage",
-    "Search",
     "InspectCode",
     "Edit",
     "Bash",
     "Job",
     "ToolScript",
-    "Recall",
-    "RecallContext",
     "Note",
     "Context",
     "Skill",

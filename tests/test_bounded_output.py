@@ -37,16 +37,17 @@ def test_session_tool_result_store_prunes_old_records(tmp_path):
     assert s.tool_records[0].key == "tr.6"
     assert "tr.405" in s.tool_results
 
-def test_bounded_output_marks_recall_key(tmp_path):
+def test_bounded_output_marks_the_omitted_middle(tmp_path):
     s = session(tmp_path)
     context = ContextManager(s)
     large = "head\n" + "\n".join(f"line {index}" for index in range(20000)) + "\ntail\n"
-    bounded = context.bound_output(large, "tr.large")
+    bounded = context.bound_output(large)
 
     assert "head" in bounded
     assert "tail" in bounded
     assert "<bounded_output" in bounded
-    assert 'recall="tr.large"' in bounded
+    # No file to point at: the marker names no key and offers no reading advice.
+    assert "recall=" not in bounded and "hint=" not in bounded
 
 def test_bounded_output_keeps_head_and_tail_of_a_single_line_payload(tmp_path):
     """The reported failure: an MCP server returns one long line of compact JSON, and snapping the
@@ -57,7 +58,7 @@ def test_bounded_output_keeps_head_and_tail_of_a_single_line_payload(tmp_path):
     payload = '{"id": 1, "system_prompt": "' + "x" * 40000 + '", "tail_field": "last"}'
     large = f'<MCPCall server="orion" tool="get_agent">\n{payload}\n</MCPCall>'
 
-    bounded = context.bound_output(large, "tr.1")
+    bounded = context.bound_output(large)
 
     assert '"system_prompt"' in bounded  # real head, not just the opening tag
     assert '"tail_field": "last"' in bounded  # real tail, not just the closing tag
@@ -73,7 +74,7 @@ def test_bounded_output_still_snaps_excerpts_to_line_boundaries(tmp_path):
     context = ContextManager(s)
     large = "\n".join(f"line {index} " + "y" * 40 for index in range(20000))
 
-    bounded = context.bound_output(large, "tr.1")
+    bounded = context.bound_output(large)
     head, _, rest = bounded.partition("<bounded_output")
     _, _, tail = rest.partition("/>")
 
@@ -85,45 +86,42 @@ async def test_bounded_output_materializes_full_output_to_asset_file(tmp_path):
     context = ContextManager(s)
     large = "head\n" + "\n".join(f"line {index}" for index in range(20000)) + "\ntail\n"
     path = await context.materialize_output("tr.1", large)
-    bounded = context.bound_output(large, "tr.1", path=path)
+    bounded = context.bound_output(large, path=path)
 
     assert path == os.path.join(s.images.assets_dir(), "tr.1.txt")
-    assert 'recall="tr.1"' in bounded
     assert f'file="{path}"' in bounded
     assert await asyncio.to_thread(Path(path).read_text, encoding="utf-8") == large
 
-async def test_bounded_output_marker_names_the_cheaper_way_to_read_the_rest(tmp_path):
-    """`recall` and `file` say where the omitted middle went, not what to do about it, and the cheap
-    move is the non-obvious one. The marker points at whichever one the result actually has."""
+async def test_bounded_output_names_the_file_holding_the_omitted_middle(tmp_path, monkeypatch):
+    """The marker says where the rest of the output went, and nothing more: what to do about it is
+    the model's own call. A file it cannot name is left unnamed."""
     s = session(tmp_path)
     context = ContextManager(s)
     large = "head\n" + "\n".join(f"line {index}" for index in range(20000)) + "\ntail\n"
 
     path = await context.materialize_output("tr.1", large)
-    bounded = context.bound_output(large, "tr.1", path=path)
-    assert f'hint="{ContextManager.OMITTED_OUTPUT_HINT}"' in bounded
+    bounded = context.bound_output(large, path=path)
+    assert f'file="{path}"' in bounded
+    assert "hint=" not in bounded
 
-    # No file to point at: the write failed, and the marker falls back to the Recall form.
+    # The write failed: no file to point at, so no file= attribute, rather than one still in flight.
     (tmp_path / "blocked.txt").write_text("x", encoding="utf-8")
-    s.images.assets_dir = lambda: str(tmp_path / "blocked.txt" / "sub")
-    fileless = context.bound_output(large, "tr.2", path=await context.materialize_output("tr.2", large))
+    monkeypatch.setattr(s.images, "assets_dir", lambda: str(tmp_path / "blocked.txt" / "sub"))
+    fileless = context.bound_output(large, path=await context.materialize_output("tr.2", large))
     assert 'file="' not in fileless
-    assert f'hint="{ContextManager.OMITTED_OUTPUT_RECALL_HINT}"' in fileless
+    assert "<bounded_output" in fileless
 
-    # The compaction summary is bounded with no key at all: nothing to recall, nothing to advise.
-    assert "hint=" not in context.bound_output(large, "")
-
-def test_bounded_output_small_or_keyless_never_writes_asset_file(tmp_path):
+def test_bounded_output_small_or_fileless_never_names_a_file(tmp_path):
     s = session(tmp_path)
     context = ContextManager(s)
 
-    small = context.bound_output("small output", "tr.1")
+    small = context.bound_output("small output")
     assert 'file="' not in small
 
     large = "head\n" + "\n".join(f"line {index}" for index in range(20000)) + "\ntail\n"
-    keyless = context.bound_output(large, "")
-    assert 'recall="' not in keyless
-    assert 'file="' not in keyless
+    unbound = context.bound_output(large)
+    assert 'recall="' not in unbound
+    assert 'file="' not in unbound
 
 async def test_bounded_output_survives_asset_write_failure(tmp_path, monkeypatch):
     s = session(tmp_path)
@@ -134,8 +132,8 @@ async def test_bounded_output_survives_asset_write_failure(tmp_path, monkeypatch
     (tmp_path / "blocked.txt").write_text("x", encoding="utf-8")
     monkeypatch.setattr(s.images, "assets_dir", lambda: str(tmp_path / "blocked.txt" / "sub"))
 
-    bounded = context.bound_output(large, "tr.1", path=await context.materialize_output("tr.1", large))
-    assert 'recall="tr.1"' in bounded
+    bounded = context.bound_output(large, path=await context.materialize_output("tr.1", large))
+    assert "<bounded_output" in bounded
     assert 'file="' not in bounded
 
 async def test_read_tool_message_inlines_bounded_output(tmp_path):
@@ -147,7 +145,7 @@ async def test_read_tool_message_inlines_bounded_output(tmp_path):
     output = ReadTool(s, call_obj.args).call()
 
     # The runner projects the source block, stores the retained text under tr.N, and inlines the
-    # bounded marker (with the recall key) into the model-facing message.
+    # bounded marker naming the file that holds the omitted middle.
     message = await runner.finish(call_obj, output)
 
     # A whole-file read prints no range: 1:0 is the "to the end of the file" sentinel, and
@@ -155,7 +153,7 @@ async def test_read_tool_message_inlines_bounded_output(tmp_path):
     assert message.startswith("tool tr.1 Read large.txt\noutput:\n")
     assert "<Read" in message
     assert "<bounded_output" in message
-    assert 'recall="tr.1"' in message
+    assert f'file="{os.path.join(s.images.assets_dir(), "tr.1.txt")}"' in message
     assert "-> FILE STATE" not in message
 
 async def test_batched_read_projects_every_file_inside_one_output_budget(tmp_path):
@@ -275,7 +273,7 @@ async def test_large_edit_diff_and_source_share_the_normal_output_budget(tmp_pat
     message = await runner.finish(call("Edit", ["large.py", source, []]), result)
 
     assert message.count("<bounded_output") >= 2  # the diff and the large fresh source block
-    assert 'recall="tr.1"' in message
+    assert ' file="' in message
     assert runner.context.estimated_text_tokens(message) < MAX_TOOL_OUTPUT_TOKENS * 1.2
     assert path.read_text(encoding="utf-8") == body
 

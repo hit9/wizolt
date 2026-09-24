@@ -68,6 +68,7 @@ LAYERS = {
     "wizolt.skill": 6,
     "wizolt.mentions": 6,
     "wizolt.agentsmd": 6,
+    "wizolt.history": 6,
     "wizolt.session": 7,
     "wizolt.source": 8,
     "wizolt.image": 8,

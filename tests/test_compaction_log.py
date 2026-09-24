@@ -143,7 +143,7 @@ async def test_compact_log_lists_stored_segments(tmp_path):
     text = block_text(await compact(loop(s), "log"))
 
     assert "3 compactions · 2 stored segments" in text  # a pass with nothing to evict stores none
-    assert text.index("seg.2") < text.index("seg.1")  # newest first, like RecallContext(list)
+    assert text.index("seg.2") < text.index("seg.1")  # newest first, like the history.md index
     assert "08-13 13:12" in text
     assert "manual · this turn" in text  # the reader's words, not the stored scope/trigger
     assert "first task" in text and "second task" in text
@@ -157,7 +157,7 @@ async def test_compact_log_prints_one_segments_whole_summary(tmp_path):
 
     assert "what survived" in text
     assert "and the next step" in text  # a multi-line summary is not clipped to its first line
-    # The stored excerpt is for the model's RecallContext, not for paging past a reader here.
+    # The stored excerpt is exported to the model as history.N.md, not paged past a reader here.
     assert "line one" not in text
 
 

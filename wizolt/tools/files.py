@@ -37,7 +37,7 @@ class ReadTool(Tool):
     NAME = "Read"
     DESCRIPTION = (
         "Read UTF-8 file ranges. Each file returns editable 1-based lines and a source=view.N; "
-        "large output is bounded and remains available through Recall(tr.N). Batch independent files in one call."
+        "large output is bounded; the truncation marker names the file holding the rest. Batch independent files in one call."
     )
     EXAMPLE = ('Batch files and ranges. Example: {"files":[{"path":"src/app.py","ranges":[[1,80],[120,180]]},{"path":"README.md","ranges":[[1,40]]}]}',)
 
@@ -462,7 +462,7 @@ class EditTool(Tool):
     NAME = "Edit"
     DESCRIPTION = (
         "Create or patch one UTF-8 file; every operation is validated before anything is written. "
-        "For an existing file pick exactly one evidence mode for the whole call: source=view.N from Read, Search, or InspectCode "
+        "For an existing file pick exactly one evidence mode for the whole call: source=view.N from Read or InspectCode "
         "plus inclusive visible start/end lines, or no source with each old set to exact literal text that occurs once -- never both. "
         "(1) source=view.N plus start/end: content is the complete replacement for that range, while outside lines stay untouched; "
         "insert by replacing one visible line with that line plus the insertion. "
@@ -815,7 +815,7 @@ class EditTool(Tool):
         view = self.session.get_source_view(source_name)
         if view is None:
             recovery = self.current_view_recovery(path, edits) if recover_missing else None
-            hint = "use the fresh view below" if recovery else "Read or Search again to obtain a current view"
+            hint = "use the fresh view below" if recovery else "Read again to obtain a current view"
             raise source_error(SOURCE_MISSING, f"{source_name} is unknown or expired; {hint}", recovery=recovery)
         if view.path != path:
             # Deliberately no fresh view: the model named two different files in one call, and

@@ -41,7 +41,6 @@ from wizolt.tools import (
     JobTool,
     MCPTool,
     NextHintsTool,
-    SearchTool,
     Tool,
     ToolScript,
     ViewImageTool,
@@ -346,9 +345,6 @@ class ToolRunner:
             # Native: the manager's operations are coroutines on this loop, so a cancelled turn
             # reaches the FastMCP client itself and its teardown is awaited before this returns.
             return await tool.call()
-        if isinstance(tool, SearchTool):
-            # ripgrep is an asyncio subprocess, so cancellation kills and reaps it directly.
-            return await tool.call()
         if tool.MUTATES or tool.PRODUCES_MODEL_OBSERVATION or isinstance(tool, NextHintsTool):
             # Session mutation stays serialized on the loop. Edit's material transaction is the
             # exception inside this branch: PlannedEdit applies it through run_blocking, then
@@ -579,7 +575,7 @@ class ToolRunner:
 
     def parallel_safe(self, call: ToolCall) -> bool:
         # A call may run concurrently only if it neither mutates state nor blocks on interactive
-        # input: read-only, auto-approved, non-interactive tools (Read/Search/Recall/InspectCode,
+        # input: read-only, auto-approved, non-interactive tools (Read/ViewImage/InspectCode,
         # read-only MCP). Edit is coordinated serially by EditBatchPlan;
         # Bash streams live output and mutates; Ask blocks on the user.
         tool_class = TOOL_REGISTRY.get(call.name)
@@ -613,7 +609,7 @@ class ToolRunner:
                 raise ToolError(call.error)
             # Native async calls are cancelled at their resource; other read-only tools remain
             # bounded blocking work whose executor future is awaited through cancellation.
-            output = await (tool.call() if isinstance(tool, (MCPTool, SearchTool)) else self._run_in_executor(tool.call))
+            output = await (tool.call() if isinstance(tool, MCPTool) else self._run_in_executor(tool.call))
         except ToolError as error:
             return "reject", f"ToolError: {error}", display, time.monotonic() - started, error.recovery
         except Exception as error:  # noqa: BLE001 - tool failures are serialized back to the model.
@@ -798,7 +794,8 @@ class ToolRunner:
             key = self.session.store_tool_result(call.name, call.args, model_text) if retain else ""
             if key and self.context.requires_artifact(model_text):
                 # The bounded marker may name a file, so the write must finish before the marker
-                # is rendered; the worker write lands first, empty on failure (Recall hint below).
+                # is rendered; the worker write lands first, and an empty path on failure leaves the
+                # marker without a file= attribute rather than naming one still in flight.
                 artifact_path = await self.context.materialize_output(key, model_text)
         if failed:
             self.session.record_tool_error(key or "-", call.name, call.args, model_text)
@@ -819,10 +816,10 @@ class ToolRunner:
     async def _source_output(self, call: ToolCall, tool_output: ToolOutput, *, retain: bool) -> tuple[str, str]:
         """Project source blocks, store the retained plain text, register views, and render.
 
-        Returns (model_text, tr.N key or ""). The note inside a bounded block names the
-        retained key and its materialized file, so the model can Read the omitted middle back
-        into a fresh view; without a retained copy to point at there is nothing to name. The
-        artifact write is awaited here, before the marker naming its path is rendered.
+        Returns (model_text, tr.N key or ""). The note inside a bounded block names the file
+        holding the omitted middle, so the model can Read or grep it; without a written file there
+        is nothing to name. The artifact write is awaited here, before the marker naming its path
+        is rendered.
         """
         projected = tool_output.project(max_tokens=MAX_TOOL_OUTPUT_TOKENS, estimate=self.context.estimated_text_tokens)
         retained = tool_output.retained_text
@@ -832,12 +829,11 @@ class ToolRunner:
             bounded = [index for index, part in enumerate(projected.parts) if isinstance(part, TextBlock) or (isinstance(part, SourceBlock) and part.bounded)]
             if bounded:
                 path = await self.context.materialize_output(key, retained)
-                hint = self.context.OMITTED_OUTPUT_HINT if path else self.context.OMITTED_OUTPUT_RECALL_HINT
                 parts = list(projected.parts)
                 for index in bounded:
                     part = parts[index]
                     if isinstance(part, (SourceBlock, TextBlock)):
-                        parts[index] = replace(part, note_recall=key, note_file=path, note_hint=hint)
+                        parts[index] = replace(part, note_file=path)
                 projected = ToolOutput(projected.retained_text, tuple(parts))
         keys = self.session.register_source_drafts(list(projected.drafts))
         return projected.render(keys), key
@@ -877,7 +873,7 @@ class ToolRunner:
         rows = [head]
         if status != "ok":
             rows.append(f"status: {status}")
-        body = self.context.bound_output(output, key, path=artifact_path).rstrip() if bound else output.rstrip()
+        body = self.context.bound_output(output, path=artifact_path).rstrip() if bound else output.rstrip()
         rows.extend(["output:", body])
         return "\n".join(rows).strip()
 

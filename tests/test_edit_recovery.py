@@ -312,7 +312,7 @@ def test_expired_view_recovery_never_opens_a_file_it_may_not_show(tmp_path, outs
     with pytest.raises(ToolError) as error:
         EditTool(s, [str(target), key, [{"op": "replace", "start": 1, "end": 1, "content": "x\n"}]]).call()
 
-    assert "Read or Search again to obtain a current view" in str(error.value)
+    assert "Read again to obtain a current view" in str(error.value)
     assert error.value.recovery is None
     assert "secret" not in str(error.value)
 

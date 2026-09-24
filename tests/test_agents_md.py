@@ -702,7 +702,7 @@ def test_edit_recovery_shows_the_global_agents_md_but_not_other_outside_paths(tm
     outside.write_text("not instructions\n", encoding="utf-8")
     with pytest.raises(ToolError) as error:
         EditTool(s, [str(outside), "view.99", edits]).call()
-    assert "Read or Search again" in str(error.value)
+    assert "Read again" in str(error.value)
     assert error.value.recovery is None  # an outside path is not projected into a refusal
 
 

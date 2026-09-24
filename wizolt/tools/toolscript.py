@@ -431,8 +431,8 @@ class ToolScript(Tool):
             keys.append(key)
             full = self.session.tool_results.get(key, message)
         else:
-            # A tool the runner does not retain (Recall, RecallContext, Note) has no tr.N to read
-            # the result back from, and `message` is the model-facing envelope: a header line, then
+            # A tool the runner does not retain (Note) has no tr.N to read the result back from,
+            # and `message` is the model-facing envelope: a header line, then
             # `output:`, then the text. The script asked for the result, so hand it the result.
             full = self._message_body(message)
         if format == "json":

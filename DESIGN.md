@@ -522,21 +522,24 @@ dispatching its complete call set; return results before the model may judge or 
 
 ## Retention and recall
 
-- A large tool result enters conversation as a bounded view; its retained full output is addressed
-  by `tr.N`. `Recall` retrieves selected line ranges; a hard session ceiling prevents growth, and
+- A large tool result enters conversation as a bounded view; the marker names the file in the
+  session's asset directory that holds the full output. A hard session ceiling prevents growth, and
   compaction prunes records nothing surviving references.
-- Compaction stores one bounded verbatim excerpt of each evicted span as `seg.N`; `RecallContext`
-  gets a segment or regex-searches retained segments — it never pretends the excerpt is lossless.
-- Segment titles are not standing context: `RecallContext(list)` pages newest first; search covers
-  the warm store; `get` retrieves excerpts.
+- Compaction exports each evicted span as a plain-text `history.N.md` (message text in full, tool
+  calls as label lines), beside the append-only `history.md` index that says what every span holds.
+  The index path is written into the
+  checkpoint once, at the rebuild; nothing lists segments in a request, and grep or `Read` inside a
+  span file is how one comes back.
+- The export is a derived copy written at compaction time, in the same directory as the `tr.N.txt`
+  outputs and under the same rules: never read back into a request, never a scan of the jsonl.
 - `AgentState` is the durable semantic view of goal/plan/known/checks; `Note(update)` changes it
   transactionally with a visible call/result in append-only history, `Note(view)` reads only.
   Compaction materializes the full state into one checkpoint before older Note history leaves
   active context.
-- Recall tools create no new retained-result keys; their output is ordinary bounded context,
-  requested selectively rather than copying cold detail into hot context.
-- Snapshot JSONL is the persistence/resume boundary, not a search engine; runtime recall uses
-  current retained indexes, never opportunistic log scans.
+- Retrieval is the model's own file reads: it creates no retained-result keys and occupies no
+  context until the model asks.
+- Snapshot JSONL is the persistence/resume boundary, not a search engine; runtime retrieval reads
+  the current files, never an opportunistic log scan.
 
 ## Persistence and input transactions
 
@@ -764,14 +767,15 @@ threshold; provider integration tests verify reported usage and acceptance witho
   evidence mode, and a path may not change modes inside one planned batch: character replacements
   cannot carry a view's line origins. Success and a failure the file can answer return a fresh
   bounded view so same-file runs continue.
-- Lower layers contain recoverable detail: retained output supports recall, snapshots support
-  resume, deterministic compaction preserves progress when the summarizer is unavailable.
+- Lower layers contain recoverable detail: retained output files and exported spans support going
+  back for detail, snapshots support resume, deterministic compaction preserves progress when the
+  summarizer is unavailable.
 
 ## Worker handoff
 
 A worker is the same process's second wizolt session, driven serially by the parent through one
-`Delegate` tool call per round: a full wizolt (compaction, Recall, tr.N, Job, Skill, MCP, diff,
-confirmation, snapshots) with its own system prompt and reduced tool list. The worker never
+`Delegate` tool call per round: a full wizolt (compaction, history files, tr.N, Job, Skill, MCP,
+diff, confirmation, snapshots) with its own system prompt and reduced tool list. The worker never
 reaches back. Three decisions are easy to reopen; their reasons follow.
 
 **No worker-to-parent tool calls.** A reverse call would re-enter the parent's `Agent.run` mid-turn;

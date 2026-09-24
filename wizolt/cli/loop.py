@@ -144,7 +144,7 @@ class CommandLoop:
 
 ### Tools
 
-Read, ViewImage, InspectCode, Search, Edit, Bash, Job, Recall, Note, Context, Ask, MCP, Skill.
+Read, ViewImage, InspectCode, Edit, Bash, Job, Note, Context, Ask, MCP, Skill.
 
 `Skill(name)` loads a skill's full instructions on demand (see the SKILLS section / `$skill`).
 

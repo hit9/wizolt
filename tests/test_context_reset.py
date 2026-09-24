@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import re
 
 import pytest
@@ -15,7 +16,7 @@ from wizolt.engine import Agent
 from wizolt.session import Session
 from wizolt.skill import SkillLibrary
 from wizolt.tools import TOOL_REGISTRY, JobTool, Tool
-from wizolt.tools.memory import ContextTool, NoteTool, RecallContextTool
+from wizolt.tools.memory import ContextTool, NoteTool
 
 
 def test_context_tool_is_registered(tmp_path):
@@ -187,7 +188,9 @@ async def test_a_reset_after_earlier_snapshots_survives_the_delta_chain(tmp_path
     assert restored.state.goal == "keep me"
 
 
-async def test_recall_and_note_still_work_after_a_reset_and_resume(tmp_path):
+async def test_history_and_note_state_survive_a_reset_and_resume(tmp_path):
+    """A reset drops the conversation, not the retained history: the compacted span is still there
+    after the resume, and the next compaction exports it as history.1.md."""
     s = session(tmp_path)
     ContextManager(s).store_history_segment([{"role": "user", "content": "evicted span"}], scope="history", trigger="auto", fallback=False)
     s.state.goal = "keep me"
@@ -198,7 +201,13 @@ async def test_recall_and_note_still_work_after_a_reset_and_resume(tmp_path):
     s.close()  # release the writer before reloading
     restored = Session.load_snapshot(s.uid, config=s.config)
 
-    assert "evicted span" in RecallContextTool(restored, [{"action": "get", "keys": ["seg.1"]}]).call()
+    assert [segment.key for segment in restored.history] == ["seg.1"]
+    assert "evicted span" in restored.history[0].text
+    # The new window names where those exports live: this checkpoint replaced the conversation, so
+    # the compaction checkpoint that carried the path is no longer in context.
+    index = os.path.join(restored.images.assets_dir(), "history.md")
+    checkpoint = next(message for message in restored.messages if message.get(SESSION_EVENT_KEY))
+    assert f"Compacted history: {index} (one history.N.md per compaction beside it)" in checkpoint["content"]
     assert json.loads(NoteTool(restored, [{"action": "view", "fields": ["goal"]}]).call()) == {"goal": "keep me"}
 
 

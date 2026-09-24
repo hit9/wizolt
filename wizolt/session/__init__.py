@@ -147,7 +147,6 @@ class Session:
     # a resumed session starts unknown unless the catalog supplies static evidence.
     learned_text_only_routes: set[tuple[str, str, str, str]] = field(default_factory=set, repr=False)
     image_route: ImageRoute = field(init=False, repr=False)
-    _gitignore_cache: dict[str, tuple[int, list[str]]] = field(default_factory=dict)
     uid: str = ""
     resumed: bool = False
     created_at: str = field(default_factory=local_timestamp)
@@ -347,10 +346,9 @@ class Session:
         Only the runner's main thread calls this, in model tool-call order, so keys are
         deterministic regardless of parallel completion order. A key is never reused: the counter
         is monotonic and re-registering an existing key is refused. Identical drafts within one
-        call share one key, so one Search call with several queries pointing at the same file
-        resolves to a single view id. Drafts from earlier calls are never reused: they were
-        captured from a different read, and their `total_lines` no longer describes what this call
-        showed the model.
+        call share one key, so one call that names the same file twice resolves to a single view id.
+        Drafts from earlier calls are never reused: they were captured from a different read, and
+        their `total_lines` no longer describes what this call showed the model.
         """
         keys: list[str] = []
         existing: dict[tuple[object, ...], str] = {}
@@ -454,8 +452,8 @@ class Session:
     def apply_context_reset(self) -> bool:
         """Start a new model window with a frozen working-state checkpoint; retain the transcript.
 
-        Note state, compacted segments, stored tool results, jobs, source views, the code index and
-        the workspace are not conversation and survive untouched. The usage snapshot goes with the
+        Note state, compacted-history exports, stored tool results, jobs, source views, the code index
+        and the workspace are not conversation and survive untouched. The usage snapshot goes with the
         conversation it described: leaving it in place would keep the status bar and
         `Context(remaining)` reporting a full window for a context that is now empty.
         """
@@ -470,7 +468,15 @@ class Session:
         if activity := self.recent_activity():
             checkpoint["content"] += "\n\n" + activity
         if self.history:
-            checkpoint["content"] += f"\nRecallable history: {self.history[0].key}..{self.history[-1].key}; use RecallContext."
+            # Fixed text, written once, here: the exports are produced at compaction time, and a line
+            # rebuilt from the segment list or from the filesystem on a later projection would move
+            # the prefix of an already-sent checkpoint. The path comes from the session's identity
+            # rather than from the disk, so nothing mutable enters the text -- and this checkpoint
+            # replaces the conversation, so the last compaction's own line is no longer in context.
+            from wizolt.history import HistoryArchive  # local import: wizolt.history imports wizolt.session
+
+            index = HistoryArchive(self.images.assets_dir()).index_path
+            checkpoint["content"] += f"\nCompacted history: {index} (one history.N.md per compaction beside it)"
         self.messages.append(checkpoint)
         self.transcript_messages.append({"role": "notice", "content": "Context reset."})
         self.state.turn_messages = 0

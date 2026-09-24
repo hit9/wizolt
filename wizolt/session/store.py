@@ -264,6 +264,14 @@ class SessionSnapshotStore:
         # promises that path. Retain one for as long as its tool result is retained, so the two
         # expire together and the promise is never left pointing at a deleted file.
         refs.update(key + TOOL_OUTPUT_ASSET_SUFFIX for key in session.tool_results)
+        # Compacted-history exports live in the same directory. `history.md` is the append-only
+        # index and is kept for the session's whole life; each `history.N.md` is kept only while its
+        # segment is, so a segment dropped by the retention bound takes its export with it.
+        # Local import: store.py is the file layer and never imports the package at module scope.
+        from wizolt.history import HISTORY_INDEX, segment_filename
+
+        refs.add(HISTORY_INDEX)
+        refs.update(name for segment in session.history if (name := segment_filename(segment.key)))
         return refs
 
     @staticmethod

@@ -15,11 +15,10 @@ from wizolt.config import (
 )
 from wizolt.context import ContextManager
 from wizolt.runner import ToolRunner
-from wizolt.session import HistorySegment, Session, SessionSnapshotCodec
+from wizolt.session import Session, SessionSnapshotCodec
 from wizolt.tools import (
     NextHintsTool,
     NoteTool,
-    RecallContextTool,
     Tool,
     tooloutput,
 )
@@ -124,16 +123,8 @@ def test_memory_tools_treat_strict_schema_nulls_as_omitted(tmp_path):
             [{"action": "update", "fields": None, "set_goal": "ship", "replace_plan": None, "append_known": None, "replace_known": None, "set_check": None}],
         ).call()
     )
-    s.history.append(HistorySegment(key="seg.1", title="cache"))
-    list_result = json.loads(
-        RecallContextTool(
-            s,
-            [{"action": "list", "keys": None, "query": None, "case_sensitive": None, "limit": 1, "before": None}],
-        ).call()
-    )
 
     assert note_result["changed"] == ["goal"]
-    assert list_result["segments"] == [{"key": "seg.1", "title": "cache"}]
 
 
 def test_note_short_args_treats_strict_schema_nulls_as_omitted(tmp_path):
@@ -162,58 +153,12 @@ def test_note_empty_goal_and_check_explicitly_clear_state(tmp_path):
     assert s.state.check == ""
 
 
-def test_recall_context_distinguishes_a_dropped_segment_from_an_unknown_one(tmp_path):
-    """Only the newest segments are retained, so a key below the window is gone for good. Saying
-    that, with what is still reachable, is what stops the model from retrying the same key."""
-    s = session(tmp_path)
-    s.history.extend(HistorySegment(key=f"seg.{number}", title=f"span {number}", text="body") for number in range(7, 10))
-
-    result = RecallContextTool(s, [{"action": "get", "keys": ["seg.3", "seg.99", "seg.8"]}]).call()
-
-    assert "* seg.3: dropped; only the newest 3 segments are kept, from seg.7" in result
-    assert "* seg.99: missing" in result
-    assert '<Segment key="seg.8" title="span 8">' in result
-
-
-def test_recall_context_returns_the_summary_as_it_stood_at_that_compaction(tmp_path):
-    """The checkpoint carries only the newest summary, and every compaction folds the previous one
-    into the next — so the live summary has been through one pass per compaction while this copy
-    has been through exactly one. It was already stored; returning it is what makes it reachable.
-    """
-    s = session(tmp_path)
-    s.history.append(HistorySegment(key="seg.1", title="span", text="body", summary="what that span settled"))
-    s.history.append(HistorySegment(key="seg.2", title="trimmed", text="body"))  # summarizer failed: no summary
-
-    result = RecallContextTool(s, [{"action": "get", "keys": ["seg.1", "seg.2"]}]).call()
-
-    assert "<SummaryAtCompaction>\nwhat that span settled\n</SummaryAtCompaction>" in result
-    assert result.count("<SummaryAtCompaction>") == 1  # a segment with no summary carries no empty block
-
-
 def test_memory_tools_ignore_schema_valid_empty_and_default_fillers(tmp_path):
     s = session(tmp_path)
-    s.history.append(HistorySegment(key="seg.1", title="cache", text="needle"))
 
-    listed = json.loads(
-        RecallContextTool(
-            s,
-            [{"action": "list", "keys": [], "query": "", "case_sensitive": False, "limit": 20}],
-        ).call()
-    )
-    searched = RecallContextTool(
-        s,
-        [{"action": "search", "keys": [], "query": "needle", "case_sensitive": False, "limit": 20}],
-    ).call()
-    retrieved = RecallContextTool(
-        s,
-        [{"action": "get", "keys": ["seg.1"], "query": "", "case_sensitive": False, "limit": 20}],
-    ).call()
     updated = json.loads(NoteTool(s, [{"action": "update", "fields": [], "set_goal": "ship"}]).call())
     viewed = json.loads(NoteTool(s, [{"action": "view", "fields": []}]).call())
 
-    assert listed["segments"] == [{"key": "seg.1", "title": "cache"}]
-    assert "needle" in searched
-    assert "needle" in retrieved
     assert updated["changed"] == ["goal"]
     assert viewed["goal"] == "ship"
 

@@ -30,17 +30,14 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
 
     `view.12` is that file snapshot's id; `684` is the one-based line number. Line numbers and
     ranges include both ends, matching what `grep -n`, your editor, tracebacks, and diffs show, so
-    `Read`, `Search`, and `InspectCode` all agree on which line is which. A long result is
-    shortened to its head and tail; the rows left out are not part of the view, and the full
-    output stays available under its `tr.N` id for `Recall`.
+    `Read` and `InspectCode` all agree on which line is which. A long result is shortened to its
+    head and tail, and the marker between them names the file that holds the whole output — in the
+    session's asset directory, `<tr.N>.txt`. Grep that file, or `Read` it with `ranges` to page
+    part of it back.
 * - **`ViewImage`**
   - Opens one local PNG, JPEG, WebP, or single-frame GIF. The active model reads it when it
     accepts images; on a text-only route a configured [vision model](configuration.md#vision-model)
     returns its text observation instead. Images outside the workspace require confirmation.
-* - **`Search`**
-  - Finds text with case-insensitive regular expressions, optionally limited by path or filename
-    pattern. It skips hidden, binary, and gitignored files and returns the matches as numbered
-    source views you can edit from directly.
 * - **`InspectCode`**
   - Finds definitions, references, implementations, callers, callees, and file outlines through
     the [code index](#code-symbol-index). Use it for code structure rather than exact text.
@@ -49,7 +46,7 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
     An existing file is changed in one of two ways, and <span class="marker">wizolt checks the
     target against the file immediately before writing either way</span>.
 
-    The first names the numbered source view returned by `Read`, `Search`, or `InspectCode`
+    The first names the numbered source view returned by `Read` or `InspectCode`
     (`source=view.N`) and gives one-based line numbers. wizolt extracts the complete target from
     that view and refuses the edit if it changed. When the exact target still exists nearby, the
     edit relocates to it and reports the move.
@@ -98,15 +95,6 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
     programs that require a terminal are not supported. Each write accepts all the text or
     refuses it without sending anything; oversized input reports the limit so you can split it.
     You can inspect the exact input before approving it. The same jobs are visible through `/ps`.
-* - **`Recall`**
-  - Retrieves a <span class="marker">complete earlier tool result</span>, or selected line ranges,
-    when only a shortened result was placed in the conversation.
-* - **`RecallContext`**
-  - Lists stored compacted segments newest first, retrieves an excerpt by its `seg.N` key, or
-    searches titles and text with a case-insensitive regex such as `cache prefix|task memory`.
-    Listing supports pagination; search results are capped matching lines. Segment titles are
-    loaded only on demand instead of occupying every request. A key older than the
-    [retained window](context.md#compaction) says so.
 * - **`Note`**
   - Views or updates the task's goal, plan, success check, and learned facts. Updates are durable
     conversation history, so they preserve append-only prompt-cache prefixes and do not edit files.

@@ -747,7 +747,7 @@ async def compaction_log(loop: CommandLoop, args: str) -> str | LogBlock | None:
     and naming one segment prints its whole summary, which the list can only show a title of.
 
     Neither form prints the stored excerpt. It is the raw conversation the summary already stands
-    for, kept for the model to reach through RecallContext; paging it past a reader hides the one
+    for, exported as history.N.md for the model to grep; paging it past a reader hides the one
     line they came for."""
     key = args.strip()
     segments = loop.session.history

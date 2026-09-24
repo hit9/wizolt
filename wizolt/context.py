@@ -8,7 +8,7 @@ import re
 from collections.abc import Callable, Hashable
 from typing import TYPE_CHECKING, ClassVar, TypeVar
 
-from wizolt import compaction
+from wizolt import compaction, history
 from wizolt.base import (
     ANTHROPIC_CONTENT_KEY,
     MAX_AGENTS_MD_TOKENS,
@@ -57,11 +57,11 @@ class ContextManager:
     the current turn only if still over.
     """
 
-    # How many evicted spans stay recallable. Every compaction adds one and nothing removed them, so
-    # a long session carried every span it ever evicted -- each holding a bounded excerpt -- in
-    # memory and in the segment list rewritten into later snapshot deltas. The newest spans are what
-    # recall reaches for; the oldest describe work that is long done. Same bound as tool records,
-    # smaller because a segment is a whole conversation span rather than one tool result.
+    # How many evicted spans stay exported. Every compaction adds one and nothing removed them, so a
+    # long session carried every span it ever evicted -- each holding a bounded excerpt -- in memory
+    # and in the segment list rewritten into later snapshot deltas. The newest spans are the ones
+    # `history.N.md` files still exist for; the oldest describe work that is long done. Same bound as
+    # tool records, smaller because a segment is a whole conversation span rather than one tool result.
     MAX_HISTORY_SEGMENTS: ClassVar[int] = 50
     MCP_DESCRIBE_BLOCK: ClassVar[re.Pattern] = re.compile(r"<MCPDescribe server=(\".*?\") tool=(\".*?\")>.*?</MCPDescribe>", re.DOTALL)
     SKILL_BLOCK: ClassVar[re.Pattern] = re.compile(r"<Skill name=(\".*?\")>.*?</Skill>", re.DOTALL)
@@ -342,8 +342,8 @@ class ContextManager:
         """The next `seg.N`, counting from the highest key ever issued rather than the list length.
 
         Dropping the oldest segments shortens the list, so a length-derived key would hand a number
-        the model has already seen to different content — and a stale `RecallContext seg.7` would
-        silently answer with someone else's span instead of saying it is gone."""
+        the model has already seen to different content — and `history.7.md` would then hold a
+        different span than the one that key ever named."""
         numbers = [int(match.group(1)) for segment in self.session.history if (match := self.SEGMENT_KEY.fullmatch(segment.key))]
         return f"seg.{max(numbers, default=len(self.session.history)) + 1}"
 
@@ -365,7 +365,7 @@ class ContextManager:
         del self.session.history[: -self.MAX_HISTORY_SEGMENTS]  # newest kept; a shorter list is left alone
         return segment
 
-    def _summary_block(self) -> list[Json]:
+    def _summary_block(self, index_path: str = "") -> list[Json]:
         """One durable checkpoint containing everything needed after the compacted prefix.
 
         This is the rebuild half of compaction, and it does not read the cache: it replaces the
@@ -391,13 +391,13 @@ class ContextManager:
         ]
         if activity := self.session.recent_activity():
             rows.extend(("", activity))
-        # The whole retained archive, not just the span this compaction stored: each rebuild
-        # discards the previous checkpoint, so a line naming only the newest segment leaves the
-        # older ones with no trace in context at all. Range and count only -- what to fetch, or
-        # whether to fetch anything, is the model's call through RecallContext.
-        if history := self.session.history:
-            span = history[0].key if len(history) == 1 else f"{history[0].key}..{history[-1].key}"
-            rows.extend(("", f"Recallable history: {span} ({len(history)} segment{'' if len(history) == 1 else 's'})"))
+        # The index path, written only when the export for this compaction landed: the model reaches
+        # every retained span through those files, and a line naming a file that is not there is
+        # worse than no line at all. The text is built here, at the rebuild that replaces the head of
+        # the conversation, and never again -- regenerating it from `session.history` or from the
+        # filesystem on some later projection would change the prefix of a request already cached.
+        if index_path:
+            rows.extend(("", f"Compacted history: {index_path} (one history.N.md per compaction beside it)"))
         return [{"role": "user", "content": "\n".join(rows), SESSION_EVENT_KEY: "compaction_checkpoint"}]
 
     def apply_compaction(
@@ -440,7 +440,12 @@ class ContextManager:
             # bounded) and passes it in; empty falls back to the deterministic name.
             segment.summary = self.session.state.summary
             segment.title = title or segment.title
-        summary_block = self._summary_block()
+        # Exported after the summary request returned and before the checkpoint is built: nothing
+        # here can touch the cached prefix of that request, and the `Compacted history:` line below
+        # is only written once this compaction's own file and index entry have landed.
+        archive = history.HistoryArchive(self.session.images.assets_dir())
+        exported = segment is not None and archive.export(segment, compacted or [], self.session.history)
+        summary_block = self._summary_block(archive.index_path if exported else "")
         if turn_messages is None:
             self.session.messages = summary_block + keep
             prune_context = (self.session.messages if data is not None else [*keep]) + (tool_messages or [])
@@ -505,18 +510,19 @@ class ContextManager:
     def is_compaction_summary(self, message: Json) -> bool:
         return message.get("role") == "user" and str(message.get("content") or "").startswith(COMPACTION_SUMMARY_TITLE)
 
-    # What to do about the omitted middle, in the marker that reports it. Kept to one line: this is
-    # paid on every truncated output, and the model needs the next move, not an explanation. Ordered
-    # by what is certain to be there -- Search is built in, grep is near-universal, jq is neither.
-    OMITTED_OUTPUT_HINT = "file holds this output in full; Search it for the part you need, or Bash grep/jq -- cheaper than paging the text back with Recall"
-    OMITTED_OUTPUT_RECALL_HINT = "Recall this key with ranges to page the omitted lines back"
-
     def requires_artifact(self, text: str) -> bool:
         """True when bounding `text` would omit a middle, so a retained key deserves an artifact."""
 
         return self.estimated_text_tokens(text) > MAX_TOOL_OUTPUT_TOKENS
 
-    def bound_output(self, text: str, key: str = "", *, path: str = "") -> str:
+    def bound_output(self, text: str, *, path: str = "") -> str:
+        """The model-facing form of a long tool result: a head, a tail, and a marker between.
+
+        The marker states facts -- what was omitted, how much, and the file holding the full text
+        when one was written -- and nothing else: what to do about the omission is the model's own
+        call. `path` is empty when no artifact was written (or the write failed), and the marker
+        then carries no `file=` attribute rather than naming a file still in flight.
+        """
         estimated = self.estimated_text_tokens(text)
         if estimated <= MAX_TOOL_OUTPUT_TOKENS:
             return text
@@ -528,16 +534,7 @@ class ContextManager:
         omitted_tokens = max(0, estimated - self.estimated_text_tokens(head) - self.estimated_text_tokens(tail))
         note = f'<bounded_output omitted="middle" max_tokens="{MAX_TOOL_OUTPUT_TOKENS}"'
         note += f' estimated_tokens="{estimated}" omitted_tokens="{omitted_tokens}"'
-        note += f' recall="{key}"' if key else ""
-        if key:
-            # An attribute name is not an instruction: `recall` and `file` say where the rest of the
-            # output is, not what to do about it. Say which one to reach for, because the cheap move
-            # is the non-obvious one -- searching the file costs the matched lines, while recalling
-            # pays context for every line it pages back, including all the ones that were skipped.
-            # `path` is empty when no artifact was written (or the write failed): the marker then
-            # falls back to the Recall hint, never a file that is still in flight.
-            note += f' file="{path}"' if path else ""
-            note += f' hint="{self.OMITTED_OUTPUT_HINT if path else self.OMITTED_OUTPUT_RECALL_HINT}"'
+        note += f' file="{path}"' if path else ""
         note += "/>"
         return "\n".join(part for part in (head.rstrip(), note, tail.lstrip()) if part)
 
@@ -546,7 +543,7 @@ class ContextManager:
 
         Derived cache only: session.tool_results and the jsonl stay the source of truth. The write
         runs on the executor; failures are swallowed so a read-only or full disk cannot break
-        truncation itself, and an empty return tells the marker to fall back to the Recall hint.
+        truncation itself, and an empty return leaves the marker without a `file=` attribute.
         """
 
         return await run_blocking(lambda: self._materialize_output_sync(key, text))

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+
+- Three tools are gone: `Recall`, `RecallContext`, and `Search`. A shortened tool result now names
+  the file holding the whole output instead of a key to page it back with, so the agent reads or
+  greps that file; `Bash` with `rg` covers what `Search` did.
+- Compaction writes each span it evicts to `history.N.md` beside an append-only `history.md` index,
+  in the session's asset directory. The checkpoint names the index, so an evicted span is read back
+  with `Read` or `Bash` rather than through a tool.
+
 ## 0.52.0 - 2026-09-23
 
 ### Added

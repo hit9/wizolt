@@ -799,7 +799,7 @@ class TestWhitelistGating:
 
     async def test_nested_call_rejects_tool_outside_whitelist(self, tmp_path):
         s = _mcp_session(tmp_path)
-        s.tool_names = ("Read", "Search", "ToolScript")
+        s.tool_names = ("Read", "ViewImage", "ToolScript")
         content = await _run_script(s, 'call("Bash", {"command": "echo hi"})\n')
         assert "ToolScript failed" in content
         assert "Bash is not available in this session" in content
@@ -814,7 +814,7 @@ class TestWhitelistGating:
 
     def test_describe_gates_schema_of_tool_outside_whitelist(self, tmp_path):
         s = _mcp_session(tmp_path)
-        s.tool_names = ("Read", "Search", "ToolScript")
+        s.tool_names = ("Read", "ViewImage", "ToolScript")
         out = _describe(s, ["Bash", "Read"])
         assert "Bash: not available in this session" in out
         assert "Read\n" in out

@@ -83,7 +83,8 @@ long sessions within budget on its own, but `/compact` trims on demand.
 
 **`/compact log [seg.N]`** — Review what compaction kept: the stored segments newest
 first, and the summary of the one you open. Naming a segment prints its summary
-without the viewer. See
+without the viewer. Each row is a `history.N.md` file the agent can read back, kept
+beside the `history.md` index. See
 [Keeping context manageable](context.md#keeping-context-manageable).
 
 **`/context [reset]`** — Shows how much of the context window is in use, or clears the model's conversation
