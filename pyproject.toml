@@ -40,7 +40,6 @@ dependencies = [
     # Direct, not transitive: MCPManager cancels MCP operations through anyio scopes, the only
     # cancellation the SDK's shielded client teardown respects.
     "anyio>=4.0",
-    "json-repair",
     # The official SDK, not fastmcp: 2.x is on httpx2 like the provider SDKs, so MCP-over-HTTP
     # verifies TLS the same way, and wizolt uses only its client.
     "mcp>=2.2,<3",
@@ -71,6 +70,9 @@ wizolt = "wizolt.__main__:main"
 
 [project.optional-dependencies]
 dev = [
+    # Tests only: the reference the built-in repair (wizolt/utils/json_repair.py) must agree with
+    # on every malformed shape it claims to read. wizolt never imports it.
+    "json-repair>=0.63",
     # Tests only: it writes the image fixtures, and it is the reference wizolt's own header reader
     # (image.ImageHeader) is checked against. wizolt never imports it.
     "pillow>=11.0",
@@ -82,7 +84,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["wizolt", "wizolt.cli", "wizolt.model", "wizolt.mcp", "wizolt.providers", "wizolt.session", "wizolt.source", "wizolt.tools", "wizolt.tui"]
+packages = ["wizolt", "wizolt.cli", "wizolt.model", "wizolt.mcp", "wizolt.providers", "wizolt.session", "wizolt.source", "wizolt.tools", "wizolt.tui", "wizolt.utils"]
 
 [tool.setuptools.package-data]
 wizolt = ["providers/catalog.json"]

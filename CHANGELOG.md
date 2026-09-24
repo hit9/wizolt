@@ -8,6 +8,10 @@
   are recognized from their own headers, with the same formats as before (PNG, JPEG, WebP, and
   single-frame GIF) and the same refusals, including files cut short. A file whose header is
   valid but whose image data is damaged now reaches the provider, which refuses it itself.
+- wizolt no longer depends on json-repair. A malformed compaction summary is read by a small
+  built-in parser that accepts the same damage: prose around the object, output cut short,
+  missing quotes, single quotes, trailing commas, and Python-style literals. Two objects in one
+  reply now keep the first instead of failing the parse.
 
 ## 0.54.1 - 2026-09-24
 

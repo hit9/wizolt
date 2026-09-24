@@ -45,6 +45,7 @@ from wizolt.providers.compat import (
     ResolvedProvider,
     builtin_tools_issue,
 )
+from wizolt.utils.json_repair import repair_json_object
 
 if TYPE_CHECKING:
     # The provider SDKs cost ~0.8s to import and are not needed until the first request;
@@ -548,11 +549,10 @@ class ModelClient:
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
-            # Deferred import: only malformed model JSON pays for the repair module, so neither
-            # startup nor a well-formed response carries it.
-            from json_repair import repair_json
-
-            data = repair_json(text, return_objects=True)
+            # The lenient reader (json_repair in miniature, wizolt/utils/json_repair.py) takes
+            # over here: the compaction summary plainly meant to be an object, so one is read out
+            # of it before the compactor is asked to try again.
+            data = repair_json_object(text)
         if isinstance(data, dict):
             return data
         raise ModelError("compactor returned invalid JSON: " + Tool.compact(text, 200))

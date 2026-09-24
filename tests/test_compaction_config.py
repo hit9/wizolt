@@ -27,6 +27,31 @@ def test_parse_json_object_repairs_a_malformed_compactor_payload():
     assert ModelClient.parse_json_object('summary follows: {"summary": "kept"}') == {"summary": "kept"}
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("{'summary': 'kept'}", {"summary": "kept"}),  # single quotes
+        ('{summary: "kept"}', {"summary": "kept"}),  # a key that lost its quotes
+        ('{"summary": kept}', {"summary": "kept"}),  # a value that lost its quotes
+        ('{"summary": "kept",}', {"summary": "kept"}),  # a trailing comma
+        ('{"a": [1, 2, {"b": "c"', {"a": [1, 2, {"b": "c"}]}),  # cut short mid-nesting
+        ('{"a": True, "b": None}', {"a": True, "b": None}),  # Python-style literals
+        ('{"summary": "still going', {"summary": "still going"}),  # cut short mid-string
+        ('{"summary": "one\\ntwo"', {"summary": "one\ntwo"}),  # escapes survive the repair
+    ],
+)
+def test_parse_json_object_repairs_the_shapes_a_summary_takes(text, expected):
+    """What malformed compaction output actually looks like: quotes lost or mistyped, commas
+    trailed, and the cut of a response limit landing anywhere at all."""
+    assert ModelClient.parse_json_object(text) == expected
+
+
+def test_parse_json_object_keeps_the_first_of_two_adjacent_objects():
+    """Two objects in one reply used to fail the parse (the repair returned a list); the
+    built-in reader keeps the first object, so the summary survives."""
+    assert ModelClient.parse_json_object('{"a": "b"}\n\n{"c": "d"}') == {"a": "b"}
+
+
 @pytest.mark.parametrize("text", ["not json at all", "[1, 2]"])
 def test_parse_json_object_rejects_payloads_with_no_object_to_recover(text):
     """Prose and non-object JSON have no object to recover, so the compactor reply is rejected."""
