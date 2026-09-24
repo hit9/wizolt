@@ -438,8 +438,9 @@ async def test_tool_runner_edit_approval_prints_full_inline_preview(tmp_path, mo
 
 
 def test_queue_live_region_marks_worker_followups(tmp_path):
-    """Follow-ups queued for a delegating worker render with the [worker] marker and a count of
-    their own, above the divider once the worker's request claims them."""
+    """Follow-ups queued for a delegating worker are told apart by their marker's color alone --
+    the status bar is where the worker is named -- count as queued, and move above the divider
+    once the worker's request claims them."""
     from wizolt.config import Config
     from wizolt.session import Session
 
@@ -448,19 +449,22 @@ def test_queue_live_region_marks_worker_followups(tmp_path):
     worker = Session(cwd=s.cwd, config=Config(), settings=s.settings, uid=s.uid + ".w", listed=False)
     loop.session.worker = worker
     worker._active_turn_messages.append({"role": "user", "content": "order"})
-    worker.enqueue_user_input("check the worker queue")
+    worker.enqueue_user_input("check the queue")
 
     sent, waiting = loop.view.followup_fragments()
     waiting_text = "".join(t for _, t in waiting)
-    assert "[worker] + check the worker queue" in waiting_text
-    assert "1 worker" in waiting_text and "queued" not in waiting_text
+    assert "+ check the queue" in waiting_text
+    assert ("class:divider.worker", "+ ") in waiting  # the worker's color on the marker
+    assert "worker" not in waiting_text  # colored, never named, below the divider
+    assert "1 queued" in waiting_text
 
     worker.claim_user_inputs()
     sent, waiting = loop.view.followup_fragments()
     sent_text = "".join(t for _, t in sent)
     waiting_text = "".join(t for _, t in waiting)
-    assert "[worker] \u2022 check the worker queue" in sent_text
-    assert "1 worker" not in waiting_text
+    assert "\u2022 check the queue" in sent_text and "worker" not in sent_text
+    assert ("class:divider.worker", "\u2022 ") in sent
+    assert "queued" not in waiting_text
 
 
 def test_worker_queue_hint_names_where_the_text_went(tmp_path):

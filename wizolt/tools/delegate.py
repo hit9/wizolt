@@ -104,19 +104,6 @@ def _worker_stream(runner: ToolRunner):
     return stream
 
 
-def _worker_queue_flush(runner: ToolRunner):
-    """Echo follow-ups the worker's request consumed into the parent's log, marked as the worker's.
-
-    The live activity region stops showing a queued item the moment its session commits the
-    request that claimed it; without this the user's typed follow-up would vanish from the TUI
-    once the worker read it, with no line in the transcript saying it ever arrived."""
-
-    flush = runner.hooks.on_queue_flush
-    if flush is None:
-        return None
-    return lambda texts: flush([f"[worker] {text}" for text in texts])
-
-
 def _wire_worker_agent(agent: Agent, runner: ToolRunner) -> None:
     """Bind a persistent worker agent to the runner driving this send.
 
@@ -145,7 +132,10 @@ def _wire_worker_agent(agent: Agent, runner: ToolRunner) -> None:
             text_viewer=runner.hooks.text_viewer,
             cancel_input=runner.hooks.cancel_input,
             script_status=runner.hooks.script_status,
-            on_queue_flush=_worker_queue_flush(runner),
+            # A follow-up the worker's request consumed leaves the live region the moment it is
+            # committed; echoing it into the parent's log keeps a line saying it arrived. It lands
+            # between the delegation's own rules, so it needs no mark of whose it is.
+            on_queue_flush=runner.hooks.on_queue_flush,
         )
     )
     agent.tools.input_fn = runner.input_fn

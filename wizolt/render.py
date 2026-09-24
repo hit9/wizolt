@@ -1879,7 +1879,7 @@ class StatusBar:
         the parent otherwise.
 
         A live but idle worker never shadows the parent (`Session.delegating_worker`). The working
-        divider marks the same condition with its `[worker]` prefix.
+        divider marks the same condition by drawing its label in the worker's color.
         """
         return self.session.delegating_worker or self.session
 
@@ -1911,7 +1911,7 @@ class StatusBar:
         """The parked worker's context water level, appended to the parent's row as `worker ctx N%`.
 
         Shown only while the parent is the active session: in flight the row already carries the
-        worker's numbers behind the `[worker]` marker, and a second group would repeat them. And
+        worker's numbers behind its `worker ·` lead, and a second group would repeat them. And
         only when the worker has real context: a worker that was never delegated to, or was
         reset, adds nothing -- `worker ctx 0%` is noise, not information. Read off the attached
         worker Session alone; the bar never loads one from disk to fill this row.
@@ -1930,7 +1930,7 @@ class StatusBar:
         Identity and usage are read off `active_session()`, so during a delegation the row answers
         the question the reader actually has -- which model is running now, and how full its
         context is -- instead of describing a parent that is parked inside a tool call. The
-        `[worker]` marker says whose numbers these are; they return to the parent's the moment
+        `worker ·` lead says whose numbers these are; they return to the parent's the moment
         the worker answers. The session-wide groups (mcp, skills, yolo) stay the parent's:
         the worker shares those objects, and yolo is the runtime's own flag. The one worker fact
         shown while the parent runs is its context water level (`worker_context_group`), the
@@ -1949,7 +1949,7 @@ class StatusBar:
         if self.session.settings.yolo:
             identity.append(("[yolo] ", "yolo"))
         if source is not self.session:
-            identity.append(("[worker] ", "worker"))
+            identity.extend([("worker", "worker"), (" · ", "sep")])
         identity.extend([(config.active_provider + "/" + model, "provider"), (" · ", "sep"), (provider.reasoning, "reason")])
         groups: list[list[tuple[str, str]]] = [
             identity,

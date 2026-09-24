@@ -14,13 +14,17 @@
   in the session's asset directory. The checkpoint names the index, so an evicted span is read back
   with `Read` or `Bash` rather than through a tool. A resumed older session gets its earlier spans
   written, as shortened excerpts, at its next compaction.
+- A running worker is marked with less text: the status bar leads with `worker ·` instead of
+  `[worker]` and is the one place the word appears; the working divider's label and the markers of
+  follow-ups queued for the worker take the worker's color instead, and a follow-up the worker
+  reads is echoed plainly between the delegation's start and done rules.
 - Quick-hint chips are reachable whatever the input holds: `Tab` cycles them even after you type,
   and `Enter` drops a suggestion into the draft at the cursor instead of replacing it — as its own
   line at the end of the input, into the sentence mid-line. A chip with a `✓` has its text in the
   input, and `Enter` on it takes that text back out.
 - Follow-ups typed while a delegation runs now reach the worker: `Enter` queues on the running
-  worker — marked `[worker]` on the divider with its own count, and persisted with the worker's
-  own snapshot — and joins its next model step; anything the worker never answered falls back to
+  worker — its marker in the worker's color, and persisted with the worker's own snapshot — and
+  joins its next model step; anything the worker never answered falls back to
   the parent, while `Tab` keeps holding for the parent's next task.
 - Quick-hint chips no longer take `Tab` from a command line, an `@` mention, or an open menu —
   including the argument rows a space just closed.

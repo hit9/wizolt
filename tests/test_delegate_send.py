@@ -317,7 +317,7 @@ async def test_delegate_send_claims_a_followup_queued_mid_run(tmp_path, monkeypa
 
     second = str(model.requests[1])
     assert "also check the tests" in second and "Live follow-up" in second  # the worker's request carried it
-    assert flushed == [["[worker] also check the tests"]]  # the echo names the side that read it
+    assert flushed == [["also check the tests"]]  # echoed plainly: it lands between the worker's rules
     assert parent.pending_user_inputs == []  # nothing fell back: the worker consumed the follow-up
 
 
@@ -369,7 +369,7 @@ async def test_delegate_failure_hands_consumed_followups_back(tmp_path, monkeypa
 
     # The failing request really did carry it (the echo proves the claim), yet nothing is left
     # in the worker's queue to find it by.
-    assert flushed == [["[worker] also check the tests"]]
+    assert flushed == [["also check the tests"]]
     assert parent.worker is not None and parent.worker.pending_user_inputs == []
     assert [item.text for item in parent.pending_user_inputs] == ["also check the tests"]
 

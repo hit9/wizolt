@@ -21,7 +21,7 @@ remain retryable internally until that request completes successfully; a failed 
 back below the divider as queued input.
 
 While a [delegated worker](worker.md) is running, `Enter` follows up the **worker** instead: the
-queued text — shown with a `[worker]` marker and its own count on the divider — joins the worker's
+queued text — its marker in the worker's color, like the divider's label — joins the worker's
 next model step. A follow-up the worker never reached, or reached in a request that then failed,
 falls back to the parent as queued input. `Tab` keeps holding for the parent's next task, and `↑`
 still recalls only the parent's queued messages.
@@ -92,7 +92,7 @@ A single line beneath the prompt summarizes the session in a fixed order:
 
 Once a [worker](worker.md) has actually run, its own context fill rides the row too, as
 `worker ctx N%`; a worker that has never been delegated to (or was reset) adds nothing. While a
-delegation is in flight the row shows the worker's figures instead, behind a `[worker]` marker.
+delegation is in flight the row shows the worker's figures instead, led by `worker ·`.
 
 The role colors stay still while the values remain live. The context and cache figures refresh
 after requests, and MCP and skill changes appear on the next screen redraw. While MCP
