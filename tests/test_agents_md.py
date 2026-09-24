@@ -534,12 +534,14 @@ def test_the_prefix_puts_global_before_project(tmp_path):
     instructions = context.instructions_context()
 
     display = display_path(global_agents_md_path(s.config.data_dir))
-    assert f"--- AGENTS.md ({display}) ---" in instructions
-    assert "--- AGENTS.md (./AGENTS.md) ---" in instructions
-    assert instructions.index(f"--- AGENTS.md ({display}) ---") < instructions.index("--- AGENTS.md (./AGENTS.md) ---")
+    user_header = f"--- AGENTS.md (user · {display}) ---"
+    project_header = "--- AGENTS.md (project · ./AGENTS.md) ---"
+    assert user_header in instructions
+    assert project_header in instructions
+    assert instructions.index(user_header) < instructions.index(project_header)
     assert instructions.index("House style") < instructions.index("Always run pytest.")
-    # the block opens on its own header: the file it came from, no rows above it
-    assert instructions.startswith(f"--- AGENTS.md ({display}) ---\n")
+    # the block opens on its own header: level and file, no rows above it
+    assert instructions.startswith(user_header + "\n")
     assert "House style" not in context.environment()  # the facts message no longer carries them
 
 
@@ -560,14 +562,14 @@ def test_the_prefix_clips_both_sources_under_one_shared_cap(tmp_path, monkeypatc
     context = ContextManager(s)
     display = display_path(global_agents_md_path(s.config.data_dir))
     text = context.instructions_context()
-    global_body = text.split(f"--- AGENTS.md ({display}) ---\n", 1)[1].split("--- AGENTS.md (./AGENTS.md) ---", 1)[0].rstrip()
-    project_body = text.split("--- AGENTS.md (./AGENTS.md) ---", 1)[1].strip("\n")
+    global_body = text.split(f"--- AGENTS.md (user · {display}) ---\n", 1)[1].split("--- AGENTS.md (project · ./AGENTS.md) ---", 1)[0].rstrip()
+    project_body = text.split("--- AGENTS.md (project · ./AGENTS.md) ---", 1)[1].strip("\n")
 
     assert "truncated to fit the prefix" in global_body
-    assert display in global_body  # the marker names the file
+    assert f"user · {display}" in global_body  # the marker names the level and the file
     # The project source is reserved its room first: the global source yields, not the project.
     assert "# Project" in project_body
-    assert "(./AGENTS.md truncated to fit the prefix;" in project_body  # the marker names its own file too
+    assert "(project · ./AGENTS.md truncated to fit the prefix;" in project_body  # its own file too
     # One shared budget: each source's rendered body stays within the cap.
     assert context.estimated_text_tokens(global_body) <= 200
     assert context.estimated_text_tokens(project_body) <= 200
@@ -579,7 +581,7 @@ def test_chinese_instructions_respect_the_prefix_budget(tmp_path, monkeypatch):
     monkeypatch.setattr("wizolt.context.MAX_AGENTS_MD_TOKENS", 200)
     s = agents_session(tmp_path, global_text="# 规则\n" + "中文偏好" * 500 + "\n")
     display = display_path(global_agents_md_path(s.config.data_dir))
-    body = ContextManager(s).instructions_context().split(f"--- AGENTS.md ({display}) ---\n", 1)[1]
+    body = ContextManager(s).instructions_context().split(f"--- AGENTS.md (user · {display}) ---\n", 1)[1]
 
     assert "truncated to fit the prefix" in body
     assert len(body.encode("utf-8")) <= 800
@@ -599,13 +601,13 @@ def test_absent_sources_inject_no_message(tmp_path):
 def test_only_the_loaded_source_gets_a_block(tmp_path):
     global_only = agents_session(tmp_path, global_text=GLOBAL_TEXT, cwd_name="work")
     text = ContextManager(global_only).instructions_context()
-    assert f"--- AGENTS.md ({display_path(global_agents_md_path(global_only.config.data_dir))}) ---" in text
-    assert "--- AGENTS.md (./" not in text
+    assert f"--- AGENTS.md (user · {display_path(global_agents_md_path(global_only.config.data_dir))}) ---" in text
+    assert "--- AGENTS.md (project · " not in text
 
     project_only = agents_session(tmp_path / "other", project_text=PROJECT_TEXT)
     text = ContextManager(project_only).instructions_context()
-    assert "--- AGENTS.md (./AGENTS.md) ---" in text
-    assert f"--- AGENTS.md ({display_path(global_agents_md_path(project_only.config.data_dir))}) ---" not in text
+    assert "--- AGENTS.md (project · ./AGENTS.md) ---" in text
+    assert f"--- AGENTS.md (user · {display_path(global_agents_md_path(project_only.config.data_dir))}) ---" not in text
 
 
 # --- the agent turn ---

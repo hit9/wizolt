@@ -122,7 +122,7 @@ def test_agents_md_rides_a_message_of_its_own(tmp_path):
     context = ContextManager(s)
 
     instructions = context.instructions_context()
-    assert instructions.startswith("--- AGENTS.md (./AGENTS.md) ---\n# Rules\nAlways run pytest.")
+    assert instructions.startswith("--- AGENTS.md (project · ./AGENTS.md) ---\n# Rules\nAlways run pytest.")
     assert "--- AGENTS.md (" not in context.environment()  # the facts message keeps only the global path row
     assert "Always run pytest." not in context.environment()
 
@@ -137,7 +137,7 @@ def test_agents_md_falls_back_to_claude_md(tmp_path):
     s = session(tmp_path)
 
     instructions = ContextManager(s).instructions_context()
-    assert instructions.startswith("--- AGENTS.md (./CLAUDE.md) ---\n# Claude rules\nAlways run pytest.")
+    assert instructions.startswith("--- AGENTS.md (project · ./CLAUDE.md) ---\n# Claude rules\nAlways run pytest.")
 
 
 def test_agents_md_precedence(tmp_path):
@@ -168,7 +168,7 @@ def test_agents_md_bounded(tmp_path):
 
     instructions = context.instructions_context()
     assert "truncated to fit the prefix" in instructions
-    injected = instructions.split("--- AGENTS.md (./AGENTS.md) ---", 1)[1].lstrip("\n")
+    injected = instructions.split("--- AGENTS.md (project · ./AGENTS.md) ---", 1)[1].lstrip("\n")
     assert (len(injected.encode("utf-8")) + 3) // 4 <= MAX_AGENTS_MD_TOKENS
 
 
@@ -181,7 +181,7 @@ def test_instructions_sit_between_the_environment_and_the_skills_index(tmp_path)
     messages = ContextManager(s).model_messages(SYSTEM_PROMPT, [{"role": "user", "content": "request"}])
 
     assert messages[1]["content"].startswith("--- Environment ---")
-    assert messages[2]["content"].startswith("--- AGENTS.md (./AGENTS.md) ---")
+    assert messages[2]["content"].startswith("--- AGENTS.md (project · ./AGENTS.md) ---")
     assert messages[3]["content"].startswith("--- SKILLS ---")
     assert messages[4]["content"] == "request"
 
@@ -200,7 +200,7 @@ def test_agents_md_bounding_spends_the_budget_it_is_given(tmp_path, label, text)
     used to leave a quarter of the cap unused, which is a quarter of the project's instructions."""
     (tmp_path / "AGENTS.md").write_text(text, encoding="utf-8")
     context = ContextManager(session(tmp_path))
-    injected = context.instructions_context().split("--- AGENTS.md (./AGENTS.md) ---", 1)[1].lstrip("\n")
+    injected = context.instructions_context().split("--- AGENTS.md (project · ./AGENTS.md) ---", 1)[1].lstrip("\n")
     tokens = (len(injected.encode("utf-8")) + 3) // 4
 
     assert "truncated to fit the prefix" in injected
