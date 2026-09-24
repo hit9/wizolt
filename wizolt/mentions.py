@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from wizolt.base import run_blocking
+from wizolt.utils.gitignore import GitIgnore
 
 if TYPE_CHECKING:
     from wizolt.session import Session
@@ -393,19 +394,17 @@ class FileMentions:
             await asyncio.shield(process.wait())
 
     def _walk_paths(self) -> list[str]:
-        """Correct non-Git fallback using nested GitIgnoreSpec scopes."""
-        from pathspec import GitIgnoreSpec
-
+        """The no-Git, no-rg fallback: walk the workspace honoring nested .gitignore scopes."""
         root = self.session.cwd
         found: list[str] = []
 
-        def walk(directory: str, scopes: tuple[tuple[str, GitIgnoreSpec], ...]) -> None:
+        def walk(directory: str, scopes: tuple[tuple[str, GitIgnore], ...]) -> None:
             rel_dir = os.path.relpath(directory, root)
             rel_dir = "" if rel_dir == "." else rel_dir.replace(os.sep, "/")
             ignore_file = os.path.join(directory, ".gitignore")
             try:
                 with open(ignore_file, encoding="utf-8") as handle:
-                    local = GitIgnoreSpec.from_lines(handle)
+                    local = GitIgnore.from_lines(handle)
             except OSError:
                 local = None
             if local is not None:
@@ -645,7 +644,7 @@ def _ignored_by_scopes(rel: str, is_dir: bool, scopes) -> bool:
         if base and not (rel == base or rel.startswith(base + "/")):
             continue
         local = rel[len(base) + 1 :] if base else rel
-        result = spec.check_file(local + ("/" if is_dir else ""))
-        if result.include is not None:
-            ignored = result.include
+        result = spec.matches(local, is_dir)
+        if result is not None:
+            ignored = result
     return ignored

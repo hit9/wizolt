@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, ClassVar, Self
 
 from wizolt.base import Json, ModelError, run_blocking
 from wizolt.paste import PASTE_MARKER, PasteRef
+from wizolt.utils.image_header import SUPPORTED_FORMATS, UNSUPPORTED_IMAGE, ImageHeader
 
 if TYPE_CHECKING:
     from wizolt.session import Session
@@ -36,12 +37,9 @@ TOOL_IMAGE_OBSERVATION_PREFIX = "[Tool image observation]"
 ATTACHMENT_VISION_OBSERVATION_PREFIX = "[Attachment image observation]"
 FAILED_IMAGE_CONTEXT_PREFIX = "[Image input failed; local assets remain available through ViewImage]"
 IMAGE_ASSET_CONTEXT_PREFIX = "[Attached image assets]"
-SUPPORTED_FORMATS = {
-    "GIF": "image/gif",
-    "JPEG": "image/jpeg",
-    "PNG": "image/png",
-    "WEBP": "image/webp",
-}
+# The largest file the recognizer will open: every vision API refuses more, so one is refused
+# before it is read rather than after it has all arrived in memory.
+MAX_IMAGE_BYTES = 20_000_000
 
 
 @dataclass(frozen=True)
@@ -293,7 +291,7 @@ class ImageInputs:
     async def load(self, path: str, *, source_text: str = "") -> ImageRef:
         """Validate and store one explicit local image for model input, off the loop.
 
-        The PIL inspection and the copy into the session's assets run on the executor; the loop
+        The header inspection and the copy into the session's assets run on the executor; the loop
         only awaits. Cancellation waits for that worker (`run_blocking`), which cleans up its own
         staging file, so the request either publishes the completed content-addressed asset or
         nothing at all."""
@@ -496,24 +494,23 @@ class ImageInputs:
 
     @staticmethod
     def _inspect(path: str, *, source_text: str = "", strict: bool = True) -> ImageRef | None:
-        from PIL import Image, UnidentifiedImageError  # deferred import: image decoding is not part of startup
-
         try:
             if not os.path.isfile(path):
                 raise OSError("not a regular file")
-            size = os.path.getsize(path)
-            with Image.open(path) as opened:
-                image_format = str(opened.format or "").upper()
-                width, height = opened.size
-                frames = int(getattr(opened, "n_frames", 1))
-                opened.verify()
+            # A header lives in the first bytes, and no provider accepts an image past this size;
+            # both checks run before the read, so a huge file -- one `recognize` meets on every
+            # keystroke of an edit -- is refused without ever entering memory.
+            if os.path.getsize(path) > MAX_IMAGE_BYTES:
+                raise ValueError(f"image file is larger than {MAX_IMAGE_BYTES} bytes")
+            with open(path, "rb") as file:
+                data = file.read()
+            image_format, width, height, frames = ImageHeader(data).read()
             media_type = SUPPORTED_FORMATS.get(image_format)
             if media_type is None or (image_format == "GIF" and frames != 1):
-                raise ValueError("supported formats are PNG, JPEG, WebP, and single-frame GIF")
-            with open(path, "rb") as file:
-                ref = hashlib.file_digest(file, "sha256").hexdigest()
-            return ImageRef(ref, ImageRef._safe_name(os.path.basename(path)), media_type, width, height, size, source_text, path)
-        except (OSError, UnidentifiedImageError, Image.DecompressionBombError, ValueError) as error:
+                raise ValueError(UNSUPPORTED_IMAGE)
+            ref = hashlib.sha256(data).hexdigest()
+            return ImageRef(ref, ImageRef._safe_name(os.path.basename(path)), media_type, width, height, len(data), source_text, path)
+        except (OSError, ValueError) as error:
             if strict:
                 raise ModelError(f"Cannot read image {source_text or path}: {error}") from error
             return None

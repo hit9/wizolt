@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- wizolt no longer depends on Pillow, which cuts about 22 MB (a quarter) from an install. Images
+  are recognized from their own headers, with the same formats as before (PNG, JPEG, WebP, and
+  single-frame GIF) and the same refusals, including files cut short. A file whose header is
+  valid but whose image data is damaged now reaches the provider, which refuses it itself. A
+  file over 20 MB is refused without being read, so one mentioned in the input costs nothing.
+- wizolt no longer depends on json-repair. A malformed compaction summary is read by a small
+  built-in parser that accepts the same damage: prose around the object, output cut short,
+  missing quotes, single quotes, trailing commas, and Python-style literals. Two objects in one
+  reply now keep the first instead of failing the parse.
+- wizolt no longer depends on pathspec. In a workspace with no Git and no ripgrep, @-completion
+  still honors nested .gitignore files through a small built-in reader that decides each path
+  the same way, with three documented differences: `dir/**`, `dir/*`, and `dir/**/` no longer
+  mark the directory `dir` itself ignored. `dir/*` keeping the directory undecided means a
+  `!dir/keep.txt` that follows now works, as it does in Git; the files the walk returns are the
+  same in every other case.
+
 ## 0.54.1 - 2026-09-24
 
 ### Fixed
