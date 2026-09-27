@@ -26,11 +26,16 @@ class ZellijPane:
         self.env.update(
             TERM="xterm-256color",
             XDG_RUNTIME_DIR=str(runtime),
+            ZELLIJ_SOCKET_DIR=str(runtime),
             XDG_CONFIG_HOME=str(path / "config"),
             XDG_CACHE_HOME=str(path / "cache"),
             XDG_DATA_HOME=str(path / "data"),
             PS1="READY> ",
         )
+        # Zellij logs use TMPDIR, not XDG_DATA_HOME. Keep them in CI's failure artifacts.
+        temporary = path / "tmp"
+        temporary.mkdir()
+        self.env["TMPDIR"] = str(temporary)
         self.config = path / "zellij.kdl"
         self.config.write_text(
             "pane_frames false\nsimplified_ui true\nshow_startup_tips false\n"
@@ -43,10 +48,30 @@ class ZellijPane:
         self.stopping = threading.Event()
         self.attach(100, 30, create=True)
         try:
+            self._wait_for_startup()
             self.wait_for("READY>")
-        except BaseException:
-            self.close()
+        except BaseException as error:
+            (self.path / "startup-error.txt").write_text(str(error))
+            try:
+                self.close()
+            except (OSError, subprocess.SubprocessError) as cleanup_error:
+                error.add_note(f"Zellij cleanup failed: {cleanup_error}")
             raise
+
+    def _wait_for_startup(self, timeout=15):
+        # Do not query session discovery before the shell is rendered. In Zellij 0.45.1,
+        # assert_socket() unlinks a socket if connect() races bind()/listen() and is refused.
+        # Observing the attached PTY leaves server startup alone; wait_for then checks the
+        # actual pane snapshot, so terminal escape sequences cannot satisfy that assertion.
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            returncode = self.client.poll()
+            if returncode is not None:
+                raise AssertionError(f"Zellij client exited during startup: returncode={returncode}; client: {bytes(self.raw[-4000:])!r}")
+            if b"READY>" in self.raw:
+                return
+            time.sleep(0.05)
+        raise AssertionError(f"Zellij startup timed out after {timeout}s; returncode={self.client.poll()}; client: {bytes(self.raw[-4000:])!r}")
 
     def attach(self, width, height, *, create=False):
         self.master, slave = pty.openpty()

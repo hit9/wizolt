@@ -77,3 +77,85 @@ def test_readiness_reports_query_timeout_at_deadline(query, monkeypatch):
     monkeypatch.setattr(zellij_terminal.time, "monotonic", Mock(side_effect=[0, 0, 16]))
     with pytest.raises(AssertionError, match="(?s)missing 'READY>'.*list-panes.*timed out"):
         pane.wait_for("READY>")
+
+
+@pytest.fixture
+def startup_cli(tmp_path, monkeypatch):
+    """Replace only the external executable; exercise the real PTY, reader and cleanup."""
+    import os
+
+    executable = tmp_path / "zellij"
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys, time\n"
+        "from pathlib import Path\n"
+        "path = Path(os.environ['FAKE_ZELLIJ_PATH'])\n"
+        "args = sys.argv[1:]\n"
+        "if '--new-session-with-layout' in args:\n"
+        "    (path / 'environment.json').write_text(json.dumps(dict(os.environ)))\n"
+        "    if os.environ.get('FAKE_ZELLIJ_EXIT'):\n"
+        "        sys.exit(23)\n"
+        "    time.sleep(0.2)\n"
+        "    (path / 'started').touch()\n"
+        "    print('READY> ', flush=True)\n"
+        "    time.sleep(30)\n"
+        "elif 'list-panes' in args:\n"
+        "    if not (path / 'started').exists():\n"
+        "        (path / 'early-query').touch()\n"
+        "        sys.exit(1)\n"
+        "    print(json.dumps([{'id': 1, 'is_focused': True, 'is_plugin': False}]))\n"
+        "elif 'subscribe' in args:\n"
+        "    print(json.dumps({'event': 'pane_update', 'is_initial': True,\n"
+        "                      'scrollback': [], 'viewport': ['READY> ']}), flush=True)\n"
+    )
+    executable.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("FAKE_ZELLIJ_PATH", str(tmp_path))
+    runtime = tmp_path / "runtime"
+    runtime.mkdir(mode=0o700)
+    return tmp_path, runtime
+
+
+def test_startup_observes_pty_before_querying_session(startup_cli, monkeypatch):
+    from zellij_terminal import ZellijPane
+
+    path, runtime = startup_cli
+    monkeypatch.setenv("ZELLIJ_SOCKET_DIR", "/unrelated/developer/session")
+    pane = ZellijPane(path, runtime)
+    try:
+        assert not (path / "early-query").exists()
+        assert pane.capture(full=False) == ["READY>"]
+        env = json.loads((path / "environment.json").read_text())
+        assert env["ZELLIJ_SOCKET_DIR"] == str(runtime)
+        assert env["TMPDIR"] == str(path / "tmp")
+        assert (path / "tmp").is_dir()
+    finally:
+        pane.close()
+    assert pane.client.poll() is not None
+    assert not pane.reader.is_alive()
+    assert b"READY>" in (path / "client.ansi").read_bytes()
+
+
+def test_startup_reports_early_client_exit_and_saves_failure(startup_cli, monkeypatch):
+    from zellij_terminal import ZellijPane
+
+    path, runtime = startup_cli
+    monkeypatch.setenv("FAKE_ZELLIJ_EXIT", "1")
+    with pytest.raises(AssertionError, match="exited during startup: returncode=23"):
+        ZellijPane(path, runtime)
+    assert not (path / "early-query").exists()
+    assert "returncode=23" in (path / "startup-error.txt").read_text()
+    assert (path / "client.ansi").exists()
+
+
+def test_startup_timeout_does_not_probe_session(query, monkeypatch):
+    import zellij_terminal
+
+    pane, run = query
+    pane.client = Mock()
+    pane.client.poll.return_value = None
+    pane.raw.extend(b"partial terminal output")
+    monkeypatch.setattr(zellij_terminal.time, "monotonic", Mock(side_effect=[0, 0, 16]))
+    with pytest.raises(AssertionError, match="startup timed out.*returncode=None.*partial terminal output"):
+        pane._wait_for_startup()
+    run.assert_not_called()

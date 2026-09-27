@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- Zellij acceptance fixtures wait for the attached terminal's shell prompt before querying
+  sessions, avoiding discovery probes that can unlink a socket while the server starts.
+  Explicitly isolate session sockets and retain per-fixture Zellij logs, startup errors and
+  client exit codes in CI failure artifacts. Add regression tests for delayed startup, early
+  client exit and startup timeout.
+
 ## 0.55.2 - 2026-09-27
 
 ### Added
