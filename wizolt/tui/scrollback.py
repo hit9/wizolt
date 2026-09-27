@@ -34,6 +34,7 @@ from __future__ import annotations
 import re
 import shutil
 import sys
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from prompt_toolkit.renderer import HeightIsUnknownError
@@ -109,13 +110,19 @@ def app_top_row(renderer: Renderer) -> int:
     return size.rows - max(renderer._min_available_height, screen.height)
 
 
+@dataclass
+class _ReplayLayout:
+    entries: dict[int, tuple[str, int]] = field(default_factory=dict)
+    characters: int = 0
+
+
 class ScrollbackRegion:
     """Owns the transcript and the escape sequences that project it onto the terminal."""
 
     # Bound retained writes, not physical rows (a batch can contain many lines). Older entries
     # cannot be restored after a purge, even if the terminal retained a larger native history.
     MAX_REPLAY = 5000
-    # Two recently visited widths, at most ~8 MiB of Unicode text in total.
+    # Two recently visited widths, at most ~8 MiB of Unicode text plus bounded entry metadata.
     MAX_CACHED_LAYOUT_CHARS = 1_000_000
 
     def __init__(self) -> None:
@@ -123,8 +130,8 @@ class ScrollbackRegion:
         self._pending: list[ScrollbackText] = []
         self._width: int | None = None
         self._rebuild_owed = False
-        # Each layout covers a prefix of the retained writes. Appends leave that prefix valid.
-        self._layouts: dict[int, tuple[int, str, int]] = {}
+        self._transcript_start = 0
+        self._layouts: dict[int, _ReplayLayout] = {}
 
     @property
     def pending(self) -> bool:
@@ -221,23 +228,39 @@ class ScrollbackRegion:
         dropped = max(0, len(self.transcript) - self.MAX_REPLAY)
         if dropped:
             del self.transcript[:dropped]
-            # Prefix indices no longer identify the retained history after eviction.
-            self._layouts.clear()
+            for layout in self._layouts.values():
+                for index in range(self._transcript_start, self._transcript_start + dropped):
+                    entry = layout.entries.pop(index, None)
+                    if entry is not None:
+                        layout.characters -= len(entry[0])
+            self._transcript_start += dropped
 
     def _replay_layout(self, columns: int) -> tuple[str, int]:
-        """Extend a cached prefix with only the newly recorded writes at this width."""
-        cached = self._layouts.pop(columns, None)
-        if cached is not None and cached[0] == len(self.transcript):
-            self._layouts[columns] = cached
-            return cached[1], cached[2]
-        count, prefix, rows = cached or (0, "", 0)
-        replayed = [item(columns) if callable(item) else item for item in self.transcript[count:]]
-        layout = (prefix + "".join(replayed), rows + sum(physical_rows(text, columns) for text in replayed))
-        if len(layout[0]) <= self.MAX_CACHED_LAYOUT_CHARS:
+        """Reuse retained writes independently, even when the whole transcript exceeds the budget.
+
+        Cache admission never evicts an earlier entry to fit a later one: a sequential replay
+        would otherwise evict every upcoming hit and turn an oversized transcript into all misses.
+        History eviction frees that space. Absolute write indices survive shifting the window.
+        """
+        layout = self._layouts.pop(columns, None)
+        if layout is None:
+            layout = _ReplayLayout()
             if len(self._layouts) == 2:
                 del self._layouts[next(iter(self._layouts))]
-            self._layouts[columns] = (len(self.transcript), *layout)
-        return layout
+        self._layouts[columns] = layout
+        replayed: list[str] = []
+        rows = 0
+        for index, item in enumerate(self.transcript, self._transcript_start):
+            entry = layout.entries.get(index)
+            if entry is None:
+                text = item(columns) if callable(item) else item
+                entry = (text, physical_rows(text, columns))
+                if layout.characters + len(text) <= self.MAX_CACHED_LAYOUT_CHARS:
+                    layout.entries[index] = entry
+                    layout.characters += len(text)
+            replayed.append(entry[0])
+            rows += entry[1]
+        return "".join(replayed), rows
 
     def rebuild(self, app: Application) -> None:
         """Purge the terminal and re-emit the transcript at the current width.

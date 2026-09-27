@@ -671,11 +671,13 @@ This changes presentation timing, never replay retention or geometry; unsupporte
 ordinary rendering. Synchronization can time out, so it is not a guarantee of flicker-free replay.
 See the [terminal protocol](https://github.com/contour-terminal/vt-extensions/blob/master/synchronized-output.md).
 
-Replay caches ANSI text and physical-row counts for a prefix of the transcript at the two most
-recent widths. Appends preserve that prefix: the next replay lays out only the new writes.
-Evicting old transcript writes invalidates both entries because their prefix indices have changed.
-Each cached layout is capped at one million characters
-(at most roughly 8 MiB combined); oversized layouts still replay in full without being cached.
+Replay caches each write's ANSI text and physical-row count at the two most recent widths.
+Absolute write indices let appends and history eviction preserve the retained writes' layouts.
+Each width admits at most one million characters (roughly 8 MiB of Unicode text combined), plus
+metadata bounded by the 5,000-write retention limit. A write that does not fit still renders in
+full, without evicting earlier cached writes; otherwise sequential replay would churn the cache.
+History eviction frees space for later writes. Replays join the entries into the complete output,
+trading a small traversal cost for reuse even when the whole transcript exceeds the cache budget.
 This cache belongs only to terminal projection, never session persistence or model requests.
 
 **Guard at two levels.** Unit/model tests cover geometry refusal, deferred replay, output recording,

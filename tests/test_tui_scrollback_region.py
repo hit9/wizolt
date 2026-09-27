@@ -357,21 +357,77 @@ def test_layout_cache_is_bounded_when_direct_output_extends_it(monkeypatch, caps
     assert list(region._layouts) == [60, 90]
     assert region._replay_layout(60) == ("short\nlonger than the cache budget\n", 2)
     assert region._replay_layout(90) == ("short\nlonger than the cache budget\n", 2)
-    assert not region._layouts
+    assert all(layout.characters == len("short\n") for layout in region._layouts.values())
 
 
-def test_layout_prefix_is_discarded_when_old_transcript_is_evicted(monkeypatch, capsys):
+def test_only_evicted_writes_lose_their_cached_layout(monkeypatch, capsys):
     from wizolt.tui.scrollback import physical_rows
 
     region = ScrollbackRegion()
     monkeypatch.setattr(region, "MAX_REPLAY", 2)
+    widths = []
+
+    def retained(width):
+        widths.append(width)
+        return "中文 retained\n"
+
     region.write_direct("evicted\n")
-    region.write_direct("中文 retained\n")
+    region.write_direct(retained)
     region._replay_layout(8)
+    widths.clear()
     region.write_direct("new\tline\n")
     expected = "中文 retained\nnew\tline\n"
     assert region._replay_layout(8) == (expected, physical_rows(expected, 8))
+    assert widths == []
     assert "evicted" not in region._replay_layout(80)[0]
+
+
+def test_oversized_replay_keeps_partial_cache_without_sequential_thrash(monkeypatch):
+    from wizolt.tui.scrollback import physical_rows
+
+    region = ScrollbackRegion()
+    monkeypatch.setattr(region, "MAX_CACHED_LAYOUT_CHARS", 12)
+    calls = [0, 0, 0]
+
+    def cell(index, text):
+        def render(width):
+            calls[index] += 1
+            return text
+        return render
+
+    region.transcript = [cell(0, "first\n"), cell(1, "oversized write\n"), cell(2, "last\n")]
+    expected = "first\noversized write\nlast\n"
+    for _ in range(3):
+        assert region._replay_layout(8) == (expected, physical_rows(expected, 8))
+    assert calls == [1, 3, 1]
+    assert region._layouts[8].characters == 11
+
+
+def test_cache_storage_stays_bounded_through_repeated_eviction(monkeypatch, capsys):
+    region = ScrollbackRegion()
+    monkeypatch.setattr(region, "MAX_REPLAY", 3)
+    monkeypatch.setattr(region, "MAX_CACHED_LAYOUT_CHARS", 10)
+    for index in range(30):
+        region.write_direct(f"{index}\n")
+        for width in (4, 8, 12):
+            fresh = ScrollbackRegion()
+            fresh.transcript = list(region.transcript)
+            assert region._replay_layout(width) == fresh._replay_layout(width)
+        assert len(region._layouts) == 2
+        for layout in region._layouts.values():
+            assert len(layout.entries) <= region.MAX_REPLAY
+            assert layout.characters == sum(len(text) for text, _ in layout.entries.values()) <= 10
+
+
+def test_batch_larger_than_retention_limit_cannot_reuse_old_indices(monkeypatch, capsys):
+    region = ScrollbackRegion()
+    monkeypatch.setattr(region, "MAX_REPLAY", 2)
+    region.write_direct("old\n")
+    region._replay_layout(80)
+    for text in ("a\n", "b\n", "c\n", "d\n"):
+        region.enqueue(text)
+    region.write_direct()
+    assert region._replay_layout(80) == ("c\nd\n", 2)
 
 
 def test_extended_layout_matches_uncached_markdown_and_row_counts(capsys):

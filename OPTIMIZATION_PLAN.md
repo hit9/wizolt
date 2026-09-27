@@ -98,3 +98,64 @@ in one process (21 measured samples each, identical rendered bytes and row count
 The two-width cache retains old layouts longer after output, within its existing character cap;
 there is no unbounded per-message cache. Git/rg validation and ordinary append-only snapshot
 workloads are control cases, not claimed speedups.
+
+## Second pass: long transcript replay
+
+Baseline: `c22a053`. Preserve exact terminal projection (including selected color depth), native
+scrollback, row counts, pending-write ordering and the 5,000-write retention limit. No model or
+prompt-cache changes. Keep only measured improvements, and record costs as well as benefits.
+
+- [x] Replace all-or-nothing layout caching with bounded entries for two widths. Check partial
+  caching above one million characters, eviction at 5,000 writes, oversized individual writes,
+  pending/flush/direct writes, and bounded metadata and rendered text.
+- [x] Evaluate bounded Markdown parse reuse across widths: **withdrawn**. It improved new-width
+  layout, but alternating 21 samples per version showed first projection rising from 106.268 to
+  110.015 ms (+3.5%), and the 100-document probe retained about 1.7 MB extra. No parse cache ships.
+- [x] Measure ANSI/fragment conversion: adjacent-style coalescing preserved output but changed
+  83.612 to 82.741 ms (about 1%); insufficient benefit to justify adding it. No change ships.
+- [x] Add a full-projection benchmark (rather than only MessageBlock.ansi), including cold widths,
+  revisited widths, cache-budget overflow, retention eviction and memory measurements.
+- [x] Run targeted tests, baseline regression checks, full pytest, real tmux, Ruff, Pyright and docs.
+
+### Second-pass measurements
+
+Run `benchmarks/replay.py` with the same interpreter against an exported `c22a053` and the worktree:
+
+```sh
+.venv/bin/python benchmarks/replay.py --source /path/to/exported-c22a053 --repeat 7
+.venv/bin/python benchmarks/replay.py --repeat 7
+```
+
+Uncontended local runs, median of seven samples. Each timed workload checks a SHA-256 digest of
+its complete ANSI output and physical-row counts; **all baseline/current digests match**.
+The final worktree measurements exclude both withdrawn experiments above.
+
+| Workload | Before (ms) | After (ms) |
+| --- | ---: | ---: |
+| First projection, 100 Markdown blocks (control) | 107.318 | 107.390 |
+| New width, 100 blocks (control) | 106.898 | 106.050 |
+| Revisited width, 100 blocks (control) | <0.001 | 0.008 |
+| Append to 100 blocks (control) | 0.573 | 0.555 |
+| Append at the 5,000-write retention limit | 1481.701 | 0.913 |
+| Revisited width above the character budget | 979.672 | 256.473 |
+
+The two target workloads improve by 99.94% and 73.8%, respectively. First/new widths are controls,
+not claimed speedups. This measures projection preparation, not terminal I/O or total tmux latency;
+full transcript output is still written on replay.
+
+Costs: a fully cached replay now traverses and joins entries, adding about 8 microseconds in the
+100-block control. At two widths, tracemalloc reports retained allocations of 206,909 -> 242,943
+bytes (+36,034 bytes), and peak allocations of 8,766,890 -> 8,584,669 bytes. These are measurements
+of this fixture, not general memory bounds. Rendered text keeps the existing one-million-character
+cap per width; metadata is bounded by the two widths and 5,000 retained writes. Oversized histories
+now retain useful partial layouts within that budget, so they can retain more memory than before.
+
+Validation:
+
+- Targeted terminal tests: **127 passed**.
+- Two bounded-work regressions fail on the exported baseline for the expected reasons: retained
+  writes rerender after history eviction, and oversized transcripts discard all useful cache hits.
+- Full suite: **3,484 passed**, one existing fork-in-multithreaded-process deprecation warning.
+- Real tmux: **28 passed, 2 xfailed** (existing expected failures), including alternate screen on/off.
+- Ruff checks/formatting and Pyright passed; HTML docs built in an isolated environment without
+  changing the project's virtualenv.
