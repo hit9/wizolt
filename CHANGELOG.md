@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.55.1 - 2026-09-27
+
 ### Changed
 
 - Startup preloads only the model SDKs needed by the configured providers.
