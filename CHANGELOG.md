@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.55.2 - 2026-09-27
+
 ### Added
 
 - Real Zellij terminal acceptance tests and a dedicated CI job, alongside the tmux suite.
