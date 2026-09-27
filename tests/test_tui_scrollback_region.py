@@ -314,7 +314,7 @@ def test_resize_presents_one_complete_update_and_releases_it_on_error(monkeypatc
 
 
 @pytest.mark.parametrize("flush_first", [False, True])
-def test_resize_reuses_layouts_until_new_output_arrives(monkeypatch, wired, flush_first):
+def test_resize_reuses_old_layouts_after_new_output_arrives(monkeypatch, wired, flush_first):
     output, app, _printer = wired
     widths = []
 
@@ -335,7 +335,7 @@ def test_resize_reuses_layouts_until_new_output_arrives(monkeypatch, wired, flus
             app.app._redraw()
         output.size = Size(rows=ROWS, columns=60)
         app.app._on_resize()
-        assert widths == [60, 90, 60]
+        assert widths == [60, 90]
         assert any("new output" in line for line in output.lines)
         app.app.exit()
 
@@ -346,7 +346,7 @@ def test_resize_reuses_layouts_until_new_output_arrives(monkeypatch, wired, flus
     run_tui(monkeypatch, app, output, drive)
 
 
-def test_layout_cache_is_bounded_and_direct_output_invalidates_it(monkeypatch, capsys):
+def test_layout_cache_is_bounded_when_direct_output_extends_it(monkeypatch, capsys):
     region = ScrollbackRegion()
     monkeypatch.setattr(region, "MAX_CACHED_LAYOUT_CHARS", 10)
     region.write_direct("short\n")
@@ -354,9 +354,38 @@ def test_layout_cache_is_bounded_and_direct_output_invalidates_it(monkeypatch, c
         assert region._replay_layout(width) == ("short\n", 1)
     assert list(region._layouts) == [60, 90]
     region.write_direct("longer than the cache budget\n")
-    assert not region._layouts
+    assert list(region._layouts) == [60, 90]
     assert region._replay_layout(60) == ("short\nlonger than the cache budget\n", 2)
+    assert region._replay_layout(90) == ("short\nlonger than the cache budget\n", 2)
     assert not region._layouts
+
+
+def test_layout_prefix_is_discarded_when_old_transcript_is_evicted(monkeypatch, capsys):
+    from wizolt.tui.scrollback import physical_rows
+
+    region = ScrollbackRegion()
+    monkeypatch.setattr(region, "MAX_REPLAY", 2)
+    region.write_direct("evicted\n")
+    region.write_direct("中文 retained\n")
+    region._replay_layout(8)
+    region.write_direct("new\tline\n")
+    expected = "中文 retained\nnew\tline\n"
+    assert region._replay_layout(8) == (expected, physical_rows(expected, 8))
+    assert "evicted" not in region._replay_layout(80)[0]
+
+
+def test_extended_layout_matches_uncached_markdown_and_row_counts(capsys):
+    from wizolt.render import MessageBlock
+
+    region = ScrollbackRegion()
+    printer = UiPrinter()
+    for index in range(4):
+        block = MessageBlock(printer, f"## 中文 {index}\n\n```python\nx = {index}\n```\n", "assistant", 0, False)
+        region.write_direct(block.ansi)
+        for width in (20, 80):
+            fresh = ScrollbackRegion()
+            fresh.transcript = list(region.transcript)
+            assert region._replay_layout(width) == fresh._replay_layout(width)
 
 
 def test_a_rebuild_leaves_the_app_on_the_row_it_was_on(monkeypatch, wired):

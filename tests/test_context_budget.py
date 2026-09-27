@@ -16,6 +16,27 @@ from wizolt.prompts import (
 from wizolt.session import AgentState
 
 
+async def test_request_preparation_measures_once_and_publishes_final_budget(tmp_path, monkeypatch):
+    s = session_with_provider(tmp_path)
+    agent = Agent(s)
+    real_estimate = agent.model.estimated_request_tokens
+    estimates = []
+
+    def measured(messages, tools=None):
+        result = real_estimate(messages, tools)
+        estimates.append(result)
+        return result
+
+    monkeypatch.setattr(agent.model, "estimated_request_tokens", measured)
+    first = await agent.prepare_request([{"role": "user", "content": "short request"}])
+    assert estimates == [real_estimate(first.messages, first.tools)]
+    assert s.state.context_tokens == estimates[-1]
+    assert s.state.context_percent == min(100, estimates[-1] * 100 // s.request_token_budget())
+    second = await agent.prepare_request([{"role": "user", "content": "different request" * 1000}])
+    assert len(estimates) == 2
+    assert s.state.context_tokens == real_estimate(second.messages, second.tools) > estimates[0]
+
+
 def test_provider_context_limit_overrides_the_runtime_default(tmp_path):
     # Provider entries are effectively per-model, so a 1M-window model should not have to share one
     # global number with a 128K one. Unset (0) inherits, and the budget is resolved per call so

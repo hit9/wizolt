@@ -338,7 +338,10 @@ class SessionSnapshotCodec:
         # fmt: on
 
     @classmethod
-    def delta(cls, session: Session, saved: Json, blobs: dict[str, str]) -> Json:
+    def delta(cls, session: Session, saved: Json, blobs: dict[str, str], *, current: Json | None = None) -> Json:
+        # This marker describes the same frozen state as the delta. Reuse whole-sequence hashes
+        # rather than serializing unchanged history again merely to recognize an empty suffix.
+        current = cls.marker(session) if current is None else current
         delta: Json = {
             "tool_counter": session.tool_counter,
             "source_view_counter": session.source_view_counter,
@@ -350,13 +353,13 @@ class SessionSnapshotCodec:
             "transcript_sync": TRANSCRIPT_SYNC_VERSION,
             "context_reset_requested": session.context_reset_requested,
         }
-        cls.add_sequence_delta(delta, "messages", cls.snapshot_messages(session), saved, "messages_len", "messages_digest")
+        cls.add_sequence_delta(delta, "messages", cls.snapshot_messages(session), saved, "messages_len", "messages_digest", current["messages_digest"])
         cls.add_append_only_delta(delta, "transcript_messages", cls.snapshot_transcript_messages(session), saved)
         active_transcript_messages = cls.active_transcript_messages(session)
-        if cls.digest(active_transcript_messages) != saved.get("active_transcript_messages_digest", cls.digest([])):
+        if current["active_transcript_messages_digest"] != saved.get("active_transcript_messages_digest", cls.digest([])):
             delta["active_transcript_messages_replace"] = active_transcript_messages
         pending_user_inputs = [item.to_json() for item in session.pending_user_inputs]
-        if cls.digest(pending_user_inputs) != saved.get("pending_user_inputs_digest", cls.digest([])):
+        if current["pending_user_inputs_digest"] != saved.get("pending_user_inputs_digest", cls.digest([])):
             delta["pending_user_inputs"] = pending_user_inputs
         cls.add_sequence_delta(
             delta,
@@ -365,6 +368,7 @@ class SessionSnapshotCodec:
             saved,
             "tool_records_len",
             "tool_records_digest",
+            current["tool_records_digest"],
         )
         cls.add_sequence_delta(
             delta,
@@ -373,23 +377,27 @@ class SessionSnapshotCodec:
             saved,
             "tool_errors_len",
             "tool_errors_digest",
+            current["tool_errors_digest"],
         )
-        cls.add_sequence_delta(delta, "recent_commands", session.recent_commands, saved, "recent_commands_len", "recent_commands_digest")
+        cls.add_sequence_delta(
+            delta, "recent_commands", session.recent_commands, saved, "recent_commands_len", "recent_commands_digest", current["recent_commands_digest"]
+        )
         cls.add_turn_diffs_delta(delta, session.turn_diffs, saved, blobs)
         cls.add_transcript_turn_diffs_delta(delta, session.transcript_turn_diffs, saved)
         cls.add_history_delta(delta, session.history, saved, blobs)
         cls.add_source_views_delta(delta, session.source_views, saved, blobs)
-        if cls.digest(session.provider_overrides) != saved.get("provider_overrides_digest", cls.digest({})):
+        if current["provider_overrides_digest"] != saved.get("provider_overrides_digest", cls.digest({})):
             delta["provider_overrides"] = dict(session.provider_overrides)
         return delta
 
     @classmethod
-    def add_sequence_delta(cls, delta: Json, key: str, current: list[Json], saved: Json, len_key: str, digest_key: str) -> None:
+    def add_sequence_delta(cls, delta: Json, key: str, current: list[Json], saved: Json, len_key: str, digest_key: str, digest: str) -> None:
         last_len = saved.get(len_key, 0)
-        if cls.digest(current[:last_len]) == saved.get(digest_key):
+        prefix_digest = digest if len(current) <= last_len else cls.digest(current[:last_len])
+        if prefix_digest == saved.get(digest_key):
             if len(current) > last_len:
                 delta[key] = current[last_len:]
-        elif cls.digest(current) != saved.get(digest_key):
+        elif digest != saved.get(digest_key):
             delta[key + "_replace"] = current
 
     @classmethod
@@ -537,43 +545,51 @@ class SessionSnapshotCodec:
             # Pruning changed the bounded sequence: replace it wholesale, like the history window.
             delta["source_views_replace"] = [cls.source_view(view, blobs) for view in views]
 
+    # Only fields owned by the snapshot format may be restored. Iterate the delta's fields,
+    # not every possible sequence: most checkpoints append to just one or two streams.
+    SEQUENCE_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "messages",
+            "transcript_messages",
+            "active_transcript_messages",
+            "tool_records",
+            "tool_errors",
+            "recent_commands",
+            "turn_diffs",
+            "transcript_turn_diffs",
+            "history",
+            "source_views",
+        }
+    )
+    REPLACED_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "tool_counter",
+            "source_view_counter",
+            "usage",
+            "compaction_usage",
+            "state",
+            "pending_user_inputs",
+            "provider_overrides",
+            "created_at",
+            "context_layout_version",
+            "transcript_sync",
+            "context_reset_requested",
+        }
+    )
+
     @classmethod
     def merge(cls, data: Json, delta: Json) -> None:
-        cls.merge_sequence(data, delta, "messages")
-        cls.merge_sequence(data, delta, "transcript_messages")
-        cls.merge_sequence(data, delta, "active_transcript_messages")
-        cls.merge_sequence(data, delta, "tool_records")
-        cls.merge_sequence(data, delta, "tool_errors")
-        cls.merge_sequence(data, delta, "recent_commands")
-        cls.merge_sequence(data, delta, "turn_diffs")
-        cls.merge_sequence(data, delta, "transcript_turn_diffs")
-        cls.merge_sequence(data, delta, "history")
-        cls.merge_sequence(data, delta, "source_views")
-        if "tool_counter" in delta:
-            data["tool_counter"] = delta["tool_counter"]
-        if "source_view_counter" in delta:
-            data["source_view_counter"] = delta["source_view_counter"]
-        if "usage" in delta:
-            data["usage"] = delta["usage"]
-        if "compaction_usage" in delta:
-            data["compaction_usage"] = delta["compaction_usage"]
-        if "state" in delta:
-            data["state"] = delta["state"]
-        if "pending_user_inputs" in delta:
-            data["pending_user_inputs"] = delta["pending_user_inputs"]
-        if "provider_overrides" in delta:
-            data["provider_overrides"] = delta["provider_overrides"]
-        for key in ("created_at", "context_layout_version", "transcript_sync", "context_reset_requested"):
-            if key in delta:
-                data[key] = delta[key]
-
-    @staticmethod
-    def merge_sequence(data: Json, delta: Json, key: str) -> None:
-        replace_key = key + "_replace"
-        if replace_key in delta:
-            data[key] = delta[replace_key]
-        if key in delta:
-            data.setdefault(key, []).extend(delta[key])
+        for key, value in delta.items():
+            if key in cls.REPLACED_FIELDS:
+                data[key] = value
+            elif key in cls.SEQUENCE_FIELDS:
+                if key + "_replace" not in delta:
+                    data.setdefault(key, []).extend(value)
+            elif key.endswith("_replace") and (name := key[:-8]) in cls.SEQUENCE_FIELDS:
+                data[name] = value
+                # Replacement precedes append even if the JSON fields arrive in reverse order.
+                if name in delta:
+                    data[name].extend(delta[name])
 
     @staticmethod
     def model_usage(data: Json) -> ModelUsage:

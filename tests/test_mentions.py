@@ -68,6 +68,31 @@ def test_file_mention_quoted_round_trip_and_incomplete_span():
 # --- T3: matching and ranking ---
 
 
+def test_fallback_reuses_file_types_and_preserves_symlink_filtering(tmp_path, monkeypatch):
+    mentions = session(tmp_path).mentions
+    (tmp_path / "file.py").write_text("hello")
+    (tmp_path / "directory").mkdir()
+    (tmp_path / "link.py").symlink_to("file.py")
+    (tmp_path / "broken.py").symlink_to("missing.py")
+    (tmp_path / "directory-link").symlink_to("directory", target_is_directory=True)
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "hidden").write_text("hidden")
+
+    def duplicate_stat(_path):
+        raise AssertionError("the Python walk already checked file types")
+
+    monkeypatch.setattr(os.path, "isfile", duplicate_stat)
+    assert {path for _, path in mentions._collect(None)} == {"file.py", "link.py"}
+
+
+def test_external_discovery_still_checks_deleted_files_and_directories(tmp_path):
+    mentions = session(tmp_path).mentions
+    (tmp_path / "file.py").write_text("hello")
+    (tmp_path / "directory").mkdir()
+    (tmp_path / "broken.py").symlink_to("missing.py")
+    assert mentions._collect(["file.py", "missing.py", "directory", "broken.py", "file.py"]) == (("file.py", "file.py"),)
+
+
 FILES = (
     ("wizolt/cli/view.py", "wizolt/cli/view.py"),
     ("wizolt/tui.py", "wizolt/tui.py"),

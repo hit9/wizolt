@@ -45,7 +45,7 @@ def test_default_user_paths_prefer_wizolt_then_minacode_then_nanocode(isolate_ho
 def test_continue_flags_resume_latest_session_in_current_project(tmp_path, monkeypatch, flag):
     config = Config(data_dir=str(tmp_path / "data"))
     settings = RuntimeSettings()
-    resumed = SimpleNamespace(settings=settings, mcp=None, close=lambda: None)
+    resumed = SimpleNamespace(config=config, policy=bundled_policy(), settings=settings, mcp=None, close=lambda: None)
     selected = []
 
     monkeypatch.setattr(ConfigFile, "load", lambda _path: {})
@@ -90,7 +90,7 @@ def test_resume_request_starts_the_next_run_on_the_chosen_session(tmp_path, monk
         "load_snapshot",
         classmethod(
             lambda _cls, uid, config=None, settings=None, cwd="", catalog=None, lease=None: loaded.append(uid)
-            or SimpleNamespace(settings=settings, mcp=None, close=lambda: None)
+            or SimpleNamespace(config=config, policy=bundled_policy(), settings=settings, mcp=None, close=lambda: None)
         ),
     )
     closed = []

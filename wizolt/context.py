@@ -176,8 +176,8 @@ class ContextManager:
             return self.model.estimated_request_tokens(messages, tools)
         return self.estimated_tokens(messages) + (self.estimated_tokens(tools) if tools else 0)
 
-    def update_percent(self, messages: list[Json], tools: list[Json] | None = None) -> int:
-        self.session.state.context_tokens = self.request_tokens(messages, tools)
+    def update_percent(self, messages: list[Json], tools: list[Json] | None = None, *, tokens: int | None = None) -> int:
+        self.session.state.context_tokens = self.request_tokens(messages, tools) if tokens is None else tokens
         self.session.state.context_percent = min(100, self.session.state.context_tokens * 100 // self.request_token_budget())
         return self.session.state.context_percent
 
@@ -197,6 +197,7 @@ class ContextManager:
         budget = self.request_token_budget()
         raw = self.request_tokens(messages, tools)
         if raw < budget and not self._overdue_by_usage():
+            self.update_percent(messages, tools, tokens=raw)
             return messages
         attempted = compacted_any = False
         if self._auto_compaction_allowed("history", self.session.messages):
@@ -209,8 +210,9 @@ class ContextManager:
             if await compactor.run(compacted, keep, PREVIOUS_CONTEXT_TRIMMED, tool_messages=turn_messages, recent=recent):
                 compacted_any = True
                 messages = self.model_messages(base_system, turn_messages)
+                raw = self.request_tokens(messages, tools)
             self._auto_compacted_at["history"] = len(self.session.messages)
-        if turn_messages is not None and self.request_tokens(messages, tools) >= budget and self._auto_compaction_allowed("turn", turn_messages):
+        if turn_messages is not None and raw >= budget and self._auto_compaction_allowed("turn", turn_messages):
             attempted = True
             recent = None
             compacted, keep = compactor.turn_parts(turn_messages)
@@ -220,13 +222,15 @@ class ContextManager:
             if await compactor.run(compacted, keep, CURRENT_TURN_CONTEXT_TRIMMED, turn_messages=turn_messages, recent=recent):
                 compacted_any = True
                 messages = self.model_messages(base_system, turn_messages)
+                raw = self.request_tokens(messages, tools)
             self._auto_compacted_at["turn"] = len(turn_messages)
         # Only a real dead end is worth a word: a pass ran, freed nothing, and the request is still
         # over budget. Reporting per pass would fire on every ordinary turn, where the history pass
         # does the work and the short current turn has nothing to give. `attempted` keeps it to one
         # report -- once both scopes are marked, later requests skip the passes and stay quiet.
-        if attempted and not compacted_any and self.request_tokens(messages, tools) >= budget:
+        if attempted and not compacted_any and raw >= budget:
             self._report_incompressible()
+        self.update_percent(messages, tools, tokens=raw)
         return messages
 
     def _auto_compaction_allowed(self, scope: str, messages: list[Json]) -> bool:

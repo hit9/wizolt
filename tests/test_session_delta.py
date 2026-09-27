@@ -3,11 +3,43 @@ import asyncio
 import os
 from pathlib import Path
 
+import pytest
+
 from test_session_persistence import log_path, project_dir, read_jsonl, session_with_data_dir
 
 from wizolt.base import SESSION_EVENT_KEY
 from wizolt.context import ContextManager
 from wizolt.session import Session
+
+
+@pytest.mark.parametrize("mutation", ["unchanged", "append", "replace", "edit_then_append", "shorten", "clear"])
+async def test_snapshot_digest_reuse_preserves_sequence_changes(tmp_path, mutation):
+    from copy import deepcopy
+    from wizolt.session import SessionSnapshotStore
+
+    s = session_with_data_dir(tmp_path)
+    s.messages = [{"role": "user", "content": "first"}, {"role": "assistant", "content": "second"}]
+    await s.save_snapshot()
+    if mutation in ("replace", "edit_then_append"):
+        s.messages[0]["content"] = "changed in place"
+    if mutation in ("append", "edit_then_append"):
+        s.messages.append({"role": "user", "content": "third"})
+    if mutation == "shorten":
+        s.messages.pop()
+    if mutation == "clear":
+        s.messages.clear()
+    expected = deepcopy(s.messages)
+    await s.save_snapshot()
+    restored, _, _ = SessionSnapshotStore.read_merged(log_path(s))
+    assert restored["messages"] == expected
+    delta = read_jsonl(log_path(s))[-1]
+    if mutation == "unchanged":
+        assert "messages" not in delta and "messages_replace" not in delta
+    elif mutation == "append":
+        assert delta["messages"] == expected[-1:]
+    else:
+        assert delta["messages_replace"] == expected
+    s.close()
 
 
 async def test_latest_pointer_created_on_first_save(tmp_path):

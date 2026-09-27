@@ -15,7 +15,8 @@ async def test_automatic_compaction_runs_once_until_new_messages_arrive(tmp_path
     model = _CountingModel(s)
 
     for _ in range(5):
-        await context.prepare_messages(model, "system")
+        prepared = await context.prepare_messages(model, "system")
+        assert s.state.context_tokens == context.request_tokens(prepared)
 
     assert model.calls == 1
     assert s.state.compaction_count == 1

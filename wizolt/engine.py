@@ -604,7 +604,6 @@ class Agent:
         self.session.state.turn_messages = len(request_turn)
         tools = Tool.resolved_schemas(self.session)
         messages = await self.context.prepare_messages(self.model, self.session.system_prompt, request_turn, tools)
-        self.context.update_percent(messages, tools)
         return PreparedRequest(messages, tools, pending, request_turn, tuple(current_raw))
 
     async def _image_fallback_request(

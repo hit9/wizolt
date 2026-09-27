@@ -3,6 +3,51 @@
 import subprocess
 import sys
 
+import pytest
+
+
+@pytest.mark.parametrize("url,api,expected", [
+    ("https://example.test/v1", "chat", "openai"),
+    ("https://example.test/v1", "responses", "openai"),
+    ("https://example.test/v1", "anthropic", "anthropic"),
+    ("https://example.test/v1/messages", "auto", "anthropic"),
+])
+def test_startup_prewarms_only_the_resolved_protocol(tmp_path, url, api, expected):
+    from wizolt.__main__ import startup_imports
+    from wizolt.config import Config, ProviderConfig
+    from wizolt.session import Session
+
+    config = Config(data_dir=str(tmp_path), providers={"default": ProviderConfig(url=url, api=api)})
+    assert startup_imports(Session(config=config, cwd=str(tmp_path))) == [expected]
+
+
+@pytest.mark.parametrize("route", ["compaction", "vision", "worker"])
+def test_startup_includes_configured_auxiliary_protocols(tmp_path, route):
+    from wizolt.__main__ import startup_imports
+    from wizolt.config import Config, ProviderConfig
+    from wizolt.session import Session
+
+    config = Config(data_dir=str(tmp_path), providers={
+        "default": ProviderConfig(api="chat"), "other": ProviderConfig(api="anthropic"),
+        "unused": ProviderConfig(api="responses"),
+    })
+    setattr(config, route + "_provider", "other")
+    assert startup_imports(Session(config=config, cwd=str(tmp_path))) == ["openai", "anthropic"]
+
+
+def test_startup_resolves_compaction_override_and_mcp_autoconnect(tmp_path):
+    from types import SimpleNamespace
+    from wizolt.__main__ import startup_imports
+    from wizolt.config import Config
+    from wizolt.session import Session
+
+    config = Config(data_dir=str(tmp_path), compaction_api="anthropic")
+    session = Session(config=config, cwd=str(tmp_path))
+    session.mcp = SimpleNamespace(parse_configs=lambda: [SimpleNamespace(auto_connect=False)])
+    assert startup_imports(session) == ["openai", "anthropic"]
+    session.mcp = SimpleNamespace(parse_configs=lambda: [SimpleNamespace(auto_connect=True)])
+    assert startup_imports(session) == ["openai", "anthropic", "mcp.client"]
+
 
 def test_fresh_interpreter_import_chain_stays_light():
     """Heavy UI and provider dependencies do not return to the entry import path."""

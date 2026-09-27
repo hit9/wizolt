@@ -187,12 +187,13 @@ class SessionSnapshotStore:
             return None
         lease = session.assert_ownership()
         blobs: dict[str, str] = {}
+        marker = SessionSnapshotCodec.marker(session)
         if not session._snapshot_saved:
             header_line = self._jsonl(self.header(session))
             record = SessionSnapshotCodec.snapshot(session, blobs)
         else:
             header_line = ""
-            record = SessionSnapshotCodec.delta(session, session._snapshot_saved, blobs)
+            record = SessionSnapshotCodec.delta(session, session._snapshot_saved, blobs, current=marker)
         new_blobs = {ref: text for ref, text in blobs.items() if ref not in session._blobs_written}
         meta_line, meta_path, meta = "", "", session._meta_written
         latest_dir = ""
@@ -214,7 +215,7 @@ class SessionSnapshotStore:
             latest_dir=latest_dir,
             assets_dir=session.images.assets_dir(),
             asset_refs=frozenset(self._asset_refs(session)),
-            snapshot_saved=SessionSnapshotCodec.marker(session),
+            snapshot_saved=marker,
             blobs_written=frozenset(session._blobs_written | new_blobs.keys()),
             meta_written=meta,
             ownership_root=session.ownership_root_path(),

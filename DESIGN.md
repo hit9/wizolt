@@ -211,7 +211,8 @@ the `mcp` SDK (~0.25s), `ModelClient` defers `anthropic`/`openai` (~0.8s togethe
 under `TYPE_CHECKING`. Do not lift them back to module scope; `tests/test_cli.py` asserts a fresh
 interpreter loads neither SDK.
 
-`main` warms the deferred SDKs (and the MCP SDK, when a server auto-connects) on a daemon thread so
+`main` warms only the SDKs selected by the resolved main, compaction, vision and worker routes
+(and the MCP SDK, when a server auto-connects) on a daemon thread so
 deferral does not move the cost to the first request; racing is safe because CPython locks imports
 per module (see `warm_imports`). That thread holds the GIL for about a second, so keystrokes echo
 slowly while it runs: the prompt's placeholder says `starting…` until it and the first mention scan
@@ -670,9 +671,10 @@ This changes presentation timing, never replay retention or geometry; unsupporte
 ordinary rendering. Synchronization can time out, so it is not a guarantee of flicker-free replay.
 See the [terminal protocol](https://github.com/contour-terminal/vt-extensions/blob/master/synchronized-output.md).
 
-Replay caches the complete ANSI text and physical-row count for the two most recent widths, only
-while the transcript is unchanged. Direct writes, flushed output and pending output incorporated
-by a rebuild invalidate both entries. Each cached layout is capped at one million characters
+Replay caches ANSI text and physical-row counts for a prefix of the transcript at the two most
+recent widths. Appends preserve that prefix: the next replay lays out only the new writes.
+Evicting old transcript writes invalidates both entries because their prefix indices have changed.
+Each cached layout is capped at one million characters
 (at most roughly 8 MiB combined); oversized layouts still replay in full without being cached.
 This cache belongs only to terminal projection, never session persistence or model requests.
 

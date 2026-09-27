@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Startup preloads only the model SDKs needed by the configured providers.
+- Returning to a recent terminal width after new output reuses the earlier transcript layout,
+  reducing pauses when zooming and unzooming tmux panes during a conversation.
+- Request preparation and session saves avoid repeated token estimation and state hashing.
+- Long-session restore processes incremental records with less overhead. File completion's
+  Python fallback avoids checking each file's type twice.
+
 ## 0.55.0 - 2026-09-24
 
 ### Changed

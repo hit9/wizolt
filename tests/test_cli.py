@@ -8,6 +8,8 @@ import pytest
 
 import wizolt
 import wizolt.__main__ as cli
+from wizolt.config import Config
+from wizolt.providers.compat import bundled_policy
 
 
 def test_package_root_exposes_only_version():
@@ -48,7 +50,7 @@ def test_cli_runs_session_and_closes_resources(monkeypatch):
     that opened it. Closing MCP here would mean closing it after that loop was already gone."""
     closed = []
     mcp = SimpleNamespace(close=lambda: closed.append("mcp"), parse_configs=list)
-    session = SimpleNamespace(settings=SimpleNamespace(theme="dark"), mcp=mcp, ensure_ownership=lambda: None, close=lambda: None)
+    session = SimpleNamespace(config=Config(), policy=bundled_policy(), settings=SimpleNamespace(theme="dark"), mcp=mcp, ensure_ownership=lambda: None, close=lambda: None)
     monkeypatch.setattr(cli.Session, "from_config_file", lambda **kwargs: session)
     monkeypatch.setattr(cli.Theme, "resolve", lambda theme: f"resolved-{theme}")
     monkeypatch.setattr(cli.Theme, "set_mode", lambda theme: closed.append(theme))
@@ -89,7 +91,7 @@ def test_interactive_banner_precedes_session_and_ui_imports(monkeypatch):
     def configure_logging():
         calls.append(("configure", stdout.getvalue()))
 
-    session = SimpleNamespace(settings=SimpleNamespace(theme="dark"), mcp=None, ensure_ownership=lambda: None, close=lambda: None)
+    session = SimpleNamespace(config=Config(), policy=bundled_policy(), settings=SimpleNamespace(theme="dark"), mcp=None, ensure_ownership=lambda: None, close=lambda: None)
     monkeypatch.setattr(cli, "configure_logging", configure_logging)
     monkeypatch.setattr(cli.Session, "from_config_file", lambda **_kwargs: session)
     monkeypatch.setattr(cli.Theme, "resolve", lambda theme: theme)
@@ -144,7 +146,7 @@ def test_interactive_startup_failure_erases_the_starting_line(monkeypatch):
 
 def test_cli_loads_resumed_session_with_runtime_overrides(monkeypatch):
     loaded = {}
-    session = SimpleNamespace(settings=SimpleNamespace(theme="auto"), mcp=None, close=lambda: None)
+    session = SimpleNamespace(config=Config(), policy=bundled_policy(), settings=SimpleNamespace(theme="auto"), mcp=None, close=lambda: None)
     catalog = SimpleNamespace(policy="selected-policy")
     monkeypatch.setattr(cli.ConfigFile, "load", lambda path: {"runtime": {"theme": "dark"}})
     monkeypatch.setattr(cli.Config, "data_dir_from", lambda data: "data-dir")

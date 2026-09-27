@@ -15,6 +15,27 @@ from wizolt.config import (
 from wizolt.session import Session, SessionSnapshotCodec, SessionSnapshotStore, TurnDiff
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+def test_restore_applies_replacements_before_appends_and_ignores_unknown_fields(tmp_path, reverse):
+    path = tmp_path / "log.jsonl"
+    fields = [("messages", [{"role": "user", "content": "appended"}]),
+              ("messages_replace", [{"role": "user", "content": "replacement"}]),
+              ("transcript_messages", [{"role": "assistant", "content": "visible"}]),
+              ("unexpected_replace", ["bad"]), ("unexpected", ["bad"]),
+              ("state", {"goal": "restored"}), ("transcript_sync", 1)]
+    if reverse:
+        fields.reverse()
+    s = session_with_data_dir(tmp_path)
+    header = SessionSnapshotStore.header(s)
+    snapshot = {"messages": [{"role": "user", "content": "old"}], "transcript_sync": 1}
+    path.write_text("\n".join(json.dumps(record) for record in (header, snapshot, dict(fields))) + "\n")
+    restored, _, _ = SessionSnapshotStore.read_merged(str(path))
+    assert [item["content"] for item in restored["messages"]] == ["replacement", "appended"]
+    assert restored["transcript_messages"] == [{"role": "assistant", "content": "visible"}]
+    assert restored["state"] == {"goal": "restored"}
+    assert "unexpected" not in restored and "unexpected_replace" not in restored
+
+
 async def test_oversized_snapshots_are_dropped_before_reaching_the_log(tmp_path):
     """Snapshots over the size limit are still discarded, and leave no blob behind."""
     s = session_with_data_dir(tmp_path)

@@ -294,7 +294,9 @@ class FileMentions:
     def _collect(self, rels: list[str] | None) -> tuple[tuple[str, str], ...]:
         """Normalize, deduplicate, stat, and sort one discovery result. Runs on a worker."""
         if rels is None:
-            rels = self._walk_paths()
+            # The walk yields unique, normalized files and has already checked DirEntry.is_file
+            # (including symlinks). External discovery still needs the validation below.
+            return tuple(sorted((rel.lower(), rel) for rel in self._walk_paths()))
         seen: set[str] = set()
         pairs: list[tuple[str, str]] = []
         for rel in rels:

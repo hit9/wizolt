@@ -123,7 +123,8 @@ class ScrollbackRegion:
         self._pending: list[ScrollbackText] = []
         self._width: int | None = None
         self._rebuild_owed = False
-        self._layouts: dict[int, tuple[str, int]] = {}
+        # Each layout covers a prefix of the retained writes. Appends leave that prefix valid.
+        self._layouts: dict[int, tuple[int, str, int]] = {}
 
     @property
     def pending(self) -> bool:
@@ -150,9 +151,7 @@ class ScrollbackRegion:
         for item in pending:
             sys.stdout.write(item(columns) if callable(item) else item)
         sys.stdout.flush()
-        self._layouts.clear()
-        self.transcript.extend(pending)
-        del self.transcript[: max(0, len(self.transcript) - self.MAX_REPLAY)]
+        self._retain(pending)
 
     def note_width(self, columns: int) -> bool:
         """Record the width being rendered at, and report whether a rebuild is owed.
@@ -213,24 +212,31 @@ class ScrollbackRegion:
             out.write_raw(f"\x1b[{top + renderer._cursor_pos.y + 1};{renderer._cursor_pos.x + 1}H")
         out.flush()
 
-        self.transcript.extend(self._pending)
-        self._layouts.clear()
-        del self.transcript[: max(0, len(self.transcript) - self.MAX_REPLAY)]
+        self._retain(self._pending)
         self._pending.clear()
         return bool(advance)
 
+    def _retain(self, writes: list[ScrollbackText]) -> None:
+        self.transcript.extend(writes)
+        dropped = max(0, len(self.transcript) - self.MAX_REPLAY)
+        if dropped:
+            del self.transcript[:dropped]
+            # Prefix indices no longer identify the retained history after eviction.
+            self._layouts.clear()
+
     def _replay_layout(self, columns: int) -> tuple[str, int]:
-        """Reuse complete layouts while the recorded transcript stays unchanged."""
+        """Extend a cached prefix with only the newly recorded writes at this width."""
         cached = self._layouts.pop(columns, None)
-        if cached is not None:
+        if cached is not None and cached[0] == len(self.transcript):
             self._layouts[columns] = cached
-            return cached
-        replayed = [item(columns) if callable(item) else item for item in self.transcript]
-        layout = ("".join(replayed), sum(physical_rows(text, columns) for text in replayed))
+            return cached[1], cached[2]
+        count, prefix, rows = cached or (0, "", 0)
+        replayed = [item(columns) if callable(item) else item for item in self.transcript[count:]]
+        layout = (prefix + "".join(replayed), rows + sum(physical_rows(text, columns) for text in replayed))
         if len(layout[0]) <= self.MAX_CACHED_LAYOUT_CHARS:
             if len(self._layouts) == 2:
                 del self._layouts[next(iter(self._layouts))]
-            self._layouts[columns] = layout
+            self._layouts[columns] = (len(self.transcript), *layout)
         return layout
 
     def rebuild(self, app: Application) -> None:
@@ -250,11 +256,8 @@ class ScrollbackRegion:
         except HeightIsUnknownError:
             anchor = None
         self._rebuild_owed = False
-        if self._pending:
-            self._layouts.clear()
-        self.transcript.extend(self._pending)
+        self._retain(self._pending)
         self._pending.clear()
-        del self.transcript[: max(0, len(self.transcript) - self.MAX_REPLAY)]
 
         # Reset the scroll region and styles, home the cursor, clear the screen, then purge
         # scrollback. Order matches a shell's `clear` followed by `printf '\e[3J'`.
