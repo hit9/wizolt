@@ -54,8 +54,10 @@ Keep this file short. It is an entry point, not a second design document.
     commit message.
   - A `term-shot` is a screenshot in HTML: when the colors or rows it depicts change, it is stale
     and has to be redrawn. Keep every `<span>` closed.
-- **Changelog:** record user-visible changes under `Unreleased`; omit internal-only refactors and
-  doc maintenance.
+- **Changelog:** record notable changes under `Unreleased`, including user-facing behavior,
+  internal refactors, dependencies, tests/CI, and documentation or maintenance work. Performance
+  claims need before/after measurements with the workload, environment and comparison revisions;
+  link the recorded results and include meaningful trade-offs or regressions.
 - **Release (only when requested):** bump `pyproject.toml` and `wizolt/base.py`, move Unreleased
   entries under the dated version, run tests, quality checks, the doc build, and `uv build`,
   commit `Release X.Y.Z`, and create the lightweight tag `vX.Y.Z`. Do not push or publish.
@@ -66,7 +68,7 @@ Keep this file short. It is an entry point, not a second design document.
 - Prefer black-box tests at the narrowest stable public boundary; bug fixes cover the reproduced
   failure, intended result, and important rejection paths (see `DESIGN.md` for the full policy).
 - Mock external uncertainty, not the core behavior under test; keep tests deterministic and fast.
-- Keep `CHANGELOG.md` aligned with user-visible behavior.
+- Keep `CHANGELOG.md` aligned with notable project changes, including internal work.
 - Never rebuild or re-sync the project `.venv` (no `uv run --python X` / `uv sync --python X`
   with a different interpreter): the developer's own `wizolt` process runs out of it, and swapping
   it mid-session deletes modules under that process and crashes it. For cross-version testing,

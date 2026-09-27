@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+### Added
+
+- Real Zellij terminal acceptance tests and a dedicated CI job, alongside the tmux suite.
+- A benchmark runner that records source revisions, environment details, timing samples and replay
+  output hashes, with a versioned Linux ARM64 baseline and comparison reports.
+- `DEPENDENCY_REVIEW.md`, documenting production dependency costs and replacement or optional-install
+  candidates. No production dependencies have been removed.
+
+### Changed
+
+- Group agent execution under `wizolt.agent` and presentation under `wizolt.ui`. Internal Python
+  import paths change; command-line behavior and session snapshot formats remain compatible.
+- Separate presentation state, background-task ownership and session assembly from command dispatch
+  and persistent session state. Transcript replay uses a small output protocol; each model wire
+  adapter lives beside its conversion code. Consolidate queue value types and reasoning-history
+  helpers into their owning modules.
+
+### Fixed
+
+- Closing a session also cancels and waits for any unfinished worker model request. Closing a
+  worker's model leaves the shared MCP connections available until the main session closes.
+- Zellij acceptance tests tolerate transient empty pane-query responses and allow more time for
+  startup queries on CI runners.
+- Correct test import ordering reported by Ruff after the previous release.
+
 ## 0.55.1 - 2026-09-27
 
 ### Changed
@@ -13,6 +38,53 @@
 - Request preparation and session saves avoid repeated token estimation and state hashing.
 - Long-session restore processes incremental records with less overhead. File completion's
   Python fallback avoids checking each file's type twice.
+
+### Performance measurements
+
+Retrospective measurements compare `da32208` (before this release's performance changes) with
+`v0.55.1` (`77ea690`), separately from the later modularization work. Both revisions were exported
+onto the same filesystem and measured sequentially on Linux ARM64 / CPython 3.14.7 with the same
+installed dependencies. Values below are **medians of 9 samples, in milliseconds**. In-process
+probes collect garbage before each timed sample and keep GC enabled during timing. No model
+requests are made. Startup probes initialize a temporary session and warm the SDK stack in a fresh
+interpreter; they do not measure time until an interactive prompt becomes usable.
+
+| Workload | Before | 0.55.1 |
+| --- | ---: | ---: |
+| Snapshot planning: unchanged 1 MB history | 5.723 | 3.064 |
+| Snapshot planning: append to 1 MB history | 5.795 | 5.795 |
+| Snapshot planning: replace in 1 MB history | 10.569 | 7.646 |
+| Request preparation: 1 MB history | 12.618 | 6.620 |
+| Restore: merge 10,000 incremental records | 54.625 | 48.192 |
+| File completion: normalize 10,000 external results | 24.600 | 23.760 |
+| File completion: Python walk of 10,000 files | 31.051 | 6.584 |
+| Cold layout: 300 prerendered blocks | 252.700 | 262.629 |
+| Append and revisit two widths: 300 blocks | 508.499 | 2.741 |
+| Unchanged-width cached layout: 300 blocks | 0.003 | 0.091 |
+| Startup probe: Chat provider | 1278.190 | 696.457 |
+| Startup probe: Anthropic provider | 1269.053 | 749.908 |
+| First full projection: 100 Markdown blocks | 109.468 | 107.072 |
+| New-width full projection: 100 Markdown blocks | 105.826 | 107.828 |
+| Unchanged-width full projection: 100 Markdown blocks | 0.001 | 0.032 |
+| Append and replay: 100 Markdown blocks | 107.077 | 0.686 |
+| Append at the 5,000-write retention limit | 1401.906 | 0.933 |
+| Revisit a width above the layout character budget | 910.592 | 255.307 |
+| Fresh-process import: wizolt.__main__ | 52.431 | 47.963 |
+| Fresh-process import: wizolt.cli | 224.129 | 226.987 |
+| Fresh-process import: wizolt.model | 74.439 | 77.832 |
+
+All six full-projection replay scenarios produced identical ANSI-output and physical-row-count
+hashes. The trade-offs remain visible: unchanged-width cached layout for 300 blocks increased
+from 0.003 to 0.091 ms, and cold layout increased from 252.700 to 262.629 ms in this run.
+For 100 Markdown blocks at two widths, retained traced allocations increased from 210,904
+to 240,606 bytes; peak traced allocations changed from 8,769,191 to 8,581,691 bytes.
+These allocation measurements are not total process memory. Timings are local observations, not
+cross-machine guarantees or CI performance thresholds.
+
+Raw samples, source hashes and environment details:
+[before](https://github.com/hit9/wizolt/blob/master/benchmarks/baselines/linux-arm64-py314-before-0.55.1.json) and
+[0.55.1](https://github.com/hit9/wizolt/blob/master/benchmarks/results/linux-arm64-py314-release-0.55.1.json).
+[Methodology and reproduction commands](https://github.com/hit9/wizolt/blob/master/benchmarks/README.md).
 
 ## 0.55.0 - 2026-09-24
 

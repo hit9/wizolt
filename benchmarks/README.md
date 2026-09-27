@@ -1,5 +1,21 @@
 # Local performance baselines
 
+The retrospective 0.55.1 comparison is recorded in
+[`baselines/linux-arm64-py314-before-0.55.1.json`](baselines/linux-arm64-py314-before-0.55.1.json)
+and [`results/linux-arm64-py314-release-0.55.1.json`](results/linux-arm64-py314-release-0.55.1.json).
+It compares `da32208` (before the performance work) with `v0.55.1` (`77ea690`), using the current
+benchmark methodology and environment. It is separate from the later modularization comparison.
+The release's timing table and memory trade-off are recorded in [CHANGELOG.md](../CHANGELOG.md).
+
+To reproduce that comparison without replacing the recorded baseline:
+
+```sh
+uv run --no-sync python benchmarks/run.py --revision da32208 --repeat 9 \
+  --output /tmp/wizolt-before-0.55.1.json
+uv run --no-sync python benchmarks/run.py --revision v0.55.1 --repeat 9 \
+  --baseline /tmp/wizolt-before-0.55.1.json --output /tmp/wizolt-release-0.55.1.json
+```
+
 Use the existing project environment; do not install or switch interpreters to run these probes.
 Stop tests, builds and other heavy work first. Measurements use temporary session data and make no
 model requests. Startup probes load SDKs without contacting providers.
