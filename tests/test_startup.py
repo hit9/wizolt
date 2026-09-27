@@ -37,6 +37,7 @@ def test_startup_includes_configured_auxiliary_protocols(tmp_path, route):
 
 def test_startup_resolves_compaction_override_and_mcp_autoconnect(tmp_path):
     from types import SimpleNamespace
+
     from wizolt.__main__ import startup_imports
     from wizolt.config import Config
     from wizolt.session import Session

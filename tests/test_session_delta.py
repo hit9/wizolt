@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 
 import pytest
-
 from test_session_persistence import log_path, project_dir, read_jsonl, session_with_data_dir
 
 from wizolt.base import SESSION_EVENT_KEY
@@ -15,6 +14,7 @@ from wizolt.session import Session
 @pytest.mark.parametrize("mutation", ["unchanged", "append", "replace", "edit_then_append", "shorten", "clear"])
 async def test_snapshot_digest_reuse_preserves_sequence_changes(tmp_path, mutation):
     from copy import deepcopy
+
     from wizolt.session import SessionSnapshotStore
 
     s = session_with_data_dir(tmp_path)
