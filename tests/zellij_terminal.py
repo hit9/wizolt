@@ -184,18 +184,29 @@ class ZellijPane:
     def wait_for(self, text, timeout=15):
         deadline = time.monotonic() + timeout
         last = ""
+        last_error = None
         while time.monotonic() < deadline:
             try:
                 last = "\n".join(self.capture(full=False))
                 if text in last:
                     return last
-            except AssertionError:
-                pass
+            except (AssertionError, subprocess.TimeoutExpired) as error:
+                # A query can race server startup. Keep the existing readiness deadline and
+                # report the last query failure if the client never becomes ready.
+                last_error = error
             time.sleep(0.05)
-        raise AssertionError(f"missing {text!r}:\n{last}\nclient: {bytes(self.raw[-4000:])!r}")
+        raise AssertionError(f"missing {text!r}:\n{last}\nlast query error: {last_error}\nclient: {bytes(self.raw[-4000:])!r}")
 
     def geometry(self):
-        return json.loads(self.action("list-panes", "--json"))
+        # CI has observed list-panes exit successfully without a response. Retry only this
+        # read-only query, never input/resize actions; malformed JSON and CLI errors stay loud.
+        for attempt in range(5):
+            response = self.action("list-panes", "--json")
+            if response.strip():
+                return json.loads(response)
+            if attempt < 4:
+                time.sleep(0.05 * (attempt + 1))
+        raise AssertionError(f"Zellij {self.session}: list-panes returned empty output after 5 attempts")
 
     def detach(self):
         # CLI `action detach` targets its own ephemeral client. Send the default session-mode
