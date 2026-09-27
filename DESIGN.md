@@ -681,11 +681,12 @@ trading a small traversal cost for reuse even when the whole transcript exceeds 
 This cache belongs only to terminal projection, never session persistence or model requests.
 
 **Guard at two levels.** Unit/model tests cover geometry refusal, deferred replay, output recording,
-ordering and shutdown. Real-tmux tests must cover repeated wide/narrow and tall/short transitions,
+ordering and shutdown. Real-multiplexer tests must cover repeated wide/narrow and tall/short transitions,
 inspect narrow as well as restored-wide captures, and separately assert transcript completeness,
 uniqueness, single-row rules and bounded blank-row growth. Do not substitute a synthetic terminal
 or a clean final wide capture for physical history. Run the acceptance tests against both CI's
-system tmux and its explicitly pinned second version; neither proves all terminal emulators.
+system tmux, its explicitly pinned second version, and pinned Zellij; these do not prove all
+terminal emulators.
 Changes to the renderer, output batching, startup recording or modal ownership must run these
 checks. A regression test must fail against the implementation preceding its fix.
 
@@ -698,6 +699,18 @@ on and off. `tests/test_tui_scrollback_region.py` and `tests/test_tui_transcript
 geometry, recording and shutdown boundaries with a terminal model or captured output.
 The real CLI startup path is also grown and shrunk repeatedly with only its banner and an
 unsubmitted draft; both the banner and the live frame must remain single-copy.
+
+`tests/terminal_acceptance.py` holds the scenarios shared by tmux and Zellij.
+`tests/test_tui_zellij_scrollback.py` runs them in an isolated Zellij session with a real client
+attached to a resizable PTY, and additionally checks detach/reattach at different sizes with an
+unsubmitted draft. CI pins Zellij 0.45.1 and the binary archive checksum. The adapter reads actual
+pane geometry and subscription snapshots: viewport rows are physical, scrollback lines are logical.
+The glyph/tab wrapping test uses the viewport; history checks validate text integrity, rule widths
+and growth in blank logical lines. This does not measure every physical scrollback row.
+`dump-screen` joins even viewport rows and cannot validate wrapping. Missing Zellij skips locally but fails when
+`WIZOLT_REQUIRE_ZELLIJ=1`, as in CI. Failed runs retain client ANSI output, driver logs and pane
+snapshots. The fresh-pane height-only zoom reproduces known issue 3 on both multiplexers and
+remains an explicit expected failure.
 
 **Remaining acceptance coverage:** changing thinking/activity previews, Ask/approval interactions,
 and selectors with rich previews still need real-tmux coverage. Future changes at those boundaries

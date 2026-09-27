@@ -78,6 +78,11 @@ erase-and-repaint contributes rows of its own. `tests/test_tui_tmux_scrollback.p
 test_zoom_on_a_fresh_pane_leaves_one_live_region` is the reproduction, kept as an expected
 failure.
 
+The same scenario also reproduces on Zellij 0.45.1: the transcript markers survive, but the old
+prompt and status remain above the live region after a vertical split and fullscreen toggles.
+`tests/test_tui_zellij_scrollback.py::test_zoom_on_a_fresh_pane_leaves_one_live_region` records
+this as an expected failure alongside the tmux case.
+
 **What would remove it** is the purge-and-replay already used for width changes, applied to
 height changes too. That trades symptom 1's cost -- losing pre-wizolt shell scrollback -- for an
 interaction people perform constantly, which is the same trade `DESIGN.md` refuses for closing an

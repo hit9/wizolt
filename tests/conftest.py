@@ -5,11 +5,11 @@ from dataclasses import dataclass, field
 import pytest
 from rich.style import Style
 
-# The tmux jobs install tmux themselves and fail on `tmux -V` before pytest runs, so a missing tmux
-# there is already loud. Elsewhere the `tmux` marker keeps those files out of the run; this turns a
-# silent skip in a run that promised tmux back into a failure, for every tmux-marked file.
+# Dedicated acceptance jobs must fail rather than silently skip if their multiplexer is missing.
 if shutil.which("tmux") is None and os.environ.get("WIZOLT_REQUIRE_TMUX"):
     raise RuntimeError("this run requires tmux, but tmux is not installed")
+if shutil.which("zellij") is None and os.environ.get("WIZOLT_REQUIRE_ZELLIJ"):
+    raise RuntimeError("this run requires Zellij, but zellij is not installed")
 
 
 @pytest.fixture(autouse=True)

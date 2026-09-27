@@ -32,8 +32,9 @@ Keep this file short. It is an entry point, not a second design document.
 ## Project workflow
 
 - **Tests:** run targeted tests while iterating and `uv run pytest` before completing behavior changes.
-  That run excludes the real-tmux acceptance tests (they need a terminal and real time); run
-  `uv run pytest -m tmux` when a change touches the terminal projection.
+  That run excludes real-multiplexer acceptance tests (they need a terminal and real time); run
+  `uv run pytest -m tmux` and `uv run pytest -m zellij` when a change touches the terminal
+  projection. The Zellij suite requires 0.45.1 (the CI pin) or a compatible later version.
 - **Quality:** run `uv run ruff check wizolt`, `uv run ruff format --check wizolt`, and `uv run pyright`.
 - **Docs:** on user-facing doc changes, update the English source and build `html`
   (`make -C docs html`).

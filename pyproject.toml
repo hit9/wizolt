@@ -93,11 +93,13 @@ wizolt = ["providers/catalog.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# The real-tmux acceptance tests need a real terminal and real time: they are ~50s of the suite
-# and cannot be parallelised away. They are excluded by default; `uv run pytest -m tmux` runs them,
-# and CI runs them in the tmux-shipped and tmux-latest jobs. Everything else stays under 15s.
-addopts = ["-n", "auto", "-m", "not tmux"]
-markers = ["tmux: real-tmux terminal acceptance tests (slow; excluded by default)"]
+# Real multiplexer acceptance tests need terminals and real time; exclude them by default.
+# Run them with `uv run pytest -m tmux` or `uv run pytest -m zellij`; CI has dedicated jobs.
+addopts = ["-n", "auto", "-m", "not tmux and not zellij"]
+markers = [
+    "tmux: real-tmux terminal acceptance tests (slow; excluded by default)",
+    "zellij: real-Zellij terminal acceptance tests (slow; excluded by default)",
+]
 # A test that awaits the code under test reads better than the same test wrapped in an
 # asyncio.run() driver, so `async def` tests run without a per-test marker. Each gets its own
 # loop, which is also what the production entry points do.

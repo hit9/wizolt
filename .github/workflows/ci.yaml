@@ -43,7 +43,7 @@ jobs:
   # The scrollback projection is built on measured tmux behaviour -- that a top-anchored scroll
   # region feeds native history, and that a pane keeps its cursor line at the bottom across a
   # reflow. Those tests need a real terminal and real time, so the matrix above excludes them; the
-  # two jobs below own them, one at each end of the version range.
+  # two tmux jobs below own them, one at each end of the version range.
   tmux-shipped:
     runs-on: ubuntu-latest
     env:
@@ -75,6 +75,52 @@ jobs:
 
       - name: Run the real-tmux acceptance tests
         run: uv run pytest -q -m tmux
+
+  # Run the shared terminal scenarios against an attached Zellij client in its own PTY.
+  # Pin both the release and archive checksum so terminal behavior cannot change silently.
+  zellij:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ZELLIJ_VERSION: "0.45.1"
+      ZELLIJ_SHA256: "40bcc2e03f5d5ae8e054e39f676081fe12ab70871506996ba595834c3718eefc"
+      WIZOLT_REQUIRE_ZELLIJ: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Zellij ${{ env.ZELLIJ_VERSION }}
+        run: |
+          curl -fSL --retry 3 -o "$RUNNER_TEMP/zellij.tar.gz" "https://github.com/zellij-org/zellij/releases/download/v${ZELLIJ_VERSION}/zellij-x86_64-unknown-linux-musl.tar.gz"
+          echo "$ZELLIJ_SHA256  $RUNNER_TEMP/zellij.tar.gz" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/zellij-bin"
+          tar xzf "$RUNNER_TEMP/zellij.tar.gz" -C "$RUNNER_TEMP/zellij-bin"
+          echo "$RUNNER_TEMP/zellij-bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/zellij-bin/zellij" --version
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run the real-Zellij acceptance tests
+        run: uv run pytest -q -m zellij -n 2 --basetemp="$RUNNER_TEMP/zellij-tests"
+
+      - name: Upload terminal traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zellij-terminal-traces
+          path: ${{ runner.temp }}/zellij-tests
+          if-no-files-found: ignore
+          retention-days: 7
 
   # The other end of the range: the distro tmux above trails releases by years, so this job builds
   # the current one and runs the same acceptance tests against it. Bump TMUX_VERSION when a new
