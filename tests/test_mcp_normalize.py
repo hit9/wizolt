@@ -3,10 +3,11 @@ from types import SimpleNamespace
 
 from mcp_harness import mcp_cfg, mcp_tool_info, session
 
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.config import (
     Config,
 )
-from wizolt.session import Session, bootstrap_features
+from wizolt.session import Session
 
 
 class TestNormalizeResult:

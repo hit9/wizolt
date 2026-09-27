@@ -8,7 +8,15 @@ import re
 from collections.abc import Callable, Hashable
 from typing import TYPE_CHECKING, ClassVar, TypeVar
 
-from wizolt import compaction, history
+from wizolt.agent import compaction, history
+from wizolt.agent.hooks import UiHooks
+from wizolt.agent.prompts import (
+    COMPACTION_SUMMARY_TITLE,
+    CURRENT_TURN_CONTEXT_TRIMMED,
+    PREVIOUS_CONTEXT_TRIMMED,
+    git_attribution_directive,
+    language_directive,
+)
 from wizolt.base import (
     ANTHROPIC_CONTENT_KEY,
     MAX_AGENTS_MD_TOKENS,
@@ -21,15 +29,7 @@ from wizolt.base import (
     Text,
     run_blocking,
 )
-from wizolt.hooks import UiHooks
 from wizolt.image import IMAGE_REFS_KEY, IMAGE_TEXT_ONLY_KEY, TOOL_IMAGE_OBSERVATION_KEY, ImageInputs
-from wizolt.prompts import (
-    COMPACTION_SUMMARY_TITLE,
-    CURRENT_TURN_CONTEXT_TRIMMED,
-    PREVIOUS_CONTEXT_TRIMMED,
-    git_attribution_directive,
-    language_directive,
-)
 from wizolt.session import HistorySegment, Session, local_timestamp
 from wizolt.source import TextBlock
 from wizolt.tools import Tool

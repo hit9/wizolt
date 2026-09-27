@@ -9,7 +9,8 @@ import pytest
 from agent_harness import session
 from prompt_toolkit.formatted_text import to_formatted_text
 
-import wizolt.cli.modals as modals_mod
+import wizolt.ui.cli.modals as modals_mod
+from wizolt.agent.engine import Agent
 from wizolt.base import (
     DISMISSED,
     SELECTION_BACK,
@@ -20,12 +21,12 @@ from wizolt.base import (
     Text,
     ToolCall,
 )
-from wizolt.cli import CommandLoop
-from wizolt.cli.modals import choice_application, question_interaction
-from wizolt.engine import Agent
-from wizolt.render import Theme
 from wizolt.tools import AskSpec
-from wizolt.tui import ASK_DONE, ASK_FREE_TEXT
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.cli.modals import choice_application, question_interaction
+from wizolt.ui.cli.presentation import Presentation
+from wizolt.ui.render import Theme
+from wizolt.ui.tui import ASK_DONE, ASK_FREE_TEXT
 
 
 def _answers(answer):
@@ -57,7 +58,7 @@ async def test_choice_application_expands_escaped_preview_newlines(tmp_path):
             rendered.extend(fragments_fn())
             return key_fn("enter", "")
 
-    loop.tui = Modal()
+    loop.presentation.tui = Modal()
 
     result = await choice_application(
         loop,
@@ -83,7 +84,7 @@ async def test_ask_free_text_prompt_has_no_control_newline(tmp_path):
     loop.interactive_input = True
     prompts = []
     results = iter([(ASK_FREE_TEXT, 0), ASK_DONE])
-    loop.tui = SimpleNamespace(
+    loop.presentation.tui = SimpleNamespace(
         request_input=_answers(lambda prompt: prompts.append(prompt) or "typed answer"),
         show_modal=_modals(results),
     )
@@ -99,7 +100,7 @@ async def test_ask_free_text_empty_answer_is_kept(tmp_path):
     loop = CommandLoop(Agent(session(tmp_path), output_fn=output.append), input_fn=lambda prompt="": "", output_fn=output.append)
     loop.interactive_input = True
     results = iter([(ASK_FREE_TEXT, 0), ASK_DONE])
-    loop.tui = SimpleNamespace(
+    loop.presentation.tui = SimpleNamespace(
         request_input=_answers(""),
         show_modal=_modals(results),
     )
@@ -120,7 +121,7 @@ async def test_ask_free_text_on_last_question_submits_without_reentering_modal(t
         key_fn("2")  # page 2: move onto "Type freely..." (digits only move the cursor)
         return key_fn("enter")  # ...and select it -> drops to the shared input row
 
-    loop.tui = SimpleNamespace(request_input=_answers("typed"), show_modal=_modals(show_modal))
+    loop.presentation.tui = SimpleNamespace(request_input=_answers("typed"), show_modal=_modals(show_modal))
 
     assert await question_interaction(loop, [AskSpec("One?", choices=["A"]), AskSpec("Two?", choices=["B"])]) == ["A", "typed"]
     assert len(calls) == 1
@@ -132,7 +133,7 @@ async def test_ask_without_choices_uses_shared_tui_input(tmp_path):
     loop.interactive_input = True
     prompts = []
     results = iter([(ASK_FREE_TEXT, 0), ASK_DONE])
-    loop.tui = SimpleNamespace(
+    loop.presentation.tui = SimpleNamespace(
         request_input=_answers(lambda prompt: prompts.append(prompt) or "typed answer"),
         show_modal=_modals(results),
     )
@@ -154,7 +155,7 @@ async def test_ask_headless_keeps_plain_per_question_prompts(tmp_path):
 async def test_ask_choice_is_not_echoed_before_final_tool_log(tmp_path, monkeypatch):
     loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda text: None), output_fn=lambda text: None)
     emitted = []
-    loop.emit = lambda text="", indent=0: emitted.append(text)
+    loop.presentation.emit = lambda text="", indent=0: emitted.append(text)
 
     async def answered(_loop, _specs):
         return ["B"]
@@ -177,7 +178,7 @@ async def test_ask_notes_flow_into_the_answer(tmp_path):
         key_fn("enter")  # save the note
         return key_fn("enter")  # pick the recommended "A" and submit the batch
 
-    loop.tui = SimpleNamespace(show_modal=_modals(show_modal))
+    loop.presentation.tui = SimpleNamespace(show_modal=_modals(show_modal))
 
     assert await question_interaction(loop, [AskSpec("Q?", choices=["A"], recommended=0)]) == ["A\n\nUser notes: keep the header"]
 
@@ -186,7 +187,7 @@ async def test_ask_escape_cancels_the_whole_batch(tmp_path):
     """Esc on any page cancels every question with the DISMISSED marker."""
     loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda text: None), input_fn=lambda prompt: "fallback", output_fn=lambda text: None)
     loop.interactive_input = True
-    loop.tui = SimpleNamespace(show_modal=_modals(lambda fragments_fn, key_fn: SELECTION_BACK))
+    loop.presentation.tui = SimpleNamespace(show_modal=_modals(lambda fragments_fn, key_fn: SELECTION_BACK))
 
     result = await question_interaction(loop, [AskSpec("One?"), AskSpec("Two?")])
     assert result == [DISMISSED, DISMISSED]
@@ -196,7 +197,7 @@ async def test_ask_ctrl_c_cancels_the_turn_without_leaking_keyboard_interrupt(tm
     """Ctrl-C is a turn cancellation, not a process-level KeyboardInterrupt escaping asyncio."""
     loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda text: None), output_fn=lambda text: None)
     loop.interactive_input = True
-    loop.tui = SimpleNamespace(show_modal=_modals(lambda fragments_fn, key_fn: key_fn("c-c")))
+    loop.presentation.tui = SimpleNamespace(show_modal=_modals(lambda fragments_fn, key_fn: key_fn("c-c")))
 
     with pytest.raises(asyncio.CancelledError):
         await question_interaction(loop, [AskSpec("Pick?", choices=["A", "B"])])
@@ -212,47 +213,47 @@ async def test_elapsed_since_uses_whole_seconds(monkeypatch):
 
 async def test_bash_live_start_pauses_standalone_status(tmp_path):
     loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda text: None), output_fn=lambda text: None)
-    loop.ui.color = True
-    loop.live_preview.start = lambda: setattr(loop.live_preview, "active", True)
-    loop.status_bar.running = True
-    loop.status_bar.stop = lambda: setattr(loop.status_bar, "running", False)
-    loop.status_bar.start = lambda **_kwargs: setattr(loop.status_bar, "running", True)
+    loop.presentation.ui.color = True
+    loop.presentation.live_preview.start = lambda: setattr(loop.presentation.live_preview, "active", True)
+    loop.presentation.status_bar.running = True
+    loop.presentation.status_bar.stop = lambda: setattr(loop.presentation.status_bar, "running", False)
+    loop.presentation.status_bar.start = lambda **_kwargs: setattr(loop.presentation.status_bar, "running", True)
 
-    loop.tool_live_start()
-    assert loop.live_status_paused is True
-    assert loop.status_bar.running is False
+    loop.presentation.tool_live_start()
+    assert loop.presentation.live_status_paused is True
+    assert loop.presentation.status_bar.running is False
 
-    loop.tool_live_output("", "")
-    assert loop.live_status_paused is False
-    assert loop.status_bar.running is True
+    loop.presentation.tool_live_output("", "")
+    assert loop.presentation.live_status_paused is False
+    assert loop.presentation.status_bar.running is True
 
 
 async def test_command_loop_indents_intermediate_and_final_messages(tmp_path):
     output = []
     loop = CommandLoop(Agent(session(tmp_path), output_fn=output.append), output_fn=output.append)
 
-    loop.emit_narration("First line.\nSecond line.")
-    loop.ui.emit_answer("Done.\nFinal detail.")
+    loop.presentation.emit_narration("First line.\nSecond line.")
+    loop.presentation.ui.emit_answer("Done.\nFinal detail.")
 
     assert output == ["  First line.\n  Second line.", "Done.\nFinal detail."]
 
 
 async def test_colored_assistant_and_tool_blocks_each_start_with_one_blank_line(tmp_path):
     loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda _text: None), output_fn=lambda _text: None)
-    loop.ui.color = True
-    loop.ui.emit_phase_rule = lambda: None  # the narration's opening rule is this test's noise
-    loop.ui.trailing_blanks = 0  # content above with no gap after it: the blocks need their blank line
+    loop.presentation.ui.color = True
+    loop.presentation.ui.emit_phase_rule = lambda: None  # the narration's opening rule is this test's noise
+    loop.presentation.ui.trailing_blanks = 0  # content above with no gap after it: the blocks need their blank line
     events = []
-    loop.ui.emit = lambda text="", indent=0: events.append(text)
-    loop.ui.emit_answer = lambda text, **_kwargs: events.append(text)
+    loop.presentation.ui.emit = lambda text="", indent=0: events.append(text)
+    loop.presentation.ui.emit_answer = lambda text, **_kwargs: events.append(text)
     first = LogBlock.hierarchy(LogLine("Bash", "first"), [])
     first_result = LogBlock.hierarchy(None, [LogLine("stored", "tr.1")])
     second = LogBlock.hierarchy(LogLine("Bash", "second"), [])
 
-    loop.emit_narration("Working on it.")
-    loop.tool_output(first)
-    loop.tool_output(first_result)
-    loop.tool_output(second)
+    loop.presentation.emit_narration("Working on it.")
+    loop.presentation.tool_output(first)
+    loop.presentation.tool_output(first_result)
+    loop.presentation.tool_output(second)
 
     assert events == ["", "Working on it.", "", first, first_result, "", second]
 
@@ -260,8 +261,8 @@ async def test_colored_assistant_and_tool_blocks_each_start_with_one_blank_line(
 def _colored_loop(tmp_path):
     """A CommandLoop with color on, whose rendered output is collected instead of printed."""
     loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda _text: None), output_fn=lambda _text: None)
-    loop.ui.color = True
-    loop.ui._scrollback_print = lambda _fragment: None
+    loop.presentation.ui.color = True
+    loop.presentation.ui._scrollback_print = lambda _fragment: None
     return loop
 
 
@@ -271,14 +272,14 @@ async def test_interim_narration_closes_with_a_phase_rule_when_far_from_last_rul
     line and the narration's own rows count toward the distance."""
     loop = _colored_loop(tmp_path)
     rules = []
-    loop.ui.emit_phase_rule = lambda: rules.append(1)
+    loop.presentation.ui.emit_phase_rule = lambda: rules.append(1)
     # A rule has already been drawn this turn, so distance applies; one row short of the
     # threshold before the blank line and the narration itself count. The block above ends without
     # a gap, so the narration does open one, and that row counts.
-    loop.ui.rows_since_rule = loop.MIN_ROWS_BETWEEN_RULES - 1
-    loop.ui.trailing_blanks = 0
+    loop.presentation.ui.rows_since_rule = loop.presentation.MIN_ROWS_BETWEEN_RULES - 1
+    loop.presentation.ui.trailing_blanks = 0
 
-    loop.emit_narration("Working on it.")
+    loop.presentation.emit_narration("Working on it.")
 
     assert rules == [1]
 
@@ -286,20 +287,20 @@ async def test_interim_narration_closes_with_a_phase_rule_when_far_from_last_rul
 async def test_a_user_message_opens_the_turn_with_one_rule(tmp_path):
     loop = _colored_loop(tmp_path)
     rules = []
-    loop.ui.emit_phase_rule = lambda: rules.append(1)
+    loop.presentation.ui.emit_phase_rule = lambda: rules.append(1)
 
-    loop.user_turn_rule()
+    loop.presentation.user_turn_rule()
 
     assert rules == [1]
 
 
 async def test_user_turn_rule_restarts_the_silent_batch_count(tmp_path):
     loop = _colored_loop(tmp_path)
-    loop._silent_batches = 3
+    loop.presentation._silent_batches = 3
 
-    loop.user_turn_rule()
+    loop.presentation.user_turn_rule()
 
-    assert loop._silent_batches == 0
+    assert loop.presentation._silent_batches == 0
 
 
 async def test_interim_narration_skips_the_rule_when_too_close_to_the_last_one(tmp_path):
@@ -308,10 +309,10 @@ async def test_interim_narration_skips_the_rule_when_too_close_to_the_last_one(t
     collect a row of dashes for every sentence."""
     loop = _colored_loop(tmp_path)
     rules = []
-    loop.ui.emit_phase_rule = lambda: rules.append(1)
-    loop.ui.rows_since_rule = 0
+    loop.presentation.ui.emit_phase_rule = lambda: rules.append(1)
+    loop.presentation.ui.rows_since_rule = 0
 
-    loop.emit_narration("Working on it.")
+    loop.presentation.emit_narration("Working on it.")
 
     assert rules == []
 
@@ -321,10 +322,10 @@ async def test_final_answer_takes_no_phase_rule(tmp_path):
     own -- two rules in a row would read as a box."""
     loop = _colored_loop(tmp_path)
     rules = []
-    loop.ui.emit_phase_rule = lambda: rules.append(1)
-    loop.ui.rows_since_rule = 100
+    loop.presentation.ui.emit_phase_rule = lambda: rules.append(1)
+    loop.presentation.ui.rows_since_rule = 100
 
-    loop.agent_answer_output("Done.")
+    loop.presentation.agent_answer_output("Done.")
 
     assert rules == []
 
@@ -334,22 +335,22 @@ async def test_a_run_of_one_line_calls_is_packed_into_a_list(tmp_path):
     first one of a run and for any call that brings something with it."""
     loop = _colored_loop(tmp_path)
     blanks = []
-    loop.ui.separate = lambda rows=1: blanks.append(rows)
+    loop.presentation.ui.separate = lambda rows=1: blanks.append(rows)
 
     def one_liner(name):
         return LogBlock([LogLine(name, "x.py", LogRole.TOOL)])
 
-    loop.tool_output(one_liner("Read"))
+    loop.presentation.tool_output(one_liner("Read"))
     assert blanks == [1]  # nothing above it was a one-line call, so it still parts itself
 
-    loop.tool_output(one_liner("Read"))
+    loop.presentation.tool_output(one_liner("Read"))
     assert blanks == [1]  # packed straight under the call above
 
     with_output = LogBlock.hierarchy(LogLine("Bash", "pytest -q", LogRole.TOOL), [LogLine("", "41 passed", LogRole.OUTPUT, LogEdge.END)])
-    loop.tool_output(with_output)
+    loop.presentation.tool_output(with_output)
     assert blanks == [1, 1]  # a call that brings output is parted from the run above it
 
-    loop.tool_output(one_liner("Read"))
+    loop.presentation.tool_output(one_liner("Read"))
     assert blanks == [1, 1, 1]  # and the run has to start over under it
 
 
@@ -359,11 +360,11 @@ async def test_tool_batch_closes_a_long_silent_run_with_a_phase_rule(tmp_path):
     the batch's output is out so a batch is never cut in half."""
     loop = _colored_loop(tmp_path)
     rules = []
-    loop.ui.emit_phase_rule = lambda: rules.append(1)
-    loop._silent_batches = loop.TOOL_RUN_RULE_BATCHES - 1
-    loop.ui.rows_since_rule = loop.MIN_ROWS_BETWEEN_RULES
+    loop.presentation.ui.emit_phase_rule = lambda: rules.append(1)
+    loop.presentation._silent_batches = loop.presentation.TOOL_RUN_RULE_BATCHES - 1
+    loop.presentation.ui.rows_since_rule = loop.presentation.MIN_ROWS_BETWEEN_RULES
 
-    loop.tool_batch_output(True)
+    loop.presentation.tool_batch_output(True)
 
     assert rules == [1]
 
@@ -373,25 +374,25 @@ async def test_a_silent_run_too_close_to_the_rule_above_draws_no_seam(tmp_path):
     would part nothing. The count keeps running, so the seam lands once the rows are there."""
     loop = _colored_loop(tmp_path)
     rules = []
-    loop.ui.emit_phase_rule = lambda: rules.append(1)
-    loop._silent_batches = loop.TOOL_RUN_RULE_BATCHES - 1
-    loop.ui.rows_since_rule = loop.MIN_ROWS_BETWEEN_RULES - 2
+    loop.presentation.ui.emit_phase_rule = lambda: rules.append(1)
+    loop.presentation._silent_batches = loop.presentation.TOOL_RUN_RULE_BATCHES - 1
+    loop.presentation.ui.rows_since_rule = loop.presentation.MIN_ROWS_BETWEEN_RULES - 2
 
-    loop.tool_batch_output(True)
+    loop.presentation.tool_batch_output(True)
     assert rules == []
 
-    loop.ui.rows_since_rule = loop.MIN_ROWS_BETWEEN_RULES
-    loop.tool_batch_output(True)
+    loop.presentation.ui.rows_since_rule = loop.presentation.MIN_ROWS_BETWEEN_RULES
+    loop.presentation.tool_batch_output(True)
     assert rules == [1]
 
 
 async def test_tool_batch_keeps_a_short_silent_run_together(tmp_path):
     loop = _colored_loop(tmp_path)
     rules = []
-    loop.ui.emit_phase_rule = lambda: rules.append(1)
-    loop._silent_batches = loop.TOOL_RUN_RULE_BATCHES - 2
+    loop.presentation.ui.emit_phase_rule = lambda: rules.append(1)
+    loop.presentation._silent_batches = loop.presentation.TOOL_RUN_RULE_BATCHES - 2
 
-    loop.tool_batch_output(True)
+    loop.presentation.tool_batch_output(True)
 
     assert rules == []
 
@@ -401,13 +402,13 @@ async def test_a_voiced_batch_is_not_silent(tmp_path):
     toward the silent run: the agent said something, so the seam is not needed yet."""
     loop = _colored_loop(tmp_path)
     rules = []
-    loop.ui.emit_phase_rule = lambda: rules.append(1)
-    loop._silent_batches = loop.TOOL_RUN_RULE_BATCHES - 1
+    loop.presentation.ui.emit_phase_rule = lambda: rules.append(1)
+    loop.presentation._silent_batches = loop.presentation.TOOL_RUN_RULE_BATCHES - 1
 
-    loop.tool_batch_output(False)
+    loop.presentation.tool_batch_output(False)
 
     assert rules == []
-    assert loop._silent_batches == loop.TOOL_RUN_RULE_BATCHES - 1
+    assert loop.presentation._silent_batches == loop.presentation.TOOL_RUN_RULE_BATCHES - 1
 
 
 async def test_engine_routes_the_answer_and_batch_end_to_the_loop(tmp_path):
@@ -415,8 +416,8 @@ async def test_engine_routes_the_answer_and_batch_end_to_the_loop(tmp_path):
     the answer goes to the no-rule path, and each tool batch reports its end."""
     loop = _colored_loop(tmp_path)
 
-    assert loop.agent.final_output_fn.__func__ is CommandLoop.agent_answer_output
-    assert loop.agent.hooks.on_tool_batch.__func__ is CommandLoop.tool_batch_output
+    assert loop.agent.final_output_fn.__func__ is Presentation.agent_answer_output
+    assert loop.agent.hooks.on_tool_batch.__func__ is Presentation.tool_batch_output
 
 
 async def test_phase_rule_renders_as_an_unlabelled_full_width_solid_rule(tmp_path):
@@ -424,9 +425,9 @@ async def test_phase_rule_renders_as_an_unlabelled_full_width_solid_rule(tmp_pat
     solid dash, edge to edge, and no text of its own -- the narration it closes is the label."""
     loop = _colored_loop(tmp_path)
     frags = []
-    loop.ui._scrollback_print = lambda fragment: frags.append(fragment)
+    loop.presentation.ui._scrollback_print = lambda fragment: frags.append(fragment)
 
-    loop.ui.emit_phase_rule()
+    loop.presentation.ui.emit_phase_rule()
 
     # The dash line, then a blank row that lifts the rule off whatever follows it (the callers
     # draw the blank row above, so each seam lands once).
@@ -435,7 +436,7 @@ async def test_phase_rule_renders_as_an_unlabelled_full_width_solid_rule(tmp_pat
     text = "".join(fragment for _, fragment in fragments)
     assert text.endswith("\n\n")
     assert set(text) <= {"─", "\n"}
-    assert loop.ui.rows_since_rule == 0
+    assert loop.presentation.ui.rows_since_rule == 0
 
 
 async def test_emit_counts_rendered_rows_toward_rule_distance(tmp_path):
@@ -443,32 +444,32 @@ async def test_emit_counts_rendered_rows_toward_rule_distance(tmp_path):
     its output goes further than four Reads, and a wrapped block counts what it actually took."""
     loop = _colored_loop(tmp_path)
 
-    loop.ui.emit("a\nb")
-    assert loop.ui.rows_since_rule == 2
-    loop.ui.emit("")
-    assert loop.ui.rows_since_rule == 3
+    loop.presentation.ui.emit("a\nb")
+    assert loop.presentation.ui.rows_since_rule == 2
+    loop.presentation.ui.emit("")
+    assert loop.presentation.ui.rows_since_rule == 3
 
 
 async def test_rule_due_reports_whether_a_rule_would_land_far_enough(tmp_path):
     """The distance query is the one place a phase rule's spacing is judged: color off never
     draws (there are no rules to be close to), and the threshold is inclusive."""
     loop = _colored_loop(tmp_path)
-    assert not loop.ui.rule_due(loop.MIN_ROWS_BETWEEN_RULES)
-    loop.ui.rows_since_rule = loop.MIN_ROWS_BETWEEN_RULES
-    assert loop.ui.rule_due(loop.MIN_ROWS_BETWEEN_RULES)
-    loop.ui.color = False
-    assert not loop.ui.rule_due(loop.MIN_ROWS_BETWEEN_RULES)
+    assert not loop.presentation.ui.rule_due(loop.presentation.MIN_ROWS_BETWEEN_RULES)
+    loop.presentation.ui.rows_since_rule = loop.presentation.MIN_ROWS_BETWEEN_RULES
+    assert loop.presentation.ui.rule_due(loop.presentation.MIN_ROWS_BETWEEN_RULES)
+    loop.presentation.ui.color = False
+    assert not loop.presentation.ui.rule_due(loop.presentation.MIN_ROWS_BETWEEN_RULES)
 
 
 async def test_turn_end_rule_resets_rule_distance(tmp_path):
     """The turn-end rule is a solid rule like any other, so the distance counter starts over at
     the close of a turn rather than carrying the whole turn's length into the next one."""
     loop = _colored_loop(tmp_path)
-    loop.ui.emit("a\nb")
+    loop.presentation.ui.emit("a\nb")
 
-    loop.ui.emit_turn_end(1.0)
+    loop.presentation.ui.emit_turn_end(1.0)
 
-    assert loop.ui.rows_since_rule == 0
+    assert loop.presentation.ui.rows_since_rule == 0
 
 
 async def test_worker_interim_output_gets_the_same_phase_rule(tmp_path):
@@ -476,11 +477,11 @@ async def test_worker_interim_output_gets_the_same_phase_rule(tmp_path):
     through the same narration path the main agent uses."""
     loop = _colored_loop(tmp_path)
     rules = []
-    loop.ui.emit_phase_rule = lambda: rules.append(1)
-    loop.ui.rows_since_rule = loop.MIN_ROWS_BETWEEN_RULES - 1
-    loop.ui.trailing_blanks = 0
+    loop.presentation.ui.emit_phase_rule = lambda: rules.append(1)
+    loop.presentation.ui.rows_since_rule = loop.presentation.MIN_ROWS_BETWEEN_RULES - 1
+    loop.presentation.ui.trailing_blanks = 0
 
-    loop.worker_answer_output("working")
+    loop.presentation.worker_answer_output("working")
 
     assert rules == [1]
 
@@ -492,10 +493,10 @@ async def test_full_turn_parts_at_user_rule_narration_and_silent_batches(tmp_pat
     rules = []
 
     def emit_rule():
-        rules.append(loop.ui.rows_since_rule)
-        loop.ui.rows_since_rule = 0
+        rules.append(loop.presentation.ui.rows_since_rule)
+        loop.presentation.ui.rows_since_rule = 0
 
-    loop.ui.emit_phase_rule = emit_rule
+    loop.presentation.ui.emit_phase_rule = emit_rule
     silences = []
     on_batch = loop.agent.hooks.on_tool_batch
     loop.agent.hooks.on_tool_batch = lambda silent: (on_batch(silent), silences.append(silent))
@@ -521,13 +522,13 @@ async def test_full_turn_parts_at_user_rule_narration_and_silent_batches(tmp_pat
 
     loop.agent.model = FakeModel()
 
-    loop.user_turn_rule()
+    loop.presentation.user_turn_rule()
     assert await loop.agent.run("x") == "改完了。"
 
     assert len(rules) == 3  # turn opening, second narration, and the silent run
     assert rules[0] == 0
-    assert rules[1] >= loop.MIN_ROWS_BETWEEN_RULES
-    assert rules[2] >= loop.MIN_ROWS_BETWEEN_RULES
+    assert rules[1] >= loop.presentation.MIN_ROWS_BETWEEN_RULES
+    assert rules[2] >= loop.presentation.MIN_ROWS_BETWEEN_RULES
     assert silences == [False, False, *[True] * 8]  # narration batches voiced, the rest silent
 
 
@@ -545,8 +546,8 @@ async def test_resumed_session_draws_user_narration_and_silent_batch_rules(tmp_p
         s.transcript_messages = messages
         s.tool_records = records
         rules = []
-        real_rule = loop.ui.emit_phase_rule
-        loop.ui.emit_phase_rule = lambda: (rules.append(loop.ui.rows_since_rule), real_rule())
+        real_rule = loop.presentation.ui.emit_phase_rule
+        loop.presentation.ui.emit_phase_rule = lambda: (rules.append(loop.presentation.ui.rows_since_rule), real_rule())
         loop.resume.render_resumed_session()
         return rules
 
@@ -577,7 +578,7 @@ async def test_resumed_session_draws_user_narration_and_silent_batch_rules(tmp_p
         [record(), record()],
     )
     assert len(rules) == 2
-    assert rules[1] >= CommandLoop.MIN_ROWS_BETWEEN_RULES  # the second narration's rule is far enough
+    assert rules[1] >= Presentation.MIN_ROWS_BETWEEN_RULES  # the second narration's rule is far enough
 
     # Four silent batches of one-line calls are four packed rows: long enough by the batch count,
     # but too close to the rule above to part anything, so no second rule is drawn.
@@ -591,4 +592,4 @@ async def test_resumed_session_draws_user_narration_and_silent_batch_rules(tmp_p
     # Once the same silence has filled enough rows, the batch rule closes it.
     rules = rules_for(silent_run(8), [record()] * 8)
     assert len(rules) == 2
-    assert rules[1] >= CommandLoop.MIN_ROWS_BETWEEN_RULES  # the silent run's rule is far enough
+    assert rules[1] >= Presentation.MIN_ROWS_BETWEEN_RULES  # the silent run's rule is far enough

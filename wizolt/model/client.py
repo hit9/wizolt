@@ -14,6 +14,9 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
+from wizolt.agent.hooks import UiHooks
+from wizolt.agent.prompts import COMPACTION_REQUEST_EVENT
+
 # Aliased because the module name `anthropic` shadows the third-party SDK package of the same
 # name imported inside function bodies.
 from wizolt.base import (
@@ -36,11 +39,12 @@ from wizolt.base import (
     builtin_tool_label,
 )
 from wizolt.config import ProviderConfig
-from wizolt.hooks import UiHooks
 from wizolt.image import IMAGE_REFS_KEY, ImageInputs
 from wizolt.model import resilience, responses
-from wizolt.model.protocol import AnthropicWire, ChatWire, ResponsesWire, WireProtocol
-from wizolt.prompts import COMPACTION_REQUEST_EVENT
+from wizolt.model.anthropic import AnthropicWire
+from wizolt.model.chat import ChatWire
+from wizolt.model.protocol import WireProtocol
+from wizolt.model.responses import ResponsesWire
 from wizolt.providers.compat import (
     ResolvedProvider,
     builtin_tools_issue,
@@ -149,7 +153,7 @@ class ModelClient:
         # True once /resend has claimed the current attempt. A claimed attempt can no longer
         # publish a result, even if the provider answered in the race before cancellation ran.
         self._attempt_claimed = False
-        # The presentation seam (see wizolt.hooks). An agent shares its own instance with this
+        # The presentation seam (see wizolt.agent.hooks). An agent shares its own instance with this
         # client, so on_stream, on_builtin_call and on_retry_wait are wired where the rest are.
         self.hooks = UiHooks()
         # The effective model the last compaction summary ran on; "" when the last compaction fell

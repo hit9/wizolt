@@ -26,10 +26,11 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from mcp.types import ImageContent, ToolAnnotations
 from pydantic import BaseModel
 
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.base import ToolError
 from wizolt.config import Config
 from wizolt.mcp import MCPManager
-from wizolt.session import Session, bootstrap_features
+from wizolt.session import Session
 
 URL = "http://127.0.0.1:8000/mcp"
 

@@ -51,12 +51,16 @@ def test_cli_runs_session_and_closes_resources(monkeypatch):
     closed = []
     mcp = SimpleNamespace(close=lambda: closed.append("mcp"), parse_configs=list)
     session = SimpleNamespace(config=Config(), policy=bundled_policy(), settings=SimpleNamespace(theme="dark"), mcp=mcp, ensure_ownership=lambda: None, close=lambda: None)
-    monkeypatch.setattr(cli.Session, "from_config_file", lambda **kwargs: session)
+    monkeypatch.setattr(cli, "create_session", lambda **kwargs: session)
     monkeypatch.setattr(cli.Theme, "resolve", lambda theme: f"resolved-{theme}")
     monkeypatch.setattr(cli.Theme, "set_mode", lambda theme: closed.append(theme))
     monkeypatch.setattr(cli, "Agent", lambda value: ("agent", value))
 
     class FakeLoop:
+        @property
+        def presentation(self):
+            return SimpleNamespace(close_background_output=self.close_background_output)
+
         resume_request = ""
         resume_lease = None
 
@@ -93,13 +97,17 @@ def test_interactive_banner_precedes_session_and_ui_imports(monkeypatch):
 
     session = SimpleNamespace(config=Config(), policy=bundled_policy(), settings=SimpleNamespace(theme="dark"), mcp=None, ensure_ownership=lambda: None, close=lambda: None)
     monkeypatch.setattr(cli, "configure_logging", configure_logging)
-    monkeypatch.setattr(cli.Session, "from_config_file", lambda **_kwargs: session)
+    monkeypatch.setattr(cli, "create_session", lambda **_kwargs: session)
     monkeypatch.setattr(cli.Theme, "resolve", lambda theme: theme)
     monkeypatch.setattr(cli.Theme, "set_mode", lambda _theme: None)
     monkeypatch.setattr(cli, "Agent", lambda value: value)
     monkeypatch.setattr(cli, "warm_imports", lambda _modules: None)
 
     class FakeLoop:
+        @property
+        def presentation(self):
+            return SimpleNamespace(close_background_output=self.close_background_output)
+
         resume_request = ""
         resume_lease = None
 
@@ -137,7 +145,7 @@ def test_interactive_startup_failure_erases_the_starting_line(monkeypatch):
     def broken(**_kwargs):
         raise cli.ConfigError("broken config")
 
-    monkeypatch.setattr(cli.Session, "from_config_file", broken)
+    monkeypatch.setattr(cli, "create_session", broken)
 
     assert cli.main([]) == 2
     assert stdout.getvalue().endswith(cli.STARTING_LINE + cli.ERASE_STARTING_LINE)
@@ -158,12 +166,12 @@ def test_cli_loads_resumed_session_with_runtime_overrides(monkeypatch):
         loaded.update(uid=uid, **kwargs)
         return session
 
-    monkeypatch.setattr(cli.Session, "load_snapshot", load_snapshot)
+    monkeypatch.setattr(cli, "load_session", load_snapshot)
     monkeypatch.setattr(cli.Theme, "resolve", lambda theme: theme)
     monkeypatch.setattr(cli.Theme, "set_mode", lambda _theme: None)
     monkeypatch.setattr(cli, "Agent", lambda value: value)
     monkeypatch.setattr(
-        cli, "CommandLoop", lambda _agent: SimpleNamespace(run=lambda: 0, close_background_output=lambda: None, resume_request="", resume_lease=None)
+        cli, "CommandLoop", lambda _agent: SimpleNamespace(presentation=SimpleNamespace(close_background_output=lambda: None), run=lambda: 0, resume_request="", resume_lease=None)
     )
     monkeypatch.setattr(cli.os, "getcwd", lambda: "/workspace")
 
@@ -189,7 +197,7 @@ def test_cli_reports_domain_errors(monkeypatch, capsys, error, return_code, mess
     def fail(**_kwargs):
         raise error
 
-    monkeypatch.setattr(cli.Session, "from_config_file", fail)
+    monkeypatch.setattr(cli, "create_session", fail)
 
     assert cli.main([]) == return_code
     assert capsys.readouterr().err.strip() == message

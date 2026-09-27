@@ -14,16 +14,17 @@ import pytest
 from model_harness import _AnthropicMockClientFactory, _MockClientFactory
 from openai_mock_server import OpenAIMockServer
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
+from wizolt.agent.prompts import COMPACTION_SUMMARY_TITLE, SYSTEM_PROMPT
 from wizolt.base import SESSION_EVENT_KEY
 from wizolt.config import (
     MIN_CONTEXT_SAFETY_TOKENS,
     Config,
     ProviderConfig,
 )
-from wizolt.context import ContextManager
-from wizolt.engine import Agent
 from wizolt.model import ModelClient
-from wizolt.prompts import COMPACTION_SUMMARY_TITLE, SYSTEM_PROMPT
 from wizolt.session import Session
 from wizolt.skill import SkillLibrary
 from wizolt.tools import Tool
@@ -177,7 +178,7 @@ async def test_resume_event_keeps_old_breakpoint_and_becomes_part_of_the_next_on
     assert await Agent(session, output_fn=lambda _text: None).run("first request") == "before resume"
     await session.save_snapshot()
     session.close()  # release the writer before reloading
-    resumed = Session.load_snapshot(session.uid, config=session.config, cwd=session.cwd)
+    resumed = load_session(session.uid, config=session.config, cwd=session.cwd)
     resumed.skills = SkillLibrary({})
     agent = Agent(resumed, output_fn=lambda _text: None)
     assert await agent.run("after resume") == "resumed answer"

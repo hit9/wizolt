@@ -1,30 +1,9 @@
-"""Dependency-direction guard: module-level imports must follow the module layers.
+"""Dependency-direction guard for module-level imports.
 
-Layers, from highest to lowest:
-
-    __main__  ->  cli/  ->  tui/ / render.py
-                   |
-               engine.py
-                   |
-    context.py / runner.py / compaction.py / vision.py
-                   |
-                model/
-                   |
-       tools/   mcp/   skill.py
-                   |
-               session/
-                   |
-                image.py
-                   |
-      base.py  hooks.py  config.py  providers/compat.py  providers/sync.py
-                   |
-            providers/catalog.py
-                   |
-            providers/schema.py
-
-Same-layer imports are allowed; cross-layer imports may only point downward.
-prompts.py, cli/hints.py and cli/update.py are leaves: any layer may import them, and their own
-imports are unconstrained. TYPE_CHECKING blocks and function-local imports are not counted.
+Application/UI -> agent orchestration -> model -> tools/features -> session -> shared values.
+Within UI, commands/runtime sit above presentation and terminal rendering. agent/hooks and
+agent/prompts are leaves: importing them must not load orchestration. TYPE_CHECKING and deferred
+imports are excluded here; fresh-interpreter checks in test_startup cover assembly/import costs.
 """
 
 import ast
@@ -41,18 +20,22 @@ LAYERS = {
     "wizolt.__init__": 0,
     "wizolt": 100,
     "wizolt.__main__": 0,
-    "wizolt.cli": 1,
-    "wizolt.tui": 2,
-    "wizolt.cli.hints": 1,
-    "wizolt.cli.update": 1,
-    "wizolt.tui.app": 2,
-    "wizolt.tui.views": 2,
-    "wizolt.render": 2,
-    "wizolt.engine": 3,
-    "wizolt.context": 4,
-    "wizolt.runner": 4,
-    "wizolt.compaction": 4,
-    "wizolt.vision": 4,
+    "wizolt.ui": 1,
+    "wizolt.ui.cli": 1,
+    "wizolt.ui.cli.presentation": 2,
+    "wizolt.agent": 4,
+    "wizolt.agent.lifecycle": 3,
+    "wizolt.ui.tui": 2,
+    "wizolt.ui.cli.hints": 1,
+    "wizolt.ui.cli.update": 2,
+    "wizolt.ui.tui.app": 2,
+    "wizolt.ui.tui.views": 2,
+    "wizolt.ui.render": 2,
+    "wizolt.agent.engine": 3,
+    "wizolt.agent.context": 4,
+    "wizolt.agent.runner": 4,
+    "wizolt.agent.compaction": 4,
+    "wizolt.agent.vision": 4,
     "wizolt.model": 5,
     "wizolt.model.chat": 5,
     "wizolt.model.responses": 5,
@@ -68,12 +51,12 @@ LAYERS = {
     "wizolt.skill": 6,
     "wizolt.mentions": 6,
     "wizolt.agentsmd": 6,
-    "wizolt.history": 6,
+    "wizolt.agent.history": 6,
     "wizolt.session": 7,
     "wizolt.source": 8,
     "wizolt.image": 8,
     "wizolt.base": 9,
-    "wizolt.hooks": 9,
+    "wizolt.agent.hooks": 9,
     "wizolt.config": 9,
     "wizolt.providers": 9,
     "wizolt.providers.catalog": 10,
@@ -82,7 +65,7 @@ LAYERS = {
     "wizolt.providers.sync": 9,
 }
 # Leaves: any layer may depend on them; their own dependencies are not checked.
-LEAVES = ("wizolt.prompts",)
+LEAVES = ("wizolt.agent.prompts",)
 
 
 def layer_of(module: str) -> int | None:

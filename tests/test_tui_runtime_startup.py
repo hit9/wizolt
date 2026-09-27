@@ -12,18 +12,18 @@ from prompt_toolkit.input.defaults import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 from tui_harness import ResizableOutput, loop, rendered_screen_text, run_interactive_tui, session, wait_until
 
-import wizolt.render as render_module
-import wizolt.tui.app as tui_module
+import wizolt.ui.render as render_module
+import wizolt.ui.tui.app as tui_module
+from wizolt.agent.engine import Agent
 from wizolt.base import (
     WizoltError,
 )
-from wizolt.cli import CommandLoop, TuiRuntime
-from wizolt.cli.runtime import RESUME_STATUS_LABEL
-from wizolt.cli.update import UpdateChecker
-from wizolt.engine import Agent
 from wizolt.image import UserInput
 from wizolt.session import SessionSnapshotStore
-from wizolt.tui import TuiApp
+from wizolt.ui.cli import CommandLoop, TuiRuntime
+from wizolt.ui.cli.runtime import RESUME_STATUS_LABEL
+from wizolt.ui.cli.update import UpdateChecker
+from wizolt.ui.tui import TuiApp
 
 
 async def _returns_immediately():
@@ -71,11 +71,11 @@ def test_tui_says_starting_until_the_import_warmup_finishes(tmp_path, monkeypatc
         monkeypatch.setattr(tui_module, "Application", lambda **kwargs: real_application(input=pipe_input, **(kwargs | {"output": DummyOutput()})))
 
         def drive():
-            wait_until(lambda: command_loop.tui is not None and command_loop.tui.app is not None and command_loop.tui.app.is_running)
+            wait_until(lambda: command_loop.presentation.tui is not None and command_loop.presentation.tui.app is not None and command_loop.presentation.tui.app.is_running)
             time.sleep(TuiRuntime.STARTUP_POLL_INTERVAL * 3)
             observed.append(command_loop.view.tui_input_hint())
             release.set()
-            wait_until(lambda: not command_loop.starting)
+            wait_until(lambda: not command_loop.presentation.starting)
             observed.append(command_loop.view.tui_input_hint())
             pipe_input.send_text("\x04")
 
@@ -103,7 +103,7 @@ def test_tui_emits_resumed_history_after_primary_screen_starts(tmp_path, monkeyp
         input_fn=lambda prompt="": "",
         output_fn=lambda _text: None,
     )
-    command_loop.ui.color = True
+    command_loop.presentation.ui.color = True
     monkeypatch.setattr(SessionSnapshotStore, "clean_expired", lambda *_args: 0)
     monkeypatch.setattr(UpdateChecker, "load_cached", lambda _checker: False)
     real_application = Application
@@ -123,13 +123,13 @@ def test_tui_emits_resumed_history_after_primary_screen_starts(tmp_path, monkeyp
         # scan them all, not just the first.
         text = "".join(fragment_list_to_text(to_formatted_text(part)) for part in parts)
         if "Type / for commands." in text:
-            banner_states.append((self.transcript_sink is not None, command_loop.tui.app is None))
+            banner_states.append((self.transcript_sink is not None, command_loop.presentation.tui.app is None))
         if "restored answer" in text:
-            emitted_while_running.append(command_loop.tui is not None and command_loop.tui.app is not None and command_loop.tui.app.is_running)
+            emitted_while_running.append(command_loop.presentation.tui is not None and command_loop.presentation.tui.app is not None and command_loop.presentation.tui.app.is_running)
             history_emitted.set()
         real_print_parts(self, parts)
         if "Type / for commands." in text:
-            banner_records.append("".join(command_loop.tui.scrollback.transcript))
+            banner_records.append("".join(command_loop.presentation.tui.scrollback.transcript))
 
     monkeypatch.setattr(render_module.UiPrinter, "print_parts", print_parts)
 
@@ -140,7 +140,7 @@ def test_tui_emits_resumed_history_after_primary_screen_starts(tmp_path, monkeyp
             assert history_emitted.wait(timeout=1)
             # The resuming status ends with set_idle; EOF only exits from chat mode, so wait for the
             # transition to finish before sending it.
-            while command_loop.tui.input_mode != "chat":
+            while command_loop.presentation.tui.input_mode != "chat":
                 time.sleep(0.01)
             pipe_input.send_text("\x04")
 
@@ -200,7 +200,7 @@ async def test_tui_runtime_strips_input_before_command_dispatch(tmp_path, entere
         return True, False
 
     command_loop.command = record
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     runtime = TuiRuntime(command_loop)
 
     assert await runtime.dispatch(entered)
@@ -237,7 +237,7 @@ async def test_tui_runtime_warms_file_mentions_after_startup(tmp_path, monkeypat
     monkeypatch.setattr(runtime, "run_agent_loop", _returns_immediately)
     monkeypatch.setattr(command_loop, "start_session", lambda **_kwargs: None)
     monkeypatch.setattr(command_loop, "take_pending_inputs", list)
-    monkeypatch.setattr(command_loop, "close_background_output", lambda: None)
+    monkeypatch.setattr(command_loop.presentation, "close_background_output", lambda: None)
     monkeypatch.setattr(command_loop.session.mentions, "refresh", lambda: warmed.append(True) or _noop())
 
     assert await runtime.run() == 0
@@ -288,8 +288,8 @@ async def test_tui_run_shows_resuming_status_while_restoring(tmp_path, monkeypat
     monkeypatch.setattr(runtime, "run_agent_loop", _returns_immediately)
     monkeypatch.setattr(command_loop, "start_session", lambda **_kwargs: calls.append(("start_session",)))
     monkeypatch.setattr(command_loop, "take_pending_inputs", list)
-    monkeypatch.setattr(command_loop, "close_background_output", lambda: None)
-    monkeypatch.setattr(command_loop, "refresh_mentions", lambda: None)
+    monkeypatch.setattr(command_loop.presentation, "close_background_output", lambda: None)
+    monkeypatch.setattr(command_loop.background, "refresh_mentions", lambda: None)
 
     assert await runtime.run() == 0
     assert calls == [("running", RESUME_STATUS_LABEL), ("redraw",), ("start_session",), ("idle",)]
@@ -311,7 +311,7 @@ def test_resume_status_reaches_the_screen_before_the_replay(tmp_path, monkeypatc
         input_fn=lambda prompt="": "",
         output_fn=lambda _text: None,
     )
-    command_loop.ui.color = True
+    command_loop.presentation.ui.color = True
     monkeypatch.setattr(SessionSnapshotStore, "clean_expired", lambda *_args: 0)
     monkeypatch.setattr(UpdateChecker, "load_cached", lambda _checker: False)
     output = ResizableOutput()
@@ -321,7 +321,7 @@ def test_resume_status_reaches_the_screen_before_the_replay(tmp_path, monkeypatc
         frames.append(rendered_screen_text(app, output))
 
     def drive(pipe_input):
-        wait_until(lambda: command_loop.tui is not None and command_loop.tui.input_mode == "chat")
+        wait_until(lambda: command_loop.presentation.tui is not None and command_loop.presentation.tui.input_mode == "chat")
         pipe_input.send_text("\x04")
 
     run_interactive_tui(monkeypatch, TuiRuntime(command_loop), drive=drive, output=output, after_render=after_render)
@@ -334,7 +334,7 @@ def test_resume_status_reaches_the_screen_before_the_replay(tmp_path, monkeypatc
 
 async def test_tui_dispatch_compact_flushes_queued_followups(tmp_path):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     runtime = TuiRuntime(command_loop)
     command_loop.session.enqueue_user_input("followup A")
     command_loop.session.enqueue_user_input("followup B")
@@ -352,7 +352,7 @@ async def test_tui_dispatch_compact_flushes_queued_followups(tmp_path):
 async def test_tui_dispatch_command_flushes_single_followup_completely(tmp_path):
     command_loop = loop(tmp_path)
     command_loop.command = handled_command()
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     runtime = TuiRuntime(command_loop)
     command_loop.session.enqueue_user_input("only followup")
 
@@ -365,7 +365,7 @@ async def test_tui_dispatch_command_flushes_single_followup_completely(tmp_path)
 
 async def test_tui_dispatch_failed_command_still_flushes_followup(tmp_path):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     runtime = TuiRuntime(command_loop)
     command_loop.session.enqueue_user_input("followup after error")
 
@@ -383,7 +383,7 @@ async def test_tui_dispatch_failed_command_still_flushes_followup(tmp_path):
 async def test_tui_dispatch_queues_older_followup_before_restoring_idle(tmp_path):
     command_loop = loop(tmp_path)
     command_loop.command = handled_command()
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     runtime = TuiRuntime(command_loop)
     command_loop.session.enqueue_user_input("older followup")
     events = []
@@ -410,7 +410,7 @@ async def test_tui_dispatch_queues_older_followup_before_restoring_idle(tmp_path
 async def test_tui_dispatch_command_with_empty_queue_stays_idle(tmp_path):
     command_loop = loop(tmp_path)
     command_loop.command = handled_command()
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     runtime = TuiRuntime(command_loop)
 
     assert await runtime.dispatch("/status")
@@ -421,7 +421,7 @@ async def test_tui_dispatch_command_with_empty_queue_stays_idle(tmp_path):
 
 async def test_tui_dispatch_non_command_leaves_followups_for_agent_turn(tmp_path):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     runtime = TuiRuntime(command_loop)
     command_loop.session.enqueue_user_input("followup A")
 
@@ -436,8 +436,8 @@ async def test_tui_dispatch_non_command_leaves_followups_for_agent_turn(tmp_path
 async def test_tui_dispatch_exit_does_not_flush_queued_followups(tmp_path):
     command_loop = loop(tmp_path)
     command_loop.command = handled_command(exit_now=True)
-    command_loop.tui = TuiApp()
-    command_loop.tui.exit = lambda: None
+    command_loop.presentation.tui = TuiApp()
+    command_loop.presentation.tui.exit = lambda: None
     runtime = TuiRuntime(command_loop)
     command_loop.session.enqueue_user_input("followup A")
 
@@ -449,7 +449,7 @@ async def test_tui_dispatch_exit_does_not_flush_queued_followups(tmp_path):
 
 async def test_turn_boundary_orders_slow_running_input_before_new_idle_input(tmp_path, monkeypatch):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     runtime = TuiRuntime(command_loop)
     runtime.accepting = True
     runtime.turn_active = True
@@ -492,7 +492,7 @@ async def test_running_input_routes_to_an_inflight_worker_delegation(tmp_path, m
     claims it; Tab keeps holding for the parent's next turn, and once the send ends plain
     follow-ups go back to the parent."""
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     runtime = TuiRuntime(command_loop)
     runtime.accepting = True
     runtime.turn_active = True

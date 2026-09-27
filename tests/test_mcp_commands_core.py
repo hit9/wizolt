@@ -7,19 +7,20 @@ from typing import ClassVar
 import pytest
 from mcp_harness import as_async, mcp_cfg, mcp_tool_info
 
-import wizolt.cli.commands as commands_mod
+import wizolt.ui.cli.commands as commands_mod
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.base import SELECTION_BACK
-from wizolt.cli import CommandCompleter, CommandLoop
-from wizolt.cli.commands import mcp_command
-from wizolt.cli.modals import mcp_manager
-from wizolt.cli.update import UpdateChecker
 from wizolt.config import (
     Config,
 )
-from wizolt.engine import Agent
-from wizolt.render import UiPrinter
-from wizolt.session import Session, SessionSnapshotStore, bootstrap_features
-from wizolt.tui import TUI_MODAL_PENDING, ChoiceViewState
+from wizolt.session import Session, SessionSnapshotStore
+from wizolt.ui.cli import CommandCompleter, CommandLoop
+from wizolt.ui.cli.commands import mcp_command
+from wizolt.ui.cli.modals import mcp_manager
+from wizolt.ui.cli.update import UpdateChecker
+from wizolt.ui.render import UiPrinter
+from wizolt.ui.tui import TUI_MODAL_PENDING, ChoiceViewState
 
 
 class TestMCPCommands:
@@ -422,7 +423,7 @@ class TestMCPCommands:
         result = await mcp_command(loop, "connect alpha beta")
 
         assert result == "connected batch"
-        assert calls == [(["alpha", "beta"], {"interactive": False, "notify": loop.emit})]
+        assert calls == [(["alpha", "beta"], {"interactive": False, "notify": loop.presentation.emit})]
 
     async def test_mcp_connect_rejects_missing_server(self):
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
@@ -459,7 +460,7 @@ class TestMCPCommands:
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
         bootstrap_features(s)
         loop = CommandLoop(Agent(s), input_fn=lambda _: "", output_fn=lambda _: None)
-        loop.tui = SimpleNamespace(input_mode="idle")
+        loop.presentation.tui = SimpleNamespace(input_mode="idle")
         calls = []
         monkeypatch.setattr(commands_mod, "mcp_manager", as_async(lambda _loop: calls.append("manager")))
 
@@ -489,7 +490,7 @@ class TestMCPCommands:
             connected.set()
             return SELECTION_BACK
 
-        loop.tui = SimpleNamespace(show_modal=show_modal, invalidate=repainted.set)
+        loop.presentation.tui = SimpleNamespace(show_modal=show_modal, invalidate=repainted.set)
         monkeypatch.setattr(s.mcp, "connect_server", connect)
 
         await mcp_manager(loop)
@@ -514,7 +515,7 @@ class TestMCPCommands:
             assert "● disconnected" in "".join(text for _, text in fragments())
             return SELECTION_BACK
 
-        loop.tui = SimpleNamespace(show_modal=show_modal, invalidate=repainted.set)
+        loop.presentation.tui = SimpleNamespace(show_modal=show_modal, invalidate=repainted.set)
 
         await mcp_manager(loop)
 
@@ -544,7 +545,7 @@ class TestMCPCommands:
             release.set()
             return SELECTION_BACK
 
-        loop.tui = SimpleNamespace(show_modal=show_modal, invalidate=lambda: None)
+        loop.presentation.tui = SimpleNamespace(show_modal=show_modal, invalidate=lambda: None)
         monkeypatch.setattr(s.mcp, "connect_server", connect)
 
         await mcp_manager(loop)
@@ -568,7 +569,7 @@ class TestMCPCommands:
             return SELECTION_BACK
 
         loop = CommandLoop(Agent(s), input_fn=lambda _: "", output_fn=outputs.append)
-        loop.tui = SimpleNamespace(
+        loop.presentation.tui = SimpleNamespace(
             show_modal=show_modal,
             invalidate=lambda: pytest.fail("a completed toggle repainted a closed modal"),
         )
@@ -597,7 +598,7 @@ class TestMCPCommands:
             await started.wait()
             return KeyboardInterrupt()
 
-        loop.tui = SimpleNamespace(show_modal=show_modal, invalidate=lambda: None)
+        loop.presentation.tui = SimpleNamespace(show_modal=show_modal, invalidate=lambda: None)
         monkeypatch.setattr(s.mcp, "connect_server", connect)
 
         await asyncio.wait_for(mcp_manager(loop), 0.1)
@@ -622,7 +623,7 @@ class TestMCPCommands:
             captured["text"] = "".join(text for _, text in fragments())
             return SELECTION_BACK
 
-        loop.tui = SimpleNamespace(show_modal=show_modal, invalidate=lambda: None)
+        loop.presentation.tui = SimpleNamespace(show_modal=show_modal, invalidate=lambda: None)
 
         await mcp_manager(loop)
 

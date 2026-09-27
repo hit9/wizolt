@@ -11,13 +11,14 @@ from prompt_toolkit.data_structures import Size
 from prompt_toolkit.input.defaults import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
-import wizolt.tui.app as tui_module
-from wizolt.cli import CommandLoop
+import wizolt.ui.tui.app as tui_module
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.config import (
     Config,
 )
-from wizolt.engine import Agent
-from wizolt.session import Session, bootstrap_features
+from wizolt.session import Session
+from wizolt.ui.cli import CommandLoop
 
 
 def session(tmp_path):

@@ -109,7 +109,7 @@ def test_cli_startup_banner_survives_growing_and_shrinking_pane(pane):
     # no model request is made, and the session/config live entirely inside the temporary pane.
     entry = pane.path / "startup.py"
     entry.write_text(
-        "from wizolt.cli.update import UpdateChecker\n"
+        "from wizolt.ui.cli.update import UpdateChecker\n"
         "from wizolt.providers.sync import CatalogRuntime\n"
         "from wizolt.__main__ import main\n"
         "UpdateChecker.load_cached = lambda self: False\n"
@@ -157,7 +157,7 @@ def _wait_for_markers(log: Path, count: int, timeout: float = 30.0) -> None:
 
 @pytest.mark.parametrize("columns", [5, 7])
 def test_physical_rows_matches_terminal_wide_glyph_and_tab_wrapping(pane, columns):
-    from wizolt.tui.scrollback import physical_rows
+    from wizolt.ui.tui.scrollback import physical_rows
 
     pane.resize(columns, TALL)
     payload = "\x1b[31m" + "中" * 9 + "\r\na\tbcd\r\n\x1b[0m"

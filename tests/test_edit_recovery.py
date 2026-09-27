@@ -5,9 +5,9 @@ import json
 import pytest
 from test_edit_tool import session, view
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import ToolCall, ToolError
-from wizolt.context import ContextManager
-from wizolt.runner import ToolRunner
 from wizolt.source import ToolOutput
 from wizolt.tools import EditTool, ReadTool
 
@@ -67,7 +67,7 @@ def test_no_model_facing_text_teaches_the_removed_anchor_protocol():
     """The protocol is only as simple as the text that teaches it. Nothing the model reads --
     tool descriptions, argument schemas, examples, or the system prompt -- may still describe
     line hashes or anchors, and Bash must explain its direct-evidence boundary."""
-    from wizolt.prompts import SYSTEM_PROMPT
+    from wizolt.agent.prompts import SYSTEM_PROMPT
     from wizolt.tools import TOOL_REGISTRY, BashTool
 
     # Both evidence modes are taught, and neither is described through a removed protocol.

@@ -3,7 +3,7 @@ test_delegate_* modules."""
 
 from agent_harness import session
 
-from wizolt.engine import Agent
+from wizolt.agent.engine import Agent
 
 
 async def _requested_system(tmp_path, custom=None, attribution=True):
@@ -20,7 +20,7 @@ async def _requested_system(tmp_path, custom=None, attribution=True):
 
 
 class FakeModelClient:
-    """Stands in for wizolt.engine.ModelClient: records every request and replays a script of
+    """Stands in for wizolt.agent.engine.ModelClient: records every request and replays a script of
     (assistant, tool_calls, content) triples, so the worker's loop is exercised without HTTP."""
 
     def __init__(self, script):
@@ -57,8 +57,8 @@ async def _delegate_call(parent, runner, **args):
 
 
 def _delegate_runner(parent):
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
 
     return ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
 

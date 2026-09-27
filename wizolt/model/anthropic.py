@@ -1,7 +1,7 @@
-"""Anthropic Messages wire conversion: params, history replay, stream reassembly, and result parsing.
+"""Anthropic Messages adapter: history conversion, request construction, sending and parsing.
 
-Pure conversion with explicit inputs — no client state and no retry or orchestration logic.
-ModelClient keeps the flow decisions and delegates the conversion here.
+Pure conversion helpers remain usable independently. ModelClient owns the shared request
+lifecycle, retries and accounting; SDK imports stay deferred until a request.
 """
 
 from __future__ import annotations
@@ -12,22 +12,28 @@ import uuid
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+import wizolt.model.responses as responses_module
 from wizolt.base import (
     ANTHROPIC_CONTENT_KEY,
     PAUSED_TURN_KEY,
+    PROVIDER_ORIGIN_KEY,
     SEARCH_SOURCES_KEY,
+    Billing,
     Json,
     ModelOutputTruncated,
+    Text,
     ToolCall,
     builtin_tool_label,
 )
 from wizolt.config import ProviderConfig
 from wizolt.image import ImageInputs
-from wizolt.model.history import keeps_reasoning
+from wizolt.model.protocol import keeps_reasoning, omit_request_fields
 from wizolt.providers.compat import ResolvedProvider
 
 if TYPE_CHECKING:
     from anthropic import AsyncAnthropic
+
+    from wizolt.model.client import ModelClient
 
 
 def anthropic_params(
@@ -424,3 +430,107 @@ def anthropic_sources(saved_content: list[Json], collect_sources: Callable[..., 
             content = block.get("content")
             groups.append(content if isinstance(content, list) else None)
     return collect_sources(*groups)
+
+
+class AnthropicWire:
+    """The Anthropic Messages wire."""
+
+    def __init__(self, client: ModelClient):
+        self._client = client
+
+    async def request(
+        self,
+        messages: list[Json],
+        tools: list[Json] | None,
+        *,
+        provider: ProviderConfig | None = None,
+        allow_stream: bool = True,
+        response_timeout: float | None = None,
+        json_object: bool = False,
+        billing: Billing = Billing.MAIN,
+    ) -> tuple[Json, list[ToolCall], str]:
+        provider = provider if provider is not None else self._client.session.config.provider
+        messages = Text.value(messages)
+        text_only = self._client.session.image_route.is_text_only()
+        payloads = await self._client.session.images.load_payloads(messages) if not text_only else {}
+        params = omit_request_fields(self.params(messages, tools, provider, image_payloads=payloads), provider.omit_body)
+        client = self._client.anthropic_client(provider=provider)
+        stream = allow_stream and provider.stream and self._client.hooks.on_stream is not None
+        if stream:
+            result = await self._client.call_client(client, lambda: self._stream(client, params), response_timeout=response_timeout)
+            streamed = True
+        else:
+            result = await self._client.call_client(client, lambda: client.messages.create(**params), response_timeout=response_timeout)
+            streamed = False
+        self._client._record_usage(self._client.message_field(result, "usage"), billing=billing)
+        assistant, calls, content = self.result(result, streamed)
+        assistant[PROVIDER_ORIGIN_KEY] = self._client.provider_origin(provider)
+        return assistant, calls, content
+
+    async def _stream(self, client: Any, params: Json) -> Any:
+        """Consume Messages blocks and promote text once both text and tool blocks are known."""
+        return await reassemble_stream(
+            client,
+            params,
+            message_field=self._client.message_field,
+            raise_if_inactive=self._client._raise_if_request_inactive,
+            emit=self._client._emit_stream,
+            report_builtin_call=self._client.report_builtin_call,
+        )
+
+    def params(
+        self, messages: list[Json], tools: list[Json] | None, provider: ProviderConfig | None = None, *, image_payloads: dict[str, bytes] | None = None
+    ) -> Json:
+        provider = provider if provider is not None else self._client.session.config.provider
+        return anthropic_params(
+            messages,
+            tools,
+            provider,
+            self._client.resolved(provider),
+            provider_origin=self._client.provider_origin,
+            replayable_echo=self._client.replayable_echo,
+            images=self._client.session.images,
+            builtin_tools=self._client.builtin_tools,
+            apply_request=lambda params, entry, resolved: self._client.apply_request(params, entry, resolved, wire="anthropic"),
+            latest_user_position=self._client.latest_user_position,
+            text_only=self._client.session.image_route.is_text_only(),
+            image_payloads=image_payloads,
+        )
+
+    def messages(self, messages: list[Json], origin: str = "", *, text_only: bool | None = None) -> list[Json]:
+        text_only = self._client.session.image_route.is_text_only() if text_only is None else text_only
+        resolved = self._client.resolved(self._client.session.config.provider)
+        return anthropic_messages(
+            messages,
+            origin,
+            provider_origin=self._client.provider_origin,
+            replayable_echo=self._client.replayable_echo,
+            images=self._client.session.images,
+            reasoning_history=resolved.reasoning_history,
+            latest_user_position=self._client.latest_user_position,
+            text_only=text_only,
+        )
+
+    def estimation_payload(self, messages: list[Json], tools: list[Json] | None, builtin: list[Json]) -> Json:
+        """The wire-shaped payload for one token estimate, matching what request() would send."""
+        system = "\n\n".join(str(message.get("content") or "") for message in messages if message.get("role") == "system").strip()
+        payload: Json = {"system": system, "messages": self.messages(Text.value(messages))}
+        if request_tools := [*anthropic_tool_schemas(tools or []), *builtin]:
+            payload["tools"] = request_tools
+        return payload
+
+    def result(self, result: Any, streamed: bool = False) -> tuple[Json, list[ToolCall], str]:
+        return anthropic_result(
+            result,
+            streamed,
+            message_field=self._client.message_field,
+            dump_message_item=responses_module.dump_message_item,
+            tool_call=self._client.tool_call,
+            report_builtin_call=self._client.report_builtin_call,
+            truncated_output_error=self._client.truncated_output_error,
+            collect_sources=self._client.collect_sources,
+        )
+
+    def sources(self, saved_content: list[Json]) -> list[Json]:
+        """Sources from a Messages response: cited text first, then the raw search results."""
+        return anthropic_sources(saved_content, self._client.collect_sources)

@@ -4,6 +4,7 @@ import pytest
 from catalog_harness import resolve
 from test_core_logic import session
 
+from wizolt.agent.context import ContextManager
 from wizolt.base import (
     RESPONSES_OUTPUT_KEY,
     ConfigError,
@@ -13,7 +14,6 @@ from wizolt.config import (
     ProviderConfig,
     RuntimeSettings,
 )
-from wizolt.context import ContextManager
 from wizolt.model import ModelClient
 from wizolt.providers.catalog import decode_bundled
 from wizolt.providers.compat import bundled_policy

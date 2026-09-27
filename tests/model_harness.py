@@ -11,12 +11,13 @@ import httpx2
 from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.config import (
     Config,
     ProviderConfig,
 )
 from wizolt.model import resilience
-from wizolt.session import Session, bootstrap_features
+from wizolt.session import Session
 
 
 class _MockClientFactory:

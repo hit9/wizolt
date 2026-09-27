@@ -9,13 +9,20 @@ from catalog_harness import resolve
 from test_command_ui import ModalHarness, diff_loop
 from tui_harness import ResizableOutput, loop, rendered_screen_text, run_interactive_tui, wait_until
 
-import wizolt.cli.commands as commands_mod
-import wizolt.cli.modals as modals_mod
+import wizolt.ui.cli.commands as commands_mod
+import wizolt.ui.cli.modals as modals_mod
 from wizolt.base import (
     SELECTION_BACK,
 )
-from wizolt.cli import COMMANDS, QUEUE_SAFE_COMMANDS, CommandCompleter, CommandLoop
-from wizolt.cli.commands import (
+from wizolt.config import (
+    PROVIDER_API_CHOICES,
+    ProviderConfig,
+)
+from wizolt.providers.schema import CatalogSyncError
+from wizolt.providers.sync import CatalogRuntime
+from wizolt.ui.cli import COMMANDS, QUEUE_SAFE_COMMANDS, CommandCompleter
+from wizolt.ui.cli.commands import (
+    COMMAND_NAMES,
     SET_KEYS,
     api,
     catalog_command,
@@ -29,14 +36,8 @@ from wizolt.cli.commands import (
     set_value,
     strict,
 )
-from wizolt.cli.modals import choice_application, diff_viewer, select_choice
-from wizolt.config import (
-    PROVIDER_API_CHOICES,
-    ProviderConfig,
-)
-from wizolt.providers.schema import CatalogSyncError
-from wizolt.providers.sync import CatalogRuntime
-from wizolt.tui import TUI_MODAL_PENDING, DiffViewState, TabbedViewState, TuiApp
+from wizolt.ui.cli.modals import choice_application, diff_viewer, select_choice
+from wizolt.ui.tui import TUI_MODAL_PENDING, DiffViewState, TabbedViewState, TuiApp
 
 
 def async_callable(fn):
@@ -96,7 +97,7 @@ async def test_catalog_command_adds_the_sync_error_prefix_once(tmp_path, monkeyp
 async def test_choice_navigation_uses_shared_modal_protocol(tmp_path):
     command_loop = loop(tmp_path)
     modal = ModalHarness(["j", "enter"])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
     result = await choice_application(command_loop, "Pick", ("a", "b", "c"), {"a": "Alpha", "b": "Beta", "c": "Gamma"}, "", set())
 
     assert result == "b"
@@ -342,7 +343,7 @@ async def test_api_command_selection_offers_every_protocol_with_the_inferred_wir
 
 async def test_reasoning_picker_offers_only_what_the_model_takes(tmp_path, monkeypatch):
     """The picker is the model's scale, not wizolt's."""
-    import wizolt.cli.modals as modals_mod
+    import wizolt.ui.cli.modals as modals_mod
 
     command_loop = loop(tmp_path)
     command_loop.interactive_input = True
@@ -371,7 +372,7 @@ async def test_reasoning_picker_offers_only_what_the_model_takes(tmp_path, monke
 
 
 async def test_reasoning_picker_offers_the_levels_the_model_declares(tmp_path, monkeypatch):
-    import wizolt.cli.modals as modals_mod
+    import wizolt.ui.cli.modals as modals_mod
 
     command_loop = loop(tmp_path)
     command_loop.interactive_input = True
@@ -398,7 +399,7 @@ async def test_api_is_registered_like_reason_and_completes_its_choices(tmp_path)
 
     command_loop = loop(tmp_path)
 
-    assert "/api" in CommandLoop.COMMANDS
+    assert "/api" in COMMAND_NAMES
     await command_loop.command("/api anthropic")
     assert command_loop.session.config.provider.api == "anthropic"
 
@@ -508,7 +509,7 @@ async def test_effort_is_an_alias_for_reason(tmp_path):
     command_loop = loop(tmp_path)
 
     # Registered as a command that dispatches to the same handler as /reason.
-    assert "/effort" in CommandLoop.COMMANDS
+    assert "/effort" in COMMAND_NAMES
     reason_command = next(command for command in COMMANDS if command.name == "/reason")
     assert "/effort" in reason_command.aliases
 
@@ -565,8 +566,8 @@ async def test_model_discovery_shows_loading_state_for_selected_provider(tmp_pat
     provider.url = "https://example.com/v1"
     provider.key = "key"
     transitions = []
-    command_loop.tui = TuiApp()
-    command_loop.tui.set_dispatching = lambda prompt="": transitions.append(prompt)
+    command_loop.presentation.tui = TuiApp()
+    command_loop.presentation.tui.set_dispatching = lambda prompt="": transitions.append(prompt)
     monkeypatch.setattr(commands_mod, "remote_models", async_callable(lambda _loop, selected: ("remote-model",)))
     selected = iter(["remote-model", "auto", "off"])
     monkeypatch.setattr(commands_mod, "select_choice", async_callable(lambda *_args, **_kwargs: next(selected)))
@@ -584,7 +585,7 @@ def test_interactive_provider_chain_uses_one_inline_tui_and_real_navigation(monk
         reasoning="low",
     )
     app = TuiApp()
-    command_loop.tui = app
+    command_loop.presentation.tui = app
     output = ResizableOutput(rows=20, columns=80)
     result = []
     application_ids = []
@@ -654,10 +655,10 @@ async def test_provider_auto_selects_sole_provider_and_model(tmp_path, monkeypat
 async def test_diff_viewer_switches_tabs_and_opens_selected_file(tmp_path):
     command_loop = diff_loop(tmp_path)
     switched = ModalHarness(["l", "q"])
-    command_loop.tui = switched
+    command_loop.presentation.tui = switched
     await diff_viewer(command_loop)
     opened = ModalHarness(["j", "enter", "q"])
-    command_loop.tui = opened
+    command_loop.presentation.tui = opened
     await diff_viewer(command_loop)
 
     assert any(("class:tab.active", " Session ") in frame for frame in switched.frames)
@@ -671,10 +672,10 @@ async def test_diff_viewer_switches_tabs_and_opens_selected_file(tmp_path):
 async def test_diff_viewer_ctrl_d_scrolls_file_preview(tmp_path):
     command_loop = diff_loop(tmp_path)
     initial = ModalHarness(["enter", "q"])
-    command_loop.tui = initial
+    command_loop.presentation.tui = initial
     await diff_viewer(command_loop)
     scrolled = ModalHarness(["enter", "c-d", "c-d", "q"])
-    command_loop.tui = scrolled
+    command_loop.presentation.tui = scrolled
     await diff_viewer(command_loop)
 
     initial_text = "".join(text for frame in initial.frames for _, text in frame)
@@ -686,7 +687,7 @@ async def test_diff_viewer_ctrl_d_scrolls_file_preview(tmp_path):
 async def test_empty_diff_viewer_reports_zero_position(tmp_path):
     command_loop = loop(tmp_path)
     modal = ModalHarness(["q"])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
     await diff_viewer(command_loop)
     text = "".join(text for frame in modal.frames for _, text in frame)
 

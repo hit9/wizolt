@@ -9,14 +9,15 @@ import pytest
 from mcp_harness import _fake_resource, as_async
 from test_mcp_commands import oauth_store, oauth_value, put_oauth_state
 
-from wizolt.cli import CommandLoop
-from wizolt.cli.commands import mcp_command
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.config import (
     Config,
 )
-from wizolt.engine import Agent
-from wizolt.render import StatusBar
-from wizolt.session import Session, bootstrap_features
+from wizolt.session import Session
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.cli.commands import mcp_command
+from wizolt.ui.render import StatusBar
 
 
 class TestMCPUserScenarios:

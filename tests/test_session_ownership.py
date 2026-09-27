@@ -17,11 +17,10 @@ import time
 
 import pytest
 
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
 from wizolt.base import SESSION_EVENT_KEY, WizoltError
-from wizolt.cli import CommandLoop
-from wizolt.cli import commands as commands_mod
 from wizolt.config import Config
-from wizolt.engine import Agent
 from wizolt.session import (
     Session,
     SessionBusyError,
@@ -30,19 +29,22 @@ from wizolt.session import (
     SessionSnapshotStore,
 )
 from wizolt.session.store import SnapshotWritePlan
-from wizolt.tui import TuiApp
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.cli import commands as commands_mod
+from wizolt.ui.tui import TuiApp
 
 LOAD_CHILD = textwrap.dedent(
     """
     import json, sys
     from wizolt.base import SESSION_EVENT_KEY
     from wizolt.config import Config
-    from wizolt.session import Session, SessionBusyError
+    from wizolt.agent.lifecycle import load_session
+    from wizolt.session import SessionBusyError
     data_dir, uid, cwd = sys.argv[1:4]
     def spoken(session):
         return [m.get("content") for m in session.messages if m.get("role") == "user" and not m.get(SESSION_EVENT_KEY)]
     try:
-        session = Session.load_snapshot(uid, config=Config(data_dir=data_dir), cwd=cwd)
+        session = load_session(uid, config=Config(data_dir=data_dir), cwd=cwd)
     except SessionBusyError as error:
         print(json.dumps({"status": "busy", "uid": error.uid}))
     except Exception as error:
@@ -58,10 +60,10 @@ LOAD_AFTER_SIGNAL_CHILD = textwrap.dedent(
     import json, sys
     from wizolt.base import SESSION_EVENT_KEY
     from wizolt.config import Config
-    from wizolt.session import Session
+    from wizolt.agent.lifecycle import load_session
     data_dir, uid, cwd = sys.argv[1:4]
     sys.stdin.readline()
-    session = Session.load_snapshot(uid, config=Config(data_dir=data_dir), cwd=cwd)
+    session = load_session(uid, config=Config(data_dir=data_dir), cwd=cwd)
     print(json.dumps([m.get("content") for m in session.messages if m.get("role") == "user" and not m.get(SESSION_EVENT_KEY)]), flush=True)
     session.close()
     """
@@ -71,9 +73,9 @@ HOLD_CHILD = textwrap.dedent(
     """
     import sys, time
     from wizolt.config import Config
-    from wizolt.session import Session
+    from wizolt.agent.lifecycle import load_session
     data_dir, uid, cwd = sys.argv[1:4]
-    session = Session.load_snapshot(uid, config=Config(data_dir=data_dir), cwd=cwd)
+    session = load_session(uid, config=Config(data_dir=data_dir), cwd=cwd)
     print("ready", flush=True)
     time.sleep(30)
     """
@@ -132,7 +134,7 @@ def async_callable(fn):
 
 def picker_loop(session, tmp_path):
     loop = CommandLoop(Agent(session, output_fn=lambda _text: None), input_fn=lambda prompt: "", output_fn=lambda _text: None)
-    loop.tui = TuiApp()
+    loop.presentation.tui = TuiApp()
     loop.interactive_input = True
     return loop
 
@@ -151,7 +153,7 @@ async def test_a_second_process_and_object_fail_while_a_different_session_opens(
     assert opened["status"] == "ok" and opened["messages"] == ["other"]
 
     with pytest.raises(SessionBusyError) as error:
-        Session.load_snapshot(owner.uid, config=owner.config, cwd=str(tmp_path))
+        load_session(owner.uid, config=owner.config, cwd=str(tmp_path))
     assert error.value.uid == owner.uid
     assert str(error.value) == f"Session {owner.uid} is already in use by another Wizolt instance."
 
@@ -169,7 +171,7 @@ async def test_every_resume_alias_resolves_to_the_same_owned_identity(tmp_path):
         (owner.uid, Config(data_dir=str(alias))),
     ):
         with pytest.raises(SessionBusyError):
-            Session.load_snapshot(uid, config=config, cwd=str(tmp_path))
+            load_session(uid, config=config, cwd=str(tmp_path))
 
 
 async def test_contended_open_leaves_every_file_untouched(tmp_path):
@@ -183,7 +185,7 @@ async def test_contended_open_leaves_every_file_untouched(tmp_path):
     }
 
     with pytest.raises(SessionBusyError):
-        Session.load_snapshot(owner.uid, config=owner.config, cwd=str(tmp_path))
+        load_session(owner.uid, config=owner.config, cwd=str(tmp_path))
 
     after = {
         name: (os.path.getsize(os.path.join(directory, name)), os.stat(os.path.join(directory, name)).st_mtime_ns) for name in sorted(os.listdir(directory))
@@ -226,7 +228,7 @@ async def test_close_permits_immediate_reopen_and_rejects_later_writes(tmp_path)
     with pytest.raises(SessionOwnershipError):
         plan.execute()
 
-    reopened = Session.load_snapshot(owner.uid, config=owner.config, cwd=str(tmp_path))
+    reopened = load_session(owner.uid, config=owner.config, cwd=str(tmp_path))
     assert reopened.uid == owner.uid
 
 
@@ -241,7 +243,7 @@ async def test_a_killed_owner_leaves_a_reusable_lock_file(tmp_path):
         process.wait(timeout=10)
         lock_files = os.listdir(os.path.join(owner.config.data_dir, "session-locks"))
         assert lock_files  # the lock file is deliberately left behind
-        reopened = Session.load_snapshot(owner.uid, config=owner.config, cwd=str(tmp_path))
+        reopened = load_session(owner.uid, config=owner.config, cwd=str(tmp_path))
         assert reopened.uid == owner.uid
         reopened.close()
     finally:
@@ -272,7 +274,7 @@ def test_a_forked_child_does_not_retain_the_lease(tmp_path):
         owner.close()
         # The child is still alive and holds a copy of the descriptor; if it had kept the lock,
         # this acquisition would fail.
-        reopened = Session.load_snapshot(owner.uid, config=owner.config, cwd=str(tmp_path))
+        reopened = load_session(owner.uid, config=owner.config, cwd=str(tmp_path))
         assert reopened.uid == owner.uid
         reopened.close()
     finally:
@@ -290,7 +292,7 @@ async def test_a_surviving_subprocess_does_not_retain_the_lease(tmp_path):
     try:
         owner.close()
         # The child is alive and owns a pipe, but not the lease descriptor.
-        reopened = Session.load_snapshot(owner.uid, config=owner.config, cwd=str(tmp_path))
+        reopened = load_session(owner.uid, config=owner.config, cwd=str(tmp_path))
         assert reopened.uid == owner.uid
         reopened.close()
     finally:
@@ -317,14 +319,14 @@ async def test_cancelling_an_accepted_write_keeps_the_session_exclusive(tmp_path
     await asyncio.sleep(0)
 
     with pytest.raises(SessionBusyError):
-        Session.load_snapshot(owner.uid, config=owner.config, cwd=str(tmp_path))
+        load_session(owner.uid, config=owner.config, cwd=str(tmp_path))
 
     release.set()
     with pytest.raises(asyncio.CancelledError):
         await save
     owner.close()
     monkeypatch.undo()
-    reopened = Session.load_snapshot(owner.uid, config=owner.config, cwd=str(tmp_path))
+    reopened = load_session(owner.uid, config=owner.config, cwd=str(tmp_path))
     assert reopened.uid == owner.uid
 
 
@@ -349,10 +351,10 @@ async def test_busy_resume_keeps_the_current_run_and_a_reserved_handoff_leaves_n
     assert reserved is not None and not reserved.closed
     # The target is already owned before the handoff, so there is no release-and-reacquire window.
     with pytest.raises(SessionBusyError):
-        Session.load_snapshot(target.uid, config=target.config, cwd=str(tmp_path))
+        load_session(target.uid, config=target.config, cwd=str(tmp_path))
 
     current.close()
-    handed = Session.load_snapshot(target.uid, config=target.config, cwd=str(tmp_path), lease=reserved)
+    handed = load_session(target.uid, config=target.config, cwd=str(tmp_path), lease=reserved)
     assert handed.uid == target.uid
 
 
@@ -366,7 +368,7 @@ async def test_a_failed_reserved_load_releases_its_lease(tmp_path):
 
     # Existing corruption diagnostics are preserved; the lease is released either way.
     with pytest.raises(ValueError):
-        Session.load_snapshot(session.uid, config=session.config, cwd=str(tmp_path), lease=reserved)
+        load_session(session.uid, config=session.config, cwd=str(tmp_path), lease=reserved)
     assert reserved.closed
 
 
@@ -470,7 +472,7 @@ async def test_worker_borrows_the_parent_capability_and_cannot_release_it(tmp_pa
         foreign.borrow_ownership(parent)
 
     with pytest.raises(WizoltError, match="worker session"):
-        Session.load_snapshot(worker.uid, config=parent.config, cwd=str(tmp_path))
+        load_session(worker.uid, config=parent.config, cwd=str(tmp_path))
 
 
 async def test_a_worker_cannot_write_after_its_parent_capability_closes(tmp_path):
@@ -497,7 +499,7 @@ async def test_an_existing_snapshot_gains_a_lock_file_without_migration(tmp_path
     before = await asyncio.to_thread(read_bytes, path)
     shutil.rmtree(os.path.join(original.config.data_dir, "session-locks"))  # as if written by an older build
 
-    loaded = Session.load_snapshot(original.uid, config=original.config, cwd=str(tmp_path))
+    loaded = load_session(original.uid, config=original.config, cwd=str(tmp_path))
     spoken = [message.get("content") for message in loaded.messages if message.get("role") == "user" and not message.get(SESSION_EVENT_KEY)]
     assert spoken == ["legacy"]
     loaded.close()
@@ -527,7 +529,7 @@ async def test_permission_failure_fails_closed_without_claiming_another_instance
         os.chmod(lock, 0o400)
     try:
         with pytest.raises(WizoltError) as error:
-            Session.load_snapshot(owner.uid, config=owner.config, cwd=str(tmp_path))
+            load_session(owner.uid, config=owner.config, cwd=str(tmp_path))
         assert not isinstance(error.value, SessionBusyError)
     finally:
         for lock in locks:
@@ -576,9 +578,9 @@ async def test_failed_open_releases_reserved_ownership_at_every_stage(tmp_path, 
         def fail_bootstrap(_session):
             raise WizoltError("bootstrap failed")
 
-        monkeypatch.setattr("wizolt.session.bootstrap_features", fail_bootstrap)
+        monkeypatch.setattr("wizolt.agent.lifecycle.bootstrap_features", fail_bootstrap)
     with pytest.raises(WizoltError):
-        Session.load_snapshot(owner.uid, config=owner.config, cwd=owner.cwd, lease=lease)
+        load_session(owner.uid, config=owner.config, cwd=owner.cwd, lease=lease)
     assert lease.closed
     acquired = SessionLease.acquire(owner.config.data_dir, path)
     acquired.close()
@@ -602,7 +604,7 @@ async def test_failed_handoff_save_does_not_reserve_or_request_a_switch(tmp_path
         with pytest.raises(failure):
             await commands_mod.sessions_command(loop, "")
         assert loop.resume_request == "" and loop.resume_lease is None
-        opened = Session.load_snapshot(target.uid, config=target.config, cwd=target.cwd)
+        opened = load_session(target.uid, config=target.config, cwd=target.cwd)
         opened.close()
     finally:
         current.close()
@@ -671,17 +673,12 @@ async def test_main_releases_a_reserved_target_when_config_reload_fails(tmp_path
     await target.save_snapshot()
     target.close()
     reserved = SessionLease.acquire(target.config.data_dir, target.ownership_root_path())
-    monkeypatch.setattr(cli.Session, "from_config_file", lambda **_: current)
+    monkeypatch.setattr(cli, "create_session", lambda **_: current)
     monkeypatch.setattr(cli, "warm_imports", lambda _modules: None)
     monkeypatch.setattr(
         cli,
         "CommandLoop",
-        lambda _: SimpleNamespace(
-            run=lambda **_: 0,
-            close_background_output=lambda: None,
-            resume_request=target.uid,
-            resume_lease=reserved,
-        ),
+        lambda _: SimpleNamespace(presentation=SimpleNamespace(close_background_output=lambda: None), run=lambda **_: 0, resume_request=target.uid, resume_lease=reserved),
     )
 
     def fail_config(*_args):
@@ -701,9 +698,9 @@ async def test_a_mismatched_reserved_lease_does_not_unlock_its_owner(tmp_path):
     target.close()
     try:
         with pytest.raises(SessionOwnershipError):
-            Session.load_snapshot(target.uid, config=target.config, cwd=target.cwd, lease=owner.assert_ownership())
+            load_session(target.uid, config=target.config, cwd=target.cwd, lease=owner.assert_ownership())
         owner.assert_ownership()
         with pytest.raises(SessionBusyError):
-            Session.load_snapshot(owner.uid, config=owner.config, cwd=owner.cwd)
+            load_session(owner.uid, config=owner.config, cwd=owner.cwd)
     finally:
         owner.close()

@@ -46,9 +46,9 @@ from wizolt.base import (
 from wizolt.image import IMAGE_MARKER, ImageInputs, ImageRef, UserInput
 from wizolt.mentions import MENU_KEYS, FilePick, MentionSpan, active_mention, encode_file_mention, mention_spellings, scan_mentions
 from wizolt.paste import PASTE_MARKER, PasteRef
-from wizolt.render import ScrollbackText, UiPrinter
-from wizolt.tui.scrollback import ScrollbackRegion
-from wizolt.tui.views import TUI_MODAL_PENDING
+from wizolt.ui.render import ScrollbackText, UiPrinter
+from wizolt.ui.tui.scrollback import ScrollbackRegion
+from wizolt.ui.tui.views import TUI_MODAL_PENDING
 
 
 @dataclass

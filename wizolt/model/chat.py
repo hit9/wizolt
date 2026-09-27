@@ -1,8 +1,7 @@
-"""Chat Completions wire conversion: history replay, request params, and stream reassembly.
+"""Chat Completions adapter: history conversion, request construction, sending and parsing.
 
-Pure conversion with explicit inputs — no client state and no retry or orchestration logic.
-ModelClient keeps the flow decisions (stream on/off, finish_reason=length, usage recording) and
-delegates the conversion here.
+Pure conversion helpers remain usable independently. ModelClient owns the shared request
+lifecycle, retries and accounting; SDK imports stay deferred until a request.
 """
 
 from __future__ import annotations
@@ -10,14 +9,17 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from wizolt.base import PROVIDER_ECHO_KEYS, SESSION_EVENT_KEY, Json, ModelError, Text
+import wizolt.model.responses as responses_module
+from wizolt.base import PROVIDER_ECHO_KEYS, SESSION_EVENT_KEY, Billing, Json, ModelError, Text, ToolCall
 from wizolt.config import ProviderConfig
 from wizolt.image import IMAGE_REFS_KEY, TOOL_IMAGE_OBSERVATION_KEY, ImageInputs
-from wizolt.model.history import keeps_reasoning
+from wizolt.model.protocol import keeps_reasoning, omit_request_fields
 from wizolt.providers.compat import ResolvedProvider
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
+
+    from wizolt.model.client import ModelClient
 
 
 def chat_messages(
@@ -242,3 +244,108 @@ async def reassemble_stream(
     if tool_calls:
         message["tool_calls"] = [tool_calls[index] for index in sorted(tool_calls)]
     return message, usage, finish_reason
+
+
+class ChatWire:
+    """The chat-completions wire (the default/else branch)."""
+
+    def __init__(self, client: ModelClient):
+        self._client = client
+
+    async def request(
+        self,
+        messages: list[Json],
+        tools: list[Json] | None,
+        *,
+        provider: ProviderConfig | None = None,
+        allow_stream: bool = True,
+        response_timeout: float | None = None,
+        json_object: bool = False,
+        billing: Billing = Billing.MAIN,
+    ) -> tuple[Json, list[ToolCall], str]:
+        provider = provider if provider is not None else self._client.session.config.provider
+        text_only = self._client.session.image_route.is_text_only()
+        payloads = await self._client.session.images.load_payloads(messages) if not text_only else {}
+        messages = self.messages(messages, text_only=text_only, image_payloads=payloads, provider=provider)
+        resolved = self._client.resolved(provider)
+        stream = allow_stream and provider.stream and self._client.hooks.on_stream is not None
+        params = chat_params(
+            messages,
+            tools,
+            provider,
+            resolved,
+            stream=stream,
+            json_object=json_object,
+            builtin_tools=self._client.builtin_tools,
+            derive_cache_key=self._client.prompt_cache_key,
+            apply_provider_params=self._client.apply_provider_params,
+        )
+        omit_request_fields(params, provider.omit_body)
+        client = self._client.client(provider=provider)
+        if stream:
+            message, usage, finish_reason = await self._client.call_client(client, lambda: self._stream(client, params), response_timeout=response_timeout)
+        else:
+            response = await self._client.call_client(client, lambda: client.chat.completions.create(**params), response_timeout=response_timeout)
+            usage = getattr(response, "usage", None)
+            message = response.choices[0].message
+            finish_reason = str(self._client.message_field(response.choices[0], "finish_reason") or "")
+        self._client._record_usage(usage, billing=billing)
+        assistant = self._client.assistant_message(message)
+        calls = self._client.tool_calls(message)
+        content = str(self._client.message_field(message, "content") or "")
+        # Raised outside call_client, which flattens every exception into a plain ModelError.
+        if finish_reason == "length" and not calls and not content.strip():
+            raise self._client.empty_length_error(usage)
+        return assistant, calls, content
+
+    def messages(
+        self, messages: list[Json], *, text_only: bool | None = None, image_payloads: dict[str, bytes] | None = None, provider: ProviderConfig | None = None
+    ) -> list[Json]:
+        """Build Chat Completions history using the provider's documented replay contract.
+
+        `text_only` defaults to the session's current main-route image verdict; pass an explicit
+        value to override it (the main request path recomputes it per call). `image_payloads` is
+        the request-local ref→bytes mapping loaded before the wire is built.
+        """
+
+        provider = provider if provider is not None else self._client.session.config.provider
+        if text_only is None:
+            text_only = self._client.session.image_route.is_text_only()
+        return chat_messages(
+            messages,
+            self._client.resolved(provider),
+            self._client.session.images,
+            self._client.latest_user_position,
+            text_only=text_only,
+            image_payloads=image_payloads,
+        )
+
+    def estimation_payload(self, messages: list[Json], tools: list[Json] | None, builtin: list[Json]) -> Json:
+        """The wire-shaped payload for one token estimate, matching what request() would send."""
+        payload: Json = {"messages": self.messages(messages)}
+        if request_tools := [*(tools or []), *builtin]:
+            payload["tools"] = request_tools
+        return payload
+
+    async def _stream(self, client: Any, params: Json) -> tuple[Json, Any, str]:
+        """Reassemble a streamed chat completion into one assistant message and its finish reason.
+
+        Tool calls are the hard part. The spec streams them as deltas keyed by `index`, but providers
+        variously omit it, restart it, or send only `id`. `resolve_tool_call_index` recovers the
+        association from whatever a chunk carries, in decreasing order of reliability, and raises
+        instead of guessing when nothing identifies the call: a wrong association concatenates two
+        calls' argument fragments into one call with corrupt JSON, which the model cannot correct
+        because it looks like something it wrote.
+
+        Unlike Responses, Chat has no separate text-done event. Do not promote on the first tool
+        delta: compatible providers can vary their delta order. `finish_reason=tool_calls` is the
+        first protocol boundary that proves this assistant message is complete.
+        """
+        return await reassemble_stream(
+            client,
+            params,
+            message_field=self._client.message_field,
+            dump_message_item=responses_module.dump_message_item,
+            raise_if_inactive=self._client._raise_if_request_inactive,
+            emit=self._client._emit_stream,
+        )

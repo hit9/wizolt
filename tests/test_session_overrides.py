@@ -4,13 +4,13 @@ import os
 
 from test_session_persistence import log_path, read_jsonl, read_lines, rewrite_log, session_with_data_dir
 
-from wizolt.cli import CommandLoop
-from wizolt.cli.commands import provider, set_model
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
 from wizolt.config import (
     ProviderConfig,
 )
-from wizolt.engine import Agent
-from wizolt.session import Session
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.cli.commands import provider, set_model
 
 
 async def test_provider_overrides_persist_and_restore(tmp_path):
@@ -29,7 +29,7 @@ async def test_provider_overrides_persist_and_restore(tmp_path):
     assert lines[0]["provider_overrides"] == s.provider_overrides
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     assert restored.config.active_provider == "other"
     entry = restored.config.providers["other"]
     assert (entry.model, entry.reasoning, entry.api) == ("model-x", "high", "responses")
@@ -50,7 +50,7 @@ async def test_provider_overrides_stale_values_are_skipped(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     assert restored.config.active_provider == "default"
     entry = restored.config.providers["other"]
     assert entry.model == "model-x"
@@ -69,7 +69,7 @@ async def test_legacy_snapshot_without_provider_overrides_loads(tmp_path):
     await asyncio.to_thread(rewrite_log, path, lines)
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     assert restored.provider_overrides == {}
     assert restored.config.active_provider == s.config.active_provider
 
@@ -85,7 +85,7 @@ async def test_provider_overrides_survive_delta_saves(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     assert restored.config.provider.model == "model-y"
 
 async def test_provider_overrides_alone_do_not_force_a_save(tmp_path):
@@ -117,7 +117,7 @@ async def test_provider_switch_chain_round_trips_through_commands(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     assert restored.config.active_provider == "b"
     assert restored.config.providers["default"].model == "m-on-default"
     assert restored.config.providers["a"].model == "m-on-a"
@@ -132,7 +132,7 @@ async def test_resumed_session_switch_writes_a_new_delta(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     assert restored.config.provider.model == "model-1"
 
     restored.provider_overrides = {"providers": {"default": {"model": "model-2"}}}
@@ -140,7 +140,7 @@ async def test_resumed_session_switch_writes_a_new_delta(tmp_path):
     await restored.save_snapshot()
 
     restored.close()  # release the writer before reloading
-    again = Session.load_snapshot(s.uid, config=s.config)
+    again = load_session(s.uid, config=s.config)
     assert again.config.provider.model == "model-2"
 
 async def test_switch_then_first_message_carries_the_override(tmp_path):
@@ -155,7 +155,7 @@ async def test_switch_then_first_message_carries_the_override(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     assert restored.config.provider.model == "model-z"
 
 async def test_pending_user_inputs_persist_and_restore(tmp_path):
@@ -168,7 +168,7 @@ async def test_pending_user_inputs_persist_and_restore(tmp_path):
     lines = read_jsonl(log_path(s))
     assert lines[0]["pending_user_inputs"] == ["queued one", "queued two"]
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     assert [item.text for item in restored.pending_user_inputs] == ["queued one", "queued two"]
     assert all(not item.inflight for item in restored.pending_user_inputs)
 
@@ -185,5 +185,5 @@ async def test_pending_user_input_delta_replaces_queue_state(tmp_path):
     assert lines[1]["pending_user_inputs"] == ["queued"]
     assert lines[2]["pending_user_inputs"] == []
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     assert restored.pending_user_inputs == []

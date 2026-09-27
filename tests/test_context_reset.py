@@ -8,15 +8,15 @@ import re
 import pytest
 from agent_harness import call, session, session_with_provider
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
 from wizolt.base import SESSION_EVENT_KEY, ToolError
-from wizolt.cli import commands
-from wizolt.cli.loop import CommandLoop
-from wizolt.context import ContextManager
-from wizolt.engine import Agent
-from wizolt.session import Session
 from wizolt.skill import SkillLibrary
 from wizolt.tools import TOOL_REGISTRY, JobTool, Tool
 from wizolt.tools.memory import ContextTool, NoteTool
+from wizolt.ui.cli import commands
+from wizolt.ui.cli.loop import CommandLoop
 
 
 def test_context_tool_is_registered(tmp_path):
@@ -132,7 +132,7 @@ async def test_a_snapshot_taken_after_a_reset_resumes_without_the_conversation(t
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
 
     # Resume appends its own session event; the conversation itself is gone.
     conversation = [message for message in restored.messages if not message.get(SESSION_EVENT_KEY)]
@@ -181,7 +181,7 @@ async def test_a_reset_after_earlier_snapshots_survives_the_delta_chain(tmp_path
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
 
     assert [message for message in restored.messages if not message.get(SESSION_EVENT_KEY)] == []
     assert [message["content"] for message in restored.transcript_messages] == ["turn 0", "turn 1", "turn 2", "Context reset."]
@@ -200,7 +200,7 @@ async def test_history_and_note_state_survive_a_reset_and_resume(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
 
     assert [segment.key for segment in restored.history] == ["seg.1"]
     assert "evicted span" in restored.history[0].text
@@ -286,7 +286,7 @@ async def test_reset_seeds_the_next_request_without_rewriting_its_checkpoint(tmp
     assert await agent.run("continue") == "continued"
     await s.save_snapshot()
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     assert any(message.get("content") == "obsolete exploration" for message in restored.transcript_messages)
     assert restored.messages[0] == checkpoint[0]
 
@@ -303,7 +303,7 @@ async def test_pending_reset_survives_a_crash_snapshot_and_applies_once(tmp_path
     # This is the checkpoint after a successful tool batch, before the next model request.
     await s.save_snapshot()
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     assert not restored.context_reset_requested
     assert restored.messages[0][SESSION_EVENT_KEY] == "context_reset"
     assert "durable intent" in restored.messages[0]["content"]
@@ -312,7 +312,7 @@ async def test_pending_reset_survives_a_crash_snapshot_and_applies_once(tmp_path
     assert sum(message.get("role") == "notice" for message in restored.transcript_messages) == 1
     await restored.save_snapshot()
     restored.close()  # release the writer before reloading
-    again = Session.load_snapshot(s.uid, config=s.config)
+    again = load_session(s.uid, config=s.config)
     assert sum(message.get(SESSION_EVENT_KEY) == "context_reset" for message in again.messages) == 1
     assert sum(message.get("role") == "notice" for message in again.transcript_messages) == 1
 
@@ -330,7 +330,7 @@ def test_pending_reset_cannot_clear_an_active_turn(tmp_path, field):
 def test_reset_keeps_the_header_stable_and_compaction_reuses_the_new_prefix(tmp_path):
     from copy import deepcopy
 
-    from wizolt.compaction import Compactor
+    from wizolt.agent.compaction import Compactor
     from wizolt.model import ModelClient
 
     s = session_with_provider(tmp_path)
@@ -424,7 +424,7 @@ async def test_reset_notice_is_transcript_only_and_published_once(tmp_path, endi
     assert not any(m.get("role") == "notice" for m in s.messages)
     await s.save_snapshot()
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     assert [m for m in restored.transcript_messages if m.get("role") == "notice"] == notices
     replay = []
     loop = CommandLoop(Agent(restored), input_fn=lambda _: "", output_fn=lambda text: replay.append(str(text)))

@@ -13,6 +13,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any, Literal, TypeVar
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.hooks import UiHooks
+from wizolt.agent.vision import VisionObserver
 from wizolt.base import (
     MAX_TOOL_OUTPUT_TOKENS,
     ApprovalView,
@@ -26,8 +29,6 @@ from wizolt.base import (
     builtin_tool_label,
     oneline,
 )
-from wizolt.context import ContextManager
-from wizolt.hooks import UiHooks
 from wizolt.model import ModelClient
 from wizolt.session import Session, TurnDiff
 from wizolt.source import SourceBlock, TextBlock, ToolOutput
@@ -49,7 +50,6 @@ from wizolt.tools import (
 from wizolt.tools.editplan import EditBatchPlan
 from wizolt.tools.toolblocks import ToolDisplay
 from wizolt.tools.toolscript import ScriptCancelled
-from wizolt.vision import VisionObserver
 
 _ResultT = TypeVar("_ResultT")
 
@@ -176,7 +176,7 @@ class ToolRunner:
         self.input_fn = input_fn
         self.output_fn = output_fn
         # The presentation seam: every optional callback the loop injects, in one typed object
-        # (see wizolt.hooks). A field left None keeps this runner's headless default.
+        # (see wizolt.agent.hooks). A field left None keeps this runner's headless default.
         self.hooks = UiHooks()
         # How many enclosing tool calls are running the calls being logged right now. Nested calls
         # (a ToolScript's call()) are printed one level deeper per enclosing call, so the log shows

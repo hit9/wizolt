@@ -6,7 +6,9 @@ import pytest
 from catalog_harness import resolve
 from model_harness import _MockClientFactory
 
-from wizolt import compaction
+from wizolt.agent import compaction
+from wizolt.agent.context import ContextManager
+from wizolt.agent.lifecycle import load_session
 from wizolt.base import (
     ConfigError,
     ModelError,
@@ -15,10 +17,9 @@ from wizolt.config import (
     Config,
     ProviderConfig,
 )
-from wizolt.context import ContextManager
 from wizolt.model import ModelClient
-from wizolt.render import StatusBar
 from wizolt.session import Session, SessionSnapshotCodec
+from wizolt.ui.render import StatusBar
 
 
 def test_parse_json_object_repairs_a_malformed_compactor_payload():
@@ -358,7 +359,7 @@ async def test_compaction_usage_survives_a_resume(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=config, cwd=str(tmp_path))
 
     assert restored.compaction_usage.total_tokens == 95_700
     assert restored.compaction_usage.calls == 1

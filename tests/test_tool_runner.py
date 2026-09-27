@@ -7,9 +7,9 @@ import time
 import pytest
 from agent_harness import call, session
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import ToolCall
-from wizolt.context import ContextManager
-from wizolt.runner import ToolRunner
 from wizolt.tools import ReadTool, Tool, toolblocks, tooloutput
 
 

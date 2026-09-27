@@ -10,18 +10,18 @@ from types import SimpleNamespace
 
 import pytest
 
-import wizolt.render as render_module
+import wizolt.ui.render as render_module
+from wizolt.agent.context import ContextManager
+from wizolt.agent.engine import Agent
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import LogBlock, LogEdge, LogLine, LogRole, ToolCall, ToolError
-from wizolt.cli import CommandLoop
-from wizolt.cli.commands import ps_command
-from wizolt.context import ContextManager
-from wizolt.engine import Agent
-from wizolt.render import BashLivePreview, LiveSpark, Theme, UiPrinter
-from wizolt.runner import ToolRunner
 from wizolt.session import Session
 from wizolt.session.jobs import BackgroundJob
 from wizolt.tools import BashTool, JobTool, Tool, toolblocks, tooloutput
 from wizolt.tools.toolblocks import ToolDisplay
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.cli.commands import ps_command
+from wizolt.ui.render import BashLivePreview, LiveSpark, Theme, UiPrinter
 
 
 def session(tmp_path):

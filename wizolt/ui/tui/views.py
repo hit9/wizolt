@@ -11,8 +11,8 @@ from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples, fragment_lis
 from prompt_toolkit.utils import get_cwidth
 
 from wizolt.base import SELECTION_BACK, SELECTION_FREE_TEXT, Text
-from wizolt.render import UiPrinter, WizoltMarkdown, markdown_console
 from wizolt.tools.ask import AskSpec
+from wizolt.ui.render import UiPrinter, WizoltMarkdown, markdown_console
 
 TUI_MODAL_PENDING = object()
 ViewLine = TypeVar("ViewLine")

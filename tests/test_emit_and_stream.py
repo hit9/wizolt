@@ -12,12 +12,12 @@ from test_images import image_file
 from test_ui_render import HIGHLIGHT_SAMPLES
 from tui_harness import loop
 
-import wizolt.render as render_module
+import wizolt.ui.render as render_module
 from wizolt.base import (
     Text,
 )
-from wizolt.render import BashLivePreview, Theme, UiPrinter
-from wizolt.tui import TuiApp
+from wizolt.ui.render import BashLivePreview, Theme, UiPrinter
+from wizolt.ui.tui import TuiApp
 
 
 def test_emit_turn_end_non_color_uses_elapsed_since_format():
@@ -80,8 +80,8 @@ def test_editor_and_queued_user_text_use_desert_style(tmp_path, monkeypatch):
 
 def test_next_turn_input_renders_with_its_own_marker(tmp_path):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
-    command_loop.tui.set_running("working")
+    command_loop.presentation.tui = TuiApp()
+    command_loop.presentation.tui.set_running("working")
     command_loop.session.enqueue_user_input("live follow-up")
     command_loop.session.enqueue_user_input("held for later", next_turn=True)
 
@@ -122,8 +122,8 @@ def test_activity_blank_line_separates_flushed_followup_from_the_stream(tmp_path
     command_loop = loop(tmp_path)
     command_loop.session.enqueue_user_input("queued message")
     command_loop.session.claim_user_inputs()  # inflight: renders as the sent (echoed) follow-up
-    command_loop.model_stream_kind = "output"
-    command_loop.model_stream_text = "streamed reply line"
+    command_loop.presentation.model_stream_kind = "output"
+    command_loop.presentation.model_stream_text = "streamed reply line"
 
     text = "".join(fragment for _, fragment in command_loop.view.tui_activity_fragments())
     lines = text.splitlines()

@@ -11,19 +11,20 @@ import pytest
 from agent_harness import session, session_with_provider
 from catalog_harness import resolve
 
-from wizolt import compaction
-from wizolt.base import (
-    SESSION_EVENT_KEY,
-    Billing,
-)
-from wizolt.context import ContextManager
-from wizolt.model import ModelClient
-from wizolt.prompts import (
+from wizolt.agent import compaction
+from wizolt.agent.context import ContextManager
+from wizolt.agent.lifecycle import load_session
+from wizolt.agent.prompts import (
     COMPACTION_SUMMARY_TITLE,
     LIVE_FOLLOWUP_PREFIX,
     PREVIOUS_CONTEXT_TRIMMED,
 )
-from wizolt.session import AgentState, Session
+from wizolt.base import (
+    SESSION_EVENT_KEY,
+    Billing,
+)
+from wizolt.model import ModelClient
+from wizolt.session import AgentState
 
 
 def test_history_segments_keep_only_the_newest_window(tmp_path):
@@ -53,7 +54,7 @@ async def test_pruned_history_survives_a_snapshot_round_trip(tmp_path):
         await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
 
     assert [segment.key for segment in restored.history] == [segment.key for segment in s.history]
     assert [segment.text for segment in restored.history] == [segment.text for segment in s.history]

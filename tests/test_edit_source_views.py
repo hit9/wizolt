@@ -6,10 +6,10 @@ import threading
 import pytest
 from test_edit_tool import session, view
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import ToolCall, ToolError
-from wizolt.context import ContextManager
 from wizolt.model import ModelClient
-from wizolt.runner import ToolRunner
 from wizolt.source import MAX_VIEW_DRIFT, ToolOutput
 from wizolt.tools import EditTool, ReadTool
 from wizolt.tools.editplan import EditBatchPlan

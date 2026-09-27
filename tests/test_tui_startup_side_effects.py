@@ -9,23 +9,24 @@ from prompt_toolkit.history import FileHistory
 from test_tui_runtime import history_file
 from tui_harness import loop
 
-from wizolt.cli import CommandLoop
-from wizolt.cli.update import UpdateChecker
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.config import (
     Config,
 )
-from wizolt.engine import Agent
-from wizolt.session import Session, SessionSnapshotStore, bootstrap_features
-from wizolt.tui import TuiApp
+from wizolt.session import Session, SessionSnapshotStore
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.cli.update import UpdateChecker
+from wizolt.ui.tui import TuiApp
 
 
 def test_background_output_is_closed_before_final_output(tmp_path):
     command_loop = loop(tmp_path)
     emitted = []
-    command_loop.emit = lambda text="", indent=0: emitted.append(text)
+    command_loop.presentation.emit = lambda text="", indent=0: emitted.append(text)
 
-    command_loop.close_background_output(lambda: emitted.append("final"))
-    command_loop.emit_background("late worker output")
+    command_loop.presentation.close_background_output(lambda: emitted.append("final"))
+    command_loop.presentation.emit_background("late worker output")
 
     assert emitted == ["final"]
 
@@ -33,10 +34,10 @@ def test_background_output_is_closed_before_final_output(tmp_path):
 def test_scrollback_without_a_runtime_writer_uses_direct_output(tmp_path):
     """Startup and teardown have no terminal queue to wait on, so their output stays synchronous."""
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     emitted = []
 
-    command_loop.write_scrollback(lambda: emitted.append("direct"))
+    command_loop.presentation.write_scrollback(lambda: emitted.append("direct"))
 
     assert emitted == ["direct"]
 
@@ -140,7 +141,7 @@ async def test_expired_session_cleanup_reports_what_it_removed(monkeypatch, tmp_
     command_loop.session.settings.session_retention_days = 7
     monkeypatch.setattr(SessionSnapshotStore, "clean_expired", lambda _data_dir, _uid, _days: 3)
     lines = []
-    monkeypatch.setattr(command_loop, "emit", lambda text="", indent=0: lines.append(str(text)))
+    monkeypatch.setattr(command_loop.presentation, "emit", lambda text="", indent=0: lines.append(str(text)))
 
     await command_loop.clean_expired_sessions()
 
@@ -155,7 +156,7 @@ async def test_no_notice_when_nothing_expired(monkeypatch, tmp_path):
     command_loop = loop(tmp_path)
     monkeypatch.setattr(SessionSnapshotStore, "clean_expired", lambda _data_dir, _uid, _days: 0)
     lines = []
-    monkeypatch.setattr(command_loop, "emit", lambda text="", indent=0: lines.append(str(text)))
+    monkeypatch.setattr(command_loop.presentation, "emit", lambda text="", indent=0: lines.append(str(text)))
 
     await command_loop.clean_expired_sessions()
 
@@ -211,7 +212,7 @@ async def test_retention_sweep_uses_values_captured_before_worker_admission(monk
         captured.append((data_dir, uid, days))
         return 0
 
-    monkeypatch.setattr("wizolt.cli.loop.run_blocking", mutate_before_invoke)
+    monkeypatch.setattr("wizolt.ui.cli.loop.run_blocking", mutate_before_invoke)
     monkeypatch.setattr(SessionSnapshotStore, "clean_expired", sweep)
 
     await command_loop.clean_expired_sessions()
@@ -228,24 +229,24 @@ def test_expired_session_notice_reads_correctly_when_singular(tmp_path):
 
 def test_toolscript_phase_shows_on_divider_and_yields_to_compaction(tmp_path):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
-    command_loop.tui.set_running("working")
+    command_loop.presentation.tui = TuiApp()
+    command_loop.presentation.tui.set_running("working")
     # A stale stream phase from before the script must not relabel the script's own divider.
-    command_loop.model_stream_output("output", "answering")
+    command_loop.presentation.model_stream_output("output", "answering")
 
-    command_loop.toolscript_run_status(True)
+    command_loop.presentation.toolscript_run_status(True)
     running = "".join(text for _, text in command_loop.view.queue_divider_fragments())
     assert "running script" in running
     assert "responding" not in running
 
     # Compaction is the inner phase while it lasts, and the script phase returns underneath it.
-    command_loop.model_stream_output("", "")
-    command_loop.automatic_compaction_status(True)
+    command_loop.presentation.model_stream_output("", "")
+    command_loop.presentation.automatic_compaction_status(True)
     assert "compacting context" in "".join(text for _, text in command_loop.view.queue_divider_fragments())
-    command_loop.automatic_compaction_status(False)
+    command_loop.presentation.automatic_compaction_status(False)
     assert "running script" in "".join(text for _, text in command_loop.view.queue_divider_fragments())
 
-    command_loop.toolscript_run_status(False)
+    command_loop.presentation.toolscript_run_status(False)
     assert "working" in "".join(text for _, text in command_loop.view.queue_divider_fragments())
 
 
@@ -256,14 +257,14 @@ async def test_startup_does_not_wait_for_a_blocked_maintenance_operation(tmp_pat
     monkeypatch.setattr(UpdateChecker, "load_cached", lambda _checker: True)
     monkeypatch.setattr(UpdateChecker, "fetch_latest", staticmethod(lambda: asyncio.Event().wait()))
     monkeypatch.setattr(SessionSnapshotStore, "clean_expired", lambda *_args: 0)
-    command_loop.open_background()
+    command_loop.background.open_background()
     try:
         command_loop.start_session()
 
         # start_session returned with the work merely admitted, not done.
-        assert {task.get_name() for task in command_loop._background} >= {"update-check", "session-cleanup"}
+        assert {task.get_name() for task in command_loop.background._background} >= {"update-check", "session-cleanup"}
     finally:
-        await command_loop.close_background()
+        await command_loop.background.close_background()
 
 
 async def test_closing_right_after_startup_leaves_no_later_output_or_state_change(tmp_path, monkeypatch):
@@ -271,7 +272,7 @@ async def test_closing_right_after_startup_leaves_no_later_output_or_state_chang
     session or the terminal once close_background has returned."""
     command_loop = loop(tmp_path)
     lines: list[str] = []
-    monkeypatch.setattr(command_loop, "emit", lambda text="", indent=0: lines.append(str(text)))
+    monkeypatch.setattr(command_loop.presentation, "emit", lambda text="", indent=0: lines.append(str(text)))
     monkeypatch.setattr(UpdateChecker, "load_cached", lambda _checker: True)
 
     async def never_answers():
@@ -281,13 +282,31 @@ async def test_closing_right_after_startup_leaves_no_later_output_or_state_chang
     monkeypatch.setattr(UpdateChecker, "fetch_latest", staticmethod(never_answers))
     monkeypatch.setattr(SessionSnapshotStore, "clean_expired", lambda *_args: 5)
 
-    command_loop.open_background()
+    command_loop.background.open_background()
     command_loop.start_session()
     lines.clear()
-    await command_loop.close_background()
+    await command_loop.background.close_background()
     await asyncio.sleep(0.05)
 
     assert lines == []
-    assert command_loop.session.update.latest == ""
+    assert command_loop.presentation.update.latest == ""
     # Nothing is admitted after close, either: a later scheduler call is refused outright.
-    assert command_loop.spawn_background(command_loop.clean_expired_sessions(), name="late") is None
+    assert command_loop.background.spawn_background(command_loop.clean_expired_sessions(), name="late") is None
+
+
+@pytest.mark.parametrize("data_dir", ["relative-data", "~/wizolt-data"])
+async def test_update_cache_uses_the_session_resolved_directory(tmp_path, monkeypatch, data_dir):
+    import json
+    import time
+    from pathlib import Path
+
+    command_loop = loop(tmp_path)
+    # Keep the process cwd distinct from the session cwd, just as a resumed session can be.
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    command_loop.session.config.data_dir = data_dir
+    cached = Path(command_loop.session.data_path("update.json"))
+    cached.parent.mkdir(parents=True, exist_ok=True)
+    cached.write_text(json.dumps({"latest": "999.0.0", "checked_at": time.time()}))
+    command_loop.start_session(show_banner=False)
+    assert command_loop.presentation.update.latest == "999.0.0"
+    assert not command_loop.presentation.update.checking

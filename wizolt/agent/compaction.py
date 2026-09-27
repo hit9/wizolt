@@ -16,23 +16,23 @@ import asyncio
 from difflib import SequenceMatcher
 from typing import TYPE_CHECKING, ClassVar
 
-from wizolt.base import SESSION_EVENT_KEY, Billing, Json, ModelError, ModelResponseTimeout, Text
-from wizolt.config import ProviderConfig, compaction_provider_config
-from wizolt.model import ModelClient
-from wizolt.prompts import (
+from wizolt.agent.prompts import (
     COMPACTION_ECHO_RETRY,
     COMPACTION_PROMPT,
     COMPACTION_REQUEST_EVENT,
     COMPACTION_RETRY,
     compaction_tail,
 )
-from wizolt.prompts import (
+from wizolt.agent.prompts import (
     compaction_input as format_compaction_input,
 )
+from wizolt.base import SESSION_EVENT_KEY, Billing, Json, ModelError, ModelResponseTimeout, Text
+from wizolt.config import ProviderConfig, compaction_provider_config
+from wizolt.model import ModelClient
 from wizolt.tools import Tool
 
 if TYPE_CHECKING:
-    from wizolt.context import ContextManager
+    from wizolt.agent.context import ContextManager
 
 
 class Compactor:

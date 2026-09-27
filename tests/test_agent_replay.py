@@ -9,6 +9,10 @@ from agent_harness import call, queue, session
 from catalog_harness import resolve
 from test_agent_turn import _runner
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import (
     ToolCall,
 )
@@ -16,10 +20,7 @@ from wizolt.config import (
     Config,
     ProviderConfig,
 )
-from wizolt.context import ContextManager
-from wizolt.engine import Agent
 from wizolt.model import ModelClient
-from wizolt.runner import ToolRunner
 from wizolt.session import Session
 from wizolt.tools import BashTool, ReadTool
 
@@ -361,7 +362,7 @@ async def test_agent_followup_turn_snapshot_resume_invariant(tmp_path, monkeypat
 
     await s.save_snapshot()
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, settings=s.settings)
+    restored = load_session(s.uid, config=s.config, settings=s.settings)
 
     # The live follow-up and the correction each appear once as durable user messages
     followup_messages = [m for m in restored.messages if "live follow-up" in (m.get("content") or "")]
@@ -397,6 +398,6 @@ async def test_held_next_turn_inputs_survive_a_snapshot_one_per_turn(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, settings=s.settings)
+    restored = load_session(s.uid, config=s.config, settings=s.settings)
 
     assert [(item.text, item.next_turn) for item in restored.pending_user_inputs] == [("first task", True), ("second task", True)]

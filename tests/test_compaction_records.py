@@ -7,8 +7,8 @@ class _StubModel:
 
 from agent_harness import session
 
-from wizolt import compaction
-from wizolt.context import ContextManager
+from wizolt.agent import compaction
+from wizolt.agent.context import ContextManager
 from wizolt.tools import EditTool, ReadTool
 
 

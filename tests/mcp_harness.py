@@ -3,8 +3,9 @@ factories, and the OAuth token-store helpers."""
 
 from types import SimpleNamespace
 
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.mcp import MCPToolInfo
-from wizolt.session import Session, bootstrap_features
+from wizolt.session import Session
 
 # ---------------------------------------------------------------------------
 # Helpers

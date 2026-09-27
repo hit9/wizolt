@@ -15,7 +15,7 @@ What is asserted, and why each one is separate:
 * The prompt and status rows appear once. A stale copy left behind by a reflow shows up here.
 
 Pre-existing shell history is deliberately *not* asserted to survive. A width change rebuilds
-the terminal from the transcript and purges scrollback; see `wizolt/tui/scrollback.py` for why
+the terminal from the transcript and purges scrollback; see `wizolt/ui/tui/scrollback.py` for why
 that trade is taken rather than guessing how many physical rows to delete.
 """
 

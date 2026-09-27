@@ -5,20 +5,20 @@ from types import SimpleNamespace
 from test_command_ui import ModalHarness
 from tui_harness import loop
 
-import wizolt.cli.commands as commands_mod
+import wizolt.ui.cli.commands as commands_mod
 from wizolt.base import (
     SELECTION_BACK,
 )
-from wizolt.cli import CommandCompleter
-from wizolt.cli import worker as worker_mod
-from wizolt.cli.modals import tool_output_viewer
-from wizolt.cli.worker import WorkerFlow, worker_command
 from wizolt.config import (
     PROVIDER_API_CHOICES,
     Config,
     ProviderConfig,
 )
 from wizolt.tools import Tool
+from wizolt.ui.cli import CommandCompleter
+from wizolt.ui.cli import worker as worker_mod
+from wizolt.ui.cli.modals import tool_output_viewer
+from wizolt.ui.cli.worker import WorkerFlow, worker_command
 
 
 def async_callable(fn):
@@ -359,7 +359,7 @@ async def test_tool_output_viewer_opens_a_stored_script_in_the_scrolling_viewer(
     envelope = "ToolScript ok\ncalls: 2 [tr.1-2]\nstdout:\ncounted 30 rows"
     command_loop.session.store_tool_result("ToolScript", [{"action": "call", "code": code}], envelope)
     modal = ModalHarness(["enter", "G"])  # open the entry, then scroll the viewer to the bottom
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     await tool_output_viewer(command_loop)
 
@@ -380,7 +380,7 @@ async def test_tool_output_viewer_skips_a_describe_with_no_script(tmp_path):
     command_loop = loop(tmp_path)
     command_loop.session.store_tool_result("ToolScript", [{"action": "describe", "tools": ["Read"]}], "Read\njson:    no")
     modal = ModalHarness([])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     await tool_output_viewer(command_loop)
 
@@ -395,7 +395,7 @@ async def test_tool_output_viewer_shows_a_failed_script_with_its_traceback(tmp_p
     envelope = 'ToolScript failed\ncalls: 0\nerror:\nTraceback (most recent call last):\n  File "<toolscript>", line 2, in <module>\nIndexError: list index out of range'
     command_loop.session.store_tool_result("ToolScript", [{"action": "call", "code": code}], envelope)
     modal = ModalHarness(["enter"])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     await tool_output_viewer(command_loop)
 
@@ -412,7 +412,7 @@ async def test_tool_output_viewer_shows_the_whole_command_not_the_clipped_log_li
     command = "rg --json " + " ".join(f"--glob '!vendor/{index}/**'" for index in range(30)) + " pattern"
     command_loop.session.store_tool_result("Bash", [command], Tool.process_result("BashToolResult", 0, "hit", ""))
     modal = ModalHarness(["enter"])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     await tool_output_viewer(command_loop)
 

@@ -7,8 +7,8 @@ import pytest
 from agent_harness import session
 from test_worker_handoff import _requested_system
 
-from wizolt.context import ContextManager
-from wizolt.prompts import SYSTEM_PROMPT
+from wizolt.agent.context import ContextManager
+from wizolt.agent.prompts import SYSTEM_PROMPT
 from wizolt.tools import TOOL_REGISTRY, Tool
 
 
@@ -161,7 +161,7 @@ async def test_resolve_uid_prefix_skips_worker_snapshot(tmp_path):
 
 
 def test_worker_prompt_shares_language_and_secret_rules_with_parent():
-    from wizolt.prompts import LANGUAGE_RULES, SECRET_RULES, SYSTEM_PROMPT, WORKER_PROMPT
+    from wizolt.agent.prompts import LANGUAGE_RULES, SECRET_RULES, SYSTEM_PROMPT, WORKER_PROMPT
 
     assert LANGUAGE_RULES in SYSTEM_PROMPT
     assert LANGUAGE_RULES in WORKER_PROMPT
@@ -170,7 +170,7 @@ def test_worker_prompt_shares_language_and_secret_rules_with_parent():
 
 
 def test_worker_prompt_does_not_inherit_parent_review_or_terminal_output():
-    from wizolt.prompts import SYSTEM_PROMPT, WORKER_PROMPT
+    from wizolt.agent.prompts import SYSTEM_PROMPT, WORKER_PROMPT
 
     assert "REVIEW:" in SYSTEM_PROMPT and "REVIEW:" not in WORKER_PROMPT
     assert "terminal scrollback" in SYSTEM_PROMPT and "terminal scrollback" not in WORKER_PROMPT
@@ -182,7 +182,7 @@ def test_worker_prompt_does_not_inherit_parent_review_or_terminal_output():
 def test_prompts_never_name_tools_outside_their_toolset():
     import re
 
-    from wizolt.prompts import WORKER_PROMPT
+    from wizolt.agent.prompts import WORKER_PROMPT
     from wizolt.tools import TOOL_REGISTRY
     from wizolt.tools.delegate import WORKER_TOOLS
 
@@ -194,7 +194,7 @@ def test_prompts_never_name_tools_outside_their_toolset():
 
 
 def test_prompts_make_ready_call_batching_unambiguous():
-    from wizolt.prompts import SYSTEM_PROMPT, WORKER_PROMPT
+    from wizolt.agent.prompts import SYSTEM_PROMPT, WORKER_PROMPT
 
     for prompt in (SYSTEM_PROMPT, WORKER_PROMPT):
         assert "Act as soon as a safe batch is known" in prompt
@@ -213,7 +213,7 @@ def test_prompts_make_ready_call_batching_unambiguous():
 
 
 def test_role_prompts_stay_within_a_small_context_budget():
-    from wizolt.prompts import SYSTEM_PROMPT, WORKER_PROMPT
+    from wizolt.agent.prompts import SYSTEM_PROMPT, WORKER_PROMPT
 
     # Raised from 3,500 when the INSTRUCTIONS section landed: the user's standing orders earn their
     # lines, and this stays the guard against the rest of the prompt growing.
@@ -257,6 +257,6 @@ def test_worker_schemas_include_viewimage_and_toolscript(tmp_path):
 def test_system_prompt_stable_across_refactors():
     import hashlib
 
-    from wizolt.prompts import SYSTEM_PROMPT
+    from wizolt.agent.prompts import SYSTEM_PROMPT
 
     assert hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest() == "ddcff01f69a6106c058a9ea43fe177ec305da472a1bd4d55db960fd281ef83a4"

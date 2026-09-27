@@ -14,7 +14,8 @@ import openai
 import pytest
 from model_harness import AsyncCloseable, _MockClientFactory, _session, record_backoff
 
-from wizolt import compaction
+from wizolt.agent import compaction
+from wizolt.agent.context import ContextManager
 from wizolt.base import (
     MODEL_REQUEST_RETRIES,
     RETRY_BASE_DELAY,
@@ -27,7 +28,6 @@ from wizolt.base import (
 from wizolt.config import (
     Config,
 )
-from wizolt.context import ContextManager
 from wizolt.model import ModelClient, resilience
 
 
@@ -836,7 +836,7 @@ async def test_compaction_failure_names_the_provider_entry(tmp_path, monkeypatch
 
 def test_compaction_input_restates_the_contract_after_the_payload(tmp_path):
     """The payload ends with raw transcript, so the last instruction the model reads must be ours."""
-    from wizolt.prompts import compaction_input
+    from wizolt.agent.prompts import compaction_input
 
     text = compaction_input(state="s", previous_summary="", older_messages="old", recent_messages="user:\n继续 Part B 收尾")
     assert text.rstrip().endswith("no other keys or text.")
@@ -845,7 +845,7 @@ def test_compaction_input_restates_the_contract_after_the_payload(tmp_path):
 
 
 def test_compaction_instructions_are_concise_and_agree_on_the_shape():
-    from wizolt.prompts import COMPACTION_ECHO_RETRY, COMPACTION_PROMPT, COMPACTION_REMINDER, COMPACTION_RETRY
+    from wizolt.agent.prompts import COMPACTION_ECHO_RETRY, COMPACTION_PROMPT, COMPACTION_REMINDER, COMPACTION_RETRY
 
     for instruction in (COMPACTION_PROMPT, COMPACTION_REMINDER, COMPACTION_ECHO_RETRY, COMPACTION_RETRY):
         assert "title" in instruction and "summary" in instruction

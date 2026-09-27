@@ -17,22 +17,23 @@ from prompt_toolkit.keys import Keys
 from prompt_toolkit.output import DummyOutput
 from tui_harness import ResizableOutput, loop, run_interactive_tui, session, wait_until
 
-import wizolt.tui.app as tui_module
+import wizolt.ui.tui.app as tui_module
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
 from wizolt.base import (
     SESSION_EVENT_KEY,
     LogBlock,
     LogEdge,
 )
-from wizolt.cli import CommandCompleter, CommandLoop, TuiRuntime
-from wizolt.cli.update import UpdateChecker
 from wizolt.config import (
     Config,
 )
-from wizolt.engine import Agent
 from wizolt.image import UserInput
 from wizolt.paste import PASTE_FOLD_MIN_CHARS, PASTE_FOLD_MIN_LINES, PASTE_MARKER, PasteRef
 from wizolt.session import Session, SessionSnapshotStore
-from wizolt.tui import CallbackPlaceholder, TuiApp
+from wizolt.ui.cli import CommandCompleter, CommandLoop, TuiRuntime
+from wizolt.ui.cli.update import UpdateChecker
+from wizolt.ui.tui import CallbackPlaceholder, TuiApp
 
 
 def test_invalidate_ignores_redraw_that_loses_application_shutdown_race():
@@ -105,32 +106,32 @@ def ctrl_c_queue_scenario(cwd, results):
 
             def drive():
                 try:
-                    wait_until(lambda: command_loop.tui is not None and command_loop.tui.app is not None and command_loop.tui.app.is_running)
+                    wait_until(lambda: command_loop.presentation.tui is not None and command_loop.presentation.tui.app is not None and command_loop.presentation.tui.app.is_running)
                     pipe_input.send_text("long request\r")
                     assert started.wait(timeout=1)
                     pipe_input.send_text("queued one\rqueued two\r")
                     wait_until(lambda: len(command_loop.session.pending_user_inputs) == 2)
                     pipe_input.send_text("unfinished draft")
-                    wait_until(lambda: command_loop.tui.input_buffer.text == "unfinished draft")
+                    wait_until(lambda: command_loop.presentation.tui.input_buffer.text == "unfinished draft")
                     began = time.monotonic()
                     pipe_input.send_text("\x03" * 10)
                     wait_until(lambda: not first_running.is_set())
                     wait_until(lambda: len(requests) == 2)
-                    wait_until(lambda: command_loop.tui is not None and command_loop.tui.input_mode == "chat")
+                    wait_until(lambda: command_loop.presentation.tui is not None and command_loop.presentation.tui.input_mode == "chat")
                     # The first Ctrl-C consumes the draft, the next interrupts the turn.
-                    wait_until(lambda: command_loop.tui.input_buffer.text == "")
-                    draft_after_ctrl_c.append(command_loop.tui.input_buffer.text)
+                    wait_until(lambda: command_loop.presentation.tui.input_buffer.text == "")
+                    draft_after_ctrl_c.append(command_loop.presentation.tui.input_buffer.text)
                     elapsed.append(time.monotonic() - began)
-                    command_loop.tui.input_buffer.reset(Document(""))
+                    command_loop.presentation.tui.input_buffer.reset(Document(""))
                     pipe_input.send_text("\x04")
                 except BaseException as error:  # noqa: BLE001 - harness collects every driver-thread failure
                     driver_errors.append(repr(error))
                     if first_running.is_set():
                         os.kill(os.getpid(), signal.SIGINT)
-                    if command_loop.tui is not None:
-                        command_loop.tui.on_exit_request()
-                        if command_loop.tui.app is not None:
-                            command_loop.tui.app.loop.call_soon_threadsafe(command_loop.tui.app.exit)
+                    if command_loop.presentation.tui is not None:
+                        command_loop.presentation.tui.on_exit_request()
+                        if command_loop.presentation.tui.app is not None:
+                            command_loop.presentation.tui.app.loop.call_soon_threadsafe(command_loop.presentation.tui.app.exit)
 
             driver = threading.Thread(target=drive, daemon=True)
             driver.start()
@@ -139,7 +140,7 @@ def ctrl_c_queue_scenario(cwd, results):
             if driver.is_alive():
                 driver_errors.append("driver did not exit")
         command_loop.session.close()  # the run is over; the reload needs its lease released
-        restored_session = Session.load_snapshot(command_loop.session.uid, config=config)
+        restored_session = load_session(command_loop.session.uid, config=config)
         results.put(
             {
                 "cancel_calls": len(cancel_calls),
@@ -204,7 +205,7 @@ def test_tui_non_editing_modes_clear_stale_input_errors():
 def test_stream_deltas_leave_the_frame_rate_to_the_animation_ticker(tmp_path):
     command_loop = loop(tmp_path)
     app = TuiApp()
-    command_loop.tui = app
+    command_loop.presentation.tui = app
     frames = []
     app.invalidate = lambda: frames.append(True)
 
@@ -213,13 +214,13 @@ def test_stream_deltas_leave_the_frame_rate_to_the_animation_ticker(tmp_path):
     app.set_running("working")
     frames.clear()  # entering the mode redraws once; the deltas are what must not
     for token in ("thinking", " about", " it"):
-        command_loop.model_stream_output("output", token)
+        command_loop.presentation.model_stream_output("output", token)
     assert frames == []
 
     # Anywhere else there is no ticker, so a delta still has to ask for its own redraw.
     app.set_idle()
     frames.clear()
-    command_loop.model_stream_output("output", "late token")
+    command_loop.presentation.model_stream_output("output", "late token")
     assert frames == [True]
 
 
@@ -358,10 +359,10 @@ def test_interactive_tui_decodes_submit_and_eof(monkeypatch):
 def test_interactive_tui_ctrl_c_input_state_matrix(monkeypatch, tmp_path, mode, draft, expected_interrupts):
     command_loop = loop(tmp_path)
     output = []
-    command_loop.emit = lambda text="", indent=0: output.append(text)
+    command_loop.presentation.emit = lambda text="", indent=0: output.append(text)
     runtime = TuiRuntime(command_loop)
     app = runtime.build_tui()
-    command_loop.tui = app
+    command_loop.presentation.tui = app
     interrupts = []
     app.on_interrupt = lambda: interrupts.append("interrupt")
 
@@ -453,7 +454,7 @@ def test_tui_ctrl_d_emits_resume_command_without_alternate_screen(tmp_path, monk
         monkeypatch.setattr(tui_module, "Application", application)
 
         def drive():
-            wait_until(lambda: command_loop.tui is not None and command_loop.tui.app is not None and command_loop.tui.app.is_running)
+            wait_until(lambda: command_loop.presentation.tui is not None and command_loop.presentation.tui.app is not None and command_loop.presentation.tui.app.is_running)
             threads_while_live.extend(thread.name for thread in threading.enumerate())
             pipe_input.send_text("\x04")
 
@@ -922,8 +923,8 @@ def test_tui_running_input_shows_contextual_placeholder():
 
 def test_tui_running_queue_hint_shows_recall_and_interrupt(tmp_path):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
-    command_loop.tui.set_running("working")
+    command_loop.presentation.tui = TuiApp()
+    command_loop.presentation.tui.set_running("working")
     command_loop.session.enqueue_user_input("queued")
 
     assert command_loop.view.tui_input_hint() == "↑ recalls queued · Tab next turn · Ctrl-C interrupts"
@@ -1031,8 +1032,8 @@ def test_model_retry_wait_status_labels_live_phase(tmp_path):
     phase ("retrying") and returns to "working" when it ends."""
     command_loop = loop(tmp_path)
     transitions = []
-    command_loop.tui = SimpleNamespace(set_running=transitions.append)
-    assert command_loop.agent.hooks.on_retry_wait == command_loop.model_retry_wait_status
+    command_loop.presentation.tui = SimpleNamespace(set_running=transitions.append)
+    assert command_loop.agent.hooks.on_retry_wait == command_loop.presentation.model_retry_wait_status
 
     command_loop.agent.hooks.on_retry_wait(True)
     command_loop.agent.hooks.on_retry_wait(False)

@@ -6,16 +6,16 @@ import pytest
 from model_harness import _MockClientFactory
 from PIL import Image
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.prompts import VISION_OBSERVE_DEFAULT_QUESTION, VISION_OBSERVE_PROMPT
+from wizolt.agent.runner import ToolRunner
+from wizolt.agent.vision import VisionObserver
 from wizolt.base import Billing, ConfigError, ModelError, ToolError
 from wizolt.config import Config, ProviderConfig
-from wizolt.context import ContextManager
 from wizolt.image import IMAGE_REFS_KEY, IMAGE_TEXT_ONLY_KEY, TOOL_IMAGE_OBSERVATION_PREFIX, ImageInputs
 from wizolt.model import ModelClient
-from wizolt.prompts import VISION_OBSERVE_DEFAULT_QUESTION, VISION_OBSERVE_PROMPT
-from wizolt.runner import ToolRunner
 from wizolt.session import Session
 from wizolt.tools import Tool, ViewImageTool
-from wizolt.vision import VisionObserver
 
 OBSERVATION = "The screenshot shows a terminal error."
 

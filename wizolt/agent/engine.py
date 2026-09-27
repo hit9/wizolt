@@ -9,6 +9,16 @@ import json
 import re
 from collections.abc import Callable
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.hooks import UiHooks
+from wizolt.agent.prompts import (
+    FAILED_TOOL_CALL_RESULT,
+    FAILED_TURN_MARKER,
+    INTERRUPT_MARKER,
+    LIVE_FOLLOWUP_PREFIX,
+)
+from wizolt.agent.runner import ToolRunner
+from wizolt.agent.vision import VisionObserver
 from wizolt.agentsmd import AgentsReferenceError
 from wizolt.base import (
     IMAGE_ROUTE_TEXT_ONLY_STATIC,
@@ -25,22 +35,12 @@ from wizolt.base import (
     ToolCall,
     oneline,
 )
-from wizolt.context import ContextManager
-from wizolt.hooks import UiHooks
 from wizolt.image import ImageInputs, UserInput
 from wizolt.model import ModelClient, PreparedRequest, resilience
-from wizolt.prompts import (
-    FAILED_TOOL_CALL_RESULT,
-    FAILED_TURN_MARKER,
-    INTERRUPT_MARKER,
-    LIVE_FOLLOWUP_PREFIX,
-)
-from wizolt.runner import ToolRunner
 from wizolt.session import QueuedInput, Session, SessionSnapshotCodec
 from wizolt.tools import (
     Tool,
 )
-from wizolt.vision import VisionObserver
 
 _TEXTUAL_INVOKE_RE = re.compile(
     r"<invoke\s+name\s*=\s*(?P<quote>[\"'])(?P<name>[A-Za-z0-9_.:-]{1,128})(?P=quote)\s*>"
@@ -88,7 +88,7 @@ class Agent:
         self._current_image_messages: list[Json] = []
         # The presentation seam: this agent's own reports, plus the model's, the context's and the
         # tools'. One instance, shared by use_hooks below, so the CLI wires it once and every layer
-        # reads the same object (see wizolt.hooks). A field left None keeps that layer's headless
+        # reads the same object (see wizolt.agent.hooks). A field left None keeps that layer's headless
         # default.
         self.use_hooks(UiHooks())
         # Sources the provider's own search reported during the last turn, in the order they appeared.

@@ -3,20 +3,20 @@
 import pytest
 from test_worker_handoff import FakeModelClient, _delegate_call, _delegate_runner, _delegate_session
 
-from wizolt.prompts import WORKER_PROMPT
+from wizolt.agent.prompts import WORKER_PROMPT
 from wizolt.tools import tooloutput
 
 
 async def test_delegate_send_logs_a_worker_start_marker(tmp_path, monkeypatch):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import LogBlock, LogRole, oneline
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     parent.config.providers["default"].model = "worker-model-x"
     order = "Rewrite the worker handoff plan to cover the start marker, then check it. " * 8
     model = FakeModelClient([({"role": "assistant", "content": "done"}, [], "done")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     outputs = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=outputs.append)
     await _delegate_call(parent, runner, action="send", order=order)
@@ -31,15 +31,15 @@ async def test_delegate_send_logs_a_worker_start_marker(tmp_path, monkeypatch):
 
 
 async def test_delegate_send_worker_rule_start_label(tmp_path, monkeypatch):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import oneline
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     parent.config.providers["default"].model = "worker-model-x"
     order = "Rewrite the worker handoff plan to cover the start rule, then check it. " * 8
     model = FakeModelClient([({"role": "assistant", "content": "done"}, [], "done")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     labels = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
     runner.hooks.worker_rule = lambda label: labels.append(label)
@@ -52,15 +52,15 @@ async def test_delegate_send_worker_rule_start_label(tmp_path, monkeypatch):
 
 
 async def test_delegate_send_worker_rule_start_label_with_title(tmp_path, monkeypatch):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import oneline
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     parent.config.providers["default"].model = "worker-model-x"
     order = "Rewrite the worker handoff plan to cover the start rule, then check it. " * 8
     model = FakeModelClient([({"role": "assistant", "content": "done"}, [], "done")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     labels = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
     runner.hooks.worker_rule = lambda label: labels.append(label)
@@ -73,15 +73,15 @@ async def test_delegate_send_worker_rule_start_label_with_title(tmp_path, monkey
 
 
 async def test_delegate_send_worker_start_marker_with_title(tmp_path, monkeypatch):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import LogBlock, LogRole, oneline
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     parent.config.providers["default"].model = "worker-model-x"
     order = "Rewrite the worker handoff plan to cover the start marker, then check it. " * 8
     model = FakeModelClient([({"role": "assistant", "content": "done"}, [], "done")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     outputs = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=outputs.append)
     await _delegate_call(parent, runner, action="send", order=order, title="fix /status blank line")
@@ -96,15 +96,15 @@ async def test_delegate_send_worker_start_marker_with_title(tmp_path, monkeypatc
 
 
 async def test_delegate_send_worker_rule_start_label_falls_back_to_order(tmp_path, monkeypatch):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import oneline
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     parent.config.providers["default"].model = "worker-model-x"
     order = "Rewrite the worker handoff plan to cover the start rule, then check it. " * 8
     model = FakeModelClient([({"role": "assistant", "content": "done"}, [], "done")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     labels = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
     runner.hooks.worker_rule = lambda label: labels.append(label)
@@ -127,7 +127,7 @@ async def test_delegate_rejects_empty_title(tmp_path):
 async def test_delegate_send_language_directive_is_injected_into_the_order(tmp_path, monkeypatch):
     parent = _delegate_session(tmp_path)
     model = FakeModelClient([({"role": "assistant", "content": "done"}, [], "done")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     runner = _delegate_runner(parent)
     await _delegate_call(parent, runner, action="send", order="fix the parser", language="Chinese")
 
@@ -146,12 +146,12 @@ async def test_delegate_send_rejects_a_blank_language(tmp_path):
 
 
 async def test_worker_inherits_forced_reply_language_from_parent(tmp_path, monkeypatch):
-    from wizolt.context import ContextManager
+    from wizolt.agent.context import ContextManager
 
     parent = _delegate_session(tmp_path)
     parent.settings.language = "Chinese"
     model = FakeModelClient([({"role": "assistant", "content": "done"}, [], "done")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     runner = _delegate_runner(parent)
     await _delegate_call(parent, runner, action="send", order="fix the parser")
 
@@ -165,7 +165,7 @@ async def test_worker_inherits_forced_reply_language_from_parent(tmp_path, monke
 
 
 async def test_delegate_envelope_reports_max_steps_from_runtime_fact(tmp_path, monkeypatch):
-    from wizolt.engine import Agent
+    from wizolt.agent.engine import Agent
 
     parent = _delegate_session(tmp_path)
     runner = _delegate_runner(parent)
@@ -188,7 +188,7 @@ async def test_delegate_envelope_reports_max_steps_from_runtime_fact(tmp_path, m
 
 
 async def test_delegate_envelope_reports_token_spend_and_summary_renders(tmp_path, monkeypatch):
-    from wizolt.engine import Agent
+    from wizolt.agent.engine import Agent
 
     parent = _delegate_session(tmp_path)
     runner = _delegate_runner(parent)
@@ -240,9 +240,9 @@ async def test_send_rejects_worker_calls_to_excluded_tools(tmp_path, monkeypatch
     ToolScript but not Ask/NextHints/Delegate, a hallucinated call to an excluded tool is
     rejected with a tool message instead of blocking on user input, and ViewImage executes
     as an ordinary tool (its failure here is a plain missing-file error)."""
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     prompts = []
@@ -262,7 +262,7 @@ async def test_send_rejects_worker_calls_to_excluded_tools(tmp_path, monkeypatch
             ({"role": "assistant", "content": "done"}, [], "done"),
         ]
     )
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     runner = ToolRunner(parent, ContextManager(parent), input_fn=fail_on_user, output_fn=lambda text: None)
     result = await _delegate_call(parent, runner, action="send", order="do the thing")
 
@@ -295,9 +295,9 @@ class _QueueingModel(FakeModelClient):
 async def test_delegate_send_claims_a_followup_queued_mid_run(tmp_path, monkeypatch):
     """A follow-up queued while the delegation ran reaches the worker's own next model request,
     and the flush echo marks it as the worker's so the transcript says who read it."""
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     note = tmp_path / "note.txt"
@@ -309,7 +309,7 @@ async def test_delegate_send_claims_a_followup_queued_mid_run(tmp_path, monkeypa
         ],
         lambda: parent.worker,
     )
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     flushed = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
     runner.hooks.on_queue_flush = flushed.append
@@ -324,12 +324,12 @@ async def test_delegate_send_claims_a_followup_queued_mid_run(tmp_path, monkeypa
 async def test_delegate_send_returns_unclaimed_followups_to_the_parent(tmp_path, monkeypatch):
     """A follow-up that arrived after the worker's last request is not stranded: when the send
     ends it falls back to the parent's queue as an ordinary live follow-up."""
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     model = _QueueingModel([({"role": "assistant", "content": "done"}, [], "done")], lambda: parent.worker)
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
     await _delegate_call(parent, runner, action="send", order="answer at once")
 
@@ -343,9 +343,9 @@ async def test_delegate_failure_hands_consumed_followups_back(tmp_path, monkeypa
     it back to the parent instead of leaving the user with an echo and no reply. The failing
     request is the *second* one, so the follow-up really was claimed and acknowledged into the
     worker's dead turn -- nothing is left in the worker's queue to find it by."""
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import ModelError, ToolCall, ToolError
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     note = tmp_path / "note.txt"
@@ -360,7 +360,7 @@ async def test_delegate_failure_hands_consumed_followups_back(tmp_path, monkeypa
             raise ModelError("provider exploded")  # second step: the one that carries it fails
 
     model = Failing([])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     flushed = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
     runner.hooks.on_queue_flush = flushed.append
@@ -377,9 +377,9 @@ async def test_delegate_failure_hands_consumed_followups_back(tmp_path, monkeypa
 async def test_delegate_failure_keeps_followups_an_accepted_request_answered(tmp_path, monkeypatch):
     """A follow-up an accepted request carried was answered by that request's reply: a later
     failure in the same send must not hand it to the parent, which would do the work twice."""
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import ModelError, ToolCall, ToolError
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     note = tmp_path / "note.txt"
@@ -395,7 +395,7 @@ async def test_delegate_failure_keeps_followups_an_accepted_request_answered(tmp
             raise ModelError("provider exploded")  # a later step fails with nothing new in it
 
     model = AnswersThenFails([])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
     with pytest.raises(ToolError, match="provider exploded"):
         await _delegate_call(parent, runner, action="send", order="do the thing")
@@ -407,9 +407,9 @@ async def test_delegate_failure_keeps_followups_an_accepted_request_answered(tmp
 async def test_delegate_clears_a_stale_inflight_marker(tmp_path, monkeypatch):
     """A send that dies before the engine's first settlement leaves the in-flight marker set;
     the send's own teardown clears it, or later follow-ups would keep routing to a dead turn."""
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import ModelError, ToolError
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
 
@@ -419,7 +419,7 @@ async def test_delegate_clears_a_stale_inflight_marker(tmp_path, monkeypatch):
             raise ModelError("died before settling")
 
     model = DiesInSetup([])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
     with pytest.raises(ToolError, match="died before settling"):
         await _delegate_call(parent, runner, action="send", order="do the thing")

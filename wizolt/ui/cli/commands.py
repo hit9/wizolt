@@ -1,9 +1,8 @@
 """Slash command implementations as free functions taking the CommandLoop.
 
-Each handler takes `(loop, args)` and is referenced directly by the registry in
-`wizolt/cli/__init__.py`. Handlers that await a modal or the network are coroutines; the dispatcher
+Each handler takes `(loop, args)` and is referenced directly by the registry below. Handlers that await a modal or the network are coroutines; the dispatcher
 accepts either shape. A `None` result means the handler rendered its own UI (e.g. /diff's viewer).
-The multi-stage /worker flow lives in the WorkerFlow class below.
+The multi-stage /worker flow lives in the WorkerFlow class in worker.py.
 """
 
 from __future__ import annotations
@@ -15,13 +14,14 @@ import shlex
 import shutil
 import sys
 import time
-from collections.abc import Callable
-from dataclasses import replace
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit.utils import get_cwidth
 
-from wizolt import compaction
+from wizolt.agent import compaction
+from wizolt.agent.prompts import PREVIOUS_CONTEXT_TRIMMED
 from wizolt.base import (
     SELECTION_BACK,
     ConfigError,
@@ -34,7 +34,19 @@ from wizolt.base import (
     oneline,
     run_blocking,
 )
-from wizolt.cli.modals import (
+from wizolt.config import (
+    PROVIDER_API_CHOICES,
+    Config,
+    ProviderConfig,
+    RuntimeSettings,
+    compaction_provider_config,
+)
+from wizolt.providers.compat import builtin_tools_issue
+from wizolt.providers.schema import CatalogSyncError
+from wizolt.providers.sync import CATALOG_URL
+from wizolt.session import Session, SessionBusyError, SessionEntry, SessionLease, SessionSnapshotStore
+from wizolt.ui.cli import worker
+from wizolt.ui.cli.modals import (
     choice_application,
     compaction_log_viewer,
     diff_viewer,
@@ -43,27 +55,15 @@ from wizolt.cli.modals import (
     segment_columns,
     select_choice,
 )
-from wizolt.cli.update import UpdateChecker
-from wizolt.config import (
-    PROVIDER_API_CHOICES,
-    Config,
-    ProviderConfig,
-    RuntimeSettings,
-    compaction_provider_config,
-)
-from wizolt.prompts import PREVIOUS_CONTEXT_TRIMMED
-from wizolt.providers.compat import builtin_tools_issue
-from wizolt.providers.schema import CatalogSyncError
-from wizolt.providers.sync import CATALOG_URL
-from wizolt.render import markdown_table, progress_bar
-from wizolt.session import Session, SessionBusyError, SessionEntry, SessionLease, SessionSnapshotStore
-from wizolt.tui import InputMode
+from wizolt.ui.cli.update import UpdateChecker
+from wizolt.ui.render import markdown_table, progress_bar
+from wizolt.ui.tui import InputMode
 
 if TYPE_CHECKING:
     from prompt_toolkit.formatted_text import StyleAndTextTuples
 
-    from wizolt.cli import CommandLoop
     from wizolt.session import Session
+    from wizolt.ui.cli import CommandLoop
 
 # fmt: off
 
@@ -141,11 +141,11 @@ def _status_cache_line(counts: ModelUsage) -> str:
 def resend_command(loop: CommandLoop, _args: str) -> str | None:
     """Resend the in-flight model request. Available only in the running queue-input region:
     typed while a turn works, it re-requests the current model call (same path as on_retry)."""
-    if loop.tui is None or loop.tui.input_mode != InputMode.RUNNING:
+    if loop.presentation.tui is None or loop.presentation.tui.input_mode != InputMode.RUNNING:
         return "/resend re-requests the current model request — type it while a turn is working."
     if loop.session.state.current_model_call_started_at <= 0 or loop.session.state.model_retry_until > 0:
         return "Nothing to resend right now; /resend works while the model is generating."
-    loop.tui.on_retry()
+    loop.presentation.tui.on_retry()
     return None
 
 
@@ -156,7 +156,7 @@ async def mcp_command(loop: CommandLoop, args: str) -> str | None:
 
     parts = args.split()
     if not parts:
-        if loop.tui is not None and loop.tui.input_mode != InputMode.RUNNING:
+        if loop.presentation.tui is not None and loop.presentation.tui.input_mode != InputMode.RUNNING:
             return await mcp_manager(loop)
         return mcp.render_server_status()
 
@@ -170,7 +170,7 @@ async def mcp_command(loop: CommandLoop, args: str) -> str | None:
         return usage
 
     if sub == "connect":
-        return await mcp.connect_servers(rest, interactive=loop.interactive_input, notify=loop.emit)
+        return await mcp.connect_servers(rest, interactive=loop.interactive_input, notify=loop.presentation.emit)
     if sub == "disconnect":
         return await mcp.disconnect_server(rest[0])
     if sub == "tools":
@@ -257,7 +257,7 @@ def status(loop: CommandLoop, args: str) -> str:
         rows.append(("agents.md", f"on ({'; '.join(sources)})"))
     else:
         rows.append(("agents.md", f"off (global {'present' if global_exists else 'missing'})"))
-    update = UpdateChecker(loop.session).status_line().removeprefix("update: ")
+    update = UpdateChecker(loop.session.data_path(), loop.presentation.update).status_line().removeprefix("update: ")
     if update not in {"current", "unknown"}:
         rows.append(("update", update))
     rows.append(("model", _status_model_line(loop.session, loop.session.config)))
@@ -378,7 +378,7 @@ def ps_command(loop: CommandLoop, args: str) -> str:
 async def diff_command(loop: CommandLoop, args: str) -> str | None:
     if args.strip():
         return "Usage: /diff"
-    if loop.interactive_input and loop.ui.color and (loop.tui is None or await loop.tui.alternate_screen_available()):
+    if loop.interactive_input and loop.presentation.ui.color and (loop.presentation.tui is None or await loop.presentation.tui.alternate_screen_available()):
         await diff_viewer(loop)
         return None
     latest = loop.agent.session.latest_round_diff_sections()
@@ -484,7 +484,7 @@ async def sessions_command(loop: CommandLoop, args: str) -> str | None:
     # pure work; sending each small pass through the executor costs more than it protects.
     table, widths = session_table(loop, entries, all_projects=argument == "all")
     rows = session_rows(table, widths)
-    if loop.tui is None or not loop.interactive_input:
+    if loop.presentation.tui is None or not loop.interactive_input:
         uid_width = max(get_cwidth(entry.uid) for entry in entries)
         return "\n".join(f"{entry.uid}{' ' * (uid_width - get_cwidth(entry.uid))}  {label}" for entry, label in zip(entries, rows))
     labels = {entry.uid: label for entry, label in zip(entries, rows)}
@@ -497,7 +497,7 @@ async def sessions_command(loop: CommandLoop, args: str) -> str | None:
     by_uid = {entry.uid: entry for entry in entries}
     fields_by_uid = {entry.uid: row for entry, row in zip(entries, table)}
     height = shutil.get_terminal_size().lines
-    preview_cache = SessionPreviewCache(loop.tui)
+    preview_cache = SessionPreviewCache(loop.presentation.tui)
 
     def preview_fn(uid: str) -> StyleAndTextTuples:
         return preview_cache.render(by_uid.get(uid))
@@ -754,7 +754,7 @@ async def compaction_log(loop: CommandLoop, args: str) -> str | LogBlock | None:
         return "No compaction has stored a segment yet"
     # A TUI is required, not just assumed from interactive input: without one the viewer would
     # render nothing at all, and the log lines below say the same thing without a screen.
-    if loop.interactive_input and loop.ui.color and loop.tui is not None and await loop.tui.alternate_screen_available():
+    if loop.interactive_input and loop.presentation.ui.color and loop.presentation.tui is not None and await loop.presentation.tui.alternate_screen_available():
         await compaction_log_viewer(loop)
         return None
     count = loop.session.state.compaction_count
@@ -788,12 +788,12 @@ async def compact(loop: CommandLoop, args: str) -> str | LogBlock | None:
         return "No prior conversation to compact"
     fallback = False
     fallback_error = ""
-    loop.status_bar.begin()
-    loop.compaction_active = True
-    if loop.tui is not None:
-        loop.tui.set_running("compacting context")
+    loop.presentation.status_bar.begin()
+    loop.presentation.compaction_active = True
+    if loop.presentation.tui is not None:
+        loop.presentation.tui.set_running("compacting context")
     else:
-        loop.status_bar.start(reset=False)
+        loop.presentation.status_bar.start(reset=False)
     try:
         request = compactor.request(compacted)
         # Same pairing as the automatic path: the echo guard checks what the model is handed, and
@@ -808,11 +808,11 @@ async def compact(loop: CommandLoop, args: str) -> str | LogBlock | None:
         fallback_error = Text.clip_width(" ".join(str(error).split()) or type(error).__name__, 220)
         data = None
     finally:
-        loop.compaction_active = False
-        if loop.tui is not None:
-            loop.tui.set_dispatching()
+        loop.presentation.compaction_active = False
+        if loop.presentation.tui is not None:
+            loop.presentation.tui.set_dispatching()
         else:
-            loop.status_bar.stop()
+            loop.presentation.status_bar.stop()
     if data is not None:
         loop.agent.context.apply_compaction(
             data,
@@ -918,7 +918,7 @@ async def model(loop: CommandLoop, args: str) -> str:
         return "No change" if result is SELECTION_BACK else str(result)
     provider = loop.session.config.provider
     configured = tuple(dict.fromkeys(provider.available_models))
-    tui = loop.tui
+    tui = loop.presentation.tui
     show_loading = tui is not None and bool(provider.url and provider.key)
     if show_loading and tui is not None:
         tui.set_dispatching("Loading models...")
@@ -1093,12 +1093,6 @@ def set_value(loop: CommandLoop, args: str) -> str:
     return "Set " + key
 
 
-# The single source of command metadata: dispatch, the completer's name tuple, and the
-# queue-safe allowlist all derive from this registry (see CommandLoop.COMMANDS, COMMAND_LOOKUP,
-# and QUEUE_SAFE_COMMANDS below).
-# fmt: off
-
-
 MODEL_CONFIGURED_LABEL = "---- Configured models ----"
 MODEL_DISCOVERED_LABEL = "---- Discovered models ----"
 MODEL_LABELS = frozenset((MODEL_CONFIGURED_LABEL, MODEL_DISCOVERED_LABEL))
@@ -1108,3 +1102,60 @@ MCP_COMMANDS: dict[str, tuple[int, int, str]] = {
     "tools": (0, 1, "Usage: /mcp tools [server]"),
 }
 MCP_HELP = "Try /mcp, /mcp connect <server> [server ...], /mcp disconnect <server>, or /mcp tools [server]"
+
+
+@dataclass(frozen=True)
+class Command:
+    name: str  # "/status"
+    # A LogBlock result is the structured form of `render="plain"`: it goes to the log renderer as
+    # tool output does, so a handler with rows to show does not have to pre-format them as text.
+    # A handler that reaches the network returns an awaitable instead, which dispatch awaits on the
+    # session's own loop; every other handler is local and bounded and returns its result directly.
+    handler: Callable[[CommandLoop, str], str | LogBlock | None | Awaitable[str | LogBlock | None]]
+    aliases: tuple[str, ...] = ()
+    queue_safe: bool = False  # may run from the follow-up input while a turn works
+    render: str = "plain"  # "plain" | "answer" | "compact"
+    # Does nothing without an argument (it would only print its usage). Picking it from the menu
+    # fills it in and opens its arguments instead of running it bare.
+    needs_argument: bool = False
+
+
+# Dispatch, completion and queue admission share one registry.
+# fmt: off
+COMMANDS: tuple[Command, ...] = (
+    Command("/status", status, queue_safe=True, render="compact"),
+    Command("/catalog", catalog_command, queue_safe=True, render="answer"),
+    Command("/ps", ps_command, queue_safe=True, render="answer"),
+    Command("/diff", diff_command, queue_safe=True, render="answer"),
+    Command("/skills", skills_command, queue_safe=True, render="answer"),
+    Command("/config", config, queue_safe=True),
+    Command("/compact", compact),
+    Command("/context", context_command),
+    Command("/provider", provider),
+    Command("/model", model),
+    Command("/reason", reason, aliases=("/effort",)),
+    Command("/api", api),
+    Command("/set", set_value, needs_argument=True),
+    Command("/yolo", yolo, queue_safe=True),
+    Command("/strict", strict),
+    Command("/mcp", mcp_command, queue_safe=True, render="answer"),
+    Command("/resend", resend_command, queue_safe=True),
+    Command("/name", name_command),
+    Command("/sessions", sessions_command, aliases=("/resume",)),
+    Command("/worker", worker.worker_command),
+    Command("/language", language_command),
+)
+# fmt: on
+
+COMMAND_NAMES = tuple(dict.fromkeys(name for command in COMMANDS for name in (command.name, *command.aliases))) + ("/exit", "/quit")
+COMMAND_LOOKUP = {name: command for command in COMMANDS for name in (command.name, *command.aliases)}
+NEEDS_ARGUMENT = frozenset(name for name, command in COMMAND_LOOKUP.items() if command.needs_argument)
+QUEUE_SAFE_COMMANDS = frozenset(command.name for command in COMMANDS if command.queue_safe)
+# The forms of a queue-safe command that are not read-only. A command can report without changing
+# anything and still have a form that does: `/catalog sync` fetches and activates a snapshot the
+# running turn resolves its policy against, and `/mcp connect` rewires the tool registry under it.
+# A bare invocation is always the reporting form, which is what a bare `/mcp` opens.
+QUEUED_SUBCOMMANDS: dict[str, tuple[frozenset[str], str]] = {
+    "/catalog": (frozenset({"status"}), "Only /catalog (status) is available while the agent is working."),
+    "/mcp": (frozenset({"tools", "status"}), "Only read-only /mcp (status, tools) is available while the agent is working."),
+}

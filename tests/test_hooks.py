@@ -12,9 +12,9 @@ import re
 
 from test_session_persistence import session_with_data_dir
 
-from wizolt import engine as engine_module
-from wizolt.engine import Agent
-from wizolt.hooks import UiHooks
+from wizolt.agent import engine as engine_module
+from wizolt.agent.engine import Agent
+from wizolt.agent.hooks import UiHooks
 
 WIZOLT = pathlib.Path(__file__).resolve().parent.parent / "wizolt"
 

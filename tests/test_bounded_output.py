@@ -6,12 +6,12 @@ from pathlib import Path
 
 from agent_harness import call, session
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import (
     MAX_TOOL_OUTPUT_TOKENS,
     ToolCall,
 )
-from wizolt.context import ContextManager
-from wizolt.runner import ToolRunner
 from wizolt.source import READ, SourceBlock, SourceSpan, SourceViewDraft, TextBlock, ToolOutput
 from wizolt.tools import ReadTool
 

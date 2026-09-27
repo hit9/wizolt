@@ -4,11 +4,11 @@ import json
 
 from agent_harness import session_with_provider
 
-from wizolt.base import Billing
-from wizolt.context import ContextManager
-from wizolt.prompts import (
+from wizolt.agent.context import ContextManager
+from wizolt.agent.prompts import (
     COMPACTION_SUMMARY_TITLE,
 )
+from wizolt.base import Billing
 
 # --- AGENTS.md / CLAUDE.md injection (runtime.agents_md, default on) ---
 

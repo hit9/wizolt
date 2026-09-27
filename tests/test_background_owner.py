@@ -15,24 +15,24 @@ from wizolt.base import run_blocking
 
 async def test_accepted_background_tasks_are_retained_until_done(tmp_path):
     command_loop = build_loop(tmp_path)
-    command_loop.open_background()
+    command_loop.background.open_background()
     release = asyncio.Event()
 
     async def work() -> None:
         await release.wait()
 
-    task = command_loop.spawn_background(work(), name="probe")
+    task = command_loop.background.spawn_background(work(), name="probe")
     assert task is not None
-    assert task in command_loop._background
+    assert task in command_loop.background._background
     release.set()
     await task
-    assert task not in command_loop._background
+    assert task not in command_loop.background._background
 
 
 async def test_closing_rejects_later_work_and_closes_its_coroutine(tmp_path):
     command_loop = build_loop(tmp_path)
-    command_loop.open_background()
-    await command_loop.close_background()
+    command_loop.background.open_background()
+    await command_loop.background.close_background()
     started = False
 
     async def work() -> None:
@@ -40,7 +40,7 @@ async def test_closing_rejects_later_work_and_closes_its_coroutine(tmp_path):
         started = True
 
     coroutine = work()
-    assert command_loop.spawn_background(coroutine, name="late") is None
+    assert command_loop.background.spawn_background(coroutine, name="late") is None
     assert not started
     # A refused coroutine that was merely dropped would surface as a never-awaited RuntimeWarning;
     # closing it here is what keeps rejection quiet.
@@ -50,7 +50,7 @@ async def test_closing_rejects_later_work_and_closes_its_coroutine(tmp_path):
 
 async def test_close_background_cancels_and_awaits_accepted_work(tmp_path):
     command_loop = build_loop(tmp_path)
-    command_loop.open_background()
+    command_loop.background.open_background()
     entered = asyncio.Event()
     unwound = False
 
@@ -63,25 +63,25 @@ async def test_close_background_cancels_and_awaits_accepted_work(tmp_path):
             unwound = True
             raise
 
-    task = command_loop.spawn_background(work(), name="long")
+    task = command_loop.background.spawn_background(work(), name="long")
     assert task is not None
     await entered.wait()
-    await command_loop.close_background()
+    await command_loop.background.close_background()
     assert task.done()
     assert unwound
-    assert not command_loop._background
+    assert not command_loop.background._background
 
 
 async def test_unexpected_background_failure_is_reported_once(tmp_path):
     command_loop = build_loop(tmp_path)
     reported: list[str] = []
-    command_loop.emit = lambda text="", indent=0: reported.append(str(text))
-    command_loop.open_background()
+    command_loop.presentation.emit = lambda text="", indent=0: reported.append(str(text))
+    command_loop.background.open_background()
 
     async def work() -> None:
         raise ValueError("broken")
 
-    task = command_loop.spawn_background(work(), name="failing")
+    task = command_loop.background.spawn_background(work(), name="failing")
     assert task is not None
     await asyncio.gather(task, return_exceptions=True)
     assert [line for line in reported if "failing" in line and "broken" in line]
@@ -96,10 +96,10 @@ def test_background_owner_serves_a_later_fresh_invocation(tmp_path):
     command_loop = build_loop(tmp_path)
 
     async def one_run() -> asyncio.Task:
-        command_loop.open_background()
-        task = command_loop.spawn_background(asyncio.sleep(60), name="leftover")
+        command_loop.background.open_background()
+        task = command_loop.background.spawn_background(asyncio.sleep(60), name="leftover")
         assert task is not None
-        await command_loop.close_background()
+        await command_loop.background.close_background()
         return task
 
     first = asyncio.run(one_run())

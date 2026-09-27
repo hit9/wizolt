@@ -15,19 +15,19 @@ import time
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from wizolt.agent.hooks import UiHooks
+from wizolt.agent.prompts import WORKER_PROMPT
 from wizolt.base import MEMORY_PREFIXES, ApprovalView, Json, LogBlock, LogLine, LogRole, ToolError, oneline, run_blocking
-from wizolt.hooks import UiHooks
-from wizolt.prompts import WORKER_PROMPT
 from wizolt.session import Session, SessionSnapshotStore
 from wizolt.tools.base import Tool
 
 if TYPE_CHECKING:
+    from wizolt.agent.engine import Agent
+    from wizolt.agent.runner import ToolRunner
     from wizolt.config import (
         Config,
         ProviderConfig,
     )
-    from wizolt.engine import Agent
-    from wizolt.runner import ToolRunner
 
 # The worker's tool set. Exclusions, and why: Delegate (would recurse), Ask (blocks on user input
 # while the parent turn is inside a tool call), NextHints (no idle prompt; blurs the turn-ending
@@ -337,9 +337,9 @@ class DelegateTool(Tool):
         agent = worker._agent
         if agent is None:
             # Local import: engine imports wizolt.tools at module level (engine.py:30), so a
-            # module-level `from wizolt.engine import Agent` would cycle tools -> engine -> tools.
+            # module-level `from wizolt.agent.engine import Agent` would cycle tools -> engine -> tools.
             # Same pattern as Tool.resolved_schemas and Session's local imports.
-            from wizolt.engine import Agent
+            from wizolt.agent.engine import Agent
 
             agent = Agent(
                 worker,

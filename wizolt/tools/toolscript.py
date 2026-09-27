@@ -19,7 +19,7 @@ from wizolt.base import ApprovalView, Json, ToolCall, ToolError
 from wizolt.tools.base import Tool
 
 if TYPE_CHECKING:
-    from wizolt.runner import ToolRunner
+    from wizolt.agent.runner import ToolRunner
 
 # The fake filename scripts are compiled under: linecache keeps the source visible in tracebacks.
 SCRIPT_FILENAME = "<toolscript>"

@@ -7,13 +7,14 @@ from types import SimpleNamespace
 import pytest
 from mcp_harness import mcp_cfg, mcp_tool_info
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.lifecycle import bootstrap_features
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import LogEdge, LogRole, ToolCall, ToolError
 from wizolt.config import Config
-from wizolt.context import ContextManager
-from wizolt.render import UiPrinter
-from wizolt.runner import ToolRunner
-from wizolt.session import Session, bootstrap_features
+from wizolt.session import Session
 from wizolt.tools import MCPTool, Tool, ToolScript, toolblocks, tooloutput
+from wizolt.ui.render import UiPrinter
 
 OUTPUT_SHAPE = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
 

@@ -25,21 +25,21 @@ import threading
 # paying for the interactive CLI.
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "__version__": ("wizolt.base", "__version__"),
-    "Agent": ("wizolt.engine", "Agent"),
+    "Agent": ("wizolt.agent.engine", "Agent"),
     "CatalogError": ("wizolt.providers.schema", "CatalogError"),
     "CatalogRuntime": ("wizolt.providers.sync", "CatalogRuntime"),
-    "CommandLoop": ("wizolt.cli", "CommandLoop"),
+    "CommandLoop": ("wizolt.ui.cli", "CommandLoop"),
     "Config": ("wizolt.config", "Config"),
     "ConfigError": ("wizolt.base", "ConfigError"),
     "ConfigFile": ("wizolt.config", "ConfigFile"),
     "RuntimeSettings": ("wizolt.config", "RuntimeSettings"),
-    "Session": ("wizolt.session", "Session"),
+    "create_session": ("wizolt.agent.lifecycle", "create_session"),
+    "load_session": ("wizolt.agent.lifecycle", "load_session"),
     "SessionBusyError": ("wizolt.session", "SessionBusyError"),
-    "Theme": ("wizolt.render", "Theme"),
-    "UpdateChecker": ("wizolt.cli.update", "UpdateChecker"),
-    "UpdateStatus": ("wizolt.base", "UpdateStatus"),
+    "Theme": ("wizolt.ui.render", "Theme"),
+    "UpdateChecker": ("wizolt.ui.cli.update", "UpdateChecker"),
+    "UpdateStatus": ("wizolt.ui.cli.update", "UpdateStatus"),
     "WizoltError": ("wizolt.base", "WizoltError"),
-    "configure_logging": ("wizolt.base", "configure_logging"),
 }
 
 
@@ -75,6 +75,25 @@ class _EntryCli:
 
 
 _cli = _EntryCli()
+
+
+def configure_logging() -> None:
+    """Quiet third-party loggers whose expected failures wizolt already surfaces itself.
+
+    Refresh failures / re-auth fall back to wizolt's own handling, which surfaces an
+    actionable "authentication required" message; suppress this logger's ERROR-level
+    traceback spam (incl. the RuntimeError wizolt raises as control flow).
+    """
+    import logging  # logging policy runs after the lightweight entry/banner path
+
+    logging.getLogger("mcp.client.auth.oauth2").setLevel(logging.CRITICAL)
+    # MCP client transports log expected-and-already-surfaced failures (httpx ReadTimeout on a
+    # slow server, dropped SSE/stdio frames, JSON-RPC parse errors) at ERROR with full
+    # tracebacks via logging.lastResort, which dumps them onto the TUI mid-render.
+    # MCPManager captures these same failures into server_errors and the status bar, so the
+    # library's own transport traceback is pure noise. Raise it out of the ERROR band.
+    for _transport_logger in ("mcp.client.streamable_http", "mcp.client.sse", "mcp.client.stdio"):
+        logging.getLogger(_transport_logger).setLevel(logging.CRITICAL)
 
 
 def run_update() -> int:
@@ -226,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
                     data = _cli.ConfigFile.load(args.config)
                     catalog = _cli.CatalogRuntime(_cli.Config.data_dir_from(data))
                     config = _cli.Config.from_dict(data, policy=catalog.policy)
-                    current = _cli.Session.load_snapshot(
+                    current = _cli.load_session(
                         resume,
                         config=config,
                         settings=_cli.RuntimeSettings.from_dict(data, yolo=args.yolo, theme=args.theme),
@@ -236,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
                     )
                     reserved = None
                 else:
-                    current = _cli.Session.from_config_file(path=args.config, yolo=args.yolo, theme=args.theme)
+                    current = _cli.create_session(path=args.config, yolo=args.yolo, theme=args.theme)
                     # Ownership before any runtime is exposed: tools, model requests, and the first
                     # save all happen under this lease.
                     current.ensure_ownership()
@@ -255,7 +274,7 @@ def main(argv: list[str] | None = None) -> int:
                     # The runtime closes what the session opened, on the loop that opened it; all that
                     # is left here is the terminal-output gate, in case the runtime never got that far.
                     reserved = command_loop.resume_lease
-                    command_loop.close_background_output()
+                    command_loop.presentation.close_background_output()
                     # The final save and teardown are done. Carry a reserved target forward instead of
                     # releasing it; release this session's own lease only now.
                     current.close()

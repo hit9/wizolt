@@ -1,7 +1,7 @@
 """Everything printed must reach the transcript, because a width change replays from it.
 
 A resize that changes the pane width rebuilds the terminal: the scrollback is purged and
-re-emitted from `ScrollbackRegion.transcript` (see `wizolt/tui/scrollback.py`). That makes
+re-emitted from `ScrollbackRegion.transcript` (see `wizolt/ui/tui/scrollback.py`). That makes
 recording a correctness property rather than bookkeeping -- any row printed through a path
 that skips the recorder is a row the rebuild silently drops, and the user sees their
 transcript disappear on the first resize.
@@ -28,9 +28,9 @@ from prompt_toolkit.output.vt100 import Vt100_Output
 from prompt_toolkit.utils import get_cwidth
 
 from wizolt.base import LogBlock, LogEdge, LogLine, LogRole
-from wizolt.render import HorizontalRule, Theme, UiPrinter
-from wizolt.tui.app import TuiApp
-from wizolt.tui.scrollback import physical_rows
+from wizolt.ui.render import HorizontalRule, Theme, UiPrinter
+from wizolt.ui.tui.app import TuiApp
+from wizolt.ui.tui.scrollback import physical_rows
 
 
 @pytest.fixture
@@ -122,13 +122,13 @@ async def test_scrollback_writes_yield_between_them():
 @pytest.mark.parametrize("width", [1, 2, 3, 4, 5, 9, 17, 80, 120])
 def test_recorded_rules_resize_without_recomputing_labels(recorded, monkeypatch, width):
     printer, tui = recorded
-    monkeypatch.setattr("wizolt.render.time.monotonic", lambda: 100.0)
+    monkeypatch.setattr("wizolt.ui.render.time.monotonic", lambda: 100.0)
     with printer.batched():
         printer.emit("ordinary ────────── text")
         printer.emit_phase_rule()
         printer.emit_turn_end(35)
         printer.emit_worker_rule("[worker] 中文完成")
-    monkeypatch.setattr("wizolt.render.time.monotonic", lambda: 3600.0)
+    monkeypatch.setattr("wizolt.ui.render.time.monotonic", lambda: 3600.0)
 
     output = "".join(entry(width) if callable(entry) else entry for entry in tui.scrollback.transcript)
     lines = "".join(text for _, text in to_formatted_text(ANSI(output.replace("\x1b[?7h", "")))).splitlines()
@@ -145,7 +145,7 @@ def test_recorded_rules_resize_without_recomputing_labels(recorded, monkeypatch,
 @pytest.mark.parametrize("depth", [ColorDepth.DEPTH_1_BIT, ColorDepth.DEPTH_4_BIT, ColorDepth.DEPTH_8_BIT, ColorDepth.TRUE_COLOR])
 @pytest.mark.parametrize("with_rule", [False, True])
 def test_recorded_diff_matches_direct_output_color_depth(monkeypatch, depth, with_rule):
-    monkeypatch.setattr("wizolt.render.shutil.get_terminal_size", lambda *args: os.terminal_size((80, 24)))
+    monkeypatch.setattr("wizolt.ui.render.shutil.get_terminal_size", lambda *args: os.terminal_size((80, 24)))
     buffer = io.StringIO()
     output = Vt100_Output(buffer, lambda: Size(rows=24, columns=80), default_color_depth=depth)
     printer = UiPrinter()
@@ -380,7 +380,7 @@ def test_replay_at_the_emit_width_is_what_was_printed(monkeypatch, emit):
     safe if asking for the width it was emitted at gives back exactly what went to the terminal.
     Without this, every recorded block is a chance for the projection to drift from the session.
     """
-    monkeypatch.setattr("wizolt.render.shutil.get_terminal_size", lambda *args: os.terminal_size((80, 24)))
+    monkeypatch.setattr("wizolt.ui.render.shutil.get_terminal_size", lambda *args: os.terminal_size((80, 24)))
     buffer = io.StringIO()
     output = Vt100_Output(buffer, lambda: Size(rows=24, columns=80), default_color_depth=ColorDepth.TRUE_COLOR)
 

@@ -4,6 +4,7 @@ In-process tests observe behavior; these observe what the process itself does on
 loop that closed over a live client, a task nobody awaited, or a coroutine nobody ran shows up as
 interpreter noise on stderr and nowhere else -- and pytest's own loop management would hide it.
 """
+
 import os
 import subprocess
 import sys
@@ -21,8 +22,9 @@ CANCEL_DURING_REQUESTS = '''
 import asyncio, sys, tempfile
 
 from wizolt.config import Config
-from wizolt.engine import Agent
-from wizolt.session import Session, bootstrap_features
+from wizolt.agent.engine import Agent
+from wizolt.session import Session
+from wizolt.agent.lifecycle import bootstrap_features
 
 
 def build():
@@ -94,10 +96,11 @@ MUTATION_AFTER_CANCELLATION = '''
 import asyncio, os, sys, tempfile, time
 
 from wizolt.config import Config
-from wizolt.context import ContextManager
+from wizolt.agent.context import ContextManager
 from wizolt.base import ToolCall
-from wizolt.runner import ToolRunner
-from wizolt.session import Session, bootstrap_features
+from wizolt.agent.runner import ToolRunner
+from wizolt.session import Session
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.tools import TOOL_REGISTRY, Tool
 
 MARKER = tempfile.mkdtemp() + "/marker.txt"

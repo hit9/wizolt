@@ -489,7 +489,7 @@ class SessionSnapshotStore:
     def load(cls, uid: str, config: Config, settings: RuntimeSettings, cwd: str = "") -> Session:
         """Decode an inspection snapshot. Writable callers must already own the family lease
         and attach it before execution; acquiring after this read would permit stale saves.
-        Use Session.load_snapshot for public writable resume."""
+        Use agent.lifecycle.load_session for public writable resume."""
         from wizolt.session import QueuedInput, Session, local_timestamp
 
         cwd = cwd or os.getcwd()

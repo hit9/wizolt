@@ -15,51 +15,46 @@ Four objectives, often in tension, explain most decisions below:
 4. **Truthful.** The screen reports real state; completed output lives in native scrollback,
    with the resize/replay trade-off documented under Terminal boundary.
 
-Modules (dependencies point downward only):
+Modules (runtime imports point downward, with the explicit deferred edges below):
 
 ```
-              __main__                     entry, startup ordering
-                  |
-    cli/ -- tui/ -- render.py              commands (cli/commands.py, cli/modals.py, cli/worker.py),
-        |                                    TUI runtime (cli/runtime.py), view (cli/view.py),
-        |                                    app (tui/app.py), view state (tui/views.py)
-    engine.py                              the turn loop: commit or roll back
-        |
-        +-- context.py                     request projection, compaction
-        +-- runner.py                      tool batch execution
-                  |
-              model/                       wire protocols (chat.py, responses.py,
-                  |                          anthropic.py), streaming, retry
-   tools/   mcp/   skill.py               vertical features
-                  |
-             session/                      durable semantic state (__init__.py)
-                  |                         and snapshot persistence (store.py)
-                  |
-              image.py                     image storage and model projection
-                  |
-   base.py  hooks.py  config.py  providers/compat.py   value types, the presentation seam, settings, policy
-                  |
-            providers/catalog.py           evidence-backed compatibility data
+ __main__                                  entry, startup ordering and logging policy
+     |
+ ui/cli/                                   commands, runtime, presentation and replay
+     +-- ui/tui/ + ui/render.py             terminal interaction and rendering
+     |
+ agent/lifecycle.py                        session assembly, background tasks, resource close
+ agent/engine.py                           turn loop: commit or roll back
+     +-- agent/context.py                  request projection and compaction
+     +-- agent/runner.py                    tool batch execution
+     |
+ model/                                    common client + complete adapters per wire
+     |
+ tools/   mcp/   skill.py   mentions.py     vertical capabilities
+     |
+ session/                                  semantic state, value types, codecs and persistence
+     |
+ image.py   source.py                       assets and source values
+     |
+ base.py   config.py   providers/           shared values, settings and capability policy
 ```
 
-Three import rings stay runtime-only so the module graph above stays a DAG. Every upward edge is a
-deferred import commented at its call site; lifting one to module scope makes the cycle part of
-startup.
+`agent/hooks.py` and `agent/prompts.py` are dependency leaves even though their names belong to
+agent execution. `agent/__init__.py` and `ui/__init__.py` stay empty of imports: reaching a small
+contract must not assemble the subsystem. `tests/test_layers.py` checks module-level direction;
+fresh-interpreter tests also check that lower-level imports do not pull in application assembly.
 
-- **Orchestration ring (`tools/` ↔ engine).** `Delegate` spawns a worker by constructing
-  `engine.Agent` (`tools/delegate.py`). The downward direction — engine/runner/model importing
-  `tools` — is module scope. `ToolScript` needs no edge of its own: it uses the `ToolRunner` it was
-  handed (`TYPE_CHECKING` only) and gets edit planning from `tools/editplan.py`. Separately, inside
-  `tools/` a submodule that needs `TOOL_REGISTRY` or `tool_payload` imports it locally, because the
-  registry in `__init__.py` is built on top of every tool module.
-- **Session features (`session/` ↔ mcp/skill/mentions).** `Session` itself is feature-free:
-  `__post_init__` never reaches upward. `bootstrap_features()` (deferred imports inside) attaches
-  `MCPManager`/`SkillLibrary`/`FileMentions` when needed, called by `Session.from_config_file` and
-  `Session.load_snapshot`; the delegate worker handoff injects the parent's `skills`/`mcp` fields
-  explicitly instead, and `session/store.py` still imports its parent package at load time.
-- **Assets (`image.py` ↔ session/).** `session/` imports the image value types at module scope;
-  `ImageInputs.assets_dir` reaches back for `SessionSnapshotStore.session_path`, the one place the
-  asset directory's layout is owned (`image.py`).
+Deferred edges remain explicit at their call sites; lifting them to module scope introduces cycles:
+
+- **Worker execution (`tools/` → agent).** `Delegate` constructs `agent.engine.Agent` at the worker
+  handoff. `ToolScript` receives its runner and uses `TYPE_CHECKING` for its type. Within `tools/`,
+  consumers of the registry import it locally because the registry is assembled from tool modules.
+- **Persistence (`session/store.py` → Session).** The store constructs the dataclass at decode time.
+  It does not attach capabilities. `agent.lifecycle.create_session` and `load_session` own feature
+  assembly, including lease acquisition before resume decoding and rollback if assembly fails.
+  A worker instead borrows the parent's MCP, skill library and catalog.
+- **Assets (`image.py` → session/store.py).** Image value types sit below Session; asset-directory
+  lookup reaches back to the store's path convention when needed.
 
 A turn, and its three endings:
 
@@ -173,16 +168,30 @@ Tests protect observable contracts and reproduced regressions, not implementatio
 
 ## System shape
 
-- `base.py` defines configuration, shared value types, and error categories, plus the log-line
+- `base.py` defines shared value types and error categories, plus the log-line
   vocabulary and resource handles; `providers/compat.py` folds `providers/catalog.py` data into resolved
   request policy.
 - `Session` owns protocol-neutral semantic state (messages, transcript, checkpoints, queued input,
   retained output, diffs, usage, session resources); its snapshot codec decides what is persistable.
-- Agent semantics split by owner: `context.py` projects/compacts, `model/` owns adapters,
-  streaming, retry, `runner.py` owns execution/cancellation, `engine.py` composes the turn loop.
+- Agent semantics split by owner: `agent/context.py` projects/compacts, `model/` owns adapters,
+  streaming, retry, `agent/runner.py` owns execution/cancellation, `agent/engine.py` composes the turn loop.
   Dependencies point downward only, so no pair needs a deferred import.
-- `CommandLoop`/`TuiRuntime` orchestrate commands and transitions; `TuiApp` owns input, keys,
-  layout, modals; `render.py` owns presentation.
+- `CommandLoop` coordinates input and turns; `commands.py` owns handlers and their shared dispatch,
+  completion and queue-admission registry. `TuiRuntime` owns frontend admission and shutdown.
+- `Presentation` owns live preview, output gates, phase rules, update status and terminal handles.
+  `View` reads Session and Presentation; `ResumeRenderer` reads Session and writes through the
+  small `TranscriptOutput` protocol. Neither can reach command dispatch or the agent. A callback
+  refreshes context accounting after replay.
+- `BackgroundServices` owns tasks for one frontend invocation: scan coalescing, admission, error
+  reporting, cancellation and joining. Reopening on another event loop creates a fresh scope.
+  Resource shutdown closes worker models before the root model and shared MCP manager; workers
+  borrow MCP and cannot close it on their own. Session ownership leases survive resource shutdown
+  until the entry point finishes saving and handing off.
+- `TuiApp` owns input, keys, layout and modals; `ui/render.py` owns terminal formatting.
+- `model/protocol.py` defines `WireProtocol`; each concrete adapter lives beside its conversions.
+  Protocols are checked structurally where clients receive implementations (`ModelClient._wires`
+  and `ResumeRenderer` construction), without requiring inheritance. Use ABCs when shared behavior
+  or runtime prevention of incomplete instantiation is needed, not to mirror every concrete class.
 - `tools/`, `image.py`, `mcp/`, `skill.py` are vertical features that never leak storage or UI
   details; `tools/` splits built-ins by capability, with the registry in `__init__.py`.
 - How a call *reads* is a tool concern, not a runner one: `tools/tooloutput.py` bounds and parses
@@ -591,7 +600,7 @@ them to model messages, including compaction requests and checkpoints.
   the primary screen; exclusive viewers like `/diff` may use the alternate screen and restore on
   exit.
 
-**The terminal is a projection, not the source of transcript truth.** `tui/scrollback.py` owns
+**The terminal is a projection, not the source of transcript truth.** `ui/tui/scrollback.py` owns
 that projection. Its two mechanisms are inseparable:
 
 - Completed writes scroll through a DEC region anchored at row 1 and ending strictly above the

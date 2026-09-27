@@ -4,9 +4,10 @@ import asyncio
 import pytest
 from mcp_harness import mcp_cfg, session
 
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.base import ToolError
 from wizolt.config import Config
-from wizolt.session import Session, bootstrap_features
+from wizolt.session import Session
 
 
 def two_server_session(tmp_path):

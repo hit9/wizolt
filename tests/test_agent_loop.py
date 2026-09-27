@@ -5,9 +5,10 @@ import asyncio
 import pytest
 from agent_harness import call, session
 
-from wizolt.engine import Agent
-from wizolt.prompts import INTERRUPT_MARKER
-from wizolt.session import Session, SessionSnapshotCodec
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
+from wizolt.agent.prompts import INTERRUPT_MARKER
+from wizolt.session import SessionSnapshotCodec
 from wizolt.skill import SkillLibrary
 
 
@@ -118,7 +119,7 @@ async def test_agent_persists_responses_output_on_final_assistant_message(tmp_pa
     assert s.transcript_messages[-1] == {"role": "assistant", "content": "done"}
     await s.save_snapshot()
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, settings=s.settings)
+    restored = load_session(s.uid, config=s.config, settings=s.settings)
     restored_assistant = next(message for message in reversed(restored.messages) if message.get("role") == "assistant")
     assert restored_assistant["_responses_output"] == s.messages[-1]["_responses_output"]
 
@@ -147,7 +148,7 @@ async def test_interrupted_turn_persists_completed_tool_batches_for_resume(tmp_p
     assert s.messages[-1]["content"] == INTERRUPT_MARKER
     assert s._active_turn_messages == []
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, settings=s.settings)
+    restored = load_session(s.uid, config=s.config, settings=s.settings)
     messages = [message for message in restored.messages if not SessionSnapshotCodec.is_internal_message(message)]
     assert [message["role"] for message in messages] == ["user", "assistant", "tool", "user"]
     assert messages[-1]["content"] == INTERRUPT_MARKER
@@ -184,7 +185,7 @@ async def test_interrupted_turn_before_any_output_is_retracted(tmp_path):
     assert s._active_turn_messages == []
     assert s._active_transcript_messages == []
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, settings=s.settings)
+    restored = load_session(s.uid, config=s.config, settings=s.settings)
     messages = [message for message in restored.messages if not SessionSnapshotCodec.is_internal_message(message)]
     assert messages == []
     assert restored.transcript_messages == []
@@ -216,7 +217,7 @@ async def test_interrupted_unfinished_tool_call_gets_semantic_transcript_result(
         "status": "failed",
     }
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, settings=s.settings)
+    restored = load_session(s.uid, config=s.config, settings=s.settings)
     assert restored.transcript_messages[-1] == s.transcript_messages[-1]
 
 
@@ -257,7 +258,7 @@ async def test_current_turn_compaction_does_not_rewrite_visible_transcript(tmp_p
 
     await s.save_snapshot()
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, settings=s.settings)
+    restored = load_session(s.uid, config=s.config, settings=s.settings)
     assert [message["role"] for message in restored.transcript_messages] == ["user", "assistant", "tool", "assistant"]
     assert restored.transcript_messages[0]["content"] == "read the file"
 

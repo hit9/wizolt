@@ -12,11 +12,12 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from wizolt.agent.lifecycle import close_agent_resources
 from wizolt.base import MalformedToolCallError, TurnBox, WizoltError
-from wizolt.cli.modals import tool_output_viewer
 from wizolt.image import UserInput
-from wizolt.render import search_sources_footer
-from wizolt.tui import TuiApp
+from wizolt.ui.cli.modals import tool_output_viewer
+from wizolt.ui.render import search_sources_footer
+from wizolt.ui.tui import TuiApp
 
 # The TUI status label shown while a resumed session's transcript is being restored: a quiet
 # lead-in before the single-write replay, so the wait reads as a restore in progress rather than a
@@ -27,7 +28,7 @@ RESUME_STATUS_LABEL = "resuming session…"
 STARTING_STATUS_LABEL = "starting…"
 
 if TYPE_CHECKING:
-    from wizolt.cli import CommandLoop
+    from wizolt.ui.cli import CommandLoop
 
 
 class _TurnCancelled(Exception):
@@ -185,8 +186,8 @@ class TuiRuntime:
 
     @property
     def tui(self) -> TuiApp:
-        assert self.loop.tui is not None
-        return self.loop.tui
+        assert self.loop.presentation.tui is not None
+        return self.loop.presentation.tui
 
     def interrupt(self) -> None:
         """Ctrl-C from the TUI: ask the active turn to cancel, and say so on the status line.
@@ -381,7 +382,7 @@ class TuiRuntime:
 
         mentions = self.loop.session.mentions
         if mentions is not None:
-            self.loop.spawn_background(mentions.complete(query, ready), name="mention-completion")
+            self.loop.background.spawn_background(mentions.complete(query, ready), name="mention-completion")
 
     def spawn(self, coroutine, *, name: str = "") -> asyncio.Task | None:
         """Start one runtime-owned task and keep it until it is done.
@@ -451,8 +452,8 @@ class TuiRuntime:
         tui = self._build_tui()
         # Route every printed row through the app's transcript from here on, including the ones
         # printed before it starts: a width change rebuilds the terminal from that transcript,
-        # so anything it never saw cannot be put back. See wizolt/tui/scrollback.py.
-        self.loop.ui.transcript_sink = tui.record_scrollback
+        # so anything it never saw cannot be put back. See wizolt/ui/tui/scrollback.py.
+        self.loop.presentation.ui.transcript_sink = tui.record_scrollback
         # The CLI prints before importing the interactive stack. Adopt those already visible
         # bytes without printing them twice; width-change replay must include them as well.
         if self.loop.preprinted_output:
@@ -471,18 +472,18 @@ class TuiRuntime:
             on_retry=self._request_model_retry,
             on_recall=self.recall,
             on_expand_output=self.expand_output,
-            status_fragments_fn=self.loop.status_bar.fragments,
+            status_fragments_fn=self.loop.presentation.status_bar.fragments,
             activity_fragments_fn=self.loop.view.tui_activity_fragments,
             input_hint_fn=self.loop.view.tui_input_hint,
             quick_hints_fn=lambda: self.loop.session.quick_hints,
             file_picker_available_fn=self.loop.session.mentions.picker.available if self.loop.session.mentions else None,
-            file_picker_fn=self.loop.pick_file if self.loop.session.mentions else None,
+            file_picker_fn=self.loop.background.pick_file if self.loop.session.mentions else None,
             file_complete_fn=self.complete_mentions if self.loop.session.mentions else None,
             editor_context_fn=self.loop.editor_context,
             images=self.loop.session.images,
             history=self.loop.input_history,
             completer=self.loop.input_completer,
-            on_app_stop=lambda: self.loop.ui.drain_scrollback(),
+            on_app_stop=lambda: self.loop.presentation.ui.drain_scrollback(),
         )
 
     def submit_next(self, entered: Sequence[str | UserInput]) -> None:
@@ -494,17 +495,17 @@ class TuiRuntime:
             self.loop.session.enqueue_user_input(text)
 
     def reset_turn(self) -> None:
-        self.loop.model_stream_output("", "")
+        self.loop.presentation.model_stream_output("", "")
         # A request can fail after permanent promotion but before Agent re-publishes the text and
         # consumes its marker. Never let that stale marker suppress an identical later response.
-        self.loop.model_stream_promoted_text = ""
+        self.loop.presentation.model_stream_promoted_text = ""
         self.tui.set_idle()
         self.cancel_pending = False
 
     async def dispatch(self, user_input: str | UserInput) -> bool:
         """Dispatch one input. Return true when it was fully handled as a command."""
         user_input = user_input if isinstance(user_input, UserInput) else UserInput(user_input)
-        self.loop.ui.emit_answer(user_input.display_text(), role="user", rule=False)
+        self.loop.presentation.ui.emit_answer(user_input.display_text(), role="user", rule=False)
         try:
             # Isolate command cancellation from the input loop: swallowing CancelledError in
             # /compact must not leave the next model turn running on a cancelling parent task.
@@ -517,7 +518,7 @@ class TuiRuntime:
         except (asyncio.CancelledError, KeyboardInterrupt, WizoltError) as error:
             # Runtime shutdown still propagates, even if the command caught its cancellation.
             self.loop.agent.raise_if_cancelled()
-            self.loop.emit_turn(f"Error: {error}" if isinstance(error, WizoltError) else "Cancelled")
+            self.loop.presentation.emit_turn(f"Error: {error}" if isinstance(error, WizoltError) else "Cancelled")
             self.submit_next(self.loop.take_pending_inputs())
             self.reset_turn()
             return True
@@ -550,8 +551,8 @@ class TuiRuntime:
 
     async def run_agent_turn(self, user_input: str | UserInput) -> None:
         user_input = user_input if isinstance(user_input, UserInput) else UserInput(user_input)
-        self.loop.user_turn_rule()
-        self.loop.status_bar.begin()
+        self.loop.presentation.user_turn_rule()
+        self.loop.presentation.status_bar.begin()
         self.tui.set_running("working")
         self.turn_active = True
         started = time.monotonic()
@@ -572,21 +573,21 @@ class TuiRuntime:
             self.loop.session.state.manual_model_retry_requested = False
         try:
             if cancelled:
-                self.loop.model_stream_output("", "")
-                self.loop.emit_turn("Cancelled")
+                self.loop.presentation.model_stream_output("", "")
+                self.loop.presentation.emit_turn("Cancelled")
             else:
                 # The engine publishes its own final answer through output_fn now; only errors it
                 # raised before publishing land here.
                 if not answered:
-                    self.loop.ui.separate()
-                    self.loop.ui.emit_answer(answer, rule=False, indent=TurnBox.CONTENT_LEVEL)
+                    self.loop.presentation.ui.separate()
+                    self.loop.presentation.ui.emit_answer(answer, rule=False, indent=TurnBox.CONTENT_LEVEL)
                 # Emitted outside the promotion check: a promoted answer is already in scrollback
                 # without its sources, so skipping the footer there would drop them exactly when a
                 # search ran. It shares the answer's content indent.
                 if footer := search_sources_footer(self.loop.agent.turn_sources):
-                    self.loop.ui.emit_answer(footer, rule=False, indent=TurnBox.CONTENT_LEVEL)
+                    self.loop.presentation.ui.emit_answer(footer, rule=False, indent=TurnBox.CONTENT_LEVEL)
                 if not malformed_tool_call:
-                    self.loop.ui.emit_turn_end(started)
+                    self.loop.presentation.ui.emit_turn_end(started)
             await self._finish_turn_submissions()
         finally:
             self.turn_active = False
@@ -627,7 +628,7 @@ class TuiRuntime:
             user_input = waiting.result()
             self.loop.session.clear_quick_hints()  # the user acted; drop last turn's offerings (also covers slash commands, which skip Agent.run)
             if self.cancel_pending:
-                self.loop.emit_turn("Cancelled")
+                self.loop.presentation.emit_turn("Cancelled")
                 self.reset_turn()
                 continue
             if (admitted := await self._admit_input(user_input)) is None:
@@ -680,13 +681,13 @@ class TuiRuntime:
         just tasks that take turns -- and a turn's cancellation reaches everything it awaits."""
 
         self.runtime_loop = asyncio.get_running_loop()
-        self.loop.starting = True
-        self.loop.open_background()
+        self.loop.presentation.starting = True
+        self.loop.background.open_background()
         self.submissions = asyncio.Queue()
         self.accepting = True
         self.shutdown = asyncio.Event()
         self.application_ready = asyncio.Event()
-        self.loop.tui = self.build_tui()
+        self.loop.presentation.tui = self.build_tui()
         # Record the banner before terminal probing starts. Printing it before build_tui
         # bypasses the transcript, so the next width-change replay would lose it forever.
         if show_banner:
@@ -697,9 +698,9 @@ class TuiRuntime:
         self.submissions_task = self.spawn(self._consume_submissions(), name="submissions")
         try:
             await self._await_ready(application)
-            self.scrollback = ScrollbackWriter(self.runtime_loop, self.tui.write_to_scrollback, self.loop.ui.write_direct)
-            self.loop.scrollback = self.scrollback
-            self.loop.background_output_lock = self.scrollback.lock
+            self.scrollback = ScrollbackWriter(self.runtime_loop, self.tui.write_to_scrollback, self.loop.presentation.ui.write_direct)
+            self.loop.presentation.scrollback = self.scrollback
+            self.loop.presentation.background_output_lock = self.scrollback.lock
             self.loop.agent.hooks.output_barrier = self.scrollback.barrier
             # Restored transcript lines wait until patch_stdout owns the terminal. The banner
             # was already recorded and printed before the application's initial cursor probe.
@@ -718,7 +719,7 @@ class TuiRuntime:
             self.spawn(self.loop.discover_mcp(), name="mcp-discovery")
             # Git discovery can cost hundreds of milliseconds in a large worktree. Warm the
             # runtime-only snapshot after the prompt is live so the first picker need not wait.
-            scan = self.loop.refresh_mentions()
+            scan = self.loop.background.refresh_mentions()
             self.spawn(self._finish_starting(scan), name="startup-settle")
             self.submit_next(self.loop.take_pending_inputs())
             await self.run_agent_loop()
@@ -740,7 +741,7 @@ class TuiRuntime:
             await asyncio.sleep(self.STARTUP_POLL_INTERVAL)
         if scan is not None:
             await asyncio.wait({scan})
-        self.loop.starting = False
+        self.loop.presentation.starting = False
         self.tui.invalidate()
 
     async def _await_ready(self, application: asyncio.Task) -> None:
@@ -787,15 +788,15 @@ class TuiRuntime:
             task.cancel()
         if owned:
             await asyncio.gather(*owned, return_exceptions=True)
-        await settle(self.loop.close_background())
-        await settle(self.loop.close_resources())
+        await settle(self.loop.background.close_background())
+        await settle(close_agent_resources(self.loop.agent))
         writer, self.scrollback = self.scrollback, None
         if writer is not None:
             # Admission and the drain are one step: the gate they share is this writer's lock, so a
             # background worker cannot pass it and then find the queue closed behind it.
-            self.loop.close_background_output()
+            self.loop.presentation.close_background_output()
             await settle(writer.close())
-        self.loop.scrollback = None
+        self.loop.presentation.scrollback = None
         self.loop.agent.hooks.output_barrier = None
         try:
             self.tui.exit()
@@ -805,7 +806,7 @@ class TuiRuntime:
                 self.error = error
             application.cancel()
         await settle(application)
-        self.loop.tui = None
+        self.loop.presentation.tui = None
         if self.force_exit_timer is not None:
             self.force_exit_timer.cancel()
         if self.error is None and cleanup_errors:

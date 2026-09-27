@@ -3,14 +3,14 @@
 import os
 from unittest import mock
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.engine import Agent
 from wizolt.base import LogBlock
-from wizolt.cli import QUEUE_SAFE_COMMANDS, CommandLoop, modals
-from wizolt.cli.commands import compact
-from wizolt.cli.modals import compaction_log_viewer
 from wizolt.config import Config
-from wizolt.context import ContextManager
-from wizolt.engine import Agent
 from wizolt.session import HistorySegment, Session, SessionSnapshotCodec
+from wizolt.ui.cli import QUEUE_SAFE_COMMANDS, CommandLoop, modals
+from wizolt.ui.cli.commands import compact
+from wizolt.ui.cli.modals import compaction_log_viewer
 
 
 def session(tmp_path):
@@ -203,7 +203,7 @@ async def viewer(tmp_path, count=3):
         store(s, title=f"task {index + 1}", text=f"user: request {index + 1}\nassistant: reply", summary=f"summary {index + 1}")
     lp = loop(s)
     modal = Modal()
-    lp.tui = modal
+    lp.presentation.tui = modal
     await compaction_log_viewer(lp)
     return modal
 
@@ -241,7 +241,7 @@ async def open_first(tmp_path, **fields):
     store(s, **fields)
     lp = loop(s)
     modal = Modal()
-    lp.tui = modal
+    lp.presentation.tui = modal
     with mock.patch.object(modals.shutil, "get_terminal_size", lambda *args: os.terminal_size((120, 200))):
         await compaction_log_viewer(lp)
         modal.key("enter", "")
@@ -284,7 +284,7 @@ async def test_viewer_reports_an_empty_store(tmp_path):
     s = session(tmp_path)
     lp = loop(s)
     modal = Modal()
-    lp.tui = modal
+    lp.presentation.tui = modal
     await compaction_log_viewer(lp)
 
     assert "No compaction has stored a segment yet" in modal.text()

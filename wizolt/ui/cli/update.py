@@ -5,19 +5,37 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import sys
 import time
+from dataclasses import dataclass
 from typing import ClassVar
 
 from wizolt.base import (
     HTTP_USER_AGENT,
     Text,
-    UpdateStatus,
     WizoltError,
     __version__,
     run_blocking,
 )
-from wizolt.session import Session
+
+
+@dataclass
+class UpdateStatus:
+    _VERSION_RE: ClassVar[re.Pattern] = re.compile(r"^\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?")
+    latest: str = ""
+    checking: bool = False
+    error: str = ""
+
+    def newer_than(self, current: str) -> bool:
+        current_version = self.version_tuple(current)
+        latest_version = self.version_tuple(self.latest)
+        return bool(current_version and latest_version and latest_version > current_version)
+
+    @staticmethod
+    def version_tuple(value: str) -> tuple[int, ...]:
+        match = UpdateStatus._VERSION_RE.match(value)
+        return tuple(int(part or 0) for part in match.groups()) if match else ()
 
 
 class UpdateChecker:
@@ -27,9 +45,10 @@ class UpdateChecker:
     INTERVAL_SECONDS = 24 * 3600
     HEADERS: ClassVar[dict[str, str]] = {"Accept": "application/json", "User-Agent": HTTP_USER_AGENT}
 
-    def __init__(self, session: Session):
-        self.session = session
-        self.cache_path = session.data_path(self.CACHE_FILE)
+    def __init__(self, data_dir: str, status: UpdateStatus):
+        """Use the caller's resolved data directory and frontend-owned status."""
+        self.status = status
+        self.cache_path = os.path.join(data_dir, self.CACHE_FILE)
 
     def load_cached(self) -> bool:
         """Publish the cached version, and say whether a remote check is due.
@@ -39,10 +58,10 @@ class UpdateChecker:
         interval says it is due -- so a session opened twice in a minute makes no request at all."""
 
         cached_at, cached_latest = self._load()
-        self.session.update.latest = cached_latest
-        if self.session.update.checking or time.time() - cached_at < self.INTERVAL_SECONDS:
+        self.status.latest = cached_latest
+        if self.status.checking or time.time() - cached_at < self.INTERVAL_SECONDS:
             return False
-        self.session.update.checking = True
+        self.status.checking = True
         return True
 
     async def check(self) -> None:
@@ -50,17 +69,17 @@ class UpdateChecker:
 
         Every ending is contained here: an unreachable index, a proxy returning HTML, a timeout --
         none of them are the session's problem, and all of them leave a concise status behind. The
-        session fields are written on the loop this coroutine runs on, never from a worker."""
+        status fields are written on the loop this coroutine runs on, never from a worker."""
 
         try:
-            self.session.update.latest = await self.fetch_latest()
-            self.session.update.error = ""
+            self.status.latest = await self.fetch_latest()
+            self.status.error = ""
         except Exception as error:  # noqa: BLE001 - an expected maintenance failure; the status is the report.
-            self.session.update.error = Text.clean(str(error))
+            self.status.error = Text.clean(str(error))
         finally:
-            self.session.update.checking = False
+            self.status.checking = False
             cache_path = self.cache_path
-            latest = self.session.update.latest
+            latest = self.status.latest
             checked_at = time.time()
             await run_blocking(lambda: UpdateChecker._save(cache_path, latest, checked_at))
 
@@ -115,7 +134,7 @@ class UpdateChecker:
         raise WizoltError("invalid PyPI version response")
 
     def status_line(self) -> str:
-        update = self.session.update
+        update = self.status
         if update.checking:
             return "update: checking"
         if update.newer_than(__version__):

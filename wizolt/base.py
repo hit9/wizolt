@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
-import re
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -50,23 +48,6 @@ class Billing(str, Enum):
 
 
 HTTP_USER_AGENT = "wizolt/" + __version__
-
-
-def configure_logging() -> None:
-    """Quiet third-party loggers whose expected failures wizolt already surfaces itself.
-
-    Refresh failures / re-auth fall back to wizolt's own handling, which surfaces an
-    actionable "authentication required" message; suppress this logger's ERROR-level
-    traceback spam (incl. the RuntimeError wizolt raises as control flow).
-    """
-    logging.getLogger("mcp.client.auth.oauth2").setLevel(logging.CRITICAL)
-    # MCP client transports log expected-and-already-surfaced failures (httpx ReadTimeout on a
-    # slow server, dropped SSE/stdio frames, JSON-RPC parse errors) at ERROR with full
-    # tracebacks via logging.lastResort, which dumps them onto the TUI mid-render.
-    # MCPManager captures these same failures into server_errors and the status bar, so the
-    # library's own transport traceback is pure noise. Raise it out of the ERROR band.
-    for _transport_logger in ("mcp.client.streamable_http", "mcp.client.sse", "mcp.client.stdio"):
-        logging.getLogger(_transport_logger).setLevel(logging.CRITICAL)
 
 
 async def run_blocking(invoke: Callable[[], _BlockingT], *, commit: Callable[[_BlockingT], None] | None = None) -> _BlockingT:
@@ -120,7 +101,7 @@ MAX_TOOL_OUTPUT_TOKENS = 6_000
 # ContextManager.materialize_output writes it; the session store's asset collector retains it.
 TOOL_OUTPUT_ASSET_SUFFIX = ".txt"
 # The append-only index of compacted-history exports, beside each segment's `history.N.md` in the
-# same assets directory. wizolt.history writes both; the session store's asset collector retains
+# same assets directory. wizolt.agent.history writes both; the session store's asset collector retains
 # them, and the checkpoint names this index.
 HISTORY_INDEX_ASSET = "history.md"
 # Cap on the AGENTS.md (or CLAUDE.md fallback) content injected into every request's fixed
@@ -460,24 +441,6 @@ class ModelUsage:
                 self.last_prompt_budget = budget
             self.last_cached_prompt_tokens = cached_tokens
             self.last_cache_write_prompt_tokens = cache_write_tokens
-
-
-@dataclass
-class UpdateStatus:
-    _VERSION_RE: ClassVar[re.Pattern] = re.compile(r"^\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?")
-    latest: str = ""
-    checking: bool = False
-    error: str = ""
-
-    def newer_than(self, current: str) -> bool:
-        current_version = self.version_tuple(current)
-        latest_version = self.version_tuple(self.latest)
-        return bool(current_version and latest_version and latest_version > current_version)
-
-    @staticmethod
-    def version_tuple(value: str) -> tuple[int, ...]:
-        match = UpdateStatus._VERSION_RE.match(value)
-        return tuple(int(part or 0) for part in match.groups()) if match else ()
 
 
 @dataclass

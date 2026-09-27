@@ -4,11 +4,12 @@
 # Helpers
 # ---------------------------------------------------------------------------
 
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.config import (
     Config,
 )
 from wizolt.mcp import MCPToolInfo
-from wizolt.session import Session, bootstrap_features
+from wizolt.session import Session
 
 
 def _index_session(servers):

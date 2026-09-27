@@ -8,6 +8,7 @@ Wall-clock results are observations, never CI assertions.
 import argparse
 import asyncio
 import contextlib
+import gc
 import io
 import json
 import statistics
@@ -26,11 +27,18 @@ def main():
     source = str(args.source.resolve())
     sys.path.insert(0, source)
     from wizolt.config import Config
-    from wizolt.engine import Agent
     from wizolt.mentions import FileMentions
-    from wizolt.render import MessageBlock, UiPrinter
     from wizolt.session import Session, SessionSnapshotCodec, SessionSnapshotStore
-    from wizolt.tui.scrollback import ScrollbackRegion
+
+    # The same workload can measure exports from before the package reorganization.
+    if (Path(source) / "wizolt" / "agent" / "engine.py").is_file():
+        from wizolt.agent.engine import Agent
+        from wizolt.ui.render import MessageBlock, UiPrinter
+        from wizolt.ui.tui.scrollback import ScrollbackRegion
+    else:
+        from wizolt.engine import Agent
+        from wizolt.render import MessageBlock, UiPrinter
+        from wizolt.tui.scrollback import ScrollbackRegion
 
     results = {}
 
@@ -38,10 +46,13 @@ def main():
         times = []
         for _ in range(args.repeat):
             prepare()
+            # Keep retained garbage from earlier probes out of this sample's starting state.
+            # GC remains enabled inside the measured operation.
+            gc.collect()
             start = time.perf_counter()
             invoke()
             times.append((time.perf_counter() - start) * 1000)
-        results[name] = {"median_ms": round(statistics.median(times), 3), "min_ms": round(min(times), 3), "max_ms": round(max(times), 3)}
+        results[name] = {"samples_ms": [round(value, 6) for value in times], "median_ms": round(statistics.median(times), 3), "min_ms": round(min(times), 3), "max_ms": round(max(times), 3)}
 
     with tempfile.TemporaryDirectory(prefix="wizolt-perf-") as directory:
         s = Session(cwd=directory, config=Config(data_dir=directory))

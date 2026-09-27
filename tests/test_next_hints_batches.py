@@ -2,12 +2,12 @@
 
 from agent_harness import call, session
 
+from wizolt.agent.engine import Agent
 from wizolt.base import (
     LogBlock,
     ToolCall,
 )
 from wizolt.config import ProviderConfig
-from wizolt.engine import Agent
 from wizolt.model import ModelClient
 from wizolt.skill import SkillLibrary
 

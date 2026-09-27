@@ -6,6 +6,7 @@ import time
 import pytest
 from test_session_persistence import session_with_data_dir, write_log
 
+from wizolt.agent.lifecycle import load_session
 from wizolt.base import WizoltError
 from wizolt.config import (
     Config,
@@ -47,7 +48,7 @@ async def test_session_name_latches_then_follows_the_goal(tmp_path):
     # A name the user chose is never replaced by a derived one.
     assert (s.name, s.state.name_source) == ("token store cleanup", "user")
     s.close()  # release the writer before reloading
-    assert Session.load_snapshot(s.uid, config=s.config).name == "token store cleanup"
+    assert load_session(s.uid, config=s.config).name == "token store cleanup"
 
 async def test_session_name_does_not_change_when_goal_changes(tmp_path):
     """Once the name is derived from a goal, later goal changes do not overwrite it."""
@@ -65,10 +66,10 @@ async def test_session_name_does_not_change_when_goal_changes(tmp_path):
     # Goal changed, but the name was already latched from the first goal — stays put.
     assert (s.name, s.state.name_source) == ("rewrite the tokenizer", "goal")
     s.close()  # release the writer before reloading
-    assert Session.load_snapshot(s.uid, config=s.config).name == "rewrite the tokenizer"
+    assert load_session(s.uid, config=s.config).name == "rewrite the tokenizer"
 
 async def test_session_name_survives_compaction_dropping_the_opening_message(tmp_path):
-    from wizolt.prompts import COMPACTION_SUMMARY_TITLE
+    from wizolt.agent.prompts import COMPACTION_SUMMARY_TITLE
 
     s = session_with_data_dir(tmp_path)
     s.messages.append({"role": "user", "content": "add a session picker"})
@@ -156,7 +157,7 @@ async def test_resume_accepts_a_name_or_uid_prefix(tmp_path):
     # A search from another directory still finds it: the user moved, the session did not.
     assert SessionSnapshotStore.resolve_uid("status bar", config.data_dir, str(tmp_path)) == s.uid
     s.close()  # release the writer before reloading
-    assert Session.load_snapshot("status bar", config=config, cwd=str(project)).uid == s.uid
+    assert load_session("status bar", config=config, cwd=str(project)).uid == s.uid
 
 async def test_ambiguous_resume_names_its_candidates(tmp_path):
     config = Config(data_dir=str(tmp_path / "data"))
@@ -224,7 +225,7 @@ async def test_history_segment_persists_effective_model(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
 
     assert restored.history[0].model == "compactor-x"
 

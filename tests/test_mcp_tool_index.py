@@ -4,12 +4,13 @@ from typing import ClassVar
 from mcp_harness import mcp_cfg, mcp_tool_info, session
 from test_mcp_tools import _index_session
 
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.config import (
     Config,
 )
 from wizolt.mcp import MCPManager, MCPToolInfo
 from wizolt.mcp.rendering import format_tool_line
-from wizolt.session import Session, bootstrap_features
+from wizolt.session import Session
 from wizolt.tools import Tool
 
 

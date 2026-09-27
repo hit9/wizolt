@@ -12,16 +12,17 @@ from PIL import Image
 from prompt_toolkit.document import Document
 from prompt_toolkit.history import FileHistory
 
-import wizolt.cli.loop as loop_module
-import wizolt.tui as tui_module
+import wizolt.ui.cli.loop as loop_module
+import wizolt.ui.tui as tui_module
+from wizolt.agent.context import ContextManager
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import ModelError, ToolCall, ToolError
-from wizolt.cli import CommandLoop
 from wizolt.config import (
     Config,
     ProviderConfig,
 )
-from wizolt.context import ContextManager
-from wizolt.engine import Agent
 from wizolt.image import (
     IMAGE_MARKER,
     IMAGE_REFS_KEY,
@@ -34,10 +35,10 @@ from wizolt.image import (
 )
 from wizolt.model import ModelClient
 from wizolt.paste import PASTE_MARKER, PasteRef
-from wizolt.runner import ToolRunner
 from wizolt.session import Session, SessionSnapshotStore
 from wizolt.tools import ViewImageTool
-from wizolt.tui import TuiApp
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.tui import TuiApp
 
 
 async def _no_close():
@@ -103,7 +104,7 @@ async def test_session_stores_content_addressed_image_and_persists_refs(tmp_path
     assert await asyncio.to_thread(Path(asset).read_bytes) == path.read_bytes()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     assert restored.messages[0] == message
     assert ContextManager(restored).messages_text(restored.messages[:1]) == "user:\ndescribe [Image #1 · screen.png]"
 
@@ -142,7 +143,7 @@ async def test_session_queue_round_trips_images_and_garbage_collects_assets(tmp_
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     queued = restored.pending_user_inputs[0]
     assert queued.text == "[Image #1 · queued.jpg]"
     assert queued.user_input().display_text() == queued.text
@@ -429,13 +430,13 @@ async def test_agent_persists_view_image_observation_without_replaying_it_as_use
 
     rendered = []
     command_loop = CommandLoop(agent, output_fn=lambda _text: None)
-    command_loop.ui.emit_answer = lambda *args, **kwargs: rendered.append((args, kwargs))
+    command_loop.presentation.ui.emit_answer = lambda *args, **kwargs: rendered.append((args, kwargs))
     command_loop.resume.render_transcript_message(observation)
     assert rendered == []
 
     await s.save_snapshot()
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     restored_observation = next(message for message in restored.messages if ImageInputs.is_tool_observation(message))
     assert ImageInputs.is_tool_observation(restored_observation)
     assert restored.images.chat_content(restored_observation)[0]["type"] == "image_url"

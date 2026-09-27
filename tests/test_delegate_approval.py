@@ -7,7 +7,7 @@ from wizolt.tools import TOOL_REGISTRY
 
 
 def capturing_tui(captured: dict):
-    """A `loop.tui` stand-in that records the modal it was asked to show instead of drawing one.
+    """A `loop.presentation.tui` stand-in that records the modal it was asked to show instead of drawing one.
 
     These tests are about what the viewer renders, so the modal never has to open: the recorded
     `fragments_fn`/`key_fn` are the whole subject."""
@@ -53,9 +53,9 @@ async def test_spawned_worker_reuses_the_parent_catalog(tmp_path):
 
 
 async def test_delegate_send_confirmation_prompt_and_reasons(tmp_path, monkeypatch):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
     from wizolt.tools.delegate import DelegateTool
 
     parent = _delegate_session(tmp_path)
@@ -141,12 +141,12 @@ async def test_delegate_approval_brief_lists_send_and_worker_details(tmp_path):
 async def test_delegate_config_cycle_changes_worker_knobs_and_refreshes_live_worker(tmp_path):
     from dataclasses import replace
 
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import LogBlock, ToolCall
     from wizolt.config import (
         ProviderConfig,
     )
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
     from wizolt.session import Session
     from wizolt.tools.delegate import DelegateTool, refresh_worker_entry
 
@@ -211,9 +211,9 @@ async def test_delegate_config_cycle_changes_worker_knobs_and_refreshes_live_wor
 
 
 async def test_delegate_view_opens_viewer_then_approves(tmp_path):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
     from wizolt.tools.delegate import DelegateTool
 
     parent = _delegate_session(tmp_path)
@@ -239,9 +239,9 @@ async def test_delegate_view_opens_viewer_then_approves(tmp_path):
 async def test_delegate_view_reflects_a_worker_config_changed_by_c(tmp_path):
     """`c` then `v`: the viewer reports the configuration the send would run under, so it has to
     read that configuration when the key is pressed, not as it stood when the prompt was drawn."""
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
     from wizolt.tools.delegate import DelegateTool
 
     parent = _delegate_session(tmp_path)
@@ -259,9 +259,9 @@ async def test_delegate_view_reflects_a_worker_config_changed_by_c(tmp_path):
 
 
 async def test_delegate_view_headless_fallback_prints_full_order(tmp_path):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import LogBlock, ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
     from wizolt.tools.delegate import DelegateTool
 
     parent = _delegate_session(tmp_path)
@@ -279,9 +279,9 @@ async def test_delegate_view_headless_fallback_prints_full_order(tmp_path):
 
 
 async def test_delegate_view_empty_order_is_noop(tmp_path):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import LogBlock, ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
     from wizolt.tools.delegate import DelegateTool
 
     parent = _delegate_session(tmp_path)
@@ -316,9 +316,9 @@ async def test_confirm_cancelled_input_refuses_without_a_reason(tmp_path):
     # confirm() must read that as a plain refusal: not "" (the default approve) and not a reason,
     # which would reach the model as text the user never typed. Holds for every tool, not just
     # Delegate, so check the Delegate prompt and an ordinary one.
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
     from wizolt.tools.delegate import DelegateTool
 
     parent = _delegate_session(tmp_path)
@@ -333,9 +333,9 @@ async def test_confirm_cancelled_input_refuses_without_a_reason(tmp_path):
 async def test_approval_brief_prints_once_however_many_side_trips(tmp_path):
     # `v` and `c` come back to the same prompt, and each redraw used to stack another full copy of
     # the brief in the transcript. It is printed once; the side trips report themselves.
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import LogBlock, ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
     from wizolt.tools.delegate import DelegateTool
 
     parent = _delegate_session(tmp_path)
@@ -353,9 +353,9 @@ async def test_approval_brief_prints_once_however_many_side_trips(tmp_path):
 
 
 async def test_approval_form_actions_offered_per_tool_and_only_where_they_work(tmp_path):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
     from wizolt.tools import toolblocks
     from wizolt.tools.delegate import DelegateTool
 
@@ -449,13 +449,13 @@ async def test_delegate_order_viewer_wraps_by_terminal_cells(monkeypatch):
     from prompt_toolkit.utils import get_cwidth
 
     from wizolt.base import ApprovalView
-    from wizolt.cli.modals import approval_text_viewer
+    from wizolt.ui.cli.modals import approval_text_viewer
 
     size = os.terminal_size((60, 40))
-    monkeypatch.setattr("wizolt.cli.modals.shutil.get_terminal_size", lambda *args, **kwargs: size)
+    monkeypatch.setattr("wizolt.ui.cli.modals.shutil.get_terminal_size", lambda *args, **kwargs: size)
 
     captured = {}
-    loop = SimpleNamespace(tui=capturing_tui(captured))
+    loop = SimpleNamespace(presentation=SimpleNamespace(tui=capturing_tui(captured)))
     order = "\n".join(["把这个仓库里的审批快捷键改造一遍并补上测试" * 3, "", "```python", "def nested():", "    x = 1", "```"])
     await approval_text_viewer(loop, ApprovalView("order", order, "", [("title", "中文标题" * 10)]))
 
@@ -477,15 +477,15 @@ async def test_delegate_order_viewer_is_exclusive_and_scrolls(monkeypatch):
     from types import SimpleNamespace
 
     from wizolt.base import ApprovalView
-    from wizolt.cli.modals import approval_text_viewer
-    from wizolt.tui import TUI_MODAL_PENDING
+    from wizolt.ui.cli.modals import approval_text_viewer
+    from wizolt.ui.tui import TUI_MODAL_PENDING
 
     # Fixed terminal size keeps the viewport deterministic: 40 lines - 6 = 34 visible rows.
     size = os.terminal_size((120, 40))
-    monkeypatch.setattr("wizolt.cli.modals.shutil.get_terminal_size", lambda *args, **kwargs: size)
+    monkeypatch.setattr("wizolt.ui.cli.modals.shutil.get_terminal_size", lambda *args, **kwargs: size)
 
     captured = {}
-    loop = SimpleNamespace(tui=capturing_tui(captured))
+    loop = SimpleNamespace(presentation=SimpleNamespace(tui=capturing_tui(captured)))
     order_lines = [f"line {i} " + "word " * 30 for i in range(200)]  # wraps to ~400 lines
     await approval_text_viewer(loop, ApprovalView("order", "\n".join(order_lines), "", [("title", "fix things")]))
     fragments = captured["fragments_fn"]
@@ -530,13 +530,13 @@ async def test_delegate_order_viewer_renders_markdown(monkeypatch):
     from types import SimpleNamespace
 
     from wizolt.base import ApprovalView
-    from wizolt.cli.modals import approval_text_viewer
+    from wizolt.ui.cli.modals import approval_text_viewer
 
     size = os.terminal_size((120, 40))
-    monkeypatch.setattr("wizolt.cli.modals.shutil.get_terminal_size", lambda *args, **kwargs: size)
+    monkeypatch.setattr("wizolt.ui.cli.modals.shutil.get_terminal_size", lambda *args, **kwargs: size)
 
     captured = {}
-    loop = SimpleNamespace(tui=capturing_tui(captured))
+    loop = SimpleNamespace(presentation=SimpleNamespace(tui=capturing_tui(captured)))
     order = "## Section\n\n- item one\n- item two\n\n```python\nprint(1)\n```"
     await approval_text_viewer(loop, ApprovalView("order", order, "", [("title", "fix things")]))
 
@@ -556,13 +556,13 @@ async def test_delegate_order_viewer_keeps_source_line_breaks(monkeypatch):
     from types import SimpleNamespace
 
     from wizolt.base import ApprovalView
-    from wizolt.cli.modals import approval_text_viewer
+    from wizolt.ui.cli.modals import approval_text_viewer
 
     size = os.terminal_size((120, 40))
-    monkeypatch.setattr("wizolt.cli.modals.shutil.get_terminal_size", lambda *args, **kwargs: size)
+    monkeypatch.setattr("wizolt.ui.cli.modals.shutil.get_terminal_size", lambda *args, **kwargs: size)
 
     captured = {}
-    loop = SimpleNamespace(tui=capturing_tui(captured))
+    loop = SimpleNamespace(presentation=SimpleNamespace(tui=capturing_tui(captured)))
     order = "Touch these files:\nwizolt/loop.py\nwizolt/parser.py\nDo not touch tests."
     await approval_text_viewer(loop, ApprovalView("order", order, "", [("title", "fix things")]))
 
@@ -578,13 +578,13 @@ async def test_delegate_order_viewer_field_header_alignment(monkeypatch):
     from prompt_toolkit.utils import get_cwidth
 
     from wizolt.base import ApprovalView
-    from wizolt.cli.modals import approval_text_viewer
+    from wizolt.ui.cli.modals import approval_text_viewer
 
     size = os.terminal_size((120, 40))
-    monkeypatch.setattr("wizolt.cli.modals.shutil.get_terminal_size", lambda *args, **kwargs: size)
+    monkeypatch.setattr("wizolt.ui.cli.modals.shutil.get_terminal_size", lambda *args, **kwargs: size)
 
     captured = {}
-    loop = SimpleNamespace(tui=capturing_tui(captured))
+    loop = SimpleNamespace(presentation=SimpleNamespace(tui=capturing_tui(captured)))
     await approval_text_viewer(loop, ApprovalView("order", "order", "", [("title", "fix"), ("lang", "python"), ("max_steps", "3")]))
 
     fragments = captured["fragments_fn"]()
@@ -600,13 +600,13 @@ async def test_delegate_order_viewer_header_separator(monkeypatch):
     from prompt_toolkit.utils import get_cwidth
 
     from wizolt.base import ApprovalView
-    from wizolt.cli.modals import approval_text_viewer
+    from wizolt.ui.cli.modals import approval_text_viewer
 
     size = os.terminal_size((120, 40))
-    monkeypatch.setattr("wizolt.cli.modals.shutil.get_terminal_size", lambda *args, **kwargs: size)
+    monkeypatch.setattr("wizolt.ui.cli.modals.shutil.get_terminal_size", lambda *args, **kwargs: size)
 
     captured = {}
-    loop = SimpleNamespace(tui=capturing_tui(captured))
+    loop = SimpleNamespace(presentation=SimpleNamespace(tui=capturing_tui(captured)))
     await approval_text_viewer(loop, ApprovalView("order", "order", "", [("title", "fix things")]))
 
     lines = "".join(text for _, text in captured["fragments_fn"]()).splitlines()
@@ -629,13 +629,13 @@ async def test_delegate_order_viewer_markdown_fits_narrow_terminal(monkeypatch):
     from prompt_toolkit.utils import get_cwidth
 
     from wizolt.base import ApprovalView
-    from wizolt.cli.modals import approval_text_viewer
+    from wizolt.ui.cli.modals import approval_text_viewer
 
     size = os.terminal_size((60, 40))
-    monkeypatch.setattr("wizolt.cli.modals.shutil.get_terminal_size", lambda *args, **kwargs: size)
+    monkeypatch.setattr("wizolt.ui.cli.modals.shutil.get_terminal_size", lambda *args, **kwargs: size)
 
     captured = {}
-    loop = SimpleNamespace(tui=capturing_tui(captured))
+    loop = SimpleNamespace(presentation=SimpleNamespace(tui=capturing_tui(captured)))
     order = '## 标题\n\n- 把这段中文说明加进审批流程并补充测试\n\n```python\nprint("中文")\n```'
     await approval_text_viewer(loop, ApprovalView("order", order, "", [("title", "中文标题" * 10)]))
 
@@ -646,14 +646,14 @@ async def test_delegate_order_viewer_markdown_fits_narrow_terminal(monkeypatch):
 
 
 async def test_delegate_yolo_without_authorization_still_confirms(tmp_path, monkeypatch):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     parent.settings.yolo = True
     model = FakeModelClient([({"role": "assistant", "content": "done"}, [], "done")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     prompts = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda prompt: prompts.append(prompt) or "y", output_fn=lambda text: None)
 
@@ -663,13 +663,13 @@ async def test_delegate_yolo_without_authorization_still_confirms(tmp_path, monk
 
 
 async def test_delegate_send_refused_does_not_run(tmp_path, monkeypatch):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     model = FakeModelClient([({"role": "assistant", "content": "done"}, [], "done")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda prompt: "n", output_fn=lambda text: None)
 
     status, message, _ = await runner.run_one(ToolCall("delegate-1", "Delegate", [{"action": "send", "order": "o"}]))

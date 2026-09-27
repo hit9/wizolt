@@ -3,6 +3,8 @@ import os
 
 import pytest
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import (
     LogBlock,
     LogEdge,
@@ -14,9 +16,6 @@ from wizolt.base import (
 from wizolt.config import (
     Config,
 )
-from wizolt.context import ContextManager
-from wizolt.render import Theme, UiPrinter
-from wizolt.runner import ToolRunner
 from wizolt.session import Session
 from wizolt.tools import (
     TOOL_REGISTRY,
@@ -33,6 +32,7 @@ from wizolt.tools import (
     toolblocks,
     tooloutput,
 )
+from wizolt.ui.render import Theme, UiPrinter
 
 
 def session(tmp_path):

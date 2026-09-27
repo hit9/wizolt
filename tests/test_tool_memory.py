@@ -5,6 +5,9 @@ import json
 import pytest
 from test_tools import session
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.lifecycle import create_session
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import (
     ToolCall,
     ToolError,
@@ -13,9 +16,7 @@ from wizolt.config import (
     ConfigFile,
     RuntimeSettings,
 )
-from wizolt.context import ContextManager
-from wizolt.runner import ToolRunner
-from wizolt.session import Session, SessionSnapshotCodec
+from wizolt.session import SessionSnapshotCodec
 from wizolt.tools import (
     NextHintsTool,
     NoteTool,
@@ -309,7 +310,7 @@ def test_legacy_config_quick_hints_key_loads_and_keeps_hints_enabled(tmp_path):
     disabled by stale configuration."""
     cfg = tmp_path / "wizolt.toml"
     cfg.write_text("[runtime]\nquick_hints = false\n", encoding="utf-8")
-    s = Session.from_config_file(path=str(cfg))
+    s = create_session(path=str(cfg))
 
     assert not hasattr(s.settings, "quick_hints")
     assert s.next_hints_available is True

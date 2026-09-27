@@ -4,15 +4,16 @@ import pytest
 from agent_harness import call, session
 from test_agent_turn import _correction
 
-import wizolt.engine as engine_module
+import wizolt.agent.engine as engine_module
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
+from wizolt.agent.prompts import FAILED_TURN_MARKER, SYSTEM_PROMPT
 from wizolt.base import (
     SESSION_EVENT_KEY,
     MalformedToolCallError,
     ModelError,
 )
-from wizolt.engine import Agent
-from wizolt.prompts import FAILED_TURN_MARKER, SYSTEM_PROMPT
-from wizolt.session import Session, SessionSnapshotCodec
+from wizolt.session import SessionSnapshotCodec
 
 
 async def test_agent_rejects_empty_final_response(tmp_path):
@@ -163,7 +164,7 @@ async def test_agent_stops_after_sixth_textual_tool_call_without_persisting_resp
     ]
     assert s._active_turn_messages == []
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     # Drop only what the load itself appended: the corrections are session events too, and they are
     # exactly what this asserts survived.
     restored_messages = [

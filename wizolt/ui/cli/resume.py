@@ -1,7 +1,7 @@
 """Resume rendering: replaying a resumed session's transcript into scrollback, and the
 paste-ready resume line a freshly persisted session prints.
 
-Owned by `CommandLoop` as `loop.resume`. The replay rules here (call/result pairing and
+Owned by `CommandLoop` as `resume`. The replay rules here (call/result pairing and
 ordering, silent-batch rules during replay, diff previews) are the resume-side counterpart
 of the live turn's rendering and change for their own reasons; they live in one place so
 the live path and the replay path can be kept in agreement deliberately, not by distance.
@@ -10,8 +10,10 @@ the live path and the replay path can be kept in agreement deliberately, not by 
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, ClassVar
+from collections.abc import Callable
+from typing import ClassVar, Protocol
 
+from wizolt.agent.prompts import LIVE_FOLLOWUP_PREFIX
 from wizolt.base import (
     Json,
     LogBlock,
@@ -23,21 +25,32 @@ from wizolt.base import (
     TurnBox,
 )
 from wizolt.image import ImageInputs
-from wizolt.prompts import LIVE_FOLLOWUP_PREFIX
 from wizolt.session import Session, SessionSnapshotCodec, ToolResultRecord
 from wizolt.tools import TOOL_REGISTRY, tool_payload, toolblocks, tooloutput
 from wizolt.tools.toolblocks import ToolDisplay
+from wizolt.ui.render import UiPrinter
 
-if TYPE_CHECKING:
-    from wizolt.cli.loop import CommandLoop
+
+class TranscriptOutput(Protocol):
+    """The output operations shared by live turns and restored transcripts."""
+
+    ui: UiPrinter
+    MIN_ROWS_BETWEEN_RULES: ClassVar[int]
+
+    def emit(self, text: str | LogBlock = "", indent: int = 0) -> None: ...
+    def tool_output(self, text: str | LogBlock = "") -> None: ...
+    def context_reset_notice(self, text: str) -> None: ...
+    def restart_silent_batches(self) -> None: ...
+    def count_silent_batch(self) -> None: ...
+    def user_turn_rule(self) -> None: ...
 
 
 class ResumeRenderer:
     """The transcript replay and resume-line half of the session restore story.
 
-    Reaches the loop for everything live rendering also reaches it for: the emit/tool_output
-    adapters, the ui seam (rules, batching), and the silent-batch counter the replay keeps
-    in step with the live turn. Owns nothing itself; the state it displays is session state.
+    Reads semantic session records and writes through TranscriptOutput, sharing rules and
+    batching with live rendering. Context accounting is refreshed through an explicit callback;
+    replay has no command-loop or agent handle.
     """
 
     TRANSCRIPT_DIFF_LINES: ClassVar[int] = 40
@@ -46,12 +59,10 @@ class ResumeRenderer:
     # in the session, so the next request still sees them.
     MAX_REDRAWN_TURNS: ClassVar[int] = 20
 
-    def __init__(self, loop: CommandLoop) -> None:
-        self.loop = loop
-
-    @property
-    def session(self) -> Session:
-        return self.loop.session
+    def __init__(self, session: Session, presentation: TranscriptOutput, refresh_context: Callable[[], object]) -> None:
+        self.session = session
+        self.presentation = presentation
+        self.refresh_context = refresh_context
 
     def render_resumed_session(self) -> None:
         # Transcript reconstruction owns historical call/result matching and ordering invariants.
@@ -60,7 +71,7 @@ class ResumeRenderer:
         self.session.resumed = False
         # The percent is derived, not persisted; recompute it or the status bar reads 0% until
         # the first turn.
-        self.loop.agent.context.update_current_tokens(self.loop.agent.session.system_prompt)
+        self.refresh_context()
         transcript = self.session.transcript_messages or self.session.messages
         tool_results = {
             str(message.get("tool_call_id") or ""): message for message in transcript if message.get("role") == "tool" and message.get("tool_call_id")
@@ -81,10 +92,10 @@ class ResumeRenderer:
         # The replay is a burst of independent emits; batch them into a single print_formatted_text
         # call so the whole session restores in one flush (and one TUI coordination) instead of one
         # per line.
-        with self.loop.ui.batched():
-            self.loop.emit(f"Restored session: {self.session.uid}")
+        with self.presentation.ui.batched():
+            self.presentation.emit(f"Restored session: {self.session.uid}")
             if self.session.transcript_incomplete:
-                self.loop.emit("Warning: this transcript may omit turns written by an older wizolt version.")
+                self.presentation.emit("Warning: this transcript may omit turns written by an older wizolt version.")
             if not messages:
                 return
             transcript_diffs = self.session.transcript_turn_diffs or self.session.turn_diffs
@@ -100,12 +111,12 @@ class ResumeRenderer:
                 for turn in turns[:hidden]:
                     for message in turn.messages:
                         tool_record_index = self.render_transcript_message(message, tool_record_index, diffs, tool_results, dry_run=True)
-                self.loop.emit(f"… {hidden} earlier turn{'s' if hidden > 1 else ''} not redrawn (still in context)")
-                self.loop.emit("")
+                self.presentation.emit(f"… {hidden} earlier turn{'s' if hidden > 1 else ''} not redrawn (still in context)")
+                self.presentation.emit("")
                 turns = turns[hidden:]
             for i, turn in enumerate(turns):
                 if i:
-                    self.loop.emit("")
+                    self.presentation.emit("")
                 for message in turn.messages:
                     tool_record_index = self.render_transcript_message(message, tool_record_index, diffs, tool_results)
             if not semantic_tool_results:
@@ -120,24 +131,24 @@ class ResumeRenderer:
         *,
         dry_run: bool = False,
     ) -> int:
-        loop = self.loop
+        presentation = self.presentation
         role = str(message.get("role") or "")
         content = ImageInputs.label_text(message).strip()
         if role == "notice":
             if content and not dry_run:
-                loop.context_reset_notice(content)
+                presentation.context_reset_notice(content)
             return tool_record_index
         if role == "assistant" and content and not dry_run:
             # Every assistant message sits in the content column, final answer included, so a
             # resumed session reads exactly like the live one. The turn's own text all shares that
             # column with the user's message, whose `• ` bullet hangs in the same two-space margin.
-            loop.ui.separate()  # the same gap the live narration and answer open with
+            presentation.ui.separate()  # the same gap the live narration and answer open with
             # An assistant message that carries tool calls is interim narration, not the answer:
             # the resumed session draws the same phase rule above it the live turn did (the rule
             # opens the text), skipping it only when it would land too close to the rule above.
-            if message.get("tool_calls") and loop.ui.rule_due(loop.MIN_ROWS_BETWEEN_RULES):
-                loop.ui.emit_phase_rule()
-            loop.ui.emit_answer(content, role=role, rule=False, indent=TurnBox.CONTENT_LEVEL)
+            if message.get("tool_calls") and presentation.ui.rule_due(presentation.MIN_ROWS_BETWEEN_RULES):
+                presentation.ui.emit_phase_rule()
+            presentation.ui.emit_answer(content, role=role, rule=False, indent=TurnBox.CONTENT_LEVEL)
         if role == "assistant":
             tool_record_index = self.render_transcript_tool_calls(message, tool_record_index, diffs or {}, tool_results or {}, dry_run=dry_run)
             if not dry_run and message.get("tool_calls"):
@@ -145,16 +156,16 @@ class ResumeRenderer:
                 # (it carried narration) restarts the silent count, a silent run of four closes
                 # with the same batch rule the live turn drew.
                 if content:
-                    loop.restart_silent_batches()
+                    presentation.restart_silent_batches()
                 else:
-                    loop.count_silent_batch()
+                    presentation.count_silent_batch()
             return tool_record_index
         if role == "user" and content and not ImageInputs.is_tool_observation(message) and not dry_run:
             # The follow-up marker is model-facing context, part of history because it was sent.
             # The scrollback shows what the user typed, exactly as it looked when they typed it.
-            loop.ui.emit_answer(content.removeprefix(LIVE_FOLLOWUP_PREFIX.strip()).lstrip(), role=role, rule=False)
+            presentation.ui.emit_answer(content.removeprefix(LIVE_FOLLOWUP_PREFIX.strip()).lstrip(), role=role, rule=False)
             # Replay the same opening separator used by a live turn.
-            loop.user_turn_rule()
+            presentation.user_turn_rule()
         return tool_record_index
 
     def render_transcript_tool_calls(
@@ -204,7 +215,7 @@ class ResumeRenderer:
         if tool_class is not None and tool_class.SILENT and status == "ok":
             return
         if status == "rejected":
-            self.loop.tool_output(toolblocks.reject_display(self.session, call, reason or "rejected in saved session", d=ToolDisplay()))
+            self.presentation.tool_output(toolblocks.reject_display(self.session, call, reason or "rejected in saved session", d=ToolDisplay()))
             return
         preview = diffs.get(key, "") if call.name == "Edit" else ""
         # Through `tool_output`, like the live call: a replayed call opens its own group with a
@@ -214,12 +225,12 @@ class ResumeRenderer:
             # An Ask's stored result is the user's answer, which its finish block shows live; every
             # other call replays as its `tr.N` marker alone.
             output = "failed in saved session" if status != "ok" else self.session.tool_results.get(key, "") if call.name == "Ask" else ""
-            self.loop.tool_output(toolblocks.finish_display(self.session, call, key, output, failed=status != "ok"))
+            self.presentation.tool_output(toolblocks.finish_display(self.session, call, key, output, failed=status != "ok"))
             return
         # The preview block carries the call line, so the result collapses to its trailing marker
         # underneath it — the same nesting the live approval block produces.
-        self.loop.tool_output(self.transcript_edit_preview(call, preview))
-        self.loop.tool_output(toolblocks.finish_display(self.session, call, key, "", failed=False, d=ToolDisplay(nested_display=True)))
+        self.presentation.tool_output(self.transcript_edit_preview(call, preview))
+        self.presentation.tool_output(toolblocks.finish_display(self.session, call, key, "", failed=False, d=ToolDisplay(nested_display=True)))
 
     def transcript_edit_preview(self, call: ToolCall, preview: str) -> LogBlock:
         lines = preview.rstrip().splitlines()
@@ -278,5 +289,5 @@ class ResumeRenderer:
             # The name goes in the sentence, never in the command: the line below is meant to be
             # pasted, and only the uid is guaranteed to still mean this session tomorrow.
             name = self.session.name
-            self.loop.ui.separate()
-            self.loop.emit(f"Resume {name!r} with:\nwizolt --resume {uid}" if name else f"Resume with:\nwizolt --resume {uid}")
+            self.presentation.ui.separate()
+            self.presentation.emit(f"Resume {name!r} with:\nwizolt --resume {uid}" if name else f"Resume with:\nwizolt --resume {uid}")

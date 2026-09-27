@@ -5,7 +5,7 @@ import shutil
 
 from test_worker_handoff import FakeModelClient, _delegate_call, _delegate_runner, _delegate_session
 
-from wizolt.cli.worker import worker_command
+from wizolt.ui.cli.worker import worker_command
 
 
 async def test_status_bar_follows_the_inflight_worker(tmp_path, monkeypatch):
@@ -13,8 +13,8 @@ async def test_status_bar_follows_the_inflight_worker(tmp_path, monkeypatch):
         Config,
         ProviderConfig,
     )
-    from wizolt.render import StatusBar
     from wizolt.session import Session
+    from wizolt.ui.render import StatusBar
 
     # The row clips to the terminal width, and CI runs at 80 columns: pin a wide one so these
     # assertions read the whole row instead of its ellipsis.
@@ -76,9 +76,9 @@ async def test_status_bar_follows_the_inflight_worker(tmp_path, monkeypatch):
 
 
 async def test_working_divider_marks_inflight_worker(tmp_path):
-    from wizolt.cli import CommandLoop
-    from wizolt.engine import Agent
+    from wizolt.agent.engine import Agent
     from wizolt.session import Session
+    from wizolt.ui.cli import CommandLoop
 
     parent = _delegate_session(tmp_path)
     agent = Agent(parent, output_fn=lambda text: None)
@@ -99,7 +99,7 @@ async def test_working_divider_marks_inflight_worker(tmp_path):
 async def test_worker_model_stream_is_wired_from_the_runner(tmp_path, monkeypatch):
     parent = _delegate_session(tmp_path)
     model = FakeModelClient([({"role": "assistant", "content": "done"}, [], "done")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     runner = _delegate_runner(parent)
     calls = []
     runner.hooks.on_stream = lambda kind, text: calls.append((kind, text))
@@ -113,8 +113,8 @@ async def test_worker_model_stream_is_wired_from_the_runner(tmp_path, monkeypatc
 
 
 async def test_worker_stream_updates_parent_thinking_and_status_while_request_is_live(tmp_path, monkeypatch):
-    from wizolt.cli import CommandLoop
-    from wizolt.engine import Agent
+    from wizolt.agent.engine import Agent
+    from wizolt.ui.cli import CommandLoop
 
     parent = _delegate_session(tmp_path)
     loop = CommandLoop(Agent(parent, output_fn=lambda _text: None), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
@@ -139,7 +139,7 @@ async def test_worker_stream_updates_parent_thinking_and_status_while_request_is
             return await super().request(messages, request_tools)
 
     model = StreamingModel([({"role": "assistant", "content": "done"}, [], "done")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda _session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda _session: model)
 
     await _delegate_call(parent, loop.agent.tools, action="send", order="inspect it")
 
@@ -150,9 +150,9 @@ async def test_worker_stream_updates_parent_thinking_and_status_while_request_is
 
 
 async def test_status_reports_worker_delegation_state(tmp_path):
-    from wizolt.cli import CommandLoop
-    from wizolt.engine import Agent
+    from wizolt.agent.engine import Agent
     from wizolt.session import Session
+    from wizolt.ui.cli import CommandLoop
 
     parent = _delegate_session(tmp_path)
     agent = Agent(parent, output_fn=lambda text: None)
@@ -197,9 +197,9 @@ async def test_status_reports_worker_delegation_state(tmp_path):
 
 
 async def test_worker_status_command_is_human_readable(tmp_path):
-    from wizolt.cli import CommandLoop
-    from wizolt.engine import Agent
+    from wizolt.agent.engine import Agent
     from wizolt.session import Session
+    from wizolt.ui.cli import CommandLoop
 
     parent = _delegate_session(tmp_path)
     agent = Agent(parent, output_fn=lambda text: None)
@@ -233,9 +233,9 @@ async def test_worker_status_command_is_human_readable(tmp_path):
 
 
 async def test_worker_output_wraps_model_text_for_the_log_stream(tmp_path, monkeypatch):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import LogBlock, ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     tool_call = ToolCall(id="call1", name="Note", args={"action": "view"})
@@ -245,7 +245,7 @@ async def test_worker_output_wraps_model_text_for_the_log_stream(tmp_path, monke
             ({"role": "assistant", "content": "done"}, [], "done"),
         ]
     )
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     outputs = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=outputs.append)
     await _delegate_call(parent, runner, action="send", order="o")
@@ -256,9 +256,9 @@ async def test_worker_output_wraps_model_text_for_the_log_stream(tmp_path, monke
 
 
 async def test_worker_interim_model_text_routes_to_worker_answer_when_wired(tmp_path, monkeypatch):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import LogBlock, ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     tool_call = ToolCall(id="call1", name="Note", args={"action": "view"})
@@ -268,7 +268,7 @@ async def test_worker_interim_model_text_routes_to_worker_answer_when_wired(tmp_
             ({"role": "assistant", "content": "done"}, [], "done"),
         ]
     )
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     log_outputs = []
     answer_outputs = []
     append_answer = answer_outputs.append
@@ -316,7 +316,7 @@ async def test_status_bar_names_the_worker_model_during_a_real_delegation(tmp_pa
     that quietly re-points the bar's identity or usage back at the parent session fails here
     rather than only in the unit-level test that drives `_active_turn_messages` by hand.
     """
-    from wizolt.render import StatusBar
+    from wizolt.ui.render import StatusBar
 
     # The row clips to the terminal width, and CI runs at 80 columns: pin a wide one so these
     # assertions read the whole row instead of its ellipsis.
@@ -348,7 +348,7 @@ async def test_status_bar_names_the_worker_model_during_a_real_delegation(tmp_pa
             return await super().request(messages, request_tools)
 
     model = SamplingModel([({"role": "assistant", "content": "done"}, [], "done")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda _session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda _session: model)
 
     await _delegate_call(parent, _delegate_runner(parent), action="send", order="inspect it")
 

@@ -1,6 +1,6 @@
-"""Unit tests for the idle-input hint mechanism (wizolt/cli/hints.py)."""
+"""Unit tests for the idle-input hint mechanism (wizolt/ui/cli/hints.py)."""
 
-from wizolt.cli.hints import HINTS, Context, HintPicker
+from wizolt.ui.cli.hints import HINTS, Context, HintPicker
 
 DIFF = "/diff reviews recent edits"
 SESSIONS = "/sessions resumes a past session"

@@ -7,22 +7,23 @@ import time
 
 import pytest
 
-import wizolt.cli.commands as commands_mod
+import wizolt.ui.cli.commands as commands_mod
+from wizolt.agent.context import ContextManager
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import ToolCall
-from wizolt.cli import QUEUE_SAFE_COMMANDS, CommandLoop
-from wizolt.cli.commands import diff_command
-from wizolt.cli.modals import diff_viewer
 from wizolt.config import (
     Config,
 )
-from wizolt.context import ContextManager
-from wizolt.engine import Agent
-from wizolt.render import UiPrinter
-from wizolt.runner import ToolRunner
 from wizolt.session import Session, SessionSnapshotStore, TurnDiff
 from wizolt.session.diffs import _find_unambiguous_move, net_diff_for_path, net_diff_sections
 from wizolt.tools import ReadTool
-from wizolt.tui import DiffViewState, TabbedViewState
+from wizolt.ui.cli import QUEUE_SAFE_COMMANDS, CommandLoop
+from wizolt.ui.cli.commands import COMMAND_NAMES, diff_command
+from wizolt.ui.cli.modals import diff_viewer
+from wizolt.ui.render import UiPrinter
+from wizolt.ui.tui import DiffViewState, TabbedViewState
 
 
 def session(tmp_path):
@@ -42,7 +43,7 @@ def git_init(path):
 
 
 async def test_diff_is_in_completer_commands():
-    assert "/diff" in CommandLoop.COMMANDS
+    assert "/diff" in COMMAND_NAMES
 
 
 async def test_diff_is_allowed_while_agent_works():
@@ -67,17 +68,17 @@ from wizolt.config import (
     Config,
 )
 
-from wizolt.engine import Agent
-from wizolt.cli import CommandLoop
-from wizolt.cli.commands import diff_command
+from wizolt.agent.engine import Agent
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.cli.commands import diff_command
 from wizolt.session import Session
-from wizolt.tui import TuiApp
+from wizolt.ui.tui import TuiApp
 
 session = Session(cwd="/tmp", config=Config(data_dir=tempfile.mkdtemp()))
 session.store_turn_diff("tr.1", 1, "a.py", "-old\\n+new\\n", round=1)
 loop = CommandLoop(Agent(session))
 app = TuiApp()
-loop.tui = app
+loop.presentation.tui = app
 
 
 def drive():
@@ -131,7 +132,7 @@ async def test_alternate_screen_probe_reads_the_resolved_window_option(tmp_path)
         f"""import asyncio
 import subprocess
 
-from wizolt.tui import TuiApp
+from wizolt.ui.tui import TuiApp
 
 print(asyncio.run(TuiApp.alternate_screen_available()))
 subprocess.run([{executable!r}, "set-option", "-wg", "alternate-screen", "off"], check=True)
@@ -166,12 +167,12 @@ async def test_diff_falls_back_to_inline_output_without_alternate_screen(tmp_pat
     s.store_turn_diff("tr.1", 1, "a.py", "-old\n+new\n", round=1)
     lp = loop(s)
     lp.interactive_input = True
-    lp.ui.color = True
+    lp.presentation.ui.color = True
 
     async def unavailable():
         return False
 
-    lp.tui = type("Tui", (), {"alternate_screen_available": staticmethod(unavailable)})()
+    lp.presentation.tui = type("Tui", (), {"alternate_screen_available": staticmethod(unavailable)})()
     opened = []
     monkeypatch.setattr(commands_mod, "diff_viewer", lambda _loop: opened.append(True))
 
@@ -284,7 +285,7 @@ async def test_diff_viewer_list_shows_change_counts_without_status_prefix(tmp_pa
         async def show_modal(self, fragments_fn, _key_fn, **_kwargs):
             rendered.extend(fragments_fn())
 
-    lp.tui = Modal()
+    lp.presentation.tui = Modal()
 
     await diff_viewer(lp)
 
@@ -502,7 +503,7 @@ async def test_resume_renders_turn_diffs_from_the_snapshot(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    loaded = Session.load_snapshot(s.uid, config=s.config, settings=s.settings, cwd=str(tmp_path))
+    loaded = load_session(s.uid, config=s.config, settings=s.settings, cwd=str(tmp_path))
     result = await diff_command(loop(loaded), "")
 
     assert [(diff.key, diff.path, diff.before, diff.after) for diff in loaded.turn_diffs] == [("tr.1", "x.py", "old\n", "new\n")]

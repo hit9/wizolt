@@ -10,7 +10,7 @@ from wizolt.config import (
     ConfigFile,
 )
 from wizolt.model import ModelClient
-from wizolt.render import search_sources_footer
+from wizolt.ui.render import search_sources_footer
 
 
 async def test_responses_stream_reports_a_search_in_progress(tmp_path, monkeypatch):

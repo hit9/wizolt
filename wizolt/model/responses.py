@@ -1,7 +1,7 @@
-"""Responses wire conversion: input replay, request extras, stream reassembly, and result parsing.
+"""Responses adapter: history conversion, request construction, sending and parsing.
 
-Pure conversion with explicit inputs — no client state and no retry or orchestration logic.
-ModelClient keeps the flow decisions and delegates the conversion here.
+Pure conversion helpers remain usable independently. ModelClient owns the shared request
+lifecycle, retries and accounting; SDK imports stay deferred until a request.
 """
 
 from __future__ import annotations
@@ -12,8 +12,10 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from wizolt.base import (
+    PROVIDER_ORIGIN_KEY,
     RESPONSES_OUTPUT_KEY,
     SEARCH_SOURCES_KEY,
+    Billing,
     Json,
     ModelError,
     ModelOutputTruncated,
@@ -24,10 +26,12 @@ from wizolt.base import (
 )
 from wizolt.config import ProviderConfig
 from wizolt.image import ImageInputs
-from wizolt.model.history import keeps_reasoning
+from wizolt.model.protocol import keeps_reasoning, omit_request_fields
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
+
+    from wizolt.model.client import ModelClient
 
 
 def responses_input(
@@ -353,3 +357,128 @@ def dump_message_item(item: Any) -> Json:
         if isinstance(dumped, dict):
             return Text.value(dumped)
     return {}
+
+
+class ResponsesWire:
+    """The OpenAI Responses wire."""
+
+    def __init__(self, client: ModelClient):
+        self._client = client
+
+    async def request(
+        self,
+        messages: list[Json],
+        tools: list[Json] | None,
+        *,
+        provider: ProviderConfig | None = None,
+        allow_stream: bool = True,
+        response_timeout: float | None = None,
+        json_object: bool = False,
+        billing: Billing = Billing.MAIN,
+    ) -> tuple[Json, list[ToolCall], str]:
+        provider = provider if provider is not None else self._client.session.config.provider
+        resolved = self._client.resolved(provider)
+        text_only = self._client.session.image_route.is_text_only()
+        payloads = await self._client.session.images.load_payloads(messages) if not text_only else {}
+        stream = allow_stream and provider.stream and self._client.hooks.on_stream is not None
+        params: Json = {
+            "model": provider.model,
+            "input": self.messages(
+                Text.value(messages), self._client.provider_origin(provider), provider=provider, text_only=text_only, image_payloads=payloads
+            ),
+            "stream": stream,
+            # Stateless by design, not to save anything: the wire can retain the conversation and
+            # let a later request name it by id, but session messages are the source of truth, a
+            # sent message is irrevocable, and a resume must rebuild from the snapshot alone.
+            # Server-held state moves the truth off the machine that owns it. Prefix caching is
+            # unaffected -- it keys on the rendered prefix, not on stored conversations. See
+            # DESIGN.md "Cache epochs and breakpoints".
+            "store": False,
+        }
+        if resolved.output_max_tokens > 0:
+            params["max_output_tokens"] = resolved.output_max_tokens
+        if request_tools := [*responses_tool_schemas(tools or []), *self._client.builtin_tools(resolved)]:
+            params["tools"] = request_tools
+            params["tool_choice"] = "auto"
+            params["parallel_tool_calls"] = True
+        if prompt_cache_key := self._client.prompt_cache_key(provider, tools):
+            params["prompt_cache_key"] = prompt_cache_key
+        # Stateless requests return encrypted reasoning items by default on the wire's own API, so
+        # the replay below needs no `include` here; a host that withholds them until asked says so
+        # in its catalog recipe. Effort goes through the same request-recipe fold as the chat path,
+        # and a host that defines an explicit "off" spelling still gets it when reasoning is off.
+        if resolved.responses_reasoning and provider.reasoning == "off" and resolved.reasoning_effort is None:
+            raise ModelError("reasoning off is not defined for this Responses model; use a supported effort or configure a documented provider endpoint")
+        # Fold user extensions first. A catalog recipe may then add managed extra_body paths
+        # without a later assignment replacing them, matching the Chat wire's precedence.
+        if provider.extra_body and (extra_body := responses_extra_body(provider.extra_body, params)):
+            params["extra_body"] = extra_body
+        self._client.apply_request(params, provider, resolved, wire="responses")
+        if provider.temperature is not None and not resolved.suppress_temperature:
+            params["temperature"] = provider.temperature
+        omit_request_fields(params, provider.omit_body)
+        client = self._client.client(provider=provider)
+        if stream:
+            result = await self._client.call_client(client, lambda: self._stream(client, params), response_timeout=response_timeout)
+            streamed = True
+        else:
+            result = await self._client.call_client(client, lambda: client.responses.create(**params), response_timeout=response_timeout)
+            streamed = False
+        self._client._record_usage(self._client.message_field(result, "usage"), billing=billing)
+        assistant, calls, text = self.result(result, streamed)
+        assistant[PROVIDER_ORIGIN_KEY] = self._client.provider_origin(provider)
+        return assistant, calls, text
+
+    async def _stream(self, client: Any, params: Json) -> Any:
+        """Consume a Responses stream, promoting completed text before tool arguments finish."""
+        return await reassemble_stream(
+            client,
+            params,
+            message_field=self._client.message_field,
+            raise_if_inactive=self._client._raise_if_request_inactive,
+            emit=self._client._emit_stream,
+            report_builtin_call=self._client.report_builtin_call,
+        )
+
+    def messages(
+        self,
+        messages: list[Json],
+        origin: str = "",
+        *,
+        text_only: bool | None = None,
+        image_payloads: dict[str, bytes] | None = None,
+        provider: ProviderConfig | None = None,
+    ) -> list[Json]:
+        provider = provider if provider is not None else self._client.session.config.provider
+        resolved = self._client.resolved(provider)
+        text_only = self._client.session.image_route.is_text_only() if text_only is None else text_only
+        return responses_input(
+            messages,
+            origin,
+            provider_origin=self._client.provider_origin,
+            replayable_echo=self._client.replayable_echo,
+            images=self._client.session.images,
+            reasoning_history=resolved.reasoning_history,
+            latest_user_position=self._client.latest_user_position,
+            text_only=text_only,
+            image_payloads=image_payloads,
+        )
+
+    def estimation_payload(self, messages: list[Json], tools: list[Json] | None, builtin: list[Json]) -> Json:
+        """The wire-shaped payload for one token estimate, matching what request() would send."""
+        payload: Json = {"input": self.messages(Text.value(messages))}
+        if request_tools := [*responses_tool_schemas(tools or []), *builtin]:
+            payload["tools"] = request_tools
+        return payload
+
+    def result(self, result: Any, streamed: bool = False) -> tuple[Json, list[ToolCall], str]:
+        return responses_result(
+            result,
+            streamed,
+            message_field=self._client.message_field,
+            dump_message_item=dump_message_item,
+            tool_call=self._client.tool_call,
+            report_builtin_call=self._client.report_builtin_call,
+            truncated_output_error=self._client.truncated_output_error,
+            collect_sources=self._client.collect_sources,
+        )

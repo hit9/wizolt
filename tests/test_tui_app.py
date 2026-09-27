@@ -2,7 +2,7 @@
 
 import asyncio
 
-from wizolt.tui import TuiApp
+from wizolt.ui.tui import TuiApp
 
 
 class _StubJob:

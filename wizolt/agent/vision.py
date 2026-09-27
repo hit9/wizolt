@@ -13,9 +13,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from wizolt.agent.prompts import VISION_OBSERVE_DEFAULT_QUESTION, VISION_OBSERVE_PROMPT
 from wizolt.base import Billing, ModelError
 from wizolt.image import ImageRef
-from wizolt.prompts import VISION_OBSERVE_DEFAULT_QUESTION, VISION_OBSERVE_PROMPT
 
 if TYPE_CHECKING:
     from wizolt.model.client import ModelClient

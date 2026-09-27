@@ -6,10 +6,10 @@ import pytest
 from model_harness import _AnthropicMockClientFactory, _MockClientFactory, _session
 from test_builtin_tools import FUNCTION_TOOL, WEB_SEARCH, _chat_body, _responses_body
 
+from wizolt.agent.context import ContextManager
 from wizolt.base import (
     ModelError,
 )
-from wizolt.context import ContextManager
 from wizolt.model import ModelClient, responses
 
 

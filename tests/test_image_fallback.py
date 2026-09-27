@@ -6,9 +6,11 @@ import pytest
 from catalog_harness import resolve
 from PIL import Image
 
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
+from wizolt.agent.prompts import VISION_OBSERVE_DEFAULT_QUESTION
 from wizolt.base import ImageRouteNotice, ModelError, ModelRequestRetry, ToolCall
 from wizolt.config import Config, ProviderConfig
-from wizolt.engine import Agent
 from wizolt.image import (
     ATTACHMENT_VISION_OBSERVATION_PREFIX,
     FAILED_IMAGE_CONTEXT_PREFIX,
@@ -17,7 +19,6 @@ from wizolt.image import (
     TOOL_IMAGE_OBSERVATION_PREFIX,
     ImageInputs,
 )
-from wizolt.prompts import VISION_OBSERVE_DEFAULT_QUESTION
 from wizolt.providers.compat import bundled_policy
 from wizolt.session import Session
 
@@ -414,7 +415,7 @@ async def test_learned_evidence_not_serialized_and_observation_survives_resume(t
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    resumed = Session.load_snapshot(s.uid, config=s.config)
+    resumed = load_session(s.uid, config=s.config)
     # learned evidence is runtime-only: a resumed session starts unknown again
     assert resumed.image_route.state() == "unknown"
     assert not resumed.learned_text_only_routes

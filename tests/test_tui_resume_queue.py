@@ -11,15 +11,16 @@ from prompt_toolkit.input.defaults import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 from tui_harness import loop, session, wait_until
 
-import wizolt.cli.loop as loop_module
-import wizolt.render as render_module
-import wizolt.tui.app as tui_module
-from wizolt.cli import QUEUE_SAFE_COMMANDS, CommandLoop, TuiRuntime
-from wizolt.cli.update import UpdateChecker
-from wizolt.engine import Agent
-from wizolt.prompts import LIVE_FOLLOWUP_PREFIX
-from wizolt.session import Session, SessionSnapshotStore
-from wizolt.tui import TuiApp
+import wizolt.ui.cli.loop as loop_module
+import wizolt.ui.render as render_module
+import wizolt.ui.tui.app as tui_module
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
+from wizolt.agent.prompts import LIVE_FOLLOWUP_PREFIX
+from wizolt.session import SessionSnapshotStore
+from wizolt.ui.cli import QUEUE_SAFE_COMMANDS, CommandLoop, TuiRuntime
+from wizolt.ui.cli.update import UpdateChecker
+from wizolt.ui.tui import TuiApp
 
 
 def test_resumed_tui_auto_dispatches_persisted_queue_as_one_request(tmp_path, monkeypatch):
@@ -30,7 +31,7 @@ def test_resumed_tui_auto_dispatches_persisted_queue_as_one_request(tmp_path, mo
     # directly on its own process-level loop.
     asyncio.run(saved.save_snapshot())
     saved.close()  # release the writer before reloading
-    restored = Session.load_snapshot(saved.uid, config=saved.config)
+    restored = load_session(saved.uid, config=saved.config)
     command_loop = CommandLoop(
         Agent(restored, output_fn=lambda _text: None),
         input_fn=lambda prompt="": "",
@@ -55,9 +56,9 @@ def test_resumed_tui_auto_dispatches_persisted_queue_as_one_request(tmp_path, mo
         monkeypatch.setattr(tui_module, "Application", lambda **kwargs: real_application(input=pipe_input, **(kwargs | {"output": DummyOutput()})))
 
         def drive():
-            wait_until(lambda: command_loop.tui is not None and command_loop.tui.app is not None and command_loop.tui.app.is_running)
+            wait_until(lambda: command_loop.presentation.tui is not None and command_loop.presentation.tui.app is not None and command_loop.presentation.tui.app.is_running)
             wait_until(lambda: len(requests) == 1)
-            wait_until(lambda: command_loop.tui.input_mode == "chat")
+            wait_until(lambda: command_loop.presentation.tui.input_mode == "chat")
             pipe_input.send_text("\x04")
 
         driver = threading.Thread(target=drive, daemon=True)
@@ -101,15 +102,15 @@ def test_processed_queued_message_does_not_return_to_input(tmp_path, monkeypatch
         monkeypatch.setattr(tui_module, "Application", lambda **kwargs: real_application(input=pipe_input, **(kwargs | {"output": DummyOutput()})))
 
         def drive():
-            wait_until(lambda: command_loop.tui is not None and command_loop.tui.app is not None and command_loop.tui.app.is_running)
+            wait_until(lambda: command_loop.presentation.tui is not None and command_loop.presentation.tui.app is not None and command_loop.presentation.tui.app.is_running)
             pipe_input.send_text("first task\r")
             assert first_request.wait(timeout=1)
             pipe_input.send_text("queued task\r")
             wait_until(lambda: [item.text for item in command_loop.session.pending_user_inputs] == ["queued task"])
             release_first.set()
             wait_until(lambda: len(requests) == 2)
-            wait_until(lambda: command_loop.tui.input_mode == "chat")
-            assert command_loop.tui.input_buffer.text == ""
+            wait_until(lambda: command_loop.presentation.tui.input_mode == "chat")
+            assert command_loop.presentation.tui.input_buffer.text == ""
             pipe_input.send_text("\x04")
 
         driver = threading.Thread(target=drive, daemon=True)
@@ -124,18 +125,18 @@ def test_processed_queued_message_does_not_return_to_input(tmp_path, monkeypatch
 async def test_resend_command_only_resends_while_running(tmp_path):
     command_loop = loop(tmp_path)
     retried = []
-    command_loop.tui = TuiApp(on_retry=lambda: retried.append(True))
+    command_loop.presentation.tui = TuiApp(on_retry=lambda: retried.append(True))
 
     # Reachable from the running follow-up input (queue region), not just the idle prompt.
     assert "/resend" in QUEUE_SAFE_COMMANDS
 
     # Idle chat: no-op with guidance.
-    command_loop.tui.set_idle()
+    command_loop.presentation.tui.set_idle()
     await command_loop.command("/resend")
     assert retried == []
 
     # Running but no model call in flight: still a no-op.
-    command_loop.tui.set_running("working")
+    command_loop.presentation.tui.set_running("working")
     command_loop.session.state.current_model_call_started_at = 0.0
     await command_loop.command("/resend")
     assert retried == []
@@ -154,8 +155,8 @@ async def test_resend_command_only_resends_while_running(tmp_path):
 
 def test_manual_resend_preserves_stream_driven_status(tmp_path, monkeypatch):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
-    command_loop.tui.set_running("working")
+    command_loop.presentation.tui = TuiApp()
+    command_loop.presentation.tui.set_running("working")
     command_loop.session.state.current_model_call_started_at = 1.0
     runtime = TuiRuntime(command_loop)
     claims = []
@@ -171,7 +172,7 @@ def test_manual_resend_preserves_stream_driven_status(tmp_path, monkeypatch):
     runtime._request_model_retry()
 
     assert claims == [True]
-    assert command_loop.tui.status_label == "working"
+    assert command_loop.presentation.tui.status_label == "working"
     assert command_loop.session.state.manual_model_retry_requested is True
     assert command_loop.session.state.model_retry_count == 1
 
@@ -180,8 +181,8 @@ def test_manual_resend_with_no_attempt_in_flight_changes_nothing(tmp_path):
     """The retry counters follow the client's answer: with no provider attempt to claim, the key
     is a no-op rather than a counter bump the status bar would then have to explain."""
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
-    command_loop.tui.set_running("working")
+    command_loop.presentation.tui = TuiApp()
+    command_loop.presentation.tui.set_running("working")
     runtime = TuiRuntime(command_loop)
 
     runtime._request_model_retry()
@@ -192,8 +193,8 @@ def test_manual_resend_with_no_attempt_in_flight_changes_nothing(tmp_path):
 
 def test_recalling_sent_input_does_not_leave_revising_status(tmp_path, monkeypatch):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
-    command_loop.tui.set_running("working")
+    command_loop.presentation.tui = TuiApp()
+    command_loop.presentation.tui.set_running("working")
     command_loop.session.enqueue_user_input("revise me")
     command_loop.session.claim_user_inputs()
     command_loop.session.state.current_model_call_started_at = 1.0
@@ -201,13 +202,13 @@ def test_recalling_sent_input_does_not_leave_revising_status(tmp_path, monkeypat
     monkeypatch.setattr(command_loop.agent.model, "retry_active_request", lambda: True)
 
     assert runtime.recall() == "revise me"
-    command_loop.model_stream_output("output", "updated response")
+    command_loop.presentation.model_stream_output("output", "updated response")
 
     retrying = "".join(text for _, text in command_loop.view.queue_divider_fragments())
     assert "retrying" in retrying
     assert "revising" not in retrying
 
-    command_loop.status_bar.retry_notice_until = 0
+    command_loop.presentation.status_bar.retry_notice_until = 0
     responding = "".join(text for _, text in command_loop.view.queue_divider_fragments())
     assert "responding" in responding
     assert "revising" not in responding
@@ -216,9 +217,9 @@ def test_recalling_sent_input_does_not_leave_revising_status(tmp_path, monkeypat
 
 def test_retry_divider_keeps_pulse_and_elapsed_then_returns_to_working(tmp_path, monkeypatch):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
-    command_loop.tui.set_running("working")
-    command_loop.status_bar.started_at = 90.0
+    command_loop.presentation.tui = TuiApp()
+    command_loop.presentation.tui.set_running("working")
+    command_loop.presentation.status_bar.started_at = 90.0
     command_loop.session.state.current_model_call_started_at = 99.0
     now = [100.0]
     monkeypatch.setattr(time, "monotonic", lambda: now[0])
@@ -244,9 +245,9 @@ def test_retry_divider_keeps_pulse_and_elapsed_then_returns_to_working(tmp_path,
 
 def test_retry_divider_shows_full_retry_text_while_waiting(tmp_path, monkeypatch):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
-    command_loop.tui.set_running("retrying")
-    command_loop.status_bar.started_at = 90.0
+    command_loop.presentation.tui = TuiApp()
+    command_loop.presentation.tui.set_running("retrying")
+    command_loop.presentation.status_bar.started_at = 90.0
     command_loop.session.state.current_model_call_started_at = 99.0
     now = [100.0]
     monkeypatch.setattr(time, "monotonic", lambda: now[0])
@@ -257,8 +258,8 @@ def test_retry_divider_shows_full_retry_text_while_waiting(tmp_path, monkeypatch
     command_loop.session.state.model_retry_until = now[0] + 20.0
     # Sync the notice tracker with the fresh retry count the way the render thread would, then
     # let the two-second notice expire while the wait itself is still in progress.
-    command_loop.status_bar.retry_notice_active()
-    command_loop.status_bar.retry_notice_until = 0
+    command_loop.presentation.status_bar.retry_notice_active()
+    command_loop.presentation.status_bar.retry_notice_until = 0
 
     waiting = command_loop.view.queue_divider_fragments()
     waiting_text = "".join(text for _, text in waiting)
@@ -281,8 +282,8 @@ def test_retry_divider_shows_full_retry_text_while_waiting(tmp_path, monkeypatch
 
 def test_tui_activity_uses_transient_cancelling_status(tmp_path):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
-    command_loop.tui.set_running("cancelling")
+    command_loop.presentation.tui = TuiApp()
+    command_loop.presentation.tui.set_running("cancelling")
 
     text = "".join(fragment for _, fragment in command_loop.view.queue_divider_fragments())
 
@@ -299,7 +300,7 @@ def test_resume_history_prints_before_tui_starts(tmp_path, monkeypatch):
             {"role": "assistant", "content": "most recent answer"},
         ]
     )
-    command_loop.ui.color = True
+    command_loop.presentation.ui.color = True
     printed = []
     monkeypatch.setattr(
         render_module, "print_formatted_text", lambda *values, **kwargs: printed.extend(fragment_list_to_text(to_formatted_text(value)) for value in values)
@@ -322,7 +323,7 @@ def test_resume_redraws_only_the_recent_turns_and_says_so(tmp_path, monkeypatch)
         messages.append({"role": "user", "content": f"question {index}"})
         messages.append({"role": "assistant", "content": f"answer {index}"})
     command_loop.session.messages.extend(messages)
-    command_loop.ui.color = True
+    command_loop.presentation.ui.color = True
     printed = []
     monkeypatch.setattr(
         render_module, "print_formatted_text", lambda *values, **kwargs: printed.extend(fragment_list_to_text(to_formatted_text(value)) for value in values)
@@ -356,7 +357,7 @@ def test_resume_redraw_keeps_tool_pairing_after_truncation(tmp_path, monkeypatch
     messages.append({"role": "assistant", "tool_calls": [{"id": "call-2", "type": "function", "function": {"name": "Bash", "arguments": '["printf new"]'}}]})
     messages.append({"role": "assistant", "content": "new answer"})
     command_loop.session.messages.extend(messages)
-    command_loop.ui.color = True
+    command_loop.presentation.ui.color = True
     printed = []
     monkeypatch.setattr(
         render_module, "print_formatted_text", lambda *values, **kwargs: printed.extend(fragment_list_to_text(to_formatted_text(value)) for value in values)
@@ -375,7 +376,7 @@ async def test_tui_commands_print_output_immediately(tmp_path, monkeypatch):
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text("---\nname: release-notes\ndescription: draft release notes\n---\nbody\n", encoding="utf-8")
     command_loop = loop(tmp_path)
-    command_loop.ui.color = True
+    command_loop.presentation.ui.color = True
     # Dispatch calls the registry's callable directly, so patch the registry entry (not the
     # instance method) to keep the /status handler deterministic.
     status_entry = replace(loop_module.COMMAND_LOOKUP["/status"], handler=lambda _loop, _args: "status marker")
@@ -403,9 +404,9 @@ def test_reset_pending_divider_preserves_the_working_phase(tmp_path):
     from copy import deepcopy
 
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
-    command_loop.tui.set_running("working")
-    command_loop.model_stream_kind = "output"
+    command_loop.presentation.tui = TuiApp()
+    command_loop.presentation.tui.set_running("working")
+    command_loop.presentation.model_stream_kind = "output"
     before = deepcopy(command_loop.agent.context.model_messages(command_loop.session.system_prompt))
     assert "reset pending" not in fragment_list_to_text(command_loop.view.queue_divider_fragments())
     command_loop.session.request_context_reset()

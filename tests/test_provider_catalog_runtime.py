@@ -7,6 +7,7 @@ from pathlib import Path
 import httpx2
 import pytest
 
+from wizolt.agent.lifecycle import load_session
 from wizolt.base import ConfigError
 from wizolt.config import Config, ConfigFile, ProviderConfig
 from wizolt.providers.catalog import CatalogCodec, decode_bundled
@@ -207,7 +208,7 @@ async def test_snapshot_default_load_validates_config_against_the_active_cached_
     monkeypatch.setattr(ConfigFile, "load", classmethod(lambda _cls, _path=None: raw_config))
 
     saved.close()  # release the writer before reloading
-    resumed = Session.load_snapshot(saved.uid, cwd=str(tmp_path))
+    resumed = load_session(saved.uid, cwd=str(tmp_path))
 
     assert resumed.config.provider.chat_reasoning == "future-dialect"
     assert resumed.catalog is not None

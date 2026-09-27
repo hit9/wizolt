@@ -8,18 +8,18 @@ import shutil
 import time
 from types import SimpleNamespace
 
-import wizolt.render as render_module
+import wizolt.ui.render as render_module
+from wizolt.agent.engine import Agent
 from wizolt.base import LogBlock, LogEdge, LogLine, LogRole, TurnBox
-from wizolt.cli import CommandLoop
-from wizolt.cli.runtime import RESUME_STATUS_LABEL
-from wizolt.cli.view import View
 from wizolt.config import (
     Config,
 )
-from wizolt.engine import Agent
-from wizolt.render import BashLivePreview, LiveSpark, Theme
 from wizolt.session import Session
-from wizolt.tui import TUI_MODAL_PENDING, ChoiceViewState, DiffViewState, TabbedViewState
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.cli.runtime import RESUME_STATUS_LABEL
+from wizolt.ui.cli.view import View
+from wizolt.ui.render import BashLivePreview, LiveSpark, Theme
+from wizolt.ui.tui import TUI_MODAL_PENDING, ChoiceViewState, DiffViewState, TabbedViewState
 
 
 def test_diff_view_state_tab_switching():
@@ -335,7 +335,7 @@ def test_model_stream_preview_draws_the_same_tree_as_the_log(tmp_path):
     config.data_dir = str(tmp_path / "data")
     loop = CommandLoop(Agent(Session(cwd=str(tmp_path), config=config)), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
 
-    loop.model_stream_output("reasoning", "weighing the two paths\nthe second option is cleaner")
+    loop.presentation.model_stream_output("reasoning", "weighing the two paths\nthe second option is cleaner")
     lines = "".join(text for _, text in loop.view.model_stream_fragments()).splitlines()
 
     rail = LogBlock.prefix(TurnBox.CONTENT_LEVEL + 1, LogEdge.CONTINUE)
@@ -360,13 +360,13 @@ def test_model_stream_preview_switches_phase_and_clears(tmp_path):
 
     # The phase word rides beside the spark and follows the stream: `thinking` while the model
     # reasons, `responding` once it answers; the preview carries only the text besides that.
-    loop.model_stream_output("reasoning", "checking the request")
+    loop.presentation.model_stream_output("reasoning", "checking the request")
     reasoning = "".join(text for _, text in loop.view.model_stream_fragments())
     assert "checking the request" in reasoning
     assert "thinking" in reasoning
     assert "thinking" in "".join(text for _, text in loop.view.queue_divider_fragments())
 
-    loop.model_stream_output("output", "answering now")
+    loop.presentation.model_stream_output("output", "answering now")
     output = "".join(text for _, text in loop.view.model_stream_fragments())
     assert "answering now" in output
     assert "thinking" not in output  # the word follows the phase instead of staying stale
@@ -374,12 +374,12 @@ def test_model_stream_preview_switches_phase_and_clears(tmp_path):
     assert "checking the request" not in output
     assert "responding" in "".join(text for _, text in loop.view.queue_divider_fragments())
 
-    loop.model_stream_output("correcting malformed tool call 1/5 · Bash", "")
+    loop.presentation.model_stream_output("correcting malformed tool call 1/5 · Bash", "")
     assert loop.view.model_stream_fragments() == []
     divider = "".join(text for _, text in loop.view.queue_divider_fragments())
     assert "correcting malformed tool call 1/5 · Bash" in divider  # the phase stays whole
 
-    loop.model_stream_output("", "")
+    loop.presentation.model_stream_output("", "")
     assert loop.view.model_stream_fragments() == []
     assert "working" in "".join(text for _, text in loop.view.queue_divider_fragments())
 
@@ -394,7 +394,7 @@ def test_model_stream_preview_styles_inline_markdown(tmp_path, monkeypatch):
     config.data_dir = str(tmp_path / "data")
     loop = CommandLoop(Agent(Session(cwd=str(tmp_path), config=config)), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
 
-    loop.model_stream_output("reasoning", "**bold** `code` *italic* and **unclosed")
+    loop.presentation.model_stream_output("reasoning", "**bold** `code` *italic* and **unclosed")
 
     styled = {(text, style) for style, text in loop.view.model_stream_fragments() if text}
     assert ("bold", "class:muted bold") in styled
@@ -411,7 +411,7 @@ def test_model_stream_preview_keeps_malformed_star_runs_literal(tmp_path, monkey
     config.data_dir = str(tmp_path / "data")
     loop = CommandLoop(Agent(Session(cwd=str(tmp_path), config=config)), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
 
-    loop.model_stream_output("reasoning", "**a* *a** **** **a**b**")
+    loop.presentation.model_stream_output("reasoning", "**a* *a** **** **a**b**")
 
     styled = {(text, style) for style, text in loop.view.model_stream_fragments() if text}
     assert ("**a* *a** **** ", "class:muted") in styled  # unclosed and empty star runs stay literal
@@ -473,7 +473,7 @@ def test_queue_divider_resuming_status_is_a_quiet_gray_line(tmp_path):
     config = Config()
     config.data_dir = str(tmp_path / "data")
     loop = CommandLoop(Agent(Session(cwd=str(tmp_path), config=config)), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
-    loop.tui = SimpleNamespace(status_label=RESUME_STATUS_LABEL)
+    loop.presentation.tui = SimpleNamespace(status_label=RESUME_STATUS_LABEL)
     assert loop.view.queue_divider_fragments() == [("class:muted", RESUME_STATUS_LABEL)]
 
 
@@ -485,10 +485,10 @@ def test_divider_shows_output_rate_while_a_response_streams(tmp_path):
     session = Session(cwd=str(tmp_path), config=config)
     loop = CommandLoop(Agent(session), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
 
-    loop.model_stream_output("output", "answering now")
+    loop.presentation.model_stream_output("output", "answering now")
     assert "tok/s" not in "".join(text for _, text in loop.view.queue_divider_fragments())
 
-    loop.status_bar.started_at = time.monotonic() - 4.0
+    loop.presentation.status_bar.started_at = time.monotonic() - 4.0
     session.state.stream_started_at = time.monotonic() - 4.0
     session.state.stream_chars = 800
     assert "responding (4s · ↓ 50 tok/s)" in "".join(text for _, text in loop.view.queue_divider_fragments())
@@ -505,7 +505,7 @@ def test_sent_followup_moves_above_activity_and_failed_request_requeues_it(tmp_p
     loop = CommandLoop(Agent(session), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
     session.enqueue_user_input("use black instead")
     claimed = session.claim_user_inputs()
-    loop.model_stream_output("reasoning", "checking the formatter")
+    loop.presentation.model_stream_output("reasoning", "checking the formatter")
 
     activity = "".join(text for _, text in loop.view.tui_activity_fragments())
     assert activity.count("use black instead") == 1
@@ -550,7 +550,7 @@ def test_model_stream_preview_keeps_only_the_latest_six_lines(tmp_path, monkeypa
     loop = CommandLoop(Agent(Session(cwd=str(tmp_path), config=config)), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
     monkeypatch.setattr(shutil, "get_terminal_size", lambda fallback: os.terminal_size((40, 20)))
 
-    loop.model_stream_output("output", "\n".join(f"line {index} with a deliberately long suffix" for index in range(8)))
+    loop.presentation.model_stream_output("output", "\n".join(f"line {index} with a deliberately long suffix" for index in range(8)))
 
     preview = "".join(text for _, text in loop.view.model_stream_fragments())
     assert "line 0" not in preview

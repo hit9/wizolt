@@ -6,13 +6,13 @@ from dataclasses import replace
 import pytest
 from agent_harness import session
 
-from wizolt.base import (
-    MAX_AGENTS_MD_TOKENS,
-)
-from wizolt.context import ContextManager
-from wizolt.prompts import (
+from wizolt.agent.context import ContextManager
+from wizolt.agent.prompts import (
     GIT_ATTRIBUTION_FOOTER,
     SYSTEM_PROMPT,
+)
+from wizolt.base import (
+    MAX_AGENTS_MD_TOKENS,
 )
 from wizolt.session import Session
 from wizolt.skill import Skill, SkillLibrary

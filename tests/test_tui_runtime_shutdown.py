@@ -11,11 +11,11 @@ import pytest
 from tui_harness import loop as command_loop_for
 from tui_harness import wait_for
 
-import wizolt.cli.runtime as runtime_module
-from wizolt.cli import TuiRuntime
-from wizolt.cli.runtime import ScrollbackWriter
+import wizolt.ui.cli.runtime as runtime_module
 from wizolt.tools import Tool
-from wizolt.tui import TuiApp
+from wizolt.ui.cli import TuiRuntime
+from wizolt.ui.cli.runtime import ScrollbackWriter
+from wizolt.ui.tui import TuiApp
 
 
 class FakeTui:
@@ -61,10 +61,10 @@ def runtime_for(tmp_path, monkeypatch, tui=None):
     tui = tui or FakeTui()
     runtime = TuiRuntime(command_loop)
     # Attached for the tests that drive one turn directly; `run` installs the same object.
-    command_loop.tui = tui
+    command_loop.presentation.tui = tui
     monkeypatch.setattr(runtime, "build_tui", lambda: tui)
     monkeypatch.setattr(command_loop, "start_session", lambda **_kwargs: None)
-    monkeypatch.setattr(command_loop, "refresh_mentions", lambda: None)
+    monkeypatch.setattr(command_loop.background, "refresh_mentions", lambda: None)
     return runtime, command_loop, tui
 
 
@@ -112,7 +112,7 @@ async def test_ctrl_c_holds_cancelling_until_the_turn_has_settled(tmp_path, monk
     agent = command_loop.agent
     monkeypatch.setattr(agent, "run", lambda user_input: turn_that_unwinds(started, quiesced)(user_input, agent))
     emitted: list[str] = []
-    monkeypatch.setattr(command_loop, "emit_turn", emitted.append)
+    monkeypatch.setattr(command_loop.presentation, "emit_turn", emitted.append)
 
     turn = asyncio.ensure_future(runtime.run_agent_turn("do it"))
     await started.wait()
@@ -254,7 +254,7 @@ async def test_exit_during_a_model_request_shuts_down_gracefully(tmp_path, monke
     assert await session == 0
     assert tui.exited.is_set()
     assert runtime.scrollback is None
-    assert command_loop.tui is None
+    assert command_loop.presentation.tui is None
 
 
 async def test_shutdown_closes_output_after_the_turn_and_before_the_application(tmp_path, monkeypatch):
@@ -265,11 +265,11 @@ async def test_shutdown_closes_output_after_the_turn_and_before_the_application(
     runtime, command_loop, tui = runtime_for(tmp_path, monkeypatch)
     order: list[str] = []
 
-    async def close_resources():
+    async def close_resources(_agent):
         order.append("resources")
 
-    monkeypatch.setattr(command_loop, "close_resources", close_resources)
-    monkeypatch.setattr(command_loop, "close_background_output", lambda: order.append("gate"))
+    monkeypatch.setattr(runtime_module, "close_agent_resources", close_resources)
+    monkeypatch.setattr(command_loop.presentation, "close_background_output", lambda: order.append("gate"))
     monkeypatch.setattr(tui, "exit", lambda: order.append("exit") or tui.exited.set())
     turns: list[str] = []
     monkeypatch.setattr(command_loop.agent, "cancel", lambda: turns.append("cancel"))
@@ -294,7 +294,7 @@ async def test_scrollback_failure_during_shutdown_still_exits_the_application(tm
 
     assert tui.exited.is_set()
     assert runtime.scrollback is None
-    assert command_loop.tui is None
+    assert command_loop.presentation.tui is None
 
 
 async def test_shutdown_cancels_the_application_when_exit_itself_fails(tmp_path, monkeypatch):
@@ -310,7 +310,7 @@ async def test_shutdown_cancels_the_application_when_exit_itself_fails(tmp_path,
         await asyncio.wait_for(run_until(runtime, runtime.request_shutdown), timeout=1)
 
     assert runtime.scrollback is None
-    assert command_loop.tui is None
+    assert command_loop.presentation.tui is None
 
 
 async def test_shutdown_cancels_and_awaits_a_background_task_it_started(tmp_path, monkeypatch):
@@ -360,13 +360,13 @@ async def test_force_exit_arms_a_bounded_deadline_that_shutdown_disarms(tmp_path
         def cancel(self):
             self.cancelled = True
 
-    async def close_resources():
+    async def close_resources(_agent):
         cleanup_started.set()
         await release_cleanup.wait()
 
     monkeypatch.setattr(runtime_module.threading, "Timer", FakeTimer)
     monkeypatch.setattr(command_loop.agent, "cancel", lambda: cancelled.append(1))
-    monkeypatch.setattr(command_loop, "close_resources", close_resources)
+    monkeypatch.setattr(runtime_module, "close_agent_resources", close_resources)
 
     session = asyncio.create_task(runtime.run())
     await wait_for(lambda: runtime.scrollback is not None)
@@ -530,7 +530,7 @@ async def test_ctrl_c_cancels_compaction_and_allows_the_next_turn(tmp_path, monk
     from wizolt.config import ProviderConfig
 
     command_loop = command_loop_for(tmp_path)
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     runtime = TuiRuntime(command_loop)
     session = command_loop.session
     session.config.providers = {"default": ProviderConfig(model="test", url="http://test", key="test")}
@@ -561,7 +561,7 @@ async def test_ctrl_c_cancels_compaction_and_allows_the_next_turn(tmp_path, monk
 
     monkeypatch.setattr(command_loop.agent.model, "api_request", request)
     emitted = []
-    monkeypatch.setattr(command_loop, "emit_turn", emitted.append)
+    monkeypatch.setattr(command_loop.presentation, "emit_turn", emitted.append)
     work = asyncio.create_task(runtime.dispatch("/compact") if manual else runtime.run_agent_turn("continue"))
     try:
         await asyncio.wait_for(started.wait(), 5)
@@ -570,17 +570,17 @@ async def test_ctrl_c_cancels_compaction_and_allows_the_next_turn(tmp_path, monk
         else:
             runtime.interrupt()
         await asyncio.wait_for(cancelling.wait(), 5)
-        assert command_loop.tui.status_label == "cancelling"
+        assert command_loop.presentation.tui.status_label == "cancelling"
         assert not work.done()
         runtime.interrupt()  # a second press must not interrupt cleanup
         release.set()
         await asyncio.wait_for(work, 5)
         assert closed.is_set()
-        assert command_loop.tui.input_mode == "chat"
+        assert command_loop.presentation.tui.input_mode == "chat"
         assert not runtime.cancel_pending
         assert runtime.command_task is None
         assert emitted == ["Cancelled"]
-        assert not command_loop.compaction_active
+        assert not command_loop.presentation.compaction_active
         assert calls == [Billing.COMPACTION]
         if manual:
             assert session.messages == original
@@ -592,19 +592,19 @@ async def test_ctrl_c_cancels_compaction_and_allows_the_next_turn(tmp_path, monk
         await asyncio.wait_for(runtime.run_agent_turn("try again"), 5)
         assert session.messages[-1]["content"] == "next answer"
         assert calls == [Billing.COMPACTION, Billing.MAIN]
-        assert command_loop.tui.input_mode == "chat"
+        assert command_loop.presentation.tui.input_mode == "chat"
     finally:
         release.set()
         if not work.done():
             work.cancel()
         await asyncio.gather(work, return_exceptions=True)
-        await command_loop.close_resources()
+        await runtime_module.close_agent_resources(command_loop.agent)
 
 
 async def test_dispatch_does_not_swallow_runtime_shutdown(tmp_path, monkeypatch):
     """A command may handle Ctrl-C locally; cancelling the runtime must still terminate it."""
     command_loop = command_loop_for(tmp_path)
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     runtime = TuiRuntime(command_loop)
     started, closed = asyncio.Event(), asyncio.Event()
 

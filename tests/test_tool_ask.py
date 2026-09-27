@@ -4,12 +4,12 @@ import pytest
 from test_tools import _q, session
 
 import wizolt
+from wizolt.agent.context import ContextManager
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import (
     ToolCall,
     ToolError,
 )
-from wizolt.context import ContextManager
-from wizolt.runner import ToolRunner
 from wizolt.tools import (
     TOOL_REGISTRY,
     TOOLS,

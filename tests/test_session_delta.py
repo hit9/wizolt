@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 from test_session_persistence import log_path, project_dir, read_jsonl, session_with_data_dir
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.lifecycle import load_session
 from wizolt.base import SESSION_EVENT_KEY
-from wizolt.context import ContextManager
-from wizolt.session import Session
 
 
 @pytest.mark.parametrize("mutation", ["unchanged", "append", "replace", "edit_then_append", "shorten", "clear"])
@@ -89,7 +89,7 @@ async def test_transcript_appends_when_model_messages_are_replaced(tmp_path):
     assert delta["transcript_messages"] == [{"role": "assistant", "content": "original answer"}]
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     assert restored.messages[0]["content"] == "compacted context"
     assert [message["content"] for message in restored.transcript_messages] == ["original request", "original answer"]
 

@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     from prompt_toolkit.application import Application
     from prompt_toolkit.renderer import Renderer
 
-    from wizolt.render import ScrollbackText
+    from wizolt.ui.render import ScrollbackText
 
 
 _SGR = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")

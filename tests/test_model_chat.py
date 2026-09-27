@@ -8,7 +8,7 @@ from model_harness import _MockClientFactory, _session, _StreamClientFactory, as
 
 from wizolt.base import SESSION_EVENT_KEY, ModelError, ModelOutputTruncated, ToolCall
 from wizolt.model import ModelClient, resilience
-from wizolt.model.protocol import ChatWire
+from wizolt.model.chat import ChatWire
 
 
 def _chat_completion(content, finish_reason, completion_tokens=16384):

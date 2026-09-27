@@ -6,6 +6,9 @@ import pytest
 from prompt_toolkit.document import Document
 from tui_harness import loop as command_loop_for
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.agentsmd import (
     MAX_REFERENCES,
     AgentsFile,
@@ -16,16 +19,14 @@ from wizolt.agentsmd import (
     global_agents_md_path,
 )
 from wizolt.base import SESSION_EVENT_KEY, ToolError
-from wizolt.cli import CommandCompleter, TuiRuntime
-from wizolt.cli.commands import status
-from wizolt.cli.loop import CommandLoop
 from wizolt.config import Config
-from wizolt.context import ContextManager
-from wizolt.engine import Agent
 from wizolt.mentions import active_mention, scan_mentions
-from wizolt.session import Session, bootstrap_features
+from wizolt.session import Session
 from wizolt.tools import EditTool, ReadTool
-from wizolt.tui import TuiApp
+from wizolt.ui.cli import CommandCompleter, TuiRuntime
+from wizolt.ui.cli.commands import status
+from wizolt.ui.cli.loop import CommandLoop
+from wizolt.ui.tui import TuiApp
 
 GLOBAL_TEXT = "# House style\nFour spaces for indentation.\n"
 PROJECT_TEXT = "# Rules\nAlways run pytest.\n\n# Contributing\nPR body goes here.\n"
@@ -557,7 +558,7 @@ def test_the_instructions_ride_one_message_of_their_own(tmp_path):
 
 
 def test_the_prefix_clips_both_sources_under_one_shared_cap(tmp_path, monkeypatch):
-    monkeypatch.setattr("wizolt.context.MAX_AGENTS_MD_TOKENS", 200)
+    monkeypatch.setattr("wizolt.agent.context.MAX_AGENTS_MD_TOKENS", 200)
     s = agents_session(tmp_path, global_text="# Global\n" + "g" * 4000 + "\n", project_text="# Project\n" + "p" * 4000 + "\n")
     context = ContextManager(s)
     display = display_path(global_agents_md_path(s.config.data_dir))
@@ -578,7 +579,7 @@ def test_the_prefix_clips_both_sources_under_one_shared_cap(tmp_path, monkeypatc
 
 
 def test_chinese_instructions_respect_the_prefix_budget(tmp_path, monkeypatch):
-    monkeypatch.setattr("wizolt.context.MAX_AGENTS_MD_TOKENS", 200)
+    monkeypatch.setattr("wizolt.agent.context.MAX_AGENTS_MD_TOKENS", 200)
     s = agents_session(tmp_path, global_text="# 规则\n" + "中文偏好" * 500 + "\n")
     display = display_path(global_agents_md_path(s.config.data_dir))
     body = ContextManager(s).instructions_context().split(f"--- AGENTS.md (user · {display}) ---\n", 1)[1]
@@ -662,28 +663,28 @@ async def test_an_unresolvable_reference_becomes_an_explicit_error_block(tmp_pat
 
 async def test_a_submission_whose_reference_no_longer_resolves_is_refused(tmp_path):
     command_loop = command_loop_for(tmp_path)
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     runtime = TuiRuntime(command_loop)
     draft = "cite @agents.md:project/Missing"
 
     assert await runtime._admit_input(draft) is None
 
-    assert "unknown @agents.md reference" in command_loop.tui.input_error
-    assert command_loop.tui.input_buffer.text == draft  # the draft goes back to the editor
+    assert "unknown @agents.md reference" in command_loop.presentation.tui.input_error
+    assert command_loop.presentation.tui.input_buffer.text == draft  # the draft goes back to the editor
     assert command_loop.session.pending_user_inputs == []
 
 
 async def test_a_resolvable_reference_is_admitted_unchanged(tmp_path):
     (tmp_path / "AGENTS.md").write_text(PROJECT_TEXT, encoding="utf-8")
     command_loop = command_loop_for(tmp_path)
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     runtime = TuiRuntime(command_loop)
     draft = "cite @agents.md:project"
 
     admitted = await runtime._admit_input(draft)
 
     assert admitted is not None and str(admitted) == draft  # expansion happens in the turn, not here
-    assert command_loop.tui.input_error == ""
+    assert command_loop.presentation.tui.input_error == ""
 
 
 # --- Read and Edit on the global file ---

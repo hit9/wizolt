@@ -7,14 +7,14 @@ from pathlib import Path
 from prompt_toolkit.utils import get_cwidth
 
 import wizolt
-import wizolt.render as render_module
+import wizolt.ui.render as render_module
 from wizolt.base import (
     SELECTION_BACK,
     SELECTION_FREE_TEXT,
 )
-from wizolt.render import UiPrinter
 from wizolt.tools import AskSpec
-from wizolt.tui import ASK_DONE, ASK_FREE_TEXT, TUI_MODAL_PENDING, AskViewState, ChoiceViewState, DiffViewState, SegmentLogViewState, TabbedViewState
+from wizolt.ui.render import UiPrinter
+from wizolt.ui.tui import ASK_DONE, ASK_FREE_TEXT, TUI_MODAL_PENDING, AskViewState, ChoiceViewState, DiffViewState, SegmentLogViewState, TabbedViewState
 
 
 def test_choice_view_g_and_shift_g_jump_first_and_last():
@@ -460,7 +460,7 @@ def test_ask_view_notes_mode_opens_via_any_key_routing():
 
 
 def test_ask_view_shift_tab_cycles_backwards():
-    from wizolt.tui import TuiApp
+    from wizolt.ui.tui import TuiApp
 
     assert "s-tab" in TuiApp.MODAL_KEYS  # the binding table must route it into the modal
     state = AskViewState.build([AskSpec("1?", choices=["A"]), AskSpec("2?", choices=["B"])])

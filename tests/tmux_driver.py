@@ -23,9 +23,9 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from wizolt.cli.modals import choice_application
-from wizolt.render import UiPrinter
-from wizolt.tui.app import TuiApp
+from wizolt.ui.cli.modals import choice_application
+from wizolt.ui.render import UiPrinter
+from wizolt.ui.tui.app import TuiApp
 
 
 async def main(log) -> None:
@@ -45,7 +45,7 @@ async def main(log) -> None:
             while not Path(log.name).with_suffix(f".open-{cycle}").exists():
                 await asyncio.sleep(0.02)
             result = await choice_application(
-                SimpleNamespace(tui=app), "Provider", tuple(f"provider-{i:02d}" for i in range(80)), {}, "", set()
+                SimpleNamespace(presentation=SimpleNamespace(tui=app)), "Provider", tuple(f"provider-{i:02d}" for i in range(80)), {}, "", set()
             )
             log.write(f"closed {cycle}: {result}\n")
             log.flush()

@@ -10,12 +10,19 @@ from agent_harness import session
 from prompt_toolkit.formatted_text import to_formatted_text
 from prompt_toolkit.utils import get_cwidth
 
-import wizolt.cli.commands as commands_mod
+import wizolt.ui.cli.commands as commands_mod
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
 from wizolt.base import (
     SESSION_EVENT_KEY,
 )
-from wizolt.cli import CommandLoop
-from wizolt.cli.commands import (
+from wizolt.config import (
+    Config,
+)
+from wizolt.session import Session, SessionEntry, SessionSnapshotStore
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.cli.commands import (
+    COMMAND_NAMES,
     name_command,
     session_label_fn,
     session_preview,
@@ -23,13 +30,8 @@ from wizolt.cli.commands import (
     session_table,
     sessions_command,
 )
-from wizolt.config import (
-    Config,
-)
-from wizolt.engine import Agent
-from wizolt.render import Theme
-from wizolt.session import Session, SessionEntry, SessionSnapshotStore
-from wizolt.tui import TuiApp
+from wizolt.ui.render import Theme
+from wizolt.ui.tui import TuiApp
 
 
 def async_callable(fn):
@@ -58,10 +60,10 @@ def test_resume_line_is_separated_and_colored_as_a_saved_session(tmp_path):
     s.rename("work")
     loop = CommandLoop(Agent(s, output_fn=lambda _text: None), output_fn=lambda _text: None)
     printed = []
-    loop.ui.color = True
-    loop.ui._scrollback_print = printed.append
+    loop.presentation.ui.color = True
+    loop.presentation.ui._scrollback_print = printed.append
 
-    loop.emit("previous output")
+    loop.presentation.emit("previous output")
     loop.resume.emit_resume_line(s.uid)
 
     fragments = [fragment for part in printed for fragment in to_formatted_text(part)]
@@ -73,11 +75,11 @@ def test_resume_line_does_not_double_an_existing_gap(tmp_path):
     s = session(tmp_path)
     loop = CommandLoop(Agent(s, output_fn=lambda _text: None), output_fn=lambda _text: None)
     printed = []
-    loop.ui.color = True
-    loop.ui._scrollback_print = printed.append
+    loop.presentation.ui.color = True
+    loop.presentation.ui._scrollback_print = printed.append
 
-    loop.emit("previous output")
-    loop.ui.separate()
+    loop.presentation.emit("previous output")
+    loop.presentation.ui.separate()
     loop.resume.emit_resume_line(s.uid)
 
     text = "".join(fragment for part in printed for _, fragment in to_formatted_text(part))
@@ -99,13 +101,13 @@ async def test_resume_is_an_alias_for_sessions(tmp_path):
     s.config.data_dir = str(tmp_path / "data")
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
     emitted = []
-    loop.emit = lambda text="", indent=0: emitted.append(text)
+    loop.presentation.emit = lambda text="", indent=0: emitted.append(text)
 
     assert await loop.command("/resume") == (True, False)
 
     # `--resume` is the flag people already know; the command answers to the same word.
     assert emitted == ["No saved sessions yet."]
-    assert "/resume" in CommandLoop.COMMANDS
+    assert "/resume" in COMMAND_NAMES
 
 
 async def test_sessions_command_lists_saved_sessions_without_a_tui(tmp_path, monkeypatch):
@@ -144,7 +146,7 @@ async def test_sessions_command_hands_the_chosen_session_to_the_next_run(tmp_pat
     target = await stored_session(tmp_path, "the one we want", name="picked")
     target.close()  # the picker reserves the target's lease; a live writer would hold it
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
-    loop.tui = TuiApp()
+    loop.presentation.tui = TuiApp()
     loop.interactive_input = True
     monkeypatch.setattr(commands_mod, "choice_application", async_callable(lambda _loop, *args, **kwargs: target.uid))
 
@@ -161,7 +163,7 @@ async def test_sessions_command_choosing_the_current_session_changes_nothing(tmp
     s.messages.append({"role": "user", "content": "current work"})
     await s.save_snapshot()
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
-    loop.tui = TuiApp()
+    loop.presentation.tui = TuiApp()
     loop.interactive_input = True
     loop.choice_application = lambda *args, **kwargs: s.uid
 
@@ -203,7 +205,7 @@ async def test_sessions_rows_align_columns_in_display_cells(tmp_path, monkeypatc
     s = session(tmp_path)
     s.config.data_dir = str(tmp_path / "data")
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
-    loop.tui = TuiApp()
+    loop.presentation.tui = TuiApp()
     loop.interactive_input = True
     for text in ("a", "中文名", "quite a long session name"):
         other = await stored_session(tmp_path, text)
@@ -234,7 +236,7 @@ async def test_sessions_picker_runs_full_screen_with_styled_rows_and_summaries(t
     await target.save_snapshot()
     target.close()  # the picker reserves the target's lease; a live writer would hold it
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
-    loop.tui = TuiApp()
+    loop.presentation.tui = TuiApp()
     loop.interactive_input = True
     captured: dict[str, object] = {}
     monkeypatch.setattr(
@@ -415,7 +417,7 @@ async def test_name_command_shows_and_sets_the_session_name(tmp_path):
     assert await name_command(loop, "") == "Session name: divider polish (set by you)"
     # The rename is durable on its own, without waiting for the next turn to save.
     s.close()  # release the writer before reloading
-    assert Session.load_snapshot(s.uid, config=s.config).name == "divider polish"
+    assert load_session(s.uid, config=s.config).name == "divider polish"
 
 
 async def test_name_command_reports_an_unnamed_session(tmp_path):

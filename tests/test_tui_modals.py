@@ -11,11 +11,11 @@ from prompt_toolkit.data_structures import Size
 from test_tui_input import ctrl_c_queue_scenario
 from tui_harness import ResizableOutput, loop, rendered_screen_text, request_input_from_driver, run_interactive_tui, show_modal_from_driver, wait_until
 
+from wizolt.agent.prompts import LIVE_FOLLOWUP_PREFIX
 from wizolt.base import SELECTION_BACK
-from wizolt.cli.commands import select_choice
-from wizolt.cli.modals import choice_application
-from wizolt.prompts import LIVE_FOLLOWUP_PREFIX
-from wizolt.tui import TUI_MODAL_PENDING, TuiApp
+from wizolt.ui.cli.commands import select_choice
+from wizolt.ui.cli.modals import choice_application
+from wizolt.ui.tui import TUI_MODAL_PENDING, TuiApp
 
 
 def test_interactive_tui_modal_uses_real_j_and_enter_keys(monkeypatch):
@@ -241,7 +241,7 @@ def test_a_long_picker_keeps_its_key_legend_on_screen(monkeypatch, tmp_path, row
     command_loop = loop(tmp_path)
     command_loop.interactive_input = True
     app = TuiApp()
-    command_loop.tui = app
+    command_loop.presentation.tui = app
     output = ResizableOutput(rows=rows, columns=80)
     frames = []
     labels = ("--- Configured ---", "--- Discovered ---")
@@ -281,7 +281,7 @@ def test_ctrl_n_and_ctrl_p_reach_a_picker_and_never_its_search(monkeypatch, tmp_
     command_loop = loop(tmp_path)
     command_loop.interactive_input = True
     app = TuiApp()
-    command_loop.tui = app
+    command_loop.presentation.tui = app
     result = []
 
     def drive(pipe_input):
@@ -310,7 +310,7 @@ def test_an_exclusive_picker_with_a_tall_preview_keeps_its_legend(monkeypatch, t
     command_loop = loop(tmp_path)
     command_loop.interactive_input = True
     app = TuiApp()
-    command_loop.tui = app
+    command_loop.presentation.tui = app
     output = ResizableOutput(rows=rows, columns=80)
     frames = []
     choices = tuple(f"session-{index}" for index in range(30))
@@ -341,9 +341,9 @@ def test_interactive_tui_choice_ctrl_c_reports_cancellation(monkeypatch, tmp_pat
     command_loop = loop(tmp_path)
     command_loop.interactive_input = True
     output = []
-    command_loop.emit = lambda text="", indent=0: output.append(text)
+    command_loop.presentation.emit = lambda text="", indent=0: output.append(text)
     app = TuiApp()
-    command_loop.tui = app
+    command_loop.presentation.tui = app
     result = []
 
     def drive(pipe_input):

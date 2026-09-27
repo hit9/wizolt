@@ -11,17 +11,17 @@ from prompt_toolkit.layout.mouse_handlers import MouseHandlers
 from prompt_toolkit.layout.screen import Char, Screen, WritePosition
 from tui_harness import ResizableOutput, loop, rendered_screen_text, request_input_from_driver, run_interactive_tui, wait_until
 
-from wizolt.cli import CommandCompleter, CommandLoop
-from wizolt.cli.commands import SET_KEYS, set_value
-from wizolt.cli.worker import WORKER_SUBCOMMANDS
 from wizolt.config import PROVIDER_API_CHOICES
-from wizolt.tui import TuiApp
-from wizolt.tui.app import InputMode, _AlignedCompletionsMenu, default_completion
+from wizolt.ui.cli import CommandCompleter
+from wizolt.ui.cli.commands import COMMAND_NAMES, NEEDS_ARGUMENT, SET_KEYS, set_value
+from wizolt.ui.cli.worker import WORKER_SUBCOMMANDS
+from wizolt.ui.tui import TuiApp
+from wizolt.ui.tui.app import InputMode, _AlignedCompletionsMenu, default_completion
 
 
 def _command_rows():
     """Every command as the menu lists it: one that does nothing bare carries a trailing space."""
-    return [name + " " if name in CommandLoop.NEEDS_ARGUMENT else name for name in CommandLoop.COMMANDS]
+    return [name + " " if name in NEEDS_ARGUMENT else name for name in COMMAND_NAMES]
 
 
 def _completions(app):
@@ -118,19 +118,19 @@ def test_typing_a_command_highlights_its_first_match_for_enter(monkeypatch):
     run_interactive_tui(monkeypatch, app, drive=drive, output=output)
 
 
-@pytest.mark.parametrize("name", CommandLoop.COMMANDS)
+@pytest.mark.parametrize("name", COMMAND_NAMES)
 def test_every_command_row_says_whether_enter_runs_it(name):
     """Each command's menu row decides what Enter does: a plain name runs, a name with a trailing
     space fills in and opens its arguments. Only a command that does nothing bare may carry the
     space -- anything else would stop Enter from running a command that works on its own."""
     (row,) = [c.text for c in CommandCompleter().get_completions(Document(name, len(name)), CompleteEvent()) if c.text.rstrip() == name]
-    assert row == (name + " " if name in CommandLoop.NEEDS_ARGUMENT else name)
+    assert row == (name + " " if name in NEEDS_ARGUMENT else name)
 
 
 def test_only_set_needs_an_argument_and_bare_it_prints_its_usage(tmp_path):
     """The one command marked as needing an argument really does nothing without one. Every other
     command works bare (a picker, a status, a toggle), so its row runs on Enter."""
-    assert CommandLoop.NEEDS_ARGUMENT == {"/set"}
+    assert NEEDS_ARGUMENT == {"/set"}
     assert set_value(loop(tmp_path), "") == "Usage: /set KEY VALUE"
 
 

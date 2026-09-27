@@ -19,10 +19,10 @@ from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples, to_formatted
 from prompt_toolkit.utils import get_cwidth
 
 from wizolt.base import DISMISSED, SELECTION_BACK, ApprovalView, Text, ToolCall, ToolError, TurnBox, oneline
-from wizolt.render import UiPrinter, WizoltMarkdown, markdown_console
 from wizolt.session import BackgroundJob, ToolResultRecord
 from wizolt.tools import AskSpec, BashTool, DelegateTool, JobTool, ToolScript, tooloutput
-from wizolt.tui import (
+from wizolt.ui.render import UiPrinter, WizoltMarkdown, markdown_console
+from wizolt.ui.tui import (
     ASK_DONE,
     ASK_FREE_TEXT,
     TUI_MODAL_PENDING,
@@ -35,8 +35,8 @@ from wizolt.tui import (
 )
 
 if TYPE_CHECKING:
-    from wizolt.cli import CommandLoop
     from wizolt.session import HistorySegment
+    from wizolt.ui.cli import CommandLoop
 
 # A detail opened from the Ctrl-O browser can say ``Esc`` to go back to the list instead of
 # closing the whole browser. ``show_modal`` closes on any non-pending return, so the viewer
@@ -125,12 +125,12 @@ def segment_story(segment: HistorySegment) -> tuple[str, str]:
 
 async def mcp_manager(loop: CommandLoop) -> None:
     mcp = loop.session.mcp
-    tui = loop.tui
+    tui = loop.presentation.tui
     if mcp is None or tui is None:
         return
     configs = tuple(mcp.parse_configs())
     if not configs:
-        loop.ui.emit_answer(mcp.render_server_status(), indent=TurnBox.CONTENT_LEVEL)
+        loop.presentation.ui.emit_answer(mcp.render_server_status(), indent=TurnBox.CONTENT_LEVEL)
         return
 
     state = ChoiceViewState(tuple(config.name for config in configs), {}, set(), max_rows=20, height=picker_height())
@@ -175,7 +175,7 @@ async def mcp_manager(loop: CommandLoop) -> None:
     async def toggle(name: str, connect: bool) -> None:
         try:
             if connect:
-                result = await mcp.connect_server(name, interactive=True, notify=loop.emit)
+                result = await mcp.connect_server(name, interactive=True, notify=loop.presentation.emit)
             else:
                 result = await mcp.disconnect_server(name)
         except Exception as error:  # noqa: BLE001 - keep background MCP failures visible in the selector.
@@ -189,7 +189,7 @@ async def mcp_manager(loop: CommandLoop) -> None:
         if modal_open:
             tui.invalidate()
         else:
-            loop.emit_background(result)
+            loop.presentation.emit_background(result)
 
     def handle_key(key: str, data: str = "") -> Any:
         result = state.handle_key(key, data)
@@ -239,7 +239,7 @@ async def select_choice(
     try:
         return await choice_application(loop, title, choices, labels, current, set(disabled), preview_fn=preview_fn)
     except (EOFError, KeyboardInterrupt):
-        loop.emit_turn("Cancelled")
+        loop.presentation.emit_turn("Cancelled")
         return None
 
 
@@ -259,9 +259,9 @@ async def choice_application(
     state = ChoiceViewState(choices, labels, disabled, max_rows=max_rows or 20, height=picker_height(exclusive=exclusive))
     options = state.enabled()
     state.selected = options.index(current) if current in options else 0
-    if loop.tui is None:
+    if loop.presentation.tui is None:
         return None
-    result = await loop.tui.show_modal(lambda: state.fragments(title, preview_fn, label_fn), state.handle_key, exclusive=exclusive)
+    result = await loop.presentation.tui.show_modal(lambda: state.fragments(title, preview_fn, label_fn), state.handle_key, exclusive=exclusive)
     if isinstance(result, KeyboardInterrupt):
         raise result
     return result
@@ -273,12 +273,12 @@ async def question_interaction(loop: CommandLoop, specs: list[AskSpec]) -> list[
     preview below its choices; a free-text page drops to the shared input row mid-flow and the
     modal reopens for the rest. Headless runs keep the plain per-question text prompts. The final
     tool log renders the returned answers."""
-    if loop.tui is None or not loop.interactive_input:
+    if loop.presentation.tui is None or not loop.interactive_input:
         return [str(await loop.read_input("\n" + spec.question)) for spec in specs]
     state = AskViewState.build(specs)
     while True:
         size = shutil.get_terminal_size((120, 24))
-        result = await loop.tui.show_modal(
+        result = await loop.presentation.tui.show_modal(
             lambda size=size: state.fragments(size.columns, max(1, size.lines - 6)),
             state.handle_key,
         )
@@ -287,7 +287,7 @@ async def question_interaction(loop: CommandLoop, specs: list[AskSpec]) -> list[
         if isinstance(result, tuple) and len(result) == 2 and result[0] is ASK_FREE_TEXT:
             index = result[1]
             prompt = f"({index + 1}/{len(specs)}) {specs[index].question}" if len(specs) > 1 else specs[index].question
-            answer = await loop.tui.request_input("\n" + prompt)
+            answer = await loop.presentation.tui.request_input("\n" + prompt)
             if answer is None:
                 return [DISMISSED] * len(specs)  # Ctrl-C on a free-text page dismisses the batch
             state.picked[index] = answer
@@ -392,7 +392,7 @@ def running_script_entry(loop: CommandLoop) -> OutputEntry | None:
     """The ToolScript running right now, if one is. It has no stored record yet -- that arrives
     only when the whole batch returns -- and a long batch is exactly when the reader wants to see
     what is running, so the browser offers it from the live source instead."""
-    code = loop.script_running_code
+    code = loop.presentation.script_running_code
     if not code.strip():
         return None
     lines = len(code.splitlines())
@@ -412,7 +412,7 @@ async def tool_output_viewer(loop: CommandLoop) -> None:
 
     A detail's Esc (or q, or Ctrl-C) returns to the list with the cursor where it was; Ctrl-O
     closes the whole browser."""
-    if loop.tui is None:
+    if loop.presentation.tui is None:
         return
     # Stored results are bounded once on the way in. Job logs are live, external state and can be
     # much larger, so their view is deferred until its row is opened.
@@ -534,7 +534,7 @@ async def _tool_output_list(loop: CommandLoop, entries: list[OutputEntry], state
     column is the Bash verdict where one exists: a green ✓ for exit 0, a red ✗ for any other
     exit, and a blank cell for entries that have no exit code (a script, an order, a running
     batch). The label is still the flat text, which is what `/` searches over."""
-    assert loop.tui is not None
+    assert loop.presentation.tui is not None
     width = max(20, shutil.get_terminal_size((120, 20)).columns - 12)
     parts: dict[str, StyleAndTextTuples] = {}
     labels: dict[str, str] = {}
@@ -594,7 +594,7 @@ async def _tool_output_list(loop: CommandLoop, entries: list[OutputEntry], state
         view = entries[int(result)].view
         return view() if callable(view) else view
 
-    picked = await loop.tui.show_modal(fragments, handle_key)
+    picked = await loop.presentation.tui.show_modal(fragments, handle_key)
     return (picked if isinstance(picked, ApprovalView) else None), state
 
 
@@ -630,7 +630,7 @@ def _approval_text_view(
 
     With `back_on_escape`, Esc, q, or Ctrl-C returns `_TOOL_OUTPUT_BACK` instead of closing, so
     the caller can reopen the list; Ctrl-O still closes."""
-    if loop.tui is None:
+    if loop.presentation.tui is None:
         return
     margin = "  "
     wrapped: dict[int, list[StyleAndTextTuples]] = {}
@@ -773,9 +773,9 @@ def _approval_text_view(
 
 async def approval_text_viewer(loop: CommandLoop, view: ApprovalView, *, back_on_escape: bool = False) -> object:
     modal = _approval_text_view(loop, view, back_on_escape=back_on_escape)
-    if modal is None or loop.tui is None:
+    if modal is None or loop.presentation.tui is None:
         return None
-    return await loop.tui.show_modal(*modal, exclusive=True)
+    return await loop.presentation.tui.show_modal(*modal, exclusive=True)
 
 
 async def diff_viewer(loop: CommandLoop) -> None:
@@ -825,7 +825,7 @@ async def diff_viewer(loop: CommandLoop) -> None:
         status, path, diff = sections[state.file]
         parts.append(("", "\n"))
         parts.append(("class:accent", f"  {status.title()} · {path}\n"))
-        lines = loop.ui.segment_lines(loop.ui.diff_segments_live(diff))
+        lines = loop.presentation.ui.segment_lines(loop.presentation.ui.diff_segments_live(diff))
         visible = state.view.visible(lines, viewport())
         for line in visible:
             parts.extend(line)
@@ -834,7 +834,7 @@ async def diff_viewer(loop: CommandLoop) -> None:
 
     def fragments() -> StyleAndTextTuples:
         parts: StyleAndTextTuples = [("", "\n")]
-        parts.extend(loop.ui.tab_segments(state.view.titles, state.view.tab))
+        parts.extend(loop.presentation.ui.tab_segments(state.view.titles, state.view.tab))
         parts.append(("", "\n"))
 
         sections = active_sections()
@@ -853,7 +853,7 @@ async def diff_viewer(loop: CommandLoop) -> None:
         parts.append(("class:choice.disabled", f"\n  [{mode_hint}] {hint} [{position}]\n"))
         return parts
 
-    if loop.tui is None:
+    if loop.presentation.tui is None:
         return
 
     def modal_key(key: str, _data: str) -> Any:
@@ -864,7 +864,7 @@ async def diff_viewer(loop: CommandLoop) -> None:
             return TUI_MODAL_PENDING
         return result
 
-    await loop.tui.show_modal(fragments, modal_key, exclusive=True)
+    await loop.presentation.tui.show_modal(fragments, modal_key, exclusive=True)
 
 
 async def compaction_log_viewer(loop: CommandLoop) -> None:
@@ -875,7 +875,7 @@ async def compaction_log_viewer(loop: CommandLoop) -> None:
     List mode: ↑/↓ or j/k move, Enter/→ opens, g/G first/last, Esc/q closes.
     Detail mode: ↑/↓ scroll one line, Ctrl-U/D half a page, PgUp/PgDn a page, Esc/← back, q closes.
     """
-    if loop.tui is None:
+    if loop.presentation.tui is None:
         return
     segments = list(reversed(loop.session.history))  # newest first, like the history.md index
     state = SegmentLogViewState()
@@ -958,4 +958,4 @@ async def compaction_log_viewer(loop: CommandLoop) -> None:
     def modal_key(key: str, _data: str) -> Any:
         return state.handle_key(key, len(segments), size()[1])
 
-    await loop.tui.show_modal(fragments, modal_key, exclusive=True)
+    await loop.presentation.tui.show_modal(fragments, modal_key, exclusive=True)

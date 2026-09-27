@@ -6,9 +6,10 @@ import os
 import pytest
 from PIL import Image
 
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
 from wizolt.base import ModelError, ToolCall
 from wizolt.config import Config, ProviderConfig
-from wizolt.engine import Agent
 from wizolt.image import (
     FAILED_IMAGE_CONTEXT_PREFIX,
     IMAGE_ASSET_CONTEXT_PREFIX,
@@ -181,7 +182,7 @@ async def test_multiple_failed_images_survive_snapshot_as_text_only_assets(tmp_p
         await agent.run(s.images.recognize("compare one.png two.png"))
     await s.save_snapshot()
     s.close()  # release the writer before reloading
-    resumed = Session.load_snapshot(s.uid, config=s.config)
+    resumed = load_session(s.uid, config=s.config)
 
     failed = resumed.messages[0]
     assert [image.name for image in resumed.images.refs(failed)] == ["one.png", "two.png"]

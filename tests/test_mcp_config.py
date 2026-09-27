@@ -14,14 +14,15 @@ import pytest
 # ---------------------------------------------------------------------------
 from mcp_harness import mcp_cfg, mcp_tool_info, session
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.config import (
     Config,
 )
-from wizolt.context import ContextManager
 from wizolt.mcp import MCPFileTokenStore, MCPManager, MCPResourceInfo, MCPServerConfig
 from wizolt.mcp.tokens import MCPServerTokens
-from wizolt.render import StatusBar
-from wizolt.session import Session, bootstrap_features
+from wizolt.session import Session
+from wizolt.ui.render import StatusBar
 
 
 def parse_one(raw: dict) -> MCPServerConfig | None:
@@ -971,7 +972,7 @@ class TestTransportLoggingSuppressed:
         """configure_logging raises the transport loggers out of the ERROR band."""
         import logging
 
-        from wizolt.base import configure_logging
+        from wizolt.__main__ import configure_logging
 
         configure_logging()
 
@@ -983,7 +984,7 @@ class TestTransportLoggingSuppressed:
         """logger.exception on the streamable_http transport produces no stderr output."""
         import logging
 
-        from wizolt.base import configure_logging
+        from wizolt.__main__ import configure_logging
 
         configure_logging()
         log = logging.getLogger("mcp.client.streamable_http")

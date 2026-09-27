@@ -6,10 +6,11 @@ import pytest
 from agent_harness import session
 from test_worker_handoff import FakeModelClient, _delegate_call, _delegate_runner, _delegate_session, _worker_history_for_compaction
 
-from wizolt.cli.worker import worker_command
-from wizolt.hooks import UiHooks
-from wizolt.prompts import WORKER_PROMPT
+from wizolt.agent.hooks import UiHooks
+from wizolt.agent.lifecycle import load_session
+from wizolt.agent.prompts import WORKER_PROMPT
 from wizolt.session import Session
+from wizolt.ui.cli.worker import worker_command
 
 
 async def test_worker_config_parses_model_and_reasoning(tmp_path):
@@ -81,13 +82,12 @@ async def test_worker_provider_config_applies_api_override(tmp_path):
 
 
 async def test_worker_provider_command_does_not_flip_registration_gate(tmp_path):
-    from wizolt.cli import CommandLoop
+    from wizolt.agent.engine import Agent
     from wizolt.config import (
         ProviderConfig,
     )
-    from wizolt.engine import Agent
-    from wizolt.session import Session
     from wizolt.tools import Tool
+    from wizolt.ui.cli import CommandLoop
 
     parent = session(tmp_path)
     parent.config.providers["alt"] = ProviderConfig(model="m")
@@ -130,11 +130,11 @@ async def test_worker_provider_command_does_not_flip_registration_gate(tmp_path)
 
 
 async def test_worker_provider_off_selects_literal_off_entry(tmp_path):
-    from wizolt.cli import CommandLoop
+    from wizolt.agent.engine import Agent
     from wizolt.config import (
         ProviderConfig,
     )
-    from wizolt.engine import Agent
+    from wizolt.ui.cli import CommandLoop
 
     parent = session(tmp_path)
     parent.config.providers["off"] = ProviderConfig(model="m")
@@ -146,8 +146,8 @@ async def test_worker_provider_off_selects_literal_off_entry(tmp_path):
 
 
 async def test_worker_model_and_reason_overrides(tmp_path):
-    from wizolt.cli import CommandLoop
-    from wizolt.engine import Agent
+    from wizolt.agent.engine import Agent
+    from wizolt.ui.cli import CommandLoop
 
     parent = session(tmp_path)
     agent = Agent(parent, output_fn=lambda text: None)
@@ -187,7 +187,7 @@ async def test_delegate_spawn_isolates_provider_and_applies_overrides(tmp_path, 
     parent.messages.append({"role": "user", "content": "parent request"})
     await parent.save_snapshot()
     model = FakeModelClient([({"role": "assistant", "content": "done"}, [], "done")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     runner = _delegate_runner(parent)
     await _delegate_call(parent, runner, action="send", order="o")
 
@@ -209,20 +209,20 @@ async def test_delegate_spawn_isolates_provider_and_applies_overrides(tmp_path, 
     model.script.append(({"role": "assistant", "content": "two"}, [], "two"))
     parent.config.worker_model = "resumed-model"
     parent.close()  # resume reopens the family in this process; the old owner must let go
-    fresh = Session.load_snapshot(parent.uid, config=parent.config, settings=parent.settings, cwd=str(tmp_path))
+    fresh = load_session(parent.uid, config=parent.config, settings=parent.settings, cwd=str(tmp_path))
     runner = _delegate_runner(fresh)
     await _delegate_call(fresh, runner, action="send", order="o")
     assert fresh.worker.config.provider.model == "resumed-model"
 
 
 async def test_worker_model_switch_applies_to_live_worker(tmp_path, monkeypatch):
-    from wizolt.cli import CommandLoop
-    from wizolt.engine import Agent
+    from wizolt.agent.engine import Agent
+    from wizolt.ui.cli import CommandLoop
 
     parent = _delegate_session(tmp_path)
     parent.config.providers["default"].model = "parent-model"
     model = FakeModelClient([({"role": "assistant", "content": "done"}, [], "done")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     runner = _delegate_runner(parent)
     await _delegate_call(parent, runner, action="send", order="o")
 
@@ -241,16 +241,16 @@ async def test_worker_model_switch_applies_to_live_worker(tmp_path, monkeypatch)
 
 
 async def test_worker_provider_switch_applies_to_live_worker(tmp_path, monkeypatch):
-    from wizolt.cli import CommandLoop
+    from wizolt.agent.engine import Agent
     from wizolt.config import (
         ProviderConfig,
     )
-    from wizolt.engine import Agent
+    from wizolt.ui.cli import CommandLoop
 
     parent = _delegate_session(tmp_path)
     parent.config.providers["alt"] = ProviderConfig(model="m")
     model = FakeModelClient([({"role": "assistant", "content": "done"}, [], "done")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     runner = _delegate_runner(parent)
     await _delegate_call(parent, runner, action="send", order="o")
 
@@ -266,13 +266,13 @@ async def test_worker_provider_switch_applies_to_live_worker(tmp_path, monkeypat
 
 
 async def test_delegate_send_finish_display_summary_and_preview(tmp_path, monkeypatch):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import LogBlock, LogRole, ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     model = FakeModelClient([({"role": "assistant", "content": "the worker answer"}, [], "the worker answer")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     outputs = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=outputs.append)
     status, _, _ = await runner.run_one(ToolCall("delegate-1", "Delegate", [{"action": "send", "order": "o"}]))
@@ -296,13 +296,13 @@ async def test_delegate_send_finish_display_summary_and_preview(tmp_path, monkey
 
 
 async def test_delegate_send_finish_worker_rule_label_and_preview(tmp_path, monkeypatch):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import LogBlock, LogRole, ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     model = FakeModelClient([({"role": "assistant", "content": "the worker answer"}, [], "the worker answer")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     outputs = []
     labels = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=outputs.append)
@@ -327,13 +327,13 @@ async def test_delegate_send_finish_worker_rule_label_and_preview(tmp_path, monk
 
 
 async def test_delegate_send_finish_worker_rule_label_carries_title(tmp_path, monkeypatch):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     model = FakeModelClient([({"role": "assistant", "content": "the worker answer"}, [], "the worker answer")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     labels = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
     runner.hooks.worker_rule = lambda label: labels.append(label)
@@ -346,14 +346,14 @@ async def test_delegate_send_finish_worker_rule_label_carries_title(tmp_path, mo
 
 
 async def test_delegate_send_finish_display_prints_full_answer_and_folded_preview(tmp_path, monkeypatch):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import LogBlock, LogRole, ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     answer = "\n".join(f"report line {i}" for i in range(40))
     model = FakeModelClient([({"role": "assistant", "content": answer}, [], answer)])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     outputs = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=outputs.append)
     status, _, _ = await runner.run_one(ToolCall("delegate-1", "Delegate", [{"action": "send", "order": "o"}]))
@@ -375,13 +375,13 @@ async def test_delegate_send_finish_display_prints_full_answer_and_folded_previe
 
 
 async def test_delegate_send_routes_the_final_report_through_worker_answer(tmp_path, monkeypatch):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import LogBlock, LogRole, ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
 
     parent = _delegate_session(tmp_path)
     model = FakeModelClient([({"role": "assistant", "content": "the report"}, [], "the report")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     answers = []
     outputs = []
     runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=outputs.append)
@@ -395,10 +395,9 @@ async def test_delegate_send_routes_the_final_report_through_worker_answer(tmp_p
 
 
 async def test_delegate_reset_finish_display_worker_root_and_cleared_notice(tmp_path):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import LogBlock, ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
-    from wizolt.session import Session
 
     parent = _delegate_session(tmp_path)
     worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
@@ -419,10 +418,9 @@ async def test_delegate_reset_finish_display_worker_root_and_cleared_notice(tmp_
 
 
 async def test_delegate_reset_finish_worker_rule_label(tmp_path):
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
     from wizolt.base import ToolCall
-    from wizolt.context import ContextManager
-    from wizolt.runner import ToolRunner
-    from wizolt.session import Session
 
     parent = _delegate_session(tmp_path)
     worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
@@ -468,7 +466,7 @@ async def test_worker_stream_forwards_output_and_suppresses_output_done_promote(
 
 
 async def test_worker_compaction_triggers_on_budget_overrun(tmp_path, monkeypatch):
-    from wizolt.prompts import COMPACTION_SUMMARY_TITLE, PREVIOUS_CONTEXT_TRIMMED
+    from wizolt.agent.prompts import COMPACTION_SUMMARY_TITLE, PREVIOUS_CONTEXT_TRIMMED
 
     parent = _delegate_session(tmp_path)
     # A real delegation first: the worker is spawned through DelegateTool._send and keeps its
@@ -476,7 +474,7 @@ async def test_worker_compaction_triggers_on_budget_overrun(tmp_path, monkeypatc
     # overruns it: 40k context -> 19_520 request budget (16_384 output reserve + 4_096 safety).
     parent.settings.max_context_tokens = 40_000
     model = FakeModelClient([({"role": "assistant", "content": "answer one"}, [], "answer one")])
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     runner = _delegate_runner(parent)
     await _delegate_call(parent, runner, action="send", order="order one")
     worker = _worker_history_for_compaction(parent)
@@ -504,7 +502,7 @@ async def test_worker_compaction_triggers_on_budget_overrun(tmp_path, monkeypatc
 
 
 async def test_worker_compaction_persists_and_flows_into_next_delegation(tmp_path, monkeypatch):
-    from wizolt.prompts import COMPACTION_SUMMARY_TITLE, PREVIOUS_CONTEXT_TRIMMED
+    from wizolt.agent.prompts import COMPACTION_SUMMARY_TITLE, PREVIOUS_CONTEXT_TRIMMED
     from wizolt.session import SessionSnapshotStore
 
     parent = _delegate_session(tmp_path)
@@ -515,7 +513,7 @@ async def test_worker_compaction_persists_and_flows_into_next_delegation(tmp_pat
             ({"role": "assistant", "content": "answer two"}, [], "answer two"),
         ]
     )
-    monkeypatch.setattr("wizolt.engine.ModelClient", lambda session: model)
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
     runner = _delegate_runner(parent)
     await _delegate_call(parent, runner, action="send", order="order one")
     worker = _worker_history_for_compaction(parent)
@@ -547,11 +545,11 @@ async def test_worker_compaction_persists_and_flows_into_next_delegation(tmp_pat
 async def test_worker_model_discovery_shows_loading_state(tmp_path, monkeypatch):
     """The /worker model stage shows the same dispatch note as /model while remote discovery
     runs, and drops it afterwards; without credentials the note never appears."""
-    from wizolt.cli import CommandLoop
-    from wizolt.cli import commands as commands_mod
+    from wizolt.agent.engine import Agent
     from wizolt.config import ProviderConfig
-    from wizolt.engine import Agent
-    from wizolt.tui.app import TuiApp
+    from wizolt.ui.cli import CommandLoop
+    from wizolt.ui.cli import commands as commands_mod
+    from wizolt.ui.tui.app import TuiApp
 
     parent = session(tmp_path)
     parent.config.providers["fast"] = ProviderConfig(model="m", url="https://example.com/v1", key="key")
@@ -560,8 +558,8 @@ async def test_worker_model_discovery_shows_loading_state(tmp_path, monkeypatch)
     loop = CommandLoop(agent, input_fn=lambda prompt: "", output_fn=lambda text: None)
     loop.interactive_input = True
     transitions = []
-    loop.tui = TuiApp()
-    loop.tui.set_dispatching = lambda prompt="": transitions.append(prompt)
+    loop.presentation.tui = TuiApp()
+    loop.presentation.tui.set_dispatching = lambda prompt="": transitions.append(prompt)
 
     async def remote_models(_loop, _provider):
         return ("remote-model",)
@@ -579,7 +577,7 @@ async def test_worker_model_discovery_shows_loading_state(tmp_path, monkeypatch)
     async def select(*_args, **_kwargs):
         return next(selected)
 
-    monkeypatch.setattr("wizolt.cli.worker.select_choice", select)
+    monkeypatch.setattr("wizolt.ui.cli.worker.select_choice", select)
     assert "Set worker.model = remote-model" in await worker_command(loop, "model")
     assert transitions == ["Loading models...", ""]
 
@@ -587,7 +585,7 @@ async def test_worker_model_discovery_shows_loading_state(tmp_path, monkeypatch)
     parent.config.providers["fast"].url = ""
     parent.config.providers["fast"].key = ""
     selected = iter(["default"])
-    monkeypatch.setattr("wizolt.cli.worker.select_choice", select)
+    monkeypatch.setattr("wizolt.ui.cli.worker.select_choice", select)
     transitions.clear()
     assert "worker model: (inherit)" in await worker_command(loop, "model")
     assert transitions == []

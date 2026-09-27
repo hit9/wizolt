@@ -1,8 +1,8 @@
 """TUI fragment and style supply for the interactive shell.
 
 The view-facing half of the interactive loop: dividers, follow-up markers, model stream
-previews, the input hint, and the prompt-toolkit style map. Reads the live loop state through
-its `loop` reference; it renders, it does not own behavior.
+previews, the input hint, and the prompt-toolkit style map. Reads session and presentation
+state directly, without a command-loop or agent handle.
 """
 
 from __future__ import annotations
@@ -21,20 +21,20 @@ from prompt_toolkit.utils import get_cwidth
 
 from wizolt.agentsmd import MenuRow
 from wizolt.base import LogBlock, LogEdge, Text, TurnBox
-from wizolt.cli.commands import SET_KEYS, SET_VALUES
-from wizolt.cli.hints import Context as HintContext
-from wizolt.cli.hints import HintPicker
-from wizolt.cli.runtime import RESUME_STATUS_LABEL, STARTING_STATUS_LABEL
-from wizolt.cli.worker import WORKER_SUBCOMMANDS
 from wizolt.config import PROVIDER_API_CHOICES
 from wizolt.mentions import MentionSpan, active_mention, encode_file_mention, mention_spellings
 from wizolt.providers.compat import bundled_policy
-from wizolt.render import LiveSpark, Theme, UiPrinter
-from wizolt.session import QueuedInput
-from wizolt.tui import InputMode, TuiApp
+from wizolt.session import QueuedInput, Session
+from wizolt.ui.cli.commands import COMMAND_NAMES, NEEDS_ARGUMENT, SET_KEYS, SET_VALUES
+from wizolt.ui.cli.hints import Context as HintContext
+from wizolt.ui.cli.hints import HintPicker
+from wizolt.ui.cli.runtime import RESUME_STATUS_LABEL, STARTING_STATUS_LABEL
+from wizolt.ui.cli.worker import WORKER_SUBCOMMANDS
+from wizolt.ui.render import LiveSpark, Theme, UiPrinter
+from wizolt.ui.tui import InputMode, TuiApp
 
 if TYPE_CHECKING:
-    from wizolt.cli import CommandLoop
+    from wizolt.ui.cli.presentation import Presentation
 
 
 class CommandCompleter(Completer):
@@ -155,11 +155,7 @@ class CommandCompleter(Completer):
             return
 
         if text.startswith("/") and " " not in text:
-            # CommandLoop.COMMANDS is populated at the end of cli/__init__.py, after this module
-            # is imported; resolve it lazily to avoid the import cycle.
-            from wizolt.cli import CommandLoop
-
-            yield from self.matches(CommandLoop.COMMANDS, text, more=CommandLoop.NEEDS_ARGUMENT)
+            yield from self.matches(COMMAND_NAMES, text, more=NEEDS_ARGUMENT)
 
     def leads_on(self, before: str, completion: Completion) -> bool:
         """Whether taking `completion`, offered for the input `before`, is a step toward a longer
@@ -316,7 +312,7 @@ class CommandCompleter(Completer):
 
 
 class View:
-    """Fragments and style for the TUI, fed from a live CommandLoop."""
+    """Fragments and style derived from session and presentation state."""
 
     # Breathing green dot shown on the divider while a model request is in flight. The label moves
     # from working to thinking/responding as stream events arrive; the pulse remains until completion.
@@ -364,12 +360,13 @@ class View:
         r"(\*\*[^*\n]*[^*\s\n][^*\n]*\*\*|`[^`\n]*[^`\s\n][^`\n]*`|(?<!\*)\*[^*\n]*[^*\s\n][^*\n]*\*(?!\*))"
     )
 
-    def __init__(self, loop: CommandLoop) -> None:
-        self.loop = loop
-        self._hint_picker = HintPicker()  # idle-placeholder tips; see wizolt/cli/hints.py
+    def __init__(self, session: Session, presentation: Presentation) -> None:
+        self.session = session
+        self.presentation = presentation
+        self._hint_picker = HintPicker()  # idle-placeholder tips; see wizolt/ui/cli/hints.py
 
     def waiting_pulse_fragments(self) -> StyleAndTextTuples:
-        if self.loop.session.state.current_model_call_started_at <= 0:
+        if self.session.state.current_model_call_started_at <= 0:
             return []
         # Triangular breath: 0 → 1 → 0 over WAITING_PULSE_PERIOD seconds, mapped onto the palette.
         phase = (time.monotonic() % self.WAITING_PULSE_PERIOD) / self.WAITING_PULSE_PERIOD
@@ -408,7 +405,7 @@ class View:
         travel = span + 2 * outside
         sweep = min(self.QUEUE_SWEEP_CELLS_PER_SEC, travel / 1.0)
         now = time.monotonic()
-        started_at = self.loop.status_bar.started_at
+        started_at = self.presentation.status_bar.started_at
         elapsed = max(0.0, now - started_at) if started_at > 0 else now
         cycle_phase = elapsed * sweep / travel % 2.0
         returning = cycle_phase >= 1.0
@@ -443,31 +440,31 @@ class View:
         ]
 
     def queue_divider_fragments(self, queued: int = 0, next_turn: int = 0) -> StyleAndTextTuples:
-        tui = self.loop.tui
+        tui = self.presentation.tui
         status = tui.status_label if tui is not None and tui.status_label else "working"
         if status in {"working", "retrying", "compacting context"}:
-            retry_status = self.loop.status_bar.retry_status()
-            attempt_status = self.loop.status_bar.model_attempt_status()
-            phase = self.loop.model_stream_kind
+            retry_status = self.presentation.status_bar.retry_status()
+            attempt_status = self.presentation.status_bar.model_attempt_status()
+            phase = self.presentation.model_stream_kind
             activity = retry_status or (
                 ({"reasoning": "thinking", "output": "responding"}.get(phase, phase) or status) + (" · " + attempt_status if attempt_status else "")
             )
             # The elapsed time says how long the wait has been; the rate says whether it is moving.
             # Empty whenever nothing is streaming (between requests, non-streaming providers, a
             # summary), so the divider never claims a speed it is not currently seeing.
-            rate = self.loop.status_bar.output_rate()
-            label = f"{activity} ({Text.elapsed_since(self.loop.status_bar.started_at)}{' · ' + rate if rate else ''})"
+            rate = self.presentation.status_bar.output_rate()
+            label = f"{activity} ({Text.elapsed_since(self.presentation.status_bar.started_at)}{' · ' + rate if rate else ''})"
         elif status == "running script":
             # Timed like the working phases, but never relabelled from the stream phase: nothing is
             # streaming while a script runs, so the last kind seen would be stale, not current.
-            label = f"{status} ({Text.elapsed_since(self.loop.status_bar.started_at)})"
+            label = f"{status} ({Text.elapsed_since(self.presentation.status_bar.started_at)})"
         elif status == RESUME_STATUS_LABEL:
             # A quiet gray lead-in to the restored transcript: nothing streams and nothing sweeps
             # while the replay is being prepared, so no pulse pretends there is activity.
             return [("class:muted", status)]
         else:
             label = status
-        if self.loop.session.context_reset_requested:
+        if self.session.context_reset_requested:
             label += " · reset pending"
         counts = [f"{queued} queued"] if queued else []
         if next_turn:
@@ -478,12 +475,12 @@ class View:
             label = f"{label} [ {' · '.join(counts)} ]"
         # While the worker runs, the label takes the worker's color and no name: the status bar's
         # `worker ·` lead is the one place that says it in words, and the color ties this line to it.
-        label_style = "class:divider.worker" if self.loop.session.delegating_worker is not None else "class:divider.working"
+        label_style = "class:divider.worker" if self.session.delegating_worker is not None else "class:divider.working"
         return self.sweep_divider_fragments(label, prefix=self.waiting_pulse_fragments(), label_style=label_style)
 
     def followup_fragments(self) -> tuple[StyleAndTextTuples, StyleAndTextTuples]:
-        pending = list(self.loop.session.pending_user_inputs)
-        worker_session = self.loop.session.worker
+        pending = list(self.session.pending_user_inputs)
+        worker_session = self.session.worker
         worker_pending = list(worker_session.pending_user_inputs) if worker_session is not None else []
 
         def render(items: list[QueuedInput], marker: str, marker_style: str) -> StyleAndTextTuples:
@@ -532,8 +529,8 @@ class View:
         fragments.extend(stream)
         if stream:
             fragments.append(("", "\n"))
-        with self.loop.live_preview.lock:
-            rows = self.loop.live_preview.frame_rows() if self.loop.live_preview.active else []
+        with self.presentation.live_preview.lock:
+            rows = self.presentation.live_preview.frame_rows() if self.presentation.live_preview.active else []
         for row in rows:
             fragments.extend([*row, ("", "\n")])
         if rows:
@@ -542,8 +539,8 @@ class View:
         return fragments
 
     def model_stream_fragments(self) -> StyleAndTextTuples:
-        text = self.loop.model_stream_text
-        kind = self.loop.model_stream_kind
+        text = self.presentation.model_stream_text
+        kind = self.presentation.model_stream_kind
         if not text:
             return []
         width = max(20, shutil.get_terminal_size((120, 20)).columns)
@@ -558,13 +555,13 @@ class View:
         # on the next row down instead of racing for whatever room the spark leaves. The rows are
         # what the reader is actually reading, and breathing those would be a strobe rather than a
         # sign of life.
-        spark = LogBlock.margin(TurnBox.CONTENT_LEVEL + 1) + LiveSpark.glyph(self.loop.session.state.stream_started_at)
+        spark = LogBlock.margin(TurnBox.CONTENT_LEVEL + 1) + LiveSpark.glyph(self.session.state.stream_started_at)
         label = {"reasoning": "thinking", "output": "responding"}.get(kind)
         fragments: StyleAndTextTuples = [
             # Anchored to the stream this preview is showing, which ModelClient stamps on the
             # first chunk of each request and clears between them, so every response opens the
             # spark at its crest instead of wherever the wall clock happened to be.
-            (LiveSpark.style(self.loop.session.state.stream_started_at), spark),
+            (LiveSpark.style(self.session.state.stream_started_at), spark),
             *([("class:muted", label)] if label else []),
             ("", "\n"),
             # A blank row keeps the spark off the rail: the star caps the region, it does not sit
@@ -601,13 +598,13 @@ class View:
         return fragments or [("class:muted", row)]
 
     def tui_input_hint(self) -> str:
-        tui = self.loop.tui
+        tui = self.presentation.tui
         if tui is None:
             return ""
         if tui.input_mode == InputMode.RUNNING:
-            if any(not item.inflight for item in self.loop.session.pending_user_inputs):
+            if any(not item.inflight for item in self.session.pending_user_inputs):
                 return self.QUEUE_PENDING_HINT
-            worker = self.loop.session.worker
+            worker = self.session.worker
             if worker is not None and any(not item.inflight for item in worker.pending_user_inputs):
                 # Queued for the delegating worker, not the parent: `↑` cannot recall it, so the
                 # hint names where the text went instead of promising a recall that would not
@@ -615,9 +612,9 @@ class View:
                 return self.QUEUE_WORKER_HINT
             return self.QUEUE_EMPTY_HINT
         if tui.input_mode == InputMode.CHAT:
-            if self.loop.starting:
+            if self.presentation.starting:
                 return STARTING_STATUS_LABEL
-            return self._hint_picker.pick(self._hint_context(), self.loop.session.state.round_count)
+            return self._hint_picker.pick(self._hint_context(), self.session.state.round_count)
         return ""
 
     def _hint_context(self) -> HintContext:
@@ -627,7 +624,7 @@ class View:
         round that just finished; edited_round therefore clears on its own once a later round
         makes no edits.
         """
-        session = self.loop.session
+        session = self.session
         round_count = session.state.round_count
         edited = any((diff.round or diff.turn) == round_count for diff in session.turn_diffs)
         return HintContext(

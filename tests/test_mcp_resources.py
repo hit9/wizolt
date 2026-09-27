@@ -6,12 +6,13 @@ from typing import ClassVar
 import pytest
 from mcp_harness import _fake_resource, mcp_cfg, session
 
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.base import ToolError
 from wizolt.config import (
     Config,
 )
 from wizolt.mcp import MCPManager, MCPResourceInfo
-from wizolt.session import Session, bootstrap_features
+from wizolt.session import Session
 from wizolt.tools import MCPTool
 
 

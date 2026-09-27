@@ -4,17 +4,18 @@ from typing import ClassVar
 
 from test_session_persistence import _resumed_transcript, log_path, read_jsonl, session_with_data_dir
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
+from wizolt.agent.prompts import LIVE_FOLLOWUP_PREFIX
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import SESSION_EVENT_KEY, ToolCall
-from wizolt.cli import CommandLoop
-from wizolt.cli.commands import compact
-from wizolt.cli.resume import ResumeRenderer
 from wizolt.config import ProviderConfig
-from wizolt.context import ContextManager
-from wizolt.engine import Agent
 from wizolt.model import ModelClient
-from wizolt.prompts import LIVE_FOLLOWUP_PREFIX
-from wizolt.runner import ToolRunner
 from wizolt.session import HistorySegment, Session, SessionSnapshotCodec
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.cli.commands import compact
+from wizolt.ui.cli.resume import ResumeRenderer
 
 
 async def test_resume_replays_full_transcript_after_model_context_and_retained_records_are_pruned(tmp_path):
@@ -43,7 +44,7 @@ async def test_resume_replays_full_transcript_after_model_context_and_retained_r
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     output = []
     CommandLoop(Agent(restored, output_fn=output.append), output_fn=output.append).resume.render_resumed_session()
     text = "\n".join(str(item) for item in output)
@@ -73,7 +74,7 @@ async def test_resume_keeps_a_new_read_rejection_quiet(tmp_path):
     await s.save_snapshot()
 
     s.close()
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     output = []
     CommandLoop(Agent(restored, output_fn=output.append), output_fn=output.append).resume.render_resumed_session()
     text = "\n".join(map(str, output))
@@ -101,7 +102,7 @@ async def test_resume_recognizes_an_old_missing_read_without_hiding_a_real_failu
     await s.save_snapshot()
 
     s.close()
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     output = []
     CommandLoop(Agent(restored, output_fn=output.append), output_fn=output.append).resume.render_resumed_session()
     text = "\n".join(map(str, output))
@@ -135,7 +136,7 @@ async def test_compact_command_persists_the_compacted_history(tmp_path):
 
     # The compacted history is on disk, not just in memory.
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     persisted = restored.messages[:-1]  # load appends one new resume event
     assert persisted == s.messages
     assert any("a compacted summary" in str(m.get("content") or "") for m in persisted)
@@ -153,7 +154,7 @@ async def test_history_segments_persist_and_restore(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
 
     assert len(restored.history) == 1
     segment = restored.history[0]
@@ -170,7 +171,7 @@ async def test_history_delta_appends_new_segments(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     assert [segment.key for segment in restored.history] == ["seg.1", "seg.2"]
 
     # The second save appended only seg.2 (digest-delta), not a full rewrite.
@@ -196,7 +197,7 @@ async def test_history_delta_rewrites_when_saved_segments_change(tmp_path):
     assert any("history_replace" in line and [seg["key"] for seg in line["history_replace"]] == ["seg.2", "seg.1"] for line in lines)
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     assert [segment.key for segment in restored.history] == ["seg.2", "seg.1"]
 
 async def test_resume_recomputes_the_context_percent(tmp_path):
@@ -207,7 +208,7 @@ async def test_resume_recomputes_the_context_percent(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     assert restored.state.context_percent == 0
 
     loop = CommandLoop(Agent(restored, output_fn=lambda _text: None), output_fn=lambda _text: None)
@@ -259,7 +260,7 @@ async def test_resumed_transcript_replays_calls_the_way_they_ran_live(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     output = []
     CommandLoop(Agent(restored, output_fn=output.append), output_fn=output.append).resume.render_resumed_session()
     text = "\n".join(str(item) for item in output)
@@ -277,7 +278,7 @@ def test_resumed_transcript_hides_the_live_followup_marker(tmp_path):
     agent = Agent(s, output_fn=lambda _text: None)
     command_loop = CommandLoop(agent, output_fn=lambda _text: None)
     rendered = []
-    command_loop.ui.emit_answer = lambda text, **kwargs: rendered.append(text)
+    command_loop.presentation.ui.emit_answer = lambda text, **kwargs: rendered.append(text)
 
     marked = {"role": "user", "content": LIVE_FOLLOWUP_PREFIX + "also update the tests"}
     command_loop.resume.render_transcript_message(marked)

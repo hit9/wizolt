@@ -15,25 +15,25 @@ import pytest
 from agent_harness import session, session_with_provider
 from test_context import RUNTIME_GENERATED_EVENTS
 
-import wizolt.context as context_module
-from wizolt import compaction
+import wizolt.agent.context as context_module
+from wizolt.agent import compaction
+from wizolt.agent.context import ContextManager
+from wizolt.agent.engine import Agent
+from wizolt.agent.prompts import (
+    COMPACTION_SUMMARY_TITLE,
+)
 from wizolt.base import (
     SESSION_EVENT_KEY,
     ModelError,
 )
-from wizolt.cli import CommandLoop
-from wizolt.cli.commands import compact
 from wizolt.config import (
     DEFAULT_OUTPUT_RESERVE_TOKENS,
 )
-from wizolt.context import ContextManager
-from wizolt.engine import Agent
 from wizolt.model import ModelClient
-from wizolt.prompts import (
-    COMPACTION_SUMMARY_TITLE,
-)
 from wizolt.session import HistorySegment
 from wizolt.skill import SkillLibrary
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.cli.commands import compact
 
 
 def test_compaction_captures_a_history_segment(tmp_path):
@@ -265,7 +265,7 @@ async def test_manual_compact_inserts_summary_before_latest_user(tmp_path):
     s.state.context_percent = 80
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
     transitions = []
-    loop.tui = SimpleNamespace(set_running=transitions.append, set_dispatching=lambda: transitions.append("dispatch"))
+    loop.presentation.tui = SimpleNamespace(set_running=transitions.append, set_dispatching=lambda: transitions.append("dispatch"))
 
     class FakeModel:
         last_compaction_model = ""

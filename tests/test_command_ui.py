@@ -12,13 +12,13 @@ from wizolt.base import (
     LogRole,
     ModelError,
 )
-from wizolt.cli.commands import (
+from wizolt.model import ModelClient
+from wizolt.ui.cli.commands import (
     api,
     config,
     status,
 )
-from wizolt.model import ModelClient
-from wizolt.tui import TUI_MODAL_PENDING
+from wizolt.ui.tui import TUI_MODAL_PENDING
 
 
 def diff_loop(tmp_path):
@@ -38,9 +38,9 @@ async def test_status_ends_with_the_documentation_link(tmp_path):
 async def test_image_route_notice_matches_view_image_tree_vocabulary(tmp_path):
     command_loop = loop(tmp_path)
     blocks = []
-    command_loop.tool_output = blocks.append
+    command_loop.presentation.tool_output = blocks.append
 
-    command_loop.image_route_notice(ImageRouteNotice("main model rejected image input (400)", described_by="vision/model", images=("shot.png",)))
+    command_loop.presentation.image_route_notice(ImageRouteNotice("main model rejected image input (400)", described_by="vision/model", images=("shot.png",)))
 
     [block] = blocks
     assert isinstance(block, LogBlock)
@@ -54,7 +54,7 @@ async def test_image_route_notice_matches_view_image_tree_vocabulary(tmp_path):
     [child] = children.items
     assert (child.label, child.text, child.role, child.edge) == ("described by", "vision/model", LogRole.TOOL, LogEdge.END)
 
-    command_loop.image_route_notice(ImageRouteNotice("main model is text-only", described_by="vision/model", images=("a.png", "b.png")))
+    command_loop.presentation.image_route_notice(ImageRouteNotice("main model is text-only", described_by="vision/model", images=("a.png", "b.png")))
     multi_root = blocks[-1].items[0]
     assert (multi_root.label, multi_root.text) == ("Images", "2 attachments")
 

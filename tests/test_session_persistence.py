@@ -4,13 +4,14 @@ import threading
 
 import pytest
 
-from wizolt.cli import CommandLoop
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
 from wizolt.config import (
     Config,
 )
-from wizolt.engine import Agent
 from wizolt.session import Session, SessionSnapshotCodec, SessionSnapshotStore
 from wizolt.session.store import SnapshotWritePlan
+from wizolt.ui.cli import CommandLoop
 
 
 def session_with_data_dir(tmp_path):
@@ -233,7 +234,7 @@ async def _resumed_transcript(tmp_path, diff_text, *, lines_cap=None):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     output = []
     loop = CommandLoop(Agent(restored, output_fn=output.append), output_fn=output.append)
     if lines_cap is not None:
@@ -348,7 +349,7 @@ async def test_concurrent_saves_write_in_capture_order_and_stay_resumable(tmp_pa
     assert await asyncio.gather(first, second) == [s.uid, s.uid]
 
     s.close()  # a reload needs the writer's lease released
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     assert visible_contents(restored.messages) == ["first", "second"]
 
 
@@ -378,7 +379,7 @@ async def test_input_queued_during_a_save_lands_in_the_next_delta(tmp_path, monk
     assert "typed while saving" not in await asyncio.to_thread(read_text, log_path(s))
     await s.save_snapshot()
     s.close()
-    assert [item.text for item in Session.load_snapshot(s.uid, config=s.config).pending_user_inputs] == ["typed while saving"]
+    assert [item.text for item in load_session(s.uid, config=s.config).pending_user_inputs] == ["typed while saving"]
 
 
 async def test_cancelling_a_save_commits_the_marker_it_captured(tmp_path, monkeypatch):
@@ -414,7 +415,7 @@ async def test_cancelling_a_save_commits_the_marker_it_captured(tmp_path, monkey
     s.messages.append({"role": "user", "content": "after"})
     await s.save_snapshot()
     s.close()
-    assert visible_contents(Session.load_snapshot(s.uid, config=s.config).messages) == ["hello", "after"]
+    assert visible_contents(load_session(s.uid, config=s.config).messages) == ["hello", "after"]
 
 
 async def test_a_failed_write_leaves_the_markers_alone_and_the_next_save_retries(tmp_path, monkeypatch):
@@ -435,7 +436,7 @@ async def test_a_failed_write_leaves_the_markers_alone_and_the_next_save_retries
     await s.save_snapshot()
     s.close()
 
-    assert visible_contents(Session.load_snapshot(s.uid, config=s.config).messages) == ["hello"]
+    assert visible_contents(load_session(s.uid, config=s.config).messages) == ["hello"]
 
 
 def test_the_save_gate_is_rebound_for_a_later_loop(tmp_path):
@@ -452,4 +453,4 @@ def test_the_save_gate_is_rebound_for_a_later_loop(tmp_path):
 
     assert s._snapshot_gate is not first
     s.close()
-    assert visible_contents(Session.load_snapshot(s.uid, config=s.config).messages) == ["hello", "second run"]
+    assert visible_contents(load_session(s.uid, config=s.config).messages) == ["hello", "second run"]

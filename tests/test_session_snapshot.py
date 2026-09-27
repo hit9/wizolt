@@ -5,8 +5,9 @@ import itertools
 import pytest
 from test_session_persistence import log_path, read_jsonl, read_lines, rewrite_log, session_with_data_dir, write_log
 
+from wizolt.agent.lifecycle import load_session
 from wizolt.base import SESSION_EVENT_KEY
-from wizolt.session import Session, SessionSnapshotCodec, SessionSnapshotStore, TurnDiff
+from wizolt.session import SessionSnapshotCodec, SessionSnapshotStore, TurnDiff
 
 
 async def test_transcript_diff_preview_is_bounded(tmp_path):
@@ -36,7 +37,7 @@ async def test_loading_legacy_snapshot_migrates_surviving_history_before_later_c
     await asyncio.to_thread(rewrite_log, log_path(s), lines)
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     assert [message["content"] for message in restored.transcript_messages] == ["legacy request", "legacy answer"]
     assert [record.key for record in restored.transcript_tool_records] == [key]
     assert [diff.key for diff in restored.transcript_turn_diffs] == [key]
@@ -44,7 +45,7 @@ async def test_loading_legacy_snapshot_migrates_surviving_history_before_later_c
     restored.messages[:] = [{"role": "user", "content": "new compacted context", SESSION_EVENT_KEY: "compaction_checkpoint"}]
     await restored.save_snapshot()
     restored.close()  # release the writer before reloading
-    migrated = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    migrated = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     assert [message["content"] for message in migrated.transcript_messages] == ["legacy request", "legacy answer"]
 
 async def test_active_transcript_is_replaced_separately_then_committed_once(tmp_path):
@@ -58,7 +59,7 @@ async def test_active_transcript_is_replaced_separately_then_committed_once(tmp_
     assert first["active_transcript_messages"] == [user]
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     assert restored.transcript_messages == [user]
     await restored.save_snapshot()
 
@@ -66,7 +67,7 @@ async def test_active_transcript_is_replaced_separately_then_committed_once(tmp_
     assert merged["transcript_messages"] == [user]
     assert merged["active_transcript_messages"] == []
     restored.close()  # release the writer before reloading
-    loaded_again = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    loaded_again = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     assert loaded_again.transcript_messages == [user]
 
 async def test_transcript_checkpoint_does_not_hash_the_saved_prefix(tmp_path, monkeypatch):
@@ -138,7 +139,7 @@ async def test_old_version_write_after_transcript_sync_is_detected(tmp_path):
     )
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     assert restored.transcript_incomplete is True
     assert [message["content"] for message in restored.transcript_messages] == ["first"]
 
@@ -210,7 +211,7 @@ async def test_turn_diff_snapshots_survive_a_roundtrip(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
 
     assert [(d.key, d.path, d.before, d.after) for d in restored.turn_diffs] == [("tr.1", "x.py", "old\n", "new\n")]
 
@@ -227,7 +228,7 @@ async def test_source_views_survive_a_snapshot_roundtrip(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     view = restored.get_source_view(key)
 
     assert view is not None
@@ -250,7 +251,7 @@ async def test_an_edit_still_resolves_its_view_after_a_restart(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     EditTool(restored, ["a.py", key, [{"op": "replace", "start": 2, "end": 2, "content": "BETA\n"}]]).call()
 
     assert path.read_text() == "alpha\nBETA\ngamma\n"
@@ -293,7 +294,7 @@ async def test_source_view_delta_appends_new_views_and_drops_pruned(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     assert restored.get_source_view(keep) is not None
     assert restored.get_source_view(dropped) is None
 
@@ -313,7 +314,7 @@ async def test_source_view_counter_survives_pruning_and_restart(tmp_path):
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     new = restored.register_source_drafts(list(ReadTool(restored, [{"path": "a.py", "ranges": [[3, 3]]}]).call().drafts))[0]
 
     assert restored.get_source_view(first) is None
@@ -337,7 +338,7 @@ async def test_loading_drops_a_view_whose_span_blob_is_gone(tmp_path):
     await asyncio.to_thread(rewrite_log, log_path(s), lines)
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
     assert restored.get_source_view(key) is None
 
 

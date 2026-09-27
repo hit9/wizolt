@@ -14,16 +14,16 @@ from prompt_toolkit.styles import Style
 from rich.console import Console
 from tui_harness import loop
 
-import wizolt.render as render_module
-import wizolt.tui.app as app_module
+import wizolt.ui.render as render_module
+import wizolt.ui.tui.app as app_module
 from wizolt.base import (
     LogBlock,
     LogEdge,
     LogLine,
     LogRole,
 )
-from wizolt.render import StatusBar, Theme, UiPrinter
-from wizolt.tui import TuiApp
+from wizolt.ui.render import StatusBar, Theme, UiPrinter
+from wizolt.ui.tui import TuiApp
 
 
 def test_both_appearances_define_every_role_in_a_shape_the_adapters_accept():
@@ -465,8 +465,8 @@ def test_standalone_turn_rows_carry_no_edge_glyph(tmp_path, monkeypatch):
     row. Cover the provider builtin-call row so it cannot reintroduce that defect."""
     loop_ = loop(tmp_path)
     captured = []
-    monkeypatch.setattr(loop_.ui, "emit", lambda text="", indent=0: captured.append(text))
-    loop_.builtin_call_output("search", "cache wiring")
+    monkeypatch.setattr(loop_.presentation.ui, "emit", lambda text="", indent=0: captured.append(text))
+    loop_.presentation.builtin_call_output("search", "cache wiring")
     blocks = [item for item in captured if isinstance(item, LogBlock)]
     assert len(blocks) == 1
     for block in blocks:

@@ -18,7 +18,6 @@ from wizolt.config import (
     RuntimeSettings,
 )
 from wizolt.providers.compat import bundled_policy
-from wizolt.session import Session
 
 
 def test_default_user_paths_prefer_wizolt_then_minacode_then_nanocode(isolate_home):
@@ -51,13 +50,13 @@ def test_continue_flags_resume_latest_session_in_current_project(tmp_path, monke
     monkeypatch.setattr(ConfigFile, "load", lambda _path: {})
     monkeypatch.setattr(Config, "from_dict", classmethod(lambda _cls, _data, **_kwargs: config))
     monkeypatch.setattr(RuntimeSettings, "from_dict", classmethod(lambda _cls, _data, **_kwargs: settings))
-    monkeypatch.setattr(
-        Session,
-        "load_snapshot",
-        classmethod(lambda _cls, uid, config=None, settings=None, cwd="", catalog=None, lease=None: selected.append((uid, config, settings, cwd)) or resumed),
-    )
+    monkeypatch.setattr(cli, 'load_session', lambda uid, config=None, settings=None, cwd='', catalog=None, lease=None: selected.append((uid, config, settings, cwd)) or resumed)
 
     class Loop:
+        @property
+        def presentation(self):
+            return SimpleNamespace(close_background_output=self.close_background_output)
+
         resume_request = ""
         resume_lease = None
 
@@ -85,18 +84,15 @@ def test_resume_request_starts_the_next_run_on_the_chosen_session(tmp_path, monk
     monkeypatch.setattr(ConfigFile, "load", lambda _path: {})
     monkeypatch.setattr(Config, "from_dict", classmethod(lambda _cls, _data, **_kwargs: config))
     monkeypatch.setattr(RuntimeSettings, "from_dict", classmethod(lambda _cls, _data, **_kwargs: settings))
-    monkeypatch.setattr(
-        Session,
-        "load_snapshot",
-        classmethod(
-            lambda _cls, uid, config=None, settings=None, cwd="", catalog=None, lease=None: loaded.append(uid)
-            or SimpleNamespace(config=config, policy=bundled_policy(), settings=settings, mcp=None, close=lambda: None)
-        ),
-    )
+    monkeypatch.setattr(cli, 'load_session', lambda uid, config=None, settings=None, cwd='', catalog=None, lease=None: loaded.append(uid) or SimpleNamespace(config=config, policy=bundled_policy(), settings=settings, mcp=None, close=lambda: None))
     closed = []
     handovers = iter(["second-uid", ""])
 
     class Loop:
+        @property
+        def presentation(self):
+            return SimpleNamespace(close_background_output=self.close_background_output)
+
         def __init__(self, _agent):
             self.resume_request = ""
             self.resume_lease = None

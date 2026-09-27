@@ -12,21 +12,24 @@ Keep this file short. It is an entry point, not a second design document.
 
 ## Project map
 
-- `wizolt/engine.py`: the agent turn loop composing context, model, and tools; `wizolt/hooks.py`
+- `wizolt/agent/lifecycle.py`: application session creation/resume, feature assembly, background task
+  ownership and resource shutdown. `Session` stores state; it does not assemble features.
+- `wizolt/agent/engine.py`: the agent turn loop composing context, model, and tools; `wizolt/agent/hooks.py`
   is the one presentation seam (`UiHooks`) the agent shares with them.
-- `wizolt/context.py`, `wizolt/model/`, `wizolt/runner.py`: context projection/compaction,
+- `wizolt/agent/context.py`, `wizolt/model/`, `wizolt/agent/runner.py`: context projection/compaction,
   provider request protocols (`model/client.py` with the per-API adapters beside it), and the tool
   execution lifecycle.
-- `wizolt/cli/update.py`, `wizolt/cli/hints.py`: the background version check and quick hints.
+- `wizolt/ui/cli/update.py`, `wizolt/ui/cli/hints.py`: the background version check and quick hints.
 - `wizolt/session/`: durable semantic state (`__init__.py`) and snapshot persistence
   (`store.py`); `store.py` never imports the package at module scope.
 - `wizolt/tools/`, `wizolt/image.py`, `wizolt/mcp/`, `wizolt/skill.py`: vertical
   features; `tools/` splits built-ins by capability, registry in `__init__.py`.
 - `wizolt/config.py`, `wizolt/providers/`: config-file settings, the model capability catalog
   (`providers/catalog.py`), and evidence-backed compatibility policy (`providers/compat.py`).
-- `wizolt/cli/`, `wizolt/tui/`, `wizolt/render.py`: commands (`cli/commands.py`,
+- `wizolt/ui/cli/`, `wizolt/ui/tui/`, `wizolt/ui/render.py`: commands (`cli/commands.py`,
   `cli/modals.py`, `/worker`'s flow in `cli/worker.py`), resume replay (`cli/resume.py`), TUI runtime (`cli/runtime.py`), view
-  fragments (`cli/view.py`), interaction, and presentation.
+  fragments (`cli/view.py`), interaction, and presentation state (`cli/presentation.py`).
+  `View` and replay receive bounded dependencies rather than a `CommandLoop` handle.
 - `tests/`: behavior-oriented tests grouped by subsystem and boundary.
 
 ## Project workflow

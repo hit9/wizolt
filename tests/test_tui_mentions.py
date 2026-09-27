@@ -9,10 +9,10 @@ from prompt_toolkit.document import Document
 from tui_harness import run_interactive_tui, wait_until
 
 from wizolt.agentsmd import MenuRow
-from wizolt.cli import CommandCompleter
 from wizolt.mentions import FilePick, active_mention
-from wizolt.tui import InputMode, TuiApp
-from wizolt.tui.app import default_completion
+from wizolt.ui.cli import CommandCompleter
+from wizolt.ui.tui import InputMode, TuiApp
+from wizolt.ui.tui.app import default_completion
 
 
 def _recording_picker(queries):
@@ -33,7 +33,7 @@ def test_mention_opens_completions_while_typing(monkeypatch):
         completer=CommandCompleter(
             mcp_servers=lambda: ("github", "gitlab", "playwright"),
             skills=lambda: ("release",),
-            files=lambda: (("wizolt/tui.py", "wizolt/tui.py"), ("wizolt/hints.py", "wizolt/hints.py")),
+            files=lambda: (("wizolt/ui/tui.py", "wizolt/ui/tui.py"), ("wizolt/hints.py", "wizolt/hints.py")),
         )
     )
 
@@ -60,7 +60,7 @@ def test_mention_opens_completions_while_typing(monkeypatch):
         wait_until(lambda: completions() == ["@mcp:github", "@mcp:gitlab"])
 
         pipe_input.send_text(" and @file:tu")
-        wait_until(lambda: completions() == ["@file:wizolt/tui.py"])
+        wait_until(lambda: completions() == ["@file:wizolt/ui/tui.py"])
 
         pipe_input.send_text(" and $")
         wait_until(lambda: completions() == ["@skill:release"])
@@ -315,14 +315,14 @@ def test_file_picker_opens_after_typing_without_tab(monkeypatch):
 
     async def pick(query):
         queries.append(query)
-        return FilePick("wizolt/tui.py")
+        return FilePick("wizolt/ui/tui.py")
 
     app = TuiApp(file_picker_available_fn=lambda: True, file_picker_fn=pick)
 
     def drive(pipe_input):
         wait_until(lambda: app.app is not None and app.app.is_running)
         pipe_input.send_text("inspect @file:")
-        wait_until(lambda: app.input_buffer.text == "inspect @file:wizolt/tui.py")
+        wait_until(lambda: app.input_buffer.text == "inspect @file:wizolt/ui/tui.py")
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive)
@@ -617,7 +617,7 @@ def test_enter_on_the_default_row_fills_the_mention_in_without_sending(monkeypat
 @pytest.mark.parametrize(
     ("typed", "filled"),
     [
-        ("see @file:vie", "see @file:wizolt/cli/view.py"),
+        ("see @file:vie", "see @file:wizolt/ui/cli/view.py"),
         ("see @mcp:gi", "see @mcp:github"),
         ("see @mcp:github.se", "see @mcp:github.search"),
         ("see @skill:re", "see @skill:release"),
@@ -640,7 +640,7 @@ def test_every_mention_form_fills_in_its_default_row_and_never_sends(monkeypatch
             mcp_servers=lambda: ("github",),
             mcp_tools=lambda _server: ("search",),
             skills=lambda: ("release",),
-            files=lambda: (("wizolt/cli/view.py", "wizolt/cli/view.py"),),
+            files=lambda: (("wizolt/ui/cli/view.py", "wizolt/ui/cli/view.py"),),
             agents_rows=lambda: rows,
         ),
         file_picker_available_fn=lambda: False,
@@ -683,7 +683,7 @@ def test_every_mention_form_fills_in_its_default_row_and_never_sends(monkeypatch
         ("@mcp:github.", "@mcp:github.search", False),
         ("@skill:re", "@skill:release", False),
         ("$re", "@skill:release", False),
-        ("@file:vi", "@file:wizolt/cli/view.py", False),
+        ("@file:vi", "@file:wizolt/ui/cli/view.py", False),
         ("@agents.md:pro", "@agents.md:project", False),
     ],
 )

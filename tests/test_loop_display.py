@@ -10,17 +10,17 @@ from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
 from test_loop_commands import queued_texts
 
-import wizolt.cli.loop as loop_module
+import wizolt.ui.cli.loop as loop_module
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
 from wizolt.base import (
     LogBlock,
     TurnBox,
     __version__,
 )
-from wizolt.cli import CommandLoop
-from wizolt.engine import Agent
-from wizolt.render import Theme, UiPrinter
-from wizolt.session import Session
-from wizolt.tui import TuiApp
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.render import Theme, UiPrinter
+from wizolt.ui.tui import TuiApp
 
 
 async def test_run_refuses_to_nest_the_cli_runtime(tmp_path):
@@ -75,8 +75,8 @@ async def test_ps_command_uses_markdown_renderer(tmp_path):
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
     rendered = []
     plain = []
-    loop.ui.emit_answer = lambda text, **kwargs: rendered.append(text)
-    loop.emit = lambda text="", indent=0: plain.append(text)
+    loop.presentation.ui.emit_answer = lambda text, **kwargs: rendered.append(text)
+    loop.presentation.emit = lambda text="", indent=0: plain.append(text)
 
     assert await loop.command("/ps") == (True, False)
 
@@ -114,8 +114,8 @@ def test_turn_output_shares_one_column_and_session_chrome_does_not(tmp_path):
     loop = CommandLoop(Agent(s, output_fn=output.append), input_fn=lambda prompt: "", output_fn=output.append)
     margin = LogBlock.margin(TurnBox.CONTENT_LEVEL)
 
-    loop.emit_turn("Cancelled")
-    loop.emit(f"wizolt {__version__}. Type / for commands.")
+    loop.presentation.emit_turn("Cancelled")
+    loop.presentation.emit(f"wizolt {__version__}. Type / for commands.")
 
     assert output == [f"{margin}Cancelled", f"wizolt {__version__}. Type / for commands."]
 
@@ -204,7 +204,7 @@ async def test_clearing_recalled_message_leaves_it_deleted(tmp_path):
 
     assert queued_texts(s) == ["first"]
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=s.config)
+    restored = load_session(s.uid, config=s.config)
     assert queued_texts(restored) == ["first"]
 
 

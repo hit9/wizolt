@@ -7,13 +7,13 @@ import pytest
 from agent_harness import call, queue, session
 from test_agent_turn import _correction
 
-import wizolt.engine as engine_module
+import wizolt.agent.engine as engine_module
+from wizolt.agent.engine import Agent
+from wizolt.agent.prompts import LIVE_FOLLOWUP_PREFIX, SYSTEM_PROMPT
 from wizolt.base import (
     LogBlock,
     MalformedToolCallError,
 )
-from wizolt.engine import Agent
-from wizolt.prompts import LIVE_FOLLOWUP_PREFIX, SYSTEM_PROMPT
 from wizolt.tools import Tool
 
 

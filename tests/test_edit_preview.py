@@ -3,10 +3,10 @@
 from prompt_toolkit.utils import get_cwidth
 from test_edit_tool import session, view
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import LogBlock, LogEdge, LogLine, LogRole, ToolCall
-from wizolt.context import ContextManager
-from wizolt.render import Theme, UiPrinter
-from wizolt.runner import ToolRunner
+from wizolt.ui.render import Theme, UiPrinter
 
 
 def test_approval_segments_highlight_inline_edit_preview():

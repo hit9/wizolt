@@ -107,7 +107,7 @@ trade looks like in practice.
 
 Content laid out for the wrong width. Rules, messages, tables, lists, code and diffs are recorded
 as what they are and laid out again for the pane they are projected into (`WidthDependent` in
-`wizolt/render.py`). codex reached the same place from the same starting point --
+`wizolt/ui/render.py`). codex reached the same place from the same starting point --
 [#5259 Rerender scrollback after terminal resize](https://github.com/openai/codex/issues/5259),
 fixed by [PR #18575](https://github.com/openai/codex/pull/18575) -- with a row cap and, by its own
 description, "noticeable streaming lag for very long threads upon resize"; wizolt's replay bound

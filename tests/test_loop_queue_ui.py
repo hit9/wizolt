@@ -11,12 +11,13 @@ import time
 import pytest
 from agent_harness import call, queue, session
 
-import wizolt.cli.loop as loop_module
-from wizolt.cli import CommandLoop
-from wizolt.context import ContextManager
-from wizolt.engine import Agent
-from wizolt.runner import ToolRunner
-from wizolt.tui import TuiApp
+import wizolt.ui.cli.loop as loop_module
+from wizolt.agent.context import ContextManager
+from wizolt.agent.engine import Agent
+from wizolt.agent.runner import ToolRunner
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.cli.commands import COMMAND_NAMES
+from wizolt.ui.tui import TuiApp
 
 
 def test_queue_live_region_shows_divider_and_pending(tmp_path):
@@ -127,7 +128,7 @@ def test_divider_sweep_accelerates_both_ways_and_reverses_offscreen(tmp_path, mo
             assert all(step is None for step in divider_glow_steps(view.sweep_divider_fragments(label)))
 
         # A new turn is the animation's origin, rather than appearing at a random global phase.
-        view.loop.status_bar.started_at = 100.0
+        view.presentation.status_bar.started_at = 100.0
         mp.setattr(time, "monotonic", lambda: 100.0)
         assert all(step is None for step in divider_glow_steps(view.sweep_divider_fragments(label)))
 
@@ -169,9 +170,9 @@ def test_live_bash_output_stays_above_working_divider_and_queue(tmp_path):
     s = session(tmp_path)
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
     queue(s, "follow up")
-    loop.live_preview.active = True
-    loop.live_preview.text = "live output"
-    loop.live_preview.started_at = time.monotonic()
+    loop.presentation.live_preview.active = True
+    loop.presentation.live_preview.text = "live output"
+    loop.presentation.live_preview.started_at = time.monotonic()
 
     text = "".join(fragment for _, fragment in loop.view.tui_activity_fragments())
 
@@ -257,7 +258,7 @@ async def test_hints_command_is_removed(tmp_path):
         assert handled is True
         assert out[-1].endswith("Unknown command: /hints")
     assert "/hints" not in loop_module.COMMAND_LOOKUP
-    assert "/hints" not in loop_module.CommandLoop.COMMANDS
+    assert "/hints" not in COMMAND_NAMES
 
 
 async def test_queue_command_rejects_mutating(tmp_path):
@@ -476,7 +477,7 @@ def test_worker_queue_hint_names_where_the_text_went(tmp_path):
     s = session(tmp_path)
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
     tui = TuiApp()
-    loop.tui = tui
+    loop.presentation.tui = tui
     tui.set_running("working")
     worker = Session(cwd=s.cwd, config=Config(), settings=s.settings, uid=s.uid + ".w", listed=False)
     s.worker = worker

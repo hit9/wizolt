@@ -11,9 +11,9 @@ import pytest
 from agent_harness import session
 from prompt_toolkit.document import Document
 
-from wizolt.cli import TuiRuntime
-from wizolt.cli.view import CommandCompleter
 from wizolt.mentions import FileMentions, FzfPicker, active_mention, encode_file_mention, scan_mentions
+from wizolt.ui.cli import TuiRuntime
+from wizolt.ui.cli.view import CommandCompleter
 
 
 def completions(completer, text):
@@ -94,20 +94,20 @@ def test_external_discovery_still_checks_deleted_files_and_directories(tmp_path)
 
 
 FILES = (
-    ("wizolt/cli/view.py", "wizolt/cli/view.py"),
-    ("wizolt/tui.py", "wizolt/tui.py"),
+    ("wizolt/ui/cli/view.py", "wizolt/ui/cli/view.py"),
+    ("wizolt/ui/tui.py", "wizolt/ui/tui.py"),
     ("wizolt/hints.py", "wizolt/hints.py"),
 )
 
 
 def test_matching_substring_and_case_insensitive():
     c = CommandCompleter(files=lambda: FILES)
-    assert completions(c, "@file:view") == ["@file:wizolt/cli/view.py"]
-    assert completions(c, "@file:cli/view") == ["@file:wizolt/cli/view.py"]  # whole-path substring
-    assert completions(c, "@file:VIEW") == ["@file:wizolt/cli/view.py"]  # case-insensitive
+    assert completions(c, "@file:view") == ["@file:wizolt/ui/cli/view.py"]
+    assert completions(c, "@file:cli/view") == ["@file:wizolt/ui/cli/view.py"]  # whole-path substring
+    assert completions(c, "@file:VIEW") == ["@file:wizolt/ui/cli/view.py"]  # case-insensitive
     # A fully typed path with nothing longer beside it needs no menu: Enter sends it as typed.
-    assert completions(c, "@file:wizolt/tui.py") == []
-    assert completions(c, "@file:wizolt/tui.p") == ["@file:wizolt/tui.py"]
+    assert completions(c, "@file:wizolt/ui/tui.py") == []
+    assert completions(c, "@file:wizolt/ui/tui.p") == ["@file:wizolt/ui/tui.py"]
 
 
 def test_matching_ranks_basename_prefix_substring_then_path():
@@ -156,7 +156,7 @@ def test_bare_menu_does_not_scan_or_merge_repository_files():
 def test_kind_completion_keeps_canonical_at_prefix():
     c = CommandCompleter(mcp_servers=lambda: ("github", "gitlab"), skills=lambda: ("release",), files=lambda: FILES)
     assert completions(c, "use @") == ["@file:", "@mcp:", "@skill:", "@agents.md:"]
-    assert completions(c, "use @file:vie") == ["@file:wizolt/cli/view.py"]
+    assert completions(c, "use @file:vie") == ["@file:wizolt/ui/cli/view.py"]
     assert completions(c, "use @mcp:git") == ["@mcp:github", "@mcp:gitlab"]
     assert completions(c, "use @skill:rel") == ["@skill:release"]
 
@@ -451,11 +451,11 @@ async def test_concurrent_mention_refreshes_coalesce_onto_one_scan(tmp_path):
         return real_collect(rels)
 
     mentions._collect = collect
-    command_loop.open_background()
+    command_loop.background.open_background()
     try:
         results = await asyncio.gather(*(mentions.candidates() for _ in range(5)))
     finally:
-        await command_loop.close_background()
+        await command_loop.background.close_background()
 
     assert scans == 1
     assert all(result == results[0] for result in results)
@@ -478,9 +478,9 @@ async def test_cancelling_one_candidate_waiter_keeps_the_shared_scan_alive(tmp_p
         return (("a.py", "a.py"),)
 
     monkeypatch.setattr(mentions, "refresh", refresh)
-    command_loop.open_background()
+    command_loop.background.open_background()
     try:
-        shared = command_loop.refresh_mentions()
+        shared = command_loop.background.refresh_mentions()
         assert shared is not None
         waiter = asyncio.create_task(mentions.candidates())
         await started.wait()
@@ -491,7 +491,7 @@ async def test_cancelling_one_candidate_waiter_keeps_the_shared_scan_alive(tmp_p
         release.set()
         assert await shared == (("a.py", "a.py"),)
     finally:
-        await command_loop.close_background()
+        await command_loop.background.close_background()
 
 
 async def test_command_loop_owns_and_settles_the_file_picker(tmp_path, monkeypatch):
@@ -511,10 +511,10 @@ async def test_command_loop_owns_and_settles_the_file_picker(tmp_path, monkeypat
             settled.set()
 
     monkeypatch.setattr(mentions.picker, "pick", pick)
-    command_loop.open_background()
-    waiting = asyncio.create_task(command_loop.pick_file(""))
+    command_loop.background.open_background()
+    waiting = asyncio.create_task(command_loop.background.pick_file(""))
     await started.wait()
-    await command_loop.close_background()
+    await command_loop.background.close_background()
 
     with pytest.raises(asyncio.CancelledError):
         await waiting
@@ -598,9 +598,9 @@ async def test_no_completion_callback_fires_after_the_owner_closes(tmp_path):
     mentions._paths_cache = (time.monotonic(), (("a.py", "a.py"),))
     fired = []
 
-    command_loop.open_background()
+    command_loop.background.open_background()
     runtime.complete_mentions("a", lambda: fired.append(True))
-    await command_loop.close_background()
+    await command_loop.background.close_background()
     fired.clear()
 
     runtime.complete_mentions("a", lambda: fired.append(True))

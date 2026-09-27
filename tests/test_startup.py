@@ -68,5 +68,17 @@ def test_cli_import_chain_defers_request_path_stacks():
 
     Those first run on the request path -- a background version probe, an admitted image -- where
     their import cost hides behind a turn instead of delaying the prompt."""
-    probe = "import sys;import wizolt.cli;heavy = {'httpx2', 'PIL'} & set(sys.modules);assert not heavy, heavy"
+    probe = "import sys;import wizolt.ui.cli;heavy = {'httpx2', 'PIL'} & set(sys.modules);assert not heavy, heavy"
+    subprocess.run([sys.executable, "-c", probe], check=True, capture_output=True)
+
+
+@pytest.mark.parametrize("module", ["wizolt.agent.hooks", "wizolt.ui", "wizolt.model.protocol", "wizolt.session"])
+def test_lower_layer_imports_do_not_assemble_an_application(module):
+    probe = (
+        "import importlib, sys;"
+        f"importlib.import_module({module!r});"
+        "forbidden = {'wizolt.agent.lifecycle', 'wizolt.agent.engine', 'wizolt.ui.cli', "
+        "'wizolt.ui.tui', 'openai', 'anthropic', 'mcp', 'httpx2'} & set(sys.modules);"
+        "assert not forbidden, forbidden"
+    )
     subprocess.run([sys.executable, "-c", probe], check=True, capture_output=True)

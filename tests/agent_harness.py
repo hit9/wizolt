@@ -1,6 +1,7 @@
 """Shared harness for the agent test modules: an isolated session, a tool-call factory, and
 the user-input queue helpers."""
 
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.base import (
     ToolCall,
 )
@@ -8,7 +9,7 @@ from wizolt.config import (
     Config,
     ProviderConfig,
 )
-from wizolt.session import Session, bootstrap_features
+from wizolt.session import Session
 
 
 def session(tmp_path):

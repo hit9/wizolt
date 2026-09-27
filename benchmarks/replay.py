@@ -26,8 +26,12 @@ def main():
     sys.path.insert(0, str(args.source.resolve()))
     from prompt_toolkit.output import ColorDepth
 
-    from wizolt.render import MessageBlock, UiPrinter
-    from wizolt.tui.scrollback import ScrollbackRegion
+    if (args.source / "wizolt" / "ui" / "render.py").is_file():
+        from wizolt.ui.render import MessageBlock, UiPrinter
+        from wizolt.ui.tui.scrollback import ScrollbackRegion
+    else:
+        from wizolt.render import MessageBlock, UiPrinter
+        from wizolt.tui.scrollback import ScrollbackRegion
 
     printer = UiPrinter()
     results = {}
@@ -48,12 +52,16 @@ def main():
         elapsed = []
         digest = hashlib.sha256()
         for index in range(args.repeat):
+            # Keep retained garbage from earlier probes out of this sample's starting state.
+            # GC remains enabled inside the measured operation.
+            gc.collect()
             start = time.perf_counter()
             text, rows = invoke(index)
             elapsed.append((time.perf_counter() - start) * 1000)
             digest.update(text.encode())
             digest.update(str(rows).encode())
         results[name] = {
+            "samples_ms": [round(value, 6) for value in elapsed],
             "median_ms": round(statistics.median(elapsed), 3),
             "min_ms": round(min(elapsed), 3),
             "max_ms": round(max(elapsed), 3),

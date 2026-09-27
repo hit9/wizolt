@@ -8,6 +8,7 @@ from catalog_harness import resolve
 from model_harness import record_backoff
 from test_core_logic import session
 
+from wizolt.agent.context import ContextManager
 from wizolt.base import (
     ModelError,
     ModelUsage,
@@ -17,7 +18,6 @@ from wizolt.base import (
 from wizolt.config import (
     ProviderConfig,
 )
-from wizolt.context import ContextManager
 from wizolt.model import ModelClient, resilience
 from wizolt.tools import TOOL_REGISTRY, Tool
 

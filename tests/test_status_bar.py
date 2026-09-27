@@ -14,7 +14,7 @@ from wizolt.base import (
 from wizolt.config import (
     request_budget_for,
 )
-from wizolt.render import BashLivePreview, StatusBar, Theme
+from wizolt.ui.render import BashLivePreview, StatusBar, Theme
 
 
 def test_bash_live_preview_status_shows_wait_countdown_when_deadline_set(monkeypatch):
@@ -49,7 +49,6 @@ def test_status_bar_has_fixed_order_and_no_working_only_fields(tmp_path):
     s.config.provider.reasoning = "high"
     s.state.context_percent = 23
     s.state.turn_step = s.settings.max_steps
-    s.update.latest = "99.0.0"
 
     text = status_text(StatusBar(s))
 
@@ -144,7 +143,7 @@ def test_status_start_draws_once_without_a_repaint_thread(tmp_path, monkeypatch,
     bar.output = recording_output
     draws = []
     monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
-    monkeypatch.setattr("wizolt.render.print_formatted_text", lambda value, **kwargs: draws.append(value))
+    monkeypatch.setattr("wizolt.ui.render.print_formatted_text", lambda value, **kwargs: draws.append(value))
 
     bar.start()
     bar.start()

@@ -4,14 +4,14 @@ from types import SimpleNamespace
 
 from agent_harness import session, session_with_provider
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.engine import Agent
+from wizolt.agent.prompts import (
+    COMPACTION_SUMMARY_TITLE,
+)
 from wizolt.config import (
     DEFAULT_OUTPUT_RESERVE_TOKENS,
     MIN_CONTEXT_SAFETY_TOKENS,
-)
-from wizolt.context import ContextManager
-from wizolt.engine import Agent
-from wizolt.prompts import (
-    COMPACTION_SUMMARY_TITLE,
 )
 from wizolt.session import AgentState
 

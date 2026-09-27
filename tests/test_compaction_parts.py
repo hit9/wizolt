@@ -8,10 +8,10 @@ class _StubModel:
 import pytest
 from agent_harness import session, session_with_provider
 
-from wizolt import compaction
-from wizolt.context import ContextManager
-from wizolt.engine import Agent
-from wizolt.prompts import (
+from wizolt.agent import compaction
+from wizolt.agent.context import ContextManager
+from wizolt.agent.engine import Agent
+from wizolt.agent.prompts import (
     COMPACTION_SUMMARY_TITLE,
     CURRENT_TURN_CONTEXT_TRIMMED,
 )

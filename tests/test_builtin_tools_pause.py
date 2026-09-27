@@ -3,6 +3,9 @@
 from agent_harness import session as agent_session
 from model_harness import _AnthropicMockClientFactory, _session
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.engine import Agent
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import (
     PAUSED_TURN_KEY,
     ToolCall,
@@ -10,10 +13,7 @@ from wizolt.base import (
 from wizolt.config import (
     ProviderConfig,
 )
-from wizolt.context import ContextManager
-from wizolt.engine import Agent
 from wizolt.model import ModelClient
-from wizolt.runner import ToolRunner
 from wizolt.skill import SkillLibrary
 
 

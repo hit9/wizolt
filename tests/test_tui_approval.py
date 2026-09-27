@@ -7,7 +7,7 @@ from prompt_toolkit.keys import Keys
 from test_tui_app import ACTIONS, _active, _answered, _approval_app
 from tui_harness import request_input_from_driver, run_interactive_tui, wait_for, wait_until
 
-from wizolt.tui import TuiApp
+from wizolt.ui.tui import TuiApp
 
 
 async def test_tui_approval_form_fires_the_focused_action_on_enter():

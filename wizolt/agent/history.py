@@ -19,9 +19,9 @@ import os
 import re
 from collections.abc import Sequence
 
+from wizolt.agent.prompts import COMPACTION_SUMMARY_TITLE
 from wizolt.base import HISTORY_INDEX_ASSET, SESSION_EVENT_KEY, Json
 from wizolt.image import ImageInputs
-from wizolt.prompts import COMPACTION_SUMMARY_TITLE
 from wizolt.session import HistorySegment
 
 # One grep hit must not dump a whole span into the context window, and one summary must not bloat

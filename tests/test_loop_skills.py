@@ -4,22 +4,22 @@ import pytest
 from agent_harness import session
 from test_loop_commands import _write_skill
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import create_session
+from wizolt.agent.prompts import SYSTEM_PROMPT
 from wizolt.base import (
     ToolError,
     TurnBox,
 )
-from wizolt.cli import CommandLoop
-from wizolt.cli.commands import (
+from wizolt.skill import SkillLibrary
+from wizolt.tools import SkillTool, Tool
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.cli.commands import (
     skills_command,
     status,
 )
-from wizolt.context import ContextManager
-from wizolt.engine import Agent
-from wizolt.prompts import SYSTEM_PROMPT
-from wizolt.render import StatusBar
-from wizolt.session import Session
-from wizolt.skill import SkillLibrary
-from wizolt.tools import SkillTool, Tool
+from wizolt.ui.render import StatusBar
 
 
 def test_skill_library_index_and_lookup(tmp_path):
@@ -243,8 +243,8 @@ async def test_status_command_uses_rich_table_without_outer_rule(tmp_path):
     loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda _text: None), output_fn=lambda _text: None)
     plain = []
     rich = []
-    loop.emit = lambda text="", indent=0: plain.append(text)
-    loop.ui.emit_answer = lambda text, **kwargs: rich.append((text, kwargs))
+    loop.presentation.emit = lambda text="", indent=0: plain.append(text)
+    loop.presentation.ui.emit_answer = lambda text, **kwargs: rich.append((text, kwargs))
 
     assert await loop.command("/status") == (True, False)
     assert plain == []
@@ -258,11 +258,11 @@ async def test_status_command_uses_rich_table_without_outer_rule(tmp_path):
 def test_session_from_config_file_theme_param(tmp_path):
     cfg = tmp_path / "wizolt.toml"
     cfg.write_text('[runtime]\ntheme = "light"\n')
-    s = Session.from_config_file(path=str(cfg), theme="dark")
+    s = create_session(path=str(cfg), theme="dark")
     assert s.settings.theme == "dark"
 
-    s2 = Session.from_config_file(path=str(cfg))
+    s2 = create_session(path=str(cfg))
     assert s2.settings.theme == "light"
 
-    s3 = Session.from_config_file(path=str(cfg), theme="")
+    s3 = create_session(path=str(cfg), theme="")
     assert s3.settings.theme == "light"

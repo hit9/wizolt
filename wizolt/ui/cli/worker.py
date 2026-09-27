@@ -3,7 +3,7 @@
 Its multi-stage configuration flow (provider -> model -> reason -> api) is a small state machine
 rather than one handler, which is why it lives beside the command implementations instead of among
 them. Depends on commands.py for remote model discovery; nothing there imports this module back,
-so the registry in wizolt/cli/__init__.py wires `/worker` straight to `worker_command`.
+so the registry in wizolt/ui/cli/__init__.py wires `/worker` straight to `worker_command`.
 """
 
 from __future__ import annotations
@@ -12,13 +12,13 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from wizolt.base import SELECTION_BACK, SESSION_EVENT_KEY
-from wizolt.cli import commands
-from wizolt.cli.modals import select_choice
 from wizolt.config import PROVIDER_API_CHOICES
 from wizolt.tools.delegate import DelegateTool, refresh_worker_entry, worker_provider_config
+from wizolt.ui.cli import commands
+from wizolt.ui.cli.modals import select_choice
 
 if TYPE_CHECKING:
-    from wizolt.cli import CommandLoop
+    from wizolt.ui.cli import CommandLoop
 
 WORKER_SUBCOMMANDS = ("status", "reset", "on", "off", "provider", "model", "reason", "api")
 
@@ -189,7 +189,7 @@ class WorkerFlow:
         /worker provider cascade so the cascade can tell a set from an abort."""
         entry = self.loop.session.config.providers[self.loop.session.config.worker_provider or self.loop.session.config.active_provider]
         configured = tuple(dict.fromkeys(entry.available_models))
-        tui = self.loop.tui
+        tui = self.loop.presentation.tui
         # Remote discovery on a freshly set provider entry is the slow step of the cascade; show
         # the same dispatch note /model does so the pause does not read as a hang.
         show_loading = tui is not None and bool(entry.url and entry.key)

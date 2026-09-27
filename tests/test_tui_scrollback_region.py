@@ -20,9 +20,9 @@ from prompt_toolkit.data_structures import Size
 from test_tui_resize import ReflowingTerminal
 from tui_harness import run_interactive_tui, wait_for, wait_until
 
-from wizolt.render import UiPrinter
-from wizolt.tui.app import TuiApp
-from wizolt.tui.scrollback import ScrollbackRegion, app_top_row
+from wizolt.ui.render import UiPrinter
+from wizolt.ui.tui.app import TuiApp
+from wizolt.ui.tui.scrollback import ScrollbackRegion, app_top_row
 
 ROWS = 30
 
@@ -361,7 +361,7 @@ def test_layout_cache_is_bounded_when_direct_output_extends_it(monkeypatch, caps
 
 
 def test_only_evicted_writes_lose_their_cached_layout(monkeypatch, capsys):
-    from wizolt.tui.scrollback import physical_rows
+    from wizolt.ui.tui.scrollback import physical_rows
 
     region = ScrollbackRegion()
     monkeypatch.setattr(region, "MAX_REPLAY", 2)
@@ -383,7 +383,7 @@ def test_only_evicted_writes_lose_their_cached_layout(monkeypatch, capsys):
 
 
 def test_oversized_replay_keeps_partial_cache_without_sequential_thrash(monkeypatch):
-    from wizolt.tui.scrollback import physical_rows
+    from wizolt.ui.tui.scrollback import physical_rows
 
     region = ScrollbackRegion()
     monkeypatch.setattr(region, "MAX_CACHED_LAYOUT_CHARS", 12)
@@ -431,7 +431,7 @@ def test_batch_larger_than_retention_limit_cannot_reuse_old_indices(monkeypatch,
 
 
 def test_extended_layout_matches_uncached_markdown_and_row_counts(capsys):
-    from wizolt.render import MessageBlock
+    from wizolt.ui.render import MessageBlock
 
     region = ScrollbackRegion()
     printer = UiPrinter()

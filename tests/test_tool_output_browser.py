@@ -11,14 +11,14 @@ from prompt_toolkit.utils import get_cwidth
 from test_command_ui import ModalHarness
 from tui_harness import loop, session
 
-import wizolt.cli.modals as modals_mod
-from wizolt.cli import CommandLoop
-from wizolt.cli.modals import job_view, tool_output_viewer
-from wizolt.engine import Agent
-from wizolt.session import Session
+import wizolt.ui.cli.modals as modals_mod
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import load_session
 from wizolt.session.jobs import BackgroundJob
 from wizolt.tools import BashTool, JobTool, Tool, tooloutput
-from wizolt.tui import TuiApp
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.cli.modals import job_view, tool_output_viewer
+from wizolt.ui.tui import TuiApp
 
 
 @pytest.mark.parametrize("rows", [20, 26, 40])
@@ -31,7 +31,7 @@ async def test_tool_output_browser_sheet_fits_the_modal_window(tmp_path, monkeyp
     for index in range(30):
         command_loop.session.store_tool_result("Bash", [f"printf {index}"], Tool.process_result("BashToolResult", 0, f"out {index}", ""))
     modal = ModalHarness(["q"])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     with monkeypatch.context() as patch:
         patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((80, rows)))
@@ -50,7 +50,7 @@ async def test_tool_output_viewer_browses_recent_calls_through_a_viewport_and_op
         command_loop.session.store_tool_result("Bash", [f"printf command-{index}"], Tool.process_result("BashToolResult", 0, stdout, stderr))
     command_loop.session.store_tool_result("Bash", ["true"], Tool.process_result("BashToolResult", 0, "", ""))
     modal = ModalHarness(["j", "enter", "G"])  # second entry, then scroll the viewer to the bottom
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     # ``shutil`` is a shared module object also used by pytest's terminal reporter. Restore the
     # patch before pytest reports this test result, rather than waiting for fixture teardown.
@@ -88,7 +88,7 @@ async def test_tool_output_browser_marks_bash_results_ok_and_fail(tmp_path, monk
     command_loop.session.store_tool_result("Bash", ["printf ok"], Tool.process_result("BashToolResult", 0, "ok output", ""))
     command_loop.session.store_tool_result("Bash", ["make check"], Tool.process_result("BashToolResult", 2, "", "target failed"))
     modal = ModalHarness(["j", "q"])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     with monkeypatch.context() as patch:
         patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
@@ -108,7 +108,7 @@ async def test_tool_output_browser_lists_past_the_old_fifty_entry_cap(tmp_path, 
     for index in range(55):
         command_loop.session.store_tool_result("Bash", [f"printf {index}"], Tool.process_result("BashToolResult", 0, f"out {index}", ""))
     modal = ModalHarness(["q"])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     with monkeypatch.context() as patch:
         patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
@@ -127,9 +127,9 @@ async def test_tool_output_browser_keeps_every_stored_record_with_a_running_scri
     command_loop = loop(tmp_path)
     for index in range(400):
         command_loop.session.store_tool_result("Bash", [f"printf {index}"], Tool.process_result("BashToolResult", 0, f"out {index}", ""))
-    command_loop.script_running_code = "print('hi')\n"
+    command_loop.presentation.script_running_code = "print('hi')\n"
     modal = ModalHarness(["q"])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     with monkeypatch.context() as patch:
         patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
@@ -154,7 +154,7 @@ async def test_tool_output_viewer_escape_returns_to_the_list_with_the_cursor_kep
     # j moves to the second entry, enter opens it, escape returns to the list, enter opens the
     # same entry again, c-o closes the whole browser.
     modal = ModalHarness(["j", "enter", "escape", "enter", "c-o"], consumed=True)
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
     with monkeypatch.context() as patch:
         patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
         await tool_output_viewer(command_loop)
@@ -188,7 +188,7 @@ async def test_tool_output_viewer_q_in_a_detail_also_returns_to_the_list(tmp_pat
         )
     # enter opens the top entry, q returns to the list, enter opens it again, c-o closes.
     modal = ModalHarness(["enter", "q", "enter", "c-o"], consumed=True)
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
     with monkeypatch.context() as patch:
         patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
         await tool_output_viewer(command_loop)
@@ -211,7 +211,7 @@ async def test_tool_output_viewer_ctrl_c_in_a_detail_also_returns_to_the_list(tm
         )
     # enter opens the top entry, c-c returns to the list, enter opens it again, c-o closes.
     modal = ModalHarness(["enter", "c-c", "enter", "c-o"], consumed=True)
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
     with monkeypatch.context() as patch:
         patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
         await tool_output_viewer(command_loop)
@@ -233,7 +233,7 @@ async def test_tool_output_viewer_ctrl_o_in_a_detail_closes_the_browser(tmp_path
             Tool.process_result("BashToolResult", 0, f"output {index}", ""),
         )
     modal = ModalHarness(["j", "enter", "c-o"], consumed=True)
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
     with monkeypatch.context() as patch:
         patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
         await tool_output_viewer(command_loop)
@@ -256,7 +256,7 @@ async def test_tool_output_viewer_keeps_the_search_filter_across_an_escape(tmp_p
     # Filter to the newest entry, open it, Esc back: the reopened list still shows just that
     # entry, then the second enter opens it again and c-o closes the browser.
     modal = ModalHarness(["/", *"command-4", "enter", "enter", "escape", "enter", "c-o"], consumed=True)
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
     with monkeypatch.context() as patch:
         patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
         await tool_output_viewer(command_loop)
@@ -283,7 +283,7 @@ async def test_tool_output_list_keeps_a_no_matches_row_among_the_rows(tmp_path, 
             Tool.process_result("BashToolResult", 0, f"output {index}", ""),
         )
     modal = ModalHarness(["/", "z", "q"], consumed=True)
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
     with monkeypatch.context() as patch:
         patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
         await tool_output_viewer(command_loop)
@@ -306,7 +306,7 @@ async def test_tool_output_viewer_folds_a_multiline_command_into_one_row(tmp_pat
         Tool.process_result("BashToolResult", 0, "1 file changed", ""),
     )
     modal = ModalHarness([])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     # ``shutil`` is a shared module object also used by pytest's terminal reporter. Restore the
     # patch before pytest reports this test result, rather than waiting for fixture teardown.
@@ -337,7 +337,7 @@ async def test_tool_output_viewer_reopens_a_delegate_order_with_the_worker_answe
     )
     command_loop.session.store_tool_result("Delegate", [{"action": "status"}], '<Delegate action="status" alive="true"/>')
     modal = ModalHarness(["enter"])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     await tool_output_viewer(command_loop)
 
@@ -355,7 +355,7 @@ async def test_tool_output_viewer_shows_the_whole_output_not_the_transcript_prev
     stdout = "\n".join(f"line {line}" for line in range(40))
     command_loop.session.store_tool_result("Bash", ["seq 40"], Tool.process_result("BashToolResult", 0, stdout, ""))
     modal = ModalHarness(["enter", "G"])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     await tool_output_viewer(command_loop)
 
@@ -375,7 +375,7 @@ async def test_tool_output_viewer_bounds_a_huge_result_and_says_so(tmp_path):
     command_loop.session.store_tool_result("Bash", ["seq huge"], Tool.process_result("BashToolResult", 0, stdout, ""))
     command_loop.session.store_tool_result("Bash", ["one long line"], Tool.process_result("BashToolResult", 0, "x" * (tooloutput.VIEWER_LINE_CHARS * 3), ""))
     modal = ModalHarness(["enter"])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     await tool_output_viewer(command_loop)
 
@@ -395,7 +395,7 @@ async def test_tool_output_viewer_bounds_a_result_with_too_many_lines(tmp_path):
     stdout = "\n".join(f"line {line}" for line in range(tooloutput.VIEWER_LINES * 2))
     command_loop.session.store_tool_result("Bash", ["seq huge"], Tool.process_result("BashToolResult", 0, stdout, ""))
     modal = ModalHarness(["enter"])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     await tool_output_viewer(command_loop)
 
@@ -409,7 +409,7 @@ async def test_tool_output_viewer_bounds_a_result_with_too_many_lines(tmp_path):
 async def test_tool_output_viewer_is_noop_without_stored_bash_output(tmp_path):
     command_loop = loop(tmp_path)
     modal = ModalHarness([])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     await tool_output_viewer(command_loop)
 
@@ -420,9 +420,9 @@ async def test_tool_output_viewer_offers_the_script_that_is_still_running(tmp_pa
     """A long batch is exactly when the reader wants to look; the record only arrives at the end."""
     command_loop = loop(tmp_path)
     command_loop.session.store_tool_result("Bash", ["printf done"], Tool.process_result("BashToolResult", 0, "done", ""))
-    command_loop.toolscript_run_status(True, 'for key in KEYS:\n    call("server.tool", {"key": key})\n')
+    command_loop.presentation.toolscript_run_status(True, 'for key in KEYS:\n    call("server.tool", {"key": key})\n')
     modal = ModalHarness(["enter"])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     await tool_output_viewer(command_loop)
 
@@ -435,10 +435,10 @@ async def test_tool_output_viewer_offers_the_script_that_is_still_running(tmp_pa
     assert 'call("server.tool"' in viewer[0]
 
     # It leaves with the script: once the batch returns, only the stored record remains.
-    command_loop.tui = None
-    command_loop.toolscript_run_status(False)
+    command_loop.presentation.tui = None
+    command_loop.presentation.toolscript_run_status(False)
     modal = ModalHarness([])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
     await tool_output_viewer(command_loop)
     assert "running" not in "".join(value for _, value in modal.frames[0])
 
@@ -449,7 +449,7 @@ async def test_tool_output_list_rows_are_coloured_by_part(tmp_path):
     for index in range(2):
         command_loop.session.store_tool_result("Bash", [f"printf hi-{index}"], Tool.process_result("BashToolResult", 0, "hi", ""))
     modal = ModalHarness([])
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     await tool_output_viewer(command_loop)
 
@@ -466,10 +466,10 @@ async def test_tool_output_viewer_reads_resumed_history(tmp_path):
     saved.store_tool_result("Bash", ["printf persisted"], Tool.process_result("BashToolResult", 0, "persisted output", ""))
     await saved.save_snapshot()
     saved.close()  # release the writer before reloading
-    restored = Session.load_snapshot(saved.uid, config=saved.config)
+    restored = load_session(saved.uid, config=saved.config)
     command_loop = CommandLoop(Agent(restored, output_fn=lambda _text: None), input_fn=lambda prompt="": "", output_fn=lambda _text: None)
     modal = ModalHarness(["enter", "c-o"], consumed=True)
-    command_loop.tui = modal
+    command_loop.presentation.tui = modal
 
     await tool_output_viewer(command_loop)
 
@@ -593,7 +593,7 @@ async def test_tool_output_browser_defers_job_log_read_until_the_row_opens(tmp_p
     command_loop.session.store_tool_result("Job", [{"action": "status", "job": job.id}], "Job: job.1\nStatus: done")
     reads = []
     monkeypatch.setattr(job, "log_snapshot", lambda _limit: reads.append(True) or ("output", False))
-    command_loop.tui = ModalHarness(["q"])
+    command_loop.presentation.tui = ModalHarness(["q"])
 
     await tool_output_viewer(command_loop)
 

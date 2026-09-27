@@ -14,8 +14,8 @@ import re
 from prompt_toolkit.data_structures import Size
 from tui_harness import ResizableOutput, run_interactive_tui, wait_until
 
-from wizolt.render import UiPrinter
-from wizolt.tui.app import TuiApp
+from wizolt.ui.render import UiPrinter
+from wizolt.ui.tui.app import TuiApp
 
 ROWS = 30
 DRIFT = 3  # rows the pane content travels up on each unzoom

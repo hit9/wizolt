@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 from agent_harness import call, session
 
-from wizolt.compaction import Compactor
-from wizolt.context import ContextManager
+from wizolt.agent.compaction import Compactor
+from wizolt.agent.context import ContextManager
+from wizolt.agent.runner import ToolRunner
 from wizolt.model import ModelClient
-from wizolt.runner import ToolRunner
 from wizolt.session import SessionSnapshotStore
 from wizolt.tools import BashTool, NoteTool
 

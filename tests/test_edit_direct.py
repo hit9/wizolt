@@ -15,11 +15,12 @@ import threading
 import pytest
 from test_edit_tool import session, view
 
-from wizolt import compaction
+from wizolt.agent import compaction
+from wizolt.agent.context import ContextManager
+from wizolt.agent.lifecycle import load_session
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import ToolCall, ToolError, split_lines
 from wizolt.config import Config
-from wizolt.context import ContextManager
-from wizolt.runner import ToolRunner
 from wizolt.session import Session, SessionSnapshotStore
 from wizolt.tools.editplan import EditBatchPlan
 from wizolt.tools.files import (
@@ -1053,7 +1054,7 @@ def legacy_session(tmp_path):
     with open(path, "w", encoding="utf-8") as file:
         file.writelines(json.dumps(line).replace("{CWD}", str(tmp_path)) + "\n" for line in fixture["lines"])
     (tmp_path / "code.txt").write_text("alpha\nBETA\ngamma\n", encoding="utf-8")
-    return Session.load_snapshot(fixture["uid"], config=config, cwd=str(tmp_path))
+    return load_session(fixture["uid"], config=config, cwd=str(tmp_path))
 
 
 def test_a_pre_feature_session_needs_no_migration_and_still_edits_through_its_views(tmp_path):
@@ -1089,7 +1090,7 @@ async def test_direct_edit_arguments_survive_a_snapshot_and_resume(tmp_path, mon
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
-    restored = Session.load_snapshot(s.uid, config=config, cwd=str(tmp_path))
+    restored = load_session(s.uid, config=config, cwd=str(tmp_path))
 
     stored = next(record for record in restored.tool_records if record.name == "Edit")
     assert stored.args == ["code.txt", "", edits]

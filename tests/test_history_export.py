@@ -11,12 +11,12 @@ import os
 from agent_harness import session, session_with_provider
 from test_session_persistence import session_with_data_dir
 
-from wizolt import history
+from wizolt.agent import history
+from wizolt.agent.context import ContextManager
+from wizolt.agent.history import SUMMARY_CHARS, WRAP_CHARS
+from wizolt.agent.prompts import COMPACTION_SUMMARY_TITLE
 from wizolt.base import SESSION_EVENT_KEY, Json
-from wizolt.context import ContextManager
-from wizolt.history import SUMMARY_CHARS, WRAP_CHARS
 from wizolt.image import IMAGE_REFS_KEY, ImageRef
-from wizolt.prompts import COMPACTION_SUMMARY_TITLE
 from wizolt.session import HistorySegment
 
 

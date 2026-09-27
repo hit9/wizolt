@@ -9,15 +9,15 @@ from test_tui_app import _StubJob, quick_hint_app
 from tui_harness import ResizableOutput, loop, rendered_screen_text, run_interactive_tui, wait_until
 
 from wizolt.base import oneline
-from wizolt.cli import hints
-from wizolt.cli.hints import HintPicker
 from wizolt.tools import NextHintsTool
-from wizolt.tui import TuiApp
+from wizolt.ui.cli import hints
+from wizolt.ui.cli.hints import HintPicker
+from wizolt.ui.tui import TuiApp
 
 
 def test_tui_chat_input_shows_random_idle_placeholder(tmp_path):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
 
     hint = command_loop.view.tui_input_hint()
     assert hint in {entry.text for entry in hints.HINTS}
@@ -26,22 +26,22 @@ def test_tui_chat_input_shows_random_idle_placeholder(tmp_path):
 
 def test_tui_chat_input_says_starting_until_startup_settles(tmp_path):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     command_loop.view._hint_picker = HintPicker(choice=lambda pool: pool[-1])
-    command_loop.starting = True
+    command_loop.presentation.starting = True
 
     assert command_loop.view.tui_input_hint() == "starting…"
-    command_loop.tui.set_running("working")
+    command_loop.presentation.tui.set_running("working")
     assert command_loop.view.tui_input_hint() != "starting…"  # a running turn keeps its queue hint
 
-    command_loop.tui.set_idle()
-    command_loop.starting = False
+    command_loop.presentation.tui.set_idle()
+    command_loop.presentation.starting = False
     assert command_loop.view.tui_input_hint() == "/sessions resumes a past session"
 
 
 def test_tui_idle_hint_sessions_only_before_work(tmp_path):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     command_loop.view._hint_picker = HintPicker(choice=lambda pool: pool[-1])
 
     # Early session: the pool ends with the /sessions hint (the only early-only entry).
@@ -54,7 +54,7 @@ def test_tui_idle_hint_sessions_only_before_work(tmp_path):
 
 def test_tui_idle_hint_favors_diff_right_after_editing(tmp_path):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     command_loop.view._hint_picker = HintPicker(choice=lambda pool: pool[-1])
     command_loop.session.store_tool_result("Bash", ["ls"], "ok")  # mature phase
     command_loop.session.state.round_count = 1
@@ -70,7 +70,7 @@ def test_tui_idle_hint_favors_diff_right_after_editing(tmp_path):
 
 def test_tui_idle_hint_ps_while_jobs_running(tmp_path):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     command_loop.view._hint_picker = HintPicker(choice=lambda pool: pool[-1])
     command_loop.session.store_tool_result("Bash", ["ls"], "ok")  # mature
 
@@ -102,7 +102,7 @@ def test_tui_hint_context_projects_availability(tmp_path):
 
 def test_tui_idle_hint_rerolls_each_turn(tmp_path):
     command_loop = loop(tmp_path)
-    command_loop.tui = TuiApp()
+    command_loop.presentation.tui = TuiApp()
     picks = iter(["first", "second"])
     command_loop.view._hint_picker = HintPicker(choice=lambda pool: next(picks))
     command_loop.session.state.round_count = 1

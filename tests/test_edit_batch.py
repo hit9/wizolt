@@ -3,9 +3,9 @@
 import pytest
 from test_edit_tool import session, view
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import ToolCall, ToolError
-from wizolt.context import ContextManager
-from wizolt.runner import ToolRunner
 from wizolt.tools import EditTool
 from wizolt.tools.files import Edit
 

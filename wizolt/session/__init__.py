@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from wizolt.agent.prompts import COMPACTION_SUMMARY_TITLE, LIVE_FOLLOWUP_PREFIX, SYSTEM_PROMPT, WORKING_STATE_CHECKPOINT_TITLE
 from wizolt.base import (
     HISTORY_INDEX_ASSET,
     SESSION_EVENT_KEY,
@@ -18,13 +19,11 @@ from wizolt.base import (
     ModelUsage,
     Text,
     ToolArgs,
-    UpdateStatus,
     WizoltError,
     run_blocking,
 )
-from wizolt.config import PROVIDER_API_CHOICES, Config, ConfigFile, RuntimeSettings, SystemInfo, request_budget_for
+from wizolt.config import PROVIDER_API_CHOICES, Config, RuntimeSettings, SystemInfo, request_budget_for
 from wizolt.image import ImageInputs, UserInput
-from wizolt.prompts import COMPACTION_SUMMARY_TITLE, LIVE_FOLLOWUP_PREFIX, SYSTEM_PROMPT, WORKING_STATE_CHECKPOINT_TITLE
 from wizolt.providers.compat import ProviderPolicy, bundled_policy
 from wizolt.providers.sync import CatalogRuntime
 from wizolt.session.codec import TRANSCRIPT_SYNC_VERSION, SessionSnapshotCodec
@@ -35,17 +34,15 @@ from wizolt.session.ownership import (
     SessionBusyError,
     SessionLease,
     SessionOwnershipError,
-    canonical_snapshot_path,
     ownership_identity,
 )
-from wizolt.session.queue import QueuedInput
 from wizolt.session.store import (
     CONTEXT_LAYOUT_VERSION,
     SessionEntry,
     SessionSnapshotStore,
     local_timestamp,
 )
-from wizolt.session.types import AgentState, HistorySegment, PlanItem, ToolErrorRecord, ToolResultRecord, TurnDiff
+from wizolt.session.types import AgentState, HistorySegment, PlanItem, QueuedInput, ToolErrorRecord, ToolResultRecord, TurnDiff
 from wizolt.source import SourceView, SourceViewDraft
 
 __all__ = [
@@ -66,8 +63,8 @@ __all__ = [
 ]
 
 if TYPE_CHECKING:
+    from wizolt.agent.engine import Agent
     from wizolt.agentsmd import AgentsMentions
-    from wizolt.engine import Agent
     from wizolt.mcp import MCPManager
     from wizolt.mentions import FileMentions
     from wizolt.skill import SkillLibrary
@@ -78,7 +75,7 @@ class Session:
     """Protocol-neutral semantic state plus resources scoped to one running session.
 
     The durable source of truth includes messages, retained tool output, diffs, and usage. The same
-    aggregate owns transient session resources such as jobs, provider/update state, capability
+    aggregate owns transient session resources such as jobs, provider state, capability
     managers, and caches, but `SessionSnapshotCodec` explicitly selects the subset sufficient to
     resume. Provider clients, stream fragments, and terminal layout are absent by design and are
     reconstructed.
@@ -133,14 +130,13 @@ class Session:
     # entry entirely, and one blended total cannot be multiplied by any single price. A worker's
     # spending is already separate by virtue of its own Session; this gives compaction the same.
     compaction_usage: ModelUsage = field(default_factory=ModelUsage)
-    update: UpdateStatus = field(default_factory=UpdateStatus)
     mcp: MCPManager | None = None
     skills: SkillLibrary | None = None
     mentions: FileMentions | None = None  # runtime handle; holds the cached @file: path list
     agents: AgentsMentions | None = None  # runtime handle; resolves @agents.md: references
     images: ImageInputs = field(init=False, repr=False)
     # The provider/model catalog this session resolves against: snapshot + compiled policy + sync
-    # state. Attached by bootstrap_features (which also owns the feature packages), so the session
+    # state. Attached by agent.lifecycle.bootstrap_features, so the session
     # dataclass itself stays feature-free; absent until a session is bootstrapped.
     catalog: CatalogRuntime | None = None
     # Session-local learned text-only route evidence, keyed by ImageRoute.identity(). Runtime
@@ -249,18 +245,6 @@ class Session:
         self.transcript_turn_diffs.append(TurnDiff(key, turn, path, TurnDiff.bounded_transcript(diff), round=round))
         if len(self.turn_diffs) > 100:
             self.turn_diffs.pop(0)
-
-    @classmethod
-    def from_config_file(cls, *, path: str | None = None, yolo: bool = False, theme: str = "") -> Session:
-        data = ConfigFile.load(path)
-        catalog = CatalogRuntime(Config.data_dir_from(data))
-        session = cls(
-            config=Config.from_dict(data, policy=catalog.policy),
-            settings=RuntimeSettings.from_dict(data, yolo=yolo, theme=theme),
-            catalog=catalog,
-        )
-        bootstrap_features(session)
-        return session
 
     def resolve_path(self, path: str) -> str:
         path = os.path.expanduser(path)
@@ -734,96 +718,3 @@ class Session:
                 return ""
             receipt = await run_blocking(plan.execute, commit=lambda receipt: store.commit(plan, receipt))
             return receipt.uid
-
-    @classmethod
-    def load_snapshot(
-        cls,
-        uid: str,
-        config: Config | None = None,
-        settings: RuntimeSettings | None = None,
-        cwd: str = "",
-        catalog: CatalogRuntime | None = None,
-        lease: SessionLease | None = None,
-    ) -> Session:
-        """Open a stored session for writable use, under its exclusive ownership lease.
-
-        Aliases resolve to a concrete file before the lease is taken, existence and identity are
-        revalidated under it, and only then is the snapshot decoded -- so a contended open leaves
-        the log untouched and never builds state from a baseline another owner may have moved. A
-        reserved lease handed in by the interactive handoff is used as-is and closed on failure.
-        """
-
-        path = ""
-        try:
-            if config is None:
-                data = ConfigFile.load()
-                catalog = catalog or CatalogRuntime(Config.data_dir_from(data))
-                config = Config.from_dict(data, policy=catalog.policy)
-                if settings is None:
-                    settings = RuntimeSettings.from_dict(data)
-            else:
-                catalog = catalog or CatalogRuntime(config.data_dir)
-            if settings is None:
-                settings = RuntimeSettings()
-            cwd = cwd or os.getcwd()
-            resolved = SessionSnapshotStore.resolve_uid(uid, config.data_dir, cwd)
-            if resolved.endswith(".w"):
-                raise WizoltError(f"cannot resume a worker session directly: {resolved}")
-            path = SessionSnapshotStore.find_session_path(config.data_dir, resolved)
-            if not path:
-                raise WizoltError(
-                    f"Session snapshot not found: {resolved} under {SessionSnapshotStore.path_for(config.data_dir, SessionSnapshotStore.PROJECTS_DIR)}"
-                )
-            if lease is None:
-                lease = SessionLease.acquire(config.data_dir, path)
-            lease.assert_owned(path)
-            if not os.path.isfile(path):
-                # Discovery can race with cleanup; a file that vanished before acquisition is a
-                # normal not-found, not a reason to fall back to a decoded baseline.
-                raise WizoltError(
-                    f"Session snapshot not found: {resolved} under {SessionSnapshotStore.path_for(config.data_dir, SessionSnapshotStore.PROJECTS_DIR)}"
-                )
-            session = SessionSnapshotStore.load(resolved, config=config, settings=settings, cwd=cwd)
-            session.catalog = catalog
-            session._lease = lease
-            session._lease_borrowed = False
-            session._ownership_released = False
-            session._snapshot_path = path
-            session.assert_ownership()
-            bootstrap_features(session)
-            return session
-        except BaseException:
-            # A reservation is consumed even if discovery/bootstrap fails, but an explicitly
-            # mismatched capability belongs to another session and must not unlock that owner.
-            if lease is not None and (not path or lease.identity == canonical_snapshot_path(ownership_identity(path))):
-                lease.close()
-            raise
-
-
-def bootstrap_features(session: Session) -> None:
-    """Attach the session's feature objects (MCP, skills, file mentions) when not already injected.
-
-    Session itself stays feature-free: the dataclass constructor never reaches upward. Callers that
-    need the features -- the runtime entry points and the worker handoff -- opt in explicitly after
-    construction, so the feature packages sit above session/ without a module-scope cycle.
-    """
-    if session.mcp is None:
-        from wizolt.mcp import MCPManager  # local import: mcp is built on top of session
-
-        session.mcp = MCPManager(session)
-    if session.skills is None:
-        from wizolt.skill import SkillLibrary  # local import: skill is built on top of session
-
-        session.skills = SkillLibrary.load(session)
-    if session.mentions is None:
-        from wizolt.mentions import FileMentions  # local import: mentions is built on top of session
-
-        session.mentions = FileMentions(session)
-    if session.agents is None:
-        from wizolt.agentsmd import AgentsMentions  # local import: agentsmd is built on top of session
-
-        session.agents = AgentsMentions(session)
-    if session.catalog is None:
-        from wizolt.providers.sync import CatalogRuntime  # local import: keeps providers above session
-
-        session.catalog = CatalogRuntime(session.config.data_dir)

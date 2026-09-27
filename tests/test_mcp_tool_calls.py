@@ -4,13 +4,14 @@ from typing import ClassVar
 import pytest
 from mcp_harness import as_async, mcp_cfg, mcp_tool_info
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.lifecycle import bootstrap_features
+from wizolt.agent.runner import ToolRunner
 from wizolt.base import ToolCall, ToolError
 from wizolt.config import (
     Config,
 )
-from wizolt.context import ContextManager
-from wizolt.runner import ToolRunner
-from wizolt.session import Session, bootstrap_features
+from wizolt.session import Session
 from wizolt.tools import MCPTool
 
 

@@ -5,16 +5,16 @@ import os
 import pytest
 from agent_harness import session
 
-import wizolt.cli.loop as loop_module
+import wizolt.ui.cli.loop as loop_module
+from wizolt.agent.engine import Agent
 from wizolt.base import (
     SESSION_EVENT_KEY,
     TurnBox,
     WizoltError,
 )
-from wizolt.cli import CommandLoop
-from wizolt.cli.modals import select_choice
-from wizolt.engine import Agent
 from wizolt.session import SessionSnapshotStore, ToolResultRecord
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.cli.modals import select_choice
 
 
 async def test_empty_exit_does_not_print_resume_command(tmp_path):
@@ -219,12 +219,12 @@ async def test_a_restored_transcript_is_spaced_like_the_live_turn(tmp_path, monk
     s.tool_records.append(ToolResultRecord("tr.1", "Read", [{"path": "a.py", "ranges": [[0, 1]]}], "raw", "a.py 0:1"))
     printed = []
     # The replay prints as one batch, which goes straight out rather than through `_scrollback_print`.
-    monkeypatch.setattr("wizolt.render.print_formatted_text", lambda *parts, **_kwargs: printed.extend(parts))
+    monkeypatch.setattr("wizolt.ui.render.print_formatted_text", lambda *parts, **_kwargs: printed.extend(parts))
     loop = CommandLoop(Agent(s, output_fn=lambda _text: None), output_fn=lambda _text: None)
-    loop.ui.color = True
+    loop.presentation.ui.color = True
 
     loop.resume.render_resumed_session()
-    loop.ui.drain_scrollback()
+    loop.presentation.ui.drain_scrollback()
 
     text = "".join(fragment for part in printed for _, fragment in to_formatted_text(part))
     rows = re.sub(r"\x1b\[[0-9;]*m", "", text).split("\n")[:-1]  # drop the newline that ends the last row
