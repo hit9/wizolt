@@ -38,6 +38,7 @@ from wizolt.base import (
 from wizolt.image import ImageInputs, UserInput
 from wizolt.model import ModelClient, PreparedRequest, resilience
 from wizolt.session import QueuedInput, Session, SessionSnapshotCodec
+from wizolt.shellhooks import STOP, USER_PROMPT_SUBMIT, HookOutcome, PromptBlocked
 from wizolt.skill import invocation as skill_invocation
 from wizolt.tools import (
     Tool,
@@ -176,6 +177,7 @@ class Agent:
         self.session.state.round_count += 1
         self.session.state.turn_step = 0
         tool_batches = 0
+        stop_hook_active = False
         malformed_tool_names: list[str] = []
         self._current_image_messages = []
         user_message = self._initial_user_message(user_input)
@@ -184,7 +186,8 @@ class Agent:
             self._current_image_messages.append(user_message)
         # Mentions belong to the user's typed input, never to projected image content.
         user_text = user_input.display_text() if isinstance(user_input, UserInput) else self.session.images.label_text(user_message)
-        turn_messages = [user_message, *await self.mention_messages(user_text)]
+        # Before anything is committed: a prompt a UserPromptSubmit hook refuses never becomes a turn.
+        turn_messages = [user_message, *await self.admit_input(user_text)]
         transcript_messages: list[Json] = [self.transcript_message(user_message)]
         await self.checkpoint_turn(turn_messages, transcript_messages)
         failed_request: PreparedRequest | None = None
@@ -271,6 +274,19 @@ class Agent:
                     if not content.strip():
                         raise ModelError("empty final response")
                     answer = content.strip()
+                    stop = await self.fire_hooks(STOP, {"stop_hook_active": stop_hook_active})
+                    if stop.blocked:
+                        # A Stop hook sends the model back to work with its reason, as in Claude
+                        # Code. The answer so far stays as interim text; `stop_hook_active` tells
+                        # the hook it already did this once, and max_steps still bounds the turn.
+                        stop_hook_active = True
+                        message = self.assistant_turn_message(assistant, [], answer)
+                        turn_messages.append(message)
+                        transcript_messages.append(self.transcript_message(message))
+                        self.output_fn(answer)
+                        turn_messages.append({"role": "user", "content": f"Stop hook: {stop.reason}", SESSION_EVENT_KEY: "stop_hook"})
+                        await self.checkpoint_turn(turn_messages, transcript_messages)
+                        continue
                     # Publish the final answer through the same output channel as interim text, so
                     # every agent (the parent's and a worker's) reports its final answer the same
                     # way; callers that used to print the return value themselves no longer do.
@@ -577,7 +593,13 @@ class Agent:
         if pending:
             request_turn = [*turn_messages]
             for item in pending:
-                mentions = await self.mention_messages(item.text)
+                try:
+                    mentions = await self.admit_input(item.text)
+                except PromptBlocked as blocked:
+                    # Withheld from the model, not from the turn: the request still goes out, and
+                    # the input is acknowledged with the rest so it is never retried.
+                    self.output_fn(f"Follow-up withheld by a UserPromptSubmit hook: {blocked}")
+                    continue
                 pending_message = item.message(LIVE_FOLLOWUP_PREFIX)
                 request_turn.append(pending_message)
                 request_turn.extend(mentions)
@@ -694,6 +716,24 @@ class Agent:
                 # boundary on the raw message that caused them, including queued follow-ups.
                 blocks.append({"role": "user", "content": content, SESSION_EVENT_KEY: event})
         return blocks
+
+    async def admit_input(self, text: str) -> list[Json]:
+        """The session-event messages one user input brings: what UserPromptSubmit hooks add, then
+        its skill command and mention expansions. Raises PromptBlocked when a hook refuses it."""
+        outcome = await self.fire_hooks(USER_PROMPT_SUBMIT, {"prompt": text})
+        if outcome.blocked:
+            raise PromptBlocked(outcome.reason or "blocked by a UserPromptSubmit hook")
+        context = [{"role": "user", "content": "--- HOOK CONTEXT ---\n" + "\n".join(outcome.context), SESSION_EVENT_KEY: "hook_context"}]
+        return [*(context if outcome.context else []), *await self.mention_messages(text)]
+
+    async def fire_hooks(self, event: str, fields: Json) -> HookOutcome:
+        """Run a turn event's shell hooks, showing the user any that broke."""
+        if self.session.shell_hooks is None:
+            return HookOutcome()
+        outcome = await self.session.shell_hooks.fire(event, self.session, fields)
+        for failure in outcome.failures:
+            self.output_fn(f"Hook failed: {failure}")
+        return outcome
 
     async def skill_command(self, text: str) -> str:
         """The skill a `/name args` message starts, loaded now: the user asked for it by name, so

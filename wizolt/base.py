@@ -451,6 +451,12 @@ class ToolCall:
     # A malformed-argument error captured while parsing the call. Deferred so it surfaces as a
     # tool result the model can correct from, instead of aborting the whole turn at parse time.
     error: str = ""
+    # The named arguments as the model sent them, before `args` reshaped them. Shell hooks receive
+    # this, so a hook written against Claude Code reads `tool_input.command` as it expects.
+    payload: Json | None = field(default=None, compare=False)
+
+    def hook_input(self) -> Json:
+        return self.payload if isinstance(self.payload, dict) else {"args": self.args}
 
 
 class LogEdge(Enum):

@@ -506,6 +506,9 @@ class DelegateTool(Tool):
         worker.tool_names = WORKER_TOOLS
         worker.listed = False
         worker.skills = parent.skills
+        # The config file's hooks guard a worker's tools as much as the parent's; the skills a
+        # worker loads are its own, so it starts with none of the parent's.
+        worker.shell_hooks = parent.shell_hooks.detached() if parent.shell_hooks else None
         worker.mcp = parent.mcp
         worker.catalog = parent.catalog
         # The worker writes the same family the parent owns; it borrows that lease rather than

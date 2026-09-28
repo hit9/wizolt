@@ -19,6 +19,7 @@ from wizolt.mentions import FilePick
 from wizolt.providers.sync import CatalogRuntime
 from wizolt.session import Session, SessionLease, SessionSnapshotStore
 from wizolt.session.ownership import canonical_snapshot_path, ownership_identity
+from wizolt.utils.project import project_root
 
 if TYPE_CHECKING:
     from wizolt.agent.engine import Agent
@@ -114,6 +115,11 @@ def bootstrap_features(session: Session) -> None:
         from wizolt.skill import SkillLibrary  # local import: skill is built on top of session
 
         session.skills = SkillLibrary.load(session)
+    if session.shell_hooks is None:
+        from wizolt.shellhooks import ShellHooks, parse_hooks  # local import: shellhooks is built on top of session
+
+        # Parsed here, not lazily: a malformed guard must stop startup, not silently never run.
+        session.shell_hooks = ShellHooks(parse_hooks(session.config.hooks), project_root(session.cwd))
     if session.mentions is None:
         from wizolt.mentions import FileMentions  # local import: mentions is built on top of session
 

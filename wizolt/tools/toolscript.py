@@ -402,7 +402,7 @@ class ToolScript(Tool):
             payload: Json = {"action": "call", "server": server, "tool": tool, "arguments": arguments}
             if format == "json":
                 payload["format"] = "json"
-            return ToolCall(f"toolscript.{index}", "MCP", [payload]), tool
+            return ToolCall(f"toolscript.{index}", "MCP", [payload], payload=payload), tool
         else:
             from wizolt.tools import TOOL_REGISTRY  # local import: the registry is built on top of every tool
 
@@ -420,7 +420,7 @@ class ToolScript(Tool):
             from wizolt.tools import tool_payload  # local import: the registry is built on top of every tool
 
             try:
-                return ToolCall(f"toolscript.{index}", name, tool_payload(name, args)), ""
+                return ToolCall(f"toolscript.{index}", name, tool_payload(name, args), payload=args), ""
             except ToolError as error:
                 raise ToolError(f"{name}: {error}") from error
 

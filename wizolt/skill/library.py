@@ -9,6 +9,7 @@ from wizolt.skill import discovery
 from wizolt.skill.invocation import Invocation, parse_command
 from wizolt.skill.skillfile import Skill
 from wizolt.skill.trust import ProjectTrust
+from wizolt.utils.project import project_root
 
 if TYPE_CHECKING:
     from wizolt.session import Session
@@ -42,7 +43,7 @@ class SkillLibrary:
     def load(cls, session: Session) -> SkillLibrary:
         library = cls({})
         library._cwd, library._user_skills = session.cwd, session.data_path("skills")
-        library.trust = ProjectTrust(session.data_path(ProjectTrust.FILE_NAME), discovery.project_root(session.cwd))
+        library.trust = ProjectTrust(session.data_path(ProjectTrust.FILE_NAME), project_root(session.cwd))
         library.reload()
         return library
 

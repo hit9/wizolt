@@ -31,6 +31,7 @@ from wizolt.base import (
 )
 from wizolt.model import ModelClient
 from wizolt.session import Session, TurnDiff
+from wizolt.shellhooks import POST_TOOL_USE, PRE_TOOL_USE, HookOutcome
 from wizolt.source import SourceBlock, TextBlock, ToolOutput
 from wizolt.tools import (
     TOOL_REGISTRY,
@@ -592,6 +593,7 @@ class ToolRunner:
             or call.name in ("Delegate", "Edit", "NextHints")
             or tool_class in (BashTool, JobTool, AskTool, ToolScript)
             or tool_class.PRODUCES_MODEL_OBSERVATION
+            or (self.session.shell_hooks is not None and self.session.shell_hooks.watches_tool(call.name))
         ):
             return False
         try:
@@ -682,8 +684,13 @@ class ToolRunner:
                 # rendered failure still hands the model a fresh view.
                 message, recovery = plan_error if isinstance(plan_error, tuple) else (plan_error, None)
                 raise ToolError(message, recovery=recovery)
-            needs_confirmation = tool.needs_confirmation()
-            if needs_confirmation and self.session.settings.yolo and not tool.always_confirms():
+            pre = await self.tool_hooks(PRE_TOOL_USE, call)
+            if pre.blocked:
+                raise ToolError(f"blocked by PreToolUse hook: {pre.reason}")
+            # A hook's "ask" wins over yolo; its "allow" grants what yolo would, for this one call.
+            needs_confirmation = tool.needs_confirmation() or pre.permission == "ask"
+            pre_approved = pre.permission != "ask" and (self.session.settings.yolo or pre.permission == "allow")
+            if needs_confirmation and pre_approved and not tool.always_confirms():
                 d.auto = True
                 pre = toolblocks.approval_display(self.session, call, tool, "auto", batch_suffix=batch_suffix, planned_edit=planned_edit)
                 # The "auto …" header duplicates the result line; only surface it when it carries a
@@ -747,7 +754,28 @@ class ToolRunner:
         message = await self.finish(call, output, elapsed=time.monotonic() - started, turn_diff=tool.turn_diff(), d=d)
         if isinstance(tool, BashTool) and tool.exit_code is not None:
             self.session.record_command_result(tool.command(), tool.exit_code, workdir=tool.execution_workdir)
-        return "ok", message, observation
+        post = await self.tool_hooks(POST_TOOL_USE, call, {"tool_response": ToolOutput.of(output).retained_text})
+        return "ok", self.with_hook_feedback(message, post), observation
+
+    async def tool_hooks(self, event: str, call: ToolCall, fields: Json | None = None) -> HookOutcome:
+        """Run one tool event's shell hooks. A hook that broke is the user's to fix: it is shown
+        here and never reaches the model, which could not act on it."""
+        hooks = self.session.shell_hooks
+        if hooks is None:
+            return HookOutcome()
+        outcome = await hooks.fire(event, self.session, {"tool_input": call.hook_input(), **(fields or {})}, tool_name=call.name)
+        for failure in outcome.failures:
+            self.emit(LogBlock.hierarchy(None, [LogLine("hook", oneline(failure, 220), LogRole.ERROR, LogEdge.END)]))
+        return outcome
+
+    def with_hook_feedback(self, message: str, outcome: HookOutcome) -> str:
+        """Append what PostToolUse hooks told the model. The call already ran, so a "block" cannot
+        undo it; as in Claude Code it becomes feedback the model reads with the result."""
+        lines = ([outcome.reason] if outcome.blocked else []) + list(outcome.context)
+        if not lines:
+            return message
+        self.emit(LogBlock.hierarchy(None, [LogLine("hook", oneline(line, 220), LogRole.META, LogEdge.END) for line in lines]))
+        return message + "\nPostToolUse hook feedback:\n" + "\n".join(lines)
 
     def reject(
         self,

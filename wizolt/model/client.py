@@ -790,6 +790,6 @@ class ModelClient:
         # error on the call so it is replayed as a tool result during execution, letting the model
         # self-correct, rather than escaping to abort the entire agent turn.
         try:
-            return ToolCall(id=call_id, name=name, args=tool_payload(name, payload))
+            return ToolCall(id=call_id, name=name, args=tool_payload(name, payload), payload=payload if isinstance(payload, dict) else None)
         except ToolError as error:
             return ToolCall(id=call_id, name=name, args=[], error=str(error))

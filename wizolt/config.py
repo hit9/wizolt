@@ -376,6 +376,8 @@ class Config:
     providers: dict[str, ProviderConfig] = field(default_factory=lambda: {"default": ProviderConfig()})
     data_dir: str = UserPaths.DEFAULT_DATA_DIR
     mcp: Json = field(default_factory=dict)
+    # The raw `[hooks]` table; wizolt.shellhooks validates it when a session is assembled.
+    hooks: Json = field(default_factory=dict)
     # The provider entry a Delegate sends its worker to; empty disables the tool entirely. The
     # registration gate reads Session.worker_tool_enabled, the value frozen from this field at
     # session start, never the live field: a runtime /worker provider switch tunes an already-
@@ -460,6 +462,7 @@ class Config:
             providers=providers,
             data_dir=cls.str(paths, "data_dir", UserPaths.DEFAULT_DATA_DIR),
             mcp=cls.table(data, "mcp"),
+            hooks=cls.table(data, "hooks"),
             worker_provider=worker_provider,
             worker_model=worker_model,
             worker_reasoning=worker_reasoning,
@@ -642,6 +645,9 @@ model = ""
 # [mcp.example]                # url (+ auth = "oauth") for remote, or command/args for stdio
 # url = "https://example.com/mcp"
 # auto_connect = false
+# [[hooks.PreToolUse]]         # commands run around tool calls and turns, in Claude Code's format;
+# matcher = "Bash"             # events: PreToolUse, PostToolUse, UserPromptSubmit, Stop.
+# hooks = [{ type = "command", command = "~/bin/guard.sh" }]   # exit 2 blocks, stderr says why
 """
 
     @classmethod

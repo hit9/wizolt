@@ -49,6 +49,7 @@ LAYERS = {
     "wizolt.mcp.rendering": 6,
     "wizolt.mcp.manager": 6,
     "wizolt.skill": 6,
+    "wizolt.shellhooks": 6,
     "wizolt.mentions": 6,
     "wizolt.agentsmd": 6,
     "wizolt.agent.history": 6,

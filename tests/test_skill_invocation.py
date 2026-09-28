@@ -1,6 +1,7 @@
 """Starting a skill: `/name args`, argument placeholders, and `!`command`` context at load time."""
 
 import asyncio
+import os
 import time
 
 import pytest
@@ -162,15 +163,36 @@ async def test_shell_timeout_kills_the_command(tmp_path):
 
 
 async def test_cancelled_shell_leaves_nothing_running(tmp_path):
-    marker = tmp_path / "survived"
-    task = asyncio.ensure_future(run_shell(f"sleep 0.5; touch {marker}", cwd=str(tmp_path), timeout=30))
-    await asyncio.sleep(0.1)
+    pid_file = tmp_path / "pid"
+    # A child in the command's group: the kill must reach past the shell itself.
+    task = asyncio.ensure_future(run_shell(f"sleep 30 & echo $! > {pid_file}; wait", cwd=str(tmp_path), timeout=60))
+    for _ in range(500):
+        if pid_file.exists() and pid_file.read_text(encoding="utf-8").strip():
+            break
+        await asyncio.sleep(0.01)
+    child = int(pid_file.read_text(encoding="utf-8"))
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    await asyncio.sleep(0.8)
 
-    assert not marker.exists()
+    for _ in range(500):  # SIGKILL is delivered asynchronously; the orphan is reaped by init
+        if not _alive(child):
+            break
+        await asyncio.sleep(0.01)
+    assert not _alive(child)
+
+
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    # A killed orphan can linger as a zombie until init reaps it; a zombie runs nothing.
+    try:
+        with open(f"/proc/{pid}/stat", encoding="utf-8") as handle:
+            return handle.read().split(")")[-1].split()[0] != "Z"
+    except OSError:
+        return True
 
 
 async def test_shell_stdin_and_environment(tmp_path):

@@ -20,6 +20,15 @@
   "Untrusted" in `/skills` and nothing can start them. Skills that only hold instructions, and
   your own user-level skills, need no trust. The decision is stored per user in
   `<data_dir>/trusted-projects.json`, never in the repository.
+- Shell hooks, configured under `[hooks]` in the config file in Claude Code's format:
+  `PreToolUse` and `PostToolUse` (with a `matcher` on the tool name), `UserPromptSubmit` and
+  `Stop`. A hook reads the event as JSON on stdin (`tool_input` is the tool's own arguments) and
+  answers by exit code or JSON: exit 2 blocks with stderr as the reason. A pre-tool hook can
+  block a call, approve it without the prompt, or require the prompt even under yolo. A
+  post-tool hook's feedback is added to the result, a prompt hook can refuse or add context to
+  your message, and a stop hook can send the model back to work. A hook that fails any other way
+  is shown to you and ignored. Workers run the tool hooks only. `/status` counts the active
+  hooks; a malformed hook is a config error at startup.
 
 ### Changed
 

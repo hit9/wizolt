@@ -67,6 +67,7 @@ if TYPE_CHECKING:
     from wizolt.agentsmd import AgentsMentions
     from wizolt.mcp import MCPManager
     from wizolt.mentions import FileMentions
+    from wizolt.shellhooks import ShellHooks
     from wizolt.skill import SkillLibrary
 
 
@@ -132,6 +133,7 @@ class Session:
     compaction_usage: ModelUsage = field(default_factory=ModelUsage)
     mcp: MCPManager | None = None
     skills: SkillLibrary | None = None
+    shell_hooks: ShellHooks | None = None  # runtime handle; the user's hooks in force for this session
     mentions: FileMentions | None = None  # runtime handle; holds the cached @file: path list
     agents: AgentsMentions | None = None  # runtime handle; resolves @agents.md: references
     images: ImageInputs = field(init=False, repr=False)

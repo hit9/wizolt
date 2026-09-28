@@ -225,6 +225,7 @@ def status(loop: CommandLoop, args: str) -> str:
         ("tools", len(loop.session.tool_results)),
         ("mcp", connected_mcp),
         ("skills", len(loop.session.skills.skills) if loop.session.skills else 0),
+        ("hooks", len(loop.session.shell_hooks.active()) if loop.session.shell_hooks else 0),
         ("known", len(loop.session.state.known)),
         ("compactions", loop.session.state.compaction_count),
     ]
