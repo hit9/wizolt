@@ -3,6 +3,7 @@
 import os
 
 from agent_harness import session
+from prompt_toolkit.document import Document
 
 from wizolt.agent.engine import Agent
 from wizolt.skill import SkillLibrary
@@ -104,6 +105,19 @@ def test_the_same_directory_reached_twice_counts_once(tmp_path, isolate_home):
 
     assert skills.get("home").source == "user"
     assert skills.get("home").overrides == ()
+
+
+def test_mention_menu_labels_each_skill_with_its_source(tmp_path, isolate_home):
+    _skill(isolate_home / ".claude" / "skills", "mine", "user skill")
+    _skill(tmp_path / ".wizolt" / "skills", "theirs", "project skill")
+    loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda _text: None), output_fn=lambda _text: None)
+
+    def menu(text):
+        return {row.text: row.display_meta_text for row in loop.input_completer.get_completions(Document(text), None)}
+
+    assert menu("@skill:") == {"@skill:mine": "user", "@skill:theirs": "project"}
+    assert menu("$") == {"@skill:mine": "user", "@skill:theirs": "project"}
+    assert menu("@the")["@skill:theirs"] == "skill · project"
 
 
 def test_unlistable_root_is_reported(tmp_path):

@@ -62,6 +62,8 @@ class CommandCompleter(Completer):
         mcp_connected_servers: Callable[[], tuple[str, ...]] = tuple,
         mcp_tools: Callable[[str], tuple[str, ...]] = lambda _server: (),
         skills: Callable[[], tuple[str, ...]] = tuple,
+        # "project" or "user" for a skill name, shown beside it so two sources never look alike.
+        skill_source: Callable[[str], str] = lambda _name: "",
         files: Callable[[], tuple[tuple[str, str], ...]] = tuple,
         file_matches: Callable[[str], tuple[str, ...]] | None = None,
         agents_rows: Callable[[], list[MenuRow]] = list,
@@ -75,6 +77,7 @@ class CommandCompleter(Completer):
         self.mcp_connected_servers = mcp_connected_servers
         self.mcp_tools = mcp_tools
         self.skills = skills
+        self.skill_source = skill_source
         # (lowercase, original) workspace-relative paths from the session's cached path list.
         self.files = files
         self.file_matches = file_matches
@@ -222,7 +225,10 @@ class CommandCompleter(Completer):
             )
         else:
             mcp_items = [Completion(f"@mcp:{name}", start_position=start, display_meta="mcp") for name in self._matching_names(self.mcp_servers(), raw)]
-        skill_items = [Completion(f"@skill:{name}", start_position=start, display_meta="skill") for name in self._matching_names(self.skills(), raw)]
+        skill_items = [
+            Completion(f"@skill:{name}", start_position=start, display_meta=" · ".join(filter(None, ("skill", self.skill_source(name)))))
+            for name in self._matching_names(self.skills(), raw)
+        ]
         yield from [*kind_items, *mcp_items, *skill_items][: self.MAX_ROWS]
 
     def _file_completions(self, query: str, start: int) -> Iterator[Completion]:
@@ -277,7 +283,7 @@ class CommandCompleter(Completer):
 
     def _skill_completions(self, query: str, start: int) -> Iterator[Completion]:
         for name in self._matching_names(self.skills(), query):
-            yield Completion(f"@skill:{name}", start_position=start)
+            yield Completion(f"@skill:{name}", start_position=start, display_meta=self.skill_source(name) or None)
 
     def _agents_completions(self, query: str, start: int) -> Iterator[Completion]:
         """After "@agents.md:": the bounded menu of files and their sections, filtered by

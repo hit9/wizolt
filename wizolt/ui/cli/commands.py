@@ -363,8 +363,8 @@ def skills_command(loop: CommandLoop, args: str) -> str:
     parts = [f"### Skills · {len(skills)}", "", "Load with `Skill(name)` or reference inline with `$name`."]
     if skills:
         table = markdown_table(
-            ["skill", "from", "description"],
-            [(f"`{skill.name}`", f"`{skill.location}`", skill.description or "(no description)") for skill in skills],
+            ["skill", "source", "from", "description"],
+            [(f"`{skill.name}`", skill.source, f"`{skill.location}`", skill.description or "(no description)") for skill in skills],
         )
         parts.extend(["", table])
     overrides = [f"- `{skill.name}` hides " + ", ".join(f"`{location}`" for location in skill.overrides) for skill in skills if skill.overrides]
