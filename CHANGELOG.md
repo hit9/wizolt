@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.56.0 - 2026-09-28
+
 ### Added
 
 - Extend shell hooks to existing session, worker, compaction and failure boundaries:
