@@ -100,4 +100,4 @@ async def test_trusting_is_refused_while_the_agent_works(tmp_path):
 
 
 def test_unknown_subcommand_prints_usage(tmp_path):
-    assert skills_command(_loop(session(tmp_path)), "nope") == "Usage: /skills [list|trust|untrust]"
+    assert skills_command(_loop(session(tmp_path)), "nope") == "Usage: /skills [list|reload|trust|untrust]"

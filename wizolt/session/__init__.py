@@ -69,6 +69,7 @@ if TYPE_CHECKING:
     from wizolt.mentions import FileMentions
     from wizolt.shellhooks import ShellHooks
     from wizolt.skill import SkillLibrary
+    from wizolt.skill.listing import SkillListing
 
 
 @dataclass
@@ -111,6 +112,9 @@ class Session:
     next_hints_available: bool = True  # transient frontend capability; false for the simple REPL, which has no chip UI
     # Durable intent: a crash after the tool result must not lose the promised reset.
     context_reset_requested: bool = False
+    # Runtime: bumped whenever the conversation's head is rebuilt (compaction, context reset), which
+    # is when prefix context frozen for the old head may be rebuilt too. Never persisted.
+    context_epoch: int = field(default=0, repr=False, compare=False)
     # Worker handoff (see DESIGN.md): the second session this one delegates to, and its per-session
     # projection knobs. None of these are persisted — SessionSnapshotCodec.snapshot is an explicit
     # whitelist, so they return to their defaults on load and must be re-set by the delegate caller.
@@ -136,6 +140,7 @@ class Session:
     compaction_usage: ModelUsage = field(default_factory=ModelUsage)
     mcp: MCPManager | None = None
     skills: SkillLibrary | None = None
+    skill_listing: SkillListing | None = None  # runtime; what the model has been told about skills
     shell_hooks: ShellHooks | None = None  # runtime handle; the user's hooks in force for this session
     mentions: FileMentions | None = None  # runtime handle; holds the cached @file: path list
     agents: AgentsMentions | None = None  # runtime handle; resolves @agents.md: references
@@ -472,6 +477,7 @@ class Session:
         if not self.context_reset_requested or self._active_turn_messages or self._active_transcript_messages:
             return False
         self.context_reset_requested = False
+        self.context_epoch += 1
         self.messages.clear()
         self.state.summary = ""
         checkpoint = self.state_checkpoint_event()

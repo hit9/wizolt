@@ -36,6 +36,12 @@
   approval prompt for the calls they cover. A command that chains, pipes, substitutes or
   redirects is never covered, so it still asks. A worker starts with none of the parent's loaded
   skills. A skill with malformed hooks does not load.
+- Skills that appear during a session reach the model without restarting. A skill that was
+  installed, trusted, or found in a subfolder the agent opened a file in is announced to the
+  model once, at the start of the next turn. The skill index and the Skill tool stay unchanged
+  until the next compaction, so the prompt cache keeps working. `/skills reload` rescans now and
+  says what changed. A subfolder's skills only add to the ones on your working path; they never
+  replace them.
 
 ### Changed
 

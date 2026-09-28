@@ -145,7 +145,7 @@ class CommandCompleter(Completer):
                 yield from self.matches(self.mcp_connected_servers(), value)
                 return
 
-        for command, choices in (("/catalog ", ("status", "sync")), ("/skills ", ("list", "trust", "untrust"))):
+        for command, choices in (("/catalog ", ("status", "sync")), ("/skills ", ("list", "reload", "trust", "untrust"))):
             if text.startswith(command) and " " not in (tail := text[len(command) :]):
                 yield from self.matches(choices, tail)
                 return

@@ -354,7 +354,7 @@ async def catalog_command(loop: CommandLoop, args: str) -> str:
     return markdown_table(["", ""], rows)
 
 
-SKILLS_USAGE = "Usage: /skills [list|trust|untrust]"
+SKILLS_USAGE = "Usage: /skills [list|reload|trust|untrust]"
 
 
 def skills_command(loop: CommandLoop, args: str) -> str:
@@ -362,8 +362,10 @@ def skills_command(loop: CommandLoop, args: str) -> str:
     action = args.strip()
     if action == "list":
         action = ""
-    if action in ("trust", "untrust"):
-        return skills_trust(library, grant=action == "trust") if library is not None else "No skill library in this session."
+    if action in ("trust", "untrust", "reload"):
+        if library is None:
+            return "No skill library in this session."
+        return skills_reload(library) if action == "reload" else skills_trust(library, grant=action == "trust")
     if action:
         return SKILLS_USAGE
     skills = library.all() if library else []
@@ -406,15 +408,22 @@ def skills_command(loop: CommandLoop, args: str) -> str:
 def skills_trust(library: SkillLibrary, *, grant: bool) -> str:
     if library.trust is None:
         return "This session's skills were not loaded from disk; there is nothing to trust."
-    before = set(library.skills)
     (library.trust.grant if grant else library.trust.revoke)()
-    library.reload()
-    changed = sorted(set(library.skills) ^ before)
     verb = "Trusted" if grant else "No longer trusting"
-    summary = f"{verb} `{display_path(library.trust.root)}`."
-    if not changed:
-        return summary
-    return summary + (" Enabled: " if grant else " Disabled: ") + ", ".join(f"`{name}`" for name in changed) + "."
+    return f"{verb} `{display_path(library.trust.root)}`." + skills_change(library)
+
+
+def skills_reload(library: SkillLibrary) -> str:
+    return "Reloaded skills." + (skills_change(library) or " Nothing changed.")
+
+
+def skills_change(library: SkillLibrary) -> str:
+    """Reload, and say which skills came and went. The model hears of new ones at its next turn."""
+    before = set(library.skills)
+    library.reload()
+    added, removed = sorted(set(library.skills) - before), sorted(before - set(library.skills))
+    parts = [f" {label}: " + ", ".join(f"`{name}`" for name in names) + "." for label, names in (("Enabled", added), ("Disabled", removed)) if names]
+    return "".join(parts)
 
 
 def ps_command(loop: CommandLoop, args: str) -> str:

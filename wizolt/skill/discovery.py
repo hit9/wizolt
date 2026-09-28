@@ -9,6 +9,7 @@ one.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from wizolt.agentsmd import display_path
@@ -32,17 +33,19 @@ class SkillRoot:
     label: str  # how /skills names it: "~/.claude/skills", ".wizolt/skills", "web/.agents/skills"
 
 
-def roots(cwd: str, user_skills: str) -> list[SkillRoot]:
-    """Every skill root, lowest precedence first: user roots, then each project level from the
-    repository top down to cwd. Deeper beats shallower, as the directory nearer the work is the
-    more specific one."""
+def roots(cwd: str, user_skills: str, nested: Iterable[str] = ()) -> list[SkillRoot]:
+    """Every skill root, lowest precedence first: user roots, then `nested` project directories
+    off the working path, then each project level from the repository top down to cwd. Deeper
+    beats shallower on the working path, as the directory nearer the work is the more specific
+    one; a nested folder (a monorepo package the agent opened a file in) only adds skills, and
+    never replaces one the working path already has."""
     found = [SkillRoot(os.path.expanduser(path), "user", path) for path in SHARED_USER_ROOTS]
     found.append(SkillRoot(user_skills, "user", display_path(user_skills)))
     top, cwd = project_root(cwd), os.path.abspath(cwd)
     levels = [top]
     for part in [] if cwd == top else os.path.relpath(cwd, top).split(os.sep):
         levels.append(os.path.join(levels[-1], part))
-    for level in levels:
+    for level in [*sorted(set(nested) - set(levels)), *levels]:
         prefix = os.path.relpath(level, top)
         for directory in PROJECT_DIRS:
             path = os.path.join(level, directory, "skills")
@@ -50,6 +53,19 @@ def roots(cwd: str, user_skills: str) -> list[SkillRoot]:
                 legacy = (os.path.join(level, name, "skills") for name in LEGACY_PROJECT_DIRS)
                 path = next((candidate for candidate in legacy if os.path.isdir(candidate)), path)
             found.append(SkillRoot(path, "project", os.path.normpath(os.path.join(prefix, os.path.relpath(path, level)))))
+    return found
+
+
+def levels_above(path: str, top: str) -> list[str]:
+    """The directories from `path`'s own folder up to, not including, the repository `top`; none
+    when the file lies outside it."""
+    directory = os.path.dirname(os.path.abspath(path))
+    if os.path.commonpath([directory, top]) != top:
+        return []
+    found = []
+    while directory != top:
+        found.append(directory)
+        directory = os.path.dirname(directory)
     return found
 
 

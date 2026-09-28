@@ -8,6 +8,7 @@ from typing import Any, ClassVar
 
 from wizolt.base import ApprovalView, Json, ToolArgs, ToolError
 from wizolt.session import Session, TurnDiff
+from wizolt.skill.listing import SkillListing
 from wizolt.source import ToolOutput
 
 
@@ -75,7 +76,9 @@ class Tool:
 
         strict = session.policy.resolve(session.config.provider).strict_tools_active
         # Optional tool families stay out of the model prefix until they have usable session state.
-        has_skills = bool(session.skills and session.skills.model_visible())
+        # Frozen with the session's listing: skills that appear later are announced, never added by
+        # reshaping the tool block (see wizolt.skill.listing).
+        has_skills = session.skills is not None and SkillListing.of(session, session.skills).tool
         has_mcp = bool(session.mcp and (session.mcp.tools or session.mcp.resources))
         return [
             tool.schema(strict)

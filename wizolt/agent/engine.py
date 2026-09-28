@@ -40,6 +40,7 @@ from wizolt.model import ModelClient, PreparedRequest, resilience
 from wizolt.session import QueuedInput, Session, SessionSnapshotCodec
 from wizolt.shellhooks import STOP, USER_PROMPT_SUBMIT, HookOutcome, PromptBlocked
 from wizolt.skill import invocation as skill_invocation
+from wizolt.skill.listing import SkillListing
 from wizolt.tools import (
     Tool,
 )
@@ -187,7 +188,7 @@ class Agent:
         # Mentions belong to the user's typed input, never to projected image content.
         user_text = user_input.display_text() if isinstance(user_input, UserInput) else self.session.images.label_text(user_message)
         # Before anything is committed: a prompt a UserPromptSubmit hook refuses never becomes a turn.
-        turn_messages = [user_message, *await self.admit_input(user_text)]
+        turn_messages = [user_message, *await self.admit_input(user_text), *self.skill_announcement()]
         transcript_messages: list[Json] = [self.transcript_message(user_message)]
         await self.checkpoint_turn(turn_messages, transcript_messages)
         failed_request: PreparedRequest | None = None
@@ -734,6 +735,16 @@ class Agent:
         for failure in outcome.failures:
             self.output_fn(f"Hook failed: {failure}")
         return outcome
+
+    def skill_announcement(self) -> list[Json]:
+        """Rescan the skill folders at turn start and tell the model, once, about skills that
+        appeared since it was last told (see wizolt.skill.listing)."""
+        library = self.session.skills
+        if library is None:
+            return []
+        library.reload()
+        text = SkillListing.of(self.session, library).announcement(library)
+        return [{"role": "user", "content": text, SESSION_EVENT_KEY: "new_skills"}] if text else []
 
     async def skill_command(self, text: str) -> str:
         """The skill a `/name args` message starts, loaded now: the user asked for it by name, so

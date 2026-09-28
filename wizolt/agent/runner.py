@@ -56,6 +56,13 @@ from wizolt.tools.toolscript import ScriptCancelled
 _ResultT = TypeVar("_ResultT")
 
 
+def touched_paths(call: ToolCall) -> list[str]:
+    """The file paths a call names: `path`, or each of Read's `files`."""
+    payload = call.hook_input()
+    entries = [payload, *(item for item in payload.get("files") or [] if isinstance(item, dict))]
+    return [path for entry in entries if isinstance(path := entry.get("path"), str) and path]
+
+
 @dataclass(frozen=True)
 class NestedRequest:
     """One ToolScript nested invocation, as data.
@@ -833,6 +840,9 @@ class ToolRunner:
                 # is rendered; the worker write lands first, and an empty path on failure leaves the
                 # marker without a file= attribute rather than naming one still in flight.
                 artifact_path = await self.context.materialize_output(key, model_text)
+        if not failed and self.session.skills is not None:
+            for path in touched_paths(call):
+                self.session.skills.observe(self.session.resolve_path(path))
         if failed:
             self.session.record_tool_error(key or "-", call.name, call.args, model_text)
         elif key and turn_diff and turn_diff.path and turn_diff.diff:

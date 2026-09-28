@@ -37,6 +37,8 @@ class SkillLibrary:
         self.untrusted: dict[str, Skill] = {}
         self._cwd = ""
         self._user_skills = ""
+        # Project directories off the working path the agent has opened files in (see observe).
+        self._nested: set[str] = set()
         self.trust: ProjectTrust | None = None
 
     @classmethod
@@ -51,11 +53,17 @@ class SkillLibrary:
         """Scan the disk again and apply the trust decision, in place: a worker shares this object."""
         if self.trust is None:
             return  # built from a fixed set of skills, not from disk
-        skills, self.problems = discovery.scan(discovery.roots(self._cwd, self._user_skills))
+        skills, self.problems = discovery.scan(discovery.roots(self._cwd, self._user_skills, self._nested))
         trusted = self.trust.granted()
         held = {name for name, skill in skills.items() if skill.source == "project" and skill.executable and not trusted}
         self.untrusted = {name: skills[name] for name in held}
         self.skills = {name: skill for name, skill in skills.items() if name not in held}
+
+    def observe(self, path: str) -> None:
+        """Note a file the agent read or edited: skill folders between it and the repository top
+        are scanned from the next reload on, the way a monorepo package brings its own skills."""
+        if self.trust is not None:
+            self._nested.update(discovery.levels_above(path, project_root(self._cwd)))
 
     def all(self) -> list[Skill]:
         return sorted(self.skills.values(), key=lambda skill: skill.name)

@@ -31,6 +31,7 @@ from wizolt.base import (
 )
 from wizolt.image import IMAGE_REFS_KEY, IMAGE_TEXT_ONLY_KEY, TOOL_IMAGE_OBSERVATION_KEY, ImageInputs
 from wizolt.session import HistorySegment, Session, local_timestamp
+from wizolt.skill.listing import SkillListing
 from wizolt.source import TextBlock
 from wizolt.tools import Tool
 
@@ -167,7 +168,7 @@ class ContextManager:
         return self.session.mcp.render_tools_index() if self.session.mcp else ""
 
     def skills_context(self) -> str:
-        return self.session.skills.index() if self.session.skills else ""
+        return SkillListing.of(self.session, self.session.skills).index if self.session.skills else ""
 
     def request_token_budget(self) -> int:
         return self.session.request_token_budget()
@@ -426,6 +427,7 @@ class ContextManager:
         title: str = "",
     ) -> None:
         self.session.state.compaction_count += 1
+        self.session.context_epoch += 1
         # What this compaction was: the turn scope is the only caller that rewrites `turn_messages`,
         # and no summary data means the model call failed and `keep` is all that survives. Recorded
         # on the segment so `/compact log` can say which evictions were lossier than the rest.
