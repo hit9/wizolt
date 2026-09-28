@@ -42,6 +42,7 @@ from wizolt.shellhooks import STOP, USER_PROMPT_SUBMIT, HookOutcome, PromptBlock
 from wizolt.skill import invocation as skill_invocation
 from wizolt.skill.listing import SkillListing
 from wizolt.tools import (
+    DelegateTool,
     Tool,
 )
 
@@ -752,6 +753,8 @@ class Agent:
         command = self.session.skills.command(text) if self.session.skills is not None else None
         if command is None:
             return ""
+        if command.skill.fork and DelegateTool.enabled(self.session):
+            return skill_invocation.fork_notice(command)  # the worker is sent from the Skill tool
         return await skill_invocation.load(self.session, command, invoked_by="user")
 
     @classmethod

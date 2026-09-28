@@ -43,6 +43,7 @@ from wizolt.tools import (
     JobTool,
     MCPTool,
     NextHintsTool,
+    SkillTool,
     Tool,
     ToolScript,
     ViewImageTool,
@@ -339,9 +340,10 @@ class ToolRunner:
         if isinstance(tool, ToolScript):
             tool.runner = self
             return await self._run_script(tool)
-        if isinstance(tool, DelegateTool):
-            # Awaited directly: the worker's turn is a child of this one, so the parent's
-            # cancellation reaches it by propagation and its diffs still merge on every ending.
+        if isinstance(tool, (DelegateTool, SkillTool)):
+            # Awaited directly: the worker's turn (a Delegate send, or a forked skill's) is a child
+            # of this one, so the parent's cancellation reaches it by propagation and its diffs
+            # still merge on every ending.
             tool.runner = self
             return await tool.call()
         if isinstance(tool, BashTool):

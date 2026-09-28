@@ -215,6 +215,12 @@ class DelegateTool(Tool):
             ["action"],
         )
 
+    @staticmethod
+    def enabled(session: Session) -> bool:
+        """Whether this session may delegate: a worker is configured and switched on. A worker's own
+        session never may (its tool list leaves Delegate out)."""
+        return session.worker_tool_enabled and session.settings.worker and (not session.tool_names or DelegateTool.NAME in session.tool_names)
+
     def always_confirms(self) -> bool:
         """A send is confirmed even under yolo; status and reset are not.
 

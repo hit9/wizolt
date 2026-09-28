@@ -42,6 +42,11 @@
   until the next compaction, so the prompt cache keeps working. `/skills reload` rescans now and
   says what changed. A subfolder's skills only add to the ones on your working path; they never
   replace them.
+- `context: fork` runs a skill in the worker. You confirm it like a Delegate send, and only the
+  worker's report comes back, so the skill's instructions, commands and hooks stay out of the
+  main conversation. Without a configured worker, the skill loads inline. `agent` and `model`
+  are listed as unsupported warnings in `/skills`: wizolt has one worker, configured under
+  `[worker]`, and keeps the session's model.
 
 ### Changed
 

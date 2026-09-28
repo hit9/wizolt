@@ -55,6 +55,8 @@ class Skill:
     # `allowed-tools`: calls that need no approval while the skill is active, as rules like
     # `Read`, `Bash(git status)` or `Bash(npm run:*)` (see permissions).
     allowed_tools: tuple[str, ...] = ()
+    # `context: fork`: the skill runs in a Delegate worker, and only the worker's report returns.
+    fork: bool = False
 
     @property
     def executable(self) -> bool:
@@ -95,6 +97,13 @@ def parse(path: str, folder: str, source: str) -> Skill:
         hooks = parse_hooks(meta.get("hooks"), origin=f"skill {name}")
     except ConfigError as error:
         raise SkillFormatError(str(error)) from error
+    context = text_field(meta, "context")
+    if context not in ("", "fork"):
+        warnings.append(f"context {context!r} is not supported; the skill loads inline")
+    # Claude Code picks a subagent type and a model per skill. wizolt has one worker, configured
+    # under [worker], and sends the model the session chose (a per-skill switch would re-price the
+    # conversation's cache), so these are named rather than silently dropped.
+    warnings.extend(f"{key} is not supported; the {what} runs this skill" for key, what in (("agent", "worker"), ("model", "session's model")) if key in meta)
     return Skill(
         name,
         description,
@@ -106,6 +115,7 @@ def parse(path: str, folder: str, source: str) -> Skill:
         user_invocable=bool_field(meta, "user-invocable", True, warnings),
         hooks=hooks,
         allowed_tools=allowed_tools(meta.get("allowed-tools"), warnings),
+        fork=context == "fork",
         warnings=tuple(warnings),
     )
 

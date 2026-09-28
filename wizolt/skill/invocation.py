@@ -45,6 +45,29 @@ class Invocation:
     def commands(self) -> list[str]:
         return [match.group(1).strip() for match in DYNAMIC_COMMAND.finditer(self.prepared_body())]
 
+    def call_text(self) -> str:
+        """The Skill call that starts this invocation, as the model would write it."""
+        arguments = f", arguments={json.dumps(self.args, ensure_ascii=False)}" if self.args else ""
+        return f"Skill(name={json.dumps(self.skill.name)}{arguments})"
+
+    def fork_order(self) -> str:
+        """The Delegate order for a `context: fork` skill. The worker loads the skill itself, so its
+        `!`commands``, hooks and allowed-tools belong to the worker's session, not the parent's."""
+        return (
+            f"Run the `{self.skill.name}` skill: call {self.call_text()} and follow its instructions to the end.\n"
+            "Report what you did and what you found; that report is all the requester will see."
+        )
+
+
+def fork_notice(invocation: Invocation) -> str:
+    """What `/name` gives the model for a forked skill: a request to start it with the Skill tool,
+    which is where the worker is sent from, instead of the instructions themselves."""
+    return (
+        f'<Skill name={json.dumps(invocation.skill.name)} context="fork" invoked-by="user">\n'
+        f"The user started this skill. It runs in the worker: call {invocation.call_text()} now, then relay its report.\n"
+        "</Skill>"
+    )
+
 
 def parse_command(text: str) -> tuple[str, str] | None:
     """`/name args...` as (name, args), or None when the text is not a slash command. The name is

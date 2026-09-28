@@ -87,7 +87,7 @@ class Tool:
             and (tool is not SkillTool or has_skills)
             and (tool is not MCPTool or has_mcp)
             and (tool is not NextHintsTool or session.next_hints_available)
-            and (tool is not DelegateTool or (session.worker_tool_enabled and session.settings.worker))
+            and (tool is not DelegateTool or DelegateTool.enabled(session))
         ]
 
     @staticmethod
