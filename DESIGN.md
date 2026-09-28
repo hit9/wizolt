@@ -436,6 +436,11 @@ and `Note` updates and resume events are conversation, not context inserted ahea
 - The tool block is part of the prefix: a per-session constant, never a per-request lever.
   Reshaping it discards the cached prefix and reads to the model as a broken tool set; steer with a
   message, never with the schema.
+- Skills can change on disk mid-session (installs, `/skills trust`, a package folder the agent
+  opens). `skill/listing.py` freezes the SKILLS index and the Skill tool's presence at the first
+  request; later skills arrive as one appended `NEW SKILLS` message, and the index is rebuilt only
+  when `Session.context_epoch` moves (compaction, context reset). The Skill tool never appears
+  mid-session: a session that started without it only gains `/name` starts.
 
 #### Three mechanisms, one rule
 

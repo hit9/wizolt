@@ -23,11 +23,19 @@ commands yourself.
   silently patch the wrong lines. See [Tools](tools.md).
 - **Reviewable changes.** `/diff` shows exactly what changed this round and across the
   session before you rely on it.
+- **Repository skills wait for trust.** A cloned repository's skills that run commands, carry
+  hooks, or pre-approve tools stay off until you run `/skills trust` there. See
+  [Trusting a repository](skills.md#trusting-a-repository).
+- **Your own guards.** [Hooks](hooks.md) run your checks before and after tool calls, and can
+  block a call or insist on the approval prompt even under yolo.
 
 ## Reducing risk
 
 - Work inside a **git repository** so every edit is reviewable and reversible.
 - Keep **confirmations on** until you trust a workflow; only reach for `--yolo` when you do.
 - Only connect [MCP](mcp.md) servers you trust — local servers run programs on your machine.
+- Read a repository's skills before `/skills trust`: trusted skills can run commands and approve
+  tool calls on their own. A skill's `allowed-tools` skips the prompt only for the calls it
+  names, never for chained or redirected commands.
 - For untrusted repositories, or when running unattended, put wizolt inside a **container
   or VM**.

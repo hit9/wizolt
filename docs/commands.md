@@ -20,8 +20,14 @@ counts. `Enter` opens the selected file's diff.
 **`/ps`** — Lists active background jobs (see [Tools](tools.md#built-in-tools)).
 Each row shows job id, state, command, and elapsed time.
 
-**`/skills`** — Lists every installed [skill](skills.md) by name, source, and
-description.
+**`/skills [list|reload|trust|untrust]`** — Lists every installed [skill](skills.md) with
+its source, folder and description, followed by skills held back as untrusted, overridden
+names, warnings, and files that did not load. `reload` rescans the skill folders now. `trust`
+lets this repository's skills that run commands or carry hooks be used, and `untrust` takes
+that back ([Trusting a repository](skills.md#trusting-a-repository)). While the agent works,
+only the list is available.
+
+**`/name [arguments]`** — Starts the [skill](skills.md#using-skills) of that name.
 
 **`/config`** — Shows the active configuration: provider blocks, runtime settings,
 and their resolved values.
