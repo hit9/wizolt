@@ -33,7 +33,7 @@ its hooks start when the skill first loads. `/status` counts the hooks in force.
 | `PreToolUse` | Before a tool call, before its approval prompt | Refuses the call; the agent is told why |
 | `PostToolUse` | After a tool call succeeds | The call already ran; the reason goes to the agent with the result |
 | `UserPromptSubmit` | When you send a message | Refuses the message; nothing is sent. A follow-up typed mid-turn is withheld |
-| `Stop` | When the agent gives its final answer | The agent keeps working, with the reason as its next instruction |
+| `Stop` | When the agent gives its final answer | The agent keeps working, with the reason as its next instruction, at most 5 times a turn |
 
 A worker runs `PreToolUse` and `PostToolUse` only; `UserPromptSubmit` and `Stop` belong to your
 own turns.

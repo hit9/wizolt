@@ -139,7 +139,8 @@ Changed files: !`git diff --name-only`
 
 When the agent loads such a skill you approve the commands first, shown with the arguments
 filled in; when you start it with `/name`, starting it is the approval. A failing command is
-replaced by its exit code and error, and each command gets `runtime.shell_timeout` seconds.
+replaced by its exit code and error. Each command gets `runtime.shell_timeout` seconds and keeps
+at most 8,000 characters of output, since the result stays in the conversation.
 
 ### Hooks and pre-approved tools
 

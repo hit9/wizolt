@@ -244,6 +244,64 @@ async def test_stop_hook_sends_the_model_back_once(tmp_path):
     assert "Stop hook: tests were not run" in [str(message.get("content")) for message in requests[1]]
 
 
+async def test_a_stop_hook_that_never_lets_go_is_capped(tmp_path):
+    replies = [f"answer {index}" for index in range(2 * (Agent.MAX_STOP_REDIRECTS + 1))]
+    agent, requests = _agent(tmp_path, _hook("Stop", "echo 'not yet' >&2; exit 2"), replies)
+    notices = []
+    agent.output_fn = notices.append
+
+    answer = await agent.run("finish")
+
+    assert len(requests) == Agent.MAX_STOP_REDIRECTS + 1  # one answer, then one per redirect
+    assert answer == f"answer {Agent.MAX_STOP_REDIRECTS}"
+    assert any("Stop hooks sent the agent back 5 times" in str(text) for text in notices)
+    assert agent._stop_redirects == Agent.MAX_STOP_REDIRECTS
+    await agent.run("again")  # a new turn starts with a fresh budget
+    assert len(requests) == 2 * (Agent.MAX_STOP_REDIRECTS + 1)
+
+
+async def test_stop_hook_also_guards_a_next_hints_ending(tmp_path):
+    from wizolt.base import ToolCall as Call
+
+    script = "grep -q '\"stop_hook_active\": true' && exit 0; echo 'one more check' >&2; exit 2"
+    agent, requests = _agent(tmp_path, _hook("Stop", script), [])
+    hints = Call("h", "NextHints", [{"hints": ["run tests"]}], payload={"hints": ["run tests"]})
+    script_replies = [({"role": "assistant", "content": "done"}, [hints], "done"), ({"role": "assistant", "content": "checked"}, [], "checked")]
+
+    async def request(messages, tools):
+        requests.append(messages)
+        return script_replies[len(requests) - 1]
+
+    agent.model.request = request
+    answer = await agent.run("finish")
+
+    assert answer == "checked"
+    assert "Stop hook: one more check" in [str(message.get("content")) for message in requests[1]]
+
+
+async def test_hook_that_cannot_start_is_reported_and_ignored(tmp_path):
+    s = _hooks(session(tmp_path), _hook("PreToolUse", "true"))
+    s.settings.yolo = True
+    outputs = []
+    runner, _ = _runner(s, outputs)
+    s.cwd = str(tmp_path / "removed")  # the hook's working directory is gone
+
+    [message] = await runner.run([ToolCall("r", "Read", [{"path": str(tmp_path / "x")}], payload={"path": str(tmp_path / "x")})])
+
+    assert "blocked" not in message["content"]
+    assert any("exited 127: cannot start:" in text for text in outputs)
+
+
+async def test_hook_that_ignores_a_large_stdin_is_fine(tmp_path):
+    s = _hooks(session(tmp_path), _hook("PostToolUse", "exit 0"))
+    s.settings.yolo = True
+    runner, _ = _runner(s)
+
+    [message] = await runner.run([_bash("head -c 300000 /dev/zero | tr '\\0' y")])
+
+    assert "yyyy" in message["content"]
+
+
 def test_status_counts_active_hooks(tmp_path):
     from wizolt.ui.cli import CommandLoop
     from wizolt.ui.cli.commands import status

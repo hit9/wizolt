@@ -195,6 +195,42 @@ def _alive(pid):
         return True
 
 
+async def test_command_that_cannot_start_is_a_failed_result(tmp_path):
+    result = await ShellCommand("true", str(tmp_path / "gone"), timeout=5).run()
+
+    assert result.exit_code == ShellCommand.CANNOT_START
+    assert result.stderr.startswith("cannot start:")
+
+
+async def test_skill_command_output_is_capped(tmp_path):
+    _skill(tmp_path, "dump", "", "Log:\n!`head -c 50000 /dev/zero | tr '\\0' x`\nEnd.")
+    output = await SkillTool(session(tmp_path), ["dump"]).call()
+
+    assert "x" * Invocation.MAX_COMMAND_OUTPUT in output
+    assert "x" * (Invocation.MAX_COMMAND_OUTPUT + 1) not in output
+    assert f"... ({50_000 - Invocation.MAX_COMMAND_OUTPUT} more characters cut)" in output
+    assert output.rstrip().endswith("</Skill>") and "End." in output
+
+
+async def test_skill_command_in_a_missing_directory_reports_instead_of_raising(tmp_path):
+    _skill(tmp_path, "where", "", "Here: !`pwd`")
+    s = session(tmp_path)
+    s.cwd = str(tmp_path / "removed")
+
+    output = await SkillTool(s, ["where"]).call()
+
+    assert "Here: [`pwd` failed with exit code 127: cannot start:" in output
+
+
+def test_exit_is_never_a_skill_command(tmp_path):
+    _skill(tmp_path, "exit", "", "Not an exit.")
+    _skill(tmp_path, "quit", "", "Not a quit.")
+    loop = _loop(session(tmp_path))
+
+    assert not loop.skill_command("/exit")
+    assert not loop.skill_command("/quit")
+
+
 async def test_shell_stdin_and_environment(tmp_path):
     result = await ShellCommand('read line; echo "$line/$EXTRA"', str(tmp_path), timeout=5, stdin="in\n", env={"EXTRA": "env"}).run()
 

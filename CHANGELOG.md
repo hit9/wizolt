@@ -14,7 +14,8 @@
   through the Skill tool's new `arguments` field.
 - `` !`command` `` in a skill runs when the skill loads and is replaced by its output, as in
   Claude Code. When the model loads such a skill, you approve the commands first, with the
-  arguments already filled in. Each command is bounded by `runtime.shell_timeout`.
+  arguments already filled in. Each command is bounded by `runtime.shell_timeout` and 8,000
+  characters of output; one that cannot start is reported in its place.
 - A repository's own skills that run commands wait until you trust that repository with
   `/skills trust` (`/skills untrust` takes it back). Until then they are listed under
   "Untrusted" in `/skills` and nothing can start them. Skills that only hold instructions, and
@@ -26,8 +27,9 @@
   answers by exit code or JSON: exit 2 blocks with stderr as the reason. A pre-tool hook can
   block a call, approve it without the prompt, or require the prompt even under yolo. A
   post-tool hook's feedback is added to the result, a prompt hook can refuse or add context to
-  your message, and a stop hook can send the model back to work. A hook that fails any other way
-  is shown to you and ignored. Workers run the tool hooks only. `/status` counts the active
+  your message, and a stop hook can send the model back to work, at most 5 times a turn, whether
+  the turn ends with an answer or with suggested next steps. A hook that fails any other way,
+  or cannot start, is shown to you and ignored. Workers run the tool hooks only. `/status` counts the active
   hooks; a malformed hook is a config error at startup.
 - Skills can carry `hooks:` and `allowed-tools` in their frontmatter, as in Claude Code. Both
   take effect when the skill first loads, by the model or by `/name`, and last for the rest of
@@ -52,8 +54,8 @@
 
 - `SKILL.md` frontmatter is read as YAML, following the Agent Skills format: folded or multi-line
   descriptions, the `metadata` map and other spec fields now load instead of being cut to their
-  first line. A skill whose frontmatter is not valid YAML is listed under "Not loaded" in
-  `/skills` with the reason; names that break the spec or do not match their folder load with a
+  first line. A skill whose frontmatter is not valid YAML, is nested pathologically deep, or
+  exceeds 64,000 characters is listed under "Not loaded" in `/skills` with the reason; names that break the spec or do not match their folder load with a
   warning. `${CLAUDE_SKILL_DIR}` expands like `{skill_dir}`. Adds the `pyyaml` dependency,
   imported only when a skill is parsed (see `DEPENDENCY_REVIEW.md`).
 - Skills are found where other agents keep them: `.claude/skills` and `.agents/skills` beside

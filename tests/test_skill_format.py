@@ -84,6 +84,20 @@ def test_invalid_yaml_is_refused_and_reported(tmp_path):
     assert "listy/SKILL.md: frontmatter is not a key/value map" in output
 
 
+def test_hostile_frontmatter_is_refused_without_stopping_the_session(tmp_path):
+    # A cloned repository writes these files: nothing in one may crash startup.
+    _skill_file(tmp_path, "deep", "---\nname: deep\nmetadata: " + "[" * 20_000 + "]" * 20_000 + "\n---\nbody\n")
+    _skill_file(tmp_path, "huge", "---\nname: huge\ndescription: " + "x" * 70_000 + "\n---\nbody\n")
+    _skill_file(tmp_path, "fine", "---\nname: fine\ndescription: works\n---\nbody\n")
+    s = session(tmp_path)
+
+    assert s.skills.get("fine") is not None
+    assert s.skills.get("deep") is None and s.skills.get("huge") is None
+    output = _skills_output(tmp_path)
+    assert "deep/SKILL.md: frontmatter is nested too deeply" in output or "deep/SKILL.md: invalid YAML frontmatter" in output
+    assert "huge/SKILL.md: frontmatter is longer than 64000 characters" in output
+
+
 def test_spec_deviations_load_with_warnings(tmp_path):
     _skill_file(tmp_path, "release", "---\nname: Release_Notes\n---\nbody\n")
     skill = session(tmp_path).skills.get("Release_Notes")

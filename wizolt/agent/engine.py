@@ -70,6 +70,8 @@ class Agent:
     never swallows a follow-up.
     """
 
+    MAX_STOP_REDIRECTS = 5  # Stop-hook redirects one turn accepts before it ends anyway
+
     def __init__(self, session: Session, input_fn=input, output_fn=print, final_output_fn=None):
         self.session = session
         self.model = ModelClient(session)
@@ -104,6 +106,8 @@ class Agent:
         # the failed turn, never answered. A follow-up an accepted request carried is answered by
         # that request's reply and never lands here. The Delegate tool hands these to the parent.
         self.unanswered_inputs: list[str] = []
+        # How many times Stop hooks sent the model back this turn (see stop_redirected).
+        self._stop_redirects = 0
 
     def use_hooks(self, hooks: UiHooks) -> None:
         """Install the presentation seam on this agent and every layer it owns.
@@ -178,7 +182,7 @@ class Agent:
         self.session.state.round_count += 1
         self.session.state.turn_step = 0
         tool_batches = 0
-        stop_hook_active = False
+        self._stop_redirects = 0
         malformed_tool_names: list[str] = []
         self._current_image_messages = []
         user_message = self._initial_user_message(user_input)
@@ -275,18 +279,7 @@ class Agent:
                     if not content.strip():
                         raise ModelError("empty final response")
                     answer = content.strip()
-                    stop = await self.fire_hooks(STOP, {"stop_hook_active": stop_hook_active})
-                    if stop.blocked:
-                        # A Stop hook sends the model back to work with its reason, as in Claude
-                        # Code. The answer so far stays as interim text; `stop_hook_active` tells
-                        # the hook it already did this once, and max_steps still bounds the turn.
-                        stop_hook_active = True
-                        message = self.assistant_turn_message(assistant, [], answer)
-                        turn_messages.append(message)
-                        transcript_messages.append(self.transcript_message(message))
-                        self.output_fn(answer)
-                        turn_messages.append({"role": "user", "content": f"Stop hook: {stop.reason}", SESSION_EVENT_KEY: "stop_hook"})
-                        await self.checkpoint_turn(turn_messages, transcript_messages)
+                    if await self.stop_redirected(turn_messages, transcript_messages, self.assistant_turn_message(assistant, [], answer)):
                         continue
                     # Publish the final answer through the same output channel as interim text, so
                     # every agent (the parent's and a worker's) reports its final answer the same
@@ -511,6 +504,8 @@ class Agent:
             # would be a blank turn the user sees as nothing happening; keep the error results
             # in history and let the next step read them and correct.
             return None
+        if await self.stop_redirected(turn_messages, transcript_messages, {"role": "assistant", "content": answer} if answer else None):
+            return None  # a Stop hook sent the model back: the turn goes on
         if answer:
             # Text exists: the answer becomes its own final message and is published exactly
             # once, unchanged from the plain final-answer path.
@@ -726,6 +721,27 @@ class Agent:
             raise PromptBlocked(outcome.reason or "blocked by a UserPromptSubmit hook")
         context = [{"role": "user", "content": "--- HOOK CONTEXT ---\n" + "\n".join(outcome.context), SESSION_EVENT_KEY: "hook_context"}]
         return [*(context if outcome.context else []), *await self.mention_messages(text)]
+
+    async def stop_redirected(self, turn_messages: list[Json], transcript_messages: list[Json], answer: Json | None) -> bool:
+        """Ask the Stop hooks whether the turn may end here. When one blocks, the model goes back
+        to work with its reason, as in Claude Code: the answer so far stays as interim text, and
+        `stop_hook_active` tells the hook it already did this. A hook that never lets go is
+        stopped after MAX_STOP_REDIRECTS, rather than spending the turn's whole step budget."""
+        if self._stop_redirects >= self.MAX_STOP_REDIRECTS:
+            return False
+        stop = await self.fire_hooks(STOP, {"stop_hook_active": self._stop_redirects > 0})
+        if not stop.blocked:
+            return False
+        self._stop_redirects += 1
+        if answer is not None:
+            turn_messages.append(answer)
+            transcript_messages.append(self.transcript_message(answer))
+            self.output_fn(str(answer.get("content") or ""))
+        if self._stop_redirects == self.MAX_STOP_REDIRECTS:
+            self.output_fn(f"Stop hooks sent the agent back {self.MAX_STOP_REDIRECTS} times; the turn ends at its next answer.")
+        turn_messages.append({"role": "user", "content": f"Stop hook: {stop.reason}", SESSION_EVENT_KEY: "stop_hook"})
+        await self.checkpoint_turn(turn_messages, transcript_messages)
+        return True
 
     async def fire_hooks(self, event: str, fields: Json) -> HookOutcome:
         """Run a turn event's shell hooks, showing the user any that broke."""

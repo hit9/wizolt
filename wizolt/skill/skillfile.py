@@ -67,6 +67,8 @@ class SkillFile:
     SPEC_NAME: ClassVar[re.Pattern] = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
     MAX_NAME_CHARS: ClassVar[int] = 64
     MAX_DESCRIPTION_CHARS: ClassVar[int] = 1024
+    # Real frontmatter is a few hundred characters; a hooks table a few thousand.
+    MAX_FRONTMATTER_CHARS: ClassVar[int] = 64_000
     # Claude Code picks a subagent type and a model per skill. wizolt has one worker, configured
     # under [worker], and sends the model the session chose (a per-skill switch would re-price the
     # conversation's cache), so these are named rather than silently dropped.
@@ -90,14 +92,20 @@ class SkillFile:
         meta, body = (cls.frontmatter(match.group(1)), match.group(2)) if match else ({}, text)
         return cls(meta).skill(body.strip(), folder, os.path.dirname(path), source)
 
-    @staticmethod
-    def frontmatter(text: str) -> Json:
+    @classmethod
+    def frontmatter(cls, text: str) -> Json:
+        """The frontmatter as a map. A cloned repository writes these files, so nothing in one may
+        stop wizolt: oversized or pathologically nested YAML is refused like malformed YAML."""
         import yaml  # local import: only sessions with skills pay for the parser (see DEPENDENCY_REVIEW.md)
 
+        if len(text) > cls.MAX_FRONTMATTER_CHARS:
+            raise SkillFormatError(f"frontmatter is longer than {cls.MAX_FRONTMATTER_CHARS} characters")
         try:
             meta = yaml.safe_load(text)
         except yaml.YAMLError as error:
             raise SkillFormatError(f"invalid YAML frontmatter: {' '.join(str(error).split())}") from error
+        except RecursionError as error:  # PyYAML's pure-Python parser recurses per nesting level
+            raise SkillFormatError("frontmatter is nested too deeply") from error
         if meta is None:
             return {}
         if not isinstance(meta, dict):

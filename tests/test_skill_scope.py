@@ -62,6 +62,24 @@ async def test_skill_hooks_start_at_load_and_the_model_is_told(tmp_path, isolate
     assert "blocked by PreToolUse hook: deploy skill: use ./deploy.sh" in after["content"]
 
 
+async def test_a_loaded_skill_deleted_from_disk_enforces_nothing(tmp_path, isolate_home):
+    import shutil
+
+    _user_skill(isolate_home, "deploy", GUARD)
+    s = session(tmp_path)
+    s.settings.yolo = True
+    await SkillTool(s, ["deploy"]).call()
+    shutil.rmtree(isolate_home / ".claude" / "skills" / "deploy")
+    s.skills.reload()
+    runner, _ = _runner(s)
+
+    [message] = await runner.run([_bash("touch after-delete")])
+
+    assert s.active_skills == ["deploy"]  # still recorded, so it would return with the file
+    assert (tmp_path / "after-delete").exists()
+    assert "blocked" not in message["content"]
+
+
 async def test_slash_name_activates_the_skill_too(tmp_path, isolate_home):
     _user_skill(isolate_home, "deploy", GUARD)
     s = session(tmp_path)

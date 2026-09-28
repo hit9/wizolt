@@ -31,7 +31,7 @@ from wizolt.image import UserInput
 from wizolt.session import QueuedInput, SessionLease, SessionSnapshotStore
 from wizolt.tools.delegate import worker_provider_config
 from wizolt.ui.cli import worker
-from wizolt.ui.cli.commands import COMMAND_LOOKUP, QUEUED_SUBCOMMANDS
+from wizolt.ui.cli.commands import COMMAND_LOOKUP, COMMAND_NAMES, QUEUED_SUBCOMMANDS
 from wizolt.ui.cli.modals import approval_text_viewer, question_interaction
 from wizolt.ui.cli.presentation import Presentation
 from wizolt.ui.cli.resume import ResumeRenderer
@@ -248,7 +248,7 @@ class CommandLoop:
     def skill_command(self, text: str) -> bool:
         """True when `text` starts a skill with `/name` rather than naming a built-in command:
         built-ins win a name clash, and the skill stays reachable as `$name`."""
-        return text.partition(" ")[0].partition("\n")[0] not in COMMAND_LOOKUP and bool(self.session.skills and self.session.skills.command(text))
+        return text.partition(" ")[0].partition("\n")[0] not in COMMAND_NAMES and bool(self.session.skills and self.session.skills.command(text))
 
     async def run_queued_command(self, text: str) -> None:
         """Dispatch a read-only slash command while an agent turn is running."""

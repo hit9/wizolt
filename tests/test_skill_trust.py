@@ -99,5 +99,23 @@ async def test_trusting_is_refused_while_the_agent_works(tmp_path):
     assert shown == ["Only /skills (list) is available while the agent is working."]
 
 
+def test_an_unwritable_trust_store_is_reported(tmp_path):
+    import os
+
+    s = session(tmp_path)
+    data = tmp_path / "data"
+    data.mkdir(exist_ok=True)
+    os.chmod(data, 0o500)
+    try:
+        if os.access(data, os.W_OK):  # running as root: permissions do not apply
+            return
+        output = skills_command(_loop(s), "trust")
+    finally:
+        os.chmod(data, 0o755)
+
+    assert output.startswith("Error: could not record the decision in")
+    assert s.skills.trust is not None and not s.skills.trust.granted()
+
+
 def test_unknown_subcommand_prints_usage(tmp_path):
     assert skills_command(_loop(session(tmp_path)), "nope") == "Usage: /skills [list|reload|trust|untrust]"

@@ -39,24 +39,30 @@ class ShellCommand:
     env: Mapping[str, str] = field(default_factory=dict)  # added to the inherited environment
 
     MAX_OUTPUT_CHARS: ClassVar[int] = 32_000
+    CANNOT_START: ClassVar[int] = 127  # what a shell reports for a command it could not run
 
-    async def run(self) -> ShellResult:
-        """Run in its own process group and wait for it.
+    async def run(self, max_output: int | None = None) -> ShellResult:
+        """Run in its own process group and wait for it; each stream keeps at most `max_output`
+        characters (MAX_OUTPUT_CHARS by default).
 
         Past the timeout the whole group is killed and the result says so. Cancellation kills it
         too and waits for the exit before re-raising: a cancelled caller must not leave the
-        command running on its own."""
-        process = await asyncio.create_subprocess_exec(
-            shutil.which("bash") or "bash",
-            "-c",
-            self.command,
-            cwd=self.cwd,
-            env={**os.environ, **self.env} if self.env else None,
-            stdin=asyncio.subprocess.PIPE if self.stdin else asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,  # its own group, so the kill below reaches its children too
-        )
+        command running on its own. A command that cannot start at all (its directory is gone,
+        there is no bash) is a failed result too, with the shell's own exit code for that."""
+        try:
+            process = await asyncio.create_subprocess_exec(
+                shutil.which("bash") or "bash",
+                "-c",
+                self.command,
+                cwd=self.cwd,
+                env={**os.environ, **self.env} if self.env else None,
+                stdin=asyncio.subprocess.PIPE if self.stdin else asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,  # its own group, so the kill below reaches its children too
+            )
+        except OSError as error:
+            return ShellResult(self.CANNOT_START, "", f"cannot start: {error}")
         try:
             stdout, stderr = await asyncio.wait_for(process.communicate(self.stdin.encode() if self.stdin else None), self.timeout)
         except TimeoutError:
@@ -65,7 +71,8 @@ class ShellCommand:
         except BaseException:
             await self._kill(process)
             raise
-        return ShellResult(process.returncode if process.returncode is not None else -1, self._text(stdout), self._text(stderr))
+        limit = self.MAX_OUTPUT_CHARS if max_output is None else max_output
+        return ShellResult(process.returncode if process.returncode is not None else -1, self._text(stdout, limit), self._text(stderr, limit))
 
     @staticmethod
     async def _kill(process: asyncio.subprocess.Process) -> None:
@@ -74,9 +81,9 @@ class ShellCommand:
         with contextlib.suppress(Exception):
             await process.wait()
 
-    @classmethod
-    def _text(cls, data: bytes) -> str:
+    @staticmethod
+    def _text(data: bytes, limit: int) -> str:
         text = data.decode(errors="replace")
-        if len(text) <= cls.MAX_OUTPUT_CHARS:
+        if len(text) <= limit:
             return text
-        return text[: cls.MAX_OUTPUT_CHARS] + f"\n... ({len(text) - cls.MAX_OUTPUT_CHARS} more characters cut)"
+        return text[:limit] + f"\n... ({len(text) - limit} more characters cut)"

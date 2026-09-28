@@ -64,6 +64,9 @@ class Invocation:
     # `/name` then, after any whitespace including a newline, the argument text to the end.
     SLASH_COMMAND: ClassVar[re.Pattern] = re.compile(r"/([^\s/]+)(?:\s+(.*))?\Z", re.DOTALL)
     SKILL_DIR_PLACEHOLDERS: ClassVar[tuple[str, ...]] = ("{skill_dir}", "${SKILL_DIR}", "${CLAUDE_SKILL_DIR}")
+    # A `!`command`` result stays in the conversation for its whole life; a `cat` of a large file
+    # must not take the context with it. About two thousand tokens a command.
+    MAX_COMMAND_OUTPUT: ClassVar[int] = 8_000
 
     @classmethod
     def split_command(cls, text: str) -> tuple[str, Arguments] | None:
@@ -108,7 +111,7 @@ class Invocation:
         """The prepared body with every `!`command`` replaced by its output, or by why it failed."""
         outputs: dict[str, str] = {}
         for command in dict.fromkeys(self.commands()):
-            result = await ShellCommand(command, cwd, timeout).run()
+            result = await ShellCommand(command, cwd, timeout).run(max_output=self.MAX_COMMAND_OUTPUT)
             if result.exit_code == 0:
                 outputs[command] = result.stdout.rstrip()
             else:

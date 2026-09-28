@@ -407,7 +407,10 @@ def skills_command(loop: CommandLoop, args: str) -> str:
 def skills_trust(library: SkillLibrary, *, grant: bool) -> str:
     if library.trust is None:
         return "This session's skills were not loaded from disk; there is nothing to trust."
-    (library.trust.grant if grant else library.trust.revoke)()
+    try:
+        (library.trust.grant if grant else library.trust.revoke)()
+    except OSError as error:
+        return f"Error: could not record the decision in `{display_path(library.trust.store)}`: {error}"
     verb = "Trusted" if grant else "No longer trusting"
     return f"{verb} `{display_path(library.trust.root)}`." + skills_change(library)
 
