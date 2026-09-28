@@ -122,6 +122,38 @@ def test_mention_menu_labels_each_skill_with_its_source(tmp_path, isolate_home):
     assert menu("@the")["@skill:theirs"] == "skill · project"
 
 
+def test_plain_files_and_empty_folders_in_a_root_are_not_skills(tmp_path):
+    root = tmp_path / ".wizolt" / "skills"
+    _skill(root, "real", "a skill")
+    (root / "index.json").write_text("{}", encoding="utf-8")  # tools keep manifests beside skills
+    (root / "empty").mkdir()
+    s = session(tmp_path)
+
+    assert [skill.name for skill in s.skills.all()] == ["real"]
+    assert s.skills.problems == ()
+
+
+def test_an_edited_skill_is_reread_and_an_unchanged_one_is_not(tmp_path, monkeypatch):
+    from wizolt.skill import discovery as discovery_module
+
+    root = tmp_path / ".wizolt" / "skills"
+    _skill(root, "stable", "first")
+    _skill(root, "edited", "before")
+    s = session(tmp_path)
+    parsed = []
+    real_parse = discovery_module.SkillFile.parse
+    monkeypatch.setattr(discovery_module.SkillFile, "parse", lambda *args: parsed.append(args[0]) or real_parse(*args))
+
+    path = root / "edited" / "SKILL.md"
+    path.write_text("---\nname: edited\ndescription: after, and longer\n---\nnew body\n", encoding="utf-8")
+    s.skills.reload()
+
+    assert s.skills.get("edited").description == "after, and longer"
+    assert parsed == [str(path)]  # the unchanged skill cost a stat, not a parse
+    s.skills.reload()
+    assert s.skills.get("stable").location == ".wizolt/skills/stable"  # copies placed, cache untouched
+
+
 def test_unlistable_root_is_reported(tmp_path):
     root = tmp_path / ".wizolt" / "skills"
     root.mkdir(parents=True)

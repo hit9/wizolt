@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+import stat
+from dataclasses import dataclass, replace
 
 from wizolt.agentsmd import display_path
 from wizolt.skill.skillfile import Skill, SkillFile, SkillFormatError
@@ -37,6 +38,9 @@ class SkillDiscovery:
         self.user_skills = user_skills
         # Project directories off the working path the agent has opened files in (see observe).
         self.nested: set[str] = set()
+        # SKILL.md path -> ((mtime_ns, size), parsed skill). A rescan runs at every turn start, and
+        # an unchanged file then costs one stat instead of a read and a YAML parse.
+        self._parsed: dict[str, tuple[tuple[int, int], Skill]] = {}
 
     def observe(self, path: str) -> None:
         """Note a file the agent read or edited: skill folders between it and the repository top
@@ -85,15 +89,28 @@ class SkillDiscovery:
                 continue
             for entry in entries:
                 path = os.path.join(root.path, entry, "SKILL.md")
-                if not os.path.isfile(path):
-                    continue
                 try:
-                    skill = SkillFile.parse(path, entry, root.source)
+                    skill = self.read(path, entry, root.source)
+                except OSError:
+                    continue  # no SKILL.md there (a folder without one, or a plain file): not a skill
                 except SkillFormatError as error:
                     problems.append(f"{root.label}/{entry}/SKILL.md: {error}")
                     continue
-                skill.location = f"{root.label}/{entry}"
-                if (previous := skills.get(skill.name)) is not None:
-                    skill.overrides = (*previous.overrides, previous.location)
-                skills[skill.name] = skill
+                previous = skills.get(skill.name)
+                overrides = (*previous.overrides, previous.location) if previous is not None else ()
+                skills[skill.name] = replace(skill, location=f"{root.label}/{entry}", overrides=overrides)
         return skills, tuple(problems)
+
+    def read(self, path: str, folder: str, source: str) -> Skill:
+        """The parsed skill at `path`, reparsed only when the file changed. The cached value is
+        never handed out to be mutated: `scan` places a copy."""
+        info = os.stat(path)
+        if not stat.S_ISREG(info.st_mode):
+            raise FileNotFoundError(path)
+        signature = (info.st_mtime_ns, info.st_size)
+        cached = self._parsed.get(path)
+        if cached is not None and cached[0] == signature and cached[1].source == source:
+            return cached[1]
+        skill = SkillFile.parse(path, folder, source)
+        self._parsed[path] = (signature, skill)
+        return skill
