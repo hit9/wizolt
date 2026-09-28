@@ -211,6 +211,7 @@ async def test_blocked_compaction_does_not_request_or_rewrite(tmp_path, trigger)
 async def test_parent_skill_subagent_hooks_refresh_between_sends(tmp_path, monkeypatch, isolate_home):
     from test_skill_scope import _user_skill
     from test_worker_handoff import FakeModelClient, _delegate_call, _delegate_runner, _delegate_session
+
     from wizolt.tools import SkillTool
 
     _user_skill(isolate_home, "guide", "hooks:\n  SubagentStart:\n    - matcher: worker\n      hooks:\n        - command: touch inherited-hook\n")

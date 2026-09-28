@@ -134,11 +134,12 @@ def main():
     # Hook hot paths use the same existing APIs on both revisions. Real subprocesses and
     # snapshots are included; only provider replies are deterministic, local stand-ins.
     if (Path(source) / "wizolt" / "shellhooks.py").is_file():
+        import tracemalloc
+
         from wizolt.agent.lifecycle import bootstrap_features
         from wizolt.base import ToolCall
         from wizolt.shellhooks import HookCommand, ShellHooks
         from wizolt.utils.process import ShellCommand
-        import tracemalloc
 
         with tempfile.TemporaryDirectory(prefix="wizolt-perf-hooks-") as directory, _home(directory):
             (Path(directory) / "input.txt").write_text("small source file\n")
@@ -174,8 +175,8 @@ def main():
                 suffix = "hooks" if enabled else "no_hooks"
                 turn_table = {event: [{"hooks": [{"command": "true"}]}] for event in ("UserPromptSubmit", "Stop")} if enabled else {}
                 read_table = {event: [{"matcher": "Read", "hooks": [{"command": "true"}]}] for event in ("PreToolUse", "PostToolUse")} if enabled else {}
-                measure("headless_10_turns_" + suffix, lambda: asyncio.run(turns()), lambda: prepare_agent(turn_table))
-                measure("20_reads_" + suffix, lambda: asyncio.run(reads()), lambda: prepare_agent(read_table))
+                measure("headless_10_turns_" + suffix, lambda: asyncio.run(turns()), lambda table=turn_table: prepare_agent(table))
+                measure("20_reads_" + suffix, lambda: asyncio.run(reads()), lambda table=read_table: prepare_agent(table))
 
             command = ShellCommand("head -c 8388608 /dev/zero", directory, 10)
             measure("hook_output_8m", lambda: asyncio.run(command.run(max_output=1024)))
