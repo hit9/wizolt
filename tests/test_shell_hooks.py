@@ -260,4 +260,4 @@ def test_worker_keeps_tool_hooks_only(tmp_path):
     table = {**_hook("PreToolUse", "true"), **_hook("Stop", "true"), **_hook("UserPromptSubmit", "true")}
     worker = ShellHooks(parse_hooks(table), str(tmp_path)).detached()
 
-    assert [hook.event for hook in worker.active()] == ["PreToolUse"]
+    assert [hook.event for hook in worker.active(session(tmp_path))] == ["PreToolUse"]

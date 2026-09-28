@@ -3,6 +3,7 @@
 from agent_harness import session
 
 from wizolt.agent.engine import Agent
+from wizolt.skill.trust import ProjectTrust
 from wizolt.tools import SkillTool
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.commands import skills_command
@@ -40,11 +41,14 @@ def test_folded_description_and_spec_fields_load(tmp_path):
         "---\n"
         "# PDF\n\nRun pdftotext.\n",
     )
+    # allowed-tools makes it a skill that acts on its own: a project one waits for trust.
+    ProjectTrust(str(tmp_path / "data" / ProjectTrust.FILE_NAME), str(tmp_path)).grant()
     skill = session(tmp_path).skills.get("pdf-extract")
 
     assert skill is not None
     assert skill.description == "Extract tables and text from PDF files."
     assert skill.body == "# PDF\n\nRun pdftotext."
+    assert skill.allowed_tools == ("Bash(pdftotext:*)", "Read")
     assert skill.warnings == ()
 
 

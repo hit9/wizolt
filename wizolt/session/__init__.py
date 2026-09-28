@@ -95,6 +95,9 @@ class Session:
     # "providers": {entry: {"model"/"reasoning"/"api": value}}}. Only fields the slash commands
     # changed are recorded, and never url/key; a resume applies them best-effort over the config file.
     provider_overrides: dict[str, Any] = field(default_factory=dict)
+    # Skills loaded in this session, in load order. Their hooks and allowed-tools stay in force for
+    # the session's life, so a resumed session restores them with the conversation that loaded them.
+    active_skills: list[str] = field(default_factory=list)
     messages: list[Json] = field(default_factory=list)
     state: AgentState = field(default_factory=AgentState)
     tool_results: dict[str, str] = field(default_factory=dict)

@@ -10,9 +10,13 @@ import json
 import re
 import shlex
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from wizolt.skill.skillfile import DYNAMIC_COMMAND, Skill
 from wizolt.utils.shellrun import run_shell
+
+if TYPE_CHECKING:
+    from wizolt.session import Session
 
 # Claude Code's argument placeholders: `$ARGUMENTS`, `$ARGUMENTS[N]` and its shorthand `$N`
 # (0-based). The indexed forms are only substituted when arguments were given, so an existing
@@ -73,8 +77,37 @@ def substitute_arguments(body: str, args: str) -> str:
     return body
 
 
-async def render(invocation: Invocation, *, cwd: str, timeout: float, invoked_by: str = "model") -> str:
-    """The `<Skill ...>` block for one load, with every `!`command`` replaced by its output."""
+async def load(session: Session, invocation: Invocation, *, invoked_by: str = "model") -> str:
+    """Load one skill into the session: run its `!`commands``, put its hooks and allowed-tools in
+    force for the rest of the session, and return the `<Skill ...>` block the model reads.
+
+    Activation follows the commands, so a load cancelled halfway leaves nothing in force."""
+    body = await run_commands(invocation, cwd=session.cwd, timeout=session.settings.shell_timeout)
+    skill = invocation.skill
+    if skill.name not in session.active_skills:
+        session.active_skills.append(skill.name)
+    attributes = {"name": skill.name, "source": skill.source}
+    if invocation.args:
+        attributes["args"] = invocation.args
+    if invoked_by == "user":
+        attributes["invoked-by"] = "user"
+    opening = "<Skill " + " ".join(f"{key}={json.dumps(value, ensure_ascii=False)}" for key, value in attributes.items()) + ">"
+    return f"{opening}\n{body}\n</Skill>" + in_force_note(skill)
+
+
+def in_force_note(skill: Skill) -> str:
+    """Tells the model what the skill now enforces, so a blocked or unprompted call reads as the
+    skill's policy rather than an error to work around."""
+    lines = []
+    if skill.hooks:
+        lines.append("- hooks: " + ", ".join(dict.fromkeys(f"{hook.event}({hook.matcher})" if hook.matcher else hook.event for hook in skill.hooks)))
+    if skill.allowed_tools:
+        lines.append("- pre-approved tools: " + " ".join(skill.allowed_tools))
+    return "\nIn force for the rest of this session:\n" + "\n".join(lines) if lines else ""
+
+
+async def run_commands(invocation: Invocation, *, cwd: str, timeout: float) -> str:
+    """The prepared body with every `!`command`` replaced by its output, or by why it failed."""
     body = invocation.prepared_body()
     outputs: dict[str, str] = {}
     for command in dict.fromkeys(invocation.commands()):
@@ -84,11 +117,4 @@ async def render(invocation: Invocation, *, cwd: str, timeout: float, invoked_by
         else:
             detail = (result.stderr or result.stdout).strip()
             outputs[command] = f"[`{command}` failed with exit code {result.exit_code}" + (f": {detail}" if detail else "") + "]"
-    body = DYNAMIC_COMMAND.sub(lambda match: outputs[match.group(1).strip()], body)
-    attributes = {"name": invocation.skill.name, "source": invocation.skill.source}
-    if invocation.args:
-        attributes["args"] = invocation.args
-    if invoked_by == "user":
-        attributes["invoked-by"] = "user"
-    opening = "<Skill " + " ".join(f"{key}={json.dumps(value, ensure_ascii=False)}" for key, value in attributes.items()) + ">"
-    return f"{opening}\n{body}\n</Skill>"
+    return DYNAMIC_COMMAND.sub(lambda match: outputs[match.group(1).strip()], body)

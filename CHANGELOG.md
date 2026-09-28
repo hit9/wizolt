@@ -29,6 +29,13 @@
   your message, and a stop hook can send the model back to work. A hook that fails any other way
   is shown to you and ignored. Workers run the tool hooks only. `/status` counts the active
   hooks; a malformed hook is a config error at startup.
+- Skills can carry `hooks:` and `allowed-tools` in their frontmatter, as in Claude Code. Both
+  take effect when the skill first loads, by the model or by `/name`, and last for the rest of
+  the session, including after a resume. The model is told what the skill put in force.
+  `allowed-tools` rules (`Read`, `Bash(git status)`, `Bash(npm run:*)`, `Read(docs/*)`) skip the
+  approval prompt for the calls they cover. A command that chains, pipes, substitutes or
+  redirects is never covered, so it still asks. A worker starts with none of the parent's loaded
+  skills. A skill with malformed hooks does not load.
 
 ### Changed
 

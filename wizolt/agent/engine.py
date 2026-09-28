@@ -741,7 +741,7 @@ class Agent:
         command = self.session.skills.command(text) if self.session.skills is not None else None
         if command is None:
             return ""
-        return await skill_invocation.render(command, cwd=self.session.cwd, timeout=self.session.settings.shell_timeout, invoked_by="user")
+        return await skill_invocation.load(self.session, command, invoked_by="user")
 
     @classmethod
     def textual_tool_call(cls, content: str, tools: list[Json]) -> str | None:

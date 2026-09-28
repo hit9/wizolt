@@ -80,6 +80,7 @@ class SessionSnapshotCodec:
             "transcript_turn_diffs_len": transcript_diff_len, "transcript_turn_diffs_tail_digest": cls.digest(transcript_diff_tail),
             "history_len": len(session.history), "history_keys_digest": cls.digest([seg.key for seg in session.history]),
             "provider_overrides_digest": cls.digest(session.provider_overrides),
+            "active_skills_digest": cls.digest(session.active_skills),
             "source_views_len": len(session.source_views), "source_views_keys_digest": cls.digest([view.key for view in cls.ordered_views(session.source_views)]),
         }
         # fmt: on
@@ -334,6 +335,7 @@ class SessionSnapshotCodec:
             "history": [cls.history_segment(segment, blobs) for segment in session.history],
             "source_views": [cls.source_view(view, blobs) for view in cls.ordered_views(session.source_views)],
             "provider_overrides": dict(session.provider_overrides),
+            "active_skills": list(session.active_skills),
         }
         # fmt: on
 
@@ -388,6 +390,8 @@ class SessionSnapshotCodec:
         cls.add_source_views_delta(delta, session.source_views, saved, blobs)
         if current["provider_overrides_digest"] != saved.get("provider_overrides_digest", cls.digest({})):
             delta["provider_overrides"] = dict(session.provider_overrides)
+        if current["active_skills_digest"] != saved.get("active_skills_digest", cls.digest([])):
+            delta["active_skills"] = list(session.active_skills)
         return delta
 
     @classmethod
@@ -570,6 +574,7 @@ class SessionSnapshotCodec:
             "state",
             "pending_user_inputs",
             "provider_overrides",
+            "active_skills",
             "created_at",
             "context_layout_version",
             "transcript_sync",

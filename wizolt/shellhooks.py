@@ -66,34 +66,42 @@ class HookOutcome:
 
 
 class ShellHooks:
-    """The hooks in force for one session: the config file's, run in the session's project."""
+    """The hooks in force for one session: the config file's, plus those of the skills the session
+    has loaded (`Session.active_skills`), run in the session's project.
 
-    def __init__(self, configured: tuple[HookCommand, ...], project_dir: str):
+    Skill hooks are read from the session each time rather than copied in, so loading a skill,
+    resuming a session, and a skill losing trust all take effect without anything to keep in sync.
+    """
+
+    def __init__(self, configured: tuple[HookCommand, ...], project_dir: str, events: tuple[str, ...] = EVENTS):
         self.configured = configured
         self.project_dir = project_dir
+        self.events = events
 
     def detached(self) -> ShellHooks:
-        """The configured tool hooks for a worker session, which starts with no skill of its own.
+        """The hooks for a worker session: the same configuration, tool events only.
 
         A worker's turns are the parent's work, not the user's prompts or the user's stopping
         point, so UserPromptSubmit and Stop stay with the parent (Claude Code likewise keeps
-        them off its subagents)."""
-        return ShellHooks(tuple(hook for hook in self.configured if hook.event in TOOL_EVENTS), self.project_dir)
+        them off its subagents). The worker's own loaded skills come from its own session."""
+        return ShellHooks(self.configured, self.project_dir, TOOL_EVENTS)
 
-    def active(self) -> tuple[HookCommand, ...]:
-        return self.configured
+    def active(self, session: Session) -> tuple[HookCommand, ...]:
+        skills = session.skills.active(session.active_skills) if session.skills is not None else []
+        hooks = (*self.configured, *(hook for skill in skills for hook in skill.hooks))
+        return tuple(hook for hook in hooks if hook.event in self.events)
 
-    def matching(self, event: str, tool_name: str = "") -> list[HookCommand]:
-        return [hook for hook in self.active() if hook.event == event and hook.matches(tool_name)]
+    def matching(self, event: str, session: Session, tool_name: str = "") -> list[HookCommand]:
+        return [hook for hook in self.active(session) if hook.event == event and hook.matches(tool_name)]
 
-    def watches_tool(self, tool_name: str) -> bool:
+    def watches_tool(self, session: Session, tool_name: str) -> bool:
         """Whether a tool call has hooks around it, which keeps it off the parallel read path: that
         path runs no approval step, so it has no place for a hook to decide in."""
-        return any(self.matching(event, tool_name) for event in TOOL_EVENTS)
+        return any(self.matching(event, session, tool_name) for event in TOOL_EVENTS)
 
     async def fire(self, event: str, session: Session, fields: Json, *, tool_name: str = "") -> HookOutcome:
         """Run the hooks for `event`; `fields` are the event's own payload fields."""
-        hooks = self.matching(event, tool_name)
+        hooks = self.matching(event, session, tool_name)
         if not hooks:
             return HookOutcome()
         payload: Json = {"session_id": session.uid, "cwd": session.cwd, "hook_event_name": event, **({"tool_name": tool_name} if tool_name else {}), **fields}

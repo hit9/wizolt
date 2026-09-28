@@ -534,6 +534,7 @@ class SessionSnapshotStore:
             config=config,
             settings=settings,
             provider_overrides=data.get("provider_overrides") or {},
+            active_skills=[name for name in data.get("active_skills") or [] if isinstance(name, str)],
             messages=messages,
             transcript_messages=transcript_messages,
             state=SessionSnapshotCodec.agent_state(data.get("state", {})),

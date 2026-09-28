@@ -12,7 +12,8 @@ import os
 import re
 from dataclasses import dataclass
 
-from wizolt.base import Json, WizoltError
+from wizolt.base import ConfigError, Json, WizoltError
+from wizolt.shellhooks import HookCommand, parse_hooks
 
 # The closing fence may end the file: `---\nname: x\n---` has no body and is still a skill.
 FRONTMATTER = re.compile(r"^---[ \t]*\n(.*?)^---[ \t]*(?:\n|\Z)(.*)$", re.DOTALL | re.MULTILINE)
@@ -20,6 +21,9 @@ FRONTMATTER = re.compile(r"^---[ \t]*\n(.*?)^---[ \t]*(?:\n|\Z)(.*)$", re.DOTALL
 SPEC_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 # Claude Code's dynamic context: `!`git status`` in the body runs when the skill loads.
 DYNAMIC_COMMAND = re.compile(r"!`([^`\n]+)`")
+# `Tool` or `Tool(pattern)`; tokens are split on spaces and commas outside the parentheses.
+TOOL_RULE = re.compile(r"[A-Za-z_][\w.-]*(?:\([^()]*\))?")
+TOOL_RULE_TOKEN = re.compile(r"[^\s,(]+(?:\([^)]*\))?")
 MAX_NAME_CHARS = 64
 MAX_DESCRIPTION_CHARS = 1024
 
@@ -46,12 +50,18 @@ class Skill:
     # `user-invocable: false` clears this: no `/name` command, for background knowledge the model
     # loads when relevant but that is no action a user would start.
     user_invocable: bool = True
+    # `hooks:` in Claude Code's shape: in force from the skill's first load to the session's end.
+    hooks: tuple[HookCommand, ...] = ()
+    # `allowed-tools`: calls that need no approval while the skill is active, as rules like
+    # `Read`, `Bash(git status)` or `Bash(npm run:*)` (see permissions).
+    allowed_tools: tuple[str, ...] = ()
 
     @property
     def executable(self) -> bool:
-        """Whether loading the skill runs commands, which is what a repository has to be trusted
-        for. Instructions alone are no more than the repository's own AGENTS.md."""
-        return bool(DYNAMIC_COMMAND.search(self.body))
+        """Whether the skill acts on its own -- runs commands when it loads, hooks tool calls, or
+        approves them -- which is what a repository has to be trusted for. Instructions alone are
+        no more than the repository's own AGENTS.md."""
+        return bool(DYNAMIC_COMMAND.search(self.body) or self.hooks or self.allowed_tools)
 
 
 def parse(path: str, folder: str, source: str) -> Skill:
@@ -79,6 +89,12 @@ def parse(path: str, folder: str, source: str) -> Skill:
         warnings.append("no description")
     elif len(description) > MAX_DESCRIPTION_CHARS:
         warnings.append(f"description is longer than {MAX_DESCRIPTION_CHARS} characters")
+    try:
+        # Refused rather than loaded without them: a guard that silently never runs is worse than
+        # a skill that visibly does not load.
+        hooks = parse_hooks(meta.get("hooks"), origin=f"skill {name}")
+    except ConfigError as error:
+        raise SkillFormatError(str(error)) from error
     return Skill(
         name,
         description,
@@ -88,8 +104,27 @@ def parse(path: str, folder: str, source: str) -> Skill:
         argument_hint=" ".join(text_field(meta, "argument-hint").split()),
         model_invocable=not bool_field(meta, "disable-model-invocation", False, warnings),
         user_invocable=bool_field(meta, "user-invocable", True, warnings),
+        hooks=hooks,
+        allowed_tools=allowed_tools(meta.get("allowed-tools"), warnings),
         warnings=tuple(warnings),
     )
+
+
+def allowed_tools(value: object, warnings: list[str]) -> tuple[str, ...]:
+    """`allowed-tools` as rules. The spec writes one space-separated string, Claude Code also a
+    comma-separated one or a YAML list; a rule's parenthesized part may itself hold spaces."""
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        rules = [match.group(0) for match in TOOL_RULE_TOKEN.finditer(value)]
+    elif isinstance(value, list) and all(isinstance(item, str) for item in value):
+        rules = [item.strip() for item in value if item.strip()]
+    else:
+        warnings.append("allowed-tools must be a string or a list of strings; ignored")
+        return ()
+    valid = [rule for rule in rules if TOOL_RULE.fullmatch(rule)]
+    warnings.extend(f"allowed-tools rule {rule!r} is not `Tool` or `Tool(pattern)`; ignored" for rule in rules if rule not in valid)
+    return tuple(valid)
 
 
 def frontmatter(text: str) -> Json:

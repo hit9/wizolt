@@ -66,6 +66,11 @@ class SkillLibrary:
         resolved = {key.lower(): key for key in self.skills}.get(name.lower())
         return self.skills.get(resolved) if resolved else None
 
+    def active(self, names: list[str]) -> list[Skill]:
+        """The loaded skills among `names` (a session's active_skills). A name whose skill has
+        since left the disk, or lost trust, has nothing left to enforce."""
+        return [skill for name in names if (skill := self.get(name)) is not None]
+
     def command(self, text: str) -> Invocation | None:
         """The skill a `/name args` message starts, or None when no user-invocable skill answers
         to that name. The one place the command loop, the runtime and the engine all ask."""

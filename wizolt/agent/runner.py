@@ -32,6 +32,7 @@ from wizolt.base import (
 from wizolt.model import ModelClient
 from wizolt.session import Session, TurnDiff
 from wizolt.shellhooks import POST_TOOL_USE, PRE_TOOL_USE, HookOutcome
+from wizolt.skill import permissions
 from wizolt.source import SourceBlock, TextBlock, ToolOutput
 from wizolt.tools import (
     TOOL_REGISTRY,
@@ -593,7 +594,7 @@ class ToolRunner:
             or call.name in ("Delegate", "Edit", "NextHints")
             or tool_class in (BashTool, JobTool, AskTool, ToolScript)
             or tool_class.PRODUCES_MODEL_OBSERVATION
-            or (self.session.shell_hooks is not None and self.session.shell_hooks.watches_tool(call.name))
+            or (self.session.shell_hooks is not None and self.session.shell_hooks.watches_tool(self.session, call.name))
         ):
             return False
         try:
@@ -687,9 +688,10 @@ class ToolRunner:
             pre = await self.tool_hooks(PRE_TOOL_USE, call)
             if pre.blocked:
                 raise ToolError(f"blocked by PreToolUse hook: {pre.reason}")
-            # A hook's "ask" wins over yolo; its "allow" grants what yolo would, for this one call.
+            # A hook's "ask" wins over everything; its "allow", and an active skill's allowed-tools,
+            # grant what yolo would, for this one call.
             needs_confirmation = tool.needs_confirmation() or pre.permission == "ask"
-            pre_approved = pre.permission != "ask" and (self.session.settings.yolo or pre.permission == "allow")
+            pre_approved = pre.permission != "ask" and (self.session.settings.yolo or pre.permission == "allow" or permissions.pre_approved(self.session, call))
             if needs_confirmation and pre_approved and not tool.always_confirms():
                 d.auto = True
                 pre = toolblocks.approval_display(self.session, call, tool, "auto", batch_suffix=batch_suffix, planned_edit=planned_edit)

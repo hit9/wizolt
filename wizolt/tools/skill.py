@@ -53,4 +53,4 @@ class SkillTool(Tool):
         return ApprovalView("commands", "\n".join(commands), "bash") if commands else None
 
     async def call(self) -> str:
-        return await invocation.render(self.invocation(), cwd=self.session.cwd, timeout=self.session.settings.shell_timeout)
+        return await invocation.load(self.session, self.invocation())
