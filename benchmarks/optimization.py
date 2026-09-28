@@ -131,6 +131,60 @@ def main():
         if hasattr(library, "reload"):
             measure("skills_turn_rescan_100", library.reload)
 
+    # Hook hot paths use the same existing APIs on both revisions. Real subprocesses and
+    # snapshots are included; only provider replies are deterministic, local stand-ins.
+    if (Path(source) / "wizolt" / "shellhooks.py").is_file():
+        from wizolt.agent.lifecycle import bootstrap_features
+        from wizolt.base import ToolCall
+        from wizolt.shellhooks import HookCommand, ShellHooks
+        from wizolt.utils.process import ShellCommand
+        import tracemalloc
+
+        with tempfile.TemporaryDirectory(prefix="wizolt-perf-hooks-") as directory, _home(directory):
+            (Path(directory) / "input.txt").write_text("small source file\n")
+            agent = None
+
+            def prepare_agent(table):
+                nonlocal agent
+                session = Session(cwd=directory, config=Config(data_dir=directory))
+                bootstrap_features(session)
+                session.shell_hooks = ShellHooks(HookCommand.parse_table(table), directory)
+                session.ensure_ownership()
+                agent = Agent(session, output_fn=lambda _: None)
+
+                async def request(*_args):
+                    return {"role": "assistant", "content": "done"}, [], "done"
+
+                agent.model.request = request
+
+            async def turns():
+                try:
+                    for _ in range(10):
+                        await agent.run("hello")
+                finally:
+                    agent.session.close()
+
+            async def reads():
+                try:
+                    await agent.tools.run([ToolCall(f"read-{i}", "Read", [{"path": "input.txt"}]) for i in range(20)])
+                finally:
+                    agent.session.close()
+
+            for enabled in (False, True):
+                suffix = "hooks" if enabled else "no_hooks"
+                turn_table = {event: [{"hooks": [{"command": "true"}]}] for event in ("UserPromptSubmit", "Stop")} if enabled else {}
+                read_table = {event: [{"matcher": "Read", "hooks": [{"command": "true"}]}] for event in ("PreToolUse", "PostToolUse")} if enabled else {}
+                measure("headless_10_turns_" + suffix, lambda: asyncio.run(turns()), lambda: prepare_agent(turn_table))
+                measure("20_reads_" + suffix, lambda: asyncio.run(reads()), lambda: prepare_agent(read_table))
+
+            command = ShellCommand("head -c 8388608 /dev/zero", directory, 10)
+            measure("hook_output_8m", lambda: asyncio.run(command.run(max_output=1024)))
+            tracemalloc.start()
+            asyncio.run(command.run(max_output=1024))
+            _, peak = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+            results["hook_output_8m"]["peak_python_bytes"] = peak
+
     # A fresh interpreter assembling a session over three user skills: what a user with skills
     # pays once at startup, the frontmatter parser's import included.
     with tempfile.TemporaryDirectory(prefix="wizolt-perf-home-") as home:

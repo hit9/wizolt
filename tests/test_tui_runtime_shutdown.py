@@ -265,7 +265,7 @@ async def test_shutdown_closes_output_after_the_turn_and_before_the_application(
     runtime, command_loop, tui = runtime_for(tmp_path, monkeypatch)
     order: list[str] = []
 
-    async def close_resources(_agent):
+    async def close_resources(_agent, **_kwargs):
         order.append("resources")
 
     monkeypatch.setattr(runtime_module, "close_agent_resources", close_resources)
@@ -360,7 +360,7 @@ async def test_force_exit_arms_a_bounded_deadline_that_shutdown_disarms(tmp_path
         def cancel(self):
             self.cancelled = True
 
-    async def close_resources(_agent):
+    async def close_resources(_agent, **_kwargs):
         cleanup_started.set()
         await release_cleanup.wait()
 
@@ -625,3 +625,32 @@ async def test_dispatch_does_not_swallow_runtime_shutdown(tmp_path, monkeypatch)
         await work
     assert closed.is_set()
     assert runtime.command_task is None
+
+
+@pytest.mark.parametrize("interrupt", [False, True])
+async def test_session_start_hook_can_be_interrupted_or_shutdown(tmp_path, monkeypatch, interrupt):
+    from test_shell_hooks import _hook, _hooks
+
+    runtime, command_loop, tui = runtime_for(tmp_path, monkeypatch)
+    _hooks(
+        command_loop.session,
+        {
+            **_hook("SessionStart", "touch hook-started; sleep 30; touch hook-finished"),
+            **_hook("SessionEnd", "touch hook-ended"),
+        },
+    )
+    running = asyncio.create_task(runtime.run(show_banner=False))
+    try:
+        await wait_for(lambda: (tmp_path / "hook-started").exists())
+        if interrupt:
+            runtime.interrupt()
+            await wait_for(lambda: runtime.command_task is None)
+        runtime.request_shutdown()
+        await asyncio.wait_for(running, 3)
+        assert (tmp_path / "hook-ended").exists()
+        assert not (tmp_path / "hook-finished").exists()
+        assert tui.exited.is_set()
+    finally:
+        if not running.done():
+            running.cancel()
+            await asyncio.gather(running, return_exceptions=True)

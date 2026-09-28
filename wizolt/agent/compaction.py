@@ -26,9 +26,10 @@ from wizolt.agent.prompts import (
 from wizolt.agent.prompts import (
     compaction_input as format_compaction_input,
 )
-from wizolt.base import SESSION_EVENT_KEY, Billing, Json, ModelError, ModelResponseTimeout, Text
+from wizolt.base import SESSION_EVENT_KEY, Billing, Json, ModelError, ModelResponseTimeout, Text, WizoltError
 from wizolt.config import ProviderConfig, compaction_provider_config
 from wizolt.model import ModelClient
+from wizolt.shellhooks import POST_COMPACT, PRE_COMPACT, HookOutcome
 from wizolt.tools import Tool
 
 if TYPE_CHECKING:
@@ -80,6 +81,10 @@ class Compactor:
     ) -> bool:
         if not compacted:
             return False
+        pre = await self.fire_hooks(PRE_COMPACT, "auto")
+        if pre.blocked:
+            # Sending the same over-budget request is not a recovery from a blocked compaction.
+            raise WizoltError(f"Compaction blocked: {pre.reason}")
         on_compaction = self.ctx.hooks.on_compaction
         if on_compaction is not None:
             on_compaction(True, "")
@@ -117,7 +122,22 @@ class Compactor:
                 on_compaction(False, error_detail)
         if cancelled is not None:
             raise cancelled
+        await self.fire_hooks(POST_COMPACT, "auto")
         return True
+
+    async def fire_hooks(self, event: str, trigger: str) -> HookOutcome:
+        """Report hook failures through the compaction seam; notifications never rewrite history."""
+        session = self.ctx.session
+        if session.shell_hooks is None:
+            return HookOutcome()
+        fields = {"trigger": trigger, **({"custom_instructions": None} if event == PRE_COMPACT else {"compact_summary": session.state.summary})}
+        outcome = await session.shell_hooks.fire(event, session, fields)
+        for failure in outcome.failures:
+            if self.ctx.hooks.on_compaction is not None:
+                self.ctx.hooks.on_compaction(False, failure)
+            else:
+                print(f"Hook failed: {failure}")
+        return outcome
 
     async def compact(
         self,

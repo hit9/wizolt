@@ -1,9 +1,9 @@
 # Hooks
 
-A **hook** is a shell command wizolt runs at a fixed point in a turn: before or after a tool
-call, when you send a message, or when the agent is about to stop. Hooks can check, block or add
-to what happens. They use Claude Code's format, so a hook written for Claude Code runs here
-unchanged as long as it matches wizolt's [tool names](tools.md).
+A **hook** is a shell command wizolt runs when a session starts or ends, a tool runs, the agent
+responds, or context is compacted. Hooks can check actions, refuse them, add guidance, or record
+what happened. The events below use a subset of [Claude Code's hook format](https://code.claude.com/docs/en/hooks)
+with wizolt's [tool names](tools.md).
 
 ## Configuring hooks
 
@@ -17,59 +17,96 @@ hooks = [{ type = "command", command = "~/bin/no-force-push.sh", timeout = 10 }]
 [[hooks.PostToolUse]]
 matcher = "Edit"
 hooks = [{ type = "command", command = "ruff format --quiet ." }]
+
+[[hooks.SessionStart]]
+matcher = "startup|resume"
+hooks = [{ type = "command", command = "git status --short" }]
 ```
 
-`matcher` is a regular expression that must match the whole tool name (`Bash|Edit`); leave it
-out, or use `*`, to match every tool. `timeout` is in seconds and defaults to 60. A malformed
-hook stops wizolt at startup with the reason, rather than never running.
+`matcher` is a regular expression that must match the whole value in the table below. Leave it
+out, or use `*`, to match every value. Commands run in order, and wizolt waits for them: each
+matching command adds its running time to the operation. `timeout` is a finite positive number
+of seconds, defaulting to 60. Each output stream keeps at most 32,000 characters.
 
 A [skill](skills.md#hooks-and-pre-approved-tools) can carry the same table in its frontmatter;
-its hooks start when the skill first loads. `/status` counts the hooks in force.
+its hooks start when the skill first loads. `/status` counts the hooks in force. An unsupported
+event, handler type or command option is a configuration error. Supported command options are
+`type`, `command` and `timeout`.
 
 ## Events
 
-| Event | Runs | Exit 2 (or a JSON "block") |
-|---|---|---|
-| `PreToolUse` | Before a tool call, before its approval prompt | Refuses the call; the agent is told why |
-| `PostToolUse` | After a tool call succeeds | The call already ran; the reason goes to the agent with the result |
-| `UserPromptSubmit` | When you send a message | Refuses the message; nothing is sent. A follow-up typed mid-turn is withheld |
-| `Stop` | When the agent gives its final answer | The agent keeps working, with the reason as its next instruction, at most 5 times a turn |
+| Event | Runs | Matcher | What it can do |
+|---|---|---|---|
+| `SessionStart` | Once when a session opens, including resume | `startup` or `resume` | Add context to the first accepted message |
+| `SessionEnd` | Once during orderly shutdown or session switch | `prompt_input_exit`, `resume` or `other` | Run cleanup; cannot block exit |
+| `UserPromptSubmit` | When you send a message, including follow-ups | Ignored | Refuse the message or add context |
+| `PreToolUse` | Before a tool runs and before approval | Tool name | Refuse, approve, require a prompt, or add context |
+| `PermissionRequest` | When a tool needs approval | Tool name | Allow or deny through JSON |
+| `PostToolUse` | After a tool succeeds | Tool name | Add feedback to its result |
+| `PostToolUseFailure` | After a tool raises an error or Bash exits nonzero | Tool name | Add guidance to the failed result |
+| `Stop` | Before the agent finishes its answer or suggested next steps | Ignored | Send it back to work, at most 5 times per turn |
+| `StopFailure` | When a model error ends the turn | `unknown` | Record the error; cannot restart the turn |
+| `PreCompact` | Before automatic compaction or `/compact` | `auto` or `manual` | Refuse compaction; an automatic refusal ends the turn |
+| `PostCompact` | After compaction, including a fallback trim | `auto` or `manual` | Record the new summary |
+| `SubagentStart` | At each Delegate send, including a forked skill | `worker` | Add context to the worker |
+| `SubagentStop` | Before the worker finishes its response | `worker` | Send it back to work, at most 5 times per worker turn |
 
-A worker runs `PreToolUse` and `PostToolUse` only; `UserPromptSubmit` and `Stop` belong to your
-own turns.
+A refused or cancelled tool call does not fire `PostToolUseFailure`. Cancellation and the step
+limit do not fire `Stop` or `SubagentStop`. A cancelled compaction does not fire `PostCompact`.
 
-## What a hook receives and returns
+Workers run configured tool, compaction and model-failure hooks, plus their own loaded skills'
+hooks. `UserPromptSubmit`, `SessionStart`, `SessionEnd` and `Stop` belong to the main session.
+A parent's loaded skills can also supply `SubagentStart` and `SubagentStop` hooks. Subagent
+feedback goes to the worker; use `PostToolUse` on `Delegate` to give feedback to the parent.
 
-The hook reads one JSON object on stdin:
+## What a hook receives
+
+A hook reads one JSON object on stdin:
 
 ```json
 {"session_id": "…", "cwd": "/path/to/repo", "hook_event_name": "PreToolUse",
- "tool_name": "Bash", "tool_input": {"command": "git push --force"}}
+ "permission_mode": "default", "tool_use_id": "…", "tool_name": "Bash",
+ "tool_input": {"command": "git push --force"}}
 ```
 
-`tool_input` holds the tool's own arguments; `PostToolUse` adds `tool_response`,
-`UserPromptSubmit` adds `prompt`, and `Stop` adds `stop_hook_active` (true once a Stop hook
-already sent the agent back this turn, so a hook can avoid looping). `CLAUDE_PROJECT_DIR` and
-`WIZOLT_PROJECT_DIR` hold the repository's top folder.
+`permission_mode` is `bypassPermissions` under yolo, otherwise `default`.
+`CLAUDE_PROJECT_DIR` and `WIZOLT_PROJECT_DIR` hold the repository's top folder.
 
-The hook answers with its exit code:
+| Events | Additional input |
+|---|---|
+| Tool events | `tool_name`, `tool_input` (the tool's own arguments), `tool_use_id` |
+| `PostToolUse` | `tool_response` |
+| `PostToolUseFailure` | `error`, `is_interrupt: false` |
+| `UserPromptSubmit` | `prompt` |
+| `Stop`, `SubagentStop` | `last_assistant_message`, `stop_hook_active` (true after the first redirect) |
+| `StopFailure` | `error: "unknown"`, `error_details`, `last_assistant_message` (the error text) |
+| `SessionStart`, `SessionEnd` | `source` and `model` at start; `reason` at end |
+| `PreCompact`, `PostCompact` | `trigger`; `custom_instructions: null` before; `compact_summary` after |
+| `SubagentStart`, `SubagentStop` | The parent's `session_id`, the worker's `agent_id`, `agent_type: "worker"` |
 
-- **0** — carry on. Printed JSON can decide more (below). For `UserPromptSubmit`, plain printed
-  text is added to your message as context.
-- **2** — block, with stderr as the reason.
-- **Anything else, or a timeout** — the hook is broken. You see the error; the turn continues
-  as if the hook weren't there.
+## What a hook returns
 
-JSON printed on exit 0, following Claude Code:
+- **Exit 0** — continue; JSON can decide more below. Plain stdout adds context for
+  `UserPromptSubmit` and `SessionStart`.
+- **Exit 2** — refuse with stderr as the reason for `PreToolUse`, `UserPromptSubmit`, `Stop`,
+  `SubagentStop` and `PreCompact`. For `PostToolUse`, the reason is feedback: the tool already ran.
+  `PermissionRequest` ignores exit 2; it needs a JSON decision. Other events cannot block.
+- **Other failures, including timeouts** — show the error and continue.
 
-```json
-{"hookSpecificOutput": {"permissionDecision": "allow"}}
-```
+JSON printed on exit 0:
 
 | Field | Effect |
 |---|---|
-| `hookSpecificOutput.permissionDecision` | `PreToolUse` only: `deny` blocks, `allow` skips the approval prompt, `ask` shows it even under yolo |
-| `hookSpecificOutput.additionalContext` | Text added for the agent |
-| `decision: "block"` with `reason` | Blocks, like exit 2 |
+| `hookSpecificOutput.permissionDecision` | `PreToolUse`: `deny` refuses, `allow` skips approval, `ask` forces a prompt even under yolo |
+| `hookSpecificOutput.permissionDecisionReason` | Reason for a pre-tool refusal |
+| `hookSpecificOutput.decision` | `PermissionRequest`: `{"behavior": "allow"}` or `{"behavior": "deny", "message": "reason"}` |
+| `hookSpecificOutput.additionalContext` | Context for prompt, session-start, subagent-start and tool events; for `Stop` and `SubagentStop`, feedback that keeps the agent working |
+| `decision: "block"` with `reason` | Refuses at a blocking event, like exit 2 |
 
-When several hooks match, they run in order: any block blocks, and `ask` outranks `allow`.
+When several hooks match, any refusal wins and `ask` outranks `allow`. A permission hook cannot
+bypass an explicit pre-tool `ask` or a tool's mandatory confirmation. Tool-input rewrites and
+persistent permission changes are unsupported; requesting them leaves approval to you.
+
+Only the events, input fields and output fields listed here are supported. In particular, hooks
+do not receive a Claude transcript file or an environment-persistence file. Hook commands run
+in the foreground; async, HTTP, prompt and agent handlers are not supported.

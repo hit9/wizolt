@@ -340,6 +340,7 @@ class DelegateTool(Tool):
         # let a per-call max_steps override leak into the parent's budget, and a one-time copy would
         # miss runtime changes (/yolo, /set) between delegations.
         worker.settings = replace(parent.settings, max_steps=max_steps)
+        worker.shell_hooks = parent.shell_hooks.detached(parent) if parent.shell_hooks else None
         agent = worker._agent
         if agent is None:
             # Local import: engine imports wizolt.tools at module level (engine.py:30), so a
@@ -514,7 +515,7 @@ class DelegateTool(Tool):
         worker.skills = parent.skills
         # The config file's hooks guard a worker's tools as much as the parent's; the skills a
         # worker loads are its own, so it starts with none of the parent's.
-        worker.shell_hooks = parent.shell_hooks.detached() if parent.shell_hooks else None
+        worker.shell_hooks = parent.shell_hooks.detached(parent) if parent.shell_hooks else None
         worker.mcp = parent.mcp
         worker.catalog = parent.catalog
         # The worker writes the same family the parent owns; it borrows that lease rather than

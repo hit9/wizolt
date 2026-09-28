@@ -235,3 +235,15 @@ async def test_shell_stdin_and_environment(tmp_path):
     result = await ShellCommand('read line; echo "$line/$EXTRA"', str(tmp_path), timeout=5, stdin="in\n", env={"EXTRA": "env"}).run()
 
     assert (result.exit_code, result.stdout) == (0, "in/env\n")
+
+
+async def test_argument_values_are_not_reinterpreted_as_placeholders(tmp_path):
+    _skill(tmp_path, "literal", body="all: $ARGUMENTS\nfirst: $0")
+    output = await SkillTool(session(tmp_path), ["literal", "literal-$1 tail"]).call()
+    assert "all: literal-$1 tail\nfirst: literal-$1" in output
+
+
+def test_argument_indices_handle_large_values_without_integer_conversion_errors():
+    assert Arguments("first").fill("x $ARGUMENTS[" + "9" * 5000 + "] y") == "x  y"
+    assert Arguments("first").fill("x $" + "0" * 5000 + " y") == "x first y"
+    assert Arguments("value").fill("$ARGUMENTS_SUFFIX") == "$ARGUMENTS_SUFFIX\n\nARGUMENTS: value"

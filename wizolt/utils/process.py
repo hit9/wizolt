@@ -8,6 +8,7 @@ job. The Bash tool owns that richer lifecycle; this is the plain one.
 from __future__ import annotations
 
 import asyncio
+import codecs
 import contextlib
 import os
 import shutil
@@ -63,16 +64,39 @@ class ShellCommand:
             )
         except OSError as error:
             return ShellResult(self.CANNOT_START, "", f"cannot start: {error}")
+        limit = self.MAX_OUTPUT_CHARS if max_output is None else max(0, max_output)
+        assert process.stdout is not None and process.stderr is not None
+        tasks = [
+            asyncio.create_task(self._read(process.stdout, limit)),
+            asyncio.create_task(self._read(process.stderr, limit)),
+            asyncio.create_task(self._write(process)),
+            asyncio.create_task(process.wait()),
+        ]
+        communication = asyncio.gather(*tasks)
         try:
-            stdout, stderr = await asyncio.wait_for(process.communicate(self.stdin.encode() if self.stdin else None), self.timeout)
+            # Keep draining while killing: wait() can otherwise hang on a full pipe after its
+            # reader was cancelled. Neither timeout nor cancellation leaves a reader behind.
+            stdout, stderr, _, _ = await asyncio.wait_for(asyncio.shield(communication), self.timeout)
         except TimeoutError:
             await self._kill(process)
             return ShellResult(-1, "", f"timed out after {self.timeout:g}s")
         except BaseException:
             await self._kill(process)
             raise
-        limit = self.MAX_OUTPUT_CHARS if max_output is None else max_output
-        return ShellResult(process.returncode if process.returncode is not None else -1, self._text(stdout, limit), self._text(stderr, limit))
+        finally:
+            await asyncio.gather(communication, *tasks, return_exceptions=True)
+        return ShellResult(process.returncode if process.returncode is not None else -1, str(stdout), str(stderr))
+
+    async def _write(self, process: asyncio.subprocess.Process) -> None:
+        if process.stdin is None:
+            return
+        try:
+            process.stdin.write(self.stdin.encode())
+            await process.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # hooks need not consume stdin
+        finally:
+            process.stdin.close()
 
     @staticmethod
     async def _kill(process: asyncio.subprocess.Process) -> None:
@@ -82,8 +106,18 @@ class ShellCommand:
             await process.wait()
 
     @staticmethod
-    def _text(data: bytes, limit: int) -> str:
-        text = data.decode(errors="replace")
-        if len(text) <= limit:
-            return text
-        return text[:limit] + f"\n... ({len(text) - limit} more characters cut)"
+    async def _read(stream: asyncio.StreamReader, limit: int) -> str:
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        parts: list[str] = []
+        kept = total = 0
+        while True:
+            chunk = await stream.read(16_384)
+            text = decoder.decode(chunk, final=not chunk)
+            total += len(text)
+            if kept < limit:
+                part = text[: limit - kept]
+                parts.append(part)
+                kept += len(part)
+            if not chunk:
+                break
+        return "".join(parts) + (f"\n... ({total - kept} more characters cut)" if total > kept else "")

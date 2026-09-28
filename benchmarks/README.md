@@ -122,3 +122,44 @@ normalizing the filesystem and GC starting state. No timing threshold is enforce
 | imports.wizolt.__main__ | 47.875 | 44.568 | -6.91% |
 | imports.wizolt.cli | 247.362 | 232.007 | -6.21% |
 | imports.wizolt.model | 83.679 | 74.292 | -11.22% |
+
+## Hooks review comparison
+
+The paired reports are
+[`baselines/linux-arm64-py314-before-hooks-review.json`](baselines/linux-arm64-py314-before-hooks-review.json)
+and [`results/linux-arm64-py314-hooks-review.json`](results/linux-arm64-py314-hooks-review.json).
+They compare `skills-compat` HEAD `ce69d84` with the reviewed working tree (source hash in the
+report), on Linux ARM64 / CPython 3.14.7, with 9 samples and matching workload/environment metadata.
+Tests and builds were stopped during measurement; the current interpreter and dependencies served
+both source exports. Reproduce with:
+
+```sh
+uv run --no-sync python benchmarks/run.py --revision ce69d84 --repeat 9 \
+  --output /tmp/wizolt-before-hooks.json
+uv run --no-sync python benchmarks/run.py --repeat 9 \
+  --baseline /tmp/wizolt-before-hooks.json --output /tmp/wizolt-after-hooks.json
+```
+
+The new probes run ten headless Agent turns with real snapshots and fixed local model replies,
+and a batch of twenty reads of one small file. The configured-hook variants run `true` at
+UserPromptSubmit/Stop or PreToolUse/PostToolUse, respectively. Setup is outside timing, while
+execution includes event-loop setup and session closure. Configured tool hooks serialize these
+reads in both revisions. No external model or MCP calls are made.
+
+| Workload | Before (ms) | After (ms) | Change |
+| --- | ---: | ---: | ---: |
+| 10 turns, no hooks | 22.511 | 22.569 | +0.26% |
+| 20 reads, no hooks | 5.580 | 5.668 | +1.58% |
+| 10 turns, configured hooks | 39.722 | 40.264 | +1.36% |
+| 20 reads, configured hooks | 39.516 | 37.306 | -5.59% |
+| Fresh session with 3 skills | 97.164 | 97.978 | +0.84% |
+| Prepare a 1 MB request | 7.234 | 7.187 | -0.65% |
+| Drain 8 MiB, retain 1,024 characters | 9.718 | 4.741 | -51.21% |
+
+No substantial regression was observed on these workloads. Small timing differences are within
+sample variation; they do not establish a general speedup. The large-output probe additionally
+records Python allocation peaks with tracemalloc in a separate untimed run: 16,808,227 bytes before,
+371,443 after. It measures `head -c 8388608 /dev/zero`, including process and pipe handling, not total
+process RSS. Bounded draining trades extra reader-task bookkeeping for avoiding retention of the
+whole output. All six terminal replay output hashes match; retained two-width replay memory moved
+by +3,979 bytes. Hooks still add the running time of every matching user command.

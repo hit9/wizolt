@@ -39,7 +39,7 @@ from wizolt.base import (
 from wizolt.image import ImageInputs, UserInput
 from wizolt.model import ModelClient, PreparedRequest, resilience
 from wizolt.session import QueuedInput, Session, SessionSnapshotCodec
-from wizolt.shellhooks import STOP, USER_PROMPT_SUBMIT, HookOutcome, PromptBlocked
+from wizolt.shellhooks import SESSION_END, SESSION_START, STOP, STOP_FAILURE, SUBAGENT_START, SUBAGENT_STOP, USER_PROMPT_SUBMIT, HookOutcome, PromptBlocked
 from wizolt.skill.listing import SkillListing
 from wizolt.tools import (
     DelegateTool,
@@ -109,6 +109,9 @@ class Agent:
         self.unanswered_inputs: list[str] = []
         # How many times Stop hooks sent the model back this turn (see stop_redirected).
         self._stop_redirects = 0
+        self._session_started = False
+        self._session_ended = False
+        self._session_hook_context: tuple[str, ...] = ()
 
     def use_hooks(self, hooks: UiHooks) -> None:
         """Install the presentation seam on this agent and every layer it owns.
@@ -162,12 +165,37 @@ class Agent:
         self._active_task = asyncio.current_task()
         self._active_loop = asyncio.get_running_loop()
         try:
+            await self.start_session()
             return await self._run_turn(user_input)
+        except ModelError as error:
+            await self.fire_hooks(STOP_FAILURE, {"error": "unknown", "error_details": str(error), "last_assistant_message": str(error)})
+            raise
         finally:
             self.session._active_runs -= 1
             # Cleared together: a late cancel() must find nothing rather than a stale task.
             self._active_task = None
             self._active_loop = None
+
+    async def start_session(self) -> None:
+        """Run startup hooks once, retaining their context until an input is admitted.
+
+        The frontend calls this even for an idle session; run() covers direct embeddings. Hook
+        context enters the next turn's tail, never the stable system prefix or replay transcript.
+        """
+        if self._session_started and not self._session_ended:
+            return
+        self.session.ensure_ownership()
+        self._session_ended = False
+        self._session_started = True
+        start = await self.fire_hooks(SESSION_START, {"source": "resume" if self.session.resumed else "startup", "model": self.session.config.provider.model})
+        self._session_hook_context = start.context
+
+    async def end_session(self, reason: str = "other") -> None:
+        """Notify once while output and session resources are still available."""
+        if not self._session_started or self._session_ended:
+            return
+        self._session_ended = True
+        await self.fire_hooks(SESSION_END, {"reason": reason})
 
     async def _run_turn(self, user_input: str | UserInput) -> str:
         # Embedding and headless callers hand Agent a draft that may carry recognized-but-unstored
@@ -179,9 +207,6 @@ class Agent:
         self.stopped_at_max_steps = False
         self.unanswered_inputs = []
         self.turn_sources = []
-        self.session.clear_quick_hints()  # a new turn invalidates whatever the previous turn offered
-        self.session.state.round_count += 1
-        self.session.state.turn_step = 0
         tool_batches = 0
         self._stop_redirects = 0
         malformed_tool_names: list[str] = []
@@ -194,8 +219,18 @@ class Agent:
         user_text = user_input.display_text() if isinstance(user_input, UserInput) else self.session.images.label_text(user_message)
         # Before anything is committed: a prompt a UserPromptSubmit hook refuses never becomes a turn.
         turn_messages = [user_message, *await self.admit_input(user_text), *await self.skill_announcement()]
+        self.session.clear_quick_hints()  # an admitted turn invalidates the previous turn's offers
+        self.session.state.round_count += 1
+        self.session.state.turn_step = 0
+        start = await self.fire_hooks(SUBAGENT_START, {}) if not self.session.listed else HookOutcome()
+        for event, context in ((SESSION_START, self._session_hook_context), (SUBAGENT_START, start.context)):
+            if context:
+                message = {"role": "user", "content": f"{event} hook context:\n" + "\n".join(context), SESSION_EVENT_KEY: "hook_context"}
+                if event != SUBAGENT_START or message not in self.session.messages:
+                    turn_messages.append(message)
         transcript_messages: list[Json] = [self.transcript_message(user_message)]
         await self.checkpoint_turn(turn_messages, transcript_messages)
+        self._session_hook_context = ()
         failed_request: PreparedRequest | None = None
         try:
             for step in range(self.session.settings.max_steps):
@@ -730,8 +765,9 @@ class Agent:
         stopped after MAX_STOP_REDIRECTS, rather than spending the turn's whole step budget."""
         if self._stop_redirects >= self.MAX_STOP_REDIRECTS:
             return False
-        stop = await self.fire_hooks(STOP, {"stop_hook_active": self._stop_redirects > 0})
-        if not stop.blocked:
+        event = STOP if self.session.listed else SUBAGENT_STOP
+        stop = await self.fire_hooks(event, {"stop_hook_active": self._stop_redirects > 0, "last_assistant_message": str((answer or {}).get("content") or "")})
+        if not stop.blocked and not stop.context:
             return False
         self._stop_redirects += 1
         if answer is not None:
@@ -739,8 +775,9 @@ class Agent:
             transcript_messages.append(self.transcript_message(answer))
             self.output_fn(str(answer.get("content") or ""))
         if self._stop_redirects == self.MAX_STOP_REDIRECTS:
-            self.output_fn(f"Stop hooks sent the agent back {self.MAX_STOP_REDIRECTS} times; the turn ends at its next answer.")
-        turn_messages.append({"role": "user", "content": f"Stop hook: {stop.reason}", SESSION_EVENT_KEY: "stop_hook"})
+            self.output_fn(f"{event} hooks sent the agent back {self.MAX_STOP_REDIRECTS} times; the turn ends at its next answer.")
+        feedback = "\n".join(([stop.reason] if stop.blocked else []) + list(stop.context))
+        turn_messages.append({"role": "user", "content": f"{event} hook: {feedback}", SESSION_EVENT_KEY: "stop_hook"})
         await self.checkpoint_turn(turn_messages, transcript_messages)
         return True
 
@@ -748,6 +785,8 @@ class Agent:
         """Run a turn event's shell hooks, showing the user any that broke."""
         if self.session.shell_hooks is None:
             return HookOutcome()
+        if event in (SUBAGENT_START, SUBAGENT_STOP):
+            fields = {"session_id": self.session.uid.removesuffix(".w"), "agent_id": self.session.uid, "agent_type": "worker", **fields}
         outcome = await self.session.shell_hooks.fire(event, self.session, fields)
         for failure in outcome.failures:
             self.output_fn(f"Hook failed: {failure}")

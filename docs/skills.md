@@ -171,8 +171,8 @@ hooks:
 | `Bash(npm run:*)` | `npm run` followed by anything |
 | `Read(docs/*)` | Paths matching the pattern |
 
-A command that chains, pipes, substitutes or redirects (`;`, `&&`, `|`, `$(…)`, `>`) is never
-covered, and still asks.
+A patterned Bash rule never covers commands that chain, pipe, substitute or redirect
+(`;`, `&&`, `|`, `$(…)`, `>`); those still ask. A bare `Bash` rule approves every Bash call.
 
 ### Running in the worker
 

@@ -834,3 +834,20 @@ message, never spliced into its system prompt, or every delegation starts a fres
 worker inherits the parent's `created_at` (Environment byte-identical across spawns), keeps its
 tool list fixed, and shares the parent's SkillLibrary/MCPManager so no index changes between
 delegations.
+
+## Shell-hook boundaries
+
+Hooks run only at lifecycle points wizolt owns. The runner distinguishes a rejected call from
+an execution failure: no failure hook runs for approvals, invalid calls or cancellation. Hook
+feedback remains attached to its matching tool result; it is never spliced into the stable prefix.
+Session-start context waits for an accepted input and enters that turn as a runtime event.
+Subagent hook configurations cross the Delegate handoff as values, refreshed each send; the worker
+never reads the parent's Session. A matching start-context copy already in worker history is not
+injected again. Stop feedback shares the five-redirect cap for both ordinary and NextHints endings.
+Compaction hooks bracket manual and automatic application, including deterministic fallback;
+automatic refusal ends the turn rather than submitting the known over-budget request.
+A cancelled automatic compaction may still perform its existing deterministic trim, but starts no
+post hook while unwinding. SessionEnd runs once before request clients and output are closed.
+
+Command output is drained incrementally with bounded retained text. Timeout and cancellation kill
+the whole process group while readers are still draining, then join every reader and writer task.

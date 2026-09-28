@@ -851,6 +851,9 @@ async def compact(loop: CommandLoop, args: str) -> str | LogBlock | None:
     compacted, keep = compactor.parts()
     if not compacted:
         return "No prior conversation to compact"
+    pre = await compactor.fire_hooks("PreCompact", "manual")
+    if pre.blocked:
+        return f"Compaction blocked: {pre.reason}"
     fallback = False
     fallback_error = ""
     loop.presentation.status_bar.begin()
@@ -891,6 +894,7 @@ async def compact(loop: CommandLoop, args: str) -> str | LogBlock | None:
     # Compaction rewrites the history in place. Persist it now: leaving the session without
     # running another turn would otherwise resume from the log's pre-compaction state.
     await loop.session.save_snapshot()
+    await compactor.fire_hooks("PostCompact", "manual")
     fallback_note = f" (fallback: {fallback_error})" if fallback else ""
     return (
         f"Compacted context: messages {before} -> {len(loop.session.messages)}, "

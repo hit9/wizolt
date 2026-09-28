@@ -63,7 +63,7 @@ def test_parse_claude_code_shape():
 @pytest.mark.parametrize(
     ("table", "message"),
     [
-        ({"SessionStart": []}, "unsupported event 'SessionStart'"),
+        ({"TeammateIdle": []}, "unsupported event 'TeammateIdle'"),
         ({"PreToolUse": {"hooks": []}}, "must be a list of matcher groups"),
         ({"PreToolUse": [{"matcher": "Bash"}]}, "each entry needs a `hooks` list"),
         ({"PreToolUse": [{"matcher": "(", "hooks": []}]}, "invalid matcher '('"),
@@ -317,3 +317,166 @@ def test_worker_keeps_tool_hooks_only(tmp_path):
     worker = ShellHooks(HookCommand.parse_table(table), str(tmp_path)).detached()
 
     assert [hook.event for hook in worker.active(session(tmp_path))] == ["PreToolUse"]
+
+
+@pytest.mark.parametrize("matcher", ["*", ""])
+async def test_match_all_configuration_runs_for_different_tools(tmp_path, matcher):
+    s = _hooks(session(tmp_path), _hook("PreToolUse", "echo blocked >&2; exit 2", matcher))
+    runner, _ = _runner(s)
+    for tool in [_bash("touch forbidden"), call("Read", [{"path": "missing"}])]:
+        [message] = await runner.run([tool])
+        assert "blocked by PreToolUse hook" in message["content"]
+    assert not (tmp_path / "forbidden").exists()
+
+
+@pytest.mark.parametrize("timeout", [float("nan"), float("inf"), float("-inf"), True, 10**500])
+def test_hook_timeout_must_be_finite(tmp_path, timeout):
+    table = {"Stop": [{"hooks": [{"command": "true", "timeout": timeout}]}]}
+    with pytest.raises(ConfigError, match="positive number"):
+        HookCommand.parse_table(table)
+
+
+@pytest.mark.parametrize("field,value", [("async", True), ("once", True), ("if", "Bash(rm *)")])
+def test_unsupported_hook_options_are_not_silently_ignored(field, value):
+    with pytest.raises(ConfigError, match="unsupported command hook fields"):
+        HookCommand.parse_table({"PreToolUse": [{"hooks": [{"command": "true", field: value}]}]})
+
+
+@pytest.mark.parametrize("command,answer", [("true", "y"), ("exit 7", "y"), ("touch refused", "n")])
+async def test_pre_tool_context_survives_success_failure_and_refusal(tmp_path, command, answer):
+    hook = """printf '%s' '{"hookSpecificOutput":{"additionalContext":"pre-tool guidance"}}' """
+    s = _hooks(session(tmp_path), _hook("PreToolUse", hook, "Bash"))
+    runner, _ = _runner(s, answer=answer)
+    [message] = await runner.run([_bash(command)])
+    assert "PreToolUse hook feedback:\npre-tool guidance" in message["content"]
+    assert not (tmp_path / "refused").exists()
+
+
+async def test_pre_tool_context_survives_auto_approval(tmp_path):
+    hook = """printf '%s' '{"hookSpecificOutput":{"additionalContext":"auto guidance","permissionDecision":"allow"}}' """
+    s = _hooks(session(tmp_path), _hook("PreToolUse", hook, "Bash"))
+    runner, asked = _runner(s, answer="n")
+    [message] = await runner.run([_bash("true")])
+    assert asked == []
+    assert "auto guidance" in message["content"]
+
+
+@pytest.mark.parametrize("behavior,ran", [("allow", True), ("deny", False)])
+async def test_permission_request_decides_before_the_prompt(tmp_path, behavior, ran):
+    import shlex
+
+    decision = json.dumps({"hookSpecificOutput": {"decision": {"behavior": behavior, "message": "policy refusal"}}})
+    s = _hooks(session(tmp_path), _hook("PermissionRequest", f"printf %s {shlex.quote(decision)}", "Bash"))
+    runner, asked = _runner(s, answer="n")
+    [message] = await runner.run([_bash("touch ran")])
+    assert (tmp_path / "ran").exists() is ran
+    assert asked == []
+    if not ran:
+        assert "policy refusal" in message["content"]
+
+
+async def test_permission_hook_does_not_override_pre_tool_ask(tmp_path):
+    s = _hooks(
+        session(tmp_path),
+        {
+            **_hook("PreToolUse", """echo '{"hookSpecificOutput":{"permissionDecision":"ask"}}' """),
+            **_hook("PermissionRequest", """echo '{"hookSpecificOutput":{"decision":{"behavior":"allow"}}}' """),
+        },
+    )
+    s.settings.yolo = True
+    runner, asked = _runner(s, answer="n")
+    await runner.run([_bash("touch ran")])
+    assert len(asked) == 1
+    assert not (tmp_path / "ran").exists()
+
+
+async def test_permission_event_is_skipped_for_auto_approved_calls(tmp_path):
+    s = _hooks(session(tmp_path), _hook("PermissionRequest", "touch asked"))
+    s.settings.yolo = True
+    runner, _ = _runner(s)
+    await runner.run([_bash("true")])
+    assert not (tmp_path / "asked").exists()
+
+
+@pytest.mark.parametrize("event", ["PreToolUse", "PermissionRequest"])
+async def test_unsupported_input_rewrites_never_approve_the_original_call(tmp_path, event):
+    import shlex
+
+    specific = (
+        {"permissionDecision": "allow", "updatedInput": {"command": "true"}}
+        if event == "PreToolUse"
+        else {"decision": {"behavior": "allow", "updatedInput": {"command": "true"}}}
+    )
+    command = "printf %s " + shlex.quote(json.dumps({"hookSpecificOutput": specific}))
+    s = _hooks(session(tmp_path), _hook(event, command))
+    runner, asked = _runner(s, answer="n")
+    await runner.run([_bash("touch ran")])
+    assert len(asked) == 1
+    assert not (tmp_path / "ran").exists()
+
+
+@pytest.mark.parametrize("command,event", [("exit 9", "PostToolUseFailure"), ("true", "PostToolUse")])
+async def test_tool_exit_selects_exactly_one_post_event(tmp_path, command, event):
+    s = _hooks(
+        session(tmp_path),
+        {
+            **_hook("PostToolUse", "cat > success.json", "Bash"),
+            **_hook("PostToolUseFailure", """cat > failure.json; echo '{"hookSpecificOutput":{"additionalContext":"check the failure"}}' """, "Bash"),
+        },
+    )
+    s.settings.yolo = True
+    runner, _ = _runner(s)
+    [message] = await runner.run([_bash(command)])
+    failed = event == "PostToolUseFailure"
+    assert (tmp_path / "failure.json").exists() is failed
+    assert (tmp_path / "success.json").exists() is not failed
+    payload = json.loads((tmp_path / ("failure.json" if failed else "success.json")).read_text())
+    assert payload["tool_use_id"] == "bash-id"
+    assert payload["hook_event_name"] == event
+    if failed:
+        assert "exit_code: 9" in payload["error"]
+        assert "check the failure" in message["content"]
+
+
+async def test_tool_exception_fires_failure_but_rejection_does_not(tmp_path):
+    s = _hooks(session(tmp_path), _hook("PostToolUseFailure", "cat > failure.json"))
+    runner, _ = _runner(s, answer="n")
+    await runner.run([_bash("touch refused")])
+    await runner.run([call("UnknownTool", [])])
+    assert not (tmp_path / "failure.json").exists()
+    [message] = await runner.run([call("Read", [{"path": "missing.txt"}])])
+    payload = json.loads((tmp_path / "failure.json").read_text())
+    assert payload["tool_name"] == "Read"
+    assert "ToolError" in payload["error"]
+    assert "ToolError" in message["content"]
+
+
+async def test_pre_tool_denial_does_not_fire_failure(tmp_path):
+    s = _hooks(
+        session(tmp_path),
+        {
+            **_hook("PreToolUse", "exit 2"),
+            **_hook("PostToolUseFailure", "touch failure"),
+        },
+    )
+    runner, _ = _runner(s)
+    await runner.run([_bash("true")])
+    assert not (tmp_path / "failure").exists()
+
+
+async def test_stop_context_redirects_and_includes_last_answer(tmp_path):
+    command = """cat > stop.json; grep -q '"stop_hook_active": true' stop.json || echo '{"hookSpecificOutput":{"additionalContext":"verify first"}}' """
+    agent, requests = _agent(tmp_path, _hook("Stop", command), ["initial answer", "verified"])
+    assert await agent.run("work") == "verified"
+    assert "verify first" in str(requests[1])
+    assert json.loads((tmp_path / "stop.json").read_text())["last_assistant_message"] == "verified"
+
+
+async def test_permission_denial_still_applies_with_an_unsupported_interrupt_flag(tmp_path):
+    command = """echo '{"hookSpecificOutput":{"decision":{"behavior":"deny","message":"policy refusal","interrupt":true}}}' """
+    s = _hooks(session(tmp_path), _hook("PermissionRequest", command))
+    runner, asked = _runner(s, answer="y")
+    [message] = await runner.run([_bash("touch ran")])
+    assert asked == []
+    assert "policy refusal" in message["content"]
+    assert not (tmp_path / "ran").exists()

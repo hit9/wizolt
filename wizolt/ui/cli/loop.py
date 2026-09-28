@@ -331,13 +331,14 @@ class CommandLoop:
         self.start_session(show_banner=show_banner)
         discovery = asyncio.ensure_future(self.discover_mcp())
         try:
+            await self.agent.start_session()
             return await self._simple_loop()
         finally:
             discovery.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await discovery
             await self.background.close_background()
-            await close_agent_resources(self.agent)
+            await close_agent_resources(self.agent, reason="resume" if self.resume_request else "prompt_input_exit")
 
     async def _simple_loop(self) -> int:
         while True:

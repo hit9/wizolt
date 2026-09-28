@@ -636,10 +636,12 @@ class TuiRuntime:
                 continue  # an image submission was refused; its draft is back in the editor
             user_input = admitted
             if not await self.dispatch(user_input):
-                await self._turn_until_shutdown(user_input)
+                turn = self.spawn(self.run_agent_turn(user_input), name="agent-turn")
+                assert turn is not None
+                await self._until_shutdown(turn)
 
-    async def _turn_until_shutdown(self, user_input: str | UserInput) -> None:
-        """Run one turn, and let a shutdown request end the *wait* for it.
+    async def _until_shutdown(self, task: asyncio.Task) -> None:
+        """Let shutdown end the wait for owned work, including session startup hooks.
 
         The turn is not abandoned by that: it is a runtime-owned task, so `_shutdown` cancels and
         awaits it in its own fixed order, after asking the agent to stop. Without this race an
@@ -648,11 +650,9 @@ class TuiRuntime:
         reach the step that cancels it."""
 
         assert self.shutdown is not None
-        turn = self.spawn(self.run_agent_turn(user_input), name="agent-turn")
-        assert turn is not None
         stopping = asyncio.ensure_future(self.shutdown.wait())
         try:
-            await asyncio.wait({turn, stopping}, return_when=asyncio.FIRST_COMPLETED)
+            await asyncio.wait({task, stopping}, return_when=asyncio.FIRST_COMPLETED)
         finally:
             if not stopping.done():
                 stopping.cancel()
@@ -717,6 +717,14 @@ class TuiRuntime:
             self.loop.start_session(show_banner=False)
             if resuming:
                 self.tui.set_idle()
+            self.command_task = self.spawn(self.loop.agent.start_session(), name="session-hooks")
+            assert self.command_task is not None
+            try:
+                await self._until_shutdown(self.command_task)
+            finally:
+                self.command_task = None
+            if self.shutdown.is_set():
+                return 0
             self.spawn(self.loop.discover_mcp(), name="mcp-discovery")
             # Git discovery can cost hundreds of milliseconds in a large worktree. Warm the
             # runtime-only snapshot after the prompt is live so the first picker need not wait.
@@ -790,7 +798,7 @@ class TuiRuntime:
         if owned:
             await asyncio.gather(*owned, return_exceptions=True)
         await settle(self.loop.background.close_background())
-        await settle(close_agent_resources(self.loop.agent))
+        await settle(close_agent_resources(self.loop.agent, reason="resume" if self.loop.resume_request else "prompt_input_exit"))
         writer, self.scrollback = self.scrollback, None
         if writer is not None:
             # Admission and the drain are one step: the gate they share is this writer's lock, so a

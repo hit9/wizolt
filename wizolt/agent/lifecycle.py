@@ -134,12 +134,17 @@ def bootstrap_features(session: Session) -> None:
         session.catalog = CatalogRuntime(session.config.data_dir)
 
 
-async def close_agent_resources(agent: Agent, *, shared_mcp: bool = False) -> None:
+async def close_agent_resources(agent: Agent, *, shared_mcp: bool = False, reason: str = "other") -> None:
     """Quiesce request clients, then the root's MCP manager, on their owning event loop.
 
     A worker borrows the parent's MCP capability; closing its model must not close that manager.
     Individual close failures must not prevent the remaining resources from being settled.
     """
+    try:
+        await agent.end_session(reason)
+    except Exception as error:  # noqa: BLE001 - a shutdown hook must not prevent resource cleanup
+        with contextlib.suppress(Exception):
+            agent.output_fn(f"SessionEnd hook failed: {error}")
     worker = agent.session.worker
     if worker is not None and worker._agent is not None:
         await close_agent_resources(worker._agent, shared_mcp=True)

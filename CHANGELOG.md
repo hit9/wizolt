@@ -4,6 +4,12 @@
 
 ### Added
 
+- Extend shell hooks to existing session, worker, compaction and failure boundaries:
+  `SessionStart`, `SessionEnd`, `PermissionRequest`, `PostToolUseFailure`, `PreCompact`,
+  `PostCompact`, `SubagentStart`, `SubagentStop` and `StopFailure`. Worker feedback stays in
+  the worker; startup context is appended to the next accepted turn. Session hooks remain
+  interruptible, and shutdown runs before owned resources close.
+
 - Start a skill yourself with `/name [arguments]`. Its instructions go to the model with that
   message, and the slash menu lists skills after the built-in commands, with their
   `argument-hint`. A built-in command keeps its name if a skill shares it. `user-invocable: false`
@@ -29,14 +35,14 @@
   post-tool hook's feedback is added to the result, a prompt hook can refuse or add context to
   your message, and a stop hook can send the model back to work, at most 5 times a turn, whether
   the turn ends with an answer or with suggested next steps. A hook that fails any other way,
-  or cannot start, is shown to you and ignored. Workers run the tool hooks only. `/status` counts the active
-  hooks; a malformed hook is a config error at startup.
+  or cannot start, is shown to you and ignored. Workers also run configured compaction and failure
+  hooks and their own subagent events. `/status` counts the active hooks; a malformed hook is a config error at startup.
 - Skills can carry `hooks:` and `allowed-tools` in their frontmatter, as in Claude Code. Both
   take effect when the skill first loads, by the model or by `/name`, and last for the rest of
   the session, including after a resume. The model is told what the skill put in force.
   `allowed-tools` rules (`Read`, `Bash(git status)`, `Bash(npm run:*)`, `Read(docs/*)`) skip the
-  approval prompt for the calls they cover. A command that chains, pipes, substitutes or
-  redirects is never covered, so it still asks. A worker starts with none of the parent's loaded
+  approval prompt for the calls they cover. Patterned Bash rules never cover commands that chain,
+  pipe, substitute or redirect; those still ask. A bare `Bash` rule covers every Bash call. A worker starts with none of the parent's loaded
   skills. A skill with malformed hooks does not load.
 - Skills that appear during a session reach the model without restarting. A skill that was
   installed, trusted, or found in a subfolder the agent opened a file in is announced to the
@@ -51,6 +57,12 @@
   `[worker]`, and keeps the session's model.
 
 ### Changed
+
+- Record the hooks review's paired performance probes against `ce69d84`: on Linux ARM64 /
+  CPython 3.14.7 (9 samples), ten no-hook turns measured 22.511 → 22.569 ms (+0.26%), twenty
+  no-hook reads 5.580 → 5.668 ms (+1.58%), and draining 8 MiB of command output 9.718 → 4.741 ms.
+  That output workload's Python allocation peak fell from 16,808,227 to 371,443 bytes; matching
+  user hooks still add their command runtime. See [workloads, trade-offs and reports](https://github.com/hit9/wizolt/blob/master/benchmarks/README.md#hooks-review-comparison).
 
 - `SKILL.md` frontmatter is read as YAML, following the Agent Skills format: folded or multi-line
   descriptions, the `metadata` map and other spec fields now load instead of being cut to their
@@ -91,6 +103,18 @@
   `repair_json_object`. No behavior change.
 
 ### Fixed
+
+- Substitute skill argument placeholders only once, preserving literal `$0`/`$1` in argument
+  values and treating oversized argument indices as missing instead of failing the load.
+
+- Accept the documented `matcher = "*"`; deliver pre-tool context on successful, failed and
+  refused calls; and let Stop-hook context send the model back to work. Refused prompts no
+  longer advance the round counter. Reject non-finite hook timeouts and unsupported command
+  options rather than silently ignoring them. An unsupported input rewrite never auto-approves
+  the original call. Add lifecycle, permission, cancellation and failure regression coverage.
+- Drain hook and skill-command output with bounded memory, including multibyte text, instead
+  of buffering the entire stream before truncating it. Timeout covers process exit even when
+  output pipes have already closed; cancellation keeps draining while killing the process group.
 
 - Zellij acceptance fixtures wait for the attached terminal's shell prompt before querying
   sessions, avoiding discovery probes that can unlink a socket while the server starts.

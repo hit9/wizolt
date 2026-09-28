@@ -28,8 +28,7 @@ class Arguments:
     # Claude Code's placeholders: `$ARGUMENTS`, `$ARGUMENTS[N]` and its shorthand `$N` (0-based).
     # The indexed forms are only filled when arguments were given, so an existing skill's
     # `awk '{print $1}'` survives a plain load.
-    ALL: ClassVar[re.Pattern] = re.compile(r"\$ARGUMENTS(?!\[)")
-    INDEXED: ClassVar[re.Pattern] = re.compile(r"\$ARGUMENTS\[(\d+)\]|\$(\d+)\b")
+    PLACEHOLDER: ClassVar[re.Pattern] = re.compile(r"\$ARGUMENTS\[(\d+)\]|\$(\d+)\b|\$ARGUMENTS(?![\w\[])")
 
     def values(self) -> list[str]:
         try:
@@ -38,16 +37,26 @@ class Arguments:
             return self.text.split()
 
     def fill(self, body: str) -> str:
-        uses_placeholder = bool(self.ALL.search(body) or (self.text and self.INDEXED.search(body)))
-        body = self.ALL.sub(lambda _match: self.text, body)
-        if self.text:
-            values = self.values()
+        uses_placeholder = False
+        values = self.values() if self.text else []
 
-            def indexed(match: re.Match) -> str:
-                index = int(match.group(1) or match.group(2))
-                return values[index] if index < len(values) else ""
+        def fill(match: re.Match) -> str:
+            nonlocal uses_placeholder
+            if match.group(0) == "$ARGUMENTS":
+                uses_placeholder = True
+                return self.text
+            if not self.text:
+                return match.group(0)
+            uses_placeholder = True
+            # An out-of-range index must not fail on Python's integer-string size limit.
+            digits = (match.group(1) or match.group(2)).lstrip("0") or "0"
+            if len(digits) > len(str(len(values))):
+                return ""
+            index = int(digits)
+            return values[index] if index < len(values) else ""
 
-            body = self.INDEXED.sub(indexed, body)
+        # Substitute only the template: arguments containing "$0" are data, not a second pass.
+        body = self.PLACEHOLDER.sub(fill, body)
         if self.text and not uses_placeholder:
             # A skill that never says where arguments go still receives them, as Claude Code does.
             body += f"\n\nARGUMENTS: {self.text}"

@@ -31,7 +31,7 @@ from wizolt.base import (
 )
 from wizolt.model import ModelClient
 from wizolt.session import Session, TurnDiff
-from wizolt.shellhooks import POST_TOOL_USE, PRE_TOOL_USE, HookOutcome
+from wizolt.shellhooks import PERMISSION_REQUEST, POST_TOOL_USE, POST_TOOL_USE_FAILURE, PRE_TOOL_USE, HookOutcome
 from wizolt.source import SourceBlock, TextBlock, ToolOutput
 from wizolt.tools import (
     TOOL_REGISTRY,
@@ -679,6 +679,8 @@ class ToolRunner:
         d = ToolDisplay(batch_suffix=batch_suffix)
         if isinstance(tool, AskTool):
             tool.question_fn = self.hooks.question_fn
+        pre = HookOutcome()
+        executing = False
         try:
             d.display = tooloutput.short_call(self.session, call, tool.short_args())
             if plan_error:
@@ -699,12 +701,12 @@ class ToolRunner:
             )
             if needs_confirmation and pre_approved and not tool.always_confirms():
                 d.auto = True
-                pre = toolblocks.approval_display(self.session, call, tool, "auto", batch_suffix=batch_suffix, planned_edit=planned_edit)
+                approval = toolblocks.approval_display(self.session, call, tool, "auto", batch_suffix=batch_suffix, planned_edit=planned_edit)
                 # The "auto …" header duplicates the result line; only surface it when it carries a
                 # preview the result line won't repeat (e.g. an Edit diff). The auto-approval itself
                 # is recorded by the [auto] tag on the result line below.
-                if pre.has_children:
-                    self.emit(pre)
+                if approval.has_children:
+                    self.emit(approval)
                     d.nested_display = True
             elif needs_confirmation:
                 if not isinstance(tool, DelegateTool):
@@ -713,10 +715,11 @@ class ToolRunner:
                     # closing marker of the delegation bracket and must carry the same yellow
                     # [worker] identity as the start marker.
                     d.nested_display = True
-                confirmed, reason = await self.confirm(call, tool, batch_suffix=batch_suffix, planned_edit=planned_edit)
+                confirmed, reason = await self.confirm(call, tool, batch_suffix=batch_suffix, planned_edit=planned_edit, force_prompt=pre.permission == "ask")
                 if not confirmed:
                     output = "Cancelled: user refused tool call" + ((": " + reason) if reason else "")
-                    return "refused", await self.finish(call, output, failed=True, elapsed=time.monotonic() - started, d=d), None
+                    message = await self.finish(call, output, failed=True, elapsed=time.monotonic() - started, d=d)
+                    return "refused", self.with_hook_feedback(message, pre, PRE_TOOL_USE), None
                 d.approved = True
             if isinstance(tool, BashTool) and self.hooks.live_start is not None:
                 if not d.nested_display:
@@ -750,19 +753,33 @@ class ToolRunner:
                     LogBlock.hierarchy(toolblocks.log_root(d.display or tooloutput.short_call(self.session, call), batch_suffix=batch_suffix, call=call), [])
                 )
                 d.nested_display = True
+            executing = True
             output = await self.call_tool(tool, planned_edit)
             if isinstance(tool, ViewImageTool) and tool.vision_entry_label:
                 d.vision_entry = tool.vision_entry_label
             observation = tool.model_observation()
         except ToolError as error:
-            return "failed", self.reject(call, f"ToolError: {error}", d=d, recovery=error.recovery), None
+            status, observation = "failed", None
+            output = f"ToolError: {error}"
+            message = self.reject(call, output, d=d, recovery=error.recovery)
         except Exception as error:  # noqa: BLE001 - tool failures are serialized back to the model.
-            return "failed", await self.finish(call, f"ToolError: {error}", failed=True, elapsed=time.monotonic() - started, d=d), None
-        message = await self.finish(call, output, elapsed=time.monotonic() - started, turn_diff=tool.turn_diff(), d=d)
-        if isinstance(tool, BashTool) and tool.exit_code is not None:
-            self.session.record_command_result(tool.command(), tool.exit_code, workdir=tool.execution_workdir)
-        post = await self.tool_hooks(POST_TOOL_USE, call, {"tool_response": ToolOutput.of(output).retained_text})
-        return "ok", self.with_hook_feedback(message, post), observation
+            status, observation = "failed", None
+            output = f"ToolError: {error}"
+            message = await self.finish(call, output, failed=True, elapsed=time.monotonic() - started, d=d)
+        else:
+            status = "ok"
+            message = await self.finish(call, output, elapsed=time.monotonic() - started, turn_diff=tool.turn_diff(), d=d)
+            if isinstance(tool, BashTool) and tool.exit_code is not None:
+                self.session.record_command_result(tool.command(), tool.exit_code, workdir=tool.execution_workdir)
+        message = self.with_hook_feedback(message, pre, PRE_TOOL_USE)
+        if executing:
+            failed = status == "failed" or (isinstance(tool, BashTool) and tool.exit_code not in (None, 0))
+            event = POST_TOOL_USE_FAILURE if failed else POST_TOOL_USE
+            text = ToolOutput.of(output).retained_text
+            fields = {"error": text, "is_interrupt": False} if failed else {"tool_response": text}
+            post = await self.tool_hooks(event, call, fields)
+            message = self.with_hook_feedback(message, post, event)
+        return status, message, observation
 
     async def tool_hooks(self, event: str, call: ToolCall, fields: Json | None = None) -> HookOutcome:
         """Run one tool event's shell hooks. A hook that broke is the user's to fix: it is shown
@@ -770,19 +787,18 @@ class ToolRunner:
         hooks = self.session.shell_hooks
         if hooks is None:
             return HookOutcome()
-        outcome = await hooks.fire(event, self.session, {"tool_input": call.hook_input(), **(fields or {})}, tool_name=call.name)
+        outcome = await hooks.fire(event, self.session, {"tool_input": call.hook_input(), "tool_use_id": call.id, **(fields or {})}, tool_name=call.name)
         for failure in outcome.failures:
             self.emit(LogBlock.hierarchy(None, [LogLine("hook", oneline(failure, 220), LogRole.ERROR, LogEdge.END)]))
         return outcome
 
-    def with_hook_feedback(self, message: str, outcome: HookOutcome) -> str:
-        """Append what PostToolUse hooks told the model. The call already ran, so a "block" cannot
-        undo it; as in Claude Code it becomes feedback the model reads with the result."""
+    def with_hook_feedback(self, message: str, outcome: HookOutcome, event: str = POST_TOOL_USE) -> str:
+        """Keep hook context with its matching result, including failed and refused calls."""
         lines = ([outcome.reason] if outcome.blocked else []) + list(outcome.context)
         if not lines:
             return message
         self.emit(LogBlock.hierarchy(None, [LogLine("hook", oneline(line, 220), LogRole.META, LogEdge.END) for line in lines]))
-        return message + "\nPostToolUse hook feedback:\n" + "\n".join(lines)
+        return message + f"\n{event} hook feedback:\n" + "\n".join(lines)
 
     def reject(
         self,
@@ -921,7 +937,14 @@ class ToolRunner:
         rows.extend(["output:", body])
         return "\n".join(rows).strip()
 
-    async def confirm(self, call: ToolCall, tool: Tool, batch_suffix: str = "", planned_edit: EditBatchPlan.PlannedEdit | None = None) -> tuple[bool, str]:
+    async def confirm(
+        self, call: ToolCall, tool: Tool, batch_suffix: str = "", planned_edit: EditBatchPlan.PlannedEdit | None = None, *, force_prompt: bool = False
+    ) -> tuple[bool, str]:
+        permission = await self.tool_hooks(PERMISSION_REQUEST, call)
+        if permission.blocked:
+            return False, permission.reason
+        if permission.permission == "allow" and not force_prompt and not tool.always_confirms():
+            return True, ""
         always_option = isinstance(tool, DelegateTool) and tool.always_confirms()
         # Decided before the brief is drawn: the brief needs the actions either way -- live in the
         # form, or spelled out in the typed legend when there is no form to show them.
