@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, ClassVar, Self
 
 from wizolt.base import Json, ModelError, run_blocking
 from wizolt.paste import PASTE_MARKER, PasteRef
-from wizolt.utils.image_header import SUPPORTED_FORMATS, UNSUPPORTED_IMAGE, ImageHeader
+from wizolt.utils.image_header import ImageHeader, ImageInfo
 
 if TYPE_CHECKING:
     from wizolt.session import Session
@@ -80,7 +80,7 @@ class ImageRef:
         except (KeyError, TypeError, ValueError):
             return None
         name = cls._safe_name(name)
-        if not ImageRef._DIGEST_RE.fullmatch(ref) or not name or media_type not in SUPPORTED_FORMATS.values() or width <= 0 or height <= 0 or size <= 0:
+        if not ImageRef._DIGEST_RE.fullmatch(ref) or not name or media_type not in ImageInfo.MEDIA_TYPES.values() or width <= 0 or height <= 0 or size <= 0:
             return None
         return cls(ref, name, media_type, width, height, size, str(value.get("source_text") or ""))
 
@@ -504,12 +504,9 @@ class ImageInputs:
                 raise ValueError(f"image file is larger than {MAX_IMAGE_BYTES} bytes")
             with open(path, "rb") as file:
                 data = file.read()
-            image_format, width, height, frames = ImageHeader(data).read()
-            media_type = SUPPORTED_FORMATS.get(image_format)
-            if media_type is None or (image_format == "GIF" and frames != 1):
-                raise ValueError(UNSUPPORTED_IMAGE)
+            info = ImageHeader(data).read()
             ref = hashlib.sha256(data).hexdigest()
-            return ImageRef(ref, ImageRef._safe_name(os.path.basename(path)), media_type, width, height, len(data), source_text, path)
+            return ImageRef(ref, ImageRef._safe_name(os.path.basename(path)), info.media_type, info.width, info.height, len(data), source_text, path)
         except (OSError, ValueError) as error:
             if strict:
                 raise ModelError(f"Cannot read image {source_text or path}: {error}") from error

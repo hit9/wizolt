@@ -66,6 +66,12 @@
   `argument-hint`, cuts descriptions to 250 characters and stops at about 4K tokens (16,000
   characters), keeping project skills first and saying how many were left out. Skills with
   `disable-model-invocation: true` stay out of it, and the Skill tool refuses them.
+- Internal: `wizolt.skill` is a package split by responsibility (`skillfile`, `discovery`,
+  `trust`, `invocation`, `permissions`, `listing`, `library`). Helpers are grouped into owning
+  classes rather than module functions. `wizolt/utils` holds standard-library-only helpers, one
+  class each: `ShellCommand` and `Workspace` are new; `ImageHeader.read()` returns a named
+  `ImageInfo` and owns the supported-format rules; `JsonRepair.first_object` replaces
+  `repair_json_object`. No behavior change.
 
 ### Fixed
 

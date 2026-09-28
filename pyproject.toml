@@ -79,7 +79,7 @@ dev = [
     # agree with on every pattern shape the walk reads. wizolt never imports it.
     "pathspec>=1.0",
     # Tests only: it writes the image fixtures, and it is the reference wizolt's own header reader
-    # (image.ImageHeader) is checked against. wizolt never imports it.
+    # (utils.image_header.ImageHeader) is checked against. wizolt never imports it.
     "pillow>=11.0",
     "pyright>=1.1.411",
     "pytest>=8.0",

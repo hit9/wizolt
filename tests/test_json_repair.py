@@ -9,7 +9,9 @@ as the reference and never by wizolt itself.
 import pytest
 from json_repair import repair_json as reference
 
-from wizolt.utils.json_repair import repair_json_object
+from wizolt.utils.json_repair import JsonRepair
+
+repair_json_object = JsonRepair.first_object
 
 AGREEMENT_CASES = [
     '{"summary": "kept"',

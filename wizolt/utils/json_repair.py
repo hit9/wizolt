@@ -12,13 +12,39 @@ falls through to the compactor's retry and then to deterministic trimming.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, ClassVar
 
-# Smart quotes pair with their closing mark; the ASCII quotes close with themselves.
-_CLOSERS = {'"': '"', "'": "'", "“": "”", "„": "”"}
-_ESCAPES = {'"': '"', "\\": "\\", "/": "/", "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
-_LITERALS = {"true": True, "false": False, "null": None, "none": None}
-_NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?")
+
+class JsonRepair:
+    """Reads the object near-JSON model output plainly meant, or None when there is none."""
+
+    # Each `{` costs one pass bounded by the whole text, so a malformed text of many braces could
+    # in principle go quadratic; this cap on starting points keeps it linear on input size.
+    MAX_ATTEMPTS: ClassVar[int] = 256
+
+    @classmethod
+    def first_object(cls, text: str) -> dict[str, Any] | None:
+        """The first object the text contains, or None when there is none to recover.
+
+        Reading starts at each `{` in turn, so prose around the object is skipped; a start that
+        reads no object at all (prose's stray braces, code samples) gives way to the next `{`. An
+        object cut down to nothing but its braces is still an object: the compactor plainly
+        answered, just before the output ran out, and an empty summary is the compaction echo
+        check's to catch."""
+        attempts = 0
+        for start, char in enumerate(text):
+            if char != "{":
+                continue
+            attempts += 1
+            if attempts > cls.MAX_ATTEMPTS:
+                return None
+            try:
+                return _Reader(text, start).object()
+            except _NotAnObject:
+                continue
+            except RecursionError:  # pathological nesting: not a summary, let the next `{` try
+                continue
+        return None
 
 
 class _NotAnObject(Exception):
@@ -31,7 +57,12 @@ class _Reader:
 
     # Nesting past this is not a compaction summary; the parse gives up rather than spending a
     # real stack on it. The reference reader refuses the same input outright.
-    MAX_DEPTH = 64
+    MAX_DEPTH: ClassVar[int] = 64
+    # Smart quotes pair with their closing mark; the ASCII quotes close with themselves.
+    CLOSERS: ClassVar[dict[str, str]] = {'"': '"', "'": "'", "“": "”", "„": "”"}
+    ESCAPES: ClassVar[dict[str, str]] = {'"': '"', "\\": "\\", "/": "/", "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
+    LITERALS: ClassVar[dict[str, bool | None]] = {"true": True, "false": False, "null": None, "none": None}
+    NUMBER: ClassVar[re.Pattern] = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?")
 
     def __init__(self, text: str, index: int):
         self.text = text
@@ -41,6 +72,15 @@ class _Reader:
     def char(self) -> str:
         return self.text[self.index] if self.index < len(self.text) else ""
 
+    def line_end(self) -> int:
+        """Where the line under the cursor ends: its first newline or carriage return."""
+        end = len(self.text)
+        for mark in ("\n", "\r"):
+            found = self.text.find(mark, self.index)
+            if found >= 0:
+                end = min(end, found)
+        return end
+
     def skip(self) -> None:
         """Step over whitespace and #, //, and /* */ comments, the way models annotate drafts."""
         text = self.text
@@ -49,7 +89,7 @@ class _Reader:
             if char in " \t\r\n":
                 self.index += 1
             elif char == "#" or char == "/" and text[self.index + 1 : self.index + 2] == "/":
-                self.index = _line_end(text, self.index)
+                self.index = self.line_end()
             elif char == "/" and text[self.index + 1 : self.index + 2] == "*":
                 self.index = text.find("*/", self.index + 2)
                 self.index = len(text) if self.index < 0 else self.index + 2
@@ -60,7 +100,7 @@ class _Reader:
         """The string whose opening quote is under the cursor. A string the output was cut short
         in ends at the end of the text, the same leniency a truncation elsewhere gets."""
         text = self.text
-        closer = _CLOSERS[self.char()]
+        closer = self.CLOSERS[self.char()]
         chars: list[str] = []
         index = self.index + 1
         while index < len(text):
@@ -74,8 +114,8 @@ class _Reader:
                         continue
                     except ValueError:
                         pass  # not four hex digits: a stray escape, kept as written below
-                if escaped in _ESCAPES:
-                    chars.append(_ESCAPES[escaped])
+                if escaped in self.ESCAPES:
+                    chars.append(self.ESCAPES[escaped])
                 else:
                     chars.append(text[index : index + 2])  # a stray escape: kept as written
                 index += 2
@@ -98,7 +138,7 @@ class _Reader:
     def value(self, stop: str) -> Any:
         self.skip()
         char = self.char()
-        if char in _CLOSERS:
+        if char in self.CLOSERS:
             return self.quoted()
         if char == "{":
             if self.depth >= self.MAX_DEPTH:
@@ -119,10 +159,10 @@ class _Reader:
             self.depth -= 1
             return value
         run = self.bare(stop)
-        if _NUMBER.fullmatch(run):
+        if self.NUMBER.fullmatch(run):
             return float(run) if any(mark in run for mark in ".eE") else int(run)
-        if run.lower() in _LITERALS:
-            return _LITERALS[run.lower()]
+        if run.lower() in self.LITERALS:
+            return self.LITERALS[run.lower()]
         return run
 
     def object(self) -> dict[str, Any]:
@@ -143,7 +183,7 @@ class _Reader:
             if char == ",":
                 self.index += 1
                 continue
-            key = self.quoted() if char in _CLOSERS else self.bare(":,}]")
+            key = self.quoted() if char in self.CLOSERS else self.bare(":,}]")
             self.skip()
             if self.char() == ":":
                 self.index += 1
@@ -186,38 +226,3 @@ class _Reader:
             elif char == "]" or char == "":
                 self.index += char == "]"
                 return result
-
-
-def _line_end(text: str, index: int) -> int:
-    end = len(text)
-    for mark in ("\n", "\r"):
-        found = text.find(mark, index)
-        if found >= 0:
-            end = min(end, found)
-    return end
-
-
-def repair_json_object(text: str) -> dict[str, Any] | None:
-    """The first object the text contains, or None when there is none to recover.
-
-    Reading starts at each `{` in turn, so prose around the object is skipped; a start that reads
-    no object at all (prose's stray braces, code samples) gives way to the next `{`. An object
-    cut down to nothing but its braces is still an object: the compactor plainly answered, just
-    before the output ran out, and an empty summary is the compaction echo check's to catch.
-
-    Each `{` costs one pass bounded by the whole text, so a malformed text of many braces could
-    in principle go quadratic; the attempt cap keeps that linear on input size."""
-    attempts = 0
-    for start, char in enumerate(text):
-        if char != "{":
-            continue
-        attempts += 1
-        if attempts > 256:
-            return None
-        try:
-            return _Reader(text, start).object()
-        except _NotAnObject:
-            continue
-        except RecursionError:  # pathological nesting: not a summary, let the next `{` try
-            continue
-    return None
