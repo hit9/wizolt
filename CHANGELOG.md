@@ -10,6 +10,12 @@
   `/skills` with the reason; names that break the spec or do not match their folder load with a
   warning. `${CLAUDE_SKILL_DIR}` expands like `{skill_dir}`. Adds the `pyyaml` dependency,
   imported only when a skill is parsed (see `DEPENDENCY_REVIEW.md`).
+- Skills are found where other agents keep them: `.claude/skills` and `.agents/skills` beside
+  `.wizolt/skills`, at every level from the repository top down to the working directory, plus
+  `~/.claude/skills` and `~/.agents/skills` at user level. Starting wizolt in a subdirectory
+  no longer hides the repository's skills. When names collide, the deeper level wins, then
+  `.wizolt` over `.agents` over `.claude`, then project over user. `/skills` shows where each
+  skill came from and which same-named skills it hides.
 
 ### Fixed
 

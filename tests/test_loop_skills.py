@@ -123,8 +123,8 @@ def test_skills_command_lists_installed(tmp_path):
     loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda t: None), output_fn=lambda t: None)
     output = skills_command(loop, "")
     assert "### Skills · 1" in output
-    assert "| skill | source | description |" in output
-    assert "| `release-notes` | project | Draft a CHANGELOG entry. |" in output
+    assert "| skill | from | description |" in output
+    assert "| `release-notes` | `.wizolt/skills/release-notes` | Draft a CHANGELOG entry. |" in output
 
 
 def test_skill_loads_dedup_on_repeat(tmp_path):

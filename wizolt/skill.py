@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from wizolt.agentsmd import display_path
 from wizolt.base import Json, WizoltError
 from wizolt.mentions import scan_mentions
 
@@ -18,6 +19,15 @@ class SkillFormatError(WizoltError):
     """A SKILL.md that cannot be loaded as a skill; the message says why."""
 
 
+@dataclass(frozen=True)
+class SkillRoot:
+    """One directory whose subfolders are skills."""
+
+    path: str
+    source: str  # "user" or "project"
+    label: str  # how /skills names it: "~/.claude/skills", ".wizolt/skills", "web/.agents/skills"
+
+
 @dataclass
 class Skill:
     name: str
@@ -27,6 +37,8 @@ class Skill:
     source: str  # "user" or "project"
     # Spec deviations worth fixing but not worth refusing the skill over (see SkillLibrary.parse).
     warnings: tuple[str, ...] = ()
+    location: str = ""  # the folder as /skills shows it, e.g. ".claude/skills/deploy"
+    overrides: tuple[str, ...] = ()  # locations of same-named skills this one hides, lowest first
 
 
 class SkillLibrary:
@@ -35,7 +47,12 @@ class SkillLibrary:
     Each skill is a `SKILL.md` file with YAML frontmatter in the Agent Skills format
     (https://agentskills.io/specification); the index (name + description) rides the cache-stable
     prefix so the model knows what exists, and the full body is pulled into the conversation only
-    when the model calls Skill(name) or the user references it with `$name` or `@skill:name`."""
+    when the model calls Skill(name) or the user references it with `$name` or `@skill:name`.
+
+    Skills are read where other agents keep them, so one install serves all of them: `.claude`,
+    `.agents` and `.wizolt` skill folders at every level from the repository top down to the working
+    directory, and the user-level folders. A later root overrides a same-named skill from an earlier
+    one (see `roots`)."""
 
     # The closing fence may end the file: `---\nname: x\n---` has no body and is still a skill.
     FRONTMATTER = re.compile(r"^---[ \t]*\n(.*?)^---[ \t]*(?:\n|\Z)(.*)$", re.DOTALL | re.MULTILINE)
@@ -44,6 +61,12 @@ class SkillLibrary:
     MAX_NAME_CHARS = 64
     MAX_DESCRIPTION_CHARS = 1024
     MAX_MENTION_BLOCKS = 50
+    # One level's skill folders, lowest precedence first. wizolt's own folder wins at its level; the
+    # legacy names are read in its place only when it does not exist.
+    PROJECT_DIRS = (".claude", ".agents", ".wizolt")
+    LEGACY_PROJECT_DIRS = (".minacode", ".nanocode")
+    # Below `<data_dir>/skills`, which is wizolt's own and therefore the strongest user root.
+    SHARED_USER_ROOTS = ("~/.claude/skills", "~/.agents/skills")
 
     def __init__(self, skills: dict[str, Skill], problems: tuple[str, ...] = ()):
         self.skills = skills
@@ -52,30 +75,78 @@ class SkillLibrary:
 
     @classmethod
     def load(cls, session: Session) -> SkillLibrary:
+        return cls(*cls.scan(cls.roots(session.cwd, session.data_path("skills"))))
+
+    @staticmethod
+    def project_root(cwd: str) -> str:
+        """The top of the git work tree holding cwd, or cwd itself outside one.
+
+        The walk stops at a repository on purpose: outside one there is no project boundary, and
+        climbing to `/` would read whatever skill folders a home directory happens to hold as the
+        project's own."""
+        start = current = os.path.abspath(cwd)
+        while True:
+            if os.path.exists(os.path.join(current, ".git")):  # a directory, or a worktree's file
+                return current
+            parent = os.path.dirname(current)
+            if parent == current:
+                return start
+            current = parent
+
+    @classmethod
+    def roots(cls, cwd: str, user_skills: str) -> list[SkillRoot]:
+        """Every skill root, lowest precedence first: user roots, then each project level from the
+        repository top down to cwd. Deeper beats shallower, as the directory nearer the work is
+        the more specific one."""
+        roots = [SkillRoot(os.path.expanduser(path), "user", path) for path in cls.SHARED_USER_ROOTS]
+        roots.append(SkillRoot(user_skills, "user", display_path(user_skills)))
+        top, cwd = cls.project_root(cwd), os.path.abspath(cwd)
+        levels = [top]
+        for part in [] if cwd == top else os.path.relpath(cwd, top).split(os.sep):
+            levels.append(os.path.join(levels[-1], part))
+        for level in levels:
+            prefix = os.path.relpath(level, top)
+            for directory in cls.PROJECT_DIRS:
+                path = os.path.join(level, directory, "skills")
+                if directory == ".wizolt" and not os.path.isdir(path):
+                    legacy = (os.path.join(level, name, "skills") for name in cls.LEGACY_PROJECT_DIRS)
+                    path = next((candidate for candidate in legacy if os.path.isdir(candidate)), path)
+                roots.append(SkillRoot(path, "project", os.path.normpath(os.path.join(prefix, os.path.relpath(path, level)))))
+        return roots
+
+    @classmethod
+    def scan(cls, roots: list[SkillRoot]) -> tuple[dict[str, Skill], tuple[str, ...]]:
+        """Read every skill under `roots`, later roots overriding earlier ones by name.
+
+        A directory reached twice (the working directory is the home directory, a symlinked
+        folder) counts once, at its first and weaker position."""
         skills: dict[str, Skill] = {}
         problems: list[str] = []
-        # Later roots override earlier ones: projects can customize user skills.
-        project_skills = next(
-            (path for directory in (".wizolt", ".minacode", ".nanocode") if os.path.isdir(path := os.path.join(session.cwd, directory, "skills"))),
-            os.path.join(session.cwd, ".wizolt", "skills"),
-        )
-        for root, source in (
-            (session.data_path("skills"), "user"),
-            (project_skills, "project"),
-        ):
-            if not os.path.isdir(root):
+        seen: set[str] = set()
+        for root in roots:
+            real = os.path.realpath(root.path)
+            if real in seen or not os.path.isdir(real):
                 continue
-            for entry in sorted(os.listdir(root)):
-                path = os.path.join(root, entry, "SKILL.md")
+            seen.add(real)
+            try:
+                entries = sorted(os.listdir(root.path))
+            except OSError as error:
+                problems.append(f"{root.label}: cannot list: {error}")
+                continue
+            for entry in entries:
+                path = os.path.join(root.path, entry, "SKILL.md")
                 if not os.path.isfile(path):
                     continue
                 try:
-                    skill = cls.parse(path, entry, source)
+                    skill = cls.parse(path, entry, root.source)
                 except SkillFormatError as error:
-                    problems.append(f"{path}: {error}")
+                    problems.append(f"{root.label}/{entry}/SKILL.md: {error}")
                     continue
+                skill.location = f"{root.label}/{entry}"
+                if (previous := skills.get(skill.name)) is not None:
+                    skill.overrides = (*previous.overrides, previous.location)
                 skills[skill.name] = skill
-        return cls(skills, tuple(problems))
+        return skills, tuple(problems)
 
     @classmethod
     def parse(cls, path: str, folder: str, source: str) -> Skill:

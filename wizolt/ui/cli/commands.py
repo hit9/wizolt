@@ -356,14 +356,20 @@ def skills_command(loop: CommandLoop, args: str) -> str:
     skills = library.all() if library else []
     problems = library.problems if library else ()
     if not skills and not problems:
-        return "No skills installed. Add `<name>/SKILL.md` under `.wizolt/skills/` (project) or `~/.wizolt/skills/` (user)."
+        return (
+            "No skills installed. Add `<name>/SKILL.md` under `.wizolt/skills/`, `.agents/skills/` or `.claude/skills/` (project), "
+            "or the same folders in your home directory (user)."
+        )
     parts = [f"### Skills · {len(skills)}", "", "Load with `Skill(name)` or reference inline with `$name`."]
     if skills:
         table = markdown_table(
-            ["skill", "source", "description"],
-            [(f"`{skill.name}`", skill.source, skill.description or "(no description)") for skill in skills],
+            ["skill", "from", "description"],
+            [(f"`{skill.name}`", f"`{skill.location}`", skill.description or "(no description)") for skill in skills],
         )
         parts.extend(["", table])
+    overrides = [f"- `{skill.name}` hides " + ", ".join(f"`{location}`" for location in skill.overrides) for skill in skills if skill.overrides]
+    if overrides:
+        parts.extend(["", "#### Overridden", "", *overrides])
     warnings = [f"- `{skill.name}`: {warning}" for skill in skills for warning in skill.warnings]
     if warnings:
         parts.extend(["", "#### Warnings", "", *warnings])
