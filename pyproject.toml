@@ -89,7 +89,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["wizolt", "wizolt.agent", "wizolt.ui", "wizolt.ui.cli", "wizolt.model", "wizolt.mcp", "wizolt.providers", "wizolt.session", "wizolt.source", "wizolt.tools", "wizolt.ui.tui", "wizolt.utils"]
+packages = ["wizolt", "wizolt.agent", "wizolt.ui", "wizolt.ui.cli", "wizolt.model", "wizolt.mcp", "wizolt.providers", "wizolt.session", "wizolt.skill", "wizolt.source", "wizolt.tools", "wizolt.ui.tui", "wizolt.utils"]
 
 [tool.setuptools.package-data]
 wizolt = ["providers/catalog.json"]

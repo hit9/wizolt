@@ -22,7 +22,7 @@ Keep this file short. It is an entry point, not a second design document.
 - `wizolt/ui/cli/update.py`, `wizolt/ui/cli/hints.py`: the background version check and quick hints.
 - `wizolt/session/`: durable semantic state (`__init__.py`) and snapshot persistence
   (`store.py`); `store.py` never imports the package at module scope.
-- `wizolt/tools/`, `wizolt/image.py`, `wizolt/mcp/`, `wizolt/skill.py`: vertical
+- `wizolt/tools/`, `wizolt/image.py`, `wizolt/mcp/`, `wizolt/skill/`: vertical
   features; `tools/` splits built-ins by capability, registry in `__init__.py`.
 - `wizolt/config.py`, `wizolt/providers/`: config-file settings, the model capability catalog
   (`providers/catalog.py`), and evidence-backed compatibility policy (`providers/compat.py`).

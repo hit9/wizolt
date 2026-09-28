@@ -30,7 +30,7 @@ Modules (runtime imports point downward, with the explicit deferred edges below)
      |
  model/                                    common client + complete adapters per wire
      |
- tools/   mcp/   skill.py   mentions.py     vertical capabilities
+ tools/   mcp/   skill/   mentions.py       vertical capabilities
      |
  session/                                  semantic state, value types, codecs and persistence
      |
@@ -192,7 +192,7 @@ Tests protect observable contracts and reproduced regressions, not implementatio
   Protocols are checked structurally where clients receive implementations (`ModelClient._wires`
   and `ResumeRenderer` construction), without requiring inheritance. Use ABCs when shared behavior
   or runtime prevention of incomplete instantiation is needed, not to mirror every concrete class.
-- `tools/`, `image.py`, `mcp/`, `skill.py` are vertical features that never leak storage or UI
+- `tools/`, `image.py`, `mcp/`, `skill/` are vertical features that never leak storage or UI
   details; `tools/` splits built-ins by capability, with the registry in `__init__.py`.
 - How a call *reads* is a tool concern, not a runner one: `tools/tooloutput.py` bounds and parses
   result text, `tools/toolblocks.py` assembles the approval/rejection/finish `LogBlock` trees. Both
