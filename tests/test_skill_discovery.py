@@ -6,8 +6,8 @@ from agent_harness import session
 from prompt_toolkit.document import Document
 
 from wizolt.agent.engine import Agent
-from wizolt.skill import SkillLibrary
 from wizolt.skill.discovery import SkillDiscovery
+from wizolt.skill.library import SkillLibrary
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.commands import skills_command
 from wizolt.utils.workspace import Workspace
@@ -134,7 +134,7 @@ def test_plain_files_and_empty_folders_in_a_root_are_not_skills(tmp_path):
 
 
 def test_an_edited_skill_is_reread_and_an_unchanged_one_is_not(tmp_path, monkeypatch):
-    from wizolt.skill import discovery as discovery_module
+    import wizolt.skill.discovery as discovery_module
 
     root = tmp_path / ".wizolt" / "skills"
     _skill(root, "stable", "first")

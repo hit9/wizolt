@@ -9,7 +9,7 @@ from wizolt.base import (
 )
 from wizolt.config import ProviderConfig
 from wizolt.model import ModelClient
-from wizolt.skill import SkillLibrary
+from wizolt.skill.library import SkillLibrary
 
 
 def test_terminal_next_hints_recognizes_all_next_hints_batch(tmp_path):

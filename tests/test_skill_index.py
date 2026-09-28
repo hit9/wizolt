@@ -5,7 +5,7 @@ from agent_harness import session
 
 from wizolt.agent.context import ContextManager
 from wizolt.base import ToolError
-from wizolt.skill import SkillLibrary
+from wizolt.skill.library import SkillLibrary
 from wizolt.tools import SkillTool, Tool
 
 

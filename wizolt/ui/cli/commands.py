@@ -64,7 +64,7 @@ if TYPE_CHECKING:
     from prompt_toolkit.formatted_text import StyleAndTextTuples
 
     from wizolt.session import Session
-    from wizolt.skill import SkillLibrary
+    from wizolt.skill.library import SkillLibrary
     from wizolt.ui.cli import CommandLoop
 
 # fmt: off

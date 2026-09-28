@@ -31,7 +31,7 @@ from wizolt.config import (
 )
 from wizolt.model import ModelClient
 from wizolt.session import HistorySegment
-from wizolt.skill import SkillLibrary
+from wizolt.skill.library import SkillLibrary
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.commands import compact
 

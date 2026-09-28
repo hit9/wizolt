@@ -73,8 +73,16 @@
   nearest reads last. `@agents.md:project` cites all of them; a section heading resolves to the
   nearest file that has it, and the menu lists a shadowed section only there. Outside a git
   repository, only the working directory is read, as before.
+- Performance: with skills installed, startup pays once for YAML frontmatter, about 9 ms to
+  import PyYAML plus about 0.07 ms per skill (82.7 → 97.7 ms to assemble a session over three
+  skills). Sessions without skills never import it. The rescan at each turn start costs about
+  0.5 ms for 100 skills, since unchanged files are not reparsed; other probes stayed within
+  noise. Measured on Linux ARM64 / CPython 3.14.7, `master` (`eaba7c6`) against this work, 9
+  samples: see `benchmarks/README.md` and `benchmarks/results/linux-arm64-py314-skills.json`.
+  Three benchmark probes cover skill loading, the per-turn rescan and session assembly.
 - Internal: `wizolt.skill` is a package split by responsibility (`skillfile`, `discovery`,
-  `trust`, `invocation`, `permissions`, `listing`, `library`). Helpers are grouped into owning
+  `trust`, `invocation`, `permissions`, `listing`, `library`), and its `__init__` stays empty of
+  imports so the model layer does not assemble skill discovery, AGENTS.md and file mentions. Helpers are grouped into owning
   classes rather than module functions. `wizolt/utils` holds standard-library-only helpers, one
   class each: `ShellCommand` and `Workspace` are new; `ImageHeader.read()` returns a named
   `ImageInfo` and owns the supported-format rules; `JsonRepair.first_object` replaces

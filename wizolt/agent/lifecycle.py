@@ -112,7 +112,7 @@ def bootstrap_features(session: Session) -> None:
 
         session.mcp = MCPManager(session)
     if session.skills is None:
-        from wizolt.skill import SkillLibrary  # local import: skill is built on top of session
+        from wizolt.skill.library import SkillLibrary  # local import: skill is built on top of session
 
         session.skills = SkillLibrary.load(session)
     if session.shell_hooks is None:

@@ -12,7 +12,7 @@ from wizolt.base import (
     ToolError,
     TurnBox,
 )
-from wizolt.skill import SkillLibrary
+from wizolt.skill.library import SkillLibrary
 from wizolt.tools import SkillTool, Tool
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.commands import (

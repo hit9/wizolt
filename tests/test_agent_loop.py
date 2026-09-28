@@ -9,7 +9,7 @@ from wizolt.agent.engine import Agent
 from wizolt.agent.lifecycle import load_session
 from wizolt.agent.prompts import INTERRUPT_MARKER
 from wizolt.session import SessionSnapshotCodec
-from wizolt.skill import SkillLibrary
+from wizolt.skill.library import SkillLibrary
 
 
 async def test_agent_runs_tool_loop_and_stops_at_max_steps(tmp_path):

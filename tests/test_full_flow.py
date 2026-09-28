@@ -26,7 +26,7 @@ from wizolt.config import (
 )
 from wizolt.model import ModelClient
 from wizolt.session import Session
-from wizolt.skill import SkillLibrary
+from wizolt.skill.library import SkillLibrary
 from wizolt.tools import Tool
 
 

@@ -15,7 +15,8 @@ from wizolt.base import (
     MAX_AGENTS_MD_TOKENS,
 )
 from wizolt.session import Session
-from wizolt.skill import Skill, SkillLibrary
+from wizolt.skill.library import SkillLibrary
+from wizolt.skill.skillfile import Skill
 
 
 def test_model_messages_are_ordered_context_messages(tmp_path):

@@ -11,12 +11,27 @@ import contextlib
 import gc
 import io
 import json
+import os
 import statistics
 import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
+
+
+@contextlib.contextmanager
+def _home(directory):
+    """Point HOME at a fixture for the duration of a probe, then put it back."""
+    previous = os.environ.get("HOME")
+    os.environ["HOME"] = directory
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("HOME", None)
+        else:
+            os.environ["HOME"] = previous
 
 
 def main():
@@ -98,6 +113,44 @@ def main():
             measure("collect_walk_10000_files", lambda: mentions._collect(None))
         finally:
             s.close()
+
+    # Skills: the scan a session starts with, and the rescan a revision may run at every turn start.
+    # HOME points into the fixture, so no user's own skill folders are read.
+    try:
+        from wizolt.skill.library import SkillLibrary
+    except ImportError:  # before the skill package split
+        from wizolt.skill import SkillLibrary
+    with tempfile.TemporaryDirectory(prefix="wizolt-perf-skills-") as directory, _home(directory):
+        for i in range(100):
+            folder = Path(directory) / ".wizolt" / "skills" / f"skill-{i:03}"
+            folder.mkdir(parents=True)
+            (folder / "SKILL.md").write_text(f"---\nname: skill-{i:03}\ndescription: Skill {i} for the benchmark.\n---\nSteps for skill {i}.\n")
+        s = Session(cwd=directory, config=Config(data_dir=directory))
+        measure("skills_load_100", lambda: SkillLibrary.load(s))
+        library = SkillLibrary.load(s)
+        if hasattr(library, "reload"):
+            measure("skills_turn_rescan_100", library.reload)
+
+    # A fresh interpreter assembling a session over three user skills: what a user with skills
+    # pays once at startup, the frontmatter parser's import included.
+    with tempfile.TemporaryDirectory(prefix="wizolt-perf-home-") as home:
+        for i in range(3):
+            folder = Path(home) / ".wizolt" / "skills" / f"skill-{i}"
+            folder.mkdir(parents=True)
+            (folder / "SKILL.md").write_text(f"---\nname: skill-{i}\ndescription: Skill {i}.\n---\nbody\n")
+        code = (
+            "import sys,tempfile;sys.path.insert(0,sys.argv[1]);"
+            "from wizolt.agent.lifecycle import bootstrap_features;"
+            "from wizolt.config import Config;from wizolt.session import Session;"
+            "d=tempfile.TemporaryDirectory();"
+            "s=Session(cwd=d.name,config=Config(data_dir=sys.argv[2]+'/.wizolt'));"
+            "bootstrap_features(s);d.cleanup()"
+        )
+        environment = {**os.environ, "HOME": home}
+        measure(
+            "startup_bootstrap_3_skills",
+            lambda: subprocess.run([sys.executable, "-c", code, source, home], check=True, capture_output=True, env=environment),
+        )
 
     markdown = "## Result\n\nSome **bold text** and 中文说明.\n\n```python\ndef hello(name):\n    return f'Hello {name}'\n```\n\n| Key | Value |\n| --- | --- |\n| status | ready |\n"
     printer = UiPrinter()

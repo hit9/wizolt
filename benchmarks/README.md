@@ -67,6 +67,31 @@ was unchanged. A paired probe with GC before timing measured about 6.20 ms (mast
 (working tree), while profiling found equal call counts. This motivated controlling the starting
 state, not changing the scan implementation. Neither diagnostic proves universal speedups.
 
+## Skills compatibility comparison
+
+`baselines/linux-arm64-py314-before-skills.json` records `master` at `eaba7c6`;
+`results/linux-arm64-py314-skills.json` records the skills-compatibility working tree against it
+(Linux ARM64, CPython 3.14.7, 9 samples, comparable). The workload adds three probes:
+`skills_load_100` (the startup scan of 100 skills), `skills_turn_rescan_100` (the rescan at each
+turn start, absent before) and `startup_bootstrap_3_skills` (a fresh interpreter assembling a
+session over three user skills). Medians in milliseconds:
+
+| Metric | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| optimization.skills_load_100 | 1.078 | 8.230 | +663% |
+| optimization.skills_turn_rescan_100 | — | 0.540 | new |
+| optimization.startup_bootstrap_3_skills | 82.722 | 97.730 | +18.1% |
+| optimization.startup_chat | 689.938 | 681.430 | -1.2% |
+| optimization.startup_anthropic | 735.315 | 752.540 | +2.3% |
+| optimization.prepare_request_1mb | 7.397 | 6.740 | -8.9% |
+| imports.wizolt.model | 75.782 | 78.484 | +3.6% |
+
+The skill costs are YAML: about 9 ms to import PyYAML the first time a skill is parsed, and about
+0.07 ms per SKILL.md parsed instead of 0.01 ms with the line regex it replaced. Sessions without
+skills never import it. Parsed skills are cached by file signature, so the per-turn rescan stays
+near half a millisecond for 100 skills. `wizolt.model` imports the stdlib-only skill invocation
+and hook modules the tool layer needs (about 3 ms). Other probes moved within their usual noise.
+
 ## Recorded comparison
 
 Each cell is the median of 9 samples in milliseconds. This is a structural refactor, not a claim

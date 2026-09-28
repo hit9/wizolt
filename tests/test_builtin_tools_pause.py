@@ -14,7 +14,7 @@ from wizolt.config import (
     ProviderConfig,
 )
 from wizolt.model import ModelClient
-from wizolt.skill import SkillLibrary
+from wizolt.skill.library import SkillLibrary
 
 
 async def test_paused_turn_is_reported_and_replays_unchanged(tmp_path, monkeypatch):

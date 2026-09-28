@@ -12,7 +12,7 @@ from wizolt.agent.context import ContextManager
 from wizolt.agent.engine import Agent
 from wizolt.agent.lifecycle import load_session
 from wizolt.base import SESSION_EVENT_KEY, ToolError
-from wizolt.skill import SkillLibrary
+from wizolt.skill.library import SkillLibrary
 from wizolt.tools import TOOL_REGISTRY, JobTool, Tool
 from wizolt.tools.memory import ContextTool, NoteTool
 from wizolt.ui.cli import commands

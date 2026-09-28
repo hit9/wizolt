@@ -68,7 +68,7 @@ if TYPE_CHECKING:
     from wizolt.mcp import MCPManager
     from wizolt.mentions import FileMentions
     from wizolt.shellhooks import ShellHooks
-    from wizolt.skill import SkillLibrary
+    from wizolt.skill.library import SkillLibrary
     from wizolt.skill.listing import SkillListing
 
 
