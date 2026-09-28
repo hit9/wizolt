@@ -16,7 +16,7 @@ commands yourself.
 
 - **Confirmations.** File-changing and command-running tools — Edit, Bash, Job, and MCP
   calls — ask before they act. <span class="marker">This is on by default</span>; `--yolo` and
-  `/yolo` turn it off.
+  `/yolo` turn it off. Your hooks and loaded skills can pre-approve covered calls.
 - **Verified edits.** Every edit says what it expects to change — a numbered source view from
   `Read`, or the exact original text of the target — and is rejected
   if the file no longer matches, or if the text it named appears more than once. The agent can't
@@ -35,7 +35,7 @@ commands yourself.
 - Keep **confirmations on** until you trust a workflow; only reach for `--yolo` when you do.
 - Only connect [MCP](mcp.md) servers you trust — local servers run programs on your machine.
 - Read a repository's skills before `/skills trust`: trusted skills can run commands and approve
-  tool calls on their own. A skill's `allowed-tools` skips the prompt only for the calls it
-  names, never for chained or redirected commands.
+  tool calls on their own. Patterned Bash rules in `allowed-tools` do not cover chained or
+  redirected commands; a bare `Bash` rule approves every Bash call.
 - For untrusted repositories, or when running unattended, put wizolt inside a **container
   or VM**.

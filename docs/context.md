@@ -86,10 +86,13 @@ summaries leave the active window. A scheduled reset survives a saved-session re
 
 ### When a summary does not arrive
 
-Compaction always makes room, even when the summary request fails: the same messages leave the
+When the summary request fails, compaction still removes the selected messages from the
 context, with no summary written in their place. Work is not lost — the span is still written to
 `history.N.md` and stays readable — but the checkpoint carries less, so tell wizolt what matters if
 a long task continues past one.
+
+A [PreCompact hook](hooks.md#events) can refuse compaction before it starts. The existing context
+then stays intact; an automatic refusal ends the turn, while `/compact` shows the refusal reason.
 
 `/compact log` marks such a pass `no summary`, and `/compact` reports the reason on the spot. The
 usual causes are a summarizer that cannot fit the span, one slower than its `response_timeout`, one

@@ -66,7 +66,7 @@ Working through a repository task in an interactive session.
 | **[MCP](mcp.md)** | Connect external Model Context Protocol servers and use their tools. |
 | **[Worker](worker.md)** | Delegate bounded tasks to a second in-process session on its own provider, with context kept until reset. |
 | **[Skills](skills.md)** | Load reusable instruction packs on demand, or start one with `/name`. |
-| **[Hooks](hooks.md)** | Run your own checks around tool calls, messages, and the end of a turn. |
+| **[Hooks](hooks.md)** | Run checks and cleanup at session, tool, turn, worker, and compaction boundaries. |
 | **[Configuration](configuration.md)** | Providers, runtime settings, and data location. |
 | **[Compatibility catalog](catalog.md)** | How documented provider/model exceptions are selected, updated, and overridden. |
 | **[Context](context.md)** | How the window is filled, summarized when it fills up, and reused by the provider's cache. |

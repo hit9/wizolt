@@ -100,12 +100,15 @@ JSON printed on exit 0:
 | `hookSpecificOutput.permissionDecision` | `PreToolUse`: `deny` refuses, `allow` skips approval, `ask` forces a prompt even under yolo |
 | `hookSpecificOutput.permissionDecisionReason` | Reason for a pre-tool refusal |
 | `hookSpecificOutput.decision` | `PermissionRequest`: `{"behavior": "allow"}` or `{"behavior": "deny", "message": "reason"}` |
-| `hookSpecificOutput.additionalContext` | Context for prompt, session-start, subagent-start and tool events; for `Stop` and `SubagentStop`, feedback that keeps the agent working |
+| `hookSpecificOutput.additionalContext` | Context for `UserPromptSubmit`, `SessionStart`, `SubagentStart`, `PreToolUse`, `PostToolUse` and `PostToolUseFailure`; for `Stop` and `SubagentStop`, feedback that keeps the agent working |
 | `decision: "block"` with `reason` | Refuses at a blocking event, like exit 2 |
 
 When several hooks match, any refusal wins and `ask` outranks `allow`. A permission hook cannot
 bypass an explicit pre-tool `ask` or a tool's mandatory confirmation. Tool-input rewrites and
-persistent permission changes are unsupported; requesting them leaves approval to you.
+persistent permission changes are unsupported; an allow decision requesting them leaves approval
+to you.
+A `PermissionRequest` denial still refuses the call when it includes `interrupt: true`, but
+that flag does not end the agent's turn.
 
 Only the events, input fields and output fields listed here are supported. In particular, hooks
 do not receive a Claude transcript file or an environment-persistence file. Hook commands run

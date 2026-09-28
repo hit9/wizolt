@@ -206,6 +206,21 @@ the raw image, and `ViewImage` falls back the same way. Each fallback descriptio
 vision-model request. Without `[vision]`, a text-only route keeps sending to the active model and
 you see the provider's own error.
 
+## Hooks
+
+Use `[hooks]` to run shell commands at session, tool, turn, worker and compaction boundaries.
+For example, record failed Bash calls:
+
+```toml
+[[hooks.PostToolUseFailure]]
+matcher = "Bash"
+hooks = [{ type = "command", command = "~/bin/log-tool-failure.sh", timeout = 10 }]
+```
+
+Each hook has its own `timeout` in seconds (default 60), independent of `runtime.shell_timeout`.
+wizolt waits for matching commands to finish. See [Hooks](hooks.md) for all 13 events and their
+input and output formats; `/status` shows the number of active hooks.
+
 ## Runtime
 
 Optional; the defaults shown are used when omitted.

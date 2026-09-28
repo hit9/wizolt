@@ -104,6 +104,8 @@
 
 ### Fixed
 
+- Align the configuration, safety, worker and context guides with the supported hook events,
+  approval rules and compaction refusal behavior; clarify which events accept hook context.
 - Substitute skill argument placeholders only once, preserving literal `$0`/`$1` in argument
   values and treating oversized argument indices as missing instead of failing the load.
 

@@ -25,7 +25,7 @@ Keep this file short. It is an entry point, not a second design document.
 - `wizolt/tools/`, `wizolt/image.py`, `wizolt/mcp/`, `wizolt/skill/`: vertical
   features; `tools/` splits built-ins by capability, registry in `__init__.py`. `skill/` splits
   reading (`skillfile`), discovery, trust, invocation, and what the model was told (`listing`).
-- `wizolt/shellhooks.py`: user shell hooks (Claude Code's contract), fired by the runner and engine.
+- `wizolt/shellhooks.py`: supported command-hook events, orchestrated by the runner, engine and compactor.
 - `wizolt/utils/`: dependency-free helpers (`process.ShellCommand`, `workspace.Workspace`, parsers).
 - `wizolt/config.py`, `wizolt/providers/`: config-file settings, the model capability catalog
   (`providers/catalog.py`), and evidence-backed compatibility policy (`providers/compat.py`).

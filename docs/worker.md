@@ -131,7 +131,11 @@ Otherwise the model simply saw no task worth handing over, which is the normal c
 - **Every send asks, even under `yolo`.** The order is a spec the model wrote for itself, so the
   approval brief is the one cheap check on it.
 - **The worker inherits your environment.** Same directory, skills, MCP servers, and language
-  setting; the files and the repository are what both actually share.
+  setting; the files and the repository are what both actually share. Skills are available to
+  both, but the worker loads and activates its own skills.
+- **Hooks can guide the worker.** `SubagentStart` adds guidance at each send; `SubagentStop` can
+  send it back to work up to 5 times per turn. Their feedback stays with the worker. See
+  [Hooks](hooks.md#events) for the configured hooks workers share and the main-session-only events.
 - **Its tokens are its own.** The worker bills to its own entry and keeps its own context, and
   `/status` gives it separate rows — provider and model, context fill with round count, and cache
   ratio — so a delegation never blurs into the parent's numbers.
