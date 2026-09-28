@@ -9,6 +9,10 @@
   reproduces the dropped subscription seven times in three suite runs, failing the startup banner
   and selector scenarios without anything wrong in the pane.
 
+- Make the runtime's scrollback-failure shutdown test deterministic: it waits for the writer to have
+  attempted the write before requesting shutdown, instead of depending on whether the write pump or
+  the shutdown drain got there first.
+
 ## 0.56.0 - 2026-09-28
 
 ### Added

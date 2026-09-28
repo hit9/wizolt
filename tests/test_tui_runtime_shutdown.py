@@ -26,6 +26,9 @@ class FakeTui:
         self.input_mode = "chat"
         self.exited = asyncio.Event()
         self.write_error: BaseException | None = None
+        # Counted so a test can wait for the terminal to have been asked, rather than racing the
+        # shutdown drain that reports the failure.
+        self.write_attempts = 0
 
     async def run(self, style=None):
         del style
@@ -50,6 +53,7 @@ class FakeTui:
         pass
 
     async def write_to_scrollback(self, callback):
+        self.write_attempts += 1
         if self.write_error is not None:
             raise self.write_error
         callback()
@@ -284,9 +288,13 @@ async def test_scrollback_failure_during_shutdown_still_exits_the_application(tm
     runtime, command_loop, tui = runtime_for(tmp_path, monkeypatch)
     tui.write_error = OSError("terminal disappeared")
 
-    def fail_one_write_then_exit():
+    async def fail_one_write_then_exit():
         assert runtime.scrollback is not None
+        attempted = tui.write_attempts
         runtime.scrollback.submit(lambda: None)
+        # Wait for this write to reach the terminal, so the shutdown below reports a failure that
+        # is already recorded instead of racing the drain that records it.
+        await wait_for(lambda: tui.write_attempts > attempted)
         runtime.request_shutdown()
 
     with pytest.raises(OSError, match="terminal disappeared"):
