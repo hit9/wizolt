@@ -39,7 +39,6 @@ from wizolt.image import ImageInputs, UserInput
 from wizolt.model import ModelClient, PreparedRequest, resilience
 from wizolt.session import QueuedInput, Session, SessionSnapshotCodec
 from wizolt.shellhooks import STOP, USER_PROMPT_SUBMIT, HookOutcome, PromptBlocked
-from wizolt.skill import invocation as skill_invocation
 from wizolt.skill.listing import SkillListing
 from wizolt.tools import (
     DelegateTool,
@@ -754,8 +753,8 @@ class Agent:
         if command is None:
             return ""
         if command.skill.fork and DelegateTool.enabled(self.session):
-            return skill_invocation.fork_notice(command)  # the worker is sent from the Skill tool
-        return await skill_invocation.load(self.session, command, invoked_by="user")
+            return command.fork_notice()  # the worker is sent from the Skill tool
+        return await command.load(self.session, invoked_by="user")
 
     @classmethod
     def textual_tool_call(cls, content: str, tools: list[Json]) -> str | None:

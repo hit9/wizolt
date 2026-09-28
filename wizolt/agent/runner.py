@@ -32,7 +32,6 @@ from wizolt.base import (
 from wizolt.model import ModelClient
 from wizolt.session import Session, TurnDiff
 from wizolt.shellhooks import POST_TOOL_USE, PRE_TOOL_USE, HookOutcome
-from wizolt.skill import permissions
 from wizolt.source import SourceBlock, TextBlock, ToolOutput
 from wizolt.tools import (
     TOOL_REGISTRY,
@@ -55,13 +54,6 @@ from wizolt.tools.toolblocks import ToolDisplay
 from wizolt.tools.toolscript import ScriptCancelled
 
 _ResultT = TypeVar("_ResultT")
-
-
-def touched_paths(call: ToolCall) -> list[str]:
-    """The file paths a call names: `path`, or each of Read's `files`."""
-    payload = call.hook_input()
-    entries = [payload, *(item for item in payload.get("files") or [] if isinstance(item, dict))]
-    return [path for entry in entries if isinstance(path := entry.get("path"), str) and path]
 
 
 @dataclass(frozen=True)
@@ -700,7 +692,11 @@ class ToolRunner:
             # A hook's "ask" wins over everything; its "allow", and an active skill's allowed-tools,
             # grant what yolo would, for this one call.
             needs_confirmation = tool.needs_confirmation() or pre.permission == "ask"
-            pre_approved = pre.permission != "ask" and (self.session.settings.yolo or pre.permission == "allow" or permissions.pre_approved(self.session, call))
+            pre_approved = pre.permission != "ask" and (
+                self.session.settings.yolo
+                or pre.permission == "allow"
+                or (self.session.skills is not None and self.session.skills.approves(self.session.active_skills, call))
+            )
             if needs_confirmation and pre_approved and not tool.always_confirms():
                 d.auto = True
                 pre = toolblocks.approval_display(self.session, call, tool, "auto", batch_suffix=batch_suffix, planned_edit=planned_edit)
@@ -842,9 +838,9 @@ class ToolRunner:
                 # is rendered; the worker write lands first, and an empty path on failure leaves the
                 # marker without a file= attribute rather than naming one still in flight.
                 artifact_path = await self.context.materialize_output(key, model_text)
-        if not failed and self.session.skills is not None:
-            for path in touched_paths(call):
-                self.session.skills.observe(self.session.resolve_path(path))
+        if not failed and self.session.skills is not None and (discovery := self.session.skills.discovery) is not None:
+            for path in call.paths():
+                discovery.observe(self.session.resolve_path(path))
         if failed:
             self.session.record_tool_error(key or "-", call.name, call.args, model_text)
         elif key and turn_diff and turn_diff.path and turn_diff.diff:

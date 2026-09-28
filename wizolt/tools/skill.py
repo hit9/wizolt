@@ -5,8 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from wizolt.base import ApprovalView, Json, ToolArgs, ToolError
-from wizolt.skill import invocation
-from wizolt.skill.invocation import Invocation
+from wizolt.skill.invocation import Arguments, Invocation
 from wizolt.tools.base import Tool
 from wizolt.tools.delegate import DelegateTool
 
@@ -46,7 +45,7 @@ class SkillTool(Tool):
             raise ToolError(f"unknown skill {name!r}" + (f"; available: {available}" if available else "; no skills are installed"))
         if not skill.model_invocable:
             raise ToolError(f"skill {skill.name!r} can only be started by the user, with /{skill.name}")
-        return Invocation(skill, rest[0].strip() if rest else "")
+        return Invocation(skill, Arguments(rest[0].strip() if rest else ""))
 
     def forks(self) -> bool:
         """A `context: fork` skill runs in the worker when this session has one; without one (or
@@ -82,4 +81,4 @@ class SkillTool(Tool):
             delegation = self.delegation()
             delegation.runner = self.runner
             return await delegation.call()
-        return await invocation.load(self.session, self.invocation())
+        return await self.invocation().load(self.session)

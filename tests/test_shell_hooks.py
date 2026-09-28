@@ -14,11 +14,11 @@ from wizolt.agent.context import ContextManager
 from wizolt.agent.engine import Agent
 from wizolt.agent.runner import ToolRunner
 from wizolt.base import ConfigError, ToolCall
-from wizolt.shellhooks import PromptBlocked, ShellHooks, parse_hooks
+from wizolt.shellhooks import HookCommand, PromptBlocked, ShellHooks
 
 
 def _hooks(s, table):
-    s.shell_hooks = ShellHooks(parse_hooks(table), str(s.cwd))
+    s.shell_hooks = ShellHooks(HookCommand.parse_table(table), str(s.cwd))
     return s
 
 
@@ -45,7 +45,7 @@ def _bash(command):
 
 
 def test_parse_claude_code_shape():
-    hooks = parse_hooks(
+    hooks = HookCommand.parse_table(
         {
             "PreToolUse": [{"matcher": "Bash|Edit", "hooks": [{"type": "command", "command": "guard.sh", "timeout": 5}]}],
             "Stop": [{"hooks": [{"command": "check.sh"}]}],
@@ -74,7 +74,7 @@ def test_parse_claude_code_shape():
 )
 def test_invalid_hooks_are_config_errors(table, message):
     with pytest.raises(ConfigError, match=re.escape(message)):
-        parse_hooks(table)
+        HookCommand.parse_table(table)
 
 
 def test_a_malformed_config_hook_stops_session_assembly(tmp_path):
@@ -155,10 +155,8 @@ async def test_json_deny_blocks_with_its_reason(tmp_path):
 async def test_post_tool_use_feedback_reaches_the_model_and_the_user(tmp_path):
     context = '{"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": "lint is clean"}}'
     s = session(tmp_path)
-    s.shell_hooks = ShellHooks(
-        parse_hooks(_hook("PostToolUse", f"echo '{context}'")) + parse_hooks(_hook("PostToolUse", "echo 'formatted the file' >&2; exit 2")),
-        str(tmp_path),
-    )
+    hooks = [_hook("PostToolUse", f"echo '{context}'"), _hook("PostToolUse", "echo 'formatted the file' >&2; exit 2")]
+    s.shell_hooks = ShellHooks(tuple(hook for table in hooks for hook in HookCommand.parse_table(table)), str(tmp_path))
     s.settings.yolo = True
     outputs = []
     runner, _ = _runner(s, outputs)
@@ -258,6 +256,6 @@ def test_status_counts_active_hooks(tmp_path):
 
 def test_worker_keeps_tool_hooks_only(tmp_path):
     table = {**_hook("PreToolUse", "true"), **_hook("Stop", "true"), **_hook("UserPromptSubmit", "true")}
-    worker = ShellHooks(parse_hooks(table), str(tmp_path)).detached()
+    worker = ShellHooks(HookCommand.parse_table(table), str(tmp_path)).detached()
 
     assert [hook.event for hook in worker.active(session(tmp_path))] == ["PreToolUse"]

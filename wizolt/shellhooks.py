@@ -16,12 +16,11 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from wizolt.base import ConfigError, Json, WizoltError
-from wizolt.utils.shellrun import run_shell
+from wizolt.utils.process import ShellCommand, ShellResult
 
 if TYPE_CHECKING:
     from wizolt.session import Session
@@ -53,16 +52,105 @@ class HookCommand:
             return True
         return re.fullmatch(self.matcher, tool_name) is not None
 
+    def label(self) -> str:
+        return f"{self.event} hook `{self.command}` ({self.origin})"
+
+    @classmethod
+    def parse_table(cls, raw: object, origin: str = "config") -> tuple[HookCommand, ...]:
+        """The `hooks` table of a config file or frontmatter, in Claude Code's shape. Raises
+        ConfigError naming the entry at fault: a guard that silently never runs is worse than none."""
+        if raw is None:
+            return ()
+        where = "hooks" if origin == "config" else f"{origin} hooks"
+        if not isinstance(raw, dict):
+            raise ConfigError(f"{where} must be a table of events")
+        commands: list[HookCommand] = []
+        for event, groups in raw.items():
+            if event not in EVENTS:
+                raise ConfigError(f"{where}: unsupported event {event!r}; supported: {', '.join(EVENTS)}")
+            if not isinstance(groups, list):
+                raise ConfigError(f"{where}.{event} must be a list of matcher groups")
+            for group in groups:
+                if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                    raise ConfigError(f"{where}.{event}: each entry needs a `hooks` list")
+                matcher = str(group.get("matcher") or "")
+                try:
+                    re.compile(matcher)
+                except re.error as error:
+                    raise ConfigError(f"{where}.{event}: invalid matcher {matcher!r}: {error}") from error
+                commands.extend(cls._parse_entry(hook, event, matcher, origin, f"{where}.{event}") for hook in group["hooks"])
+        return tuple(commands)
+
+    @classmethod
+    def _parse_entry(cls, hook: object, event: str, matcher: str, origin: str, where: str) -> HookCommand:
+        if not isinstance(hook, dict) or hook.get("type", "command") != "command":
+            raise ConfigError(f'{where}: only `type = "command"` hooks are supported')
+        command = hook.get("command")
+        if not isinstance(command, str) or not command.strip():
+            raise ConfigError(f"{where}: a hook needs a non-empty `command`")
+        timeout = hook.get("timeout", DEFAULT_TIMEOUT)
+        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0:
+            raise ConfigError(f"{where}: `timeout` must be a positive number of seconds")
+        return cls(event, command.strip(), matcher, float(timeout), origin)
+
 
 @dataclass(frozen=True)
 class HookOutcome:
-    """What the hooks of one event decided, combined."""
+    """What one hook, or all the hooks of one event combined, decided."""
 
     blocked: bool = False
     reason: str = ""  # why it was blocked, for whoever the event reports to
     context: tuple[str, ...] = ()  # text the hooks add for the model
     permission: str = ""  # PreToolUse: "allow" skips the approval prompt, "ask" forces it
     failures: tuple[str, ...] = ()  # hooks that broke: shown to the user, never to the model
+
+    @classmethod
+    def of(cls, hook: HookCommand, result: ShellResult) -> HookOutcome:
+        """One hook's answer, by Claude Code's contract: exit 2 blocks with stderr as the reason,
+        another failure is the hook's own problem, and exit 0 may carry a decision on stdout."""
+        if result.exit_code == BLOCKING_EXIT_CODE:
+            return cls(True, result.stderr.strip() or f"blocked by {hook.label()}")
+        if result.exit_code != 0:
+            detail = "timed out" if result.timed_out else f"exited {result.exit_code}"
+            return cls(failures=(f"{hook.label()} {detail}" + (f": {result.stderr.strip()}" if result.stderr.strip() else ""),))
+        decision = cls.from_stdout(hook.event, result.stdout)
+        return replace(decision, reason=decision.reason or f"blocked by {hook.label()}") if decision.blocked else decision
+
+    @classmethod
+    def from_stdout(cls, event: str, stdout: str) -> HookOutcome:
+        """A passing hook's stdout. JSON carries a decision; plain text is context only for
+        UserPromptSubmit, as in Claude Code, and otherwise just the hook talking to itself."""
+        text = stdout.strip()
+        try:
+            data = json.loads(text) if text.startswith("{") else None
+        except ValueError:
+            data = None
+        if not isinstance(data, dict):
+            return cls(context=(text,) if text and event == USER_PROMPT_SUBMIT else ())
+        specific = data.get("hookSpecificOutput")
+        if not isinstance(specific, dict):
+            specific = {}
+        extra = specific.get("additionalContext")
+        context = (extra,) if isinstance(extra, str) and extra.strip() else ()
+        reason = str(data.get("reason") or specific.get("permissionDecisionReason") or "")
+        permission = specific.get("permissionDecision") or {"approve": "allow", "block": "deny"}.get(str(data.get("decision")), "")
+        if event == PRE_TOOL_USE:
+            if permission == "deny":
+                return cls(True, reason, context)
+            return cls(context=context, permission=permission if permission in ("allow", "ask") else "")
+        return cls(data.get("decision") == "block", reason, context)
+
+    @classmethod
+    def combine(cls, outcomes: list[HookOutcome]) -> HookOutcome:
+        """Any block blocks, "ask" outranks "allow", and every context and failure is kept."""
+        permissions = [outcome.permission for outcome in outcomes if outcome.permission]
+        return cls(
+            any(outcome.blocked for outcome in outcomes),
+            "\n".join(outcome.reason for outcome in outcomes if outcome.blocked),
+            tuple(line for outcome in outcomes for line in outcome.context),
+            "ask" if "ask" in permissions else "allow" if permissions else "",
+            tuple(failure for outcome in outcomes for failure in outcome.failures),
+        )
 
 
 class ShellHooks:
@@ -100,101 +188,17 @@ class ShellHooks:
         return any(self.matching(event, session, tool_name) for event in TOOL_EVENTS)
 
     async def fire(self, event: str, session: Session, fields: Json, *, tool_name: str = "") -> HookOutcome:
-        """Run the hooks for `event`; `fields` are the event's own payload fields."""
+        """Run the hooks for `event` in order and combine their answers; `fields` are the event's
+        own payload fields."""
         hooks = self.matching(event, session, tool_name)
         if not hooks:
             return HookOutcome()
         payload: Json = {"session_id": session.uid, "cwd": session.cwd, "hook_event_name": event, **({"tool_name": tool_name} if tool_name else {}), **fields}
-        return await run_hooks(hooks, payload, cwd=session.cwd, project_dir=self.project_dir)
-
-
-def parse_hooks(raw: object, origin: str = "config") -> tuple[HookCommand, ...]:
-    """The `hooks` table of a config file or frontmatter, in Claude Code's shape. Raises
-    ConfigError naming the entry at fault: a guard that silently never runs is worse than none."""
-    if raw is None:
-        return ()
-    where = "hooks" if origin == "config" else f"{origin} hooks"
-    if not isinstance(raw, dict):
-        raise ConfigError(f"{where} must be a table of events")
-    commands: list[HookCommand] = []
-    for event, groups in raw.items():
-        if event not in EVENTS:
-            raise ConfigError(f"{where}: unsupported event {event!r}; supported: {', '.join(EVENTS)}")
-        if not isinstance(groups, list):
-            raise ConfigError(f"{where}.{event} must be a list of matcher groups")
-        for group in groups:
-            if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
-                raise ConfigError(f"{where}.{event}: each entry needs a `hooks` list")
-            matcher = str(group.get("matcher") or "")
-            try:
-                re.compile(matcher)
-            except re.error as error:
-                raise ConfigError(f"{where}.{event}: invalid matcher {matcher!r}: {error}") from error
-            for hook in group["hooks"]:
-                commands.append(_hook_command(hook, event, matcher, origin, where))
-    return tuple(commands)
-
-
-def _hook_command(hook: object, event: str, matcher: str, origin: str, where: str) -> HookCommand:
-    if not isinstance(hook, dict) or hook.get("type", "command") != "command":
-        raise ConfigError(f'{where}.{event}: only `type = "command"` hooks are supported')
-    command = hook.get("command")
-    if not isinstance(command, str) or not command.strip():
-        raise ConfigError(f"{where}.{event}: a hook needs a non-empty `command`")
-    timeout = hook.get("timeout", DEFAULT_TIMEOUT)
-    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0:
-        raise ConfigError(f"{where}.{event}: `timeout` must be a positive number of seconds")
-    return HookCommand(event, command.strip(), matcher, float(timeout), origin)
-
-
-async def run_hooks(hooks: Iterable[HookCommand], payload: Json, *, cwd: str, project_dir: str) -> HookOutcome:
-    """Run each hook in order and combine their answers: any block blocks, "ask" outranks
-    "allow", and every hook's context and failure is kept."""
-    blocked_reasons: list[str] = []
-    context: list[str] = []
-    failures: list[str] = []
-    permissions: list[str] = []
-    stdin = json.dumps(payload, ensure_ascii=False)
-    # Claude Code's variable, so its hook scripts find the project; wizolt's own spelling beside it.
-    env = {"CLAUDE_PROJECT_DIR": project_dir, "WIZOLT_PROJECT_DIR": project_dir}
-    for hook in hooks:
-        result = await run_shell(hook.command, cwd=cwd, timeout=hook.timeout, stdin=stdin, env=env)
-        label = f"{hook.event} hook `{hook.command}` ({hook.origin})"
-        if result.exit_code == BLOCKING_EXIT_CODE:
-            blocked_reasons.append(result.stderr.strip() or f"blocked by {label}")
-        elif result.exit_code != 0:
-            detail = "timed out" if result.timed_out else f"exited {result.exit_code}"
-            failures.append(f"{label} {detail}" + (f": {result.stderr.strip()}" if result.stderr.strip() else ""))
-        else:
-            decision = _decision(hook.event, result.stdout)
-            if decision.blocked:
-                blocked_reasons.append(decision.reason or f"blocked by {label}")
-            context.extend(decision.context)
-            if decision.permission:
-                permissions.append(decision.permission)
-    permission = "ask" if "ask" in permissions else "allow" if permissions else ""
-    return HookOutcome(bool(blocked_reasons), "\n".join(blocked_reasons), tuple(context), permission, tuple(failures))
-
-
-def _decision(event: str, stdout: str) -> HookOutcome:
-    """Read a passing hook's stdout. JSON carries a decision; plain text is context only for
-    UserPromptSubmit, as in Claude Code, and otherwise just the hook talking to itself."""
-    text = stdout.strip()
-    try:
-        data = json.loads(text) if text.startswith("{") else None
-    except ValueError:
-        data = None
-    if not isinstance(data, dict):
-        return HookOutcome(context=(text,) if text and event == USER_PROMPT_SUBMIT else ())
-    specific = data.get("hookSpecificOutput")
-    if not isinstance(specific, dict):
-        specific = {}
-    extra = specific.get("additionalContext")
-    context = (extra,) if isinstance(extra, str) and extra.strip() else ()
-    reason = str(data.get("reason") or specific.get("permissionDecisionReason") or "")
-    permission = specific.get("permissionDecision") or {"approve": "allow", "block": "deny"}.get(str(data.get("decision")), "")
-    if event == PRE_TOOL_USE:
-        if permission == "deny":
-            return HookOutcome(True, reason, context)
-        return HookOutcome(context=context, permission=permission if permission in ("allow", "ask") else "")
-    return HookOutcome(data.get("decision") == "block", reason, context)
+        stdin = json.dumps(payload, ensure_ascii=False)
+        # Claude Code's variable, so its hook scripts find the project; wizolt's own spelling beside it.
+        env = {"CLAUDE_PROJECT_DIR": self.project_dir, "WIZOLT_PROJECT_DIR": self.project_dir}
+        outcomes = []
+        for hook in hooks:
+            result = await ShellCommand(hook.command, session.cwd, hook.timeout, stdin, env).run()
+            outcomes.append(HookOutcome.of(hook, result))
+        return HookOutcome.combine(outcomes)

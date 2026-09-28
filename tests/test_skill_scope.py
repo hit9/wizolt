@@ -9,7 +9,7 @@ from wizolt.agent.lifecycle import bootstrap_features, load_session
 from wizolt.agent.runner import ToolRunner
 from wizolt.base import ToolCall
 from wizolt.session import Session
-from wizolt.skill.permissions import permits
+from wizolt.skill.permissions import ToolRule
 from wizolt.tools import SkillTool
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.commands import skills_command
@@ -106,7 +106,9 @@ async def test_allowed_tools_skip_the_prompt_for_what_they_cover(tmp_path, isola
     ],
 )
 def test_rule_matching(rule, call, expected):
-    assert permits(rule, call) is expected
+    parsed = ToolRule.parse(rule)
+    assert parsed is not None and str(parsed) == rule
+    assert parsed.permits(call) is expected
 
 
 def test_malformed_skill_hooks_refuse_the_skill(tmp_path, isolate_home):
@@ -122,7 +124,7 @@ def test_bad_allowed_tools_rules_warn_and_drop(tmp_path, isolate_home):
     _user_skill(isolate_home, "odd", "allowed-tools: [Read, 'Bash(', 42x]\n")
     skill = session(tmp_path).skills.get("odd")
 
-    assert skill.allowed_tools == ("Read",)
+    assert [str(rule) for rule in skill.allowed_tools] == ["Read"]
     assert "allowed-tools rule 'Bash(' is not `Tool` or `Tool(pattern)`; ignored" in skill.warnings
 
 

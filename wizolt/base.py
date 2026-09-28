@@ -458,6 +458,12 @@ class ToolCall:
     def hook_input(self) -> Json:
         return self.payload if isinstance(self.payload, dict) else {"args": self.args}
 
+    def paths(self) -> list[str]:
+        """The file paths the call names: `path`, or each of Read's `files`."""
+        payload = self.hook_input()
+        entries = [payload, *(item for item in payload.get("files") or [] if isinstance(item, dict))]
+        return [path for entry in entries if isinstance(path := entry.get("path"), str) and path]
+
 
 class LogEdge(Enum):
     NONE = ""

@@ -48,7 +48,7 @@ def test_folded_description_and_spec_fields_load(tmp_path):
     assert skill is not None
     assert skill.description == "Extract tables and text from PDF files."
     assert skill.body == "# PDF\n\nRun pdftotext."
-    assert skill.allowed_tools == ("Bash(pdftotext:*)", "Read")
+    assert [str(rule) for rule in skill.allowed_tools] == ["Bash(pdftotext:*)", "Read"]
     assert skill.warnings == ()
 
 

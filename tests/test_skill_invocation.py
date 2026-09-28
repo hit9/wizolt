@@ -11,11 +11,11 @@ from prompt_toolkit.document import Document
 from wizolt.agent.context import ContextManager
 from wizolt.agent.engine import Agent
 from wizolt.base import SESSION_EVENT_KEY
-from wizolt.skill.invocation import parse_command, substitute_arguments
+from wizolt.skill.invocation import Arguments, Invocation
 from wizolt.skill.trust import ProjectTrust
 from wizolt.tools import SkillTool
 from wizolt.ui.cli import CommandLoop
-from wizolt.utils.shellrun import run_shell
+from wizolt.utils.process import ShellCommand
 
 
 def _skill(tmp_path, name, frontmatter="", body="body"):
@@ -34,21 +34,21 @@ def _loop(s):
 
 
 def test_argument_placeholders():
-    assert substitute_arguments("deploy $ARGUMENTS now", "staging eu") == "deploy staging eu now"
-    assert substitute_arguments("to $0 in $1, $ARGUMENTS[1] again, $5 missing", 'staging "eu west"') == "to staging in eu west, eu west again,  missing"
+    assert Arguments("staging eu").fill("deploy $ARGUMENTS now") == "deploy staging eu now"
+    assert Arguments('staging "eu west"').fill("to $0 in $1, $ARGUMENTS[1] again, $5 missing") == "to staging in eu west, eu west again,  missing"
     # No placeholder: the arguments still arrive.
-    assert substitute_arguments("Just do it.", "fast") == "Just do it.\n\nARGUMENTS: fast"
+    assert Arguments("fast").fill("Just do it.") == "Just do it.\n\nARGUMENTS: fast"
     # No arguments: shell positionals in an existing skill are left alone.
-    assert substitute_arguments("awk '{print $1}'", "") == "awk '{print $1}'"
-    assert substitute_arguments("all: [$ARGUMENTS]", "") == "all: []"
+    assert Arguments().fill("awk '{print $1}'") == "awk '{print $1}'"
+    assert Arguments().fill("all: [$ARGUMENTS]") == "all: []"
 
 
-def test_parse_command():
-    assert parse_command("/deploy staging now") == ("deploy", "staging now")
-    assert parse_command("/deploy") == ("deploy", "")
-    assert parse_command("/review\nfocus on errors\nand tests") == ("review", "focus on errors\nand tests")
-    assert parse_command("/usr/bin/env is broken") is None  # a path, not a command
-    assert parse_command("deploy") is None
+def test_split_command():
+    assert Invocation.split_command("/deploy staging now") == ("deploy", Arguments("staging now"))
+    assert Invocation.split_command("/deploy") == ("deploy", Arguments())
+    assert Invocation.split_command("/review\nfocus on errors\nand tests") == ("review", Arguments("focus on errors\nand tests"))
+    assert Invocation.split_command("/usr/bin/env is broken") is None  # a path, not a command
+    assert Invocation.split_command("deploy") is None
 
 
 # --- the model's Skill tool ---
@@ -155,7 +155,7 @@ def completer_texts(completer, text):
 
 async def test_shell_timeout_kills_the_command(tmp_path):
     started = time.monotonic()
-    result = await run_shell("sleep 30", cwd=str(tmp_path), timeout=0.2)
+    result = await ShellCommand("sleep 30", str(tmp_path), timeout=0.2).run()
 
     assert result.timed_out
     assert result.stderr == "timed out after 0.2s"
@@ -165,7 +165,7 @@ async def test_shell_timeout_kills_the_command(tmp_path):
 async def test_cancelled_shell_leaves_nothing_running(tmp_path):
     pid_file = tmp_path / "pid"
     # A child in the command's group: the kill must reach past the shell itself.
-    task = asyncio.ensure_future(run_shell(f"sleep 30 & echo $! > {pid_file}; wait", cwd=str(tmp_path), timeout=60))
+    task = asyncio.ensure_future(ShellCommand(f"sleep 30 & echo $! > {pid_file}; wait", str(tmp_path), timeout=60).run())
     for _ in range(500):
         if pid_file.exists() and pid_file.read_text(encoding="utf-8").strip():
             break
@@ -196,6 +196,6 @@ def _alive(pid):
 
 
 async def test_shell_stdin_and_environment(tmp_path):
-    result = await run_shell('read line; echo "$line/$EXTRA"', cwd=str(tmp_path), timeout=5, stdin="in\n", env={"EXTRA": "env"})
+    result = await ShellCommand('read line; echo "$line/$EXTRA"', str(tmp_path), timeout=5, stdin="in\n", env={"EXTRA": "env"}).run()
 
     assert (result.exit_code, result.stdout) == (0, "in/env\n")

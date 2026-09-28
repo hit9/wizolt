@@ -4,19 +4,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from wizolt.base import ToolCall
 from wizolt.mentions import scan_mentions
-from wizolt.skill import discovery
-from wizolt.skill.invocation import Invocation, parse_command
+from wizolt.skill.discovery import SkillDiscovery
+from wizolt.skill.invocation import Invocation
 from wizolt.skill.skillfile import Skill
 from wizolt.skill.trust import ProjectTrust
-from wizolt.utils.project import project_root
+from wizolt.utils.workspace import Workspace
 
 if TYPE_CHECKING:
     from wizolt.session import Session
 
 
 class SkillLibrary:
-    """Skills discovered from user and project skill directories (see `discovery`).
+    """Skills discovered from user and project skill directories (see `SkillDiscovery`).
 
     The index (name + description) rides the cache-stable prefix so the model knows what exists,
     and the full body is pulled into the conversation only when the model calls Skill(name) or the
@@ -35,35 +36,28 @@ class SkillLibrary:
         # Project skills that run commands, held back until the repository is trusted (see trust).
         # Kept out of `skills`, so nothing that looks a skill up can start one by accident.
         self.untrusted: dict[str, Skill] = {}
-        self._cwd = ""
-        self._user_skills = ""
-        # Project directories off the working path the agent has opened files in (see observe).
-        self._nested: set[str] = set()
+        # Both absent for a library built from a fixed set of skills rather than from disk.
+        self.discovery: SkillDiscovery | None = None
         self.trust: ProjectTrust | None = None
 
     @classmethod
     def load(cls, session: Session) -> SkillLibrary:
         library = cls({})
-        library._cwd, library._user_skills = session.cwd, session.data_path("skills")
-        library.trust = ProjectTrust(session.data_path(ProjectTrust.FILE_NAME), project_root(session.cwd))
+        workspace = Workspace(session.cwd)
+        library.discovery = SkillDiscovery(workspace, session.data_path("skills"))
+        library.trust = ProjectTrust(session.data_path(ProjectTrust.FILE_NAME), workspace.root)
         library.reload()
         return library
 
     def reload(self) -> None:
         """Scan the disk again and apply the trust decision, in place: a worker shares this object."""
-        if self.trust is None:
-            return  # built from a fixed set of skills, not from disk
-        skills, self.problems = discovery.scan(discovery.roots(self._cwd, self._user_skills, self._nested))
+        if self.discovery is None or self.trust is None:
+            return
+        skills, self.problems = self.discovery.scan()
         trusted = self.trust.granted()
         held = {name for name, skill in skills.items() if skill.source == "project" and skill.executable and not trusted}
         self.untrusted = {name: skills[name] for name in held}
         self.skills = {name: skill for name, skill in skills.items() if name not in held}
-
-    def observe(self, path: str) -> None:
-        """Note a file the agent read or edited: skill folders between it and the repository top
-        are scanned from the next reload on, the way a monorepo package brings its own skills."""
-        if self.trust is not None:
-            self._nested.update(discovery.levels_above(path, project_root(self._cwd)))
 
     def all(self) -> list[Skill]:
         return sorted(self.skills.values(), key=lambda skill: skill.name)
@@ -79,10 +73,14 @@ class SkillLibrary:
         since left the disk, or lost trust, has nothing left to enforce."""
         return [skill for name in names if (skill := self.get(name)) is not None]
 
+    def approves(self, names: list[str], call: ToolCall) -> bool:
+        """Whether an active skill's `allowed-tools` covers the call, so it needs no prompt."""
+        return any(rule.permits(call) for skill in self.active(names) for rule in skill.allowed_tools)
+
     def command(self, text: str) -> Invocation | None:
         """The skill a `/name args` message starts, or None when no user-invocable skill answers
         to that name. The one place the command loop, the runtime and the engine all ask."""
-        parsed = parse_command(text)
+        parsed = Invocation.split_command(text)
         skill = self.get(parsed[0]) if parsed else None
         if parsed is None or skill is None or not skill.user_invocable:
             return None

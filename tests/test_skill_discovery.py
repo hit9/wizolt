@@ -6,9 +6,11 @@ from agent_harness import session
 from prompt_toolkit.document import Document
 
 from wizolt.agent.engine import Agent
-from wizolt.skill import SkillLibrary, discovery
+from wizolt.skill import SkillLibrary
+from wizolt.skill.discovery import SkillDiscovery
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.commands import skills_command
+from wizolt.utils.workspace import Workspace
 
 
 def _skill(root, name, description):
@@ -101,7 +103,7 @@ def test_git_worktree_file_marks_the_top(tmp_path):
 def test_the_same_directory_reached_twice_counts_once(tmp_path, isolate_home):
     # Running in the home directory: ~/.claude/skills is both a user and a project root.
     _skill(isolate_home / ".claude" / "skills", "home", "h")
-    skills = SkillLibrary(*discovery.scan(discovery.roots(str(isolate_home), str(tmp_path / "data" / "skills"))))
+    skills = SkillLibrary(*SkillDiscovery(Workspace(str(isolate_home)), str(tmp_path / "data" / "skills")).scan())
 
     assert skills.get("home").source == "user"
     assert skills.get("home").overrides == ()
