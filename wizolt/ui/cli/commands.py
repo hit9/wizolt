@@ -354,13 +354,22 @@ async def catalog_command(loop: CommandLoop, args: str) -> str:
 def skills_command(loop: CommandLoop, args: str) -> str:
     library = loop.session.skills
     skills = library.all() if library else []
-    if not skills:
+    problems = library.problems if library else ()
+    if not skills and not problems:
         return "No skills installed. Add `<name>/SKILL.md` under `.wizolt/skills/` (project) or `~/.wizolt/skills/` (user)."
-    table = markdown_table(
-        ["skill", "source", "description"],
-        [(f"`{skill.name}`", skill.source, skill.description or "(no description)") for skill in skills],
-    )
-    return "\n".join([f"### Skills · {len(skills)}", "", "Load with `Skill(name)` or reference inline with `$name`.", "", table])
+    parts = [f"### Skills · {len(skills)}", "", "Load with `Skill(name)` or reference inline with `$name`."]
+    if skills:
+        table = markdown_table(
+            ["skill", "source", "description"],
+            [(f"`{skill.name}`", skill.source, skill.description or "(no description)") for skill in skills],
+        )
+        parts.extend(["", table])
+    warnings = [f"- `{skill.name}`: {warning}" for skill in skills for warning in skill.warnings]
+    if warnings:
+        parts.extend(["", "#### Warnings", "", *warnings])
+    if problems:
+        parts.extend(["", "#### Not loaded", "", *(f"- {problem}" for problem in problems)])
+    return "\n".join(parts)
 
 
 def ps_command(loop: CommandLoop, args: str) -> str:

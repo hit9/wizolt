@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+
+- `SKILL.md` frontmatter is read as YAML, following the Agent Skills format: folded or multi-line
+  descriptions, the `metadata` map and other spec fields now load instead of being cut to their
+  first line. A skill whose frontmatter is not valid YAML is listed under "Not loaded" in
+  `/skills` with the reason; names that break the spec or do not match their folder load with a
+  warning. `${CLAUDE_SKILL_DIR}` expands like `{skill_dir}`. Adds the `pyyaml` dependency,
+  imported only when a skill is parsed (see `DEPENDENCY_REVIEW.md`).
+
 ### Fixed
 
 - Zellij acceptance fixtures wait for the attached terminal's shell prompt before querying

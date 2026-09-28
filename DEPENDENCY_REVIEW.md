@@ -115,6 +115,15 @@ image fixtures and reference implementations for the project's image-header, ign
 JSON-repair tests. Removing them would weaken validation without shrinking ordinary production
 installations. The remaining development dependencies support tests, linting and type checking.
 
+## Added since this review
+
+- **PyYAML** (`pyyaml>=6.0`, one package, about 3.1 MiB installed with its libyaml extension).
+  SKILL.md frontmatter is YAML: the Agent Skills spec's `metadata` map, folded `description:`
+  blocks, and Claude Code's nested `hooks:` tables cannot be read by a line parser, and a
+  hand-written YAML subset would need its own reference tests the way `json_repair` does. Only
+  `yaml.safe_load` is used, and it is imported when the first skill file is parsed (about 9 ms),
+  so a session without skills never loads it.
+
 ## Suggested order
 
 1. Prototype replacement of the model SDK transport boundary, preserving the three wire adapters.

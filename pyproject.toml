@@ -56,6 +56,9 @@ dependencies = [
     "pygments>=2.16",
     "rich>=13.0",
     "socksio>=1.0.0",
+    # SKILL.md frontmatter is YAML (the Agent Skills spec and Claude Code's `hooks:` blocks nest
+    # maps and lists). safe_load only; imported when a skill file is parsed, never at startup.
+    "pyyaml>=6.0",
 ]
 
 [project.urls]
