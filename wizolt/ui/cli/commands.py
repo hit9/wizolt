@@ -394,7 +394,7 @@ def skills_command(loop: CommandLoop, args: str) -> str:
                 "",
                 "#### Untrusted",
                 "",
-                "These project skills run commands; run `/skills trust` to enable them for this repository.",
+                "These project skills run commands, carry hooks, or pre-approve tools; run `/skills trust` to enable them for this repository.",
                 "",
                 *(f"- `{skill.name}` (`{skill.location}`)" for skill in untrusted),
             ]

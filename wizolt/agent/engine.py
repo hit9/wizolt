@@ -34,6 +34,7 @@ from wizolt.base import (
     Text,
     ToolCall,
     oneline,
+    run_blocking,
 )
 from wizolt.image import ImageInputs, UserInput
 from wizolt.model import ModelClient, PreparedRequest, resilience
@@ -192,7 +193,7 @@ class Agent:
         # Mentions belong to the user's typed input, never to projected image content.
         user_text = user_input.display_text() if isinstance(user_input, UserInput) else self.session.images.label_text(user_message)
         # Before anything is committed: a prompt a UserPromptSubmit hook refuses never becomes a turn.
-        turn_messages = [user_message, *await self.admit_input(user_text), *self.skill_announcement()]
+        turn_messages = [user_message, *await self.admit_input(user_text), *await self.skill_announcement()]
         transcript_messages: list[Json] = [self.transcript_message(user_message)]
         await self.checkpoint_turn(turn_messages, transcript_messages)
         failed_request: PreparedRequest | None = None
@@ -752,13 +753,14 @@ class Agent:
             self.output_fn(f"Hook failed: {failure}")
         return outcome
 
-    def skill_announcement(self) -> list[Json]:
+    async def skill_announcement(self) -> list[Json]:
         """Rescan the skill folders at turn start and tell the model, once, about skills that
-        appeared since it was last told (see wizolt.skill.listing)."""
+        appeared since it was last told (see wizolt.skill.listing). The rescan is file work, so it
+        runs off the loop: a slow or network-mounted home directory must not stall the prompt."""
         library = self.session.skills
         if library is None:
             return []
-        library.reload()
+        await run_blocking(library.reload)
         text = SkillListing.of(self.session, library).announcement(library)
         return [{"role": "user", "content": text, SESSION_EVENT_KEY: "new_skills"}] if text else []
 

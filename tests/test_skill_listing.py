@@ -27,7 +27,7 @@ def _tools(s):
     return [schema["function"]["name"] for schema in Tool.resolved_schemas(s)]
 
 
-def test_a_new_skill_is_announced_once_and_the_prefix_stays(tmp_path):
+async def test_a_new_skill_is_announced_once_and_the_prefix_stays(tmp_path):
     skills_dir = tmp_path / ".wizolt" / "skills"
     _skill(skills_dir, "first", "the first")
     s = session(tmp_path)
@@ -35,40 +35,40 @@ def test_a_new_skill_is_announced_once_and_the_prefix_stays(tmp_path):
     prefix, tools = _prefix(s), _tools(s)
 
     _skill(skills_dir, "second", "the second")
-    [announcement] = agent.skill_announcement()
+    [announcement] = await agent.skill_announcement()
 
     assert announcement[SESSION_EVENT_KEY] == "new_skills"
     assert announcement["content"].startswith("--- NEW SKILLS ---")
     assert "- second [project]: the second" in announcement["content"]
     assert _prefix(s) == prefix and _tools(s) == tools  # byte-identical: the cache holds
-    assert agent.skill_announcement() == []  # once
+    assert await agent.skill_announcement() == []  # once
     assert s.skills.get("second") is not None  # and loadable now
 
 
-def test_compaction_folds_announced_skills_into_the_index(tmp_path):
+async def test_compaction_folds_announced_skills_into_the_index(tmp_path):
     skills_dir = tmp_path / ".wizolt" / "skills"
     _skill(skills_dir, "first")
     s = session(tmp_path)
     agent = Agent(s, output_fn=lambda _text: None)
     _prefix(s)
     _skill(skills_dir, "second")
-    agent.skill_announcement()
+    await agent.skill_announcement()
 
     agent.context.apply_compaction(None, [])
 
     assert "- second [project]" in _prefix(s)[0]
     _skill(skills_dir, "third")
-    assert "third" in agent.skill_announcement()[0]["content"]  # later arrivals: announced again
+    assert "third" in (await agent.skill_announcement())[0]["content"]  # later arrivals: announced again
 
 
-def test_session_without_skill_tool_does_not_grow_one(tmp_path):
+async def test_session_without_skill_tool_does_not_grow_one(tmp_path):
     s = session(tmp_path)
     agent = Agent(s, output_fn=lambda _text: None)
     assert "Skill" not in _tools(s)
 
     _skill(tmp_path / ".wizolt" / "skills", "late")
 
-    assert agent.skill_announcement() == []  # nothing the model could load it with
+    assert await agent.skill_announcement() == []  # nothing the model could load it with
     assert "Skill" not in _tools(s)
     assert s.skills.command("/late") is not None  # the user can still start it
 
@@ -89,7 +89,7 @@ async def test_opening_a_file_in_a_package_brings_its_skills(tmp_path):
 
     runner = ToolRunner(s, ContextManager(s), output_fn=lambda _text: None)
     await runner.run([ToolCall("r", "Read", [{"path": "packages/web/app.js", "ranges": [[1, 0]]}], payload={"path": "packages/web/app.js"})])
-    [announcement] = agent.skill_announcement()
+    [announcement] = await agent.skill_announcement()
 
     assert "- web-e2e [project]: run the web tests" in announcement["content"]
     assert s.skills.get("web-e2e").location == "packages/web/.claude/skills/web-e2e"

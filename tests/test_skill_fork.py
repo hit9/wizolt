@@ -46,7 +46,7 @@ def test_the_worker_itself_loads_a_forked_skill_inline(tmp_path, isolate_home):
     worker = _parent(tmp_path)
     worker.tool_names = WORKER_TOOLS  # no Delegate: nothing to fork into
 
-    assert not SkillTool(worker, ["audit"]).forks()
+    assert SkillTool(worker, ["audit"]).delegation is None
 
 
 async def test_without_a_worker_a_forked_skill_loads_inline(tmp_path, isolate_home):
