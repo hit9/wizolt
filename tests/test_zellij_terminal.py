@@ -105,8 +105,19 @@ def startup_cli(tmp_path, monkeypatch):
         "        sys.exit(1)\n"
         "    print(json.dumps([{'id': 1, 'is_focused': True, 'is_plugin': False}]))\n"
         "elif 'subscribe' in args:\n"
-        "    print(json.dumps({'event': 'pane_update', 'is_initial': True,\n"
-        "                      'scrollback': [], 'viewport': ['READY> ']}), flush=True)\n"
+        "    calls = path / 'subscribe-calls'\n"
+        "    calls.write_text((calls.read_text() if calls.exists() else '') + 'x')\n"
+        "    mode = os.environ.get('FAKE_ZELLIJ_SUBSCRIBE', 'snapshot')\n"
+        "    if mode == 'close-once' and calls.read_text() == 'x':\n"
+        "        sys.exit(0)\n"
+        "    if mode == 'unknown-pane':\n"
+        "        sys.stderr.write('Pane terminal_1 not found\\n')\n"
+        "        sys.exit(2)\n"
+        "    if mode == 'wrong-event':\n"
+        "        print(json.dumps({'event': 'pane_closed', 'pane_id': 'terminal_1'}), flush=True)\n"
+        "    else:\n"
+        "        print(json.dumps({'event': 'pane_update', 'is_initial': True,\n"
+        "                          'scrollback': [], 'viewport': ['READY> ']}), flush=True)\n"
     )
     executable.chmod(0o755)
     monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
@@ -159,3 +170,52 @@ def test_startup_timeout_does_not_probe_session(query, monkeypatch):
     with pytest.raises(AssertionError, match="startup timed out.*returncode=None.*partial terminal output"):
         pane._wait_for_startup()
     run.assert_not_called()
+
+
+def test_capture_recovers_from_a_subscription_closed_before_its_snapshot(startup_cli):
+    # CI's two-core runners drop a pane's first subscription under load; the pane is fine, so the
+    # read-only query is retried instead of failing the scenario that asked for it.
+    from zellij_terminal import ZellijPane
+
+    path, runtime = startup_cli
+    pane = ZellijPane(path, runtime)
+    try:
+        pane.env["FAKE_ZELLIJ_SUBSCRIBE"] = "close-once"
+        (path / "subscribe-calls").write_text("")
+        assert pane.capture(full=False) == ["READY>"]
+    finally:
+        pane.close()
+    assert (path / "subscribe-calls").read_text() == "xx"
+
+
+def test_capture_reports_a_subscription_that_keeps_closing(startup_cli):
+    from zellij_terminal import ZellijPane
+
+    path, runtime = startup_cli
+    pane = ZellijPane(path, runtime)
+    try:
+        pane.env["FAKE_ZELLIJ_SUBSCRIBE"] = "unknown-pane"
+        (path / "subscribe-calls").write_text("")
+        with pytest.raises(AssertionError) as error:
+            pane.capture(full=False)
+    finally:
+        pane.close()
+    message = str(error.value)
+    assert "closed without a snapshot" in message and "after 5 attempts" in message
+    assert "exit=2" in message and "Pane terminal_1 not found" in message
+    assert (path / "subscribe-calls").read_text() == "xxxxx"
+
+
+def test_capture_does_not_retry_an_unexpected_first_event(startup_cli):
+    from zellij_terminal import ZellijPane
+
+    path, runtime = startup_cli
+    pane = ZellijPane(path, runtime)
+    try:
+        pane.env["FAKE_ZELLIJ_SUBSCRIBE"] = "wrong-event"
+        (path / "subscribe-calls").write_text("")
+        with pytest.raises(AssertionError, match="pane_closed"):
+            pane.capture(full=False)
+    finally:
+        pane.close()
+    assert (path / "subscribe-calls").read_text() == "x"

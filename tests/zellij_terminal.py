@@ -16,6 +16,24 @@ import time
 from pathlib import Path
 
 
+class _SubscriptionClosed(Exception):
+    """A pane subscription ended before its first snapshot; the query itself is worth retrying."""
+
+
+def _client_diagnostics(process):
+    """Exit status and stderr of a finished Zellij CLI client.
+
+    An unknown pane id is answered here (`Pane terminal_1 not found`) with exit code 2, and a
+    connection the server drops says nothing at all; both are worth reporting.
+    """
+    try:
+        _, stderr = process.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        _, stderr = process.communicate(timeout=5)
+    return f"exit={process.returncode}; stderr={stderr.decode(errors='replace').strip()!r}"
+
+
 class ZellijPane:
     def __init__(self, path: Path, runtime: Path):
         self.path = path
@@ -124,13 +142,26 @@ class ZellijPane:
     def action(self, *args):
         return self.command("action", *args)
 
-    def capture(self, *, full=True):
+    def capture(self, *, full=True, attempts=5):
         # dump-screen joins soft-wrapped viewport rows too. Subscriptions preserve physical
         # viewport rows (needed by the wide-glyph/tab test); scrollback is logical lines.
         # Do not synthesize history wrapping: that would test our model instead of Zellij.
+        # CI has also seen a subscription end before its first snapshot on a loaded runner, which
+        # says nothing about the pane: retry this read-only query, as `geometry` retries an empty
+        # list-panes, and report the CLI's own diagnostics when it keeps ending that way.
+        for attempt in range(attempts):
+            try:
+                return self._capture_once(full=full)
+            except _SubscriptionClosed as error:
+                if attempt == attempts - 1:
+                    raise AssertionError(f"Zellij {self.session}: {error} after {attempts} attempts") from None
+                time.sleep(0.05 * (attempt + 1))
+
+    def _capture_once(self, *, full):
         focused = next((p for p in self.geometry() if p["is_focused"] and not p["is_plugin"]), None)
         assert focused is not None, "Zellij has no focused terminal yet"
-        args = ["zellij", "--session", self.session, "subscribe", "--pane-id", f"terminal_{focused['id']}", "--format", "json"]
+        pane_id = f"terminal_{focused['id']}"
+        args = ["zellij", "--session", self.session, "subscribe", "--pane-id", pane_id, "--format", "json"]
         if full:
             args.append("--scrollback")
         process = subprocess.Popen(args, env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -141,10 +172,10 @@ class ZellijPane:
                 if select.select([process.stdout], [], [], 0.1)[0]:
                     chunk = os.read(process.stdout.fileno(), 65536)
                     if not chunk:
-                        raise AssertionError("Zellij subscription closed without a snapshot")
+                        raise _SubscriptionClosed(f"subscription for {pane_id} closed without a snapshot: {_client_diagnostics(process)}")
                     data.extend(chunk)
             if b"\n" not in data:
-                raise AssertionError("Zellij subscription timed out")
+                raise AssertionError(f"Zellij {self.session}: subscription for {pane_id} timed out")
             snapshot = json.loads(data.split(b"\n", 1)[0])
             assert snapshot["event"] == "pane_update" and snapshot["is_initial"], snapshot
             return [line.rstrip() for line in (snapshot.get("scrollback") or []) + snapshot["viewport"]]

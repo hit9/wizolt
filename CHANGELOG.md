@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+
+- Retry the Zellij acceptance harness's pane subscription when it ends before its first snapshot,
+  and report the CLI's exit status and stderr when it keeps ending that way. A two-core run
+  reproduces the dropped subscription seven times in three suite runs, failing the startup banner
+  and selector scenarios without anything wrong in the pane.
+
 ## 0.56.0 - 2026-09-28
 
 ### Added
