@@ -22,6 +22,7 @@ from prompt_toolkit.utils import get_cwidth
 
 from wizolt.agent import compaction
 from wizolt.agent.prompts import PREVIOUS_CONTEXT_TRIMMED
+from wizolt.agentsmd import display_path
 from wizolt.base import (
     SELECTION_BACK,
     ConfigError,
@@ -63,6 +64,7 @@ if TYPE_CHECKING:
     from prompt_toolkit.formatted_text import StyleAndTextTuples
 
     from wizolt.session import Session
+    from wizolt.skill import SkillLibrary
     from wizolt.ui.cli import CommandLoop
 
 # fmt: off
@@ -351,16 +353,27 @@ async def catalog_command(loop: CommandLoop, args: str) -> str:
     return markdown_table(["", ""], rows)
 
 
+SKILLS_USAGE = "Usage: /skills [list|trust|untrust]"
+
+
 def skills_command(loop: CommandLoop, args: str) -> str:
     library = loop.session.skills
+    action = args.strip()
+    if action == "list":
+        action = ""
+    if action in ("trust", "untrust"):
+        return skills_trust(library, grant=action == "trust") if library is not None else "No skill library in this session."
+    if action:
+        return SKILLS_USAGE
     skills = library.all() if library else []
     problems = library.problems if library else ()
-    if not skills and not problems:
+    untrusted = sorted(library.untrusted.values(), key=lambda skill: skill.name) if library else []
+    if not skills and not problems and not untrusted:
         return (
             "No skills installed. Add `<name>/SKILL.md` under `.wizolt/skills/`, `.agents/skills/` or `.claude/skills/` (project), "
             "or the same folders in your home directory (user)."
         )
-    parts = [f"### Skills · {len(skills)}", "", "Load with `Skill(name)` or reference inline with `$name`."]
+    parts = [f"### Skills · {len(skills)}", "", "Start one with `/name`, or point the agent at one with `$name`."]
     if skills:
         table = markdown_table(
             ["skill", "source", "from", "description"],
@@ -373,9 +386,34 @@ def skills_command(loop: CommandLoop, args: str) -> str:
     warnings = [f"- `{skill.name}`: {warning}" for skill in skills for warning in skill.warnings]
     if warnings:
         parts.extend(["", "#### Warnings", "", *warnings])
+    if untrusted:
+        parts.extend(
+            [
+                "",
+                "#### Untrusted",
+                "",
+                "These project skills run commands; run `/skills trust` to enable them for this repository.",
+                "",
+                *(f"- `{skill.name}` (`{skill.location}`)" for skill in untrusted),
+            ]
+        )
     if problems:
         parts.extend(["", "#### Not loaded", "", *(f"- {problem}" for problem in problems)])
     return "\n".join(parts)
+
+
+def skills_trust(library: SkillLibrary, *, grant: bool) -> str:
+    if library.trust is None:
+        return "This session's skills were not loaded from disk; there is nothing to trust."
+    before = set(library.skills)
+    (library.trust.grant if grant else library.trust.revoke)()
+    library.reload()
+    changed = sorted(set(library.skills) ^ before)
+    verb = "Trusted" if grant else "No longer trusting"
+    summary = f"{verb} `{display_path(library.trust.root)}`."
+    if not changed:
+        return summary
+    return summary + (" Enabled: " if grant else " Disabled: ") + ", ".join(f"`{name}`" for name in changed) + "."
 
 
 def ps_command(loop: CommandLoop, args: str) -> str:
@@ -1173,4 +1211,6 @@ QUEUE_SAFE_COMMANDS = frozenset(command.name for command in COMMANDS if command.
 QUEUED_SUBCOMMANDS: dict[str, tuple[frozenset[str], str]] = {
     "/catalog": (frozenset({"status"}), "Only /catalog (status) is available while the agent is working."),
     "/mcp": (frozenset({"tools", "status"}), "Only read-only /mcp (status, tools) is available while the agent is working."),
+    # Trusting changes which skills the running turn can load under it.
+    "/skills": (frozenset({"list"}), "Only /skills (list) is available while the agent is working."),
 }

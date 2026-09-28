@@ -11,6 +11,7 @@ from wizolt.agent.context import ContextManager
 from wizolt.agent.engine import Agent
 from wizolt.base import SESSION_EVENT_KEY
 from wizolt.skill.invocation import parse_command, substitute_arguments
+from wizolt.skill.trust import ProjectTrust
 from wizolt.tools import SkillTool
 from wizolt.ui.cli import CommandLoop
 from wizolt.utils.shellrun import run_shell
@@ -20,6 +21,8 @@ def _skill(tmp_path, name, frontmatter="", body="body"):
     folder = tmp_path / ".wizolt" / "skills" / name
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "SKILL.md").write_text(f"---\nname: {name}\ndescription: {name} skill\n{frontmatter}---\n{body}\n", encoding="utf-8")
+    # Project skills that run commands wait for the repository to be trusted (test_skill_trust).
+    ProjectTrust(str(tmp_path / "data" / ProjectTrust.FILE_NAME), str(tmp_path)).grant()
 
 
 def _loop(s):

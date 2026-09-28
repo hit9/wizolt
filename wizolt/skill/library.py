@@ -8,6 +8,7 @@ from wizolt.mentions import scan_mentions
 from wizolt.skill import discovery
 from wizolt.skill.invocation import Invocation, parse_command
 from wizolt.skill.skillfile import Skill
+from wizolt.skill.trust import ProjectTrust
 
 if TYPE_CHECKING:
     from wizolt.session import Session
@@ -30,10 +31,30 @@ class SkillLibrary:
         self.skills = skills
         # Files that looked like skills but could not be loaded, as "path: reason" lines for /skills.
         self.problems = problems
+        # Project skills that run commands, held back until the repository is trusted (see trust).
+        # Kept out of `skills`, so nothing that looks a skill up can start one by accident.
+        self.untrusted: dict[str, Skill] = {}
+        self._cwd = ""
+        self._user_skills = ""
+        self.trust: ProjectTrust | None = None
 
     @classmethod
     def load(cls, session: Session) -> SkillLibrary:
-        return cls(*discovery.scan(discovery.roots(session.cwd, session.data_path("skills"))))
+        library = cls({})
+        library._cwd, library._user_skills = session.cwd, session.data_path("skills")
+        library.trust = ProjectTrust(session.data_path(ProjectTrust.FILE_NAME), discovery.project_root(session.cwd))
+        library.reload()
+        return library
+
+    def reload(self) -> None:
+        """Scan the disk again and apply the trust decision, in place: a worker shares this object."""
+        if self.trust is None:
+            return  # built from a fixed set of skills, not from disk
+        skills, self.problems = discovery.scan(discovery.roots(self._cwd, self._user_skills))
+        trusted = self.trust.granted()
+        held = {name for name, skill in skills.items() if skill.source == "project" and skill.executable and not trusted}
+        self.untrusted = {name: skills[name] for name in held}
+        self.skills = {name: skill for name, skill in skills.items() if name not in held}
 
     def all(self) -> list[Skill]:
         return sorted(self.skills.values(), key=lambda skill: skill.name)

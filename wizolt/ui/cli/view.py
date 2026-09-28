@@ -145,10 +145,9 @@ class CommandCompleter(Completer):
                 yield from self.matches(self.mcp_connected_servers(), value)
                 return
 
-        if text.startswith("/catalog "):
-            tail = text[len("/catalog ") :]
-            if " " not in tail:
-                yield from self.matches(("status", "sync"), tail)
+        for command, choices in (("/catalog ", ("status", "sync")), ("/skills ", ("list", "trust", "untrust"))):
+            if text.startswith(command) and " " not in (tail := text[len(command) :]):
+                yield from self.matches(choices, tail)
                 return
 
         span = active_mention(text)

@@ -15,6 +15,11 @@
 - `` !`command` `` in a skill runs when the skill loads and is replaced by its output, as in
   Claude Code. When the model loads such a skill, you approve the commands first, with the
   arguments already filled in. Each command is bounded by `runtime.shell_timeout`.
+- A repository's own skills that run commands wait until you trust that repository with
+  `/skills trust` (`/skills untrust` takes it back). Until then they are listed under
+  "Untrusted" in `/skills` and nothing can start them. Skills that only hold instructions, and
+  your own user-level skills, need no trust. The decision is stored per user in
+  `<data_dir>/trusted-projects.json`, never in the repository.
 
 ### Changed
 

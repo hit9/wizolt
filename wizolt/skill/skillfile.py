@@ -18,6 +18,8 @@ from wizolt.base import Json, WizoltError
 FRONTMATTER = re.compile(r"^---[ \t]*\n(.*?)^---[ \t]*(?:\n|\Z)(.*)$", re.DOTALL | re.MULTILINE)
 # Agent Skills spec: lowercase letters, digits and single hyphens, neither leading nor trailing.
 SPEC_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+# Claude Code's dynamic context: `!`git status`` in the body runs when the skill loads.
+DYNAMIC_COMMAND = re.compile(r"!`([^`\n]+)`")
 MAX_NAME_CHARS = 64
 MAX_DESCRIPTION_CHARS = 1024
 
@@ -44,6 +46,12 @@ class Skill:
     # `user-invocable: false` clears this: no `/name` command, for background knowledge the model
     # loads when relevant but that is no action a user would start.
     user_invocable: bool = True
+
+    @property
+    def executable(self) -> bool:
+        """Whether loading the skill runs commands, which is what a repository has to be trusted
+        for. Instructions alone are no more than the repository's own AGENTS.md."""
+        return bool(DYNAMIC_COMMAND.search(self.body))
 
 
 def parse(path: str, folder: str, source: str) -> Skill:

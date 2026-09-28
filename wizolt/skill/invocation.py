@@ -11,7 +11,7 @@ import re
 import shlex
 from dataclasses import dataclass
 
-from wizolt.skill.skillfile import Skill
+from wizolt.skill.skillfile import DYNAMIC_COMMAND, Skill
 from wizolt.utils.shellrun import run_shell
 
 # Claude Code's argument placeholders: `$ARGUMENTS`, `$ARGUMENTS[N]` and its shorthand `$N`
@@ -19,8 +19,6 @@ from wizolt.utils.shellrun import run_shell
 # skill's `awk '{print $1}'` survives a plain load.
 ALL_ARGUMENTS = re.compile(r"\$ARGUMENTS(?!\[)")
 INDEXED_ARGUMENT = re.compile(r"\$ARGUMENTS\[(\d+)\]|\$(\d+)\b")
-# Claude Code's dynamic context: `!`git status`` is replaced by the command's output at load time.
-DYNAMIC_COMMAND = re.compile(r"!`([^`\n]+)`")
 # `/name` then, after any whitespace including a newline, the argument text to the end.
 SLASH_COMMAND = re.compile(r"/([^\s/]+)(?:\s+(.*))?\Z", re.DOTALL)
 SKILL_DIR_PLACEHOLDERS = ("{skill_dir}", "${SKILL_DIR}", "${CLAUDE_SKILL_DIR}")
