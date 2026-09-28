@@ -64,6 +64,8 @@ class CommandCompleter(Completer):
         skills: Callable[[], tuple[str, ...]] = tuple,
         # "project" or "user" for a skill name, shown beside it so two sources never look alike.
         skill_source: Callable[[str], str] = lambda _name: "",
+        # (name, argument hint) of each skill `/name` can start.
+        skill_commands: Callable[[], tuple[tuple[str, str], ...]] = tuple,
         files: Callable[[], tuple[tuple[str, str], ...]] = tuple,
         file_matches: Callable[[str], tuple[str, ...]] | None = None,
         agents_rows: Callable[[], list[MenuRow]] = list,
@@ -78,6 +80,7 @@ class CommandCompleter(Completer):
         self.mcp_tools = mcp_tools
         self.skills = skills
         self.skill_source = skill_source
+        self.skill_commands = skill_commands
         # (lowercase, original) workspace-relative paths from the session's cached path list.
         self.files = files
         self.file_matches = file_matches
@@ -159,6 +162,11 @@ class CommandCompleter(Completer):
 
         if text.startswith("/") and " " not in text:
             yield from self.matches(COMMAND_NAMES, text, more=NEEDS_ARGUMENT)
+            for name, hint in self.skill_commands():
+                command = "/" + name
+                if command.startswith(text) and command not in COMMAND_NAMES:
+                    # A skill that takes arguments opens them on Enter, like `/set`.
+                    yield Completion(command + " " if hint else command, start_position=-len(text), display=command, display_meta=hint or "skill")
 
     def leads_on(self, before: str, completion: Completion) -> bool:
         """Whether taking `completion`, offered for the input `before`, is a step toward a longer

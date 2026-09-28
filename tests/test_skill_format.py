@@ -100,9 +100,9 @@ def test_no_frontmatter_takes_the_folder_name(tmp_path):
     assert skill.body == "Just instructions."
 
 
-def test_claude_skill_dir_placeholder_expands(tmp_path):
+async def test_claude_skill_dir_placeholder_expands(tmp_path):
     folder = _skill_file(tmp_path, "build", "---\nname: build\ndescription: b\n---\nRun ${CLAUDE_SKILL_DIR}/go.sh and {skill_dir}/x\n")
-    output = SkillTool(session(tmp_path), ["build"]).call()
+    output = await SkillTool(session(tmp_path), ["build"]).call()
 
     assert f"Run {folder}/go.sh and {folder}/x" in output
     assert "CLAUDE_SKILL_DIR" not in output

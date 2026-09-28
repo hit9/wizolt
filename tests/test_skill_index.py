@@ -28,7 +28,7 @@ def test_rows_carry_source_and_argument_hint(tmp_path, isolate_home):
     assert "- pdf [user]: Read PDFs." in index
 
 
-def test_user_only_skill_is_out_of_the_index_and_refused_to_the_model(tmp_path):
+async def test_user_only_skill_is_out_of_the_index_and_refused_to_the_model(tmp_path):
     _skill(tmp_path / ".wizolt" / "skills", "deploy", "description: Ship it.\ndisable-model-invocation: true\n")
     _skill(tmp_path / ".wizolt" / "skills", "guide", "description: Conventions.\n")
     s = session(tmp_path)
@@ -36,7 +36,7 @@ def test_user_only_skill_is_out_of_the_index_and_refused_to_the_model(tmp_path):
     assert "deploy" not in s.skills.index()
     assert "- guide [project]: Conventions." in s.skills.index()
     with pytest.raises(ToolError, match="only be started by the user, with /deploy"):
-        SkillTool(s, ["deploy"]).call()
+        await SkillTool(s, ["deploy"]).call()
     # A mention of it tells the model why, instead of inviting a refused call.
     assert "(only the user can start this one, with /deploy)" in s.skills.resolve_mentions("run $deploy")
 

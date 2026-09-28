@@ -66,21 +66,21 @@ def test_skill_project_overrides_user(tmp_path):
     assert skill.description == "project version"
 
 
-def test_skill_tool_expands_skill_dir(tmp_path):
+async def test_skill_tool_expands_skill_dir(tmp_path):
     folder = _write_skill(tmp_path, "build", "build it", 'Run python "{skill_dir}/scripts/go.py".', scripts={"go.py": "print(1)"})
     s = session(tmp_path)
 
-    output = SkillTool(s, ["build"]).call()
-    assert output.startswith('<Skill name="build">')
+    output = await SkillTool(s, ["build"]).call()
+    assert output.startswith('<Skill name="build" source="project">')
     assert f'python "{folder}/scripts/go.py"' in output
     assert "{skill_dir}" not in output
 
 
-def test_skill_tool_unknown_lists_available(tmp_path):
+async def test_skill_tool_unknown_lists_available(tmp_path):
     _write_skill(tmp_path, "known", "known skill", "body")
     s = session(tmp_path)
     with pytest.raises(ToolError) as excinfo:
-        SkillTool(s, ["nope"]).call()
+        await SkillTool(s, ["nope"]).call()
     assert "unknown skill 'nope'" in str(excinfo.value)
     assert "known" in str(excinfo.value)
 
@@ -127,10 +127,10 @@ def test_skills_command_lists_installed(tmp_path):
     assert "| `release-notes` | project | `.wizolt/skills/release-notes` | Draft a CHANGELOG entry. |" in output
 
 
-def test_skill_loads_dedup_on_repeat(tmp_path):
+async def test_skill_loads_dedup_on_repeat(tmp_path):
     _write_skill(tmp_path, "guide", "a guide", "FULL GUIDE INSTRUCTIONS")
     s = session(tmp_path)
-    body = SkillTool(s, ["guide"]).call()
+    body = await SkillTool(s, ["guide"]).call()
     messages = [{"role": "tool", "content": "tr.1 " + body}, {"role": "tool", "content": "tr.7 " + body}]
 
     deduped = ContextManager(s).dedup_skill_loads(messages)

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from wizolt.mentions import scan_mentions
 from wizolt.skill import discovery
+from wizolt.skill.invocation import Invocation, parse_command
 from wizolt.skill.skillfile import Skill
 
 if TYPE_CHECKING:
@@ -43,12 +44,18 @@ class SkillLibrary:
         resolved = {key.lower(): key for key in self.skills}.get(name.lower())
         return self.skills.get(resolved) if resolved else None
 
-    def expand(self, skill: Skill) -> str:
-        body = skill.body
-        # `${CLAUDE_SKILL_DIR}` is Claude Code's spelling; skills written for it run here unchanged.
-        for placeholder in ("{skill_dir}", "${SKILL_DIR}", "${CLAUDE_SKILL_DIR}"):
-            body = body.replace(placeholder, skill.dir)
-        return body
+    def command(self, text: str) -> Invocation | None:
+        """The skill a `/name args` message starts, or None when no user-invocable skill answers
+        to that name. The one place the command loop, the runtime and the engine all ask."""
+        parsed = parse_command(text)
+        skill = self.get(parsed[0]) if parsed else None
+        if parsed is None or skill is None or not skill.user_invocable:
+            return None
+        return Invocation(skill, parsed[1])
+
+    def commands(self) -> list[Skill]:
+        """The skills `/name` can start, for completion."""
+        return [skill for skill in self.all() if skill.user_invocable]
 
     def model_visible(self) -> list[Skill]:
         """The skills the model may load, i.e. everything but `disable-model-invocation` ones."""
@@ -74,7 +81,8 @@ class SkillLibrary:
         lines = [rows[skill.name] for skill in visible if skill.name in kept]
         if hidden := len(visible) - len(kept):
             lines.append(f"({hidden} more skills are installed but not listed here; Skill(name) loads one by its exact name.)")
-        return "\n".join(["--- SKILLS ---", "Use Skill(name) to load a skill's full instructions when its description fits the task.", "", *lines])
+        header = "Use Skill(name) to load a skill's full instructions when its description fits the task; pass arguments when it lists args."
+        return "\n".join(["--- SKILLS ---", header, "", *lines])
 
     def row(self, skill: Skill) -> str:
         description = skill.description or "(no description)"

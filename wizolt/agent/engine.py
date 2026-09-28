@@ -38,6 +38,7 @@ from wizolt.base import (
 from wizolt.image import ImageInputs, UserInput
 from wizolt.model import ModelClient, PreparedRequest, resilience
 from wizolt.session import QueuedInput, Session, SessionSnapshotCodec
+from wizolt.skill import invocation as skill_invocation
 from wizolt.tools import (
     Tool,
 )
@@ -672,6 +673,7 @@ class Agent:
         file resolvers are local lookups and stay synchronous."""
         blocks: list[Json] = []
         for event, resolver in (
+            ("skill_command", self.skill_command if self.session.skills is not None else None),
             ("mcp_mentions", self.session.mcp.resolve_mentions if self.session.mcp is not None else None),
             ("skill_mentions", self.session.skills.resolve_mentions if self.session.skills is not None else None),
             ("agents_mentions", self.session.agents.resolve_mentions if self.session.agents is not None else None),
@@ -692,6 +694,14 @@ class Agent:
                 # boundary on the raw message that caused them, including queued follow-ups.
                 blocks.append({"role": "user", "content": content, SESSION_EVENT_KEY: event})
         return blocks
+
+    async def skill_command(self, text: str) -> str:
+        """The skill a `/name args` message starts, loaded now: the user asked for it by name, so
+        the model receives the instructions instead of a pointer to them."""
+        command = self.session.skills.command(text) if self.session.skills is not None else None
+        if command is None:
+            return ""
+        return await skill_invocation.render(command, cwd=self.session.cwd, timeout=self.session.settings.shell_timeout, invoked_by="user")
 
     @classmethod
     def textual_tool_call(cls, content: str, tools: list[Json]) -> str | None:

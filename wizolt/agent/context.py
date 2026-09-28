@@ -66,7 +66,7 @@ class ContextManager:
     # tool records, smaller because a segment is a whole conversation span rather than one tool result.
     MAX_HISTORY_SEGMENTS: ClassVar[int] = 50
     MCP_DESCRIBE_BLOCK: ClassVar[re.Pattern] = re.compile(r"<MCPDescribe server=(\".*?\") tool=(\".*?\")>.*?</MCPDescribe>", re.DOTALL)
-    SKILL_BLOCK: ClassVar[re.Pattern] = re.compile(r"<Skill name=(\".*?\")>.*?</Skill>", re.DOTALL)
+    SKILL_BLOCK: ClassVar[re.Pattern] = re.compile(r"<Skill name=(\".*?\")[^\n]*>.*?</Skill>", re.DOTALL)
     TOOL_RECORD_KEY: ClassVar[re.Pattern] = re.compile(r"\btr\.\d+\b")
     SEGMENT_KEY: ClassVar[re.Pattern] = re.compile(r"seg\.(\d+)")
     SOURCE_VIEW_KEY: ClassVar[re.Pattern] = re.compile(r"\bview\.\d+\b")
@@ -125,8 +125,9 @@ class ContextManager:
         return self._dedup_tool_blocks(
             messages,
             self.SKILL_BLOCK,
-            lambda match: str(json.loads(match.group(1))),
-            lambda name, key: f"(repeat load of skill {name}; instructions shown earlier at {key}, unchanged)",
+            # The whole block is the identity: other args, or fresh `!`command`` output, is a new load.
+            lambda match: (str(json.loads(match.group(1))), match.group(0)),
+            lambda identity, key: f"(repeat load of skill {identity[0]}; instructions shown earlier at {key}, unchanged)",
         )
 
     @staticmethod

@@ -230,7 +230,8 @@ class TuiRuntime:
         text = str(value).strip()
         if not text:
             return
-        if not value.images and "\n" not in text and text.startswith("/"):
+        # A skill's `/name` is a message for the turn, like any follow-up; other `/` text is a command.
+        if not value.images and "\n" not in text and text.startswith("/") and not self.loop.skill_command(text):
             self.spawn(self.loop.run_queued_command(text), name="queued-command")
         else:
             self.submit_accepted(_Submission(value))

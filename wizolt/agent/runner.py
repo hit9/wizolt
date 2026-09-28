@@ -360,7 +360,10 @@ class ToolRunner:
                 return tool.call()
             finally:
                 self._raise_if_cancelled()
-        # Everything else -- reads, searches, MCP calls, Ask -- is bounded synchronous work.
+        if inspect.iscoroutinefunction(tool.call):
+            # Any other native-async tool (Skill running a skill's `!`commands``) owns its awaits.
+            return await tool.call()
+        # Everything else -- reads, searches -- is bounded synchronous work.
         return await self._run_in_executor(tool.call, tool)
 
     @staticmethod
@@ -613,7 +616,7 @@ class ToolRunner:
                 raise ToolError(call.error)
             # Native async calls are cancelled at their resource; other read-only tools remain
             # bounded blocking work whose executor future is awaited through cancellation.
-            output = await (tool.call() if isinstance(tool, MCPTool) else self._run_in_executor(tool.call))
+            output = await (tool.call() if inspect.iscoroutinefunction(tool.call) else self._run_in_executor(tool.call))
         except ToolError as error:
             return "reject", f"ToolError: {error}", display, time.monotonic() - started, error.recovery
         except Exception as error:  # noqa: BLE001 - tool failures are serialized back to the model.

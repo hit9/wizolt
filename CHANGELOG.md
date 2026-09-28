@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Added
+
+- Start a skill yourself with `/name [arguments]`. Its instructions go to the model with that
+  message, and the slash menu lists skills after the built-in commands, with their
+  `argument-hint`. A built-in command keeps its name if a skill shares it. `user-invocable: false`
+  keeps a skill out of the slash menu. Typed while the agent works, `/name` queues like any
+  follow-up.
+- Skill arguments: `$ARGUMENTS`, `$ARGUMENTS[N]` and `$N` (from 0) are filled in, and a skill
+  with no placeholder receives them as a trailing `ARGUMENTS:` line. The model passes them
+  through the Skill tool's new `arguments` field.
+- `` !`command` `` in a skill runs when the skill loads and is replaced by its output, as in
+  Claude Code. When the model loads such a skill, you approve the commands first, with the
+  arguments already filled in. Each command is bounded by `runtime.shell_timeout`.
+
 ### Changed
 
 - `SKILL.md` frontmatter is read as YAML, following the Agent Skills format: folded or multi-line

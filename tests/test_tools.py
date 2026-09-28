@@ -139,12 +139,12 @@ def test_strict_schema_handles_optional_enum_union_and_container_without_mutatio
     assert strict["properties"]["items"] == {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]}
 
 
-def test_skill_tool_without_library_reports_missing_capability(tmp_path):
+async def test_skill_tool_without_library_reports_missing_capability(tmp_path):
     s = session(tmp_path)
     s.skills = None
 
     with pytest.raises(ToolError, match="no skills are installed"):
-        SkillTool(s, ["missing"]).call()
+        await SkillTool(s, ["missing"]).call()
 
 
 @pytest.mark.parametrize(

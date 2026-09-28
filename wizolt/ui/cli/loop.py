@@ -149,6 +149,7 @@ class CommandLoop:
             mcp_tools=lambda server: tuple(tool.name for tool in self.session.mcp.tools.get(server, [])) if self.session.mcp else (),
             skills=lambda: tuple(skill.name for skill in self.session.skills.all()) if self.session.skills else (),
             skill_source=lambda name: skill.source if self.session.skills and (skill := self.session.skills.get(name)) else "",
+            skill_commands=lambda: tuple((skill.name, skill.argument_hint) for skill in self.session.skills.commands()) if self.session.skills else (),
             file_matches=self.session.mentions.cached_matches if self.session.mentions else None,
             agents_rows=lambda: self.session.agents.menu_rows() if self.session.agents else [],
         )
@@ -243,6 +244,11 @@ class CommandLoop:
         if not parts:
             return ""
         return "\n".join(parts)
+
+    def skill_command(self, text: str) -> bool:
+        """True when `text` starts a skill with `/name` rather than naming a built-in command:
+        built-ins win a name clash, and the skill stays reachable as `$name`."""
+        return text.partition(" ")[0].partition("\n")[0] not in COMMAND_LOOKUP and bool(self.session.skills and self.session.skills.command(text))
 
     async def run_queued_command(self, text: str) -> None:
         """Dispatch a read-only slash command while an agent turn is running."""
@@ -611,6 +617,8 @@ class CommandLoop:
             return False, False
         name, _, args = text.partition(" ")
         entry = COMMAND_LOOKUP.get(name)
+        if self.skill_command(text):
+            return False, False  # a turn, which loads the skill (see Agent.skill_command)
         output = entry.handler(self, args.strip()) if entry else f"Unknown command: {name}"
         if inspect.isawaitable(output):
             output = await output
