@@ -28,7 +28,7 @@ def test_skill_library_index_and_lookup(tmp_path):
 
     index = s.skills.index()
     assert index.startswith("--- SKILLS ---")
-    assert "- release-notes: Draft a CHANGELOG entry." in index
+    assert "- release-notes [project]: Draft a CHANGELOG entry." in index
     assert s.skills.get("Release-Notes").name == "release-notes"  # case-insensitive
     assert s.skills.get("missing") is None
 
@@ -91,7 +91,7 @@ def test_skill_mentions_name_the_skill_without_inlining_body(tmp_path):
 
     resolved = s.skills.resolve_mentions("please $triage this")
     assert "--- SKILL MENTIONS ---" in resolved
-    assert "[triage] triage a bug" in resolved
+    assert "- triage [project]: triage a bug" in resolved
     assert "Reproduce first." not in resolved
     # a bare word without $ is not a mention; an unknown $token is ignored
     assert s.skills.resolve_mentions("triage this") == ""

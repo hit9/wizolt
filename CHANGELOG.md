@@ -16,6 +16,10 @@
   no longer hides the repository's skills. When names collide, the deeper level wins, then
   `.wizolt` over `.agents` over `.claude`, then project over user. `/skills` shows where each
   skill came from and which same-named skills it hides.
+- The skill index the model sees marks each skill `[project]` or `[user]`, shows its
+  `argument-hint`, cuts descriptions to 250 characters and stops at about 4K tokens (16,000
+  characters), keeping project skills first and saying how many were left out. Skills with
+  `disable-model-invocation: true` stay out of it, and the Skill tool refuses them.
 
 ### Fixed
 

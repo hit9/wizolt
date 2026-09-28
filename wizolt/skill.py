@@ -39,6 +39,13 @@ class Skill:
     warnings: tuple[str, ...] = ()
     location: str = ""  # the folder as /skills shows it, e.g. ".claude/skills/deploy"
     overrides: tuple[str, ...] = ()  # locations of same-named skills this one hides, lowest first
+    argument_hint: str = ""  # `argument-hint`, e.g. "<env>": what `/name` expects after it
+    # `disable-model-invocation: true` clears this: the skill stays out of the index and only `/name`
+    # starts it (a deploy the user wants to trigger themselves).
+    model_invocable: bool = True
+    # `user-invocable: false` clears this: no `/name` command, for background knowledge the model
+    # loads when relevant but that is no action a user would start.
+    user_invocable: bool = True
 
 
 class SkillLibrary:
@@ -61,6 +68,10 @@ class SkillLibrary:
     MAX_NAME_CHARS = 64
     MAX_DESCRIPTION_CHARS = 1024
     MAX_MENTION_BLOCKS = 50
+    # The SKILLS index rides every request. 16K characters is about 4K tokens: room for roughly a
+    # hundred skills at the description cut below, and a hard stop for the thousand-skill home dir.
+    INDEX_BUDGET_CHARS = 16_000
+    INDEX_DESCRIPTION_CHARS = 250
     # One level's skill folders, lowest precedence first. wizolt's own folder wins at its level; the
     # legacy names are read in its place only when it does not exist.
     PROJECT_DIRS = (".claude", ".agents", ".wizolt")
@@ -177,7 +188,17 @@ class SkillLibrary:
             warnings.append("no description")
         elif len(description) > cls.MAX_DESCRIPTION_CHARS:
             warnings.append(f"description is longer than {cls.MAX_DESCRIPTION_CHARS} characters")
-        return Skill(name, description, body.strip(), os.path.dirname(path), source, tuple(warnings))
+        return Skill(
+            name,
+            description,
+            body.strip(),
+            os.path.dirname(path),
+            source,
+            argument_hint=" ".join(cls.text_field(meta, "argument-hint").split()),
+            model_invocable=not cls.bool_field(meta, "disable-model-invocation", False, warnings),
+            user_invocable=cls.bool_field(meta, "user-invocable", True, warnings),
+            warnings=tuple(warnings),
+        )
 
     @staticmethod
     def frontmatter(text: str) -> Json:
@@ -202,6 +223,18 @@ class SkillLibrary:
             return ""
         return str(value).strip()
 
+    @staticmethod
+    def bool_field(meta: Json, key: str, default: bool, warnings: list[str]) -> bool:
+        value = meta.get(key)
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+            return value.strip().lower() == "true"
+        warnings.append(f"{key} must be true or false; using {str(default).lower()}")
+        return default
+
     def all(self) -> list[Skill]:
         return sorted(self.skills.values(), key=lambda skill: skill.name)
 
@@ -218,11 +251,38 @@ class SkillLibrary:
             body = body.replace(placeholder, skill.dir)
         return body
 
+    def model_visible(self) -> list[Skill]:
+        """The skills the model may load, i.e. everything but `disable-model-invocation` ones."""
+        return [skill for skill in self.all() if skill.model_invocable]
+
     def index(self) -> str:
-        if not self.skills:
+        """The SKILLS block of the request prefix, bounded by INDEX_BUDGET_CHARS.
+
+        It rides every request, so its size is paid again on each one: a long description is cut
+        to one screen line's worth, and past the budget project skills are kept before user ones
+        -- the nearer the work, the likelier the fit. A skill left out is still loadable by name."""
+        visible = self.model_visible()
+        if not visible:
             return ""
-        rows = [f"- {skill.name}: {skill.description or '(no description)'}" for skill in self.all()]
-        return "\n".join(["--- SKILLS ---", "Use Skill(name) to load a skill's full instructions when its description fits the task.", "", *rows])
+        rows = {skill.name: self.row(skill) for skill in visible}
+        kept: set[str] = set()
+        used = 0
+        for skill in sorted(visible, key=lambda skill: (skill.source != "project", skill.name)):
+            size = len(rows[skill.name]) + 1
+            if used + size <= self.INDEX_BUDGET_CHARS:
+                kept.add(skill.name)
+                used += size
+        lines = [rows[skill.name] for skill in visible if skill.name in kept]
+        if hidden := len(visible) - len(kept):
+            lines.append(f"({hidden} more skills are installed but not listed here; Skill(name) loads one by its exact name.)")
+        return "\n".join(["--- SKILLS ---", "Use Skill(name) to load a skill's full instructions when its description fits the task.", "", *lines])
+
+    def row(self, skill: Skill) -> str:
+        description = skill.description or "(no description)"
+        if len(description) > self.INDEX_DESCRIPTION_CHARS:
+            description = description[: self.INDEX_DESCRIPTION_CHARS - 1].rstrip() + "…"
+        hint = f" (args: {skill.argument_hint})" if skill.argument_hint else ""
+        return f"- {skill.name} [{skill.source}]{hint}: {description}"
 
     def resolve_mentions(self, text: str) -> str:
         seen: set[str] = set()
@@ -235,7 +295,10 @@ class SkillLibrary:
             if skill is None or skill.name in seen:
                 continue
             seen.add(skill.name)
-            blocks.append(f"[{skill.name}] {skill.description or '(no description)'}")
+            row = self.row(skill)
+            # The user asked for it, but the author reserved it for `/name`: say so rather than let
+            # the model call Skill and be refused.
+            blocks.append(row if skill.model_invocable else f"{row} (only the user can start this one, with /{skill.name})")
             if len(blocks) >= self.MAX_MENTION_BLOCKS:
                 break
         if not blocks:

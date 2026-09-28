@@ -31,4 +31,6 @@ class SkillTool(Tool):
             available = ", ".join(item.name for item in library.all()) if library else ""
             raise ToolError(f"unknown skill {name!r}" + (f"; available: {available}" if available else "; no skills are installed"))
         assert library is not None
+        if not skill.model_invocable:
+            raise ToolError(f"skill {skill.name!r} can only be started by the user, with /{skill.name}")
         return f"<Skill name={json.dumps(skill.name)}>\n{library.expand(skill)}\n</Skill>"

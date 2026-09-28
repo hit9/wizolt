@@ -75,7 +75,7 @@ class Tool:
 
         strict = session.policy.resolve(session.config.provider).strict_tools_active
         # Optional tool families stay out of the model prefix until they have usable session state.
-        has_skills = bool(session.skills and session.skills.skills)
+        has_skills = bool(session.skills and session.skills.model_visible())
         has_mcp = bool(session.mcp and (session.mcp.tools or session.mcp.resources))
         return [
             tool.schema(strict)
