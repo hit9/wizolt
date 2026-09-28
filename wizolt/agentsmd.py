@@ -1,10 +1,12 @@
 """AGENTS.md instruction sources: loading, section parsing, menu rows, and `@agents.md:` resolution.
 
-Two sources exist: the global `<data_dir>/AGENTS.md` and the project file (`AGENTS.md`, falling
-back to `CLAUDE.md`, in the session cwd). Both are plain files the user may read and edit; this
-module never writes them. A reference either names a whole file (`global`, `project`) or one
-Markdown section by its visible heading path (`global/Contributing/PR body`), and expansion
-attaches the original text -- never a paraphrase -- under one shared token cap.
+Two scopes exist: the global `<data_dir>/AGENTS.md`, and the project's files (`AGENTS.md`, falling
+back to `CLAUDE.md`, at each level from the repository root down to the session cwd, as
+https://agents.md lays them out). All are plain files the user may read and edit; this module
+never writes them. A reference either names a whole scope (`global`, `project`) or one Markdown
+section by its visible heading path (`global/Contributing/PR body`), which the nearest project
+file holding it answers; expansion attaches the original text -- never a paraphrase -- under one
+shared token cap.
 
 Layering: the path helpers at module scope are imported by config and session; `AgentsFile`
 owns one file's content (sections, lookups, its menu rows); `AgentsMentions` is the session
@@ -18,11 +20,12 @@ import json
 import os
 import re
 from dataclasses import dataclass
+from functools import cached_property
 from typing import TYPE_CHECKING
 
 from wizolt.base import Text, WizoltError
-from wizolt.config import SystemInfo
 from wizolt.mentions import scan_mentions
+from wizolt.utils.workspace import Workspace
 
 if TYPE_CHECKING:
     from wizolt.session import Session
@@ -30,6 +33,8 @@ if TYPE_CHECKING:
 GLOBAL_FILENAME = "AGENTS.md"
 GLOBAL_SCOPE = "global"
 PROJECT_SCOPE = "project"
+# At one level, AGENTS.md wins; CLAUDE.md stands in for a repository written for Claude Code.
+PROJECT_FILE_NAMES = ("AGENTS.md", "CLAUDE.md")
 # Shared by the fixed context prefix and every reference expansion in one request. UTF-8 bytes
 # track the request estimator; character counts badly understate Chinese instructions.
 TOKEN_CAP = 8_000
@@ -131,13 +136,13 @@ class AgentsFile:
         return cls.load(GLOBAL_SCOPE, path, display_path(path))
 
     @classmethod
-    def project_file(cls, cwd: str, source_name: str) -> AgentsFile | None:
-        """Read the project file by the name the session loaded it under (AGENTS.md or CLAUDE.md)."""
+    def project_files(cls, workspace: Workspace) -> tuple[AgentsFile, ...]:
+        """The project's instruction files, root first: at each level from the repository top down
+        to cwd, AGENTS.md or else CLAUDE.md. As agents.md specifies, a root file applies to the
+        whole repository and a nearer one refines it, so the nearest comes last."""
 
-        if not source_name:
-            return None
-        path = os.path.abspath(os.path.join(cwd, source_name))
-        return cls.load(PROJECT_SCOPE, path, "./" + source_name)
+        files = (cls.load(PROJECT_SCOPE, path, workspace.from_cwd(path)) for path in workspace.files_on_path(PROJECT_FILE_NAMES))
+        return tuple(file for file in files if file is not None)
 
     # -- Sections (pure functions of the content).
 
@@ -147,6 +152,11 @@ class AgentsFile:
         A section runs from its heading through the next heading of the same or higher level, so
         a parent section's text includes its subsections. Text before the first heading is not
         a section; it belongs to the whole-file reference."""
+        return list(self._sections)
+
+    @cached_property
+    def _sections(self) -> tuple[Section, ...]:
+        """Parsed once per loaded file: the menu asks for them more than once per keystroke."""
 
         # Offsets into the original string preserve whitespace exactly, including final blank
         # lines and nested sections. The stack holds (level, heading path, opening offset).
@@ -177,7 +187,7 @@ class AgentsFile:
             offset += len(line)
         while open_sections:
             close_one(len(self.content))
-        return [section for _, section in sorted(sections, key=lambda item: item[0])]
+        return tuple(section for _, section in sorted(sections, key=lambda item: item[0]))
 
     def section_text(self, heading: str) -> str | None:
         """The original text of one section, or None. Ambiguous duplicate heading paths raise."""
@@ -194,9 +204,16 @@ class AgentsFile:
     # -- Menu (this file's rows only; the runtime prepends the "All applicable" row).
 
     def menu_rows(self) -> list[MenuRow]:
-        rows = [MenuRow(f"{self.scope.title()} · {self.display}", "whole file", self.reference())]
+        return [MenuRow(f"{self.scope.title()} · {self.display}", "whole file", self.reference()), *self.section_rows()]
+
+    def headings(self) -> set[str]:
+        return {section.heading for section in self.sections() if section.heading}
+
+    def section_rows(self, hidden: set[str] | None = None) -> list[MenuRow]:
+        """One row per section, leaving out the headings in `hidden` (answered by another file)."""
+        rows = []
         for section in self.sections():
-            if section.heading:
+            if section.heading and section.heading not in (hidden or set()):
                 heading_line = section.text.splitlines()[0]
                 match = self._ATX.match(heading_line)
                 assert match is not None  # sections() only opens at ATX headings
@@ -263,30 +280,42 @@ class AgentsMentions:
 
     def __init__(self, session: Session) -> None:
         self.session = session
+        # Found once: the menu asks for sources on every keystroke, and the repository root cannot
+        # move under a running session. Only the files themselves are re-read.
+        self.workspace = Workspace(session.cwd)
 
     # -- Sources.
 
     def current_sources(self) -> tuple[AgentsFile, ...]:
-        """The sources as they are on disk now, in prefix order (global, then project)."""
+        """The sources as they are on disk now, in prefix order: global, then the project's from
+        the repository root down to cwd."""
 
-        files: list[AgentsFile] = []
-        if (global_file := AgentsFile.global_file(self.session.config.data_dir)) is not None:
-            files.append(global_file)
-        for name in SystemInfo.AGENTS_MD_FILES:
-            if (project := AgentsFile.project_file(self.session.cwd, name)) is not None:
-                files.append(project)
-                break
-        return tuple(files)
+        global_file = AgentsFile.global_file(self.session.config.data_dir)
+        return (*([global_file] if global_file is not None else []), *AgentsFile.project_files(self.workspace))
 
-    def _file_for(self, scope: str, files: tuple[AgentsFile, ...]) -> AgentsFile | None:
-        return next((candidate for candidate in files if candidate.scope == scope), None)
+    @staticmethod
+    def _files_for(scope: str, files: tuple[AgentsFile, ...]) -> list[AgentsFile]:
+        return [candidate for candidate in files if candidate.scope == scope]
 
     # -- Menu.
 
     def menu_rows(self) -> list[MenuRow]:
+        """The global file's rows, then the project's. Several project files share one whole-scope
+        row, and a section a nearer file also has is listed only there, where it resolves."""
         rows = [MenuRow("All applicable", "every instructions file below", "@agents.md:")]
-        for file in self.current_sources():
-            rows.extend(file.menu_rows())
+        files = self.current_sources()
+        for scope in (GLOBAL_SCOPE, PROJECT_SCOPE):
+            scoped = self._files_for(scope, files)
+            if not scoped:
+                continue
+            meta = "whole file" if len(scoped) == 1 else f"{len(scoped)} files, root first"
+            rows.append(MenuRow(f"{scope.title()} · " + " + ".join(file.display for file in scoped), meta, scoped[0].reference()))
+            nearer: set[str] = set()
+            sections: list[list[MenuRow]] = []
+            for file in reversed(scoped):
+                sections.append(file.section_rows(hidden=nearer))
+                nearer |= file.headings()
+            rows.extend(row for file_rows in reversed(sections) for row in file_rows)
         return rows
 
     # -- Expansion.
@@ -294,10 +323,10 @@ class AgentsMentions:
     def resolve_mentions(self, text: str) -> str:
         """Expand every `@agents.md:` reference in the text into one bounded block, or ""."""
 
-        files = self.current_sources()
         references = Reference.spans(text)
         if not references:
-            return ""
+            return ""  # checked before any file is read: most messages cite nothing
+        files = self.current_sources()
         if len(references) > MAX_REFERENCES:
             raise AgentsReferenceError(f"too many @agents.md: references (maximum {MAX_REFERENCES} per message)")
         expanded: list[tuple[AgentsFile, str]] = []
@@ -325,18 +354,20 @@ class AgentsMentions:
             if not files:
                 raise AgentsReferenceError("no AGENTS.md source is available for @agents.md:; create a global or project instructions file")
             return [(file, file.content) for file in files]
-        file = self._file_for(reference.scope, files)
-        if file is None:
-            where = ", ".join(candidate.scope for candidate in files) or "none is loaded"
+        scoped = self._files_for(reference.scope, files)
+        if not scoped:
+            where = ", ".join(dict.fromkeys(candidate.scope for candidate in files)) or "none is loaded"
             raise AgentsReferenceError(f'unknown @agents.md reference "{reference.payload}" (available sources: {where})')
         if reference.payload.endswith("/"):
             raise AgentsReferenceError(f'@agents.md reference "{reference.payload}" needs a section heading after "/"')
         if not reference.heading:
-            return [(file, file.content)]
-        text = file.section_text(reference.heading)
-        if text is None:
-            raise AgentsReferenceError(f'unknown @agents.md reference "{reference.payload}": no section "{reference.heading}" in {file.label}')
-        return [(file, text)]
+            return [(file, file.content) for file in scoped]
+        # agents.md's rule: the closest file wins, so the nearest one with the section answers.
+        for file in reversed(scoped):
+            if (text := file.section_text(reference.heading)) is not None:
+                return [(file, text)]
+        where = ", ".join(file.label for file in scoped)
+        raise AgentsReferenceError(f'unknown @agents.md reference "{reference.payload}": no section "{reference.heading}" in {where}')
 
     def _render(self, expanded: list[tuple[AgentsFile, str]]) -> str:
         """Share the text budget across references; name every clipped or omitted source."""

@@ -50,3 +50,18 @@ class Workspace:
     def relative(self, path: str) -> str:
         """`path` as the project names it, relative to the root."""
         return os.path.normpath(os.path.relpath(path, self.root))
+
+    def from_cwd(self, path: str) -> str:
+        """`path` as a Read from the working directory would name it: `./AGENTS.md`, `../AGENTS.md`."""
+        relative = os.path.relpath(path, self.cwd)
+        return relative if relative.startswith("..") else "./" + relative
+
+    def files_on_path(self, names: tuple[str, ...]) -> list[str]:
+        """At each level from the root down to the working directory, the first of `names` that is
+        a file there; root first, so the nearest one comes last."""
+        found = []
+        for level in self.path_levels():
+            path = next((candidate for name in names if os.path.isfile(candidate := os.path.join(level, name))), None)
+            if path is not None:
+                found.append(path)
+        return found

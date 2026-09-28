@@ -66,6 +66,13 @@
   `argument-hint`, cuts descriptions to 250 characters and stops at about 4K tokens (16,000
   characters), keeping project skills first and saying how many were left out. Skills with
   `disable-model-invocation: true` stay out of it, and the Skill tool refuses them.
+- The project's `AGENTS.md` is read from the repository root down to the working directory, as
+  [agents.md](https://agents.md) lays it out, instead of only in the working directory. Starting
+  wizolt in a subfolder no longer drops the repository's instructions. Each level uses
+  `AGENTS.md`, falling back to `CLAUDE.md`, and the files enter the prefix root first, so the
+  nearest reads last. `@agents.md:project` cites all of them; a section heading resolves to the
+  nearest file that has it, and the menu lists a shadowed section only there. Outside a git
+  repository, only the working directory is read, as before.
 - Internal: `wizolt.skill` is a package split by responsibility (`skillfile`, `discovery`,
   `trust`, `invocation`, `permissions`, `listing`, `library`). Helpers are grouped into owning
   classes rather than module functions. `wizolt/utils` holds standard-library-only helpers, one

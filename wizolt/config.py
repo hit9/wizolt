@@ -14,8 +14,10 @@ from typing import TYPE_CHECKING, ClassVar
 
 from wizolt.base import ConfigError, Json, builtin_function_names
 from wizolt.providers.compat import bundled_policy
+from wizolt.utils.workspace import Workspace
 
 if TYPE_CHECKING:
+    from wizolt.agentsmd import AgentsFile
     from wizolt.providers.compat import ProviderPolicy
 
 DEFAULT_MAX_CONTEXT_TOKENS = 256 * 1024
@@ -79,36 +81,21 @@ class SystemInfo:
     )
     # fmt: on
 
-    AGENTS_MD_FILES: ClassVar[tuple[str, ...]] = ("AGENTS.md", "CLAUDE.md")
-
     cwd: str
     os: str
     arch: str
     commands: tuple[str, ...]
-    agents_md: str = ""  # loaded project-instructions text; "" when no candidate file was found
-    agents_md_source: str = ""  # the file it came from, e.g. "AGENTS.md" or "CLAUDE.md"; "" when none
+    # The project's instruction files as the session started, repository root first (see
+    # agentsmd.AgentsFile.project_files); empty when there are none.
+    agents_md_project: tuple[AgentsFile, ...] = ()
     agents_md_global: str = ""  # loaded <data_dir>/AGENTS.md text; "" when the file does not exist
     agents_md_global_display: str = ""  # what the prefix and menus show, e.g. "~/.wizolt/AGENTS.md"
     agents_md_global_path: str = ""  # exact wizolt-owned path, even when the file is absent
 
     @classmethod
-    def load_agents_md(cls, cwd: str) -> tuple[str, str]:
-        """Read the first existing candidate file under cwd; return (content, source), or ("", "").
-
-        No upward traversal, no merging. UTF-8 decoded; OSError/UnicodeDecodeError return ("", "")."""
-        for name in cls.AGENTS_MD_FILES:
-            try:
-                with open(os.path.join(cwd, name), encoding="utf-8") as file:
-                    return file.read(), name
-            except (OSError, UnicodeDecodeError):
-                continue
-        return "", ""
-
-    @classmethod
     def detect(cls, cwd: str, data_dir: str = "") -> SystemInfo:
-        from wizolt.agentsmd import display_path, global_agents_md_path  # local import: agentsmd sits above config
+        from wizolt.agentsmd import AgentsFile, display_path, global_agents_md_path  # local import: agentsmd sits above config
 
-        agents_md, agents_md_source = cls.load_agents_md(cwd)
         agents_md_global = ""
         agents_md_global_display = ""
         agents_md_global_path = global_agents_md_path(data_dir) if data_dir else ""
@@ -124,8 +111,7 @@ class SystemInfo:
             os=platform.system() or sys.platform,
             arch=platform.machine() or "unknown",
             commands=tuple(name for name in cls.COMMANDS if shutil.which(name)),
-            agents_md=agents_md,
-            agents_md_source=agents_md_source,
+            agents_md_project=AgentsFile.project_files(Workspace(cwd)),
             agents_md_global=agents_md_global,
             agents_md_global_display=agents_md_global_display,
             agents_md_global_path=agents_md_global_path,
@@ -629,8 +615,8 @@ model = ""
                                # name (e.g. "Chinese") to force the reply language
 # attribution = true           # ask the model to end the commit messages and pull requests it
                                # writes with a "Generated with wizolt" line
-# agents_md = true               # inject global AGENTS.md and the project's AGENTS.md (or CLAUDE.md
-                                 # fallback) into each request under one shared Environment budget
+# agents_md = true               # inject global AGENTS.md and the project's AGENTS.md files (or CLAUDE.md
+                                 # fallback), repository root down to cwd, under one shared budget
 
 # [worker]                     # optional: hand tasks to a second wizolt session (Delegate tool)
 # provider = "fast"           # a provider entry; pick one from a DIFFERENT vendor than

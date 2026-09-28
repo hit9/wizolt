@@ -251,8 +251,7 @@ def status(loop: CommandLoop, args: str) -> str:
     if loop.session.settings.agents_md:
         sources = []
         if info is not None:
-            if info.agents_md_source:
-                sources.append("./" + info.agents_md_source)
+            sources.extend(file.display for file in info.agents_md_project)
             if info.agents_md_global_display:
                 sources.append("global active" if global_exists else "global active (file removed)")
             else:

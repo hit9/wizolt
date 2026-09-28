@@ -27,6 +27,7 @@ from wizolt.ui.cli import CommandCompleter, TuiRuntime
 from wizolt.ui.cli.commands import status
 from wizolt.ui.cli.loop import CommandLoop
 from wizolt.ui.tui import TuiApp
+from wizolt.utils.workspace import Workspace
 
 GLOBAL_TEXT = "# House style\nFour spaces for indentation.\n"
 PROJECT_TEXT = "# Rules\nAlways run pytest.\n\n# Contributing\nPR body goes here.\n"
@@ -150,10 +151,81 @@ def test_a_heading_with_no_body_is_still_a_section_with_a_row():
 
 def test_loading_a_missing_file_yields_nothing(tmp_path):
     assert AgentsFile.load("project", str(tmp_path / "missing.md"), "./AGENTS.md") is None
-    assert AgentsFile.project_file(str(tmp_path), "") is None
+    assert AgentsFile.project_files(Workspace(str(tmp_path))) == ()
     (tmp_path / "AGENTS.md").write_text("body\n", encoding="utf-8")
-    loaded = AgentsFile.project_file(str(tmp_path), "AGENTS.md")
-    assert loaded is not None and loaded.content == "body\n" and loaded.display == "./AGENTS.md"
+    [loaded] = AgentsFile.project_files(Workspace(str(tmp_path)))
+    assert loaded.content == "body\n" and loaded.display == "./AGENTS.md"
+
+
+# --- the project's files from the repository root down (https://agents.md) ---
+
+
+def monorepo(tmp_path, *, root="# Rules\nroot rule\n\n# Shared\nfrom the root\n", package="# Shared\nfrom the package\n", package_name="AGENTS.md"):
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / "AGENTS.md").write_text(root, encoding="utf-8")
+    package_dir = repo / "packages" / "web"
+    package_dir.mkdir(parents=True)
+    if package is not None:
+        (package_dir / package_name).write_text(package, encoding="utf-8")
+    return repo, package_dir
+
+
+def session_in(cwd, data):
+    config = Config()
+    config.data_dir = str(data)
+    s = Session(cwd=str(cwd), config=config)
+    bootstrap_features(s)
+    return s
+
+
+def test_a_subdirectory_session_loads_the_root_file_and_its_own(tmp_path):
+    # Before, only cwd was read: starting in a package lost the repository's own instructions.
+    _repo, package = monorepo(tmp_path, package_name="CLAUDE.md")
+    s = session_in(package, tmp_path / "data")
+
+    assert [file.display for file in s.system_info.agents_md_project] == ["../../AGENTS.md", "./CLAUDE.md"]
+    prefix = ContextManager(s).instructions_context()
+    root_at = prefix.index("--- AGENTS.md (project · ../../AGENTS.md) ---")
+    assert root_at < prefix.index("--- AGENTS.md (project · ./CLAUDE.md) ---")  # nearest reads last
+    loop = CommandLoop(Agent(s, output_fn=lambda _text: None), output_fn=lambda _text: None)
+    assert "| agents.md | on (../../AGENTS.md; ./CLAUDE.md; global missing) |" in status(loop, "")
+
+
+def test_a_middle_level_without_a_file_is_skipped(tmp_path):
+    _repo, package = monorepo(tmp_path, package=None)
+    s = session_in(package, tmp_path / "data")
+
+    assert [file.display for file in s.system_info.agents_md_project] == ["../../AGENTS.md"]
+
+
+def test_the_nearest_file_answers_a_section_both_have(tmp_path):
+    _repo, package = monorepo(tmp_path)
+    s = session_in(package, tmp_path / "data")
+
+    shared = s.agents.resolve_mentions('@agents.md:"project/Shared"')
+    assert "from the package" in shared and "from the root" not in shared
+    assert "root rule" in s.agents.resolve_mentions('@agents.md:"project/Rules"')  # only the root has it
+    whole = s.agents.resolve_mentions("@agents.md:project")
+    assert "[project · ../../AGENTS.md]" in whole and "[project · ./AGENTS.md]" in whole
+
+
+def test_the_menu_lists_a_shadowed_section_only_where_it_resolves(tmp_path):
+    _repo, package = monorepo(tmp_path)
+    s = session_in(package, tmp_path / "data")
+    rows = s.agents.menu_rows()
+
+    assert rows[1] == MenuRow("Project · ../../AGENTS.md + ./AGENTS.md", "2 files, root first", "@agents.md:project")
+    assert [row.filtered_display for row in rows[2:]] == ["Project › Rules", "Project › Shared"]
+    assert [row.meta for row in rows[2:]] == ["root rule", "from the package"]
+
+
+def test_no_walk_above_a_directory_outside_a_repository(tmp_path):
+    (tmp_path / "AGENTS.md").write_text("# Above\nnot this project's\n", encoding="utf-8")
+    work = tmp_path / "work"
+    work.mkdir()
+
+    assert session_in(work, tmp_path / "data").system_info.agents_md_project == ()
 
 
 # --- reference encoding and scanning ---
@@ -489,12 +561,12 @@ def test_the_menu_and_expansion_read_current_file_while_the_prefix_keeps_its_sna
     s = agents_session(tmp_path, project_text="# Rules\nold body\n")
     (tmp_path / "AGENTS.md").write_text("# Rules\nnew body\n\n# Added later\nfresh\n", encoding="utf-8")
 
-    assert "old body" in s.system_info.agents_md  # the fixed prefix keeps the session snapshot
+    assert "old body" in s.system_info.agents_md_project[0].content  # the fixed prefix keeps the session snapshot
     assert [row.display for row in s.agents.menu_rows()] == ["All applicable", "Project · ./AGENTS.md", "  # Rules", "  # Added later"]
     assert completions(CommandCompleter(agents_rows=s.agents.menu_rows), "@agents.md:Added") == ['@agents.md:"project/Added later"']
     assert "Added later" in s.agents.resolve_mentions("@agents.md:project")  # expansion reads the disk
     assert "fresh" in s.agents.resolve_mentions('@agents.md:"project/Added later"')  # a space needs the quoted form
-    assert "old body" in s.system_info.agents_md
+    assert "old body" in s.system_info.agents_md_project[0].content
 
 
 def test_a_global_file_created_after_session_start_appears_in_the_menu(tmp_path):
@@ -514,7 +586,7 @@ def test_a_project_file_created_after_session_start_appears_in_the_menu(tmp_path
 
     assert [row.insert for row in s.agents.menu_rows()] == ["@agents.md:", "@agents.md:project", '@agents.md:"project/New project rule"']
     assert "apply it" in s.agents.resolve_mentions('@agents.md:"project/New project rule"')
-    assert not s.system_info.agents_md  # the automatic prefix still waits for the next session
+    assert not s.system_info.agents_md_project  # the automatic prefix still waits for the next session
 
 
 def test_a_deleted_source_stops_resolving(tmp_path):
@@ -523,7 +595,7 @@ def test_a_deleted_source_stops_resolving(tmp_path):
 
     assert s.agents.validation_error("@agents.md:project") == 'unknown @agents.md reference "project" (available sources: none is loaded)'
     assert [row.insert for row in s.agents.menu_rows()] == ["@agents.md:"]
-    assert s.system_info.agents_md  # the prefix still keeps its snapshot
+    assert s.system_info.agents_md_project  # the prefix still keeps its snapshot
 
 
 # --- the fixed context prefix ---

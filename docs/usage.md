@@ -150,12 +150,14 @@ such as `$release` or a whole `@mcp:server`, has nothing highlighted, and `Enter
 | `@file:path` | — | Points the agent at a file in the project |
 | `@mcp:server`, `@mcp:server.tool` | `@server`, `@server.tool` | Connects an [MCP](mcp.md) server on demand; a `.tool` suffix connects the whole server too, and its tools join the request index. <span class="marker">The connection remains active until you disconnect it.</span> |
 | `@skill:name` | `$name` | Points the agent at a [skill](skills.md); it loads the instructions when they matter |
-| `@agents.md:` | — | Cites your AGENTS.md instructions for this request: everything, one file (`global`/`project`), or one section by heading |
+| `@agents.md:` | — | Cites your AGENTS.md instructions for this request: everything, your own or the project's (`global`/`project`), or one section by heading |
 
-**Instructions.** Two plain files hold your durable instructions: `~/.wizolt/AGENTS.md` for
-everything, and `AGENTS.md` (falling back to `CLAUDE.md`) in the project. Both load once at
-session start into a fixed prefix of about 8,000 tokens shared between them, so a new session
-picks up your edits. Typing `@agents.md:` lists the current files and their headings as a tree,
+**Instructions.** Plain files hold your durable instructions: `~/.wizolt/AGENTS.md` for
+everything, and the project's `AGENTS.md` (falling back to `CLAUDE.md`) at the repository root
+and in each folder down to where you started wizolt, as [agents.md](https://agents.md) lays them
+out. A root file applies to the whole repository; a nearer one adds to it and, for a heading both
+have, wins. All of them load once at session start into a fixed prefix of about 8,000 tokens,
+so a new session picks up your edits. Typing `@agents.md:` lists the current files and their headings as a tree,
 including ones added during this session. Search results show the full heading path when their
 parents are hidden; a row inserts a
 reference like `@agents.md:"global/PR body"` or `@agents.md:project`, and `@agents.md:` alone

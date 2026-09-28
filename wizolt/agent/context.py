@@ -289,8 +289,8 @@ class ContextManager:
     def instructions_context(self) -> str:
         """The user's instruction files as one fixed prefix message of their own: the user's file
         first, then the project's, each under a header naming its level and the file it came from
-        (`user · ~/.wizolt/AGENTS.md`, `project · ./AGENTS.md`), so a clipped block and a Read point
-        at the same file.
+        (`user · ~/.wizolt/AGENTS.md`, `project · ../AGENTS.md`), so a clipped block and a Read
+        point at the same file.
 
         One shared cap: each source is reserved an equal share, then unused room goes to the other.
         A source that still does not fit is clipped head/tail with a marker naming its path. The
@@ -301,11 +301,11 @@ class ContextManager:
         info = self.session.system_info
         assert info is not None
         # Each block names its own level and file, so "which one said this" is readable instead of
-        # inferred from the path shape: `user` is the data dir's cross-session file, `project` is the
-        # one SystemInfo.detect found in the session's cwd (workspace-relative, as /status shows it).
+        # inferred from the path shape: `user` is the data dir's cross-session file, `project` the
+        # files SystemInfo.detect found from the repository root down to the session's cwd, root
+        # first so the nearest reads last (paths relative to cwd, as /status and Read name them).
         global_label = f"user · {info.agents_md_global_display}" if info.agents_md_global_display else ""
-        project_label = f"project · ./{info.agents_md_source}" if info.agents_md_source else ""
-        blocks = [(global_label, info.agents_md_global), (project_label, info.agents_md)]
+        blocks = [(global_label, info.agents_md_global), *((f"project · {file.display}", file.content) for file in info.agents_md_project)]
         blocks = [(label, content) for label, content in blocks if label and content]
         rows: list[str] = []
 
