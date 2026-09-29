@@ -4,6 +4,19 @@
 
 ### Performance
 
+- Start the real editable prompt before session/command assembly and the terminal background
+  query. Assembly runs during `starting…`; the same app retains early submissions, draft, cursor
+  and history when the runtime attaches. Fix the startup toolbar's white strip and ensure status
+  and activity callbacks update after attachment. Configured colors appear after assembly.
+  Against `2317c8d`, five alternating samples on Linux aarch64 / CPython 3.14.7 using the installed
+  interpreter, `--yolo`, the wizolt repository and isolated HOME/config measured banner-to-prompt
+  medians of 232.6 → 45.3 ms with no terminal reply, and 92.4 → 45.5 ms with an immediate reply.
+  Process-to-prompt was 268.8 → 85.9 ms and 130.3 → 85.0 ms respectively; the first key's
+  prompt-to-echo delay fell from 114.5 → 2.9 ms and 102.4 → 3.1 ms. See the
+  [samples, environment and source hashes](benchmarks/results/linux-arm64-py314-starting-input.json).
+  The frame probe's `--check-input` measures this echo separately. These warm-cache measurements
+  do not establish faster full readiness: provider imports still contend for the GIL later during
+  `starting…`, and commands submitted during assembly wait for it to finish.
 - Overlap interactive CLI/TUI imports with the terminal background query after printing the
   banner. Terminal input remains on the main thread, and the import thread is joined before
   session assembly; provider and Markdown warm-up still starts after the first frame.
@@ -167,9 +180,8 @@
 - A theme file named `auto`, or after a light/dark pair (`gruvbox`, or `mine` next to
   `mine-dark` and `mine-light`), is reported and skipped: it was listed twice and could never be
   picked. `auto-dark` and `auto-light` stay two themes rather than forming a pair named `auto`.
-- The configured theme is active before the TUI prints its banner and first frame; it was set in
-  `start_session`, which the TUI reaches after both, so a named theme started in the default
-  palette.
+- Apply the configured theme when session assembly finishes, before starting the session runtime.
+  The earlier editable `starting…` frame uses a transparent default palette while config loads.
 - Render transcript rows with one style per theme (`Theme.transcript_style`). 9fca797 merged a
   fresh style for every row, whose empty lookup cache made each emitted line about ten times as
   expensive: one tool-output line rendered 2000 times took 424 µs per row, against 43 µs before

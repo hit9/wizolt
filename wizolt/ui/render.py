@@ -40,7 +40,6 @@ from wizolt.base import (
     LogRole,
     Text,
 )
-from wizolt.session import Session
 from wizolt.ui.themes import BUILTIN as NAMED_THEMES
 from wizolt.ui.themes import Palette, load_custom
 from wizolt.utils import terminal
@@ -49,6 +48,8 @@ if TYPE_CHECKING:
     from pygments.style import Style as PygmentsStyle
     from rich.console import Console
     from rich.theme import Theme as RichTheme
+
+    from wizolt.session import Session
 
 try:
     import pygments

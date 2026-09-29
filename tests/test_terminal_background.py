@@ -25,6 +25,7 @@ def tty(monkeypatch):
     # The module's own view of sys: pytest puts its capture back on the real sys.stdout per test.
     monkeypatch.setattr(terminal, "sys", SimpleNamespace(stdin=stdin, stdout=stdout))
     monkeypatch.setenv("TERM", "xterm-256color")
+    monkeypatch.setattr(terminal, "_reported", terminal._UNQUERIED)
     terminal.background.cache_clear()
     yield parent, child
     terminal.background.cache_clear()

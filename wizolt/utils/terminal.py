@@ -14,6 +14,15 @@ BACKGROUND_REPLY = re.compile(rb"\x1b\]11;rgb:([0-9a-fA-F]{1,4})/([0-9a-fA-F]{1,
 ATTRIBUTES_REPLY = re.compile(rb"\x1b\[\?[0-9;]*c")
 # Only a terminal that answers neither question waits this long; over SSH a reply takes a round trip.
 TIMEOUT = 0.2
+_UNQUERIED = object()
+_reported: tuple[int, int, int] | None | object = _UNQUERIED
+
+
+def remember_background(color: tuple[int, int, int] | None) -> None:
+    """Store the live input reader's reply; later theme changes must never read stdin again."""
+    global _reported
+    _reported = color
+    background.cache_clear()
 
 
 @functools.cache
@@ -25,6 +34,8 @@ def background() -> tuple[int, int, int] | None:
     timeout, and no late reply is left to arrive in the prompt. Nothing is asked while keys are
     already waiting: reading the reply would swallow what the user typed ahead.
     """
+    if _reported is not _UNQUERIED:
+        return _reported if isinstance(_reported, tuple) else None
     try:
         import select
         import termios

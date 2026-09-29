@@ -8,6 +8,7 @@ import os
 import signal
 import threading
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -451,43 +452,50 @@ class TuiRuntime:
         """Accept one submitted line. Runs on the runtime loop, where the TUI's callbacks run."""
         self.submit_accepted(_Submission(value))
 
-    def build_tui(self) -> TuiApp:
-        tui = self._build_tui()
-        # Route every printed row through the app's transcript from here on, including the ones
-        # printed before it starts: a width change rebuilds the terminal from that transcript,
-        # so anything it never saw cannot be put back. See wizolt/ui/tui/scrollback.py.
+    def build_tui(self, tui: TuiApp | None = None) -> TuiApp:
+        tui = tui or TuiApp()
+        tui.on_chat_submit = self.submit_chat
+        tui.on_running_submit = self.submit_running
+        tui.on_queue_next_turn = self.submit_next_turn
+        tui.on_exit_request = self.request_exit
+        tui.on_force_exit = self.force_exit
+        tui.on_interrupt = self.interrupt
+        tui.on_retry = self._request_model_retry
+        tui.on_recall = self.recall
+        tui.on_expand_output = self.expand_output
+        tui.status_fragments_fn = self.loop.presentation.status_bar.fragments
+        tui.activity_fragments_fn = self.loop.view.tui_activity_fragments
+        tui.input_hint_fn = self.loop.view.tui_input_hint
+        tui.quick_hints_fn = lambda: self.loop.session.quick_hints
+        if self.loop.session.mentions:
+            tui.file_picker_available_fn = self.loop.session.mentions.picker.available
+            tui.file_picker_fn = self.loop.background.pick_file
+        tui.file_complete_fn = self.complete_mentions
+        tui.editor_context_fn = self.loop.editor_context
+        tui.images = self.loop.session.images
+        tui.input_buffer.completer = self.loop.input_completer
+        history = self.loop.input_history
+        if history is not None and tui.input_buffer.history is not history:
+            # A starting prompt may already contain accepted lines and a live draft. Keep both;
+            # reset only history loading so the same Buffer can acquire its persistent history.
+            for value in tui.input_buffer.history.get_strings():
+                history.append_string(value)
+            if tui.input_buffer._load_history_task is not None:
+                tui.input_buffer._load_history_task.cancel()
+                tui.input_buffer._load_history_task = None
+            document = tui.input_buffer.document
+            tui.input_buffer._working_lines = deque([document.text])
+            tui.input_buffer.working_index = 0
+            tui.input_buffer.cursor_position = document.cursor_position
+            tui.input_buffer.history = history
+        tui.history = history
+        tui.on_app_stop = lambda: self.loop.presentation.ui.drain_scrollback()
         self.loop.presentation.ui.transcript_sink = tui.record_scrollback
-        # The CLI prints before importing the interactive stack. Adopt those already visible
-        # bytes without printing them twice; width-change replay must include them as well.
         if self.loop.preprinted_output:
             tui.scrollback.transcript.append(self.loop.preprinted_output)
             self.loop.preprinted_output = ""
+        tui.invalidate()
         return tui
-
-    def _build_tui(self) -> TuiApp:
-        return TuiApp(
-            on_chat_submit=self.submit_chat,
-            on_running_submit=self.submit_running,
-            on_queue_next_turn=self.submit_next_turn,
-            on_exit_request=self.request_exit,
-            on_force_exit=self.force_exit,
-            on_interrupt=self.interrupt,
-            on_retry=self._request_model_retry,
-            on_recall=self.recall,
-            on_expand_output=self.expand_output,
-            status_fragments_fn=self.loop.presentation.status_bar.fragments,
-            activity_fragments_fn=self.loop.view.tui_activity_fragments,
-            input_hint_fn=self.loop.view.tui_input_hint,
-            quick_hints_fn=lambda: self.loop.session.quick_hints,
-            file_picker_available_fn=self.loop.session.mentions.picker.available if self.loop.session.mentions else None,
-            file_picker_fn=self.loop.background.pick_file if self.loop.session.mentions else None,
-            file_complete_fn=self.complete_mentions if self.loop.session.mentions else None,
-            editor_context_fn=self.loop.editor_context,
-            images=self.loop.session.images,
-            history=self.loop.input_history,
-            completer=self.loop.input_completer,
-            on_app_stop=lambda: self.loop.presentation.ui.drain_scrollback(),
-        )
 
     def submit_next(self, entered: Sequence[str | UserInput]) -> None:
         if not entered:
@@ -678,7 +686,14 @@ class TuiRuntime:
         finally:
             self.request_shutdown()
 
-    async def run(self, *, show_banner: bool = True) -> int:
+    async def run(
+        self,
+        *,
+        show_banner: bool = True,
+        tui: TuiApp | None = None,
+        application: asyncio.Task | None = None,
+        initial_inputs: Sequence[UserInput] = (),
+    ) -> int:
         """Own the interactive session: the application, the active turn, and the output queue.
 
         One loop for all of it, so a model request, a tool batch, an MCP call and a keystroke are
@@ -691,14 +706,22 @@ class TuiRuntime:
         self.accepting = True
         self.shutdown = asyncio.Event()
         self.application_ready = asyncio.Event()
-        self.loop.presentation.tui = self.build_tui()
+        self.loop.presentation.tui = self.build_tui() if tui is None else self.build_tui(tui)
         # Record the banner before terminal probing starts. Printing it before build_tui
         # bypasses the transcript, so the next width-change replay would lose it forever.
         if show_banner:
             self.loop.emit_banner()
-        self.tui.on_ready = self.application_ready.set
-        application = self.spawn(self._run_application(), name="tui-application")
-        assert application is not None
+        if application is None:
+            self.tui.on_ready = self.application_ready.set
+            application = self.spawn(self._run_application(), name="tui-application")
+            assert application is not None
+        else:
+            self.application_ready.set()
+            self.tasks.add(application)
+            application.add_done_callback(self._task_done)
+            application.add_done_callback(lambda _: self.request_shutdown())
+        for value in initial_inputs:
+            self.submit_chat(value)
         self.submissions_task = self.spawn(self._consume_submissions(), name="submissions")
         try:
             await self._await_ready(application)

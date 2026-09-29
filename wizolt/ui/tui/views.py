@@ -5,14 +5,16 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, ClassVar, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples, fragment_list_width, to_formatted_text
 from prompt_toolkit.utils import get_cwidth
 
 from wizolt.base import SELECTION_BACK, SELECTION_FREE_TEXT, Text
-from wizolt.tools.ask import AskSpec
 from wizolt.ui.render import UiPrinter
+
+if TYPE_CHECKING:
+    from wizolt.tools.ask import AskSpec
 
 TUI_MODAL_PENDING = object()
 ViewLine = TypeVar("ViewLine")

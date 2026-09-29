@@ -29,6 +29,7 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "CatalogError": ("wizolt.providers.schema", "CatalogError"),
     "CatalogRuntime": ("wizolt.providers.sync", "CatalogRuntime"),
     "CommandLoop": ("wizolt.ui.cli", "CommandLoop"),
+    "run_startup": ("wizolt.ui.startup", "run_startup"),
     "Config": ("wizolt.config", "Config"),
     "ConfigError": ("wizolt.base", "ConfigError"),
     "ConfigFile": ("wizolt.config", "ConfigFile"),
@@ -231,18 +232,6 @@ def main(argv: list[str] | None = None) -> int:
         # Only the banner is recorded: the starting line lives where the app will draw, and a
         # width-change replay must never bring it back.
         print(preprinted_output + STARTING_LINE, end="", flush=True)
-        # Ask the terminal for its background now, while nothing has been typed ahead to swallow;
-        # the answer is kept for the `auto` theme. Standard library only, like the banner.
-        from wizolt.utils import terminal
-
-        # The terminal round trip and UI imports are independent. Keep terminal I/O on this
-        # thread while loading the UI, then join before accessing any of its modules here.
-        # Provider/Markdown warm-up still waits for the first frame below.
-        imports = warm_imports([_LAZY_IMPORTS["CommandLoop"][0]])
-        try:
-            terminal.background()
-        finally:
-            imports.join()
 
     _cli.configure_logging()
     try:
@@ -255,7 +244,9 @@ def main(argv: list[str] | None = None) -> int:
         reserved = None
         current = None
         try:
-            while True:
+
+            def assemble():
+                nonlocal current, reserved
                 if resume:
                     data = _cli.ConfigFile.load(args.config)
                     catalog = _cli.CatalogRuntime(_cli.Config.data_dir_from(data))
@@ -276,22 +267,30 @@ def main(argv: list[str] | None = None) -> int:
                     current.ensure_ownership()
                 command_loop = _cli.CommandLoop(_cli.Agent(current))
                 command_loop.startup_warmup = warm_imports(startup_imports(current), start=not sys.stdin.isatty())
+                return command_loop
+
+            while True:
+                command_loop = None
                 try:
                     if banner_preprinted:
-                        command_loop.preprinted_output = preprinted_output
-                        code = command_loop.run(show_banner=False)
+                        code, command_loop = _cli.run_startup(assemble, preprinted_output)
                         banner_preprinted = False
                     else:
+                        command_loop = assemble()
                         code = command_loop.run()
                 finally:
                     # The runtime closes what the session opened, on the loop that opened it; all that
                     # is left here is the terminal-output gate, in case the runtime never got that far.
-                    reserved = command_loop.resume_lease
-                    command_loop.presentation.close_background_output()
-                    # The final save and teardown are done. Carry a reserved target forward instead of
-                    # releasing it; release this session's own lease only now.
-                    current.close()
-                    current = None
+                    if command_loop is not None:
+                        reserved = command_loop.resume_lease
+                        command_loop.presentation.close_background_output()
+                        # The final save and teardown are done. Carry a reserved target forward instead of
+                        # releasing it; release this session's own lease only now.
+                        assert current is not None
+                        current.close()
+                        current = None
+                if command_loop is None:
+                    return code
                 resume = command_loop.resume_request
                 if not resume:
                     return code

@@ -23,8 +23,8 @@ model requests. Startup probes load SDKs without contacting providers.
 The `frame` suite measures the interactive startup the other suites decompose: each sample launches
 the real entry point under a pseudo-terminal with an isolated HOME and a minimal unused provider,
 recording when the banner reaches the terminal and when the first prompt frame draws. The
-pseudo-terminal defaults to answering no OSC/CPR queries. The background-color probe can wait
-200 ms; startup work overlapping that wait reduces its contribution to first-frame latency.
+pseudo-terminal defaults to answering no OSC/CPR queries. Older revisions wait up to 200 ms for
+the background-color probe; the editable-startup path sends this query after its first frame.
 `--answer-background` also measures a terminal that answers immediately. `frame` measures
 the warm-cache case only — a cold filesystem cache dominates both sides. Note that
 `optimization.startup_chat`/`startup_anthropic` join the warm-up thread before stopping the clock,
@@ -41,6 +41,29 @@ uv run --no-sync python benchmarks/frame.py --source /path/to/exported/source \
 ```
 
 `banner_to_prompt` measures the interval after the banner, separately from process startup.
+Add `--check-input` to send `Q` as soon as the prompt appears and wait for its echo before
+clearing the draft and quitting. `first_echo` measures process-to-echo and `prompt_to_echo`
+measures prompt-to-echo. Neither measures command execution or completion of background work.
+
+The editable-startup comparison is recorded in
+[`results/linux-arm64-py314-starting-input.json`](results/linux-arm64-py314-starting-input.json).
+It compares `2317c8d` with the recorded working-tree source hash using the installed interpreter,
+the wizolt repository as cwd, isolated HOME/config, `--yolo --check-input`, five alternating
+samples per revision and terminal mode, and exports without bytecode on the same filesystem.
+
+| Terminal response | Metric (median ms) | Before | After |
+| --- | --- | ---: | ---: |
+| None | Process → prompt | 268.77 | 85.91 |
+| None | Banner → prompt | 232.57 | 45.29 |
+| None | Prompt → first key echo | 114.48 | 2.86 |
+| Immediate | Process → prompt | 130.33 | 84.99 |
+| Immediate | Banner → prompt | 92.38 | 45.46 |
+| Immediate | Prompt → first key echo | 102.45 | 3.08 |
+
+The initial frame uses default colors until configuration attaches; submitted commands wait for
+assembly. Provider imports still run during `starting…` and can delay later keystrokes. These
+numbers measure one early keystroke, with warm filesystem caches and no personal hooks.
+
 The private-project comparison (project name and path omitted) is recorded in
 [`results/linux-arm64-py314-terminal-probe-overlap.json`](results/linux-arm64-py314-terminal-probe-overlap.json):
 the installed `wizolt` interpreter, `--yolo`, isolated HOME/config, default color output, five

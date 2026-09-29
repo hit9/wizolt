@@ -234,15 +234,25 @@ overwrite. It is never recorded, so replay cannot restore it. MCP code imports t
 `run_blocking`, never on the loop: the warm-up can be holding that module's lock.
 
 The entry point writes the interactive banner before importing the session and rendering stacks,
-then tells the first `CommandLoop` not to repeat it. Keep that one static line outside the runtime's
+then `ui/startup.py` starts the real `TuiApp` before assembling the session or command loop.
+Keep that one static line outside the runtime's
 ordered scrollback path: a terminal that does not answer prompt-toolkit's initial cursor-position
 probe can hold that path for about a second. Embeddings, non-TTY runs, resumed sessions, restored
 history, and all later output retain the ordinary command-loop and ordered-scrollback paths.
 
-After the banner, UI imports run on a joined thread while the main thread asks the terminal for
-its background. The query timeout and imports overlap; terminal mode and stdin stay on the main
-thread. Join even when the query fails, before session assembly or runtime input can start. This
-prefetch loads no provider SDKs or Markdown stack; those still warm after the first frame.
+After the first editable frame flushes, a managed worker assembles the unpublished session and
+command loop. The prompt accepts a draft and FIFO submissions during this work. `TuiRuntime`
+attaches callbacks, persistent history and presentation to the same app and buffer on the same
+event loop; status/activity controls must look up callbacks dynamically, not capture the empty
+startup callbacks. Retain the draft, cursor and early history, and adopt the banner exactly once.
+Cancellation joins the assembly worker before the entry point releases its session ownership.
+
+The terminal background query also starts after that first frame. A filter on the existing input
+parser removes OSC/device replies before key decoding, preserving ordinary keys and bracketed
+paste. No second stdin reader or synchronous timeout may compete with the live app. The initial
+frame uses a transparent default style; the configured theme and status attach after assembly,
+and a late background reply can resolve an automatic theme. Provider and Markdown warm-up then
+runs during `starting…`; drawing sooner does not remove its GIL contention or shorten full readiness.
 
 ### Future MCP client lifecycle
 

@@ -22,7 +22,7 @@ from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition, has_completions, is_done, is_searching
 from prompt_toolkit.formatted_text import OneStyleAndTextTuple, StyleAndTextTuples
-from prompt_toolkit.history import FileHistory
+from prompt_toolkit.history import History
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.layout import Layout
@@ -324,7 +324,7 @@ class TuiApp:
         editor_context_fn: Callable[[], str] | None = None,
         images: ImageInputs | None = None,
         image_cwd: str = "",
-        history: FileHistory | None = None,
+        history: History | None = None,
         completer: Completer | None = None,
         on_app_stop: Callable[[], None] | None = None,
     ) -> None:
@@ -1439,7 +1439,7 @@ class TuiApp:
 
     def _status_bar_window(self, *, dont_extend_height: bool) -> Window:
         return Window(
-            FormattedTextControl(self.status_fragments_fn, style="class:bottom-toolbar.text"),
+            FormattedTextControl(lambda: self.status_fragments_fn(), style="class:bottom-toolbar.text"),
             style="class:bottom-toolbar",
             height=1,
             dont_extend_height=dont_extend_height,
@@ -1474,7 +1474,7 @@ class TuiApp:
             Window(FormattedTextControl(self.approval_form_fragments), dont_extend_height=True, wrap_lines=True),
             filter=Condition(lambda: bool(self._approval_actions) and self.input_mode == InputMode.APPROVAL),
         )
-        self.activity_window = Window(FormattedTextControl(self.activity_fragments_fn), dont_extend_height=True, wrap_lines=True)
+        self.activity_window = Window(FormattedTextControl(lambda: self.activity_fragments_fn()), dont_extend_height=True, wrap_lines=True)
         running = Condition(lambda: self.input_mode == InputMode.RUNNING)
         activity = ConditionalContainer(
             self.activity_window,
