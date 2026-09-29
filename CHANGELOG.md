@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.58.0 - 2026-09-29
+
 ### Performance
 
 - Start the real editable prompt before session/command assembly and the terminal background
