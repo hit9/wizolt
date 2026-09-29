@@ -27,10 +27,43 @@ class Palette:
 
     appearance: str  # "dark" | "light": picks the pinned diff colors
     colors: dict[str, str]  # every role, plus "pygments"
+    background: str = ""  # the terminal background a named scheme is drawn for; "" follows the terminal
 
 
 # `Theme.ramp` interpolates between these two, so they must be hex rather than a terminal color.
 HEX_ROLES = ("divider_glow", "divider_rule")
+# WCAG contrast floors for a scheme's grey text: secondary text on the background, and the menu's
+# descriptions on its raised surface, which is where a comment grey reads worst.
+MUTED_CONTRAST = 3.0
+MENU_TEXT_CONTRAST = 4.5
+
+
+def luminance(color: str) -> float:
+    channels = [int(color[index : index + 2], 16) / 255 for index in (1, 3, 5)]
+    red, green, blue = (value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4 for value in channels)
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+
+def contrast(first: str, second: str) -> float:
+    """The WCAG contrast ratio of two `#rrggbb` colors, from 1 to 21."""
+    lighter, darker = sorted((luminance(first), luminance(second)), reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def lift(color: str, toward: str, against: str, minimum: float) -> str:
+    """`color`, moved toward `toward` in tenths until it reaches `minimum` contrast on `against`.
+
+    Keeps a scheme's own grey wherever it is readable and moves it only as far as it has to.
+    """
+    start = [int(color[index : index + 2], 16) for index in (1, 3, 5)]
+    end = [int(toward[index : index + 2], 16) for index in (1, 3, 5)]
+    for step in range(11):
+        mixed = "#" + "".join(f"{round(a + (b - a) * step / 10):02x}" for a, b in zip(start, end, strict=True))
+        if contrast(mixed, against) >= minimum:
+            return mixed
+    return toward
+
+
 THEME_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
 HEX_COLOR = re.compile(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})\Z")
 
@@ -57,14 +90,17 @@ def scheme(
 
     Text stays the terminal's own foreground: prose is printed unstyled, and a pinned foreground
     would disagree with it. The selection band is the scheme's blue under its background color,
-    the way these schemes draw their own popup-menu selection.
+    the way these schemes draw their own popup-menu selection. The comment grey is meant for code
+    comments and is dim by design; as the text of hints and menus it is lifted toward the
+    foreground until it is readable, and left alone where it already is.
     """
+    muted = lift(comment, fg, background, MUTED_CONTRAST)
     return Palette(
         appearance,
         {
             "text": "default",
-            "muted": comment,
-            "subtle": comment,
+            "muted": muted,
+            "subtle": muted,
             "accent": aqua,
             "accent_secondary": purple,
             "info": blue,
@@ -93,8 +129,10 @@ def scheme(
             "selection_bg": blue,
             "selection_fg": background,
             "menu_bg": surface,
+            "menu_muted": lift(comment, fg, surface, MENU_TEXT_CONTRAST),
             "pygments": pygments,
         },
+        background,
     )
 
 
@@ -224,5 +262,5 @@ def load_custom(directory: str, builtins: dict[str, Palette]) -> tuple[dict[str,
         unknown = sorted(set(data) - {"base", "pygments", "colors"})
         if unknown:
             problems.append(f"theme {path}: unknown key{'s' if len(unknown) > 1 else ''} {', '.join(unknown)}")
-        themes[name] = Palette(base.appearance, colors)
+        themes[name] = Palette(base.appearance, colors, base.background)
     return themes, problems

@@ -11,6 +11,11 @@
   symlinked config is written through). Built in: `gruvbox-dark`, `gruvbox-light`,
   `solarized-dark`, `solarized-light`, `nord`, `dracula` and `one-dark`, each with its Pygments
   code style. `dark` and `light` are unchanged and remain the default.
+- Named themes keep grey text readable: a scheme's comment grey is lifted toward its foreground
+  until hints reach a 3:1 contrast on the background and the completion menu's descriptions reach
+  4.5:1 on the menu surface (a new `menu_muted` role), or the scheme's own foreground where that
+  is the ceiling (solarized). Before this, one-dark's menu descriptions were at 1.6:1. `dark` and
+  `light` are unchanged.
 - Theme files: `<data_dir>/themes/<name>.toml` starts from a built-in `base`, may name a
   `pygments` style, and overrides roles in `[colors]`. Mistakes are reported at startup and when
   `/theme` opens, and the rest of the file still applies. `--theme` and `runtime.theme` accept any

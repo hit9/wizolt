@@ -721,9 +721,9 @@ class View:
                 "completion-menu": f"noreverse bg:{menu_bg}",
                 "completion-menu.completion": f"noreverse bg:{menu_bg} {role('text')}",
                 "completion-menu.completion.current": "noreverse " + Theme.selection(),
-                "completion-menu.meta.completion": f"noreverse bg:{menu_bg} {role('muted')}",
+                "completion-menu.meta.completion": f"noreverse bg:{menu_bg} {role('menu_muted')}",
                 "completion-menu.meta.completion.current": "noreverse " + Theme.selection(),
-                "completion-menu.hint": f"noreverse bg:{menu_bg} {role('muted')}",
+                "completion-menu.hint": f"noreverse bg:{menu_bg} {role('menu_muted')}",
                 # prompt_toolkit's own scrollbar is a light-grey track under a dark thumb, fixed
                 # colors that match no terminal theme: the track is the menu's surface, the thumb grey.
                 "scrollbar.background": f"noreverse bg:{menu_bg}",

@@ -271,8 +271,8 @@ The roles you can set are `text`, `muted`, `subtle`, `accent`, `accent_secondary
 `syntax_string`, `syntax_number`, `syntax_ident`, `syntax_builtin` and `syntax_default`, the
 status bar's `status_base`, `status_provider`, `status_reason`, `status_mcp`, `status_context`,
 `status_yolo` and `status_worker`, the working divider's `divider_glow` and `divider_rule` (these
-two take `#rrggbb` only), and `selection_bg`, `selection_fg` and `menu_bg`. Diff colors follow
-the base theme's light or dark look.
+two take `#rrggbb` only), and `selection_bg`, `selection_fg`, `menu_bg` and `menu_muted` (the
+completion menu's descriptions). Diff colors follow the base theme's light or dark look.
 
 A mistake in a theme file is reported at startup and when `/theme` opens; the rest of the file
 still applies. `/theme` re-reads the folder each time it opens, so edits show up without a restart.

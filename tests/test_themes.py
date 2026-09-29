@@ -19,7 +19,7 @@ from wizolt.config import ConfigFile
 from wizolt.ui.cli import CommandCompleter
 from wizolt.ui.cli.commands import theme_command
 from wizolt.ui.render import HorizontalRule, Theme, UiPrinter
-from wizolt.ui.themes import HEX_ROLES
+from wizolt.ui.themes import BUILTIN, HEX_ROLES, MENU_TEXT_CONTRAST, MUTED_CONTRAST, contrast
 from wizolt.ui.tui.app import TuiApp
 
 # 24-bit SGR parameters for colors the tests switch between.
@@ -92,6 +92,25 @@ def test_every_builtin_theme_defines_every_role_in_a_shape_the_adapters_accept()
         Theme.set_mode(name)
         assert Theme.pygments_style() is not None, name
         Console(theme=Theme.rich_theme()).get_style("wizolt.user")  # raises for a color Rich cannot read
+
+
+def test_named_themes_keep_grey_text_readable():
+    """A scheme's comment grey is dim by design; as hint and menu text it must still be readable.
+    The menu floor gives way only where the scheme's own foreground cannot reach it."""
+    for name, palette in BUILTIN.items():
+        colors = palette.colors
+        assert contrast(colors["muted"], palette.background) >= MUTED_CONTRAST, name
+        menu = contrast(colors["menu_muted"], colors["menu_bg"])
+        assert menu >= MENU_TEXT_CONTRAST or colors["menu_muted"] == colors["status_base"], (name, menu)
+
+
+def test_menu_descriptions_take_the_menu_text_color(tmp_path):
+    view = loop(tmp_path).view
+    Theme.set_mode("one-dark")
+    style = view.style()
+
+    for name in ("completion-menu.meta.completion", "completion-menu.hint"):
+        assert "#" + style.get_attrs_for_style_str("class:" + name).color == Theme.color("menu_muted"), name
 
 
 def test_themes_resolve_by_name_and_fall_back_to_the_terminal_default(monkeypatch):
