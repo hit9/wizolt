@@ -8,14 +8,17 @@ import argparse
 import contextlib
 import gc
 import hashlib
+import importlib
 import io
 import json
+import os
 import statistics
 import sys
 import time
 import tracemalloc
 from functools import partial
 from pathlib import Path
+from types import SimpleNamespace
 
 
 def main():
@@ -24,14 +27,21 @@ def main():
     parser.add_argument("--repeat", type=int, default=7)
     args = parser.parse_args()
     sys.path.insert(0, str(args.source.resolve()))
+    from prompt_toolkit.formatted_text import FormattedText
     from prompt_toolkit.output import ColorDepth
 
-    if (args.source / "wizolt" / "ui" / "render.py").is_file():
-        from wizolt.ui.render import MessageBlock, UiPrinter
-        from wizolt.ui.tui.scrollback import ScrollbackRegion
-    else:
-        from wizolt.render import MessageBlock, UiPrinter
-        from wizolt.tui.scrollback import ScrollbackRegion
+    package = "wizolt.ui" if (args.source / "wizolt" / "ui" / "render.py").is_file() else "wizolt"
+    render = importlib.import_module(f"{package}.render")
+    ScrollbackRegion = importlib.import_module(f"{package}.tui.scrollback").ScrollbackRegion
+    MessageBlock, UiPrinter, Theme = render.MessageBlock, render.UiPrinter, render.Theme
+
+    # Recorded rows take their depth from the output, which is a pipe here; pin it to the 256
+    # colors a terminal selects, and keep the color environment out, so every revision draws the
+    # same bytes.
+    for variable in ("NO_COLOR", "PROMPT_TOOLKIT_COLOR_DEPTH", "COLORTERM"):
+        os.environ.pop(variable, None)
+    output = SimpleNamespace(get_default_color_depth=lambda: ColorDepth.DEPTH_8_BIT)
+    render.get_app_session = lambda: SimpleNamespace(output=output)
 
     printer = UiPrinter()
     results = {}
@@ -95,6 +105,32 @@ def main():
     text, _ = region._replay_layout(80)
     assert len(text) > region.MAX_CACHED_LAYOUT_CHARS
     measure("revisited_width_above_character_budget", lambda _: region._replay_layout(80))
+
+    # Plain rows -- tool lines, notices -- are most of what a session prints, and each one is
+    # rendered once as it is emitted. A per-row cost here is paid on every line of every turn.
+    def emit_rows(count):
+        recorded = []
+        emitter = UiPrinter(output_fn=lambda text: None)
+        emitter.transcript_sink = recorded.append
+        for index in range(count):
+            emitter.print_parts([FormattedText([(Theme.fg("tool"), "  Read "), (Theme.fg("muted"), f"src/file{index}.py 0:100 → tr.{index}\n")])])
+        return recorded
+
+    measure("emit_500_plain_rows", lambda _: ("".join(emit_rows(500)), 500))
+
+    # `/theme` redraws everything retained: markdown blocks re-render, and plain rows re-render
+    # from their kept fragments. Alternate two themes so every sample is a real change.
+    if "gruvbox-dark" in getattr(Theme, "BUILTIN", {}) and hasattr(ScrollbackRegion, "recolor"):
+        region = fresh([*entries, *emit_rows(500)])
+        region._replay_layout(80)
+
+        def recolor(index):
+            Theme.set_mode(("gruvbox-dark", "nord")[index % 2])
+            region.recolor()
+            return region._replay_layout(80)
+
+        measure("recolor_100_blocks_500_rows", recolor)
+        Theme.set_mode("dark")
 
     # Track cache and renderer allocations with existing inputs, separately from timing samples.
     region = fresh(entries)

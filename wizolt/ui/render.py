@@ -12,7 +12,7 @@ import shutil
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Hashable
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
@@ -21,12 +21,13 @@ from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 from prompt_toolkit import print_formatted_text
 from prompt_toolkit.application import get_app_or_none, get_app_session
+from prompt_toolkit.cache import SimpleCache
 from prompt_toolkit.data_structures import Size
 from prompt_toolkit.formatted_text import ANSI, FormattedText, StyleAndTextTuples, to_formatted_text
 from prompt_toolkit.output import ColorDepth, create_output
 from prompt_toolkit.output.vt100 import Vt100_Output
 from prompt_toolkit.renderer import print_formatted_text as render_fragments_to_output
-from prompt_toolkit.styles import BaseStyle, Style, default_pygments_style, default_ui_style, merge_styles
+from prompt_toolkit.styles import DEFAULT_ATTRS, Attrs, BaseStyle, Style, default_pygments_style, default_ui_style, merge_styles
 from prompt_toolkit.utils import get_cwidth
 from rich import box
 from rich.console import Console, ConsoleOptions, RenderResult
@@ -238,6 +239,28 @@ def search_sources_footer(sources: list[Json]) -> str:
     if len(seen) > len(shown):
         lines.append(f"…and {len(seen) - len(shown)} more")
     return "\n".join(["", "**Sources**", "", *lines])
+
+
+class _MemoizedStyle(BaseStyle):
+    """A fixed style that resolves each style string once.
+
+    prompt-toolkit caches resolved attributes only inside one live render; a transcript row is
+    rendered on its own, so without this every fragment of every row paid the full rule scan.
+    """
+
+    def __init__(self, style: BaseStyle) -> None:
+        self._style = style
+        self._attrs: SimpleCache[tuple[str, Attrs], Attrs] = SimpleCache(maxsize=1024)
+
+    def get_attrs_for_style_str(self, style_str: str, default: Attrs = DEFAULT_ATTRS) -> Attrs:
+        return self._attrs.get((style_str, default), lambda: self._style.get_attrs_for_style_str(style_str, default))
+
+    @property
+    def style_rules(self) -> list[tuple[str, str]]:
+        return self._style.style_rules
+
+    def invalidation_hash(self) -> Hashable:
+        return self._style.invalidation_hash()
 
 
 class Theme:
@@ -460,12 +483,14 @@ class Theme:
 
         One object per theme, not one per row: a merged style resolves attributes through its own
         cache, so a fresh merge per row paid the full lookup on every line -- ten times the cost
-        of rendering the row without it.
+        of rendering the row without it. It also remembers each style string it has resolved: a
+        `class:` name makes prompt-toolkit scan every rule for it, and the same few strings
+        (`Theme.fg` of a handful of roles) recur on every emitted line.
         """
         cached = cls._transcript_style
         if cached is None or cached[0] != cls.key():
             roles = Style.from_dict({f"role.{role}": f"fg:{cls.color(role)}" for role in cls.ROLES})
-            cached = cls.key(), merge_styles([_SCROLLBACK_STYLE, roles])
+            cached = cls.key(), _MemoizedStyle(merge_styles([_SCROLLBACK_STYLE, roles]))
             cls._transcript_style = cached
         return cached[1]
 

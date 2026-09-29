@@ -306,6 +306,27 @@ def test_the_app_draws_at_the_depth_the_theme_asks_for(monkeypatch):
     assert depths == [ColorDepth.DEPTH_1_BIT, ColorDepth.DEPTH_24_BIT]  # DummyOutput selects 1 bit
 
 
+def test_transcript_rows_resolve_each_style_string_once(monkeypatch):
+    """A `class:` name makes prompt-toolkit scan every rule, and a row renders outside any live
+    render's cache: resolving the same `Theme.fg` strings afresh on every line doubled the cost
+    of emitting one. The benchmark's emit_500_plain_rows went from 12.4 ms to 25.2 ms."""
+    lookups = []
+    real_merge = render_module.merge_styles
+
+    def counting_merge(styles):
+        merged = real_merge(styles)
+        resolve = merged.get_attrs_for_style_str
+        merged.get_attrs_for_style_str = lambda style, *default: lookups.append(style) or resolve(style, *default)
+        return merged
+
+    monkeypatch.setattr(render_module, "merge_styles", counting_merge)
+    Theme.set_mode("nord")
+    for _ in range(3):
+        UiPrinter.render_to_ansi([FormattedText([(Theme.fg("tool"), "Read "), (Theme.fg("muted"), "a.py\n")])], 80, color_depth=ColorDepth.DEPTH_8_BIT)
+
+    assert sorted(set(lookups)) == sorted(lookups), "a style string was resolved more than once"
+
+
 class RecordingTerminal(ReflowingTerminal):
     def __init__(self, rows, columns):
         super().__init__(rows, columns)
