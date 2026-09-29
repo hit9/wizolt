@@ -118,6 +118,9 @@ is in parentheses.
   interrupted calls each need a matching result, or replay is invalid (Tool-call lifecycle).
 - **Inserting context between the stable layers.** Saving tokens mid-prompt invalidates the cached
   prefix for every later turn (Context is a projection).
+- **Building the transcript style inline where a row is rendered.** `merge_styles` per row starts
+  an empty lookup cache every time: every emitted line cost ten times as much. Use
+  `Theme.transcript_style()` (Terminal boundary).
 - **Persisting a live preview row, or reading state back off the screen.** Rendered text is never
   the source of truth (Three forms of state, Terminal boundary).
 - **Expecting compaction to rescue an oversized fixed prefix.** It cannot; bound the source at its
@@ -629,6 +632,13 @@ that projection. Its two mechanisms are inseparable:
   and do not replay elapsed-time or other live-state computations.
 - Record using the output's selected color depth, as direct printing and live viewers do; freeze
   that choice for replay. A capture buffer must not force true color and change the visible palette.
+  `Theme.color_depth` is the one place that choice may be overridden (`NO_COLOR`, an explicit
+  `PROMPT_TOOLKIT_COLOR_DEPTH`, a named scheme on a true-color terminal), and every path applies
+  it at render: the live app, direct prints, captures and replays.
+- Transcript fragments carry `Theme.fg`'s `class:role.<name>` after their inline color, and plain
+  rows are kept as `RecordedOutput`, so `/theme` can redraw what is already printed. Render them
+  through `Theme.transcript_style()`, one style per theme: a style merged per row starts with an
+  empty lookup cache and made every emitted line ten times as expensive.
 - At opening, inline modal windows reserve up to six rows of recent output (less in small panes) and scroll
   to the selected item. Filling the pane pushes all preceding context into native history;
   closing the modal cannot bring it back. Do not add a purge/replay on modal close: preserving
