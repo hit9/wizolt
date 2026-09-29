@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING, Any
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.utils import get_cwidth
 
-from wizolt.agent import compaction
 from wizolt.agent.prompts import PREVIOUS_CONTEXT_TRIMMED
 from wizolt.agentsmd import display_path
 from wizolt.base import (
@@ -927,7 +926,11 @@ async def compact(loop: CommandLoop, args: str) -> str | LogBlock | None:
     if args.strip():
         return "Usage: /compact [log [seg.N]]"
     before = len(loop.session.messages)
-    compactor = compaction.Compactor(loop.agent.context, loop.agent.model)
+    # Imported at use: /compact is the only entry to the manual compaction stack, and that stack
+    # (the Compactor, its prompts, and wizolt.model through it) is not needed for the first frame.
+    from wizolt.agent.compaction import Compactor
+
+    compactor = Compactor(loop.agent.context, loop.agent.model)
     compacted, keep = compactor.parts()
     if not compacted:
         return "No prior conversation to compact"

@@ -16,6 +16,10 @@
   thread also loads `wizolt.ui.markdown` alongside the provider SDKs (`wizolt/__main__.py`), so in
   practice the background import finishes before the first Markdown render and the hitch never
   lands: first-frame timing is unchanged (515–518 ms, 3 runs, same setup).
+- Defer the manual-compaction stack out of the interactive import chain: `/compact` now imports
+  `Compactor` at its use site, so `wizolt.agent.compaction` loads only when a compaction actually
+  runs. Saves about 13 ms of the first-frame path on the machine above; `/compact` behavior is
+  unchanged.
 - Add a `frame` benchmark suite (`benchmarks/frame.py`) that measures interactive startup the
   other suites decompose: each sample launches the real entry point under a pseudo-terminal with
   an isolated HOME and records banner and first-prompt-frame times without waiting for the warm-up
