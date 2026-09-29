@@ -58,7 +58,7 @@ class Hint:
 
 
 HINTS: tuple[Hint, ...] = (
-    Hint("Esc then Enter inserts a newline"),
+    Hint("Ctrl-J inserts a newline"),
     Hint("Tab completes commands and @mentions"),
     Hint("↑ or Ctrl-P recalls earlier prompts"),
     Hint("Ctrl-R searches prompt history"),

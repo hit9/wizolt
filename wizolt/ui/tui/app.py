@@ -354,7 +354,8 @@ class TuiApp:
         self._last_input_text = ""
         self._changing_input = False
         # When an eager Esc last acted (closed a menu, cleared an approval reason), and the draft it
-        # cleared, if any: Enter straight after it is the Esc+Enter newline chord (see `enter`).
+        # cleared, if any: Ctrl-J or Enter straight after it is the Esc+newline chord (see
+        # `newline`), and puts that draft back under the new line.
         self._escape_at = 0.0
         self._escape_draft: tuple[UserInput, int] | None = None
         self._search_start_draft: str | UserInput = ""
@@ -1569,6 +1570,33 @@ class TuiApp:
             bindings.add(str(number), filter=modal, eager=True)(lambda event, number=number: self.dispatch_modal_key(str(number), event.data))
         bindings.add(Keys.Any, filter=modal)(lambda event: self.dispatch_modal_key("any", event.data))
 
+        def completes_escape_chord(event) -> bool:
+            """Whether this key press finishes the Esc+newline chord.
+
+            Only straight after an Esc that acted at once -- one that closed a menu or cleared an
+            approval reason -- and only within the time that chord is allowed.
+            """
+            previous = event.previous_key_sequence
+            return bool(previous and previous[-1].key == Keys.Escape and time.monotonic() - self._escape_at < (self.app.timeoutlen if self.app else 1.0))
+
+        def newline(event):
+            # Ctrl-J is the newline key, the convention the other agent CLIs share: it never sends,
+            # and Enter stays the send. The Esc+Enter chord is the same gesture, so both bindings
+            # below run this body.
+            if is_searching():
+                # A search field is one line: the key accepts the match into the input box instead,
+                # exactly as Enter does, so Ctrl-J during Ctrl-R never strands the search.
+                pt_search.accept_search()
+                return
+            if completes_escape_chord(event):
+                # That Esc put a draft aside (the approval reason it cleared): the break belongs to
+                # the draft, so it comes back first and the new line is added to it, as the chord
+                # always did.
+                draft, self._escape_at, self._escape_draft = self._escape_draft, 0.0, None
+                if draft is not None:
+                    self._reset_input(draft[0], cursor_position=draft[1])
+            event.current_buffer.insert_text("\n")
+
         def enter(event):
             # Enter ends a Ctrl-R history search by placing the match into the input box without
             # submitting it, so the text can be reviewed or edited first; a second Enter sends.
@@ -1578,16 +1606,10 @@ class TuiApp:
             if is_searching():
                 pt_search.accept_search()
                 return
-            previous = event.previous_key_sequence
-            if previous and previous[-1].key == Keys.Escape and time.monotonic() - self._escape_at < (self.app.timeoutlen if self.app else 1.0):
+            if completes_escape_chord(event):
                 # Esc+Enter, where the Esc acted at once (closed a menu, cleared an approval
-                # reason): this Enter is the chord's second half -- the newline -- not a send. Only
-                # straight after that Esc, within the time the chord is allowed. A reason the Esc
-                # cleared comes back first, so the chord adds a line to it as it always did.
-                draft, self._escape_at, self._escape_draft = self._escape_draft, 0.0, None
-                if draft is not None:
-                    self._reset_input(draft[0], cursor_position=draft[1])
-                event.current_buffer.insert_text("\n")
+                # reason): this Enter is the chord's second half -- the newline -- not a send.
+                newline(event)
                 return
             # Enter on a focused quick-hint chip picks it into the input and returns focus to the
             # input line, so a second Enter sends.
@@ -1619,12 +1641,13 @@ class TuiApp:
                     return
             buffer.validate_and_handle()
 
+        bindings.add("c-j", filter=~modal, eager=True)(newline)
         bindings.add("enter", filter=~modal, eager=True)(enter)
         # Down and Ctrl-N step past a highlighted default row; Tab instead fills it in (`complete_input`).
         on_default = Condition(lambda: self.modal is None and default_completion(self.input_buffer.complete_state) is not None)
         for key in ("down", "c-n"):
             bindings.add(key, filter=on_default, eager=True)(lambda event: self.step_past_default(event.current_buffer))
-        bindings.add("escape", "enter", filter=~modal, eager=True)(lambda event: event.current_buffer.insert_text("\n"))
+        bindings.add("escape", "enter", filter=~modal, eager=True)(newline)
         for key, reverse in (("tab", False), ("s-tab", True)):
             bindings.add(key, filter=~modal)(lambda event, reverse=reverse: self.tab_or_complete(event.current_buffer, reverse=reverse))
 

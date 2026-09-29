@@ -37,6 +37,17 @@
   `optimization.startup_*` probes rose because they join the warm-up thread, which now also
   loads Rich — documented in `benchmarks/README.md`, not a time-to-prompt regression.
 
+### Changed
+
+- `Ctrl-J` inserts a newline in the prompt instead of sending, matching the convention of the
+  other agent CLIs; `Enter` stays the send. A terminal reports Enter as CR, which is why the key
+  had been riding prompt_toolkit's LF-as-Enter fallback and ran the send path. `Esc` then `Enter`
+  still inserts a newline, and a `Ctrl-J` straight after an `Esc` that cleared an approval reason
+  puts that reason back first, as the chord does. The idle hint now reads `Ctrl-J inserts a
+  newline`. Trade-off: on a terminal that reports Enter as LF, the key it takes for Enter now
+  inserts a newline instead of sending, the same choice the other agent CLIs make; prompt_toolkit
+  offers no way to tell the two terminals apart.
+
 ### Fixed
 
 - Avoid a race in the scrollback resize test when its driver observes the renderer's temporary

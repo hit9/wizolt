@@ -658,7 +658,8 @@ def test_interactive_tui_recall_over_a_draft_keeps_the_cursor(monkeypatch, tmp_p
     run_interactive_tui(monkeypatch, app, drive=drive)
 
 
-def test_interactive_tui_ctrl_r_search_enter_fills_input_without_submitting(monkeypatch, tmp_path):
+@pytest.mark.parametrize("accept_key", ["\r", "\x0a"])
+def test_interactive_tui_ctrl_r_search_accept_key_fills_input_without_submitting(monkeypatch, tmp_path, accept_key):
     received = []
     app = None
 
@@ -683,8 +684,9 @@ def test_interactive_tui_ctrl_r_search_enter_fills_input_without_submitting(monk
         # press; typing alone fills the search field and the UI preview, not the buffer.
         pipe_input.send_text("\x12")
         wait_until(lambda: app.input_buffer.text == "earlier prompt")
-        # Enter accepts the match into the input box and ends the search without submitting.
-        pipe_input.send_text("\r")
+        # Enter -- or Ctrl-J, the newline key, which has no line to break in a search field --
+        # accepts the match into the input box and ends the search without submitting.
+        pipe_input.send_text(accept_key)
         wait_until(lambda: app.app.layout.current_control is not app.search_toolbar.control and app.input_buffer.text == "earlier prompt")
         assert len(received) == 1
         # The second Enter sends the accepted text.
@@ -695,6 +697,35 @@ def test_interactive_tui_ctrl_r_search_enter_fills_input_without_submitting(monk
     run_interactive_tui(monkeypatch, app, drive=drive)
 
     assert received == ["earlier prompt", "earlier prompt"]
+
+
+def test_ctrl_j_inserts_a_newline_and_never_sends(monkeypatch):
+    """Ctrl-J breaks the line, as it does in the other agent CLIs; Enter is what sends.
+
+    A terminal sends Enter as CR, so the LF a person types as Ctrl-J used to reach the same send
+    path, and a multi-line draft had to go through the Esc+Enter chord. What is typed after the
+    break is the same draft, and only Enter hands it over.
+    """
+    submitted = []
+    app = TuiApp(on_chat_submit=submitted.append)
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("first")
+        wait_until(lambda: app.input_buffer.text == "first")
+        pipe_input.send_text("\x0a")
+        wait_until(lambda: app.input_buffer.text == "first\n")
+        assert submitted == []
+        pipe_input.send_text("second")
+        wait_until(lambda: app.input_buffer.text == "first\nsecond")
+        assert submitted == []
+        pipe_input.send_text("\r")
+        wait_until(lambda: [str(value) for value in submitted] == ["first\nsecond"])
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+    assert [str(value) for value in submitted] == ["first\nsecond"]
 
 
 @pytest.mark.parametrize("abort_key", ["\x03", "\x15"])

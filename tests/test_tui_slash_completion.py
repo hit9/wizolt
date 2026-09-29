@@ -396,6 +396,24 @@ def test_esc_enter_still_inserts_a_newline_with_the_menu_open(monkeypatch, keys,
     run_interactive_tui(monkeypatch, app, drive=drive)
 
 
+def test_ctrl_j_inserts_a_newline_with_the_menu_open(monkeypatch):
+    """Ctrl-J is the newline key, and an open menu does not take it: the key is bound to the
+    newline itself, while Enter is what commits a row -- or sends when no row is highlighted."""
+    submitted = []
+    app = TuiApp(completer=CommandCompleter(), on_chat_submit=submitted.append)
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("/st")
+        wait_until(lambda: app.input_buffer.complete_state is not None)
+        pipe_input.send_text("\x0a")
+        wait_until(lambda: app.input_buffer.text == "/st\n")
+        assert submitted == []
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
 APPROVAL_ACTIONS = [("Approve", ""), ("Refuse", "n")]
 
 
@@ -408,13 +426,15 @@ APPROVAL_ACTIONS = [("Approve", ""), ("Refuse", "n")]
         (["\x1b\r"], "because\n", "pending"),
         # The chord as typed by hand: the Esc clears at once, the Enter puts the reason back.
         (["\x1b", "\r"], "because\n", "pending"),
+        # Ctrl-J is the other newline key, so it finishes the chord the same way.
+        (["\x1b", "\x0a"], "because\n", "pending"),
     ],
-    ids=["esc", "alt-enter", "esc-then-enter"],
+    ids=["esc", "alt-enter", "esc-then-enter", "esc-then-ctrl-j"],
 )
 def test_approval_esc_clears_the_reason_at_once_and_keeps_the_newline_chord(monkeypatch, keys, text, answer):
     """The approval prompt's Esc used to wait a full `timeoutlen` before clearing a typed reason,
-    to see whether it began Esc+Enter. It clears at once now, and an Enter straight after restores
-    the reason with a new line, as the chord always did."""
+    to see whether it began Esc+Enter. It clears at once now, and a newline key straight after --
+    Enter, or Ctrl-J -- restores the reason with a new line, as the chord always did."""
     app = TuiApp()
     results = []
 
