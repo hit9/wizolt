@@ -234,7 +234,7 @@ Optional; the defaults shown are used when omitted.
 | `bash_wait_timeout` | `10` | Foreground wait before a running command becomes a background job; `0` disables promotion |
 | `max_parallel_tools` | `4` | Maximum read-only tool calls executed concurrently; `1` disables parallelism |
 | `session_retention_days` | `7` | Delete saved sessions untouched for this many days, swept in the background at startup; `0` keeps them indefinitely |
-| `theme` | `auto` | Color theme: `auto`, `light`, `dark`, or a named theme (see [Color themes](#color-themes)); overridden by `--theme`, and set for you by `/theme`. `auto` reads `COLORFGBG` and falls back to `dark` |
+| `theme` | `auto` | Color theme: `auto`, `light`, `dark`, or a named theme (see [Color themes](#color-themes)); overridden by `--theme`, and set for you by `/theme`. `auto` asks the terminal for its background color, then reads `COLORFGBG`, and falls back to `dark` |
 | `worker` | `false` | Let the model delegate to a second in-process session; see below |
 | `language` | `auto` | Force the reply language (`auto` follows your messages and injects nothing); set a name like `Chinese` to append a fixed `LANGUAGE OVERRIDE` block to the system prompt. Change for the current session with `/language` |
 | `attribution` | `true` | Ask the model to end every commit message and pull-request body it writes with `Generated with [wizolt](https://wizolt.readthedocs.io).` — a prompt-level request, not a guarantee. `/set runtime.attribution off` stops it for the session, `false` for good |

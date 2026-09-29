@@ -51,6 +51,7 @@ from wizolt.base import (
 from wizolt.session import Session
 from wizolt.ui.themes import BUILTIN as NAMED_THEMES
 from wizolt.ui.themes import Palette, load_custom
+from wizolt.utils import terminal
 
 if TYPE_CHECKING:
     from pygments.style import Style as PygmentsStyle
@@ -548,6 +549,11 @@ class Theme:
 
     @classmethod
     def detect(cls) -> str:
+        # The terminal's own answer first: most terminals report their background, while few
+        # set COLORFGBG (Ghostty, kitty, WezTerm, Alacritty and tmux do not).
+        reported = terminal.background()
+        if reported is not None:
+            return "light" if terminal.is_light(reported) else "dark"
         # COLORFGBG is "fg;bg" (rxvt/urxvt/Konsole) or "fg;;bg" (iTerm2). Only the standard
         # white entries are reliably light; index 8 is bright black and must remain dark.
         fgbg = os.environ.get("COLORFGBG", "")

@@ -23,6 +23,12 @@
 - `NO_COLOR` now reaches the transcript too, not only the live app, and the selection band turns
   into `reverse` there, since a background alone draws nothing without color. An explicit
   `PROMPT_TOOLKIT_COLOR_DEPTH` is honored the same way.
+- `auto` asks the terminal for its background (OSC 11) before falling back to `COLORFGBG`, which
+  Ghostty, kitty, WezTerm, Alacritty and tmux do not set, so light terminals were drawn dark. The
+  question is asked once, right after the startup banner, and only when stdin and stdout are both
+  a terminal and nothing has been typed ahead. A device-attributes request follows it, so a
+  terminal that does not answer costs one round trip rather than the 200 ms timeout: under tmux
+  3.4 the answer took 0.3 ms, and a pane with no known background returned in 0.4 ms.
 - Theme files: `<data_dir>/themes/<name>.toml` starts from a built-in `base`, may name a
   `pygments` style, and overrides roles in `[colors]`. Mistakes are reported at startup and when
   `/theme` opens, and the rest of the file still applies. `--theme` and `runtime.theme` accept any

@@ -227,6 +227,11 @@ def main(argv: list[str] | None = None) -> int:
         # Only the banner is recorded: the starting line lives where the app will draw, and a
         # width-change replay must never bring it back.
         print(preprinted_output + STARTING_LINE, end="", flush=True)
+        # Ask the terminal for its background now, while nothing has been typed ahead to swallow;
+        # the answer is kept for the `auto` theme. Standard library only, like the banner.
+        from wizolt.utils import terminal
+
+        terminal.background()
 
     _cli.configure_logging()
     try:
