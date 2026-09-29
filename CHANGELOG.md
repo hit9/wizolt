@@ -4,6 +4,16 @@
 
 ### Performance
 
+- Start interactive SDK/Markdown warm-up after the first prompt frame has rendered, so imports
+  run during `starting…` without competing with drawing that frame. In the isolated PTY
+  benchmark (Linux aarch64, CPython 3.14.7, `NO_COLOR=1`, warm filesystem caches, 5 samples), first-frame median
+  fell from 478.5 to 401.5 ms (-16.1%) against `c1ae3aa`; both include the unanswered terminal
+  background probe's 200 ms timeout. See the [baseline](benchmarks/baselines/linux-arm64-py314-before-deferred-warmup.json)
+  and [result](benchmarks/results/linux-arm64-py314-deferred-warmup.json).
+  Trade-off: imports begin later and can still slow typing during `starting…`; this does not
+  establish a faster fully-ready time. The separate probes that join SDK warm-up rose 7.8%
+  (Chat) and 4.9% (Anthropic); all replay output hashes match. Non-TTY warm-up still starts
+  immediately after the command loop is constructed.
 - Move Rich (and, through it, `markdown_it` and Pygments) out of the interactive first-frame
   path: the Markdown renderable and its console now live in `wizolt/ui/markdown.py` and load on
   the first Markdown render instead of at import. `wizolt` reaches its first prompt about 100 ms

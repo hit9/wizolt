@@ -110,8 +110,8 @@ class CommandLoop:
         self.preprinted_output = ""
         # What `configure_theme` could not use, reported by `start_session` after the banner.
         self.theme_problems: list[str] = []
-        # The CLI's background import thread, if it started one. TuiRuntime keeps `starting` set
-        # until it and the first mention scan finish: both compete with the prompt for the GIL.
+        # The CLI's import thread; TuiRuntime starts it after the first frame and keeps `starting`
+        # set until it and the first mention scan finish: both compete with typing for the GIL.
         self.startup_warmup: threading.Thread | None = None
         # Set to the uid this run should hand over to. `main` reads it after run() returns and
         # builds the next CommandLoop around that session. The reserved lease travels with it, so

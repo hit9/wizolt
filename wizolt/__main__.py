@@ -122,7 +122,7 @@ STARTING_LINE = "\x1b[90mstarting…\x1b[0m\r"
 ERASE_STARTING_LINE = "\r\x1b[K"
 
 
-def warm_imports(modules: list[str]) -> threading.Thread:
+def warm_imports(modules: list[str], *, start: bool = True) -> threading.Thread:
     """Import heavy modules off the main thread so the prompt accepts input immediately.
 
     ModelClient imports the provider SDKs lazily because they cost ~0.8s, which was the whole of the
@@ -130,7 +130,8 @@ def warm_imports(modules: list[str]) -> threading.Thread:
     them here in the background keeps the prompt instant without moving that cost onto the first
     request: the user's first message takes far longer to type than the import takes to finish.
     The modules load one after another, so the warm-up competes with the prompt on one thread only.
-    The runtime shows "starting…" until the returned thread has finished.
+    With start=False, the interactive runtime starts the returned thread after its first frame,
+    so imports cannot compete with drawing it. It shows "starting…" until the thread finishes.
 
     Racing this thread against the request path is safe, and deliberately so:
 
@@ -159,7 +160,8 @@ def warm_imports(modules: list[str]) -> threading.Thread:
                 importlib.import_module(name)
 
     thread = threading.Thread(target=load, name="import-warmup", daemon=True)
-    thread.start()
+    if start:
+        thread.start()
     return thread
 
 
@@ -265,9 +267,8 @@ def main(argv: list[str] | None = None) -> int:
                     # Ownership before any runtime is exposed: tools, model requests, and the first
                     # save all happen under this lease.
                     current.ensure_ownership()
-                warmup = warm_imports(startup_imports(current))
                 command_loop = _cli.CommandLoop(_cli.Agent(current))
-                command_loop.startup_warmup = warmup
+                command_loop.startup_warmup = warm_imports(startup_imports(current), start=not sys.stdin.isatty())
                 try:
                     if banner_preprinted:
                         command_loop.preprinted_output = preprinted_output

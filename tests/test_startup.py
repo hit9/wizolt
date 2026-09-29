@@ -6,6 +6,20 @@ import sys
 import pytest
 
 
+def test_deferred_warmup_imports_nothing_until_started(monkeypatch):
+    from wizolt import __main__ as cli
+
+    loaded = []
+    monkeypatch.setattr(cli.importlib, "import_module", loaded.append)
+    thread = cli.warm_imports(["openai", "wizolt.ui.markdown"], start=False)
+    assert thread.ident is None
+    assert loaded == []
+    thread.start()
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+    assert loaded == ["openai", "wizolt.ui.markdown"]
+
+
 @pytest.mark.parametrize("url,api,expected", [
     ("https://example.test/v1", "chat", "openai"),
     ("https://example.test/v1", "responses", "openai"),

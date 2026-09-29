@@ -224,7 +224,8 @@ under `TYPE_CHECKING`. Do not lift them back to module scope; `tests/test_cli.py
 interpreter loads neither SDK.
 
 `main` warms only the SDKs selected by the resolved main, compaction, vision and worker routes
-(and the MCP SDK, when a server auto-connects) on a daemon thread so
+(and the MCP SDK, when a server auto-connects) on a daemon thread, started by the interactive
+runtime after its first render has flushed (immediately for non-TTY runs), so
 deferral does not move the cost to the first request; racing is safe because CPython locks imports
 per module (see `warm_imports`). That thread holds the GIL for about a second, so keystrokes echo
 slowly while it runs: the prompt's placeholder says `starting…` until it and the first mention scan
@@ -300,7 +301,7 @@ on `Session`, because a task is loop-bound and the session outlives loops.
 
 Six explicit thread construction sites remain, each for a reason the loop cannot serve:
 
-1. `warm_provider_sdks` — pre-runtime import latency, started before any loop exists.
+1. `warm_imports` — SDK and Markdown imports, started after the first interactive frame.
 2. ToolScript's single-worker executor — arbitrary synchronous Python, kept off the loop.
 3. the promoted-Bash drainer — its process and pipes may outlive the launching loop.
 4. the injected-input adapter — an embedding's synchronous callback may never return, so a daemon

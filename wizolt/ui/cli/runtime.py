@@ -702,6 +702,11 @@ class TuiRuntime:
         self.submissions_task = self.spawn(self._consume_submissions(), name="submissions")
         try:
             await self._await_ready(application)
+            # The application's initial render has flushed before readiness reaches this task.
+            # Let imports compete with typing only once the user can see the prompt.
+            warmup = self.loop.startup_warmup
+            if warmup is not None and warmup.ident is None:
+                warmup.start()
             self.scrollback = ScrollbackWriter(self.runtime_loop, self.tui.write_to_scrollback, self.loop.presentation.ui.write_direct)
             self.loop.presentation.scrollback = self.scrollback
             self.loop.presentation.background_output_lock = self.scrollback.lock

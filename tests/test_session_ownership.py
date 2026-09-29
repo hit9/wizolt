@@ -674,7 +674,7 @@ async def test_main_releases_a_reserved_target_when_config_reload_fails(tmp_path
     target.close()
     reserved = SessionLease.acquire(target.config.data_dir, target.ownership_root_path())
     monkeypatch.setattr(cli, "create_session", lambda **_: current)
-    monkeypatch.setattr(cli, "warm_imports", lambda _modules: None)
+    monkeypatch.setattr(cli, "warm_imports", lambda _modules, **_kwargs: None)
     monkeypatch.setattr(
         cli,
         "CommandLoop",

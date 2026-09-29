@@ -97,7 +97,10 @@ def test_interactive_banner_precedes_session_and_ui_imports(monkeypatch):
     monkeypatch.setattr(cli, "configure_logging", configure_logging)
     monkeypatch.setattr(cli, "create_session", lambda **_kwargs: session)
     monkeypatch.setattr(cli, "Agent", lambda value: value)
-    monkeypatch.setattr(cli, "warm_imports", lambda _modules: None)
+    def warm_imports(_modules, *, start=True):
+        assert not start, "interactive imports must wait for the first frame"
+
+    monkeypatch.setattr(cli, "warm_imports", warm_imports)
 
     class FakeLoop:
         @property

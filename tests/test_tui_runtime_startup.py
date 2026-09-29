@@ -53,7 +53,8 @@ def test_runtime_adopts_preprinted_cli_banner_without_printing_again(tmp_path, c
     assert capsys.readouterr().out == ""
 
 
-def test_tui_says_starting_until_the_import_warmup_finishes(tmp_path, monkeypatch):
+@pytest.mark.parametrize("already_started", [False, True])
+def test_tui_says_starting_until_the_import_warmup_finishes(tmp_path, monkeypatch, already_started):
     command_loop = CommandLoop(
         Agent(session(tmp_path), output_fn=lambda _text: None),
         input_fn=lambda prompt="": "",
@@ -62,8 +63,17 @@ def test_tui_says_starting_until_the_import_warmup_finishes(tmp_path, monkeypatc
     monkeypatch.setattr(SessionSnapshotStore, "clean_expired", lambda *_args: 0)
     monkeypatch.setattr(UpdateChecker, "load_cached", lambda _checker: False)
     release = threading.Event()
-    command_loop.startup_warmup = threading.Thread(target=release.wait, daemon=True)
-    command_loop.startup_warmup.start()
+    warmup_frames = []
+
+    def warm():
+        if not already_started:
+            app = command_loop.presentation.tui.app
+            warmup_frames.append(app.renderer.last_rendered_screen is not None)
+        release.wait()
+
+    command_loop.startup_warmup = threading.Thread(target=warm, daemon=True)
+    if already_started:
+        command_loop.startup_warmup.start()
     real_application = Application
     observed = []
 
@@ -87,6 +97,7 @@ def test_tui_says_starting_until_the_import_warmup_finishes(tmp_path, monkeypatc
     assert not driver.is_alive()
     assert observed[0] == "starting…"
     assert observed[1] not in {"", "starting…"}
+    assert warmup_frames == ([] if already_started else [True])
 
 
 def test_tui_emits_resumed_history_after_primary_screen_starts(tmp_path, monkeypatch):
