@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import threading
 from io import StringIO
 from types import SimpleNamespace
 
@@ -97,8 +98,37 @@ def test_interactive_banner_precedes_session_and_ui_imports(monkeypatch):
     monkeypatch.setattr(cli, "configure_logging", configure_logging)
     monkeypatch.setattr(cli, "create_session", lambda **_kwargs: session)
     monkeypatch.setattr(cli, "Agent", lambda value: value)
+    from wizolt.utils import terminal
+
+    importing = threading.Event()
+    probing = threading.Event()
+    imported = threading.Event()
+    real_import = cli.importlib.import_module
+    real_warm_imports = cli.warm_imports
+
+    def import_module(name):
+        if name == "wizolt.ui.cli":
+            importing.set()
+            assert probing.wait(timeout=2), "UI imports must overlap the terminal round trip"
+            value = real_import(name)
+            imported.set()
+            return value
+        return real_import(name)
+
+    def background():
+        try:
+            assert importing.wait(timeout=2), "imports must begin before the terminal wait finishes"
+        finally:
+            probing.set()
+
+    monkeypatch.setattr(cli.importlib, "import_module", import_module)
+    monkeypatch.setattr(terminal, "background", background)
+
     def warm_imports(_modules, *, start=True):
-        assert not start, "interactive imports must wait for the first frame"
+        if _modules == ["wizolt.ui.cli"]:
+            assert start
+            return real_warm_imports(_modules)
+        assert not start, "provider imports must wait for the first frame"
 
     monkeypatch.setattr(cli, "warm_imports", warm_imports)
 
@@ -114,6 +144,7 @@ def test_interactive_banner_precedes_session_and_ui_imports(monkeypatch):
             pass
 
         def run(self, *, show_banner=True):
+            assert imported.is_set(), "imports must be joined before the runtime starts"
             calls.append(("run", show_banner, self.preprinted_output))
             return 0
 

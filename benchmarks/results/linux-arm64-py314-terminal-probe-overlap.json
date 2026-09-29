@@ -1,0 +1,209 @@
+{
+  "environment": {
+    "system": "Linux",
+    "release": "6.8.0-111-generic",
+    "machine": "aarch64",
+    "processor": "aarch64",
+    "python": "3.14.7",
+    "implementation": "CPython",
+    "cpu_count": 8,
+    "cpu_affinity_count": 8,
+    "cpu_quota": "max 100000",
+    "packages": {
+      "PyJWT": "2.15.1",
+      "PyYAML": "6.0.3",
+      "Pygments": "2.21.0",
+      "annotated-types": "0.8.0",
+      "anthropic": "1.9.0",
+      "anyio": "4.15.1",
+      "attrs": "26.1.0",
+      "cffi": "2.1.1",
+      "click": "8.5.0",
+      "cryptography": "50.0.1",
+      "docstring_parser": "0.18.0",
+      "h11": "0.16.0",
+      "httpcore2": "2.13.1",
+      "httpx2": "2.13.1",
+      "idna": "3.20",
+      "jiter": "0.17.0",
+      "jsonschema": "4.26.0",
+      "jsonschema-specifications": "2025.9.1",
+      "markdown-it-py": "4.2.0",
+      "mcp": "2.2.0",
+      "mcp-types": "2.2.0",
+      "mdurl": "0.1.2",
+      "openai": "3.20.0",
+      "opentelemetry-api": "1.45.0",
+      "prompt_toolkit": "3.0.53",
+      "pycparser": "3.0",
+      "pydantic": "2.13.5",
+      "pydantic_core": "2.46.5",
+      "python-multipart": "0.0.32",
+      "referencing": "0.37.0",
+      "rich": "15.0.0",
+      "rpds-py": "2026.6.3",
+      "sniffio": "1.3.1",
+      "socksio": "1.0.0",
+      "sse-starlette": "3.5.0",
+      "starlette": "1.7.0",
+      "tomlkit": "0.15.1",
+      "truststore": "0.10.4",
+      "typing-inspection": "0.4.4",
+      "typing_extensions": "4.16.0",
+      "uvicorn": "0.54.0",
+      "wcwidth": "0.9.1"
+    }
+  },
+  "NO_COLOR": null,
+  "cwd": "<private-project; path redacted>",
+  "repeat": 5,
+  "yolo": true,
+  "workload_sha256": "d485d99bb86024e4a30a49de838fcee98e8608e236ac37d86ed6d986654a7eb6",
+  "method": "isolated HOME/config; same interpreter; git export and worktree copy without bytecode; no model requests",
+  "sources": {
+    "before": {
+      "revision": "2ea1d69fcc98f514f0959a5ee94151bf89f72313",
+      "working_tree": false,
+      "sha256": "9fefc1ee94276ba2240af4123a7a379aeff46508481e3f1df3bca1d2f75b340f"
+    },
+    "after": {
+      "revision": "2ea1d69fcc98f514f0959a5ee94151bf89f72313",
+      "working_tree": true,
+      "sha256": "48bc0f4025be016d462ca1199034a292be8c24722d0e0f52b29f2e53d41c352d"
+    }
+  },
+  "results": {
+    "unanswered_terminal": {
+      "before": {
+        "banner_ms": {
+          "samples_ms": [
+            41.26787499990314,
+            36.32679200381972,
+            34.856082987971604,
+            35.02533299615607,
+            37.18424998805858
+          ],
+          "median_ms": 36.32679200381972
+        },
+        "frame_ms": {
+          "samples_ms": [
+            497.65587502042763,
+            348.29237501253374,
+            344.1097920003813,
+            344.19833301217295,
+            356.1380419996567
+          ],
+          "median_ms": 348.29237501253374
+        },
+        "banner_to_prompt_ms": {
+          "samples_ms": [
+            456.3880000205245,
+            311.965583008714,
+            309.2537090124097,
+            309.1730000160169,
+            318.9537920115981
+          ],
+          "median_ms": 311.965583008714
+        }
+      },
+      "after": {
+        "banner_ms": {
+          "samples_ms": [
+            40.890333999414,
+            36.79704200476408,
+            35.007291997317225,
+            35.29341600369662,
+            35.479791986290365
+          ],
+          "median_ms": 35.479791986290365
+        },
+        "frame_ms": {
+          "samples_ms": [
+            308.89491699053906,
+            268.5644169978332,
+            263.4390000021085,
+            262.58129099733196,
+            260.7147920061834
+          ],
+          "median_ms": 263.4390000021085
+        },
+        "banner_to_prompt_ms": {
+          "samples_ms": [
+            268.00458299112506,
+            231.7673749930691,
+            228.4317080047913,
+            227.28787499363534,
+            225.23500001989305
+          ],
+          "median_ms": 228.4317080047913
+        }
+      }
+    },
+    "responsive_terminal": {
+      "before": {
+        "banner_ms": {
+          "samples_ms": [
+            37.90537500753999,
+            34.934166993480176,
+            36.2737080140505,
+            36.944332998245955,
+            37.21829198184423
+          ],
+          "median_ms": 36.944332998245955
+        },
+        "frame_ms": {
+          "samples_ms": [
+            138.71558400569484,
+            127.79912500991486,
+            134.2748750175815,
+            133.04774998687208,
+            136.03404199238867
+          ],
+          "median_ms": 134.2748750175815
+        },
+        "banner_to_prompt_ms": {
+          "samples_ms": [
+            100.81020899815485,
+            92.86495801643468,
+            98.00116700353101,
+            96.10341698862612,
+            98.81575001054443
+          ],
+          "median_ms": 98.00116700353101
+        }
+      },
+      "after": {
+        "banner_ms": {
+          "samples_ms": [
+            36.14558299886994,
+            35.16516700619832,
+            34.52079198905267,
+            40.58579198317602,
+            37.66175001510419
+          ],
+          "median_ms": 36.14558299886994
+        },
+        "frame_ms": {
+          "samples_ms": [
+            135.72070800000802,
+            127.54354198114015,
+            127.6791249983944,
+            147.10412500426173,
+            129.75191601435654
+          ],
+          "median_ms": 129.75191601435654
+        },
+        "banner_to_prompt_ms": {
+          "samples_ms": [
+            99.57512500113808,
+            92.37837497494183,
+            93.15833300934173,
+            106.51833302108571,
+            92.09016599925235
+          ],
+          "median_ms": 93.15833300934173
+        }
+      }
+    }
+  }
+}

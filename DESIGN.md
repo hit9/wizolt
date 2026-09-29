@@ -239,6 +239,11 @@ ordered scrollback path: a terminal that does not answer prompt-toolkit's initia
 probe can hold that path for about a second. Embeddings, non-TTY runs, resumed sessions, restored
 history, and all later output retain the ordinary command-loop and ordered-scrollback paths.
 
+After the banner, UI imports run on a joined thread while the main thread asks the terminal for
+its background. The query timeout and imports overlap; terminal mode and stdin stay on the main
+thread. Join even when the query fails, before session assembly or runtime input can start. This
+prefetch loads no provider SDKs or Markdown stack; those still warm after the first frame.
+
 ### Future MCP client lifecycle
 
 `MCPManager` opens a short-lived client per discovery/tool/resource operation: fine for stateless
@@ -301,7 +306,8 @@ on `Session`, because a task is loop-bound and the session outlives loops.
 
 Six explicit thread construction sites remain, each for a reason the loop cannot serve:
 
-1. `warm_imports` — SDK and Markdown imports, started after the first interactive frame.
+1. `warm_imports` — joined UI imports during the terminal query, then a separate SDK/Markdown
+   warm-up after the first interactive frame.
 2. ToolScript's single-worker executor — arbitrary synchronous Python, kept off the loop.
 3. the promoted-Bash drainer — its process and pipes may outlive the launching loop.
 4. the injected-input adapter — an embedding's synchronous callback may never return, so a daemon

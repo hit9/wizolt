@@ -23,12 +23,30 @@ model requests. Startup probes load SDKs without contacting providers.
 The `frame` suite measures the interactive startup the other suites decompose: each sample launches
 the real entry point under a pseudo-terminal with an isolated HOME and a minimal unused provider,
 recording when the banner reaches the terminal and when the first prompt frame draws. The
-pseudo-terminal answers no OSC/CPR queries, so the background-color probe pays its full timeout on
-both sides of a comparison; that timeout is inside both numbers and cancels out. `frame` measures
+pseudo-terminal defaults to answering no OSC/CPR queries. The background-color probe can wait
+200 ms; startup work overlapping that wait reduces its contribution to first-frame latency.
+`--answer-background` also measures a terminal that answers immediately. `frame` measures
 the warm-cache case only — a cold filesystem cache dominates both sides. Note that
 `optimization.startup_chat`/`startup_anthropic` join the warm-up thread before stopping the clock,
 so they measure "startup including background imports", not time-to-prompt; `frame.first_frame` is
 the user-facing number and never waits for the warm-up thread.
+
+To reproduce a project's banner-to-prompt pause, use the same interpreter and working directory
+for both source revisions, with an isolated configuration and no model requests:
+
+```sh
+uv run --no-sync python benchmarks/frame.py --source /path/to/exported/source \
+  --cwd /path/to/project --yolo --repeat 5
+# Repeat with --answer-background to exclude an unanswered terminal query.
+```
+
+`banner_to_prompt` measures the interval after the banner, separately from process startup.
+The private-project comparison (project name and path omitted) is recorded in
+[`results/linux-arm64-py314-terminal-probe-overlap.json`](results/linux-arm64-py314-terminal-probe-overlap.json):
+the installed `wizolt` interpreter, `--yolo`, isolated HOME/config, default color output, five
+alternating samples per revision and terminal mode. It compares `2ea1d69` with the recorded
+working-tree source hash, exporting both without bytecode to the same temporary filesystem.
+These numbers exercise the project's cwd but do not include personal configuration or hooks.
 
 Record an immutable source revision:
 

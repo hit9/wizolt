@@ -235,7 +235,14 @@ def main(argv: list[str] | None = None) -> int:
         # the answer is kept for the `auto` theme. Standard library only, like the banner.
         from wizolt.utils import terminal
 
-        terminal.background()
+        # The terminal round trip and UI imports are independent. Keep terminal I/O on this
+        # thread while loading the UI, then join before accessing any of its modules here.
+        # Provider/Markdown warm-up still waits for the first frame below.
+        imports = warm_imports([_LAZY_IMPORTS["CommandLoop"][0]])
+        try:
+            terminal.background()
+        finally:
+            imports.join()
 
     _cli.configure_logging()
     try:

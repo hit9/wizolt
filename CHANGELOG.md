@@ -4,6 +4,17 @@
 
 ### Performance
 
+- Overlap interactive CLI/TUI imports with the terminal background query after printing the
+  banner. Terminal input remains on the main thread, and the import thread is joined before
+  session assembly; provider and Markdown warm-up still starts after the first frame.
+  In a private project with `--yolo`, the installed interpreter (Linux aarch64, CPython 3.14.7), isolated
+  HOME/config and five alternating samples per revision, banner-to-prompt median fell from
+  312.0 to 228.4 ms when the terminal did not answer, and 98.0 to 93.2 ms with an immediate reply,
+  against `2ea1d69`. See the [measurement](benchmarks/results/linux-arm64-py314-terminal-probe-overlap.json).
+  This overlaps existing work rather than removing it; the gain depends on the terminal's reply
+  latency and does not measure personal hooks or time until all background work finishes.
+  The frame probe now accepts a project cwd, `--yolo`, and an immediate background reply, and
+  records banner-to-prompt latency separately.
 - Start interactive SDK/Markdown warm-up after the first prompt frame has rendered, so imports
   run during `starting…` without competing with drawing that frame. In the isolated PTY
   benchmark (Linux aarch64, CPython 3.14.7, `NO_COLOR=1`, warm filesystem caches, 5 samples), first-frame median

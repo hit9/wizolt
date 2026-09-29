@@ -2,9 +2,9 @@
 
 Run the same script/interpreter with --source pointing to an exported baseline and the worktree.
 Each sample launches the interactive entry point under a pseudo-terminal with an isolated HOME,
-recording when output first reaches the terminal and when the first frame draws the prompt. The
-pseudo-terminal answers no OSC or CPR queries, so the background-color probe pays its full timeout
-on both sides and cancels out of the comparison. The process is quit as soon as the frame is
+recording when output first reaches the terminal and when the first frame draws the prompt.
+By default the pseudo-terminal answers no OSC or CPR queries; --answer-background answers the
+background-color probe immediately. --cwd selects the project to launch in. The process is quit as soon as the frame is
 seen; no model request is made and no user session data is touched. Subprocess probes retain
 Python's default GC behavior.
 """
@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 
 
-def sample(source: Path, entry: str) -> dict[str, float | None]:
+def sample(source: Path, entry: str, *, cwd: Path | None = None, answer_background: bool = False, yolo: bool = False) -> dict[str, float]:
     home = tempfile.mkdtemp(prefix="wizolt-frame-home-")
     # The entry point requires a config; give it a minimal valid provider that no probe contacts.
     os.makedirs(os.path.join(home, ".wizolt"), exist_ok=True)
@@ -34,17 +34,19 @@ def sample(source: Path, entry: str) -> dict[str, float | None]:
     master, slave = pty.openpty()
     started = time.perf_counter()
     process = subprocess.Popen(
-        [sys.executable, "-c", code, str(source)],
+        [sys.executable, "-c", code, str(source), *(["--yolo"] if yolo else [])],
         stdin=slave,
         stdout=slave,
         stderr=slave,
         env=environment,
+        cwd=cwd,
         close_fds=True,
     )
     os.close(slave)
     buffer = b""
     banner_ms = None
     frame_ms = None
+    background_answered = False
     deadline = time.monotonic() + 20
     try:
         while time.monotonic() < deadline and process.poll() is None:
@@ -60,6 +62,9 @@ def sample(source: Path, entry: str) -> dict[str, float | None]:
             buffer += chunk
             if banner_ms is None:
                 banner_ms = (time.perf_counter() - started) * 1000
+            if answer_background and not background_answered and b"\x1b[c" in buffer:
+                os.write(master, b"\x1b]11;rgb:0000/0000/0000\x1b\\\x1b[?1;2c")
+                background_answered = True
             if frame_ms is None and b">" in buffer:
                 frame_ms = (time.perf_counter() - started) * 1000
                 break
@@ -77,23 +82,30 @@ def sample(source: Path, entry: str) -> dict[str, float | None]:
             process.kill()
         os.close(master)
         shutil.rmtree(home, ignore_errors=True)
-    return {"banner_ms": banner_ms, "frame_ms": frame_ms}
+    assert banner_ms is not None and frame_ms is not None
+    return {"banner_ms": banner_ms, "frame_ms": frame_ms, "banner_to_prompt_ms": frame_ms - banner_ms}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--repeat", type=int, default=7)
+    parser.add_argument("--cwd", type=Path, default=Path.cwd())
+    parser.add_argument("--answer-background", action="store_true")
+    parser.add_argument("--yolo", action="store_true")
     args = parser.parse_args()
     entry = "wizolt.__main__" if (args.source / "wizolt" / "__main__.py").is_file() else "wizolt.cli"
-    results = {name: {"samples_ms": []} for name in ("banner", "first_frame")}
+    results = {name: {"samples_ms": []} for name in ("banner", "first_frame", "banner_to_prompt")}
     for _ in range(args.repeat):
-        one = sample(args.source, entry)
+        one = sample(args.source.resolve(), entry, cwd=args.cwd, answer_background=args.answer_background, yolo=args.yolo)
         results["banner"]["samples_ms"].append(one["banner_ms"])
         results["first_frame"]["samples_ms"].append(one["frame_ms"])
+        results["banner_to_prompt"]["samples_ms"].append(one["banner_to_prompt_ms"])
     for row in results.values():
         row["median_ms"] = statistics.median(row["samples_ms"])
-    print(json.dumps({"source": str(args.source), "python": sys.version, "repeat": args.repeat, "results": results}, indent=2))
+    print(json.dumps({"source": str(args.source), "python": sys.version, "repeat": args.repeat,
+                      "cwd": str(args.cwd), "answer_background": args.answer_background, "yolo": args.yolo,
+                      "results": results}, indent=2))
 
 
 if __name__ == "__main__":
