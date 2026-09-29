@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.56.1 - 2026-09-28
+
 ### Fixed
 
 - Retry the Zellij acceptance harness's pane subscription when it ends before its first snapshot,
