@@ -253,7 +253,9 @@ highlighting, the status bar, menus and the selection band included:
 `one-dark`
 
 A named theme does not change your terminal's background, so pick the one that matches it. Use
-`/theme` to preview them.
+`/theme` to preview them. Named themes draw their exact colors when your terminal sets
+`COLORTERM=truecolor` (most modern terminals do); otherwise each color is the nearest of 256.
+`NO_COLOR=1` turns color off everywhere, keeping bold and the selection bar.
 
 To make your own, add `<data_dir>/themes/<name>.toml` (`~/.wizolt/themes/` by default). It starts
 from a built-in theme and changes only the colors you list:

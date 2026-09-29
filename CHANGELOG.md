@@ -16,6 +16,13 @@
   4.5:1 on the menu surface (a new `menu_muted` role), or the scheme's own foreground where that
   is the ceiling (solarized). Before this, one-dark's menu descriptions were at 1.6:1. `dark` and
   `light` are unchanged.
+- Named themes draw exact colors on a terminal that sets `COLORTERM=truecolor` or `24bit`;
+  prompt-toolkit never reads it and rounded every hex color to the 256-color palette. `dark` and
+  `light` keep the output's own depth, because their fixed colors (diff bands, divider glow) were
+  tuned as that rounding draws them: `#003b00` has been showing as `#005f00`.
+- `NO_COLOR` now reaches the transcript too, not only the live app, and the selection band turns
+  into `reverse` there, since a background alone draws nothing without color. An explicit
+  `PROMPT_TOOLKIT_COLOR_DEPTH` is honored the same way.
 - Theme files: `<data_dir>/themes/<name>.toml` starts from a built-in `base`, may name a
   `pygments` style, and overrides roles in `[colors]`. Mistakes are reported at startup and when
   `/theme` opens, and the rest of the file still applies. `--theme` and `runtime.theme` accept any

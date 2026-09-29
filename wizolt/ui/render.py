@@ -384,6 +384,28 @@ class Theme:
         return problems
 
     @classmethod
+    def color_depth(cls, selected: ColorDepth) -> ColorDepth:
+        """The depth to draw in, given the one the output selected for the terminal.
+
+        The environment decides first -- `NO_COLOR` turns color off, and an explicit
+        `PROMPT_TOOLKIT_COLOR_DEPTH` is obeyed -- for the transcript as it already is for the live
+        app. A named scheme pins a published palette, so it is drawn exactly on a terminal that
+        advertises true color; prompt-toolkit never reads `COLORTERM` itself and would round it to
+        256 colors. `dark` and `light` keep the output's choice: their fixed colors, the divider's
+        glow included, were tuned as that choice draws them.
+        """
+        chosen = ColorDepth.from_env()
+        if chosen is not None:
+            return chosen
+        if cls.themes().get(cls._mode, cls.BUILTIN["dark"]).background and os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit"):
+            return ColorDepth.DEPTH_24_BIT
+        return selected
+
+    @classmethod
+    def monochrome(cls) -> bool:
+        return ColorDepth.from_env() is ColorDepth.DEPTH_1_BIT
+
+    @classmethod
     def palette(cls) -> dict[str, str]:
         return cls.themes().get(cls._mode, cls.BUILTIN["dark"]).colors
 
@@ -452,7 +474,12 @@ class Theme:
         is already drawn in, so the band changed color from row to row -- green over a tool name,
         gray over a `tr.N` key. One band is one meaning, and it is the same band in the completion
         menu, the pickers, the browsers, and the approval actions.
+
+        Without color (`NO_COLOR`) a background draws nothing, so there the band is `reverse`,
+        the one mark a monochrome terminal still shows.
         """
+        if cls.monochrome():
+            return " ".join(("reverse", *attributes))
         return " ".join((f"fg:{cls.color('selection_fg')}", f"bg:{cls.color('selection_bg')}", *attributes))
 
     @classmethod
@@ -806,7 +833,8 @@ class UiPrinter:
         """
         sink = self.transcript_sink
         if sink is None:
-            print_formatted_text(*parts, sep="", end="", flush=True)
+            depth = Theme.color_depth(get_app_session().output.get_default_color_depth())
+            print_formatted_text(*parts, sep="", end="", flush=True, color_depth=depth)
             return
         # Snapshot the batch and the completed labels; replay must never consult live turn state.
         color_depth = get_app_session().output.get_default_color_depth()
@@ -826,8 +854,10 @@ class UiPrinter:
         buffer = io.StringIO()
         size = Size(rows=24, columns=columns or shutil.get_terminal_size((80, 24)).columns)
         # Match ordinary print_formatted_text and the live viewer. Forcing true color here
-        # bypasses the terminal's palette conversion and makes recorded diff bands darker.
-        depth = color_depth or get_app_session().output.get_default_color_depth()
+        # bypasses the terminal's palette conversion and makes recorded diff bands darker. The
+        # output's choice is frozen at capture; the theme's say over it is applied here, so a
+        # row redrawn after `/theme` takes the depth the new theme draws in.
+        depth = Theme.color_depth(color_depth or get_app_session().output.get_default_color_depth())
         output = Vt100_Output(buffer, lambda: size, default_color_depth=depth)
         fragments = [fragment for part in parts for fragment in (part.fragments(size.columns) if isinstance(part, WidthDependent) else to_formatted_text(part))]
         # The role classes resolve to the colors the fragments already carry inline, so this adds

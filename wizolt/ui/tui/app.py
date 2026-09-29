@@ -46,7 +46,7 @@ from wizolt.base import (
 from wizolt.image import IMAGE_MARKER, ImageInputs, ImageRef, UserInput
 from wizolt.mentions import MENU_KEYS, FilePick, MentionSpan, active_mention, encode_file_mention, mention_spellings, scan_mentions
 from wizolt.paste import PASTE_MARKER, PasteRef
-from wizolt.ui.render import ScrollbackText, UiPrinter
+from wizolt.ui.render import ScrollbackText, Theme, UiPrinter
 from wizolt.ui.tui.scrollback import ScrollbackRegion
 from wizolt.ui.tui.views import TUI_MODAL_PENDING
 
@@ -2112,6 +2112,8 @@ class TuiApp:
             mouse_support=False,
             refresh_interval=self.IDLE_REFRESH_INTERVAL,
             style=style,
+            # Asked on every render, so `/theme` can move a named scheme onto true color.
+            color_depth=lambda: Theme.color_depth(app.output.get_default_color_depth()),
             erase_when_done=True,
         )
         # A lone Esc byte is held this long in case it starts an escape sequence (an arrow key).

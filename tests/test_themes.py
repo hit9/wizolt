@@ -210,6 +210,70 @@ def test_transcript_rows_share_one_style_per_theme(monkeypatch):
     assert len(merges) == 2
 
 
+def recorded_row(style, text="boom"):
+    recorded = []
+    printer = UiPrinter(output_fn=lambda text: None)
+    printer.transcript_sink = recorded.append
+    printer.print_parts([FormattedText([(style, text + "\n")])])
+    return recorded[0]
+
+
+def sgr_parameters(text):
+    return [params for params in re.findall(r"\x1b\[([0-9;]*)m", text) if params]
+
+
+def test_no_color_turns_off_the_transcript_colors_but_keeps_emphasis(monkeypatch):
+    """`NO_COLOR` already took the live app to monochrome; recorded rows kept their colors."""
+    output = SimpleNamespace(get_default_color_depth=lambda: ColorDepth.DEPTH_8_BIT)
+    monkeypatch.setattr(render_module, "get_app_session", lambda: SimpleNamespace(output=output))
+    monkeypatch.setenv("NO_COLOR", "1")
+    row = recorded_row(Theme.fg("error", "bold"))(80)
+
+    assert "boom" in row
+    assert {code for params in sgr_parameters(row) for code in params.split(";")} == {"0", "1"}  # reset and bold only
+
+
+def test_without_color_the_selection_band_is_reverse(monkeypatch, tmp_path):
+    """A background draws nothing on a monochrome terminal, so the cursor row would vanish."""
+    monkeypatch.setenv("NO_COLOR", "1")
+    band = loop(tmp_path).view.style().get_attrs_for_style_str("class:choice.selected")
+
+    assert band.reverse and band.bgcolor == ""
+
+
+def test_named_themes_draw_exact_colors_on_a_true_color_terminal(monkeypatch):
+    """prompt-toolkit never reads COLORTERM, so every hex was rounded to 256 colors. The defaults
+    keep that rounding, which is how their colors were tuned; named schemes draw exactly."""
+    output = SimpleNamespace(get_default_color_depth=lambda: ColorDepth.DEPTH_8_BIT)
+    monkeypatch.setattr(render_module, "get_app_session", lambda: SimpleNamespace(output=output))
+    monkeypatch.setenv("COLORTERM", "truecolor")
+    row = recorded_row(Theme.fg("user"))
+
+    assert "38;2;" not in row(80) and "boom" in row(80)
+    Theme.set_mode("gruvbox-dark")
+    assert "38;2;254;128;25" in row(80)  # gruvbox orange, not its nearest 256-color neighbour
+    monkeypatch.setenv("COLORTERM", "")
+    Theme.set_mode("gruvbox-dark")
+    assert "38;2;" not in row(80)
+
+
+def test_the_app_draws_at_the_depth_the_theme_asks_for(monkeypatch):
+    monkeypatch.setenv("COLORTERM", "24bit")
+    app = TuiApp()
+    depths = []
+
+    def drive(_pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        depths.append(app.app.color_depth)
+        Theme.set_mode("nord")
+        depths.append(app.app.color_depth)
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+    assert depths == [ColorDepth.DEPTH_1_BIT, ColorDepth.DEPTH_24_BIT]  # DummyOutput selects 1 bit
+
+
 class RecordingTerminal(ReflowingTerminal):
     def __init__(self, rows, columns):
         super().__init__(rows, columns)
