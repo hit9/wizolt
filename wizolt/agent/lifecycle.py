@@ -87,6 +87,12 @@ def load_session(
         session.catalog = catalog
         session.adopt_ownership(lease, path)
         bootstrap_features(session)
+        # A resumed session is fully live on return: it can carry active skills whose guards must
+        # hold on the first tool call, and the replay that follows reloads nothing. So the scan
+        # happens here rather than in the runtime's "starting" settle, which the fresh-session
+        # path (`create_session`) uses instead.
+        if session.skills is not None:
+            session.skills.reload()
         return session
     except BaseException:
         # A reservation is consumed even if discovery/bootstrap fails, but an explicitly
@@ -110,7 +116,11 @@ def bootstrap_features(session: Session) -> None:
     if session.skills is None:
         from wizolt.skill.library import SkillLibrary  # local import: skill is built on top of session
 
-        session.skills = SkillLibrary.load(session)
+        # Constructed, not scanned: like MCP -- whose manager is attached here and whose servers
+        # connect in the background -- the library is attached with its discovery and trust ready
+        # and its index still empty. The interactive runtime runs the first scan during the
+        # "starting" settle; `SkillLibrary.load` covers callers that need skills immediately.
+        session.skills = SkillLibrary.attach(session)
     if session.shell_hooks is None:
         from wizolt.shellhooks import HookCommand, ShellHooks  # local import: shellhooks is built on top of session
 

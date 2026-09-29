@@ -75,6 +75,8 @@ def _session_in(cwd, data_dir):
     config.data_dir = str(data_dir)
     s = Session(cwd=str(cwd), config=config)
     bootstrap_features(s)
+    # The test reads the scanned index; interactive startup scans during the "starting" settle.
+    s.skills.reload()
     return s
 
 

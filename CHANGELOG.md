@@ -20,13 +20,21 @@
   `Compactor` at its use site, so `wizolt.agent.compaction` loads only when a compaction actually
   runs. Saves about 13 ms of the first-frame path on the machine above; `/compact` behavior is
   unchanged.
+- Attach the skill library without scanning it at startup: `bootstrap_features` now wires the
+  library to its sources and leaves the index empty (`SkillLibrary.attach`), and the interactive
+  runtime runs the first scan off the event loop during the "starting" settle — the same shape as
+  MCP, whose manager is attached and discovered in the background. A resumed session still scans
+  before `load_session` returns, because its active skills' guards must hold on the first tool
+  call. This is a correctness change first (skills no longer read disk before the first frame) and
+  saves the scan's cost on the prompt path on machines with large skill trees.
 - Add a `frame` benchmark suite (`benchmarks/frame.py`) that measures interactive startup the
   other suites decompose: each sample launches the real entry point under a pseudo-terminal with
   an isolated HOME and records banner and first-prompt-frame times without waiting for the warm-up
   thread. A startup guard test now also keeps `rich` and `markdown_it` off the interactive import
-  path. Recorded comparison against master (`02699d1`): `frame.first_frame` 560.0 → 484.8 ms
-  (-13.4%), `imports.wizolt.cli` 233.8 → 184.9 ms (-20.9%), 9 samples, Linux aarch64 sandbox; the
-  `optimization.startup_*` probes read +19% because they join the warm-up thread, which now also
+  path. Recorded comparison against master (`02699d1`), measured after all of the above:
+  `frame.first_frame` 590.3 → 485.5 ms (-17.8%), `imports.wizolt.cli` 251.5 → 189.7 ms (-24.6%),
+  9 samples, Linux aarch64 sandbox; the
+  `optimization.startup_*` probes rose because they join the warm-up thread, which now also
   loads Rich — documented in `benchmarks/README.md`, not a time-to-prompt regression.
 
 ### Fixed

@@ -223,21 +223,23 @@ baseline. That style costs about 174 KB, once per active theme.
 ## First-frame comparison
 
 `baselines/linux-arm64-py314-before-first-frame.json` (`02699d1`, master) against
-`results/linux-arm64-py314-first-frame.json` (`perf/first-frame`, `ff7ed04`), 9 samples, the same
-environment as the comparisons above. The work moved Rich and its Markdown stack off the
-interactive first-frame path and warmed it in the background thread instead.
+`results/linux-arm64-py314-first-frame.json` (`perf/first-frame`, `3d60fc5` plus the uncommitted
+skill-attach change), 9 samples, the same environment as the comparisons above. The work moved
+Rich and its Markdown stack off the interactive first-frame path (warming it in the background
+thread instead), deferred the manual-compaction import to `/compact`, and attached the skill
+library without scanning it at startup.
 
 | Metric | Before | After | Change |
 | --- | ---: | ---: | ---: |
-| frame.first_frame | 560.0 | 484.8 | -13.4% |
-| frame.banner | 41.6 | 42.8 | +2.9% |
-| imports.wizolt.cli | 233.8 | 184.9 | -20.9% |
-| optimization.startup_chat | 723.1 | 862.9 | +19.3% |
+| frame.first_frame | 590.3 | 485.5 | -17.8% |
+| frame.banner | 45.7 | 43.5 | -4.8% |
+| imports.wizolt.cli | 251.5 | 189.7 | -24.6% |
+| imports.wizolt.model | 90.9 | 82.1 | -9.7% |
+| optimization.startup_anthropic | 787.2 | 1024.4 | +30.1% |
 
 Both `frame` numbers include the pseudo-terminal's full 200 ms background-probe timeout, so the
-frame path itself went from about 360 ms to 285 ms. The `startup_*` increase is the semantics
+frame path itself went from about 390 ms to 285 ms. The `startup_*` increase is the semantics
 documented above — the probe joins the warm-up thread, which now also loads `wizolt.ui.markdown` —
-not a time-to-prompt regression; `frame.first_frame` never waits for that thread.
-`imports.wizolt.__main__` read +10.6% here and -12.8% in an earlier run of the same comparison,
-marking it as run-to-run noise on a ~50 ms measurement; the `replay.*` metrics likewise moved
-within the ±10% band they showed across same-day runs.
+not a time-to-prompt regression; `frame.first_frame` never waits for that thread. Other probes
+moved within the ±10% run-to-run band this suite shows: `imports.wizolt.__main__` read -12.8% and
++10.6% on the same comparison, and the `replay.*` metrics swung similarly across same-day runs.

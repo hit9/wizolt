@@ -163,6 +163,7 @@ async def test_resume_restores_what_the_session_loaded(tmp_path, isolate_home):
     _user_skill(isolate_home, "deploy", GUARD)
     s = session_with_data_dir(tmp_path)
     bootstrap_features(s)
+    s.skills.reload()  # the test reads the scanned index; startup scans during the "starting" settle
     await SkillTool(s, ["deploy"]).call()
     s.messages.append({"role": "user", "content": "deploy it"})  # an empty session is never saved
     await s.save_snapshot()

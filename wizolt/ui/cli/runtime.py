@@ -742,10 +742,16 @@ class TuiRuntime:
         return 0
 
     async def _finish_starting(self, scan: asyncio.Task | None) -> None:
-        """Clear "starting…" once the work that slows the first keystrokes is done: the CLI's
-        import warm-up and the first mention scan. MCP discovery is not waited for: a slow server
-        can take its whole timeout, and /mcp already reports it."""
+        """Clear "starting…" once the work that slows the first keystrokes is done: the skills scan,
+        the CLI's import warm-up, and the first mention scan. MCP discovery is not waited for: a
+        slow server can take its whole timeout, and /mcp already reports it."""
 
+        # The first skills scan, attached-but-unscanned at bootstrap (see bootstrap_features):
+        # off the event loop's thread, because the scan reads every SKILL.md under the project and
+        # user trees and would otherwise stall the prompt's first keystrokes.
+        library = self.loop.session.skills
+        if library is not None and not library.skills and library.discovery is not None:
+            await asyncio.to_thread(library.reload)
         warmup = self.loop.startup_warmup
         # Polled rather than joined on a worker: asyncio.run waits for its executor on exit, so a
         # worker blocked in join() would hold an early quit until the imports finished.

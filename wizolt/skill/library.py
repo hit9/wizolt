@@ -41,11 +41,23 @@ class SkillLibrary:
         self.trust: ProjectTrust | None = None
 
     @classmethod
-    def load(cls, session: Session) -> SkillLibrary:
+    def attach(cls, session: Session) -> SkillLibrary:
+        """A library wired to the session's skill sources with its index still empty.
+
+        The symmetric other half of `load`: `load` attaches and scans, for callers that need
+        skills immediately (tests, the worker path). Interactive startup attaches here and runs
+        the first scan (`reload`) during the "starting" settle, the way MCP connects its servers
+        in the background rather than before the first frame.
+        """
         library = cls({})
         workspace = Workspace(session.cwd)
         library.discovery = SkillDiscovery(workspace, session.data_path("skills"))
         library.trust = ProjectTrust(session.data_path(ProjectTrust.FILE_NAME), workspace.root)
+        return library
+
+    @classmethod
+    def load(cls, session: Session) -> SkillLibrary:
+        library = cls.attach(session)
         library.reload()
         return library
 

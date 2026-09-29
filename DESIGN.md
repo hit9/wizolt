@@ -443,7 +443,11 @@ and `Note` updates and resume events are conversation, not context inserted ahea
   opens). `skill/listing.py` freezes the SKILLS index and the Skill tool's presence at the first
   request; later skills arrive as one appended `NEW SKILLS` message, and the index is rebuilt only
   when `Session.context_epoch` moves (compaction, context reset). The Skill tool never appears
-  mid-session: a session that started without it only gains `/name` starts.
+  mid-session: a session that started without it only gains `/name` starts. Startup attaches the
+  library without reading disk (`bootstrap_features` -> `SkillLibrary.attach`) and the interactive
+  runtime runs the first scan off the loop during the "starting" settle, the way MCP connects its
+  servers in the background; a resumed session scans before `load_session` returns, because its
+  active skills' guards must hold on the first tool call.
 
 #### Three mechanisms, one rule
 

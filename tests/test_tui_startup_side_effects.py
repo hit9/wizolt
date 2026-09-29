@@ -84,6 +84,28 @@ async def test_startup_discovers_mcp_without_blocking_the_prompt(tmp_path, monke
         await discovery
 
 
+def test_skills_are_attached_unscanned_and_the_settle_indexes_them(tmp_path):
+    """Like MCP, skills must not be read from disk before the first frame.
+
+    `bootstrap_features` attaches a library wired to its sources with an empty index; the runtime's
+    "starting" settle runs the first scan. A regression that scans at bootstrap (or that never
+    scans) either slows the prompt or leaves the session with no skills at all."""
+    (tmp_path / ".wizolt" / "skills" / "guide").mkdir(parents=True)
+    (tmp_path / ".wizolt" / "skills" / "guide" / "SKILL.md").write_text("---\nname: guide\ndescription: A test skill.\n---\n\nbody\n")
+    config = Config()
+    config.data_dir = str(tmp_path / "data")
+    s = Session(cwd=str(tmp_path), config=config)
+    bootstrap_features(s)
+
+    # Wired to its sources, but nothing read from disk yet.
+    assert s.skills is not None and s.skills.discovery is not None
+    assert s.skills.skills == {}
+
+    s.skills.reload()  # what the runtime's "starting" settle runs
+
+    assert s.skills.get("guide") is not None
+
+
 def test_input_history_is_trimmed_to_a_bounded_size(tmp_path):
     path = history_file(tmp_path / "history.txt", 5000)
     assert os.path.getsize(path) > CommandLoop.INPUT_HISTORY_BYTES
