@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- The published documentation builds again. The changelog's benchmark links were repository-relative
+  paths, which MyST reads as cross-references to documents; nothing satisfies them, and the docs
+  build treats warnings as errors. They point at the files on GitHub now.
+
 ## 0.58.1 - 2026-09-29
 
 ### Fixed
@@ -31,7 +37,7 @@
   medians of 232.6 → 45.3 ms with no terminal reply, and 92.4 → 45.5 ms with an immediate reply.
   Process-to-prompt was 268.8 → 85.9 ms and 130.3 → 85.0 ms respectively; the first key's
   prompt-to-echo delay fell from 114.5 → 2.9 ms and 102.4 → 3.1 ms. See the
-  [samples, environment and source hashes](benchmarks/results/linux-arm64-py314-starting-input.json).
+  [samples, environment and source hashes](https://github.com/hit9/wizolt/blob/master/benchmarks/results/linux-arm64-py314-starting-input.json).
   The frame probe's `--check-input` measures this echo separately. These warm-cache measurements
   do not establish faster full readiness: provider imports still contend for the GIL later during
   `starting…`, and commands submitted during assembly wait for it to finish.
@@ -41,7 +47,7 @@
   In a private project with `--yolo`, the installed interpreter (Linux aarch64, CPython 3.14.7), isolated
   HOME/config and five alternating samples per revision, banner-to-prompt median fell from
   312.0 to 228.4 ms when the terminal did not answer, and 98.0 to 93.2 ms with an immediate reply,
-  against `2ea1d69`. See the [measurement](benchmarks/results/linux-arm64-py314-terminal-probe-overlap.json).
+  against `2ea1d69`. See the [measurement](https://github.com/hit9/wizolt/blob/master/benchmarks/results/linux-arm64-py314-terminal-probe-overlap.json).
   This overlaps existing work rather than removing it; the gain depends on the terminal's reply
   latency and does not measure personal hooks or time until all background work finishes.
   The frame probe now accepts a project cwd, `--yolo`, and an immediate background reply, and
@@ -50,8 +56,8 @@
   run during `starting…` without competing with drawing that frame. In the isolated PTY
   benchmark (Linux aarch64, CPython 3.14.7, `NO_COLOR=1`, warm filesystem caches, 5 samples), first-frame median
   fell from 478.5 to 401.5 ms (-16.1%) against `c1ae3aa`; both include the unanswered terminal
-  background probe's 200 ms timeout. See the [baseline](benchmarks/baselines/linux-arm64-py314-before-deferred-warmup.json)
-  and [result](benchmarks/results/linux-arm64-py314-deferred-warmup.json).
+  background probe's 200 ms timeout. See the [baseline](https://github.com/hit9/wizolt/blob/master/benchmarks/baselines/linux-arm64-py314-before-deferred-warmup.json)
+  and [result](https://github.com/hit9/wizolt/blob/master/benchmarks/results/linux-arm64-py314-deferred-warmup.json).
   Trade-off: imports begin later and can still slow typing during `starting…`; this does not
   establish a faster fully-ready time. The separate probes that join SDK warm-up rose 7.8%
   (Chat) and 4.9% (Anthropic); all replay output hashes match. Non-TTY warm-up still starts
@@ -195,7 +201,7 @@
   skills in the non-TTY frontend too, so `/skills`, `/name`, `$name` and an early `/status` see the
   installed library instead of freezing an empty model index/tool block. Cover headless input,
   assembly-time submissions, delayed scans, scan failures and exit during scanning.
-  Record the [first-frame/keystroke benchmark against `06cad6c`](benchmarks/results/linux-arm64-py314-startup-order.json).
+  Record the [first-frame/keystroke benchmark against `06cad6c`](https://github.com/hit9/wizolt/blob/master/benchmarks/results/linux-arm64-py314-startup-order.json).
 - Keep recognized partial terminal background/device replies buffered across the keyboard Escape
   timeout, so a delayed second chunk is not inserted into the user's draft. Preserve normal Escape
   handling and the existing bounds on partial reply lengths.
@@ -204,7 +210,7 @@
   and closing inline selectors. Add a terminal regression for stable input/status rows while
   transcript and preview grow. Trade-off: a short transcript leaves a gap above the bottom input;
   model preview text retains its existing six-row limit.
-  Record the [startup benchmark comparison against `d20fef9`](benchmarks/results/linux-arm64-py314-anchored-input.json).
+  Record the [startup benchmark comparison against `d20fef9`](https://github.com/hit9/wizolt/blob/master/benchmarks/results/linux-arm64-py314-anchored-input.json).
 - Keep the thinking/responding label and spark visible above a full six-line model preview.
   Remove the activity window's combined eight-row cap, which scrolled those status rows out of
   view along with older text. Retain the bottom-anchored input and the preview body's own limit;
