@@ -21,7 +21,7 @@ from prompt_toolkit.utils import get_cwidth
 from wizolt.base import DISMISSED, SELECTION_BACK, ApprovalView, Text, ToolCall, ToolError, TurnBox, oneline
 from wizolt.session import BackgroundJob, ToolResultRecord
 from wizolt.tools import AskSpec, BashTool, DelegateTool, JobTool, ToolScript, tooloutput
-from wizolt.ui.render import UiPrinter, WizoltMarkdown, markdown_console
+from wizolt.ui.render import UiPrinter
 from wizolt.ui.tui import (
     ASK_DONE,
     ASK_FREE_TEXT,
@@ -657,6 +657,9 @@ def _approval_text_view(
         to spaces, running them together into one block the approver has to re-read."""
         hard_breaks = "\n".join(line.rstrip() + "  " for line in text.split("\n"))
         content_width = max(1, width - 4)
+        # Rich loads on first render, not at import: the prompt comes up before any markdown exists.
+        from wizolt.ui.markdown import WizoltMarkdown, markdown_console
+
         console = markdown_console(content_width)
         with console.capture() as capture:
             console.print(WizoltMarkdown(hard_breaks))

@@ -12,7 +12,7 @@ from prompt_toolkit.utils import get_cwidth
 
 from wizolt.base import SELECTION_BACK, SELECTION_FREE_TEXT, Text
 from wizolt.tools.ask import AskSpec
-from wizolt.ui.render import UiPrinter, WizoltMarkdown, markdown_console
+from wizolt.ui.render import UiPrinter
 
 TUI_MODAL_PENDING = object()
 ViewLine = TypeVar("ViewLine")
@@ -560,6 +560,9 @@ class AskViewState:
         Preview snippets are ASCII layouts, diffs, and tables whose newlines are structural, so
         each source line gets a hard line break (Markdown folds in-paragraph newlines to spaces)."""
         hard_breaks = "\n".join(line.rstrip() + "  " for line in markdown_text.split("\n"))
+        # Rich loads on first render, not at import: the prompt comes up before any markdown exists.
+        from wizolt.ui.markdown import WizoltMarkdown, markdown_console
+
         console = markdown_console(panel_width)
         with console.capture() as capture:
             console.print(WizoltMarkdown(hard_breaks))

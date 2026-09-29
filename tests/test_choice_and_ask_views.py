@@ -7,6 +7,7 @@ from pathlib import Path
 from prompt_toolkit.utils import get_cwidth
 
 import wizolt
+import wizolt.ui.markdown as markdown_module
 import wizolt.ui.render as render_module
 from wizolt.base import (
     SELECTION_BACK,
@@ -256,9 +257,9 @@ def test_choice_view_selection_band_keeps_one_width_across_rows():
 
 
 def test_markdown_table_with_empty_headings_is_a_key_value_list():
-    console = render_module.markdown_console(60)
+    console = markdown_module.markdown_console(60)
     with console.capture() as capture:
-        console.print(render_module.WizoltMarkdown(render_module.markdown_table(["", ""], [("model", "x"), ("steps", "200")])))
+        console.print(markdown_module.WizoltMarkdown(render_module.markdown_table(["", ""], [("model", "x"), ("steps", "200")])))
     rows = [row.rstrip() for row in UiPrinter.SGR_RE.sub("", capture.get()).splitlines() if row.strip()]
     # No header row: a rounded outline bounds it instead, with no rule between the columns.
     assert rows == ["╭────────────╮", "│ model  x   │", "│ steps  200 │", "╰────────────╯"]

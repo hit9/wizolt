@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Performance
+
+- Move Rich (and, through it, `markdown_it` and Pygments) out of the interactive first-frame
+  path: the Markdown renderable and its console now live in `wizolt/ui/markdown.py` and load on
+  the first Markdown render instead of at import. `wizolt` reaches its first prompt about 100 ms
+  sooner here: exec-to-first-frame measured 613–666 ms on master (`02699d1`) and 519–540 ms with
+  this change (3 runs each, pseudo-terminal, warm caches, Linux aarch64 sandbox; the terminal
+  background probe pays its full 200 ms timeout in both, and cancels out). The `CommandLoop`
+  import chain itself went 292 ms → 183 ms. Trade-off: the first Markdown render (first assistant
+  message, or an approval modal) now pays the Rich import once, about 110 ms on the same machine,
+  after the prompt is already live; typing and commands do not wait for it.
+
 ### Fixed
 
 - Avoid a race in the scrollback resize test when its driver observes the renderer's temporary

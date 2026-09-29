@@ -14,6 +14,7 @@ from prompt_toolkit.styles import Style
 from rich.console import Console
 from tui_harness import loop
 
+import wizolt.ui.markdown as markdown_module
 import wizolt.ui.render as render_module
 import wizolt.ui.tui.app as app_module
 from wizolt.base import (
@@ -100,7 +101,7 @@ def test_theme_does_not_restyle_frozen_interaction_regions(tmp_path, monkeypatch
 
 def test_markdown_uses_one_inline_accent_without_coloring_every_span(monkeypatch):
     monkeypatch.setattr(Theme, "_mode", "dark")
-    console = render_module.markdown_console(80)
+    console = markdown_module.markdown_console(80)
 
     assert console.get_style("markdown.code").color is not None
     assert console.get_style("markdown.link").underline and console.get_style("markdown.link").color is None
@@ -420,7 +421,7 @@ def test_tool_labels_take_the_palette_tool_color(monkeypatch):
 def test_resumed_user_rendering_emits_desert_truecolor(mode, rgb, monkeypatch):
     monkeypatch.setattr(Theme, "_mode", mode)
     ui = UiPrinter(output_fn=lambda text: None)
-    console = render_module.markdown_console(40)
+    console = markdown_module.markdown_console(40)
 
     with console.capture() as capture:
         ui.render_message(console, "hello", "user", False, 0)
