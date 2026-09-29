@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.57.0 - 2026-09-29
+
 ### Added
 
 - Color themes. `/theme` opens a picker that previews each theme as the cursor lands on it, in a
