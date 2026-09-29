@@ -77,10 +77,10 @@
   other agent CLIs; `Enter` stays the send. A terminal reports Enter as CR, which is why the key
   had been riding prompt_toolkit's LF-as-Enter fallback and ran the send path. `Esc` then `Enter`
   still inserts a newline, and a `Ctrl-J` straight after an `Esc` that cleared an approval reason
-  puts that reason back first, as the chord does. The idle hint now reads `Ctrl-J inserts a
-  newline`. Trade-off: on a terminal that reports Enter as LF, the key it takes for Enter now
-  inserts a newline instead of sending, the same choice the other agent CLIs make; prompt_toolkit
-  offers no way to tell the two terminals apart.
+  puts that reason back first, as the chord does. The idle hint reads `Ctrl-J inserts a newline`,
+  and the input-line list in `docs/usage.md` names both keys. Trade-off: on a terminal that
+  reports Enter as LF, the key it takes for Enter now inserts a newline instead of sending, the
+  same choice the other agent CLIs make; prompt_toolkit offers no way to tell the two apart.
 
 ### Fixed
 

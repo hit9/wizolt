@@ -191,6 +191,9 @@ Long inline lists scroll as you move, leaving a few rows of recent output visibl
 
 **The input line** supports:
 
+- `Enter` — send what you typed
+- `Ctrl-J` — insert a newline, so a draft can span several lines; `Esc` then `Enter` still
+  inserts one too
 - history recall and completion
 - `Ctrl-C` — clear the current input; with the input empty while running, interrupt the turn (retracting it if the agent has not answered yet)
 - `Ctrl-U` — clear the whole input line, in the idle prompt and the follow-up editor alike
