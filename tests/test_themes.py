@@ -21,6 +21,7 @@ from wizolt.ui.cli.commands import theme_command
 from wizolt.ui.render import HorizontalRule, Theme, UiPrinter
 from wizolt.ui.themes import BUILTIN, HEX_ROLES, MENU_TEXT_CONTRAST, MUTED_CONTRAST, contrast
 from wizolt.ui.tui.app import TuiApp
+from wizolt.utils import terminal
 
 # 24-bit SGR parameters for colors the tests switch between.
 GRUVBOX_RED = "38;2;251;73;52"  # gruvbox-dark `error`
@@ -41,6 +42,7 @@ def default_theme(monkeypatch):
     monkeypatch.setattr(Theme, "_mode", "dark")
     monkeypatch.setattr(Theme, "_custom", {})
     monkeypatch.delenv("COLORFGBG", raising=False)
+    monkeypatch.setattr(terminal, "background", lambda: None)  # never ask the machine's terminal
 
 
 @pytest.fixture
@@ -117,16 +119,29 @@ def test_themes_resolve_by_name_and_fall_back_to_the_terminal_default(monkeypatc
     assert Theme.resolve("gruvbox-dark") == "gruvbox-dark"
     assert Theme.resolve(" Nord ") == "nord"
     assert Theme.resolve("auto") == "dark"
-    assert Theme.resolve("gruvbox") == "dark"
+    assert Theme.resolve("gruvbx") == "dark"
     monkeypatch.setenv("COLORFGBG", "0;15")
-    assert Theme.resolve("gruvbox") == "light"
+    assert Theme.resolve("gruvbx") == "light"
+
+
+def test_a_light_and_dark_pair_follows_the_terminal(monkeypatch, tmp_path):
+    assert Theme.resolve("Gruvbox") == "gruvbox-dark"
+    monkeypatch.setattr(terminal, "background", lambda: (253, 246, 227))
+    assert Theme.resolve("gruvbox") == "gruvbox-light"
+    assert Theme.resolve("solarized") == "solarized-light"
+    assert "nord" not in Theme.pairs()  # no light variant to follow into
+    write_theme(tmp_path, "mine-dark", 'base = "nord"\n')
+    write_theme(tmp_path, "mine-light", 'base = "gruvbox-light"\n')
+    Theme.load_custom(str(tmp_path))
+    assert Theme.resolve("mine") == "mine-light"
+    assert Theme.choices()[:6] == ("auto", "dark", "light", "gruvbox", "gruvbox-dark", "gruvbox-light")
 
 
 def test_configure_reports_an_unknown_theme_and_draws_the_default(tmp_path):
-    problems = Theme.configure("gruvbox", str(tmp_path))
+    problems = Theme.configure("gruvbx", str(tmp_path))
 
     assert Theme.name() == "dark"
-    assert len(problems) == 1 and "unknown theme `gruvbox`" in problems[0] and "gruvbox-dark" in problems[0]
+    assert len(problems) == 1 and "unknown theme `gruvbx`" in problems[0] and "gruvbox-dark" in problems[0]
     assert Theme.configure("nord", str(tmp_path)) == []
     assert Theme.name() == "nord"
 
@@ -328,13 +343,23 @@ async def test_theme_by_name_switches_redraws_and_saves_keeping_the_config_comme
     assert (tmp_path / "config.toml").read_text() == CONFIG.replace('"auto"', '"gruvbox-dark"')
 
 
+async def test_a_pair_is_saved_as_the_pair_so_the_next_terminal_can_differ(tmp_path):
+    command_loop = themed_loop(tmp_path)
+    command_loop.presentation.tui = ThemeModal([])
+
+    await theme_command(command_loop, "gruvbox")
+
+    assert Theme.name() == "gruvbox-dark"
+    assert 'theme = "gruvbox"' in (tmp_path / "config.toml").read_text()
+
+
 async def test_an_unknown_theme_name_changes_nothing(tmp_path):
     command_loop = themed_loop(tmp_path)
     tui = command_loop.presentation.tui = ThemeModal([])
 
-    result = await theme_command(command_loop, "gruvbox")
+    result = await theme_command(command_loop, "gruvbx")
 
-    assert result.startswith("Unknown theme: gruvbox.") and "gruvbox-dark" in result
+    assert result.startswith("Unknown theme: gruvbx.") and "gruvbox-dark" in result
     assert Theme.name() == "dark" and tui.recolored == 0
     assert (tmp_path / "config.toml").read_text() == CONFIG
 
@@ -429,7 +454,7 @@ async def test_start_session_draws_the_configured_theme_file_and_reports_its_pro
 def test_theme_names_complete_after_the_command():
     completions = [completion.text for completion in CommandCompleter().get_completions(Document("/theme gru"), None)]
 
-    assert completions == ["gruvbox-dark", "gruvbox-light"]
+    assert completions == ["gruvbox", "gruvbox-dark", "gruvbox-light"]
 
 
 def test_the_app_style_follows_a_theme_switch(tmp_path):

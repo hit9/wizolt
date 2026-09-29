@@ -29,6 +29,9 @@
   a terminal and nothing has been typed ahead. A device-attributes request follows it, so a
   terminal that does not answer costs one round trip rather than the 200 ms timeout: under tmux
   3.4 the answer took 0.3 ms, and a pane with no known background returned in 0.4 ms.
+- Light/dark pairs: `gruvbox` and `solarized` (and any name with both a `-dark` and a `-light`
+  theme file) follow the terminal's background like `auto`. `/theme` lists each pair ahead of its
+  two themes and saves the pair, so a later light terminal still gets the light variant.
 - Theme files: `<data_dir>/themes/<name>.toml` starts from a built-in `base`, may name a
   `pygments` style, and overrides roles in `[colors]`. Mistakes are reported at startup and when
   `/theme` opens, and the rest of the file still applies. `--theme` and `runtime.theme` accept any

@@ -253,7 +253,9 @@ highlighting, the status bar, menus and the selection band included:
 `one-dark`
 
 A named theme does not change your terminal's background, so pick the one that matches it. Use
-`/theme` to preview them. Named themes draw their exact colors when your terminal sets
+`/theme` to preview them. `gruvbox` and `solarized` pick their dark or light variant to match
+your terminal, the way `auto` does; so does any name you give both a `-dark` and a `-light` theme
+file. Named themes draw their exact colors when your terminal sets
 `COLORTERM=truecolor` (most modern terminals do); otherwise each color is the nearest of 256.
 `NO_COLOR=1` turns color off everywhere, keeping bold and the selection bar.
 

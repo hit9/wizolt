@@ -791,9 +791,6 @@ def language_command(loop: CommandLoop, args: str) -> str:
     return f"Reply language set: {language}"
 
 
-THEME_AUTO = "auto"
-
-
 def theme_preview(_name: str) -> StyleAndTextTuples:
     """A few transcript rows drawn in the highlighted theme, which the picker has already applied."""
     fg = Theme.fg
@@ -818,33 +815,33 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
     already on screen is redrawn in it once, the way a resize redraws it."""
     problems = Theme.load_custom(loop.session.data_path("themes"))
     original = Theme.name()
-    configured = loop.session.settings.theme
-    current = THEME_AUTO if configured.strip().lower() in ("", THEME_AUTO) else Theme.lookup(configured) or original
+    current = Theme.canonical(loop.session.settings.theme or "auto") or original
     tui = loop.presentation.tui
     chosen: object
     if args.strip():
-        chosen = THEME_AUTO if args.strip().lower() == THEME_AUTO else Theme.lookup(args)
+        chosen = Theme.canonical(args)
         if chosen is None:
-            return "\n".join([*problems, f"Unknown theme: {args.strip()}. Available: {THEME_AUTO}, {', '.join(Theme.themes())}"])
+            return "\n".join([*problems, f"Unknown theme: {args.strip()}. Available: {', '.join(Theme.choices())}"])
     elif tui is None or not loop.interactive_input:
-        names = (THEME_AUTO, *Theme.themes())
-        return "\n".join([*problems, *(("* " if name == current else "  ") + name for name in names)])
+        return "\n".join([*problems, *(("* " if name == current else "  ") + name for name in Theme.choices())])
     else:
         for problem in problems:
             loop.presentation.emit(problem)
         problems = []
 
         def apply(name: str) -> None:
-            Theme.set_mode(Theme.detect() if name == THEME_AUTO else name)
+            Theme.set_mode(Theme.resolve(name))
             tui.invalidate()
 
+        # `auto` and each light/dark pair say which of their two the terminal gets.
+        following = ("auto", *Theme.pairs())
         chosen = None
         try:
             chosen = await choice_application(
                 loop,
                 "Theme",
-                (THEME_AUTO, *Theme.themes()),
-                {THEME_AUTO: f"auto ({Theme.detect()}, from the terminal)"},
+                Theme.choices(),
+                {name: f"{name} (follows the terminal: {Theme.resolve(name)})" for name in following},
                 current,
                 set(),
                 preview_fn=theme_preview,
@@ -857,7 +854,7 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
         if not isinstance(chosen, str):
             return None
     assert isinstance(chosen, str)
-    Theme.set_mode(Theme.detect() if chosen == THEME_AUTO else chosen)
+    Theme.set_mode(Theme.resolve(chosen))
     loop.session.settings.theme = chosen
     if tui is not None:
         tui.recolor()

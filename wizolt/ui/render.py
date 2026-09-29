@@ -379,8 +379,8 @@ class Theme:
         """Load the theme files and activate the configured theme, reporting what could not be used."""
         problems = cls.load_custom(directory)
         name = cls.resolve(configured)
-        if configured.strip().lower() not in ("", "auto") and cls.lookup(configured) is None:
-            problems.append(f"unknown theme `{configured}`; using {name}. Available: {', '.join(cls.themes())}")
+        if configured.strip() and cls.canonical(configured) is None:
+            problems.append(f"unknown theme `{configured}`; using {name}. Available: {', '.join(cls.choices())}")
         cls.set_mode(name)
         return problems
 
@@ -564,17 +564,42 @@ class Theme:
         return "dark"
 
     @classmethod
-    def lookup(cls, name: str) -> str | None:
-        """The theme called `name`, matched exactly and then ignoring case."""
-        name, known = name.strip(), cls.themes()
+    def pairs(cls) -> list[str]:
+        """Names with both a `-dark` and a `-light` theme, which follow the terminal like `auto`."""
+        known = cls.themes()
+        return [name.removesuffix("-dark") for name in known if name.endswith("-dark") and name.removesuffix("-dark") + "-light" in known]
+
+    @classmethod
+    def choices(cls) -> tuple[str, ...]:
+        """Everything `runtime.theme` accepts, in picker order: `auto`, then each pair ahead of its
+        two themes."""
+        pairs, listed = set(cls.pairs()), ["auto"]
+        for name in cls.themes():
+            pair = name.removesuffix("-dark")
+            if pair in pairs and pair not in listed:
+                listed.append(pair)
+            listed.append(name)
+        return tuple(listed)
+
+    @classmethod
+    def canonical(cls, name: str) -> str | None:
+        """`name` as `runtime.theme` spells it -- `auto`, a pair or a theme -- or None if it is none
+        of them. Matched exactly, then ignoring case."""
+        name, known = name.strip(), cls.choices()
         if name in known:
             return name
-        return next((theme for theme in known if theme.lower() == name.lower()), None)
+        return next((choice for choice in known if choice.lower() == name.lower()), None)
 
     @classmethod
     def resolve(cls, configured: str) -> str:
-        """`auto`, and a name no theme has, fall back to the terminal's light or dark default."""
-        return cls.lookup(configured or "") or cls.detect()
+        """The theme to draw for a configured name. `auto`, a pair, and a name nothing has follow
+        the terminal's light or dark background."""
+        name = cls.canonical(configured or "") or "auto"
+        if name == "auto":
+            return cls.detect()
+        if name in cls.pairs():
+            return f"{name}-{cls.detect()}"
+        return name
 
     @classmethod
     def pygments_style(cls) -> type[PygmentsStyle] | None:

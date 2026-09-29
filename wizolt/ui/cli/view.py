@@ -123,7 +123,7 @@ class CommandCompleter(Completer):
             ("/api ", lambda: PROVIDER_API_CHOICES),
             ("/strict ", lambda: ("on", "off")),
             ("/compact ", lambda: ("log",)),
-            ("/theme ", lambda: ("auto", *Theme.themes())),
+            ("/theme ", Theme.choices),
         ):
             if text.startswith(command):
                 yield from self.matches(values(), text[len(command) :])
