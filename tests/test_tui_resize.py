@@ -51,7 +51,11 @@ class ReflowingTerminal(ResizableOutput):
             self.report_cursor_row(self.row)
 
     def cursor_goto(self, row, column):
-        self.row, self.column = row, column
+        # prompt-toolkit's coordinates are 1-based -- `Vt100_Output.cursor_goto` puts them straight
+        # into `CSI row;column H`, and the scrollback projection spells the first column the same
+        # way. Characters are written at `self.column`, a 0-based cell index, so the column is
+        # normalized here; keeping it raw leaves every following row one cell to the right.
+        self.row, self.column = row, column - 1
 
     def cursor_up(self, amount):
         self.row -= amount
@@ -117,6 +121,23 @@ class ReflowingTerminal(ResizableOutput):
         del self.lines[:count]
         self.lines.extend([""] * count)
         self.row = max(1, self.row - count)
+
+
+def test_terminal_model_writes_at_the_column_a_move_leaves_it_in():
+    """The model's cell index is 0-based while prompt-toolkit's coordinates are 1-based.
+
+    `Vt100_Output.cursor_goto` passes its arguments straight into `CSI row;column H`, so a move
+    to column 1 is the leftmost cell -- the layout and the scrollback projection both spell the
+    first column that way. A model that keeps that number as its index writes every following
+    row one cell to the right, dropping its first character, and only on the frames where a raw
+    move preceded a diff that skipped its own cursor move."""
+    output = ReflowingTerminal(6, 20)
+    output.cursor_goto(3, 1)  # 1-based, exactly as prompt-toolkit passes it
+    output.write("prompt")
+    assert output.lines[2].startswith("prompt"), output.lines[2]
+
+    output.write_raw("\x1b[5;1Hraw")
+    assert output.lines[4].startswith("raw"), output.lines[4]
 
 
 def test_resize_reflow_keeps_prompt_anchored_at_bottom(monkeypatch):

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+
+- The terminal model behind the resize and scrollback tests keeps the column a cursor move leaves
+  it in. prompt-toolkit's coordinates are 1-based while the model writes at a 0-based cell index,
+  so every absolute move left it one cell to the right; a later frame whose diff skipped its own
+  cursor move then wrote the row shifted, dropping a character. The stream header's spark row
+  flaked on this (about one run in ten, `* responding` rendered as `* esponding`); the model now
+  matches the terminal it stands in for.
+
 ## 0.58.0 - 2026-09-29
 
 ### Performance
