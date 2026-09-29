@@ -321,6 +321,32 @@ async def test_shutdown_cancels_the_application_when_exit_itself_fails(tmp_path,
     assert command_loop.presentation.tui is None
 
 
+async def test_shutdown_during_session_hooks_still_reports_an_exit_failure(tmp_path, monkeypatch):
+    """Shutdown that lands before the first prompt takes the early return, and must still raise."""
+    runtime, command_loop, tui = runtime_for(tmp_path, monkeypatch)
+    hooks_started = asyncio.Event()
+
+    async def parked_session_hooks():
+        hooks_started.set()
+        await asyncio.Event().wait()
+
+    def fail_exit():
+        raise RuntimeError("exit failed")
+
+    monkeypatch.setattr(command_loop.agent, "start_session", parked_session_hooks)
+    monkeypatch.setattr(tui, "exit", fail_exit)
+
+    async def shutdown_during_hooks():
+        await hooks_started.wait()
+        runtime.request_shutdown()
+
+    with pytest.raises(RuntimeError, match="exit failed"):
+        await asyncio.wait_for(run_until(runtime, shutdown_during_hooks), timeout=1)
+
+    assert runtime.scrollback is None
+    assert command_loop.presentation.tui is None
+
+
 async def test_shutdown_cancels_and_awaits_a_background_task_it_started(tmp_path, monkeypatch):
     """Exit during discovery: a task the runtime spawned is cancelled and awaited, not abandoned."""
     runtime, command_loop, tui = runtime_for(tmp_path, monkeypatch)

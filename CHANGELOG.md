@@ -13,6 +13,10 @@
   attempted the write before requesting shutdown, instead of depending on whether the write pump or
   the shutdown drain got there first.
 
+- Report a shutdown failure, such as the application's exit hook raising, when shutdown arrives
+  while session-start hooks are still running. That path returned early and skipped the error, so
+  the session exited with status 0; CI caught it on Python 3.13, where the race landed that way.
+
 ## 0.56.0 - 2026-09-28
 
 ### Added

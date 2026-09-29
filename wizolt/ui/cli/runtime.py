@@ -723,15 +723,15 @@ class TuiRuntime:
                 await self._until_shutdown(self.command_task)
             finally:
                 self.command_task = None
-            if self.shutdown.is_set():
-                return 0
-            self.spawn(self.loop.discover_mcp(), name="mcp-discovery")
-            # Git discovery can cost hundreds of milliseconds in a large worktree. Warm the
-            # runtime-only snapshot after the prompt is live so the first picker need not wait.
-            scan = self.loop.background.refresh_mentions()
-            self.spawn(self._finish_starting(scan), name="startup-settle")
-            self.submit_next(self.loop.take_pending_inputs())
-            await self.run_agent_loop()
+            # Not an early return: that would skip reporting a failure `_shutdown` records below.
+            if not self.shutdown.is_set():
+                self.spawn(self.loop.discover_mcp(), name="mcp-discovery")
+                # Git discovery can cost hundreds of milliseconds in a large worktree. Warm the
+                # runtime-only snapshot after the prompt is live so the first picker need not wait.
+                scan = self.loop.background.refresh_mentions()
+                self.spawn(self._finish_starting(scan), name="startup-settle")
+                self.submit_next(self.loop.take_pending_inputs())
+                await self.run_agent_loop()
         finally:
             await self._shutdown(application)
         if self.error is not None:
