@@ -1,7 +1,9 @@
 """Starting a skill: `/name args`, argument placeholders, and `!`command`` context at load time."""
 
 import asyncio
+import contextlib
 import os
+import signal
 import time
 
 import pytest
@@ -195,11 +197,71 @@ def _alive(pid):
         return True
 
 
+async def test_cancellation_during_spawn_kills_the_started_group(tmp_path, monkeypatch):
+    """The shell can start children before asyncio hands its Process to the caller."""
+    create = asyncio.create_subprocess_exec
+    started, release = asyncio.Event(), asyncio.Event()
+    process = None
+    child = None
+
+    async def delayed_create(*args, **kwargs):
+        nonlocal process, child
+        process = await create(*args, **kwargs)
+        child = int(await process.stdout.readline())
+        started.set()
+        await release.wait()
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", delayed_create)
+    # Fill a pipe as well: cancellation cleanup must drain while waiting for exit.
+    task = asyncio.create_task(ShellCommand("sleep 30 & echo $!; head -c 8388608 /dev/zero >&2; wait", str(tmp_path), 60).run())
+    try:
+        await asyncio.wait_for(started.wait(), 5)
+        task.cancel()
+        await asyncio.sleep(0)  # deliver cancellation before completing the spawn
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 5)
+        for _ in range(100):
+            if not _alive(child):
+                break
+            await asyncio.sleep(0.01)
+        assert not _alive(child)
+        assert process.returncode is not None
+    finally:
+        release.set()
+        if process is not None:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            await process.communicate()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
 async def test_command_that_cannot_start_is_a_failed_result(tmp_path):
     result = await ShellCommand("true", str(tmp_path / "gone"), timeout=5).run()
 
     assert result.exit_code == ShellCommand.CANNOT_START
     assert result.stderr.startswith("cannot start:")
+
+
+async def test_cancelled_spawn_failure_still_propagates_cancellation(tmp_path, monkeypatch):
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def failing_create(*args, **kwargs):
+        started.set()
+        await release.wait()
+        raise FileNotFoundError("working directory disappeared")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", failing_create)
+    task = asyncio.create_task(ShellCommand("true", str(tmp_path), 5).run())
+    await asyncio.wait_for(started.wait(), 5)
+    task.cancel()
+    await asyncio.sleep(0)
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, 5)
 
 
 async def test_skill_command_output_is_capped(tmp_path):

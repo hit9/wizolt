@@ -50,19 +50,31 @@ class ShellCommand:
         too and waits for the exit before re-raising: a cancelled caller must not leave the
         command running on its own. A command that cannot start at all (its directory is gone,
         there is no bash) is a failed result too, with the shell's own exit code for that."""
+        cancelled: asyncio.CancelledError | None = None
         try:
-            process = await asyncio.create_subprocess_exec(
-                shutil.which("bash") or "bash",
-                "-c",
-                self.command,
-                cwd=self.cwd,
-                env={**os.environ, **self.env} if self.env else None,
-                stdin=asyncio.subprocess.PIPE if self.stdin else asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                start_new_session=True,  # its own group, so the kill below reaches its children too
+            spawning = asyncio.create_task(
+                asyncio.create_subprocess_exec(
+                    shutil.which("bash") or "bash",
+                    "-c",
+                    self.command,
+                    cwd=self.cwd,
+                    env={**os.environ, **self.env} if self.env else None,
+                    stdin=asyncio.subprocess.PIPE if self.stdin else asyncio.subprocess.DEVNULL,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    start_new_session=True,  # its own group, so the kill below reaches its children too
+                )
             )
+            try:
+                process = await asyncio.shield(spawning)
+            except asyncio.CancelledError as error:
+                # The OS may already have started the shell and its children. Finish acquiring
+                # the Process before propagating cancellation so group cleanup owns them all.
+                cancelled = error
+                process = await spawning
         except OSError as error:
+            if cancelled is not None:
+                raise cancelled from error
             return ShellResult(self.CANNOT_START, "", f"cannot start: {error}")
         limit = self.MAX_OUTPUT_CHARS if max_output is None else max(0, max_output)
         assert process.stdout is not None and process.stderr is not None
@@ -74,6 +86,8 @@ class ShellCommand:
         ]
         communication = asyncio.gather(*tasks)
         try:
+            if cancelled is not None:
+                raise cancelled
             # Keep draining while killing: wait() can otherwise hang on a full pipe after its
             # reader was cancelled. Neither timeout nor cancellation leaves a reader behind.
             stdout, stderr, _, _ = await asyncio.wait_for(asyncio.shield(communication), self.timeout)

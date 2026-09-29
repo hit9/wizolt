@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+
+- Kill the whole shell process group when cancellation arrives during subprocess startup.
+  Previously the shell could start children before its process handle reached the cleanup path,
+  leaving children running after cancellation. Add a deterministic startup-race regression with
+  a real child process and output larger than a pipe buffer.
+
 ## 0.57.1 - 2026-09-29
 
 ### Fixed
