@@ -96,7 +96,6 @@ def scheme(
     aqua: str,
     orange: str,
     pygments: str,
-    code_fg: str = "",
 ) -> Palette:
     """Map a scheme's named colors onto wizolt's roles.
 
@@ -127,8 +126,8 @@ def scheme(
             "syntax_number": purple,
             "syntax_ident": aqua,
             "syntax_builtin": yellow,
-            # Code tokens in the Pygments style's own foreground render as the terminal's default.
-            "syntax_default": code_fg or fg,
+            # Code tokens in the scheme's foreground render as the terminal's default.
+            "syntax_default": fg,
             "status_base": fg,
             "status_provider": blue,
             "status_reason": purple,
@@ -155,7 +154,7 @@ BUILTIN: dict[str, Palette] = {
     "gruvbox-dark": scheme(
         "dark", fg="#ebdbb2", comment="#928374", surface="#3c3836", rule="#665c54", background="#282828",
         red="#fb4934", green="#b8bb26", yellow="#fabd2f", blue="#83a598", purple="#d3869b", aqua="#8ec07c", orange="#fe8019",
-        pygments="gruvbox-dark", code_fg="#dddddd",
+        pygments="gruvbox-dark",
     ),
     "gruvbox-light": scheme(
         "light", fg="#3c3836", comment="#928374", surface="#ebdbb2", rule="#bdae93", background="#fbf1c7",

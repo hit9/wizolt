@@ -163,3 +163,49 @@ records Python allocation peaks with tracemalloc in a separate untimed run: 16,8
 process RSS. Bounded draining trades extra reader-task bookkeeping for avoiding retention of the
 whole output. All six terminal replay output hashes match; retained two-width replay memory moved
 by +3,979 bytes. Hooks still add the running time of every matching user command.
+
+## Themes comparison
+
+[`baselines/linux-arm64-py314-before-themes.json`](baselines/linux-arm64-py314-before-themes.json)
+records `master` at `1f12316`, before `/theme`;
+[`results/linux-arm64-py314-themes.json`](results/linux-arm64-py314-themes.json) records the
+`theme-switching` working tree against it (Linux ARM64, CPython 3.14.7, 9 samples, comparable).
+Both were measured with this workload, which adds two replay probes: `emit_500_plain_rows` renders
+500 tool lines through the printer into a transcript, the path every emitted line takes, and
+`recolor_100_blocks_500_rows` times `/theme`'s redraw of a transcript mixing markdown blocks and
+plain lines (revisions without `/theme` skip it). Both pin the recorded depth to 256 colors and
+clear `NO_COLOR`, `COLORTERM` and `PROMPT_TOOLKIT_COLOR_DEPTH`, so every revision draws the same
+bytes. Reproduce with:
+
+```sh
+uv run --no-sync python benchmarks/run.py --revision 1f12316 --repeat 9 \
+  --output /tmp/wizolt-before-themes.json
+uv run --no-sync python benchmarks/run.py --repeat 9 \
+  --baseline /tmp/wizolt-before-themes.json --output /tmp/wizolt-themes.json
+```
+
+Medians in milliseconds for the probes this work touches:
+
+| Metric | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| replay.emit_500_plain_rows | 12.614 | 6.089 | -51.7% |
+| replay.recolor_100_blocks_500_rows | — | 108.261 | new |
+| replay.first_projection_100_blocks | 106.548 | 100.356 | -5.8% |
+| replay.new_width_100_blocks | 107.067 | 104.526 | -2.4% |
+| replay.revisited_width_above_character_budget | 254.035 | 256.941 | +1.1% |
+| optimization.replay_cold_300_blocks | 260.697 | 257.947 | -1.1% |
+| imports.wizolt.cli | 229.475 | 240.589 | +4.8% |
+
+Every replay output hash matches, so the default theme draws byte-identical output, and retained
+two-width replay memory moved by -582 bytes. Other probes moved within their usual noise;
+`append_100_blocks`, a 0.6 ms operation, read -18%, -4%, +4% and +20% across four comparisons the
+same day. The import delta is also noise: fifteen interleaved imports of each revision measured
+250.1 ms before and 244.7 ms after, and `-X importtime` shows the new modules cost about 0.9 ms
+(`wizolt.ui.themes` 0.72 ms, `wizolt.utils.terminal` 0.16 ms; `tomlkit` loads only when a theme is
+saved).
+
+The emit probe caught what the markdown-only probes could not. Tagging fragments with
+`class:role.<name>` first made the path 2x slower (25.2 ms), because prompt-toolkit resolves a
+class by scanning every style rule and a transcript row renders outside any live render's cache;
+memoizing resolved style strings on the one transcript style per theme brought it below the
+baseline. That style costs about 174 KB, once per active theme.

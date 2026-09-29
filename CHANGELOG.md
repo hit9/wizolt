@@ -71,6 +71,12 @@
   9fca797 and 46 µs with this fix. Recoloring a synthetic 5,000-entry transcript (500 markdown
   answers, each followed by nine tool lines, replayed at 100 columns) went from 2,710 ms to
   693 ms. Measured on Linux, 8 cores, Python 3.14.7.
+- Resolve each transcript style string once per theme. The role class `Theme.fg` adds made
+  prompt-toolkit scan every style rule for each fragment of each emitted line: the new
+  `emit_500_plain_rows` benchmark read 25.2 ms against 12.4 ms before `/theme`, and 5.7 ms with the
+  memo. The replay benchmark gains that probe and `recolor_100_blocks_500_rows`; see the themes
+  comparison in [benchmarks/README.md](https://github.com/hit9/wizolt/blob/master/benchmarks/README.md#themes-comparison),
+  where every replay output hash matches the baseline and no probe regresses beyond its noise.
 - A worker send whose first checkpoint failed to save cleared only half of its in-flight turn: the
   stale transcript message stayed, so the worker's next snapshot saved a turn that never ran, and it
   blocked any context reset the worker requested.

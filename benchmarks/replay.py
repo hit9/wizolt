@@ -118,20 +118,6 @@ def main():
 
     measure("emit_500_plain_rows", lambda _: ("".join(emit_rows(500)), 500))
 
-    # `/theme` redraws everything retained: markdown blocks re-render, and plain rows re-render
-    # from their kept fragments. Alternate two themes so every sample is a real change.
-    if "gruvbox-dark" in getattr(Theme, "BUILTIN", {}) and hasattr(ScrollbackRegion, "recolor"):
-        region = fresh([*entries, *emit_rows(500)])
-        region._replay_layout(80)
-
-        def recolor(index):
-            Theme.set_mode(("gruvbox-dark", "nord")[index % 2])
-            region.recolor()
-            return region._replay_layout(80)
-
-        measure("recolor_100_blocks_500_rows", recolor)
-        Theme.set_mode("dark")
-
     # Track cache and renderer allocations with existing inputs, separately from timing samples.
     region = fresh(entries)
     gc.collect()
@@ -142,6 +128,21 @@ def main():
     retained, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
     results["two_widths_100_blocks_memory"] = {"retained_bytes": retained, "peak_bytes": peak}
+
+    # `/theme` redraws everything retained: markdown blocks re-render, and plain rows re-render
+    # from their kept fragments. Alternate two themes so every sample is a real change. Last, so
+    # the theme it leaves behind cannot charge its style's construction to the memory probe.
+    # Revisions from before `/theme` have nothing to recolor and skip it.
+    if hasattr(ScrollbackRegion, "recolor"):
+        region = fresh([*entries, *emit_rows(500)])
+        region._replay_layout(80)
+
+        def recolor(index):
+            Theme.set_mode(("light", "dark")[index % 2])
+            region.recolor()
+            return region._replay_layout(80)
+
+        measure("recolor_100_blocks_500_rows", recolor)
     print(json.dumps({"source": str(args.source.resolve()), "python": sys.version, "repeat": args.repeat, "results": results}, indent=2))
 
 
