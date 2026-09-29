@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.57.1 - 2026-09-29
+
 ### Fixed
 
 - Update the compatibility catalog to restore reasoning `off` for GPT-6 Sol and Luna, prevent

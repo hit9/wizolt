@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any, ClassVar, TypeVar
 
-__version__ = "0.57.0"
+__version__ = "0.57.1"
 
 _BlockingT = TypeVar("_BlockingT")
 _get_cwidth: Callable[[str], int] | None = None
