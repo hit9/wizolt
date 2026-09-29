@@ -404,30 +404,6 @@ async def test_delegate_failure_keeps_followups_an_accepted_request_answered(tmp
     assert parent.pending_user_inputs == []  # answered by the worker, so never repeated
 
 
-async def test_delegate_clears_a_stale_inflight_marker(tmp_path, monkeypatch):
-    """A send that dies before the engine's first settlement leaves the in-flight marker set;
-    the send's own teardown clears it, or later follow-ups would keep routing to a dead turn."""
-    from wizolt.agent.context import ContextManager
-    from wizolt.agent.runner import ToolRunner
-    from wizolt.base import ModelError, ToolError
-
-    parent = _delegate_session(tmp_path)
-
-    class DiesInSetup(FakeModelClient):
-        async def request(self, messages, request_tools=None):
-            parent.worker._active_turn_messages.append({"role": "user", "content": "stale"})
-            raise ModelError("died before settling")
-
-    model = DiesInSetup([])
-    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
-    runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
-    with pytest.raises(ToolError, match="died before settling"):
-        await _delegate_call(parent, runner, action="send", order="do the thing")
-
-    assert parent.worker is not None
-    assert parent.worker._active_turn_messages == []
-
-
 async def test_delegate_clears_the_whole_inflight_turn_when_the_first_checkpoint_fails(tmp_path, monkeypatch):
     """The first checkpoint's write failing is the settlement-free ending: nothing the worker
     staged for that turn may survive it, or the next worker snapshot persists a dead turn."""

@@ -10,6 +10,8 @@
   `/status` asks `Session.delegating_worker` instead of repeating its predicate.
 - Resume attaches its lease through `Session.adopt_ownership`, beside `borrow_ownership`, instead of
   setting the session's lease fields from `agent/lifecycle.py`.
+- Remove a Delegate teardown test that passed without the teardown: the engine's error path
+  cleared the marker it planted first. The failed-first-checkpoint test covers that teardown.
 
 ### Fixed
 
