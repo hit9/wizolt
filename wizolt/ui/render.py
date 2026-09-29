@@ -436,7 +436,9 @@ class Theme:
 
     @classmethod
     def diff_style(cls, key: str) -> str:
-        return (cls.DIFF_LIGHT if cls.appearance() == "light" else cls.DIFF_DARK)[key]
+        """A diff band: the appearance's pinned color, unless a theme file recolors that band."""
+        recolored = cls.themes().get(cls._mode, cls.BUILTIN["dark"]).diff.get(key)
+        return recolored or (cls.DIFF_LIGHT if cls.appearance() == "light" else cls.DIFF_DARK)[key]
 
     @classmethod
     def fg(cls, role: str, *attributes: str) -> str:

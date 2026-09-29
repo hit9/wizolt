@@ -189,6 +189,23 @@ def test_theme_file_mistakes_are_reported_and_the_rest_of_the_file_applies(tmp_p
     assert (Theme.color("accent"), Theme.color("divider_glow"), Theme.palette()["pygments"]) == (nord["accent"], nord["divider_glow"], "nord")
 
 
+def test_a_theme_file_can_recolor_the_diff_bands(tmp_path):
+    """Red against green is the pair colorblind readers lose; a theme file can pick another."""
+    write_theme(tmp_path, "cb", 'base = "dark"\n[diff]\nadded = "#003A66"\nremoved_word = "ansiyellow"\nremoved = "default"\nmoved = "#fff"\n')
+
+    problems = Theme.load_custom(str(tmp_path))
+    Theme.set_mode("cb")
+
+    assert Theme.diff_style("diff.added.bg") == "bg:#003a66"
+    assert Theme.diff_style("diff.removed.emph") == "bg:ansiyellow"
+    assert Theme.diff_style("diff.removed.bg") == Theme.DIFF_DARK["diff.removed.bg"]
+    assert Theme.diff_style("diff.added.emph") == Theme.DIFF_DARK["diff.added.emph"]
+    assert any("diff removed must be" in problem for problem in problems)
+    assert any("unknown [diff] key `moved`" in problem for problem in problems)
+    Theme.set_mode("dark")
+    assert Theme.diff_style("diff.added.bg") == Theme.DIFF_DARK["diff.added.bg"]
+
+
 def test_recorded_rows_replay_as_captured_until_the_theme_changes_then_redraw_in_it(truecolor):
     recorded = []
     printer = UiPrinter(output_fn=lambda text: None)

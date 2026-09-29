@@ -32,6 +32,9 @@
 - Light/dark pairs: `gruvbox` and `solarized` (and any name with both a `-dark` and a `-light`
   theme file) follow the terminal's background like `auto`. `/theme` lists each pair ahead of its
   two themes and saves the pair, so a later light terminal still gets the light variant.
+- A theme file's `[diff]` table recolors the diff bands (`added`, `added_word`, `removed`,
+  `removed_word`); red against green is the pair colorblind readers lose, and the docs show a
+  blue/orange replacement. Bands it leaves out keep the pinned colors.
 - Theme files: `<data_dir>/themes/<name>.toml` starts from a built-in `base`, may name a
   `pygments` style, and overrides roles in `[colors]`. Mistakes are reported at startup and when
   `/theme` opens, and the rest of the file still applies. `--theme` and `runtime.theme` accept any

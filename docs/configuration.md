@@ -276,7 +276,18 @@ The roles you can set are `text`, `muted`, `subtle`, `accent`, `accent_secondary
 status bar's `status_base`, `status_provider`, `status_reason`, `status_mcp`, `status_context`,
 `status_yolo` and `status_worker`, the working divider's `divider_glow` and `divider_rule` (these
 two take `#rrggbb` only), and `selection_bg`, `selection_fg`, `menu_bg` and `menu_muted` (the
-completion menu's descriptions). Diff colors follow the base theme's light or dark look.
+completion menu's descriptions).
+
+Diffs keep the base theme's red and green unless a `[diff]` table recolors them. If red and green
+are hard to tell apart for you, blue and orange are a common replacement:
+
+```toml
+[diff]
+added = "#003a66"          # the added line
+added_word = "#0061a8"     # the words it changed
+removed = "#5c3300"
+removed_word = "#a35a00"
+```
 
 A mistake in a theme file is reported at startup and when `/theme` opens; the rest of the file
 still applies. `/theme` re-reads the folder each time it opens, so edits show up without a restart.
