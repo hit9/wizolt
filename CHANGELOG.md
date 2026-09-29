@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Avoid a race in the scrollback resize test when its driver observes the renderer's temporary
+  unset size during reset. Keep the row-position assertion and wait for the full rendered size.
+
 ## 0.57.2 - 2026-09-29
 
 ### Fixed

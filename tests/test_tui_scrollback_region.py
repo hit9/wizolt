@@ -462,7 +462,8 @@ def test_a_rebuild_leaves_the_app_on_the_row_it_was_on(monkeypatch, wired):
         for columns in (60, 90, 70):
             output.size = Size(rows=ROWS, columns=columns)
             app.app.loop.call_soon_threadsafe(app.app._on_resize)
-            wait_until(lambda columns=columns: app.app.renderer._last_size.columns == columns)
+            # reset() clears _last_size before redraw; the driver can observe that gap.
+            wait_until(lambda: app.app.renderer._last_size == output.size)
             wait_until(lambda: not app.scrollback.pending)
             rows.append(app_top_row(app.app.renderer))
         app.app.loop.call_soon_threadsafe(app.app.exit)
