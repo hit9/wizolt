@@ -20,6 +20,27 @@ class ProviderContract:
 
 PROVIDER_CONTRACTS = (
     ProviderContract(
+        id="sonnet-55-between-tools",
+        url="https://api.anthropic.com/v1",
+        model="claude-sonnet-5-5",
+        reasoning="off",
+        api="anthropic",
+        temperature=0.3,
+        expected_api="anthropic",
+        expected_path="/v1/messages",
+        expected_body={"thinking": {"type": "between_tools"}},
+        absent_body_keys=("temperature",),
+    ),
+    ProviderContract(
+        id="gpt6-sol-reasoning-off",
+        url="https://api.openai.com/v1",
+        model="gpt-6-sol",
+        reasoning="off",
+        expected_api="responses",
+        expected_path="/v1/responses",
+        expected_body={"reasoning": {"effort": "none"}},
+    ),
+    ProviderContract(
         id="chat",
         url="https://gateway.example/v1",
         model="custom-chat",

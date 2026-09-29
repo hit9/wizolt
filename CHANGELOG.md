@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+
+- Update the compatibility catalog to restore reasoning `off` for GPT-6 Sol and Luna, prevent
+  disabled-thinking requests on Claude Opus 5.5, and use between-tools thinking for Sonnet 5.5
+  when reasoning is off. The Messages adapter now honors catalog temperature suppression.
+- Reuse existing reasoning rules for Grok 4.7 and Gemini 3.6–3.8 Flash, and remove DeepSeek V4
+  Pro's obsolete effort exception so GA models can use `low`. Already-covered models and unknown
+  aliases keep their existing paths. Add request and SDK serialization regressions.
+
 ## 0.57.0 - 2026-09-29
 
 ### Added
