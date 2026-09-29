@@ -231,74 +231,21 @@ class Agent:
         transcript_messages: list[Json] = [self.transcript_message(user_message)]
         await self.checkpoint_turn(turn_messages, transcript_messages)
         self._session_hook_context = ()
-        failed_request: PreparedRequest | None = None
         try:
             for step in range(self.session.settings.max_steps):
                 self.session.state.turn_step = step + 1
                 self.session.clear_quick_hints()  # a later step supersedes hints from a non-terminal batch; only the terminal batch keeps its hints
-                while True:
-                    try:
-                        self.raise_if_cancelled()
-                        request = await self.prepare_request(turn_messages)
-                        failed_request = request
-                        try:
-                            assistant, tool_calls, content = await self.model.request(request.messages, request.tools)
-                            accepted = request
-                        except ModelError as error:
-                            fallback = await self._image_fallback_request(error, request)
-                            if fallback is None:
-                                raise
-                            accepted, replacements = fallback
-                            failed_request = accepted
-                            while True:
-                                try:
-                                    self.raise_if_cancelled()
-                                    assistant, tool_calls, content = await self.model.request(accepted.messages, accepted.tools)
-                                    break
-                                except ModelRequestRetry:
-                                    # The paid observation is already in `accepted`; resend that
-                                    # exact request instead of rebuilding it and observing again.
-                                    continue
-                                except (asyncio.CancelledError, KeyboardInterrupt):
-                                    # Preserve successful observations that replace messages already
-                                    # in the live turn (notably ViewImage), while staged queued input
-                                    # remains outside it and is released by the normal interrupt path.
-                                    for before, after in replacements:
-                                        for index, message in enumerate(turn_messages):
-                                            if message is before:
-                                                turn_messages[index] = after
-                                                break
-                                    raise
-                                except ModelError:
-                                    # A final failure commits the exact converted request; the outer
-                                    # error path acknowledges any staged input and keeps paid text.
-                                    turn_messages[:] = accepted.turn_messages
-                                    raise
-                        self.record_sources(assistant)
-                        self.raise_if_cancelled()
-                        # A recovered 400 adopted a converted (text-only) turn: sync the live turn
-                        # now that the request is accepted, so the paid observation is what gets
-                        # committed. The fallback itself never mutates the caller's turn.
-                        if accepted.turn_messages is not request.turn_messages:
-                            turn_messages[:] = accepted.turn_messages
-                        # The request reached the provider, so its follow-ups belong to history from
-                        # here on, and any correction sent next lands after them — history keeps the
-                        # order the provider saw, because a sent message can never be taken back.
-                        self.accept_pending_inputs(turn_messages, transcript_messages, accepted.pending, accepted.turn_messages)
-                        failed_request = None
-                        assistant, tool_calls, content = await self.correct_textual_tool_calls(
-                            assistant,
-                            tool_calls,
-                            content,
-                            base_messages=accepted.messages,
-                            tools=accepted.tools,
-                            names=malformed_tool_names,
-                            turn_messages=turn_messages,
-                            transcript_messages=transcript_messages,
-                        )
-                        break
-                    except ModelRequestRetry:
-                        continue
+                accepted, assistant, tool_calls, content = await self.request_step(turn_messages, transcript_messages)
+                assistant, tool_calls, content = await self.correct_textual_tool_calls(
+                    assistant,
+                    tool_calls,
+                    content,
+                    base_messages=accepted.messages,
+                    tools=accepted.tools,
+                    names=malformed_tool_names,
+                    turn_messages=turn_messages,
+                    transcript_messages=transcript_messages,
+                )
                 if assistant.get(PAUSED_TURN_KEY) and not tool_calls:
                     # The provider paused a long server-side tool run rather than ending the turn.
                     # Resuming means sending this message back unchanged and asking again, so it
@@ -375,17 +322,6 @@ class Agent:
             raise
         except Exception as error:
             if isinstance(error, ModelError):
-                # A queued follow-up was part of the rejected request too. Commit the exact sent
-                # turn before settling its images, rather than releasing it to repeat the same
-                # rejected image on every later request.
-                if failed_request is not None and failed_request.pending:
-                    self.accept_pending_inputs(
-                        turn_messages,
-                        transcript_messages,
-                        failed_request.pending,
-                        failed_request.turn_messages,
-                    )
-                    self.unanswered_inputs = [item.text for item in failed_request.pending]
                 self.session.images.settle_failed_messages(turn_messages)
             self.session.release_user_inputs()
             # A turn that died from an error still has to leave a legal, marked history: tool
@@ -410,6 +346,80 @@ class Agent:
         """Build the turn's opening user message, preserving image refs for direct projection."""
 
         return self.session.images.message(user_input)
+
+    async def request_step(self, turn_messages: list[Json], transcript_messages: list[Json]) -> tuple[PreparedRequest, Json, list[ToolCall], str]:
+        """Send one step's request, recovering an image rejection, and return the accepted request
+        with its response.
+
+        Acceptance commits the request's queued follow-ups to the turn. A ModelError that escapes
+        commits them too, since they were part of the rejected request."""
+        failed: PreparedRequest | None = None
+        try:
+            while True:
+                try:
+                    self.raise_if_cancelled()
+                    request = await self.prepare_request(turn_messages)
+                    failed = request
+                    try:
+                        assistant, tool_calls, content = await self.model.request(request.messages, request.tools)
+                        accepted = request
+                    except ModelError as error:
+                        fallback = await self._image_fallback_request(error, request)
+                        if fallback is None:
+                            raise
+                        accepted, replacements = fallback
+                        failed = accepted
+                        assistant, tool_calls, content = await self._send_image_fallback(accepted, replacements, turn_messages)
+                    self.record_sources(assistant)
+                    self.raise_if_cancelled()
+                    # A recovered 400 adopted a converted (text-only) turn: sync the live turn
+                    # now that the request is accepted, so the paid observation is what gets
+                    # committed. The fallback itself never mutates the caller's turn.
+                    if accepted.turn_messages is not request.turn_messages:
+                        turn_messages[:] = accepted.turn_messages
+                    # The request reached the provider, so its follow-ups belong to history from
+                    # here on, and any correction sent next lands after them — history keeps the
+                    # order the provider saw, because a sent message can never be taken back.
+                    self.accept_pending_inputs(turn_messages, transcript_messages, accepted.pending, accepted.turn_messages)
+                    return accepted, assistant, tool_calls, content
+                except ModelRequestRetry:
+                    continue
+        except ModelError:
+            # A queued follow-up was part of the rejected request too. Commit the exact sent turn
+            # before the error path settles its images, rather than releasing it to repeat the
+            # same rejected image on every later request.
+            if failed is not None and failed.pending:
+                self.accept_pending_inputs(turn_messages, transcript_messages, failed.pending, failed.turn_messages)
+                self.unanswered_inputs = [item.text for item in failed.pending]
+            raise
+
+    async def _send_image_fallback(
+        self, accepted: PreparedRequest, replacements: list[tuple[Json, Json]], turn_messages: list[Json]
+    ) -> tuple[Json, list[ToolCall], str]:
+        """Send the converted request a recovered image rejection built, retrying it unchanged."""
+        while True:
+            try:
+                self.raise_if_cancelled()
+                return await self.model.request(accepted.messages, accepted.tools)
+            except ModelRequestRetry:
+                # The paid observation is already in `accepted`; resend that
+                # exact request instead of rebuilding it and observing again.
+                continue
+            except (asyncio.CancelledError, KeyboardInterrupt):
+                # Preserve successful observations that replace messages already
+                # in the live turn (notably ViewImage), while staged queued input
+                # remains outside it and is released by the normal interrupt path.
+                for before, after in replacements:
+                    for index, message in enumerate(turn_messages):
+                        if message is before:
+                            turn_messages[index] = after
+                            break
+                raise
+            except ModelError:
+                # A final failure commits the exact converted request; the error
+                # path acknowledges any staged input and keeps paid text.
+                turn_messages[:] = accepted.turn_messages
+                raise
 
     async def correct_textual_tool_calls(
         self,

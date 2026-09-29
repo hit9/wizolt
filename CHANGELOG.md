@@ -10,6 +10,9 @@
   `/status` asks `Session.delegating_worker` instead of repeating its predicate.
 - Resume attaches its lease through `Session.adopt_ownership`, beside `borrow_ownership`, instead of
   setting the session's lease fields from `agent/lifecycle.py`.
+- Split one step's model request out of `Agent._run_turn` into `request_step` (and the image
+  fallback's resend into `_send_image_fallback`); the failed request's queued follow-ups are
+  committed there, where the request is made, instead of by the turn's error path.
 - Remove a Delegate teardown test that passed without the teardown: the engine's error path
   cleared the marker it planted first. The failed-first-checkpoint test covers that teardown.
 
