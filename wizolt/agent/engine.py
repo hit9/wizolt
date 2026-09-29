@@ -399,15 +399,10 @@ class Agent:
             # compaction payload with it. What the marker is for is where the turn stopped, and a
             # line of that fits.
             turn_messages.append({"role": "user", "content": FAILED_TURN_MARKER.format(error=oneline(str(error), 300))})
-            self.session.messages.extend(turn_messages)
-            self.session.transcript_messages.extend(transcript_messages)
-            self.session._active_turn_messages.clear()
-            self.session._active_transcript_messages.clear()
-            self.session.state.turn_messages = 0
             # The turn is settled as far as it got; a reset it asked for still takes effect, so the
             # snapshot written below is the post-reset state and a resume cannot restore the
             # conversation the model already decided to drop.
-            self.apply_context_reset()
+            self.finish_turn(turn_messages, transcript_messages)
             await self.session.save_snapshot()
             raise
 
@@ -476,6 +471,7 @@ class Agent:
         await self.session.save_snapshot()
 
     def finish_turn(self, turn_messages: list[Json], transcript_messages: list[Json], assistant: Json | None = None) -> None:
+        """Commit the turn to durable history: the one commit an answer, an interrupt and an error share."""
         if assistant is not None:
             self.session.messages.extend([*turn_messages, assistant])
             self.session.transcript_messages.extend([*transcript_messages, self.transcript_message(assistant)])
@@ -564,10 +560,10 @@ class Agent:
         still recalls it for Ctrl-P. *Interrupt*: the agent already spoke or called a tool, so
         the partial turn stands (what the CLI showed happened) and an interrupt marker is
         appended, keeping the context valid and telling the model the turn ended early."""
-        self.session._active_turn_messages.clear()
-        self.session._active_transcript_messages.clear()
-        self.session.state.turn_messages = 0
         if not any(message.get("role") != "user" for message in transcript_messages):
+            self.session._active_turn_messages.clear()
+            self.session._active_transcript_messages.clear()
+            self.session.state.turn_messages = 0
             return
 
         def cancelled_text(call: Json) -> str:
@@ -579,9 +575,7 @@ class Agent:
 
         self.settle_unanswered_tool_calls(turn_messages, transcript_messages, cancelled_text)
         turn_messages.append({"role": "user", "content": INTERRUPT_MARKER})
-        self.session.messages.extend(turn_messages)
-        self.session.transcript_messages.extend(transcript_messages)
-        self.apply_context_reset()
+        self.finish_turn(turn_messages, transcript_messages)
 
     def settle_unanswered_tool_calls(
         self,

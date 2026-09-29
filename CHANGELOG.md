@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- Commit every turn ending through `Agent.finish_turn`: the error and interrupt paths each repeated
+  its steps (history, in-flight turn, counter, pending context reset) by hand.
+
 ## 0.56.1 - 2026-09-28
 
 ### Fixed
