@@ -815,7 +815,7 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
     already on screen is redrawn in it once, the way a resize redraws it."""
     problems = Theme.load_custom(loop.session.data_path("themes"))
     original = Theme.name()
-    current = Theme.canonical(loop.session.settings.theme or "auto") or original
+    current = Theme.canonical(loop.session.settings.theme or Theme.AUTO) or original
     tui = loop.presentation.tui
     chosen: object
     if args.strip():
@@ -834,7 +834,7 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
             tui.invalidate()
 
         # `auto` and each light/dark pair say which of their two the terminal gets.
-        following = ("auto", *Theme.pairs())
+        following = (Theme.AUTO, *Theme.pairs())
         chosen = None
         try:
             chosen = await choice_application(

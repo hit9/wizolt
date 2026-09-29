@@ -28,6 +28,10 @@ class Palette:
     appearance: str  # "dark" | "light": picks the pinned diff colors
     colors: dict[str, str]  # every role, plus "pygments"
     background: str = ""  # the terminal background a named scheme is drawn for; "" follows the terminal
+    # Drawn in true color where the terminal offers it. A published scheme wants its exact colors;
+    # `dark` and `light` keep the output's depth, because their fixed colors were tuned as it draws
+    # them. A theme file inherits its base's choice.
+    true_color: bool = False
     # Diff bands a theme file recolors, as `Theme.diff_style` spells them (`diff.added.bg` ->
     # `bg:#rrggbb`); every other band keeps the pinned colors of the appearance.
     diff: dict[str, str] = field(default_factory=dict)
@@ -144,6 +148,7 @@ def scheme(
             "pygments": pygments,
         },
         background,
+        true_color=True,
     )
 
 
@@ -218,7 +223,7 @@ def pygments_style_exists(name: str) -> bool:
     return True
 
 
-def load_custom(directory: str, builtins: dict[str, Palette]) -> tuple[dict[str, Palette], list[str]]:
+def load_custom(directory: str, builtins: dict[str, Palette], roles: tuple[str, ...]) -> tuple[dict[str, Palette], list[str]]:
     """Every theme file in `directory`, and a line for each problem found in them.
 
     A file that cannot be used at all is skipped; a bad entry inside a usable file is dropped and
@@ -228,7 +233,6 @@ def load_custom(directory: str, builtins: dict[str, Palette]) -> tuple[dict[str,
         entries = sorted(entry for entry in os.listdir(directory) if entry.endswith(".toml"))
     except OSError:
         return {}, []
-    roles = [role for role in builtins["dark"].colors if role != "pygments"]
     themes: dict[str, Palette] = {}
     problems: list[str] = []
     for entry in entries:
@@ -286,5 +290,5 @@ def load_custom(directory: str, builtins: dict[str, Palette]) -> tuple[dict[str,
         unknown = sorted(set(data) - {"base", "pygments", "colors", "diff"})
         if unknown:
             problems.append(f"theme {path}: unknown key{'s' if len(unknown) > 1 else ''} {', '.join(unknown)}")
-        themes[name] = Palette(base.appearance, colors, base.background, diff)
+        themes[name] = Palette(base.appearance, colors, base.background, base.true_color, diff)
     return themes, problems

@@ -185,9 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", default=None, help="Path to config TOML")
     parser.add_argument("--init-config", action="store_true", help="Create a default config file")
     parser.add_argument("--yolo", action="store_true", help="Skip confirmations for mutating tools")
-    parser.add_argument(
-        "--theme", default="", help="Color theme: auto, dark, light, or a named theme (defaults to runtime.theme, then auto-detect via COLORFGBG)"
-    )
+    parser.add_argument("--theme", default="", help="Color theme: auto, dark, light, or a named theme (defaults to runtime.theme, then auto)")
     resume = parser.add_mutually_exclusive_group()
     resume.add_argument(
         "--resume",

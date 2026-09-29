@@ -664,10 +664,7 @@ class View:
         return self._style[1]
 
     def _build_style(self) -> Style:
-        def role(name: str, *attributes: str) -> str:
-            # `Theme.fg` without its `class:role.*` tag, which a style map's value may not carry.
-            return " ".join((f"fg:{Theme.color(name)}", *attributes))
-
+        role = Theme.inline
         menu_bg = Theme.color("menu_bg")
         return Style.from_dict(
             {

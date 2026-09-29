@@ -363,6 +363,8 @@ class Theme:
     }
 
     BUILTIN: ClassVar[dict[str, Palette]] = {"dark": Palette("dark", DARK), "light": Palette("light", LIGHT), **NAMED_THEMES}
+    # The one name that is no theme: draw `dark` or `light` by the terminal's background.
+    AUTO: ClassVar[str] = "auto"
 
     _mode: ClassVar[str] = "dark"  # the active theme's name
     _custom: ClassVar[dict[str, Palette]] = {}
@@ -386,6 +388,11 @@ class Theme:
         return cls._mode, cls._generation
 
     @classmethod
+    def active(cls) -> Palette:
+        """The active theme, or `dark` if a reload took the one in use away."""
+        return cls.themes().get(cls._mode, cls.BUILTIN["dark"])
+
+    @classmethod
     def set_mode(cls, name: str) -> None:
         cls._mode = name if name in cls.themes() else "dark"
         cls._generation += 1
@@ -393,7 +400,7 @@ class Theme:
     @classmethod
     def load_custom(cls, directory: str) -> list[str]:
         """Re-read the user's theme files; return a line for each problem found in them."""
-        cls._custom, problems = load_custom(directory, cls.BUILTIN)
+        cls._custom, problems = load_custom(directory, cls.BUILTIN, cls.ROLES)
         cls._generation += 1
         return problems
 
@@ -413,15 +420,14 @@ class Theme:
 
         The environment decides first -- `NO_COLOR` turns color off, and an explicit
         `PROMPT_TOOLKIT_COLOR_DEPTH` is obeyed -- for the transcript as it already is for the live
-        app. A named scheme pins a published palette, so it is drawn exactly on a terminal that
-        advertises true color; prompt-toolkit never reads `COLORTERM` itself and would round it to
-        256 colors. `dark` and `light` keep the output's choice: their fixed colors, the divider's
-        glow included, were tuned as that choice draws them.
+        app. A theme that asks for true color (`Palette.true_color`) gets it on a terminal that
+        advertises it; prompt-toolkit never reads `COLORTERM` itself and would round it to 256
+        colors. Every other theme keeps the output's choice.
         """
         chosen = ColorDepth.from_env()
         if chosen is not None:
             return chosen
-        if cls.themes().get(cls._mode, cls.BUILTIN["dark"]).background and os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit"):
+        if cls.active().true_color and os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit"):
             return ColorDepth.DEPTH_24_BIT
         return selected
 
@@ -431,11 +437,11 @@ class Theme:
 
     @classmethod
     def palette(cls) -> dict[str, str]:
-        return cls.themes().get(cls._mode, cls.BUILTIN["dark"]).colors
+        return cls.active().colors
 
     @classmethod
     def appearance(cls) -> str:
-        return cls.themes().get(cls._mode, cls.BUILTIN["dark"]).appearance
+        return cls.active().appearance
 
     # prompt-toolkit spells a terminal color `ansibrightblack`; Rich spells the same one
     # `bright_black`. The palette speaks prompt-toolkit's dialect, since that is what most of the UI
@@ -460,7 +466,7 @@ class Theme:
     @classmethod
     def diff_style(cls, key: str) -> str:
         """A diff band: the appearance's pinned color, unless a theme file recolors that band."""
-        recolored = cls.themes().get(cls._mode, cls.BUILTIN["dark"]).diff.get(key)
+        recolored = cls.active().diff.get(key)
         return recolored or (cls.DIFF_LIGHT if cls.appearance() == "light" else cls.DIFF_DARK)[key]
 
     @classmethod
@@ -474,7 +480,13 @@ class Theme:
         a style defines it. `transcript_style` does, which is how a transcript row recorded under one
         theme re-renders in the next.
         """
-        return " ".join((f"fg:{cls.color(role)}", f"class:role.{role}", *attributes))
+        return cls.inline(role, f"class:role.{role}", *attributes)
+
+    @classmethod
+    def inline(cls, role: str, *attributes: str) -> str:
+        """One role as a bare inline style, e.g. `fg:#8b949e bold`: what a style map's values take,
+        since they may not name a class. Fragments use `fg`."""
+        return " ".join((f"fg:{cls.color(role)}", *attributes))
 
     @classmethod
     def transcript_style(cls) -> BaseStyle:
@@ -600,7 +612,7 @@ class Theme:
     def choices(cls) -> tuple[str, ...]:
         """Everything `runtime.theme` accepts, in picker order: `auto`, then each pair ahead of its
         two themes."""
-        pairs, listed = set(cls.pairs()), ["auto"]
+        pairs, listed = set(cls.pairs()), [cls.AUTO]
         for name in cls.themes():
             pair = name.removesuffix("-dark")
             if pair in pairs and pair not in listed:
@@ -621,8 +633,8 @@ class Theme:
     def resolve(cls, configured: str) -> str:
         """The theme to draw for a configured name. `auto`, a pair, and a name nothing has follow
         the terminal's light or dark background."""
-        name = cls.canonical(configured or "") or "auto"
-        if name == "auto":
+        name = cls.canonical(configured or "") or cls.AUTO
+        if name == cls.AUTO:
             return cls.detect()
         if name in cls.pairs():
             return f"{name}-{cls.detect()}"

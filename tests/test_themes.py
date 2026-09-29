@@ -289,6 +289,18 @@ def test_named_themes_draw_exact_colors_on_a_true_color_terminal(monkeypatch):
     assert "38;2;" not in row(80)
 
 
+def test_a_theme_file_draws_at_its_bases_depth(monkeypatch, tmp_path):
+    monkeypatch.setenv("COLORTERM", "truecolor")
+    write_theme(tmp_path, "warm", 'base = "gruvbox-dark"\n[colors]\naccent = "#abcdef"\n')
+    write_theme(tmp_path, "plain", 'base = "dark"\n[colors]\naccent = "#abcdef"\n')
+    Theme.load_custom(str(tmp_path))
+
+    Theme.set_mode("warm")
+    assert Theme.color_depth(ColorDepth.DEPTH_8_BIT) is ColorDepth.DEPTH_24_BIT
+    Theme.set_mode("plain")
+    assert Theme.color_depth(ColorDepth.DEPTH_8_BIT) is ColorDepth.DEPTH_8_BIT
+
+
 def test_the_app_draws_at_the_depth_the_theme_asks_for(monkeypatch):
     monkeypatch.setenv("COLORTERM", "24bit")
     app = TuiApp()

@@ -617,8 +617,8 @@ model = ""
                                # (flipping it changes the tool block and thus the prompt-cache scope)
 # language = "auto"           # auto follows your messages and injects nothing; set a language
                                # name (e.g. "Chinese") to force the reply language
-# theme = "auto"               # auto | dark | light | gruvbox-dark | nord | ... or a file in
-                               # <data_dir>/themes/; /theme previews them and saves the pick here
+# theme = "auto"               # auto follows the terminal's light or dark background; /theme
+                               # previews every theme, including <data_dir>/themes/, and saves here
 # attribution = true           # ask the model to end the commit messages and pull requests it
                                # writes with a "Generated with wizolt" line
 # agents_md = true               # inject global AGENTS.md and the project's AGENTS.md files (or CLAUDE.md
