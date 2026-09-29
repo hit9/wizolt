@@ -577,13 +577,6 @@ class Theme:
             "markdown.table.header": "bold",
         }
 
-    @classmethod
-    def ramp(cls, start_role: str, end_role: str, steps: int) -> list[str]:
-        """Interpolate `steps` hex colors from one role to another."""
-        start, end = cls.rgb(cls.color(start_role)), cls.rgb(cls.color(end_role))
-        span = max(1, steps - 1)
-        return [cls.mix(start, end, index / span) for index in range(steps)]
-
     @staticmethod
     def mix(start: tuple[int, int, int], end: tuple[int, int, int], ratio: float) -> str:
         return "#" + "".join(f"{round(channel + (channel_end - channel) * ratio):02x}" for channel, channel_end in zip(start, end, strict=True))

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed
+
+- The working divider's rule is a static line: the sweeping highlight that traveled along it while
+  a turn ran is gone, because the moving light drew the eye away from the work the divider names.
+  The label, its elapsed time, and the breathing dot that marks a request in flight are unchanged.
+
 ## 0.58.0 - 2026-09-29
 
 ### Performance
