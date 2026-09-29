@@ -247,9 +247,19 @@ event loop; status/activity controls must look up callbacks dynamically, not cap
 startup callbacks. Retain the draft, cursor and early history, and adopt the banner exactly once.
 Cancellation joins the assembly worker before the entry point releases its session ownership.
 
+Assembly only attaches skill sources. During `starting…`, the runtime scans them off the event
+loop, alongside MCP discovery and mention refresh. Input stays editable and submissions enter
+their FIFO, but command/turn dispatch waits for that initial skill scan: `/status` can freeze the
+model's skill listing just as a request can, and `/name` and skill mentions require discovery.
+Dispatch does not wait for MCP discovery or SDK warm-up. The starting indicator clears after the
+skill scan, SDK warm-up and initial mention refresh finish. The non-TTY frontend also scans skills
+before reading its first command. Scan workers settle on cancellation before resource shutdown.
+
 The terminal background query also starts after that first frame. A filter on the existing input
 parser removes OSC/device replies before key decoding, preserving ordinary keys and bracketed
-paste. No second stdin reader or synchronous timeout may compete with the live app. The initial
+paste. Recognizable incomplete replies stay buffered across the keyboard Escape timeout; lone
+Escape and ambiguous prefixes retain normal key handling. No second stdin reader or synchronous
+timeout may compete with the live app. The initial
 frame uses a transparent default style; the configured theme and status attach after assembly,
 and a late background reply can resolve an automatic theme. Provider and Markdown warm-up then
 runs during `starting…`; drawing sooner does not remove its GIL contention or shorten full readiness.

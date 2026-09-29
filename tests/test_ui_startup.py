@@ -13,9 +13,13 @@ from prompt_toolkit.keys import Keys
 from tui_harness import ResizableOutput, loop, rendered_screen_text, wait_for
 
 import wizolt.ui.tui.app as tui_module
+from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.base import ConfigError
+from wizolt.config import Config
 from wizolt.providers.sync import CatalogRuntime
-from wizolt.session import SessionSnapshotStore
+from wizolt.session import Session, SessionSnapshotStore
+from wizolt.ui.cli import CommandLoop
 from wizolt.ui.startup import _BackgroundReply, _run_startup
 from wizolt.ui.cli.update import UpdateChecker
 from wizolt.utils import terminal
@@ -179,3 +183,134 @@ def test_background_filter_releases_escape_and_unrecognized_sequences():
     replies.feed('text\x1b[?invalid\x1b]11;not-color\x1b\\')
     replies.flush()
     assert ''.join(forwarded) == '\x1btext\x1b[?invalid\x1b]11;not-color\x1b\\'
+
+
+@pytest.mark.parametrize('entered', ['/guide', 'use $guide'])
+async def test_assembly_inputs_wait_for_initial_skill_scan(tmp_path, startup_ui, monkeypatch, entered):
+    pipe, output, apps = startup_ui
+    folder = tmp_path / '.wizolt' / 'skills' / 'guide'
+    folder.mkdir(parents=True)
+    (folder / 'SKILL.md').write_text('---\nname: guide\ndescription: Startup guide\n---\nSTARTUP_SKILL_BODY\n')
+    config = Config.from_dict({
+        'provider': {'active': 'test', 'test': {'url': 'http://test', 'key': 'test', 'model': 'test'}},
+        'paths': {'data_dir': str(tmp_path / 'data')},
+    })
+    s = Session(cwd=str(tmp_path), config=config)
+    bootstrap_features(s)
+    assert s.skills is not None and not s.skills.skills
+    command_loop = CommandLoop(Agent(s))
+    assembling, scanned = threading.Event(), threading.Event()
+    assembled, release = threading.Event(), threading.Event()
+    requests = []
+    reload = s.skills.reload
+
+    def slow_scan():
+        assert apps[0].renderer.last_rendered_screen is not None
+        scanned.set()
+        assert release.wait(timeout=5)
+        reload()
+    monkeypatch.setattr(s.skills, 'reload', slow_scan)
+
+    async def request(messages, tools=None):
+        requests.append((messages, tools))
+        return {'role': 'assistant', 'content': 'done'}, [], 'done'
+    monkeypatch.setattr(command_loop.agent.model, 'request', request)
+
+    def assemble():
+        assembling.set()
+        assert assembled.wait(timeout=5)
+        return command_loop
+
+    task = asyncio.create_task(_run_startup(assemble, 'banner\n\n'))
+    try:
+        await wait_for(assembling.is_set)
+        pipe.send_text('/status\r' + entered + '\rdraft')
+        await wait_for(lambda: apps[0].layout.current_buffer.text == 'draft')
+        assembled.set()
+        await wait_for(scanned.is_set)
+        pipe.send_text(' stays')
+        await wait_for(lambda: apps[0].layout.current_buffer.text == 'draft stays')
+        assert requests == [] and s.skill_listing is None
+        assert command_loop.presentation.starting
+        release.set()
+        await wait_for(lambda: bool(requests) or task.done())
+        if task.done():
+            await task
+        assert len(requests) == 1
+        messages, tools = requests[0]
+        assert s.skill_listing is not None and s.skill_listing.tool
+        assert 'guide [project]' in s.skill_listing.index
+        assert any(tool['function']['name'] == 'Skill' for tool in tools)
+        if entered.startswith('/'):
+            assert 'STARTUP_SKILL_BODY' in str(messages)
+        else:
+            assert any(message.get('_session_event') == 'skill_mentions' for message in messages)
+        await wait_for(lambda: command_loop.presentation.tui.input_mode == tui_module.InputMode.CHAT)
+        pipe.send_text('\x15\x04')
+        assert await asyncio.wait_for(task, 5) == (0, command_loop)
+    finally:
+        assembled.set()
+        release.set()
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        s.close()
+
+
+def test_input_timeout_does_not_turn_a_partial_background_reply_into_typing():
+    keys, colors = [], []
+    parser = Vt100Parser(keys.append)
+    replies = _BackgroundReply(parser.feed, lambda: parser._in_bracketed_paste, colors.append)
+    replies.feed('draft\x1b]11;rgb:ffff/')
+    replies.flush()  # The application's ESC timeout fires between two terminal reply chunks.
+    parser.flush()
+    replies.feed('eeee/dddd\x1b\\\x1b[?1;')
+    replies.flush()
+    parser.flush()
+    replies.feed('2ctail')
+    replies.flush()
+    parser.flush()
+    assert colors == [(255, 238, 221)]
+    assert ''.join(key.data for key in keys) == 'drafttail'
+
+
+@pytest.mark.parametrize('failure', [False, True])
+async def test_skill_scan_failure_or_exit_settles_before_shutdown(tmp_path, startup_ui, monkeypatch, failure):
+    pipe, output, apps = startup_ui
+    command_loop = loop(tmp_path)
+    scanning, release, finished = threading.Event(), threading.Event(), threading.Event()
+
+    def scan():
+        scanning.set()
+        assert release.wait(timeout=5)
+        finished.set()
+        if failure:
+            raise ConfigError('scan failed')
+    monkeypatch.setattr(command_loop.session.skills, 'reload', scan)
+    task = asyncio.create_task(_run_startup(lambda: command_loop, 'banner\n\n'))
+    try:
+        await wait_for(scanning.is_set)
+        if not failure:
+            exit_requested = asyncio.Event()
+            tui = command_loop.presentation.tui
+            request_exit = tui.on_exit_request
+            def tracked_exit():
+                request_exit()
+                exit_requested.set()
+            tui.on_exit_request = tracked_exit
+            pipe.send_text('\x04')
+            await asyncio.wait_for(exit_requested.wait(), 5)
+            assert not task.done() and not finished.is_set()
+        release.set()
+        if failure:
+            with pytest.raises(ConfigError, match='scan failed'):
+                await asyncio.wait_for(task, 5)
+        else:
+            assert await asyncio.wait_for(task, 5) == (0, command_loop)
+        assert finished.is_set() and not apps[0].is_running
+    finally:
+        release.set()
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        command_loop.session.close()

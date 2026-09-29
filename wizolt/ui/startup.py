@@ -63,6 +63,13 @@ class _BackgroundReply:
                 self.flush()
 
     def flush(self) -> None:
+        # An idle gap inside a recognizable terminal reply is not an Escape key. Keep its
+        # bounded partial sequence for the next input chunk; lone Esc and ambiguous prefixes
+        # still follow prompt-toolkit's normal timeout so keyboard chords remain responsive.
+        if (
+            self.pending.startswith("\x1b]11;") and ("\x1b]11;rgb:".startswith(self.pending) or self.PARTIAL_COLOR.fullmatch(self.pending))
+        ) or self.PARTIAL_ATTRIBUTES.fullmatch(self.pending):
+            return
         text, self.pending = self.pending, ""
         if text:
             self.forward(text)

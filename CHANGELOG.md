@@ -172,6 +172,15 @@
 
 ### Fixed
 
+- Scan skills during `starting…` before dispatching the first queued command or turn. The prompt
+  remains editable while scanning; MCP discovery and SDK warm-up do not block dispatch. Initialize
+  skills in the non-TTY frontend too, so `/skills`, `/name`, `$name` and an early `/status` see the
+  installed library instead of freezing an empty model index/tool block. Cover headless input,
+  assembly-time submissions, delayed scans, scan failures and exit during scanning.
+  Record the [first-frame/keystroke benchmark against `06cad6c`](benchmarks/results/linux-arm64-py314-startup-order.json).
+- Keep recognized partial terminal background/device replies buffered across the keyboard Escape
+  timeout, so a delayed second chunk is not inserted into the user's draft. Preserve normal Escape
+  handling and the existing bounds on partial reply lengths.
 - Keep the input area and status bar at the terminal bottom from startup. Appending transcript
   no longer moves and repaints the entire input area. Preserve recent context when opening
   and closing inline selectors. Add a terminal regression for stable input/status rows while

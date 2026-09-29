@@ -74,6 +74,14 @@ or slowdown. The probe does not answer CPR, so it also checks that the new layou
 for a cursor-position reply. Layout stability and transcript preservation are covered separately
 by terminal regression and real-multiplexer acceptance tests.
 
+The startup-order correction is checked against `06cad6c` in
+[`results/linux-arm64-py314-startup-order.json`](results/linux-arm64-py314-startup-order.json),
+with the same environment and five alternating samples per terminal mode. Process-to-prompt
+medians were 85.27 → 84.57 ms without replies and 86.35 → 83.89 ms with immediate background
+replies; prompt-to-key-echo medians were 3.04 → 2.93 ms and 3.06 → 3.27 ms. This probe measures
+initial editing, not command latency: commands now wait for initial skill discovery while the
+editor remains live. Deliberately blocked discovery is exercised in the frontend regression tests.
+
 The private-project comparison (project name and path omitted) is recorded in
 [`results/linux-arm64-py314-terminal-probe-overlap.json`](results/linux-arm64-py314-terminal-probe-overlap.json):
 the installed `wizolt` interpreter, `--yolo`, isolated HOME/config, default color output, five

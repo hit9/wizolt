@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from prompt_toolkit.styles import DynamicStyle
 
 from wizolt.agent.lifecycle import close_agent_resources
-from wizolt.base import MalformedToolCallError, TurnBox, WizoltError
+from wizolt.base import MalformedToolCallError, TurnBox, WizoltError, run_blocking
 from wizolt.image import UserInput
 from wizolt.ui.cli.modals import tool_output_viewer
 from wizolt.ui.render import search_sources_footer
@@ -451,6 +451,8 @@ class TuiRuntime:
     def submit_chat(self, value: UserInput) -> None:
         """Accept one submitted line. Runs on the runtime loop, where the TUI's callbacks run."""
         self.submit_accepted(_Submission(value))
+        if self.loop.presentation.starting and not self.turn_active:
+            self.tui.set_idle()  # More input can queue while initial discovery holds dispatch.
 
     def build_tui(self, tui: TuiApp | None = None) -> TuiApp:
         tui = tui or TuiApp()
@@ -760,26 +762,29 @@ class TuiRuntime:
                 # Git discovery can cost hundreds of milliseconds in a large worktree. Warm the
                 # runtime-only snapshot after the prompt is live so the first picker need not wait.
                 scan = self.loop.background.refresh_mentions()
-                self.spawn(self._finish_starting(scan), name="startup-settle")
+                library = self.loop.session.skills
+                skills = self.spawn(run_blocking(library.reload), name="skills-scan") if library is not None else None
+                self.spawn(self._finish_starting(scan, skills), name="startup-settle")
                 self.submit_next(self.loop.take_pending_inputs())
-                await self.run_agent_loop()
+                # Input admission may proceed, but commands such as /status freeze the model's
+                # skill listing and /name needs discovery. Neither may race the initial scan.
+                if skills is not None:
+                    await self._until_shutdown(skills)
+                if not self.shutdown.is_set():
+                    await self.run_agent_loop()
         finally:
             await self._shutdown(application)
         if self.error is not None:
             raise self.error
         return 0
 
-    async def _finish_starting(self, scan: asyncio.Task | None) -> None:
+    async def _finish_starting(self, scan: asyncio.Task | None, skills: asyncio.Task | None = None) -> None:
         """Clear "starting…" once the work that slows the first keystrokes is done: the skills scan,
         the CLI's import warm-up, and the first mention scan. MCP discovery is not waited for: a
         slow server can take its whole timeout, and /mcp already reports it."""
 
-        # The first skills scan, attached-but-unscanned at bootstrap (see bootstrap_features):
-        # off the event loop's thread, because the scan reads every SKILL.md under the project and
-        # user trees and would otherwise stall the prompt's first keystrokes.
-        library = self.loop.session.skills
-        if library is not None and not library.skills and library.discovery is not None:
-            await asyncio.to_thread(library.reload)
+        if skills is not None:
+            await asyncio.wait({skills})
         warmup = self.loop.startup_warmup
         # Polled rather than joined on a worker: asyncio.run waits for its executor on exit, so a
         # worker blocked in join() would hold an early quit until the imports finished.
