@@ -507,7 +507,9 @@ class View:
                 # keep the two queues apart on screen.
                 item_marker, item_style = ("↪ next turn · ", "class:muted") if item.next_turn else (marker, marker_style)
                 indent = " " * get_cwidth(item_marker)
-                for index, line in enumerate(item.text.splitlines()):
+                # The user's own form: a folded paste or an attached image stays a chip here,
+                # not the entry's flattened text, so a queued paste never floods the live region.
+                for index, line in enumerate(item.user_input().display_text().splitlines()):
                     fragments.extend([("", "\n"), (item_style, item_marker if index == 0 else indent), (UiPrinter.user_log_style(), line)])
             return fragments
 

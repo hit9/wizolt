@@ -1,12 +1,14 @@
 """loop queue ui (split from tests/test_loop_commands.py)."""
 
 import asyncio
+import hashlib
 import itertools
 import os
 import shutil
 import sys
 import threading
 import time
+from pathlib import Path
 
 import pytest
 from agent_harness import call, queue, session
@@ -15,6 +17,8 @@ import wizolt.ui.cli.loop as loop_module
 from wizolt.agent.context import ContextManager
 from wizolt.agent.engine import Agent
 from wizolt.agent.runner import ToolRunner
+from wizolt.image import IMAGE_MARKER, ImageRef, UserInput
+from wizolt.paste import PASTE_MARKER, PasteRef
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.commands import COMMAND_NAMES
 from wizolt.ui.tui import TuiApp
@@ -75,6 +79,41 @@ def test_queue_live_region_shows_divider_and_pending(tmp_path):
     sent, waiting = loop.view.followup_fragments()
     empty = "".join(t for _, t in [*sent, *waiting])
     assert "working" in empty and "queued" not in empty and "run tests" not in empty
+
+
+def test_queued_inputs_keep_chips_out_of_the_live_region_and_recall_restores_them(tmp_path):
+    """A folded paste or an attached image is a chip in the queue's rows -- held back with Tab or
+    sent as a follow-up -- and stays one once claimed and echoed above the divider. The entry's
+    flattened text is for the model and the snapshot; a queued paste body of many lines would
+    otherwise flood the live region and bury the divider."""
+    s = session(tmp_path)
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
+    body = "\n".join(f"line {index}" for index in range(40))
+    paste = PasteRef(text=body + "\n", lines=41, chars=len(body) + 1)
+    # A stored asset whose digest is its ref, the way a real attachment arrives.
+    blob = b"image bytes"
+    ref = hashlib.sha256(blob).hexdigest()
+    image = ImageRef(ref=ref, name="shot.png", media_type="image/png", width=2, height=2, size=len(blob))
+    asset = Path(s.images.asset_path(image))
+    asset.parent.mkdir(parents=True, exist_ok=True)
+    asset.write_bytes(blob)
+    s.enqueue_user_input(UserInput(f"review {PASTE_MARKER} {IMAGE_MARKER}", pastes=(paste,), images=(image,)), next_turn=True)
+    s.enqueue_user_input(UserInput(f"then {PASTE_MARKER}", pastes=(paste,)))
+
+    _sent, waiting = loop.view.followup_fragments()
+    rows = "".join(text for _, text in waiting)
+    assert rows.count(paste.label(1)) == 2  # one chip per queued paste
+    assert "[Image #1 · shot.png]" in rows
+    assert "line 0" not in rows and "line 39" not in rows  # no paste body in the live region
+    assert any(style == "class:divider.working" for style, _ in waiting)
+
+    s.claim_user_inputs()
+    sent, _waiting = loop.view.followup_fragments()
+    claimed = "".join(text for _, text in sent)
+    assert paste.label(1) in claimed and "line 39" not in claimed  # the echoed row is a chip too
+
+    recalled = loop.recall_pending_input(lambda: None)
+    assert isinstance(recalled, UserInput) and recalled.pastes == (paste,)  # the editor gets its chips back
 
 
 def divider_glow_steps(fragments):

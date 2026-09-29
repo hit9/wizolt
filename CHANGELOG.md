@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- Queued inputs keep their chips. A paste held back with Tab (next turn) or sent as a follow-up
+  used to render its full body in the live region's queue rows, flooding the area and burying the
+  divider, spark, and preview under the pasted text. The queue rows, the claimed row's echo, and
+  recall now fold it into its `[Pasted text #N …]` chip and show the image label again. The model
+  still receives the expanded text, and a resumed session still reads the stored plain text.
 - The terminal model behind the resize and scrollback tests keeps the column a cursor move leaves
   it in. prompt-toolkit's coordinates are 1-based while the model writes at a 0-based cell index,
   so every absolute move left it one cell to the right; a later frame whose diff skipped its own
