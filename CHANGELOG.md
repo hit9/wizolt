@@ -8,6 +8,8 @@
   its steps (history, in-flight turn, counter, pending context reset) by hand.
 - `Session` owns its in-flight turn through `stage_active_turn` and `clear_active_turn`, and
   `/status` asks `Session.delegating_worker` instead of repeating its predicate.
+- Resume attaches its lease through `Session.adopt_ownership`, beside `borrow_ownership`, instead of
+  setting the session's lease fields from `agent/lifecycle.py`.
 
 ### Fixed
 

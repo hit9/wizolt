@@ -673,6 +673,15 @@ class Session:
         self._lease = lease
         return lease
 
+    def adopt_ownership(self, lease: SessionLease, path: str) -> None:
+        """Authorize this session with a lease its opener acquired for `path`; closing releases it."""
+
+        self._lease = lease
+        self._lease_borrowed = False
+        self._ownership_released = False
+        self._snapshot_path = path
+        self.assert_ownership()
+
     def borrow_ownership(self, parent: Session) -> None:
         """Authorize this worker session with its parent's lease; it can never release it."""
 

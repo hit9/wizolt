@@ -85,11 +85,7 @@ def load_session(
             )
         session = SessionSnapshotStore.load(resolved, config=config, settings=settings, cwd=cwd)
         session.catalog = catalog
-        session._lease = lease
-        session._lease_borrowed = False
-        session._ownership_released = False
-        session._snapshot_path = path
-        session.assert_ownership()
+        session.adopt_ownership(lease, path)
         bootstrap_features(session)
         return session
     except BaseException:
