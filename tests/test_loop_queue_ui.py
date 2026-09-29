@@ -2,7 +2,9 @@
 
 import asyncio
 import hashlib
+import itertools
 import os
+import shutil
 import sys
 import threading
 import time
@@ -62,10 +64,16 @@ def test_queue_live_region_shows_divider_and_pending(tmp_path):
     assert "run tests" not in "".join(t for _, t in [*sent, *waiting])
     assert "then push" not in "".join(t for _, t in [*sent, *waiting])
 
-    # The divider is a static rule: the working label holds still and the dashes never glow.
-    fragments = loop.view.queue_divider_fragments()
-    assert any(style == "class:divider.working" and text.startswith("working") for style, text in fragments)
-    assert all(style == "class:queue.rule" for style, text in fragments if set(text) == {"─"})
+    # The divider animates a comet head across the dashes while its label remains stable.
+    with pytest.MonkeyPatch.context() as mp:
+        seen_head = False
+        for tick in range(200):
+            mp.setattr(time, "monotonic", lambda tick=tick: tick * 0.1)
+            fragments = loop.view.queue_divider_fragments()
+            seen_head = seen_head or any(style == "class:divider.glow0" and "─" in text for style, text in fragments)
+            assert any(style == "class:divider.working" and text.startswith("working") for style, text in fragments)
+            assert all(not style.startswith("class:divider.glow") or set(text) == {"─"} for style, text in fragments)
+        assert seen_head
 
     s.pending_user_inputs = []
     sent, waiting = loop.view.followup_fragments()
@@ -106,6 +114,95 @@ def test_queued_inputs_keep_chips_out_of_the_live_region_and_recall_restores_the
 
     recalled = loop.recall_pending_input(lambda: None)
     assert isinstance(recalled, UserInput) and recalled.pastes == (paste,)  # the editor gets its chips back
+
+
+def divider_glow_steps(fragments):
+    """The comet's glow step at each rendered cell, including its hidden label span."""
+    steps = []
+    for style, text in fragments:
+        if text and set(text) == {"─"} and (style == "class:queue.rule" or style.startswith("class:divider.glow")):
+            step = int(style.removeprefix("class:divider.glow")) if style.startswith("class:divider.glow") else None
+            steps.extend([step] * len(text))
+        else:
+            steps.extend([None] * len(text))
+    return steps
+
+
+def test_divider_sweep_accelerates_both_ways_and_reverses_offscreen(tmp_path, monkeypatch):
+    """Equal time slices cover progressively more cells, while direction changes stay dark."""
+    monkeypatch.setattr(shutil, "get_terminal_size", lambda fallback: os.terminal_size((100, 20)))
+    loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
+    view = loop.view
+    assert view.QUEUE_SWEEP_CELLS_PER_SEC * TuiApp.ANIMATION_INTERVAL == pytest.approx(1.0)
+
+    label = "working"
+    span = (100 - 2) - 1  # cols - 2, then width - 1
+    outside = view.GLOW_REACH + view.SWEEP_OFFSCREEN_MARGIN
+    travel = span + 2 * outside
+    sweep = min(view.QUEUE_SWEEP_CELLS_PER_SEC, travel)
+    period = travel / sweep
+
+    with pytest.MonkeyPatch.context() as mp:
+        heads = []
+        for phase in (0.3, 0.4, 0.5, 0.6, 0.7, 0.8):
+            mp.setattr(time, "monotonic", lambda phase=phase: phase * period)
+            steps = divider_glow_steps(view.sweep_divider_fragments(label))
+            heads.append(min(range(len(steps)), key=lambda index: (steps[index] is None, steps[index])))
+        moves = [second - first for first, second in itertools.pairwise(heads)]
+        assert moves == sorted(moves)
+        assert moves[-1] > moves[0] > 0
+
+        returning_heads = []
+        for phase in (1.3, 1.4, 1.5, 1.6, 1.7, 1.8):
+            mp.setattr(time, "monotonic", lambda phase=phase: phase * period)
+            steps = divider_glow_steps(view.sweep_divider_fragments(label))
+            returning_heads.append(min(range(len(steps)), key=lambda index: (steps[index] is None, steps[index])))
+        return_moves = [first - second for first, second in itertools.pairwise(returning_heads)]
+        assert return_moves == sorted(return_moves)
+        assert return_moves[-1] > return_moves[0] > 0
+
+        # Every direction change is a full radius off the rule, so it cannot flash across it.
+        for phase in (0.0, 1.0 - 1e-9, 1.0, 2.0 - 1e-9):
+            mp.setattr(time, "monotonic", lambda phase=phase: phase * period)
+            assert all(step is None for step in divider_glow_steps(view.sweep_divider_fragments(label)))
+
+        # A new turn is the animation's origin, rather than appearing at a random global phase.
+        view.presentation.status_bar.started_at = 100.0
+        mp.setattr(time, "monotonic", lambda: 100.0)
+        assert all(step is None for step in divider_glow_steps(view.sweep_divider_fragments(label)))
+
+
+def test_divider_glow_fades_between_cells_and_every_step_has_a_style(tmp_path):
+    loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
+    styled = {rule for rule, _ in loop.view.style().style_rules}
+
+    with pytest.MonkeyPatch.context() as mp:
+        seen = set()
+        for tick in range(400):
+            mp.setattr(time, "monotonic", lambda tick=tick: 1000.0 + tick * 0.017)
+            seen.update(step for step in divider_glow_steps(loop.view.queue_divider_fragments()) if step is not None)
+
+    # Every shade the comet can emit must exist in the style, or those cells render as plain text.
+    assert seen and all(f"divider.glow{step}" in styled for step in seen)
+    # A head resting between two cells lights both at the same reduced shade instead of snapping
+    # onto the nearer one, which is what keeps the motion smooth when a frame arrives late.
+    label = "working"
+    trail_start = 3 + len(label) + 2
+    with pytest.MonkeyPatch.context() as mp:
+        cols = shutil.get_terminal_size((80, 20)).columns
+        rule_span = max(20, cols - 2) - 1
+        outside = loop.view.GLOW_REACH + loop.view.SWEEP_OFFSCREEN_MARGIN
+        travel = rule_span + 2 * outside
+        target = trail_start + 3.5
+        progress = (target + outside) / travel
+        mp.setattr(loop.view, "_sweep_progress", lambda _phase: progress)
+        mp.setattr(time, "monotonic", lambda: 0.0)
+        steps = divider_glow_steps(loop.view.sweep_divider_fragments(label))
+
+    shades_per_cell = loop.view.GLOW_STEPS / loop.view.GLOW_REACH
+    assert steps[trail_start + 3] == steps[trail_start + 4] == int(0.5 * shades_per_cell)
+    assert steps[trail_start + 3] > 0  # dimmer than a head sitting exactly on a cell
+    assert steps[trail_start + 2] == steps[trail_start + 5] > steps[trail_start + 3]
 
 
 def test_live_bash_output_stays_above_working_divider_and_queue(tmp_path):

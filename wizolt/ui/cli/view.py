@@ -31,7 +31,7 @@ from wizolt.ui.cli.hints import HintPicker
 from wizolt.ui.cli.runtime import RESUME_STATUS_LABEL, STARTING_STATUS_LABEL
 from wizolt.ui.cli.worker import WORKER_SUBCOMMANDS
 from wizolt.ui.render import LiveSpark, Theme, UiPrinter
-from wizolt.ui.tui import InputMode
+from wizolt.ui.tui import InputMode, TuiApp
 
 if TYPE_CHECKING:
     from wizolt.ui.cli.presentation import Presentation
@@ -344,6 +344,22 @@ class View:
     )
     WAITING_PULSE_PERIOD: ClassVar[float] = 1.6
 
+    # The divider's light averages one cell per frame. It enters gently and accelerates toward the
+    # right edge, but stays well inside its four-cell glow between redraws so it still reads as
+    # motion rather than a dash blinking at scattered positions.
+    QUEUE_SWEEP_CELLS_PER_SEC: ClassVar[float] = 1.0 / TuiApp.ANIMATION_INTERVAL
+    # Symmetric speed range around the average. The integrated smoothstep below moves from 0.6x to
+    # 1.4x with acceleration easing to zero at both ends, avoiding a mechanical gear change.
+    SWEEP_SPEED_RANGE: ClassVar[float] = 0.4
+    # One fully dark cell beyond the four-cell glow gives the reset a real invisible window; ending
+    # exactly at the fade radius can still light the dimmest shade on the last frame before wrap.
+    SWEEP_OFFSCREEN_MARGIN: ClassVar[float] = 1.0
+    # A comet: a soft head with a tail fading into the dim rule, by distance from the head. The ramp
+    # is finer than one shade per cell, so a head between two cells lights both partially instead of
+    # snapping onto the nearer one. The divider is only drawn while a turn is running.
+    GLOW_REACH: ClassVar[float] = 4.0
+    GLOW_STEPS: ClassVar[int] = 12
+
     QUEUE_EMPTY_HINT = "Enter follow-up · Tab next turn · Ctrl-C interrupts"
     QUEUE_PENDING_HINT = "↑ recalls queued · Tab next turn · Ctrl-C interrupts"
     QUEUE_WORKER_HINT = "follow-up queued for the worker · Ctrl-C interrupts"
@@ -375,30 +391,69 @@ class View:
         idx = min(len(self.WAITING_PULSE_STYLES) - 1, int(intensity * len(self.WAITING_PULSE_STYLES)))
         return [(self.WAITING_PULSE_STYLES[idx], "● ")]
 
-    def working_divider_fragments(self, label: str, prefix: StyleAndTextTuples | None = None, label_style: str = "class:divider.working") -> StyleAndTextTuples:
-        """The standing rule under a running turn: lead dashes, pulse prefix, label, trail.
+    @classmethod
+    def _sweep_progress(cls, phase: float) -> float:
+        """Integrated smoothstep velocity: continuous acceleration from slow to fast."""
+        speed_range = cls.SWEEP_SPEED_RANGE
+        return (1.0 - speed_range) * phase + 2.0 * speed_range * phase**3 - speed_range * phase**4
 
-        Static by choice: the rule once carried a sweeping highlight, and the moving light drew
-        the eye away from the work the divider exists to name."""
+    def sweep_divider_fragments(self, label: str, prefix: StyleAndTextTuples | None = None, label_style: str = "class:divider.working") -> StyleAndTextTuples:
         prefix = prefix or []
         prefix_len = sum(get_cwidth(fragment[1]) for fragment in prefix)
         cols = shutil.get_terminal_size((80, 20)).columns
         width = max(20, cols - 2)
         lead = 3
-        # A long label (status + elapsed + rate + queued counts) is accommodated by widening the
-        # rule so both sides keep at least MIN_TRAIL dashes instead of clipping the label; the
-        # terminal width is the ceiling, and the trail shrinks only when even that cannot fit.
+        # A comet needs a track long enough to read as motion. When the label is long (the
+        # status + elapsed + rate + queued counts), widen the rule so both sides
+        # keep at least MIN_TRAIL dashes instead of clipping the label; the terminal width is
+        # the ceiling, and the trail shrinks only when even that cannot fit.
         min_trail = 12
         body_len = prefix_len + get_cwidth(label) + 2  # prefix + " label "
         width = min(max(cols - 2, 20), max(width, lead + body_len + min_trail))
         trail = max(3, width - lead - body_len)
+        # Keep the label in the animation's coordinate space. The highlight is hidden while it
+        # passes behind the label; removing that width would make it teleport from the short lead
+        # rule to the trail.
+        span = max(1, width - 1)
+        # Each pass starts and finishes beyond the glow radius. Direction changes therefore happen
+        # while the light is invisible, without a hard turn on the rule. A narrow track keeps each
+        # pass at least a second; normal tracks average one cell per animation frame.
+        outside = self.GLOW_REACH + self.SWEEP_OFFSCREEN_MARGIN
+        travel = span + 2 * outside
+        sweep = min(self.QUEUE_SWEEP_CELLS_PER_SEC, travel / 1.0)
+        now = time.monotonic()
+        started_at = self.presentation.status_bar.started_at
+        elapsed = max(0.0, now - started_at) if started_at > 0 else now
+        cycle_phase = elapsed * sweep / travel % 2.0
+        returning = cycle_phase >= 1.0
+        phase = cycle_phase - 1.0 if returning else cycle_phase
+        # Integral of a smoothstep speed ramp, normalized to end at 1. The speed rises from
+        # 1-range to 1+range, while acceleration itself eases in and out rather than switching at
+        # an arbitrary point on the rule.
+        progress = self._sweep_progress(phase) * travel
+        head = span + outside - progress if returning else progress - outside
+
+        def dashes(offset: int, count: int) -> StyleAndTextTuples:
+            fragments: StyleAndTextTuples = []
+            for i in range(count):
+                step = int(abs(offset + i - head) / self.GLOW_REACH * self.GLOW_STEPS)
+                style = f"class:divider.glow{step}" if step < self.GLOW_STEPS else "class:queue.rule"
+                # A full-width divider can contain hundreds of plain cells. Keep only style
+                # boundaries as fragments so widening the terminal does not multiply per-frame
+                # rendering work.
+                if fragments and fragments[-1][0] == style:
+                    fragments[-1] = (style, fragments[-1][1] + "─")
+                else:
+                    fragments.append((style, "─"))
+            return fragments
+
         return [
-            ("class:queue.rule", "─" * lead),
+            *dashes(0, lead),
             ("class:queue.rule", " "),
             *prefix,
             (label_style, label),
             ("class:queue.rule", " "),
-            ("class:queue.rule", "─" * trail),
+            *dashes(lead + body_len, trail),
         ]
 
     def queue_divider_fragments(self, queued: int = 0, next_turn: int = 0) -> StyleAndTextTuples:
@@ -421,8 +476,8 @@ class View:
             # streaming while a script runs, so the last kind seen would be stale, not current.
             label = f"{status} ({Text.elapsed_since(self.presentation.status_bar.started_at)})"
         elif status == RESUME_STATUS_LABEL:
-            # A quiet gray lead-in to the restored transcript: nothing streams while the replay
-            # is being prepared, so no pulse pretends there is activity.
+            # A quiet gray lead-in to the restored transcript: nothing streams and nothing sweeps
+            # while the replay is being prepared, so no pulse pretends there is activity.
             return [("class:muted", status)]
         else:
             label = status
@@ -438,7 +493,7 @@ class View:
         # While the worker runs, the label takes the worker's color and no name: the status bar's
         # `worker ·` lead is the one place that says it in words, and the color ties this line to it.
         label_style = "class:divider.worker" if self.session.delegating_worker is not None else "class:divider.working"
-        return self.working_divider_fragments(label, prefix=self.waiting_pulse_fragments(), label_style=label_style)
+        return self.sweep_divider_fragments(label, prefix=self.waiting_pulse_fragments(), label_style=label_style)
 
     def followup_fragments(self) -> tuple[StyleAndTextTuples, StyleAndTextTuples]:
         pending = list(self.session.pending_user_inputs)
@@ -617,7 +672,9 @@ class View:
             {
                 **Theme.tui_styles(),
                 "prompt": role("accent", "bold"),
+                # The comet fades into the rule it travels over, so both come from the palette.
                 "queue.rule": role("divider_rule"),
+                **{f"divider.glow{step}": color for step, color in enumerate(Theme.ramp("divider_glow", "divider_rule", self.GLOW_STEPS))},
                 "queue.hint": role("muted"),
                 "quickhint": role("accent"),
                 "quickhint.focused": Theme.selection(),

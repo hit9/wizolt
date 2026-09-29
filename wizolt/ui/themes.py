@@ -46,7 +46,7 @@ DIFF_KEYS = {
 }
 
 
-# `LiveSpark` interpolates these two on its ramp, so they must be hex rather than a terminal color.
+# `Theme.ramp` interpolates between these two, so they must be hex rather than a terminal color.
 HEX_ROLES = ("divider_glow", "divider_rule")
 # WCAG contrast floors for a scheme's grey text: secondary text on the background, and the menu's
 # descriptions on its raised surface, which is where a comment grey reads worst.
@@ -198,7 +198,7 @@ BUILTIN: dict[str, Palette] = {
 def normalize_color(value: object) -> str | None:
     """A role's color in prompt-toolkit's spelling, or None if it is not one.
 
-    `#rgb` widens to `#rrggbb` because Rich and the live regions' ramps only read the long form.
+    `#rgb` widens to `#rrggbb` because Rich and `Theme.ramp` only read the long form.
     """
     if not isinstance(value, str):
         return None
