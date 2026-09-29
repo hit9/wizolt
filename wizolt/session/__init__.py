@@ -411,7 +411,13 @@ class Session:
         return before - len(self.source_views)
 
     def enqueue_user_input(self, value: str | UserInput, *, next_turn: bool = False) -> None:
+        # `source` keeps the submitted form for as long as the entry is live in memory: the
+        # queue's rows, the echo, and recall read it so a folded paste stays a chip. The
+        # flattened fields below are the model's and the snapshot's -- a resumed entry has no
+        # source and reads the stored text, which is the designed degradation.
+        source: UserInput | None = None
         if isinstance(value, UserInput) and (value.images or value.pastes):
+            source = value
             message = self.images.message(value)
             text = str(message.get("content") or "").strip()
             images = self.images.refs(message)
@@ -422,7 +428,7 @@ class Session:
             draft = text
         if not text:
             return
-        self.pending_user_inputs.append(QueuedInput(text, images, draft, next_turn=next_turn))
+        self.pending_user_inputs.append(QueuedInput(text, images, draft, next_turn=next_turn, source=source))
 
     def claim_user_inputs(self) -> list[QueuedInput]:
         # claim/ack/release is a transaction across model retries; keep this boundary even though each step is small.

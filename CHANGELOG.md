@@ -8,6 +8,14 @@
   a turn ran is gone, because the moving light drew the eye away from the work the divider names.
   The label, its elapsed time, and the breathing dot that marks a request in flight are unchanged.
 
+### Fixed
+
+- Queued inputs keep their chips. A paste held back with Tab (next turn) or sent as a follow-up
+  used to render its full body in the live region's queue rows, flooding the area and burying the
+  divider, spark, and preview under the pasted text. The queue rows, the claimed row's echo, and
+  recall now fold it into its `[Pasted text #N …]` chip and show the image label again. The model
+  still receives the expanded text, and a resumed session still reads the stored plain text.
+
 ## 0.58.0 - 2026-09-29
 
 ### Performance

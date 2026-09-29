@@ -213,6 +213,11 @@ class QueuedInput:
     # mid-turn and the runtime starts it as a fresh turn instead. Persisted so a resumed queue keeps
     # one held input per turn instead of merging them into the first one.
     next_turn: bool = False
+    # The submitted form this entry came from, while it is still live in memory: the queue's
+    # rows, the echo, and recall read it, so a folded paste stays a chip and an attached image
+    # stays a label everywhere the text is still the user's own. Never serialized -- a snapshot
+    # cannot carry the references, and the flattened `draft` is what a resumed entry reads.
+    source: UserInput | None = None
 
     def to_json(self) -> str | Json:
         if not self.images and not self.next_turn:
@@ -242,7 +247,7 @@ class QueuedInput:
         return cls(text, images, draft, next_turn=next_turn)
 
     def user_input(self) -> UserInput:
-        return UserInput(self.draft or self.text, self.images)
+        return self.source if self.source is not None else UserInput(self.draft or self.text, self.images)
 
     def message(self, prefix: str = "") -> Json:
         message: Json = {"role": "user", "content": prefix + self.text}

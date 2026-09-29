@@ -36,6 +36,7 @@ from wizolt.image import (
 from wizolt.model import ModelClient
 from wizolt.paste import PASTE_MARKER, PasteRef
 from wizolt.session import Session, SessionSnapshotStore
+from wizolt.session.types import QueuedInput
 from wizolt.tools import ViewImageTool
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.tui import TuiApp
@@ -868,7 +869,10 @@ async def test_pasted_input_reaches_the_agent_expanded(tmp_path):
     assert IMAGE_REFS_KEY not in user_message
 
 
-def test_enqueue_user_input_flattens_paste_into_plain_text(tmp_path):
+def test_enqueue_user_input_flattens_paste_for_storage_not_display(tmp_path):
+    """The queue entry stores plain expanded text -- a snapshot cannot carry paste refs -- but
+    everything the user reads still folds the paste into its chip; only the model projections,
+    and a resumed entry with no in-memory source, read the stored text."""
     s = session(tmp_path)
     paste = PasteRef(text="L1\nL2\n", lines=2, chars=6)
     s.enqueue_user_input(UserInput(f"wrap {PASTE_MARKER} end", pastes=(paste,)))
@@ -878,7 +882,10 @@ def test_enqueue_user_input_flattens_paste_into_plain_text(tmp_path):
     assert PASTE_MARKER not in entry.text
     assert PASTE_MARKER not in entry.draft
     assert isinstance(entry.to_json(), str)  # a snapshot stores the plain expanded string
-    assert entry.user_input().display_text() == "wrap L1\nL2\n end"
+    assert entry.user_input().display_text() == f"wrap {paste.label(1)} end"
+    assert entry.user_input().model_text() == "wrap L1\nL2\n end"
+    restored = QueuedInput.from_json(entry.to_json())
+    assert restored is not None and restored.user_input().display_text() == "wrap L1\nL2\n end"
 
 
 def test_attachment_label_processor_renders_a_paste_chip():
