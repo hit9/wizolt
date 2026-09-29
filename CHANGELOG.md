@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.58.1 - 2026-09-29
+
 ### Fixed
 
 - Queued inputs keep their chips. A paste held back with Tab (next turn) or sent as a follow-up
