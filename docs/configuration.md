@@ -255,8 +255,8 @@ highlighting, the status bar, menus and the selection band included:
 A named theme does not change your terminal's background, so pick the one that matches it. Use
 `/theme` to preview them. `gruvbox` and `solarized` pick their dark or light variant to match
 your terminal, the way `auto` does; so does any name you give both a `-dark` and a `-light` theme
-file. Named themes draw their exact colors when your terminal sets
-`COLORTERM=truecolor` (most modern terminals do); otherwise each color is the nearest of 256.
+file. Named themes, and theme files based on one, draw their exact colors when your terminal
+sets `COLORTERM=truecolor` (most modern terminals do); otherwise each color is the nearest of 256.
 `NO_COLOR=1` turns color off everywhere, keeping bold and the selection bar.
 
 To make your own, add `<data_dir>/themes/<name>.toml` (`~/.wizolt/themes/` by default). It starts
@@ -289,8 +289,9 @@ removed = "#5c3300"
 removed_word = "#a35a00"
 ```
 
-A mistake in a theme file is reported at startup and when `/theme` opens; the rest of the file
-still applies. `/theme` re-reads the folder each time it opens, so edits show up without a restart.
+The file name is the theme's name, so it cannot be a built-in theme, `auto`, or a pair's name
+(`gruvbox`, or `mine` once `mine-dark` and `mine-light` exist). A mistake in a theme file is
+reported at startup and when `/theme` opens; the rest of the file still applies. `/theme` re-reads the folder each time it opens, so edits show up without a restart.
 
 ## Worker delegation
 
