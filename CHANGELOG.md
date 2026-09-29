@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.57.2 - 2026-09-29
+
 ### Fixed
 
 - Kill the whole shell process group when cancellation arrives during subprocess startup.
