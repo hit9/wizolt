@@ -26,7 +26,7 @@ from prompt_toolkit.formatted_text import ANSI, FormattedText, StyleAndTextTuple
 from prompt_toolkit.output import ColorDepth, create_output
 from prompt_toolkit.output.vt100 import Vt100_Output
 from prompt_toolkit.renderer import print_formatted_text as render_fragments_to_output
-from prompt_toolkit.styles import Style, default_pygments_style, default_ui_style, merge_styles
+from prompt_toolkit.styles import BaseStyle, Style, default_pygments_style, default_ui_style, merge_styles
 from prompt_toolkit.utils import get_cwidth
 from rich import box
 from rich.console import Console, ConsoleOptions, RenderResult
@@ -343,7 +343,7 @@ class Theme:
     # Bumped whenever a theme's colors may have changed, including a theme file reloaded under the
     # same name, so anything rendered from the palette knows its colors are stale.
     _generation: ClassVar[int] = 0
-    _role_style: ClassVar[tuple[tuple[str, int], Style] | None] = None
+    _transcript_style: ClassVar[tuple[tuple[str, int], BaseStyle] | None] = None
     _pygments_cache: ClassVar[dict[str, type[PygmentsStyle] | None]] = {}
 
     @classmethod
@@ -421,18 +421,25 @@ class Theme:
         computed color. Fragments that can name a class should use one instead.
 
         The inline color is what any style draws; the `role.<name>` class after it wins only where
-        a style defines it. `role_style` does, which is how a transcript row recorded under one
+        a style defines it. `transcript_style` does, which is how a transcript row recorded under one
         theme re-renders in the next.
         """
         return " ".join((f"fg:{cls.color(role)}", f"class:role.{role}", *attributes))
 
     @classmethod
-    def role_style(cls) -> Style:
-        """Every role as the `role.<name>` class `fg` tags its fragments with, in the active theme."""
-        cached = cls._role_style
+    def transcript_style(cls) -> BaseStyle:
+        """The style transcript rows render in: the bare-print style plus every `role.<name>` class
+        `fg` tags fragments with, in the active theme.
+
+        One object per theme, not one per row: a merged style resolves attributes through its own
+        cache, so a fresh merge per row paid the full lookup on every line -- ten times the cost
+        of rendering the row without it.
+        """
+        cached = cls._transcript_style
         if cached is None or cached[0] != cls.key():
-            cached = cls.key(), Style.from_dict({f"role.{role}": f"fg:{cls.color(role)}" for role in cls.ROLES})
-            cls._role_style = cached
+            roles = Style.from_dict({f"role.{role}": f"fg:{cls.color(role)}" for role in cls.ROLES})
+            cached = cls.key(), merge_styles([_SCROLLBACK_STYLE, roles])
+            cls._transcript_style = cached
         return cached[1]
 
     @classmethod
@@ -823,7 +830,7 @@ class UiPrinter:
         fragments = [fragment for part in parts for fragment in (part.fragments(size.columns) if isinstance(part, WidthDependent) else to_formatted_text(part))]
         # The role classes resolve to the colors the fragments already carry inline, so this adds
         # nothing until the theme changes -- then a replay draws the new theme's colors.
-        render_fragments_to_output(output, fragments, merge_styles([_SCROLLBACK_STYLE, Theme.role_style()]))
+        render_fragments_to_output(output, fragments, Theme.transcript_style())
         return buffer.getvalue()
 
     def _scrollback_print_parts(self, parts: list[FormattedText | ANSI | WidthDependent]) -> None:

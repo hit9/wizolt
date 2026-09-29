@@ -172,6 +172,25 @@ def test_recorded_rows_replay_as_captured_until_the_theme_changes_then_redraw_in
     assert GRUVBOX_GRAY in rule(80)
 
 
+def test_transcript_rows_share_one_style_per_theme(monkeypatch):
+    """A style merged per row starts with an empty lookup cache: it made every emitted line ten
+    times as expensive to render. One style per theme keeps a row's cost what it was."""
+    merges = []
+    real_merge = render_module.merge_styles
+    monkeypatch.setattr(render_module, "merge_styles", lambda styles: merges.append(len(styles)) or real_merge(styles))
+
+    def render_rows(count):
+        for _ in range(count):
+            UiPrinter.render_to_ansi([FormattedText([(Theme.fg("error"), "boom\n")])], 80, color_depth=ColorDepth.DEPTH_8_BIT)
+
+    Theme.set_mode("nord")
+    render_rows(3)
+    assert len(merges) == 1
+    Theme.set_mode("dracula")
+    render_rows(3)
+    assert len(merges) == 2
+
+
 class RecordingTerminal(ReflowingTerminal):
     def __init__(self, rows, columns):
         super().__init__(rows, columns)

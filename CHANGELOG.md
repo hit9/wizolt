@@ -41,6 +41,12 @@
 
 ### Fixed
 
+- Render transcript rows with one style per theme (`Theme.transcript_style`). 9fca797 merged a
+  fresh style for every row, whose empty lookup cache made each emitted line about ten times as
+  expensive: one tool-output line rendered 2000 times took 424 µs per row, against 43 µs before
+  9fca797 and 46 µs with this fix. Recoloring a synthetic 5,000-entry transcript (500 markdown
+  answers, each followed by nine tool lines, replayed at 100 columns) went from 2,710 ms to
+  693 ms. Measured on Linux, 8 cores, Python 3.14.7.
 - A worker send whose first checkpoint failed to save cleared only half of its in-flight turn: the
   stale transcript message stayed, so the worker's next snapshot saved a turn that never ran, and it
   blocked any context reset the worker requested.
