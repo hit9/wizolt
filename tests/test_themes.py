@@ -488,12 +488,71 @@ def test_saving_adds_a_runtime_table_and_writes_through_a_symlinked_config(tmp_p
     assert target.read_text() == '# providers only\n[provider]\nmodel = "m"\n\n[runtime]\ntheme = "nord"\n'
 
 
-async def test_start_session_draws_the_configured_theme_file_and_reports_its_problems(tmp_path, monkeypatch):
+@pytest.mark.parametrize("mode", [0o600, 0o640])
+def test_saving_keeps_the_configs_permissions(tmp_path, mode):
+    """The config holds provider keys: a 0600 file came back 0644, the umask's default."""
+    config = tmp_path / "config.toml"
+    config.write_text('[provider]\nkey = "sk-secret"\n')
+    config.chmod(mode)
+
+    ConfigFile.set_runtime(str(config), "theme", "nord")
+
+    assert config.stat().st_mode & 0o777 == mode
+    assert not (tmp_path / "config.toml.tmp").exists()
+
+
+@pytest.mark.parametrize(("text", "expected"), [('runtime = "auto"\n', "runtime in"), ("[runtime\n", "")])
+async def test_a_config_that_cannot_be_saved_into_is_reported_not_raised(tmp_path, text, expected):
+    """A non-table `runtime` raised TypeError out of /theme, ending the run."""
+    command_loop = themed_loop(tmp_path)
+    (tmp_path / "config.toml").write_text(text)
+    command_loop.presentation.tui = ThemeModal([])
+
+    result = await theme_command(command_loop, "nord")
+
+    assert Theme.name() == "nord"
+    assert "Not saved to" in result and expected in result
+    assert (tmp_path / "config.toml").read_text() == text
+
+
+def test_a_theme_file_cannot_take_a_name_runtime_theme_already_means(tmp_path):
+    """`auto` is a choice of its own and `gruvbox` a pair: files by those names were listed twice
+    and could never be picked."""
+    for name in ("auto", "Gruvbox", "mine", "mine-dark", "mine-light", "auto-dark", "auto-light"):
+        write_theme(tmp_path, name, 'base = "nord"\n')
+
+    problems = Theme.load_custom(str(tmp_path))
+
+    assert set(Theme.themes()) - set(Theme.BUILTIN) == {"mine-dark", "mine-light", "auto-dark", "auto-light"}
+    assert sum("already means something to runtime.theme" in problem for problem in problems) == 3
+    assert "auto" not in Theme.pairs() and "mine" in Theme.pairs()
+    assert len(Theme.choices()) == len(set(Theme.choices()))
+
+
+async def test_the_theme_is_configured_before_either_frontend_draws(tmp_path, monkeypatch):
+    """The TUI prints its banner and first frame before start_session: configuring the theme there
+    drew them in the default palette."""
+    command_loop = themed_loop(tmp_path, "nord")
+    seen = []
+
+    async def frontend(*_args, **_kwargs):
+        seen.append(Theme.name())
+        return 0
+
+    monkeypatch.setattr(command_loop, "run_simple", frontend)
+    command_loop.interactive_input = False
+    await command_loop._run_frontend(show_banner=False)
+
+    assert seen == ["nord"]
+
+
+async def test_start_session_reports_what_the_theme_could_not_use(tmp_path, monkeypatch):
     command_loop = themed_loop(tmp_path, "mine")
     write_theme(command_loop.session.data_path("themes"), "mine", 'base = "nord"\n[colors]\nnope = "#fff"\n')
     emitted = []
     monkeypatch.setattr(command_loop.presentation, "emit", lambda text="", indent=0: emitted.append(text))
 
+    command_loop.configure_theme()
     command_loop.start_session(show_banner=False)
     await command_loop.background.close_background()
 

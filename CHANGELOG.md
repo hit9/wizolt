@@ -65,6 +65,17 @@
 
 ### Fixed
 
+- `/theme` saves keep the config file's permissions: the config holds provider keys, and a 0600
+  file came back 0644. The rewrite is synced before its rename, so a crash cannot leave half a
+  config either.
+- A `runtime` that is not a table in the config is reported by `/theme` as not saved, instead of
+  raising `TypeError` out of the command and ending the run.
+- A theme file named `auto`, or after a light/dark pair (`gruvbox`, or `mine` next to
+  `mine-dark` and `mine-light`), is reported and skipped: it was listed twice and could never be
+  picked. `auto-dark` and `auto-light` stay two themes rather than forming a pair named `auto`.
+- The configured theme is active before the TUI prints its banner and first frame; it was set in
+  `start_session`, which the TUI reaches after both, so a named theme started in the default
+  palette.
 - Render transcript rows with one style per theme (`Theme.transcript_style`). 9fca797 merged a
   fresh style for every row, whose empty lookup cache made each emitted line about ten times as
   expensive: one tool-output line rendered 2000 times took 424 µs per row, against 43 µs before

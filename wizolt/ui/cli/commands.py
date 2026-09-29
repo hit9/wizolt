@@ -862,7 +862,7 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
     if loop.session.config.path:
         try:
             ConfigFile.set_runtime(loop.session.config.path, "theme", chosen)
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, ConfigError) as error:  # tomlkit's ParseError is a ValueError
             lines.append(f"Not saved to {loop.session.config.path}: {error}")
         else:
             lines[-1] += f" (saved as runtime.theme in {display_path(loop.session.config.path)})"

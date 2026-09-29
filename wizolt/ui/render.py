@@ -401,6 +401,12 @@ class Theme:
     def load_custom(cls, directory: str) -> list[str]:
         """Re-read the user's theme files; return a line for each problem found in them."""
         cls._custom, problems = load_custom(directory, cls.BUILTIN, cls.ROLES)
+        # `runtime.theme` already gives `auto` and each light/dark pair a meaning, so a file by
+        # one of those names could be listed but never chosen.
+        reserved = {name.lower() for name in (cls.AUTO, *cls.pairs())}
+        for name in [name for name in cls._custom if name.lower() in reserved]:
+            del cls._custom[name]
+            problems.append(f"theme {os.path.join(directory, name + '.toml')}: `{name}` already means something to runtime.theme; rename the file")
         cls._generation += 1
         return problems
 
@@ -604,9 +610,11 @@ class Theme:
 
     @classmethod
     def pairs(cls) -> list[str]:
-        """Names with both a `-dark` and a `-light` theme, which follow the terminal like `auto`."""
+        """Names with both a `-dark` and a `-light` theme, which follow the terminal like `auto`.
+        `auto-dark` and `auto-light` stay two themes: their pair would be `auto` itself."""
         known = cls.themes()
-        return [name.removesuffix("-dark") for name in known if name.endswith("-dark") and name.removesuffix("-dark") + "-light" in known]
+        pairs = (name.removesuffix("-dark") for name in known if name.endswith("-dark") and name.removesuffix("-dark") + "-light" in known)
+        return [pair for pair in pairs if pair.lower() != cls.AUTO]
 
     @classmethod
     def choices(cls) -> tuple[str, ...]:

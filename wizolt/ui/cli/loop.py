@@ -108,6 +108,8 @@ class CommandLoop:
         self.resume = ResumeRenderer(self.session, self.presentation, lambda: self.agent.context.update_current_tokens(self.session.system_prompt))
         self.input_fn = input_fn
         self.preprinted_output = ""
+        # What `configure_theme` could not use, reported by `start_session` after the banner.
+        self.theme_problems: list[str] = []
         # The CLI's background import thread, if it started one. TuiRuntime keeps `starting` set
         # until it and the first mention scan finish: both compete with the prompt for the GIL.
         self.startup_warmup: threading.Thread | None = None
@@ -316,6 +318,7 @@ class CommandLoop:
         """Select the frontend inside the CLI's single event-loop entry."""
         # Embedded frontends can execute slash commands before Agent.run acquires ownership.
         self.session.ensure_ownership()
+        self.configure_theme()
         if self.interactive_input:
             return await TuiRuntime(self).run(show_banner=show_banner)
         return await self.run_simple(show_banner=show_banner)
@@ -409,14 +412,22 @@ class CommandLoop:
         """Write the one static line that can safely precede interactive terminal setup."""
         self.presentation.emit(f"wizolt {__version__}. Type / for commands.")
 
+    def configure_theme(self) -> None:
+        """Activate the configured theme before either frontend draws anything.
+
+        The TUI prints its banner and paints its first frame before `start_session` runs, so a
+        theme set there showed the default palette first. What could not be used is kept for
+        `start_session` to report after the banner.
+        """
+        self.theme_problems = Theme.configure(self.session.settings.theme, self.session.data_path("themes"))
+
     def start_session(self, *, show_banner: bool = True) -> None:
         """Initialize output and background services shared by both command-loop frontends."""
-        # Before anything is drawn, so the banner and a resumed transcript are in the theme too.
-        theme_problems = Theme.configure(self.session.settings.theme, self.session.data_path("themes"))
         if show_banner:
             self.emit_banner()
-        for problem in theme_problems:
+        for problem in self.theme_problems:
             self.presentation.emit(problem)
+        self.theme_problems = []
         # Cached state is read synchronously -- it is small, local, and the first status display
         # needs it -- and only the remote half is scheduled. Nothing here may hold the prompt: a
         # slow index, a slow filesystem, or an unreachable PyPI is not a reason to wait to type.

@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import contextlib
 import fnmatch
 import os
 import platform
 import re
 import shutil
+import stat
 import sys
 import tomllib
+from collections.abc import MutableMapping
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, ClassVar
 
@@ -670,11 +673,14 @@ model = ""
 
     @staticmethod
     def set_runtime(path: str, key: str, value: str) -> None:
-        """Set `runtime.<key>` in the config file, keeping its comments and layout.
+        """Set `runtime.<key>` in the config file, keeping its comments, layout and permissions.
 
-        The rewrite goes to a sibling file first and replaces the config in one rename, so an
-        interrupted save leaves the old file rather than half of the new one. A symlinked config
-        (a dotfiles checkout) is written through, not replaced by a plain file.
+        The config holds provider keys, so the rewrite keeps the mode the user gave it (a 0600
+        file stays 0600) and its sibling starts at 0600 rather than the umask's default. It is
+        synced before one rename replaces the config, so neither an interrupted save nor a crash
+        leaves half a file. A symlinked config (a dotfiles checkout) is written through, not
+        replaced by a plain file. A `runtime` that is not a table is a ConfigError, as a load
+        reports its other mistakes.
         """
         import tomlkit
 
@@ -685,11 +691,23 @@ model = ""
         if runtime is None:
             runtime = tomlkit.table()
             document["runtime"] = runtime
+        elif not isinstance(runtime, MutableMapping):
+            raise ConfigError(f"runtime in {path} must be a table")
         runtime[key] = value
+        mode = stat.S_IMODE(os.stat(path).st_mode)
         temporary = path + ".tmp"
-        with open(temporary, "w", encoding="utf-8") as file:
-            file.write(tomlkit.dumps(document))
-        os.replace(temporary, path)
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+                file.write(tomlkit.dumps(document))
+                file.flush()
+                os.fsync(file.fileno())
+            os.chmod(temporary, mode)
+            os.replace(temporary, path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(temporary)
+            raise
 
 
 def compaction_provider_config(config: Config) -> ProviderConfig:
