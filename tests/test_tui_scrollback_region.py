@@ -18,9 +18,9 @@ import asyncio
 import pytest
 from prompt_toolkit.data_structures import Size
 from test_tui_resize import ReflowingTerminal
-from tui_harness import run_interactive_tui, wait_for, wait_until
+from tui_harness import loop, run_interactive_tui, wait_for, wait_until
 
-from wizolt.ui.render import UiPrinter
+from wizolt.ui.render import LiveSpark, UiPrinter
 from wizolt.ui.tui.app import TuiApp
 from wizolt.ui.tui.scrollback import ScrollbackRegion, app_top_row
 
@@ -243,6 +243,46 @@ def test_transcript_and_live_preview_leave_input_and_status_on_fixed_rows(monkey
     assert len({position[:2] for position in positions}) == 1
     assert len({position[2] for position in positions if position[2] >= 0}) == 1
     assert positions[0][1] == ROWS - 1
+
+
+@pytest.mark.parametrize('kind,label', [('reasoning', 'thinking'), ('output', 'responding')])
+@pytest.mark.parametrize('columns', [30, 80])
+def test_stream_header_and_spark_survive_a_full_preview(monkeypatch, tmp_path, wired, kind, label, columns):
+    output, app, printer = wired
+    output = ReflowingTerminal(18, columns)
+    command_loop = loop(tmp_path)
+    command_loop.presentation.tui = app
+    app.activity_fragments_fn = command_loop.view.tui_activity_fragments
+    app.status_fragments_fn = lambda: [('', 'fixed-status')]
+    # This terminal model counts codepoints, not terminal-specific Unicode glyph widths.
+    # Freeze the animated spark to an ASCII cell while exercising its real header placement.
+    monkeypatch.setattr(LiveSpark, 'glyph', lambda _: '* ')
+
+    def drive(_pipe_input):
+        wait_until(lambda: 'fixed-status' in output.lines[-1])
+        for count in (1, 6, 20):
+            def stream(count=count):
+                command_loop.presentation.model_stream_kind = kind
+                command_loop.presentation.model_stream_text = '\n'.join(f'chunk-{count}-{i}' for i in range(count))
+                app.set_running('+> ')
+                app.invalidate()
+            app.app.loop.call_soon_threadsafe(stream)
+            wait_until(lambda: any(f'chunk-{count}-{count - 1}' in line for line in output.lines))
+            emit_and_wait(app, printer, f'completed-{count}')
+
+            async def check():
+                lines = list(output.lines)
+                assert any(f'* {label}' in line for line in lines), '\n'.join(lines)
+                assert sum('chunk-' in line for line in lines) == min(count, 6)
+                assert lines[-3].startswith('+>')
+                assert 'fixed-status' in lines[-1]
+            asyncio.run_coroutine_threadsafe(check(), app.app.loop).result(timeout=5)
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    try:
+        run_tui(monkeypatch, app, output, drive)
+    finally:
+        command_loop.session.close()
 
 
 def test_transcript_stays_on_screen_after_the_app_stops(monkeypatch, wired):

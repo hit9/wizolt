@@ -643,8 +643,10 @@ that projection. Its two mechanisms are inseparable:
   reply, conservatively write immediately above the app. Only a live-layout height change moves
   its top edge. When growing, consume the gap first and scroll only the transcript rows that
   would be covered; when shrinking, clear the old live region and anchor the smaller one below.
-  Live activity shows at most eight rows and follows its tail so the working divider remains
-  visible. Guard recent visible context as well as native history, including across modal changes.
+  Bound preview bodies at their source (the model stream retains six text rows), not the combined
+  activity window: its spark, phase label, spacing and divider need their own rows. Follow the
+  activity tail only when the pane itself cannot fit it. Guard recent visible context as well as
+  native history, including across modal changes.
 - A width change invalidates row ownership. Purge the terminal and replay retained completed
   output, including startup/restored output and accepted pending writes. Defer the rebuild while
   an exclusive viewer owns the alternate screen, and pay the debt on return to the primary screen.

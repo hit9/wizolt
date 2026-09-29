@@ -1481,7 +1481,6 @@ class TuiApp:
                 show_cursor=False,
                 get_cursor_position=lambda: Point(x=0, y=sum(fragment[1].count("\n") for fragment in self.activity_fragments_fn())),
             ),
-            height=Dimension(max=8),
             dont_extend_height=True,
             wrap_lines=True,
         )
