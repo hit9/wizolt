@@ -1,0 +1,292 @@
+{
+  "recorded_at": "2026-09-29T14:39:52.888911+00:00",
+  "environment": {
+    "system": "Linux",
+    "release": "6.8.0-111-generic",
+    "machine": "aarch64",
+    "processor": "aarch64",
+    "python": "3.14.7",
+    "implementation": "CPython",
+    "cpu_count": 8,
+    "cpu_affinity_count": 8,
+    "cpu_quota": "max 100000",
+    "packages": {
+      "PyJWT": "2.15.1",
+      "PyYAML": "6.0.3",
+      "Pygments": "2.21.0",
+      "annotated-types": "0.8.0",
+      "anthropic": "1.9.0",
+      "anyio": "4.15.1",
+      "attrs": "26.1.0",
+      "cffi": "2.1.1",
+      "click": "8.5.0",
+      "cryptography": "50.0.1",
+      "docstring_parser": "0.18.0",
+      "h11": "0.16.0",
+      "httpcore2": "2.13.1",
+      "httpx2": "2.13.1",
+      "idna": "3.20",
+      "jiter": "0.17.0",
+      "jsonschema": "4.26.0",
+      "jsonschema-specifications": "2025.9.1",
+      "markdown-it-py": "4.2.0",
+      "mcp": "2.2.0",
+      "mcp-types": "2.2.0",
+      "mdurl": "0.1.2",
+      "openai": "3.20.0",
+      "opentelemetry-api": "1.45.0",
+      "prompt_toolkit": "3.0.53",
+      "pycparser": "3.0",
+      "pydantic": "2.13.5",
+      "pydantic_core": "2.46.5",
+      "python-multipart": "0.0.32",
+      "referencing": "0.37.0",
+      "rich": "15.0.0",
+      "rpds-py": "2026.6.3",
+      "sniffio": "1.3.1",
+      "socksio": "1.0.0",
+      "sse-starlette": "3.5.0",
+      "starlette": "1.7.0",
+      "tomlkit": "0.15.1",
+      "truststore": "0.10.4",
+      "typing-inspection": "0.4.4",
+      "typing_extensions": "4.16.0",
+      "uvicorn": "0.54.0",
+      "wcwidth": "0.9.1"
+    }
+  },
+  "interpreter": "installed wizolt tool interpreter",
+  "NO_COLOR": null,
+  "cwd": "wizolt repository",
+  "repeat": 5,
+  "yolo": true,
+  "check_input": true,
+  "workload_sha256": "726fbe1d85bab732e914e18da912019b9bb0775b88c1a9a836e7827b941bfa9a",
+  "method": "isolated HOME/minimal config; same installed interpreter; alternating revision order each sample; both sources exported without bytecode to the same temporary filesystem; warm filesystem caches; no concurrent tests/builds; no model requests; Q typed after prompt, Ctrl-U then /quit after its echo; no OSC/CPR replies except background replies in responsive mode",
+  "sources": {
+    "before": {
+      "revision": "dd7b14829fcb054f51d67f81d78ad19035c5f920",
+      "working_tree": false,
+      "sha256": "2adacb37e30a424e8e91586a11bbeee1294b601878992b894dc490beabe6bf04"
+    },
+    "after": {
+      "revision": "dd7b14829fcb054f51d67f81d78ad19035c5f920",
+      "working_tree": true,
+      "sha256": "98e8a7ff1393c9caca06989b67b28bb95e411ab378e7b58cfce02f905237ee44"
+    }
+  },
+  "results": {
+    "unanswered_terminal": {
+      "before": {
+        "banner_ms": {
+          "samples_ms": [
+            41.8317090079654,
+            38.42129200347699,
+            39.42966600880027,
+            38.332416996126994,
+            37.55904201534577
+          ],
+          "median_ms": 38.42129200347699
+        },
+        "frame_ms": {
+          "samples_ms": [
+            264.04416700825095,
+            86.789332999615,
+            84.83662499929778,
+            85.16808299464174,
+            83.91237500472926
+          ],
+          "median_ms": 85.16808299464174
+        },
+        "banner_to_prompt_ms": {
+          "samples_ms": [
+            222.21245800028555,
+            48.36804099613801,
+            45.406958990497515,
+            46.83566599851474,
+            46.35333298938349
+          ],
+          "median_ms": 46.83566599851474
+        },
+        "first_echo_ms": {
+          "samples_ms": [
+            266.83841698104516,
+            90.13712499290705,
+            87.88466601981781,
+            88.39399999123998,
+            86.6189590014983
+          ],
+          "median_ms": 88.39399999123998
+        },
+        "prompt_to_echo_ms": {
+          "samples_ms": [
+            2.794249972794205,
+            3.3477919932920486,
+            3.0480410205200315,
+            3.2259169965982437,
+            2.706583996769041
+          ],
+          "median_ms": 3.0480410205200315
+        }
+      },
+      "after": {
+        "banner_ms": {
+          "samples_ms": [
+            42.100375023437664,
+            40.38924997439608,
+            39.29491702001542,
+            34.334166994085535,
+            40.095083008054644
+          ],
+          "median_ms": 40.095083008054644
+        },
+        "frame_ms": {
+          "samples_ms": [
+            123.14295902615413,
+            88.02891697268933,
+            87.49350000289269,
+            79.78762499988079,
+            86.38383299694397
+          ],
+          "median_ms": 87.49350000289269
+        },
+        "banner_to_prompt_ms": {
+          "samples_ms": [
+            81.04258400271647,
+            47.63966699829325,
+            48.19858298287727,
+            45.453458005795255,
+            46.28874998888932
+          ],
+          "median_ms": 47.63966699829325
+        },
+        "first_echo_ms": {
+          "samples_ms": [
+            126.06291699921712,
+            91.44812598242424,
+            90.6760840152856,
+            82.71754201268777,
+            89.346041000681
+          ],
+          "median_ms": 90.6760840152856
+        },
+        "prompt_to_echo_ms": {
+          "samples_ms": [
+            2.919957973062992,
+            3.4192090097349137,
+            3.1825840123929083,
+            2.929917012806982,
+            2.9622080037370324
+          ],
+          "median_ms": 2.9622080037370324
+        }
+      }
+    },
+    "responsive_terminal": {
+      "before": {
+        "banner_ms": {
+          "samples_ms": [
+            39.82487498433329,
+            36.22304101008922,
+            36.776124994503334,
+            40.607792005175725,
+            39.74295800435357
+          ],
+          "median_ms": 39.74295800435357
+        },
+        "frame_ms": {
+          "samples_ms": [
+            85.32562499749474,
+            80.79216600162908,
+            82.82854099525139,
+            85.38683300139382,
+            84.63550001033582
+          ],
+          "median_ms": 84.63550001033582
+        },
+        "banner_to_prompt_ms": {
+          "samples_ms": [
+            45.50075001316145,
+            44.569124991539866,
+            46.05241600074805,
+            44.7790409962181,
+            44.89254200598225
+          ],
+          "median_ms": 44.89254200598225
+        },
+        "first_echo_ms": {
+          "samples_ms": [
+            88.43004200025462,
+            83.55987499817275,
+            85.69145799265243,
+            88.43629201874137,
+            87.56091698887758
+          ],
+          "median_ms": 87.56091698887758
+        },
+        "prompt_to_echo_ms": {
+          "samples_ms": [
+            3.104417002759874,
+            2.7677089965436608,
+            2.8629169974010438,
+            3.0494590173475444,
+            2.9254169785417616
+          ],
+          "median_ms": 2.9254169785417616
+        }
+      },
+      "after": {
+        "banner_ms": {
+          "samples_ms": [
+            38.321708008879796,
+            36.629583017202094,
+            34.57079199142754,
+            40.17704201396555,
+            37.738542014267296
+          ],
+          "median_ms": 37.738542014267296
+        },
+        "frame_ms": {
+          "samples_ms": [
+            82.70837500458583,
+            83.87400000356138,
+            78.40645898249932,
+            84.95737501652911,
+            81.30208301008679
+          ],
+          "median_ms": 82.70837500458583
+        },
+        "banner_to_prompt_ms": {
+          "samples_ms": [
+            44.38666699570604,
+            47.24441698635928,
+            43.835666991071776,
+            44.780333002563566,
+            43.563540995819494
+          ],
+          "median_ms": 44.38666699570604
+        },
+        "first_echo_ms": {
+          "samples_ms": [
+            85.75508301146328,
+            87.02395801083185,
+            81.4505000016652,
+            87.851167016197,
+            84.2402080015745
+          ],
+          "median_ms": 85.75508301146328
+        },
+        "prompt_to_echo_ms": {
+          "samples_ms": [
+            3.046708006877452,
+            3.1499580072704703,
+            3.0440410191658884,
+            2.893791999667883,
+            2.9381249914877117
+          ],
+          "median_ms": 3.0440410191658884
+        }
+      }
+    }
+  }
+}

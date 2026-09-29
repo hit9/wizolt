@@ -172,6 +172,13 @@
 
 ### Fixed
 
+- Keep the input area and status bar at the terminal bottom from startup. Appending transcript
+  no longer moves and repaints the entire input area; live activity shows at most eight rows,
+  following its tail to keep the working divider visible. Preserve recent context when opening
+  and closing inline selectors. Add a terminal regression for stable input/status rows while
+  transcript and preview grow. Trade-off: a short transcript leaves a gap above the bottom input;
+  older live-preview rows are clipped until the completed output enters the transcript.
+  Record the [startup benchmark comparison against `d20fef9`](benchmarks/results/linux-arm64-py314-anchored-input.json).
 - `/theme` saves keep the config file's permissions: the config holds provider keys, and a 0600
   file came back 0644. The rewrite is synced before its rename, so a crash cannot leave half a
   config either.

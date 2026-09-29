@@ -19,6 +19,7 @@ from prompt_toolkit.application import Application, get_app
 from prompt_toolkit.application.run_in_terminal import in_terminal
 from prompt_toolkit.buffer import Buffer, CompletionState
 from prompt_toolkit.completion import CompleteEvent, Completer, Completion
+from prompt_toolkit.data_structures import Point
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition, has_completions, is_done, is_searching
 from prompt_toolkit.formatted_text import OneStyleAndTextTuple, StyleAndTextTuples
@@ -1474,7 +1475,16 @@ class TuiApp:
             Window(FormattedTextControl(self.approval_form_fragments), dont_extend_height=True, wrap_lines=True),
             filter=Condition(lambda: bool(self._approval_actions) and self.input_mode == InputMode.APPROVAL),
         )
-        self.activity_window = Window(FormattedTextControl(lambda: self.activity_fragments_fn()), dont_extend_height=True, wrap_lines=True)
+        self.activity_window = Window(
+            FormattedTextControl(
+                lambda: self.activity_fragments_fn(),
+                show_cursor=False,
+                get_cursor_position=lambda: Point(x=0, y=sum(fragment[1].count("\n") for fragment in self.activity_fragments_fn())),
+            ),
+            height=Dimension(max=8),
+            dont_extend_height=True,
+            wrap_lines=True,
+        )
         running = Condition(lambda: self.input_mode == InputMode.RUNNING)
         activity = ConditionalContainer(
             self.activity_window,
@@ -2077,9 +2087,58 @@ class TuiApp:
         """
         renderer = app.renderer
         vanilla_render = renderer.render
+        report_cursor = renderer.report_absolute_cursor_row
+        reported_row: int | None = None
+        reserved_height = 0
+
+        def remember_tail(row: int) -> None:
+            nonlocal reported_row
+            if renderer.last_rendered_screen is None:
+                reported_row = row
+            available = renderer._min_available_height
+            report_cursor(row)
+            renderer._min_available_height = available
+            if reported_row is None and self.scrollback.tail_row is None:
+                rows = renderer.output.get_size().rows
+                self.scrollback.tail_row = max(0, row - 1 - max(0, row + reserved_height - rows))
+
+        renderer.report_absolute_cursor_row = remember_tail
 
         def render(*args: Any, **kwargs: Any) -> None:
+            nonlocal reserved_height, reported_row
             with self._screen_update(app):
+                if not renderer.full_screen:
+                    out = renderer.output
+                    rows, columns = out.get_size()
+                    height = min(rows, app.layout.container.preferred_height(columns, rows).preferred)
+                    previous = renderer.last_rendered_screen
+                    # Only changes to the live layout can move its top edge. Growing first uses
+                    # the gap below the transcript, then scrolls just enough to protect its tail.
+                    # Ordinary transcript appends never move or reset the input region.
+                    if previous is None or height != previous.height:
+                        if previous is None:
+                            out.write_raw("\r")
+                            out.erase_down()
+                            # Reserve space below any output printed while the app was stopped;
+                            # at the bottom this scrolls those rows into history before drawing.
+                            out.write_raw("\n" * height)
+                            reserved_height = height
+                            self.scrollback.tail_row = None
+                            if reported_row is not None:
+                                self.scrollback.tail_row = max(0, reported_row - 1 - max(0, reported_row + height - rows))
+                                reported_row = None
+                        else:
+                            old_top = rows - previous.height
+                            tail = self.scrollback.tail_row if self.scrollback.tail_row is not None else old_top
+                            shift = max(0, tail - (rows - height))
+                            if shift and old_top > 0:
+                                out.write_raw(f"\x1b[1;{old_top}r\x1b[{old_top};1H" + "\r\n" * shift + "\x1b[r")
+                                self.scrollback.tail_row = tail - shift
+                            out.cursor_goto(rows - previous.height + 1, 1)
+                            out.erase_down()
+                        renderer.reset(leave_alternate_screen=False)
+                        out.cursor_goto(rows - height + 1, 1)
+                        renderer._min_available_height = height
                 vanilla_render(*args, **kwargs)
                 owed = self.scrollback.note_width(renderer.output.get_size().columns)
                 if renderer.full_screen:
@@ -2092,8 +2151,8 @@ class TuiApp:
                     # attributed any more. Rebuild the projection from the transcript instead.
                     self.scrollback.rebuild(app)
                     vanilla_render(*args, **kwargs)
-                elif self.scrollback.flush(app):
-                    vanilla_render(*args, **kwargs)
+                else:
+                    self.scrollback.flush(app)
 
         renderer.render = render
 
@@ -2144,8 +2203,8 @@ class TuiApp:
         # visibly; a terminal writes a sequence in one burst, so a short flush tells them apart,
         # the same trade editors make (Neovim, tmux's escape-time).
         app.ttimeoutlen = self.ESCAPE_FLUSH
-        # The initial render still probes its origin. Resizes use the explicit bottom anchor
-        # below, without CPR. Silently degrade on terminals that do not answer the initial probe.
+        # CPR only locates the preceding transcript's tail; the prompt gets an explicit bottom
+        # anchor immediately and never waits for this reply. The render hook keeps them separate.
         app.renderer.cpr_not_supported_callback = lambda: None
         self._install_resize_reanchor(app)
         self._install_scrollback_flush(app)

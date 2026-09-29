@@ -64,6 +64,16 @@ The initial frame uses default colors until configuration attaches; submitted co
 assembly. Provider imports still run during `starting…` and can delay later keystrokes. These
 numbers measure one early keystroke, with warm filesystem caches and no personal hooks.
 
+The subsequent bottom-anchored input layout is checked against `d20fef9` in
+[`results/linux-arm64-py314-anchored-input.json`](results/linux-arm64-py314-anchored-input.json),
+using the same workload and methodology (five alternating samples, installed CPython 3.14.7,
+Linux aarch64, isolated HOME/config, warm caches). Process-to-prompt medians were 85.17 → 87.49 ms
+without terminal replies and 84.64 → 82.71 ms with immediate background replies; prompt-to-key-echo
+medians were 3.05 → 2.96 ms and 2.93 → 3.04 ms. These small differences do not establish a speedup
+or slowdown. The probe does not answer CPR, so it also checks that the new layout does not wait
+for a cursor-position reply. Layout stability and transcript preservation are covered separately
+by terminal regression and real-multiplexer acceptance tests.
+
 The private-project comparison (project name and path omitted) is recorded in
 [`results/linux-arm64-py314-terminal-probe-overlap.json`](results/linux-arm64-py314-terminal-probe-overlap.json):
 the installed `wizolt` interpreter, `--yolo`, isolated HOME/config, default color output, five

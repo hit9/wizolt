@@ -75,6 +75,7 @@ def test_long_inline_selector_keeps_context_visible(pane, height):
         visible_containing("provider-00")
         pane.keys("G")
         opened = visible_containing("provider-79")
+        assert "WIZOLT-BANNER" in opened, opened
         banner_row = opened.splitlines().index("WIZOLT-BANNER")
         if cycle == 1:
             pane.keys("/", "provider-42")

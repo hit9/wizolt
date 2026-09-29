@@ -91,11 +91,12 @@ def test_transcript_is_written_above_a_taller_app(monkeypatch, wired):
     run_tui(monkeypatch, app, output, drive)
 
     lines = seen[0]
-    prompts = [index for index, line in enumerate(lines) if line.startswith(UiPrinter.PROMPT_PREFIX)]
-    assert len(prompts) == 1, "the taller app left a second copy of its prompt on screen"
+    assert not any(line.startswith(UiPrinter.PROMPT_PREFIX) for line in lines), "the selector left a stale prompt on screen"
+    options = [index for index, line in enumerate(lines) if line.startswith("option ")]
+    assert len(options) == 8
     written = [index for index, line in enumerate(lines) if "during selector" in line]
     assert written, "the line emitted while the selector was open never reached the screen"
-    assert max(written) < prompts[0], "transcript was written into the app's own rows"
+    assert max(written) < options[0], "transcript was written into the app's own rows"
 
 
 def test_width_change_under_an_exclusive_viewer_defers_the_rebuild(monkeypatch, wired):
@@ -200,6 +201,48 @@ def test_the_app_stays_flush_with_the_pane_bottom(monkeypatch, wired):
     for top, bottom, rows in geometry:
         assert top > 0, "the app filled the pane, leaving no region for the transcript"
         assert bottom == rows, f"the app was not flush with the pane bottom: {top}..{bottom} of {rows}"
+
+
+def test_transcript_and_live_preview_leave_input_and_status_on_fixed_rows(monkeypatch, wired):
+    output, app, printer = wired
+    app.status_fragments_fn = lambda: [("", "fixed-status")]
+    activity = ["working-divider"]
+    app.activity_fragments_fn = lambda: [("", activity[0])]
+    positions = []
+
+    def capture():
+        async def settled():
+            lines = list(output.lines)
+            return (
+                next(i for i, line in enumerate(lines) if line.startswith((UiPrinter.PROMPT_PREFIX, "+>"))),
+                next(i for i, line in enumerate(lines) if "fixed-status" in line),
+                next((i for i, line in enumerate(lines) if "working-divider" in line), -1),
+            )
+        return asyncio.run_coroutine_threadsafe(settled(), app.app.loop).result(timeout=5)
+
+    def drive(_pipe_input):
+        wait_until(lambda: "fixed-status" in output.lines[-1])
+        positions.append(capture())
+        app.app.loop.call_soon_threadsafe(lambda: app.set_running("+> "))
+        wait_until(lambda: any("working-divider" in line for line in output.lines))
+        for index in range(12):
+            def update(index=index):
+                activity[0] = "\n".join([f"preview {index}"] * (index + 1) + ["working-divider"])
+                app.invalidate()
+            app.app.loop.call_soon_threadsafe(update)
+            wait_until(lambda: any(f"preview {index}" in line for line in output.lines))
+            emit_and_wait(app, printer, f"completed {index}")
+            positions.append(capture())
+            assert any("working-divider" in line for line in output.lines)
+        app.app.loop.call_soon_threadsafe(app.set_idle)
+        wait_until(lambda: not any("working-divider" in line for line in output.lines))
+        positions.append(capture())
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_tui(monkeypatch, app, output, drive)
+    assert len({position[:2] for position in positions}) == 1
+    assert len({position[2] for position in positions if position[2] >= 0}) == 1
+    assert positions[0][1] == ROWS - 1
 
 
 def test_transcript_stays_on_screen_after_the_app_stops(monkeypatch, wired):
