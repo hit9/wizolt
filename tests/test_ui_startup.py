@@ -20,8 +20,8 @@ from wizolt.config import Config
 from wizolt.providers.sync import CatalogRuntime
 from wizolt.session import Session, SessionSnapshotStore
 from wizolt.ui.cli import CommandLoop
-from wizolt.ui.startup import _BackgroundReply, _run_startup
 from wizolt.ui.cli.update import UpdateChecker
+from wizolt.ui.startup import _BackgroundReply, _run_startup
 from wizolt.utils import terminal
 
 
@@ -121,7 +121,7 @@ async def test_starting_accepts_input_then_attaches_status_activity_and_commands
 
 @pytest.mark.parametrize('failure', [False, True])
 async def test_exit_or_failure_during_assembly_restores_the_application(tmp_path, startup_ui, failure):
-    pipe, output, apps = startup_ui
+    pipe, _output, apps = startup_ui
     command_loop = loop(tmp_path)
     release = threading.Event()
     assembling = threading.Event()
@@ -187,7 +187,7 @@ def test_background_filter_releases_escape_and_unrecognized_sequences():
 
 @pytest.mark.parametrize('entered', ['/guide', 'use $guide'])
 async def test_assembly_inputs_wait_for_initial_skill_scan(tmp_path, startup_ui, monkeypatch, entered):
-    pipe, output, apps = startup_ui
+    pipe, _output, apps = startup_ui
     folder = tmp_path / '.wizolt' / 'skills' / 'guide'
     folder.mkdir(parents=True)
     (folder / 'SKILL.md').write_text('---\nname: guide\ndescription: Startup guide\n---\nSTARTUP_SKILL_BODY\n')
@@ -276,7 +276,7 @@ def test_input_timeout_does_not_turn_a_partial_background_reply_into_typing():
 
 @pytest.mark.parametrize('failure', [False, True])
 async def test_skill_scan_failure_or_exit_settles_before_shutdown(tmp_path, startup_ui, monkeypatch, failure):
-    pipe, output, apps = startup_ui
+    pipe, _output, apps = startup_ui
     command_loop = loop(tmp_path)
     scanning, release, finished = threading.Event(), threading.Event(), threading.Event()
 

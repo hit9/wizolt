@@ -230,7 +230,7 @@ def test_transcript_and_live_preview_leave_input_and_status_on_fixed_rows(monkey
                 activity[0] = "\n".join([f"preview {index}"] * (index + 1) + ["working-divider"])
                 app.invalidate()
             app.app.loop.call_soon_threadsafe(update)
-            wait_until(lambda: any(f"preview {index}" in line for line in output.lines))
+            wait_until(lambda index=index: any(f"preview {index}" in line for line in output.lines))
             emit_and_wait(app, printer, f"completed {index}")
             positions.append(capture())
             assert any("working-divider" in line for line in output.lines)
@@ -267,10 +267,10 @@ def test_stream_header_and_spark_survive_a_full_preview(monkeypatch, tmp_path, w
                 app.set_running('+> ')
                 app.invalidate()
             app.app.loop.call_soon_threadsafe(stream)
-            wait_until(lambda: any(f'chunk-{count}-{count - 1}' in line for line in output.lines))
+            wait_until(lambda count=count: any(f'chunk-{count}-{count - 1}' in line for line in output.lines))
             emit_and_wait(app, printer, f'completed-{count}')
 
-            async def check():
+            async def check(count=count):
                 lines = list(output.lines)
                 assert any(f'* {label}' in line for line in lines), '\n'.join(lines)
                 assert sum('chunk-' in line for line in lines) == min(count, 6)
