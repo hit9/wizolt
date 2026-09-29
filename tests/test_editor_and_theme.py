@@ -406,7 +406,7 @@ def test_desert_user_color_does_not_leak_into_default_ui_style(tmp_path, monkeyp
     command_loop = loop(tmp_path)
     for mode, expected in (("dark", "fg:#e0a96d"), ("light", "fg:#9a5b2e")):
         monkeypatch.setattr(Theme, "_mode", mode)
-        assert UiPrinter.user_log_style() == expected
+        assert UiPrinter.user_log_style().split()[0] == expected
         assert command_loop.view.style().get_attrs_for_style_str("").color == ""
 
 

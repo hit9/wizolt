@@ -14,10 +14,11 @@ import shlex
 import shutil
 import sys
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
+from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.utils import get_cwidth
 
 from wizolt.agent import compaction
@@ -38,6 +39,7 @@ from wizolt.base import (
 from wizolt.config import (
     PROVIDER_API_CHOICES,
     Config,
+    ConfigFile,
     ProviderConfig,
     RuntimeSettings,
     compaction_provider_config,
@@ -57,7 +59,7 @@ from wizolt.ui.cli.modals import (
     select_choice,
 )
 from wizolt.ui.cli.update import UpdateChecker
-from wizolt.ui.render import markdown_table, progress_bar
+from wizolt.ui.render import Theme, UiPrinter, markdown_table, progress_bar
 from wizolt.ui.tui import InputMode
 
 if TYPE_CHECKING:
@@ -789,6 +791,87 @@ def language_command(loop: CommandLoop, args: str) -> str:
     return f"Reply language set: {language}"
 
 
+THEME_AUTO = "auto"
+
+
+def theme_preview(_name: str) -> StyleAndTextTuples:
+    """A few transcript rows drawn in the highlighted theme, which the picker has already applied."""
+    fg = Theme.fg
+    added = Theme.diff_style("diff.added.bg") + " " + Theme.diff_style("diff.added.fg")
+    removed = Theme.diff_style("diff.removed.bg") + " " + Theme.diff_style("diff.removed.fg")
+    rows: list[Sequence[tuple[str, str]]] = [
+        [(fg("user"), "• tighten the tokenizer")],
+        [(fg("tool"), "Edit "), *UiPrinter.tool_arg_segments('path="parser.py" replace_all=false', fg("text"))],
+        [("", "Renamed "), (fg("accent"), "split_words()"), ("", " and kept the old name as an alias.")],
+        UiPrinter.syntax_segments("def split_words(text: str) -> list[str]:  # 2 callers", "python", fg("text")),
+        [(removed, "-    return text.split()")],
+        [(added, "+    return WORD.findall(text)")],
+        [(fg("success"), "12 passed"), ("", "  "), (fg("warning"), "1 skipped"), ("", "  "), (fg("error"), "0 failed")],
+    ]
+    return [fragment for row in rows for fragment in ((fg("muted"), "  │ "), *row, ("", "\n"))]
+
+
+async def theme_command(loop: CommandLoop, args: str) -> str | None:
+    """`/theme [NAME]`: pick a color theme with a live preview, or switch to one by name.
+
+    The pick is saved to runtime.theme, as Codex and Claude Code save theirs; the transcript
+    already on screen is redrawn in it once, the way a resize redraws it."""
+    problems = Theme.load_custom(loop.session.data_path("themes"))
+    original = Theme.name()
+    configured = loop.session.settings.theme
+    current = THEME_AUTO if configured.strip().lower() in ("", THEME_AUTO) else Theme.lookup(configured) or original
+    tui = loop.presentation.tui
+    chosen: object
+    if args.strip():
+        chosen = THEME_AUTO if args.strip().lower() == THEME_AUTO else Theme.lookup(args)
+        if chosen is None:
+            return "\n".join([*problems, f"Unknown theme: {args.strip()}. Available: {THEME_AUTO}, {', '.join(Theme.themes())}"])
+    elif tui is None or not loop.interactive_input:
+        names = (THEME_AUTO, *Theme.themes())
+        return "\n".join([*problems, *(("* " if name == current else "  ") + name for name in names)])
+    else:
+        for problem in problems:
+            loop.presentation.emit(problem)
+        problems = []
+
+        def apply(name: str) -> None:
+            Theme.set_mode(Theme.detect() if name == THEME_AUTO else name)
+            tui.invalidate()
+
+        chosen = None
+        try:
+            chosen = await choice_application(
+                loop,
+                "Theme",
+                (THEME_AUTO, *Theme.themes()),
+                {THEME_AUTO: f"auto ({Theme.detect()}, from the terminal)"},
+                current,
+                set(),
+                preview_fn=theme_preview,
+                on_focus=apply,
+            )
+        finally:
+            if not isinstance(chosen, str):
+                Theme.set_mode(original)
+                tui.invalidate()
+        if not isinstance(chosen, str):
+            return None
+    assert isinstance(chosen, str)
+    Theme.set_mode(Theme.detect() if chosen == THEME_AUTO else chosen)
+    loop.session.settings.theme = chosen
+    if tui is not None:
+        tui.recolor()
+    lines = [*problems, f"Theme: {chosen}"]
+    if loop.session.config.path:
+        try:
+            ConfigFile.set_runtime(loop.session.config.path, "theme", chosen)
+        except (OSError, ValueError) as error:
+            lines.append(f"Not saved to {loop.session.config.path}: {error}")
+        else:
+            lines[-1] += f" (saved as runtime.theme in {display_path(loop.session.config.path)})"
+    return "\n".join(lines)
+
+
 async def compaction_log(loop: CommandLoop, args: str) -> str | LogBlock | None:
     """`/compact log [seg.N]`: review what compaction kept. The viewer is the interactive form; a
     headless run (piped input, no color, no alternate screen) gets the same segments as log lines,
@@ -1213,6 +1296,7 @@ COMMANDS: tuple[Command, ...] = (
     Command("/sessions", sessions_command, aliases=("/resume",)),
     Command("/worker", worker.worker_command),
     Command("/language", language_command),
+    Command("/theme", theme_command),
 )
 # fmt: on
 

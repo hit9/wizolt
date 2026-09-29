@@ -59,6 +59,10 @@ dependencies = [
     # SKILL.md frontmatter is YAML (the Agent Skills spec and Claude Code's `hooks:` blocks nest
     # maps and lists). safe_load only; imported when a skill file is parsed, never at startup.
     "pyyaml>=6.0",
+    # `/theme` saves its pick to runtime.theme in the user's hand-written config.toml; tomllib only
+    # reads, and tomlkit edits one key while keeping the comments and layout around it. Imported
+    # only when a theme is saved.
+    "tomlkit>=0.13",
 ]
 
 [project.urls]

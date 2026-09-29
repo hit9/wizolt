@@ -36,7 +36,6 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "create_session": ("wizolt.agent.lifecycle", "create_session"),
     "load_session": ("wizolt.agent.lifecycle", "load_session"),
     "SessionBusyError": ("wizolt.session", "SessionBusyError"),
-    "Theme": ("wizolt.ui.render", "Theme"),
     "UpdateChecker": ("wizolt.ui.cli.update", "UpdateChecker"),
     "UpdateStatus": ("wizolt.ui.cli.update", "UpdateStatus"),
     "WizoltError": ("wizolt.base", "WizoltError"),
@@ -187,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--init-config", action="store_true", help="Create a default config file")
     parser.add_argument("--yolo", action="store_true", help="Skip confirmations for mutating tools")
     parser.add_argument(
-        "--theme", choices=["auto", "light", "dark"], default="", help="Color theme (defaults to runtime.theme, then auto-detect via COLORFGBG)"
+        "--theme", default="", help="Color theme: auto, dark, light, or a named theme (defaults to runtime.theme, then auto-detect via COLORFGBG)"
     )
     resume = parser.add_mutually_exclusive_group()
     resume.add_argument(
@@ -244,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
                 if resume:
                     data = _cli.ConfigFile.load(args.config)
                     catalog = _cli.CatalogRuntime(_cli.Config.data_dir_from(data))
-                    config = _cli.Config.from_dict(data, policy=catalog.policy)
+                    config = _cli.Config.from_dict(data, policy=catalog.policy, path=_cli.ConfigFile.resolve_path(args.config))
                     current = _cli.load_session(
                         resume,
                         config=config,
@@ -259,7 +258,6 @@ def main(argv: list[str] | None = None) -> int:
                     # Ownership before any runtime is exposed: tools, model requests, and the first
                     # save all happen under this lease.
                     current.ensure_ownership()
-                _cli.Theme.set_mode(_cli.Theme.resolve(current.settings.theme))
                 warmup = warm_imports(startup_imports(current))
                 command_loop = _cli.CommandLoop(_cli.Agent(current))
                 command_loop.startup_warmup = warmup

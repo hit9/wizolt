@@ -255,13 +255,23 @@ async def choice_application(
     label_fn: Callable[[str], StyleAndTextTuples] | None = None,
     exclusive: bool = False,
     max_rows: int = 0,
+    on_focus: Callable[[str], None] | None = None,
 ) -> str | object | None:
+    """`on_focus` hears each row the cursor lands on, for a picker that previews by applying."""
     state = ChoiceViewState(choices, labels, disabled, max_rows=max_rows or 20, height=picker_height(exclusive=exclusive))
     options = state.enabled()
     state.selected = options.index(current) if current in options else 0
     if loop.presentation.tui is None:
         return None
-    result = await loop.presentation.tui.show_modal(lambda: state.fragments(title, preview_fn, label_fn), state.handle_key, exclusive=exclusive)
+
+    def handle_key(key: str, data: str = "") -> Any:
+        focused = state.selected_choice()
+        result = state.handle_key(key, data)
+        if on_focus is not None and (landed := state.selected_choice()) is not None and landed != focused:
+            on_focus(landed)
+        return result
+
+    result = await loop.presentation.tui.show_modal(lambda: state.fragments(title, preview_fn, label_fn), handle_key, exclusive=exclusive)
     if isinstance(result, KeyboardInterrupt):
         raise result
     return result

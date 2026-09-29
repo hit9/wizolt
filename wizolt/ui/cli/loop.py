@@ -38,7 +38,7 @@ from wizolt.ui.cli.resume import ResumeRenderer
 from wizolt.ui.cli.runtime import TuiRuntime
 from wizolt.ui.cli.update import UpdateChecker
 from wizolt.ui.cli.view import CommandCompleter, View
-from wizolt.ui.render import UiPrinter, search_sources_footer
+from wizolt.ui.render import Theme, UiPrinter, search_sources_footer
 
 
 class CommandLoop:
@@ -411,8 +411,12 @@ class CommandLoop:
 
     def start_session(self, *, show_banner: bool = True) -> None:
         """Initialize output and background services shared by both command-loop frontends."""
+        # Before anything is drawn, so the banner and a resumed transcript are in the theme too.
+        theme_problems = Theme.configure(self.session.settings.theme, self.session.data_path("themes"))
         if show_banner:
             self.emit_banner()
+        for problem in theme_problems:
+            self.presentation.emit(problem)
         # Cached state is read synchronously -- it is small, local, and the first status display
         # needs it -- and only the remote half is scheduled. Nothing here may hold the prompt: a
         # slow index, a slow filesystem, or an unreachable PyPI is not a reason to wait to type.

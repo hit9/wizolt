@@ -52,8 +52,6 @@ def test_cli_runs_session_and_closes_resources(monkeypatch):
     mcp = SimpleNamespace(close=lambda: closed.append("mcp"), parse_configs=list)
     session = SimpleNamespace(config=Config(), policy=bundled_policy(), settings=SimpleNamespace(theme="dark"), mcp=mcp, ensure_ownership=lambda: None, close=lambda: None)
     monkeypatch.setattr(cli, "create_session", lambda **kwargs: session)
-    monkeypatch.setattr(cli.Theme, "resolve", lambda theme: f"resolved-{theme}")
-    monkeypatch.setattr(cli.Theme, "set_mode", lambda theme: closed.append(theme))
     monkeypatch.setattr(cli, "Agent", lambda value: ("agent", value))
 
     class FakeLoop:
@@ -76,7 +74,7 @@ def test_cli_runs_session_and_closes_resources(monkeypatch):
     monkeypatch.setattr(cli, "CommandLoop", FakeLoop)
 
     assert cli.main(["--config", "custom.toml", "--yolo", "--theme", "light"]) == 7
-    assert closed == ["resolved-dark", "background"]
+    assert closed == ["background"]
 
 
 def test_interactive_banner_precedes_session_and_ui_imports(monkeypatch):
@@ -98,8 +96,6 @@ def test_interactive_banner_precedes_session_and_ui_imports(monkeypatch):
     session = SimpleNamespace(config=Config(), policy=bundled_policy(), settings=SimpleNamespace(theme="dark"), mcp=None, ensure_ownership=lambda: None, close=lambda: None)
     monkeypatch.setattr(cli, "configure_logging", configure_logging)
     monkeypatch.setattr(cli, "create_session", lambda **_kwargs: session)
-    monkeypatch.setattr(cli.Theme, "resolve", lambda theme: theme)
-    monkeypatch.setattr(cli.Theme, "set_mode", lambda _theme: None)
     monkeypatch.setattr(cli, "Agent", lambda value: value)
     monkeypatch.setattr(cli, "warm_imports", lambda _modules: None)
 
@@ -167,8 +163,6 @@ def test_cli_loads_resumed_session_with_runtime_overrides(monkeypatch):
         return session
 
     monkeypatch.setattr(cli, "load_session", load_snapshot)
-    monkeypatch.setattr(cli.Theme, "resolve", lambda theme: theme)
-    monkeypatch.setattr(cli.Theme, "set_mode", lambda _theme: None)
     monkeypatch.setattr(cli, "Agent", lambda value: value)
     monkeypatch.setattr(
         cli, "CommandLoop", lambda _agent: SimpleNamespace(presentation=SimpleNamespace(close_background_output=lambda: None), run=lambda: 0, resume_request="", resume_lease=None)
@@ -178,7 +172,7 @@ def test_cli_loads_resumed_session_with_runtime_overrides(monkeypatch):
     assert cli.main(["--resume", "saved", "--config", "custom.toml", "--yolo", "--theme", "light"]) == 0
     assert loaded == {
         "uid": "saved",
-        "config": ("config", {"runtime": {"theme": "dark"}}, {"policy": "selected-policy"}),
+        "config": ("config", {"runtime": {"theme": "dark"}}, {"policy": "selected-policy", "path": "custom.toml"}),
         "settings": ("settings", {"runtime": {"theme": "dark"}}, {"yolo": True, "theme": "light"}),
         "cwd": "/workspace",
         "catalog": catalog,

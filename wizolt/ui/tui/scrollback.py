@@ -172,6 +172,15 @@ class ScrollbackRegion:
         self._width = columns
         return self._rebuild_owed
 
+    def recolor(self) -> None:
+        """Owe a rebuild that re-renders every retained write in the active theme.
+
+        The cached layouts hold rows drawn in the old colors, so they go; the rebuild itself is
+        the one a width change runs, and is paid on the next render like that one.
+        """
+        self._layouts.clear()
+        self._rebuild_owed = True
+
     def flush(self, app: Application) -> bool:
         """Write queued transcript above the app; return whether the live layout needs repainting."""
         if not self._pending:

@@ -391,6 +391,9 @@ class Config:
     # attachments still go directly to the active provider and never route here implicitly.
     vision_provider: str = ""
 
+    # The config file this was read from, where `/theme` saves its pick; empty when not from a file.
+    path: str = ""
+
     def __post_init__(self) -> None:
         self.data_dir = UserPaths.resolve_data_dir(self.data_dir)
 
@@ -399,7 +402,7 @@ class Config:
         return self.providers[self.active_provider]
 
     @classmethod
-    def from_dict(cls, data: Json, *, policy: ProviderPolicy | None = None) -> Config:
+    def from_dict(cls, data: Json, *, policy: ProviderPolicy | None = None, path: str = "") -> Config:
         policy = policy or bundled_policy()
         provider_root = cls.table(data, "provider")
         active = cls.str(provider_root, "active", "default")
@@ -458,6 +461,7 @@ class Config:
             compaction_reasoning=compaction_reasoning,
             compaction_api=compaction_api,
             vision_provider=vision_provider,
+            path=path,
         )
 
     @classmethod
@@ -613,6 +617,8 @@ model = ""
                                # (flipping it changes the tool block and thus the prompt-cache scope)
 # language = "auto"           # auto follows your messages and injects nothing; set a language
                                # name (e.g. "Chinese") to force the reply language
+# theme = "auto"               # auto | dark | light | gruvbox-dark | nord | ... or a file in
+                               # <data_dir>/themes/; /theme previews them and saves the pick here
 # attribution = true           # ask the model to end the commit messages and pull requests it
                                # writes with a "Generated with wizolt" line
 # agents_md = true               # inject global AGENTS.md and the project's AGENTS.md files (or CLAUDE.md
@@ -661,6 +667,29 @@ model = ""
         except tomllib.TOMLDecodeError as error:
             raise ConfigError(f"invalid config {config_path}: {error}") from error
         return data if isinstance(data, dict) else {}
+
+    @staticmethod
+    def set_runtime(path: str, key: str, value: str) -> None:
+        """Set `runtime.<key>` in the config file, keeping its comments and layout.
+
+        The rewrite goes to a sibling file first and replaces the config in one rename, so an
+        interrupted save leaves the old file rather than half of the new one. A symlinked config
+        (a dotfiles checkout) is written through, not replaced by a plain file.
+        """
+        import tomlkit
+
+        path = os.path.realpath(path)
+        with open(path, encoding="utf-8") as file:
+            document = tomlkit.parse(file.read())
+        runtime = document.get("runtime")
+        if runtime is None:
+            runtime = tomlkit.table()
+            document["runtime"] = runtime
+        runtime[key] = value
+        temporary = path + ".tmp"
+        with open(temporary, "w", encoding="utf-8") as file:
+            file.write(tomlkit.dumps(document))
+        os.replace(temporary, path)
 
 
 def compaction_provider_config(config: Config) -> ProviderConfig:

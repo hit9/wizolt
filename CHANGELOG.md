@@ -2,7 +2,30 @@
 
 ## Unreleased
 
+### Added
+
+- Color themes. `/theme` opens a picker that previews each theme as the cursor lands on it, in a
+  sample below the list and in the prompt, menus and status bar; Esc restores the previous theme.
+  `/theme NAME` switches directly. The pick redraws the output already on screen once, the way a
+  resize does, and is saved as `runtime.theme` in the config file with its comments kept (a
+  symlinked config is written through). Built in: `gruvbox-dark`, `gruvbox-light`,
+  `solarized-dark`, `solarized-light`, `nord`, `dracula` and `one-dark`, each with its Pygments
+  code style. `dark` and `light` are unchanged and remain the default.
+- Theme files: `<data_dir>/themes/<name>.toml` starts from a built-in `base`, may name a
+  `pygments` style, and overrides roles in `[colors]`. Mistakes are reported at startup and when
+  `/theme` opens, and the rest of the file still applies. `--theme` and `runtime.theme` accept any
+  theme name; an unknown one is reported and falls back to `auto`.
+- Depend on `tomlkit` to edit the config file in place; it is imported only when a theme is saved.
+
 ### Changed
+
+- `Theme.fg` tags each fragment with a `class:role.<name>` after its inline color. Transcript
+  rendering defines those classes in the active theme, so a recorded row redraws in a new theme's
+  colors, and any other style still draws the inline color. Plain transcript rows are kept as
+  `RecordedOutput`, the captured bytes plus their fragments: a replay costs the same as before
+  until the theme changes, at the price of holding those fragments for the retained transcript.
+- Theme setup moved from `__main__` into `CommandLoop.start_session`, where its problems can be
+  shown after the banner, and `Config` records the file it was read from (`Config.path`).
 
 - Commit every turn ending through `Agent.finish_turn`: the error and interrupt paths each repeated
   its steps (history, in-flight turn, counter, pending context reset) by hand.

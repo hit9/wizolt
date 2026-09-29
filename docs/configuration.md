@@ -234,7 +234,7 @@ Optional; the defaults shown are used when omitted.
 | `bash_wait_timeout` | `10` | Foreground wait before a running command becomes a background job; `0` disables promotion |
 | `max_parallel_tools` | `4` | Maximum read-only tool calls executed concurrently; `1` disables parallelism |
 | `session_retention_days` | `7` | Delete saved sessions untouched for this many days, swept in the background at startup; `0` keeps them indefinitely |
-| `theme` | `auto` | Terminal color scheme: `auto`, `light`, or `dark`; overridden by `--theme`. `auto` reads `COLORFGBG` and falls back to `dark` |
+| `theme` | `auto` | Color theme: `auto`, `light`, `dark`, or a named theme (see [Color themes](#color-themes)); overridden by `--theme`, and set for you by `/theme`. `auto` reads `COLORFGBG` and falls back to `dark` |
 | `worker` | `false` | Let the model delegate to a second in-process session; see below |
 | `language` | `auto` | Force the reply language (`auto` follows your messages and injects nothing); set a name like `Chinese` to append a fixed `LANGUAGE OVERRIDE` block to the system prompt. Change for the current session with `/language` |
 | `attribution` | `true` | Ask the model to end every commit message and pull-request body it writes with `Generated with [wizolt](https://wizolt.readthedocs.io).` — a prompt-level request, not a guarantee. `/set runtime.attribution off` stops it for the session, `false` for good |
@@ -242,6 +242,40 @@ Optional; the defaults shown are used when omitted.
 
 Selected tuning values can be changed for the current session with `/set` (Tab completion
 lists the supported keys). `/yolo` toggles `yolo`.
+
+### Color themes
+
+`dark` and `light` draw in your terminal's own colors, so they follow whatever scheme your
+terminal is set to. The named themes pin every color to a well-known scheme instead — code
+highlighting, the status bar, menus and the selection band included:
+
+`gruvbox-dark`, `gruvbox-light`, `solarized-dark`, `solarized-light`, `nord`, `dracula`,
+`one-dark`
+
+A named theme does not change your terminal's background, so pick the one that matches it. Use
+`/theme` to preview them.
+
+To make your own, add `<data_dir>/themes/<name>.toml` (`~/.wizolt/themes/` by default). It starts
+from a built-in theme and changes only the colors you list:
+
+```toml
+base = "gruvbox-dark"         # any built-in theme; default "dark"
+pygments = "monokai"          # optional: the Pygments style for code
+[colors]
+accent = "#83a598"            # "#rrggbb", "#rgb", "default", or a terminal color like "ansicyan"
+user = "ansiyellow"
+```
+
+The roles you can set are `text`, `muted`, `subtle`, `accent`, `accent_secondary`, `info`,
+`user`, `tool`, `success`, `warning`, `error`, `rule`, the code colors `syntax_assign`,
+`syntax_string`, `syntax_number`, `syntax_ident`, `syntax_builtin` and `syntax_default`, the
+status bar's `status_base`, `status_provider`, `status_reason`, `status_mcp`, `status_context`,
+`status_yolo` and `status_worker`, the working divider's `divider_glow` and `divider_rule` (these
+two take `#rrggbb` only), and `selection_bg`, `selection_fg` and `menu_bg`. Diff colors follow
+the base theme's light or dark look.
+
+A mistake in a theme file is reported at startup and when `/theme` opens; the rest of the file
+still applies. `/theme` re-reads the folder each time it opens, so edits show up without a restart.
 
 ## Worker delegation
 
@@ -330,7 +364,7 @@ so each row can be read against one model's price.
 
 ```toml
 [paths]
-data_dir = "~/.wizolt"   # sessions, input history, OAuth tokens, user skills, update cache
+data_dir = "~/.wizolt"   # sessions, input history, OAuth tokens, user skills, themes, update cache
 ```
 
 Sessions live under `<data_dir>/projects/<project>/`, one directory per working directory. Each

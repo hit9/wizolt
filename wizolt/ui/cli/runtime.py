@@ -12,6 +12,8 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from prompt_toolkit.styles import DynamicStyle
+
 from wizolt.agent.lifecycle import close_agent_resources
 from wizolt.base import MalformedToolCallError, TurnBox, WizoltError
 from wizolt.image import UserInput
@@ -667,7 +669,8 @@ class TuiRuntime:
         rather than leaving the turn and the writer running with no terminal under them."""
 
         try:
-            await self.tui.run(style=self.loop.view.style())
+            # Dynamic, so `/theme` repaints the app by switching the palette.
+            await self.tui.run(style=DynamicStyle(self.loop.view.style))
         except BaseException as error:
             if self.error is None:
                 self.error = error

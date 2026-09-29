@@ -95,7 +95,7 @@ and links to the full documentation. Your work is saved as you go — close the 
 | `-c`, `--last`, `--latest` | Resume the most recent session in this project |
 | `--resume [UID]` | Resume a saved session; with no `UID`, resumes this project's latest |
 | `--yolo` | Skip confirmation prompts for mutating tools |
-| `--theme {auto,light,dark}` | Override the configured terminal color theme |
+| `--theme NAME` | Override the configured color theme: `auto`, `light`, `dark`, or a [named theme](configuration.md#color-themes) |
 | `--config <path>` | Use a specific config file instead of `~/.wizolt/config.toml` |
 | `--init-config` | Write a starter config file and exit |
 | `-h`, `--help` | Show command-line help and exit |

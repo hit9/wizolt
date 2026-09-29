@@ -29,7 +29,7 @@ def create_session(*, path: str | None = None, yolo: bool = False, theme: str = 
     data = ConfigFile.load(path)
     catalog = CatalogRuntime(Config.data_dir_from(data))
     session = Session(
-        config=Config.from_dict(data, policy=catalog.policy),
+        config=Config.from_dict(data, policy=catalog.policy, path=ConfigFile.resolve_path(path)),
         settings=RuntimeSettings.from_dict(data, yolo=yolo, theme=theme),
         catalog=catalog,
     )
@@ -58,7 +58,7 @@ def load_session(
         if config is None:
             data = ConfigFile.load()
             catalog = catalog or CatalogRuntime(Config.data_dir_from(data))
-            config = Config.from_dict(data, policy=catalog.policy)
+            config = Config.from_dict(data, policy=catalog.policy, path=ConfigFile.resolve_path(None))
             if settings is None:
                 settings = RuntimeSettings.from_dict(data)
         else:

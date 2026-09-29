@@ -544,7 +544,7 @@ def test_uiprinter_renders_tool_root_without_generic_prefix():
     text = "".join(value for _, value in segments)
 
     assert text == "  Read  wizolt.py 0:100 → tr.6 [auto]\n"
-    assert any(style == "fg:default" and "wizolt.py 0:100 → tr.6 [auto]" in value for style, value in segments)
+    assert any(style == Theme.fg("text") and "wizolt.py 0:100 → tr.6 [auto]" in value for style, value in segments)
 
 
 async def test_mixed_batch_whitelisted_tool_runs_and_excluded_rejected(tmp_path):

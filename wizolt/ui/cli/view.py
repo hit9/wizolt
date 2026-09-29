@@ -123,6 +123,7 @@ class CommandCompleter(Completer):
             ("/api ", lambda: PROVIDER_API_CHOICES),
             ("/strict ", lambda: ("on", "off")),
             ("/compact ", lambda: ("log",)),
+            ("/theme ", lambda: ("auto", *Theme.themes())),
         ):
             if text.startswith(command):
                 yield from self.matches(values(), text[len(command) :])
@@ -377,6 +378,9 @@ class View:
         self.session = session
         self.presentation = presentation
         self._hint_picker = HintPicker()  # idle-placeholder tips; see wizolt/ui/cli/hints.py
+        # The app reads the style on every render through a DynamicStyle; it is rebuilt only when
+        # the theme changes.
+        self._style: tuple[tuple[str, int], Style] | None = None
 
     def waiting_pulse_fragments(self) -> StyleAndTextTuples:
         if self.session.state.current_model_call_started_at <= 0:
@@ -655,7 +659,15 @@ class View:
         names the view's own widgets in terms of it. Light and dark therefore differ only inside the
         palette, never in a branch here.
         """
-        role = Theme.fg
+        if self._style is None or self._style[0] != Theme.key():
+            self._style = Theme.key(), self._build_style()
+        return self._style[1]
+
+    def _build_style(self) -> Style:
+        def role(name: str, *attributes: str) -> str:
+            # `Theme.fg` without its `class:role.*` tag, which a style map's value may not carry.
+            return " ".join((f"fg:{Theme.color(name)}", *attributes))
+
         menu_bg = Theme.color("menu_bg")
         return Style.from_dict(
             {

@@ -32,7 +32,7 @@ from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.menus import CompletionsMenu, CompletionsMenuControl
 from prompt_toolkit.layout.processors import BeforeInput, HighlightIncrementalSearchProcessor, Processor, Transformation
 from prompt_toolkit.patch_stdout import patch_stdout
-from prompt_toolkit.styles import Style
+from prompt_toolkit.styles import BaseStyle
 from prompt_toolkit.utils import get_cwidth
 from prompt_toolkit.widgets import SearchToolbar
 
@@ -565,6 +565,11 @@ class TuiApp:
             # is obsolete; an error from a still-running application is not.
             if app.is_running:
                 raise
+
+    def recolor(self) -> None:
+        """Redraw the transcript above the app in the active theme; the app repaints on its own."""
+        self.scrollback.recolor()
+        self.invalidate()
 
     def invalidate_frame(self) -> None:
         """Ask for a redraw from a source that fires far faster than the eye needs.
@@ -2069,7 +2074,7 @@ class TuiApp:
 
         renderer.render = render
 
-    async def run(self, style: Style | None = None) -> None:  # pragma: no cover — interactive
+    async def run(self, style: BaseStyle | None = None) -> None:  # pragma: no cover — interactive
         app = self._build_application(style)
         self.app = app
 
@@ -2099,7 +2104,7 @@ class TuiApp:
         if self.modal is not None:
             self.close_modal(None)
 
-    def _build_application(self, style: Style | None = None) -> Application:  # pragma: no cover — interactive
+    def _build_application(self, style: BaseStyle | None = None) -> Application:  # pragma: no cover — interactive
         app = Application(
             layout=self.build_layout(),
             key_bindings=self.make_bindings(),

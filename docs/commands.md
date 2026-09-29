@@ -119,6 +119,12 @@ and, where the values are a fixed set, the values. Example: `/set provider.respo
 | `/yolo` | Toggle confirmation prompts — read [Safety](safety.md) before leaving them off |
 | `/strict` | Toggle strict tool-call schemas (OpenAI / DeepSeek) |
 
+**`/theme [NAME]`** — Pick a color theme. The picker previews each theme as the cursor lands on
+it: a sample below the list, and the prompt, menus and status bar around it. Enter keeps it and
+Esc goes back to the one you had. `/theme NAME` switches straight away. Either way the output
+already on screen is redrawn in the new colors, and the choice is saved as `runtime.theme` in
+your config file. Themes are listed under [Configuration](configuration.md#color-themes).
+
 ## While a turn runs
 
 Commands that only read the session answer without interrupting it: `/status`, `/ps`, `/diff`,

@@ -17,7 +17,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
 from itertools import accumulate, pairwise
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 from prompt_toolkit import print_formatted_text
 from prompt_toolkit.application import get_app_or_none, get_app_session
@@ -26,7 +26,7 @@ from prompt_toolkit.formatted_text import ANSI, FormattedText, StyleAndTextTuple
 from prompt_toolkit.output import ColorDepth, create_output
 from prompt_toolkit.output.vt100 import Vt100_Output
 from prompt_toolkit.renderer import print_formatted_text as render_fragments_to_output
-from prompt_toolkit.styles import default_pygments_style, default_ui_style, merge_styles
+from prompt_toolkit.styles import Style, default_pygments_style, default_ui_style, merge_styles
 from prompt_toolkit.utils import get_cwidth
 from rich import box
 from rich.console import Console, ConsoleOptions, RenderResult
@@ -49,6 +49,8 @@ from wizolt.base import (
     Text,
 )
 from wizolt.session import Session
+from wizolt.ui.themes import BUILTIN as NAMED_THEMES
+from wizolt.ui.themes import Palette, load_custom
 
 if TYPE_CHECKING:
     from pygments.style import Style as PygmentsStyle
@@ -169,6 +171,32 @@ class HorizontalRule(WidthDependent):
         return parts
 
 
+class RecordedOutput(str):
+    """Completed output that does not depend on width: the captured bytes, until the theme changes.
+
+    It is the capture itself, so whatever reads the transcript as text still can. Calling it, as a
+    replay does, draws it in the active theme: the capture until `/theme` switches, then its kept
+    fragments re-rendered in the new colors. Until then a replay costs no more than the bytes.
+    """
+
+    parts: list[FormattedText | ANSI | WidthDependent]
+    color_depth: ColorDepth
+    theme: tuple[str, int]
+    drawn: str
+
+    def __new__(cls, ansi: str, parts: list[FormattedText | ANSI | WidthDependent], color_depth: ColorDepth) -> Self:
+        recorded = super().__new__(cls, ansi)
+        recorded.parts, recorded.color_depth = parts, color_depth
+        recorded.theme, recorded.drawn = Theme.key(), ansi
+        return recorded
+
+    def __call__(self, columns: int) -> str:
+        if self.theme != Theme.key():
+            self.drawn = UiPrinter.render_to_ansi(self.parts, color_depth=self.color_depth)
+            self.theme = Theme.key()
+        return self.drawn
+
+
 def progress_bar(value: int, total: int, width: int = 14) -> str:
     """A fixed-width meter in eighth-block characters, clamped to [0, total]."""
     ratio = min(1.0, max(0.0, value / total)) if total else 0.0
@@ -212,7 +240,11 @@ def search_sources_footer(sources: list[Json]) -> str:
 
 
 class Theme:
-    """The two semantic palettes and their small Rich/prompt-toolkit adapters."""
+    """The active semantic palette and its small Rich/prompt-toolkit adapters.
+
+    `dark` and `light` are the defaults and follow the terminal's ANSI colors; the named schemes
+    and the user's theme files are in `wizolt.ui.themes`.
+    """
 
     DARK: ClassVar[dict[str, str]] = {
         "text": "default",
@@ -304,16 +336,58 @@ class Theme:
         "diff.removed.fg": "fg:#520000",
     }
 
-    _mode: ClassVar[str] = "dark"
+    BUILTIN: ClassVar[dict[str, Palette]] = {"dark": Palette("dark", DARK), "light": Palette("light", LIGHT), **NAMED_THEMES}
+
+    _mode: ClassVar[str] = "dark"  # the active theme's name
+    _custom: ClassVar[dict[str, Palette]] = {}
+    # Bumped whenever a theme's colors may have changed, including a theme file reloaded under the
+    # same name, so anything rendered from the palette knows its colors are stale.
+    _generation: ClassVar[int] = 0
+    _role_style: ClassVar[tuple[tuple[str, int], Style] | None] = None
     _pygments_cache: ClassVar[dict[str, type[PygmentsStyle] | None]] = {}
 
     @classmethod
-    def set_mode(cls, mode: str) -> None:
-        cls._mode = "light" if mode == "light" else "dark"
+    def themes(cls) -> dict[str, Palette]:
+        return {**cls.BUILTIN, **cls._custom}
+
+    @classmethod
+    def name(cls) -> str:
+        return cls._mode
+
+    @classmethod
+    def key(cls) -> tuple[str, int]:
+        """Equal for two renders exactly when they drew in the same colors."""
+        return cls._mode, cls._generation
+
+    @classmethod
+    def set_mode(cls, name: str) -> None:
+        cls._mode = name if name in cls.themes() else "dark"
+        cls._generation += 1
+
+    @classmethod
+    def load_custom(cls, directory: str) -> list[str]:
+        """Re-read the user's theme files; return a line for each problem found in them."""
+        cls._custom, problems = load_custom(directory, cls.BUILTIN)
+        cls._generation += 1
+        return problems
+
+    @classmethod
+    def configure(cls, configured: str, directory: str) -> list[str]:
+        """Load the theme files and activate the configured theme, reporting what could not be used."""
+        problems = cls.load_custom(directory)
+        name = cls.resolve(configured)
+        if configured.strip().lower() not in ("", "auto") and cls.lookup(configured) is None:
+            problems.append(f"unknown theme `{configured}`; using {name}. Available: {', '.join(cls.themes())}")
+        cls.set_mode(name)
+        return problems
 
     @classmethod
     def palette(cls) -> dict[str, str]:
-        return cls.LIGHT if cls._mode == "light" else cls.DARK
+        return cls.themes().get(cls._mode, cls.BUILTIN["dark"]).colors
+
+    @classmethod
+    def appearance(cls) -> str:
+        return cls.themes().get(cls._mode, cls.BUILTIN["dark"]).appearance
 
     # prompt-toolkit spells a terminal color `ansibrightblack`; Rich spells the same one
     # `bright_black`. The palette speaks prompt-toolkit's dialect, since that is what most of the UI
@@ -337,16 +411,29 @@ class Theme:
 
     @classmethod
     def diff_style(cls, key: str) -> str:
-        return (cls.DIFF_LIGHT if cls._mode == "light" else cls.DIFF_DARK)[key]
+        return (cls.DIFF_LIGHT if cls.appearance() == "light" else cls.DIFF_DARK)[key]
 
     @classmethod
     def fg(cls, role: str, *attributes: str) -> str:
-        """One role as a prompt-toolkit inline style, e.g. `fg:#8b949e bold`.
+        """One role as a prompt-toolkit inline style, e.g. `fg:#8b949e class:role.muted bold`.
 
         For fragments built outside the style map — wrapped rows, ramps, anything assembled from a
         computed color. Fragments that can name a class should use one instead.
+
+        The inline color is what any style draws; the `role.<name>` class after it wins only where
+        a style defines it. `role_style` does, which is how a transcript row recorded under one
+        theme re-renders in the next.
         """
-        return " ".join((f"fg:{cls.color(role)}", *attributes))
+        return " ".join((f"fg:{cls.color(role)}", f"class:role.{role}", *attributes))
+
+    @classmethod
+    def role_style(cls) -> Style:
+        """Every role as the `role.<name>` class `fg` tags its fragments with, in the active theme."""
+        cached = cls._role_style
+        if cached is None or cached[0] != cls.key():
+            cached = cls.key(), Style.from_dict({f"role.{role}": f"fg:{cls.color(role)}" for role in cls.ROLES})
+            cls._role_style = cached
+        return cached[1]
 
     @classmethod
     def selection(cls, *attributes: str) -> str:
@@ -435,9 +522,17 @@ class Theme:
         return "dark"
 
     @classmethod
+    def lookup(cls, name: str) -> str | None:
+        """The theme called `name`, matched exactly and then ignoring case."""
+        name, known = name.strip(), cls.themes()
+        if name in known:
+            return name
+        return next((theme for theme in known if theme.lower() == name.lower()), None)
+
+    @classmethod
     def resolve(cls, configured: str) -> str:
-        configured = (configured or "auto").strip().lower()
-        return configured if configured in ("light", "dark") else cls.detect()
+        """`auto`, and a name no theme has, fall back to the terminal's light or dark default."""
+        return cls.lookup(configured or "") or cls.detect()
 
     @classmethod
     def pygments_style(cls) -> type[PygmentsStyle] | None:
@@ -709,7 +804,7 @@ class UiPrinter:
         if any(isinstance(part, WidthDependent) for part in parts):
             sink(partial(self.render_to_ansi, list(parts), color_depth=color_depth))
         else:
-            sink(self.render_to_ansi(parts, color_depth=color_depth))
+            sink(RecordedOutput(self.render_to_ansi(parts, color_depth=color_depth), list(parts), color_depth))
 
     @staticmethod
     def render_to_ansi(parts: list[FormattedText | ANSI | WidthDependent], columns: int | None = None, *, color_depth: ColorDepth | None = None) -> str:
@@ -726,7 +821,9 @@ class UiPrinter:
         depth = color_depth or get_app_session().output.get_default_color_depth()
         output = Vt100_Output(buffer, lambda: size, default_color_depth=depth)
         fragments = [fragment for part in parts for fragment in (part.fragments(size.columns) if isinstance(part, WidthDependent) else to_formatted_text(part))]
-        render_fragments_to_output(output, fragments, _SCROLLBACK_STYLE)
+        # The role classes resolve to the colors the fragments already carry inline, so this adds
+        # nothing until the theme changes -- then a replay draws the new theme's colors.
+        render_fragments_to_output(output, fragments, merge_styles([_SCROLLBACK_STYLE, Theme.role_style()]))
         return buffer.getvalue()
 
     def _scrollback_print_parts(self, parts: list[FormattedText | ANSI | WidthDependent]) -> None:
