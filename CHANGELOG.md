@@ -6,6 +6,14 @@
 
 - Commit every turn ending through `Agent.finish_turn`: the error and interrupt paths each repeated
   its steps (history, in-flight turn, counter, pending context reset) by hand.
+- `Session` owns its in-flight turn through `stage_active_turn` and `clear_active_turn`, and
+  `/status` asks `Session.delegating_worker` instead of repeating its predicate.
+
+### Fixed
+
+- A worker send whose first checkpoint failed to save cleared only half of its in-flight turn: the
+  stale transcript message stayed, so the worker's next snapshot saved a turn that never ran, and it
+  blocked any context reset the worker requested.
 
 ## 0.56.1 - 2026-09-28
 

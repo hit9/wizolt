@@ -292,7 +292,7 @@ def status(loop: CommandLoop, args: str) -> str:
         rows.append(("worker", "off — `[worker] provider` " + (f"= `{configured}`" if configured else "unset")))
     else:
         worker_usage = worker.usage
-        state = f"{'delegating' if worker._active_turn_messages else 'idle'}, rounds `{worker.state.round_count}`"
+        state = f"{'delegating' if loop.session.delegating_worker else 'idle'}, rounds `{worker.state.round_count}`"
         rows.append(("worker", _status_model_line(worker, worker.config)))
         if worker_usage.last_prompt_tokens and worker_usage.last_prompt_budget:
             percent = worker_usage.context_percent()

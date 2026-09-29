@@ -399,7 +399,7 @@ class DelegateTool(Tool):
             # there means the send died before its first settlement (a snapshot write failing
             # under the first checkpoint), and leaving it would keep routing live follow-ups to
             # a worker whose turn is over.
-            worker._active_turn_messages.clear()
+            worker.clear_active_turn()
         if failure is not None:
             # Folded to one bounded, quote-free line at the source rather than where it is read.
             # `status` renders it as an attribute of the envelope the model parses, and a provider

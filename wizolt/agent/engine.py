@@ -466,8 +466,7 @@ class Agent:
                 self.turn_sources.append(source)
 
     async def checkpoint_turn(self, turn_messages: list[Json], transcript_messages: list[Json]) -> None:
-        self.session._active_turn_messages = list(turn_messages)
-        self.session._active_transcript_messages = list(transcript_messages)
+        self.session.stage_active_turn(turn_messages, transcript_messages)
         await self.session.save_snapshot()
 
     def finish_turn(self, turn_messages: list[Json], transcript_messages: list[Json], assistant: Json | None = None) -> None:
@@ -478,8 +477,7 @@ class Agent:
         else:
             self.session.messages.extend(turn_messages)
             self.session.transcript_messages.extend(transcript_messages)
-        self.session._active_turn_messages.clear()
-        self.session._active_transcript_messages.clear()
+        self.session.clear_active_turn()
         self.session.state.turn_messages = 0
         # A reset the model asked for inside this turn lands here, at its settlement: the turn is
         # now whole and durable, so dropping the conversation cannot orphan a tool call.
@@ -561,8 +559,7 @@ class Agent:
         the partial turn stands (what the CLI showed happened) and an interrupt marker is
         appended, keeping the context valid and telling the model the turn ended early."""
         if not any(message.get("role") != "user" for message in transcript_messages):
-            self.session._active_turn_messages.clear()
-            self.session._active_transcript_messages.clear()
+            self.session.clear_active_turn()
             self.session.state.turn_messages = 0
             return
 

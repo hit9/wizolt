@@ -426,3 +426,33 @@ async def test_delegate_clears_a_stale_inflight_marker(tmp_path, monkeypatch):
 
     assert parent.worker is not None
     assert parent.worker._active_turn_messages == []
+
+
+async def test_delegate_clears_the_whole_inflight_turn_when_the_first_checkpoint_fails(tmp_path, monkeypatch):
+    """The first checkpoint's write failing is the settlement-free ending: nothing the worker
+    staged for that turn may survive it, or the next worker snapshot persists a dead turn."""
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
+    from wizolt.base import ToolError
+    from wizolt.session import Session
+    from wizolt.session.codec import SessionSnapshotCodec
+
+    parent = _delegate_session(tmp_path)
+    save_snapshot = Session.save_snapshot
+
+    async def worker_write_fails(session):
+        if session is parent:
+            return await save_snapshot(session)
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Session, "save_snapshot", worker_write_fails)
+    model = FakeModelClient([])
+    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda session: model)
+    runner = ToolRunner(parent, ContextManager(parent), input_fn=lambda *a: "y", output_fn=lambda text: None)
+    with pytest.raises(ToolError, match="disk full"):
+        await _delegate_call(parent, runner, action="send", order="do the thing")
+
+    assert model.requests == []  # died at the checkpoint, before any request
+    assert parent.delegating_worker is None
+    assert parent.worker is not None
+    assert SessionSnapshotCodec.active_transcript_messages(parent.worker) == []

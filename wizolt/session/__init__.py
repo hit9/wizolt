@@ -194,6 +194,16 @@ class Session:
         self.worker_tool_enabled = bool(self.config.worker_provider)
         self.apply_provider_overrides()
 
+    def stage_active_turn(self, turn_messages: list[Json], transcript_messages: list[Json]) -> None:
+        """Hold the in-flight turn outside durable history, where a checkpoint persists it."""
+        self._active_turn_messages = list(turn_messages)
+        self._active_transcript_messages = list(transcript_messages)
+
+    def clear_active_turn(self) -> None:
+        """End the in-flight turn: committed to history, retracted, or abandoned unsettled."""
+        self._active_turn_messages.clear()
+        self._active_transcript_messages.clear()
+
     @property
     def delegating_worker(self) -> Session | None:
         """The worker while a delegation is in flight, else None.
