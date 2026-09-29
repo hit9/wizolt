@@ -16,6 +16,14 @@
   thread also loads `wizolt.ui.markdown` alongside the provider SDKs (`wizolt/__main__.py`), so in
   practice the background import finishes before the first Markdown render and the hitch never
   lands: first-frame timing is unchanged (515–518 ms, 3 runs, same setup).
+- Add a `frame` benchmark suite (`benchmarks/frame.py`) that measures interactive startup the
+  other suites decompose: each sample launches the real entry point under a pseudo-terminal with
+  an isolated HOME and records banner and first-prompt-frame times without waiting for the warm-up
+  thread. A startup guard test now also keeps `rich` and `markdown_it` off the interactive import
+  path. Recorded comparison against master (`02699d1`): `frame.first_frame` 560.0 → 484.8 ms
+  (-13.4%), `imports.wizolt.cli` 233.8 → 184.9 ms (-20.9%), 9 samples, Linux aarch64 sandbox; the
+  `optimization.startup_*` probes read +19% because they join the warm-up thread, which now also
+  loads Rich — documented in `benchmarks/README.md`, not a time-to-prompt regression.
 
 ### Fixed
 

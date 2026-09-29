@@ -20,6 +20,16 @@ Use the existing project environment; do not install or switch interpreters to r
 Stop tests, builds and other heavy work first. Measurements use temporary session data and make no
 model requests. Startup probes load SDKs without contacting providers.
 
+The `frame` suite measures the interactive startup the other suites decompose: each sample launches
+the real entry point under a pseudo-terminal with an isolated HOME and a minimal unused provider,
+recording when the banner reaches the terminal and when the first prompt frame draws. The
+pseudo-terminal answers no OSC/CPR queries, so the background-color probe pays its full timeout on
+both sides of a comparison; that timeout is inside both numbers and cancels out. `frame` measures
+the warm-cache case only — a cold filesystem cache dominates both sides. Note that
+`optimization.startup_chat`/`startup_anthropic` join the warm-up thread before stopping the clock,
+so they measure "startup including background imports", not time-to-prompt; `frame.first_frame` is
+the user-facing number and never waits for the warm-up thread.
+
 Record an immutable source revision:
 
 ```sh
@@ -209,3 +219,25 @@ The emit probe caught what the markdown-only probes could not. Tagging fragments
 class by scanning every style rule and a transcript row renders outside any live render's cache;
 memoizing resolved style strings on the one transcript style per theme brought it below the
 baseline. That style costs about 174 KB, once per active theme.
+
+## First-frame comparison
+
+`baselines/linux-arm64-py314-before-first-frame.json` (`02699d1`, master) against
+`results/linux-arm64-py314-first-frame.json` (`perf/first-frame`, `ff7ed04`), 9 samples, the same
+environment as the comparisons above. The work moved Rich and its Markdown stack off the
+interactive first-frame path and warmed it in the background thread instead.
+
+| Metric | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| frame.first_frame | 560.0 | 484.8 | -13.4% |
+| frame.banner | 41.6 | 42.8 | +2.9% |
+| imports.wizolt.cli | 233.8 | 184.9 | -20.9% |
+| optimization.startup_chat | 723.1 | 862.9 | +19.3% |
+
+Both `frame` numbers include the pseudo-terminal's full 200 ms background-probe timeout, so the
+frame path itself went from about 360 ms to 285 ms. The `startup_*` increase is the semantics
+documented above — the probe joins the warm-up thread, which now also loads `wizolt.ui.markdown` —
+not a time-to-prompt regression; `frame.first_frame` never waits for that thread.
+`imports.wizolt.__main__` read +10.6% here and -12.8% in an earlier run of the same comparison,
+marking it as run-to-run noise on a ~50 ms measurement; the `replay.*` metrics likewise moved
+within the ±10% band they showed across same-day runs.

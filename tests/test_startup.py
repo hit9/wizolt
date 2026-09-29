@@ -63,6 +63,20 @@ def test_fresh_interpreter_import_chain_stays_light():
     subprocess.run([sys.executable, "-c", probe], check=True, capture_output=True)
 
 
+def test_cli_import_chain_defers_markdown_rendering():
+    """Rich renders completed Markdown only, so the interactive import path must not load it.
+
+    Rich, `markdown_it`, and Pygments' Rich bridge cost about a sixth of the first-frame path
+    here; they moved to `wizolt.ui.markdown` and the render-time imports that reach it, so the
+    first frame does not pay for output that does not exist yet."""
+    probe = (
+        "import sys;import wizolt.ui.cli;"
+        "heavy = {'rich', 'markdown_it'} & set(sys.modules);"
+        "assert not heavy, heavy"
+    )
+    subprocess.run([sys.executable, "-c", probe], check=True, capture_output=True)
+
+
 def test_cli_import_chain_defers_request_path_stacks():
     """The interactive CLI's import path carries no HTTP client or image decoder.
 
