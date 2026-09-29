@@ -288,8 +288,8 @@ class TuiApp:
     MODAL_KEYS: ClassVar[tuple[str, ...]] = tuple(
         "j k h l g G up down left right tab s-tab enter escape q r pagedown pageup c-d c-u c-n c-p c-o backspace c-h /".split()  # noqa: SIM905 - compact key table.
     )
-    # Frame budget for the live regions' breathing marks: the waiting pulse, the spark, the elapsed
-    # label. None of them travel across the screen, so this only has to keep their steps invisible.
+    # Frame budget for the running divider. Motion is smooth only while a moving highlight advances
+    # about one cell per frame, so this rate is what `View.QUEUE_SWEEP_CELLS_PER_SEC` follows.
     ANIMATION_INTERVAL: ClassVar[float] = 1 / 30
     # Idle refresh: no animation runs on the idle screen, only the 0.2s index and MCP spinners.
     IDLE_REFRESH_INTERVAL: ClassVar[float] = 0.2

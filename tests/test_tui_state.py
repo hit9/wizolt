@@ -420,10 +420,10 @@ def test_model_stream_preview_keeps_malformed_star_runs_literal(tmp_path, monkey
     assert not any(text == "a" and "italic" in style for text, style in styled)  # no italic borrowed from `**`
 
 
-def test_working_divider_widens_for_long_labels_and_keeps_the_trail(tmp_path, monkeypatch):
+def test_sweep_divider_widens_for_long_labels_and_keeps_the_track(tmp_path, monkeypatch):
     """A label that would fill the default rule is accommodated by widening the rule instead of
     being clipped: both sides keep at least MIN_TRAIL dashes (up to the terminal width) and the
-    label text stays whole."""
+    label text stays whole, so the comet reads as motion rather than a frantic bounce."""
     monkeypatch.setattr(shutil, "get_terminal_size", lambda fallback: os.terminal_size((100, 20)))
     config = Config()
     config.data_dir = str(tmp_path / "data")
@@ -431,23 +431,45 @@ def test_working_divider_widens_for_long_labels_and_keeps_the_trail(tmp_path, mo
     view = loop.view
 
     long_label = "[worker] thinking (5m07s · ↓ 75 tok/s) [ 1 queued ]"
-    fragments = view.working_divider_fragments(long_label)
-    dashes = sum(len(text) for style, text in fragments if style == "class:queue.rule")
+    fragments = view.sweep_divider_fragments(long_label)
+    dashes = sum(len(text) for style, text in fragments if style == "class:queue.rule" or style.startswith("class:divider.glow"))
     assert dashes >= 3 + 12  # lead + the minimum trail
     assert any(text == long_label for _, text in fragments)  # never clipped
 
     short_label = "working"
-    plain = view.working_divider_fragments(short_label)
+    plain = view.sweep_divider_fragments(short_label)
     assert any(text == short_label for _, text in plain)  # a short label is never clipped
     assert sum(len(text) for _, text in plain) == 98  # the rule now runs edge to edge (cols - 2)
 
     monkeypatch.setattr(shutil, "get_terminal_size", lambda fallback: os.terminal_size((300, 20)))
-    assert len(view.working_divider_fragments(short_label)) < 30  # the rule is one fragment, not one per cell
+    assert len(view.sweep_divider_fragments(short_label)) < 30  # width does not become per-frame fragment count
+
+
+def test_divider_glow_passes_behind_the_label_instead_of_jumping_across_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(shutil, "get_terminal_size", lambda fallback: os.terminal_size((60, 20)))
+    config = Config()
+    config.data_dir = str(tmp_path / "data")
+    loop = CommandLoop(Agent(Session(cwd=str(tmp_path), config=config)), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
+    label = "x" * 20
+
+    # Put the head well inside the label. Neither visible side should glow until it emerges;
+    # treating the two rule runs as adjacent makes it jump immediately to the right side.
+    hidden_position = 3 + 1 + len(label) // 2
+    view = loop.view
+    rule_span = (60 - 2) - 1
+    outside = view.GLOW_REACH + view.SWEEP_OFFSCREEN_MARGIN
+    travel = rule_span + 2 * outside
+    progress = (hidden_position + outside) / travel
+    monkeypatch.setattr(view, "_sweep_progress", lambda _phase: progress)
+    monkeypatch.setattr(time, "monotonic", lambda: 0.0)
+    fragments = loop.view.sweep_divider_fragments(label)
+
+    assert not any(style.startswith("class:divider.glow") for style, _ in fragments)
 
 
 def test_queue_divider_resuming_status_is_a_quiet_gray_line(tmp_path):
-    """While a session is being restored the divider is one gray line: no pulse, no elapsed time,
-    because nothing is streaming and the replay that follows is the whole story."""
+    """While a session is being restored the divider is one gray line: no sweep, no pulse, no
+    elapsed time, because nothing is streaming and the replay that follows is the whole story."""
     config = Config()
     config.data_dir = str(tmp_path / "data")
     loop = CommandLoop(Agent(Session(cwd=str(tmp_path), config=config)), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
