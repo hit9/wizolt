@@ -18,7 +18,7 @@ def test_startup_prewarms_only_the_resolved_protocol(tmp_path, url, api, expecte
     from wizolt.session import Session
 
     config = Config(data_dir=str(tmp_path), providers={"default": ProviderConfig(url=url, api=api)})
-    assert startup_imports(Session(config=config, cwd=str(tmp_path))) == [expected]
+    assert startup_imports(Session(config=config, cwd=str(tmp_path))) == [expected, "wizolt.ui.markdown"]
 
 
 @pytest.mark.parametrize("route", ["compaction", "vision", "worker"])
@@ -32,7 +32,7 @@ def test_startup_includes_configured_auxiliary_protocols(tmp_path, route):
         "unused": ProviderConfig(api="responses"),
     })
     setattr(config, route + "_provider", "other")
-    assert startup_imports(Session(config=config, cwd=str(tmp_path))) == ["openai", "anthropic"]
+    assert startup_imports(Session(config=config, cwd=str(tmp_path))) == ["openai", "anthropic", "wizolt.ui.markdown"]
 
 
 def test_startup_resolves_compaction_override_and_mcp_autoconnect(tmp_path):
@@ -45,9 +45,9 @@ def test_startup_resolves_compaction_override_and_mcp_autoconnect(tmp_path):
     config = Config(data_dir=str(tmp_path), compaction_api="anthropic")
     session = Session(config=config, cwd=str(tmp_path))
     session.mcp = SimpleNamespace(parse_configs=lambda: [SimpleNamespace(auto_connect=False)])
-    assert startup_imports(session) == ["openai", "anthropic"]
+    assert startup_imports(session) == ["openai", "anthropic", "wizolt.ui.markdown"]
     session.mcp = SimpleNamespace(parse_configs=lambda: [SimpleNamespace(auto_connect=True)])
-    assert startup_imports(session) == ["openai", "anthropic", "mcp.client"]
+    assert startup_imports(session) == ["openai", "anthropic", "mcp.client", "wizolt.ui.markdown"]
 
 
 def test_fresh_interpreter_import_chain_stays_light():

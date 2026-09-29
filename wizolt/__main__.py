@@ -177,6 +177,10 @@ def startup_imports(session) -> list[str]:
     modules = list(dict.fromkeys("anthropic" if session.policy.resolve(provider).api == "anthropic" else "openai" for provider in providers))
     if session.mcp is not None and any(entry.auto_connect for entry in session.mcp.parse_configs()):
         modules.append("mcp.client")
+    # Last, because the first request needs the SDKs first and Markdown waits for its first
+    # response: Rich renders it on the lazy path now (`wizolt.ui.markdown`), and warming it here
+    # keeps the first rendered message from paying the import instead of the prompt.
+    modules.append("wizolt.ui.markdown")
     return modules
 
 

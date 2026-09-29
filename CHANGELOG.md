@@ -12,7 +12,10 @@
   background probe pays its full 200 ms timeout in both, and cancels out). The `CommandLoop`
   import chain itself went 292 ms → 183 ms. Trade-off: the first Markdown render (first assistant
   message, or an approval modal) now pays the Rich import once, about 110 ms on the same machine,
-  after the prompt is already live; typing and commands do not wait for it.
+  after the prompt is already live; typing and commands do not wait for it. The startup warm-up
+  thread also loads `wizolt.ui.markdown` alongside the provider SDKs (`wizolt/__main__.py`), so in
+  practice the background import finishes before the first Markdown render and the hitch never
+  lands: first-frame timing is unchanged (515–518 ms, 3 runs, same setup).
 
 ### Fixed
 
