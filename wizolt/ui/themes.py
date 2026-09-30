@@ -278,6 +278,7 @@ def scheme(
             "status_yolo": red,
             "status_worker": orange,
             "status_bg": status,
+            "user_bg": blend(background, fg, 0.08),
             "divider_glow": aqua,
             "divider_rule": rule,
             "divider_label": aqua,
@@ -306,6 +307,7 @@ def scheme(
         "divider_label",
     ):
         palette.colors[role] = lift(palette.colors[role], fg, background, 4.5)
+    palette.colors["user"] = lift(palette.colors["user"], fg, palette.colors["user_bg"], 4.5)
     for role in ("status_base", "status_provider", "status_reason", "status_mcp", "status_context", "status_yolo", "status_worker"):
         palette.colors[role] = lift(lift(palette.colors[role], fg, status, MUTED_CONTRAST), fg, background, MUTED_CONTRAST)
     return palette

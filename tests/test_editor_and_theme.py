@@ -426,7 +426,8 @@ def test_resumed_user_rendering_emits_desert_truecolor(mode, rgb, monkeypatch):
     with console.capture() as capture:
         ui.render_message(console, "hello", "user", False, 0)
 
-    assert f"\x1b[38;2;{rgb}m• hello\x1b[0m" in capture.get()
+    assert f"\x1b[38;2;{rgb};48;2;" in capture.get()
+    assert "m• hello\x1b[0m" in capture.get()
 
 
 @pytest.mark.parametrize(
@@ -495,7 +496,7 @@ def test_interactive_renderer_keeps_theme_when_parent_exports_no_color(monkeypat
     assert ui.color
     ui.emit_answer("sent message", role="user", rule=False)
 
-    desert_text = "".join(text for style, text in emitted if style == "#e0a96d")
+    desert_text = "".join(text for style, text in emitted if style.startswith("#e0a96d"))
     assert "• sent message" in desert_text
 
 
@@ -509,7 +510,7 @@ def test_the_roles_that_carry_text_are_the_terminal_own_colors():
     selection band, which has to stay one colour across every list instead of taking the colour of
     the row it lands on, and the completion menu's surface, which carries no text of its own.
     """
-    fixed = {"user", "syntax_default", "divider_glow", "divider_rule", "selection_bg", "selection_fg", "menu_bg"}
+    fixed = {"user", "user_bg", "syntax_default", "divider_glow", "divider_rule", "selection_bg", "selection_fg", "menu_bg"}
     for palette in (Theme.DARK, Theme.LIGHT):
         for role in Theme.ROLES:
             if role in fixed or role.startswith(("status_", "syntax_")):

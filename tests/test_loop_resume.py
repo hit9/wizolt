@@ -228,6 +228,10 @@ async def test_a_restored_transcript_is_spaced_like_the_live_turn(tmp_path, monk
 
     text = "".join(fragment for part in printed for _, fragment in to_formatted_text(part))
     rows = re.sub(r"\x1b\[[0-9;]*m", "", text).split("\n")[:-1]  # drop the newline that ends the last row
+    # User blocks own one shaded padding row at each edge, in addition to turn separation.
+    padding = {edge for index, row in enumerate(rows) if row.lstrip().startswith("• ") for edge in (index - 1, index + 1)}
+    assert all(not rows[index].strip() for index in padding)
+    rows = [row for index, row in enumerate(rows) if index not in padding]
     blanks = {index for index, row in enumerate(rows) if row.strip() == ""}
     assert not any(index + 1 in blanks for index in blanks), "\n".join(rows)  # never two blank rows together
     for opener in ("looking", "Read  a.py 0:1", "found it", "• second"):

@@ -70,7 +70,7 @@ def test_editor_and_queued_user_text_use_desert_style(tmp_path, monkeypatch):
     expected = UiPrinter.user_log_style()
     app = TuiApp()
     app.build_layout()
-    assert app.input_window.style == expected
+    assert app.input_window.style() == expected + f" bg:{Theme.color('user_bg')}"
 
     command_loop = loop(tmp_path)
     command_loop.session.enqueue_user_input("queued message")

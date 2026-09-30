@@ -8,6 +8,8 @@ from types import SimpleNamespace
 import pytest
 from prompt_toolkit.document import Document
 from prompt_toolkit.formatted_text import FormattedText
+from prompt_toolkit.formatted_text.utils import split_lines
+from prompt_toolkit.utils import get_cwidth
 from prompt_toolkit.output import ColorDepth
 from rich.console import Console
 from test_command_ui import ModalHarness
@@ -18,7 +20,7 @@ import wizolt.ui.render as render_module
 from wizolt.config import ConfigFile
 from wizolt.ui.cli import CommandCompleter
 from wizolt.ui.cli.appearance import theme_command, theme_preview
-from wizolt.ui.render import HorizontalRule, Theme, UiPrinter
+from wizolt.ui.render import HorizontalRule, MessageBlock, Theme, UiPrinter
 from wizolt.ui.themes import BUILTIN, DIFF_STYLES, HEX_ROLES, MENU_TEXT_CONTRAST, MUTED_CONTRAST, contrast
 from wizolt.ui.tui.app import TuiApp
 from wizolt.utils import terminal
@@ -911,6 +913,24 @@ def test_theme_names_complete_after_the_command():
 
     # A pair is accepted by name but not listed beside its two themes.
     assert completions == ["gruvbox-dark", "gruvbox-light"]
+
+
+@pytest.mark.parametrize("name", ("dark", "light", *BUILTIN))
+def test_user_message_background_fills_wrapped_and_empty_rows(name):
+    Theme.set_mode(name)
+    block = MessageBlock(UiPrinter(), "A long message with 中文\n\nAnother line", "user", 0, False)
+    for width in (12, 40):
+        rows = list(split_lines(block.fragments(width)))[:-1]
+        assert rows
+        assert not "".join(text for _, text in rows[0]).strip()
+        assert not "".join(text for _, text in rows[-1]).strip()
+        for row in rows:
+            assert sum(get_cwidth(text) for _, text in row) == width
+            assert all(f"bg:{Theme.color('user_bg')}" in style for style, text in row if text)
+    if name in BUILTIN:
+        assert contrast(Theme.color("user"), Theme.color("user_bg")) >= 4.5
+    reply = MessageBlock(UiPrinter(), "Reply", "assistant", 0, False)
+    assert not any("bg:" in style for style, text in reply.fragments(40) if text)
 
 
 def test_the_app_style_follows_a_theme_switch(tmp_path):

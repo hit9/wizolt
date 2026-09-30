@@ -209,6 +209,8 @@ table.docutils th { background: var(--nc-surface); color: var(--nc-fg-strong); }
 .term-shot span { display: block; }
 .term-shot .fs-i, .term-shot .fs-caret { display: inline; }
 .fs-user, .fs-queued { color: #d19a66; }
+.fs-user, .fs-prompt { background: #32373f; }
+.term-shot > .fs-user, .term-shot > .fs-prompt { padding-block: 1.7em; }
 .fs-tool { color: #98c379; }
 .fs-prompt { color: #abb2bf; }
 .fs-divider, .fs-hint, .fs-dim { color: #5c6370; }

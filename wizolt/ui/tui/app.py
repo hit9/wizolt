@@ -1472,7 +1472,7 @@ class TuiApp:
             height=Dimension(min=1),
             dont_extend_height=True,
             wrap_lines=True,
-            style=UiPrinter.user_log_style(),
+            style=lambda: UiPrinter.user_log_style() + (f" bg:{Theme.color('user_bg')}" if self.input_mode in {InputMode.CHAT, InputMode.RUNNING} else ""),
         )
         completion_space = ConditionalContainer(Window(height=12, dont_extend_height=True), filter=has_completions & ~is_done)
         input_error = ConditionalContainer(
@@ -1504,7 +1504,7 @@ class TuiApp:
             filter=running,
         )
         running_gap_below = ConditionalContainer(
-            Window(height=1, dont_extend_height=True),
+            Window(height=1, dont_extend_height=True, style=lambda: f"bg:{Theme.color('user_bg')}"),
             filter=running,
         )
         prompt_above = ConditionalContainer(
@@ -1530,12 +1530,23 @@ class TuiApp:
                     prompt_above,
                     input_error,
                     approval_form,
+                    ConditionalContainer(
+                        Window(height=Dimension(min=0, preferred=1, max=1), style=lambda: f"bg:{Theme.color('user_bg')}"),
+                        filter=idle,
+                    ),
                     self.input_window,
+                    ConditionalContainer(
+                        Window(height=Dimension(min=0, preferred=1, max=1), style=lambda: f"bg:{Theme.color('user_bg')}"),
+                        filter=Condition(lambda: self.input_mode in {InputMode.CHAT, InputMode.RUNNING}),
+                    ),
                     quick_hints_gap,
                     quick_hints_row,
                     completion_space,
                     self.search_toolbar,
-                    Window(height=1, dont_extend_height=True),
+                    ConditionalContainer(
+                        Window(height=1, dont_extend_height=True),
+                        filter=Condition(lambda: self.input_mode not in {InputMode.CHAT, InputMode.RUNNING}),
+                    ),
                 ]
             ),
             filter=~modal_active,

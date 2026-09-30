@@ -317,6 +317,7 @@ class Theme:
         "accent_secondary": "ansimagenta",
         "info": "ansiblue",
         "user": "#e0a96d",
+        "user_bg": "#303238",
         "tool": "ansigreen",
         "success": "ansigreen",
         "warning": "ansiyellow",
@@ -353,6 +354,7 @@ class Theme:
         "accent_secondary": "ansimagenta",
         "info": "ansiblue",
         "user": "#9a5b2e",
+        "user_bg": "#eeeeee",
         "tool": "ansigreen",
         "success": "ansigreen",
         "warning": "ansiyellow",
@@ -746,6 +748,7 @@ class Theme:
         from rich.theme import Theme as RichTheme
 
         styles = {f"wizolt.{role}": cls.rich_color(role) for role in ("user", "error", "muted", "rule")}
+        styles["wizolt.user"] += " on " + cls.rich_color("user_bg")
         return RichTheme({**styles, **cls.markdown_styles()}, inherit=True)
 
     @classmethod
@@ -1399,7 +1402,7 @@ class UiPrinter:
             console.print(Rule(style="wizolt.rule", characters="─"))
         margin = LogBlock.margin(indent)
         if role == "user":
-            console.print(Padding(RichText(UiPrinter.USER_LOG_PREFIX + text, style="wizolt.user"), (0, 0, 0, len(margin))))
+            console.print(Padding(RichText(UiPrinter.USER_LOG_PREFIX + text, style="wizolt.user"), (1, 0, 1, len(margin)), style="wizolt.user"))
         elif role == "assistant":
             content = RichText(styled_text, style="wizolt.error") if error else WizoltMarkdown(styled_text)
             console.print(Padding(content, (0, 0, 0, len(margin))))

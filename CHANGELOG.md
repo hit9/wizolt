@@ -34,6 +34,9 @@
 
 ### Changed
 
+- Give the input area and sent user messages a subtle full-width background that follows
+  the theme, with one row of padding above and below the text. Custom themes can change
+  `user_bg` or use `default` to keep the terminal background.
 - Record the appearance branch's nine-sample comparison against `master`, including startup,
   replay, recoloring and memory measurements in the
   [benchmark report](https://github.com/hit9/wizolt/blob/master/benchmarks/README.md#appearance-review-against-master).

@@ -898,7 +898,7 @@ def test_interactive_tui_keeps_legacy_padding_around_input(monkeypatch):
 
     assert frames
     prompt, status = frames[0]
-    assert prompt.ypos == 1
+    assert prompt.ypos == 2  # outer gap plus the input's shaded top padding
     assert status.ypos == prompt.ypos + prompt.height + 1
 
 

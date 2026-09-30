@@ -69,12 +69,18 @@ A *role* names what a color is used for. Set only the roles you want to change:
 | Area | Roles |
 | --- | --- |
 | Reading and navigation | `text`, `muted`, `subtle`, `accent`, `accent_secondary`, `info`, `rule` |
-| Messages and results | `user`, `tool`, `success`, `warning`, `error` |
+| Messages and results | `user`, `user_bg`, `tool`, `success`, `warning`, `error` |
 | Code | `syntax_assign`, `syntax_string`, `syntax_number`, `syntax_ident`, `syntax_builtin`, `syntax_default` |
 | Statusbar fields | `status_base`, `status_provider`, `status_reason`, `status_mcp`, `status_context`, `status_yolo`, `status_worker` |
 | Statusbar background | `status_bg` — the band in `vim`, `split` and `monitor` |
 | Divider | `divider_glow`, `divider_rule`, `divider_label`; glow and rule require `#rrggbb` |
 | Menus | `selection_bg`, `selection_fg`, `menu_bg`, `menu_muted` |
+
+The input area and your sent messages share a subtle background, with one row of padding
+above and below the text. Set `user_bg` in your
+custom theme's `[colors]` table to change it, for example `user_bg = "#34363c"` on a dark
+terminal or `user_bg = "#eeeeee"` on a light terminal. Use `user_bg = "default"` for the
+terminal's own background.
 
 ### Change diff backgrounds
 
