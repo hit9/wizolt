@@ -106,7 +106,32 @@ def test_every_preset_renders_bounded_idle_and_running_rows():
 def test_idle_divider_presets_have_no_gaps(name, width):
     template = Template("preset:" + name, DIVIDER_PRESETS)
     styles = dict.fromkeys(template.styles, "fg:#ffffff")
-    assert text(template.render({"running": False}, width, styles)) == "─" * width
+    rule = {"dashed": "╌", "dotted": "┈", "double": "═"}.get(name, "─")
+    assert text(template.render({"running": False}, width, styles)) == rule * width
+
+
+@pytest.mark.parametrize("name", SWEEPS)
+def test_builtin_sweeps_stay_defined_and_animate_at_different_widths(name):
+    sweep = Sweep("preset:" + name)
+    for width in (0, 1, 12, 80, 500):
+        levels = [sweep.brightness(x, t, width) for t in (0, 0.1, 0.7, 3, 300, 86400) for x in (0, width // 2, width)]
+        assert not sweep.error
+        assert all(0 <= level <= 1 for level in levels)
+        assert len(set(levels)) > 1 if name != "none" else set(levels) == {0}
+
+
+@pytest.mark.parametrize("name", STATUS_PRESETS)
+def test_status_presets_preserve_identity_and_resolve_theme_styles(name):
+    from wizolt.ui.bars import BarLayout
+    from wizolt.ui.render import Theme
+
+    layout = BarLayout()
+    assert not layout.configure({"statusbar": "preset:" + name}, Theme.bar_styles)
+    values = dict.fromkeys(FIELDS, 0)
+    values.update(model="my-model", provider="test", reasoning="high", yolo=True, **{"worker.active": True})
+    rendered = text(layout.render("statusbar", values, 200, Theme.bar_styles))
+    assert "my-model" in rendered and "[yolo]" in rendered and "worker" in rendered
+    assert not layout.errors
 
 
 def test_layout_reload_is_atomic_and_rejects_style_injection():

@@ -120,6 +120,10 @@ SWEEPS = {
     "comet": "exp(-((x - (pingpong(t * 20, w + 12) - 6)) / 4) ** 2)",
     "scan": "exp(-((x - (t * 24 % (w + 12) - 6)) / 4) ** 2)",
     "breathe": "(1 - cos(t * 2)) / 2",
+    "reverse": "exp(-((x - (w + 6 - t * 24 % (w + 12))) / 4) ** 2)",
+    "wave": "(1 + sin(x / 6 - t * 3)) / 2",
+    "twin": "max(exp(-((x - pingpong(t * 16, w)) / 3) ** 2), exp(-((x - w + pingpong(t * 16, w)) / 3) ** 2))",
+    "pulse": "((1 - cos(t * 4)) / 2) ** 6",
 }
 
 
@@ -161,6 +165,15 @@ STATUS_PRESETS = {
     + "[status_worker]{worker.summary}[/]",
     "minimal": IDENTITY + "[status_provider]{model}[/]{>}[status_context]ctx {context.percent}%[/]",
     "split": IDENTITY + "[status_provider]{provider}/{model}[/]{% optional priority=10 %} · {reasoning}{% endoptional %}{>}" + STATS,
+    "compact": IDENTITY + "[status_provider]{model}[/] [status_reason]{reasoning}[/] · [status_context]{context.percent}%[/]",
+    "brackets": IDENTITY
+    + "[status_provider][[{model}]][/] {% optional priority=10 %}[status_reason][[{reasoning}]][/] {% endoptional %}"
+    + "{>}[status_context][[ctx {context.percent}%]] [[cache {cache.percent}%]][/]",
+    "monitor": IDENTITY + "[status_provider]{model}[/]{>}" + STATS + "[status_worker]{worker.summary}[/]",
+    "blocks": "[status.model] "
+    + IDENTITY
+    + "{model} [reset]{% optional priority=10 %} [status.detail] {reasoning} [reset]{% endoptional %}"
+    + "{>}[status.usage] ctx {context.percent}% · cache {cache.percent}% [reset]",
     "powerline": "[status.model] "
     + IDENTITY
     + "{model} {join:}[status.detail]{% optional priority=10 %} {reasoning} {% endoptional %}{join:}[reset]{>}{join:}[status.usage] ctx {context.percent}% [reset]",
@@ -170,6 +183,10 @@ DIVIDER_PRESETS = {
     "comet": "[divider_rule]───[/]{% if running %} [spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
     "minimal": "{% if running %}[divider.label]{label}[/]{% else %}[divider_rule]{fill:─}[/]{% endif %}",
     "powerline": "{% if running %}[divider.activity] {activity} · {elapsed:duration} {join:}[reset]{% endif %}[divider_rule]{fill:─}[/]{% if running %}{join:}[divider.metrics] {rate} {% if queue.total > 0 %}· {queue.total} queued {% endif %}{% if reset_pending %}· reset pending {% endif %}[reset]{% endif %}",
+    "dashed": "{% if running %}[divider.label]{label}[/] {% endif %}[divider_rule]{fill:╌}[/]",
+    "dotted": "{% if running %}[spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:┈}[/]",
+    "double": "[divider_rule]══[/]{% if running %} [divider.label]{label}[/] {% endif %}[divider_rule]{fill:═}[/]",
+    "right": "[divider_rule]{fill:─}[/]{% if running %} [divider.label]{label}[/] [divider_rule]──[/]{% endif %}",
 }
 
 

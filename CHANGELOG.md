@@ -4,6 +4,10 @@
 
 ### Added
 
+- Expand statusbar, divider and sweep presets to eight each: compact, bracketed, monitor and
+  block status rows; dashed, dotted, double and right-aligned dividers; reverse, wave, twin
+  and pulse animations. All are available in the live pickers and through `preset:name`.
+
 - `/statusbar` previews and selects built-in layouts; `/divider` selects a layout followed by a
   sweep, with the current custom value available in each picker. Enter saves each choice;
   Escape cancels that picker and cancellation stops preview tasks. Divider samples show idle,

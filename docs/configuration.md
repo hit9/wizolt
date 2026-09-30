@@ -314,11 +314,44 @@ format = "preset:comet"
 sweep = "preset:comet"
 ```
 
-| Setting | Presets |
+Statusbar layouts:
+
+| Preset | Appearance |
 | --- | --- |
-| `statusbar.format` | `default` (the usual status row), `minimal` (model and context), `split` (left/right groups), `powerline` (joined color segments) |
-| `divider.format` | `comet` (activity with a waiting dot), `plain` (activity and a rule), `minimal` (activity only while running), `powerline` (activity and metrics segments) |
-| `divider.sweep` | `comet` (back and forth), `scan` (left to right), `breathe` (pulsing line), `none` |
+| `default` | Provider, model, reasoning and usage in one row |
+| `minimal` | Model on the left, context usage on the right |
+| `split` | Provider and model on the left, tools and usage on the right |
+| `compact` | Model, reasoning and context percentage in a short row |
+| `brackets` | Model, reasoning and usage in square brackets |
+| `monitor` | Model on the left, tools, usage and worker summary on the right |
+| `blocks` | Rectangular color segments, no special font needed |
+| `powerline` | Color segments joined by arrow-shaped separators |
+
+Divider layouts:
+
+| Preset | Appearance |
+| --- | --- |
+| `comet` | Activity with a waiting dot and a single rule |
+| `plain` | Activity and a single rule |
+| `minimal` | Activity only while running; a rule while idle |
+| `powerline` | Activity and metrics in color segments at opposite ends |
+| `dashed` | Activity followed by a dashed rule |
+| `dotted` | Waiting dot, activity and a finely dotted rule |
+| `double` | Activity inset in a double rule |
+| `right` | Activity aligned to the right end of the rule |
+
+Sweeps:
+
+| Preset | Motion |
+| --- | --- |
+| `none` | No animation |
+| `comet` | A soft light travels back and forth |
+| `scan` | A soft light travels left to right |
+| `reverse` | A soft light travels right to left |
+| `breathe` | The whole rule slowly brightens and dims |
+| `wave` | Repeating waves travel along the rule |
+| `twin` | Two lights travel in opposite directions |
+| `pulse` | The whole rule flashes in short, smooth pulses |
 
 The defaults are `preset:default`, `preset:comet` and `preset:comet`. Layout and sweep are
 independent: a sweep colors the divider's fill region only while running. Powerline requires a
