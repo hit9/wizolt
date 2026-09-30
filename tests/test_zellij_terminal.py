@@ -30,6 +30,21 @@ def result(stdout, returncode=0):
     return SimpleNamespace(stdout=stdout, returncode=returncode, stderr="query failed" if returncode else "")
 
 
+def test_keys_delivers_ctrl_c_as_a_control_byte_and_preserves_literal_text(query):
+    pane, run = query
+    run.return_value = result("")
+    pane.keys("j", "C-c", "Enter", "Escape", "C-u")
+    pane.literal("C-c")
+    assert [call.args[0][-3:] for call in run.call_args_list] == [
+        ["action", "write-chars", "j"],
+        ["action", "write", "3"],
+        ["action", "write", "13"],
+        ["action", "write", "27"],
+        ["action", "write", "21"],
+        ["action", "write-chars", "C-c"],
+    ]
+
+
 @pytest.mark.parametrize("empty", ["", " \n"])
 def test_geometry_recovers_from_empty_successful_cli_response(query, empty):
     pane, run = query

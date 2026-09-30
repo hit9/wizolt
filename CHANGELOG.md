@@ -9,6 +9,8 @@
 
 ### Fixed
 
+- Send an actual Ctrl-C in the Zellij test adapter so the divider cancellation acceptance test
+  can close its layout picker; cover control keys and literal text without requiring Zellij.
 - Use `itertools.pairwise` in the sweep smoothness test so repository-wide Ruff checks pass.
 
 ## 0.59.0 - 2026-09-29

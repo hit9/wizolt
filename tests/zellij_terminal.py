@@ -193,8 +193,8 @@ class ZellijPane:
 
     def keys(self, *keys):
         for key in keys:
-            if key in {"C-u", "Enter", "Escape"}:
-                self.action("write", str({"C-u": 21, "Enter": 13, "Escape": 27}[key]))
+            if key in {"C-c", "C-u", "Enter", "Escape"}:
+                self.action("write", str({"C-c": 3, "C-u": 21, "Enter": 13, "Escape": 27}[key]))
             else:
                 self.literal(key)
 
