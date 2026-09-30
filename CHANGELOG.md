@@ -4,6 +4,10 @@
 
 ### Added
 
+- A shared single-line UI template and sweep-expression engine, with preset expansion,
+  conditional and optional spans, terminal-width layout, and Powerline joins. Expressions use
+  an allowlisted, bounded AST interpreter; interpolated values stay literal and terminal control
+  characters are removed. Regression tests cover rendering and rejected executable input.
 - Built-in `monokai` and `github-dark` themes with matching code highlighting. `/theme` now
   previews hints, menu descriptions, selection and status colors, and labels the intended
   terminal background.

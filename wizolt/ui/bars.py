@@ -1,0 +1,390 @@
+"""Single-line UI templates and bounded mathematical sweep expressions.
+
+No session, terminal IO or theme ownership lives here. Callers supply values and resolved styles;
+parsing is done once, while rendering only lays out fragments at the current display width.
+"""
+
+from __future__ import annotations
+
+import ast
+import math
+import operator
+import re
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from typing import Any
+
+from prompt_toolkit.utils import get_cwidth
+
+Value = str | float | int | bool
+Fragments = list[tuple[str, str]]
+FIELDS = frozenset(
+    [
+        "provider",
+        "model",
+        "reasoning",
+        "yolo",
+        "worker.active",
+        "worker.model",
+        "worker.context",
+        "context.percent",
+        "cache.percent",
+        "mcp.count",
+        "mcp.label",
+        "skills.count",
+        "running",
+        "activity",
+        "elapsed",
+        "rate",
+        "spinner",
+        "queue.total",
+        "queue.followup",
+        "queue.next_turn",
+        "reset_pending",
+        "label",
+        "worker.summary",
+    ]
+)
+
+
+def pingpong(value: float, width: float) -> float:
+    return width - abs(value % (2 * width) - width) if width > 0 else 0.0
+
+
+FUNCTIONS = {"sin": math.sin, "cos": math.cos, "exp": math.exp, "sqrt": math.sqrt, "abs": abs, "min": min, "max": max, "pingpong": pingpong}
+BINARY = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv, ast.Mod: operator.mod, ast.Pow: operator.pow}
+COMPARE = {ast.Eq: operator.eq, ast.NotEq: operator.ne, ast.Lt: operator.lt, ast.LtE: operator.le, ast.Gt: operator.gt, ast.GtE: operator.ge}
+
+
+class Expression:
+    """An allowlisted AST interpreter; never evaluates Python attributes, code or user objects."""
+
+    def __init__(self, source: str, fields: frozenset[str]):
+        if len(source) > 1024:
+            raise ValueError("expression exceeds 1024 characters")
+        try:
+            tree = ast.parse(source, mode="eval")
+        except (SyntaxError, RecursionError) as error:
+            raise ValueError(f"invalid expression: {error}") from error
+        if sum(1 for _ in ast.walk(tree)) > 100:
+            raise ValueError("expression exceeds 100 nodes")
+        self.evaluate = self._compile(tree.body, fields)
+
+    def _compile(self, node: ast.expr, fields: frozenset[str]) -> Callable[[Mapping[str, Value]], Any]:
+        if isinstance(node, ast.Constant) and type(node.value) in (str, int, float, bool):
+            value = node.value
+            if isinstance(value, (int, float)) and (abs(value) > 1e12 or not math.isfinite(value)):
+                raise ValueError("numeric constant out of range")
+            return lambda values: value
+        if isinstance(node, (ast.Name, ast.Attribute)):
+            name = ast.unparse(node)
+            if name not in fields:
+                raise ValueError(f"unknown field {name!r}")
+            return lambda values: values.get(name, 0)
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.Not, ast.USub, ast.UAdd)):
+            operand = self._compile(node.operand, fields)
+            fn = operator.not_ if isinstance(node.op, ast.Not) else operator.neg if isinstance(node.op, ast.USub) else operator.pos
+            return lambda values: fn(operand(values))
+        if isinstance(node, ast.BinOp) and type(node.op) in BINARY:
+            left, right = self._compile(node.left, fields), self._compile(node.right, fields)
+            fn = BINARY[type(node.op)]
+
+            def binary(values):
+                a, b = left(values), right(values)
+                if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
+                    raise TypeError("arithmetic requires numbers")
+                if abs(a) > 1e12 or abs(b) > 1e12 or (isinstance(node.op, ast.Pow) and abs(b) > 32):
+                    raise ValueError("arithmetic out of range")
+                result = fn(a, b)
+                if isinstance(result, complex) or not math.isfinite(result) or abs(result) > 1e12:
+                    raise ValueError("arithmetic out of range")
+                return result
+
+            return binary
+        if isinstance(node, ast.BoolOp) and isinstance(node.op, (ast.And, ast.Or)):
+            operands = [self._compile(value, fields) for value in node.values]
+            combine = all if isinstance(node.op, ast.And) else any
+            return lambda values: combine(bool(operand(values)) for operand in operands)
+        if isinstance(node, ast.Compare) and all(type(op) in COMPARE for op in node.ops):
+            operands = [self._compile(value, fields) for value in (node.left, *node.comparators)]
+            return lambda values: all(COMPARE[type(op)](operands[i](values), operands[i + 1](values)) for i, op in enumerate(node.ops))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in FUNCTIONS and not node.keywords and 1 <= len(node.args) <= 4:
+            fn = FUNCTIONS[node.func.id]
+            args = [self._compile(arg, fields) for arg in node.args]
+            return lambda values: fn(*(arg(values) for arg in args))
+        raise ValueError(f"unsupported expression: {ast.unparse(node)}")
+
+
+SWEEPS = {
+    "none": "0",
+    "comet": "exp(-((x - (pingpong(t * 20, w + 12) - 6)) / 4) ** 2)",
+    "scan": "exp(-((x - (t * 24 % (w + 12) - 6)) / 4) ** 2)",
+    "breathe": "(1 - cos(t * 2)) / 2",
+}
+
+
+def expand(source: str, presets: Mapping[str, str]) -> str:
+    if source.startswith("preset:"):
+        name = source[7:]
+        if name not in presets:
+            raise ValueError(f"unknown preset {name!r}; choose from {', '.join(presets)}")
+        return presets[name]
+    return source
+
+
+class Sweep:
+    def __init__(self, source: str):
+        self.source = expand(source, SWEEPS)
+        self.expression = Expression(self.source, frozenset(("x", "t", "w")))
+        self.error = ""
+        self.brightness(0, 0, 80)
+        if self.error:
+            raise ValueError(self.error)
+
+    def brightness(self, x: float, t: float, w: float) -> float:
+        try:
+            value = float(self.expression.evaluate({"x": x, "t": t, "w": max(1, w)}))
+            if not math.isfinite(value):
+                raise ValueError("non-finite brightness")
+            return min(1.0, max(0.0, value))
+        except (ArithmeticError, ValueError, TypeError) as error:
+            self.error = f"sweep: {error}"
+            return 0.0
+
+
+IDENTITY = "{% if yolo %}[status_yolo]YOLO [/]{% endif %}{% if worker.active %}[status_worker]worker · [/]{% endif %}"
+STATS = "[status_mcp]{mcp.label} · skills {skills.count}[/][subtle] | [/][status_context]ctx {context.percent}% · cache {cache.percent}%[/]"
+STATUS_PRESETS = {
+    "default": IDENTITY + "[status_provider]{provider}/{model}[/][subtle] · [/][status_reason]{reasoning}[/][subtle] | [/]" + STATS + "{worker.summary}",
+    "minimal": IDENTITY + "[status_provider]{model}[/]{>}[status_context]ctx {context.percent}%[/]",
+    "split": IDENTITY + "[status_provider]{provider}/{model}[/]{% optional priority=10 %} · {reasoning}{% endoptional %}{>}" + STATS,
+    "powerline": "[status.model] "
+    + IDENTITY
+    + "{model} {join:}[status.detail]{% optional priority=10 %} {reasoning} {% endoptional %}{join:}[reset]{>}{join:}[status.usage] ctx {context.percent}% [reset]",
+}
+DIVIDER_PRESETS = {
+    "plain": "[divider_rule]── [/]{% if running %}[divider.activity]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
+    "comet": "[divider_rule]─── [/]{% if running %}[divider.activity]{spinner}{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
+    "minimal": "{% if running %}[divider.activity]{label}[/]{% else %}[divider_rule]{fill:─}[/]{% endif %}",
+    "powerline": "{% if running %}[divider.activity] {activity} · {elapsed:duration} {join:}[reset]{% endif %}[divider_rule]{fill:─}[/]{% if running %}{join:}[divider.metrics] {rate} {% if queue.total > 0 %}· {queue.total} queued {% endif %}{% if reset_pending %}· reset pending {% endif %}[reset]{% endif %}",
+}
+
+
+@dataclass
+class Node:
+    kind: str
+    text: str = ""
+    children: list[Node] = field(default_factory=list)
+    alternate: list[Node] = field(default_factory=list)
+    expression: Expression | None = None
+    priority: int = 0
+
+
+@dataclass
+class Cell:
+    style: str
+    text: str
+    kind: str = "text"
+
+
+def clean(text: str) -> str:
+    return "".join(char if ord(char) >= 32 and not 127 <= ord(char) <= 159 else " " for char in text)
+
+
+def clip(fragments: Fragments, width: int) -> Fragments:
+    result: Fragments = []
+    for style, text in fragments:
+        part = ""
+        for char in text:
+            size = max(0, get_cwidth(char))
+            if size > width:
+                break
+            part += char
+            width -= size
+        if part:
+            result.append((style, part))
+        if part != text:
+            break
+    return result
+
+
+class Template:
+    """Parse once; resolve conditional/optional spans before width and Powerline joins."""
+
+    def __init__(self, source: str, presets: Mapping[str, str] | None = None):
+        self.source = expand(source, presets or {})
+        if len(self.source) > 8192:
+            raise ValueError("template exceeds 8192 characters")
+        self.nodes: list[Node] = []
+        self.styles: set[str] = set()
+        target = self.nodes
+        stack: list[tuple[Node, list[Node]]] = []
+        pattern = re.compile(r"\{\{|\}\}|\[\[|\]\]|\{%.*?%\}|\{[^{}]*\}|\[[^\[\]]*\]", re.DOTALL)
+        end = 0
+        for match in pattern.finditer(self.source):
+            literal = self.source[end : match.start()]
+            if any(char in literal for char in "{}[]"):
+                raise ValueError("unmatched delimiter; escape literal brackets by doubling them")
+            target.append(Node("text", literal))
+            token = match.group()
+            try:
+                if token in ("{{", "}}", "[[", "]]"):
+                    target.append(Node("text", token[0]))
+                elif token.startswith("{%"):
+                    statement = token[2:-2].strip()
+                    if statement.startswith(("if ", "optional priority=")):
+                        node = Node("if" if statement.startswith("if ") else "optional")
+                        if node.kind == "if":
+                            node.expression = Expression(statement[3:], FIELDS)
+                        else:
+                            node.priority = int(statement.removeprefix("optional priority="))
+                        if len(stack) >= 16:
+                            raise ValueError("template nesting exceeds 16 levels")
+                        target.append(node)
+                        stack.append((node, target))
+                        target = node.children
+                    elif statement == "else" and stack and stack[-1][0].kind == "if":
+                        target = stack[-1][0].alternate
+                    elif stack and statement == ("endif" if stack[-1][0].kind == "if" else "endoptional"):
+                        _, target = stack.pop()
+                    else:
+                        raise ValueError(f"unexpected directive {statement!r}")
+                elif token.startswith("["):
+                    style = token[1:-1]
+                    if style not in ("/", "reset"):
+                        self.styles.add(style)
+                    target.append(Node("style", style))
+                else:
+                    value = token[1:-1]
+                    if value == ">":
+                        target.append(Node("fill", " "))
+                    elif value.startswith("fill:") and get_cwidth(value[5:]) == 1 and len(value[5:]) == 1:
+                        target.append(Node("fill", value[5:]))
+                    elif value in ("join:", "join:"):
+                        target.append(Node("join", value[5:]))
+                    else:
+                        name, _, spec = value.partition(":")
+                        if name not in FIELDS or (spec and not re.fullmatch(r"duration|d|\.[0-6]f", spec)):
+                            raise ValueError(f"unknown field or format {value!r}")
+                        target.append(Node("field", value))
+            except ValueError as error:
+                line = self.source.count("\n", 0, match.start()) + 1
+                column = match.start() - self.source.rfind("\n", 0, match.start())
+                raise ValueError(f"line {line}, column {column}: {error}") from error
+            end = match.end()
+        if any(char in self.source[end:] for char in "{}[]"):
+            raise ValueError("unmatched delimiter; escape literal brackets by doubling them")
+        target.append(Node("text", self.source[end:]))
+        if stack:
+            raise ValueError("unclosed template block")
+        self._check(self.nodes, 0)
+
+    def _check(self, nodes: list[Node], depth: int) -> int:
+        for node in nodes:
+            if node.kind in ("if", "optional"):
+                if self._check(node.children, depth) != depth or self._check(node.alternate, depth) != depth:
+                    raise ValueError("conditional styles must be balanced")
+            elif node.kind == "style":
+                depth = 0 if node.text == "reset" else depth - 1 if node.text == "/" else depth + 1
+                if depth < 0:
+                    raise ValueError("unmatched [/]")
+        # Top-level styles may deliberately run to the end of the line. Conditional styles
+        # must be closed so omitting a branch cannot change the styles of the rest of the row.
+        return depth
+
+    def render(
+        self, values: Mapping[str, Value], width: int, styles: Mapping[str, str], *, sweep: Sweep | None = None, t: float = 0, ramp: tuple[str, ...] = ()
+    ) -> Fragments:
+        width = max(0, min(width, 10000))
+        optional: list[Node] = []
+        omitted: set[int] = set()
+
+        def select(nodes: list[Node]) -> list[Node]:
+            result: list[Node] = []
+            for node in nodes:
+                if node.kind == "if":
+                    assert node.expression is not None
+                    result.extend(select(node.children if node.expression.evaluate(values) else node.alternate))
+                elif node.kind == "optional":
+                    if id(node) not in omitted:
+                        optional.append(node)
+                        result.extend(select(node.children))
+                else:
+                    result.append(node)
+            return result
+
+        def cells() -> list[Cell]:
+            result: list[Cell] = []
+            stack = [""]
+            for node in select(self.nodes):
+                if node.kind == "style":
+                    if node.text == "reset":
+                        stack = [""]
+                    elif node.text == "/":
+                        if len(stack) > 1:
+                            stack.pop()
+                    else:
+                        stack.append(stack[-1] + " " + styles[node.text])
+                    result.append(Cell(stack[-1], ""))
+                elif node.kind == "field":
+                    name, _, spec = node.text.partition(":")
+                    value = values.get(name, "")
+                    text = f"{int(float(value))}s" if spec == "duration" else format(value, spec)
+                    result.append(Cell(stack[-1], clean(text)[:4096]))
+                elif node.text:
+                    result.append(Cell(stack[-1], clean(node.text), node.kind))
+            return result
+
+        active = cells()
+        for node in sorted(optional, key=lambda node: node.priority):
+            if sum(get_cwidth(cell.text) for cell in active if cell.kind != "fill") <= width:
+                break
+            omitted.add(id(node))
+            active = cells()
+        fills = sum(cell.kind == "fill" for cell in active)
+        if fills > 1:
+            raise ValueError("only one elastic region is allowed per rendered line")
+        fixed = sum(get_cwidth(cell.text) for cell in active if cell.kind != "fill")
+        remaining = max(0, width - fixed)
+        fragments: Fragments = []
+        position = 0
+
+        def background(style: str) -> str:
+            return next((part[3:] for part in reversed(style.split()) if part.startswith("bg:")), "default")
+
+        for i, cell in enumerate(active):
+            style, text = cell.style, cell.text
+            if cell.kind == "fill":
+                text *= remaining
+                if sweep is not None and ramp and text.strip():
+                    for offset, char in enumerate(text):
+                        level = sweep.brightness(position + offset, t, width)
+                        selected = ramp[round(level * (len(ramp) - 1))]
+                        if fragments and fragments[-1][0] == selected:
+                            fragments[-1] = (selected, fragments[-1][1] + char)
+                        else:
+                            fragments.append((selected, char))
+                    position += len(text)
+                    continue
+            elif cell.kind == "join":
+                left_bg = background(active[i - 1].style) if i else "default"
+                right_bg = background(active[i + 1].style) if i + 1 < len(active) else "default"
+                style = f"fg:{left_bg} bg:{right_bg}" if text == "" else f"fg:{right_bg} bg:{left_bg}"
+            if text:
+                fragments.append((style, text))
+                position += get_cwidth(text)
+        # Keep the right-hand group visible when fixed text alone exceeds the width.
+        if fixed > width and fills:
+            cut = next(i for i, cell in enumerate(active) if cell.kind == "fill")
+            right_width = sum(get_cwidth(cell.text) for cell in active[cut + 1 :])
+            left_width = sum(get_cwidth(cell.text) for cell in active[:cut])
+            left = clip(fragments, left_width)
+            right: Fragments = []
+            skip = left_width
+            for style, text in fragments:
+                if skip >= get_cwidth(text):
+                    skip -= get_cwidth(text)
+                    continue
+                right.append((style, text))
+            return clip(left, max(0, width - right_width)) + clip(right, width)
+        return clip(fragments, width)

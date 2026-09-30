@@ -31,6 +31,7 @@ LAYERS = {
     "wizolt.ui.tui.app": 2,
     "wizolt.ui.tui.views": 2,
     "wizolt.ui.render": 2,
+    "wizolt.ui.bars": 2,
     "wizolt.ui.themes": 2,
     "wizolt.agent.engine": 3,
     "wizolt.agent.context": 4,
