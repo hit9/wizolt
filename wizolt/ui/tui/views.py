@@ -289,7 +289,10 @@ class ChoiceViewState:
             ("", "\n"),
         ]
         if self.query and not options:
-            return [*parts, ("class:choice.disabled", "  no matches\n"), ("", "\n"), ("class:choice.disabled", "  " + keys + "\n")]
+            parts.extend([("class:choice.disabled", "  no matches\n"), ("", "\n"), ("class:choice.disabled", "  " + keys + "\n")])
+            if self.searching:
+                parts.append(("", "/" + self.query))
+            return parts
         # The preview comes first: its height, which follows the selected row, decides the list's.
         preview: StyleAndTextTuples = []
         if preview_fn and options:

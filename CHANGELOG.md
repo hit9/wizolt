@@ -34,6 +34,8 @@
 
 ### Changed
 
+- Refresh the appearance benchmark report for the final reviewed source, retaining the
+  previous results and the original `master` baseline.
 - Give each appearance preview a descriptive heading, report how many color samples fit,
   clip wide samples without losing their colors, and show input-symbol samples on `user_bg`.
 - Label the Colorscheme preview's code, diff, user message, reply, tool call, result and menu
@@ -93,6 +95,10 @@
 
 ### Fixed
 
+- Preserve full-width backgrounds and padding for RGB or indexed colors whose components
+  resemble terminal style-reset codes; foreground color components no longer preserve stray padding.
+- Keep the `/theme` search field and nearby shortcuts visible when no choices match.
+- Let open inline menus grow after enlarging the terminal, so additional theme samples become visible.
 - Hide the terminal cursor inside inline menus so it cannot appear as a blinking block
   over the divider's sweep preview. The input cursor returns when the menu closes.
 - Custom themes using ANSI colors or `default` no longer crash statusbar or file-picker

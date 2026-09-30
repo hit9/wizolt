@@ -4,34 +4,37 @@
 
 The appearance branch and its bug fixes are compared with `master` (`6b6492a96f12`) in
 [`baselines/linux-arm64-py314-before-appearance-review.json`](baselines/linux-arm64-py314-before-appearance-review.json)
-and [`results/linux-arm64-py314-appearance-review.json`](results/linux-arm64-py314-appearance-review.json).
-The current source is identified by SHA-256 `da99649e2fa46bc6e1b0e2665a9a61eead6d23c35ec60c8b54b99ebc416c05ca`;
+and [`results/linux-arm64-py314-appearance-final-review.json`](results/linux-arm64-py314-appearance-final-review.json).
+The earlier [review results](results/linux-arm64-py314-appearance-review.json) are retained.
+The final reviewed source is identified by SHA-256 `2fa8382a203c522f5a46baaef434316db5c45804e9f3af47b41404fb21ce410c`;
 the report's Git revision is the parent of the measured working tree.
 
 Both runs used Linux aarch64, installed CPython 3.14.7, nine samples per metric, identical
 dependencies and workloads, and source exports without bytecode on the same temporary filesystem.
-The baseline ran first, followed by the working tree, with no concurrent tests or builds.
+The final review reuses the recorded master baseline with matching environment and workload
+metadata. Each measurement ran without concurrent tests or builds.
 Frame measurements use warm filesystem caches and no terminal background-query replies.
 
 | Metric (median ms) | master | Appearance review |
 | --- | ---: | ---: |
-| Process → first prompt frame | 144.45 | 144.06 |
-| Banner → prompt | 94.25 | 99.94 |
-| CLI import | 174.61 | 181.83 |
-| Cold replay, 300 blocks | 265.18 | 262.94 |
-| First projection, 100 blocks | 98.58 | 100.02 |
-| New width, 100 blocks | 97.39 | 97.25 |
-| Emit 500 plain rows | 5.94 | 6.13 |
-| Recolor 100 blocks / 500 rows | 107.25 | 110.25 |
-| Append at 5,000-write limit | 0.878 | 0.961 |
-| Revisit width above cache budget | 244.46 | 255.66 |
+| Process → first prompt frame | 144.45 | 142.27 |
+| Banner → prompt | 94.25 | 95.76 |
+| CLI import | 174.61 | 178.79 |
+| Cold replay, 300 blocks | 265.18 | 258.73 |
+| First projection, 100 blocks | 98.58 | 97.32 |
+| New width, 100 blocks | 97.39 | 98.07 |
+| Emit 500 plain rows | 5.94 | 5.96 |
+| Recolor 100 blocks / 500 rows | 107.25 | 105.47 |
+| Append at 5,000-write limit | 0.878 | 1.006 |
+| Revisit width above cache budget | 244.46 | 247.74 |
 
-First-frame latency is essentially unchanged. Recoloring increased by 2.8%; appending at the
-write limit increased by 9.5% (0.083 ms), and replay above the cache budget increased by 4.6%.
-Two-width retained memory was 244,190 → 237,175 bytes. These single local runs do not establish
+First-frame latency decreased by 1.5% and recoloring by 1.7%; appending at the write limit
+increased by 14.6% (0.128 ms), and replay above the cache budget increased by 1.3%.
+Two-width retained memory was 244,190 → 242,312 bytes. These single local runs do not establish
 a general speedup or slowdown. All replay output hashes match except recoloring, which switches
 to the changed light-theme syntax palette. The probes do not measure every custom theme,
-picker navigation latency, or animation smoothness; real tmux tests cover menu resizing separately.
+padded user messages, picker navigation latency, or animation smoothness; real tmux tests
+cover menu resizing separately.
 
 To repeat without replacing these results:
 

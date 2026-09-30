@@ -272,9 +272,7 @@ async def test_tool_output_viewer_keeps_the_search_filter_across_an_escape(tmp_p
 
 
 async def test_tool_output_list_keeps_a_no_matches_row_among_the_rows(tmp_path, monkeypatch):
-    """A search with no matches has no query prompt line to peel off: the view returns early with a
-    `no matches` row instead. Taken for the prompt, that row was moved below the key legend, which
-    both stranded it there and left the sheet with no row where the rows belong."""
+    """A no-match search keeps the query and an empty-result row above the closing legend."""
     command_loop = loop(tmp_path)
     for index in range(3):
         command_loop.session.store_tool_result(
@@ -292,6 +290,7 @@ async def test_tool_output_list_keeps_a_no_matches_row_among_the_rows(tmp_path, 
     listing = [frame for frame in frames if "no matches" in frame][-1]
     rows = listing.rstrip("\n").splitlines()
     assert rows[-1].strip().startswith("j/k/Tab move")  # the legend still closes the sheet
+    assert rows[-2] == "/z"
     assert rows.index("  no matches") < len(rows) - 1  # the row sits with the rows, not under the legend
 
 

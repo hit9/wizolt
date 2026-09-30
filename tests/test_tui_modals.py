@@ -71,6 +71,8 @@ def test_interactive_tui_modal_survives_repeated_resize(monkeypatch, exclusive):
             output.size = Size(rows=rows, columns=columns)
             app.app.loop.call_soon_threadsafe(app.app._on_resize)
             assert rendered.wait(timeout=1)
+            if not exclusive:
+                assert app.modal_window.height.max == TuiApp.modal_rows(rows)
         pipe_input.send_text("q")
         result.append(modal.result(timeout=2))
         app.app.loop.call_soon_threadsafe(app.app.exit)

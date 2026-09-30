@@ -191,6 +191,11 @@ async def test_switching_tabs_and_search_keeps_the_picker_height(command_loop, m
     await theme_command(command_loop, "")
     heights = [1 + sum(text.count("\n") for _, text in frame) for frame in modal.frames]
     assert heights == [24] * len(heights)
+    for frame in modal.frames:
+        text = "".join(text for _, text in frame)
+        if "no matches" in text:
+            assert text.splitlines()[1].strip().startswith("h/l")
+
 
 
 async def test_small_pane_prioritizes_choices_over_the_sample(command_loop, monkeypatch):

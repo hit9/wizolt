@@ -1278,9 +1278,8 @@ class TuiApp:
         assert target is not None
         if not exclusive:
             # Reserve recent context when opening, and let Window scroll to the selected item.
-            # Keep this bound for the modal's lifetime: re-querying terminal size during layout
-            # can change its height halfway through a resize frame. The parent still clips it
-            # to the actual space available when the pane shrinks.
+            # Set the bound on opening and on resize events, never during layout: querying
+            # terminal size while laying out can change height halfway through one frame.
             target.height = Dimension(max=self.modal_rows(app.output.get_size().rows))
         app.layout.focus(target)
         if exclusive:
@@ -2073,6 +2072,8 @@ class TuiApp:
 
         def on_resize() -> None:
             with self._screen_update(app):
+                if self.modal is not None and not self.modal.exclusive and self.modal_window is not None:
+                    self.modal_window.height = Dimension(max=self.modal_rows(app.output.get_size().rows))
                 renderer = app.renderer
                 last_screen = renderer.last_rendered_screen
                 if last_screen is None or renderer.full_screen:

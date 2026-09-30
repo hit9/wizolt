@@ -27,6 +27,25 @@ from wizolt.ui.render import StatusBar, Theme, UiPrinter
 from wizolt.ui.tui import TuiApp
 
 
+@pytest.mark.parametrize(
+    ("sgr", "background"),
+    [
+        ("48;2;0;49;39", True),
+        ("48;5;0", True),
+        ("48;5;49", True),
+        ("38;2;40;48;100", False),
+        ("38;5;48", False),
+        ("48;5;8;38;2;0;49;255", True),
+        ("48;2;0;49;0;49", False),
+        ("48;2;0;49;0;0", False),
+    ],
+)
+def test_background_padding_tracks_sgr_colors_and_resets(sgr, background):
+    line = f"\x1b[{sgr}mmessage    \x1b[0m"
+    expected = f"\x1b[{sgr}mmessage" + ("    " if background else "") + "\x1b[0m"
+    assert UiPrinter.strip_trailing_pad(line) == expected
+
+
 def test_both_appearances_define_every_role_in_a_shape_the_adapters_accept():
     """Light and dark are the same vocabulary, and every entry is a color both frameworks read."""
     assert Theme.DARK.keys() == Theme.LIGHT.keys()

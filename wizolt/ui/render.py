@@ -1241,12 +1241,22 @@ class UiPrinter:
                 bg_states.append(bg)
             tokens.append(("sgr", m.group(0)))
             bg_states.append(bg)
-            for param in (m.group(1) or "0").split(";"):
-                n = int(param) if param else 0
+            params = [int(param) if param else 0 for param in (m.group(1) or "0").split(";")]
+            position = 0
+            while position < len(params):
+                n = params[position]
+                # Extended colors carry RGB channels or a palette index. Those numbers are
+                # color data, not independent SGR commands (0 and 49 do not reset the band).
+                if n in {38, 48, 58} and position + 1 < len(params) and params[position + 1] in {2, 5}:
+                    if n == 48:
+                        bg = True
+                    position += 5 if params[position + 1] == 2 else 3
+                    continue
                 if n == 0 or n == 49:
                     bg = False
                 elif 40 <= n <= 47 or 100 <= n <= 107 or n == 48:
                     bg = True
+                position += 1
             idx = m.end()
         if idx < len(line):
             tokens.append(("text", line[idx:]))

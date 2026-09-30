@@ -586,6 +586,9 @@ async def _tool_output_list(loop: CommandLoop, entries: list[OutputEntry], state
         through it."""
         cols = shutil.get_terminal_size((80, 20)).columns
         body = state.fragments("", label_fn=lambda choice: parts.get(choice, []), keys="j/k/Tab move · Ctrl-D/U page · / search · Enter open · Esc/q close")
+        if state.searching:
+            # Put the filter in the reserved blank row so the legend still closes the browser.
+            body[-2] = ("", body.pop()[1] + "\n")
         return [
             ("class:choice.title", f"  Tool output · latest {len(entries)}\n"),
             ("class:rule", "  " + "─" * max(3, cols - 4) + "\n"),

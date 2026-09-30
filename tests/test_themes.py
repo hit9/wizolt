@@ -935,6 +935,15 @@ def test_user_message_background_fills_wrapped_and_empty_rows(name):
     assert not any("bg:" in style for style, text in reply.fragments(40) if text)
 
 
+@pytest.mark.parametrize("background", ("#000000", "#123100", "#12313f"))
+def test_custom_user_background_preserves_full_width_padding(tmp_path, background):
+    Theme.configure("review", str(tmp_path), {"review": {"base": "dark", "colors": {"user_bg": background}}})
+    block = MessageBlock(UiPrinter(), "hello", "user", 0, False)
+    rows = list(split_lines(block.fragments(20)))[:-1]
+    assert len(rows) == 3
+    assert all(sum(get_cwidth(text) for _, text in row) == 20 for row in rows)
+
+
 def test_the_app_style_follows_a_theme_switch(tmp_path):
     view = loop(tmp_path).view
     assert view.style().get_attrs_for_style_str("class:choice.selected").bgcolor == "0077a8"
