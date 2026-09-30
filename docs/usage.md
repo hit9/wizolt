@@ -92,7 +92,7 @@ A single line beneath the prompt summarizes the session. The default layout is:
 
 Use `/statusbar` to preview other layouts in that bottom row. `/divider` selects the layout
 above the input, then its sweep animation. Enter saves each choice; Esc restores the current
-preview while keeping earlier confirmed choices. See [Statusbar and divider](configuration.md#statusbar-and-divider)
+preview while keeping earlier confirmed choices. See [Statusbar and divider](appearance.md#statusbar-and-divider)
 for presets, custom templates and sweep formulas.
 
 In the default layout, once a [worker](worker.md) has actually run, its own context fill rides the row too, as

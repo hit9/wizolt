@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Documentation
+
+- Give themes, statusbar layouts, dividers and sweep formulas a dedicated Appearance guide,
+  linked from configuration, commands and the documentation navigation.
+
 ### Fixed
 
 - Use `itertools.pairwise` in the sweep smoothness test so repository-wide Ruff checks pass.

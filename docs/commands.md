@@ -126,14 +126,14 @@ Esc cancels the preview. `NAME` selects directly.
 **`/divider [NAME]`** — Select a divider layout, then a sweep, with live previews of idle,
 running and queued states. Each picker includes your current custom value when present.
 Enter saves each choice; Esc cancels the current picker while keeping previously confirmed
-choices. `NAME` selects a layout directly. See [Statusbar and divider](configuration.md#statusbar-and-divider)
+choices. `NAME` selects a layout directly. See [Statusbar and divider](appearance.md#statusbar-and-divider)
 for templates, Powerline colors and sweep formulas.
 
 **`/theme [NAME]`** — Pick a color theme. The picker previews each theme as the cursor lands on
 it: a sample below the list, and the prompt, menus and status bar around it. Enter keeps it and
 Esc goes back to the one you had. `/theme NAME` switches straight away. Either way the output
 already on screen is redrawn in the new colors, and the choice is saved as `runtime.theme` in
-your config file. Themes are listed under [Configuration](configuration.md#color-themes).
+your config file. Themes are listed under [Appearance](appearance.md#color-themes).
 
 ## While a turn runs
 
