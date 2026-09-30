@@ -26,8 +26,9 @@ highlighting, the status bar, menus and the selection band included:
 `one-dark`, `monokai`, `github-dark`
 
 Try `monokai` for vivid pink, green and cyan on a warm dark background, or `github-dark` for
-GitHub-style colors on a near-black background. In a named theme the status bar and the working divider keep to the scheme's one accent
-color; the rest of the status bar is grey until context usage calls for a warning.
+GitHub-style colors on a near-black background. In a named theme the status bar lies on the
+scheme's panel color, with the model in its accent color, and the working divider keeps to that
+one accent.
 
 A named theme does not change your terminal's background, so pick the one that matches it. Use
 `/theme` to preview code, status colors, menu text and selected rows. Hints and menu descriptions
@@ -91,7 +92,7 @@ The roles you can set are `text`, `muted`, `subtle`, `accent`, `accent_secondary
 `user`, `tool`, `success`, `warning`, `error`, `rule`, the code colors `syntax_assign`,
 `syntax_string`, `syntax_number`, `syntax_ident`, `syntax_builtin` and `syntax_default`, the
 status bar's `status_base`, `status_provider`, `status_reason`, `status_mcp`, `status_context`,
-`status_yolo` and `status_worker`, the working divider's `divider_glow` and `divider_rule` (these
+`status_yolo`, `status_worker` and `status_bg` (the band it lies on; `default` for none), the working divider's `divider_glow` and `divider_rule` (these
 two take `#rrggbb` only) and `divider_label`, and `selection_bg`, `selection_fg`, `menu_bg` and
 `menu_muted` (the completion menu's descriptions).
 

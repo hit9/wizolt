@@ -297,6 +297,7 @@ class Theme:
         "divider_glow": "#67e8f9",
         "divider_rule": "#4b5563",
         "divider_label": "ansimagenta",
+        "status_bg": "default",
         "selection_bg": "#0077a8",
         "selection_fg": "#ffffff",
         "menu_bg": "#2b2f36",
@@ -332,6 +333,7 @@ class Theme:
         "divider_glow": "#0e7490",
         "divider_rule": "#9ca3af",
         "divider_label": "ansimagenta",
+        "status_bg": "default",
         "selection_bg": "#0077a8",
         "selection_fg": "#ffffff",
         "menu_bg": "#e8ebef",
@@ -2209,7 +2211,16 @@ class StatusBar:
 
     def fragments(self) -> StyleAndTextTuples:
         columns = shutil.get_terminal_size((120, 20)).columns
-        return list(self.layout.render("statusbar", self.values(), columns - 1, Theme.bar_styles))
+        band = Theme.color("status_bg")
+
+        def styles(specs: set[str]) -> dict[str, str]:
+            # Powerline joins fade into the row, which a named theme lays on its panel color.
+            resolved = Theme.bar_styles(specs)
+            if band != "default":
+                resolved["__background"] = band
+            return resolved
+
+        return list(self.layout.render("statusbar", self.values(), columns - 1, styles))
 
     def mcp_label(self) -> str:
         """The MCP group's text: `mcp N`, with a spinner frame in front of the count while

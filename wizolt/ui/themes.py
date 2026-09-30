@@ -162,9 +162,10 @@ def scheme(
     comments and is dim by design; readable UI text is lifted toward the foreground while
     decorative separators retain a quieter grey. Syntax colors retain the published palette.
 
-    The status footer and the working divider carry one accent each, the scheme's aqua, like a
-    lualine theme: the model, and the running label with the glow it travels with. Everything else
-    in the footer is the muted grey, so context usage stands out only when it turns to a warning.
+    The status footer lies on the scheme's panel color, as its own status line does, and colors
+    what each field is: the model in the accent, reasoning in the second accent, usage in the
+    informational blue, tools in grey. Its text is lifted against that panel rather than the
+    background. The working divider keeps to one hue, its label the accent its glow is drawn in.
     """
     muted = lift(comment, fg, background, MUTED_CONTRAST)
     palette = Palette(
@@ -191,11 +192,12 @@ def scheme(
             "syntax_default": fg,
             "status_base": fg,
             "status_provider": aqua,
-            "status_reason": muted,
-            "status_mcp": muted,
-            "status_context": muted,
+            "status_reason": purple,
+            "status_mcp": comment,
+            "status_context": blue,
             "status_yolo": red,
             "status_worker": orange,
+            "status_bg": surface,
             "divider_glow": aqua,
             "divider_rule": rule,
             "divider_label": aqua,
@@ -220,16 +222,11 @@ def scheme(
         "success",
         "warning",
         "error",
-        "status_base",
-        "status_provider",
-        "status_reason",
-        "status_mcp",
-        "status_context",
-        "status_yolo",
-        "status_worker",
         "divider_label",
     ):
         palette.colors[role] = lift(palette.colors[role], fg, background, MUTED_CONTRAST)
+    for role in ("status_base", "status_provider", "status_reason", "status_mcp", "status_context", "status_yolo", "status_worker"):
+        palette.colors[role] = lift(palette.colors[role], fg, surface, MUTED_CONTRAST)
     return palette
 
 

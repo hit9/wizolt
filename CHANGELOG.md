@@ -19,9 +19,13 @@
 
 ### Changed
 
-- Named themes give the status bar and the working divider one accent, the scheme's aqua: the
-  model, the running label and its glow. Reasoning, MCP, cache and context are muted, so context
-  usage stands out only once it turns to a warning. `dark` and `light` are unchanged.
+- Named themes lay the status bar on the scheme's panel color, as its own status line does, and
+  color each field by what it is: the model in the accent, reasoning in the second accent, usage
+  in blue rather than a warning yellow, tools in grey. A `status_bg` role sets the band; `dark`
+  and `light` keep none. The working divider keeps to one hue: its label takes the accent its glow
+  is drawn in.
+- A Powerline join that meets no segment no longer paints `bg:default`, so it fades into a status
+  bar laid on a band.
 - `light` highlights code with Pygments' `vs` style instead of `default`, whose bold green
   keywords clashed with its GitHub-blue builtins.
 

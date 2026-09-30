@@ -129,7 +129,7 @@ def test_powerline_joins_use_adjacent_backgrounds_and_restore_nested_styles():
     template = Template("[a] A {join:}[b] B [/][reset]{>}{join:}[a] C [reset]")
     parts = template.render({}, 30, {"a": "fg:#000000 bg:#ff0000", "b": "fg:#ffffff bg:#0000ff"})
     assert ("fg:#ff0000 bg:#0000ff", "") in parts
-    assert ("fg:#ff0000 bg:default", "") in parts
+    assert ("fg:#ff0000","") in parts
     assert get_cwidth(text(parts)) == 30
 
 

@@ -457,7 +457,8 @@ class Template:
                 left_bg = background(active[i - 1].style) if i else "default"
                 right_bg = background(active[i + 1].style) if i + 1 < len(active) else "default"
                 fg, bg = (left_bg, right_bg) if text == "" else (right_bg, left_bg)
-                style = f"fg:{styles.get('__background', 'default') if fg == 'default' else fg} bg:{bg}"
+                # Against no segment the join takes the row's own background, which may be a band.
+                style = f"fg:{styles.get('__background', 'default') if fg == 'default' else fg}" + ("" if bg == "default" else f" bg:{bg}")
             if text:
                 fragments.append((style, text))
                 position += get_cwidth(text)

@@ -120,16 +120,31 @@ def test_builtin_selections_and_named_ui_labels_have_readable_contrast():
             assert contrast(colors[role], palette.background) >= 4.5, (name, role)
 
 
-def test_named_themes_give_the_footer_and_divider_one_accent():
-    """The footer was a rainbow of five hues in every scheme; now the model and the running label
-    carry the scheme's accent, the rest of the footer is muted, and warnings stand out."""
+def test_named_themes_lay_the_footer_on_their_panel_and_keep_the_divider_one_hue():
     for name, palette in BUILTIN.items():
         colors = palette.colors
-        assert colors["status_provider"] == colors["accent"] == colors["divider_label"], name
-        assert colors["status_reason"] == colors["status_mcp"] == colors["status_context"] == colors["muted"], name
-    # The terminal-following themes keep the label they always had.
+        assert colors["status_bg"] == colors["menu_bg"], name
+        assert colors["divider_label"] == colors["accent"], name
+        # Footer text is readable on the panel it lies on, not only on the background.
+        for role in ("status_base", "status_provider", "status_reason", "status_mcp", "status_context", "status_yolo", "status_worker"):
+            assert contrast(colors[role], colors["status_bg"]) >= MUTED_CONTRAST, (name, role)
+    # The terminal-following themes keep a transparent footer and the label they always had.
     for name in ("dark", "light"):
+        assert Theme.BUILTIN[name].colors["status_bg"] == "default"
         assert Theme.BUILTIN[name].colors["divider_label"] == Theme.BUILTIN[name].colors["accent_secondary"]
+
+
+def test_powerline_joins_fade_into_the_status_band(tmp_path):
+    from tui_harness import loop
+
+    Theme.set_mode("nord")
+    bar = loop(tmp_path).presentation.status_bar
+    assert not bar.layout.configure({"statusbar": "preset:powerline"}, Theme.bar_styles)
+    band = Theme.color("status_bg")
+    joins = [style for style, text in bar.fragments() if text in ("", "")]
+    # The joins at the ends of the segments are drawn in the band, not the terminal's background.
+    assert any(style == f"fg:{band}" for style in joins)
+    assert all("bg:default" not in style for style, _ in bar.fragments())
 
 
 @pytest.mark.parametrize(("name", "appearance"), [("monokai", "dark"), ("github-dark", "dark"), ("gruvbox-light", "light")])
