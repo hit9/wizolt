@@ -101,6 +101,14 @@ def test_every_preset_renders_bounded_idle_and_running_rows():
         assert 0 <= sweep.brightness(10, 2, 80) <= 1
 
 
+@pytest.mark.parametrize("name", DIVIDER_PRESETS)
+@pytest.mark.parametrize("width", [0, 1, 3, 4, 8, 80])
+def test_idle_divider_presets_have_no_gaps(name, width):
+    template = Template("preset:" + name, DIVIDER_PRESETS)
+    styles = dict.fromkeys(template.styles, "fg:#ffffff")
+    assert text(template.render({"running": False}, width, styles)) == "─" * width
+
+
 def test_layout_reload_is_atomic_and_rejects_style_injection():
     from wizolt.ui.bars import BarLayout
     from wizolt.ui.render import Theme

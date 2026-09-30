@@ -166,8 +166,8 @@ STATUS_PRESETS = {
     + "{model} {join:}[status.detail]{% optional priority=10 %} {reasoning} {% endoptional %}{join:}[reset]{>}{join:}[status.usage] ctx {context.percent}% [reset]",
 }
 DIVIDER_PRESETS = {
-    "plain": "[divider_rule]── [/]{% if running %}[divider.label]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
-    "comet": "[divider_rule]─── [/]{% if running %}[spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
+    "plain": "[divider_rule]──[/]{% if running %} [divider.label]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
+    "comet": "[divider_rule]───[/]{% if running %} [spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
     "minimal": "{% if running %}[divider.label]{label}[/]{% else %}[divider_rule]{fill:─}[/]{% endif %}",
     "powerline": "{% if running %}[divider.activity] {activity} · {elapsed:duration} {join:}[reset]{% endif %}[divider_rule]{fill:─}[/]{% if running %}{join:}[divider.metrics] {rate} {% if queue.total > 0 %}· {queue.total} queued {% endif %}{% if reset_pending %}· reset pending {% endif %}[reset]{% endif %}",
 }

@@ -23,6 +23,7 @@
 
 ### Fixed
 
+- Remove the stray gap after the leading rule in idle `plain` and `comet` dividers.
 - Cancelling a bar preview restores the exact previous layout even if a theme switch removed a
   custom highlight. Preset selection recovers from malformed UI tables without interrupting input;
   idle preview samples no longer show running metrics. Bound template token count and style
