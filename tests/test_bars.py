@@ -252,6 +252,14 @@ def test_vim_style_presets_keep_context_at_the_right_on_narrow_terminals(name):
         assert rendered.endswith("ctx 42% ")
 
 
+def test_context_meter_fills_to_the_nearest_cell():
+    template = Template("preset:minimal", STATUS_PRESETS)
+    styles = dict.fromkeys(template.styles, "")
+    for percent, filled in ((0, 0), (9, 0), (10, 1), (37, 2), (89, 4), (90, 5), (100, 5)):
+        rendered = text(template.render({"model": "m", "context.percent": percent}, 80, styles))
+        assert rendered == "m " + "▰" * filled + "▱" * (5 - filled) + f" {percent}%"
+
+
 def test_layout_reload_is_atomic_and_rejects_style_injection():
     from wizolt.ui.bars import BarLayout
     from wizolt.ui.render import Theme

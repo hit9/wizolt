@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed
+
+- Restyle the built-in bar presets other than `default`, `powerline`, `lualine` and the `comet`
+  divider. `minimal` and `split` statusbars draw a context meter (`▰▰▱▱▱`); `monitor` pairs dim
+  labels with bright values; `compact` joins its fields with `›`; `blocks` splits cache and
+  context into separate blocks; `vim` colors its fields and shows MCP when there is room;
+  `brackets` dims its brackets. The `frame`, `double` and `right` dividers set their label in
+  title tees (`┤ ├`, `╡ ╞`); those, `capsule`, `minimal`, `dashed` and `dotted` show the waiting
+  dot, and `dashed` and `dotted` lead in with a short rule like `comet`.
+
 ### Documentation
 
 - Give themes, statusbar layouts, dividers and sweep formulas a dedicated Appearance guide,

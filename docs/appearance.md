@@ -93,14 +93,14 @@ Statusbar layouts:
 | Preset | Appearance |
 | --- | --- |
 | `default` | Provider, model, reasoning and usage in one row |
-| `minimal` | Model and context usage together on the left |
-| `split` | Provider and model on the left, tools and usage on the right |
-| `compact` | Model, reasoning and context percentage in a short row |
-| `brackets` | Model, reasoning and usage in square brackets, together on the left |
-| `monitor` | Model on the left, tools, usage and worker summary on the right |
-| `blocks` | Rectangular color segments, no special font needed |
+| `minimal` | Model and a five-cell context meter together on the left |
+| `split` | Provider, model and reasoning on the left; tools, a ten-cell context meter and cache on the right |
+| `compact` | Model, reasoning and context percentage joined by `›` in a short row |
+| `brackets` | Model, reasoning and usage in dim square brackets, together on the left |
+| `monitor` | Dim labels beside bright values: model and reasoning on the left; tools, usage and worker summary on the right |
+| `blocks` | Rectangular color segments: model and reasoning on the left, cache and context on the right; no special font needed |
 | `powerline` | Color segments joined by arrow-shaped separators |
-| `vim` | A continuous background with model and reasoning on the left, context on the right |
+| `vim` | A continuous background with model and reasoning on the left, MCP and context on the right |
 | `lualine` | A highlighted session identity, model and reasoning on the left; tools, cache and context on the right |
 
 Divider layouts in the picker:
@@ -108,8 +108,8 @@ Divider layouts in the picker:
 | Preset | Appearance |
 | --- | --- |
 | `comet` | A quiet rule with a waiting dot and activity label |
-| `capsule` | A centered, rounded activity badge with light rules on both sides |
-| `frame` | Rounded top corners and an inset activity label frame the input area |
+| `capsule` | A centered, rounded activity badge with the waiting dot, and light rules on both sides |
+| `frame` | Rounded top corners and a titled activity label frame the input area |
 | `rail` | Activity on the left; elapsed time, speed and queue counts on the right |
 | `powerline` | Activity and metrics in color segments joined to the rule by arrows |
 

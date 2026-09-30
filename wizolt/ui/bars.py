@@ -158,6 +158,12 @@ class Sweep:
             return 0.0
 
 
+def meter(field: str, cells: int) -> str:
+    """A gauge of `cells` cells filled in proportion to a 0–100 field, rounded to the nearest cell."""
+    step = 100 / cells
+    return "".join(f"{{% if {field} >= {round(step * i - step / 2)} %}}[status_context]▰[/]{{% else %}}[subtle]▱[/]{{% endif %}}" for i in range(1, cells + 1))
+
+
 IDENTITY = "{% if yolo %}[status_yolo][[yolo]] [/]{% endif %}{% if worker.active %}[status_worker]worker · [/]{% endif %}"
 STATS = "[status_mcp]{mcp.label} · skills {skills.count}[/][subtle] | [/][status_context]ctx {context.percent}% · cache {cache.percent}%[/]"
 STATUS_PRESETS = {
@@ -165,18 +171,29 @@ STATUS_PRESETS = {
     + "[status_provider]{provider}/{model}[/][subtle] · [/][status_reason]{reasoning}[/][subtle] | [/]"
     + STATS
     + "[status_worker]{worker.summary}[/]",
-    "minimal": IDENTITY + "[status_provider]{model}[/] · [status_context]ctx {context.percent}%[/]",
-    "split": IDENTITY + "[status_provider]{provider}/{model}[/]{% optional priority=10 %} · {reasoning}{% endoptional %}{>}" + STATS,
-    "compact": IDENTITY + "[status_provider]{model}[/] [status_reason]{reasoning}[/] · [status_context]{context.percent}%[/]",
+    "minimal": IDENTITY + "[status_provider]{model}[/] " + meter("context.percent", 5) + " [status_context]{context.percent}%[/]",
+    "split": IDENTITY
+    + "[status_provider]{provider}/{model}[/]{% optional priority=10 %}[subtle] · [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
+    + "{% optional priority=5 %}[status_mcp]{mcp.label} · skills {skills.count}[/][subtle] │ [/]{% endoptional %}"
+    + "[status_context]ctx [/]"
+    + meter("context.percent", 10)
+    + "[status_context] {context.percent}%[/]{% optional priority=8 %}[subtle] · [/][status_context]cache {cache.percent}%[/]{% endoptional %}",
+    "compact": IDENTITY + "[status_provider]{model}[/][subtle] › [/][status_reason]{reasoning}[/][subtle] › [/][status_context]{context.percent}%[/]",
     "brackets": IDENTITY
-    + "[status_provider][[{model}]][/] {% optional priority=10 %}[status_reason][[{reasoning}]][/] {% endoptional %}"
-    + "[status_context][[ctx {context.percent}%]] [[cache {cache.percent}%]][/]",
-    "monitor": IDENTITY + "[status_provider]{model}[/]{>}" + STATS + "[status_worker]{worker.summary}[/]",
+    + "[subtle][[[/][status_provider]{model}[/][subtle]]][/] {% optional priority=10 %}[subtle][[[/][status_reason]{reasoning}[/][subtle]]][/] {% endoptional %}"
+    + "[subtle][[[/][status_context]ctx {context.percent}%[/][subtle]]] [[[/][status_context]cache {cache.percent}%[/][subtle]]][/]",
+    "monitor": IDENTITY
+    + "[subtle]model [/][status_provider]{model}[/]{% optional priority=10 %}[subtle] effort [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
+    + "{% optional priority=5 %}[status_mcp]{mcp.label}[/][subtle]  skills [/][status_mcp]{skills.count}[/]  {% endoptional %}"
+    + "[subtle]ctx [/][status_context]{context.percent}%[/][subtle]  cache [/][status_context]{cache.percent}%[/][status_worker]{worker.summary}[/]",
     "blocks": "[status.model] "
     + IDENTITY
     + "{model} [reset]{% optional priority=10 %} [status.detail] {reasoning} [reset]{% endoptional %}"
-    + "{>}[status.usage] ctx {context.percent}% · cache {cache.percent}% [reset]",
-    "vim": "[status.detail] " + IDENTITY + "{provider}/{model}{% optional priority=10 %} [[{reasoning}]] {% endoptional %}{>} ctx {context.percent}% [reset]",
+    + "{>}{% optional priority=5 %}[status.detail] cache {cache.percent}% [reset] {% endoptional %}[status.usage] ctx {context.percent}% [reset]",
+    "vim": "[status.detail] "
+    + IDENTITY
+    + "[status_provider]{provider}/{model}[/]{% optional priority=10 %} [status_reason][[{reasoning}]][/]{% endoptional %}{>}"
+    + "{% optional priority=5 %}[status_mcp]{mcp.label}[/] · {% endoptional %}[status_context]ctx {context.percent}%[/] [reset]",
     "lualine": "[status.model] "
     + IDENTITY
     + "{% if not worker.active %}CHAT {% endif %}{join:}[status.detail] {model} {join:}[reset]"
@@ -191,14 +208,14 @@ STATUS_PRESETS = {
 DIVIDER_PRESETS = {
     "plain": "[divider_rule]──[/]{% if running %} [divider.label]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
     "comet": "[divider_rule]───[/]{% if running %} [spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
-    "minimal": "{% if running %}[divider.label]{label}[/]{% else %}[divider_rule]{fill:─}[/]{% endif %}",
+    "minimal": "{% if running %}[spinner]{spinner}[/][divider.label]{label}[/]{% else %}[divider_rule]{fill:─}[/]{% endif %}",
     "powerline": "{% if running %}[divider.activity] {activity} · {elapsed:duration} {join:}[reset]{% endif %}[divider_rule]{fill:─}[/]{% if running %}{join:}[divider.metrics] {rate} {% if queue.total > 0 %}· {queue.total} queued {% endif %}{% if reset_pending %}· reset pending {% endif %}[reset]{% endif %}",
-    "dashed": "{% if running %}[divider.label]{label}[/] {% endif %}[divider_rule]{fill:╌}[/]",
-    "dotted": "{% if running %}[spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:┈}[/]",
-    "double": "[divider_rule]══[/]{% if running %} [divider.label]{label}[/] {% endif %}[divider_rule]{fill:═}[/]",
-    "right": "[divider_rule]{fill:─}[/]{% if running %} [divider.label]{label}[/] [divider_rule]──[/]{% endif %}",
-    "capsule": "[divider_rule]{fill:─}[/]{% if running %}[fg=menu_bg][/][fg=divider_glow bg=menu_bg] {label} [/][fg=menu_bg][/]{% endif %}[divider_rule]{fill:─}[/]",
-    "frame": "[divider_rule]╭─[/]{% if running %}[fg=divider_glow]╴[/] [divider.label]{label}[/] [fg=divider_glow]╶[/]{% endif %}[divider_rule]{fill:─}╮[/]",
+    "dashed": "[divider_rule]╌╌╌[/]{% if running %} [spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:╌}[/]",
+    "dotted": "[divider_rule]┈┈┈[/]{% if running %} [spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:┈}[/]",
+    "double": "[divider_rule]══[/]{% if running %}[divider_rule]╡[/] [spinner]{spinner}[/][divider.label]{label}[/] [divider_rule]╞[/]{% endif %}[divider_rule]{fill:═}[/]",
+    "right": "[divider_rule]{fill:─}[/]{% if running %}[divider_rule]┤[/] [spinner]{spinner}[/][divider.label]{label}[/] [divider_rule]├──[/]{% endif %}",
+    "capsule": "[divider_rule]{fill:─}[/]{% if running %}[fg=menu_bg][/][fg=divider_glow bg=menu_bg] [spinner]{spinner}[/]{label} [/][fg=menu_bg][/]{% endif %}[divider_rule]{fill:─}[/]",
+    "frame": "[divider_rule]╭─[/]{% if running %}[divider_rule]┤[/] [spinner]{spinner}[/][divider.label]{label}[/] [divider_rule]├[/]{% endif %}[divider_rule]{fill:─}╮[/]",
     "rail": "{% if running %}[fg=divider_glow bold]◆ [/][divider.label]{activity}[/] {% endif %}[divider_rule]{fill:─}[/]"
     + "{% if running %} [fg=status_base]{elapsed:duration}[/]{% optional priority=10 %}{% if rate %}[muted] · [/][fg=divider_glow]{rate}[/]{% endif %}{% endoptional %}"
     + "{% if queue.followup > 0 %}[warning] · {queue.followup} queued[/]{% endif %}"
