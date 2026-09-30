@@ -38,6 +38,38 @@ async def main(log) -> None:
     # and this driver would quietly measure the old implementation instead of the new one.
     ui.transcript_sink = app.record_scrollback
 
+    async def bar_selector_loop() -> None:
+        from wizolt.agent.engine import Agent
+        from wizolt.config import Config
+        from wizolt.session import Session
+        from wizolt.ui.cli.bars import divider_command
+        from wizolt.ui.cli.loop import CommandLoop
+
+        session = Session(cwd=str(Path(log.name).parent), config=Config(data_dir=str(Path(log.name).parent / "data")))
+        session.config.provider.model = "bars-model"
+        command_loop = CommandLoop(Agent(session, output_fn=lambda _text: None), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
+        command_loop.interactive_input = True
+        command_loop.presentation.tui = app
+        app.idle_divider_fragments_fn = command_loop.view.idle_divider_fragments
+        app.status_fragments_fn = command_loop.presentation.status_bar.fragments
+        try:
+            for marker in range(5):
+                ui.emit(f"BAR-MARKER-{marker}")
+            for cycle in range(3):
+                while not Path(log.name).with_suffix(f".open-{cycle}").exists():
+                    await asyncio.sleep(0.02)
+                try:
+                    result = await divider_command(command_loop, "")
+                except KeyboardInterrupt:
+                    result = "interrupted"
+                log.write(f"closed {cycle}: {result}\n")
+                log.flush()
+            while not Path(log.name).with_suffix(".done").exists():
+                await asyncio.sleep(0.02)
+            app.app.exit()
+        finally:
+            session.close()
+
     async def long_selector_loop() -> None:
         ui.emit("WIZOLT-BANNER")
         ui.emit("PROVIDER-COMMAND")
@@ -107,6 +139,9 @@ async def main(log) -> None:
         await asyncio.Event().wait()
 
     def start() -> None:
+        if len(sys.argv) > 4 and sys.argv[4] == "bars":
+            app.app.create_background_task(bar_selector_loop())
+            return
         if len(sys.argv) > 4 and sys.argv[4] == "choices":
             app.app.create_background_task(long_selector_loop())
             return

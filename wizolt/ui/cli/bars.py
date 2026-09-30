@@ -1,0 +1,191 @@
+"""Statusbar and divider selection: reversible previews, cascade navigation and config saves."""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import shutil
+import time
+from typing import TYPE_CHECKING
+
+from prompt_toolkit.formatted_text import StyleAndTextTuples
+
+from wizolt.base import ConfigError
+from wizolt.config import ConfigFile
+from wizolt.ui.bars import PRESETS, expand
+from wizolt.ui.cli.modals import choice_application
+from wizolt.ui.render import Theme
+
+if TYPE_CHECKING:
+    from wizolt.ui.cli.loop import CommandLoop
+
+
+def export_layout(loop: CommandLoop, kind: str) -> str:
+    import tomlkit
+
+    sources = loop.presentation.status_bar.layout.sources
+    keys = ("statusbar",) if kind == "statusbar" else ("divider", "sweep")
+    values = {"sweep" if key == "sweep" else "format": expand(sources[key], PRESETS[key]) for key in keys}
+    return tomlkit.dumps({"ui": {kind: values}}).rstrip()
+
+
+def reload_layout(loop: CommandLoop) -> str:
+    path = loop.session.config.path
+    if not path:
+        return "No config file is attached to this session."
+    try:
+        raw = ConfigFile.load(path).get("ui", {})
+        if not isinstance(raw, dict):
+            raise ConfigError("ui must be a table")
+        problems = loop.presentation.status_bar.layout.load(raw, Theme.bar_styles)
+    except (OSError, ValueError, ConfigError) as error:
+        return f"UI configuration not reloaded: {error}"
+    if problems:
+        return "UI configuration not reloaded:\n" + "\n".join(problems)
+    loop.session.config.ui = raw
+    if loop.presentation.tui is not None:
+        loop.presentation.tui.invalidate()
+    return "UI configuration reloaded."
+
+
+def select_layout(loop: CommandLoop, kind: str, source: str) -> str:
+    layout = loop.presentation.status_bar.layout
+    problems = layout.configure({kind: source}, Theme.bar_styles)
+    if problems:
+        return "\n".join(problems)
+    section, key = ("divider", "sweep") if kind == "sweep" else (kind, "format")
+    raw = dict(loop.session.config.ui.get(section, {}))
+    raw[key] = source
+    loop.session.config.ui[section] = raw
+    if loop.presentation.tui is not None:
+        loop.presentation.tui.invalidate()
+    result = f"{section}.{key}: {source}"
+    if loop.session.config.path:
+        try:
+            ConfigFile.set_ui_value(loop.session.config.path, ("ui", section), key, source)
+        except (OSError, ValueError, ConfigError) as error:
+            result += f"\nApplied for this session; not saved: {error}"
+        else:
+            result += " (saved)"
+    return result
+
+
+def preview(loop: CommandLoop, kind: str, started: float) -> StyleAndTextTuples:
+    bar = loop.presentation.status_bar
+    width = max(1, shutil.get_terminal_size((80, 20)).columns - 8)
+    values = bar.values()
+    result: StyleAndTextTuples = []
+    if kind == "statusbar":
+        result.extend(bar.layout.render("statusbar", values, width, Theme.bar_styles))
+    else:
+        elapsed = max(0.0, time.monotonic() - started)
+        ramp = tuple(reversed(Theme.ramp("divider_glow", "divider_rule", 16)))
+        for label, running, queued in (("Idle", False, 0), ("Running", True, 0), ("Queued", True, 2)):
+            values.update(
+                running=running,
+                elapsed=elapsed,
+                activity="working",
+                rate="42 tok/s",
+                spinner="● ",
+                label=f"working ({int(elapsed)}s · 42 tok/s)" + (" [ 2 queued ]" if queued else ""),
+                **{"queue.total": queued, "queue.followup": queued, "queue.next_turn": 0},
+            )
+            result.extend([(Theme.fg("muted"), label + " (preview)\n")])
+            result.extend(bar.layout.render("divider", values, width, Theme.bar_styles, ramp=ramp))
+            result.append(("", "\n"))
+    for problem in (*bar.layout.errors, *((bar.layout.sweep.error,) if bar.layout.sweep.error else ())):
+        result.append((Theme.fg("error"), "\n" + problem))
+    return result
+
+
+async def pick_layout(loop: CommandLoop, kind: str) -> str | None:
+    tui = loop.presentation.tui
+    assert tui is not None
+    layout = loop.presentation.status_bar.layout
+    original = layout.sources[kind]
+    current = original[7:] if original.startswith("preset:") else "custom"
+    choices = tuple(PRESETS[kind]) + (("custom",) if current == "custom" else ())
+    started = time.monotonic()
+
+    def apply(name: str) -> None:
+        layout.configure({kind: original if name == "custom" else "preset:" + name}, Theme.bar_styles)
+        tui.invalidate()
+
+    async def animate() -> None:
+        while True:
+            await asyncio.sleep(0.05)
+            tui.invalidate()
+
+    timer = asyncio.create_task(animate()) if kind != "statusbar" else None
+    try:
+        chosen = await choice_application(
+            loop,
+            "Statusbar" if kind == "statusbar" else "Divider › " + ("Sweep" if kind == "sweep" else "Layout"),
+            choices,
+            {"custom": "custom (current template)"},
+            current,
+            set(),
+            preview_fn=lambda _name: preview(loop, kind, started),
+            on_focus=apply,
+        )
+    finally:
+        layout.configure({kind: original}, Theme.bar_styles)
+        tui.invalidate()
+        if timer is not None:
+            timer.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await timer
+    if not isinstance(chosen, str):
+        return None
+    return select_layout(loop, kind, original if chosen == "custom" else "preset:" + chosen)
+
+
+async def statusbar_command(loop: CommandLoop, args: str) -> str | None:
+    args = args.strip()
+    if args == "export":
+        return export_layout(loop, "statusbar")
+    if args == "reload":
+        return reload_layout(loop)
+    if args:
+        return select_layout(loop, "statusbar", "preset:" + args)
+    if loop.presentation.tui is None or not loop.interactive_input:
+        return "Statusbar presets: " + ", ".join(PRESETS["statusbar"]) + ". Use /statusbar NAME, export, or reload."
+    return await pick_layout(loop, "statusbar")
+
+
+async def divider_command(loop: CommandLoop, args: str) -> str | None:
+    args = args.strip()
+    if args == "export":
+        return export_layout(loop, "divider")
+    if args == "reload":
+        return reload_layout(loop)
+    if args:
+        return select_layout(loop, "divider", "preset:" + args)
+    if loop.presentation.tui is None or not loop.interactive_input:
+        return (
+            "Divider layouts: "
+            + ", ".join(PRESETS["divider"])
+            + ". Sweeps: "
+            + ", ".join(PRESETS["sweep"])
+            + ". Configure ui.divider.sweep or open /divider interactively."
+        )
+    current = "layout"
+    while True:
+        chosen = await choice_application(
+            loop,
+            "Divider",
+            ("layout", "sweep", "export", "reload"),
+            {"layout": "Layout presets ›", "sweep": "Sweep presets ›", "export": "Export current configuration", "reload": "Reload configuration"},
+            current,
+            set(),
+        )
+        if chosen == "export":
+            return export_layout(loop, "divider")
+        if chosen == "reload":
+            return reload_layout(loop)
+        if chosen not in ("layout", "sweep"):
+            return None
+        current = str(chosen)
+        result = await pick_layout(loop, "divider" if chosen == "layout" else "sweep")
+        if result is not None:
+            return result

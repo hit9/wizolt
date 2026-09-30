@@ -4,6 +4,11 @@
 
 ### Added
 
+- `/statusbar` previews and selects built-in layouts; `/divider` offers cascading layout and
+  sweep menus with animated idle/running/queue samples. Enter saves, Escape restores the previous
+  setting, and cancellation stops preview tasks. Both commands support expanded TOML export and
+  atomic UI reload. Document the presets, field vocabulary, Powerline highlights and formulas;
+  test nested previews and cancellation through real multiplexer resize cycles.
 - Configure `[ui.statusbar] format` and `[ui.divider] format` / `sweep` with `preset:name`
   or a custom template/formula. Theme files accept named `[highlights]` groups for Powerline
   segments. The divider also renders its idle template; invalid UI settings retain the previous

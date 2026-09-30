@@ -1,0 +1,114 @@
+"""Preset menus, cancellation, persistence and reload at the command boundary."""
+
+import asyncio
+import tomllib
+from pathlib import Path
+
+import pytest
+from test_command_ui import ModalHarness
+from tui_harness import loop
+
+from wizolt.ui.cli.bars import divider_command, statusbar_command
+from wizolt.ui.render import Theme
+
+
+class BarModal(ModalHarness):
+    def invalidate(self):
+        pass
+
+
+@pytest.fixture
+def command_loop(tmp_path, monkeypatch):
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setattr(Theme, "_mode", "dark")
+    monkeypatch.setattr(Theme, "_custom", {})
+    command_loop = loop(tmp_path)
+    path = tmp_path / "config.toml"
+    path.write_text('# keep comment\n[runtime]\ntheme = "auto"\n')
+    command_loop.session.config.path = str(path)
+    command_loop.interactive_input = True
+    return command_loop
+
+
+async def test_statusbar_hover_escape_restores_custom_template_without_saving(command_loop):
+    layout = command_loop.presentation.status_bar.layout
+    assert not layout.configure({"statusbar": "{model} custom"}, Theme.bar_styles)
+    modal = command_loop.presentation.tui = BarModal(["up", "escape"])
+    assert await statusbar_command(command_loop, "") is None
+    assert layout.sources["statusbar"] == "{model} custom"
+    assert any("" in fragment[1] for fragment in modal.frames[1])
+    assert "ui" not in tomllib.loads(Path(command_loop.session.config.path).read_text())
+
+
+async def test_statusbar_enter_saves_and_export_expands_the_template(command_loop):
+    command_loop.presentation.tui = BarModal(["j", "enter"])
+    result = await statusbar_command(command_loop, "")
+    assert "saved" in result
+    saved = tomllib.loads(Path(command_loop.session.config.path).read_text())
+    assert saved["ui"]["statusbar"]["format"] == "preset:minimal"
+    exported = tomllib.loads(await statusbar_command(command_loop, "export"))
+    assert "{model}" in exported["ui"]["statusbar"]["format"]
+    assert not exported["ui"]["statusbar"]["format"].startswith("preset:")
+
+
+async def test_divider_cascade_cancel_returns_to_parent_and_restores_sweep(command_loop):
+    modal = command_loop.presentation.tui = BarModal(["j", "enter", "j", "escape", "escape"], consumed=True)
+    before = dict(command_loop.presentation.status_bar.layout.sources)
+    assert await divider_command(command_loop, "") is None
+    assert command_loop.presentation.status_bar.layout.sources == before
+    frames = ["".join(fragment[1] for fragment in frame) for frame in modal.frames]
+    assert any("Divider › Sweep" in frame for frame in frames)
+    assert any("Running (preview)" in frame and "Queued (preview)" in frame for frame in frames)
+    assert modal.pos == 5
+
+
+async def test_divider_cascade_can_save_sweep_without_changing_layout(command_loop):
+    command_loop.presentation.tui = BarModal(["j", "enter", "j", "enter"], consumed=True)
+    result = await divider_command(command_loop, "")
+    assert "divider.sweep: preset:scan" in result
+    layout = command_loop.presentation.status_bar.layout
+    assert layout.sources["divider"] == "preset:comet"
+    assert layout.sources["sweep"] == "preset:scan"
+    saved = tomllib.loads(Path(command_loop.session.config.path).read_text())
+    assert saved["ui"]["divider"] == {"sweep": "preset:scan"}
+
+
+async def test_interrupted_preview_restores_layout_and_stops_animation(command_loop):
+    class Interrupted(BarModal):
+        async def show_modal(self, fragments_fn, key_fn, **kwargs):
+            key_fn("j", "j")
+            await asyncio.sleep(0)
+            raise asyncio.CancelledError
+
+    command_loop.presentation.tui = Interrupted([])
+    from wizolt.ui.cli.bars import pick_layout
+
+    before = dict(command_loop.presentation.status_bar.layout.sources)
+    tasks = set(asyncio.all_tasks())
+    with pytest.raises(asyncio.CancelledError):
+        await pick_layout(command_loop, "divider")
+    assert command_loop.presentation.status_bar.layout.sources == before
+    assert set(asyncio.all_tasks()) == tasks
+
+
+async def test_reload_failure_keeps_previous_ui_and_does_not_execute_formula(command_loop, tmp_path):
+    await statusbar_command(command_loop, "minimal")
+    path = Path(command_loop.session.config.path)
+    path.write_text('[ui.statusbar]\nformat = "preset:powerline"\n[ui.divider]\nsweep = \'__import__("pathlib").Path("evil").touch()\'\n')
+    result = await divider_command(command_loop, "reload")
+    assert "not reloaded" in result
+    assert command_loop.presentation.status_bar.layout.sources["statusbar"] == "preset:minimal"
+    assert not (tmp_path / "evil").exists()
+    path.write_text('[ui.statusbar]\nformat = "preset:powerline"\n')
+    assert await statusbar_command(command_loop, "reload") == "UI configuration reloaded."
+    assert command_loop.presentation.status_bar.layout.sources["statusbar"] == "preset:powerline"
+
+
+async def test_headless_lists_presets_and_direct_selection_handles_unknown_names(command_loop):
+    command_loop.interactive_input = False
+    assert "powerline" in await statusbar_command(command_loop, "")
+    assert "breathe" in await divider_command(command_loop, "")
+    before = dict(command_loop.presentation.status_bar.layout.sources)
+    assert "unknown preset" in await statusbar_command(command_loop, "not-a-preset")
+    assert command_loop.presentation.status_bar.layout.sources == before
+    assert "saved" in await divider_command(command_loop, "minimal")

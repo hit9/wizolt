@@ -784,6 +784,23 @@ must additionally verify:
 
 Passing the existing harness does not prove these remaining interactions or all terminal emulators.
 
+## Configurable UI bars
+
+`ui/bars.py` parses single-line templates and bounded math expressions; it has no session or IO.
+`StatusBar` owns each session's compiled `BarLayout`. The statusbar supplies active-agent fields;
+`View` supplies divider activity and queue fields. `Theme` resolves role/highlight names at draw
+time so theme switching also recolors Powerline segments. `cli/bars.py` owns selection, temporary
+preview state, config persistence and preview-task cancellation. The existing TUI still owns row
+placement and scrollback; configurable bars are live rows, never transcript entries.
+
+Preset strings and custom strings follow the same evaluator. Expressions are interpreted from an
+AST allowlist, never `eval` or Python attribute access. Dotted identifiers are exact keys in a
+fixed field vocabulary. Bound source length, tree size, numeric magnitude and exponent size;
+reject calls outside the small math function set. Interpolated values remain literal, with C0/C1
+terminal controls removed. Theme/style values are validated separately, never concatenated from
+model/provider strings. Failed reloads retain the previous compiled settings. Runtime math errors
+must not break input; the preview reports them and the failed light evaluates to zero.
+
 ## Compaction
 
 Explicit context reset is a separate cache epoch: apply only after turn settlement, replace model

@@ -47,7 +47,7 @@ from wizolt.providers.compat import builtin_tools_issue
 from wizolt.providers.schema import CatalogSyncError
 from wizolt.providers.sync import CATALOG_URL
 from wizolt.session import Session, SessionBusyError, SessionEntry, SessionLease, SessionSnapshotStore
-from wizolt.ui.cli import worker
+from wizolt.ui.cli import bars, worker
 from wizolt.ui.cli.modals import (
     choice_application,
     compaction_log_viewer,
@@ -1309,6 +1309,8 @@ COMMANDS: tuple[Command, ...] = (
     Command("/worker", worker.worker_command),
     Command("/language", language_command),
     Command("/theme", theme_command),
+    Command("/statusbar", bars.statusbar_command),
+    Command("/divider", bars.divider_command),
 )
 # fmt: on
 

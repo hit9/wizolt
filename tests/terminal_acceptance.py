@@ -371,3 +371,63 @@ def test_zoom_on_a_fresh_pane_leaves_one_live_region(pane):
     written = {int(m) for m in re.findall(r"wrote MARKER-(\d+)", log.read_text())}
     seen = Counter(int(m) for m in re.findall(r"MARKER-(\d+)", text))
     assert not [marker for marker in written if seen[marker] != 1], (seen, text)
+
+
+def test_bar_cascade_previews_survive_resize_and_cancel(pane):
+    """Real nested preset previews, including animated samples, remain usable after 30 resizes."""
+    log = pane.path / "bars.log"
+    pane.send(f"{sys.executable} {DRIVER} 0 0 {log} bars")
+
+    def visible_containing(needle):
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            visible = pane.visible()
+            if needle in visible:
+                return visible
+            time.sleep(0.03)
+        raise AssertionError(f"missing {needle!r}:\n{visible}")
+
+    visible_containing("bars-model")
+    for cycle in range(3):
+        log.with_suffix(f".open-{cycle}").touch()
+        visible_containing("Layout presets")
+        pane.keys("Enter")
+        visible_containing("Divider › Layout")
+        pane.keys("j")
+        for index in range(10):
+            width, height = ((100, 30), (60, 18), (80, 24), (50, 12), (120, 35))[index % 5]
+            pane.resize(width, height)
+            time.sleep(0.06 if index % 2 else 0.15)
+            visible = pane.visible()
+            assert "minimal" in visible, visible
+        pane.resize(100, 30)
+        visible_containing("Divider › Layout")
+        if cycle == 0:
+            pane.keys("Escape")
+            visible_containing("Sweep presets")
+            pane.keys("j", "Enter")
+            visible_containing("Divider › Sweep")
+            pane.keys("Escape")
+            visible_containing("Layout presets")
+            pane.keys("Escape")
+        elif cycle == 1:
+            pane.keys("C-c")
+        else:
+            pane.keys("Enter")
+        deadline = time.monotonic() + 15
+        while f"closed {cycle}:" not in log.read_text():
+            assert time.monotonic() < deadline, log.read_text()
+            time.sleep(0.03)
+        history = "\n".join(_settled_capture(pane))
+        for marker in range(5):
+            assert history.count(f"BAR-MARKER-{marker}") == 1
+        assert history.count("bars-model") == 1
+    assert "closed 1: interrupted" in log.read_text()
+    log.with_suffix(".done").touch()
+    deadline = time.monotonic() + 15
+    while "driver exited" not in log.read_text():
+        assert time.monotonic() < deadline
+        time.sleep(0.03)
+    history = "\n".join(pane.capture())
+    for marker in range(5):
+        assert history.count(f"BAR-MARKER-{marker}") == 1

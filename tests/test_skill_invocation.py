@@ -145,7 +145,7 @@ def test_slash_completion_offers_skill_commands(tmp_path):
     assert rows["/digest"] == "skill"
     assert "/diff" in rows
     assert not any(text.startswith("/background") for text in completer_texts(completer, "/b"))
-    assert completer_texts(completer, "/status") == ["/status"]  # the built-in, once
+    assert completer_texts(completer, "/status") == ["/status", "/statusbar"]  # built-ins appear once; the skill cannot shadow /status
 
 
 def completer_texts(completer, text):

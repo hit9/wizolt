@@ -297,6 +297,132 @@ The file name is the theme's name, so it cannot be a built-in theme, `auto`, or 
 (`gruvbox`, or `mine` once `mine-dark` and `mine-light` exist). A mistake in a theme file is
 reported at startup and when `/theme` opens; the rest of the file still applies. `/theme` re-reads the folder each time it opens, so edits show up without a restart.
 
+## Statusbar and divider
+
+Use `/statusbar` to preview a statusbar preset. `/divider` opens a menu with **Layout presets**
+and **Sweep presets** submenus. Moving the selection previews it; Enter saves it. Esc restores
+what you had and returns to the parent menu. Divider previews include idle, running and queued
+examples, so you can try animations without sending a model request.
+
+```toml
+[ui.statusbar]
+format = "preset:powerline"
+
+[ui.divider]
+format = "preset:comet"
+sweep = "preset:comet"
+```
+
+| Setting | Presets |
+| --- | --- |
+| `statusbar.format` | `default` (the usual status row), `minimal` (model and context), `split` (left/right groups), `powerline` (joined color segments) |
+| `divider.format` | `comet` (activity with a waiting dot), `plain` (activity and a rule), `minimal` (activity only while running), `powerline` (activity and metrics segments) |
+| `divider.sweep` | `comet` (back and forth), `scan` (left to right), `breathe` (pulsing line), `none` |
+
+The defaults are `preset:default`, `preset:comet` and `preset:comet`. Layout and sweep are
+independent: a sweep colors the divider's fill region only while running. Powerline requires a
+font containing `` and ``; the other presets need no special font.
+
+`/statusbar powerline` and `/divider minimal` select layouts directly. `/statusbar export` and
+`/divider export` print the current settings with presets expanded into editable TOML.
+After editing your config, use `/statusbar reload` or `/divider reload` to reload all three settings.
+A failed reload keeps your current layout; invalid settings at startup use the defaults.
+
+### Custom templates
+
+Replace a `preset:name` value with a template. The statusbar and divider use the same syntax:
+
+```toml
+[ui.statusbar]
+format = "[status_provider]{model}[/]{>}[muted]ctx {context.percent}%[/]"
+
+[ui.divider]
+format = "{% if running %}[accent bold]{activity}[/] · {elapsed:duration} {% endif %}[subtle]{fill:─}[/]"
+sweep = "preset:none"
+```
+
+| Syntax | Result |
+| --- | --- |
+| `{model}` | Insert a field as plain text |
+| `{elapsed:duration}` | Seconds followed by `s`; numbers also accept `:d` and `:.0f` through `:.6f` |
+| `[accent bold]…[/]` | Theme color or highlight group, with optional text attributes; `[/]` restores the previous style |
+| `[fg=#fff bg=#333 bold]…[/]` | Explicit foreground, background and attributes; colors can also name theme roles |
+| `[reset]` | Restore terminal defaults |
+| `{>}` | Push the remaining content to the right |
+| `{fill:─}` | Fill the remaining width with a single-column character |
+| `{join:}` / `{join:}` | Join adjacent background colors automatically |
+| `{% if worker.active %}…{% else %}…{% endif %}` | Conditional content; `else` is optional |
+| `{% optional priority=10 %}…{% endoptional %}` | Omit the whole span when space is short; lower priorities go first |
+
+Use at most one `{>}` or `{fill:…}` in a rendered line. Include a separator inside its optional
+span so both disappear together. Remaining text is clipped to one terminal row, preserving the
+right-hand group where possible. Close styles inside conditional and optional spans. Double
+brackets to print them literally: `{{`, `}}`, `[[`, `]]`.
+
+Conditions support comparisons, parentheses, `and`, `or` and `not`. For example:
+
+```text
+{% if context.percent >= 80 %}[warning bold]ctx {context.percent}%[/]{% else %}[muted]ctx {context.percent}%[/]{% endif %}
+```
+
+Available fields:
+
+| Fields | Meaning |
+| --- | --- |
+| `provider`, `model`, `reasoning`, `context.percent`, `cache.percent` | Current agent; during delegation these follow the worker |
+| `yolo`, `mcp.count`, `mcp.label`, `skills.count` | Session settings and connected services; `mcp.label` includes discovery activity |
+| `worker.active`, `worker.model`, `worker.context`, `worker.summary` | Worker activity, model, context percentage, and the parked worker's context label |
+| `running`, `elapsed`, `rate` | Whether the agent is running, seconds since the turn started, and the current output-rate label |
+| `activity`, `spinner`, `label` | Divider activity, waiting dot, and the complete activity/elapsed/queue label used by default |
+| `queue.total`, `queue.followup`, `queue.next_turn`, `reset_pending` | Divider queue counts and pending context reset |
+
+Divider-specific fields are populated by the divider; the statusbar supplies neutral values for
+them. Put fields such as `rate` inside conditions when you want to omit their surrounding text
+while they are empty. Field contents never become template instructions.
+
+### Powerline colors
+
+Built-in Powerline templates use the highlight groups `status.model`, `status.detail`,
+`status.usage`, `divider.activity` and `divider.metrics`. They follow the selected color theme.
+Override them, or define your own groups, in a theme file:
+
+```toml
+base = "github-dark"
+
+[highlights."status.model"]
+fg = "#0d1117"
+bg = "#79c0ff"
+bold = true
+```
+
+Highlight groups accept `fg`, `bg`, `bold`, `italic` and `underline`. Reload theme files with
+`/theme`. A custom Powerline template can then be one string:
+
+```toml
+[ui.statusbar]
+format = "[status.model] {model} {join:}[status.detail] {reasoning} {join:}[reset]{>}{join:}[status.usage] ctx {context.percent}% [reset]"
+```
+
+### Sweep formulas
+
+A sweep is a brightness formula: `x` is the current terminal column, `t` is elapsed seconds, and
+`w` is the divider width. Its result is clamped to `0..1`, blending `divider_rule` with
+`divider_glow`. Labels cover the light without interrupting its movement.
+
+```toml
+[ui.divider]
+sweep = "exp(-((x - pingpong(t * 18, w)) / 8) ** 2)"
+```
+
+This produces a broad glow moving back and forth at 18 columns per second. Change `18` for speed
+or `8` for width. `pingpong(value, width)` reflects motion at the ends; `sin`, `cos`, `exp`,
+`sqrt`, `abs`, `min` and `max` are also available, with arithmetic including `%` and `**`.
+Use `"0"` or `"preset:none"` to stop the sweep.
+
+Formulas are limited mathematical expressions, not Python scripts. Invalid formulas report an
+error. If a formula becomes undefined while running, the affected light goes dark; the divider
+preview displays the error. Templates are limited to 8,192 characters, formulas to 1,024.
+
 ## Worker delegation
 
 The `Delegate` tool and `/worker` command hand bounded tasks to a second in-process session.

@@ -25,6 +25,7 @@ from wizolt.config import PROVIDER_API_CHOICES
 from wizolt.mentions import MentionSpan, active_mention, encode_file_mention, mention_spellings
 from wizolt.providers.compat import bundled_policy
 from wizolt.session import QueuedInput, Session
+from wizolt.ui.bars import DIVIDER_PRESETS, STATUS_PRESETS
 from wizolt.ui.cli.commands import COMMAND_NAMES, NEEDS_ARGUMENT, SET_KEYS, SET_VALUES
 from wizolt.ui.cli.hints import Context as HintContext
 from wizolt.ui.cli.hints import HintPicker
@@ -124,6 +125,8 @@ class CommandCompleter(Completer):
             ("/strict ", lambda: ("on", "off")),
             ("/compact ", lambda: ("log",)),
             ("/theme ", Theme.choices),
+            ("/statusbar ", lambda: (*STATUS_PRESETS, "export", "reload")),
+            ("/divider ", lambda: (*DIVIDER_PRESETS, "export", "reload")),
         ):
             if text.startswith(command):
                 yield from self.matches(values(), text[len(command) :])
