@@ -299,10 +299,11 @@ reported at startup and when `/theme` opens; the rest of the file still applies.
 
 ## Statusbar and divider
 
-Use `/statusbar` to preview a statusbar preset. `/divider` opens a menu with **Layout presets**
-and **Sweep presets** submenus. Moving the selection previews it; Enter saves it. Esc restores
-what you had and returns to the parent menu. Divider previews include idle, running and queued
-examples, so you can try animations without sending a model request.
+Use `/statusbar` to preview and select a statusbar preset. `/divider` first selects a layout,
+then a sweep. Each picker also offers your current custom value when you have one.
+Moving the selection previews it; Enter saves it. Esc cancels the current picker, keeping
+any choice you already confirmed. Divider previews include idle, running and queued examples,
+so you can try animations without sending a model request.
 
 ```toml
 [ui.statusbar]
@@ -323,10 +324,9 @@ The defaults are `preset:default`, `preset:comet` and `preset:comet`. Layout and
 independent: a sweep colors the divider's fill region only while running. Powerline requires a
 font containing `` and ``; the other presets need no special font.
 
-`/statusbar powerline` and `/divider minimal` select layouts directly. `/statusbar export` and
-`/divider export` print the current settings with presets expanded into editable TOML.
-After editing your config, use `/statusbar reload` or `/divider reload` to reload all three settings.
-A failed reload keeps your current layout; invalid settings at startup use the defaults.
+`/statusbar powerline` and `/divider minimal` select layouts directly. Edit your config file
+for custom templates and formulas, then restart the session. Invalid settings at startup use
+the defaults.
 
 ### Custom templates
 

@@ -119,13 +119,13 @@ and, where the values are a fixed set, the values. Example: `/set provider.respo
 | `/yolo` | Toggle confirmation prompts — read [Safety](safety.md) before leaving them off |
 | `/strict` | Toggle strict tool-call schemas (OpenAI / DeepSeek) |
 
-**`/statusbar [NAME|export|reload]`** — Preview and select a statusbar preset. Enter saves the
-selection; Esc restores your previous layout. `NAME` selects directly, `export` prints an
-editable template, and `reload` reads the UI settings again.
+**`/statusbar [NAME]`** — Preview and select a statusbar preset, or keep your current custom
+layout. Enter saves the selection; Esc cancels the preview. `NAME` selects directly.
 
-**`/divider [NAME|export|reload]`** — Open a menu for layout and sweep presets, with live previews
-of idle, running and queued states. Esc in a submenu restores that setting and returns to the
-parent menu. `NAME` selects a layout directly. See [Statusbar and divider](configuration.md#statusbar-and-divider)
+**`/divider [NAME]`** — Select a divider layout, then a sweep, with live previews of idle,
+running and queued states. Each picker includes your current custom value when present.
+Enter saves each choice; Esc cancels the current picker while keeping previously confirmed
+choices. `NAME` selects a layout directly. See [Statusbar and divider](configuration.md#statusbar-and-divider)
 for templates, Powerline colors and sweep formulas.
 
 **`/theme [NAME]`** — Pick a color theme. The picker previews each theme as the cursor lands on

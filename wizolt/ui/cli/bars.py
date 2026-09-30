@@ -13,40 +13,12 @@ from prompt_toolkit.formatted_text import StyleAndTextTuples
 
 from wizolt.base import ConfigError
 from wizolt.config import ConfigFile
-from wizolt.ui.bars import PRESETS, expand
+from wizolt.ui.bars import PRESETS
 from wizolt.ui.cli.modals import choice_application
 from wizolt.ui.render import Theme
 
 if TYPE_CHECKING:
     from wizolt.ui.cli.loop import CommandLoop
-
-
-def export_layout(loop: CommandLoop, kind: str) -> str:
-    import tomlkit
-
-    sources = loop.presentation.status_bar.layout.sources
-    keys = ("statusbar",) if kind == "statusbar" else ("divider", "sweep")
-    values = {"sweep" if key == "sweep" else "format": expand(sources[key], PRESETS[key]) for key in keys}
-    return tomlkit.dumps({"ui": {kind: values}}).rstrip()
-
-
-def reload_layout(loop: CommandLoop) -> str:
-    path = loop.session.config.path
-    if not path:
-        return "No config file is attached to this session."
-    try:
-        raw = ConfigFile.load(path).get("ui", {})
-        if not isinstance(raw, dict):
-            raise ConfigError("ui must be a table")
-        problems = loop.presentation.status_bar.layout.load(raw, Theme.bar_styles)
-    except (OSError, ValueError, ConfigError) as error:
-        return f"UI configuration not reloaded: {error}"
-    if problems:
-        return "UI configuration not reloaded:\n" + "\n".join(problems)
-    loop.session.config.ui = raw
-    if loop.presentation.tui is not None:
-        loop.presentation.tui.invalidate()
-    return "UI configuration reloaded."
 
 
 def select_layout(loop: CommandLoop, kind: str, source: str) -> str:
@@ -132,7 +104,7 @@ async def pick_layout(loop: CommandLoop, kind: str) -> str | None:
             loop,
             "Statusbar" if kind == "statusbar" else "Divider › " + ("Sweep" if kind == "sweep" else "Layout"),
             choices,
-            {"custom": "custom (current template)"},
+            {"custom": "custom (current)"},
             current,
             set(),
             preview_fn=lambda _name: preview(loop, kind, started),
@@ -152,23 +124,15 @@ async def pick_layout(loop: CommandLoop, kind: str) -> str | None:
 
 async def statusbar_command(loop: CommandLoop, args: str) -> str | None:
     args = args.strip()
-    if args == "export":
-        return export_layout(loop, "statusbar")
-    if args == "reload":
-        return reload_layout(loop)
     if args:
         return select_layout(loop, "statusbar", "preset:" + args)
     if loop.presentation.tui is None or not loop.interactive_input:
-        return "Statusbar presets: " + ", ".join(PRESETS["statusbar"]) + ". Use /statusbar NAME, export, or reload."
+        return "Statusbar presets: " + ", ".join(PRESETS["statusbar"]) + ". Use /statusbar NAME."
     return await pick_layout(loop, "statusbar")
 
 
 async def divider_command(loop: CommandLoop, args: str) -> str | None:
     args = args.strip()
-    if args == "export":
-        return export_layout(loop, "divider")
-    if args == "reload":
-        return reload_layout(loop)
     if args:
         return select_layout(loop, "divider", "preset:" + args)
     if loop.presentation.tui is None or not loop.interactive_input:
@@ -179,23 +143,8 @@ async def divider_command(loop: CommandLoop, args: str) -> str | None:
             + ", ".join(PRESETS["sweep"])
             + ". Configure ui.divider.sweep or open /divider interactively."
         )
-    current = "layout"
-    while True:
-        chosen = await choice_application(
-            loop,
-            "Divider",
-            ("layout", "sweep", "export", "reload"),
-            {"layout": "Layout presets ›", "sweep": "Sweep presets ›", "export": "Export current configuration", "reload": "Reload configuration"},
-            current,
-            set(),
-        )
-        if chosen == "export":
-            return export_layout(loop, "divider")
-        if chosen == "reload":
-            return reload_layout(loop)
-        if chosen not in ("layout", "sweep"):
-            return None
-        current = str(chosen)
-        result = await pick_layout(loop, "divider" if chosen == "layout" else "sweep")
-        if result is not None:
-            return result
+    layout_result = await pick_layout(loop, "divider")
+    if layout_result is None:
+        return None
+    sweep_result = await pick_layout(loop, "sweep")
+    return layout_result + ("\n" + sweep_result if sweep_result else "")

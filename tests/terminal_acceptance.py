@@ -390,8 +390,6 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
     visible_containing("bars-model")
     for cycle in range(3):
         log.with_suffix(f".open-{cycle}").touch()
-        visible_containing("Layout presets")
-        pane.keys("Enter")
         visible_containing("Divider › Layout")
         pane.keys("j")
         for index in range(10):
@@ -403,18 +401,16 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
         pane.resize(100, 30)
         visible_containing("Divider › Layout")
         if cycle == 0:
-            pane.keys("Escape")
-            visible_containing("Layout presets")
-            pane.keys("j")
-            visible_containing("Sweep presets")
             pane.keys("Enter")
             visible_containing("Divider › Sweep")
-            pane.keys("Escape")
-            visible_containing("Sweep presets")
+            pane.keys("j")
+            visible_containing("scan")
             pane.keys("Escape")
         elif cycle == 1:
             pane.keys("C-c")
         else:
+            pane.keys("Enter")
+            visible_containing("Divider › Sweep")
             pane.keys("Enter")
         deadline = time.monotonic() + 15
         while f"closed {cycle}:" not in log.read_text():

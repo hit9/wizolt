@@ -1,4 +1,4 @@
-"""Preset menus, cancellation, persistence and reload at the command boundary."""
+"""Preset menus, cancellation, persistence at the command boundary."""
 
 import asyncio
 import tomllib
@@ -40,37 +40,56 @@ async def test_statusbar_hover_escape_restores_custom_template_without_saving(co
     assert "ui" not in tomllib.loads(Path(command_loop.session.config.path).read_text())
 
 
-async def test_statusbar_enter_saves_and_export_expands_the_template(command_loop):
+async def test_statusbar_enter_saves_the_template(command_loop):
     command_loop.presentation.tui = BarModal(["j", "enter"])
     result = await statusbar_command(command_loop, "")
     assert "saved" in result
     saved = tomllib.loads(Path(command_loop.session.config.path).read_text())
     assert saved["ui"]["statusbar"]["format"] == "preset:minimal"
-    exported = tomllib.loads(await statusbar_command(command_loop, "export"))
-    assert "{model}" in exported["ui"]["statusbar"]["format"]
-    assert not exported["ui"]["statusbar"]["format"].startswith("preset:")
 
 
-async def test_divider_cascade_cancel_returns_to_parent_and_restores_sweep(command_loop):
-    modal = command_loop.presentation.tui = BarModal(["j", "enter", "j", "escape", "escape"], consumed=True)
+async def test_divider_layout_cancel_does_not_open_sweep(command_loop):
+    modal = command_loop.presentation.tui = BarModal(["j", "escape"], consumed=True)
     before = dict(command_loop.presentation.status_bar.layout.sources)
     assert await divider_command(command_loop, "") is None
     assert command_loop.presentation.status_bar.layout.sources == before
+    assert modal.pos == 2
+    assert "ui" not in tomllib.loads(Path(command_loop.session.config.path).read_text())
+
+
+async def test_divider_sweep_cancel_keeps_confirmed_layout(command_loop):
+    modal = command_loop.presentation.tui = BarModal(["j", "enter", "j", "escape"], consumed=True)
+    result = await divider_command(command_loop, "")
+    assert "divider.format: preset:minimal" in result
+    layout = command_loop.presentation.status_bar.layout
+    assert layout.sources["divider"] == "preset:minimal"
+    assert layout.sources["sweep"] == "preset:comet"
     frames = ["".join(fragment[1] for fragment in frame) for frame in modal.frames]
+    assert "Divider › Layout" in frames[0]
     assert any("Divider › Sweep" in frame for frame in frames)
     assert any("Running (preview)" in frame and "Queued (preview)" in frame for frame in frames)
-    assert modal.pos == 5
-
-
-async def test_divider_cascade_can_save_sweep_without_changing_layout(command_loop):
-    command_loop.presentation.tui = BarModal(["j", "enter", "j", "enter"], consumed=True)
-    result = await divider_command(command_loop, "")
-    assert "divider.sweep: preset:scan" in result
-    layout = command_loop.presentation.status_bar.layout
-    assert layout.sources["divider"] == "preset:comet"
-    assert layout.sources["sweep"] == "preset:scan"
+    assert modal.pos == 4
     saved = tomllib.loads(Path(command_loop.session.config.path).read_text())
-    assert saved["ui"]["divider"] == {"sweep": "preset:scan"}
+    assert saved["ui"]["divider"] == {"format": "preset:minimal"}
+
+
+async def test_divider_cascade_saves_layout_then_sweep(command_loop):
+    command_loop.presentation.tui = BarModal(["enter", "j", "enter"], consumed=True)
+    result = await divider_command(command_loop, "")
+    assert "divider.format: preset:comet" in result
+    assert "divider.sweep: preset:scan" in result
+    saved = tomllib.loads(Path(command_loop.session.config.path).read_text())
+    assert saved["ui"]["divider"] == {"format": "preset:comet", "sweep": "preset:scan"}
+
+
+async def test_divider_cascade_can_keep_custom_layout_and_sweep(command_loop):
+    layout = command_loop.presentation.status_bar.layout
+    assert not layout.configure({"divider": "[divider_rule]{fill:─}[/]", "sweep": "0.5"}, Theme.bar_styles)
+    command_loop.presentation.tui = BarModal(["enter", "enter"], consumed=True)
+    result = await divider_command(command_loop, "")
+    assert "saved" in result
+    saved = tomllib.loads(Path(command_loop.session.config.path).read_text())
+    assert saved["ui"]["divider"] == {"format": "[divider_rule]{fill:─}[/]", "sweep": "0.5"}
 
 
 async def test_interrupted_preview_restores_layout_and_stops_animation(command_loop):
@@ -89,19 +108,6 @@ async def test_interrupted_preview_restores_layout_and_stops_animation(command_l
         await pick_layout(command_loop, "divider")
     assert command_loop.presentation.status_bar.layout.sources == before
     assert set(asyncio.all_tasks()) == tasks
-
-
-async def test_reload_failure_keeps_previous_ui_and_does_not_execute_formula(command_loop, tmp_path):
-    await statusbar_command(command_loop, "minimal")
-    path = Path(command_loop.session.config.path)
-    path.write_text('[ui.statusbar]\nformat = "preset:powerline"\n[ui.divider]\nsweep = \'__import__("pathlib").Path("evil").touch()\'\n')
-    result = await divider_command(command_loop, "reload")
-    assert "not reloaded" in result
-    assert command_loop.presentation.status_bar.layout.sources["statusbar"] == "preset:minimal"
-    assert not (tmp_path / "evil").exists()
-    path.write_text('[ui.statusbar]\nformat = "preset:powerline"\n')
-    assert await statusbar_command(command_loop, "reload") == "UI configuration reloaded."
-    assert command_loop.presentation.status_bar.layout.sources["statusbar"] == "preset:powerline"
 
 
 async def test_headless_lists_presets_and_direct_selection_handles_unknown_names(command_loop):

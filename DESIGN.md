@@ -798,7 +798,7 @@ AST allowlist, never `eval` or Python attribute access. Dotted identifiers are e
 fixed field vocabulary. Bound source length, tree size, numeric magnitude and exponent size;
 reject calls outside the small math function set. Interpolated values remain literal, with C0/C1
 terminal controls removed. Theme/style values are validated separately, never concatenated from
-model/provider strings. Failed reloads retain the previous compiled settings. Runtime math errors
+model/provider strings. Invalid updates retain the previous compiled settings. Runtime math errors
 must not break input; the preview reports them and the failed light evaluates to zero.
 
 ## Compaction
