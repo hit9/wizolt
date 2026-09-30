@@ -338,7 +338,7 @@ def test_theme_highlights_are_validated_and_follow_theme_switches(tmp_path, monk
     monkeypatch.setattr(Theme, "_custom", {})
     monkeypatch.setattr(Theme, "_mode", "dark")
     (tmp_path / "mine.toml").write_text(
-        'base = "tokyonight"\n[highlights."status.model"]\nfg = "#123456"\nbg = "#abc"\nbold = true\n[highlights.bad]\nfg = "#fff bg:red"\n'
+        'base = "slate"\n[highlights."status.model"]\nfg = "#123456"\nbg = "#abc"\nbold = true\n[highlights.bad]\nfg = "#fff bg:red"\n'
     )
     problems = Theme.load_custom(str(tmp_path))
     assert len(problems) == 1 and "bad" in problems[0]

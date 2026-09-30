@@ -1492,7 +1492,6 @@ class TuiApp:
             ),
             dont_extend_height=True,
             wrap_lines=True,
-            style=lambda: f"bg:{Theme.color('user_bg')}" if self.input_mode == InputMode.CHAT else "",
         )
         running = Condition(lambda: self.input_mode == InputMode.RUNNING)
         activity = ConditionalContainer(
@@ -1504,7 +1503,7 @@ class TuiApp:
             filter=running,
         )
         running_gap_below = ConditionalContainer(
-            Window(height=1, dont_extend_height=True, style=lambda: f"bg:{Theme.color('user_bg')}"),
+            Window(height=1, dont_extend_height=True),
             filter=running,
         )
         prompt_above = ConditionalContainer(
@@ -1531,22 +1530,22 @@ class TuiApp:
                     input_error,
                     approval_form,
                     ConditionalContainer(
-                        Window(height=Dimension(min=0, preferred=1, max=1), style=lambda: f"bg:{Theme.color('user_bg')}"),
-                        filter=idle & Condition(lambda: not self.idle_divider_fragments_fn()),
+                        Window(height=Dimension(min=0, preferred=1, max=1)),
+                        filter=idle & Condition(lambda: bool(self.idle_divider_fragments_fn())),
                     ),
                     self.input_window,
                     ConditionalContainer(
                         Window(height=Dimension(min=0, preferred=1, max=1), style=lambda: f"bg:{Theme.color('user_bg')}"),
-                        filter=Condition(lambda: self.input_mode in {InputMode.CHAT, InputMode.RUNNING}),
+                        # Short panes need the row for live output. Keep the plain statusbar gap.
+                        filter=Condition(
+                            lambda: self.input_mode in {InputMode.CHAT, InputMode.RUNNING} and (self.app is None or self.app.output.get_size().rows >= 20)
+                        ),
                     ),
                     quick_hints_gap,
                     quick_hints_row,
                     completion_space,
                     self.search_toolbar,
-                    ConditionalContainer(
-                        Window(height=1, dont_extend_height=True),
-                        filter=Condition(lambda: self.input_mode not in {InputMode.CHAT, InputMode.RUNNING}),
-                    ),
+                    Window(height=1, dont_extend_height=True),
                 ]
             ),
             filter=~modal_active,

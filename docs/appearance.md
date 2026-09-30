@@ -7,7 +7,7 @@ For your own colors, define `[ui.themes.my-theme]` in your config or keep a sepa
 See the [copyable examples](appearance-reference.md#define-a-theme-in-your-config).
 
 ```{figure} _static/appearance-picker.svg
-:alt: The appearance picker with gruvbox-dark selected and labeled samples of code, removed and added lines, user messages, replies, tool calls, results and menu selection colors.
+:alt: The appearance picker with slate selected and labeled samples of code, removed and added lines, user messages, replies, tool calls, results and menu selection colors.
 
 One picker for the whole look.
 ```
@@ -28,23 +28,36 @@ see them all. The other tabs preview diff details, the actual statusbar, idle/ru
 dividers and ordinary/follow-up input symbols.
 
 ```{figure} _static/appearance-colors.svg
-:alt: The same Python function in gruvbox-dark, one-dark, desert, tokyonight, catppuccin-dark and kanagawa.
+:alt: The same Python function in dark, slate, forest, sand, plum and dracula.
 
 Six themes, the same code. Preview the others in /theme.
 ```
 
 | Feel | Themes |
 | --- | --- |
-| Warm and retro | `gruvbox-dark`, `gruvbox-light`, `desert` |
-| Quiet and earthy | `zenburn`, `kanagawa`, `everforest` |
-| Bright on dark | `jellybeans`, `one-dark`, `tokyonight` |
-| Soft pastels | `catppuccin-dark`, `catppuccin-light`, `rose-pine-dark`, `rose-pine-light` |
+| Cool blue and cyan | `slate` |
+| Leaf green | `forest` |
+| Amber and warm brown | `sand` |
+| Pink and lavender | `plum` |
+| Quiet ink on light gray | `paper` |
+| Retro orange and olive | `gruvbox-dark` |
+| Cyan and ochre | `solarized-dark` |
+| Bright pink, purple and green | `dracula` |
+| PaperColor's crisp, colorful syntax | `papercolor-light`, `papercolor-dark` |
 | Your terminal's own colors | `auto`, `dark`, `light` |
 
 The default is `auto`. Named themes change wizolt's colors, so choose one that suits your
 terminal's background. Your terminal keeps its own background.
 
-Pick directly with `/theme gruvbox-dark`. Choices are saved for your next session.
+`papercolor` follows your terminal between its light and dark variants. Unknown or removed
+theme names fall back to `dark`; no old-name mapping is applied.
+
+Classic palettes come from [Gruvbox](https://github.com/morhetz/gruvbox),
+[Solarized](https://ethanschoonover.com/solarized/),
+[Dracula](https://spec.draculatheme.com/) and
+[PaperColor](https://github.com/NLKNguyen/papercolor-theme).
+
+Pick directly with `/theme slate`. Choices are saved for your next session.
 
 ## Diff colors
 
@@ -58,7 +71,8 @@ See what changed at a glance.
 ```
 
 Try `classic` for bright red and green, `delta` for deeper colors, or `zebra` for softer ones.
-Tokyo Night uses teal for additions; Rosé Pine uses blue.
+These are the three diff presets. `auto` uses `classic` for every built-in theme;
+your custom theme can override its diff backgrounds.
 
 ## Statusbar and divider
 
@@ -121,7 +135,7 @@ Edit each prefix separately, then return to the list to save.
 You can also choose without opening the picker:
 
 ```text
-/theme gruvbox-dark
+/theme slate
 /theme diff zebra
 /theme statusbar vim
 /theme divider frame

@@ -1,17 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 946 318.4">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 946 294.0">
 <title>Rendered UI sample</title>
 <style>
 .usage-followups-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
-.usage-followups-r1 { fill: #fe8019 }
+.usage-followups-r1 { fill: #e7bf86 }
 .usage-followups-r2 { fill: #abb2bf }
-.usage-followups-r3 { fill: #b8bb26 }
-.usage-followups-r4 { fill: #665c54 }
-.usage-followups-r5 { fill: #8ec07c;font-weight: bold }
-.usage-followups-r6 { fill: #8ec07c }
-.usage-followups-r7 { fill: #ad9d87 }
+.usage-followups-r3 { fill: #82d6bd }
+.usage-followups-r4 { fill: #4a6884 }
+.usage-followups-r5 { fill: #6bb9ff;font-weight: bold }
+.usage-followups-r6 { fill: #6bb9ff }
+.usage-followups-r7 { fill: #91a5b7 }
 </style>
 <defs><clipPath id="usage-followups-clip-terminal">
-<rect width="926.1999999999999" height="267.4"/>
+<rect width="926.1999999999999" height="243.0"/>
 </clipPath><clipPath id="usage-followups-line-0">
     <rect x="0" y="1.5" width="927.2" height="24.65"/>
             </clipPath>
@@ -38,23 +38,19 @@
             </clipPath>
 <clipPath id="usage-followups-line-8">
     <rect x="0" y="196.7" width="927.2" height="24.65"/>
-            </clipPath>
-<clipPath id="usage-followups-line-9">
-    <rect x="0" y="221.1" width="927.2" height="24.65"/>
             </clipPath></defs>
-<rect width="946" height="318.4" rx="8" fill="#282c34"/>
+<rect width="946" height="294.0" rx="8" fill="#282c34"/>
 <text x="18" y="26" fill="#aebac9" font-family="sans-serif" font-size="12" letter-spacing="2">RENDERED UI SAMPLE</text>
 <g transform="translate(9, 41)" clip-path="url(#usage-followups-clip-terminal)">
-<rect fill="#313131" x="0" y="1.5" width="927.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#313131" x="0" y="25.9" width="256.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#313131" x="256.2" y="25.9" width="671" height="24.65" shape-rendering="crispEdges"/><g class="usage-followups-matrix"><text class="usage-followups-r2" x="927.2" y="20" textLength="12.2" clip-path="url(#usage-followups-line-0)">
-</text><text class="usage-followups-r1" x="0" y="44.4" textLength="256.2" clip-path="url(#usage-followups-line-1)">•&#160;Refactor&#160;the&#160;parser</text><text class="usage-followups-r2" x="927.2" y="44.4" textLength="12.2" clip-path="url(#usage-followups-line-1)">
-</text><text class="usage-followups-r2" x="927.2" y="68.8" textLength="12.2" clip-path="url(#usage-followups-line-2)">
-</text><text class="usage-followups-r3" x="24.4" y="93.2" textLength="48.8" clip-path="url(#usage-followups-line-3)">Read</text><text class="usage-followups-r2" x="73.2" y="93.2" textLength="134.2" clip-path="url(#usage-followups-line-3)">&#160;&#160;parser.py</text><text class="usage-followups-r2" x="927.2" y="93.2" textLength="12.2" clip-path="url(#usage-followups-line-3)">
-</text><text class="usage-followups-r2" x="927.2" y="117.6" textLength="12.2" clip-path="url(#usage-followups-line-4)">
-</text><text class="usage-followups-r4" x="0" y="142" textLength="36.6" clip-path="url(#usage-followups-line-5)">───</text><text class="usage-followups-r5" x="48.8" y="142" textLength="488" clip-path="url(#usage-followups-line-5)">working&#160;(12s)&#160;[&#160;1&#160;queued&#160;·&#160;1&#160;next&#160;turn&#160;]</text><text class="usage-followups-r6" x="549" y="142" textLength="12.2" clip-path="url(#usage-followups-line-5)">─</text><text class="usage-followups-r4" x="561.2" y="142" textLength="341.6" clip-path="url(#usage-followups-line-5)">────────────────────────────</text><text class="usage-followups-r2" x="927.2" y="142" textLength="12.2" clip-path="url(#usage-followups-line-5)">
-</text><text class="usage-followups-r2" x="927.2" y="166.4" textLength="12.2" clip-path="url(#usage-followups-line-6)">
-</text><text class="usage-followups-r1" x="0" y="190.8" textLength="280.6" clip-path="url(#usage-followups-line-7)">+&#160;Also&#160;update&#160;the&#160;tests</text><text class="usage-followups-r2" x="927.2" y="190.8" textLength="12.2" clip-path="url(#usage-followups-line-7)">
-</text><text class="usage-followups-r7" x="0" y="215.2" textLength="170.8" clip-path="url(#usage-followups-line-8)">↪&#160;next&#160;turn&#160;·&#160;</text><text class="usage-followups-r1" x="170.8" y="215.2" textLength="268.4" clip-path="url(#usage-followups-line-8)">Then&#160;review&#160;the&#160;README</text><text class="usage-followups-r2" x="927.2" y="215.2" textLength="12.2" clip-path="url(#usage-followups-line-8)">
-</text><text class="usage-followups-r2" x="927.2" y="239.6" textLength="12.2" clip-path="url(#usage-followups-line-9)">
-</text><text class="usage-followups-r5" x="0" y="264" textLength="36.6" clip-path="url(#usage-followups-line-10)">+&gt;&#160;</text><text class="usage-followups-r2" x="36.6" y="264" textLength="12.2" clip-path="url(#usage-followups-line-10)">▏</text><text class="usage-followups-r2" x="927.2" y="264" textLength="12.2" clip-path="url(#usage-followups-line-10)">
+<rect fill="#2d333d" x="0" y="1.5" width="256.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#2d333d" x="256.2" y="1.5" width="671" height="24.65" shape-rendering="crispEdges"/><g class="usage-followups-matrix"><text class="usage-followups-r1" x="0" y="20" textLength="256.2" clip-path="url(#usage-followups-line-0)">•&#160;Refactor&#160;the&#160;parser</text><text class="usage-followups-r2" x="927.2" y="20" textLength="12.2" clip-path="url(#usage-followups-line-0)">
+</text><text class="usage-followups-r2" x="927.2" y="44.4" textLength="12.2" clip-path="url(#usage-followups-line-1)">
+</text><text class="usage-followups-r3" x="24.4" y="68.8" textLength="48.8" clip-path="url(#usage-followups-line-2)">Read</text><text class="usage-followups-r2" x="73.2" y="68.8" textLength="134.2" clip-path="url(#usage-followups-line-2)">&#160;&#160;parser.py</text><text class="usage-followups-r2" x="927.2" y="68.8" textLength="12.2" clip-path="url(#usage-followups-line-2)">
+</text><text class="usage-followups-r2" x="927.2" y="93.2" textLength="12.2" clip-path="url(#usage-followups-line-3)">
+</text><text class="usage-followups-r4" x="0" y="117.6" textLength="36.6" clip-path="url(#usage-followups-line-4)">───</text><text class="usage-followups-r5" x="48.8" y="117.6" textLength="488" clip-path="url(#usage-followups-line-4)">working&#160;(12s)&#160;[&#160;1&#160;queued&#160;·&#160;1&#160;next&#160;turn&#160;]</text><text class="usage-followups-r6" x="549" y="117.6" textLength="12.2" clip-path="url(#usage-followups-line-4)">─</text><text class="usage-followups-r4" x="561.2" y="117.6" textLength="341.6" clip-path="url(#usage-followups-line-4)">────────────────────────────</text><text class="usage-followups-r2" x="927.2" y="117.6" textLength="12.2" clip-path="url(#usage-followups-line-4)">
+</text><text class="usage-followups-r2" x="927.2" y="142" textLength="12.2" clip-path="url(#usage-followups-line-5)">
+</text><text class="usage-followups-r1" x="0" y="166.4" textLength="280.6" clip-path="url(#usage-followups-line-6)">+&#160;Also&#160;update&#160;the&#160;tests</text><text class="usage-followups-r2" x="927.2" y="166.4" textLength="12.2" clip-path="url(#usage-followups-line-6)">
+</text><text class="usage-followups-r7" x="0" y="190.8" textLength="170.8" clip-path="url(#usage-followups-line-7)">↪&#160;next&#160;turn&#160;·&#160;</text><text class="usage-followups-r1" x="170.8" y="190.8" textLength="268.4" clip-path="url(#usage-followups-line-7)">Then&#160;review&#160;the&#160;README</text><text class="usage-followups-r2" x="927.2" y="190.8" textLength="12.2" clip-path="url(#usage-followups-line-7)">
+</text><text class="usage-followups-r2" x="927.2" y="215.2" textLength="12.2" clip-path="url(#usage-followups-line-8)">
+</text><text class="usage-followups-r5" x="0" y="239.6" textLength="36.6" clip-path="url(#usage-followups-line-9)">+&gt;&#160;</text><text class="usage-followups-r2" x="36.6" y="239.6" textLength="12.2" clip-path="url(#usage-followups-line-9)">▏</text><text class="usage-followups-r2" x="927.2" y="239.6" textLength="12.2" clip-path="url(#usage-followups-line-9)">
 </text></g></g>
 </svg>

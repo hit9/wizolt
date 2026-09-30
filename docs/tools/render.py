@@ -146,7 +146,7 @@ class Illustrations:
 
     def appearance_colors(self) -> None:
         rows = []
-        for name in ("gruvbox-dark", "one-dark", "desert", "tokyonight", "catppuccin-dark", "kanagawa"):
+        for name in ("dark", "slate", "forest", "sand", "plum", "dracula"):
             Theme.set_mode(name)
             rows.extend(
                 [
@@ -379,7 +379,7 @@ def main() -> None:
     parser.add_argument("--list", action="store_true", help="list available figure names")
     parser.add_argument("--figure", action="append", choices=RECIPES, help="draw selected figures; repeat to select more (default: all)")
     parser.add_argument("--output-dir", type=Path, default=DOCS / "_static", help="destination for SVG files (default: docs/_static)")
-    parser.add_argument("--theme", choices=sorted(name for name, palette in Theme.BUILTIN.items() if palette.appearance == "dark"), default="gruvbox-dark")
+    parser.add_argument("--theme", choices=sorted(name for name, palette in Theme.BUILTIN.items() if palette.appearance == "dark"), default="slate")
     args = parser.parse_args()
     if args.list:
         print("\n".join(RECIPES))

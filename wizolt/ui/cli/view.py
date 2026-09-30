@@ -527,31 +527,7 @@ class View:
             fragments.extend([*row, ("", "\n")])
         if rows:
             fragments.append(("", "\n"))
-        # The standing divider and queued inputs belong to the input surface. Live model
-        # and tool previews above it keep the terminal background. Fill complete rows so
-        # short labels, blank lines and wide-character wrapping cannot leave dark seams.
-        tui = self.presentation.tui
-        width = max(1, tui.app.output.get_size().columns if tui is not None and tui.app is not None else shutil.get_terminal_size((80, 20)).columns)
-        background = f"bg:{Theme.color('user_bg')}"
-        column = 0
-        for fragment in waiting:
-            style, text = fragment[:2]
-            for char in text:
-                if char == "\n":
-                    fragments.append((background, " " * (width - column) + "\n"))
-                    column = 0
-                    continue
-                char_width = get_cwidth(char)
-                if column + char_width > width:
-                    fragments.append((background, " " * (width - column) + "\n"))
-                    column = 0
-                cell_style = f"{background} {style}"
-                if fragments and fragments[-1][0] == cell_style:
-                    fragments[-1] = (cell_style, fragments[-1][1] + char)
-                else:
-                    fragments.append((cell_style, char))
-                column += char_width
-        fragments.append((background, " " * (width - column)))
+        fragments.extend(waiting)
         return fragments
 
     def model_stream_fragments(self) -> StyleAndTextTuples:

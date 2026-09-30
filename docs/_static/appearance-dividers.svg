@@ -2,15 +2,15 @@
 <title>Rendered UI sample</title>
 <style>
 .appearance-dividers-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
-.appearance-dividers-r1 { fill: #ad9d87 }
+.appearance-dividers-r1 { fill: #91a5b7 }
 .appearance-dividers-r2 { fill: #abb2bf }
-.appearance-dividers-r3 { fill: #665c54 }
-.appearance-dividers-r4 { fill: #b8bb26 }
-.appearance-dividers-r5 { fill: #8ec07c;font-weight: bold }
-.appearance-dividers-r6 { fill: #8ec07c }
-.appearance-dividers-r7 { fill: #6b6959 }
-.appearance-dividers-r8 { fill: #6e705c }
-.appearance-dividers-r9 { fill: #ebdbb2 }
+.appearance-dividers-r3 { fill: #4a6884 }
+.appearance-dividers-r4 { fill: #98c78d }
+.appearance-dividers-r5 { fill: #6bb9ff;font-weight: bold }
+.appearance-dividers-r6 { fill: #6bb9ff }
+.appearance-dividers-r7 { fill: #4e7394 }
+.appearance-dividers-r8 { fill: #51789d }
+.appearance-dividers-r9 { fill: #d7e5f1 }
 </style>
 <defs><clipPath id="appearance-dividers-clip-terminal">
 <rect width="926.1999999999999" height="194.2"/>

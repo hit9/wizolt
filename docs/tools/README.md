@@ -26,7 +26,7 @@ uv run python docs/tools/render.py --list
 uv run python docs/tools/render.py --figure appearance-custom-statusbar
 
 # Preview another theme without replacing published images.
-uv run python docs/tools/render.py --theme one-dark --output-dir /tmp/wizolt-figures
+uv run python docs/tools/render.py --theme slate --output-dir /tmp/wizolt-figures
 
 # Build the documentation.
 uv run make -C docs html
@@ -36,7 +36,7 @@ The script uses the project's Rich and prompt_toolkit dependencies. It uses fixe
 text and a temporary session, without contacting a provider or reading your personal config.
 The clock, terminal size and SVG identifiers are fixed.
 
-## Compare color proposals
+## Compare color presets
 
 `theme_preview.py` builds a standalone HTML comparison using the same message, diff, menu,
 statusbar and divider renderers. Open the generated file in your browser:
@@ -48,15 +48,14 @@ uv run --no-sync python docs/tools/theme_preview.py
 uv run --no-sync python docs/tools/theme_preview.py --output /tmp/theme-preview.html
 ```
 
-The page compares five proposed palettes against their current base themes. Switch the
-statusbar and divider selectors to compare combinations, then mark a favorite. The color
-configuration is available below the comparison. `dark` is an unchanged reference, and
-every sample uses the existing `classic` diff colors. Proposals live in `CANDIDATES` inside
-the script; they are not built-in themes. Regenerate the HTML after changing them.
+The page compares the built-in palettes against default `dark` or `light`. Switch the
+statusbar and divider selectors, then mark a favorite. Copy the configuration shown below
+into your config. Every sample uses the existing `classic` diff colors.
 
-The right panel also proposes single-row input and message backgrounds with space below
-the divider. This is a layout draft; the displayed TOML changes colors and code highlighting.
-The page uses English text and monospace fonts throughout.
+Preset names and captions live in `CANDIDATES`; colors come directly from wizolt.
+Regenerate the HTML after changing palettes or layout. The page uses English text and
+monospace fonts throughout. Messages have no shaded padding; input has a shaded bottom row
+and a plain gap before the statusbar.
 
 The terminal samples have no window decorations: they are assembled rendered examples,
 not session screenshots. SVG preserves full-row backgrounds and Chinese character widths;

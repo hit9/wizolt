@@ -175,7 +175,7 @@ def test_appearance_command_completion():
         return [item.text for item in completer.get_completions(Document(text), None)]
 
     assert "/statusbar" not in COMMAND_NAMES and "/divider" not in COMMAND_NAMES
-    assert "statusbar " in choices("/theme ") and "kanagawa" in choices("/theme ")
+    assert "statusbar " in choices("/theme ") and "plum" in choices("/theme ")
     assert choices("/theme statusbar pow") == ["powerline"]
     assert choices("/theme divider fra") == ["frame"]
     assert choices("/theme sweep aur") == ["aurora"]

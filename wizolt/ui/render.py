@@ -534,9 +534,9 @@ class Theme:
     def load_custom(cls, directory: str, inline: object = None) -> list[str]:
         """Read theme files and configured definitions; return a line for each problem."""
         cls._custom, problems = load_custom(directory, cls.BUILTIN, cls.ROLES, inline)
-        # `runtime.theme` already gives `auto` and each light/dark pair a meaning, so a file by
-        # one of those names could be listed but never chosen.
-        reserved = {name.lower() for name in (cls.AUTO, *cls.pairs())}
+        # Built-ins, `auto` and light/dark pairs already resolve case-insensitively; a custom
+        # name differing only in case could otherwise be listed but never chosen.
+        reserved = {name.lower() for name in (cls.AUTO, *cls.BUILTIN, *cls.pairs())}
         for name in [name for name in cls._custom if name.lower() in reserved]:
             del cls._custom[name]
             source = f"ui.themes.{name}" if isinstance(inline, dict) and name in inline else os.path.join(directory, name + ".toml")
@@ -841,9 +841,8 @@ class Theme:
 
     @classmethod
     def resolve(cls, configured: str) -> str:
-        """The theme to draw for a configured name. `auto`, a pair, and a name nothing has follow
-        the terminal's light or dark background."""
-        name = cls.canonical(configured or "") or cls.AUTO
+        """Resolve explicit auto/pairs against the terminal; unknown names fall back to dark."""
+        name = cls.canonical(configured or "") or "dark"
         if name == cls.AUTO:
             return cls.detect()
         if name in cls.pairs():
@@ -1412,7 +1411,7 @@ class UiPrinter:
             console.print(Rule(style="wizolt.rule", characters="─"))
         margin = LogBlock.margin(indent)
         if role == "user":
-            console.print(Padding(RichText(UiPrinter.USER_LOG_PREFIX + text, style="wizolt.user"), (1, 0, 0, len(margin)), style="wizolt.user"))
+            console.print(Padding(RichText(UiPrinter.USER_LOG_PREFIX + text, style="wizolt.user"), (0, 0, 0, len(margin)), style="wizolt.user"))
         elif role == "assistant":
             content = RichText(styled_text, style="wizolt.error") if error else WizoltMarkdown(styled_text)
             console.print(Padding(content, (0, 0, 0, len(margin))))

@@ -153,8 +153,11 @@ def test_lines_are_held_rather_than_written_over_an_app_that_fills_the_pane(monk
         # Terminal writes precede publication of last_rendered_screen. Read geometry on the
         # application's loop, between renders, rather than racing it from the driver thread.
         await wait_for(lambda: app.app.renderer.last_rendered_screen is not None)
-        output.size = Size(rows=app.app.renderer.last_rendered_screen.height, columns=80)
-        app.app._on_resize()
+        # Input padding collapses in short panes; settle that layout before filling it.
+        while output.size.rows != app.app.layout.container.preferred_height(80, output.size.rows).preferred:
+            output.size = Size(rows=app.app.layout.container.preferred_height(80, output.size.rows).preferred, columns=80)
+            app.app._on_resize()
+            await wait_for(lambda: app.app.renderer._last_size == output.size)
 
     def drive(_pipe_input):
         wait_until(lambda: any(line.startswith(UiPrinter.PROMPT_PREFIX) for line in output.lines))

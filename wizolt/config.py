@@ -631,7 +631,7 @@ model = ""
                                  # fallback), repository root down to cwd, under one shared budget
 
 # [ui.themes.mine]             # optional: define a theme here, or in <data_dir>/themes/mine.toml
-# base = "one-dark"            # choose with /theme mine; restart after editing inline definitions
+# base = "slate"               # choose with /theme mine; restart after editing inline definitions
 # [ui.themes.mine.colors]
 # user = "#f2c97d"
 # tool = "#8bd5ca"

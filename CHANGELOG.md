@@ -2,18 +2,28 @@
 
 ## Unreleased
 
+### Changed
+
+- Replace the broad theme collection with distinct `slate`, `forest`, `sand`, `plum` and
+  `paper` presets, plus Gruvbox Dark, Solarized Dark, Dracula and PaperColor light/dark.
+  Preserve the default `dark` palette. Unknown or removed names fall back to `dark`,
+  without compatibility aliases; explicit `auto` still follows the terminal.
+- Reduce diff choices to `auto`, `classic`, `delta` and `zebra`. All built-in themes default
+  to the unchanged classic diff colors. Custom theme files and inline overrides remain supported.
+
 ### Documentation
 
-- Add a standalone HTML color comparison and reusable generator with five palette proposals,
-  existing-theme comparisons, statusbar and divider selectors, and copyable color settings.
-  Keep the default dark palette and classic diff colors unchanged.
+- Add an English, monospace HTML comparison of actual presets with statusbar and divider
+  selectors and copyable settings. Keep its reusable generator under `docs/tools/` and
+  refresh the appearance guide, examples and illustrations.
 
 ### Fixed
 
-- Join the input divider and padded input background into a continuous band; use whitespace
-  below sent user messages instead of an additional separator. Named themes use subtler
-  neutral background shading, with `user_bg` overrides retained. Reduce the shaded height
-  by removing user messages' bottom padding and sharing idle input top spacing with the divider.
+- Keep message backgrounds to text rows. Give input one shaded bottom row and a plain gap
+  before the statusbar; keep another plain row between divider and input. Use whitespace
+  below sent messages instead of an extra separator. Preserve configurable `user_bg` colors
+  and keep live output and queued messages off the input band.
+- Reject custom theme names that differ from a built-in only in case.
 
 - Send actual Space and Tab bytes in the Zellij test adapter; the appearance acceptance test's
   "pin this layout" and "jump groups" presses were being typed as text, so its cycle that saves

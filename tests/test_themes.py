@@ -26,9 +26,9 @@ from wizolt.ui.tui.app import TuiApp
 from wizolt.utils import terminal
 
 # 24-bit SGR parameters for colors the tests switch between.
-GRUVBOX_RED = "38;2;249;88;65"  # gruvbox-dark `error`, lifted for text contrast
-GRUVBOX_GRAY = "38;2;146;131;116"  # gruvbox-dark `rule`
-KANAGAWA_RED = "38;2;228;104;118"  # kanagawa `error`
+SAND_RED = "38;2;243;151;126"  # sand `error`, lifted for text contrast
+SAND_GRAY = "38;2;178;160;135"  # sand `rule`
+PLUM_RED = "38;2;243;148;176"  # plum `error`
 
 CONFIG = """# my own notes
 [runtime]
@@ -139,7 +139,7 @@ def test_named_themes_footer_reads_on_its_band_and_off_it_and_the_divider_keeps_
         assert Theme.BUILTIN[name].colors["divider_label"] == Theme.BUILTIN[name].colors["accent_secondary"]
 
 
-@pytest.mark.parametrize("theme", ["dark", "light", "tokyonight", "desert"])
+@pytest.mark.parametrize("theme", ["dark", "light", "forest", "sand"])
 def test_a_status_band_belongs_to_the_preset_not_the_theme(theme):
     from wizolt.ui.bars import FIELDS, STATUS_PRESETS, Template
 
@@ -160,7 +160,7 @@ def test_a_status_band_belongs_to_the_preset_not_the_theme(theme):
 def test_powerline_joins_fade_into_the_status_band(tmp_path):
     from tui_harness import loop
 
-    Theme.set_mode("kanagawa")
+    Theme.set_mode("plum")
     bar = loop(tmp_path).presentation.status_bar
     assert not bar.layout.configure({"statusbar": "preset:powerline"}, Theme.bar_styles)
     joins = [style for style, text in bar.fragments() if text in ("", "")]
@@ -169,13 +169,14 @@ def test_powerline_joins_fade_into_the_status_band(tmp_path):
     assert all("bg:default" not in style for style, _ in bar.fragments())
 
 
-@pytest.mark.parametrize(("name", "appearance"), [("tokyonight", "dark"), ("everforest", "dark"), ("catppuccin-light", "light")])
+@pytest.mark.parametrize(("name", "appearance"), [(name, palette.appearance) for name, palette in BUILTIN.items()])
 async def test_new_themes_switch_save_and_preview(tmp_path, name, appearance):
     command_loop = themed_loop(tmp_path)
     await theme_command(command_loop, name)
 
     assert Theme.name() == name
-    assert Theme.palette()["pygments"] == name
+    assert Theme.palette()["pygments"] == BUILTIN[name].colors["pygments"]
+    assert Theme.pygments_style() is not None
     assert f'theme = "{name}"' in (tmp_path / "config.toml").read_text()
     preview = theme_preview(name)
     text = "".join(text for _, text in preview)
@@ -189,35 +190,37 @@ async def test_new_themes_switch_save_and_preview(tmp_path, name, appearance):
 
 def test_menu_descriptions_take_the_menu_text_color(tmp_path):
     view = loop(tmp_path).view
-    Theme.set_mode("one-dark")
+    Theme.set_mode("slate")
     style = view.style()
 
     for name in ("completion-menu.meta.completion", "completion-menu.hint"):
         assert "#" + style.get_attrs_for_style_str("class:" + name).color == Theme.color("menu_muted"), name
 
 
-def test_themes_resolve_by_name_and_fall_back_to_the_terminal_default(monkeypatch):
-    assert Theme.resolve("gruvbox-dark") == "gruvbox-dark"
-    assert Theme.resolve(" Kanagawa ") == "kanagawa"
+def test_themes_resolve_by_name_and_fall_back_to_dark(monkeypatch):
+    assert Theme.resolve("sand") == "sand"
+    assert Theme.resolve(" Plum ") == "plum"
     assert Theme.resolve("auto") == "dark"
     assert Theme.resolve("gruvbx") == "dark"
     monkeypatch.setenv("COLORFGBG", "0;15")
-    assert Theme.resolve("gruvbx") == "light"
+    assert Theme.resolve("gruvbx") == "dark"
+    assert Theme.resolve("one-dark") == "dark"
+    assert Theme.resolve("default") == "dark"
+    assert Theme.resolve("auto") == "light"
 
 
 def test_a_light_and_dark_pair_follows_the_terminal(monkeypatch, tmp_path):
-    assert Theme.resolve("Gruvbox") == "gruvbox-dark"
-    monkeypatch.setattr(terminal, "background", lambda: (253, 246, 227))
-    assert Theme.resolve("gruvbox") == "gruvbox-light"
-    assert Theme.resolve("catppuccin") == "catppuccin-light"
-    assert Theme.resolve("rose-pine") == "rose-pine-light"
-    assert "kanagawa" not in Theme.pairs()  # no light variant to follow into
-    write_theme(tmp_path, "mine-dark", 'base = "kanagawa"\n')
-    write_theme(tmp_path, "mine-light", 'base = "gruvbox-light"\n')
+    assert Theme.resolve("papercolor") == "papercolor-dark"
+    assert "plum" not in Theme.pairs()
+    write_theme(tmp_path, "mine-dark", 'base = "plum"\n')
+    write_theme(tmp_path, "mine-light", 'base = "paper"\n')
     Theme.load_custom(str(tmp_path))
+    assert Theme.resolve("mine") == "mine-dark"
+    monkeypatch.setattr(terminal, "background", lambda: (253, 246, 227))
     assert Theme.resolve("mine") == "mine-light"
+    assert Theme.resolve("papercolor") == "papercolor-light"
     # Pairs resolve by name without a row of their own in the menu.
-    assert Theme.choices()[:5] == ("auto", "dark", "light", "gruvbox-dark", "gruvbox-light")
+    assert Theme.choices()[:5] == ("auto", "dark", "light", "slate", "forest")
     assert Theme.canonical("Mine") == "mine" and "mine" not in Theme.choices()
 
 
@@ -225,9 +228,9 @@ def test_configure_reports_an_unknown_theme_and_draws_the_default(tmp_path):
     problems = Theme.configure("gruvbx", str(tmp_path))
 
     assert Theme.name() == "dark"
-    assert len(problems) == 1 and "unknown theme `gruvbx`" in problems[0] and "gruvbox-dark" in problems[0]
-    assert Theme.configure("kanagawa", str(tmp_path)) == []
-    assert Theme.name() == "kanagawa"
+    assert len(problems) == 1 and "unknown theme `gruvbx`" in problems[0] and "sand" in problems[0]
+    assert Theme.configure("plum", str(tmp_path)) == []
+    assert Theme.name() == "plum"
 
 
 @pytest.mark.asyncio
@@ -238,14 +241,14 @@ async def test_inline_theme_starts_and_switches_without_losing_file_themes(tmp_p
     data = {
         "ui": {
             "themes": {
-                "mine": {"base": "one-dark", "colors": {"user": "#abc"}, "diff": {"added": "#123456"}, "highlights": {"badge": {"fg": "#fff", "bold": True}}}
+                "mine": {"base": "slate", "colors": {"user": "#abc"}, "diff": {"added": "#123456"}, "highlights": {"badge": {"fg": "#fff", "bold": True}}}
             }
         }
     }
     command_loop.session.config.ui = Config.from_dict(data).ui
     directory = command_loop.session.data_path("themes")
-    write_theme(directory, "mine", 'base = "kanagawa"\n[colors]\nuser = "#000"\n')
-    write_theme(directory, "legacy", 'base = "kanagawa"\n')
+    write_theme(directory, "mine", 'base = "plum"\n[colors]\nuser = "#000"\n')
+    write_theme(directory, "legacy", 'base = "plum"\n')
 
     command_loop.configure_theme()
     assert Theme.name() == "mine"
@@ -262,7 +265,7 @@ async def test_inline_theme_starts_and_switches_without_losing_file_themes(tmp_p
 
 def test_inline_themes_work_without_a_theme_directory_and_report_bad_entries(tmp_path):
     inline = {
-        "mine": {"base": "one-dark", "colors": {"user": "#abc", "tool": "invalid"}},
+        "mine": {"base": "slate", "colors": {"user": "#abc", "tool": "invalid"}},
         "bad-base": {"base": "missing"},
         "bad-shape": "wrong",
         "dark": {},
@@ -271,7 +274,7 @@ def test_inline_themes_work_without_a_theme_directory_and_report_bad_entries(tmp
     problems = Theme.configure("mine", str(tmp_path / "absent"), inline)
     assert Theme.name() == "mine"
     assert Theme.color("user") == "#aabbcc"
-    assert Theme.color("tool") == Theme.BUILTIN["one-dark"].colors["tool"]
+    assert Theme.color("tool") == Theme.BUILTIN["slate"].colors["tool"]
     for name in ("mine", "bad-base", "bad-shape", "dark", "auto"):
         assert any(f"ui.themes.{name}" in problem for problem in problems)
     assert set(Theme.themes()) - set(Theme.BUILTIN) == {"mine"}
@@ -279,16 +282,16 @@ def test_inline_themes_work_without_a_theme_directory_and_report_bad_entries(tmp
 
 
 def test_invalid_inline_theme_keeps_same_named_file(tmp_path):
-    write_theme(tmp_path, "mine", 'base = "kanagawa"\n')
+    write_theme(tmp_path, "mine", 'base = "plum"\n')
     problems = Theme.configure("mine", str(tmp_path), {"mine": {"base": "missing"}})
     assert any("ui.themes.mine" in problem for problem in problems)
-    assert Theme.color("user") == Theme.BUILTIN["kanagawa"].colors["user"]
+    assert Theme.color("user") == Theme.BUILTIN["plum"].colors["user"]
 
 
 @pytest.mark.parametrize("role", ["status_base", "divider_label", "warning", "error", "status_bg", "menu_bg", "accent", "syntax_default"])
 @pytest.mark.parametrize("color", ["ansicyan", "default"])
 def test_custom_terminal_colors_render_bars_and_file_picker(tmp_path, role, color):
-    write_theme(tmp_path, "mine", f'base = "one-dark"\n[colors]\n{role} = "{color}"\n')
+    write_theme(tmp_path, "mine", f'base = "slate"\n[colors]\n{role} = "{color}"\n')
     assert Theme.configure("mine", str(tmp_path)) == []
     assert Theme.color(role) == color
     # Both adapters adjust contrast for named bases, but terminal-owned colors have no
@@ -306,14 +309,14 @@ def test_invalid_diff_config_reports_a_problem_instead_of_crashing(value):
 
 
 def test_a_theme_file_overrides_roles_on_its_base(tmp_path):
-    write_theme(tmp_path, "mine", 'base = "kanagawa"\npygments = "dracula"\n[colors]\naccent = "#AbC"\nerror = "ansired"\n')
+    write_theme(tmp_path, "mine", 'base = "plum"\npygments = "dracula"\n[colors]\naccent = "#AbC"\nerror = "ansired"\n')
 
     assert Theme.load_custom(str(tmp_path)) == []
     Theme.set_mode("mine")
 
     assert Theme.color("accent") == "#aabbcc"
     assert Theme.color("error") == "ansired"
-    assert Theme.color("tool") == Theme.BUILTIN["kanagawa"].colors["tool"]
+    assert Theme.color("tool") == Theme.BUILTIN["plum"].colors["tool"]
     assert Theme.appearance() == "dark"
     assert Theme.palette()["pygments"] == "dracula"
 
@@ -322,10 +325,10 @@ def test_theme_file_mistakes_are_reported_and_the_rest_of_the_file_applies(tmp_p
     write_theme(
         tmp_path,
         "rough",
-        'base = "kanagawa"\npygments = "no-such-style"\nextra = 1\n[colors]\naccent = "teal-ish"\ndivider_glow = "ansicyan"\nnope = "#fff"\nsuccess = "#00ff00"\n',
+        'base = "plum"\npygments = "no-such-style"\nextra = 1\n[colors]\naccent = "teal-ish"\ndivider_glow = "ansicyan"\nnope = "#fff"\nsuccess = "#00ff00"\n',
     )
     write_theme(tmp_path, "broken", "base = ")
-    write_theme(tmp_path, "gruvbox-dark", 'base = "dark"\n')
+    write_theme(tmp_path, "sand", 'base = "dark"\n')
     write_theme(tmp_path, "orphan", 'base = "no-such-base"\n')
 
     problems = Theme.load_custom(str(tmp_path))
@@ -333,7 +336,7 @@ def test_theme_file_mistakes_are_reported_and_the_rest_of_the_file_applies(tmp_p
     assert set(Theme.themes()) - set(Theme.BUILTIN) == {"rough"}
     for expected in (
         "broken.toml",
-        "`gruvbox-dark` is a built-in",
+        "`sand` is a built-in",
         "base must be one of",
         "no-such-style",
         "extra",
@@ -343,9 +346,9 @@ def test_theme_file_mistakes_are_reported_and_the_rest_of_the_file_applies(tmp_p
     ):
         assert any(expected in problem for problem in problems), expected
     Theme.set_mode("rough")
-    base = Theme.BUILTIN["kanagawa"].colors
+    base = Theme.BUILTIN["plum"].colors
     assert Theme.color("success") == "#00ff00"
-    assert (Theme.color("accent"), Theme.color("divider_glow"), Theme.palette()["pygments"]) == (base["accent"], base["divider_glow"], "kanagawa")
+    assert (Theme.color("accent"), Theme.color("divider_glow"), Theme.palette()["pygments"]) == (base["accent"], base["divider_glow"], "dracula")
 
 
 def test_a_theme_file_can_recolor_the_diff_bands(tmp_path):
@@ -374,12 +377,12 @@ def test_recorded_rows_replay_as_captured_until_the_theme_changes_then_redraw_in
     line, rule = recorded
 
     captured = line(80)
-    assert captured == str(line) and "boom" in captured and GRUVBOX_RED not in captured
-    Theme.set_mode("gruvbox-dark")
+    assert captured == str(line) and "boom" in captured and SAND_RED not in captured
+    Theme.set_mode("sand")
 
-    assert GRUVBOX_RED in line(80) and "boom" in line(80)
+    assert SAND_RED in line(80) and "boom" in line(80)
     assert str(line) == captured, "the capture itself is what text readers of the transcript see"
-    assert GRUVBOX_GRAY in rule(80)
+    assert SAND_GRAY in rule(80)
 
 
 def test_transcript_rows_share_one_style_per_theme(monkeypatch):
@@ -393,10 +396,10 @@ def test_transcript_rows_share_one_style_per_theme(monkeypatch):
         for _ in range(count):
             UiPrinter.render_to_ansi([FormattedText([(Theme.fg("error"), "boom\n")])], 80, color_depth=ColorDepth.DEPTH_8_BIT)
 
-    Theme.set_mode("kanagawa")
+    Theme.set_mode("plum")
     render_rows(3)
     assert len(merges) == 1
-    Theme.set_mode("tokyonight")
+    Theme.set_mode("forest")
     render_rows(3)
     assert len(merges) == 2
 
@@ -441,16 +444,16 @@ def test_named_themes_draw_exact_colors_on_a_true_color_terminal(monkeypatch):
     row = recorded_row(Theme.fg("user"))
 
     assert "38;2;" not in row(80) and "boom" in row(80)
-    Theme.set_mode("gruvbox-dark")
-    assert "38;2;254;128;25" in row(80)  # gruvbox orange, not its nearest 256-color neighbour
+    Theme.set_mode("sand")
+    assert "38;2;255;196;109" in row(80)  # sand amber, not its nearest 256-color neighbour
     monkeypatch.setenv("COLORTERM", "")
-    Theme.set_mode("gruvbox-dark")
+    Theme.set_mode("sand")
     assert "38;2;" not in row(80)
 
 
 def test_a_theme_file_draws_at_its_bases_depth(monkeypatch, tmp_path):
     monkeypatch.setenv("COLORTERM", "truecolor")
-    write_theme(tmp_path, "warm", 'base = "gruvbox-dark"\n[colors]\naccent = "#abcdef"\n')
+    write_theme(tmp_path, "warm", 'base = "sand"\n[colors]\naccent = "#abcdef"\n')
     write_theme(tmp_path, "plain", 'base = "dark"\n[colors]\naccent = "#abcdef"\n')
     Theme.load_custom(str(tmp_path))
 
@@ -472,10 +475,10 @@ def test_a_diff_style_other_than_classic_draws_exact_colors_under_the_default_th
 @pytest.mark.parametrize(
     ("theme", "diff_style", "env", "warned"),
     [
-        ("kanagawa", "auto", {}, "theme kanagawa"),
+        ("plum", "auto", {}, "theme plum"),
         ("dark", "delta", {}, "diff style delta"),
-        ("kanagawa", "auto", {"COLORTERM": "truecolor"}, ""),
-        ("kanagawa", "auto", {"PROMPT_TOOLKIT_COLOR_DEPTH": "DEPTH_8_BIT"}, ""),
+        ("plum", "auto", {"COLORTERM": "truecolor"}, ""),
+        ("plum", "auto", {"PROMPT_TOOLKIT_COLOR_DEPTH": "DEPTH_8_BIT"}, ""),
         # `classic` survives rounding, so the terminal-following themes never need true color.
         ("dark", "auto", {}, ""),
     ],
@@ -493,13 +496,13 @@ def test_exact_colors_on_a_terminal_without_true_color_are_warned_about(monkeypa
 
 
 async def test_the_true_color_warning_shows_at_startup_and_after_theme(tmp_path):
-    command_loop = themed_loop(tmp_path, "kanagawa")
+    command_loop = themed_loop(tmp_path, "plum")
     command_loop.configure_theme()
     assert any("COLORTERM" in problem for problem in command_loop.theme_problems)
 
     command_loop.presentation.tui = ThemeModal([])
-    result = await theme_command(command_loop, "tokyonight")
-    assert "The theme tokyonight is drawn in exact colors" in result
+    result = await theme_command(command_loop, "forest")
+    assert "The theme forest is drawn in exact colors" in result
 
 
 def test_the_app_draws_at_the_depth_the_theme_asks_for(monkeypatch):
@@ -510,7 +513,7 @@ def test_the_app_draws_at_the_depth_the_theme_asks_for(monkeypatch):
     def drive(_pipe_input):
         wait_until(lambda: app.app is not None and app.app.is_running)
         depths.append(app.app.color_depth)
-        Theme.set_mode("kanagawa")
+        Theme.set_mode("plum")
         depths.append(app.app.color_depth)
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
@@ -533,7 +536,7 @@ def test_transcript_rows_resolve_each_style_string_once(monkeypatch):
         return merged
 
     monkeypatch.setattr(render_module, "merge_styles", counting_merge)
-    Theme.set_mode("kanagawa")
+    Theme.set_mode("plum")
     for _ in range(3):
         UiPrinter.render_to_ansi([FormattedText([(Theme.fg("tool"), "Read "), (Theme.fg("muted"), "a.py\n")])], 80, color_depth=ColorDepth.DEPTH_8_BIT)
 
@@ -569,8 +572,8 @@ def test_recolor_redraws_the_transcript_in_the_new_theme_without_a_width_change(
         wait_until(lambda: any(line.startswith(UiPrinter.PROMPT_PREFIX) for line in output.lines))
         app.app.loop.call_soon_threadsafe(printer.print_parts, [FormattedText([(Theme.fg("error"), "boom\n")])])
         wait_until(lambda: "boom" in "".join(app.scrollback.transcript))
-        switch("kanagawa", KANAGAWA_RED)
-        switch("gruvbox-dark", GRUVBOX_RED)
+        switch("plum", PLUM_RED)
+        switch("sand", SAND_RED)
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(
@@ -586,22 +589,24 @@ async def test_theme_by_name_switches_redraws_and_saves_keeping_the_config_comme
     command_loop = themed_loop(tmp_path)
     tui = command_loop.presentation.tui = ThemeModal([])
 
-    result = await theme_command(command_loop, "Gruvbox-Dark")
+    result = await theme_command(command_loop, "Sand")
 
-    assert Theme.name() == "gruvbox-dark" and command_loop.session.settings.theme == "gruvbox-dark"
+    assert Theme.name() == "sand" and command_loop.session.settings.theme == "sand"
     assert tui.recolored == 1
     assert "saved as runtime.theme" in result
-    assert (tmp_path / "config.toml").read_text() == CONFIG.replace('"auto"', '"gruvbox-dark"')
+    assert (tmp_path / "config.toml").read_text() == CONFIG.replace('"auto"', '"sand"')
 
 
 async def test_a_pair_is_saved_as_the_pair_so_the_next_terminal_can_differ(tmp_path):
     command_loop = themed_loop(tmp_path)
     command_loop.presentation.tui = ThemeModal([])
 
-    await theme_command(command_loop, "gruvbox")
+    write_theme(command_loop.session.data_path("themes"), "mine-dark", 'base = "sand"\n')
+    write_theme(command_loop.session.data_path("themes"), "mine-light", 'base = "paper"\n')
+    await theme_command(command_loop, "mine")
 
-    assert Theme.name() == "gruvbox-dark"
-    assert 'theme = "gruvbox"' in (tmp_path / "config.toml").read_text()
+    assert Theme.name() == "mine-dark"
+    assert 'theme = "mine"' in (tmp_path / "config.toml").read_text()
 
 
 async def test_an_unknown_theme_name_changes_nothing(tmp_path):
@@ -610,76 +615,76 @@ async def test_an_unknown_theme_name_changes_nothing(tmp_path):
 
     result = await theme_command(command_loop, "gruvbx")
 
-    assert result.startswith("Unknown theme: gruvbx.") and "gruvbox-dark" in result
+    assert result.startswith("Unknown theme: gruvbx.") and "sand" in result
     assert Theme.name() == "dark" and tui.recolored == 0
     assert (tmp_path / "config.toml").read_text() == CONFIG
 
 
 async def test_without_a_picker_theme_lists_the_themes_and_marks_the_configured_one(tmp_path):
-    command_loop = themed_loop(tmp_path, "kanagawa")
+    command_loop = themed_loop(tmp_path, "plum")
     command_loop.interactive_input = False
 
     listing = (await theme_command(command_loop, "")).splitlines()
 
     assert listing[0] == "  auto"
-    assert "* kanagawa" in listing and "  gruvbox-dark" in listing
+    assert "* plum" in listing and "  sand" in listing
 
 
 async def test_the_picker_applies_each_row_it_lands_on_and_escape_restores_the_theme(tmp_path):
-    command_loop = themed_loop(tmp_path, "one-dark")
-    Theme.set_mode("one-dark")
+    command_loop = themed_loop(tmp_path, "slate")
+    Theme.set_mode("slate")
     command_loop.interactive_input = True
     tui = command_loop.presentation.tui = ThemeModal(["j", "j", "escape"])
 
     assert await theme_command(command_loop, "") is None
 
     # A pair row draws the variant the terminal gets.
-    assert tui.painted == ["tokyonight", "catppuccin-dark", "one-dark"]
-    assert Theme.name() == "one-dark" and tui.recolored == 0
-    assert (tmp_path / "config.toml").read_text() == CONFIG.replace('"auto"', '"one-dark"')
-    # The preview is drawn in the row's theme: the user row in tokyonight's orange on its frame.
+    assert tui.painted == ["forest", "sand", "slate"]
+    assert Theme.name() == "slate" and tui.recolored == 0
+    assert (tmp_path / "config.toml").read_text() == CONFIG.replace('"auto"', '"slate"')
+    # The preview is drawn in the row's theme: the user row in forest's orange on its frame.
     assert any("split_words" in text for _, text in tui.frames[1])
 
 
 async def test_the_picker_restores_the_theme_when_interrupted(tmp_path):
-    command_loop = themed_loop(tmp_path, "one-dark")
-    Theme.set_mode("one-dark")
+    command_loop = themed_loop(tmp_path, "slate")
+    Theme.set_mode("slate")
     command_loop.interactive_input = True
     command_loop.presentation.tui = ThemeModal(["j", "c-c"])
 
     with pytest.raises(KeyboardInterrupt):
         await theme_command(command_loop, "")
 
-    assert Theme.name() == "one-dark"
+    assert Theme.name() == "slate"
 
 
 async def test_enter_keeps_the_previewed_theme_and_saves_it(tmp_path):
-    command_loop = themed_loop(tmp_path, "one-dark")
-    Theme.set_mode("one-dark")
+    command_loop = themed_loop(tmp_path, "slate")
+    Theme.set_mode("slate")
     command_loop.interactive_input = True
     tui = command_loop.presentation.tui = ThemeModal(["j", "enter"], consumed=True)
 
     result = await theme_command(command_loop, "")
 
-    assert Theme.name() == "tokyonight" and tui.recolored == 1 and Theme.selected_diff_style() == "auto"
-    assert result.startswith("Theme: tokyonight (saved")
-    assert 'theme = "tokyonight"' in (tmp_path / "config.toml").read_text()
+    assert Theme.name() == "forest" and tui.recolored == 1 and Theme.selected_diff_style() == "auto"
+    assert result.startswith("Theme: forest (saved")
+    assert 'theme = "forest"' in (tmp_path / "config.toml").read_text()
 
 
 async def test_the_theme_tabs_save_both_colorscheme_and_diff(tmp_path):
-    command_loop = themed_loop(tmp_path, "one-dark")
-    Theme.set_mode("one-dark")
+    command_loop = themed_loop(tmp_path, "slate")
+    Theme.set_mode("slate")
     command_loop.interactive_input = True
-    # Theme: one-dark -> tokyonight. Diff colors: auto -> tokyonight's own, the first style listed.
+    # Theme: slate -> forest. Diff colors: auto -> forest's own, the first style listed.
     tui = command_loop.presentation.tui = ThemeModal(["j", "right", "j", "enter"], consumed=True)
 
     result = await theme_command(command_loop, "")
 
-    assert Theme.name() == "tokyonight" and Theme.selected_diff_style() == "tokyonight"
-    assert "Theme: tokyonight (saved" in result and "Diff colors: tokyonight (saved as ui.diff.style" in result
+    assert Theme.name() == "forest" and Theme.selected_diff_style() == "classic"
+    assert "Theme: forest (saved" in result and "Diff colors: classic (saved as ui.diff.style" in result
     config = (tmp_path / "config.toml").read_text()
-    assert 'theme = "tokyonight"' in config and '[ui.diff]\nstyle = "tokyonight"' in config
-    assert command_loop.session.config.ui["diff"] == {"style": "tokyonight"}
+    assert 'theme = "forest"' in config and '[ui.diff]\nstyle = "classic"' in config
+    assert command_loop.session.config.ui["diff"] == {"style": "classic"}
     # One redraw for both choices, after the second.
     assert tui.recolored == 1
     # The preview is drawn in the focused style's changed-word band.
@@ -687,16 +692,16 @@ async def test_the_theme_tabs_save_both_colorscheme_and_diff(tmp_path):
 
 
 async def test_escape_on_the_diff_tab_restores_all_changes(tmp_path):
-    command_loop = themed_loop(tmp_path, "one-dark")
-    Theme.set_mode("one-dark")
+    command_loop = themed_loop(tmp_path, "slate")
+    Theme.set_mode("slate")
     command_loop.interactive_input = True
     tui = command_loop.presentation.tui = ThemeModal(["j", "l", "j", "escape"], consumed=True)
 
     result = await theme_command(command_loop, "")
 
     assert result is None
-    assert Theme.name() == "one-dark" and Theme.selected_diff_style() == "auto"
-    assert (tmp_path / "config.toml").read_text() == CONFIG.replace('"auto"', '"one-dark"')
+    assert Theme.name() == "slate" and Theme.selected_diff_style() == "auto"
+    assert (tmp_path / "config.toml").read_text() == CONFIG.replace('"auto"', '"slate"')
     assert tui.recolored == 0
 
 
@@ -705,93 +710,47 @@ async def test_theme_by_name_leaves_the_diff_colors_alone(tmp_path):
     command_loop.presentation.tui = ThemeModal([])
     Theme.set_diff_style("classic")
 
-    result = await theme_command(command_loop, "kanagawa")
+    result = await theme_command(command_loop, "plum")
 
     assert "Diff colors" not in result and Theme.diff_style_name() == "classic"
 
 
-def test_auto_diff_colors_follow_each_themes_pairing():
-    # The terminal-following themes keep the colors they always had; every named scheme its own.
-    assert {name: palette.diff_style for name, palette in Theme.BUILTIN.items()} == {
-        "dark": "classic",
-        "light": "classic",
-        "gruvbox-dark": "gruvbox",
-        "gruvbox-light": "gruvbox",
-        "one-dark": "one-dark",
-        "tokyonight": "tokyonight",
-        "catppuccin-dark": "catppuccin",
-        "catppuccin-light": "catppuccin",
-        "kanagawa": "kanagawa",
-        "rose-pine-dark": "rose-pine",
-        "rose-pine-light": "rose-pine",
-        "everforest": "everforest",
-        # desert marks deletions magenta and zenburn grey, so they take red-and-green styles.
-        "desert": "classic",
-        "zenburn": "delta",
-        "jellybeans": "jellybeans",
-    }
-    for name, palette in Theme.BUILTIN.items():
+def test_builtin_palettes_use_classic_by_default_and_all_diff_choices_support_both_appearances():
+    assert set(BUILTIN) == {"slate", "forest", "sand", "plum", "paper", "gruvbox-dark", "solarized-dark", "dracula", "papercolor-light", "papercolor-dark"}
+    assert set(DIFF_STYLES) == {"classic", "delta", "zebra"}
+    for name in Theme.BUILTIN:
         Theme.set_mode(name)
-        # Every pairing was made for its theme's appearance, and draws all four bands.
-        assert Theme.diff_style_name() == palette.diff_style, name
-        assert set(Theme.diff_bands(palette.diff_style) or {}) == {"diff.added.bg", "diff.added.emph", "diff.removed.bg", "diff.removed.emph"}, name
-    # As their Neovim sources draw DiffAdd and DiffDelete.
-    Theme.set_mode("tokyonight")
-    assert (Theme.diff_style("diff.added.bg"), Theme.diff_style("diff.removed.bg")) == ("bg:#243e4a", "bg:#4a272f")
-    Theme.set_mode("kanagawa")
-    assert (Theme.diff_style("diff.added.bg"), Theme.diff_style("diff.removed.bg")) == ("bg:#2b3328", "bg:#43242b")
-    Theme.set_diff_style("classic")
-    assert Theme.diff_style("diff.added.bg") == Theme.DIFF_DARK["diff.added.bg"]
+        Theme.set_diff_style("auto")
+        assert Theme.diff_style_name() == "classic"
+        assert Theme.diff_styles() == ("auto", "classic", "delta", "zebra")
+        for style in DIFF_STYLES:
+            Theme.set_diff_style(style)
+            assert Theme.diff_style_name() == style
+            for side in ("added", "removed"):
+                assert Theme.diff_style(f"diff.{side}.bg") != Theme.diff_style(f"diff.{side}.emph")
+    assert Theme.configure_diff_style({"diff": {"style": "tokyonight"}})
+    assert Theme.selected_diff_style() == "auto"
 
 
-@pytest.mark.parametrize("name", [name for name, palette in BUILTIN.items() if palette.syntax is not None])
-def test_markdown_code_blocks_draw_plain_text_in_the_schemes_foreground(name):
-    """An indented draft in a reply came out black on tokyonight's dark background: Rich looked
-    the generated style up by name, found none in Pygments, and fell back to its light default;
-    and a token without a color is drawn black."""
+@pytest.mark.parametrize("name", ("slate", "forest", "sand", "plum"))
+def test_markdown_code_blocks_on_dark_themes_do_not_fall_back_to_black(name):
     from wizolt.ui import markdown as markdown_module
 
     Theme.set_mode(name)
     console = markdown_module.markdown_console(60)
     with console.capture() as capture:
         console.print(markdown_module.WizoltMarkdown("A draft:\n\n    feat: plain words\n\n```python\nx = 1\n```\n"))
-    fg = BUILTIN[name].colors["syntax_default"]
-    rendered = capture.get()
-    assert not re.search(r"38;2;0;0;0[;m]", rendered)
-    assert re.search("38;2;" + ";".join(str(int(fg[i : i + 2], 16)) for i in (1, 3, 5)) + "[;m]", rendered)
-
-
-def test_a_schemes_own_diff_marks_changed_words_a_shade_stronger_in_its_own_hue():
-    for name, style in DIFF_STYLES.items():
-        for appearance in ("dark", "light"):
-            band = getattr(style, appearance)
-            if not band or not style.note.endswith("'s own"):
-                continue
-            for side in ("added", "removed"):
-                line, word = band[f"diff.{side}.bg"], band[f"diff.{side}.emph"]
-                background = "#000000" if appearance == "dark" else "#ffffff"
-                assert contrast(word, background) > contrast(line, background), (name, appearance, side)
-
-
-def test_the_menu_offers_the_styles_made_for_the_background_and_others_fall_back():
-    Theme.set_mode("kanagawa")
-    assert Theme.diff_styles() == ("auto", *DIFF_STYLES)
-    Theme.set_mode("gruvbox-light")
-    assert Theme.diff_styles() == ("auto", "catppuccin", "rose-pine", "gruvbox", "classic", "delta", "zebra")
-    # A style made only for dark backgrounds draws the light theme's own pairing instead.
-    Theme.set_diff_style("gruvmax-fang")
-    assert Theme.diff_style_name() == "gruvbox" and Theme.diff_style("diff.added.bg") == "bg:#d5d39b"
-    Theme.set_mode("gruvbox-dark")
-    assert Theme.diff_style_name() == "gruvmax-fang" and Theme.diff_style("diff.removed.emph") == "bg:#80002a"
+    assert not re.search(r"38;2;0;0;0[;m]", capture.get())
+    assert Theme.pygments_style() is not None
 
 
 def test_a_theme_file_inherits_its_bases_diff_pairing_and_its_bands_win(tmp_path):
-    write_theme(tmp_path, "mine", 'base = "tokyonight"\n[diff]\nremoved = "#112233"\n')
+    write_theme(tmp_path, "mine", 'base = "forest"\n[diff]\nremoved = "#112233"\n')
     assert not Theme.load_custom(str(tmp_path))
     Theme.set_mode("mine")
-    assert Theme.diff_style_name() == "tokyonight"
+    assert Theme.diff_style_name() == "classic"
     # The file's base also lends it the code colors generated for it.
-    assert Theme.pygments_style() is Theme._pygments_cache["tokyonight"]
+    assert Theme.pygments_style() is Theme._pygments_cache["zenburn"]
     Theme.set_diff_style("classic")
     assert Theme.diff_style("diff.removed.bg") == "bg:#112233"
     assert Theme.diff_style("diff.added.bg") == "bg:#003b00"
@@ -816,8 +775,8 @@ def test_the_configured_diff_style_is_selected_or_reported(ui, selected, problem
 
 async def test_picking_auto_saves_auto_and_draws_the_terminal_default(tmp_path, monkeypatch):
     monkeypatch.setenv("COLORFGBG", "0;15")
-    command_loop = themed_loop(tmp_path, "kanagawa")
-    Theme.set_mode("kanagawa")
+    command_loop = themed_loop(tmp_path, "plum")
+    Theme.set_mode("plum")
 
     await theme_command(command_loop, "auto")
 
@@ -858,18 +817,18 @@ async def test_a_config_that_cannot_be_saved_into_is_reported_not_raised(tmp_pat
     (tmp_path / "config.toml").write_text(text)
     command_loop.presentation.tui = ThemeModal([])
 
-    result = await theme_command(command_loop, "kanagawa")
+    result = await theme_command(command_loop, "plum")
 
-    assert Theme.name() == "kanagawa"
+    assert Theme.name() == "plum"
     assert "Not saved to" in result and expected in result
     assert (tmp_path / "config.toml").read_text() == text
 
 
 def test_a_theme_file_cannot_take_a_name_runtime_theme_already_means(tmp_path):
-    """`auto` is a choice of its own and `gruvbox` a pair: files by those names were listed twice
+    """`auto` and built-in names are reserved, as are custom pairs: files by those names were listed twice
     and could never be picked."""
-    for name in ("auto", "Gruvbox", "mine", "mine-dark", "mine-light", "auto-dark", "auto-light"):
-        write_theme(tmp_path, name, 'base = "kanagawa"\n')
+    for name in ("auto", "Slate", "mine", "mine-dark", "mine-light", "auto-dark", "auto-light"):
+        write_theme(tmp_path, name, 'base = "plum"\n')
 
     problems = Theme.load_custom(str(tmp_path))
 
@@ -882,7 +841,7 @@ def test_a_theme_file_cannot_take_a_name_runtime_theme_already_means(tmp_path):
 async def test_the_theme_is_configured_before_either_frontend_draws(tmp_path, monkeypatch):
     """The TUI prints its banner and first frame before start_session: configuring the theme there
     drew them in the default palette."""
-    command_loop = themed_loop(tmp_path, "kanagawa")
+    command_loop = themed_loop(tmp_path, "plum")
     seen = []
 
     async def frontend(*_args, **_kwargs):
@@ -893,12 +852,12 @@ async def test_the_theme_is_configured_before_either_frontend_draws(tmp_path, mo
     command_loop.interactive_input = False
     await command_loop._run_frontend(show_banner=False)
 
-    assert seen == ["kanagawa"]
+    assert seen == ["plum"]
 
 
 async def test_start_session_reports_what_the_theme_could_not_use(tmp_path, monkeypatch):
     command_loop = themed_loop(tmp_path, "mine")
-    write_theme(command_loop.session.data_path("themes"), "mine", 'base = "kanagawa"\n[colors]\nnope = "#fff"\n')
+    write_theme(command_loop.session.data_path("themes"), "mine", 'base = "plum"\n[colors]\nnope = "#fff"\n')
     emitted = []
     monkeypatch.setattr(command_loop.presentation, "emit", lambda text="", indent=0: emitted.append(text))
 
@@ -911,10 +870,10 @@ async def test_start_session_reports_what_the_theme_could_not_use(tmp_path, monk
 
 
 def test_theme_names_complete_after_the_command():
-    completions = [completion.text for completion in CommandCompleter().get_completions(Document("/theme gru"), None)]
+    completions = [completion.text for completion in CommandCompleter().get_completions(Document("/theme s"), None)]
 
     # A pair is accepted by name but not listed beside its two themes.
-    assert completions == ["gruvbox-dark", "gruvbox-light"]
+    assert completions == ["slate", "sand", "solarized-dark", "statusbar ", "sweep "]
 
 
 @pytest.mark.parametrize("name", ("dark", "light", *BUILTIN))
@@ -924,7 +883,7 @@ def test_user_message_background_fills_wrapped_and_empty_rows(name):
     for width in (12, 40):
         rows = list(split_lines(block.fragments(width)))[:-1]
         assert rows
-        assert not "".join(text for _, text in rows[0]).strip()
+        assert "A long" in "".join(text for _, text in rows[0])
         assert "Another line" in "".join(text for _, text in rows[-1])
         for row in rows:
             assert sum(get_cwidth(text) for _, text in row) == width
@@ -940,7 +899,7 @@ def test_custom_user_background_preserves_full_width_padding(tmp_path, backgroun
     Theme.configure("review", str(tmp_path), {"review": {"base": "dark", "colors": {"user_bg": background}}})
     block = MessageBlock(UiPrinter(), "hello", "user", 0, False)
     rows = list(split_lines(block.fragments(20)))[:-1]
-    assert len(rows) == 2
+    assert len(rows) == 1
     assert all(sum(get_cwidth(text) for _, text in row) == 20 for row in rows)
 
 
@@ -948,9 +907,9 @@ def test_the_app_style_follows_a_theme_switch(tmp_path):
     view = loop(tmp_path).view
     assert view.style().get_attrs_for_style_str("class:choice.selected").bgcolor == "0077a8"
 
-    Theme.set_mode("gruvbox-dark")
+    Theme.set_mode("sand")
 
-    assert view.style().get_attrs_for_style_str("class:choice.selected").bgcolor == "83a598"
+    assert view.style().get_attrs_for_style_str("class:choice.selected").bgcolor == "83bec3"
 
 
 @pytest.mark.parametrize("name", tuple(BUILTIN))
@@ -1014,7 +973,7 @@ async def test_file_picker_uses_the_current_colors_each_time_it_opens(tmp_path, 
     monkeypatch.setattr(command_loop.session.mentions.picker, "pick", pick)
     command_loop.background.open_background()
     try:
-        for name in ("gruvbox-dark", "kanagawa", "catppuccin-light"):
+        for name in ("sand", "plum", "paper"):
             Theme.set_mode(name)
             await tui.file_picker_fn("parser")
             query, colors = calls[-1]
@@ -1033,3 +992,15 @@ async def test_file_picker_uses_the_current_colors_each_time_it_opens(tmp_path, 
 def test_file_picker_translates_terminal_colors_for_fzf():
     colors = Theme.fzf_colors()
     assert "ansi" not in colors and "header:8" in colors
+
+
+@pytest.mark.parametrize("name", ("papercolor-light", "papercolor-dark"))
+def test_papercolor_code_colors_are_inherited_by_custom_themes(name, tmp_path):
+    from pygments.token import Keyword, Name, String
+
+    write_theme(tmp_path, "mine", f'base = "{name}"\n')
+    assert Theme.configure("mine", str(tmp_path)) == []
+    style = Theme.pygments_style()
+    assert style is not None
+    expected = ("d70087", "0087af", "5f8700") if name.endswith("light") else ("afd700", "5fafd7", "d7af5f")
+    assert tuple(style.style_for_token(token)["color"] for token in (Keyword, Name.Function, String)) == expected

@@ -15,7 +15,7 @@ Keep your custom colors beside your other settings in `~/.wizolt/config.toml`:
 
 ```toml
 [ui.themes.my-theme]
-base = "one-dark"
+base = "slate"
 
 [ui.themes.my-theme.colors]
 user = "#f2c97d"
@@ -42,7 +42,7 @@ Create `~/.wizolt/themes/my-theme.toml` (or `themes/` inside your custom data di
 
 <!-- figure: custom-theme -->
 ```toml
-base = "one-dark"
+base = "slate"
 
 [colors]
 user = "#f2c97d"
@@ -50,10 +50,10 @@ tool = "#8bd5ca"
 ```
 
 Run `/theme my-theme`. Your messages become gold and tool labels become teal; everything else
-keeps One Dark's colors. Edit the file and run the same command again to try another version.
+keeps Slate's colors. Edit the file and run the same command again to try another version.
 
 ```{figure} _static/appearance-custom-theme.svg
-:alt: The same user message and Edit call in One Dark and in my-theme, with gold messages and teal tool labels.
+:alt: The same user message and Edit call in Slate and in my-theme, with gold messages and teal tool labels.
 
 Two overrides; the rest of the theme stays familiar.
 ```
@@ -76,29 +76,28 @@ A *role* names what a color is used for. Set only the roles you want to change:
 | Divider | `divider_glow`, `divider_rule`, `divider_label`; glow and rule require `#rrggbb` |
 | Menus | `selection_bg`, `selection_fg`, `menu_bg`, `menu_muted` |
 
-The input area and your sent messages share a subtle background. The input has one row of
-spacing above and below its text; the idle divider doubles as its top spacing. Sent messages
-have one shaded row above the text and ordinary whitespace before the reply. Set `user_bg` in your
-custom theme's `[colors]` table to change it, for example `user_bg = "#34363c"` on a dark
-terminal or `user_bg = "#eeeeee"` on a light terminal. Use `user_bg = "default"` for the
-terminal's own background.
+Your sent messages shade only their text rows. The input adds one shaded row below the text
+and one unshaded row before the statusbar. A plain row also separates input from the divider.
+Panes shorter than 20 rows omit the shaded input padding to leave room for output.
+Replies are separated by ordinary
+whitespace, with no extra divider beneath each sent message.
 
-The input divider shares this background, so the input area forms one continuous band.
-Sent messages use whitespace to separate replies instead of an extra separator line.
-Preset backgrounds gently lighten dark themes or darken light themes without adding a
-foreground tint. For the closest match, choose a theme whose background resembles your terminal.
+Set `user_bg` in your custom theme's `[colors]` table to change the background: try
+`user_bg = "#34363c"` on a dark terminal or `user_bg = "#eeeeee"` on a light one.
+Use `user_bg = "default"` to keep the terminal background. For the closest match, choose a
+theme suited to your terminal's background.
 
-For example, to give One Dark a slightly brighter input and message background in your config:
+For example, to give Slate a slightly brighter input and message background in your config:
 
 ```toml
-[ui.themes.my-one-dark]
-base = "one-dark"
+[ui.themes.my-slate]
+base = "slate"
 
-[ui.themes.my-one-dark.colors]
+[ui.themes.my-slate.colors]
 user_bg = "#30333b"
 ```
 
-Restart wizolt, then select `/theme my-one-dark`.
+Restart wizolt, then select `/theme my-slate`.
 
 ### Change diff backgrounds
 
@@ -117,7 +116,7 @@ removed_word = "#a35a00"
 `added_word` and `removed_word` make changed words stand out inside each line.
 
 The file name is the theme's name, so it cannot be a built-in theme, `auto`, or a pair's name
-(`gruvbox`, or `mine` once `mine-dark` and `mine-light` exist). A mistake in a theme file is
+(`papercolor`, or `mine` once `mine-dark` and `mine-light` exist). A mistake in a theme file is
 reported at startup and when `/theme` opens; the rest of the file still applies. `/theme` re-reads the folder each time it opens, so edits show up without a restart.
 
 
@@ -282,7 +281,7 @@ Built-in Powerline templates use the highlight groups `status.model`, `status.de
 Override them, or define your own groups, in a theme file:
 
 ```toml
-base = "gruvbox-dark"
+base = "sand"
 
 [highlights."status.model"]
 fg = "#0d1117"

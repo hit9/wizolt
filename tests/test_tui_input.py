@@ -875,7 +875,7 @@ def test_interactive_tui_bracketed_paste_displays_all_lines(monkeypatch):
     assert input_heights and input_heights[-1] == 10
 
 
-def test_interactive_tui_keeps_legacy_padding_around_input(monkeypatch):
+def test_interactive_tui_keeps_one_plain_gap_above_input(monkeypatch):
     app = TuiApp()
     frames = []
     rendered = threading.Event()
@@ -898,13 +898,14 @@ def test_interactive_tui_keeps_legacy_padding_around_input(monkeypatch):
 
     assert frames
     prompt, status = frames[0]
-    assert prompt.ypos == 2  # outer gap plus the input's shaded top padding
-    assert status.ypos == prompt.ypos + prompt.height + 1
+    assert prompt.ypos == 1  # one unshaded outer gap
+    assert status.ypos == prompt.ypos + prompt.height + 2
 
 
 @pytest.mark.parametrize("running", (False, True))
 @pytest.mark.parametrize("background", ("#30333b", "default"))
-def test_interactive_divider_and_padded_input_share_a_continuous_background(monkeypatch, tmp_path, running, background):
+@pytest.mark.parametrize("rows", (18, 30))
+def test_interactive_input_background_stays_below_the_divider_gap(monkeypatch, tmp_path, running, background, rows):
     Theme.configure("surface", str(tmp_path), {"surface": {"base": "dark", "colors": {"user_bg": background}}})
     command_loop = loop(tmp_path)
     app = command_loop.presentation.tui = TuiApp(activity_fragments_fn=command_loop.view.tui_activity_fragments)
@@ -924,27 +925,25 @@ def test_interactive_divider_and_padded_input_share_a_continuous_background(monk
         positions = screen.visible_windows_to_write_positions
         if all(window in positions for window in (app.activity_window, app.input_window, app.status_window)):
             activity, prompt, status = (positions[window] for window in (app.activity_window, app.input_window, app.status_window))
-            divider_row = activity.ypos
-            if running:
-                while application._merged_style.get_attrs_for_style_str(screen.data_buffer[divider_row][0].style).bgcolor != background.lstrip("#"):
-                    assert divider_row < prompt.ypos
-                    divider_row += 1
-                assert divider_row > activity.ypos
-                assert all(
-                    application._merged_style.get_attrs_for_style_str(screen.data_buffer[y][x].style).bgcolor != background.lstrip("#")
-                    for y in range(activity.ypos, divider_row)
-                    for x in range(prompt.width)
-                )
+            assert all(
+                application._merged_style.get_attrs_for_style_str(screen.data_buffer[y][x].style).bgcolor != background.lstrip("#")
+                for y in range(activity.ypos, prompt.ypos)
+                for x in range(prompt.width)
+            )
             frames.append(
                 [
                     application._merged_style.get_attrs_for_style_str(screen.data_buffer[y][x].style).bgcolor
-                    for y in range(divider_row, status.ypos)
+                    for y in range(prompt.ypos, status.ypos - 1)
                     for x in range(prompt.width)
                     if screen.data_buffer[y][x].char  # a wide glyph paints its second cell
                 ]
             )
-            assert prompt.ypos == activity.ypos + activity.height + int(running)
-            assert status.ypos == prompt.ypos + prompt.height + 1
+            assert prompt.ypos == activity.ypos + activity.height + 1
+            assert status.ypos == prompt.ypos + prompt.height + 1 + int(rows >= 20)
+            assert all(
+                application._merged_style.get_attrs_for_style_str(screen.data_buffer[status.ypos - 1][x].style).bgcolor != background.lstrip("#")
+                for x in range(prompt.width)
+            )
             rendered.set()
 
     def drive(_pipe_input):
@@ -953,7 +952,7 @@ def test_interactive_divider_and_padded_input_share_a_continuous_background(monk
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     try:
-        run_interactive_tui(monkeypatch, app, drive=drive, after_render=capture, output=ResizableOutput(columns=40))
+        run_interactive_tui(monkeypatch, app, drive=drive, after_render=capture, output=ResizableOutput(columns=40, rows=rows))
         assert frames
         assert all(color == background.lstrip("#") for frame in frames for color in frame)
     finally:
@@ -987,7 +986,7 @@ def test_interactive_tui_keeps_padding_around_running_queue(monkeypatch):
     activity, prompt, status = frames[0]
     assert activity.ypos == 1
     assert prompt.ypos == activity.ypos + activity.height + 1
-    assert status.ypos == prompt.ypos + prompt.height + 1
+    assert status.ypos == prompt.ypos + prompt.height + 2
 
 
 def test_interactive_tui_approval_has_no_leading_blank_row(monkeypatch):

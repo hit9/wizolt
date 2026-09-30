@@ -2,11 +2,11 @@
 <title>Rendered UI sample</title>
 <style>
 .appearance-custom-width-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
-.appearance-custom-width-r1 { fill: #ad9d87 }
+.appearance-custom-width-r1 { fill: #91a5b7 }
 .appearance-custom-width-r2 { fill: #abb2bf }
-.appearance-custom-width-r3 { fill: #cfd3a2 }
-.appearance-custom-width-r4 { fill: #e6caad }
-.appearance-custom-width-r5 { fill: #d6d0ad }
+.appearance-custom-width-r3 { fill: #6bb9ff }
+.appearance-custom-width-r4 { fill: #c4acf0 }
+.appearance-custom-width-r5 { fill: #79b9f2 }
 </style>
 <defs><clipPath id="appearance-custom-width-clip-terminal">
 <rect width="926.1999999999999" height="121.0"/>
