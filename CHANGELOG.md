@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.63.0 - 2026-09-30
+
 ### Changed
 
 - Refresh all statusbar presets with distinct provider/model/effort colors, quieter secondary
