@@ -9,6 +9,8 @@
 
 ### Fixed
 
+- Limit the startup skill-scan test's render assertion and blocking gate to the initial scan;
+  turn-start rescans can legitimately run between a scrollback write and the next redraw.
 - Send an actual Ctrl-C in the Zellij test adapter so the divider cancellation acceptance test
   can close its layout picker; cover control keys and literal text without requiring Zellij.
 - Use `itertools.pairwise` in the sweep smoothness test so repository-wide Ruff checks pass.

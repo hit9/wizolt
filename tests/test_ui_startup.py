@@ -205,9 +205,12 @@ async def test_assembly_inputs_wait_for_initial_skill_scan(tmp_path, startup_ui,
     reload = s.skills.reload
 
     def slow_scan():
-        assert apps[0].renderer.last_rendered_screen is not None
-        scanned.set()
-        assert release.wait(timeout=5)
+        # Only gate the initial scan. Turn-start rescans can run while scrollback output has
+        # cleared the renderer's cached screen and the next redraw is still pending.
+        if not scanned.is_set():
+            assert apps[0].renderer.last_rendered_screen is not None
+            scanned.set()
+            assert release.wait(timeout=5)
         reload()
     monkeypatch.setattr(s.skills, 'reload', slow_scan)
 
