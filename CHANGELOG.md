@@ -16,10 +16,11 @@
 - Add an English, monospace HTML comparison of actual presets with statusbar and divider
   selectors and copyable settings. Keep its reusable generator under `docs/tools/` and
   refresh the appearance guide, examples and illustrations.
+- Keep the generated HTML comparison local and out of version control.
 
 ### Fixed
 
-- Keep message backgrounds to text rows. Give input one shaded bottom row and a plain gap
+- Keep message backgrounds to text rows. Give input shaded rows above and below its text and a plain gap
   before the statusbar; keep another plain row between divider and input. Use whitespace
   below sent messages instead of an extra separator. Preserve configurable `user_bg` colors
   and keep live output and queued messages off the input band.

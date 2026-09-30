@@ -76,7 +76,7 @@ A *role* names what a color is used for. Set only the roles you want to change:
 | Divider | `divider_glow`, `divider_rule`, `divider_label`; glow and rule require `#rrggbb` |
 | Menus | `selection_bg`, `selection_fg`, `menu_bg`, `menu_muted` |
 
-Your sent messages shade only their text rows. The input adds one shaded row below the text
+Your sent messages shade only their text rows. The input adds one shaded row above and below its text,
 and one unshaded row before the statusbar. A plain row also separates input from the divider.
 Panes shorter than 20 rows omit the shaded input padding to leave room for output.
 Replies are separated by ordinary

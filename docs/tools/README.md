@@ -51,10 +51,11 @@ uv run --no-sync python docs/tools/theme_preview.py --output /tmp/theme-preview.
 The page compares the built-in palettes against default `dark` or `light`. Switch the
 statusbar and divider selectors, then mark a favorite. Copy the configuration shown below
 into your config. Every sample uses the existing `classic` diff colors.
+The generated `theme-preview.html` is a local preview, ignored by Git; commit the script instead.
 
 Preset names and captions live in `CANDIDATES`; colors come directly from wizolt.
 Regenerate the HTML after changing palettes or layout. The page uses English text and
-monospace fonts throughout. Messages have no shaded padding; input has a shaded bottom row
+monospace fonts throughout. Messages have no shaded padding; input has shaded rows above and below its text
 and a plain gap before the statusbar.
 
 The terminal samples have no window decorations: they are assembled rendered examples,

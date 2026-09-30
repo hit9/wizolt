@@ -898,7 +898,7 @@ def test_interactive_tui_keeps_one_plain_gap_above_input(monkeypatch):
 
     assert frames
     prompt, status = frames[0]
-    assert prompt.ypos == 1  # one unshaded outer gap
+    assert prompt.ypos == 2  # one plain outer gap, then one shaded padding row
     assert status.ypos == prompt.ypos + prompt.height + 2
 
 
@@ -927,18 +927,18 @@ def test_interactive_input_background_stays_below_the_divider_gap(monkeypatch, t
             activity, prompt, status = (positions[window] for window in (app.activity_window, app.input_window, app.status_window))
             assert all(
                 application._merged_style.get_attrs_for_style_str(screen.data_buffer[y][x].style).bgcolor != background.lstrip("#")
-                for y in range(activity.ypos, prompt.ypos)
+                for y in range(activity.ypos, prompt.ypos - int(rows >= 20))
                 for x in range(prompt.width)
             )
             frames.append(
                 [
                     application._merged_style.get_attrs_for_style_str(screen.data_buffer[y][x].style).bgcolor
-                    for y in range(prompt.ypos, status.ypos - 1)
+                    for y in range(prompt.ypos - int(rows >= 20), status.ypos - 1)
                     for x in range(prompt.width)
                     if screen.data_buffer[y][x].char  # a wide glyph paints its second cell
                 ]
             )
-            assert prompt.ypos == activity.ypos + activity.height + 1
+            assert prompt.ypos == activity.ypos + activity.height + 1 + int(rows >= 20)
             assert status.ypos == prompt.ypos + prompt.height + 1 + int(rows >= 20)
             assert all(
                 application._merged_style.get_attrs_for_style_str(screen.data_buffer[status.ypos - 1][x].style).bgcolor != background.lstrip("#")
@@ -985,7 +985,7 @@ def test_interactive_tui_keeps_padding_around_running_queue(monkeypatch):
     assert frames
     activity, prompt, status = frames[0]
     assert activity.ypos == 1
-    assert prompt.ypos == activity.ypos + activity.height + 1
+    assert prompt.ypos == activity.ypos + activity.height + 2
     assert status.ypos == prompt.ypos + prompt.height + 2
 
 

@@ -33,6 +33,7 @@ __pycache__/
 core
 core.*
 .playwright-cli/
+/theme-preview.html
 .DS_Store
 
 # Working notes for the async runtime migration: the plan and the user-approved deviations from

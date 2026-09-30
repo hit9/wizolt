@@ -1515,6 +1515,10 @@ class TuiApp:
         exclusive_active = Condition(lambda: self.modal is not None and self.modal.exclusive)
         idle = Condition(lambda: self.input_mode == InputMode.CHAT)
         has_quick_hints = idle & Condition(lambda: bool(self.quick_hints()))
+        # Short panes need these rows for live output; plain divider/statusbar gaps stay.
+        input_padding = Condition(
+            lambda: self.input_mode in {InputMode.CHAT, InputMode.RUNNING} and (self.app is None or self.app.output.get_size().rows >= 20)
+        )
         quick_hints_gap = ConditionalContainer(Window(height=1, dont_extend_height=True), filter=has_quick_hints)
         quick_hints_row = ConditionalContainer(
             Window(FormattedTextControl(self.quick_hint_fragments), wrap_lines=True, dont_extend_height=True),
@@ -1533,13 +1537,14 @@ class TuiApp:
                         Window(height=Dimension(min=0, preferred=1, max=1)),
                         filter=idle & Condition(lambda: bool(self.idle_divider_fragments_fn())),
                     ),
+                    ConditionalContainer(
+                        Window(height=Dimension(min=0, preferred=1, max=1), style=lambda: f"bg:{Theme.color('user_bg')}"),
+                        filter=input_padding,
+                    ),
                     self.input_window,
                     ConditionalContainer(
                         Window(height=Dimension(min=0, preferred=1, max=1), style=lambda: f"bg:{Theme.color('user_bg')}"),
-                        # Short panes need the row for live output. Keep the plain statusbar gap.
-                        filter=Condition(
-                            lambda: self.input_mode in {InputMode.CHAT, InputMode.RUNNING} and (self.app is None or self.app.output.get_size().rows >= 20)
-                        ),
+                        filter=input_padding,
                     ),
                     quick_hints_gap,
                     quick_hints_row,

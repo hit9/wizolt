@@ -110,7 +110,7 @@ def sample(figures: Illustrations, terminal: TerminalTheme) -> dict:
         "body": html_text(joined, terminal),
         "bars": bars,
         "dividers": dividers,
-        "input": html_text(Text("\n").join([prompt, padding]), terminal),
+        "input": html_text(Text("\n").join([padding, prompt, padding]), terminal),
         "swatches": {role: Color.parse(Theme.rich_color(role)).get_truecolor(terminal).hex for role in ("accent", "user", "tool", "status_reason", "user_bg")},
     }
 
@@ -154,7 +154,7 @@ pre{margin:0;font:12.5px/1.65 "SFMono-Regular",Consolas,"DejaVu Sans Mono",monos
 </div>
 <div class="pick"><button id="pick">Pick this preset</button><span id="selection" role="status">Compare a few presets, then pick a favorite.</span></div>
 <details><summary>View the configuration</summary><pre id="config"></pre></details>
-<p class="footnote">Actual wizolt renderers, assembled for comparison. Messages shade only text rows. Input adds one shaded row below the text, with plain gaps to the divider and status bar. Both panels use the same terminal background. Light presets use a light terminal. Default dark and classic diff colors stay unchanged.</p>
+<p class="footnote">Actual wizolt renderers, assembled for comparison. Messages shade only text rows. Input adds one shaded row above and below the text, with plain gaps to the divider and status bar. Both panels use the same terminal background. Light presets use a light terminal. Default dark and classic diff colors stay unchanged.</p>
 </main><script id="data" type="application/json">__DATA__</script><script>
 (() => {
 const data=JSON.parse(document.getElementById('data').textContent);
