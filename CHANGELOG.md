@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.61.0 - 2026-09-30
+
 ### Added
 
 - Built-in `snazzy` theme, from the published Snazzy palette. Code is highlighted with Pygments'
