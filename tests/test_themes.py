@@ -9,8 +9,8 @@ import pytest
 from prompt_toolkit.document import Document
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.formatted_text.utils import split_lines
-from prompt_toolkit.utils import get_cwidth
 from prompt_toolkit.output import ColorDepth
+from prompt_toolkit.utils import get_cwidth
 from rich.console import Console
 from test_command_ui import ModalHarness
 from test_tui_resize import ReflowingTerminal

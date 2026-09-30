@@ -184,7 +184,7 @@ def test_appearance_command_completion():
 
 
 async def test_switching_tabs_and_search_keeps_the_picker_height(command_loop, monkeypatch):
-    import wizolt.ui.cli.appearance as appearance
+    from wizolt.ui.cli import appearance
 
     monkeypatch.setattr(appearance, "picker_height", lambda: 24)
     modal = command_loop.presentation.tui = BarModal(["l", "l", "l", "l", "e", "tab", "escape", "h", "/", "z", "z", "escape", "escape", "h", "h", "escape"])
@@ -197,9 +197,8 @@ async def test_switching_tabs_and_search_keeps_the_picker_height(command_loop, m
             assert text.splitlines()[1].strip().startswith("h/l")
 
 
-
 async def test_small_pane_prioritizes_choices_over_the_sample(command_loop, monkeypatch):
-    import wizolt.ui.cli.appearance as appearance
+    from wizolt.ui.cli import appearance
 
     monkeypatch.setattr(appearance, "picker_height", lambda: 14)
     modal = command_loop.presentation.tui = BarModal(["escape"])
@@ -215,7 +214,7 @@ async def test_small_pane_prioritizes_choices_over_the_sample(command_loop, monk
 
 @pytest.mark.parametrize("height", [4, 8, 14])
 def test_appearance_tabs_fit_after_the_terminal_shrinks(command_loop, monkeypatch, height):
-    import wizolt.ui.cli.appearance as appearance
+    from wizolt.ui.cli import appearance
 
     monkeypatch.setattr(appearance, "picker_height", lambda: 24)
     picker = appearance.AppearancePicker(command_loop, 0)
