@@ -134,6 +134,28 @@ def test_status_presets_preserve_identity_and_resolve_theme_styles(name):
     assert not layout.errors
 
 
+@pytest.mark.parametrize("name", ["default", "minimal", "compact", "brackets"])
+def test_single_sided_status_presets_do_not_spread_across_the_terminal(name):
+    template = Template("preset:" + name, STATUS_PRESETS)
+    values = dict.fromkeys(FIELDS, 0)
+    values.update(model="model", provider="test", reasoning="high", **{"mcp.label": "mcp 0", "worker.summary": ""})
+    styles = dict.fromkeys(template.styles, "")
+    assert text(template.render(values, 200, styles)) == text(template.render(values, 300, styles))
+
+
+@pytest.mark.parametrize("name", ["vim", "lualine"])
+def test_vim_style_presets_keep_context_at_the_right_on_narrow_terminals(name):
+    from wizolt.ui.render import Theme
+
+    template = Template("preset:" + name, STATUS_PRESETS)
+    values = dict.fromkeys(FIELDS, 0)
+    values.update(model="a-long-model-name", provider="test", reasoning="high", **{"context.percent": 42, "mcp.label": "mcp 3"})
+    for width in (20, 40, 80, 160):
+        rendered = text(template.render(values, width, Theme.bar_styles(template.styles)))
+        assert get_cwidth(rendered) == width
+        assert rendered.endswith("ctx 42% ")
+
+
 def test_layout_reload_is_atomic_and_rejects_style_injection():
     from wizolt.ui.bars import BarLayout
     from wizolt.ui.render import Theme

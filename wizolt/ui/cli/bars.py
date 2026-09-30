@@ -49,9 +49,8 @@ def preview(loop: CommandLoop, kind: str, started: float) -> StyleAndTextTuples:
     width = max(1, shutil.get_terminal_size((80, 20)).columns - 8)
     values = bar.values()
     result: StyleAndTextTuples = []
-    if kind == "statusbar":
-        result.extend(bar.layout.render("statusbar", values, width, Theme.bar_styles))
-    else:
+    # The real statusbar already previews the selection at its actual terminal width.
+    if kind != "statusbar":
         elapsed = max(0.0, time.monotonic() - started)
         ramp = tuple(reversed(Theme.ramp("divider_glow", "divider_rule", 16)))
         for label, running, queued in (("Idle", False, 0), ("Running", True, 0), ("Queued", True, 2)):

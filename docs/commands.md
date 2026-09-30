@@ -120,7 +120,8 @@ and, where the values are a fixed set, the values. Example: `/set provider.respo
 | `/strict` | Toggle strict tool-call schemas (OpenAI / DeepSeek) |
 
 **`/statusbar [NAME]`** — Preview and select a statusbar preset, or keep your current custom
-layout. Enter saves the selection; Esc cancels the preview. `NAME` selects directly.
+layout. The bottom statusbar previews each selection in place. Enter saves the selection;
+Esc cancels the preview. `NAME` selects directly.
 
 **`/divider [NAME]`** — Select a divider layout, then a sweep, with live previews of idle,
 running and queued states. Each picker includes your current custom value when present.

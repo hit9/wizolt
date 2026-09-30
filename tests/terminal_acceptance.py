@@ -421,6 +421,18 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
             assert history.count(f"BAR-MARKER-{marker}") == 1
         assert history.count("bars-model") == 1
     assert "closed 1: interrupted" in log.read_text()
+    log.with_suffix(".open-3").touch()
+    visible_containing("Statusbar")
+    for width, height in ((100, 30), (60, 18), (80, 24)):
+        pane.resize(width, height)
+        pane.keys("j")
+        visible = visible_containing("bars-model")
+        assert visible.count("bars-model") == 1, visible
+    pane.keys("Escape")
+    deadline = time.monotonic() + 15
+    while "closed 3:" not in log.read_text():
+        assert time.monotonic() < deadline
+        time.sleep(0.03)
     log.with_suffix(".done").touch()
     deadline = time.monotonic() + 15
     while "driver exited" not in log.read_text():

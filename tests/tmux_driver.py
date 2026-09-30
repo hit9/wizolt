@@ -42,7 +42,7 @@ async def main(log) -> None:
         from wizolt.agent.engine import Agent
         from wizolt.config import Config
         from wizolt.session import Session
-        from wizolt.ui.cli.bars import divider_command
+        from wizolt.ui.cli.bars import divider_command, statusbar_command
         from wizolt.ui.cli.loop import CommandLoop
 
         session = Session(cwd=str(Path(log.name).parent), config=Config(data_dir=str(Path(log.name).parent / "data")))
@@ -55,11 +55,11 @@ async def main(log) -> None:
         try:
             for marker in range(5):
                 ui.emit(f"BAR-MARKER-{marker}")
-            for cycle in range(3):
+            for cycle in range(4):
                 while not Path(log.name).with_suffix(f".open-{cycle}").exists():
                     await asyncio.sleep(0.02)
                 try:
-                    result = await divider_command(command_loop, "")
+                    result = await (statusbar_command(command_loop, "") if cycle == 3 else divider_command(command_loop, ""))
                 except KeyboardInterrupt:
                     result = "interrupted"
                 log.write(f"closed {cycle}: {result}\n")

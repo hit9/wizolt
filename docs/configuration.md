@@ -299,7 +299,7 @@ reported at startup and when `/theme` opens; the rest of the file still applies.
 
 ## Statusbar and divider
 
-Use `/statusbar` to preview and select a statusbar preset. `/divider` first selects a layout,
+Use `/statusbar` to preview presets directly in the bottom statusbar. `/divider` first selects a layout,
 then a sweep. Each picker also offers your current custom value when you have one.
 Moving the selection previews it; Enter saves it. Esc cancels the current picker, keeping
 any choice you already confirmed. Divider previews include idle, running and queued examples,
@@ -319,13 +319,15 @@ Statusbar layouts:
 | Preset | Appearance |
 | --- | --- |
 | `default` | Provider, model, reasoning and usage in one row |
-| `minimal` | Model on the left, context usage on the right |
+| `minimal` | Model and context usage together on the left |
 | `split` | Provider and model on the left, tools and usage on the right |
 | `compact` | Model, reasoning and context percentage in a short row |
-| `brackets` | Model, reasoning and usage in square brackets |
+| `brackets` | Model, reasoning and usage in square brackets, together on the left |
 | `monitor` | Model on the left, tools, usage and worker summary on the right |
 | `blocks` | Rectangular color segments, no special font needed |
 | `powerline` | Color segments joined by arrow-shaped separators |
+| `vim` | A continuous background with model and reasoning on the left, context on the right |
+| `lualine` | A highlighted session identity, model and reasoning on the left; tools, cache and context on the right |
 
 Divider layouts:
 
@@ -354,7 +356,7 @@ Sweeps:
 | `pulse` | The whole rule flashes in short, smooth pulses |
 
 The defaults are `preset:default`, `preset:comet` and `preset:comet`. Layout and sweep are
-independent: a sweep colors the divider's fill region only while running. Powerline requires a
+independent: a sweep colors the divider's fill region only while running. The `powerline` and `lualine` statusbars and `powerline` divider require a
 font containing `` and ``; the other presets need no special font.
 
 `/statusbar powerline` and `/divider minimal` select layouts directly. Edit your config file

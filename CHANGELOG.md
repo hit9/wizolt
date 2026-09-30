@@ -4,8 +4,9 @@
 
 ### Added
 
-- Expand statusbar, divider and sweep presets to eight each: compact, bracketed, monitor and
-  block status rows; dashed, dotted, double and right-aligned dividers; reverse, wave, twin
+- Expand statusbar presets to ten, and divider and sweep presets to eight each: compact, bracketed, monitor and
+  block status rows, plus Vim- and lualine-inspired layouts; dashed, dotted, double and
+  right-aligned dividers; reverse, wave, twin
   and pulse animations. All are available in the live pickers and through `preset:name`.
 
 - `/statusbar` previews and selects built-in layouts; `/divider` selects a layout followed by a
@@ -26,6 +27,9 @@
   terminal background.
 
 ### Fixed
+
+- Preview `/statusbar` only in the live bottom row, removing the duplicate sample in the menu.
+  Keep `minimal` and `brackets` left-aligned alongside `default` and `compact`.
 
 - Remove the stray gap after the leading rule in idle `plain` and `comet` dividers.
 - Cancelling a bar preview restores the exact previous layout even if a theme switch removed a

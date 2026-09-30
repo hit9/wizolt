@@ -163,17 +163,25 @@ STATUS_PRESETS = {
     + "[status_provider]{provider}/{model}[/][subtle] · [/][status_reason]{reasoning}[/][subtle] | [/]"
     + STATS
     + "[status_worker]{worker.summary}[/]",
-    "minimal": IDENTITY + "[status_provider]{model}[/]{>}[status_context]ctx {context.percent}%[/]",
+    "minimal": IDENTITY + "[status_provider]{model}[/] · [status_context]ctx {context.percent}%[/]",
     "split": IDENTITY + "[status_provider]{provider}/{model}[/]{% optional priority=10 %} · {reasoning}{% endoptional %}{>}" + STATS,
     "compact": IDENTITY + "[status_provider]{model}[/] [status_reason]{reasoning}[/] · [status_context]{context.percent}%[/]",
     "brackets": IDENTITY
     + "[status_provider][[{model}]][/] {% optional priority=10 %}[status_reason][[{reasoning}]][/] {% endoptional %}"
-    + "{>}[status_context][[ctx {context.percent}%]] [[cache {cache.percent}%]][/]",
+    + "[status_context][[ctx {context.percent}%]] [[cache {cache.percent}%]][/]",
     "monitor": IDENTITY + "[status_provider]{model}[/]{>}" + STATS + "[status_worker]{worker.summary}[/]",
     "blocks": "[status.model] "
     + IDENTITY
     + "{model} [reset]{% optional priority=10 %} [status.detail] {reasoning} [reset]{% endoptional %}"
     + "{>}[status.usage] ctx {context.percent}% · cache {cache.percent}% [reset]",
+    "vim": "[status.detail] " + IDENTITY + "{provider}/{model}{% optional priority=10 %} [[{reasoning}]] {% endoptional %}{>} ctx {context.percent}% [reset]",
+    "lualine": "[status.model] "
+    + IDENTITY
+    + "{% if not worker.active %}CHAT {% endif %}{join:}[status.detail] {model} {join:}[reset]"
+    + "{% optional priority=20 %} [status_reason]{reasoning}[/]{% endoptional %}{>}"
+    + "{% optional priority=10 %}[status_mcp]{mcp.label} · skills {skills.count}[/] {% endoptional %}"
+    + "{join:}[status.detail]{% optional priority=20 %} cache {cache.percent}% {% endoptional %}"
+    + "{join:}[status.usage] ctx {context.percent}% [reset]",
     "powerline": "[status.model] "
     + IDENTITY
     + "{model} {join:}[status.detail]{% optional priority=10 %} {reasoning} {% endoptional %}{join:}[reset]{>}{join:}[status.usage] ctx {context.percent}% [reset]",

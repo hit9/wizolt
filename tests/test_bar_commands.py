@@ -33,10 +33,23 @@ def command_loop(tmp_path, monkeypatch):
 async def test_statusbar_hover_escape_restores_custom_template_without_saving(command_loop):
     layout = command_loop.presentation.status_bar.layout
     assert not layout.configure({"statusbar": "{model} custom"}, Theme.bar_styles)
-    modal = command_loop.presentation.tui = BarModal(["up", "escape"])
+
+    class LiveStatusbar(BarModal):
+        async def show_modal(self, fragments_fn, key_fn, **kwargs):
+            self.status_frames = []
+
+            def frame():
+                self.status_frames.append(command_loop.presentation.status_bar.fragments())
+                return fragments_fn()
+
+            return self._drive(frame, key_fn, **kwargs)
+
+    modal = command_loop.presentation.tui = LiveStatusbar(["up", "escape"])
     assert await statusbar_command(command_loop, "") is None
     assert layout.sources["statusbar"] == "{model} custom"
-    assert any("" in fragment[1] for fragment in modal.frames[1])
+    assert any("" in fragment[1] for fragment in modal.status_frames[1])
+    assert all("" not in fragment[1] for frame in modal.frames for fragment in frame)
+    assert "custom" in "".join(text for _, text in command_loop.presentation.status_bar.fragments())
     assert "ui" not in tomllib.loads(Path(command_loop.session.config.path).read_text())
 
 
