@@ -584,7 +584,7 @@ def test_quiet_command_preview_stays_beside_its_transcript_header(monkeypatch, t
         for index in range(3):
             header = f'{tool} command-{index}'
 
-            def start():
+            def start(header=header):
                 # The header and live region arrive together, before the next render.
                 printer.emit(header)
                 app.set_running('+> ')
@@ -592,9 +592,9 @@ def test_quiet_command_preview_stays_beside_its_transcript_header(monkeypatch, t
 
             app.app.loop.call_soon_threadsafe(start)
             wait_until(lambda: any('running…' in line for line in output.lines))
-            wait_until(lambda: header in ''.join(app.scrollback.transcript))
+            wait_until(lambda header=header: header in ''.join(app.scrollback.transcript))
 
-            async def check():
+            async def check(header=header):
                 lines = list(output.lines)
                 head = next(i for i, line in enumerate(lines) if header in line)
                 live = next(i for i, line in enumerate(lines) if 'running…' in line)
