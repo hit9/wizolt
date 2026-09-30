@@ -38,7 +38,7 @@ from wizolt.ui.cli.resume import ResumeRenderer
 from wizolt.ui.cli.runtime import TuiRuntime
 from wizolt.ui.cli.update import UpdateChecker
 from wizolt.ui.cli.view import CommandCompleter, View
-from wizolt.ui.render import Theme, UiPrinter, search_sources_footer
+from wizolt.ui.render import InputStyle, Theme, UiPrinter, search_sources_footer
 
 
 class CommandLoop:
@@ -428,6 +428,8 @@ class CommandLoop:
         if warning := Theme.true_color_warning():
             self.theme_problems.append(warning)
         self.theme_problems.extend(self.presentation.status_bar.layout.load(self.session.config.ui, Theme.bar_styles))
+        self.presentation.input_style, problems = InputStyle.load(self.session.config.ui)
+        self.theme_problems.extend(problems)
 
     def start_session(self, *, show_banner: bool = True) -> None:
         """Initialize output and background services shared by both command-loop frontends."""
@@ -479,9 +481,9 @@ class CommandLoop:
         sessions = "session" if removed == 1 else "sessions"
         return f"removed {removed} saved {sessions} inactive for over {days} {'day' if days == 1 else 'days'} (runtime.session_retention_days)"
 
-    def read_input_sync(self, prompt_text: str = UiPrinter.PROMPT_PREFIX) -> str:
+    def read_input_sync(self, prompt_text: str | None = None) -> str:
         """Read from the injected/non-TTY input path; interactive terminals use TuiApp."""
-        return self.input_fn(prompt_text)
+        return self.input_fn(self.presentation.input_style.prefix() if prompt_text is None else prompt_text)
 
     async def invoke_input(self, action: Callable[[], Any]) -> Any:
         """Run an injected synchronous input callback without owning its blocking lifetime.
@@ -516,7 +518,7 @@ class CommandLoop:
 
     async def read_input(
         self,
-        prompt_text: str = UiPrinter.PROMPT_PREFIX,
+        prompt_text: str | None = None,
         *,
         initial_text: str | UserInput = "",
     ) -> str | UserInput:
@@ -529,6 +531,8 @@ class CommandLoop:
 
         if initial_text:
             return initial_text
+        if prompt_text is None:
+            prompt_text = self.presentation.input_style.prefix()
         if self.input_fn is not input:
             return await self.invoke_input(lambda: self.read_input_sync(prompt_text))
 

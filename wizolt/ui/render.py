@@ -65,6 +65,47 @@ except ImportError:  # pragma: no cover - optional highlighting dependency
 ScrollbackText = str | Callable[[int], str]
 
 
+@dataclass(frozen=True)
+class InputStyle:
+    """Session-local input prefixes. Custom text is literal, never terminal control markup."""
+
+    PRESETS: ClassVar[dict[str, str]] = {"default": "> ", "chevron": "❯ ", "arrow": "→ ", "lambda": "λ ", "bullet": "• "}
+    prompt: str = "preset:default"
+    running: str | None = None
+
+    def __post_init__(self) -> None:
+        for key, value in (("prompt", self.prompt), ("running", self.running)):
+            if key == "running" and value is None:
+                continue
+            if not isinstance(value, str):
+                raise TypeError(f"ui.input.{key}: must be a string")
+            text = value
+            if value.startswith("preset:"):
+                name = value.removeprefix("preset:")
+                if name not in self.PRESETS:
+                    raise ValueError(f"ui.input.{key}: unknown preset {name!r}; choose from {', '.join(self.PRESETS)}")
+                text = self.PRESETS[name]
+            if len(text) > 64 or get_cwidth(text) > 32 or any(not char.isprintable() for char in text):
+                raise ValueError(f"ui.input.{key}: use one line of printable text, at most 32 columns")
+
+    def prefix(self, *, running: bool = False) -> str:
+        source = self.running if running and self.running is not None else self.prompt
+        text = self.PRESETS[source.removeprefix("preset:")] if source.startswith("preset:") else source
+        return "+" + text if running and self.running is None else text
+
+    @classmethod
+    def load(cls, ui: dict) -> tuple[Self, list[str]]:
+        table = ui.get("input", {})
+        if not isinstance(table, dict):
+            return cls(), ["ui.input must be a table"]
+        if unknown := set(table) - {"prompt", "running"}:
+            return cls(), [f"ui.input: unknown settings: {', '.join(sorted(unknown))}"]
+        try:
+            return cls(**table), []
+        except (TypeError, ValueError) as error:
+            return cls(), [str(error)]
+
+
 class WidthDependent:
     """A completed block that keeps its source and lays itself out for the width it lands in.
 

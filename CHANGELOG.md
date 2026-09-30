@@ -4,6 +4,10 @@
 
 ### Added
 
+- `/theme` has an Input tab with five prompt-symbol presets and editable ordinary/follow-up
+  prefixes. `e` opens the editor; Enter applies the edit, then Enter in the list saves it.
+  Prefixes preview live, cancel restores the original, and `[ui.input] prompt` / `running`
+  retain custom text across sessions. `/theme input NAME` selects a preset directly.
 - Themes ported from Vim and Neovim colorschemes, each from its own source: the classics
   `desert`, `zenburn` and `jellybeans`, and `tokyonight`, `catppuccin-dark` and
   `catppuccin-light` (mocha and latte), `kanagawa`, `rose-pine-dark` and `rose-pine-light` (main
@@ -27,6 +31,7 @@
 
 ### Changed
 
+- The `/theme` picker points to the config file beside its shortcuts for full customization.
 - The `@file:` picker follows the active colorscheme, including its background, selected row,
   matches and hints; reopening it after `/theme` uses the new colors. It also honors `NO_COLOR`.
 - Improve text contrast across all named themes and bar presets: brighter hints and field labels,

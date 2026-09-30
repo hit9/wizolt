@@ -32,8 +32,76 @@ from wizolt.image import UserInput
 from wizolt.paste import PASTE_FOLD_MIN_CHARS, PASTE_FOLD_MIN_LINES, PASTE_MARKER, PasteRef
 from wizolt.session import Session, SessionSnapshotStore
 from wizolt.ui.cli import CommandCompleter, CommandLoop, TuiRuntime
+from wizolt.ui.cli.appearance import theme_command
 from wizolt.ui.cli.update import UpdateChecker
+from wizolt.ui.render import InputStyle
 from wizolt.ui.tui import CallbackPlaceholder, TuiApp
+
+
+def test_real_theme_keys_edit_and_save_a_custom_input_without_reopening_editor(tmp_path, monkeypatch):
+    command_loop = loop(tmp_path)
+    path = tmp_path / "config.toml"
+    path.write_text('[runtime]\ntheme = "auto"\n')
+    command_loop.session.config.path = str(path)
+    command_loop.interactive_input = True
+    app = command_loop.presentation.tui = TuiApp()
+    app.input_buffer.text = "keep this draft"
+    results = []
+
+    async def menu():
+        results.append(await theme_command(command_loop, ""))
+        app.app.exit()
+
+    app.on_ready = lambda: asyncio.create_task(menu())
+
+    def drive(pipe_input):
+        wait_until(lambda: app.modal is not None)
+        pipe_input.send_text("he\x15hello ❯ \t\x15→ \r\r")
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+    assert "saved as ui.input" in results[0]
+    assert command_loop.presentation.input_style == InputStyle("hello ❯ ", "→ ")
+    assert app.input_prompt == "hello ❯ " and app.input_buffer.text == "keep this draft"
+    command_loop.configure_theme()
+    assert command_loop.presentation.input_style == InputStyle("hello ❯ ", "→ ")
+
+
+def test_configured_input_prefix_follows_modes_and_preserves_drafts_and_approval_prompts(tmp_path):
+    command_loop = loop(tmp_path)
+    command_loop.session.config.ui["input"] = {"prompt": "preset:chevron", "running": "queue → "}
+    command_loop.configure_theme()
+    app = TuiRuntime(command_loop).build_tui()
+    app.input_buffer.text = "keep this draft"
+    assert app.input_prompt == "❯ "
+    app.set_running("working")
+    assert app.input_prompt == "queue → "
+    app.set_input_style(InputStyle("λ "))
+    assert app.input_prompt == "+λ " and app.input_buffer.text == "keep this draft"
+    app.set_dispatching("Waiting for approval ")
+    app.set_input_style(InputStyle("→ "))
+    assert app.input_prompt == "Waiting for approval "
+    app.set_idle()
+    assert app.input_prompt == "→ " and app.input_buffer.text == "keep this draft"
+
+
+async def test_configured_input_prefix_is_also_used_by_injected_reader(tmp_path):
+    command_loop = loop(tmp_path)
+    command_loop.session.config.ui["input"] = {"prompt": "ask → "}
+    command_loop.configure_theme()
+    prompts = []
+    command_loop.input_fn = lambda prompt: prompts.append(prompt) or "hello"
+    assert await command_loop.read_input() == "hello"
+    assert command_loop.read_input_sync("") == "hello"
+    assert prompts == ["ask → ", ""]
+
+
+@pytest.mark.parametrize("table", ["broken", {"prompt": 1}, {"prompt": "\n>"}, {"prompt": "\x1b[31m>"}, {"running": "\t"}, {"prompt": "界" * 17}, {"prompt": "preset:nope"}, {"unknown": "x"}])
+def test_invalid_input_settings_report_a_problem_and_leave_default_prefix(tmp_path, table):
+    command_loop = loop(tmp_path)
+    command_loop.session.config.ui["input"] = table
+    command_loop.configure_theme()
+    assert any("ui.input" in problem for problem in command_loop.theme_problems)
+    assert TuiRuntime(command_loop).build_tui().input_prompt == "> "
 
 
 def test_invalidate_ignores_redraw_that_loses_application_shutdown_race():

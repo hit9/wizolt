@@ -43,6 +43,28 @@ reported at startup and when `/theme` opens; the rest of the file still applies.
 
 Set custom templates in your [config file](configuration.md) and restart wizolt.
 
+### Input prefixes
+
+Choose or edit input prefixes in `/theme`'s **Input** tab, or set them in the config file:
+
+```toml
+[ui.input]
+prompt = "preset:chevron"
+```
+
+Presets are `default` (`>`), `chevron` (`❯`), `arrow` (`→`), `lambda` (`λ`) and `bullet` (`•`).
+Follow-up input adds `+` before the same prefix. To choose your own text for both:
+
+```toml
+[ui.input]
+prompt = "❯ "
+running = "→ "
+```
+
+Spaces are kept as written. Use `""` to hide a prefix. Each prefix accepts one line of printable
+text, up to 32 terminal columns; colors follow the active theme. The transcript's message
+markers and tool rows keep their existing layout.
+
 ### Custom templates
 
 Replace a `preset:name` value with a template. The statusbar and divider use the same syntax:

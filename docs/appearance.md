@@ -1,10 +1,10 @@
 # Appearance
 
-Make wizolt feel at home in your terminal. Run **`/theme`** to try colors, statusbars and
-animated dividers in one place.
+Make wizolt feel at home in your terminal. Run **`/theme`** to try colors, statusbars,
+animated dividers and input symbols in one place.
 
 ```{figure} _static/appearance-picker.svg
-:alt: The appearance picker with Colorscheme, Diff, StatusBar and Divider tabs, gruvbox-dark selected, and a preview of code and diff colors.
+:alt: The appearance picker with Colorscheme, Diff, StatusBar, Divider and Input tabs, gruvbox-dark selected, and a preview of code and diff colors.
 
 One picker for the whole look.
 ```
@@ -12,6 +12,7 @@ One picker for the whole look.
 **← / →** or **h / l** switches tabs. **↑ / ↓** moves through the choices.
 The screen previews each choice as you move. **Enter** saves everything you changed;
 **Esc** cancels. Use **/** to search a long list.
+The line beneath the shortcuts points to your config file for fuller customization.
 
 ## Color themes
 
@@ -85,6 +86,28 @@ A quiet line, a frame, or activity and speed.
 The picker animates idle, running and queued examples without sending a model request.
 The rounded `capsule` layout and arrow-shaped `powerline` layout need a Nerd Font.
 
+## Input symbols
+
+The **Input** tab changes the symbol before your typing. Choose `>` (default), `❯`, `→`, `λ`
+or `•`. The preview shows both ordinary input and a follow-up while the agent is working.
+
+```{figure} _static/appearance-input.svg
+:alt: The Input tab with five symbol presets and a custom choice, showing a chevron before ordinary input and a plus-chevron before a follow-up.
+
+A familiar prompt, or your own.
+```
+
+Press **e** to edit your own prefixes. **Tab** switches between ordinary input and follow-ups;
+**Ctrl-U** clears a field. Include a trailing space if you want room after the symbol.
+**Enter** applies your edit and returns to the list; **Enter** in the list saves. **Esc** in
+the editor discards that edit; **Esc** in the list cancels all changes.
+
+```{figure} _static/appearance-input-editor.svg
+:alt: The input-prefix editor with separate Chat and Running fields and a preview beneath them.
+
+Edit each prefix separately, then return to the list to save.
+```
+
 ## Make it yours
 
 You can also choose without opening the picker:
@@ -95,6 +118,7 @@ You can also choose without opening the picker:
 /theme statusbar vim
 /theme divider frame
 /theme sweep aurora
+/theme input chevron
 ```
 
 For your own colors, statusbar backgrounds, layouts or animations, see

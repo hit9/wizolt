@@ -456,6 +456,7 @@ class TuiRuntime:
 
     def build_tui(self, tui: TuiApp | None = None) -> TuiApp:
         tui = tui or TuiApp()
+        tui.set_input_style(self.loop.presentation.input_style)
         tui.on_chat_submit = self.submit_chat
         tui.on_running_submit = self.submit_running
         tui.on_queue_next_turn = self.submit_next_turn

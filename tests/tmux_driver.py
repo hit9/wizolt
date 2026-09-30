@@ -55,7 +55,7 @@ async def main(log) -> None:
         try:
             for marker in range(5):
                 ui.emit(f"BAR-MARKER-{marker}")
-            for cycle in range(4):
+            for cycle in range(5):
                 while not Path(log.name).with_suffix(f".open-{cycle}").exists():
                     await asyncio.sleep(0.02)
                 try:

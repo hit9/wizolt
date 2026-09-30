@@ -253,6 +253,9 @@ with `[ui.statusbar] format` and `[ui.divider] format` / `sweep`.
 See [Appearance](appearance.md#statusbar-and-divider) for presets, or
 [Custom appearance](appearance-reference.md) for templates and sweep formulas.
 
+The Input tab also offers prompt symbols and editable prefixes, saved as `[ui.input] prompt`
+and `running`. See [Input symbols](appearance.md#input-symbols).
+
 ## Worker delegation
 
 The `Delegate` tool and `/worker` command hand bounded tasks to a second in-process session.

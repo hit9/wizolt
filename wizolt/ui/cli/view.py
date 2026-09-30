@@ -32,7 +32,7 @@ from wizolt.ui.cli.hints import Context as HintContext
 from wizolt.ui.cli.hints import HintPicker
 from wizolt.ui.cli.runtime import RESUME_STATUS_LABEL, STARTING_STATUS_LABEL
 from wizolt.ui.cli.worker import WORKER_SUBCOMMANDS
-from wizolt.ui.render import LiveSpark, Theme, UiPrinter
+from wizolt.ui.render import InputStyle, LiveSpark, Theme, UiPrinter
 from wizolt.ui.tui import InputMode
 
 if TYPE_CHECKING:
@@ -123,7 +123,13 @@ class CommandCompleter(Completer):
                 yield from self.matches((*Theme.choices(), *KINDS[1:]), tail, more=KINDS[1:])
                 return
             kind, _, value = tail.partition(" ")
-            values = {"diff": Theme.diff_styles(), "statusbar": tuple(STATUS_PRESETS), "divider": tuple(DIVIDER_PRESETS), "sweep": tuple(PRESETS["sweep"])}
+            values = {
+                "diff": Theme.diff_styles(),
+                "statusbar": tuple(STATUS_PRESETS),
+                "divider": tuple(DIVIDER_PRESETS),
+                "sweep": tuple(PRESETS["sweep"]),
+                "input": tuple(InputStyle.PRESETS),
+            }
             if kind in values:
                 yield from self.matches(values[kind], value)
             return

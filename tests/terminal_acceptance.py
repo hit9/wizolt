@@ -391,7 +391,7 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
     for cycle in range(3):
         log.with_suffix(f".open-{cycle}").touch()
         visible_containing("Colorscheme")
-        pane.keys("h")
+        pane.keys("h", "h")
         visible_containing("Running (preview)")
         chosen = ("capsule", "frame", "rail")[cycle]
         pane.keys(str(cycle + 2))
@@ -449,6 +449,26 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
     while "closed 3:" not in log.read_text():
         assert time.monotonic() < deadline
         time.sleep(0.03)
+    log.with_suffix(".open-4").touch()
+    visible_containing("Colorscheme")
+    pane.keys("h", "j")
+    visible_containing("❯ Explain this function")
+    for width, height in ((60, 18), (100, 30), (80, 24)):
+        pane.resize(width, height)
+        # A shrinking pane clips the sample; the chosen row and shortcuts stay usable.
+        _settled_capture(pane)
+        visible = visible_containing("bars-model")
+        assert "chevron" in visible and "e edit" in visible, visible
+    pane.keys("e", "C-u", "λ", "Space", "Tab", "C-u", "→", "Space", "Enter")
+    visible_containing("* custom")
+    pane.keys("Enter")
+    deadline = time.monotonic() + 15
+    while "closed 4:" not in log.read_text():
+        assert time.monotonic() < deadline
+        time.sleep(0.03)
+    assert "Input: 'λ ' · running '→ '" in log.read_text()
+    lines = _settled_capture(pane)
+    assert sum(line == "λ" or line.startswith("λ ") for line in lines) == 1
     log.with_suffix(".done").touch()
     deadline = time.monotonic() + 15
     while "driver exited" not in log.read_text():

@@ -688,7 +688,7 @@ model = ""
         ConfigFile.set_ui_value(path, ("runtime",), key, value)
 
     @staticmethod
-    def set_ui_value(path: str, section: tuple[str, ...], key: str, value: str) -> None:
+    def set_ui_value(path: str, section: tuple[str, ...], key: str, value: str | Json) -> None:
         """Persist a UI selection using the same atomic, comment-preserving config writer."""
         import tomlkit
 

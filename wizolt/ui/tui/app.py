@@ -47,7 +47,7 @@ from wizolt.base import (
 from wizolt.image import IMAGE_MARKER, ImageInputs, ImageRef, UserInput
 from wizolt.mentions import MENU_KEYS, FilePick, MentionSpan, active_mention, encode_file_mention, mention_spellings, scan_mentions
 from wizolt.paste import PASTE_MARKER, PasteRef
-from wizolt.ui.render import ScrollbackText, Theme, UiPrinter
+from wizolt.ui.render import InputStyle, ScrollbackText, Theme, UiPrinter
 from wizolt.ui.tui.scrollback import ScrollbackRegion
 from wizolt.ui.tui.views import TUI_MODAL_PENDING
 
@@ -382,7 +382,8 @@ class TuiApp:
         self._last_quick_hints: tuple[str, ...] | None = None  # hints seen by the last quick_hints() call
         self._file_picker_active = False
         self._mention_transition_timer: asyncio.TimerHandle | None = None
-        self.input_prompt = UiPrinter.PROMPT_PREFIX
+        self.input_style = InputStyle()
+        self.input_prompt = self.input_style.prefix()
         # Every line of the prompt except the last. The input row's prefix is a single-line
         # processor, so these are rendered as their own rows above it. See _set_mode.
         self._input_prompt_above: list[str] = []
@@ -531,14 +532,20 @@ class TuiApp:
 
     def set_running(self, label: str) -> None:
         self.status_label = label
-        self._set_mode(InputMode.RUNNING, "+> ")
+        self._set_mode(InputMode.RUNNING, self.input_style.prefix(running=True))
 
     def set_dispatching(self, prompt: str = "") -> None:
         self._set_mode(InputMode.DISPATCH, prompt)
 
     def set_idle(self) -> None:
         self.status_label = ""
-        self._set_mode(InputMode.CHAT, UiPrinter.PROMPT_PREFIX)
+        self._set_mode(InputMode.CHAT, self.input_style.prefix())
+
+    def set_input_style(self, style: InputStyle) -> None:
+        self.input_style = style
+        if self.input_mode in {InputMode.CHAT, InputMode.RUNNING}:
+            self.input_prompt = style.prefix(running=self.input_mode == InputMode.RUNNING)
+        self.invalidate()
 
     def _set_mode(self, mode: InputMode, prompt: str) -> None:
         self.input_mode = mode

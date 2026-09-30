@@ -84,6 +84,9 @@ class ThemeModal(ModalHarness):
     def recolor(self):
         self.recolored += 1
 
+    def set_input_style(self, style):
+        self.input_style = style
+
 
 def test_every_builtin_theme_defines_every_role_in_a_shape_the_adapters_accept():
     for name, palette in Theme.BUILTIN.items():

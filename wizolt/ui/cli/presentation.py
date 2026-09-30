@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, ClassVar
 from wizolt.base import ImageRouteNotice, LogBlock, LogEdge, LogLine, LogRole, Text, TurnBox
 from wizolt.session import Session
 from wizolt.ui.cli.update import UpdateStatus
-from wizolt.ui.render import BashLivePreview, StatusBar, UiPrinter
+from wizolt.ui.render import BashLivePreview, InputStyle, StatusBar, UiPrinter
 
 if TYPE_CHECKING:
     from wizolt.ui.cli.runtime import ScrollbackWriter
@@ -29,6 +29,7 @@ class Presentation:
         self.session = session
         self.update = UpdateStatus()
         self.ui = UiPrinter(output_fn)
+        self.input_style = InputStyle()
         self.status_bar = StatusBar(session)
         self.live_preview = BashLivePreview()
         self.model_stream_kind = ""
