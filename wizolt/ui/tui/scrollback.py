@@ -139,6 +139,11 @@ class ScrollbackRegion:
     def pending(self) -> bool:
         return bool(self._pending)
 
+    def pending_rows(self, columns: int) -> int:
+        """Space needed by accepted writes before placing a live preview after their tail."""
+        text = "".join(item(columns) if callable(item) else item for item in self._pending)
+        return physical_rows(text, columns) if text else 0
+
     def enqueue(self, text: ScrollbackText) -> None:
         """Accept text or a frozen width-dependent rendering. Project it on the next render."""
         if text:
@@ -181,6 +186,10 @@ class ScrollbackRegion:
         the one a width change runs, and is paid on the next render like that one.
         """
         self._layouts.clear()
+        self._rebuild_owed = True
+
+    def reanchor(self) -> None:
+        """Replay retained rows after a resize invalidates the live preview's transcript anchor."""
         self._rebuild_owed = True
 
     def flush(self, app: Application) -> None:
@@ -296,6 +305,7 @@ class ScrollbackRegion:
         # directly beats a CPR: the answer to a CPR describes a screen that the next resize in
         # a drag has already replaced.
         cursor_row = min(written, rows - 1)
+        self.tail_row = cursor_row
         renderer._min_available_height = rows - cursor_row
 
 

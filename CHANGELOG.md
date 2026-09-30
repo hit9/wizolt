@@ -32,6 +32,10 @@
 
 ### Fixed
 
+- Keep Bash/Job live previews beside their transcript header instead of stranding `running…`
+  near the pane bottom. Place spare space below the preview while keeping input and status fixed;
+  cover consecutive commands and terminal resizes in model and real-multiplexer tests.
+
 - Keep message backgrounds to text rows. Give input shaded rows above and below its text and a plain gap
   before the statusbar; keep another plain row between divider and input. Use whitespace
   below sent messages instead of an extra separator. Preserve configurable `user_bg` colors

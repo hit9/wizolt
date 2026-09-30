@@ -563,3 +563,59 @@ def test_a_rebuild_leaves_the_app_on_the_row_it_was_on(monkeypatch, wired):
 # the anchoring above in place, a short transcript is padded to the app's row either way, so the
 # two counts agree wherever the app can be placed at all. `physical_rows` is pinned directly, at
 # widths measured against tmux, in `test_tui_transcript_recording.py`.
+
+
+@pytest.mark.parametrize('tool', ['Bash', 'Job'])
+def test_quiet_command_preview_stays_beside_its_transcript_header(monkeypatch, tmp_path, wired, tool):
+    output, app, printer = wired
+    output.lines = [""] * output.size.rows
+    output.row = 1
+    command_loop = loop(tmp_path)
+    command_loop.presentation.ui.color = True
+    monkeypatch.setattr(LiveSpark, "glyph", lambda _: "* ")
+    command_loop.presentation.tui = app
+    app.activity_fragments_fn = command_loop.view.tui_activity_fragments
+    app.activity_follows_transcript_fn = lambda: command_loop.presentation.live_preview.active
+    app.status_fragments_fn = lambda: [('', 'fixed-status')]
+    positions = []
+
+    def drive(_pipe_input):
+        wait_until(lambda: 'fixed-status' in output.lines[-1])
+        for index in range(3):
+            header = f'{tool} command-{index}'
+
+            def start():
+                # The header and live region arrive together, before the next render.
+                printer.emit(header)
+                app.set_running('+> ')
+                command_loop.presentation.tool_live_start()
+
+            app.app.loop.call_soon_threadsafe(start)
+            wait_until(lambda: any('running…' in line for line in output.lines))
+            wait_until(lambda: header in ''.join(app.scrollback.transcript))
+
+            async def check():
+                lines = list(output.lines)
+                head = next(i for i, line in enumerate(lines) if header in line)
+                live = next(i for i, line in enumerate(lines) if 'running…' in line)
+                assert live == head + 2, '\n'.join(lines)
+                positions.append(next(i for i, line in enumerate(lines) if line.startswith('+>')))
+
+            asyncio.run_coroutine_threadsafe(check(), app.app.loop).result(timeout=5)
+            app.app.loop.call_soon_threadsafe(command_loop.presentation.tool_live_output, 'stdout', 'one\ntwo\nthree\nfour\nfive')
+            wait_until(lambda: any('five' in line for line in output.lines))
+            app.app.loop.call_soon_threadsafe(command_loop.presentation.tool_live_output, 'stdout', '')
+            wait_until(lambda: not any('five' in line for line in output.lines))
+            emit_and_wait(app, printer, f'result-{index}')
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    try:
+        run_interactive_tui(
+            monkeypatch, app, output=output, drive=drive,
+            on_application=lambda application: setattr(output, "report_cursor_row", lambda row: application.renderer.report_absolute_cursor_row(row)),
+        )
+        assert len(set(positions)) == 1
+        transcript = ''.join(app.scrollback.transcript)
+        assert all(transcript.count(f'{tool} command-{i}') == transcript.count(f'result-{i}') == 1 for i in range(3))
+    finally:
+        command_loop.session.close()

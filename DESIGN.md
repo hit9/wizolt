@@ -653,7 +653,11 @@ that projection. Its two mechanisms are inseparable:
   separately: new output fills the gap above the app before scrolling, without moving or resetting
   the app. The initial CPR locates that tail but never delays or relocates the prompt; without a
   reply, conservatively write immediately above the app. Only a live-layout height change moves
-  its top edge. When growing, consume the gap first and scroll only the transcript rows that
+  its top edge. Command previews use the gap after the transcript to stay beside their tool
+  header, placing spare rows below the preview and keeping the input fixed. Reserve space for
+  pending transcript writes before measuring this gap. While a command preview is attached,
+  height-only resizes also replay retained output to recover the header's exact position.
+  When growing, consume the gap first and scroll only the transcript rows that
   would be covered; when shrinking, clear the old live region and anchor the smaller one below.
   Bound preview bodies at their source (the model stream retains six text rows), not the combined
   activity window: its spark, phase label, spacing and divider need their own rows. Follow the

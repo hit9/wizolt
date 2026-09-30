@@ -477,3 +477,43 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
     history = "\n".join(pane.capture())
     for marker in range(5):
         assert history.count(f"BAR-MARKER-{marker}") == 1
+
+
+def test_command_preview_follows_header_without_moving_input(pane):
+    pane.fresh_window()
+    log = pane.path / "commands.log"
+    pane.send(f"{sys.executable} {DRIVER} 0 0 {log} commands")
+
+    def visible_containing(needle):
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            visible = pane.visible()
+            if needle in visible:
+                return visible.splitlines()
+            time.sleep(0.03)
+        raise AssertionError(f"missing {needle!r}:\n{pane.visible()}")
+
+    positions = []
+    for index in range(3):
+        visible_containing(f"COMMAND-{index}")
+        for width, height in ((WIDE, TALL), (NARROW, SHORT), (NARROW, TALL), (WIDE, TALL)):
+            pane.resize(width, height)
+            # Clocks and the spark keep changing; settle geometry, not animated text.
+            deadline = time.monotonic() + 5
+            stable = 0
+            while stable < 3:
+                lines = pane.visible().splitlines()
+                header = next((i for i, line in enumerate(lines) if f"COMMAND-{index}" in line), -10)
+                live = next((i for i, line in enumerate(lines) if "running…" in line), -1)
+                stable = stable + 1 if live == header + 2 and len(lines) == height else 0
+                assert time.monotonic() < deadline, "\n".join(lines)
+                time.sleep(0.05)
+            if height == TALL:
+                positions.append(next(i for i, line in enumerate(lines) if line.startswith("+>")))
+        log.with_suffix(f".output-{index}").touch()
+        visible_containing("five")
+        log.with_suffix(f".next-{index}").touch()
+    visible_containing("RESULT-2")
+    history = "\n".join(_settled_capture(pane))
+    assert all(history.count(f"COMMAND-{i}") == history.count(f"RESULT-{i}") == 1 for i in range(3)), history
+    assert len(set(positions)) == 1

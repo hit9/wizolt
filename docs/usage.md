@@ -42,6 +42,9 @@ if it was never sent (your input history still recalls it with `Ctrl-P`). Once t
 spoken or run a tool, `Ctrl-C` *interrupts*: the work already shown stays, and the turn is
 marked as interrupted so wizolt knows it ended early.
 
+Bash and Job live previews stay next to their command header. The input and statusbar
+stay at the bottom while output arrives.
+
 ## Streaming model output
 
 Model output streams by default in the interactive terminal over OpenAI-compatible Chat

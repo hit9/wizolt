@@ -341,6 +341,8 @@ class TuiApp:
         # owner can flush anything still queued (see UiPrinter.drain_scrollback).
         self.on_app_stop = on_app_stop or (lambda: None)
         self.activity_fragments_fn: Callable[[], StyleAndTextTuples] = activity_fragments_fn or list
+        self.activity_follows_transcript_fn: Callable[[], bool] = lambda: False
+        self.activity_gap_rows = 0
         self.idle_divider_fragments_fn: Callable[[], StyleAndTextTuples] = list
         self.input_hint_fn = input_hint_fn or (lambda: "")
         self.quick_hints_fn: Callable[[], tuple[str, ...]] = quick_hints_fn or (lambda: ())
@@ -2047,10 +2049,15 @@ class TuiApp:
             return
         out = app.renderer.output
         flush = out.flush
+        get_size = out.get_size
+        size = get_size()
         # prompt-toolkit buffers writes, but render/reset/replay each flush along the way.
         # Hold those flushes until layout is finished: starting the terminal's sync timeout
         # before expensive history layout lets it expire while the frame is still incomplete.
         out.flush = lambda: None
+        # A multiplexer can resize between measurement and rendering. One frame must use one
+        # size, or its reserved preview gap can push transcript out of the newly shortened pane.
+        out.get_size = lambda: size
         self._screen_update_active = True
         try:
             out.write_raw("\x1b[?2026h")
@@ -2058,6 +2065,7 @@ class TuiApp:
         finally:
             self._screen_update_active = False
             out.flush = flush
+            out.get_size = get_size
             out.write_raw("\x1b[?2026l")
             out.flush()
 
@@ -2079,10 +2087,17 @@ class TuiApp:
                     self.modal_window.height = Dimension(max=self.modal_rows(app.output.get_size().rows))
                 renderer = app.renderer
                 last_screen = renderer.last_rendered_screen
+                if last_screen is not None and renderer._last_size == renderer.output.get_size():
+                    # A delayed duplicate SIGWINCH must not discard the known transcript tail.
+                    return
                 if last_screen is None or renderer.full_screen:
                     # Nothing rendered yet, or a full-screen app: the stock path is already right.
                     vanilla_resize()
                     return
+                if self.activity_follows_transcript_fn():
+                    # Height-only resizes can move the command header too. Reuse retained row
+                    # layouts, but recover its exact tail before attaching the preview again.
+                    self.scrollback.reanchor()
                 # Erase from where an app of this height belongs when flush with the pane bottom.
                 # An absolute row can only ever reach the app's own rows; erasing from the drifted
                 # cursor instead reaches the transcript sitting directly above it.
@@ -2134,7 +2149,24 @@ class TuiApp:
                 if not renderer.full_screen:
                     out = renderer.output
                     rows, columns = out.get_size()
+                    self.activity_gap_rows = 0
                     height = min(rows, app.layout.container.preferred_height(columns, rows).preferred)
+                    if (
+                        self.input_mode == InputMode.RUNNING
+                        and self.modal is None
+                        and self.activity_follows_transcript_fn()
+                        and self.scrollback.tail_row is not None
+                    ):
+                        # Keep the live command beside its transcript header. Move unused space
+                        # below the preview, leaving input/status fixed at the pane bottom.
+                        # Pending writes need their space before this frame reserves the gap.
+                        tail = self.scrollback.tail_row + self.scrollback.pending_rows(columns)
+                        self.activity_gap_rows = max(0, rows - height - max(1, tail))
+                        height += self.activity_gap_rows
+                        if self.activity_gap_rows:
+                            # preferred_height cached the unpadded fragments for this render.
+                            # Begin a new layout pass so content and cursor share the padded rows.
+                            app.render_counter += 1
                     previous = renderer.last_rendered_screen
                     # Only changes to the live layout can move its top edge. Growing first uses
                     # the gap below the transcript, then scrolls just enough to protect its tail.

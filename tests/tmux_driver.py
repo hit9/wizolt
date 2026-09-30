@@ -70,6 +70,35 @@ async def main(log) -> None:
         finally:
             session.close()
 
+    async def command_preview_loop() -> None:
+        from wizolt.agent.engine import Agent
+        from wizolt.config import Config
+        from wizolt.session import Session
+        from wizolt.ui.cli.loop import CommandLoop
+
+        session = Session(cwd=str(Path(log.name).parent), config=Config(data_dir=str(Path(log.name).parent / "data")))
+        command_loop = CommandLoop(Agent(session, output_fn=lambda _text: None), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
+        command_loop.presentation.tui = app
+        command_loop.presentation.ui.color = True
+        app.activity_fragments_fn = command_loop.view.tui_activity_fragments
+        app.activity_follows_transcript_fn = lambda: command_loop.presentation.live_preview.active
+        try:
+            for index, tool in enumerate(("Bash", "Job", "Bash")):
+                ui.emit(f"{tool} COMMAND-{index}")
+                app.set_running("working")
+                command_loop.presentation.tool_live_start()
+                while not Path(log.name).with_suffix(f".output-{index}").exists():
+                    await asyncio.sleep(0.02)
+                command_loop.presentation.tool_live_output("stdout", "one\ntwo\nthree\nfour\nfive")
+                while not Path(log.name).with_suffix(f".next-{index}").exists():
+                    await asyncio.sleep(0.02)
+                command_loop.presentation.tool_live_output("stdout", "")
+                ui.emit(f"RESULT-{index}")
+            app.set_idle()
+            await asyncio.Event().wait()
+        finally:
+            session.close()
+
     async def long_selector_loop() -> None:
         ui.emit("WIZOLT-BANNER")
         ui.emit("PROVIDER-COMMAND")
@@ -139,6 +168,9 @@ async def main(log) -> None:
         await asyncio.Event().wait()
 
     def start() -> None:
+        if len(sys.argv) > 4 and sys.argv[4] == "commands":
+            app.app.create_background_task(command_preview_loop())
+            return
         if len(sys.argv) > 4 and sys.argv[4] == "bars":
             app.app.create_background_task(bar_selector_loop())
             return
