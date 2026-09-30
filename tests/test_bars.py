@@ -260,6 +260,23 @@ def test_context_meter_fills_to_the_nearest_cell():
         assert rendered == "m " + "▰" * filled + "▱" * (5 - filled) + f" {percent}%"
 
 
+@pytest.mark.parametrize("name", ["minimal", "split", "compact", "brackets", "monitor", "blocks", "vim"])
+def test_restyled_statusbars_color_context_by_pressure(name):
+    from wizolt.ui.render import Theme
+
+    template = Template("preset:" + name, STATUS_PRESETS)
+    styles = Theme.bar_styles(template.styles)
+    values = dict.fromkeys(FIELDS, 0)
+    values.update(model="m", provider="p", reasoning="high", **{"mcp.label": "mcp 0", "worker.summary": ""})
+
+    def context_style(percent):
+        values["context.percent"] = percent
+        return next(style for style, value in template.render(values, 200, styles) if f"{percent}%" in value)
+
+    assert len({context_style(37), context_style(76), context_style(94)}) == 3
+    assert "ansired" in context_style(94)
+
+
 def test_layout_reload_is_atomic_and_rejects_style_injection():
     from wizolt.ui.bars import BarLayout
     from wizolt.ui.render import Theme

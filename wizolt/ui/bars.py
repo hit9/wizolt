@@ -158,10 +158,19 @@ class Sweep:
             return 0.0
 
 
-def meter(field: str, cells: int) -> str:
-    """A gauge of `cells` cells filled in proportion to a 0–100 field, rounded to the nearest cell."""
+def meter(cells: int) -> str:
+    """`cells` cells filled in proportion to the context percentage, rounded to the nearest cell;
+    filled cells take the surrounding style."""
     step = 100 / cells
-    return "".join(f"{{% if {field} >= {round(step * i - step / 2)} %}}[status_context]▰[/]{{% else %}}[subtle]▱[/]{{% endif %}}" for i in range(1, cells + 1))
+    return "".join(f"{{% if context.percent >= {round(step * i - step / 2)} %}}▰{{% else %}}[subtle]▱[/]{{% endif %}}" for i in range(1, cells + 1))
+
+
+def pressure(body: str, normal: str = "status_context", warning: str = "warning", error: str = "error bold") -> str:
+    """`body` in `normal` style, turning to `warning` from 70% context and `error` from 90%."""
+    return (
+        f"{{% if context.percent >= 90 %}}[{error}]{body}[/]{{% else %}}"
+        f"{{% if context.percent >= 70 %}}[{warning}]{body}[/]{{% else %}}[{normal}]{body}[/]{{% endif %}}{{% endif %}}"
+    )
 
 
 IDENTITY = "{% if yolo %}[status_yolo][[yolo]] [/]{% endif %}{% if worker.active %}[status_worker]worker · [/]{% endif %}"
@@ -171,29 +180,35 @@ STATUS_PRESETS = {
     + "[status_provider]{provider}/{model}[/][subtle] · [/][status_reason]{reasoning}[/][subtle] | [/]"
     + STATS
     + "[status_worker]{worker.summary}[/]",
-    "minimal": IDENTITY + "[status_provider]{model}[/] " + meter("context.percent", 5) + " [status_context]{context.percent}%[/]",
+    "minimal": IDENTITY + "[status_provider]{model}[/] " + pressure(meter(5) + " {context.percent}%"),
     "split": IDENTITY
     + "[status_provider]{provider}/{model}[/]{% optional priority=10 %}[subtle] · [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
     + "{% optional priority=5 %}[status_mcp]{mcp.label} · skills {skills.count}[/][subtle] │ [/]{% endoptional %}"
-    + "[status_context]ctx [/]"
-    + meter("context.percent", 10)
-    + "[status_context] {context.percent}%[/]{% optional priority=8 %}[subtle] · [/][status_context]cache {cache.percent}%[/]{% endoptional %}",
-    "compact": IDENTITY + "[status_provider]{model}[/][subtle] › [/][status_reason]{reasoning}[/][subtle] › [/][status_context]{context.percent}%[/]",
+    + pressure("ctx " + meter(10) + " {context.percent}%")
+    + "{% optional priority=8 %}[subtle] · [/][status_context]cache {cache.percent}%[/]{% endoptional %}",
+    "compact": IDENTITY + "[status_provider]{model}[/][subtle] › [/][status_reason]{reasoning}[/][subtle] › [/]" + pressure("{context.percent}%"),
     "brackets": IDENTITY
     + "[subtle][[[/][status_provider]{model}[/][subtle]]][/] {% optional priority=10 %}[subtle][[[/][status_reason]{reasoning}[/][subtle]]][/] {% endoptional %}"
-    + "[subtle][[[/][status_context]ctx {context.percent}%[/][subtle]]] [[[/][status_context]cache {cache.percent}%[/][subtle]]][/]",
+    + "[subtle][[[/]"
+    + pressure("ctx {context.percent}%")
+    + "[subtle]]] [[[/][status_context]cache {cache.percent}%[/][subtle]]][/]",
     "monitor": IDENTITY
     + "[subtle]model [/][status_provider]{model}[/]{% optional priority=10 %}[subtle] effort [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
     + "{% optional priority=5 %}[status_mcp]{mcp.label}[/][subtle]  skills [/][status_mcp]{skills.count}[/]  {% endoptional %}"
-    + "[subtle]ctx [/][status_context]{context.percent}%[/][subtle]  cache [/][status_context]{cache.percent}%[/][status_worker]{worker.summary}[/]",
+    + "[subtle]ctx [/]"
+    + pressure("{context.percent}%")
+    + "[subtle]  cache [/][status_context]{cache.percent}%[/][status_worker]{worker.summary}[/]",
     "blocks": "[status.model] "
     + IDENTITY
     + "{model} [reset]{% optional priority=10 %} [status.detail] {reasoning} [reset]{% endoptional %}"
-    + "{>}{% optional priority=5 %}[status.detail] cache {cache.percent}% [reset] {% endoptional %}[status.usage] ctx {context.percent}% [reset]",
+    + "{>}{% optional priority=5 %}[status.detail] cache {cache.percent}% [reset] {% endoptional %}"
+    + pressure(" ctx {context.percent}% ", "status.usage", "status.usage bg=warning", "status.usage bg=error"),
     "vim": "[status.detail] "
     + IDENTITY
     + "[status_provider]{provider}/{model}[/]{% optional priority=10 %} [status_reason][[{reasoning}]][/]{% endoptional %}{>}"
-    + "{% optional priority=5 %}[status_mcp]{mcp.label}[/] · {% endoptional %}[status_context]ctx {context.percent}%[/] [reset]",
+    + "{% optional priority=5 %}[status_mcp]{mcp.label}[/] · {% endoptional %}"
+    + pressure("ctx {context.percent}%")
+    + " [reset]",
     "lualine": "[status.model] "
     + IDENTITY
     + "{% if not worker.active %}CHAT {% endif %}{join:}[status.detail] {model} {join:}[reset]"

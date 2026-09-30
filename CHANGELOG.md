@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- The context figure in the `minimal`, `split`, `compact`, `brackets`, `monitor`, `blocks` and
+  `vim` statusbars turns yellow from 70% and red from 90%, meter included.
+
 ## 0.60.0 - 2026-09-29
 
 ### Changed

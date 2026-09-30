@@ -127,7 +127,10 @@ Sweeps in the picker:
 | `aurora` | Broad, slow bands of light overlap |
 
 These animations travel along the fill regions, skipping the labels, and keep their timing
-when the terminal width changes. The older sweeps `scan`, `reverse`, `breathe`, `wave`, `twin`
+when the terminal width changes.
+
+In the statusbars other than `default`, `powerline` and `lualine`, the context figure turns
+yellow from 70% and red from 90%. The older sweeps `scan`, `reverse`, `breathe`, `wave`, `twin`
 and `pulse` still work in your config and can be kept
 through `current (name)` in the picker.
 
@@ -161,8 +164,7 @@ sweep = "preset:none"
 | `[fg=#fff bg=#333 bold]…[/]` | Explicit foreground, background and attributes; colors can also name theme roles |
 | `[reset]` | Restore terminal defaults |
 | `{>}` | Push the remaining content to the right |
-| `{fill:─}` / `{fill:─·}` | Fill space by repeating a character or short pattern |
-| `{join:}` / `{join:}` | Join adjacent background colors automatically |
+| `{fill:─}` / `{fill:─·}` | Fill space by repeating a character or short pattern || `{join:}` / `{join:}` | Join adjacent background colors automatically |
 | `{% if worker.active %}…{% else %}…{% endif %}` | Conditional content; `else` is optional |
 | `{% optional priority=10 %}…{% endoptional %}` | Omit the whole span when space is short; lower priorities go first |
 
