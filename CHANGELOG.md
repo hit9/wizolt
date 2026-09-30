@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.59.0 - 2026-09-29
+
 ### Added
 
 - Refine the sweep picker to `comet`, `ripple`, `aurora` and `none`. The comet now eases at the
