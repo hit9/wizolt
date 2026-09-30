@@ -30,6 +30,9 @@ p { color: #aeb8c4; margin: 0 0 26px; }
 .compact { padding: 14px 12px; line-height: 1.4; }
 .compact .gap { height: 8px; }
 .compact .rule { margin: 12px 0 8px; }
+.compact .del { background: none; color: #d9a0a5; }
+.compact .add { background: none; color: #a9ca91; }
+.compact .activity { color: #a8adb8; font-size: 14px; }
 .note { font: 14px/1.6 system-ui; margin-top: 18px; color: #aeb8c4; }
 .foot { margin-top: 27px; border-top: 1px solid #3b424d; padding-top: 18px; color: #bdc6d1; font-size: 14px; line-height: 1.6; }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } body { padding: 20px; } }
@@ -82,23 +85,21 @@ p { color: #aeb8c4; margin: 0 0 26px; }
 </section>
 <section>
 <div class="label">03 / 紧凑</div>
-<div class="sub">保留工具、参数、结果和 diff · 减少空行与缩进</div>
+<div class="sub">合并重复信息 · 弱化过程 · 保留关键变化</div>
 <div class="terminal"><div class="content compact">
-<div class="user">• Fix empty input in parser.py</div>
+<div class="user">Fix empty input in parser.py</div>
 <div class="gap"></div>
-<div class="tool">Read parser.py</div>
-<div class="tool">Edit parser.py</div>
+<div class="activity">parser.py · Read → Edit</div>
 <div class="line del">- first = text[0]</div>
 <div class="line add">+ if not text:</div>
 <div class="line add">+     return []</div>
-<div class="tool">Bash uv run pytest -q</div>
-<div class="ok">└ 41 passed in 2.10s</div>
+<div class="activity">uv run pytest -q · <span class="ok">41 passed</span> · 2.10s</div>
 <div class="gap"></div>
-<div class="answer">Empty input now returns an empty list. Tests pass.</div>
+<div class="answer">Empty input now returns an empty list.</div>
 <div class="rule"></div>
 <div class="user">❯ </div>
 </div></div>
-<div class="note">不隐藏成功的工具过程，也不把 diff 换成一句摘要。通过减少空行、缩进和重复标签，让同样的信息占更少空间。</div>
+<div class="note">同一文件的连续 Read / Edit 共用一行；测试命令和结果合为一行。去掉工具前缀、树形标记和 diff 背景色，保留增删内容。回答不再重复已显示的测试结果；审批与错误仍单独完整展示。</div>
 </section>
 </div>
 <div class="foot">所有风格都完整显示审批、错误和中断。背景样式与排版密度可独立配置，例如“块状＋紧凑”。图中块高由内容自然撑开，没有固定高度。</div>
