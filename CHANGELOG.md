@@ -40,6 +40,8 @@
 
 ### Fixed
 
+- Align the usage guide and terminal illustrations with configurable statusbars, the idle divider
+  and fill-relative sweep motion. Add normalized-formula examples and document retained preset names.
 - Reserve the trailing terminal row in choice-menu height budgets so expanded preview lists
   keep their title visible after scrolling and resizing.
 

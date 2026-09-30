@@ -793,6 +793,11 @@ time so theme switching also recolors Powerline segments. `cli/bars.py` owns sel
 preview state, config persistence and preview-task cancellation. The existing TUI still owns row
 placement and scrollback; configurable bars are live rows, never transcript entries.
 
+Picker choices are a curated subset of the preset registry; older names remain valid configuration
+and appear as the current selection. Fills share the remaining terminal columns and repeat bounded
+single-column patterns. Sweeps keep `x`/`w` in terminal columns; `u` spans the fill regions only,
+excluding fixed labels, so built-in animation timing is independent of width and label length.
+
 Preset strings and custom strings follow the same evaluator. Expressions are interpreted from an
 AST allowlist, never `eval` or Python attribute access. Dotted identifiers are exact keys in a
 fixed field vocabulary. Bound source length, tree size, numeric magnitude and exponent size;

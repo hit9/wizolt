@@ -304,6 +304,7 @@ then a sweep. Each picker also offers your current custom value when you have on
 Moving the selection previews it; Enter saves it. Esc cancels the current picker, keeping
 any choice you already confirmed. Divider previews include idle, running and queued examples,
 so you can try animations without sending a model request.
+The command reports whether the choice was saved or only applied to this session.
 
 ```toml
 [ui.statusbar]
@@ -339,7 +340,8 @@ Divider layouts in the picker:
 | `rail` | Activity on the left; elapsed time, speed and queue counts on the right |
 | `powerline` | Activity and metrics in color segments joined to the rule by arrows |
 
-Existing divider preset names still work in config files. If you use one, the picker offers
+The older divider presets `plain`, `minimal`, `dashed`, `dotted`, `double` and `right` still work
+in config files. If you use one, the picker offers
 `current (name)` so you can keep it; custom templates appear as `custom (current)`.
 
 Sweeps in the picker:
@@ -352,7 +354,8 @@ Sweeps in the picker:
 | `aurora` | Broad, slow bands of light overlap |
 
 These animations travel along the fill regions, skipping the labels, and keep their timing
-when the terminal width changes. Older sweep names still work in your config and can be kept
+when the terminal width changes. The older sweeps `scan`, `reverse`, `breathe`, `wave`, `twin`
+and `pulse` still work in your config and can be kept
 through `current (name)` in the picker.
 
 The defaults are `preset:default`, `preset:comet` and `preset:comet`. Layout and sweep are
@@ -414,8 +417,8 @@ Available fields:
 | `activity`, `spinner`, `label` | Divider activity, waiting dot, and the complete activity/elapsed/queue label used by default |
 | `queue.total`, `queue.followup`, `queue.next_turn`, `reset_pending` | Divider queue counts and pending context reset |
 
-Divider-specific fields are populated by the divider; the statusbar supplies neutral values for
-them. Put fields such as `rate` inside conditions when you want to omit their surrounding text
+The full `label`, `spinner` and queue counts are populated only in the divider; the statusbar
+supplies empty strings or zero for those fields. Put fields such as `rate` inside conditions when you want to omit their surrounding text
 while they are empty. Field contents never become template instructions.
 
 ### Powerline colors
@@ -443,7 +446,7 @@ format = "[status.model] {model} {join:}[status.detail] {reasoning} {join:
 
 ### Sweep formulas
 
-A sweep is a brightness formula: `x` is the current terminal column, `t` is elapsed seconds, and
+A sweep is a brightness formula: `x` is the zero-based terminal column, `t` is elapsed seconds, and
 `w` is the divider width. `u` runs from `0` to `1` across the fill regions only, skipping fixed
 labels. Use `u` for a width-independent animation that stays on the line, or `x` for motion in
 terminal columns. The result is clamped to `0..1`, blending `divider_rule` with `divider_glow`.
@@ -451,11 +454,19 @@ Labels keep their own colors.
 
 ```toml
 [ui.divider]
+sweep = "exp(-((u - pingpong(t / 3, 1)) / 0.1) ** 2)"
+```
+
+This glow crosses the fill regions in three seconds and returns in three more. Change `3` for
+the crossing time or `0.1` for the glow's width. For a fixed speed of 18 columns per second:
+
+```toml
+[ui.divider]
 sweep = "exp(-((x - pingpong(t * 18, w)) / 8) ** 2)"
 ```
 
-This produces a broad glow moving back and forth at 18 columns per second. Change `18` for speed
-or `8` for width. `pingpong(value, width)` reflects motion at the ends; `sin`, `cos`, `exp`,
+Here, `18` controls speed and `8` controls width in columns. `pingpong(value, width)` reflects
+motion at the ends; `sin`, `cos`, `exp`,
 `sqrt`, `abs`, `min` and `max` are also available, with arithmetic including `%` and `**`.
 Use `"0"` or `"preset:none"` to stop the sweep.
 
