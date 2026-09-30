@@ -164,7 +164,7 @@ class ResumeRenderer:
             # The follow-up marker is model-facing context, part of history because it was sent.
             # The scrollback shows what the user typed, exactly as it looked when they typed it.
             presentation.ui.emit_answer(content.removeprefix(LIVE_FOLLOWUP_PREFIX.strip()).lstrip(), role=role, rule=False)
-            # Replay the same opening separator used by a live turn.
+            # Replay the same spacing used by a live turn.
             presentation.user_turn_rule()
         return tool_record_index
 

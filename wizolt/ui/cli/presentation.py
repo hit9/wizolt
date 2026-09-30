@@ -140,7 +140,7 @@ class Presentation:
     def tool_output(self, text: str | LogBlock = "") -> None:
         def output() -> None:
             # The blank line parts each block from the one above; it is skipped when the block
-            # sits directly under a rule just drawn (the turn's opening rule, or a batch rule),
+            # sits directly under a phase rule just drawn,
             # which already provides the seam.
             #
             # It is skipped again between two calls that each fit on one line: a run of them is a
@@ -274,9 +274,12 @@ class Presentation:
         self.ui.emit_answer(text, rule=False, indent=TurnBox.CONTENT_LEVEL)
 
     def user_turn_rule(self) -> None:
-        """Open a live or restored turn with one separator below the user's message."""
+        """Separate a live or restored turn from its shaded user message with whitespace."""
         self.restart_silent_batches()
-        self.ui.emit_phase_rule()
+        self.ui.separate()
+        # The message's background already marks the boundary. Still measure later phase
+        # separators from this turn so a long previous answer cannot trigger one immediately.
+        self.ui.rows_since_rule = 0
 
     def restart_silent_batches(self) -> None:
         """The agent spoke (narration, a voiced batch, a new user turn): the silent run starts over."""

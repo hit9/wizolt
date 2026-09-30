@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- Join the input divider and padded input background into a continuous band; use whitespace
+  below sent user messages instead of an additional separator. Named themes use subtler
+  neutral background shading, with `user_bg` overrides retained.
+
 - Send actual Space and Tab bytes in the Zellij test adapter; the appearance acceptance test's
   "pin this layout" and "jump groups" presses were being typed as text, so its cycle that saves
   `preset:rail` never pinned a layout and failed deterministically.

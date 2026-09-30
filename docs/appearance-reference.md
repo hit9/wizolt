@@ -82,6 +82,23 @@ custom theme's `[colors]` table to change it, for example `user_bg = "#34363c"` 
 terminal or `user_bg = "#eeeeee"` on a light terminal. Use `user_bg = "default"` for the
 terminal's own background.
 
+The input divider shares this background, so the input area forms one continuous band.
+Sent messages use their bottom padding to separate replies instead of an extra separator line.
+Preset backgrounds gently lighten dark themes or darken light themes without adding a
+foreground tint. For the closest match, choose a theme whose background resembles your terminal.
+
+For example, to give One Dark a slightly brighter input and message background in your config:
+
+```toml
+[ui.themes.my-one-dark]
+base = "one-dark"
+
+[ui.themes.my-one-dark.colors]
+user_bg = "#30333b"
+```
+
+Restart wizolt, then select `/theme my-one-dark`.
+
 ### Change diff backgrounds
 
 A theme file pairs with its base theme's [diff colors](appearance.md#diff-colors). A `[diff]` table sets

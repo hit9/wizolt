@@ -30,11 +30,11 @@ from wizolt.config import (
 )
 from wizolt.image import UserInput
 from wizolt.paste import PASTE_FOLD_MIN_CHARS, PASTE_FOLD_MIN_LINES, PASTE_MARKER, PasteRef
-from wizolt.session import Session, SessionSnapshotStore
+from wizolt.session import QueuedInput, Session, SessionSnapshotStore
 from wizolt.ui.cli import CommandCompleter, CommandLoop, TuiRuntime
 from wizolt.ui.cli.appearance import theme_command
 from wizolt.ui.cli.update import UpdateChecker
-from wizolt.ui.render import InputStyle
+from wizolt.ui.render import InputStyle, Theme
 from wizolt.ui.tui import CallbackPlaceholder, TuiApp
 
 
@@ -900,6 +900,64 @@ def test_interactive_tui_keeps_legacy_padding_around_input(monkeypatch):
     prompt, status = frames[0]
     assert prompt.ypos == 2  # outer gap plus the input's shaded top padding
     assert status.ypos == prompt.ypos + prompt.height + 1
+
+
+@pytest.mark.parametrize("running", (False, True))
+@pytest.mark.parametrize("background", ("#30333b", "default"))
+def test_interactive_divider_and_padded_input_share_a_continuous_background(monkeypatch, tmp_path, running, background):
+    Theme.configure("surface", str(tmp_path), {"surface": {"base": "dark", "colors": {"user_bg": background}}})
+    command_loop = loop(tmp_path)
+    app = command_loop.presentation.tui = TuiApp(activity_fragments_fn=command_loop.view.tui_activity_fragments)
+    app.idle_divider_fragments_fn = lambda: [("", "─" * 78)]
+    if running:
+        app.set_running("working")
+        command_loop.presentation.model_stream_text = "live reply"
+        command_loop.presentation.model_stream_kind = "output"
+        command_loop.session.pending_user_inputs.append(QueuedInput("x" * 37 + "中文"))
+    frames = []
+    rendered = threading.Event()
+
+    def capture(application):
+        screen = application.renderer.last_rendered_screen
+        if screen is None:
+            return
+        positions = screen.visible_windows_to_write_positions
+        if all(window in positions for window in (app.activity_window, app.input_window, app.status_window)):
+            activity, prompt, status = (positions[window] for window in (app.activity_window, app.input_window, app.status_window))
+            divider_row = activity.ypos
+            if running:
+                while application._merged_style.get_attrs_for_style_str(screen.data_buffer[divider_row][0].style).bgcolor != background.lstrip("#"):
+                    assert divider_row < prompt.ypos
+                    divider_row += 1
+                assert divider_row > activity.ypos
+                assert all(
+                    application._merged_style.get_attrs_for_style_str(screen.data_buffer[y][x].style).bgcolor != background.lstrip("#")
+                    for y in range(activity.ypos, divider_row)
+                    for x in range(prompt.width)
+                )
+            frames.append(
+                [
+                    application._merged_style.get_attrs_for_style_str(screen.data_buffer[y][x].style).bgcolor
+                    for y in range(divider_row, status.ypos)
+                    for x in range(prompt.width)
+                    if screen.data_buffer[y][x].char  # a wide glyph paints its second cell
+                ]
+            )
+            assert prompt.ypos == activity.ypos + activity.height + 1
+            assert status.ypos == prompt.ypos + prompt.height + 1
+            rendered.set()
+
+    def drive(_pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        assert rendered.wait(timeout=1)
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    try:
+        run_interactive_tui(monkeypatch, app, drive=drive, after_render=capture, output=ResizableOutput(columns=40))
+        assert frames
+        assert all(color == background.lstrip("#") for frame in frames for color in frame)
+    finally:
+        Theme.configure("dark", str(tmp_path), {})
 
 
 def test_interactive_tui_keeps_padding_around_running_queue(monkeypatch):

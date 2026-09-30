@@ -1492,6 +1492,7 @@ class TuiApp:
             ),
             dont_extend_height=True,
             wrap_lines=True,
+            style=lambda: f"bg:{Theme.color('user_bg')}" if self.input_mode == InputMode.CHAT else "",
         )
         running = Condition(lambda: self.input_mode == InputMode.RUNNING)
         activity = ConditionalContainer(

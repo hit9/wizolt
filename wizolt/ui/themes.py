@@ -278,7 +278,7 @@ def scheme(
             "status_yolo": red,
             "status_worker": orange,
             "status_bg": status,
-            "user_bg": blend(background, fg, 0.08),
+            "user_bg": blend(background, "#ffffff" if appearance == "dark" else "#000000", 0.04),
             "divider_glow": aqua,
             "divider_rule": rule,
             "divider_label": aqua,
