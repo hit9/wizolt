@@ -11,14 +11,15 @@ another model step begins; otherwise it becomes the next task. `Tab` holds the d
 of its own after this one, and each `Tab` starts one turn, in order. A draft still in the editor is
 never submitted by interrupting — the first `Ctrl-C` discards it instead.
 
-<div class="term-shot" role="img" aria-label="Terminal view: wizolt is working on a request while two follow-up messages wait below a divider reading 'working, 2 queued'."><span class="fs-user">• refactor the MCP manager</span><span class="fs-tool">  Read wizolt.py</span><span class="fs-tool">  Edit wizolt.py</span><span><span class="fs-i fs-rule">───</span><span class="fs-i" style="color:"> </span><span class="fs-i fs-add">● </span><span class="fs-i fs-working">working (12s) [ 2 queued ]</span><span class="fs-i" style="color:"> </span><span class="fs-i" style="color:#67e8f9">─</span><span class="fs-i" style="color:#4b5563">─────────────────────────────</span></span><span class="fs-queued">+ also update the tests</span><span class="fs-queued">+ and bump the version</span><span class="fs-prompt">&gt; <span class="fs-caret">▏</span></span><span class="fs-hint">  ↑ recalls queued · Ctrl-C interrupts</span></div>
+```{figure} _static/usage-followups.svg
+:alt: Two queued messages: Enter follows up on this task; Tab holds a separate task for later.
 
-A `+` below the divider is waiting for the next model step, and `↪ next turn` is held for a task of
-its own after this one. At that boundary — after the current tool-call batch, when there is one —
-all waiting follow-ups are sent together, in order, with the next model request and move above the
-divider as normal user messages. A held `↪` starts the next turn on its own, one at a time. They
-remain retryable internally until that request completes successfully; a failed request moves them
-back below the divider as queued input.
+Enter follows up now; Tab starts a task later.
+```
+
+A `+` joins the current task at the next model step. A `↪ next turn` starts a separate task
+after this one. Sent messages move above the divider into the conversation; if the request
+fails, they return to the queue so you can retry.
 
 While a [delegated worker](worker.md) is running, `Enter` follows up the **worker** instead: the
 queued text — its marker in the worker's color, like the divider's label — joins the worker's

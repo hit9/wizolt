@@ -20,7 +20,11 @@ As context fills up, wizolt summarizes older conversation and keeps **about eigh
 messages**. The task continues. Summaries can lose detail, so restate an important constraint
 if the agent seems to have forgotten it.
 
-<div class="term-shot" role="img" aria-label="Older messages become a summary; about eight recent messages remain unchanged. Earlier conversation is available in history files."><span class="fs-dim">Before   older conversation ··········· recent messages</span><span class="fs-goal">After    short summary                 recent messages</span><span> </span><span class="fs-dim">Earlier conversation stays available in history files.</span></div>
+```{figure} _static/context-compaction.svg
+:alt: Older conversation becomes a summary; about eight recent messages remain unchanged.
+
+Keep recent details; summarize older conversation.
+```
 
 Your messages and the agent's replies are also saved in history files for the agent to look up.
 The newest **50** compacted spans keep these files.
@@ -57,7 +61,11 @@ turn so you can resolve it before continuing.
 A provider can reuse the unchanged beginning of a request. A higher cache hit rate usually
 means less input cost.
 
-<div class="term-shot" role="img" aria-label="Two request bars. Both start with the same long shaded prefix, which the provider reuses; only the shorter tail of each request is processed again."><span>previous  <span class="fs-i fs-goal">████████████████████████</span><span class="fs-i fs-dim">░░░░░░</span></span><span>next      <span class="fs-i fs-goal">████████████████████████</span><span class="fs-i fs-dim">░░░░░░░░░░</span></span><span> </span><span class="fs-dim">          <span class="fs-i fs-goal">█</span> reused prefix    ░ processed again</span></div>
+```{figure} _static/context-cache.svg
+:alt: Two requests share the same unchanged prefix, with different new or changed tails.
+
+An unchanged beginning gives the provider more to reuse.
+```
 
 Switching models, connecting tools or compacting context can lower reuse. Cache support and
 pricing depend on your provider.

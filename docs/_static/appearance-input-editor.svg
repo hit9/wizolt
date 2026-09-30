@@ -19,79 +19,79 @@
         font-weight: 700;
     }
 
-    .terminal-618309568-matrix {
+    .appearance-input-editor-matrix {
         font-family: Fira Code, monospace;
         font-size: 20px;
         line-height: 24.4px;
         font-variant-east-asian: full-width;
     }
 
-    .terminal-618309568-title {
+    .appearance-input-editor-title {
         font-size: 18px;
         font-weight: bold;
         font-family: arial;
     }
 
-    .terminal-618309568-r1 { fill: #abb2bf }
-.terminal-618309568-r2 { fill: #8ec07c }
-.terminal-618309568-r3 { fill: #ad9d87 }
-.terminal-618309568-r4 { fill: #282c34;font-weight: bold }
-.terminal-618309568-r5 { fill: #8ec07c;font-weight: bold }
+    .appearance-input-editor-r1 { fill: #abb2bf }
+.appearance-input-editor-r2 { fill: #8ec07c }
+.appearance-input-editor-r3 { fill: #ad9d87 }
+.appearance-input-editor-r4 { fill: #282c34;font-weight: bold }
+.appearance-input-editor-r5 { fill: #8ec07c;font-weight: bold }
     </style>
 
     <defs>
-    <clipPath id="terminal-618309568-clip-terminal">
+    <clipPath id="appearance-input-editor-clip-terminal">
       <rect x="0" y="0" width="926.1999999999999" height="243.0" />
     </clipPath>
-    <clipPath id="terminal-618309568-line-0">
+    <clipPath id="appearance-input-editor-line-0">
     <rect x="0" y="1.5" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-618309568-line-1">
+<clipPath id="appearance-input-editor-line-1">
     <rect x="0" y="25.9" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-618309568-line-2">
+<clipPath id="appearance-input-editor-line-2">
     <rect x="0" y="50.3" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-618309568-line-3">
+<clipPath id="appearance-input-editor-line-3">
     <rect x="0" y="74.7" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-618309568-line-4">
+<clipPath id="appearance-input-editor-line-4">
     <rect x="0" y="99.1" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-618309568-line-5">
+<clipPath id="appearance-input-editor-line-5">
     <rect x="0" y="123.5" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-618309568-line-6">
+<clipPath id="appearance-input-editor-line-6">
     <rect x="0" y="147.9" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-618309568-line-7">
+<clipPath id="appearance-input-editor-line-7">
     <rect x="0" y="172.3" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-618309568-line-8">
+<clipPath id="appearance-input-editor-line-8">
     <rect x="0" y="196.7" width="927.2" height="24.65"/>
             </clipPath>
     </defs>
 
-    <rect fill="#282c34" stroke="rgba(255,255,255,0.35)" stroke-width="1" x="1" y="1" width="944" height="292" rx="8"/><text class="terminal-618309568-title" fill="#abb2bf" text-anchor="middle" x="472" y="27">wizolt&#160;/theme</text>
+    <rect fill="#282c34" stroke="rgba(255,255,255,0.35)" stroke-width="1" x="1" y="1" width="944" height="292" rx="8"/><text class="appearance-input-editor-title" fill="#abb2bf" text-anchor="middle" x="472" y="27">wizolt</text>
             <g transform="translate(26,22)">
             <circle cx="0" cy="0" r="7" fill="#ff5f57"/>
             <circle cx="22" cy="0" r="7" fill="#febc2e"/>
             <circle cx="44" cy="0" r="7" fill="#28c840"/>
             </g>
         
-    <g transform="translate(9, 41)" clip-path="url(#terminal-618309568-clip-terminal)">
+    <g transform="translate(9, 41)" clip-path="url(#appearance-input-editor-clip-terminal)">
     <rect fill="#8ec07c" x="646.6" y="1.5" width="85.4" height="24.65" shape-rendering="crispEdges"/>
-    <g class="terminal-618309568-matrix">
-    <text class="terminal-618309568-r2" x="24.4" y="20" textLength="158.6" clip-path="url(#terminal-618309568-line-0)">&#160;Colorscheme&#160;</text><text class="terminal-618309568-r3" x="183" y="20" textLength="36.6" clip-path="url(#terminal-618309568-line-0)">&#160;│&#160;</text><text class="terminal-618309568-r2" x="219.6" y="20" textLength="73.2" clip-path="url(#terminal-618309568-line-0)">&#160;Diff&#160;</text><text class="terminal-618309568-r3" x="292.8" y="20" textLength="36.6" clip-path="url(#terminal-618309568-line-0)">&#160;│&#160;</text><text class="terminal-618309568-r2" x="329.4" y="20" textLength="134.2" clip-path="url(#terminal-618309568-line-0)">&#160;StatusBar&#160;</text><text class="terminal-618309568-r3" x="463.6" y="20" textLength="36.6" clip-path="url(#terminal-618309568-line-0)">&#160;│&#160;</text><text class="terminal-618309568-r2" x="500.2" y="20" textLength="109.8" clip-path="url(#terminal-618309568-line-0)">&#160;Divider&#160;</text><text class="terminal-618309568-r3" x="610" y="20" textLength="36.6" clip-path="url(#terminal-618309568-line-0)">&#160;│&#160;</text><text class="terminal-618309568-r4" x="646.6" y="20" textLength="85.4" clip-path="url(#terminal-618309568-line-0)">&#160;Input&#160;</text><text class="terminal-618309568-r1" x="927.2" y="20" textLength="12.2" clip-path="url(#terminal-618309568-line-0)">
-</text><text class="terminal-618309568-r3" x="0" y="44.4" textLength="622.2" clip-path="url(#terminal-618309568-line-1)">&#160;&#160;Tab&#160;field&#160;·&#160;Ctrl-U&#160;clear&#160;·&#160;Enter&#160;apply&#160;·&#160;Esc&#160;back</text><text class="terminal-618309568-r1" x="927.2" y="44.4" textLength="12.2" clip-path="url(#terminal-618309568-line-1)">
-</text><text class="terminal-618309568-r3" x="0" y="68.8" textLength="671" clip-path="url(#terminal-618309568-line-2)">&#160;&#160;Full&#160;customization:&#160;edit&#160;config&#160;~/.wizolt/config.toml</text><text class="terminal-618309568-r1" x="927.2" y="68.8" textLength="12.2" clip-path="url(#terminal-618309568-line-2)">
-</text><text class="terminal-618309568-r2" x="0" y="93.2" textLength="134.2" clip-path="url(#terminal-618309568-line-3)">&#160;&#160;Chat&#160;&#160;&#160;&#160;&#160;</text><text class="terminal-618309568-r1" x="134.2" y="93.2" textLength="24.4" clip-path="url(#terminal-618309568-line-3)">❯&#160;</text><text class="terminal-618309568-r2" x="158.6" y="93.2" textLength="12.2" clip-path="url(#terminal-618309568-line-3)">▏</text><text class="terminal-618309568-r1" x="927.2" y="93.2" textLength="12.2" clip-path="url(#terminal-618309568-line-3)">
-</text><text class="terminal-618309568-r3" x="0" y="117.6" textLength="134.2" clip-path="url(#terminal-618309568-line-4)">&#160;&#160;Running&#160;&#160;</text><text class="terminal-618309568-r1" x="134.2" y="117.6" textLength="36.6" clip-path="url(#terminal-618309568-line-4)">+❯&#160;</text><text class="terminal-618309568-r1" x="927.2" y="117.6" textLength="12.2" clip-path="url(#terminal-618309568-line-4)">
-</text><text class="terminal-618309568-r1" x="927.2" y="142" textLength="12.2" clip-path="url(#terminal-618309568-line-5)">
-</text><text class="terminal-618309568-r3" x="0" y="166.4" textLength="73.2" clip-path="url(#terminal-618309568-line-6)">&#160;&#160;Chat</text><text class="terminal-618309568-r1" x="927.2" y="166.4" textLength="12.2" clip-path="url(#terminal-618309568-line-6)">
-</text><text class="terminal-618309568-r5" x="24.4" y="190.8" textLength="24.4" clip-path="url(#terminal-618309568-line-7)">❯&#160;</text><text class="terminal-618309568-r1" x="48.8" y="190.8" textLength="256.2" clip-path="url(#terminal-618309568-line-7)">Explain&#160;this&#160;function</text><text class="terminal-618309568-r1" x="927.2" y="190.8" textLength="12.2" clip-path="url(#terminal-618309568-line-7)">
-</text><text class="terminal-618309568-r3" x="0" y="215.2" textLength="305" clip-path="url(#terminal-618309568-line-8)">&#160;&#160;Follow-up&#160;while&#160;running</text><text class="terminal-618309568-r1" x="927.2" y="215.2" textLength="12.2" clip-path="url(#terminal-618309568-line-8)">
-</text><text class="terminal-618309568-r5" x="24.4" y="239.6" textLength="36.6" clip-path="url(#terminal-618309568-line-9)">+❯&#160;</text><text class="terminal-618309568-r1" x="61" y="239.6" textLength="170.8" clip-path="url(#terminal-618309568-line-9)">Add&#160;a&#160;test&#160;too</text><text class="terminal-618309568-r1" x="927.2" y="239.6" textLength="12.2" clip-path="url(#terminal-618309568-line-9)">
+    <g class="appearance-input-editor-matrix">
+    <text class="appearance-input-editor-r2" x="24.4" y="20" textLength="158.6" clip-path="url(#appearance-input-editor-line-0)">&#160;Colorscheme&#160;</text><text class="appearance-input-editor-r3" x="183" y="20" textLength="36.6" clip-path="url(#appearance-input-editor-line-0)">&#160;│&#160;</text><text class="appearance-input-editor-r2" x="219.6" y="20" textLength="73.2" clip-path="url(#appearance-input-editor-line-0)">&#160;Diff&#160;</text><text class="appearance-input-editor-r3" x="292.8" y="20" textLength="36.6" clip-path="url(#appearance-input-editor-line-0)">&#160;│&#160;</text><text class="appearance-input-editor-r2" x="329.4" y="20" textLength="134.2" clip-path="url(#appearance-input-editor-line-0)">&#160;StatusBar&#160;</text><text class="appearance-input-editor-r3" x="463.6" y="20" textLength="36.6" clip-path="url(#appearance-input-editor-line-0)">&#160;│&#160;</text><text class="appearance-input-editor-r2" x="500.2" y="20" textLength="109.8" clip-path="url(#appearance-input-editor-line-0)">&#160;Divider&#160;</text><text class="appearance-input-editor-r3" x="610" y="20" textLength="36.6" clip-path="url(#appearance-input-editor-line-0)">&#160;│&#160;</text><text class="appearance-input-editor-r4" x="646.6" y="20" textLength="85.4" clip-path="url(#appearance-input-editor-line-0)">&#160;Input&#160;</text><text class="appearance-input-editor-r1" x="927.2" y="20" textLength="12.2" clip-path="url(#appearance-input-editor-line-0)">
+</text><text class="appearance-input-editor-r3" x="0" y="44.4" textLength="622.2" clip-path="url(#appearance-input-editor-line-1)">&#160;&#160;Tab&#160;field&#160;·&#160;Ctrl-U&#160;clear&#160;·&#160;Enter&#160;apply&#160;·&#160;Esc&#160;back</text><text class="appearance-input-editor-r1" x="927.2" y="44.4" textLength="12.2" clip-path="url(#appearance-input-editor-line-1)">
+</text><text class="appearance-input-editor-r3" x="0" y="68.8" textLength="671" clip-path="url(#appearance-input-editor-line-2)">&#160;&#160;Full&#160;customization:&#160;edit&#160;config&#160;~/.wizolt/config.toml</text><text class="appearance-input-editor-r1" x="927.2" y="68.8" textLength="12.2" clip-path="url(#appearance-input-editor-line-2)">
+</text><text class="appearance-input-editor-r2" x="0" y="93.2" textLength="134.2" clip-path="url(#appearance-input-editor-line-3)">&#160;&#160;Chat&#160;&#160;&#160;&#160;&#160;</text><text class="appearance-input-editor-r1" x="134.2" y="93.2" textLength="24.4" clip-path="url(#appearance-input-editor-line-3)">❯&#160;</text><text class="appearance-input-editor-r2" x="158.6" y="93.2" textLength="12.2" clip-path="url(#appearance-input-editor-line-3)">▏</text><text class="appearance-input-editor-r1" x="927.2" y="93.2" textLength="12.2" clip-path="url(#appearance-input-editor-line-3)">
+</text><text class="appearance-input-editor-r3" x="0" y="117.6" textLength="134.2" clip-path="url(#appearance-input-editor-line-4)">&#160;&#160;Running&#160;&#160;</text><text class="appearance-input-editor-r1" x="134.2" y="117.6" textLength="36.6" clip-path="url(#appearance-input-editor-line-4)">+❯&#160;</text><text class="appearance-input-editor-r1" x="927.2" y="117.6" textLength="12.2" clip-path="url(#appearance-input-editor-line-4)">
+</text><text class="appearance-input-editor-r1" x="927.2" y="142" textLength="12.2" clip-path="url(#appearance-input-editor-line-5)">
+</text><text class="appearance-input-editor-r3" x="0" y="166.4" textLength="73.2" clip-path="url(#appearance-input-editor-line-6)">&#160;&#160;Chat</text><text class="appearance-input-editor-r1" x="927.2" y="166.4" textLength="12.2" clip-path="url(#appearance-input-editor-line-6)">
+</text><text class="appearance-input-editor-r5" x="24.4" y="190.8" textLength="24.4" clip-path="url(#appearance-input-editor-line-7)">❯&#160;</text><text class="appearance-input-editor-r1" x="48.8" y="190.8" textLength="256.2" clip-path="url(#appearance-input-editor-line-7)">Explain&#160;this&#160;function</text><text class="appearance-input-editor-r1" x="927.2" y="190.8" textLength="12.2" clip-path="url(#appearance-input-editor-line-7)">
+</text><text class="appearance-input-editor-r3" x="0" y="215.2" textLength="305" clip-path="url(#appearance-input-editor-line-8)">&#160;&#160;Follow-up&#160;while&#160;running</text><text class="appearance-input-editor-r1" x="927.2" y="215.2" textLength="12.2" clip-path="url(#appearance-input-editor-line-8)">
+</text><text class="appearance-input-editor-r5" x="24.4" y="239.6" textLength="36.6" clip-path="url(#appearance-input-editor-line-9)">+❯&#160;</text><text class="appearance-input-editor-r1" x="61" y="239.6" textLength="170.8" clip-path="url(#appearance-input-editor-line-9)">Add&#160;a&#160;test&#160;too</text><text class="appearance-input-editor-r1" x="927.2" y="239.6" textLength="12.2" clip-path="url(#appearance-input-editor-line-9)">
 </text>
     </g>
     </g>

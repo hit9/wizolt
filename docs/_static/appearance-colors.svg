@@ -19,157 +19,157 @@
         font-weight: 700;
     }
 
-    .terminal-3766410504-matrix {
+    .appearance-colors-matrix {
         font-family: Fira Code, monospace;
         font-size: 20px;
         line-height: 24.4px;
         font-variant-east-asian: full-width;
     }
 
-    .terminal-3766410504-title {
+    .appearance-colors-title {
         font-size: 18px;
         font-weight: bold;
         font-family: arial;
     }
 
-    .terminal-3766410504-r1 { fill: #8ec07c;font-weight: bold }
-.terminal-3766410504-r2 { fill: #abb2bf }
-.terminal-3766410504-r3 { fill: #fb4934 }
-.terminal-3766410504-r4 { fill: #8ec07c }
-.terminal-3766410504-r5 { fill: #dddddd }
-.terminal-3766410504-r6 { fill: #b8bb26 }
-.terminal-3766410504-r7 { fill: #56b6c2;font-weight: bold }
-.terminal-3766410504-r8 { fill: #c678dd }
-.terminal-3766410504-r9 { fill: #61afef;font-weight: bold }
-.terminal-3766410504-r10 { fill: #e06c75 }
-.terminal-3766410504-r11 { fill: #98c379 }
-.terminal-3766410504-r12 { fill: #6dceeb;font-weight: bold }
-.terminal-3766410504-r13 { fill: #f0e68c }
-.terminal-3766410504-r14 { fill: #89fb98 }
-.terminal-3766410504-r15 { fill: #ffde9b }
-.terminal-3766410504-r16 { fill: #ffa0a0 }
-.terminal-3766410504-r17 { fill: #7dcfff;font-weight: bold }
-.terminal-3766410504-r18 { fill: #9d7cd8;font-style: italic; }
-.terminal-3766410504-r19 { fill: #7aa2f7 }
-.terminal-3766410504-r20 { fill: #a9b1d6 }
-.terminal-3766410504-r21 { fill: #9ece6a }
-.terminal-3766410504-r22 { fill: #94e2d5;font-weight: bold }
-.terminal-3766410504-r23 { fill: #cba6f7 }
-.terminal-3766410504-r24 { fill: #89b4fa }
-.terminal-3766410504-r25 { fill: #9399b2 }
-.terminal-3766410504-r26 { fill: #a6e3a1 }
-.terminal-3766410504-r27 { fill: #7fb4ca;font-weight: bold }
-.terminal-3766410504-r28 { fill: #957fb8;font-style: italic; }
-.terminal-3766410504-r29 { fill: #7e9cd8 }
-.terminal-3766410504-r30 { fill: #9cabca }
-.terminal-3766410504-r31 { fill: #98bb6c }
+    .appearance-colors-r1 { fill: #8ec07c;font-weight: bold }
+.appearance-colors-r2 { fill: #abb2bf }
+.appearance-colors-r3 { fill: #fb4934 }
+.appearance-colors-r4 { fill: #8ec07c }
+.appearance-colors-r5 { fill: #dddddd }
+.appearance-colors-r6 { fill: #b8bb26 }
+.appearance-colors-r7 { fill: #56b6c2;font-weight: bold }
+.appearance-colors-r8 { fill: #c678dd }
+.appearance-colors-r9 { fill: #61afef;font-weight: bold }
+.appearance-colors-r10 { fill: #e06c75 }
+.appearance-colors-r11 { fill: #98c379 }
+.appearance-colors-r12 { fill: #6dceeb;font-weight: bold }
+.appearance-colors-r13 { fill: #f0e68c }
+.appearance-colors-r14 { fill: #89fb98 }
+.appearance-colors-r15 { fill: #ffde9b }
+.appearance-colors-r16 { fill: #ffa0a0 }
+.appearance-colors-r17 { fill: #7dcfff;font-weight: bold }
+.appearance-colors-r18 { fill: #9d7cd8;font-style: italic; }
+.appearance-colors-r19 { fill: #7aa2f7 }
+.appearance-colors-r20 { fill: #a9b1d6 }
+.appearance-colors-r21 { fill: #9ece6a }
+.appearance-colors-r22 { fill: #94e2d5;font-weight: bold }
+.appearance-colors-r23 { fill: #cba6f7 }
+.appearance-colors-r24 { fill: #89b4fa }
+.appearance-colors-r25 { fill: #9399b2 }
+.appearance-colors-r26 { fill: #a6e3a1 }
+.appearance-colors-r27 { fill: #7fb4ca;font-weight: bold }
+.appearance-colors-r28 { fill: #957fb8;font-style: italic; }
+.appearance-colors-r29 { fill: #7e9cd8 }
+.appearance-colors-r30 { fill: #9cabca }
+.appearance-colors-r31 { fill: #98bb6c }
     </style>
 
     <defs>
-    <clipPath id="terminal-3766410504-clip-terminal">
+    <clipPath id="appearance-colors-clip-terminal">
       <rect x="0" y="0" width="535.8" height="560.1999999999999" />
     </clipPath>
-    <clipPath id="terminal-3766410504-line-0">
+    <clipPath id="appearance-colors-line-0">
     <rect x="0" y="1.5" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-1">
+<clipPath id="appearance-colors-line-1">
     <rect x="0" y="25.9" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-2">
+<clipPath id="appearance-colors-line-2">
     <rect x="0" y="50.3" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-3">
+<clipPath id="appearance-colors-line-3">
     <rect x="0" y="74.7" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-4">
+<clipPath id="appearance-colors-line-4">
     <rect x="0" y="99.1" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-5">
+<clipPath id="appearance-colors-line-5">
     <rect x="0" y="123.5" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-6">
+<clipPath id="appearance-colors-line-6">
     <rect x="0" y="147.9" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-7">
+<clipPath id="appearance-colors-line-7">
     <rect x="0" y="172.3" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-8">
+<clipPath id="appearance-colors-line-8">
     <rect x="0" y="196.7" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-9">
+<clipPath id="appearance-colors-line-9">
     <rect x="0" y="221.1" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-10">
+<clipPath id="appearance-colors-line-10">
     <rect x="0" y="245.5" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-11">
+<clipPath id="appearance-colors-line-11">
     <rect x="0" y="269.9" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-12">
+<clipPath id="appearance-colors-line-12">
     <rect x="0" y="294.3" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-13">
+<clipPath id="appearance-colors-line-13">
     <rect x="0" y="318.7" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-14">
+<clipPath id="appearance-colors-line-14">
     <rect x="0" y="343.1" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-15">
+<clipPath id="appearance-colors-line-15">
     <rect x="0" y="367.5" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-16">
+<clipPath id="appearance-colors-line-16">
     <rect x="0" y="391.9" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-17">
+<clipPath id="appearance-colors-line-17">
     <rect x="0" y="416.3" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-18">
+<clipPath id="appearance-colors-line-18">
     <rect x="0" y="440.7" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-19">
+<clipPath id="appearance-colors-line-19">
     <rect x="0" y="465.1" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-20">
+<clipPath id="appearance-colors-line-20">
     <rect x="0" y="489.5" width="536.8" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-3766410504-line-21">
+<clipPath id="appearance-colors-line-21">
     <rect x="0" y="513.9" width="536.8" height="24.65"/>
             </clipPath>
     </defs>
 
-    <rect fill="#282c34" stroke="rgba(255,255,255,0.35)" stroke-width="1" x="1" y="1" width="553" height="609.2" rx="8"/><text class="terminal-3766410504-title" fill="#abb2bf" text-anchor="middle" x="276" y="27">wizolt</text>
+    <rect fill="#282c34" stroke="rgba(255,255,255,0.35)" stroke-width="1" x="1" y="1" width="553" height="609.2" rx="8"/><text class="appearance-colors-title" fill="#abb2bf" text-anchor="middle" x="276" y="27">wizolt</text>
             <g transform="translate(26,22)">
             <circle cx="0" cy="0" r="7" fill="#ff5f57"/>
             <circle cx="22" cy="0" r="7" fill="#febc2e"/>
             <circle cx="44" cy="0" r="7" fill="#28c840"/>
             </g>
         
-    <g transform="translate(9, 41)" clip-path="url(#terminal-3766410504-clip-terminal)">
+    <g transform="translate(9, 41)" clip-path="url(#appearance-colors-clip-terminal)">
     
-    <g class="terminal-3766410504-matrix">
-    <text class="terminal-3766410504-r1" x="0" y="20" textLength="146.4" clip-path="url(#terminal-3766410504-line-0)">gruvbox-dark</text><text class="terminal-3766410504-r2" x="536.8" y="20" textLength="12.2" clip-path="url(#terminal-3766410504-line-0)">
-</text><text class="terminal-3766410504-r3" x="0" y="44.4" textLength="36.6" clip-path="url(#terminal-3766410504-line-1)">def</text><text class="terminal-3766410504-r4" x="48.8" y="44.4" textLength="61" clip-path="url(#terminal-3766410504-line-1)">greet</text><text class="terminal-3766410504-r5" x="109.8" y="44.4" textLength="85.4" clip-path="url(#terminal-3766410504-line-1)">(name):</text><text class="terminal-3766410504-r2" x="536.8" y="44.4" textLength="12.2" clip-path="url(#terminal-3766410504-line-1)">
-</text><text class="terminal-3766410504-r3" x="48.8" y="68.8" textLength="73.2" clip-path="url(#terminal-3766410504-line-2)">return</text><text class="terminal-3766410504-r6" x="134.2" y="68.8" textLength="122" clip-path="url(#terminal-3766410504-line-2)">f&quot;Hello,&#160;{</text><text class="terminal-3766410504-r5" x="256.2" y="68.8" textLength="48.8" clip-path="url(#terminal-3766410504-line-2)">name</text><text class="terminal-3766410504-r6" x="305" y="68.8" textLength="36.6" clip-path="url(#terminal-3766410504-line-2)">}!&quot;</text><text class="terminal-3766410504-r2" x="536.8" y="68.8" textLength="12.2" clip-path="url(#terminal-3766410504-line-2)">
-</text><text class="terminal-3766410504-r2" x="536.8" y="93.2" textLength="12.2" clip-path="url(#terminal-3766410504-line-3)">
-</text><text class="terminal-3766410504-r7" x="0" y="117.6" textLength="97.6" clip-path="url(#terminal-3766410504-line-4)">one-dark</text><text class="terminal-3766410504-r2" x="536.8" y="117.6" textLength="12.2" clip-path="url(#terminal-3766410504-line-4)">
-</text><text class="terminal-3766410504-r8" x="0" y="142" textLength="36.6" clip-path="url(#terminal-3766410504-line-5)">def</text><text class="terminal-3766410504-r9" x="48.8" y="142" textLength="61" clip-path="url(#terminal-3766410504-line-5)">greet</text><text class="terminal-3766410504-r2" x="109.8" y="142" textLength="12.2" clip-path="url(#terminal-3766410504-line-5)">(</text><text class="terminal-3766410504-r10" x="122" y="142" textLength="48.8" clip-path="url(#terminal-3766410504-line-5)">name</text><text class="terminal-3766410504-r2" x="170.8" y="142" textLength="24.4" clip-path="url(#terminal-3766410504-line-5)">):</text><text class="terminal-3766410504-r2" x="536.8" y="142" textLength="12.2" clip-path="url(#terminal-3766410504-line-5)">
-</text><text class="terminal-3766410504-r8" x="48.8" y="166.4" textLength="73.2" clip-path="url(#terminal-3766410504-line-6)">return</text><text class="terminal-3766410504-r11" x="134.2" y="166.4" textLength="122" clip-path="url(#terminal-3766410504-line-6)">f&quot;Hello,&#160;{</text><text class="terminal-3766410504-r10" x="256.2" y="166.4" textLength="48.8" clip-path="url(#terminal-3766410504-line-6)">name</text><text class="terminal-3766410504-r11" x="305" y="166.4" textLength="36.6" clip-path="url(#terminal-3766410504-line-6)">}!&quot;</text><text class="terminal-3766410504-r2" x="536.8" y="166.4" textLength="12.2" clip-path="url(#terminal-3766410504-line-6)">
-</text><text class="terminal-3766410504-r2" x="536.8" y="190.8" textLength="12.2" clip-path="url(#terminal-3766410504-line-7)">
-</text><text class="terminal-3766410504-r12" x="0" y="215.2" textLength="73.2" clip-path="url(#terminal-3766410504-line-8)">desert</text><text class="terminal-3766410504-r2" x="536.8" y="215.2" textLength="12.2" clip-path="url(#terminal-3766410504-line-8)">
-</text><text class="terminal-3766410504-r13" x="0" y="239.6" textLength="36.6" clip-path="url(#terminal-3766410504-line-9)">def</text><text class="terminal-3766410504-r14" x="48.8" y="239.6" textLength="61" clip-path="url(#terminal-3766410504-line-9)">greet</text><text class="terminal-3766410504-r15" x="109.8" y="239.6" textLength="12.2" clip-path="url(#terminal-3766410504-line-9)">(</text><text class="terminal-3766410504-r2" x="122" y="239.6" textLength="48.8" clip-path="url(#terminal-3766410504-line-9)">name</text><text class="terminal-3766410504-r15" x="170.8" y="239.6" textLength="24.4" clip-path="url(#terminal-3766410504-line-9)">):</text><text class="terminal-3766410504-r2" x="536.8" y="239.6" textLength="12.2" clip-path="url(#terminal-3766410504-line-9)">
-</text><text class="terminal-3766410504-r13" x="48.8" y="264" textLength="73.2" clip-path="url(#terminal-3766410504-line-10)">return</text><text class="terminal-3766410504-r16" x="134.2" y="264" textLength="122" clip-path="url(#terminal-3766410504-line-10)">f&quot;Hello,&#160;{</text><text class="terminal-3766410504-r2" x="256.2" y="264" textLength="48.8" clip-path="url(#terminal-3766410504-line-10)">name</text><text class="terminal-3766410504-r16" x="305" y="264" textLength="36.6" clip-path="url(#terminal-3766410504-line-10)">}!&quot;</text><text class="terminal-3766410504-r2" x="536.8" y="264" textLength="12.2" clip-path="url(#terminal-3766410504-line-10)">
-</text><text class="terminal-3766410504-r2" x="536.8" y="288.4" textLength="12.2" clip-path="url(#terminal-3766410504-line-11)">
-</text><text class="terminal-3766410504-r17" x="0" y="312.8" textLength="122" clip-path="url(#terminal-3766410504-line-12)">tokyonight</text><text class="terminal-3766410504-r2" x="536.8" y="312.8" textLength="12.2" clip-path="url(#terminal-3766410504-line-12)">
-</text><text class="terminal-3766410504-r18" x="0" y="337.2" textLength="36.6" clip-path="url(#terminal-3766410504-line-13)">def</text><text class="terminal-3766410504-r19" x="48.8" y="337.2" textLength="61" clip-path="url(#terminal-3766410504-line-13)">greet</text><text class="terminal-3766410504-r20" x="109.8" y="337.2" textLength="12.2" clip-path="url(#terminal-3766410504-line-13)">(</text><text class="terminal-3766410504-r2" x="122" y="337.2" textLength="48.8" clip-path="url(#terminal-3766410504-line-13)">name</text><text class="terminal-3766410504-r20" x="170.8" y="337.2" textLength="24.4" clip-path="url(#terminal-3766410504-line-13)">):</text><text class="terminal-3766410504-r2" x="536.8" y="337.2" textLength="12.2" clip-path="url(#terminal-3766410504-line-13)">
-</text><text class="terminal-3766410504-r18" x="48.8" y="361.6" textLength="73.2" clip-path="url(#terminal-3766410504-line-14)">return</text><text class="terminal-3766410504-r21" x="134.2" y="361.6" textLength="122" clip-path="url(#terminal-3766410504-line-14)">f&quot;Hello,&#160;{</text><text class="terminal-3766410504-r2" x="256.2" y="361.6" textLength="48.8" clip-path="url(#terminal-3766410504-line-14)">name</text><text class="terminal-3766410504-r21" x="305" y="361.6" textLength="36.6" clip-path="url(#terminal-3766410504-line-14)">}!&quot;</text><text class="terminal-3766410504-r2" x="536.8" y="361.6" textLength="12.2" clip-path="url(#terminal-3766410504-line-14)">
-</text><text class="terminal-3766410504-r2" x="536.8" y="386" textLength="12.2" clip-path="url(#terminal-3766410504-line-15)">
-</text><text class="terminal-3766410504-r22" x="0" y="410.4" textLength="183" clip-path="url(#terminal-3766410504-line-16)">catppuccin-dark</text><text class="terminal-3766410504-r2" x="536.8" y="410.4" textLength="12.2" clip-path="url(#terminal-3766410504-line-16)">
-</text><text class="terminal-3766410504-r23" x="0" y="434.8" textLength="36.6" clip-path="url(#terminal-3766410504-line-17)">def</text><text class="terminal-3766410504-r24" x="48.8" y="434.8" textLength="61" clip-path="url(#terminal-3766410504-line-17)">greet</text><text class="terminal-3766410504-r25" x="109.8" y="434.8" textLength="12.2" clip-path="url(#terminal-3766410504-line-17)">(</text><text class="terminal-3766410504-r2" x="122" y="434.8" textLength="48.8" clip-path="url(#terminal-3766410504-line-17)">name</text><text class="terminal-3766410504-r25" x="170.8" y="434.8" textLength="24.4" clip-path="url(#terminal-3766410504-line-17)">):</text><text class="terminal-3766410504-r2" x="536.8" y="434.8" textLength="12.2" clip-path="url(#terminal-3766410504-line-17)">
-</text><text class="terminal-3766410504-r23" x="48.8" y="459.2" textLength="73.2" clip-path="url(#terminal-3766410504-line-18)">return</text><text class="terminal-3766410504-r26" x="134.2" y="459.2" textLength="122" clip-path="url(#terminal-3766410504-line-18)">f&quot;Hello,&#160;{</text><text class="terminal-3766410504-r2" x="256.2" y="459.2" textLength="48.8" clip-path="url(#terminal-3766410504-line-18)">name</text><text class="terminal-3766410504-r26" x="305" y="459.2" textLength="36.6" clip-path="url(#terminal-3766410504-line-18)">}!&quot;</text><text class="terminal-3766410504-r2" x="536.8" y="459.2" textLength="12.2" clip-path="url(#terminal-3766410504-line-18)">
-</text><text class="terminal-3766410504-r2" x="536.8" y="483.6" textLength="12.2" clip-path="url(#terminal-3766410504-line-19)">
-</text><text class="terminal-3766410504-r27" x="0" y="508" textLength="97.6" clip-path="url(#terminal-3766410504-line-20)">kanagawa</text><text class="terminal-3766410504-r2" x="536.8" y="508" textLength="12.2" clip-path="url(#terminal-3766410504-line-20)">
-</text><text class="terminal-3766410504-r28" x="0" y="532.4" textLength="36.6" clip-path="url(#terminal-3766410504-line-21)">def</text><text class="terminal-3766410504-r29" x="48.8" y="532.4" textLength="61" clip-path="url(#terminal-3766410504-line-21)">greet</text><text class="terminal-3766410504-r30" x="109.8" y="532.4" textLength="12.2" clip-path="url(#terminal-3766410504-line-21)">(</text><text class="terminal-3766410504-r2" x="122" y="532.4" textLength="48.8" clip-path="url(#terminal-3766410504-line-21)">name</text><text class="terminal-3766410504-r30" x="170.8" y="532.4" textLength="24.4" clip-path="url(#terminal-3766410504-line-21)">):</text><text class="terminal-3766410504-r2" x="536.8" y="532.4" textLength="12.2" clip-path="url(#terminal-3766410504-line-21)">
-</text><text class="terminal-3766410504-r28" x="48.8" y="556.8" textLength="73.2" clip-path="url(#terminal-3766410504-line-22)">return</text><text class="terminal-3766410504-r31" x="134.2" y="556.8" textLength="122" clip-path="url(#terminal-3766410504-line-22)">f&quot;Hello,&#160;{</text><text class="terminal-3766410504-r2" x="256.2" y="556.8" textLength="48.8" clip-path="url(#terminal-3766410504-line-22)">name</text><text class="terminal-3766410504-r31" x="305" y="556.8" textLength="36.6" clip-path="url(#terminal-3766410504-line-22)">}!&quot;</text><text class="terminal-3766410504-r2" x="536.8" y="556.8" textLength="12.2" clip-path="url(#terminal-3766410504-line-22)">
+    <g class="appearance-colors-matrix">
+    <text class="appearance-colors-r1" x="0" y="20" textLength="146.4" clip-path="url(#appearance-colors-line-0)">gruvbox-dark</text><text class="appearance-colors-r2" x="536.8" y="20" textLength="12.2" clip-path="url(#appearance-colors-line-0)">
+</text><text class="appearance-colors-r3" x="0" y="44.4" textLength="36.6" clip-path="url(#appearance-colors-line-1)">def</text><text class="appearance-colors-r4" x="48.8" y="44.4" textLength="61" clip-path="url(#appearance-colors-line-1)">greet</text><text class="appearance-colors-r5" x="109.8" y="44.4" textLength="85.4" clip-path="url(#appearance-colors-line-1)">(name):</text><text class="appearance-colors-r2" x="536.8" y="44.4" textLength="12.2" clip-path="url(#appearance-colors-line-1)">
+</text><text class="appearance-colors-r3" x="48.8" y="68.8" textLength="73.2" clip-path="url(#appearance-colors-line-2)">return</text><text class="appearance-colors-r6" x="134.2" y="68.8" textLength="122" clip-path="url(#appearance-colors-line-2)">f&quot;Hello,&#160;{</text><text class="appearance-colors-r5" x="256.2" y="68.8" textLength="48.8" clip-path="url(#appearance-colors-line-2)">name</text><text class="appearance-colors-r6" x="305" y="68.8" textLength="36.6" clip-path="url(#appearance-colors-line-2)">}!&quot;</text><text class="appearance-colors-r2" x="536.8" y="68.8" textLength="12.2" clip-path="url(#appearance-colors-line-2)">
+</text><text class="appearance-colors-r2" x="536.8" y="93.2" textLength="12.2" clip-path="url(#appearance-colors-line-3)">
+</text><text class="appearance-colors-r7" x="0" y="117.6" textLength="97.6" clip-path="url(#appearance-colors-line-4)">one-dark</text><text class="appearance-colors-r2" x="536.8" y="117.6" textLength="12.2" clip-path="url(#appearance-colors-line-4)">
+</text><text class="appearance-colors-r8" x="0" y="142" textLength="36.6" clip-path="url(#appearance-colors-line-5)">def</text><text class="appearance-colors-r9" x="48.8" y="142" textLength="61" clip-path="url(#appearance-colors-line-5)">greet</text><text class="appearance-colors-r2" x="109.8" y="142" textLength="12.2" clip-path="url(#appearance-colors-line-5)">(</text><text class="appearance-colors-r10" x="122" y="142" textLength="48.8" clip-path="url(#appearance-colors-line-5)">name</text><text class="appearance-colors-r2" x="170.8" y="142" textLength="24.4" clip-path="url(#appearance-colors-line-5)">):</text><text class="appearance-colors-r2" x="536.8" y="142" textLength="12.2" clip-path="url(#appearance-colors-line-5)">
+</text><text class="appearance-colors-r8" x="48.8" y="166.4" textLength="73.2" clip-path="url(#appearance-colors-line-6)">return</text><text class="appearance-colors-r11" x="134.2" y="166.4" textLength="122" clip-path="url(#appearance-colors-line-6)">f&quot;Hello,&#160;{</text><text class="appearance-colors-r10" x="256.2" y="166.4" textLength="48.8" clip-path="url(#appearance-colors-line-6)">name</text><text class="appearance-colors-r11" x="305" y="166.4" textLength="36.6" clip-path="url(#appearance-colors-line-6)">}!&quot;</text><text class="appearance-colors-r2" x="536.8" y="166.4" textLength="12.2" clip-path="url(#appearance-colors-line-6)">
+</text><text class="appearance-colors-r2" x="536.8" y="190.8" textLength="12.2" clip-path="url(#appearance-colors-line-7)">
+</text><text class="appearance-colors-r12" x="0" y="215.2" textLength="73.2" clip-path="url(#appearance-colors-line-8)">desert</text><text class="appearance-colors-r2" x="536.8" y="215.2" textLength="12.2" clip-path="url(#appearance-colors-line-8)">
+</text><text class="appearance-colors-r13" x="0" y="239.6" textLength="36.6" clip-path="url(#appearance-colors-line-9)">def</text><text class="appearance-colors-r14" x="48.8" y="239.6" textLength="61" clip-path="url(#appearance-colors-line-9)">greet</text><text class="appearance-colors-r15" x="109.8" y="239.6" textLength="12.2" clip-path="url(#appearance-colors-line-9)">(</text><text class="appearance-colors-r2" x="122" y="239.6" textLength="48.8" clip-path="url(#appearance-colors-line-9)">name</text><text class="appearance-colors-r15" x="170.8" y="239.6" textLength="24.4" clip-path="url(#appearance-colors-line-9)">):</text><text class="appearance-colors-r2" x="536.8" y="239.6" textLength="12.2" clip-path="url(#appearance-colors-line-9)">
+</text><text class="appearance-colors-r13" x="48.8" y="264" textLength="73.2" clip-path="url(#appearance-colors-line-10)">return</text><text class="appearance-colors-r16" x="134.2" y="264" textLength="122" clip-path="url(#appearance-colors-line-10)">f&quot;Hello,&#160;{</text><text class="appearance-colors-r2" x="256.2" y="264" textLength="48.8" clip-path="url(#appearance-colors-line-10)">name</text><text class="appearance-colors-r16" x="305" y="264" textLength="36.6" clip-path="url(#appearance-colors-line-10)">}!&quot;</text><text class="appearance-colors-r2" x="536.8" y="264" textLength="12.2" clip-path="url(#appearance-colors-line-10)">
+</text><text class="appearance-colors-r2" x="536.8" y="288.4" textLength="12.2" clip-path="url(#appearance-colors-line-11)">
+</text><text class="appearance-colors-r17" x="0" y="312.8" textLength="122" clip-path="url(#appearance-colors-line-12)">tokyonight</text><text class="appearance-colors-r2" x="536.8" y="312.8" textLength="12.2" clip-path="url(#appearance-colors-line-12)">
+</text><text class="appearance-colors-r18" x="0" y="337.2" textLength="36.6" clip-path="url(#appearance-colors-line-13)">def</text><text class="appearance-colors-r19" x="48.8" y="337.2" textLength="61" clip-path="url(#appearance-colors-line-13)">greet</text><text class="appearance-colors-r20" x="109.8" y="337.2" textLength="12.2" clip-path="url(#appearance-colors-line-13)">(</text><text class="appearance-colors-r2" x="122" y="337.2" textLength="48.8" clip-path="url(#appearance-colors-line-13)">name</text><text class="appearance-colors-r20" x="170.8" y="337.2" textLength="24.4" clip-path="url(#appearance-colors-line-13)">):</text><text class="appearance-colors-r2" x="536.8" y="337.2" textLength="12.2" clip-path="url(#appearance-colors-line-13)">
+</text><text class="appearance-colors-r18" x="48.8" y="361.6" textLength="73.2" clip-path="url(#appearance-colors-line-14)">return</text><text class="appearance-colors-r21" x="134.2" y="361.6" textLength="122" clip-path="url(#appearance-colors-line-14)">f&quot;Hello,&#160;{</text><text class="appearance-colors-r2" x="256.2" y="361.6" textLength="48.8" clip-path="url(#appearance-colors-line-14)">name</text><text class="appearance-colors-r21" x="305" y="361.6" textLength="36.6" clip-path="url(#appearance-colors-line-14)">}!&quot;</text><text class="appearance-colors-r2" x="536.8" y="361.6" textLength="12.2" clip-path="url(#appearance-colors-line-14)">
+</text><text class="appearance-colors-r2" x="536.8" y="386" textLength="12.2" clip-path="url(#appearance-colors-line-15)">
+</text><text class="appearance-colors-r22" x="0" y="410.4" textLength="183" clip-path="url(#appearance-colors-line-16)">catppuccin-dark</text><text class="appearance-colors-r2" x="536.8" y="410.4" textLength="12.2" clip-path="url(#appearance-colors-line-16)">
+</text><text class="appearance-colors-r23" x="0" y="434.8" textLength="36.6" clip-path="url(#appearance-colors-line-17)">def</text><text class="appearance-colors-r24" x="48.8" y="434.8" textLength="61" clip-path="url(#appearance-colors-line-17)">greet</text><text class="appearance-colors-r25" x="109.8" y="434.8" textLength="12.2" clip-path="url(#appearance-colors-line-17)">(</text><text class="appearance-colors-r2" x="122" y="434.8" textLength="48.8" clip-path="url(#appearance-colors-line-17)">name</text><text class="appearance-colors-r25" x="170.8" y="434.8" textLength="24.4" clip-path="url(#appearance-colors-line-17)">):</text><text class="appearance-colors-r2" x="536.8" y="434.8" textLength="12.2" clip-path="url(#appearance-colors-line-17)">
+</text><text class="appearance-colors-r23" x="48.8" y="459.2" textLength="73.2" clip-path="url(#appearance-colors-line-18)">return</text><text class="appearance-colors-r26" x="134.2" y="459.2" textLength="122" clip-path="url(#appearance-colors-line-18)">f&quot;Hello,&#160;{</text><text class="appearance-colors-r2" x="256.2" y="459.2" textLength="48.8" clip-path="url(#appearance-colors-line-18)">name</text><text class="appearance-colors-r26" x="305" y="459.2" textLength="36.6" clip-path="url(#appearance-colors-line-18)">}!&quot;</text><text class="appearance-colors-r2" x="536.8" y="459.2" textLength="12.2" clip-path="url(#appearance-colors-line-18)">
+</text><text class="appearance-colors-r2" x="536.8" y="483.6" textLength="12.2" clip-path="url(#appearance-colors-line-19)">
+</text><text class="appearance-colors-r27" x="0" y="508" textLength="97.6" clip-path="url(#appearance-colors-line-20)">kanagawa</text><text class="appearance-colors-r2" x="536.8" y="508" textLength="12.2" clip-path="url(#appearance-colors-line-20)">
+</text><text class="appearance-colors-r28" x="0" y="532.4" textLength="36.6" clip-path="url(#appearance-colors-line-21)">def</text><text class="appearance-colors-r29" x="48.8" y="532.4" textLength="61" clip-path="url(#appearance-colors-line-21)">greet</text><text class="appearance-colors-r30" x="109.8" y="532.4" textLength="12.2" clip-path="url(#appearance-colors-line-21)">(</text><text class="appearance-colors-r2" x="122" y="532.4" textLength="48.8" clip-path="url(#appearance-colors-line-21)">name</text><text class="appearance-colors-r30" x="170.8" y="532.4" textLength="24.4" clip-path="url(#appearance-colors-line-21)">):</text><text class="appearance-colors-r2" x="536.8" y="532.4" textLength="12.2" clip-path="url(#appearance-colors-line-21)">
+</text><text class="appearance-colors-r28" x="48.8" y="556.8" textLength="73.2" clip-path="url(#appearance-colors-line-22)">return</text><text class="appearance-colors-r31" x="134.2" y="556.8" textLength="122" clip-path="url(#appearance-colors-line-22)">f&quot;Hello,&#160;{</text><text class="appearance-colors-r2" x="256.2" y="556.8" textLength="48.8" clip-path="url(#appearance-colors-line-22)">name</text><text class="appearance-colors-r31" x="305" y="556.8" textLength="36.6" clip-path="url(#appearance-colors-line-22)">}!&quot;</text><text class="appearance-colors-r2" x="536.8" y="556.8" textLength="12.2" clip-path="url(#appearance-colors-line-22)">
 </text>
     </g>
     </g>

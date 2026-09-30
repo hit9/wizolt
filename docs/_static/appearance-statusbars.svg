@@ -19,99 +19,100 @@
         font-weight: 700;
     }
 
-    .terminal-997099573-matrix {
+    .appearance-statusbars-matrix {
         font-family: Fira Code, monospace;
         font-size: 20px;
         line-height: 24.4px;
         font-variant-east-asian: full-width;
     }
 
-    .terminal-997099573-title {
+    .appearance-statusbars-title {
         font-size: 18px;
         font-weight: bold;
         font-family: arial;
     }
 
-    .terminal-997099573-r1 { fill: #928374 }
-.terminal-997099573-r2 { fill: #abb2bf }
-.terminal-997099573-r3 { fill: #cfd3a2 }
-.terminal-997099573-r4 { fill: #e6caad }
-.terminal-997099573-r5 { fill: #e2d2ac }
-.terminal-997099573-r6 { fill: #d6d0ad }
-.terminal-997099573-r7 { fill: #ebdbb2 }
-.terminal-997099573-r8 { fill: #282828;font-weight: bold }
-.terminal-997099573-r9 { fill: #282828 }
+    .appearance-statusbars-r1 { fill: #ad9d87 }
+.appearance-statusbars-r2 { fill: #abb2bf }
+.appearance-statusbars-r3 { fill: #cfd3a2 }
+.appearance-statusbars-r4 { fill: #928374 }
+.appearance-statusbars-r5 { fill: #e6caad }
+.appearance-statusbars-r6 { fill: #e2d2ac }
+.appearance-statusbars-r7 { fill: #d6d0ad }
+.appearance-statusbars-r8 { fill: #ebdbb2 }
+.appearance-statusbars-r9 { fill: #282828;font-weight: bold }
+.appearance-statusbars-r10 { fill: #282828 }
     </style>
 
     <defs>
-    <clipPath id="terminal-997099573-clip-terminal">
+    <clipPath id="appearance-statusbars-clip-terminal">
       <rect x="0" y="0" width="926.1999999999999" height="340.59999999999997" />
     </clipPath>
-    <clipPath id="terminal-997099573-line-0">
+    <clipPath id="appearance-statusbars-line-0">
     <rect x="0" y="1.5" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-997099573-line-1">
+<clipPath id="appearance-statusbars-line-1">
     <rect x="0" y="25.9" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-997099573-line-2">
+<clipPath id="appearance-statusbars-line-2">
     <rect x="0" y="50.3" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-997099573-line-3">
+<clipPath id="appearance-statusbars-line-3">
     <rect x="0" y="74.7" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-997099573-line-4">
+<clipPath id="appearance-statusbars-line-4">
     <rect x="0" y="99.1" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-997099573-line-5">
+<clipPath id="appearance-statusbars-line-5">
     <rect x="0" y="123.5" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-997099573-line-6">
+<clipPath id="appearance-statusbars-line-6">
     <rect x="0" y="147.9" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-997099573-line-7">
+<clipPath id="appearance-statusbars-line-7">
     <rect x="0" y="172.3" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-997099573-line-8">
+<clipPath id="appearance-statusbars-line-8">
     <rect x="0" y="196.7" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-997099573-line-9">
+<clipPath id="appearance-statusbars-line-9">
     <rect x="0" y="221.1" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-997099573-line-10">
+<clipPath id="appearance-statusbars-line-10">
     <rect x="0" y="245.5" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-997099573-line-11">
+<clipPath id="appearance-statusbars-line-11">
     <rect x="0" y="269.9" width="927.2" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-997099573-line-12">
+<clipPath id="appearance-statusbars-line-12">
     <rect x="0" y="294.3" width="927.2" height="24.65"/>
             </clipPath>
     </defs>
 
-    <rect fill="#282c34" stroke="rgba(255,255,255,0.35)" stroke-width="1" x="1" y="1" width="944" height="389.6" rx="8"/><text class="terminal-997099573-title" fill="#abb2bf" text-anchor="middle" x="472" y="27">wizolt</text>
+    <rect fill="#282c34" stroke="rgba(255,255,255,0.35)" stroke-width="1" x="1" y="1" width="944" height="389.6" rx="8"/><text class="appearance-statusbars-title" fill="#abb2bf" text-anchor="middle" x="472" y="27">wizolt</text>
             <g transform="translate(26,22)">
             <circle cx="0" cy="0" r="7" fill="#ff5f57"/>
             <circle cx="22" cy="0" r="7" fill="#febc2e"/>
             <circle cx="44" cy="0" r="7" fill="#28c840"/>
             </g>
         
-    <g transform="translate(9, 41)" clip-path="url(#terminal-997099573-clip-terminal)">
-    <rect fill="#504945" x="0" y="172.3" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="12.2" y="172.3" width="280.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="292.8" y="172.3" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="329.4" y="172.3" width="73.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="402.6" y="172.3" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="500.2" y="172.3" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="597.8" y="172.3" width="73.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="671" y="172.3" width="48.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="719.8" y="172.3" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="756.4" y="172.3" width="109.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="866.2" y="172.3" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#cfd3a2" x="0" y="245.5" width="183" height="24.65" shape-rendering="crispEdges"/><rect fill="#3c3836" x="195.2" y="245.5" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#3c3836" x="622.2" y="245.5" width="134.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#d6d0ad" x="768.6" y="245.5" width="109.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="0" y="318.7" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="12.2" y="318.7" width="280.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="292.8" y="318.7" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="305" y="318.7" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="402.6" y="318.7" width="329.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="732" y="318.7" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="744.2" y="318.7" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="780.8" y="318.7" width="85.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="866.2" y="318.7" width="12.2" height="24.65" shape-rendering="crispEdges"/>
-    <g class="terminal-997099573-matrix">
-    <text class="terminal-997099573-r1" x="0" y="20" textLength="85.4" clip-path="url(#terminal-997099573-line-0)">default</text><text class="terminal-997099573-r2" x="927.2" y="20" textLength="12.2" clip-path="url(#terminal-997099573-line-0)">
-</text><text class="terminal-997099573-r3" x="0" y="44.4" textLength="280.6" clip-path="url(#terminal-997099573-line-1)">anthropic/claude-sonnet</text><text class="terminal-997099573-r1" x="280.6" y="44.4" textLength="36.6" clip-path="url(#terminal-997099573-line-1)">&#160;·&#160;</text><text class="terminal-997099573-r4" x="317.2" y="44.4" textLength="73.2" clip-path="url(#terminal-997099573-line-1)">medium</text><text class="terminal-997099573-r1" x="390.4" y="44.4" textLength="36.6" clip-path="url(#terminal-997099573-line-1)">&#160;|&#160;</text><text class="terminal-997099573-r5" x="427" y="44.4" textLength="146.4" clip-path="url(#terminal-997099573-line-1)">2&#160;·&#160;skills&#160;3</text><text class="terminal-997099573-r1" x="573.4" y="44.4" textLength="36.6" clip-path="url(#terminal-997099573-line-1)">&#160;|&#160;</text><text class="terminal-997099573-r6" x="610" y="44.4" textLength="231.8" clip-path="url(#terminal-997099573-line-1)">ctx&#160;37%&#160;·&#160;cache&#160;88%</text><text class="terminal-997099573-r2" x="927.2" y="44.4" textLength="12.2" clip-path="url(#terminal-997099573-line-1)">
-</text><text class="terminal-997099573-r2" x="927.2" y="68.8" textLength="12.2" clip-path="url(#terminal-997099573-line-2)">
-</text><text class="terminal-997099573-r1" x="0" y="93.2" textLength="85.4" clip-path="url(#terminal-997099573-line-3)">minimal</text><text class="terminal-997099573-r2" x="927.2" y="93.2" textLength="12.2" clip-path="url(#terminal-997099573-line-3)">
-</text><text class="terminal-997099573-r3" x="0" y="117.6" textLength="158.6" clip-path="url(#terminal-997099573-line-4)">claude-sonnet</text><text class="terminal-997099573-r6" x="170.8" y="117.6" textLength="24.4" clip-path="url(#terminal-997099573-line-4)">▰▰</text><text class="terminal-997099573-r1" x="195.2" y="117.6" textLength="36.6" clip-path="url(#terminal-997099573-line-4)">▱▱▱</text><text class="terminal-997099573-r6" x="231.8" y="117.6" textLength="48.8" clip-path="url(#terminal-997099573-line-4)">&#160;37%</text><text class="terminal-997099573-r2" x="927.2" y="117.6" textLength="12.2" clip-path="url(#terminal-997099573-line-4)">
-</text><text class="terminal-997099573-r2" x="927.2" y="142" textLength="12.2" clip-path="url(#terminal-997099573-line-5)">
-</text><text class="terminal-997099573-r1" x="0" y="166.4" textLength="61" clip-path="url(#terminal-997099573-line-6)">split</text><text class="terminal-997099573-r2" x="927.2" y="166.4" textLength="12.2" clip-path="url(#terminal-997099573-line-6)">
-</text><text class="terminal-997099573-r3" x="12.2" y="190.8" textLength="280.6" clip-path="url(#terminal-997099573-line-7)">anthropic/claude-sonnet</text><text class="terminal-997099573-r1" x="292.8" y="190.8" textLength="36.6" clip-path="url(#terminal-997099573-line-7)">&#160;·&#160;</text><text class="terminal-997099573-r4" x="329.4" y="190.8" textLength="73.2" clip-path="url(#terminal-997099573-line-7)">medium</text><text class="terminal-997099573-r6" x="500.2" y="190.8" textLength="97.6" clip-path="url(#terminal-997099573-line-7)">ctx&#160;▰▰▰▰</text><text class="terminal-997099573-r1" x="597.8" y="190.8" textLength="73.2" clip-path="url(#terminal-997099573-line-7)">▱▱▱▱▱▱</text><text class="terminal-997099573-r6" x="671" y="190.8" textLength="48.8" clip-path="url(#terminal-997099573-line-7)">&#160;37%</text><text class="terminal-997099573-r1" x="719.8" y="190.8" textLength="36.6" clip-path="url(#terminal-997099573-line-7)">&#160;·&#160;</text><text class="terminal-997099573-r6" x="756.4" y="190.8" textLength="109.8" clip-path="url(#terminal-997099573-line-7)">cache&#160;88%</text><text class="terminal-997099573-r2" x="927.2" y="190.8" textLength="12.2" clip-path="url(#terminal-997099573-line-7)">
-</text><text class="terminal-997099573-r2" x="927.2" y="215.2" textLength="12.2" clip-path="url(#terminal-997099573-line-8)">
-</text><text class="terminal-997099573-r1" x="0" y="239.6" textLength="73.2" clip-path="url(#terminal-997099573-line-9)">blocks</text><text class="terminal-997099573-r2" x="927.2" y="239.6" textLength="12.2" clip-path="url(#terminal-997099573-line-9)">
-</text><text class="terminal-997099573-r8" x="0" y="264" textLength="183" clip-path="url(#terminal-997099573-line-10)">&#160;claude-sonnet&#160;</text><text class="terminal-997099573-r7" x="195.2" y="264" textLength="97.6" clip-path="url(#terminal-997099573-line-10)">&#160;medium&#160;</text><text class="terminal-997099573-r7" x="622.2" y="264" textLength="134.2" clip-path="url(#terminal-997099573-line-10)">&#160;cache&#160;88%&#160;</text><text class="terminal-997099573-r9" x="768.6" y="264" textLength="109.8" clip-path="url(#terminal-997099573-line-10)">&#160;ctx&#160;37%&#160;</text><text class="terminal-997099573-r2" x="927.2" y="264" textLength="12.2" clip-path="url(#terminal-997099573-line-10)">
-</text><text class="terminal-997099573-r2" x="927.2" y="288.4" textLength="12.2" clip-path="url(#terminal-997099573-line-11)">
-</text><text class="terminal-997099573-r1" x="0" y="312.8" textLength="36.6" clip-path="url(#terminal-997099573-line-12)">vim</text><text class="terminal-997099573-r2" x="927.2" y="312.8" textLength="12.2" clip-path="url(#terminal-997099573-line-12)">
-</text><text class="terminal-997099573-r3" x="12.2" y="337.2" textLength="280.6" clip-path="url(#terminal-997099573-line-13)">anthropic/claude-sonnet</text><text class="terminal-997099573-r4" x="305" y="337.2" textLength="97.6" clip-path="url(#terminal-997099573-line-13)">[medium]</text><text class="terminal-997099573-r5" x="732" y="337.2" textLength="12.2" clip-path="url(#terminal-997099573-line-13)">2</text><text class="terminal-997099573-r7" x="744.2" y="337.2" textLength="36.6" clip-path="url(#terminal-997099573-line-13)">&#160;·&#160;</text><text class="terminal-997099573-r6" x="780.8" y="337.2" textLength="85.4" clip-path="url(#terminal-997099573-line-13)">ctx&#160;37%</text><text class="terminal-997099573-r2" x="927.2" y="337.2" textLength="12.2" clip-path="url(#terminal-997099573-line-13)">
+    <g transform="translate(9, 41)" clip-path="url(#appearance-statusbars-clip-terminal)">
+    <rect fill="#504945" x="0" y="172.3" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="12.2" y="172.3" width="280.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="292.8" y="172.3" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="329.4" y="172.3" width="73.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="402.6" y="172.3" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="500.2" y="172.3" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="597.8" y="172.3" width="73.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="671" y="172.3" width="48.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="719.8" y="172.3" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="756.4" y="172.3" width="109.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#cfd3a2" x="0" y="245.5" width="183" height="24.65" shape-rendering="crispEdges"/><rect fill="#3c3836" x="195.2" y="245.5" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#3c3836" x="622.2" y="245.5" width="134.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#d6d0ad" x="768.6" y="245.5" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="0" y="318.7" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="12.2" y="318.7" width="280.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="292.8" y="318.7" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="305" y="318.7" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="402.6" y="318.7" width="329.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="732" y="318.7" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="744.2" y="318.7" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#504945" x="780.8" y="318.7" width="85.4" height="24.65" shape-rendering="crispEdges"/>
+    <g class="appearance-statusbars-matrix">
+    <text class="appearance-statusbars-r1" x="0" y="20" textLength="85.4" clip-path="url(#appearance-statusbars-line-0)">default</text><text class="appearance-statusbars-r2" x="927.2" y="20" textLength="12.2" clip-path="url(#appearance-statusbars-line-0)">
+</text><text class="appearance-statusbars-r3" x="0" y="44.4" textLength="280.6" clip-path="url(#appearance-statusbars-line-1)">anthropic/claude-sonnet</text><text class="appearance-statusbars-r4" x="280.6" y="44.4" textLength="36.6" clip-path="url(#appearance-statusbars-line-1)">&#160;·&#160;</text><text class="appearance-statusbars-r5" x="317.2" y="44.4" textLength="73.2" clip-path="url(#appearance-statusbars-line-1)">medium</text><text class="appearance-statusbars-r4" x="390.4" y="44.4" textLength="36.6" clip-path="url(#appearance-statusbars-line-1)">&#160;|&#160;</text><text class="appearance-statusbars-r6" x="427" y="44.4" textLength="146.4" clip-path="url(#appearance-statusbars-line-1)">2&#160;·&#160;skills&#160;3</text><text class="appearance-statusbars-r4" x="573.4" y="44.4" textLength="36.6" clip-path="url(#appearance-statusbars-line-1)">&#160;|&#160;</text><text class="appearance-statusbars-r7" x="610" y="44.4" textLength="231.8" clip-path="url(#appearance-statusbars-line-1)">ctx&#160;37%&#160;·&#160;cache&#160;88%</text><text class="appearance-statusbars-r2" x="927.2" y="44.4" textLength="12.2" clip-path="url(#appearance-statusbars-line-1)">
+</text><text class="appearance-statusbars-r2" x="927.2" y="68.8" textLength="12.2" clip-path="url(#appearance-statusbars-line-2)">
+</text><text class="appearance-statusbars-r1" x="0" y="93.2" textLength="85.4" clip-path="url(#appearance-statusbars-line-3)">minimal</text><text class="appearance-statusbars-r2" x="927.2" y="93.2" textLength="12.2" clip-path="url(#appearance-statusbars-line-3)">
+</text><text class="appearance-statusbars-r3" x="0" y="117.6" textLength="158.6" clip-path="url(#appearance-statusbars-line-4)">claude-sonnet</text><text class="appearance-statusbars-r7" x="170.8" y="117.6" textLength="24.4" clip-path="url(#appearance-statusbars-line-4)">▰▰</text><text class="appearance-statusbars-r4" x="195.2" y="117.6" textLength="36.6" clip-path="url(#appearance-statusbars-line-4)">▱▱▱</text><text class="appearance-statusbars-r7" x="231.8" y="117.6" textLength="48.8" clip-path="url(#appearance-statusbars-line-4)">&#160;37%</text><text class="appearance-statusbars-r2" x="927.2" y="117.6" textLength="12.2" clip-path="url(#appearance-statusbars-line-4)">
+</text><text class="appearance-statusbars-r2" x="927.2" y="142" textLength="12.2" clip-path="url(#appearance-statusbars-line-5)">
+</text><text class="appearance-statusbars-r1" x="0" y="166.4" textLength="61" clip-path="url(#appearance-statusbars-line-6)">split</text><text class="appearance-statusbars-r2" x="927.2" y="166.4" textLength="12.2" clip-path="url(#appearance-statusbars-line-6)">
+</text><text class="appearance-statusbars-r3" x="12.2" y="190.8" textLength="280.6" clip-path="url(#appearance-statusbars-line-7)">anthropic/claude-sonnet</text><text class="appearance-statusbars-r4" x="292.8" y="190.8" textLength="36.6" clip-path="url(#appearance-statusbars-line-7)">&#160;·&#160;</text><text class="appearance-statusbars-r5" x="329.4" y="190.8" textLength="73.2" clip-path="url(#appearance-statusbars-line-7)">medium</text><text class="appearance-statusbars-r7" x="500.2" y="190.8" textLength="97.6" clip-path="url(#appearance-statusbars-line-7)">ctx&#160;▰▰▰▰</text><text class="appearance-statusbars-r4" x="597.8" y="190.8" textLength="73.2" clip-path="url(#appearance-statusbars-line-7)">▱▱▱▱▱▱</text><text class="appearance-statusbars-r7" x="671" y="190.8" textLength="48.8" clip-path="url(#appearance-statusbars-line-7)">&#160;37%</text><text class="appearance-statusbars-r4" x="719.8" y="190.8" textLength="36.6" clip-path="url(#appearance-statusbars-line-7)">&#160;·&#160;</text><text class="appearance-statusbars-r7" x="756.4" y="190.8" textLength="109.8" clip-path="url(#appearance-statusbars-line-7)">cache&#160;88%</text><text class="appearance-statusbars-r2" x="927.2" y="190.8" textLength="12.2" clip-path="url(#appearance-statusbars-line-7)">
+</text><text class="appearance-statusbars-r2" x="927.2" y="215.2" textLength="12.2" clip-path="url(#appearance-statusbars-line-8)">
+</text><text class="appearance-statusbars-r1" x="0" y="239.6" textLength="73.2" clip-path="url(#appearance-statusbars-line-9)">blocks</text><text class="appearance-statusbars-r2" x="927.2" y="239.6" textLength="12.2" clip-path="url(#appearance-statusbars-line-9)">
+</text><text class="appearance-statusbars-r9" x="0" y="264" textLength="183" clip-path="url(#appearance-statusbars-line-10)">&#160;claude-sonnet&#160;</text><text class="appearance-statusbars-r8" x="195.2" y="264" textLength="97.6" clip-path="url(#appearance-statusbars-line-10)">&#160;medium&#160;</text><text class="appearance-statusbars-r8" x="622.2" y="264" textLength="134.2" clip-path="url(#appearance-statusbars-line-10)">&#160;cache&#160;88%&#160;</text><text class="appearance-statusbars-r10" x="768.6" y="264" textLength="97.6" clip-path="url(#appearance-statusbars-line-10)">&#160;ctx&#160;37%</text><text class="appearance-statusbars-r2" x="927.2" y="264" textLength="12.2" clip-path="url(#appearance-statusbars-line-10)">
+</text><text class="appearance-statusbars-r2" x="927.2" y="288.4" textLength="12.2" clip-path="url(#appearance-statusbars-line-11)">
+</text><text class="appearance-statusbars-r1" x="0" y="312.8" textLength="36.6" clip-path="url(#appearance-statusbars-line-12)">vim</text><text class="appearance-statusbars-r2" x="927.2" y="312.8" textLength="12.2" clip-path="url(#appearance-statusbars-line-12)">
+</text><text class="appearance-statusbars-r3" x="12.2" y="337.2" textLength="280.6" clip-path="url(#appearance-statusbars-line-13)">anthropic/claude-sonnet</text><text class="appearance-statusbars-r5" x="305" y="337.2" textLength="97.6" clip-path="url(#appearance-statusbars-line-13)">[medium]</text><text class="appearance-statusbars-r6" x="732" y="337.2" textLength="12.2" clip-path="url(#appearance-statusbars-line-13)">2</text><text class="appearance-statusbars-r8" x="744.2" y="337.2" textLength="36.6" clip-path="url(#appearance-statusbars-line-13)">&#160;·&#160;</text><text class="appearance-statusbars-r7" x="780.8" y="337.2" textLength="85.4" clip-path="url(#appearance-statusbars-line-13)">ctx&#160;37%</text><text class="appearance-statusbars-r2" x="927.2" y="337.2" textLength="12.2" clip-path="url(#appearance-statusbars-line-13)">
 </text>
     </g>
     </g>

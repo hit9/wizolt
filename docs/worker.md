@@ -1,17 +1,18 @@
 (worker-delegation)=
 # Worker delegation
 
-A **worker** is a second wizolt session running in the same process. When the model meets a
-bounded task that deserves an independent look — a review, a refactor, a second opinion — it hands
-the task over with the `Delegate` tool.
+A **worker** takes a focused part of your task, such as reviewing a file or checking a fix.
+You approve the order, the worker returns a report, and your main conversation continues.
 
-The worker has its own provider, its own system prompt, and a reduced tool set, and keeps its
-context across delegations until you reset it. It never calls back into the parent: a delegation
-is a detour that ends by returning its result.
+```{figure} _static/worker-handoff.svg
+:alt: The main conversation sends an approved order to a worker, receives its report and continues the original task.
 
-The point is pairing models by cost. A large model orchestrates as the parent; the worker's tasks
-arrive already bounded and spec'd, so a small cheap model handles them at a fraction of the
-parent's rate.
+One task, a focused second opinion.
+```
+
+The worker shares your workspace but has its own model and conversation. It remembers earlier
+orders until you reset it. Choose a cheaper model for routine work, or another model for a
+different perspective.
 
 ## Quick start
 

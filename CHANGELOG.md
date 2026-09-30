@@ -31,6 +31,10 @@
 
 ### Changed
 
+- Make appearance customization easier to follow with copyable examples and matching figures.
+  Add illustrations for a first turn, follow-ups, compaction, caching and worker handoffs, plus
+  a reusable offline SVG generator and instructions under `docs/tools/`.
+
 - The `/theme` picker points to the config file beside its shortcuts for full customization.
 - The `@file:` picker follows the active colorscheme, including its background, selected row,
   matches and hints; reopening it after `/theme` uses the new colors. It also honors `NO_COLOR`.

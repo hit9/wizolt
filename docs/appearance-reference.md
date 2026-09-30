@@ -1,30 +1,60 @@
 # Custom appearance
 
-Use this reference when the presets in [Appearance](appearance.md) are not enough.
+Start with a preset you like in [Appearance](appearance.md), then change just the parts you want.
+The examples below are ready to copy; the syntax and field tables help when you want to go further.
+
+| Change | Where to put it | Apply it |
+| --- | --- | --- |
+| Colors and highlight groups | `~/.wizolt/themes/my-theme.toml` | Run `/theme my-theme` |
+| Input, statusbar, divider or animation | Your config file, shown in `/theme` | Restart wizolt |
 
 ## Theme files
 
-To make your own, add `<data_dir>/themes/<name>.toml` (`~/.wizolt/themes/` by default). It starts
-from a built-in theme and changes only the colors you list:
+### Change two colors
 
+Create `~/.wizolt/themes/my-theme.toml` (or `themes/` inside your custom data directory):
+
+<!-- figure: custom-theme -->
 ```toml
-base = "gruvbox-dark"         # any built-in theme; default "dark"
-pygments = "monokai"          # optional: the Pygments style for code
+base = "one-dark"
+
 [colors]
-accent = "#83a598"            # "#rrggbb", "#rgb", "default", or a terminal color like "ansicyan"
-user = "ansiyellow"
+user = "#f2c97d"
+tool = "#8bd5ca"
 ```
 
-The roles you can set are `text`, `muted`, `subtle`, `accent`, `accent_secondary`, `info`,
-`user`, `tool`, `success`, `warning`, `error`, `rule`, the code colors `syntax_assign`,
-`syntax_string`, `syntax_number`, `syntax_ident`, `syntax_builtin` and `syntax_default`, the
-status bar's `status_base`, `status_provider`, `status_reason`, `status_mcp`, `status_context`,
-`status_yolo`, `status_worker` and `status_bg` (the band the `vim`, `split` and `monitor` layouts lie on), the working divider's `divider_glow` and `divider_rule` (these
-two take `#rrggbb` only) and `divider_label`, and `selection_bg`, `selection_fg`, `menu_bg` and
-`menu_muted` (the completion menu's descriptions).
+Run `/theme my-theme`. Your messages become gold and tool labels become teal; everything else
+keeps One Dark's colors. Edit the file and run the same command again to try another version.
+
+```{figure} _static/appearance-custom-theme.svg
+:alt: The same user message and Edit call in One Dark and in my-theme, with gold messages and teal tool labels.
+
+Two overrides; the rest of the theme stays familiar.
+```
+
+`base` accepts any built-in theme and defaults to `dark`. Colors accept `#rrggbb`, `#rgb`,
+terminal names such as `ansicyan`, or `default` for your terminal's color. An optional
+`pygments = "monokai"` before `[colors]` chooses another style for code.
+
+### Find the color to change
+
+A *role* names what a color is used for. Set only the roles you want to change:
+
+| Area | Roles |
+| --- | --- |
+| Reading and navigation | `text`, `muted`, `subtle`, `accent`, `accent_secondary`, `info`, `rule` |
+| Messages and results | `user`, `tool`, `success`, `warning`, `error` |
+| Code | `syntax_assign`, `syntax_string`, `syntax_number`, `syntax_ident`, `syntax_builtin`, `syntax_default` |
+| Statusbar fields | `status_base`, `status_provider`, `status_reason`, `status_mcp`, `status_context`, `status_yolo`, `status_worker` |
+| Statusbar background | `status_bg` — the band in `vim`, `split` and `monitor` |
+| Divider | `divider_glow`, `divider_rule`, `divider_label`; glow and rule require `#rrggbb` |
+| Menus | `selection_bg`, `selection_fg`, `menu_bg`, `menu_muted` |
+
+### Change diff backgrounds
 
 A theme file pairs with its base theme's [diff colors](appearance.md#diff-colors). A `[diff]` table sets
-individual bands instead; they win over whichever diff style is selected:
+individual bands instead; they win over whichever diff style is selected. For example, blue
+additions and brown removals:
 
 ```toml
 [diff]
@@ -34,6 +64,8 @@ removed = "#5c3300"
 removed_word = "#a35a00"
 ```
 
+`added_word` and `removed_word` make changed words stand out inside each line.
+
 The file name is the theme's name, so it cannot be a built-in theme, `auto`, or a pair's name
 (`gruvbox`, or `mine` once `mine-dark` and `mine-light` exist). A mistake in a theme file is
 reported at startup and when `/theme` opens; the rest of the file still applies. `/theme` re-reads the folder each time it opens, so edits show up without a restart.
@@ -41,7 +73,8 @@ reported at startup and when `/theme` opens; the rest of the file still applies.
 
 ## Layouts and animations
 
-Set custom templates in your [config file](configuration.md) and restart wizolt.
+Put these examples in your [config file](configuration.md), then restart wizolt.
+Replace existing values rather than adding a second table with the same name.
 
 ### Input prefixes
 
@@ -67,16 +100,88 @@ markers and tool rows keep their existing layout.
 
 ### Custom templates
 
-Replace a `preset:name` value with a template. The statusbar and divider use the same syntax:
+A template is ordinary text with fields in `{braces}` and colors in `[brackets]`.
+Replace a `preset:name` value with the template you want.
 
+#### Build a statusbar in three steps
+
+Start with just the model:
+
+<!-- figure: statusbar-model -->
 ```toml
 [ui.statusbar]
-format = "[status_provider]{model}[/]{>}[muted]ctx {context.percent}%[/]"
+format = "[status_provider]{model}[/]"
+```
 
+`{model}` becomes the model name. `[status_provider]` gives it the theme's model color;
+`[/]` ends that color.
+
+Add the context percentage:
+
+<!-- figure: statusbar-context -->
+```toml
+[ui.statusbar]
+format = "[status_provider]{model}[/] · [status_context]ctx {context.percent}%[/]"
+```
+
+Now put context on the right. **`{>}`** fills the space between the two parts:
+
+<!-- figure: statusbar-aligned -->
+```toml
+[ui.statusbar]
+format = "[status_provider]{model}[/]{>}[status_context]ctx {context.percent}%[/]"
+```
+
+```{figure} _static/appearance-custom-statusbar.svg
+:alt: Three statusbars: model only, model followed by context usage, then model on the left with context on the right.
+
+One extra piece at a time.
+```
+
+#### Make room in a small pane
+
+An *optional* span disappears when space runs short. Here, reasoning disappears first, leaving
+the model and context percentage:
+
+<!-- figure: statusbar-optional -->
+```toml
+[ui.statusbar]
+format = "[status_provider]{model}[/]{% optional priority=10 %} · [status_reason]{reasoning}[/]{% endoptional %}{>}[status_context]ctx {context.percent}%[/]"
+```
+
+```{figure} _static/appearance-custom-width.svg
+:alt: The same template in 72 and 24 columns; the narrower version omits medium reasoning and keeps the model and context percentage.
+
+The same template adapts to the available space.
+```
+
+Lower priorities disappear first. Keep the separator inside its span, as above, so both
+disappear together.
+
+#### Center a label in the divider
+
+**`{fill:─}`** draws as much line as the row needs. Two fills share the space equally:
+
+<!-- figure: divider-centered -->
+```toml
 [ui.divider]
-format = "{% if running %}[accent bold]{activity}[/] · {elapsed:duration} {% endif %}[subtle]{fill:─}[/]"
+format = "[divider_rule]{fill:─}[/]{% if running %} [divider_label]{activity} · {elapsed:duration}[/] {% endif %}[divider_rule]{fill:─}[/]"
 sweep = "preset:none"
 ```
+
+```{figure} _static/appearance-custom-divider.svg
+:alt: An idle divider is a plain line; when running, it centers working and 12s between two lines.
+
+The label appears only while the agent works.
+```
+
+`{% if running %}` includes the label only while a task runs. `:duration` prints seconds with
+an `s`, such as `12s`. Use `{label}` instead of `{activity} · {elapsed:duration}` if you also
+want the usual speed and queue details.
+
+#### Syntax to keep nearby
+
+Statusbars and dividers share this syntax:
 
 | Syntax | Result |
 | --- | --- |
@@ -145,19 +250,36 @@ format = "[status.model] {model} {join:}[status.detail] {reasoning} {join:
 
 ### Sweep formulas
 
+Start with `preset:comet`, `preset:ripple` or `preset:aurora` in `[ui.divider]` `sweep`.
+Use `preset:none` for a still line. A formula gives you finer control.
+
+#### A glow that crosses and returns
+
 A sweep is a brightness formula: `x` is the zero-based terminal column, `t` is elapsed seconds, and
 `w` is the divider width. `u` runs from `0` to `1` across the fill regions only, skipping fixed
 labels. Use `u` for a width-independent animation that stays on the line, or `x` for motion in
 terminal columns. The result is clamped to `0..1`, blending `divider_rule` with `divider_glow`.
 Labels keep their own colors.
 
+<!-- figure: sweep-normalized -->
 ```toml
 [ui.divider]
 sweep = "exp(-((u - pingpong(t / 3, 1)) / 0.1) ** 2)"
 ```
 
-This glow crosses the fill regions in three seconds and returns in three more. Change `3` for
-the crossing time or `0.1` for the glow's width. For a fixed speed of 18 columns per second:
+```{figure} _static/appearance-custom-sweep.svg
+:alt: At 0, 1.5, 3, 4.5 and 6 seconds, a glow moves from the left to the center, to the right, then back to the center and left.
+
+Across in three seconds, back in three more.
+```
+
+| Change | Effect |
+| --- | --- |
+| `t / 3` → `t / 6` | Take six seconds to cross instead of three |
+| `/ 0.1` → `/ 0.2` | Make the glow wider |
+| `pingpong(...)` | Turn around at the ends |
+
+For a fixed speed of 18 columns per second:
 
 ```toml
 [ui.divider]
