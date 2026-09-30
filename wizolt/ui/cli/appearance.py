@@ -493,7 +493,7 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
 
     The colorscheme is saved to runtime.theme, as Codex and Claude Code save theirs; the transcript
     already on screen is redrawn in it once, the way a resize redraws it."""
-    problems = Theme.load_custom(loop.session.data_path("themes"))
+    problems = Theme.load_custom(loop.session.data_path("themes"), loop.session.config.ui.get("themes"))
     words = args.split()
     if len(words) == 2 and words[0] in KINDS[1:]:
         return "\n".join([*problems, direct(loop, words[0], words[1])])

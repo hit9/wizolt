@@ -28,41 +28,18 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
     </Read>
     ```
 
-    `view.12` is that file snapshot's id; `684` is the one-based line number. Line numbers and
-    ranges include both ends, matching what `grep -n`, your editor, tracebacks, and diffs show.
-    A long result is shortened to its head and tail, and the marker between them names the file
-    that holds the whole output — in the session's asset directory, `<tr.N>.txt`. Grep that file,
-    or `Read` it with `ranges` to page part of it back.
+    `684` is the line number; `view.12` lets the agent refer to this version when editing.
+    Long results show the beginning and end, with a path to the full output if needed.
 * - **`ViewImage`**
   - Opens one local PNG, JPEG, WebP, or single-frame GIF. The active model reads it when it
     accepts images; on a text-only route a configured [vision model](configuration.md#vision-model)
     returns its text observation instead. Images outside the workspace require confirmation.
 * - **`Edit`**
   - Creates or changes one UTF-8 file by inserting, replacing, or deleting content.
-    An existing file is changed in one of two ways, and <span class="marker">wizolt checks the
-    target against the file immediately before writing either way</span>.
-
-    The first names the numbered source view returned by `Read`
-    (`source=view.N`) and gives one-based line numbers. wizolt extracts the complete target from
-    that view and refuses the edit if it changed. When the exact target still exists nearby, the
-    edit relocates to it and reports the move.
-
-    The second gives the exact original text of the target instead, with no view — so code found
-    with `rg` or `cat` can be changed in the next tool call, without a `Read` in between. The text
-    has to appear <span class="marker">exactly once</span> in the file. If it appears several
-    times, the edit is refused and comes back showing bounded context around its occurrences, so the
-    next attempt can quote more of the surrounding lines; if it is not there at all, the edit is
-    refused and nothing is guessed. Matching is literal: spaces, tabs, and case all count.
-
-    A successful edit returns a fresh source view for the region it changed, so consecutive edits
-    to the same file keep going without re-reading it first. Successful edits appear in
+    You see the proposed diff before approval. wizolt checks the original lines or exact text
+    before writing: if the file changed or the text matches several places, it refuses the edit
+    and shows the agent enough context to try again. Successful edits appear in
     [`/diff`](usage.md#reviewing-changes).
-
-    One cost comes with source views: a view lives only as long as the conversation that mentions
-    it, so once compaction drops the message it came from, the id expires. Using an expired id is
-    refused rather than guessed, and the refusal comes back with the requested lines as they are
-    now, under a new id — so recovering costs one more `Edit`, not a re-read. Prefer a view when
-    the model already has one; reach for the exact-text form to save a read.
 
     :::{figure} ../snapshots/wizolt-edit-preview.png
     :alt: An Edit confirmation previewing the proposed diff
@@ -92,8 +69,8 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
     refuses it without sending anything; oversized input reports the limit so you can split it.
     You can inspect the exact input before approving it. The same jobs are visible through `/ps`.
 * - **`Note`**
-  - Views or updates the task's goal, plan, success check, and learned facts. Updates are durable
-    conversation history, so they preserve append-only prompt-cache prefixes and do not edit files.
+  - Keeps the task's goal, plan, success check and learned facts in the conversation.
+    It does not change your project files.
 
     `Note(view)` also shows recent file modifications, command exit results, and tool failures
     when available. These read-only records describe past activity, not current task status.
@@ -102,9 +79,8 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
 
     Plan items are marked `[x]` done, `[~]` in progress, `[ ]` waiting, or `[-]` blocked.
 * - **`Context`**
-  - Reports the window in use — percent, used and budget tokens, tokens left — or starts a new
-    window with `Context(reset)`. The new window begins when the turn ends, and the rest of that
-    turn goes with the conversation, so the result asks the model to wrap up first. See
+  - Checks how much context is in use, or starts a fresh model window after the current turn.
+    See
     [Starting a new window](context.md#starting-a-new-window).
 * - **`Ask`**
   - Pauses for a decision that genuinely needs you. A question may include choices and a
@@ -116,11 +92,7 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
 * - **`NextHints`**
   - Offers 2–3 short next-step prompts the model suggests after its answer. They appear as
     selectable chips at the idle prompt, flowing left to right with up to three per line and
-    wrapping when the terminal is too narrow; a chip that does not fit in one row is drawn
-    shortened, and picking it puts the whole suggestion in the input. `Tab` cycles focus, `Enter` picks a chip into the
-    input and returns to the prompt, so `Tab` to the next chip and
-    `Enter` again combines several before sending. An
-    all-`NextHints` batch ends the turn in a single model call.
+    wrapping when the terminal is narrow. Picking a shortened chip inserts its complete text.
 
     <div class="term-shot" role="img" aria-label="A terminal at the idle prompt after a NextHints call: the answer text above, then an empty prompt with a caret, a gap line, and one row of three suggestion chips separated by grey bars with the middle chip highlighted in reverse."><span>Everything is ready to review.</span><span> </span><span class="fs-prompt">&gt; <span class="fs-caret">▏</span></span><span> </span><span><span class="fs-i fs-sel"> run the tests </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-on"> show the diff </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-sel"> commit the work </span></span></div>
 
@@ -138,27 +110,18 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
     one at a time. Only what the script prints returns to the conversation, which saves
     tokens; see [ToolScript](#toolscript).
 * - **`Delegate`**
-  - Hands a bounded task to a second in-process session (the worker) that runs on its own
-    configured provider with a reduced tool set, keeping its context across delegations until
-    reset. It appears only when [worker delegation](worker.md#worker-delegation) is
-    enabled.
+  - Asks a worker to handle a focused task and return a report. The worker remembers earlier
+    orders until reset. See [Worker delegation](worker.md#worker-delegation).
 ::::
 
 (toolscript)=
 ## ToolScript
 
-`ToolScript` is how the agent makes many tool calls at once: it writes one small Python
-program, and inside it a `call()` is a tool call. Because the calls are code, the agent can
-loop over a list, branch on a result, or feed one call's output into the next - then run the
-whole thing as one call.
+`ToolScript` lets the agent run several tool calls from a small Python script and return only
+the summary it prints. For example, it can check ten files and report the three that need work,
+keeping the full intermediate results out of the conversation.
 
-The payoff is tokens: the calls the script makes, and everything they print, never enter the
-conversation - only the few lines it prints at the end come back. A run that would have taken
-a dozen tool messages, each output filling the context, now costs one.
-
-The log stays compact: the script's calls hang indented under it on one `│` rail down to the
-result line, so the whole batch reads as work the script did - not calls the agent made one
-by one.
+The terminal groups the script's calls together so you can follow what it did.
 
 <div class="term-shot" role="img" aria-label="A ToolScript call: its numbered script excerpt, then the two calls the script made indented beneath it on a continuous vertical rail, then the result line reporting the call count and what the script printed."><span class="fs-tool">  ToolScript  call 10 lines (334 chars)</span><span class="fs-dim">    ├ script</span><span class="fs-output">    │  1  <span style="color:#abb2bf;display:inline">path</span><span style="color:#abb2bf;display:inline"> </span><span style="color:#56b6c2;display:inline">=</span><span style="color:#abb2bf;display:inline"> </span><span style="color:#98c379;display:inline">"</span><span style="color:#98c379;display:inline">demo.txt</span><span style="color:#98c379;display:inline">"</span></span><span class="fs-output">    │  2  <span style="color:#abb2bf;display:inline">call</span><span style="color:#abb2bf;display:inline">(</span><span style="color:#98c379;display:inline">"</span><span style="color:#98c379;display:inline">Edit</span><span style="color:#98c379;display:inline">"</span><span style="color:#abb2bf;display:inline">,</span><span style="color:#abb2bf;display:inline"> </span><span style="color:#abb2bf;display:inline">{</span><span style="color:#98c379;display:inline">"</span><span style="color:#98c379;display:inline">path</span><span style="color:#98c379;display:inline">"</span><span style="color:#abb2bf;display:inline">:</span><span style="color:#abb2bf;display:inline"> </span><span style="color:#abb2bf;display:inline">path</span><span style="color:#abb2bf;display:inline">,</span><span style="color:#abb2bf;display:inline"> </span><span style="color:#98c379;display:inline">"</span><span style="color:#98c379;display:inline">edits</span><span style="color:#98c379;display:inline">"</span><span style="color:#abb2bf;display:inline">:</span><span style="color:#abb2bf;display:inline"> </span><span style="color:#abb2bf;display:inline">[</span><span style="color:#abb2bf;display:inline">{</span><span style="color:#98c379;display:inline">"</span><span style="color:#98c379;display:inline">op</span><span style="color:#98c379;display:inline">"</span><span style="color:#abb2bf;display:inline">:</span><span style="color:#abb2bf;display:inline"> </span><span style="color:#98c379;display:inline">"</span><span style="color:#98c379;display:inline">create</span><span style="color:#98c379;display:inline">"</span><span style="color:#abb2bf;display:inline">,</span><span style="color:#abb2bf;display:inline"> </span><span style="color:#98c379;display:inline">"</span><span style="color:#98c379;display:inline">content</span><span style="color:#98c379;display:inline">"</span><span style="color:#abb2bf;display:inline">:</span><span style="color:#abb2bf;display:inline"> </span><span style="color:#98c379;display:inline">"</span><span style="color:#98c379;display:inline">line 1</span><span style="color:#98c379;display:inline">\n</span><span style="color:#98c379;display:inline">"</span><span style="color:#abb2bf;display:inline">}</span><span style="color:#abb2bf;display:inline">]</span><span style="color:#abb2bf;display:inline">}</span><span style="color:#abb2bf;display:inline">)</span></span><span class="fs-output">    │  3  <span style="color:#abb2bf;display:inline">out</span><span style="color:#abb2bf;display:inline"> </span><span style="color:#56b6c2;display:inline">=</span><span style="color:#abb2bf;display:inline"> </span><span style="color:#abb2bf;display:inline">call</span><span style="color:#abb2bf;display:inline">(</span><span style="color:#98c379;display:inline">"</span><span style="color:#98c379;display:inline">Bash</span><span style="color:#98c379;display:inline">"</span><span style="color:#abb2bf;display:inline">,</span><span style="color:#abb2bf;display:inline"> </span><span style="color:#abb2bf;display:inline">{</span><span style="color:#98c379;display:inline">"</span><span style="color:#98c379;display:inline">command</span><span style="color:#98c379;display:inline">"</span><span style="color:#abb2bf;display:inline">:</span><span style="color:#abb2bf;display:inline"> </span><span style="color:#98c379;display:inline">f</span><span style="color:#98c379;display:inline">"</span><span style="color:#98c379;display:inline">wc -l &lt; </span><span style="color:#98c379;display:inline">{</span><span style="color:#abb2bf;display:inline">path</span><span style="color:#98c379;display:inline">}</span><span style="color:#98c379;display:inline">"</span><span style="color:#abb2bf;display:inline">}</span><span style="color:#abb2bf;display:inline">)</span></span><span class="fs-output">    │  4  <span style="color:#56b6c2;display:inline">print</span><span style="color:#abb2bf;display:inline">(</span><span style="color:#98c379;display:inline">f</span><span style="color:#98c379;display:inline">"</span><span style="color:#98c379;display:inline">{</span><span style="color:#abb2bf;display:inline">path</span><span style="color:#98c379;display:inline">}</span><span style="color:#98c379;display:inline">: </span><span style="color:#98c379;display:inline">{</span><span style="color:#abb2bf;display:inline">out</span><span style="color:#56b6c2;display:inline">.</span><span style="color:#abb2bf;display:inline">strip</span><span style="color:#abb2bf;display:inline">(</span><span style="color:#abb2bf;display:inline">)</span><span style="color:#98c379;display:inline">}</span><span style="color:#98c379;display:inline"> lines</span><span style="color:#98c379;display:inline">"</span><span style="color:#abb2bf;display:inline">)</span></span><span class="fs-dim">    │ … +6 more lines · Ctrl-O for more</span><span class="fs-tool">    │ Edit demo.txt</span><span class="fs-add">    │ │         1 │ +line 1</span><span class="fs-dim">    │ └ stored tr.1 [approved]</span><span class="fs-tool">    │ Bash wc -l &lt; demo.txt</span><span class="fs-output">    │ └ 1</span><span class="fs-dim"> · tr.2 [approved]</span><span class="fs-dim">    ├ calls 2 · 1.4s Ctrl-O for more</span><span class="fs-output">    └ demo.txt: 1 lines</span><span class="fs-dim"> · tr.3 [approved]</span></div>
 

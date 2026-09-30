@@ -4,6 +4,9 @@
 
 ### Added
 
+- Custom themes can be defined directly under `[ui.themes.NAME]` in the main config and
+  selected in `/theme`. Existing theme files still work; a usable inline definition takes
+  precedence when names match.
 - `/theme` has an Input tab with five prompt-symbol presets and editable ordinary/follow-up
   prefixes. `e` opens the editor; Enter applies the edit, then Enter in the list saves it.
   Prefixes preview live, cancel restores the original, and `[ui.input] prompt` / `running`
@@ -31,6 +34,9 @@
 
 ### Changed
 
+- Simplify the remaining user guides, especially tools, skills, hooks, interaction and
+  configuration. Add skill and hook workflow diagrams and explain inline theme setup.
+  Wide reference tables scroll within the page on narrow screens.
 - Make appearance customization easier to follow with copyable examples and matching figures.
   Add illustrations for a first turn, follow-ups, compaction, caching and worker handoffs, plus
   a reusable offline SVG generator and instructions under `docs/tools/`.

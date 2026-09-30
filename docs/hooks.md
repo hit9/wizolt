@@ -7,16 +7,30 @@ with wizolt's [tool names](tools.md).
 
 ## Configuring hooks
 
-Put hooks in the config file (`~/.wizolt/config.toml`):
+Start with one useful action. For example, format Python files after an edit by adding this to
+`~/.wizolt/config.toml` (with Ruff installed in your project's environment):
+
+```toml
+[[hooks.PostToolUse]]
+matcher = "Edit"
+hooks = [{ type = "command", command = "ruff format --quiet ." }]
+```
+
+Restart wizolt. After each successful Edit call, it runs the formatter before continuing.
+This formats the project, so choose a narrower path if that is what you want.
+
+```{figure} _static/hooks-workflow.svg
+:alt: An Edit is approved and applied, a PostToolUse formatter runs, and the agent continues.
+
+Your formatter becomes part of the editing routine.
+```
+
+Other examples, added to the same config:
 
 ```toml
 [[hooks.PreToolUse]]
 matcher = "Bash"
 hooks = [{ type = "command", command = "~/bin/no-force-push.sh", timeout = 10 }]
-
-[[hooks.PostToolUse]]
-matcher = "Edit"
-hooks = [{ type = "command", command = "ruff format --quiet ." }]
 
 [[hooks.SessionStart]]
 matcher = "startup|resume"

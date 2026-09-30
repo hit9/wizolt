@@ -3,6 +3,9 @@
 Make wizolt feel at home in your terminal. Run **`/theme`** to try colors, statusbars,
 animated dividers and input symbols in one place.
 
+For your own colors, define `[ui.themes.my-theme]` in your config or keep a separate theme file.
+See the [copyable examples](appearance-reference.md#define-a-theme-in-your-config).
+
 ```{figure} _static/appearance-picker.svg
 :alt: The appearance picker with Colorscheme, Diff, StatusBar, Divider and Input tabs, gruvbox-dark selected, and a preview of code and diff colors.
 

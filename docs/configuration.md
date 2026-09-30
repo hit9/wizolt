@@ -8,6 +8,15 @@ commented starter with `wizolt --init-config`, or point at another file with
 a built-in default, so a minimal config is just a provider. Inspect the resolved configuration
 at any time with `/config`.
 
+| I want to… | Start here |
+| --- | --- |
+| Connect a model | [Providers](#providers): URL, key and model |
+| Change colors or input symbols | [Appearance](appearance.md): `/theme` |
+| Adjust limits and session retention | [Runtime](#runtime) |
+| Use another model for summaries | [Compaction model](#compaction-model) |
+| Add external tools | [MCP](mcp.md) |
+| Run a formatter automatically | [Hooks](hooks.md#configuring-hooks) |
+
 ## Providers
 
 wizolt supports OpenAI-compatible Chat Completions and Responses APIs, plus the Anthropic
@@ -197,12 +206,10 @@ key = "sk-..."
 model = "deepseek-flash"
 ```
 
-An attached image is first sent to the active model unless wizolt knows it rejects images:
-documented text-only families from a static catalog, or the same model returning HTTP 400 for an
-image in this session. In those cases `[vision]` describes the image once and its text replaces
-the raw image, and `ViewImage` falls back the same way. Each fallback description costs one
-vision-model request. Without `[vision]`, a text-only route keeps sending to the active model and
-you see the provider's own error.
+Images normally go to the active model. When it is known to be text-only, or rejects an image
+request, this provider describes the image and the active model receives the description.
+`ViewImage` uses the same fallback. Each description costs one extra model request.
+Without a vision provider, an incompatible model reports its own error.
 
 ## Hooks
 
@@ -244,7 +251,9 @@ lists the supported keys). `/yolo` toggles `yolo`.
 ### Color themes
 
 Use `/theme` to preview and select colors. See [Appearance](appearance.md#color-themes) for
-built-in themes, or [Custom appearance](appearance-reference.md#theme-files) for your own colors.
+built-in themes. Define your own colors under `[ui.themes.NAME]` in this file, or keep them in
+`<data_dir>/themes/NAME.toml`. Both appear in `/theme`; the config wins if names match.
+See [Custom appearance](appearance-reference.md#define-a-theme-in-your-config) for an example.
 
 ## Statusbar and divider
 
@@ -258,7 +267,7 @@ and `running`. See [Input symbols](appearance.md#input-symbols).
 
 ## Worker delegation
 
-The `Delegate` tool and `/worker` command hand bounded tasks to a second in-process session.
+The `Delegate` tool and `/worker` command let another model handle a focused part of your task.
 Concepts, quick start, and what you see in the terminal: [Worker delegation](worker.md).
 
 Worker keys inherit the `[worker]` provider entry by default:
@@ -338,13 +347,9 @@ so each row can be read against one model's price.
 data_dir = "~/.wizolt"   # sessions, input history, OAuth tokens, user skills, themes, update cache
 ```
 
-Sessions live under `<data_dir>/projects/<project>/`, one directory per working directory. Each
-holds that project's session logs and a `latest` pointer, so a resume stays scoped to the project
-it belongs to. A project directory is removed once its last session expires.
-
-Beside each log sits a small `<uid>.meta.json` holding what the session picker shows — name,
-opening line, round count. The log stays the source of truth; deleting a sidecar only costs that
-session its label in the list.
+Sessions live under `<data_dir>/projects/`, grouped by working directory. `wizolt -c` resumes
+the latest session in your current project. See [Sessions](usage.md#sessions) for retention
+settings and other ways to resume.
 
 `<data_dir>/history.txt` holds the input history that Up and Ctrl-P recall, across every project.
 It is capped at 512 KB, keeping the most recent entries.

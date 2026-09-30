@@ -43,6 +43,8 @@ The clock, terminal size and SVG identifiers are fixed.
 | Interaction | `usage-followups` |
 | Context | `context-compaction`, `context-cache` |
 | Workers | `worker-handoff` |
+| Skills | `skills-workflow` |
+| Hooks | `hooks-workflow` |
 
 ## Change an example
 
@@ -53,7 +55,7 @@ Customization figures read TOML directly from
 <!-- figure: statusbar-model -->
 ```toml
 [ui.statusbar]
-template = "[status_provider]{model}[/]"
+format = "[status_provider]{model}[/]"
 ```
 ````
 

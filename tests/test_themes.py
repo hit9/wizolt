@@ -226,6 +226,61 @@ def test_configure_reports_an_unknown_theme_and_draws_the_default(tmp_path):
     assert Theme.name() == "kanagawa"
 
 
+@pytest.mark.asyncio
+async def test_inline_theme_starts_and_switches_without_losing_file_themes(tmp_path):
+    from wizolt.config import Config
+
+    command_loop = themed_loop(tmp_path, "mine")
+    data = {
+        "ui": {
+            "themes": {
+                "mine": {"base": "one-dark", "colors": {"user": "#abc"}, "diff": {"added": "#123456"}, "highlights": {"badge": {"fg": "#fff", "bold": True}}}
+            }
+        }
+    }
+    command_loop.session.config.ui = Config.from_dict(data).ui
+    directory = command_loop.session.data_path("themes")
+    write_theme(directory, "mine", 'base = "kanagawa"\n[colors]\nuser = "#000"\n')
+    write_theme(directory, "legacy", 'base = "kanagawa"\n')
+
+    command_loop.configure_theme()
+    assert Theme.name() == "mine"
+    assert Theme.color("user") == "#aabbcc"
+    assert "bg:#123456" in Theme.themes()["mine"].diff.values()
+    assert Theme.themes()["mine"].highlights["badge"] == "fg:#ffffff bold"
+    assert "legacy" in Theme.choices()
+    await theme_command(command_loop, "legacy")
+    assert Theme.name() == "legacy"
+    await theme_command(command_loop, "mine")
+    assert Theme.color("user") == "#aabbcc"
+    assert ConfigFile.load(command_loop.session.config.path)["runtime"]["theme"] == "mine"
+
+
+def test_inline_themes_work_without_a_theme_directory_and_report_bad_entries(tmp_path):
+    inline = {
+        "mine": {"base": "one-dark", "colors": {"user": "#abc", "tool": "invalid"}},
+        "bad-base": {"base": "missing"},
+        "bad-shape": "wrong",
+        "dark": {},
+        "auto": {},
+    }
+    problems = Theme.configure("mine", str(tmp_path / "absent"), inline)
+    assert Theme.name() == "mine"
+    assert Theme.color("user") == "#aabbcc"
+    assert Theme.color("tool") == Theme.BUILTIN["one-dark"].colors["tool"]
+    for name in ("mine", "bad-base", "bad-shape", "dark", "auto"):
+        assert any(f"ui.themes.{name}" in problem for problem in problems)
+    assert set(Theme.themes()) - set(Theme.BUILTIN) == {"mine"}
+    assert "[ui.themes] must be a table" in Theme.load_custom(str(tmp_path), "wrong")
+
+
+def test_invalid_inline_theme_keeps_same_named_file(tmp_path):
+    write_theme(tmp_path, "mine", 'base = "kanagawa"\n')
+    problems = Theme.configure("mine", str(tmp_path), {"mine": {"base": "missing"}})
+    assert any("ui.themes.mine" in problem for problem in problems)
+    assert Theme.color("user") == Theme.BUILTIN["kanagawa"].colors["user"]
+
+
 def test_a_theme_file_overrides_roles_on_its_base(tmp_path):
     write_theme(tmp_path, "mine", 'base = "kanagawa"\npygments = "dracula"\n[colors]\naccent = "#AbC"\nerror = "ansired"\n')
 

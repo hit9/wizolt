@@ -5,10 +5,36 @@ The examples below are ready to copy; the syntax and field tables help when you 
 
 | Change | Where to put it | Apply it |
 | --- | --- | --- |
-| Colors and highlight groups | `~/.wizolt/themes/my-theme.toml` | Run `/theme my-theme` |
+| Colors in your config | `[ui.themes.my-theme]` | Restart, then `/theme my-theme` |
+| Colors in a separate file | `~/.wizolt/themes/my-theme.toml` | Run `/theme my-theme` |
 | Input, statusbar, divider or animation | Your config file, shown in `/theme` | Restart wizolt |
 
+## Define a theme in your config
+
+Keep your custom colors beside your other settings in `~/.wizolt/config.toml`:
+
+```toml
+[ui.themes.my-theme]
+base = "one-dark"
+
+[ui.themes.my-theme.colors]
+user = "#f2c97d"
+tool = "#8bd5ca"
+```
+
+Restart wizolt, then choose **my-theme** in `/theme`, or run `/theme my-theme` directly.
+Your choice is saved as `runtime.theme`. You can define several themes under `[ui.themes]`.
+
+Both forms support the same settings. In the config, use `[ui.themes.my-theme.diff]` and
+`[ui.themes.my-theme.highlights.badge]` where the examples below use `[diff]` and
+`[highlights.badge]`. Put `base` and `pygments` under `[ui.themes.my-theme]`.
+
 ## Theme files
+
+Separate files still work. Use them to share a theme or change colors without restarting.
+If both places define the same name, the config definition replaces the file definition;
+their settings are not combined. If the config definition has an invalid base, wizolt reports
+the problem and keeps the file version.
 
 ### Change two colors
 

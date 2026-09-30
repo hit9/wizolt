@@ -14,9 +14,8 @@
 </div>
 
 wizolt works in your terminal: you describe a task, and it reads code, edits files, runs
-commands, and reports back. It keeps <span class="marker">stable prompt prefixes</span> so
-supported providers can reuse work, runs background jobs, tracks its own working notes, and
-<span class="marker">resumes where you left off</span>.
+commands, and reports back. Review changes as it works, add a follow-up at any time, and
+<span class="marker">resume where you left off</span> when you return.
 
 Wizolt is the former minacode, which began as the single-file nanocode. The project history remains
 continuous across those names.
@@ -64,9 +63,9 @@ Working through a repository task in an interactive session.
 | **[Tools](tools.md)** | Read, search, navigate code; edit files; run commands; background jobs; optional provider-side web search. |
 | **[Sessions](usage.md#sessions)** | Your work is saved, named, and resumable with `/sessions`, `-c`, or `--resume`. |
 | **[MCP](mcp.md)** | Connect external Model Context Protocol servers and use their tools. |
-| **[Worker](worker.md)** | Delegate bounded tasks to a second in-process session on its own provider, with context kept until reset. |
+| **[Worker](worker.md)** | Ask another model to handle a focused task and return a report. |
 | **[Skills](skills.md)** | Load reusable instruction packs on demand, or start one with `/name`. |
-| **[Hooks](hooks.md)** | Run checks and cleanup at session, tool, turn, worker, and compaction boundaries. |
+| **[Hooks](hooks.md)** | Automatically run your checks, formatters and cleanup commands. |
 | **[Appearance](appearance.md)** | Themes, statusbar layouts, dividers and sweep animations. |
 | **[Configuration](configuration.md)** | Providers, runtime settings, and data location. |
 | **[Compatibility catalog](catalog.md)** | Check provider compatibility and update it. |

@@ -283,6 +283,37 @@ class Illustrations:
             ],
         )
 
+    def skills(self) -> None:
+        self.save(
+            "skills-workflow",
+            [
+                Text("1  Install", style=Theme.rich_color("accent") + " bold"),
+                Text("   .wizolt/skills/release-notes/SKILL.md"),
+                self.label("   A name, a description, and your instructions."),
+                Text(""),
+                Text("2  Invoke", style=Theme.rich_color("accent") + " bold"),
+                Text("   /release-notes"),
+                self.label("   Or let the agent load it when it fits the task."),
+                Text(""),
+                Text("3  Follow the instructions", style=Theme.rich_color("accent") + " bold"),
+                Text("   Read commits → group changes → draft release notes."),
+            ],
+        )
+
+    def hooks(self) -> None:
+        self.save(
+            "hooks-workflow",
+            [
+                Text("Edit parser.py", style=Theme.rich_color("tool") + " bold"),
+                self.label("        ↓ review and approve the proposed change"),
+                Text("File updated"),
+                self.label("        ↓ PostToolUse hook"),
+                Text("ruff format --quiet .", style=Theme.rich_color("accent")),
+                self.label("        ↓ wait for the formatter"),
+                Text("Agent continues", style=Theme.rich_color("success")),
+            ],
+        )
+
     def worker(self) -> None:
         # A workflow illustration; model names and token counts would distract from the handoff.
         self.save(
@@ -320,6 +351,8 @@ RECIPES = {
     "context-compaction": "compaction",
     "context-cache": "caching",
     "worker-handoff": "worker",
+    "skills-workflow": "skills",
+    "hooks-workflow": "hooks",
 }
 
 

@@ -529,22 +529,23 @@ class Theme:
         cls._generation += 1
 
     @classmethod
-    def load_custom(cls, directory: str) -> list[str]:
-        """Re-read the user's theme files; return a line for each problem found in them."""
-        cls._custom, problems = load_custom(directory, cls.BUILTIN, cls.ROLES)
+    def load_custom(cls, directory: str, inline: object = None) -> list[str]:
+        """Read theme files and configured definitions; return a line for each problem."""
+        cls._custom, problems = load_custom(directory, cls.BUILTIN, cls.ROLES, inline)
         # `runtime.theme` already gives `auto` and each light/dark pair a meaning, so a file by
         # one of those names could be listed but never chosen.
         reserved = {name.lower() for name in (cls.AUTO, *cls.pairs())}
         for name in [name for name in cls._custom if name.lower() in reserved]:
             del cls._custom[name]
-            problems.append(f"theme {os.path.join(directory, name + '.toml')}: `{name}` already means something to runtime.theme; rename the file")
+            source = f"ui.themes.{name}" if isinstance(inline, dict) and name in inline else os.path.join(directory, name + ".toml")
+            problems.append(f"theme {source}: `{name}` already means something to runtime.theme; choose another name")
         cls._generation += 1
         return problems
 
     @classmethod
-    def configure(cls, configured: str, directory: str) -> list[str]:
-        """Load the theme files and activate the configured theme, reporting what could not be used."""
-        problems = cls.load_custom(directory)
+    def configure(cls, configured: str, directory: str, inline: object = None) -> list[str]:
+        """Load custom themes and activate the configured one, reporting what could not be used."""
+        problems = cls.load_custom(directory, inline)
         name = cls.resolve(configured)
         if configured.strip() and cls.canonical(configured) is None:
             problems.append(f"unknown theme `{configured}`; using {name}. Available: {', '.join(cls.choices())}")

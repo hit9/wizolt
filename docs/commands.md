@@ -2,10 +2,8 @@
 
 ## Looking around
 
-**`/status`** — Shows everything about the runtime at a glance: workspace path,
-session id, active provider and model, calculated compaction-budget fill percentage,
-conversation history, prompt-cache hit ratio, the AGENTS.md state, background jobs, and whether an
-update is available. Its last row links to the [documentation](https://wizolt.readthedocs.io).
+**`/status`** — Check your model, context usage, cache hit rate, background jobs and session
+information. Start here when you want to know what is running or how much context remains.
 
 <div class="term-shot" role="img" aria-label="The /status command: a boxed two-column table of the workspace, session, yolo, step limit, AGENTS.md state, model, a context fill bar, cache hit ratios, request usage, and worker state, with the documentation link as its last row."><span class="fs-user">• /status</span><span> </span><span><span class="fs-i">  </span><span class="fs-i fs-dim">╭──────────────────────────────────────────────────────────╮</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> workspace </span><span class="fs-i fs-dim"> </span><span class="fs-i fs-sel">~/dev/github/wizolt</span><span class="fs-i">                           </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> session   </span><span class="fs-i fs-dim"> </span><span class="fs-i fs-sel">20260923101532-4c64ec94-a1f</span><span class="fs-i">                   </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> yolo      </span><span class="fs-i fs-dim"> </span><span class="fs-i">off                                           </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> steps     </span><span class="fs-i fs-dim"> </span><span class="fs-i">400                                           </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> agents.md </span><span class="fs-i fs-dim"> </span><span class="fs-i">on (./AGENTS.md; global active)               </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> model     </span><span class="fs-i fs-dim"> </span><span class="fs-i fs-sel">openai/gpt-5.6</span><span class="fs-i"> · responses · reasoning medium </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> context   </span><span class="fs-i fs-dim"> </span><span class="fs-i">[███▋░░░░░░░░░░] </span><span class="fs-i fs-sel">~62.4K / 240.5K</span><span class="fs-i"> (26%)        </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> cache     </span><span class="fs-i fs-dim"> </span><span class="fs-i">total </span><span class="fs-i fs-sel">92.7%</span><span class="fs-i"> · last </span><span class="fs-i fs-sel">97.2%</span><span class="fs-i">                      </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> usage     </span><span class="fs-i fs-dim"> </span><span class="fs-i">calls </span><span class="fs-i fs-sel">215</span><span class="fs-i"> · total </span><span class="fs-i fs-sel">13.8M</span><span class="fs-i">                       </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> worker    </span><span class="fs-i fs-dim"> </span><span class="fs-i">off — </span><span class="fs-i fs-sel">[worker] provider</span><span class="fs-i"> unset                 </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> docs      </span><span class="fs-i fs-dim"> </span><span class="fs-i">https://wizolt.readthedocs.io                 </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">╰──────────────────────────────────────────────────────────╯</span></span></div>
 
@@ -48,10 +46,9 @@ protocol, and the effort.
 | `/reason [EFFORT]` | Reasoning effort — `/effort` is the same command | the levels the active model offers, plus `off` |
 | `/api [API]` | The protocol used to reach the model | `auto`, `chat`, `responses`, `anthropic` |
 
-Effort is mapped to the nearest level a known model family accepts; unrecognized models keep what
-you picked. A model that `/model` offered can still come back unsupported, because one endpoint
-often serves several families over different protocols — set the right one with `/api`, or `auto`
-to re-infer it. Switching mid-session is safe either way, since the history is protocol-neutral.
+If the new model does not offer your selected effort level, wizolt chooses the nearest one
+and tells you. If a model rejects requests, check `/api` against your provider's settings.
+You can switch models during a conversation.
 
 ```{figure} ../snapshots/wizolt-demo-switching-providers-models.gif
 :alt: Switching providers and models interactively during a session
@@ -71,16 +68,12 @@ See [Switching sessions](usage.md#switching-sessions).
 **`/compact`** — Summarize and shrink the conversation immediately. wizolt keeps
 long sessions within budget on its own, but `/compact` trims on demand.
 
-**`/compact log [seg.N]`** — Review what compaction kept: the stored segments newest
-first, and the summary of the one you open. Naming a segment prints its summary
-without the viewer. Each row is a `history.N.md` file the agent can read back, kept
-beside the `history.md` index. See
-[Keeping context manageable](context.md#keeping-context-manageable).
+**`/compact log [seg.N]`** — Browse past summaries, or print one by its segment name.
+See [Keeping context manageable](context.md#keeping-context-manageable).
 
-**`/context [reset]`** — Shows how much of the context window is in use, or clears the model's conversation
-and starts a new one with `/context reset`. Here the new window begins at once, because the command
-runs outside a turn. Like `/compact`, it is unavailable while the agent is working. See
-[Starting a new window](context.md#starting-a-new-window).
+**`/context [reset]`** — Check context usage, or start a fresh model window with `/context reset`.
+Use it between turns. Your files, visible transcript and working notes remain.
+See [Starting a new window](context.md#starting-a-new-window).
 
 **`/worker [SUBCOMMAND]`** — Inspect or control the worker session. Tab completion offers the
 subcommands and their values; see [Worker delegation](worker.md#worker-delegation) for what a

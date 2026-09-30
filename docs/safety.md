@@ -6,10 +6,8 @@ wizolt edits files and runs shell commands in the environment where you start it
 **not** sandbox itself.
 ```
 
-wizolt acts directly in your environment. Through its [tools](tools.md) it can
-<span class="marker">read and edit files beyond the working directory and run any shell
-command</span>. There is no built-in isolation, so treat it with the same care as running those
-commands yourself.
+Its [tools](tools.md) can reach files beyond the working directory. Review commands and file
+paths with the same care you would use when running them yourself.
 
 (built-in-guardrails)=
 ## Built-in guardrails
@@ -17,10 +15,8 @@ commands yourself.
 - **Confirmations.** File-changing and command-running tools — Edit, Bash, Job, and MCP
   calls — ask before they act. <span class="marker">This is on by default</span>; `--yolo` and
   `/yolo` turn it off. Your hooks and loaded skills can pre-approve covered calls.
-- **Verified edits.** Every edit says what it expects to change — a numbered source view from
-  `Read`, or the exact original text of the target — and is rejected
-  if the file no longer matches, or if the text it named appears more than once. The agent can't
-  silently patch the wrong lines. See [Tools](tools.md).
+- **Checked edits.** An edit is refused if its target changed since it was read, or if the
+  target text matches more than one place. The agent must resolve that before trying again.
 - **Reviewable changes.** `/diff` shows exactly what changed this round and across the
   session before you rely on it.
 - **Repository skills wait for trust.** A cloned repository's skills that run commands, carry

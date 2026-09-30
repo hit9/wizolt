@@ -123,27 +123,15 @@ Otherwise the model simply saw no task worth handing over, which is the normal c
 
 ## Good to know
 
-- **Reset drops the conversation, not the work.** `/worker reset` clears the worker's context —
-  along with any wrong beliefs it picked up — while file changes and merged diffs survive.
-- **A failed delegation is not a lost worker.** When a send dies — a provider error, a timeout —
-  the worker keeps its context and any files it already changed are merged and named in the
-  failure, so the model can answer the problem and send again instead of starting over. Reset it
-  when you want the context gone too.
-- **Every send asks, even under `yolo`.** The order is a spec the model wrote for itself, so the
-  approval brief is the one cheap check on it.
-- **The worker inherits your environment.** Same directory, skills, MCP servers, and language
-  setting; the files and the repository are what both actually share. Skills are available to
-  both, but the worker loads and activates its own skills.
-- **Hooks can guide the worker.** `SubagentStart` adds guidance at each send; `SubagentStop` can
-  send it back to work up to 5 times per turn. Their feedback stays with the worker. See
-  [Hooks](hooks.md#events) for the configured hooks workers share and the main-session-only events.
-- **Its tokens are its own.** The worker bills to its own entry and keeps its own context, and
-  `/status` gives it separate rows — provider and model, context fill with round count, and cache
-  ratio — so a delegation never blurs into the parent's numbers.
-- **You can talk to a running worker.** `Enter` while a delegation runs queues the text on the
-  worker — it joins the worker's next model step, with its marker in the worker's color. If the
-  worker finished, failed, or was interrupted without answering it, the text falls back to the
-  parent.
-  `Tab` still holds a draft for the parent's next task.
-- **Its sessions are not yours to manage.** Worker snapshots ride along with the parent's and
-  never appear in `/sessions`; when the parent's snapshot expires, the worker's goes with it.
+| Question | Answer |
+| --- | --- |
+| Does reset undo edits? | No. `/worker reset` clears its conversation; file changes remain. |
+| What if a request fails? | Its conversation and completed edits remain, so the agent can retry. |
+| Does yolo skip the order? | No. Every delegation still asks you to approve the order. |
+| What is shared? | Your workspace, available skills, MCP servers and language setting. Each session loads its own skills. |
+| Where can I see usage? | `/status` shows separate worker model, context and cache figures. |
+| Can I guide it while it works? | Enter sends a follow-up to the worker. An unanswered message returns to the main conversation. Tab holds a task for the main conversation. |
+| How is it saved? | Alongside your main session. It has no separate entry in `/sessions`. |
+
+[Hooks](hooks.md#events) can add guidance when a worker starts or ask it to keep working before
+it finishes. `SubagentStop` can redirect it up to five times per turn.

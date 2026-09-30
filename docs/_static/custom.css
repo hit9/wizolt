@@ -184,6 +184,13 @@ table.docutils, table.docutils td, table.docutils th {
 table.docutils th { background: var(--nc-surface); color: var(--nc-fg-strong); }
 .tool-reference { width: 100%; table-layout: fixed; }
 .tool-reference figure { margin: 1rem 0 0; }
+@media (max-width: 600px) {
+    .body table.docutils {
+        display: block;
+        max-width: 100%;
+        overflow-x: auto;
+    }
+}
 
 /* Terminal pictures: small faithful renderings of a wizolt screen or output,
    so a feature is recognisable on sight. Shared by every diagram in the docs. */

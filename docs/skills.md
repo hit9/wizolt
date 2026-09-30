@@ -6,7 +6,8 @@ a release checklist, a project convention, a multi-step procedure. Keeping the
 skills without bloating every request.
 
 wizolt reads the [Agent Skills](https://agentskills.io/specification) format and the extra
-fields Claude Code uses, so a skill you already have for another agent works here unchanged.
+fields Claude Code uses. Most existing skills can be reused; unsupported fields appear as
+warnings in `/skills`.
 
 ## Creating and installing skills
 
@@ -32,9 +33,14 @@ description: Draft release notes from the git log since the last tag.
 3. If a bundled script is needed, run it with Bash — see paths below.
 ```
 
-Until the skill is used, the agent sees only a one-line entry with its name and
-description (cut to 250 characters). All entries together are capped at about 4K tokens, with
-project skills listed first. The full body loads when the skill is used.
+Until the skill is used, the agent sees only its name and a short description. The full
+instructions load when needed.
+
+```{figure} _static/skills-workflow.svg
+:alt: Install a SKILL.md, invoke it with /release-notes, and let the agent follow its instructions.
+
+Write once, use when needed.
+```
 
 `/skills` lists any skill that does not follow the spec (a name that isn't lowercase with
 hyphens, a missing description) under **Warnings**; it still loads. A skill whose frontmatter
@@ -52,11 +58,9 @@ wizolt looks where other agents keep skills too, so one install serves all of th
 - **User** — `~/.claude/skills/`, `~/.agents/skills/` and `~/.wizolt/skills/` (under
   `<data_dir>/skills/` when `paths.data_dir` is customized).
 
-When two skills share a name, the one nearer your working directory wins; in the same folder,
-`.wizolt` beats `.agents`, which beats `.claude`; any project skill beats a user skill. A
-package's skill only adds to these, and never replaces one of the same name. `/skills` shows
-where each skill came from, whether it is a project or user skill, and which same-named skills
-it hides.
+When names clash, the nearest project skill wins over your user skill. In the same folder,
+`.wizolt` wins over `.agents`, then `.claude`. Package skills only add new names.
+Run `/skills` to see which copy is active and where it came from.
 
 Skills you add or change during a session reach the agent at the start of your next turn;
 `/skills reload` rescans right away and says what changed.

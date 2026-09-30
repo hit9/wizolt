@@ -509,8 +509,8 @@ def pygments_style_exists(name: str) -> bool:
     return True
 
 
-def load_custom(directory: str, builtins: dict[str, Palette], roles: tuple[str, ...]) -> tuple[dict[str, Palette], list[str]]:
-    """Every theme file in `directory`, and a line for each problem found in them.
+def load_custom(directory: str, builtins: dict[str, Palette], roles: tuple[str, ...], inline: object = None) -> tuple[dict[str, Palette], list[str]]:
+    """Load theme files and inline definitions through the same validation.
 
     A file that cannot be used at all is skipped; a bad entry inside a usable file is dropped and
     the rest of the file still applies.
@@ -518,22 +518,34 @@ def load_custom(directory: str, builtins: dict[str, Palette], roles: tuple[str, 
     try:
         entries = sorted(entry for entry in os.listdir(directory) if entry.endswith(".toml"))
     except OSError:
-        return {}, []
+        entries = []
     themes: dict[str, Palette] = {}
     problems: list[str] = []
+    sources: list[tuple[str, str, dict]] = []
     for entry in entries:
         name, path = entry.removesuffix(".toml"), os.path.join(directory, entry)
-        if not THEME_NAME.match(name):
-            problems.append(f"theme {path}: the file name must be letters, digits, '.', '_' or '-'")
-            continue
-        if name in builtins:
-            problems.append(f"theme {path}: `{name}` is a built-in theme; rename the file")
-            continue
         try:
             with open(path, "rb") as file:
-                data = tomllib.load(file)
+                sources.append((name, path, tomllib.load(file)))
         except (OSError, tomllib.TOMLDecodeError) as error:
             problems.append(f"theme {path}: {error}")
+    if inline is not None:
+        if not isinstance(inline, dict):
+            problems.append("[ui.themes] must be a table")
+        else:
+            for name, data in inline.items():
+                if not isinstance(data, dict):
+                    problems.append(f"theme ui.themes.{name}: must be a table")
+                else:
+                    sources.append((name, f"ui.themes.{name}", data))
+    # Process inline definitions last. A usable definition replaces the same-named file;
+    # an unusable one leaves that file available, just as invalid entries keep base colors.
+    for name, path, data in sources:
+        if not THEME_NAME.match(name):
+            problems.append(f"theme {path}: the name must be letters, digits, '.', '_' or '-'")
+            continue
+        if name in builtins:
+            problems.append(f"theme {path}: `{name}` is a built-in theme; choose another name")
             continue
         base_name = data.get("base", "dark")
         base = builtins.get(base_name) if isinstance(base_name, str) else None

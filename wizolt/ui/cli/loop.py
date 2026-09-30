@@ -423,7 +423,7 @@ class CommandLoop:
         theme set there showed the default palette first. What could not be used is kept for
         `start_session` to report after the banner.
         """
-        self.theme_problems = Theme.configure(self.session.settings.theme, self.session.data_path("themes"))
+        self.theme_problems = Theme.configure(self.session.settings.theme, self.session.data_path("themes"), self.session.config.ui.get("themes"))
         self.theme_problems.extend(Theme.configure_diff_style(self.session.config.ui))
         if warning := Theme.true_color_warning():
             self.theme_problems.append(warning)

@@ -51,11 +51,9 @@ reasoning at all, then `responding` while it writes the answer.
 
 <div class="term-shot" role="img" aria-label="The same divider line at three moments of one turn: while reasoning streams above it the label reads thinking, while the answer streams it reads responding, and when the turn completes the preview is replaced by the final answer above the idle prompt."><span class="fs-dim">  I should inspect the existing implementation first.</span><span> </span><span><span class="fs-i fs-rule">───</span><span class="fs-i" style="color:"> </span><span class="fs-i fs-add">● </span><span class="fs-i fs-working">thinking (4s)</span><span class="fs-i" style="color:"> </span><span class="fs-i" style="color:#4b5563">─────────────────────</span><span class="fs-i" style="color:#4f6977">─</span><span class="fs-i" style="color:#67e8f9">─</span><span class="fs-i" style="color:#61cbdb">─</span><span class="fs-i" style="color:#5eb7c7">─</span><span class="fs-i" style="color:#5cadbd">─</span><span class="fs-i" style="color:#589aa9">─</span><span class="fs-i" style="color:#56909f">─</span><span class="fs-i" style="color:#548695">─</span><span class="fs-i" style="color:#527c8b">─</span></span><span> </span><span class="fs-dim">  ⋮</span><span class="fs-dim">  I found the issue in the request path.</span><span> </span><span><span class="fs-i fs-rule">───</span><span class="fs-i" style="color:"> </span><span class="fs-i fs-add">● </span><span class="fs-i fs-working">responding (7s)</span><span class="fs-i" style="color:"> </span><span class="fs-i" style="color:#527c8b">─</span><span class="fs-i" style="color:#548695">─</span><span class="fs-i" style="color:#56909f">─</span><span class="fs-i" style="color:#589aa9">─</span><span class="fs-i" style="color:#5cadbd">─</span><span class="fs-i" style="color:#5eb7c7">─</span><span class="fs-i" style="color:#61cbdb">─</span><span class="fs-i" style="color:#67e8f9">─</span><span class="fs-i" style="color:#4f6977">─</span><span class="fs-i" style="color:#4b5563">─────────────────────</span></span><span> </span><span class="fs-dim">  ⋮</span><span>The retry loop reused a closed client. Reconnecting per attempt fixes it.</span><span class="fs-rule">────────────────────────────────────────────────────────────</span><span class="fs-prompt">&gt; <span class="fs-caret">▏</span></span></div>
 
-The live text is a bounded preview, not a second conversation entry. On completion it clears
-and the final answer is rendered once in the normal Rich transcript. Tool-call arguments stay
-buffered until the call is complete, so partial JSON never appears as user-facing output. No
-streaming setting is required for the usual case; endpoints that reject streaming can disable it
-with `provider.stream = false` or `/set provider.stream off`.
+When the response finishes, its live preview becomes the final formatted answer.
+Streaming is on by default. If your endpoint rejects it, set `stream = false` in its provider
+block, or use `/set provider.stream off` for this session.
 
 ## Bash output
 
@@ -63,25 +61,19 @@ While Bash runs, its live output stays above the `working` divider. When the com
 finishes, up to three lines from each stream stay in the transcript, and the complete result
 is stored under its `tr.N` key.
 
-Press `Ctrl-O` to browse stored results, newest first: `j`/`k` or the arrows
-select, `/` searches, `Enter` opens, and `Ctrl-O` or `q` closes. Long lists scroll inside a window
-about ten rows tall, and a counter under it says which rows you are looking at. Opening one shows
-what was run above what it returned, in a read-only scrolling viewer — a Bash command with both
-its streams, a `ToolScript` with its complete script and result, a background `Job` with its log,
-or a delegation order with the worker's answer below it. For a script this is the only way to read
-it under `--yolo`, where no confirmation prompt stops to offer `v`; for an order it is where you
-judge the answer against what was actually asked, since the transcript keeps only the `Delegate
-send` line. A Job log is available while that job remains in the current session; after a resume
-or after the log is removed, the viewer shows the stored Job result instead.
+Press **Ctrl-O** to browse results, newest first. Use `j`/`k` or the arrows to select,
+`/` to search and **Enter** to open. **Ctrl-O** or `q` closes the list.
 
-A `ToolScript` that is **running right now** leads the list, marked `running` instead of a `tr.N`
-key. A long batch is exactly when its script is worth reading, and until it returns there is no
-stored result to open. It leaves the list when the batch finishes and its real entry takes over.
+| Result | What opens |
+| --- | --- |
+| Bash | The command and its output |
+| ToolScript | The complete script and its printed result; a running script appears first |
+| Job | Its live log, or the saved result after resuming a session |
+| Delegation | The order and the worker's answer |
 
-Very large results are bounded rather than rendered whole: the viewer keeps the head and tail of
-a long result and clips individual lines past ~1000 characters, and the header says so whenever
-it did. Stored tool results remain complete under their `tr.N` keys; live Job logs are read through
-a separate fixed-size snapshot.
+This viewer also works under `--yolo`, when there is no approval preview.
+Very large results show their beginning and end, with a notice when text was shortened.
+The stored tool result remains complete.
 
 <div class="term-shot" role="img" aria-label="A completed Bash command with its output tail under the call line, its stored key cited at the end of that row, then the Ctrl-O sheet of recent results: its title on a line of its own over a full-width rule, a blank row under it, the rows lined up in verdict, key, and tool-name columns with the selected row highlighted whole, and the key legend under the last row. Below it, the read-only viewer one of them opens, framed the same way: the title over a rule, then a labeled rule opening each section -- the fields, the output, and the result."><span class="fs-tool">  Bash  pytest -q</span><span class="fs-output">    └ 708 passed in 14.84s</span><span class="fs-dim"> · tr.18 [auto]</span><span> </span><span class="fs-title">  Tool output · latest 4</span><span class="fs-rule">  ────────────────────────────────────────────────────────────────────────</span><span> </span><span><span class="fs-i fs-dim">   1.   </span><span class="fs-i fs-working">running  </span><span class="fs-i fs-tool">ToolScript  </span><span class="fs-i">call 24 lines (938 chars)</span></span><span class="fs-selected">   2. ✓ tr.18    Bash        pytest -q                  </span><span><span class="fs-i fs-dim">   3. </span><span class="fs-i fs-ok">✓ </span><span class="fs-i fs-dim">tr.17    </span><span class="fs-i fs-tool">Bash        </span><span class="fs-i">git diff --check</span></span><span><span class="fs-i fs-dim">   4. </span><span class="fs-i fs-ok">✓ </span><span class="fs-i fs-dim">tr.16    </span><span class="fs-i fs-tool">Bash        </span><span class="fs-i">git status --short</span></span><span> </span><span class="fs-dim">  j/k/Tab move · Ctrl-D/U page · / search · Enter open · Esc/q close</span><span> </span><span class="fs-title">  Output · tr.18 · read-only</span><span class="fs-rule">  ────────────────────────────────────────────────────────────────────────</span><span> </span><span class="fs-dim">  key   tr.18</span><span class="fs-dim">  exit  0</span><span> </span><span><span class="fs-i fs-rule">  ── </span><span class="fs-i fs-title">output</span><span class="fs-i fs-rule"> ──────────────────────────────────────────────────────────────</span></span><span> </span><span>  1   pytest -q</span><span> </span><span><span class="fs-i fs-rule">  ── </span><span class="fs-i fs-title">result</span><span class="fs-i fs-rule"> ──────────────────────────────────────────────────────────────</span></span><span> </span><span class="fs-dim">  stdout:</span><span class="fs-output">    708 passed in 14.84s</span><span class="fs-dim">  ↑/↓ scroll · Ctrl-D/U half-page · PgUp/PgDn page · g/G top/bottom · Esc/q back · Ctrl-O close</span></div>
 
@@ -100,11 +92,9 @@ In the default layout, once a [worker](worker.md) has actually run, its own cont
 `worker ctx N%`; a worker that has never been delegated to (or was reset) adds nothing. While a
 delegation is in flight the row shows the worker's figures instead, led by `worker ·`.
 
-The role colors stay still while the values remain live. The context and cache figures refresh
-after requests, and MCP and skill changes appear on the next screen redraw. While MCP
-servers are still being contacted the count spins — `mcp ⠹2` — and rises as each one answers; a
-plain `mcp N` means every configured server has settled, so `mcp 0` really is nothing connected.
-`/status` reports the same session figures in more detail.
+Context and cache figures update after each request. A spinner beside `mcp` means connections
+are still opening; `mcp 0` without a spinner means none are connected.
+Use `/status` for more detail.
 
 The working divider above the prompt names the current phase — `thinking`, `responding`, or
 `web search` while a [provider-side tool](tools.md#provider-side-tools) runs inside the request —
@@ -123,13 +113,11 @@ for a chip is drawn shortened; picking it puts the whole suggestion in the input
 
 <div class="term-shot" role="img" aria-label="The idle prompt after an answer: the answer text, an empty prompt with a caret, and one row of three suggestion chips separated by grey bars, the middle one highlighted in reverse."><span>Everything is ready to review.</span><span> </span><span class="fs-rule">────────────────────────────────────────────────────────────</span><span class="fs-prompt">&gt; <span class="fs-caret">▏</span></span><span> </span><span><span class="fs-i fs-sel"> run the tests </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-on"> show the diff </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-sel"> commit the work </span></span></div>
 
-`Tab` cycles between the input and the chips, empty input or typed draft alike; a command line,
-an `@` mention, or an open menu keeps `Tab` for what it completes — including the argument rows a
-space just closed. `Enter` on a chip drops its text in at the cursor — a new line at the end of
-the input, into the sentence mid-line — and returns to the prompt, so `Tab` to the next chip and
-`Enter` again combines several suggestions; a final `Enter` sends. A chip with a `✓` has its text
-standing in the input as its own words: focus it and press `Enter` to take that text back out.
-Quick hints are always available at the TUI prompt.
+Press **Tab** to focus a suggestion, then **Enter** to put it in your draft. You can combine
+several suggestions before pressing Enter in the input to send. A `✓` marks a selected chip;
+select it again to remove its text. You can also ignore the chips and type your own request.
+
+While completing a command or mention, Tab keeps its usual completion behavior.
 
 ## Commands
 
@@ -218,11 +206,10 @@ from the workspace; quoted paths and backslash-escaped spaces are accepted.
 
 <div class="term-shot" role="img" aria-label="The input prompt after recognizing a local screenshot path as an editable inline image label."><span class="fs-prompt">&gt; explain <span class="fs-i fs-sel">[Image #1 · screenshot.png]</span> and fix the layout<span class="fs-caret">▏</span></span></div>
 
-PNG, JPEG, WebP, and single-frame GIF files are supported. wizolt sends each new attachment to
-the active model using the selected standard API. If the provider rejects that turn, the image
-remains stored at a session-owned path and later requests replay a readable label instead of the
-same image blocks; the agent can inspect the stored path explicitly with `ViewImage`. A configured
-[vision model](configuration.md#vision-model) is used only by `ViewImage`, never automatically.
+PNG, JPEG, WebP and single-frame GIF files are supported. Images normally go to your active
+model. If it cannot accept images, a configured [vision model](configuration.md#vision-model)
+can describe them for it, at the cost of an extra request. You can also ask the agent to inspect
+a local image with `ViewImage`.
 
 ## Sessions
 
@@ -267,9 +254,8 @@ line you typed, becomes the agent's current goal once it has one, and stays what
 /name auth refactor   # set your own; nothing overwrites it afterwards
 ```
 
-A name is a label, not an identity — sessions may share one, and the id is what makes each unique.
-Names are decided once rather than re-read from the conversation, so a session you found under one
-name yesterday is still under it today, even after its early messages have been compacted away.
+A name you set stays until you change it. Sessions may share a name; when several match,
+wizolt lists them so you can choose.
 
 ### Switching sessions
 

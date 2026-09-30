@@ -624,11 +624,17 @@ model = ""
 # language = "auto"           # auto follows your messages and injects nothing; set a language
                                # name (e.g. "Chinese") to force the reply language
 # theme = "auto"               # auto follows the terminal's light or dark background; /theme
-                               # previews every theme, including <data_dir>/themes/, and saves here
+                               # previews built-ins, ui.themes and <data_dir>/themes/, and saves here
 # attribution = true           # ask the model to end the commit messages and pull requests it
                                # writes with a "Generated with wizolt" line
 # agents_md = true               # inject global AGENTS.md and the project's AGENTS.md files (or CLAUDE.md
                                  # fallback), repository root down to cwd, under one shared budget
+
+# [ui.themes.mine]             # optional: define a theme here, or in <data_dir>/themes/mine.toml
+# base = "one-dark"            # choose with /theme mine; restart after editing inline definitions
+# [ui.themes.mine.colors]
+# user = "#f2c97d"
+# tool = "#8bd5ca"
 
 # [worker]                     # optional: hand tasks to a second wizolt session (Delegate tool)
 # provider = "fast"           # a provider entry; pick one from a DIFFERENT vendor than

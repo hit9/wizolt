@@ -1,9 +1,9 @@
 # MCP
 
 wizolt can connect to [Model Context Protocol](https://modelcontextprotocol.io) servers and
-call their tools through its `MCP` tool. Servers can be **remote** (HTTP) or **local**
-(stdio), and <span class="marker">nothing about a server reaches the model until you connect
-it</span>.
+use tools they provide, such as searching a service or reading shared files. Connect a
+**remote server** by URL or start a **local server** with a command. The agent only sees
+servers you connect.
 
 ## Configuring servers
 
@@ -71,8 +71,8 @@ Connecting a server on demand with an @-mention.
   fallbacks.
 - **`/mcp tools [server]`** — list the tools of connected servers.
 
-Connecting several servers in one command runs them concurrently; interactive OAuth browser
-flows are serialized so they do not interfere with each other.
+You can connect several servers at once. If they need browser sign-in, finish each sign-in
+before the next one opens.
 
 Once a server is connected, wizolt can use its tools like any other. Tools the server marks
 read-only run without a prompt; anything that may change state asks for
@@ -80,10 +80,8 @@ read-only run without a prompt; anything that may change state asks for
 
 ## Scripting tool calls
 
-When the agent expects several <span class="marker">same-shape MCP calls</span> — the same tool
-with a handful of different arguments — it can write one Python script instead of emitting each
-call separately, and only what the script prints returns to the conversation. See
-[ToolScript](tools.md#toolscript), which covers scripting built-in tools as well.
+For repeated work, such as checking ten tickets, the agent can use a Python script to make
+the calls and return a short summary. See [ToolScript](tools.md#toolscript).
 
 ### Authentication
 
