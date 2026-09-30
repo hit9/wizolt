@@ -23,6 +23,10 @@
 
 ### Fixed
 
+- Cancelling a bar preview restores the exact previous layout even if a theme switch removed a
+  custom highlight. Preset selection recovers from malformed UI tables without interrupting input;
+  idle preview samples no longer show running metrics. Bound template token count and style
+  nesting as well as expression complexity, with regression coverage for each reviewed failure.
 - Improve named themes' UI text and selection contrast on their intended backgrounds, including
   Solarized menu descriptions that previously fell below the contrast target. Keep decorative
   separators quieter than hints, and darken the default selection band for clearer white text.

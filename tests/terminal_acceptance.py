@@ -404,11 +404,13 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
         visible_containing("Divider › Layout")
         if cycle == 0:
             pane.keys("Escape")
+            visible_containing("Layout presets")
+            pane.keys("j")
             visible_containing("Sweep presets")
-            pane.keys("j", "Enter")
+            pane.keys("Enter")
             visible_containing("Divider › Sweep")
             pane.keys("Escape")
-            visible_containing("Layout presets")
+            visible_containing("Sweep presets")
             pane.keys("Escape")
         elif cycle == 1:
             pane.keys("C-c")

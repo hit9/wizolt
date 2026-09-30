@@ -170,3 +170,9 @@ def test_theme_highlights_are_validated_and_follow_theme_switches(tmp_path, monk
     assert Theme.bar_styles({"status.model"})["status.model"] == "fg:#123456 bg:#aabbcc bold"
     Theme.set_mode("dark")
     assert "#123456" not in Theme.bar_styles({"status.model"})["status.model"]
+
+
+@pytest.mark.parametrize("source", ["[accent]" * 40 + "{model}", "{model}" * 600], ids=["style-depth", "token-count"])
+def test_template_complexity_is_bounded_before_rendering(source):
+    with pytest.raises(ValueError, match="exceeds"):
+        Template(source)

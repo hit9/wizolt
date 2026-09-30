@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import shutil
 import time
 from typing import TYPE_CHECKING
@@ -54,7 +55,8 @@ def select_layout(loop: CommandLoop, kind: str, source: str) -> str:
     if problems:
         return "\n".join(problems)
     section, key = ("divider", "sweep") if kind == "sweep" else (kind, "format")
-    raw = dict(loop.session.config.ui.get(section, {}))
+    previous = loop.session.config.ui.get(section, {})
+    raw = dict(previous) if isinstance(previous, dict) else {}
     raw[key] = source
     loop.session.config.ui[section] = raw
     if loop.presentation.tui is not None:
@@ -83,11 +85,11 @@ def preview(loop: CommandLoop, kind: str, started: float) -> StyleAndTextTuples:
         for label, running, queued in (("Idle", False, 0), ("Running", True, 0), ("Queued", True, 2)):
             values.update(
                 running=running,
-                elapsed=elapsed,
-                activity="working",
-                rate="42 tok/s",
-                spinner="● ",
-                label=f"working ({int(elapsed)}s · 42 tok/s)" + (" [ 2 queued ]" if queued else ""),
+                elapsed=elapsed if running else 0,
+                activity="working" if running else "",
+                rate="42 tok/s" if running else "",
+                spinner="● " if running else "",
+                label=(f"working ({int(elapsed)}s · 42 tok/s)" + (" [ 2 queued ]" if queued else "")) if running else "",
                 **{"queue.total": queued, "queue.followup": queued, "queue.next_turn": 0},
             )
             result.extend([(Theme.fg("muted"), label + " (preview)\n")])
@@ -101,8 +103,16 @@ def preview(loop: CommandLoop, kind: str, started: float) -> StyleAndTextTuples:
 async def pick_layout(loop: CommandLoop, kind: str) -> str | None:
     tui = loop.presentation.tui
     assert tui is not None
-    layout = loop.presentation.status_bar.layout
+    bar = loop.presentation.status_bar
+    original_layout = bar.layout
+    # A cancelled preview restores the object, not a re-parse under a possibly different theme.
+    # Compiled templates are immutable; the source map and sweep error belong to the preview.
+    layout = copy.copy(original_layout)
+    layout.sources = dict(original_layout.sources)
+    layout.sweep = copy.copy(original_layout.sweep)
+    layout.errors = []
     original = layout.sources[kind]
+    bar.layout = layout
     current = original[7:] if original.startswith("preset:") else "custom"
     choices = tuple(PRESETS[kind]) + (("custom",) if current == "custom" else ())
     started = time.monotonic()
@@ -129,7 +139,7 @@ async def pick_layout(loop: CommandLoop, kind: str) -> str | None:
             on_focus=apply,
         )
     finally:
-        layout.configure({kind: original}, Theme.bar_styles)
+        bar.layout = original_layout
         tui.invalidate()
         if timer is not None:
             timer.cancel()

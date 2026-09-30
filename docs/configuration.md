@@ -421,7 +421,8 @@ Use `"0"` or `"preset:none"` to stop the sweep.
 
 Formulas are limited mathematical expressions, not Python scripts. Invalid formulas report an
 error. If a formula becomes undefined while running, the affected light goes dark; the divider
-preview displays the error. Templates are limited to 8,192 characters, formulas to 1,024.
+preview displays the error. Templates are limited to 8,192 characters and 512 tokens, with at most 16 nested styles or
+conditional blocks. Formulas are limited to 1,024 characters.
 
 ## Worker delegation
 

@@ -227,7 +227,9 @@ class Template:
         stack: list[tuple[Node, list[Node]]] = []
         pattern = re.compile(r"\{\{|\}\}|\[\[|\]\]|\{%.*?%\}|\{[^{}]*\}|\[[^\[\]]*\]", re.DOTALL)
         end = 0
-        for match in pattern.finditer(self.source):
+        for index, match in enumerate(pattern.finditer(self.source)):
+            if index >= 512:
+                raise ValueError("template exceeds 512 tokens")
             literal = self.source[end : match.start()]
             if any(char in literal for char in "{}[]"):
                 raise ValueError("unmatched delimiter; escape literal brackets by doubling them")
@@ -294,6 +296,8 @@ class Template:
                 depth = 0 if node.text == "reset" else depth - 1 if node.text == "/" else depth + 1
                 if depth < 0:
                     raise ValueError("unmatched [/]")
+                if depth > 16:
+                    raise ValueError("style nesting exceeds 16 levels")
         # Top-level styles may deliberately run to the end of the line. Conditional styles
         # must be closed so omitting a branch cannot change the styles of the rest of the row.
         return depth

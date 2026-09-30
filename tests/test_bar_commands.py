@@ -112,3 +112,37 @@ async def test_headless_lists_presets_and_direct_selection_handles_unknown_names
     assert "unknown preset" in await statusbar_command(command_loop, "not-a-preset")
     assert command_loop.presentation.status_bar.layout.sources == before
     assert "saved" in await divider_command(command_loop, "minimal")
+
+
+async def test_selection_recovers_from_a_malformed_ui_section(command_loop):
+    command_loop.session.config.ui = {"statusbar": "broken"}
+    Path(command_loop.session.config.path).write_text('[ui]\nstatusbar = "broken"\n')
+    result = await statusbar_command(command_loop, "minimal")
+    assert "Applied for this session; not saved" in result
+    assert command_loop.session.config.ui["statusbar"] == {"format": "preset:minimal"}
+
+
+async def test_cancel_restores_custom_template_even_after_its_highlight_disappears(command_loop, tmp_path):
+    themes = tmp_path / "themes"
+    themes.mkdir()
+    (themes / "custom.toml").write_text('base = "dark"\n[highlights.special]\nfg = "#abcdef"\n')
+    assert not Theme.load_custom(str(themes))
+    Theme.set_mode("custom")
+    layout = command_loop.presentation.status_bar.layout
+    assert not layout.configure({"statusbar": "[special]{model}[/]"}, Theme.bar_styles)
+    # Switching away makes the custom group unavailable, but cancelling a picker must still
+    # restore the exact previous configuration, not leave the last hovered preset active.
+    Theme.set_mode("dark")
+    command_loop.presentation.tui = BarModal(["up", "escape"])
+    assert await statusbar_command(command_loop, "") is None
+    assert command_loop.presentation.status_bar.layout is layout
+    assert layout.sources["statusbar"] == "[special]{model}[/]"
+
+
+def test_idle_preview_uses_idle_values_even_without_a_condition(command_loop):
+    from wizolt.ui.cli.bars import preview
+
+    layout = command_loop.presentation.status_bar.layout
+    assert not layout.configure({"divider": "{label}|{rate}|{spinner}|{elapsed:duration}"}, Theme.bar_styles)
+    rows = "".join(fragment[1] for fragment in preview(command_loop, "divider", 0)).splitlines()
+    assert rows[rows.index("Idle (preview)") + 1] == "|||0s"
