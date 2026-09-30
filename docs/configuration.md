@@ -337,6 +337,7 @@ Divider layouts in the picker:
 | `capsule` | A centered, rounded activity badge with light rules on both sides |
 | `frame` | Rounded top corners and an inset activity label frame the input area |
 | `rail` | Activity on the left; elapsed time, speed and queue counts on the right |
+| `powerline` | Activity and metrics in color segments joined to the rule by arrows |
 
 Existing divider preset names still work in config files. If you use one, the picker offers
 `current (name)` so you can keep it; custom templates appear as `custom (current)`.

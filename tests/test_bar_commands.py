@@ -107,13 +107,20 @@ async def test_divider_cascade_can_keep_custom_layout_and_sweep(command_loop):
 
 async def test_divider_picker_is_curated_and_preserves_an_existing_older_preset(command_loop):
     layout = command_loop.presentation.status_bar.layout
-    assert not layout.configure({"divider": "preset:powerline"}, Theme.bar_styles)
-    modal = command_loop.presentation.tui = BarModal(["g", "j", "j", "j", "j", "enter", "escape"], consumed=True)
+    assert not layout.configure({"divider": "preset:plain"}, Theme.bar_styles)
+    modal = command_loop.presentation.tui = BarModal(["g", "j", "j", "j", "j", "j", "enter", "escape"], consumed=True)
     await divider_command(command_loop, "")
     first = "".join(text for frame in modal.frames for _, text in frame)
-    assert all(name in first for name in ("comet", "capsule", "frame", "rail", "current (powerline)"))
+    assert all(name in first for name in ("comet", "capsule", "frame", "rail", "powerline", "current (plain)"))
     assert "dashed" not in first and "dotted" not in first
-    assert layout.sources["divider"] == "preset:powerline"
+    assert layout.sources["divider"] == "preset:plain"
+    saved = tomllib.loads(Path(command_loop.session.config.path).read_text())
+    assert saved["ui"]["divider"]["format"] == "preset:plain"
+
+
+async def test_divider_picker_can_select_and_save_powerline(command_loop):
+    command_loop.presentation.tui = BarModal(["G", "enter", "enter"], consumed=True)
+    assert "divider.format: preset:powerline" in await divider_command(command_loop, "")
     saved = tomllib.loads(Path(command_loop.session.config.path).read_text())
     assert saved["ui"]["divider"]["format"] == "preset:powerline"
 

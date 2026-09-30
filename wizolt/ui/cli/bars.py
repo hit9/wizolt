@@ -18,7 +18,7 @@ from wizolt.ui.cli.modals import choice_application
 from wizolt.ui.render import Theme
 
 # Keep the picker focused; older preset names still work in config files.
-DIVIDER_CHOICES = ("comet", "capsule", "frame", "rail")
+DIVIDER_CHOICES = ("comet", "capsule", "frame", "rail", "powerline")
 SWEEP_CHOICES = ("none", "comet", "ripple", "aurora")
 
 if TYPE_CHECKING:

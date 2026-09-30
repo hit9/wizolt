@@ -10,8 +10,9 @@
   independent of terminal width and avoiding time spent behind labels. Existing `x`, `t`, `w`
   formulas and older named presets remain supported.
 
-- Focus the divider picker on four layouts: the quiet `comet`, a centered rounded `capsule`,
-  an inset `frame`, and a `rail` separating activity from metrics. Existing configured presets
+- Focus the divider picker on five layouts: the quiet `comet`, a centered rounded `capsule`,
+  an inset `frame`, a `rail` separating activity from metrics, and the arrow-joined `powerline`.
+  Existing configured presets
   remain usable and can be kept as the current selection.
 - Templates support repeated short fill patterns and multiple fills sharing the available width,
   including centered labels. Fill patterns reject control, combining and double-width characters.
