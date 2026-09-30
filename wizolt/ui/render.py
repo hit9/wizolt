@@ -42,7 +42,7 @@ from wizolt.base import (
 )
 from wizolt.ui.bars import BarLayout, Value
 from wizolt.ui.themes import BUILTIN as NAMED_THEMES
-from wizolt.ui.themes import DIFF_STYLES, Palette, load_custom, normalize_color
+from wizolt.ui.themes import DIFF_STYLES, Palette, generated_pygments_style, load_custom, normalize_color
 from wizolt.utils import terminal
 
 if TYPE_CHECKING:
@@ -297,7 +297,7 @@ class Theme:
         "divider_glow": "#67e8f9",
         "divider_rule": "#4b5563",
         "divider_label": "ansimagenta",
-        "status_bg": "default",
+        "status_bg": "#2b2f36",
         "selection_bg": "#0077a8",
         "selection_fg": "#ffffff",
         "menu_bg": "#2b2f36",
@@ -333,7 +333,7 @@ class Theme:
         "divider_glow": "#0e7490",
         "divider_rule": "#9ca3af",
         "divider_label": "ansimagenta",
-        "status_bg": "default",
+        "status_bg": "#e8ebef",
         "selection_bg": "#0077a8",
         "selection_fg": "#ffffff",
         "menu_bg": "#e8ebef",
@@ -387,6 +387,8 @@ class Theme:
                 "status.model": f"fg:{background} bg:{colors['status_provider']} bold",
                 "status.detail": f"fg:{colors['status_base']} bg:{colors['menu_bg']}",
                 "status.usage": f"fg:{background} bg:{colors['status_context']}",
+                # A status line's own band, which a preset lays the whole row on.
+                "status.band": f"fg:{colors['status_base']} bg:{colors['status_bg']}",
                 "divider.activity": f"fg:{background} bg:{colors['accent_secondary']} bold",
                 "divider.metrics": f"fg:{colors['status_base']} bg:{colors['menu_bg']}",
                 "divider.label": "class:divider.working",
@@ -733,21 +735,15 @@ class Theme:
 
     @classmethod
     def choices(cls) -> tuple[str, ...]:
-        """Everything `runtime.theme` accepts, in picker order: `auto`, then each pair ahead of its
-        two themes."""
-        pairs, listed = set(cls.pairs()), [cls.AUTO]
-        for name in cls.themes():
-            pair = name.removesuffix("-dark")
-            if pair in pairs and pair not in listed:
-                listed.append(pair)
-            listed.append(name)
-        return tuple(listed)
+        """What the picker lists: `auto`, then every theme. A pair is not listed beside its two
+        themes, which crowded the menu, but `runtime.theme` still accepts one."""
+        return (cls.AUTO, *cls.themes())
 
     @classmethod
     def canonical(cls, name: str) -> str | None:
         """`name` as `runtime.theme` spells it -- `auto`, a pair or a theme -- or None if it is none
         of them. Matched exactly, then ignoring case."""
-        name, known = name.strip(), cls.choices()
+        name, known = name.strip(), (*cls.choices(), *cls.pairs())
         if name in known:
             return name
         return next((choice for choice in known if choice.lower() == name.lower()), None)
@@ -770,7 +766,7 @@ class Theme:
         name = cls.palette()["pygments"]
         if name not in cls._pygments_cache:
             try:
-                cls._pygments_cache[name] = get_style_by_name(name)
+                cls._pygments_cache[name] = generated_pygments_style(name) or get_style_by_name(name)
             except Exception:  # noqa: BLE001 - optional Pygments styles must degrade to plain rendering.
                 cls._pygments_cache[name] = None
         return cls._pygments_cache[name]
@@ -2211,16 +2207,7 @@ class StatusBar:
 
     def fragments(self) -> StyleAndTextTuples:
         columns = shutil.get_terminal_size((120, 20)).columns
-        band = Theme.color("status_bg")
-
-        def styles(specs: set[str]) -> dict[str, str]:
-            # Powerline joins fade into the row, which a named theme lays on its panel color.
-            resolved = Theme.bar_styles(specs)
-            if band != "default":
-                resolved["__background"] = band
-            return resolved
-
-        return list(self.layout.render("statusbar", self.values(), columns - 1, styles))
+        return list(self.layout.render("statusbar", self.values(), columns - 1, Theme.bar_styles))
 
     def mcp_label(self) -> str:
         """The MCP group's text: `mcp N`, with a spinner frame in front of the count while

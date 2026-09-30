@@ -57,7 +57,9 @@ def preview(loop: CommandLoop, kind: str, started: float) -> StyleAndTextTuples:
     if kind != "statusbar":
         elapsed = max(0.0, time.monotonic() - started)
         ramp = tuple(reversed(Theme.ramp("divider_glow", "divider_rule", 16)))
-        for label, running, queued in (("Idle", False, 0), ("Running", True, 0), ("Queued", True, 2)):
+        for index, (label, running, queued) in enumerate((("Idle", False, 0), ("Running", True, 0), ("Queued", True, 2))):
+            if index:
+                result.append(("", "\n"))  # a blank line between examples, so each reads on its own
             values.update(
                 running=running,
                 elapsed=elapsed if running else 0,

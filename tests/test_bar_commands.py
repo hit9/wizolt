@@ -198,3 +198,5 @@ def test_idle_preview_uses_idle_values_even_without_a_condition(command_loop):
     assert not layout.configure({"divider": "{label}|{rate}|{spinner}|{elapsed:duration}"}, Theme.bar_styles)
     rows = "".join(fragment[1] for fragment in preview(command_loop, "divider", 0)).splitlines()
     assert rows[rows.index("Idle (preview)") + 1] == "|||0s"
+    # A blank line sets each example apart; they ran together.
+    assert rows[rows.index("Running (preview)") - 1] == "" and rows[rows.index("Queued (preview)") - 1] == ""

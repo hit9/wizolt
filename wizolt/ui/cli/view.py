@@ -686,9 +686,8 @@ class View:
                 # colors that match no terminal theme: the track is the menu's surface, the thumb grey.
                 "scrollbar.background": f"noreverse bg:{menu_bg}",
                 "scrollbar.button": f"noreverse bg:{Theme.color('subtle')}",
-                # A named theme lays the status bar on its panel color; the defaults stay transparent.
-                "bottom-toolbar": f"noreverse bg:{Theme.color('status_bg')} fg:default",
-                "bottom-toolbar.text": f"noreverse bg:{Theme.color('status_bg')} {role('text')}",
+                "bottom-toolbar": "noreverse bg:default fg:default",
+                "bottom-toolbar.text": f"noreverse bg:default {role('text')}",
                 "search-toolbar": "noreverse bg:default fg:default",
                 "search-toolbar.prompt": role("accent"),
                 "search-toolbar.text": role("text"),

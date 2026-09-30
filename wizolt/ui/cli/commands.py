@@ -890,6 +890,8 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
     problems = Theme.load_custom(loop.session.data_path("themes"))
     original = Theme.name()
     current = Theme.canonical(loop.session.settings.theme or Theme.AUTO) or original
+    if current in Theme.pairs():  # listed as the variant the terminal gets
+        current = Theme.resolve(current)
     tui = loop.presentation.tui
     chosen: object
     picked = False  # chosen from the menu, which goes on to the diff colors
@@ -908,15 +910,13 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
             Theme.set_mode(Theme.resolve(name))
             tui.invalidate()
 
-        # `auto` and each light/dark pair say which of their two the terminal gets.
-        following = (Theme.AUTO, *Theme.pairs())
         chosen = None
         try:
             chosen = await choice_application(
                 loop,
                 "Theme",
                 Theme.choices(),
-                {name: f"{name} (follows the terminal: {Theme.resolve(name)})" for name in following},
+                {Theme.AUTO: f"auto (follows the terminal: {Theme.resolve(Theme.AUTO)})"},
                 current,
                 set(),
                 preview_fn=theme_preview,

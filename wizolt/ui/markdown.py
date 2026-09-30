@@ -13,7 +13,7 @@ from typing import Any, ClassVar
 from rich import box
 from rich.console import Console, ConsoleOptions, RenderResult
 from rich.markdown import CodeBlock, Heading, Markdown, MarkdownElement, TableElement
-from rich.syntax import Syntax
+from rich.syntax import PygmentsSyntaxTheme, Syntax
 from rich.table import Table
 
 from wizolt.ui.render import Theme
@@ -36,7 +36,13 @@ class _CodeBlock(CodeBlock):
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         del console, options
-        yield Syntax(str(self.text).rstrip(), self.lexer_name, theme=self.theme, word_wrap=True, padding=0, background_color="default")
+        # The theme's own Pygments style, so a block is colored like the code the transcript prints.
+        # Handed over as the style itself: Rich looks a name up in Pygments, which has none for a
+        # style generated from a scheme, and falls back to one that draws plain text black.
+        # Without Pygments, Rich keeps plain ANSI colors rather than raising.
+        style = Theme.pygments_style()
+        theme = PygmentsSyntaxTheme(style) if style is not None else "ansi_dark"
+        yield Syntax(str(self.text).rstrip(), self.lexer_name, theme=theme, word_wrap=True, padding=0, background_color="default")
 
 
 class _Table(TableElement):
@@ -87,11 +93,7 @@ class WizoltMarkdown(Markdown):
     }
 
     def __init__(self, markup: str) -> None:
-        # The theme's own Pygments style, so a fenced block is colored like the code the transcript
-        # prints. `Theme.pygments_style` returning None means the name did not load; Rich falls back
-        # to plain ANSI rather than raising on it.
-        style = Theme.palette()["pygments"] if Theme.pygments_style() is not None else "ansi_dark"
-        super().__init__(markup, code_theme=style, hyperlinks=False)
+        super().__init__(markup, hyperlinks=False)
 
 
 def markdown_console(width: int) -> Console:

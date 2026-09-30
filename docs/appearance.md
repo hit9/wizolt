@@ -19,22 +19,30 @@ The default, `auto`, matches your terminal's background, falling back to `dark` 
 detect it. `--theme NAME` overrides the configured theme for one launch.
 
 `dark` and `light` draw in your terminal's own colors, so they follow whatever scheme your
-terminal is set to. The named themes pin every color to a well-known scheme instead — code
-highlighting, the status bar, menus and the selection band included:
+terminal is set to. The named themes are ports of well-known Vim and Neovim colorschemes, classic
+and current, taken from each one's own source: its code colors, its diff colors and its menus.
 
-`gruvbox-dark`, `gruvbox-light`, `solarized-dark`, `solarized-light`, `nord`, `dracula`,
-`one-dark`, `monokai`, `github-dark`
+| Theme | Scheme |
+| --- | --- |
+| `gruvbox-dark`, `gruvbox-light` | gruvbox, warm and retro |
+| `one-dark` | Atom's One Dark |
+| `desert` | Vim's own desert, khaki and sky blue on grey |
+| `zenburn` | Zenburn, low-contrast and easy on the eyes |
+| `jellybeans` | Jellybeans, bright colors on near-black |
+| `tokyonight` | Tokyo Night's night style, deep blue with bright accents |
+| `catppuccin-dark`, `catppuccin-light` | Catppuccin mocha and latte, soft pastels |
+| `kanagawa` | Kanagawa's wave style, muted colors after Hokusai's painting |
+| `rose-pine-dark`, `rose-pine-light` | Rosé Pine main and dawn, rose and pine on violet |
+| `everforest` | Everforest's dark style, green and earthy |
 
-Try `monokai` for vivid pink, green and cyan on a warm dark background, or `github-dark` for
-GitHub-style colors on a near-black background. In a named theme the status bar lies on the
-scheme's panel color, with the model in its accent color, and the working divider keeps to that
-one accent.
+`runtime.theme` also accepts `gruvbox`, `catppuccin` or `rose-pine`, or any name you give both a
+`-dark` and a `-light` theme file; it then picks the variant that matches your terminal, the way
+`auto` does. In a named theme the working divider keeps to the scheme's accent.
 
 A named theme does not change your terminal's background, so pick the one that matches it. Use
 `/theme` to preview code, status colors, menu text and selected rows. Hints and menu descriptions
-stay readable while separators remain quieter. `gruvbox` and `solarized` pick their dark or light variant to match
-your terminal, the way `auto` does; so does any name you give both a `-dark` and a `-light` theme
-file. `NO_COLOR=1` turns color off everywhere, keeping bold and the selection bar.
+stay readable while separators remain quieter. `NO_COLOR=1` turns color off everywhere, keeping
+bold and the selection bar.
 
 Named themes, theme files based on one, and every diff style except `classic` are exact colors.
 wizolt draws them exactly only when your terminal sets `COLORTERM=truecolor` (most modern terminals
@@ -62,20 +70,17 @@ style = "auto"
 | Style | Colors |
 | --- | --- |
 | `auto` | The style the theme is paired with (the default) |
-| `classic` | Bright red and green; `dark` and `light` pair with it |
-| `delta` | Deeper red and green, the delta diff viewer's defaults; `dracula` pairs with it |
-| `zebra` | Soft red and green that stay behind the code; `github-dark` and the light themes pair with it |
-| `gruvmax-fang` | Made for `gruvbox-dark`; very dark |
-| `platypus` | Made for `solarized-dark`; a light, olive green |
-| `calochortus-lyallii` | Made for `nord`; `nord`, `gruvbox-dark` and `solarized-dark` pair with it |
-| `colibri` | Made for One Half Dark; `one-dark` pairs with it |
-| `mantis-shrimp` | Made for `monokai` |
+| `tokyonight`, `catppuccin`, `kanagawa`, `rose-pine`, `everforest`, `gruvbox`, `one-dark`, `jellybeans` | Each scheme's own diff colors; the theme of that name pairs with it |
+| `classic` | Bright red and green; `dark`, `light` and `desert` pair with it |
+| `delta` | Deeper red and green, the delta diff viewer's defaults; `zenburn` pairs with it |
+| `zebra` | Soft red and green that stay behind the code |
+| `gruvmax-fang`, `platypus`, `calochortus-lyallii`, `colibri`, `mantis-shrimp` | Sets from delta's theme collection, made for gruvbox, Solarized, Nord, One Half Dark and Monokai |
 
-Every style draws removed lines on red and added lines on green, with the changed words a shade
-stronger. Styles other than `classic`, `delta` and `zebra` exist only for dark backgrounds, so the
-menu offers them only with a dark theme; with a light one, they draw the theme's own pairing. The
-styles beyond `classic` and `delta` come from delta's theme collection. If red and green are hard
-to tell apart, a theme file's `[diff]` table can set other colors.
+Every style marks removed lines in its red and added lines in its green, with the changed words a
+shade stronger. A scheme's own colors are its own: Tokyo Night's added lines are teal, and Rosé
+Pine, which has no green, marks them in blue. Some styles exist only for dark backgrounds, so the
+menu offers them only with a dark theme; with a light one, they draw the theme's own pairing. If
+red and green are hard to tell apart, a theme file's `[diff]` table can set other colors.
 
 To make your own, add `<data_dir>/themes/<name>.toml` (`~/.wizolt/themes/` by default). It starts
 from a built-in theme and changes only the colors you list:
@@ -92,7 +97,7 @@ The roles you can set are `text`, `muted`, `subtle`, `accent`, `accent_secondary
 `user`, `tool`, `success`, `warning`, `error`, `rule`, the code colors `syntax_assign`,
 `syntax_string`, `syntax_number`, `syntax_ident`, `syntax_builtin` and `syntax_default`, the
 status bar's `status_base`, `status_provider`, `status_reason`, `status_mcp`, `status_context`,
-`status_yolo`, `status_worker` and `status_bg` (the band it lies on; `default` for none), the working divider's `divider_glow` and `divider_rule` (these
+`status_yolo`, `status_worker` and `status_bg` (the band the `vim`, `split` and `monitor` layouts lie on), the working divider's `divider_glow` and `divider_rule` (these
 two take `#rrggbb` only) and `divider_label`, and `selection_bg`, `selection_fg`, `menu_bg` and
 `menu_muted` (the completion menu's descriptions).
 
@@ -135,13 +140,13 @@ Statusbar layouts:
 | --- | --- |
 | `default` | Provider, model, reasoning and usage in one row |
 | `minimal` | Model and a five-cell context meter together on the left |
-| `split` | Provider, model and reasoning on the left; tools, a ten-cell context meter and cache on the right |
+| `split` | On a band: provider, model and reasoning on the left; tools, a ten-cell context meter and cache on the right |
 | `compact` | Model, reasoning and context percentage joined by `›` in a short row |
 | `brackets` | Model, reasoning and usage in dim square brackets, together on the left |
-| `monitor` | Dim labels beside bright values: model and reasoning on the left; tools, usage and worker summary on the right |
+| `monitor` | On a band, dim labels beside bright values: model and reasoning on the left; tools, usage and worker summary on the right |
 | `blocks` | Rectangular color segments: model and reasoning on the left, cache and context on the right; no special font needed |
 | `powerline` | Color segments joined by arrow-shaped separators |
-| `vim` | A continuous background with model and reasoning on the left, MCP and context on the right |
+| `vim` | On a band like Vim's status line: model and reasoning on the left, MCP and context on the right |
 | `lualine` | A highlighted session identity, model and reasoning on the left; tools, cache and context on the right |
 
 Divider layouts in the picker:
@@ -203,6 +208,7 @@ sweep = "preset:none"
 | `{elapsed:duration}` | Seconds followed by `s`; numbers also accept `:d` and `:.0f` through `:.6f` |
 | `[accent bold]…[/]` | Theme color or highlight group, with optional text attributes; `[/]` restores the previous style |
 | `[fg=#fff bg=#333 bold]…[/]` | Explicit foreground, background and attributes; colors can also name theme roles |
+| `[status.band] …` | Lay the rest of the row on the theme's status band, as `vim` does; end it with ` [reset]` |
 | `[reset]` | Restore terminal defaults |
 | `{>}` | Push the remaining content to the right |
 | `{fill:─}` / `{fill:─·}` | Fill space by repeating a character or short pattern || `{join:}` / `{join:}` | Join adjacent background colors automatically |

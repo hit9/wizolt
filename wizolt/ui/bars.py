@@ -181,29 +181,31 @@ STATUS_PRESETS = {
     + STATS
     + "[status_worker]{worker.summary}[/]",
     "minimal": IDENTITY + "[status_provider]{model}[/] " + pressure(meter(5) + " {context.percent}%"),
-    "split": IDENTITY
+    "split": "[status.band] "
+    + IDENTITY
     + "[status_provider]{provider}/{model}[/]{% optional priority=10 %}[subtle] · [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
     + "{% optional priority=5 %}[status_mcp]{mcp.label} · skills {skills.count}[/][subtle] │ [/]{% endoptional %}"
     + pressure("ctx " + meter(10) + " {context.percent}%")
-    + "{% optional priority=8 %}[subtle] · [/][status_context]cache {cache.percent}%[/]{% endoptional %}",
+    + "{% optional priority=8 %}[subtle] · [/][status_context]cache {cache.percent}%[/]{% endoptional %} [reset]",
     "compact": IDENTITY + "[status_provider]{model}[/][subtle] › [/][status_reason]{reasoning}[/][subtle] › [/]" + pressure("{context.percent}%"),
     "brackets": IDENTITY
     + "[subtle][[[/][status_provider]{model}[/][subtle]]][/] {% optional priority=10 %}[subtle][[[/][status_reason]{reasoning}[/][subtle]]][/] {% endoptional %}"
     + "[subtle][[[/]"
     + pressure("ctx {context.percent}%")
     + "[subtle]]] [[[/][status_context]cache {cache.percent}%[/][subtle]]][/]",
-    "monitor": IDENTITY
+    "monitor": "[status.band] "
+    + IDENTITY
     + "[subtle]model [/][status_provider]{model}[/]{% optional priority=10 %}[subtle] effort [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
     + "{% optional priority=5 %}[status_mcp]{mcp.label}[/][subtle]  skills [/][status_mcp]{skills.count}[/]  {% endoptional %}"
     + "[subtle]ctx [/]"
     + pressure("{context.percent}%")
-    + "[subtle]  cache [/][status_context]{cache.percent}%[/][status_worker]{worker.summary}[/]",
+    + "[subtle]  cache [/][status_context]{cache.percent}%[/][status_worker]{worker.summary}[/] [reset]",
     "blocks": "[status.model] "
     + IDENTITY
     + "{model} [reset]{% optional priority=10 %} [status.detail] {reasoning} [reset]{% endoptional %}"
     + "{>}{% optional priority=5 %}[status.detail] cache {cache.percent}% [reset] {% endoptional %}"
     + pressure(" ctx {context.percent}% ", "status.usage", "status.usage bg=warning", "status.usage bg=error"),
-    "vim": "[status.detail] "
+    "vim": "[status.band] "
     + IDENTITY
     + "[status_provider]{provider}/{model}[/]{% optional priority=10 %} [status_reason][[{reasoning}]][/]{% endoptional %}{>}"
     + "{% optional priority=5 %}[status_mcp]{mcp.label}[/] · {% endoptional %}"

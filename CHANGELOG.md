@@ -4,13 +4,21 @@
 
 ### Added
 
-- Diff styles: after a theme, `/theme` offers the red and green diffs are drawn on, with a live
-  preview, saved as `ui.diff.style`. Besides `classic`, the previous colors, there are delta's
-  defaults and six sets from delta's theme collection: `zebra`, `gruvmax-fang`, `platypus`,
-  `calochortus-lyallii`, `colibri` and `mantis-shrimp`. The default, `auto`, draws the style each
-  theme pairs with: `calochortus-lyallii` on nord, gruvbox-dark and solarized-dark, `colibri` on
-  one-dark, `mantis-shrimp` on monokai, `delta` on dracula, `zebra` on github-dark and the light
-  themes, and `classic` on `dark` and `light`.
+- Themes ported from Vim and Neovim colorschemes, each from its own source: the classics
+  `desert`, `zenburn` and `jellybeans`, and `tokyonight`, `catppuccin-dark` and
+  `catppuccin-light` (mocha and latte), `kanagawa`, `rose-pine-dark` and `rose-pine-light` (main
+  and dawn), and `everforest`. Where Pygments has no style for a scheme, one is generated from its
+  syntax highlight groups, so code is colored as in the editor. `runtime.theme` accepts
+  `catppuccin` and `rose-pine` to follow the terminal's background, like `gruvbox`.
+- A `[status.band]` style lays a statusbar template on the theme's status band, set by a
+  `status_bg` role; the `vim`, `split` and `monitor` presets use it.
+- The `/divider` picker sets its idle, running and queued previews a line apart.
+- Diff styles: after a theme, `/theme` offers the colors diffs are drawn in, with a live preview,
+  saved as `ui.diff.style`. Each named theme has its own, the DiffAdd and DiffDelete colors of its
+  Neovim port with changed words a shade stronger, and pairs with it under the default `auto`;
+  `dark` and `light` keep `classic`, the previous colors. Any theme can use `classic`, delta's
+  defaults, or sets from delta's theme collection: `zebra`, `gruvmax-fang`, `platypus`,
+  `calochortus-lyallii`, `colibri` and `mantis-shrimp`.
 - A `divider_label` role for the working divider's label, so a theme file can color it apart
   from `accent_secondary`.
 - A warning at startup and after `/theme` when exact colors (a named theme, or a diff style other
@@ -19,20 +27,22 @@
 
 ### Changed
 
-- Named themes lay the status bar on the scheme's panel color, as its own status line does, and
-  color each field by what it is: the model in the accent, reasoning in the second accent, usage
-  in blue rather than a warning yellow, tools in grey. A `status_bg` role sets the band; `dark`
-  and `light` keep none. The working divider keeps to one hue: its label takes the accent its glow
-  is drawn in.
-- A Powerline join that meets no segment no longer paints `bg:default`, so it fades into a status
-  bar laid on a band.
+- Named themes color each status bar field by what it is: the model in the accent, reasoning in
+  the second accent, usage in blue rather than a warning yellow, tools in grey, readable on the
+  status band and off it. The working divider keeps to one hue: its label takes the accent its
+  glow is drawn in.
+- The theme picker no longer lists a light-and-dark pair beside its two themes; the pair's name
+  still works in `runtime.theme`.
+- A Powerline join that meets no segment no longer paints `bg:default`, so it takes the row's
+  own background.
 - `light` highlights code with Pygments' `vs` style instead of `default`, whose bold green
   keywords clashed with its GitHub-blue builtins.
 
 ### Removed
 
-- The `snazzy` theme. A config that still names it reports an unknown theme and uses the one
-  `auto` picks.
+- The `snazzy`, `solarized-dark`, `solarized-light`, `nord`, `dracula`, `monokai` and
+  `github-dark` themes, for the Neovim ports. A config that still names one reports an unknown
+  theme and uses the one `auto` picks; a theme file based on one reports its base.
 
 ### Fixed
 
