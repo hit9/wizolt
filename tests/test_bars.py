@@ -227,6 +227,8 @@ def test_status_presets_preserve_identity_and_resolve_theme_styles(name):
     values.update(model="my-model", provider="test", reasoning="high", yolo=True, **{"worker.active": True})
     rendered = text(layout.render("statusbar", values, 200, Theme.bar_styles))
     assert "my-model" in rendered and "[yolo]" in rendered and "worker" in rendered
+    if name != "minimal":
+        assert "test" in rendered
     assert not layout.errors
 
 
@@ -250,6 +252,22 @@ def test_vim_style_presets_keep_context_at_the_right_on_narrow_terminals(name):
         rendered = text(template.render(values, width, Theme.bar_styles(template.styles)))
         assert get_cwidth(rendered) == width
         assert rendered.endswith("ctx 42% ")
+
+
+@pytest.mark.parametrize("worker", (False, True))
+def test_lualine_shows_provider_model_and_effort_with_distinct_styles(worker):
+    from wizolt.ui.render import Theme
+
+    template = Template("preset:lualine", STATUS_PRESETS)
+    values = dict.fromkeys(FIELDS, 0)
+    values.update(provider="zai", model="glm-5.3", reasoning="high", yolo=True, **{"worker.active": worker})
+    parts = template.render(values, 160, Theme.bar_styles(template.styles))
+    rendered = text(parts)
+    assert "CHAT" not in rendered
+    assert "[yolo]" in rendered and ("worker" in rendered) == worker
+    assert rendered.index("zai") < rendered.index("glm-5.3") < rendered.index("high")
+    styles = [next(style for style, value in parts if label in value) for label in ("zai", "glm-5.3", "high")]
+    assert len(set(styles)) == 3
 
 
 def test_context_meter_fills_to_the_nearest_cell():
@@ -352,3 +370,21 @@ def test_theme_highlights_are_validated_and_follow_theme_switches(tmp_path, monk
 def test_template_complexity_is_bounded_before_rendering(source):
     with pytest.raises(ValueError, match="exceeds"):
         Template(source)
+
+
+@pytest.mark.parametrize("name", STATUS_PRESETS)
+def test_status_context_colors_change_only_at_warning_thresholds(name):
+    from wizolt.ui.render import Theme
+
+    template = Template("preset:" + name, STATUS_PRESETS)
+    values = dict.fromkeys(FIELDS, 0)
+    values.update(provider="p", model="m", reasoning="high")
+    colors = []
+    for percent in (37, 69, 70, 89, 90, 95):
+        values["context.percent"] = percent
+        parts = template.render(values, 160, Theme.bar_styles(template.styles))
+        colors.append(next(style for style, value in parts if str(percent) + "%" in value))
+    assert colors[0] == colors[1]
+    assert colors[2] == colors[3]
+    assert colors[4] == colors[5]
+    assert len(set(colors)) == 3

@@ -190,6 +190,7 @@ def scheme(
             "info": blue,
             "user": orange,
             "tool": green,
+            # Keep success green even when a theme uses cyan for tools. Custom colors can override it.
             "success": "#98c78d" if appearance == "dark" else "#327244",
             "warning": yellow,
             "error": red,
@@ -291,18 +292,25 @@ BUILTIN: dict[str, Palette] = {
         red="#ff5555", green="#50fa7b", yellow="#f1fa8c", blue="#8be9fd", purple="#bd93f9", aqua="#ff79c6", orange="#ffb86c",
         status="#44475a", pygments="dracula", diff_style="classic",
     ),
-    # https://github.com/NLKNguyen/papercolor-theme — default palette and syntax groups.
+    # https://github.com/NLKNguyen/papercolor-theme — Type uses pink; pythonOperator uses purple.
+    # These share Python Statement colors by design, not positional field order.
     "papercolor-light": scheme(
         "light", fg="#444444", comment="#878787", surface="#d0d0d0", rule="#bcbcbc", background="#eeeeee",
         red="#af0000", green="#008700", yellow="#5f8700", blue="#0087af", purple="#8700af", aqua="#005f87", orange="#d75f00",
         status="#d0d0d0", pygments="papercolor-light", diff_style="classic",
-        syntax=Syntax("#878787", "#d70087", "#0087af", "#5f8700", "#d75f00", "#008700", "#d70087", "#8700af", "#d75f00", "#444444", "#444444", "#005faf", "#444444"),
+        syntax=Syntax(
+            comment="#878787", keyword="#d70087", function="#0087af", string="#5f8700", number="#d75f00", constant="#008700",
+            type="#d70087", operator="#8700af", preproc="#d75f00", builtin="#444444", variable_builtin="#444444", property="#005faf", punctuation="#444444",
+        ),
     ),
     "papercolor-dark": scheme(
         "dark", fg="#d0d0d0", comment="#808080", surface="#303030", rule="#585858", background="#1c1c1c",
         red="#af005f", green="#5faf00", yellow="#d7af5f", blue="#5fafd7", purple="#af87d7", aqua="#d7875f", orange="#ffaf00",
         status="#3a3a3a", pygments="papercolor-dark", diff_style="classic",
-        syntax=Syntax("#808080", "#afd700", "#5fafd7", "#d7af5f", "#ff5faf", "#5faf00", "#afd700", "#af87d7", "#ff5faf", "#d0d0d0", "#d0d0d0", "#00afaf", "#d0d0d0"),
+        syntax=Syntax(
+            comment="#808080", keyword="#afd700", function="#5fafd7", string="#d7af5f", number="#ff5faf", constant="#5faf00",
+            type="#afd700", operator="#af87d7", preproc="#ff5faf", builtin="#d0d0d0", variable_builtin="#d0d0d0", property="#00afaf", punctuation="#d0d0d0",
+        ),
     ),
 }
 # fmt: on

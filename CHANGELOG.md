@@ -4,6 +4,13 @@
 
 ### Changed
 
+- Refresh all statusbar presets with distinct provider/model/effort colors, quieter secondary
+  details and context warnings at 70%/90%. Replace lualine's fixed `CHAT` label with the provider,
+  add provider segments to blocks/powerline, and drop optional details first on narrow panes.
+  Preserve YOLO/worker labels and the compact model-only identity in minimal.
+- Make PaperColor syntax mappings explicit with keyword arguments and upstream color checks;
+  clarify user-turn spacing bookkeeping, short-pane padding and the deliberate green success role.
+
 - Replace the broad theme collection with distinct `slate`, `forest`, `sand`, `plum` and
   `paper` presets, plus Gruvbox Dark, Solarized Dark, Dracula and PaperColor light/dark.
   Preserve the default `dark` palette. Unknown or removed names fall back to `dark`,

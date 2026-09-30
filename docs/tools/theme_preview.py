@@ -42,7 +42,7 @@ CANDIDATES = [
     {"id": "papercolor-light", "name": "09 · PaperColor Light", "base": "papercolor-light", "note": "White paper with blue, pink and olive syntax colors."},
     {"id": "papercolor-dark", "name": "10 · PaperColor Dark", "base": "papercolor-dark", "note": "Charcoal with lime, gold and blue syntax colors."},
 ]
-STATUSBARS = ("lualine", "powerline", "split", "vim", "default", "minimal")
+STATUSBARS = ("lualine", "powerline", "blocks", "split", "vim", "default", "minimal", "compact", "brackets", "monitor")
 DIVIDERS = ("comet", "capsule", "rail")
 
 
@@ -144,7 +144,7 @@ pre{margin:0;font:12.5px/1.65 "SFMono-Regular",Consolas,"DejaVu Sans Mono",monos
 <p class="intro">Compare palettes, status bars, and dividers. Default dark stays unchanged. Every diff uses the existing classic colors.</p>
 <nav class="choices" aria-label="Color presets"></nav>
 <div class="controls">
-<label>Status bar <select id="statusbar"><option>lualine</option><option>powerline</option><option>split</option><option>vim</option><option>default</option><option>minimal</option></select></label>
+<label>Status bar <select id="statusbar"><option>lualine</option><option>powerline</option><option>split</option><option>vim</option><option>default</option><option>minimal</option><option>blocks</option><option>compact</option><option>brackets</option><option>monitor</option></select></label>
 <label>Divider <select id="divider"><option>comet</option><option>capsule</option><option>rail</option></select></label>
 <span class="screen-width">Same sample · 76 columns · Static colors</span></div>
 <p class="description" id="description"></p>

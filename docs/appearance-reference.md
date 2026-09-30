@@ -78,7 +78,7 @@ A *role* names what a color is used for. Set only the roles you want to change:
 
 Your sent messages shade only their text rows. The input adds one shaded row above and below its text,
 and one unshaded row before the statusbar. A plain row also separates input from the divider.
-Panes shorter than 20 rows omit the shaded input padding to leave room for output.
+Panes shorter than 20 rows omit both shaded padding rows; the plain divider and statusbar gaps remain.
 Replies are separated by ordinary
 whitespace, with no extra divider beneath each sent message.
 
@@ -276,7 +276,7 @@ while they are empty. Field contents never become template instructions.
 
 ### Powerline colors
 
-Built-in Powerline templates use the highlight groups `status.model`, `status.detail`,
+Built-in Powerline templates use the highlight groups `status.provider`, `status.model`, `status.detail`, `status.context`,
 `status.usage`, `divider.activity` and `divider.metrics`. They follow the selected color theme.
 Override them, or define your own groups, in a theme file:
 

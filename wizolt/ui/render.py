@@ -458,10 +458,14 @@ class Theme:
         # Solid segments use their own surface; a color readable on the transcript can disappear
         # on the popup grey or the badge. User highlight overrides still take precedence below.
         detail = colors["status_base"]
+        provider = colors["status_provider"]
+        context = colors["status_base"]
         badge = colors["divider_label"]
         warning, error = colors["warning"], colors["error"]
         if cls.active().background:
             detail = lift(detail, detail, colors["menu_bg"], 5.5)
+            provider = lift(provider, detail, colors["status_bg"], 4.5)
+            context = lift(context, detail, colors["status_bg"], 4.5)
             badge = lift(badge, detail, colors["menu_bg"], 4.5)
             # Pressure text needs to read on a band, while transcript warnings retain their hue.
             toward = "#000000" if cls.appearance() == "light" else "#ffffff"
@@ -472,6 +476,8 @@ class Theme:
             {
                 "status.warning": f"fg:{warning}",
                 "status.error": f"fg:{error}",
+                "status.context": f"fg:{context} bg:{colors['status_bg']}",
+                "status.provider": f"fg:{provider} bg:{colors['status_bg']}",
                 "status.model": f"fg:{background} bg:{colors['status_provider']} bold",
                 "status.detail": f"fg:{detail} bg:{colors['menu_bg']}",
                 "status.usage": f"fg:{background} bg:{colors['status_context']}",
@@ -932,8 +938,8 @@ class UiPrinter:
         # Parts/scheduling state are touched from the app loop and late synchronous fallback
         # callers during shutdown, so all access goes through this lock.
         self._scrollback_lock = threading.Lock()
-        # Rendered rows since the last full-width rule was drawn. Read by the loop to decide
-        # whether a new rule would land too close to the one above it to be worth drawing.
+        # Rendered rows since the last full-width rule or user-turn boundary. Read by the loop
+        # to keep rules away from another rule or the start of a user turn.
         self.rows_since_rule = 0
         # Blank rows currently sitting at the end of what has been printed. This is what makes the
         # gaps between blocks stable: a caller says "part this from what came before" through

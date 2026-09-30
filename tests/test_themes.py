@@ -996,7 +996,7 @@ def test_file_picker_translates_terminal_colors_for_fzf():
 
 @pytest.mark.parametrize("name", ("papercolor-light", "papercolor-dark"))
 def test_papercolor_code_colors_are_inherited_by_custom_themes(name, tmp_path):
-    from pygments.token import Keyword, Name, String
+    from pygments.token import Keyword, Name, Operator, String
 
     write_theme(tmp_path, "mine", f'base = "{name}"\n')
     assert Theme.configure("mine", str(tmp_path)) == []
@@ -1004,3 +1004,7 @@ def test_papercolor_code_colors_are_inherited_by_custom_themes(name, tmp_path):
     assert style is not None
     expected = ("d70087", "0087af", "5f8700") if name.endswith("light") else ("afd700", "5fafd7", "d7af5f")
     assert tuple(style.style_for_token(token)["color"] for token in (Keyword, Name.Function, String)) == expected
+    # Upstream Type is pink (like pythonStatement); pythonOperator is purple.
+    assert style.style_for_token(Keyword.Type)["color"] == expected[0]
+    assert style.style_for_token(Name.Class)["color"] == expected[0]
+    assert style.style_for_token(Operator)["color"] == ("8700af" if name.endswith("light") else "af87d7")

@@ -175,54 +175,75 @@ def pressure(body: str, normal: str = "status_context", warning: str = "status.w
 
 IDENTITY = "{% if yolo %}[status_yolo][[yolo]] [/]{% endif %}{% if worker.active %}[status_worker]worker · [/]{% endif %}"
 SEGMENT_IDENTITY = IDENTITY.replace("[status_yolo]", "[bold]").replace("[status_worker]", "[bold]")
-STATS = "[status_mcp]{mcp.label} · skills {skills.count}[/][subtle] | [/][status_context]ctx {context.percent}% · cache {cache.percent}%[/]"
+PROVIDER_MODEL = "[status_provider]{provider}/[/][status_base bold]{model}[/]"
+SEGMENT_USAGE = pressure(" ctx {context.percent}% ", "status.context", "status.usage bg=warning", "status.usage bg=error")
 STATUS_PRESETS = {
     "default": IDENTITY
-    + "[status_provider]{provider}/{model}[/][subtle] · [/][status_reason]{reasoning}[/][subtle] | [/]"
-    + STATS
+    + PROVIDER_MODEL
+    + "{% optional priority=20 %}[subtle] · [/][status_reason]{reasoning}[/]{% endoptional %}"
+    + "{% optional priority=5 %}[subtle] | [/][status_mcp]{mcp.label} · skills {skills.count}[/]{% endoptional %}"
+    + "[subtle] | [/]"
+    + pressure("ctx {context.percent}%", "status_base")
+    + "{% optional priority=10 %}[status_mcp] · cache {cache.percent}%[/]{% endoptional %}"
     + "[status_worker]{worker.summary}[/]",
-    "minimal": IDENTITY + "[status_provider]{model}[/] " + pressure(meter(5) + " {context.percent}%"),
+    "minimal": IDENTITY + "[status_base bold]{model}[/] " + pressure(meter(5) + " {context.percent}%", "status_mcp"),
     "split": "[status.band] "
     + IDENTITY
-    + "[status_provider]{provider}/{model}[/]{% optional priority=10 %}[subtle] · [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
+    + PROVIDER_MODEL
+    + "{% optional priority=20 %}[subtle] · [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
     + "{% optional priority=5 %}[status_mcp]{mcp.label} · skills {skills.count}[/][subtle] │ [/]{% endoptional %}"
-    + pressure("ctx " + meter(10) + " {context.percent}%")
-    + "{% optional priority=8 %}[subtle] · [/][status_context]cache {cache.percent}%[/]{% endoptional %} [reset]",
-    "compact": IDENTITY + "[status_provider]{model}[/][subtle] › [/][status_reason]{reasoning}[/][subtle] › [/]" + pressure("{context.percent}%"),
+    + pressure("ctx " + meter(10) + " {context.percent}%", "status_base")
+    + "{% optional priority=10 %}[status_mcp] · cache {cache.percent}%[/]{% endoptional %} [reset]",
+    "compact": IDENTITY
+    + "{% optional priority=10 %}[status_provider]{provider}/[/]{% endoptional %}[status_base bold]{model}[/]"
+    + "{% optional priority=20 %}[subtle] › [/][status_reason]{reasoning}[/]{% endoptional %}[subtle] › [/]"
+    + pressure("{context.percent}%", "status_base"),
     "brackets": IDENTITY
-    + "[subtle][[[/][status_provider]{model}[/][subtle]]][/] {% optional priority=10 %}[subtle][[[/][status_reason]{reasoning}[/][subtle]]][/] {% endoptional %}"
     + "[subtle][[[/]"
-    + pressure("ctx {context.percent}%")
-    + "[subtle]]] [[[/][status_context]cache {cache.percent}%[/][subtle]]][/]",
+    + PROVIDER_MODEL
+    + "[subtle]]][/] "
+    + "{% optional priority=20 %}[subtle][[[/][status_reason]{reasoning}[/][subtle]]][/] {% endoptional %}"
+    + "[subtle][[[/]"
+    + pressure("ctx {context.percent}%", "status_base")
+    + "[subtle]]][/]"
+    + "{% optional priority=10 %}[status_mcp] [[cache {cache.percent}%]][/]{% endoptional %}",
     "monitor": "[status.band] "
     + IDENTITY
-    + "[status_mcp]model [/][status_provider]{model}[/]{% optional priority=10 %}[status_mcp] effort [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
-    + "{% optional priority=5 %}[status_mcp]{mcp.label}[/][status_mcp]  skills [/][status_mcp]{skills.count}[/]  {% endoptional %}"
-    + "[status_mcp]ctx [/]"
-    + pressure("{context.percent}%")
-    + "[status_mcp]  cache [/][status_context]{cache.percent}%[/][status_worker]{worker.summary}[/] [reset]",
-    "blocks": "[status.model] "
+    + PROVIDER_MODEL
+    + "{% optional priority=20 %}[status_mcp]  effort [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
+    + "{% optional priority=5 %}[status_mcp]{mcp.label} · skills {skills.count}[/]  {% endoptional %}"
+    + pressure("ctx {context.percent}%", "status_base")
+    + "{% optional priority=10 %}[status_mcp]  cache {cache.percent}%[/]{% endoptional %}[status_worker]{worker.summary}[/] [reset]",
+    "blocks": "[status.provider] "
     + SEGMENT_IDENTITY
-    + "{model} [reset]{% optional priority=10 %} [status.detail] {reasoning} [reset]{% endoptional %}"
-    + "{>}{% optional priority=5 %}[status.detail] cache {cache.percent}% [reset] {% endoptional %}"
-    + pressure(" ctx {context.percent}% ", "status.usage", "status.usage bg=warning", "status.usage bg=error"),
+    + "{provider} [reset] [status.model] {model} [reset]"
+    + "{% optional priority=20 %} [status.detail] {reasoning} [reset]{% endoptional %}{>}"
+    + "{% optional priority=10 %}[status.detail] cache {cache.percent}% [reset] {% endoptional %}"
+    + SEGMENT_USAGE,
     "vim": "[status.band] "
     + IDENTITY
-    + "[status_provider]{provider}/{model}[/]{% optional priority=10 %} [status_reason][[{reasoning}]][/]{% endoptional %}{>}"
-    + "{% optional priority=5 %}[status_mcp]{mcp.label}[/] · {% endoptional %}"
-    + pressure("ctx {context.percent}%")
+    + PROVIDER_MODEL
+    + "{% optional priority=20 %} [status_reason][[{reasoning}]][/]{% endoptional %}{>}"
+    + "{% optional priority=5 %}[status_mcp]{mcp.label}[/][subtle] · [/]{% endoptional %}"
+    + pressure("ctx {context.percent}%", "status_base")
     + " [reset]",
-    "lualine": "[status.model] "
+    "lualine": "[status.provider] "
     + SEGMENT_IDENTITY
-    + "{% if not worker.active %}CHAT {% endif %}{join:}[status.detail] {model} {join:}[reset]"
+    + "{provider} {join:}[status.model] {model} {join:}[reset]"
     + "{% optional priority=20 %} [status_reason]{reasoning}[/]{% endoptional %}{>}"
-    + "{% optional priority=10 %}[status_mcp]{mcp.label} · skills {skills.count}[/] {% endoptional %}"
-    + "{join:}[status.detail]{% optional priority=20 %} cache {cache.percent}% {% endoptional %}"
-    + "{join:}[status.usage] ctx {context.percent}% [reset]",
-    "powerline": "[status.model] "
+    + "{% optional priority=5 %}[status_mcp]{mcp.label} · skills {skills.count}[/] {% endoptional %}"
+    + "{% optional priority=10 %}{join:}[status.detail] cache {cache.percent}% [/]{% endoptional %}"
+    + "{join:}"
+    + SEGMENT_USAGE
+    + "[reset]",
+    "powerline": "[status.provider] "
     + SEGMENT_IDENTITY
-    + "{model} {join:}[status.detail]{% optional priority=10 %} {reasoning} {% endoptional %}{join:}[reset]{>}{join:}[status.usage] ctx {context.percent}% [reset]",
+    + "{provider} {join:}[status.model] {model} {join:}[reset]"
+    + "{% optional priority=20 %} [status_reason]{reasoning}[/]{% endoptional %}{>}{join:}"
+    + SEGMENT_USAGE
+    + "[reset]",
 }
+
 DIVIDER_PRESETS = {
     "plain": "[divider_rule]──[/]{% if running %} [divider.label]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
     "comet": "[divider_rule]───[/]{% if running %} [spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",

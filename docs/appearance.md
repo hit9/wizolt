@@ -50,7 +50,8 @@ The default is `auto`. Named themes change wizolt's colors, so choose one that s
 terminal's background. Your terminal keeps its own background.
 
 `papercolor` follows your terminal between its light and dark variants. Unknown or removed
-theme names fall back to `dark`; no old-name mapping is applied.
+theme names fall back to `dark`; no old-name mapping is applied. On a light terminal,
+select `/theme light` or `/theme auto` if your previous theme is no longer available.
 
 Classic palettes come from [Gruvbox](https://github.com/morhetz/gruvbox),
 [Solarized](https://ethanschoonover.com/solarized/),
@@ -87,6 +88,11 @@ The same session, five layouts.
 
 `default` stays transparent. `vim`, `split` and `monitor` have a background band.
 `powerline` and `lualine` use arrow-shaped color segments and need a Nerd Font.
+`lualine` and `powerline` show the provider on a subdued band, the model on a stronger accent
+band, and reasoning effort beside them. `blocks` uses separate rectangular bands.
+`minimal` shows only the model and context usage. Other layouts include the provider too;
+`compact` drops it when space is tight. Optional details disappear before reasoning effort.
+Context usage turns yellow at 70% and red at 90%. YOLO and worker labels appear when active.
 
 The **Divider** tab changes the line above your input. Choose a **Layout**, then scroll down
 to **Sweep** for its animation. **Space** chooses the highlighted value; **Tab** jumps between
