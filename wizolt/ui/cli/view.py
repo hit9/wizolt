@@ -640,7 +640,7 @@ class View:
                 "quickhint.sep": role("muted"),
                 "image.attachment": role("accent", "bold"),
                 "input.error": role("error"),
-                "divider.working": role("accent_secondary", "bold"),
+                "divider.working": role("divider_label", "bold"),
                 "divider.worker": role("status_worker", "bold"),
                 "approval": role("warning"),
                 "approval.wait": role("accent_secondary"),

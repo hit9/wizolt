@@ -296,6 +296,7 @@ class Theme:
         "status_worker": "#fbbf24",
         "divider_glow": "#67e8f9",
         "divider_rule": "#4b5563",
+        "divider_label": "ansimagenta",
         "selection_bg": "#0077a8",
         "selection_fg": "#ffffff",
         "menu_bg": "#2b2f36",
@@ -330,11 +331,14 @@ class Theme:
         "status_worker": "#b45309",
         "divider_glow": "#0e7490",
         "divider_rule": "#9ca3af",
+        "divider_label": "ansimagenta",
         "selection_bg": "#0077a8",
         "selection_fg": "#ffffff",
         "menu_bg": "#e8ebef",
         "menu_muted": "ansibrightblack",
-        "pygments": "default",
+        # No GitHub light style ships with Pygments. Visual Studio's is as plain, and its blue
+        # keywords sit with the GitHub-blue builtins above; `default` set bold green beside them.
+        "pygments": "vs",
     }
     ROLES: ClassVar[tuple[str, ...]] = tuple(key for key in DARK if key != "pygments")
 

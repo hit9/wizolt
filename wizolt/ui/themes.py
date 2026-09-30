@@ -161,6 +161,10 @@ def scheme(
     the way these schemes draw their own popup-menu selection. The comment grey is meant for code
     comments and is dim by design; readable UI text is lifted toward the foreground while
     decorative separators retain a quieter grey. Syntax colors retain the published palette.
+
+    The status footer and the working divider carry one accent each, the scheme's aqua, like a
+    lualine theme: the model, and the running label with the glow it travels with. Everything else
+    in the footer is the muted grey, so context usage stands out only when it turns to a warning.
     """
     muted = lift(comment, fg, background, MUTED_CONTRAST)
     palette = Palette(
@@ -186,14 +190,15 @@ def scheme(
             # Code tokens in the scheme's foreground render as the terminal's default.
             "syntax_default": fg,
             "status_base": fg,
-            "status_provider": blue,
-            "status_reason": purple,
-            "status_mcp": aqua,
-            "status_context": yellow,
+            "status_provider": aqua,
+            "status_reason": muted,
+            "status_mcp": muted,
+            "status_context": muted,
             "status_yolo": red,
             "status_worker": orange,
             "divider_glow": aqua,
             "divider_rule": rule,
+            "divider_label": aqua,
             "selection_bg": lift(blue, fg, background, MENU_TEXT_CONTRAST),
             "selection_fg": background,
             "menu_bg": surface,
@@ -222,20 +227,23 @@ def scheme(
         "status_context",
         "status_yolo",
         "status_worker",
+        "divider_label",
     ):
         palette.colors[role] = lift(palette.colors[role], fg, background, MUTED_CONTRAST)
     return palette
 
 
 # Published palettes, with UI contrast adjusted by scheme(); code uses Pygments' matching style.
-# Each pairs with the diff style made for it where delta's collection has one; the rest with the
-# style that suits its code: delta's deep bands under neon, zebra's soft ones elsewhere.
+# Each pairs with the diff style that sits best with it: one made for it where delta's collection
+# has one that reads as plain red and green (nord's, which also suits gruvbox-dark and
+# solarized-dark; gruvmax-fang's green is near black and platypus's too light), delta's deep bands
+# under dracula's neon, zebra's soft ones under GitHub's and the light themes.
 # fmt: off
 BUILTIN: dict[str, Palette] = {
     "gruvbox-dark": scheme(
         "dark", fg="#ebdbb2", comment="#928374", surface="#3c3836", rule="#665c54", background="#282828",
         red="#fb4934", green="#b8bb26", yellow="#fabd2f", blue="#83a598", purple="#d3869b", aqua="#8ec07c", orange="#fe8019",
-        pygments="gruvbox-dark", diff_style="gruvmax-fang",
+        pygments="gruvbox-dark", diff_style="calochortus-lyallii",
     ),
     "gruvbox-light": scheme(
         "light", fg="#3c3836", comment="#928374", surface="#ebdbb2", rule="#bdae93", background="#fbf1c7",
@@ -245,7 +253,7 @@ BUILTIN: dict[str, Palette] = {
     "solarized-dark": scheme(
         "dark", fg="#839496", comment="#586e75", surface="#073642", rule="#586e75", background="#002b36",
         red="#dc322f", green="#859900", yellow="#b58900", blue="#268bd2", purple="#d33682", aqua="#2aa198", orange="#cb4b16",
-        pygments="solarized-dark", diff_style="platypus",
+        pygments="solarized-dark", diff_style="calochortus-lyallii",
     ),
     "solarized-light": scheme(
         "light", fg="#657b83", comment="#93a1a1", surface="#eee8d5", rule="#93a1a1", background="#fdf6e3",
@@ -266,14 +274,6 @@ BUILTIN: dict[str, Palette] = {
         "dark", fg="#abb2bf", comment="#5c6370", surface="#3e4452", rule="#4b5263", background="#282c34",
         red="#e06c75", green="#98c379", yellow="#e5c07b", blue="#61afef", purple="#c678dd", aqua="#56b6c2", orange="#d19a66",
         pygments="one-dark", diff_style="colibri",
-    ),
-    # https://github.com/sindresorhus/hyper-snazzy, with the comment and popup-menu greys from
-    # https://github.com/connorholyday/vim-snazzy. Snazzy has no orange, so its yellow stands in,
-    # and Pygments has no Snazzy style: Dracula shares its background and neon accents.
-    "snazzy": scheme(
-        "dark", fg="#eff0eb", comment="#606580", surface="#3a3d4d", rule="#606580", background="#282a36",
-        red="#ff5c57", green="#5af78e", yellow="#f3f99d", blue="#57c7ff", purple="#ff6ac1", aqua="#9aedfe", orange="#f3f99d",
-        pygments="dracula", diff_style="delta",
     ),
     # https://github.com/pygments/pygments/blob/master/pygments/styles/monokai.py
     "monokai": scheme(

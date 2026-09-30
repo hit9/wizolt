@@ -23,11 +23,11 @@ terminal is set to. The named themes pin every color to a well-known scheme inst
 highlighting, the status bar, menus and the selection band included:
 
 `gruvbox-dark`, `gruvbox-light`, `solarized-dark`, `solarized-light`, `nord`, `dracula`,
-`one-dark`, `snazzy`, `monokai`, `github-dark`
+`one-dark`, `monokai`, `github-dark`
 
-Try `monokai` for vivid pink, green and cyan on a warm dark background, `snazzy` for bright
-neon colors on a dark blue-grey background, or `github-dark` for GitHub-style colors on a
-near-black background.
+Try `monokai` for vivid pink, green and cyan on a warm dark background, or `github-dark` for
+GitHub-style colors on a near-black background. In a named theme the status bar and the working divider keep to the scheme's one accent
+color; the rest of the status bar is grey until context usage calls for a warning.
 
 A named theme does not change your terminal's background, so pick the one that matches it. Use
 `/theme` to preview code, status colors, menu text and selected rows. Hints and menu descriptions
@@ -62,11 +62,11 @@ style = "auto"
 | --- | --- |
 | `auto` | The style the theme is paired with (the default) |
 | `classic` | Bright red and green; `dark` and `light` pair with it |
-| `delta` | Deeper red and green, the delta diff viewer's defaults; `dracula` and `snazzy` pair with it |
+| `delta` | Deeper red and green, the delta diff viewer's defaults; `dracula` pairs with it |
 | `zebra` | Soft red and green that stay behind the code; `github-dark` and the light themes pair with it |
-| `gruvmax-fang` | Made for `gruvbox-dark` |
-| `platypus` | Made for `solarized-dark` |
-| `calochortus-lyallii` | Made for `nord` |
+| `gruvmax-fang` | Made for `gruvbox-dark`; very dark |
+| `platypus` | Made for `solarized-dark`; a light, olive green |
+| `calochortus-lyallii` | Made for `nord`; `nord`, `gruvbox-dark` and `solarized-dark` pair with it |
 | `colibri` | Made for One Half Dark; `one-dark` pairs with it |
 | `mantis-shrimp` | Made for `monokai` |
 
@@ -92,8 +92,8 @@ The roles you can set are `text`, `muted`, `subtle`, `accent`, `accent_secondary
 `syntax_string`, `syntax_number`, `syntax_ident`, `syntax_builtin` and `syntax_default`, the
 status bar's `status_base`, `status_provider`, `status_reason`, `status_mcp`, `status_context`,
 `status_yolo` and `status_worker`, the working divider's `divider_glow` and `divider_rule` (these
-two take `#rrggbb` only), and `selection_bg`, `selection_fg`, `menu_bg` and `menu_muted` (the
-completion menu's descriptions).
+two take `#rrggbb` only) and `divider_label`, and `selection_bg`, `selection_fg`, `menu_bg` and
+`menu_muted` (the completion menu's descriptions).
 
 A theme file pairs with its base theme's [diff colors](#diff-colors). A `[diff]` table sets
 individual bands instead; they win over whichever diff style is selected:

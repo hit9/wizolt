@@ -8,12 +8,27 @@
   preview, saved as `ui.diff.style`. Besides `classic`, the previous colors, there are delta's
   defaults and six sets from delta's theme collection: `zebra`, `gruvmax-fang`, `platypus`,
   `calochortus-lyallii`, `colibri` and `mantis-shrimp`. The default, `auto`, draws the style each
-  theme pairs with: the set made for it where one exists (gruvbox-dark, solarized-dark, nord,
-  one-dark, monokai), `delta` on dracula and snazzy, `zebra` on github-dark and the light themes,
-  and `classic` on `dark` and `light`.
+  theme pairs with: `calochortus-lyallii` on nord, gruvbox-dark and solarized-dark, `colibri` on
+  one-dark, `mantis-shrimp` on monokai, `delta` on dracula, `zebra` on github-dark and the light
+  themes, and `classic` on `dark` and `light`.
+- A `divider_label` role for the working divider's label, so a theme file can color it apart
+  from `accent_secondary`.
 - A warning at startup and after `/theme` when exact colors (a named theme, or a diff style other
   than `classic`) will be rounded to 256 colors because `COLORTERM` is not `truecolor`; rounded,
   dark diff lines can look black. The docs explain how to set it.
+
+### Changed
+
+- Named themes give the status bar and the working divider one accent, the scheme's aqua: the
+  model, the running label and its glow. Reasoning, MCP, cache and context are muted, so context
+  usage stands out only once it turns to a warning. `dark` and `light` are unchanged.
+- `light` highlights code with Pygments' `vs` style instead of `default`, whose bold green
+  keywords clashed with its GitHub-blue builtins.
+
+### Removed
+
+- The `snazzy` theme. A config that still names it reports an unknown theme and uses the one
+  `auto` picks.
 
 ### Fixed
 

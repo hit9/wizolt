@@ -120,17 +120,29 @@ def test_builtin_selections_and_named_ui_labels_have_readable_contrast():
             assert contrast(colors[role], palette.background) >= 4.5, (name, role)
 
 
-@pytest.mark.parametrize(("name", "pygments"), [("monokai", "monokai"), ("github-dark", "github-dark"), ("snazzy", "dracula")])
-async def test_new_themes_switch_save_and_preview(tmp_path, name, pygments):
+def test_named_themes_give_the_footer_and_divider_one_accent():
+    """The footer was a rainbow of five hues in every scheme; now the model and the running label
+    carry the scheme's accent, the rest of the footer is muted, and warnings stand out."""
+    for name, palette in BUILTIN.items():
+        colors = palette.colors
+        assert colors["status_provider"] == colors["accent"] == colors["divider_label"], name
+        assert colors["status_reason"] == colors["status_mcp"] == colors["status_context"] == colors["muted"], name
+    # The terminal-following themes keep the label they always had.
+    for name in ("dark", "light"):
+        assert Theme.BUILTIN[name].colors["divider_label"] == Theme.BUILTIN[name].colors["accent_secondary"]
+
+
+@pytest.mark.parametrize(("name", "appearance"), [("monokai", "dark"), ("github-dark", "dark"), ("gruvbox-light", "light")])
+async def test_new_themes_switch_save_and_preview(tmp_path, name, appearance):
     command_loop = themed_loop(tmp_path)
     await theme_command(command_loop, name)
 
     assert Theme.name() == name
-    assert Theme.palette()["pygments"] == pygments
+    assert Theme.palette()["pygments"] == name
     assert f'theme = "{name}"' in (tmp_path / "config.toml").read_text()
     preview = theme_preview(name)
     text = "".join(text for _, text in preview)
-    assert "dark terminal background" in text
+    assert f"{appearance} terminal background" in text
     assert "Choose a color theme" in text and "ctx 25%" in text
     assert any(Theme.color("selection_bg") in style and "/theme" in text for style, text in preview)
     assert any(Theme.color("menu_muted") in style and "Choose" in text for style, text in preview)
@@ -585,14 +597,13 @@ def test_auto_diff_colors_follow_each_themes_pairing():
     assert {name: palette.diff_style for name, palette in Theme.BUILTIN.items()} == {
         "dark": "classic",
         "light": "classic",
-        "gruvbox-dark": "gruvmax-fang",
+        "gruvbox-dark": "calochortus-lyallii",
         "gruvbox-light": "zebra",
-        "solarized-dark": "platypus",
+        "solarized-dark": "calochortus-lyallii",
         "solarized-light": "zebra",
         "nord": "calochortus-lyallii",
         "dracula": "delta",
         "one-dark": "colibri",
-        "snazzy": "delta",
         "monokai": "mantis-shrimp",
         "github-dark": "zebra",
     }
