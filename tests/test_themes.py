@@ -17,7 +17,7 @@ from tui_harness import loop, run_interactive_tui, wait_until
 import wizolt.ui.render as render_module
 from wizolt.config import ConfigFile
 from wizolt.ui.cli import CommandCompleter
-from wizolt.ui.cli.commands import theme_command, theme_preview
+from wizolt.ui.cli.appearance import theme_command, theme_preview
 from wizolt.ui.render import HorizontalRule, Theme, UiPrinter
 from wizolt.ui.themes import BUILTIN, DIFF_STYLES, HEX_ROLES, MENU_TEXT_CONTRAST, MUTED_CONTRAST, contrast
 from wizolt.ui.tui.app import TuiApp
@@ -174,10 +174,10 @@ async def test_new_themes_switch_save_and_preview(tmp_path, name, appearance):
     assert f'theme = "{name}"' in (tmp_path / "config.toml").read_text()
     preview = theme_preview(name)
     text = "".join(text for _, text in preview)
-    assert f"{appearance} terminal background" in text
-    assert "Choose a color theme" in text and "ctx 25%" in text
-    assert any(Theme.color("selection_bg") in style and "/theme" in text for style, text in preview)
-    assert any(Theme.color("menu_muted") in style and "Choose" in text for style, text in preview)
+    assert Theme.appearance() == appearance and "split_words" in text
+    assert "Edit " in text and "return WORD.findall(text)" in text
+    assert any(Theme.color("user") in style and "tighten" in text for style, text in preview)
+    assert any(Theme.color("tool") in style and "Edit" in text for style, text in preview)
 
 
 def test_menu_descriptions_take_the_menu_text_color(tmp_path):
@@ -556,7 +556,7 @@ async def test_the_picker_applies_each_row_it_lands_on_and_escape_restores_the_t
     assert Theme.name() == "one-dark" and tui.recolored == 0
     assert (tmp_path / "config.toml").read_text() == CONFIG.replace('"auto"', '"one-dark"')
     # The preview is drawn in the row's theme: the user row in tokyonight's orange on its frame.
-    assert any((Theme.BUILTIN["tokyonight"].colors["user"] in style and "tighten" in text) for style, text in tui.frames[1])
+    assert any("split_words" in text for _, text in tui.frames[1])
 
 
 async def test_the_picker_restores_the_theme_when_interrupted(tmp_path):
@@ -584,12 +584,12 @@ async def test_enter_keeps_the_previewed_theme_and_saves_it(tmp_path):
     assert 'theme = "tokyonight"' in (tmp_path / "config.toml").read_text()
 
 
-async def test_the_theme_menu_goes_on_to_the_diff_colors_and_saves_both(tmp_path):
+async def test_the_theme_tabs_save_both_colorscheme_and_diff(tmp_path):
     command_loop = themed_loop(tmp_path, "one-dark")
     Theme.set_mode("one-dark")
     command_loop.interactive_input = True
     # Theme: one-dark -> tokyonight. Diff colors: auto -> tokyonight's own, the first style listed.
-    tui = command_loop.presentation.tui = ThemeModal(["j", "enter", "j", "enter"], consumed=True)
+    tui = command_loop.presentation.tui = ThemeModal(["j", "right", "j", "enter"], consumed=True)
 
     result = await theme_command(command_loop, "")
 
@@ -604,18 +604,18 @@ async def test_the_theme_menu_goes_on_to_the_diff_colors_and_saves_both(tmp_path
     assert any(style.endswith(Theme.diff_style("diff.added.emph")) for style, _ in tui.frames[-1])
 
 
-async def test_escape_on_the_diff_colors_keeps_the_theme_just_picked(tmp_path):
+async def test_escape_on_the_diff_tab_restores_all_changes(tmp_path):
     command_loop = themed_loop(tmp_path, "one-dark")
     Theme.set_mode("one-dark")
     command_loop.interactive_input = True
-    tui = command_loop.presentation.tui = ThemeModal(["j", "enter", "j", "escape"], consumed=True)
+    tui = command_loop.presentation.tui = ThemeModal(["j", "l", "j", "escape"], consumed=True)
 
     result = await theme_command(command_loop, "")
 
-    assert Theme.name() == "tokyonight" and Theme.selected_diff_style() == "auto"
-    assert result.startswith("Theme: tokyonight") and "Diff colors" not in result
-    assert "[ui.diff]" not in (tmp_path / "config.toml").read_text()
-    assert tui.recolored == 1
+    assert result is None
+    assert Theme.name() == "one-dark" and Theme.selected_diff_style() == "auto"
+    assert (tmp_path / "config.toml").read_text() == CONFIG.replace('"auto"', '"one-dark"')
+    assert tui.recolored == 0
 
 
 async def test_theme_by_name_leaves_the_diff_colors_alone(tmp_path):
@@ -842,3 +842,85 @@ def test_the_app_style_follows_a_theme_switch(tmp_path):
     Theme.set_mode("gruvbox-dark")
 
     assert view.style().get_attrs_for_style_str("class:choice.selected").bgcolor == "83a598"
+
+
+@pytest.mark.parametrize("name", tuple(BUILTIN))
+def test_every_builtin_bar_keeps_text_readable_on_its_actual_background(name):
+    from prompt_toolkit.styles import Style
+
+    from wizolt.ui.bars import FIELDS, PRESETS, BarLayout
+
+    Theme.set_mode(name)
+    palette = BUILTIN[name]
+    style = Style([])
+    layout = BarLayout()
+    values = dict.fromkeys(FIELDS, 0)
+    values.update(
+        provider="test",
+        model="model",
+        reasoning="max",
+        yolo=True,
+        running=True,
+        activity="working",
+        label="working (12s)",
+        elapsed=12,
+        rate="42 tok/s",
+        spinner="● ",
+        **{
+            "worker.active": True,
+            "worker.summary": " worker 25%",
+            "cache.percent": 88,
+            "mcp.label": "mcp 2",
+            "skills.count": 3,
+            "queue.followup": 2,
+            "queue.total": 2,
+        },
+    )
+    for kind in ("statusbar", "divider"):
+        for preset in PRESETS[kind]:
+            assert not layout.configure({kind: "preset:" + preset}, Theme.bar_styles)
+            for pressure in (37, 75, 95):
+                values["context.percent"] = pressure
+                for spec, text in layout.render(kind, values, 160, Theme.bar_styles):
+                    if not any(char.isalnum() for char in text):
+                        continue  # Decorative rules, joins and empty meter cells need no text contrast.
+                    attrs = style.get_attrs_for_style_str(spec)
+                    foreground = "#" + attrs.color if len(attrs.color) == 6 else palette.colors["syntax_default"]
+                    background = "#" + attrs.bgcolor if len(attrs.bgcolor) == 6 else palette.background
+                    assert contrast(foreground, background) >= 4.5, (name, preset, pressure, text)
+
+
+async def test_file_picker_uses_the_current_colors_each_time_it_opens(tmp_path, monkeypatch):
+    from wizolt.mentions import FilePick
+    from wizolt.ui.cli.runtime import TuiRuntime
+
+    command_loop = themed_loop(tmp_path)
+    tui = TuiRuntime(command_loop).build_tui(TuiApp())
+    calls = []
+
+    async def pick(query, *, colors):
+        calls.append((query, colors))
+        return FilePick()
+
+    monkeypatch.setattr(command_loop.session.mentions.picker, "pick", pick)
+    command_loop.background.open_background()
+    try:
+        for name in ("gruvbox-dark", "kanagawa", "catppuccin-light"):
+            Theme.set_mode(name)
+            await tui.file_picker_fn("parser")
+            query, colors = calls[-1]
+            palette = Theme.palette()
+            assert query == "parser"
+            assert "bg:" + palette["menu_bg"] in colors
+            assert "bg+:" + palette["selection_bg"] in colors
+            assert "fg+:" + palette["selection_fg"] in colors
+        monkeypatch.setenv("NO_COLOR", "1")
+        await tui.file_picker_fn("")
+        assert calls[-1] == ("", "bw")
+    finally:
+        await command_loop.background.close_background()
+
+
+def test_file_picker_translates_terminal_colors_for_fzf():
+    colors = Theme.fzf_colors()
+    assert "ansi" not in colors and "header:8" in colors

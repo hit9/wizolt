@@ -25,7 +25,8 @@ from wizolt.config import PROVIDER_API_CHOICES
 from wizolt.mentions import MentionSpan, active_mention, encode_file_mention, mention_spellings
 from wizolt.providers.compat import bundled_policy
 from wizolt.session import QueuedInput, Session
-from wizolt.ui.bars import DIVIDER_PRESETS, STATUS_PRESETS
+from wizolt.ui.bars import DIVIDER_PRESETS, PRESETS, STATUS_PRESETS
+from wizolt.ui.cli.appearance import KINDS
 from wizolt.ui.cli.commands import COMMAND_NAMES, NEEDS_ARGUMENT, SET_KEYS, SET_VALUES
 from wizolt.ui.cli.hints import Context as HintContext
 from wizolt.ui.cli.hints import HintPicker
@@ -116,6 +117,16 @@ class CommandCompleter(Completer):
             if sub == "api":
                 yield from self.matches((*PROVIDER_API_CHOICES, "default"), value)
                 return
+        if text.startswith("/theme "):
+            tail = text[len("/theme ") :]
+            if " " not in tail:
+                yield from self.matches((*Theme.choices(), *KINDS[1:]), tail, more=KINDS[1:])
+                return
+            kind, _, value = tail.partition(" ")
+            values = {"diff": Theme.diff_styles(), "statusbar": tuple(STATUS_PRESETS), "divider": tuple(DIVIDER_PRESETS), "sweep": tuple(PRESETS["sweep"])}
+            if kind in values:
+                yield from self.matches(values[kind], value)
+            return
         for command, values in (
             ("/model ", self.models),
             ("/provider ", self.providers),
@@ -124,9 +135,6 @@ class CommandCompleter(Completer):
             ("/api ", lambda: PROVIDER_API_CHOICES),
             ("/strict ", lambda: ("on", "off")),
             ("/compact ", lambda: ("log",)),
-            ("/theme ", Theme.choices),
-            ("/statusbar ", lambda: (*STATUS_PRESETS, "export", "reload")),
-            ("/divider ", lambda: (*DIVIDER_PRESETS, "export", "reload")),
         ):
             if text.startswith(command):
                 yield from self.matches(values(), text[len(command) :])

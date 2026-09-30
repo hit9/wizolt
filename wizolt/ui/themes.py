@@ -167,8 +167,8 @@ DIFF_STYLES: dict[str, DiffStyle] = {
 HEX_ROLES = ("divider_glow", "divider_rule")
 # WCAG contrast floors for a scheme's grey text: secondary text on the background, and the menu's
 # descriptions on its raised surface, which is where a comment grey reads worst.
-MUTED_CONTRAST = 4.5
-MENU_TEXT_CONTRAST = 4.5
+MUTED_CONTRAST = 5.5
+MENU_TEXT_CONTRAST = 5.5
 
 
 def luminance(color: str) -> float:
@@ -277,7 +277,7 @@ def scheme(
             "divider_glow": aqua,
             "divider_rule": rule,
             "divider_label": aqua,
-            "selection_bg": lift(blue, fg, background, MENU_TEXT_CONTRAST),
+            "selection_bg": lift(blue, fg, background, 4.5),
             "selection_fg": background,
             "menu_bg": surface,
             "menu_muted": lift(comment, fg, surface, MENU_TEXT_CONTRAST),
@@ -301,7 +301,7 @@ def scheme(
         "error",
         "divider_label",
     ):
-        palette.colors[role] = lift(palette.colors[role], fg, background, MUTED_CONTRAST)
+        palette.colors[role] = lift(palette.colors[role], fg, background, 4.5)
     for role in ("status_base", "status_provider", "status_reason", "status_mcp", "status_context", "status_yolo", "status_worker"):
         palette.colors[role] = lift(lift(palette.colors[role], fg, status, MUTED_CONTRAST), fg, background, MUTED_CONTRAST)
     return palette

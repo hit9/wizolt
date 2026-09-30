@@ -12,8 +12,8 @@
   `catppuccin` and `rose-pine` to follow the terminal's background, like `gruvbox`.
 - A `[status.band]` style lays a statusbar template on the theme's status band, set by a
   `status_bg` role; the `vim`, `split` and `monitor` presets use it.
-- The `/divider` picker sets its idle, running and queued previews a line apart.
-- Diff styles: after a theme, `/theme` offers the colors diffs are drawn in, with a live preview,
+- Divider previews set their idle, running and queued examples a line apart.
+- Diff styles: `/theme` offers the colors diffs are drawn in, with a live preview,
   saved as `ui.diff.style`. Each named theme has its own, the DiffAdd and DiffDelete colors of its
   Neovim port with changed words a shade stronger, and pairs with it under the default `auto`;
   `dark` and `light` keep `classic`, the previous colors. Any theme can use `classic`, delta's
@@ -26,6 +26,24 @@
   dark diff lines can look black. The docs explain how to set it.
 
 ### Changed
+
+- The `@file:` picker follows the active colorscheme, including its background, selected row,
+  matches and hints; reopening it after `/theme` uses the new colors. It also honors `NO_COLOR`.
+- Improve text contrast across all named themes and bar presets: brighter hints and field labels,
+  readable context warnings on status bands, matching identity text inside solid segments, and
+  readable capsule labels and rail metrics. Default layouts and transparent statusbars remain.
+
+- The appearance guide uses rendered theme, picker, diff, statusbar and divider previews;
+  custom syntax moves to a separate reference. Usage, configuration and catalog guides use
+  shorter instructions focused on user choices.
+
+- `/theme` combines Colorscheme, Diff, StatusBar and Divider in one tabbed picker. `h`/`l`
+  and left/right arrows switch tabs; Enter saves changes across tabs, and Esc restores the
+  previewed settings. Tabs keep a stable height while switching and searching, with shortcuts
+  beside the tabs and a shorter theme sample in small panes. Divider layouts and sweeps share
+  one list: Space chooses a value and Tab jumps groups, so browsing animations keeps the chosen
+  layout. Direct forms and completion
+  use `/theme diff|statusbar|divider|sweep NAME`; `/statusbar` and `/divider` are removed.
 
 - Named themes color each status bar field by what it is: the model in the accent, reasoning in
   the second accent, usage in blue rather than a warning yellow, tools in grey, readable on the

@@ -14,7 +14,7 @@ import shlex
 import shutil
 import sys
 import time
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
@@ -38,7 +38,6 @@ from wizolt.base import (
 from wizolt.config import (
     PROVIDER_API_CHOICES,
     Config,
-    ConfigFile,
     ProviderConfig,
     RuntimeSettings,
     compaction_provider_config,
@@ -47,7 +46,7 @@ from wizolt.providers.compat import builtin_tools_issue
 from wizolt.providers.schema import CatalogSyncError
 from wizolt.providers.sync import CATALOG_URL
 from wizolt.session import Session, SessionBusyError, SessionEntry, SessionLease, SessionSnapshotStore
-from wizolt.ui.cli import bars, worker
+from wizolt.ui.cli import appearance, worker
 from wizolt.ui.cli.modals import (
     choice_application,
     compaction_log_viewer,
@@ -58,8 +57,7 @@ from wizolt.ui.cli.modals import (
     select_choice,
 )
 from wizolt.ui.cli.update import UpdateChecker
-from wizolt.ui.render import Theme, UiPrinter, markdown_table, progress_bar
-from wizolt.ui.themes import DIFF_STYLES
+from wizolt.ui.render import markdown_table, progress_bar
 from wizolt.ui.tui import InputMode
 
 if TYPE_CHECKING:
@@ -791,166 +789,6 @@ def language_command(loop: CommandLoop, args: str) -> str:
     return f"Reply language set: {language}"
 
 
-def theme_preview(_name: str) -> StyleAndTextTuples:
-    """A few transcript rows drawn in the highlighted theme, which the picker has already applied."""
-    fg = Theme.fg
-    added = Theme.diff_style("diff.added.bg") + " " + Theme.diff_style("diff.added.fg")
-    removed = Theme.diff_style("diff.removed.bg") + " " + Theme.diff_style("diff.removed.fg")
-    rows: list[Sequence[tuple[str, str]]] = [
-        [(fg("muted"), f"For a {Theme.appearance()} terminal background")],
-        [(fg("user"), "• tighten the tokenizer")],
-        [(fg("tool"), "Edit "), *UiPrinter.tool_arg_segments('path="parser.py" replace_all=false', fg("text"))],
-        [("", "Renamed "), (fg("accent"), "split_words()"), ("", " and kept the old name as an alias.")],
-        UiPrinter.syntax_segments("def split_words(text: str) -> list[str]:  # 2 callers", "python", fg("text")),
-        [(removed, "-    return text.split()")],
-        [(added, "+    return WORD.findall(text)")],
-        [(fg("success"), "12 passed"), ("", "  "), (fg("warning"), "1 skipped"), ("", "  "), (fg("error"), "0 failed")],
-        [(fg("muted"), "Enter selects · Esc restores your theme")],
-        [(Theme.selection(), " /theme "), (f"bg:{Theme.color('menu_bg')} " + fg("menu_muted"), " Choose a color theme ")],
-        [
-            (fg("status_provider"), "provider/model"),
-            (fg("subtle"), " · "),
-            (fg("status_reason"), "medium"),
-            (fg("subtle"), " | "),
-            (fg("status_mcp"), "mcp 2"),
-            (fg("subtle"), " | "),
-            (fg("status_context"), "ctx 25%"),
-        ],
-    ]
-    return [fragment for row in rows for fragment in ((fg("muted"), "  │ "), *row, ("", "\n"))]
-
-
-DIFF_STYLE_SAMPLE = """@@ -8,4 +8,4 @@ def tokenize(text):
- def tokenize(text: str) -> list[str]:
--    return text.split(" ", 1)  # first word
-+    return text.split(maxsplit=1)  # first word
-     count = len(words)
-"""
-
-
-def diff_style_preview(_name: str) -> StyleAndTextTuples:
-    """A modified line in the highlighted diff style, which the picker has already applied."""
-    note = f"{Theme.diff_style_name()} diff colors on the {Theme.name()} theme\n"
-    return [(Theme.fg("muted"), note), *UiPrinter().diff_segments(DIFF_STYLE_SAMPLE, row_width=60)]
-
-
-async def pick_diff_style(loop: CommandLoop) -> str | None:
-    """The second step of `/theme`: pick the colors diffs are drawn in, with a live preview.
-
-    Saved to ui.diff.style; `auto` draws the pairing the active theme was tuned with. Esc keeps
-    the diff style as it was and returns None."""
-    tui = loop.presentation.tui
-    assert tui is not None
-    original = Theme.selected_diff_style()
-
-    def apply(name: str) -> None:
-        Theme.set_diff_style(name)
-        tui.invalidate()
-
-    chosen = None
-    try:
-        chosen = await choice_application(
-            loop,
-            "Theme › Diff colors",
-            Theme.diff_styles(),
-            {
-                Theme.AUTO: f"auto (this theme pairs with {Theme.active().diff_style})",
-                **{name: f"{name} · {style.note}" for name, style in DIFF_STYLES.items()},
-            },
-            original,
-            set(),
-            preview_fn=diff_style_preview,
-            on_focus=apply,
-        )
-    finally:
-        if not isinstance(chosen, str):
-            Theme.set_diff_style(original)
-            tui.invalidate()
-    if not isinstance(chosen, str):
-        return None
-    Theme.set_diff_style(chosen)
-    previous = loop.session.config.ui.get("diff", {})
-    loop.session.config.ui["diff"] = {**(previous if isinstance(previous, dict) else {}), "style": chosen}
-    result = f"Diff colors: {chosen}"
-    if loop.session.config.path:
-        try:
-            ConfigFile.set_ui_value(loop.session.config.path, ("ui", "diff"), "style", chosen)
-        except (OSError, ValueError, ConfigError) as error:
-            result += f"\nNot saved to {loop.session.config.path}: {error}"
-        else:
-            result += f" (saved as ui.diff.style in {display_path(loop.session.config.path)})"
-    return result
-
-
-async def theme_command(loop: CommandLoop, args: str) -> str | None:
-    """`/theme [NAME]`: pick a color theme with a live preview, or switch to one by name.
-
-    The pick is saved to runtime.theme, as Codex and Claude Code save theirs; the transcript
-    already on screen is redrawn in it once, the way a resize redraws it."""
-    problems = Theme.load_custom(loop.session.data_path("themes"))
-    original = Theme.name()
-    current = Theme.canonical(loop.session.settings.theme or Theme.AUTO) or original
-    if current in Theme.pairs():  # listed as the variant the terminal gets
-        current = Theme.resolve(current)
-    tui = loop.presentation.tui
-    chosen: object
-    picked = False  # chosen from the menu, which goes on to the diff colors
-    if args.strip():
-        chosen = Theme.canonical(args)
-        if chosen is None:
-            return "\n".join([*problems, f"Unknown theme: {args.strip()}. Available: {', '.join(Theme.choices())}"])
-    elif tui is None or not loop.interactive_input:
-        return "\n".join([*problems, *(("* " if name == current else "  ") + name for name in Theme.choices())])
-    else:
-        for problem in problems:
-            loop.presentation.emit(problem)
-        problems = []
-
-        def apply(name: str) -> None:
-            Theme.set_mode(Theme.resolve(name))
-            tui.invalidate()
-
-        chosen = None
-        try:
-            chosen = await choice_application(
-                loop,
-                "Theme",
-                Theme.choices(),
-                {Theme.AUTO: f"auto (follows the terminal: {Theme.resolve(Theme.AUTO)})"},
-                current,
-                set(),
-                preview_fn=theme_preview,
-                on_focus=apply,
-            )
-        finally:
-            if not isinstance(chosen, str):
-                Theme.set_mode(original)
-                tui.invalidate()
-        if not isinstance(chosen, str):
-            return None
-        picked = True
-    assert isinstance(chosen, str)
-    Theme.set_mode(Theme.resolve(chosen))
-    loop.session.settings.theme = chosen
-    lines = [*problems, f"Theme: {chosen}"]
-    if loop.session.config.path:
-        try:
-            ConfigFile.set_runtime(loop.session.config.path, "theme", chosen)
-        except (OSError, ValueError, ConfigError) as error:  # tomlkit's ParseError is a ValueError
-            lines.append(f"Not saved to {loop.session.config.path}: {error}")
-        else:
-            lines[-1] += f" (saved as runtime.theme in {display_path(loop.session.config.path)})"
-    if picked:
-        diff = await pick_diff_style(loop)
-        if diff:
-            lines.append(diff)
-    if warning := Theme.true_color_warning():
-        lines.append(warning)
-    if tui is not None:
-        tui.recolor()
-    return "\n".join(lines)
-
-
 async def compaction_log(loop: CommandLoop, args: str) -> str | LogBlock | None:
     """`/compact log [seg.N]`: review what compaction kept. The viewer is the interactive form; a
     headless run (piped input, no color, no alternate screen) gets the same segments as log lines,
@@ -1379,9 +1217,7 @@ COMMANDS: tuple[Command, ...] = (
     Command("/sessions", sessions_command, aliases=("/resume",)),
     Command("/worker", worker.worker_command),
     Command("/language", language_command),
-    Command("/theme", theme_command),
-    Command("/statusbar", bars.statusbar_command),
-    Command("/divider", bars.divider_command),
+    Command("/theme", appearance.theme_command),
 )
 # fmt: on
 

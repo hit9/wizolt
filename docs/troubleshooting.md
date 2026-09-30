@@ -51,7 +51,7 @@ Rate limits, timeouts, and server errors do retry, counting up on the divider as
 |---|---|
 | `Session snapshot not found` | Gone or from another project. `/sessions all` lists everything saved |
 | A session disappeared | Sessions idle for seven days are swept at startup. `runtime.session_retention_days = 0` keeps them |
-| Blanks where details belong | The session predates the feature. See [Sessions started before these features](context.md#sessions-started-before-these-features) |
+| Blanks where details belong | The session predates the feature; new activity fills these details in |
 | `/sessions` refuses to switch | A request is in flight. Press `Ctrl-C`, then run it again |
 
 ## Delegation

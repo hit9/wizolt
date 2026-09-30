@@ -90,9 +90,9 @@ A single line beneath the prompt summarizes the session. The default layout is:
 `[yolo] provider/model · level | mcp N · skills N | ctx N% · cache N%`.
 `[yolo]` appears only when enabled.
 
-Use `/statusbar` to preview other layouts in that bottom row. `/divider` selects the layout
-above the input, then its sweep animation. Enter saves each choice; Esc restores the current
-preview while keeping earlier confirmed choices. See [Statusbar and divider](appearance.md#statusbar-and-divider)
+Use `/theme`’s StatusBar tab to preview other layouts in that bottom row. Its Divider tab
+lets you choose the line above the input and its animation. Enter saves all changes; Esc
+cancels them. See [Statusbar and divider](appearance.md#statusbar-and-divider)
 for presets, custom templates and sweep formulas.
 
 In the default layout, once a [worker](worker.md) has actually run, its own context fill rides the row too, as
@@ -157,30 +157,14 @@ such as `$release` or a whole `@mcp:server`, has nothing highlighted, and `Enter
 | `@skill:name` | `$name` | Points the agent at a [skill](skills.md); it loads the instructions when they matter |
 | `@agents.md:` | — | Cites your AGENTS.md instructions for this request: everything, your own or the project's (`global`/`project`), or one section by heading |
 
-**Instructions.** Plain files hold your durable instructions: `~/.wizolt/AGENTS.md` for
-everything, and the project's `AGENTS.md` (falling back to `CLAUDE.md`) at the repository root
-and in each folder down to where you started wizolt, as [agents.md](https://agents.md) lays them
-out. A root file applies to the whole repository; a nearer one adds to it and, for a heading both
-have, wins. All of them load once at session start into a fixed prefix of about 8,000 tokens,
-so a new session picks up your edits. Typing `@agents.md:` lists the current files and their headings as a tree,
-including ones added during this session. Search results show the full heading path when their
-parents are hidden; a row inserts a
-reference like `@agents.md:"global/PR body"` or `@agents.md:project`, and `@agents.md:` alone
-means all applicable files. Search matches headings and their text, even beyond the first 50
-rows. The cited original text is attached to that request within a shared 8,000-token limit;
-clipped references name the file to read. Ask the agent to update these files in plain words; it
-may suggest a rule but never writes one unless you explicitly ask. `/status` shows whether the
-global file is active, missing, or ready for the next session.
+**Instructions.** Put your preferences in `~/.wizolt/AGENTS.md` and project rules in the
+project's `AGENTS.md`. Start a new session after editing them. Type `@agents.md:` to pick a
+file or section for one request. See [agents.md](https://agents.md) for the file convention.
 
-**Files.** A mention names the file and nothing more: the agent reads what the request needs with
-`Read`. Nothing is inlined, so a large or binary path costs nothing until then.
-
-**Picking files.** Files stay out of the first `@` list: typing or selecting `@file:` opens fzf
-immediately, and `Tab` does the same from an active file mention. Without fzf, a bounded literal
-fallback runs in the background. Candidates include hidden, tracked, and untracked files, but never
-`.git` directories or paths ignored by Git; in a non-Git directory, nested `.gitignore` files and
-negation rules are honored. A path with spaces, Unicode, or ambiguous punctuation is inserted in a
-quoted, round-trippable form such as `@file:"docs/design notes/中文.txt"`.
+**Files.** Type `@file:` to open the file picker, or press `Tab` while editing a file mention.
+It includes hidden and untracked files, respects Git ignores, and quotes paths with spaces
+for you. The picker uses your chosen colorscheme. A mention points at the file; the agent
+reads the parts it needs.
 
 Mentions are expanded in follow-ups queued while the agent is working, too.
 
@@ -268,11 +252,8 @@ session by name after moving directories. When a query matches more than one ses
 Resuming replays the conversation into your scrollback, including the diff each edit made. Long
 diffs are trimmed there; `/diff` always has the full text.
 
-One wizolt runs a session at a time. Resuming a session another instance is already running stops
-with `Session <uid> is already in use by another Wizolt instance.`, and picking a busy session in
-`/sessions` reports the same line while keeping the current one open. Close the other instance, or
-run a different session. Every writer needs this version: an older binary running the same session
-does not honor the lock.
+A session can be open in only one wizolt at a time. If it is already in use, close the other
+instance or choose another session.
 
 ### Names
 

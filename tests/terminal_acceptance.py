@@ -374,7 +374,7 @@ def test_zoom_on_a_fresh_pane_leaves_one_live_region(pane):
 
 
 def test_bar_cascade_previews_survive_resize_and_cancel(pane):
-    """Real nested preset previews, including animated samples, remain usable after 30 resizes."""
+    """Tabbed appearance previews, including animated samples, remain usable after 30 resizes."""
     log = pane.path / "bars.log"
     pane.send(f"{sys.executable} {DRIVER} 0 0 {log} bars")
 
@@ -390,7 +390,9 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
     visible_containing("bars-model")
     for cycle in range(3):
         log.with_suffix(f".open-{cycle}").touch()
-        visible_containing("Divider › Layout")
+        visible_containing("Colorscheme")
+        pane.keys("h")
+        visible_containing("Running (preview)")
         chosen = ("capsule", "frame", "rail")[cycle]
         pane.keys(str(cycle + 2))
         visible_containing(chosen)
@@ -398,24 +400,21 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
             width, height = ((100, 30), (60, 18), (80, 24), (50, 12), (120, 35))[index % 5]
             pane.resize(width, height)
             time.sleep(0.06 if index % 2 else 0.15)
-            visible = pane.visible()
+            _settled_capture(pane)
+            visible = visible_containing(chosen)
             assert chosen in visible, visible
         pane.resize(100, 30)
-        visible_containing("Divider › Layout")
+        visible_containing("Running (preview)")
         if cycle == 0:
-            pane.keys("Enter")
-            visible_containing("Divider › Sweep")
-            pane.keys("j")
+            pane.keys("G", "k")
             visible_containing("ripple")
             pane.keys("Escape")
         elif cycle == 1:
             pane.keys("C-c")
         else:
-            pane.keys("Enter")
-            visible_containing("Divider › Sweep")
-            pane.keys("4")
+            pane.keys("Space", "Tab", "G")
             visible_containing("aurora")
-            pane.keys("Enter")
+            pane.keys("Space", "Enter")
         deadline = time.monotonic() + 15
         while f"closed {cycle}:" not in log.read_text():
             assert time.monotonic() < deadline, log.read_text()
@@ -428,7 +427,18 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
     assert "divider.format: preset:rail" in log.read_text()
     assert "divider.sweep: preset:aurora" in log.read_text()
     log.with_suffix(".open-3").touch()
-    visible_containing("Statusbar")
+    visible_containing("Colorscheme")
+    pane.keys("l", "l")
+    visible_containing("The status bar below")
+    pane.resize(100, 30)
+    _settled_capture(pane)
+    header_row = next(i for i, line in enumerate(pane.visible().splitlines()) if "Colorscheme" in line)
+    for key in ("h", "h", "h", "l", "l", "l"):
+        pane.keys(key)
+        _settled_capture(pane)
+        visible = visible_containing("Colorscheme")
+        assert next(i for i, line in enumerate(visible.splitlines()) if "Colorscheme" in line) == header_row, visible
+    pane.keys("h")
     for width, height in ((100, 30), (60, 18), (80, 24)):
         pane.resize(width, height)
         pane.keys("j")

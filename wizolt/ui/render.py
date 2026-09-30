@@ -27,7 +27,7 @@ from prompt_toolkit.formatted_text import ANSI, FormattedText, StyleAndTextTuple
 from prompt_toolkit.output import ColorDepth, create_output
 from prompt_toolkit.output.vt100 import Vt100_Output
 from prompt_toolkit.renderer import print_formatted_text as render_fragments_to_output
-from prompt_toolkit.styles import DEFAULT_ATTRS, Attrs, BaseStyle, Style, default_pygments_style, default_ui_style, merge_styles
+from prompt_toolkit.styles import ANSI_COLOR_NAMES, DEFAULT_ATTRS, Attrs, BaseStyle, Style, default_pygments_style, default_ui_style, merge_styles
 from prompt_toolkit.utils import get_cwidth
 
 from wizolt.base import (
@@ -42,7 +42,7 @@ from wizolt.base import (
 )
 from wizolt.ui.bars import BarLayout, Value
 from wizolt.ui.themes import BUILTIN as NAMED_THEMES
-from wizolt.ui.themes import DIFF_STYLES, Palette, generated_pygments_style, load_custom, normalize_color
+from wizolt.ui.themes import DIFF_STYLES, Palette, generated_pygments_style, lift, load_custom, normalize_color
 from wizolt.utils import terminal
 
 if TYPE_CHECKING:
@@ -373,6 +373,37 @@ class Theme:
     _pygments_cache: ClassVar[dict[str, type[PygmentsStyle] | None]] = {}
 
     @classmethod
+    def fzf_colors(cls) -> str:
+        """The file picker shares the completion menu's surface and selection colors."""
+        if cls.monochrome():
+            return "bw"
+        colors = cls.palette()
+        accent = colors["accent"]
+        if cls.active().background:
+            accent = lift(accent, colors["syntax_default"], colors["menu_bg"], 4.5)
+        values = {
+            "fg": colors["syntax_default"],
+            "bg": colors["menu_bg"],
+            "fg+": colors["selection_fg"],
+            "bg+": colors["selection_bg"],
+            "hl": accent,
+            "hl+": colors["selection_fg"],
+            "query": colors["syntax_default"],
+            "prompt": accent,
+            "info": colors["menu_muted"],
+            "header": colors["menu_muted"],
+            "border": colors["menu_muted"],
+            "separator": colors["menu_muted"],
+            "pointer": colors["selection_fg"],
+            "marker": accent,
+            "spinner": accent,
+            "gutter": colors["menu_bg"],
+        }
+        ansi = {name: str(index - 1) for index, name in enumerate(ANSI_COLOR_NAMES)}
+        ansi["default"] = "-1"
+        return ",".join([cls.appearance(), *(f"{key}:{ansi.get(value, value)}" for key, value in values.items())])
+
+    @classmethod
     def bar_styles(cls, specs: set[str]) -> dict[str, str]:
         """Resolve template styles from semantic roles and theme highlight groups.
 
@@ -381,16 +412,31 @@ class Theme:
         """
         colors = cls.palette()
         background = cls.active().background or ("#ffffff" if cls.appearance() == "light" else "#000000")
+        # Solid segments use their own surface; a color readable on the transcript can disappear
+        # on the popup grey or the badge. User highlight overrides still take precedence below.
+        detail = colors["status_base"]
+        badge = colors["divider_label"]
+        warning, error = colors["warning"], colors["error"]
+        if cls.active().background:
+            detail = lift(detail, detail, colors["menu_bg"], 5.5)
+            badge = lift(badge, detail, colors["menu_bg"], 4.5)
+            # Pressure text needs to read on a band, while transcript warnings retain their hue.
+            toward = "#000000" if cls.appearance() == "light" else "#ffffff"
+            warning = lift(warning, toward, colors["status_bg"], 4.5)
+            error = lift(error, toward, colors["status_bg"], 4.5)
         groups = {role: cls.fg(role) for role in cls.ROLES}
         groups.update(
             {
+                "status.warning": f"fg:{warning}",
+                "status.error": f"fg:{error}",
                 "status.model": f"fg:{background} bg:{colors['status_provider']} bold",
-                "status.detail": f"fg:{colors['status_base']} bg:{colors['menu_bg']}",
+                "status.detail": f"fg:{detail} bg:{colors['menu_bg']}",
                 "status.usage": f"fg:{background} bg:{colors['status_context']}",
                 # A status line's own band, which a preset lays the whole row on.
                 "status.band": f"fg:{colors['status_base']} bg:{colors['status_bg']}",
                 "divider.activity": f"fg:{background} bg:{colors['accent_secondary']} bold",
-                "divider.metrics": f"fg:{colors['status_base']} bg:{colors['menu_bg']}",
+                "divider.metrics": f"fg:{detail} bg:{colors['menu_bg']}",
+                "divider.badge": f"fg:{badge} bg:{colors['menu_bg']} bold",
                 "divider.label": "class:divider.working",
                 "spinner": cls.fg("success"),
             }

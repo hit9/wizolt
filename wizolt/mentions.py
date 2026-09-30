@@ -490,7 +490,7 @@ class FzfPicker:
     # produced from a single-selection picker, so it is refused rather than parsed.
     OUTPUT_LIMIT = 1 << 20
 
-    async def pick(self, query: str) -> FilePick:
+    async def pick(self, query: str, *, colors: str = "") -> FilePick:
         """Open fzf over the candidate snapshot and return what the reader chose.
 
         The process is the runtime's own child from launch to reap: cancelling this -- a shutdown
@@ -518,6 +518,8 @@ class FzfPicker:
             "--query",
             query,
         ]
+        if colors:
+            argv.append("--color=" + colors)
         try:
             process = await asyncio.create_subprocess_exec(
                 *argv,

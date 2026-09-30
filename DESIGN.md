@@ -789,9 +789,10 @@ Passing the existing harness does not prove these remaining interactions or all 
 `ui/bars.py` parses single-line templates and bounded math expressions; it has no session or IO.
 `StatusBar` owns each session's compiled `BarLayout`. The statusbar supplies active-agent fields;
 `View` supplies divider activity and queue fields. `Theme` resolves role/highlight names at draw
-time so theme switching also recolors Powerline segments. `cli/bars.py` owns selection, temporary
-preview state, config persistence and preview-task cancellation. The existing TUI still owns row
-placement and scrollback; configurable bars are live rows, never transcript entries.
+time so theme switching also recolors Powerline segments. `cli/appearance.py` owns the tabbed
+selection, temporary preview state and preview-task cancellation; `cli/bars.py` supplies bar
+previews and config saves. The existing TUI still owns row placement and scrollback; configurable
+bars are live rows, never transcript entries.
 
 Picker choices are a curated subset of the preset registry; older names remain valid configuration
 and appear as the current selection. Fills share the remaining terminal columns and repeat bounded

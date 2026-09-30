@@ -19,7 +19,7 @@ from wizolt.agent.lifecycle import close_agent_resources
 from wizolt.base import MalformedToolCallError, TurnBox, WizoltError, run_blocking
 from wizolt.image import UserInput
 from wizolt.ui.cli.modals import tool_output_viewer
-from wizolt.ui.render import search_sources_footer
+from wizolt.ui.render import Theme, search_sources_footer
 from wizolt.ui.tui import TuiApp
 
 # The TUI status label shown while a resumed session's transcript is being restored: a quiet
@@ -472,7 +472,7 @@ class TuiRuntime:
         tui.quick_hints_fn = lambda: self.loop.session.quick_hints
         if self.loop.session.mentions:
             tui.file_picker_available_fn = self.loop.session.mentions.picker.available
-            tui.file_picker_fn = self.loop.background.pick_file
+            tui.file_picker_fn = lambda query: self.loop.background.pick_file(query, colors=Theme.fzf_colors())
         tui.file_complete_fn = self.complete_mentions
         tui.editor_context_fn = self.loop.editor_context
         tui.images = self.loop.session.images

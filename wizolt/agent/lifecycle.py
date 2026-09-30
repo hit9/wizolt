@@ -200,13 +200,13 @@ class BackgroundServices:
         self._mention_refresh = task = self.spawn_background(mentions.refresh(), name="mention-candidates")
         return task
 
-    async def pick_file(self, query: str) -> FilePick:
+    async def pick_file(self, query: str, *, colors: str = "") -> FilePick:
         """Run the interactive picker as work owned and settled by this session."""
 
         mentions = self.session.mentions
         if mentions is None:
             return FilePick(unavailable=True)
-        task = self.spawn_background(mentions.picker.pick(query), name="file-picker")
+        task = self.spawn_background(mentions.picker.pick(query, colors=colors), name="file-picker")
         if task is None:
             return FilePick(unavailable=True)
         result = await task

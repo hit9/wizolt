@@ -1,10 +1,7 @@
-"""Statusbar and divider selection: reversible previews, cascade navigation and config saves."""
+"""Statusbar and divider previews and config saves for the appearance picker."""
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
-import copy
 import shutil
 import time
 from typing import TYPE_CHECKING
@@ -13,8 +10,6 @@ from prompt_toolkit.formatted_text import StyleAndTextTuples
 
 from wizolt.base import ConfigError
 from wizolt.config import ConfigFile
-from wizolt.ui.bars import PRESETS
-from wizolt.ui.cli.modals import choice_application
 from wizolt.ui.render import Theme
 
 # Keep the picker focused; older preset names still work in config files.
@@ -75,83 +70,3 @@ def preview(loop: CommandLoop, kind: str, started: float) -> StyleAndTextTuples:
     for problem in (*bar.layout.errors, *((bar.layout.sweep.error,) if bar.layout.sweep.error else ())):
         result.append((Theme.fg("error"), "\n" + problem))
     return result
-
-
-async def pick_layout(loop: CommandLoop, kind: str) -> str | None:
-    tui = loop.presentation.tui
-    assert tui is not None
-    bar = loop.presentation.status_bar
-    original_layout = bar.layout
-    # A cancelled preview restores the object, not a re-parse under a possibly different theme.
-    # Compiled templates are immutable; the source map and sweep error belong to the preview.
-    layout = copy.copy(original_layout)
-    layout.sources = dict(original_layout.sources)
-    layout.sweep = copy.copy(original_layout.sweep)
-    layout.errors = []
-    original = layout.sources[kind]
-    bar.layout = layout
-    presets = DIVIDER_CHOICES if kind == "divider" else SWEEP_CHOICES if kind == "sweep" else tuple(PRESETS[kind])
-    current = original[7:] if original.startswith("preset:") and original[7:] in presets else "custom"
-    choices = presets + (("custom",) if current == "custom" else ())
-    current_label = f"current ({original[7:]})" if original.startswith("preset:") else "custom (current)"
-    started = time.monotonic()
-
-    def apply(name: str) -> None:
-        layout.configure({kind: original if name == "custom" else "preset:" + name}, Theme.bar_styles)
-        tui.invalidate()
-
-    async def animate() -> None:
-        while True:
-            await asyncio.sleep(0.05)
-            tui.invalidate()
-
-    timer = asyncio.create_task(animate()) if kind != "statusbar" else None
-    try:
-        chosen = await choice_application(
-            loop,
-            "Statusbar" if kind == "statusbar" else "Divider › " + ("Sweep" if kind == "sweep" else "Layout"),
-            choices,
-            {"custom": current_label},
-            current,
-            set(),
-            preview_fn=lambda _name: preview(loop, kind, started),
-            on_focus=apply,
-        )
-    finally:
-        bar.layout = original_layout
-        tui.invalidate()
-        if timer is not None:
-            timer.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await timer
-    if not isinstance(chosen, str):
-        return None
-    return select_layout(loop, kind, original if chosen == "custom" else "preset:" + chosen)
-
-
-async def statusbar_command(loop: CommandLoop, args: str) -> str | None:
-    args = args.strip()
-    if args:
-        return select_layout(loop, "statusbar", "preset:" + args)
-    if loop.presentation.tui is None or not loop.interactive_input:
-        return "Statusbar presets: " + ", ".join(PRESETS["statusbar"]) + ". Use /statusbar NAME."
-    return await pick_layout(loop, "statusbar")
-
-
-async def divider_command(loop: CommandLoop, args: str) -> str | None:
-    args = args.strip()
-    if args:
-        return select_layout(loop, "divider", "preset:" + args)
-    if loop.presentation.tui is None or not loop.interactive_input:
-        return (
-            "Divider layouts: "
-            + ", ".join(DIVIDER_CHOICES)
-            + ". Sweeps: "
-            + ", ".join(SWEEP_CHOICES)
-            + ". Configure ui.divider.sweep or open /divider interactively."
-        )
-    layout_result = await pick_layout(loop, "divider")
-    if layout_result is None:
-        return None
-    sweep_result = await pick_layout(loop, "sweep")
-    return layout_result + ("\n" + sweep_result if sweep_result else "")

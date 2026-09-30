@@ -1,159 +1,70 @@
-# Context and caching
+# Context
 
-Each request contains more than the latest message. wizolt puts stable session context first,
-then sends one append-only conversation log. This keeps the agent informed while giving supported
-providers exact earlier user and tool boundaries to reuse.
+Long tasks build up conversation, code and tool output. wizolt makes room automatically so you
+can keep working. **`/status`** shows how much context is in use and how many tokens you have spent.
 
 ## What the model receives
 
-<div class="term-shot" role="img" aria-label="The message context from first to last: system instructions, project environment with session start time, the AGENTS.md files that hold your instructions, optional skills and MCP indexes, then an append-only conversation containing user messages, assistant replies, tool results, Note state changes, resume events, and occasional compaction checkpoints."><span class="fs-goal">─ stable session prefix ─────────────────────────────</span><span>  system instructions      <span class="fs-i fs-dim">how the agent should operate</span></span><span>  project environment      <span class="fs-i fs-dim">directory · local start time · OS · shell</span></span><span>  your AGENTS.md          <span class="fs-i fs-dim">global then project</span></span><span>  skills and MCP indexes   <span class="fs-i fs-dim">only when available</span></span><span class="fs-goal">─ append-only conversation ──────────────────────────</span><span>  user · assistant · tools <span class="fs-i fs-dim">normal turn history</span></span><span>  Note calls and results   <span class="fs-i fs-dim">goal · plan · facts · checks</span></span><span>  lifecycle events         <span class="fs-i fs-dim">resume time in the user's local zone</span></span><span>  current turn             <span class="fs-i fs-dim">always appended last</span></span></div>
+Each request includes your instructions, the conversation so far and the tools currently
+available. Disconnected MCP servers add nothing. Large tool results are shortened; the agent
+can read the full output when it needs it.
 
-Times are local, written once when the session starts and again when it resumes, so both you and
-the model read them without converting anything.
-
-Tool definitions are sent beside this stack: built-in tools, `Skill` when skills are installed,
-and the tools of <span class="marker">currently connected</span> MCP servers. Configured but
-disconnected servers cost nothing. Reasoning the model returns is kept and replayed only where the
-active provider expects it.
-
-[Provider-side search](tools.md#provider-side-tools) is the exception to all of this: the pages it
-reads are added by the provider, so they are neither shortened nor counted in the context fill, and
-most providers bill the search on top of the tokens.
+Provider-side search is billed separately by most providers, and its pages are not included
+in the context meter.
 
 ## Keeping context manageable
 
-Large tool results are shortened before they enter the conversation; the marker says which file
-holds the whole output, and the agent reads it back itself — grep, or `Read` with `ranges`. Repeated
-skill instructions and MCP descriptions are replaced with references to their first full copy
-instead of being sent in full again.
-
 ### Compaction
 
-As a request approaches `runtime.max_context_tokens`, wizolt **compacts**: the older part of the
-conversation is replaced by a short summary, and the most recent messages — about eight of them —
-are kept as they are. The session continues in the same turn, so a long task does not have to stop.
+As context fills up, wizolt summarizes older conversation and keeps **about eight recent
+messages**. The task continues. Summaries can lose detail, so restate an important constraint
+if the agent seems to have forgotten it.
 
-The threshold leaves room for what the next request carries besides the conversation — the reply
-the model may write, and the tool definitions — so compaction happens before the window is full.
-The fill shown in the status bar measures the last request; compaction looks ahead to the next.
+<div class="term-shot" role="img" aria-label="Older messages become a summary; about eight recent messages remain unchanged. Earlier conversation is available in history files."><span class="fs-dim">Before   older conversation ··········· recent messages</span><span class="fs-goal">After    short summary                 recent messages</span><span> </span><span class="fs-dim">Earlier conversation stays available in history files.</span></div>
 
-The summary is lossy, so each compaction also writes the conversation it evicted to `history.N.md`,
-a file of its own beside the session's other assets, and appends an entry to `history.md`, the
-index that says what each file holds. Your messages and the agent's replies are copied in full;
-each tool call is kept as a one-line label, without its output.
+Your messages and the agent's replies are also saved in history files for the agent to look up.
+The newest **50** compacted spans keep these files.
 
-<div class="term-shot" role="img" aria-label="Compaction replaces older active conversation with one checkpoint containing the summary, full working state, and recent tool activity, plus the path of a history.md index. Beside it sit one history.N.md file per compaction, holding that span verbatim for grep or Read, while the append-only session log retains earlier snapshots as the cold source of truth."><span class="fs-goal">─ active context (hot) ────────────────</span><span>  checkpoint       <span class="fs-i fs-dim">summary · working state · recent activity</span></span><span>  recent messages  <span class="fs-i fs-dim">kept as they are</span></span><span class="fs-dim">─ history files (warm) ────────────────</span><span>  history.N.md     <span class="fs-i fs-dim">one file per evicted span, read on demand</span></span><span class="fs-dim">─ append-only session log (cold) ──────</span><span>  earlier snapshots<span class="fs-i fs-dim"> original messages</span></span><span> </span><span class="fs-dim"><span class="fs-i fs-goal">history.md</span> indexes every span</span></div>
-
-Each checkpoint also includes recent tool activity when available: up to 10 modified file
-paths, 10 foreground command results, and 5 tool failures. Repeated entries move to the
-most recent position. These are historical observations: an error may already be resolved,
-and a command exiting successfully does not mean the task is complete. The agent can view
-more recent activity with `Note(view)`. Command receipts survive compaction and session resume;
-the activity lists are shortened to fit a bounded excerpt.
-
-Each compaction names the span it evicted, in the same reply that writes the summary, so the title
-describes the work rather than whichever message happened to start the window. The agent reaches a
-span by grepping those files; none of it takes up room in a request until it does.
-
-Only the newest 50 spans keep their files; a session that compacts more often drops its oldest
-ones. `history.md` is append-only, so it still describes a span whose file is gone. A session
-started before this version gets its older spans written at its next compaction, as the shortened
-excerpts those versions kept.
-
-Run `/compact` to compact immediately rather than waiting for the threshold, for example before
-starting a large refactor. `/status` reports how many compactions a session has done.
-
-`/compact log` reviews them one by one. Each row shows when the pass ran, whether it was
-automatic or manual, whether it covered prior conversation or the running turn, and how much it
-evicted. Opening one shows the summary written at that point — the active context keeps only the
-newest — and `/compact log seg.N` prints that summary without the viewer.
-
-Neither form prints the stored excerpt — that is the agent's to retrieve — and a pass that finds
-nothing to evict stores no segment at all, so the compaction count can exceed the segment count.
+Run **`/compact`** to summarize now, such as before starting a large refactor.
+Use **`/compact log`** to review past summaries, or `/compact log seg.N` to print one.
 
 ### Starting a new window
 
-`/context reset` clears the model's conversation and starts a fresh window straight away. `Context(reset)`
-asks for the same thing, but the new window begins after the current turn ends, and the rest of
-that turn goes with the conversation — ask for it when the turn is nearly finished.
-The working divider shows `reset pending` until then. Once the new window starts, a brief
-`Context reset.` notice appears in the transcript and remains visible when you resume.
-
-The new window starts with a snapshot of Note and recent activity, plus the path of the compacted
-history index. The visible transcript, including what a resume replays, remains intact. Stored tool
-results, background jobs and the workspace also remain. Earlier model messages and compaction
-summaries leave the active window. A scheduled reset survives a saved-session resume.
+Run **`/context reset`** for a fresh model window. wizolt keeps the working notes and recent
+activity, your visible transcript, background jobs and workspace.
+The agent can also schedule a reset after its current turn; the divider shows `reset pending`
+until it happens.
 
 ### When a summary does not arrive
 
-When the summary request fails, compaction still removes the selected messages from the
-context, with no summary written in their place. Work is not lost — the span is still written to
-`history.N.md` and stays readable — but the checkpoint carries less, so tell wizolt what matters if
-a long task continues past one.
+If summarizing fails, wizolt still makes room and saves the earlier conversation, but carries
+less detail forward. It reports the reason; remind the agent what matters before continuing.
+Check [Compaction model](configuration.md#compaction-model) if this happens often.
 
-A [PreCompact hook](hooks.md#events) can refuse compaction before it starts. The existing context
-then stays intact; an automatic refusal ends the turn, while `/compact` shows the refusal reason.
-
-`/compact log` marks such a pass `no summary`, and `/compact` reports the reason on the spot. The
-usual causes are a summarizer that cannot fit the span, one slower than its `response_timeout`, one
-that answers with something other than a summary, and a `[compaction]` entry missing its url, key,
-or model. The message names the entry, so you know where to look. See
-[Compaction model](configuration.md#compaction-model) for choosing one that avoids all four.
-
-### Sessions started before these features
-
-Resuming a session older than a given feature shows blanks rather than errors. Segments compacted
-by an earlier version have no recorded time, scope, or model, so `/compact log` lists them with
-`—` and says the summary predates the log; summary tokens spent back then stayed in the overall
-`usage` total, so `/status` shows no `compaction usage` row until this session compacts again.
-Everything recorded from now on fills in normally.
+A [PreCompact hook](hooks.md#events) can refuse compaction. An automatic refusal stops the
+turn so you can resolve it before continuing.
 
 ## Spending less
 
-Four levers, in the order they usually pay off:
-
-- **Keep the cache prefix stable.** Switching models or connecting a server mid-session restarts
-  the reusable prefix; leaving them alone lets it grow. See [Prompt caching](#prompt-caching).
-- **Give summaries a cheap model — or leave them where they are.** A cheaper entry costs less per
-  token, but a summary that stays put reuses the cache the turn just filled. The `compaction
-  cache` row of `/status` says which is winning. See
-  [Compaction model](configuration.md#compaction-model).
-- **Delegate bounded work to a cheap [worker](worker.md).** Its tokens are billed at the worker
-  entry's rate, and its context never enters the parent's.
-- **Size `runtime.max_context_tokens` to the work.** A larger window means fewer compactions but a
-  more expensive request every turn.
-
-`/status` shows what each is doing: cache ratio, conversation usage, and summary usage and cache
-on their own rows.
+- Keep the same model and connected tools during a task to improve cache reuse.
+- Give summaries a cheaper model with [compaction settings](configuration.md#compaction-model).
+  Check `/status` to compare its usage and cache hit rate.
+- Delegate a bounded task to a cheaper [worker](worker.md).
+- Lower `runtime.max_context_tokens` if you prefer smaller requests and more frequent summaries.
 
 ## Prompt caching
 
-Prompt caching lets a provider reuse work for an unchanged beginning of a request. Each request
-usually starts with the same instructions, environment, tools, and earlier conversation, so only
-the new tail needs processing.
+A provider can reuse the unchanged beginning of a request. A higher cache hit rate usually
+means less input cost.
 
 <div class="term-shot" role="img" aria-label="Two request bars. Both start with the same long shaded prefix, which the provider reuses; only the shorter tail of each request is processed again."><span>previous  <span class="fs-i fs-goal">████████████████████████</span><span class="fs-i fs-dim">░░░░░░</span></span><span>next      <span class="fs-i fs-goal">████████████████████████</span><span class="fs-i fs-dim">░░░░░░░░░░</span></span><span> </span><span class="fs-dim">          <span class="fs-i fs-goal">█</span> reused prefix    ░ processed again</span></div>
 
-A request is reused only up to its first difference, which is why the stable sections come first.
-Anything that changes an early one — connecting an MCP server, installing a skill, switching
-models, enabling a provider-side tool — shortens the reusable prefix; a compaction deliberately
-starts a new one. Appending to the conversation, including Note updates and resume events, does
-not.
-
-Support differs by provider. OpenAI-compatible endpoints may match prefixes on their own, all the
-way through the conversation. Anthropic caches only what it is told to, and wizolt marks the
-instructions and tools — so there the conversation itself is processed again each turn.
+Switching models, connecting tools or compacting context can lower reuse. Cache support and
+pricing depend on your provider.
 
 ### Checking the hit rate
 
-`/status` reports the ratio for the latest request and for the whole session, with cache-write
-tokens when the provider exposes them:
+**`/status`** shows the latest request and whole-session hit rates. The latest rate also appears
+in the statusbar.
 
 <div class="term-shot" role="img" aria-label="Two rows of /status: a cache row with a fill meter, the latest request's hit ratio and the session's, then a usage row with the call count and total tokens."><span><span class="fs-i fs-dim">cache</span>  <span class="fs-i fs-add">[████████████▊░]</span> last <span class="fs-i fs-sel">95.9%</span>; session <span class="fs-i fs-add">91.5%</span></span><span><span class="fs-i fs-dim">usage</span>  calls 14; total 182.3K</span></div>
-
-The latest-request ratio also shows live in the status bar, beside the context fill,
-updating with each response.
-
-The ratio varies with the provider, model, prompt length, and conversation. When request prefixes
-line up, it <span class="marker">can reach 90–99%</span>. This is an observation, not a guaranteed
-rate.

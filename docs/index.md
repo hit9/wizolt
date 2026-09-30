@@ -69,8 +69,8 @@ Working through a repository task in an interactive session.
 | **[Hooks](hooks.md)** | Run checks and cleanup at session, tool, turn, worker, and compaction boundaries. |
 | **[Appearance](appearance.md)** | Themes, statusbar layouts, dividers and sweep animations. |
 | **[Configuration](configuration.md)** | Providers, runtime settings, and data location. |
-| **[Compatibility catalog](catalog.md)** | How documented provider/model exceptions are selected, updated, and overridden. |
-| **[Context](context.md)** | How the window is filled, summarized when it fills up, and reused by the provider's cache. |
+| **[Compatibility catalog](catalog.md)** | Check provider compatibility and update it. |
+| **[Context](context.md)** | Keep long tasks going and understand token usage. |
 | **[Safety](safety.md)** | What wizolt can reach, and how to keep that bounded. |
 | **[Troubleshooting](troubleshooting.md)** | What a symptom means and what to do about it. |
 
@@ -93,6 +93,7 @@ troubleshooting
 commands
 tools
 configuration
+appearance-reference
 catalog
 worker
 mcp

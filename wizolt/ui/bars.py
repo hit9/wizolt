@@ -165,7 +165,7 @@ def meter(cells: int) -> str:
     return "".join(f"{{% if context.percent >= {round(step * i - step / 2)} %}}▰{{% else %}}[subtle]▱[/]{{% endif %}}" for i in range(1, cells + 1))
 
 
-def pressure(body: str, normal: str = "status_context", warning: str = "warning", error: str = "error bold") -> str:
+def pressure(body: str, normal: str = "status_context", warning: str = "status.warning", error: str = "status.error bold") -> str:
     """`body` in `normal` style, turning to `warning` from 70% context and `error` from 90%."""
     return (
         f"{{% if context.percent >= 90 %}}[{error}]{body}[/]{{% else %}}"
@@ -174,6 +174,7 @@ def pressure(body: str, normal: str = "status_context", warning: str = "warning"
 
 
 IDENTITY = "{% if yolo %}[status_yolo][[yolo]] [/]{% endif %}{% if worker.active %}[status_worker]worker · [/]{% endif %}"
+SEGMENT_IDENTITY = IDENTITY.replace("[status_yolo]", "[bold]").replace("[status_worker]", "[bold]")
 STATS = "[status_mcp]{mcp.label} · skills {skills.count}[/][subtle] | [/][status_context]ctx {context.percent}% · cache {cache.percent}%[/]"
 STATUS_PRESETS = {
     "default": IDENTITY
@@ -195,13 +196,13 @@ STATUS_PRESETS = {
     + "[subtle]]] [[[/][status_context]cache {cache.percent}%[/][subtle]]][/]",
     "monitor": "[status.band] "
     + IDENTITY
-    + "[subtle]model [/][status_provider]{model}[/]{% optional priority=10 %}[subtle] effort [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
-    + "{% optional priority=5 %}[status_mcp]{mcp.label}[/][subtle]  skills [/][status_mcp]{skills.count}[/]  {% endoptional %}"
-    + "[subtle]ctx [/]"
+    + "[status_mcp]model [/][status_provider]{model}[/]{% optional priority=10 %}[status_mcp] effort [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
+    + "{% optional priority=5 %}[status_mcp]{mcp.label}[/][status_mcp]  skills [/][status_mcp]{skills.count}[/]  {% endoptional %}"
+    + "[status_mcp]ctx [/]"
     + pressure("{context.percent}%")
-    + "[subtle]  cache [/][status_context]{cache.percent}%[/][status_worker]{worker.summary}[/] [reset]",
+    + "[status_mcp]  cache [/][status_context]{cache.percent}%[/][status_worker]{worker.summary}[/] [reset]",
     "blocks": "[status.model] "
-    + IDENTITY
+    + SEGMENT_IDENTITY
     + "{model} [reset]{% optional priority=10 %} [status.detail] {reasoning} [reset]{% endoptional %}"
     + "{>}{% optional priority=5 %}[status.detail] cache {cache.percent}% [reset] {% endoptional %}"
     + pressure(" ctx {context.percent}% ", "status.usage", "status.usage bg=warning", "status.usage bg=error"),
@@ -212,14 +213,14 @@ STATUS_PRESETS = {
     + pressure("ctx {context.percent}%")
     + " [reset]",
     "lualine": "[status.model] "
-    + IDENTITY
+    + SEGMENT_IDENTITY
     + "{% if not worker.active %}CHAT {% endif %}{join:}[status.detail] {model} {join:}[reset]"
     + "{% optional priority=20 %} [status_reason]{reasoning}[/]{% endoptional %}{>}"
     + "{% optional priority=10 %}[status_mcp]{mcp.label} · skills {skills.count}[/] {% endoptional %}"
     + "{join:}[status.detail]{% optional priority=20 %} cache {cache.percent}% {% endoptional %}"
     + "{join:}[status.usage] ctx {context.percent}% [reset]",
     "powerline": "[status.model] "
-    + IDENTITY
+    + SEGMENT_IDENTITY
     + "{model} {join:}[status.detail]{% optional priority=10 %} {reasoning} {% endoptional %}{join:}[reset]{>}{join:}[status.usage] ctx {context.percent}% [reset]",
 }
 DIVIDER_PRESETS = {
@@ -231,10 +232,10 @@ DIVIDER_PRESETS = {
     "dotted": "[divider_rule]┈┈┈[/]{% if running %} [spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:┈}[/]",
     "double": "[divider_rule]══[/]{% if running %}[divider_rule]╡[/] [spinner]{spinner}[/][divider.label]{label}[/] [divider_rule]╞[/]{% endif %}[divider_rule]{fill:═}[/]",
     "right": "[divider_rule]{fill:─}[/]{% if running %}[divider_rule]┤[/] [spinner]{spinner}[/][divider.label]{label}[/] [divider_rule]├──[/]{% endif %}",
-    "capsule": "[divider_rule]{fill:─}[/]{% if running %}[fg=menu_bg][/][fg=divider_glow bg=menu_bg] [spinner]{spinner}[/]{label} [/][fg=menu_bg][/]{% endif %}[divider_rule]{fill:─}[/]",
+    "capsule": "[divider_rule]{fill:─}[/]{% if running %}[fg=menu_bg][/][divider.badge] {spinner}{label} [/][fg=menu_bg][/]{% endif %}[divider_rule]{fill:─}[/]",
     "frame": "[divider_rule]╭─[/]{% if running %}[divider_rule]┤[/] [spinner]{spinner}[/][divider.label]{label}[/] [divider_rule]├[/]{% endif %}[divider_rule]{fill:─}╮[/]",
     "rail": "{% if running %}[fg=divider_glow bold]◆ [/][divider.label]{activity}[/] {% endif %}[divider_rule]{fill:─}[/]"
-    + "{% if running %} [fg=status_base]{elapsed:duration}[/]{% optional priority=10 %}{% if rate %}[muted] · [/][fg=divider_glow]{rate}[/]{% endif %}{% endoptional %}"
+    + "{% if running %} [fg=status_base]{elapsed:duration}[/]{% optional priority=10 %}{% if rate %}[muted] · [/][divider.label]{rate}[/]{% endif %}{% endoptional %}"
     + "{% if queue.followup > 0 %}[warning] · {queue.followup} queued[/]{% endif %}"
     + "{% if queue.next_turn > 0 %}[warning] · {queue.next_turn} next turn[/]{% endif %}"
     + "{% if reset_pending %}[warning] · reset pending[/]{% endif %}{% endif %}",

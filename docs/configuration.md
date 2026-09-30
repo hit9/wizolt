@@ -24,10 +24,8 @@ key = "sk-..."
 model = "deepseek-flash"
 ```
 
-These three fields are enough for most endpoints. wizolt selects the usual protocol and applies
-only necessary, documented compatibility adjustments. Explicit settings always take precedence.
-Use `/config` to inspect the result. [Compatibility catalog](catalog.md) explains which provider
-and model facts wizolt maintains, how they update, and what happens to unknown endpoints.
+These three fields are enough for most endpoints. Use `/config` to check the active settings.
+If an endpoint needs an adjustment, set the relevant option below; your settings take precedence.
 
 Define additional blocks to use more providers. Switch between them with `/provider [NAME]`, and
 switch the active model with `/model [MODEL]`.
@@ -56,7 +54,7 @@ Most users can leave these unset.
 | `reasoning` | `medium` | Reasoning effort: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`; change it during a session with `/reason` |
 | `available_models` | — | Additional models shown by `/model` |
 | `temperature` | — | Sampling temperature; omitted by default |
-| `max_tokens` | `0` | Output-token cap per model request, reasoning included; `0` uses the cap the endpoint is known to need (Anthropic 8K, Volcengine Ark 128K or the model's lower ceiling) and otherwise leaves it to the provider. 16K is still reserved from the input budget for the answer, trading against `max_context_tokens` one for one |
+| `max_tokens` | `0` | Maximum answer length, including reasoning; `0` uses the provider default. A larger cap leaves less room for conversation |
 | `max_context_tokens` | `0` | How much of *this* entry's model window to use; `0` inherits `runtime.max_context_tokens`. Set it per entry when entries point at models with different windows |
 | `timeout` | `120` | Transport inactivity timeout in seconds |
 | `response_timeout` | `600` | Total generation limit in seconds; `0` disables it |
@@ -64,10 +62,10 @@ Most users can leave these unset.
 | `strict_tools` | `false` | Request strict function schemas where supported; toggle with `/strict` |
 | `headers` | `{}` | Extra HTTP headers sent with every request to this entry; see below |
 | `omit_body` | `[]` | Request fields this endpoint rejects; see below |
-| `extra_body` | `{}` | Extra fields for an OpenAI-compatible request body. Fields inside an object wizolt also manages are merged rather than replacing it, so `extra_body.reasoning.context` reaches a Responses host without dropping the resolved effort |
+| `extra_body` | `{}` | Extra request fields required by your endpoint; nested objects are merged |
 | `builtin_tools` | `[]` | Tools the provider runs itself, passed through verbatim; see below |
 | `chat_reasoning` | `auto` | Provider-specific Chat reasoning format; normally leave on `auto` |
-| `reasoning_history` | `auto` | Reasoning replay policy on Chat, Responses, and Anthropic: catalog-selected by default; `all`, `current_turn`, or `tool_calls` explicitly overrides it |
+| `reasoning_history` | `auto` | How much earlier reasoning to send: `auto`, `all`, `current_turn`, or `tool_calls`; usually leave on `auto` |
 
 ### Extra HTTP headers
 
@@ -246,13 +244,14 @@ lists the supported keys). `/yolo` toggles `yolo`.
 ### Color themes
 
 Use `/theme` to preview and select colors. See [Appearance](appearance.md#color-themes) for
-built-in themes and custom theme files.
+built-in themes, or [Custom appearance](appearance-reference.md#theme-files) for your own colors.
 
 ## Statusbar and divider
 
-Use `/statusbar` and `/divider` to preview and save layouts and animations. Configure them
+Use `/theme`’s StatusBar and Divider tabs to preview and save layouts and animations. Configure them
 with `[ui.statusbar] format` and `[ui.divider] format` / `sweep`.
-See [Appearance](appearance.md#statusbar-and-divider) for presets, templates and sweep formulas.
+See [Appearance](appearance.md#statusbar-and-divider) for presets, or
+[Custom appearance](appearance-reference.md) for templates and sweep formulas.
 
 ## Worker delegation
 
@@ -272,11 +271,8 @@ Worker keys inherit the `[worker]` provider entry by default:
 
 ## Compaction model
 
-Context compaction (the summary request that makes room in the context window) runs on the active
-provider by default. A `[compaction]` section overrides it per field, mirroring `[worker]`: an
-empty `provider` means the active provider entry, and each empty override inherits that entry's
-value. The context budget is unaffected — requests are still prepared against the active
-provider's window; only the summary request itself uses this entry.
+Summaries use your active model by default. Set `[compaction]` to use a different model, such
+as a cheaper one. Leave a field empty to inherit it from the selected provider.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -285,10 +281,8 @@ provider's window; only the summary request itself uses this entry.
 | `[compaction] reasoning` | inherit | Override the entry's reasoning effort; empty inherits |
 | `[compaction] api` | inherit | Override the entry's wire protocol; empty inherits |
 
-Each provider entry can also nest its own `compaction` table (`[provider.NAME.compaction]`) with
-the same `model`/`reasoning`/`api` keys — there is no `provider` key there, the base entry comes
-only from the global `[compaction] provider`. Per field the most specific value wins: the base
-entry's nested table, then the global `[compaction]` section, then the entry's own value.
+To choose a summarizer for one provider, add `[provider.NAME.compaction]`. It accepts `model`,
+`reasoning` and `api`, and takes precedence over `[compaction]`:
 
 ```toml
 [provider.anthropic]
@@ -298,12 +292,9 @@ model = "claude-..."
   model = "claude-haiku-..."
 ```
 
-Write the nested table under a *named* entry, as above. In the short single-provider form, where
-`[provider]` holds `url` and `key` directly, `[provider.compaction]` reads as a provider named
-`compaction` and the config is rejected with `provider.active does not exist`.
+Use a named provider entry for this form, as shown above.
 
-Summaries can also run on a different vendor entirely — the entry supplies its own url, key, and
-wire protocol, so the conversation stays on one host while summaries go to another:
+To send summaries to another provider:
 
 ```toml
 [provider]

@@ -360,6 +360,7 @@ async def test_fzf_picker_uses_nul_path_scheme_query_and_isolated_environment(mo
         "assert '--read0' in sys.argv and '--print0' in sys.argv and '--scheme=path' in sys.argv\n"
         "assert '--header=Ctrl-N/P or ↑/↓ move · Enter select · Esc close' in sys.argv\n"
         "assert '--bind=ctrl-n:down,ctrl-p:up' in sys.argv\n"
+        "assert '--color=dark,fg:#abcdef,bg+:#123456' in sys.argv\n"
         "assert sys.argv[sys.argv.index('--query') + 1] == 'notes'\n"
         "items = sys.stdin.buffer.read().split(b'\\0')\n"
         f"assert {selected!r}.encode() in items\n"
@@ -370,7 +371,7 @@ async def test_fzf_picker_uses_nul_path_scheme_query_and_isolated_environment(mo
     mentions = session(tmp_path).mentions
     mentions._paths_cache = (time.monotonic(), ((selected.lower(), selected),))
 
-    result = await FzfPicker(mentions, executable).pick("notes")
+    result = await FzfPicker(mentions, executable).pick("notes", colors="dark,fg:#abcdef,bg+:#123456")
 
     assert result.selection == selected
     assert not result.unavailable
@@ -503,7 +504,7 @@ async def test_command_loop_owns_and_settles_the_file_picker(tmp_path, monkeypat
     started = asyncio.Event()
     settled = asyncio.Event()
 
-    async def pick(_query):
+    async def pick(_query, **_kwargs):
         started.set()
         try:
             await asyncio.Event().wait()

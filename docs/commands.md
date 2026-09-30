@@ -32,11 +32,8 @@ only the list is available.
 **`/config`** — Shows the active configuration: provider blocks, runtime settings,
 and their resolved values.
 
-**`/catalog [status|sync]`** — Shows the active compatibility catalog, including its version,
-publication date, maintenance scope, source, bundled/cached versions, and the last sync result.
-`status` is an explicit alias for the default view. `sync` checks GitHub immediately instead of
-waiting for the automatic check, which runs at most once every 72 hours. See
-[Compatibility catalog](catalog.md) for source selection, activation, and failure behavior.
+**`/catalog [status|sync]`** — Check the provider compatibility data and its last update.
+`sync` checks for an update now. See [Compatibility catalog](catalog.md).
 
 ## Switching models
 
@@ -119,22 +116,18 @@ and, where the values are a fixed set, the values. Example: `/set provider.respo
 | `/yolo` | Toggle confirmation prompts — read [Safety](safety.md) before leaving them off |
 | `/strict` | Toggle strict tool-call schemas (OpenAI / DeepSeek) |
 
-**`/statusbar [NAME]`** — Preview and select a statusbar preset, or keep your current custom
-layout. The bottom statusbar previews each selection in place. Enter saves the selection;
-Esc cancels the preview. `NAME` selects directly.
+**`/theme [NAME]`** — Open one appearance picker with Colorscheme, Diff, StatusBar and Divider
+tabs. Use `h`/`l` or the left/right arrows to switch tabs, `j`/`k` or up/down to move, and `/`
+to search the current list. Moving previews each choice; Enter saves the changes across all
+tabs, and Esc cancels them. While searching, Esc leaves search first and then clears the filter.
+The StatusBar tab previews in the bottom row; Divider includes both layouts and sweeps, with
+idle, running and queued examples. In Divider, Space chooses a layout or sweep and Tab jumps
+between the two groups. Changing colors redraws the output already on screen.
+Choices are saved in your config file.
 
-**`/divider [NAME]`** — Select a divider layout, then a sweep, with live previews of idle,
-running and queued states. Each picker includes your current custom value when present.
-Enter saves each choice; Esc cancels the current picker while keeping previously confirmed
-choices. `NAME` selects a layout directly. See [Statusbar and divider](appearance.md#statusbar-and-divider)
-for templates, Powerline colors and sweep formulas.
-
-**`/theme [NAME]`** — Pick a color theme. The picker previews each theme as the cursor lands on
-it: a sample below the list, and the prompt, menus and status bar around it. Enter keeps it and
-goes on to the diff colors, previewed the same way; Esc there keeps the theme you just picked.
-`/theme NAME` switches the theme straight away. Either way the output already on screen is
-redrawn in the new colors, and the choices are saved as `runtime.theme` and `ui.diff.style` in
-your config file. Themes and diff colors are listed under [Appearance](appearance.md#color-themes).
+Choose directly with `/theme NAME`, `/theme diff NAME`, `/theme statusbar NAME`,
+`/theme divider NAME` or `/theme sweep NAME`. See [Appearance](appearance.md) for colors,
+layouts and custom templates.
 
 ## While a turn runs
 
