@@ -23,10 +23,11 @@ terminal is set to. The named themes pin every color to a well-known scheme inst
 highlighting, the status bar, menus and the selection band included:
 
 `gruvbox-dark`, `gruvbox-light`, `solarized-dark`, `solarized-light`, `nord`, `dracula`,
-`one-dark`, `monokai`, `github-dark`
+`one-dark`, `snazzy`, `monokai`, `github-dark`
 
-Try `monokai` for vivid pink, green and cyan on a warm dark background, or `github-dark` for
-GitHub-style colors on a near-black background.
+Try `monokai` for vivid pink, green and cyan on a warm dark background, `snazzy` for bright
+neon colors on a dark blue-grey background, or `github-dark` for GitHub-style colors on a
+near-black background.
 
 A named theme does not change your terminal's background, so pick the one that matches it. Use
 `/theme` to preview code, status colors, menu text and selected rows. Hints and menu descriptions

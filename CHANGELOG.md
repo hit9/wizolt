@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- Built-in `snazzy` theme, from the published Snazzy palette. Code is highlighted with Pygments'
+  `dracula` style, which shares its background, since Pygments has no Snazzy style.
+
 ### Changed
 
 - The context figure in the `minimal`, `split`, `compact`, `brackets`, `monitor`, `blocks` and

@@ -215,6 +215,14 @@ BUILTIN: dict[str, Palette] = {
         red="#e06c75", green="#98c379", yellow="#e5c07b", blue="#61afef", purple="#c678dd", aqua="#56b6c2", orange="#d19a66",
         pygments="one-dark",
     ),
+    # https://github.com/sindresorhus/hyper-snazzy, with the comment and popup-menu greys from
+    # https://github.com/connorholyday/vim-snazzy. Snazzy has no orange, so its yellow stands in,
+    # and Pygments has no Snazzy style: Dracula shares its background and neon accents.
+    "snazzy": scheme(
+        "dark", fg="#eff0eb", comment="#606580", surface="#3a3d4d", rule="#606580", background="#282a36",
+        red="#ff5c57", green="#5af78e", yellow="#f3f99d", blue="#57c7ff", purple="#ff6ac1", aqua="#9aedfe", orange="#f3f99d",
+        pygments="dracula",
+    ),
     # https://github.com/pygments/pygments/blob/master/pygments/styles/monokai.py
     "monokai": scheme(
         "dark", fg="#f8f8f2", comment="#959077", surface="#49483e", rule="#49483e", background="#272822",

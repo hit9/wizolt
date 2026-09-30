@@ -116,13 +116,13 @@ def test_builtin_selections_and_named_ui_labels_have_readable_contrast():
             assert contrast(colors[role], palette.background) >= 4.5, (name, role)
 
 
-@pytest.mark.parametrize("name", ["monokai", "github-dark"])
-async def test_new_themes_switch_save_and_preview(tmp_path, name):
+@pytest.mark.parametrize(("name", "pygments"), [("monokai", "monokai"), ("github-dark", "github-dark"), ("snazzy", "dracula")])
+async def test_new_themes_switch_save_and_preview(tmp_path, name, pygments):
     command_loop = themed_loop(tmp_path)
     await theme_command(command_loop, name)
 
     assert Theme.name() == name
-    assert Theme.palette()["pygments"] == name
+    assert Theme.palette()["pygments"] == pygments
     assert f'theme = "{name}"' in (tmp_path / "config.toml").read_text()
     preview = theme_preview(name)
     text = "".join(text for _, text in preview)
