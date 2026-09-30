@@ -181,6 +181,8 @@ async def test_new_themes_switch_save_and_preview(tmp_path, name, appearance):
     text = "".join(text for _, text in preview)
     assert Theme.appearance() == appearance and "split_words" in text
     assert "Edit " in text and "return WORD.findall(text)" in text
+    for label in ("Preview · Code", "Removed", "Added", "Your message", "Reply", "Tool call", "Results", "Menu selection"):
+        assert label in text
     assert any(Theme.color("user") in style and "tighten" in text for style, text in preview)
     assert any(Theme.color("tool") in style and "Edit" in text for style, text in preview)
 

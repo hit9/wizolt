@@ -7,7 +7,7 @@ For your own colors, define `[ui.themes.my-theme]` in your config or keep a sepa
 See the [copyable examples](appearance-reference.md#define-a-theme-in-your-config).
 
 ```{figure} _static/appearance-picker.svg
-:alt: The appearance picker with Colorscheme, Diff, StatusBar, Divider and Input tabs, gruvbox-dark selected, and a preview of code and diff colors.
+:alt: The appearance picker with gruvbox-dark selected and labeled samples of code, removed and added lines, user messages, replies, tool calls, results and menu selection colors.
 
 One picker for the whole look.
 ```
@@ -21,6 +21,10 @@ The line beneath the shortcuts points to your config file for fuller customizati
 
 Choose a familiar classic or a newer favorite in the **Colorscheme** tab.
 Each theme colors code, menus and diffs together.
+The labeled samples show code, removed and added lines, your messages, replies, tool calls,
+result colors and a selected menu item. Small panes show fewer samples to leave room for
+choices. The other tabs preview diff details, the actual statusbar, idle/running/queued
+dividers and ordinary/follow-up input symbols.
 
 ```{figure} _static/appearance-colors.svg
 :alt: The same Python function in gruvbox-dark, one-dark, desert, tokyonight, catppuccin-dark and kanagawa.

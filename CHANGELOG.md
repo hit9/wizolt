@@ -34,6 +34,8 @@
 
 ### Changed
 
+- Label the Colorscheme preview's code, diff, user message, reply, tool call, result and menu
+  samples; larger panes show all of them while small panes keep more choices visible.
 - Give the input area and sent user messages a subtle full-width background that follows
   the theme, with one row of padding above and below the text. Custom themes can change
   `user_bg` or use `default` to keep the terminal background.

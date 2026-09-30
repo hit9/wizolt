@@ -134,7 +134,8 @@ class Illustrations:
     def appearance_picker(self) -> None:
         picker = AppearancePicker(self.loop, NOW - 12)
         try:
-            self.save("appearance-picker", [self.styled(picker.fragments())])
+            with patch("wizolt.ui.cli.appearance.picker_height", return_value=24):
+                self.save("appearance-picker", [self.styled(picker.fragments())])
             picker.handle_key("h")
             picker.handle_key("j")
             self.save("appearance-input", [self.styled(picker.fragments())])

@@ -45,18 +45,21 @@ _SAVE = object()
 
 
 def theme_preview(_name: str) -> StyleAndTextTuples:
-    """A few transcript rows drawn in the highlighted theme, which the picker has already applied."""
+    """Labeled color samples; dedicated tabs preview the statusbar, divider and input layout."""
     fg = Theme.fg
     added = Theme.diff_style("diff.added.bg") + " " + Theme.diff_style("diff.added.fg")
     removed = Theme.diff_style("diff.removed.bg") + " " + Theme.diff_style("diff.removed.fg")
-    rows: list[Sequence[tuple[str, str]]] = [
-        UiPrinter.syntax_segments("def split_words(text: str) -> list[str]:", "python", fg("text")),
-        [(removed, "-    return text.split()")],
-        [(added, "+    return WORD.findall(text)")],
-        [(fg("user"), "• tighten the tokenizer")],
-        [(fg("tool"), "Edit "), *UiPrinter.tool_arg_segments('path="parser.py" replace_all=false', fg("text"))],
+    rows: list[tuple[str, Sequence[tuple[str, str]]]] = [
+        ("Preview · Code", UiPrinter.syntax_segments("def split_words(text: str) -> list[str]:", "python", fg("text"))),
+        ("Removed", [(removed, "-    return text.split()")]),
+        ("Added", [(added, "+    return WORD.findall(text)")]),
+        ("Your message", [(fg("user", f"bg:{Theme.color('user_bg')}"), " • tighten the tokenizer ")]),
+        ("Reply", [(fg("text"), "Renamed "), (fg("text", "bold"), "split_words"), (fg("text"), " and kept the old name as an alias.")]),
+        ("Tool call", [(fg("tool"), "Edit "), *UiPrinter.tool_arg_segments('path="parser.py" replace_all=false', fg("text"))]),
+        ("Results", [(fg("success"), "12 passed"), (fg("warning"), " · 1 skipped"), (fg("error"), " · 0 failed")]),
+        ("Menu selection", [("class:choice.selected", " /theme "), (fg("muted"), " Choose a color theme")]),
     ]
-    return [fragment for row in rows for fragment in ((fg("muted"), "  │ "), *row, ("", "\n"))]
+    return [fragment for label, row in rows for fragment in ((fg("muted"), f"  {label:15} "), *row, ("", "\n"))]
 
 
 DIFF_STYLE_SAMPLE = """@@ -8,4 +8,4 @@ def tokenize(text):
@@ -249,7 +252,7 @@ class AppearancePicker:
                 )
             # Leave room for about six choices and the key legend. Small panes prioritize the
             # list; the surrounding prompt and statusbar still preview the selected theme.
-            limit = max(0, min(5, self.height - 13)) if kind == "theme" else max(0, min(9, self.height - 8 - (kind == "divider")))
+            limit = max(0, min(8, self.height - 13)) if kind == "theme" else max(0, min(9, self.height - 8 - (kind == "divider")))
             rows = list(split_lines(fragments))
             if kind == "input" and limit < 4:
                 rows = rows[1:4:2]
