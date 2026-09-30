@@ -90,7 +90,7 @@ def test_theme_does_not_restyle_frozen_interaction_regions(tmp_path, monkeypatch
 
     for name in ("choice.selected", "quickhint.focused", "approval.action.focused", "completion-menu.completion.current", "completion-menu.meta.completion.current"):
         band = style.get_attrs_for_style_str("class:" + name)
-        assert (band.color, band.bgcolor, band.reverse) == ("ffffff", "008ec4", False), name
+        assert (band.color, band.bgcolor, band.reverse) == ("ffffff", "0077a8", False), name
     assert style.get_attrs_for_style_str("class:quickhint").color == "ansicyan"
     thinking = style.get_attrs_for_style_str("class:muted")
     assert thinking.color == "ansibrightblack"

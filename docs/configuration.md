@@ -250,10 +250,14 @@ terminal is set to. The named themes pin every color to a well-known scheme inst
 highlighting, the status bar, menus and the selection band included:
 
 `gruvbox-dark`, `gruvbox-light`, `solarized-dark`, `solarized-light`, `nord`, `dracula`,
-`one-dark`
+`one-dark`, `monokai`, `github-dark`
+
+Try `monokai` for vivid pink, green and cyan on a warm dark background, or `github-dark` for
+GitHub-style colors on a near-black background.
 
 A named theme does not change your terminal's background, so pick the one that matches it. Use
-`/theme` to preview them. `gruvbox` and `solarized` pick their dark or light variant to match
+`/theme` to preview code, status colors, menu text and selected rows. Hints and menu descriptions
+stay readable while separators remain quieter. `gruvbox` and `solarized` pick their dark or light variant to match
 your terminal, the way `auto` does; so does any name you give both a `-dark` and a `-light` theme
 file. Named themes, and theme files based on one, draw their exact colors when your terminal
 sets `COLORTERM=truecolor` (most modern terminals do); otherwise each color is the nearest of 256.

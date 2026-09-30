@@ -17,16 +17,16 @@ from tui_harness import loop, run_interactive_tui, wait_until
 import wizolt.ui.render as render_module
 from wizolt.config import ConfigFile
 from wizolt.ui.cli import CommandCompleter
-from wizolt.ui.cli.commands import theme_command
+from wizolt.ui.cli.commands import theme_command, theme_preview
 from wizolt.ui.render import HorizontalRule, Theme, UiPrinter
 from wizolt.ui.themes import BUILTIN, HEX_ROLES, MENU_TEXT_CONTRAST, MUTED_CONTRAST, contrast
 from wizolt.ui.tui.app import TuiApp
 from wizolt.utils import terminal
 
 # 24-bit SGR parameters for colors the tests switch between.
-GRUVBOX_RED = "38;2;251;73;52"  # gruvbox-dark `error`
+GRUVBOX_RED = "38;2;249;88;65"  # gruvbox-dark `error`, lifted for text contrast
 GRUVBOX_GRAY = "38;2;146;131;116"  # gruvbox-dark `rule`
-NORD_RED = "38;2;191;97;106"  # nord `error`
+NORD_RED = "38;2;201;147;157"  # nord `error`, lifted for text contrast
 
 CONFIG = """# my own notes
 [runtime]
@@ -97,13 +97,39 @@ def test_every_builtin_theme_defines_every_role_in_a_shape_the_adapters_accept()
 
 
 def test_named_themes_keep_grey_text_readable():
-    """A scheme's comment grey is dim by design; as hint and menu text it must still be readable.
-    The menu floor gives way only where the scheme's own foreground cannot reach it."""
+    """Readable hints and menu text, including Solarized's low-contrast foreground."""
     for name, palette in BUILTIN.items():
         colors = palette.colors
         assert contrast(colors["muted"], palette.background) >= MUTED_CONTRAST, name
         menu = contrast(colors["menu_muted"], colors["menu_bg"])
-        assert menu >= MENU_TEXT_CONTRAST or colors["menu_muted"] == colors["status_base"], (name, menu)
+        assert menu >= MENU_TEXT_CONTRAST, (name, menu)
+        assert contrast(colors["muted"], palette.background) >= contrast(colors["subtle"], palette.background), name
+
+
+def test_builtin_selections_and_named_ui_labels_have_readable_contrast():
+    for name, palette in Theme.BUILTIN.items():
+        colors = palette.colors
+        assert contrast(colors["selection_fg"], colors["selection_bg"]) >= 4.5, name
+        if not palette.background:  # ANSI roles follow the terminal's user-defined palette.
+            continue
+        for role in ("user", "tool", "success", "warning", "error", "accent", "info", "status_base"):
+            assert contrast(colors[role], palette.background) >= 4.5, (name, role)
+
+
+@pytest.mark.parametrize("name", ["monokai", "github-dark"])
+async def test_new_themes_switch_save_and_preview(tmp_path, name):
+    command_loop = themed_loop(tmp_path)
+    await theme_command(command_loop, name)
+
+    assert Theme.name() == name
+    assert Theme.palette()["pygments"] == name
+    assert f'theme = "{name}"' in (tmp_path / "config.toml").read_text()
+    preview = theme_preview(name)
+    text = "".join(text for _, text in preview)
+    assert "dark terminal background" in text
+    assert "Choose a color theme" in text and "ctx 25%" in text
+    assert any(Theme.color("selection_bg") in style and "/theme" in text for style, text in preview)
+    assert any(Theme.color("menu_muted") in style and "Choose" in text for style, text in preview)
 
 
 def test_menu_descriptions_take_the_menu_text_color(tmp_path):
@@ -568,7 +594,7 @@ def test_theme_names_complete_after_the_command():
 
 def test_the_app_style_follows_a_theme_switch(tmp_path):
     view = loop(tmp_path).view
-    assert view.style().get_attrs_for_style_str("class:choice.selected").bgcolor == "008ec4"
+    assert view.style().get_attrs_for_style_str("class:choice.selected").bgcolor == "0077a8"
 
     Theme.set_mode("gruvbox-dark")
 

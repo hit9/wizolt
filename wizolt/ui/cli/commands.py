@@ -796,6 +796,7 @@ def theme_preview(_name: str) -> StyleAndTextTuples:
     added = Theme.diff_style("diff.added.bg") + " " + Theme.diff_style("diff.added.fg")
     removed = Theme.diff_style("diff.removed.bg") + " " + Theme.diff_style("diff.removed.fg")
     rows: list[Sequence[tuple[str, str]]] = [
+        [(fg("muted"), f"For a {Theme.appearance()} terminal background")],
         [(fg("user"), "• tighten the tokenizer")],
         [(fg("tool"), "Edit "), *UiPrinter.tool_arg_segments('path="parser.py" replace_all=false', fg("text"))],
         [("", "Renamed "), (fg("accent"), "split_words()"), ("", " and kept the old name as an alias.")],
@@ -803,6 +804,17 @@ def theme_preview(_name: str) -> StyleAndTextTuples:
         [(removed, "-    return text.split()")],
         [(added, "+    return WORD.findall(text)")],
         [(fg("success"), "12 passed"), ("", "  "), (fg("warning"), "1 skipped"), ("", "  "), (fg("error"), "0 failed")],
+        [(fg("muted"), "Enter selects · Esc restores your theme")],
+        [(Theme.selection(), " /theme "), (f"bg:{Theme.color('menu_bg')} " + fg("menu_muted"), " Choose a color theme ")],
+        [
+            (fg("status_provider"), "provider/model"),
+            (fg("subtle"), " · "),
+            (fg("status_reason"), "medium"),
+            (fg("subtle"), " | "),
+            (fg("status_mcp"), "mcp 2"),
+            (fg("subtle"), " | "),
+            (fg("status_context"), "ctx 25%"),
+        ],
     ]
     return [fragment for row in rows for fragment in ((fg("muted"), "  │ "), *row, ("", "\n"))]
 

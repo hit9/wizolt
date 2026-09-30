@@ -50,7 +50,7 @@ DIFF_KEYS = {
 HEX_ROLES = ("divider_glow", "divider_rule")
 # WCAG contrast floors for a scheme's grey text: secondary text on the background, and the menu's
 # descriptions on its raised surface, which is where a comment grey reads worst.
-MUTED_CONTRAST = 3.0
+MUTED_CONTRAST = 4.5
 MENU_TEXT_CONTRAST = 4.5
 
 
@@ -69,8 +69,11 @@ def contrast(first: str, second: str) -> float:
 def lift(color: str, toward: str, against: str, minimum: float) -> str:
     """`color`, moved toward `toward` in tenths until it reaches `minimum` contrast on `against`.
 
-    Keeps a scheme's own grey wherever it is readable and moves it only as far as it has to.
+    Keeps the original wherever readable. If the preferred foreground cannot reach the floor
+    (Solarized's menu text), continue toward black or white instead of silently falling short.
     """
+    if contrast(toward, against) < minimum:
+        toward = max(("#000000", "#ffffff"), key=lambda value: contrast(value, against))
     start = [int(color[index : index + 2], 16) for index in (1, 3, 5)]
     end = [int(toward[index : index + 2], 16) for index in (1, 3, 5)]
     for step in range(11):
@@ -106,16 +109,16 @@ def scheme(
     Text stays the terminal's own foreground: prose is printed unstyled, and a pinned foreground
     would disagree with it. The selection band is the scheme's blue under its background color,
     the way these schemes draw their own popup-menu selection. The comment grey is meant for code
-    comments and is dim by design; as the text of hints and menus it is lifted toward the
-    foreground until it is readable, and left alone where it already is.
+    comments and is dim by design; readable UI text is lifted toward the foreground while
+    decorative separators retain a quieter grey. Syntax colors retain the published palette.
     """
     muted = lift(comment, fg, background, MUTED_CONTRAST)
-    return Palette(
+    palette = Palette(
         appearance,
         {
             "text": "default",
             "muted": muted,
-            "subtle": muted,
+            "subtle": lift(comment, fg, background, 3.0),
             "accent": aqua,
             "accent_secondary": purple,
             "info": blue,
@@ -141,7 +144,7 @@ def scheme(
             "status_worker": orange,
             "divider_glow": aqua,
             "divider_rule": rule,
-            "selection_bg": blue,
+            "selection_bg": lift(blue, fg, background, MENU_TEXT_CONTRAST),
             "selection_fg": background,
             "menu_bg": surface,
             "menu_muted": lift(comment, fg, surface, MENU_TEXT_CONTRAST),
@@ -150,10 +153,30 @@ def scheme(
         background,
         true_color=True,
     )
+    # UI labels must remain readable even when a scheme's original accent is too faint.
+    # Keep syntax tokens and the independent diff bands out of this adjustment.
+    for role in (
+        "accent",
+        "accent_secondary",
+        "info",
+        "user",
+        "tool",
+        "success",
+        "warning",
+        "error",
+        "status_base",
+        "status_provider",
+        "status_reason",
+        "status_mcp",
+        "status_context",
+        "status_yolo",
+        "status_worker",
+    ):
+        palette.colors[role] = lift(palette.colors[role], fg, background, MUTED_CONTRAST)
+    return palette
 
 
-# Each scheme's colors are its published palette; the Pygments style is the one of the same name
-# that Pygments ships, so fenced code matches the scheme too.
+# Published palettes, with UI contrast adjusted by scheme(); code uses Pygments' matching style.
 # fmt: off
 BUILTIN: dict[str, Palette] = {
     "gruvbox-dark": scheme(
@@ -190,6 +213,18 @@ BUILTIN: dict[str, Palette] = {
         "dark", fg="#abb2bf", comment="#5c6370", surface="#3e4452", rule="#4b5263", background="#282c34",
         red="#e06c75", green="#98c379", yellow="#e5c07b", blue="#61afef", purple="#c678dd", aqua="#56b6c2", orange="#d19a66",
         pygments="one-dark",
+    ),
+    # https://github.com/pygments/pygments/blob/master/pygments/styles/monokai.py
+    "monokai": scheme(
+        "dark", fg="#f8f8f2", comment="#959077", surface="#49483e", rule="#49483e", background="#272822",
+        red="#ff4689", green="#a6e22e", yellow="#e6db74", blue="#66d9ef", purple="#ae81ff", aqua="#66d9ef", orange="#fd971f",
+        pygments="monokai",
+    ),
+    # https://github.com/primer/github-vscode-theme (dark default), matching Pygments' gh_dark.py.
+    "github-dark": scheme(
+        "dark", fg="#e6edf3", comment="#8b949e", surface="#161b22", rule="#30363d", background="#0d1117",
+        red="#f85149", green="#56d364", yellow="#d29922", blue="#79c0ff", purple="#d2a8ff", aqua="#a5d6ff", orange="#ffa657",
+        pygments="github-dark",
     ),
 }
 # fmt: on

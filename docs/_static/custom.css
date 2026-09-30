@@ -217,7 +217,7 @@ table.docutils th { background: var(--nc-surface); color: var(--nc-fg-strong); }
 .fs-approve { color: #e5c07b; }
 /* The cursor, mirroring Theme.selection(): one band for every list, whatever the row it lands on
    is drawn in -- a picker row, a completion, a browser row, or the focused approval action. */
-.fs-selected { color: #ffffff; background: #008ec4; }
+.fs-selected { color: #ffffff; background: #0077a8; }
 /* Markdown rendered inside a viewer, mirroring Rich's output: headings magenta underlined,
    inline code cyan on a dark band. */
 .fs-md-b { font-weight: 700; }

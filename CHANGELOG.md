@@ -2,8 +2,18 @@
 
 ## Unreleased
 
+### Added
+
+- Built-in `monokai` and `github-dark` themes with matching code highlighting. `/theme` now
+  previews hints, menu descriptions, selection and status colors, and labels the intended
+  terminal background.
+
 ### Fixed
 
+- Improve named themes' UI text and selection contrast on their intended backgrounds, including
+  Solarized menu descriptions that previously fell below the contrast target. Keep decorative
+  separators quieter than hints, and darken the default selection band for clearer white text.
+  Add contrast regression coverage and update the theme guide and documentation selection colors.
 - The published documentation builds again. The changelog's benchmark links were repository-relative
   paths, which MyST reads as cross-references to documents; nothing satisfies them, and the docs
   build treats warnings as errors. They point at the files on GitHub now.
