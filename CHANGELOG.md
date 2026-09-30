@@ -34,6 +34,7 @@
 
 ### Changed
 
+- Use the classic diff style in the getting-started guide's first-turn illustration.
 - Distinguish documentation concept diagrams from terminal previews: context, caching, skills,
   hooks and worker flows use transparent backgrounds, serif text and fine arrows that match
   the documentation, without terminal window decorations.

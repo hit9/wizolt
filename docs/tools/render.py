@@ -218,6 +218,7 @@ class Illustrations:
         self.save("appearance-custom-sweep", rows[:-1])
 
     def first_turn(self) -> None:
+        Theme.set_diff_style("classic")
         diff = "@@ -10,3 +10,4 @@\n def tokenize(text):\n-    first = text[0]\n+    if not text:\n+        return []\n     return text.split()\n"
         app = TuiApp()
         app.input_mode = InputMode.APPROVAL
