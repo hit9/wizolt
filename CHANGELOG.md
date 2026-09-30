@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.62.0 - 2026-09-30
+
 ### Added
 
 - Custom themes can be defined directly under `[ui.themes.NAME]` in the main config and
