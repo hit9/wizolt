@@ -145,13 +145,14 @@ class ModelClient:
 
     def __init__(self, session: Session):
         self.session = session
-        # Guards only the active-attempt control metadata below, so a /resend arriving from the UI
-        # thread can claim the exact attempt now in flight without touching request state itself.
+        # Guards only the active-attempt control metadata below, so a manual retry arriving from the
+        # UI thread can claim the exact attempt now in flight without touching request state itself.
         self._attempt_lock = threading.Lock()
         self._attempt: asyncio.Task | None = None
         self._attempt_loop: asyncio.AbstractEventLoop | None = None
-        # True once /resend has claimed the current attempt. A claimed attempt can no longer
-        # publish a result, even if the provider answered in the race before cancellation ran.
+        # True once the UI has claimed the current attempt (recalling a follow-up the request
+        # already took). A claimed attempt can no longer publish a result, even if the provider
+        # answered in the race before cancellation ran.
         self._attempt_claimed = False
         # The presentation seam (see wizolt.agent.hooks). An agent shares its own instance with this
         # client, so on_stream, on_builtin_call and on_retry_wait are wired where the rest are.
@@ -174,7 +175,7 @@ class ModelClient:
         return self.session.policy.apply_request(params, provider, resolved, wire=wire)
 
     def retry_active_request(self) -> bool:
-        """Claim the exact provider attempt now in flight for `/resend`; report whether it took.
+        """Claim the exact provider attempt now in flight for a manual retry; report whether it took.
 
         Thread-safe by construction: the claim and the task/loop capture happen together under the
         attempt lock, and the cancellation itself is scheduled on the loop that owns the task. A
@@ -345,7 +346,7 @@ class ModelClient:
                 state.current_model_call_started_at = time.monotonic()
                 state.stream_started_at = state.stream_chars = 0
                 # UI state, never a control signal: a new attempt is under way, so the previous
-                # /resend has landed and the next one may be offered. What a cancelled attempt
+                # manual retry has landed and the next one may be offered. What a cancelled attempt
                 # meant is decided by the attempt's own claim, not by this flag.
                 state.manual_model_retry_requested = False
                 try:
@@ -373,9 +374,9 @@ class ModelClient:
     async def _attempt_request(self, messages: list[Json], tools: list[Json] | None) -> tuple[Json, list[ToolCall], str]:
         """Run one provider attempt as a child task this client can name from another thread.
 
-        The child exists so `/resend` has something exact to claim: a request the user asked to
-        resend must not be able to publish, and the turn's own cancellation must not be readable as
-        a resend. So the two dispositions are separated by construction -- the parent's cancellation
+        The child exists so a manual retry has something exact to claim: a request the user asked to
+        send again must not be able to publish, and the turn's own cancellation must not be readable
+        as a retry. So the two dispositions are separated by construction -- the parent's cancellation
         is checked before the child's outcome is interpreted and again before a result is published,
         and only a claim made under the attempt lock turns a cancelled child into a retry."""
 

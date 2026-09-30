@@ -485,12 +485,12 @@ async def test_retry_wait_phase_hook_resets_on_cancel(tmp_path, monkeypatch):
     assert s.state.model_retry_until == 0.0
 
 
-async def test_resend_during_a_backoff_wait_is_refused(tmp_path, monkeypatch):
-    """`/resend` claims an attempt, and a backoff has none in flight: there is nothing to resend
-    while the client is already on its way back to the provider.
+async def test_manual_retry_during_a_backoff_wait_is_refused(tmp_path, monkeypatch):
+    """A manual retry claims an attempt, and a backoff has none in flight: there is nothing to
+    resend while the client is already on its way back to the provider.
 
     So the request answers False and changes nothing -- no counter moves, no state is consumed, and
-    the pending retry proceeds on its own schedule. The TUI refuses the key during a backoff for
+    the pending retry proceeds on its own schedule. The TUI refuses that recall during a backoff for
     the same reason; this is the boundary that makes that refusal true rather than merely polite."""
     s = _session(tmp_path)
     model = ModelClient(s)
@@ -505,7 +505,7 @@ async def test_resend_during_a_backoff_wait_is_refused(tmp_path, monkeypatch):
 
     assert refused == [False]
     assert content == "ok"
-    assert s.state.model_retry_count == 1  # the backoff's own retry, not a resend
+    assert s.state.model_retry_count == 1  # the backoff's own retry, not the manual one
     assert s.state.model_retry_until == 0.0
 
 
@@ -914,7 +914,7 @@ def test_compaction_echo_guard_leaves_real_summaries_alone(tmp_path):
     assert not compaction.Compactor.echoes_source("a" * 200, "")  # nothing to copy from
 
 
-async def test_whole_turn_cancellation_and_resend_are_distinct_dispositions(tmp_path):
+async def test_whole_turn_cancellation_and_manual_retry_are_distinct_dispositions(tmp_path):
     """Both end the attempt in flight, but they mean opposite things and cannot be confused.
 
     The disposition rides on the claim made under the attempt lock, not on any session flag a

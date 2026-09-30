@@ -348,8 +348,10 @@ Awaited slash commands have a separate runtime-owned task: `/compact` does not e
 so Ctrl-C must cancel the command task itself. Await its cleanup before restoring the prompt;
 never cancel the input loop for a command interrupt or swallow cancellation of that loop at shutdown.
 
-Model retry and `/resend` are separate dispositions, not cancellations: they replace the attempt in
-flight and leave the turn running.
+A model retry is not a cancellation: it replaces the attempt in flight and leaves the turn running.
+Its one manual trigger is the TUI's recall of a follow-up the request has already claimed, which is
+why the client separates a claimed attempt's cancellation from the turn's own (see
+`ModelClient.retry_active_request`).
 
 **Shutdown order is fixed**, because each step needs the one before it: stop accepting new turns,
 cancel and await the active turn, drain the runtime's own tasks, close MCP and the model client on

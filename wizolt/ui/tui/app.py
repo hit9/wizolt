@@ -312,7 +312,6 @@ class TuiApp:
         on_exit_request: Callable[[], None] | None = None,
         on_force_exit: Callable[[], None] | None = None,
         on_interrupt: Callable[[], None] | None = None,
-        on_retry: Callable[[], None] | None = None,
         on_recall: Callable[[], str | UserInput] | None = None,
         on_expand_output: Callable[[], None] | None = None,
         status_fragments_fn: Callable[[], StyleAndTextTuples] | None = None,
@@ -335,7 +334,6 @@ class TuiApp:
         self.on_exit_request = on_exit_request or (lambda: None)
         self.on_force_exit = on_force_exit or (lambda: None)
         self.on_interrupt = on_interrupt or (lambda: None)
-        self.on_retry = on_retry or (lambda: None)
         self.on_recall = on_recall or (lambda: "")
         self.on_expand_output = on_expand_output or (lambda: None)
         self.status_fragments_fn: Callable[[], StyleAndTextTuples] = status_fragments_fn or list
@@ -1778,7 +1776,7 @@ class TuiApp:
         # Ctrl-X Ctrl-E (readline `edit-and-execute-command`) and Ctrl-G hand the current input to
         # $VISUAL/$EDITOR (fallback vim) for editing, matching Claude Code's editor bindings. The
         # `c-x c-e` chord means a lone Ctrl-X waits for the second key instead of firing eagerly.
-        # In-flight resend has no key; it is the `/resend` command typed in the running input.
+        # No key retries the model request: recalling a claimed follow-up above is the only manual one.
         edits_input = Condition(lambda: self.input_mode in {InputMode.CHAT, InputMode.RUNNING, InputMode.APPROVAL})
 
         def edit_in_editor(_):  # pragma: no cover — interactive path

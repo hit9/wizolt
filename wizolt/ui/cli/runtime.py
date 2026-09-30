@@ -212,7 +212,8 @@ class TuiRuntime:
             self.loop.agent.cancel()
 
     def _request_model_retry(self) -> None:
-        """`/resend`: ask the model client to drop the exact attempt in flight and send it again.
+        """Recall a follow-up the in-flight request already claimed: ask the model client to drop
+        the exact attempt and send it again, so the input the user just took back is not part of it.
 
         Not a turn cancellation and not a signal: the client's own thread-safe claim is the entire
         wake-up mechanism, and it is also the debounce -- an attempt already claimed, or none in
@@ -463,7 +464,6 @@ class TuiRuntime:
         tui.on_exit_request = self.request_exit
         tui.on_force_exit = self.force_exit
         tui.on_interrupt = self.interrupt
-        tui.on_retry = self._request_model_retry
         tui.on_recall = self.recall
         tui.on_expand_output = self.expand_output
         tui.status_fragments_fn = self.loop.presentation.status_bar.fragments

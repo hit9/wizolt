@@ -140,17 +140,6 @@ def _status_cache_line(counts: ModelUsage) -> str:
     return f"{progress_bar(counts.last_cached_prompt_tokens, counts.last_prompt_tokens)} {last} · {session}"
 
 
-def resend_command(loop: CommandLoop, _args: str) -> str | None:
-    """Resend the in-flight model request. Available only in the running queue-input region:
-    typed while a turn works, it re-requests the current model call (same path as on_retry)."""
-    if loop.presentation.tui is None or loop.presentation.tui.input_mode != InputMode.RUNNING:
-        return "/resend re-requests the current model request — type it while a turn is working."
-    if loop.session.state.current_model_call_started_at <= 0 or loop.session.state.model_retry_until > 0:
-        return "Nothing to resend right now; /resend works while the model is generating."
-    loop.presentation.tui.on_retry()
-    return None
-
-
 async def mcp_command(loop: CommandLoop, args: str) -> str | None:
     mcp = loop.session.mcp
     if mcp is None:
@@ -1212,7 +1201,6 @@ COMMANDS: tuple[Command, ...] = (
     Command("/yolo", yolo, queue_safe=True),
     Command("/strict", strict),
     Command("/mcp", mcp_command, queue_safe=True, render="answer"),
-    Command("/resend", resend_command, queue_safe=True),
     Command("/name", name_command),
     Command("/sessions", sessions_command, aliases=("/resume",)),
     Command("/worker", worker.worker_command),

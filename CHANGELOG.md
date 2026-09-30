@@ -18,6 +18,11 @@
 - Reduce diff choices to `auto`, `classic`, `delta` and `zebra`. All built-in themes default
   to the unchanged classic diff colors. Custom theme files and inline overrides remain supported.
 
+### Removed
+
+- Remove the `/resend` command. A request that fails transiently still retries on its own, and
+  recalling a follow-up the request has already sent (Ctrl-P) still replaces it in flight.
+
 ### Documentation
 
 - Add an English, monospace HTML comparison of actual presets with statusbar and divider

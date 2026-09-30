@@ -18,7 +18,7 @@ from wizolt.agent.engine import Agent
 from wizolt.agent.lifecycle import load_session
 from wizolt.agent.prompts import LIVE_FOLLOWUP_PREFIX
 from wizolt.session import SessionSnapshotStore
-from wizolt.ui.cli import QUEUE_SAFE_COMMANDS, CommandLoop, TuiRuntime
+from wizolt.ui.cli import CommandLoop, TuiRuntime
 from wizolt.ui.cli.update import UpdateChecker
 from wizolt.ui.tui import TuiApp
 
@@ -122,38 +122,7 @@ def test_processed_queued_message_does_not_return_to_input(tmp_path, monkeypatch
     assert "queued task" in requests[1]
 
 
-async def test_resend_command_only_resends_while_running(tmp_path):
-    command_loop = loop(tmp_path)
-    retried = []
-    command_loop.presentation.tui = TuiApp(on_retry=lambda: retried.append(True))
-
-    # Reachable from the running follow-up input (queue region), not just the idle prompt.
-    assert "/resend" in QUEUE_SAFE_COMMANDS
-
-    # Idle chat: no-op with guidance.
-    command_loop.presentation.tui.set_idle()
-    await command_loop.command("/resend")
-    assert retried == []
-
-    # Running but no model call in flight: still a no-op.
-    command_loop.presentation.tui.set_running("working")
-    command_loop.session.state.current_model_call_started_at = 0.0
-    await command_loop.command("/resend")
-    assert retried == []
-
-    # Backoff countdown: there is no request in flight to resend.
-    command_loop.session.state.current_model_call_started_at = 1.0
-    command_loop.session.state.model_retry_until = 2.0
-    await command_loop.command("/resend")
-    assert retried == []
-
-    # Running with a model call in flight: resends via on_retry.
-    command_loop.session.state.model_retry_until = 0.0
-    await command_loop.command("/resend")
-    assert retried == [True]
-
-
-def test_manual_resend_preserves_stream_driven_status(tmp_path, monkeypatch):
+def test_manual_model_retry_preserves_stream_driven_status(tmp_path, monkeypatch):
     command_loop = loop(tmp_path)
     command_loop.presentation.tui = TuiApp()
     command_loop.presentation.tui.set_running("working")
@@ -177,8 +146,8 @@ def test_manual_resend_preserves_stream_driven_status(tmp_path, monkeypatch):
     assert command_loop.session.state.model_retry_count == 1
 
 
-def test_manual_resend_with_no_attempt_in_flight_changes_nothing(tmp_path):
-    """The retry counters follow the client's answer: with no provider attempt to claim, the key
+def test_manual_model_retry_with_no_attempt_in_flight_changes_nothing(tmp_path):
+    """The retry counters follow the client's answer: with no provider attempt to claim, the recall
     is a no-op rather than a counter bump the status bar would then have to explain."""
     command_loop = loop(tmp_path)
     command_loop.presentation.tui = TuiApp()
