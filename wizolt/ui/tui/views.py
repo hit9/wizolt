@@ -297,8 +297,9 @@ class ChoiceViewState:
             preview = [("class:choice.preview", "  │ " + line + "\n") for line in drawn.replace("\\n", "\n").splitlines()] if isinstance(drawn, str) else drawn
         preview_text = "".join(fragment[1] for fragment in preview)
         # The title and blank row above the list, the blank row and legend below it, the search line,
-        # and the preview with its rule.
-        chrome = 4 + self.searching + ((preview_text.count("\n") + (not preview_text.endswith("\n")) + 1) if preview else 0)
+        # and the preview with its rule. The legend's trailing newline creates one more terminal
+        # row; reserve it too so a full list does not scroll its title out of the modal window.
+        chrome = 5 + self.searching + ((preview_text.count("\n") + (not preview_text.endswith("\n")) + 1) if preview else 0)
         self.drawn_rows = self.list_rows(len(visible), chrome)
         start, end = self.window(visible, options, self.drawn_rows)
         rows: list[tuple[str | None, StyleAndTextTuples]] = []  # (option row's style, or None for a header; fragments)

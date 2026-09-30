@@ -391,13 +391,15 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
     for cycle in range(3):
         log.with_suffix(f".open-{cycle}").touch()
         visible_containing("Divider › Layout")
-        pane.keys("j")
+        chosen = ("capsule", "frame", "rail")[cycle]
+        pane.keys(str(cycle + 2))
+        visible_containing(chosen)
         for index in range(10):
             width, height = ((100, 30), (60, 18), (80, 24), (50, 12), (120, 35))[index % 5]
             pane.resize(width, height)
             time.sleep(0.06 if index % 2 else 0.15)
             visible = pane.visible()
-            assert "minimal" in visible, visible
+            assert chosen in visible, visible
         pane.resize(100, 30)
         visible_containing("Divider › Layout")
         if cycle == 0:
@@ -411,6 +413,8 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
         else:
             pane.keys("Enter")
             visible_containing("Divider › Sweep")
+            pane.keys("4")
+            visible_containing("breathe")
             pane.keys("Enter")
         deadline = time.monotonic() + 15
         while f"closed {cycle}:" not in log.read_text():
@@ -421,6 +425,8 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
             assert history.count(f"BAR-MARKER-{marker}") == 1
         assert history.count("bars-model") == 1
     assert "closed 1: interrupted" in log.read_text()
+    assert "divider.format: preset:rail" in log.read_text()
+    assert "divider.sweep: preset:breathe" in log.read_text()
     log.with_suffix(".open-3").touch()
     visible_containing("Statusbar")
     for width, height in ((100, 30), (60, 18), (80, 24)):

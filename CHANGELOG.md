@@ -4,12 +4,15 @@
 
 ### Added
 
+- Focus the divider picker on four layouts: the quiet `comet`, a centered rounded `capsule`,
+  an inset `frame`, and a `rail` separating activity from metrics. Existing configured presets
+  remain usable and can be kept as the current selection.
 - Templates support repeated short fill patterns and multiple fills sharing the available width,
   including centered labels. Fill patterns reject control, combining and double-width characters.
-- Expand statusbar presets to ten, and divider and sweep presets to eight each: compact, bracketed, monitor and
+- Expand the built-in preset collection with: compact, bracketed, monitor and
   block status rows, plus Vim- and lualine-inspired layouts; dashed, dotted, double and
   right-aligned dividers; reverse, wave, twin
-  and pulse animations. All are available in the live pickers and through `preset:name`.
+  and pulse animations. Presets are selectable through `preset:name`.
 
 - `/statusbar` previews and selects built-in layouts; `/divider` selects a layout followed by a
   sweep, with the current custom value available in each picker. Enter saves each choice;
@@ -29,6 +32,9 @@
   terminal background.
 
 ### Fixed
+
+- Reserve the trailing terminal row in choice-menu height budgets so expanded preview lists
+  keep their title visible after scrolling and resizing.
 
 - Preview `/statusbar` only in the live bottom row, removing the duplicate sample in the menu.
   Keep `minimal` and `brackets` left-aligned alongside `default` and `compact`.

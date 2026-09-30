@@ -195,6 +195,13 @@ DIVIDER_PRESETS = {
     "dotted": "{% if running %}[spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:┈}[/]",
     "double": "[divider_rule]══[/]{% if running %} [divider.label]{label}[/] {% endif %}[divider_rule]{fill:═}[/]",
     "right": "[divider_rule]{fill:─}[/]{% if running %} [divider.label]{label}[/] [divider_rule]──[/]{% endif %}",
+    "capsule": "[divider_rule]{fill:─}[/]{% if running %}[fg=menu_bg][/][fg=divider_glow bg=menu_bg] {label} [/][fg=menu_bg][/]{% endif %}[divider_rule]{fill:─}[/]",
+    "frame": "[divider_rule]╭─[/]{% if running %}[fg=divider_glow]╴[/] [divider.label]{label}[/] [fg=divider_glow]╶[/]{% endif %}[divider_rule]{fill:─}╮[/]",
+    "rail": "{% if running %}[fg=divider_glow bold]◆ [/][divider.label]{activity}[/] {% endif %}[divider_rule]{fill:─}[/]"
+    + "{% if running %} [fg=status_base]{elapsed:duration}[/]{% optional priority=10 %}{% if rate %}[muted] · [/][fg=divider_glow]{rate}[/]{% endif %}{% endoptional %}"
+    + "{% if queue.followup > 0 %}[warning] · {queue.followup} queued[/]{% endif %}"
+    + "{% if queue.next_turn > 0 %}[warning] · {queue.next_turn} next turn[/]{% endif %}"
+    + "{% if reset_pending %}[warning] · reset pending[/]{% endif %}{% endif %}",
 }
 
 

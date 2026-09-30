@@ -64,11 +64,11 @@ async def test_tool_output_viewer_browses_recent_calls_through_a_viewport_and_op
     # A blank row flanks the rule, and the key legend closes the sheet.
     rows = listing.rstrip("\n").splitlines()
     assert rows[2] == "" and rows[-2] == "" and rows[-1].strip().startswith("j/k/Tab move")
-    assert "command-11" in listing and "command-2" in listing
-    # A twenty-six-row terminal draws ten of the twelve: the rest are a scroll away, not dropped, and
+    assert "command-11" in listing and "command-3" in listing
+    # A twenty-six-row terminal draws nine of the twelve: the rest are a scroll away, not dropped, and
     # the counter is what says so. `true` printed nothing and is not an entry at all.
     assert "Bash  printf command-1\n" not in listing and "Bash  printf command-0\n" not in listing and "Bash  true" not in listing
-    assert "showing 1-10 of 12" in listing
+    assert "showing 1-9 of 12" in listing
     # The second entry opens in the scrolling viewer: the command as its body, the streams below.
     frames = ["".join(value for _, value in frame) for frame in modal.frames]
     viewer = [frame for frame in frames if "read-only" in frame]
@@ -116,7 +116,7 @@ async def test_tool_output_browser_lists_past_the_old_fifty_entry_cap(tmp_path, 
 
     listing = "".join(value for _, value in modal.frames[0])
     assert listing.startswith("  Tool output · latest 55\n")
-    assert "showing 1-10 of 55" in listing
+    assert "showing 1-9 of 55" in listing
     assert "Bash  printf 54" in listing  # the newest is in view
 
 
@@ -137,7 +137,7 @@ async def test_tool_output_browser_keeps_every_stored_record_with_a_running_scri
 
     listing = "".join(value for _, value in modal.frames[0])
     assert listing.startswith("  Tool output · latest 401\n")
-    assert "showing 1-10 of 401" in listing
+    assert "showing 1-9 of 401" in listing
     assert "ToolScript" in listing  # the running script's live entry is listed too
 
 

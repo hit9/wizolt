@@ -329,18 +329,17 @@ Statusbar layouts:
 | `vim` | A continuous background with model and reasoning on the left, context on the right |
 | `lualine` | A highlighted session identity, model and reasoning on the left; tools, cache and context on the right |
 
-Divider layouts:
+Divider layouts in the picker:
 
 | Preset | Appearance |
 | --- | --- |
-| `comet` | Activity with a waiting dot and a single rule |
-| `plain` | Activity and a single rule |
-| `minimal` | Activity only while running; a rule while idle |
-| `powerline` | Activity and metrics in color segments at opposite ends |
-| `dashed` | Activity followed by a dashed rule |
-| `dotted` | Waiting dot, activity and a finely dotted rule |
-| `double` | Activity inset in a double rule |
-| `right` | Activity aligned to the right end of the rule |
+| `comet` | A quiet rule with a waiting dot and activity label |
+| `capsule` | A centered, rounded activity badge with light rules on both sides |
+| `frame` | Rounded top corners and an inset activity label frame the input area |
+| `rail` | Activity on the left; elapsed time, speed and queue counts on the right |
+
+Existing divider preset names still work in config files. If you use one, the picker offers
+`current (name)` so you can keep it; custom templates appear as `custom (current)`.
 
 Sweeps:
 
@@ -357,9 +356,10 @@ Sweeps:
 
 The defaults are `preset:default`, `preset:comet` and `preset:comet`. Layout and sweep are
 independent: a sweep colors the divider's fill region only while running. The `powerline` and `lualine` statusbars and `powerline` divider require a
-font containing `` and ``; the other presets need no special font.
+font containing `` and ``. The `capsule` divider uses rounded Powerline glyphs `` and ``
+(available in Nerd Fonts). The other presets need no special font.
 
-`/statusbar powerline` and `/divider minimal` select layouts directly. Edit your config file
+`/statusbar powerline` and `/divider frame` select layouts directly. Edit your config file
 for custom templates and formulas, then restart the session. Invalid settings at startup use
 the defaults.
 

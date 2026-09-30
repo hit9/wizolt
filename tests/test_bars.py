@@ -123,7 +123,7 @@ def test_every_preset_renders_bounded_idle_and_running_rows():
         assert 0 <= sweep.brightness(10, 2, 80) <= 1
 
 
-@pytest.mark.parametrize("name", DIVIDER_PRESETS)
+@pytest.mark.parametrize("name", [name for name in DIVIDER_PRESETS if name != "frame"])
 @pytest.mark.parametrize("width", [0, 1, 3, 4, 8, 80])
 def test_idle_divider_presets_have_no_gaps(name, width):
     template = Template("preset:" + name, DIVIDER_PRESETS)
@@ -140,6 +140,45 @@ def test_builtin_sweeps_stay_defined_and_animate_at_different_widths(name):
         assert not sweep.error
         assert all(0 <= level <= 1 for level in levels)
         assert len(set(levels)) > 1 if name != "none" else set(levels) == {0}
+
+
+def test_structured_dividers_keep_their_shape_and_full_activity_label():
+    from wizolt.ui.render import Theme
+
+    idle = {"running": False}
+    samples = {"capsule": "─" * 12, "frame": "╭──────────╮"}
+    for name, expected in samples.items():
+        template = Template("preset:" + name, DIVIDER_PRESETS)
+        styles = Theme.bar_styles(template.styles)
+        assert text(template.render(idle, 12, styles)) == expected
+        for width in range(50):
+            assert get_cwidth(text(template.render(idle, width, styles))) == width
+        label = "working (12s · 42 tok/s) [ 2 queued ]"
+        values = {"running": True, "label": label}
+        rendered = text(template.render(values, 80, styles))
+        assert label in rendered
+        assert get_cwidth(rendered) == 80
+        if name == "capsule":
+            assert abs(len(rendered) - rendered.index(label) * 2 - len(label)) <= 1
+        for width in range(50):
+            assert get_cwidth(text(template.render(values, width, styles))) == width
+
+
+def test_rail_separates_activity_and_metrics_and_keeps_queue_kinds_distinct():
+    from wizolt.ui.render import Theme
+
+    template = Template("preset:rail", DIVIDER_PRESETS)
+    values = dict.fromkeys(FIELDS, 0)
+    values.update(running=True, activity="thinking", elapsed=12, rate="42 tok/s", **{"queue.followup": 2, "queue.next_turn": 1})
+    styles = Theme.bar_styles(template.styles)
+    rendered = text(template.render(values, 100, styles))
+    assert rendered.startswith("◆ thinking ")
+    assert rendered.endswith("12s · 42 tok/s · 2 queued · 1 next turn")
+    for width in range(100):
+        assert get_cwidth(text(template.render(values, width, styles))) <= width
+    values.update(rate="", reset_pending=True)
+    rendered = text(template.render(values, 100, styles))
+    assert "tok/s" not in rendered and rendered.endswith("reset pending")
 
 
 @pytest.mark.parametrize("name", STATUS_PRESETS)

@@ -256,6 +256,16 @@ def test_choice_view_selection_band_keeps_one_width_across_rows():
     assert "   2. much longer label\n" in "".join(text for _, text in ChoiceViewState(choices=("a", "much longer label"), labels={}, disabled=set()).fragments("Pick"))
 
 
+def test_choice_view_budget_includes_the_terminal_row_after_the_legend():
+    state = ChoiceViewState(tuple(str(i) for i in range(12)), {}, set(), max_rows=20, height=20)
+    state.handle_key("G")
+    parts = state.fragments("Divider", lambda _choice: [("", "sample\n" * 6)])
+    rows = "".join(text for _, text in parts).split("\n")
+    assert len(rows) <= 20
+    assert rows[0].strip() == "Divider"
+    assert any(style == "class:choice.selected" and text == "11" for style, text in parts)
+
+
 def test_markdown_table_with_empty_headings_is_a_key_value_list():
     console = markdown_module.markdown_console(60)
     with console.capture() as capture:

@@ -73,9 +73,9 @@ async def test_divider_layout_cancel_does_not_open_sweep(command_loop):
 async def test_divider_sweep_cancel_keeps_confirmed_layout(command_loop):
     modal = command_loop.presentation.tui = BarModal(["j", "enter", "j", "escape"], consumed=True)
     result = await divider_command(command_loop, "")
-    assert "divider.format: preset:minimal" in result
+    assert "divider.format: preset:capsule" in result
     layout = command_loop.presentation.status_bar.layout
-    assert layout.sources["divider"] == "preset:minimal"
+    assert layout.sources["divider"] == "preset:capsule"
     assert layout.sources["sweep"] == "preset:comet"
     frames = ["".join(fragment[1] for fragment in frame) for frame in modal.frames]
     assert "Divider › Layout" in frames[0]
@@ -83,7 +83,7 @@ async def test_divider_sweep_cancel_keeps_confirmed_layout(command_loop):
     assert any("Running (preview)" in frame and "Queued (preview)" in frame for frame in frames)
     assert modal.pos == 4
     saved = tomllib.loads(Path(command_loop.session.config.path).read_text())
-    assert saved["ui"]["divider"] == {"format": "preset:minimal"}
+    assert saved["ui"]["divider"] == {"format": "preset:capsule"}
 
 
 async def test_divider_cascade_saves_layout_then_sweep(command_loop):
@@ -103,6 +103,19 @@ async def test_divider_cascade_can_keep_custom_layout_and_sweep(command_loop):
     assert "saved" in result
     saved = tomllib.loads(Path(command_loop.session.config.path).read_text())
     assert saved["ui"]["divider"] == {"format": "[divider_rule]{fill:─}[/]", "sweep": "0.5"}
+
+
+async def test_divider_picker_is_curated_and_preserves_an_existing_older_preset(command_loop):
+    layout = command_loop.presentation.status_bar.layout
+    assert not layout.configure({"divider": "preset:powerline"}, Theme.bar_styles)
+    modal = command_loop.presentation.tui = BarModal(["g", "j", "j", "j", "j", "enter", "escape"], consumed=True)
+    await divider_command(command_loop, "")
+    first = "".join(text for frame in modal.frames for _, text in frame)
+    assert all(name in first for name in ("comet", "capsule", "frame", "rail", "current (powerline)"))
+    assert "dashed" not in first and "dotted" not in first
+    assert layout.sources["divider"] == "preset:powerline"
+    saved = tomllib.loads(Path(command_loop.session.config.path).read_text())
+    assert saved["ui"]["divider"]["format"] == "preset:powerline"
 
 
 async def test_interrupted_preview_restores_layout_and_stops_animation(command_loop):

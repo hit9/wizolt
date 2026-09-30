@@ -17,6 +17,9 @@ from wizolt.ui.bars import PRESETS
 from wizolt.ui.cli.modals import choice_application
 from wizolt.ui.render import Theme
 
+# Keep the picker focused; older preset names still work in config files.
+DIVIDER_CHOICES = ("comet", "capsule", "frame", "rail")
+
 if TYPE_CHECKING:
     from wizolt.ui.cli.loop import CommandLoop
 
@@ -84,8 +87,10 @@ async def pick_layout(loop: CommandLoop, kind: str) -> str | None:
     layout.errors = []
     original = layout.sources[kind]
     bar.layout = layout
-    current = original[7:] if original.startswith("preset:") else "custom"
-    choices = tuple(PRESETS[kind]) + (("custom",) if current == "custom" else ())
+    presets = DIVIDER_CHOICES if kind == "divider" else tuple(PRESETS[kind])
+    current = original[7:] if original.startswith("preset:") and original[7:] in presets else "custom"
+    choices = presets + (("custom",) if current == "custom" else ())
+    current_label = f"current ({original[7:]})" if original.startswith("preset:") else "custom (current)"
     started = time.monotonic()
 
     def apply(name: str) -> None:
@@ -103,7 +108,7 @@ async def pick_layout(loop: CommandLoop, kind: str) -> str | None:
             loop,
             "Statusbar" if kind == "statusbar" else "Divider › " + ("Sweep" if kind == "sweep" else "Layout"),
             choices,
-            {"custom": "custom (current)"},
+            {"custom": current_label},
             current,
             set(),
             preview_fn=lambda _name: preview(loop, kind, started),
@@ -137,7 +142,7 @@ async def divider_command(loop: CommandLoop, args: str) -> str | None:
     if loop.presentation.tui is None or not loop.interactive_input:
         return (
             "Divider layouts: "
-            + ", ".join(PRESETS["divider"])
+            + ", ".join(DIVIDER_CHOICES)
             + ". Sweeps: "
             + ", ".join(PRESETS["sweep"])
             + ". Configure ui.divider.sweep or open /divider interactively."
