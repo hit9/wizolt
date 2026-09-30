@@ -4,8 +4,11 @@ orphan: true
 
 # Drawing documentation figures
 
-`render.py` builds the SVG illustrations in these guides. Terminal examples use wizolt's own
-renderers; context and worker diagrams use the same colors and terminal frame.
+`render.py` builds the SVG illustrations in these guides. Only complete UI previews drawn by
+wizolt's picker renderer use a terminal window frame. Composed examples and side-by-side
+comparisons use a plain “Rendered UI sample” panel. Concept diagrams use labeled boxes and
+arrows, a sans-serif font and a “Concept diagram” label. Neither samples nor diagrams have
+window controls or a wizolt title bar.
 Rebuilding unchanged figures produces identical files.
 
 ## Run it
@@ -67,8 +70,10 @@ in `render.py`. These are illustrations, not recordings of a real model run.
 
 ## Add a figure
 
-1. Add a method to `Illustrations`. Use `message`, `log`, `styled` or `bar` for terminal UI;
-   use Rich `Text` for a conceptual diagram. Finish with `save("your-figure", rows)`.
+1. Add a method to `Illustrations`. For terminal UI, use `message`, `log`, `styled` or `bar`
+   and finish with `save("your-figure", rows)`. For a conceptual flow, use
+   `diagram(name, title, steps, note)`, where each step is a `(label, detail)` pair.
+   Do not dress a workflow or explanation as an application screenshot.
 2. Add its name and method to `RECIPES`. For a configuration example, add a marked TOML block
    in the reference and read it with `example("your-example")`.
 3. Run `--figure your-figure` and embed `_static/your-figure.svg` with a MyST `figure` directive.

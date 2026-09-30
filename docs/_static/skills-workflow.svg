@@ -1,96 +1,24 @@
-<svg class="rich-terminal" viewBox="0 0 946 294.0" xmlns="http://www.w3.org/2000/svg">
-    <!-- Generated with Rich https://www.textualize.io -->
-    <style>
-
-    @font-face {
-        font-family: "Fira Code";
-        src: local("FiraCode-Regular"),
-                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff2/FiraCode-Regular.woff2") format("woff2"),
-                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff/FiraCode-Regular.woff") format("woff");
-        font-style: normal;
-        font-weight: 400;
-    }
-    @font-face {
-        font-family: "Fira Code";
-        src: local("FiraCode-Bold"),
-                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff2/FiraCode-Bold.woff2") format("woff2"),
-                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff/FiraCode-Bold.woff") format("woff");
-        font-style: bold;
-        font-weight: 700;
-    }
-
-    .skills-workflow-matrix {
-        font-family: Fira Code, monospace;
-        font-size: 20px;
-        line-height: 24.4px;
-        font-variant-east-asian: full-width;
-    }
-
-    .skills-workflow-title {
-        font-size: 18px;
-        font-weight: bold;
-        font-family: arial;
-    }
-
-    .skills-workflow-r1 { fill: #8ec07c;font-weight: bold }
-.skills-workflow-r2 { fill: #abb2bf }
-.skills-workflow-r3 { fill: #ad9d87 }
-    </style>
-
-    <defs>
-    <clipPath id="skills-workflow-clip-terminal">
-      <rect x="0" y="0" width="926.1999999999999" height="243.0" />
-    </clipPath>
-    <clipPath id="skills-workflow-line-0">
-    <rect x="0" y="1.5" width="927.2" height="24.65"/>
-            </clipPath>
-<clipPath id="skills-workflow-line-1">
-    <rect x="0" y="25.9" width="927.2" height="24.65"/>
-            </clipPath>
-<clipPath id="skills-workflow-line-2">
-    <rect x="0" y="50.3" width="927.2" height="24.65"/>
-            </clipPath>
-<clipPath id="skills-workflow-line-3">
-    <rect x="0" y="74.7" width="927.2" height="24.65"/>
-            </clipPath>
-<clipPath id="skills-workflow-line-4">
-    <rect x="0" y="99.1" width="927.2" height="24.65"/>
-            </clipPath>
-<clipPath id="skills-workflow-line-5">
-    <rect x="0" y="123.5" width="927.2" height="24.65"/>
-            </clipPath>
-<clipPath id="skills-workflow-line-6">
-    <rect x="0" y="147.9" width="927.2" height="24.65"/>
-            </clipPath>
-<clipPath id="skills-workflow-line-7">
-    <rect x="0" y="172.3" width="927.2" height="24.65"/>
-            </clipPath>
-<clipPath id="skills-workflow-line-8">
-    <rect x="0" y="196.7" width="927.2" height="24.65"/>
-            </clipPath>
-    </defs>
-
-    <rect fill="#282c34" stroke="rgba(255,255,255,0.35)" stroke-width="1" x="1" y="1" width="944" height="292" rx="8"/><text class="skills-workflow-title" fill="#abb2bf" text-anchor="middle" x="472" y="27">wizolt</text>
-            <g transform="translate(26,22)">
-            <circle cx="0" cy="0" r="7" fill="#ff5f57"/>
-            <circle cx="22" cy="0" r="7" fill="#febc2e"/>
-            <circle cx="44" cy="0" r="7" fill="#28c840"/>
-            </g>
-        
-    <g transform="translate(9, 41)" clip-path="url(#skills-workflow-clip-terminal)">
-    
-    <g class="skills-workflow-matrix">
-    <text class="skills-workflow-r1" x="0" y="20" textLength="122" clip-path="url(#skills-workflow-line-0)">1&#160;&#160;Install</text><text class="skills-workflow-r2" x="927.2" y="20" textLength="12.2" clip-path="url(#skills-workflow-line-0)">
-</text><text class="skills-workflow-r2" x="0" y="44.4" textLength="488" clip-path="url(#skills-workflow-line-1)">&#160;&#160;&#160;.wizolt/skills/release-notes/SKILL.md</text><text class="skills-workflow-r2" x="927.2" y="44.4" textLength="12.2" clip-path="url(#skills-workflow-line-1)">
-</text><text class="skills-workflow-r3" x="0" y="68.8" textLength="585.6" clip-path="url(#skills-workflow-line-2)">&#160;&#160;&#160;A&#160;name,&#160;a&#160;description,&#160;and&#160;your&#160;instructions.</text><text class="skills-workflow-r2" x="927.2" y="68.8" textLength="12.2" clip-path="url(#skills-workflow-line-2)">
-</text><text class="skills-workflow-r2" x="927.2" y="93.2" textLength="12.2" clip-path="url(#skills-workflow-line-3)">
-</text><text class="skills-workflow-r1" x="0" y="117.6" textLength="109.8" clip-path="url(#skills-workflow-line-4)">2&#160;&#160;Invoke</text><text class="skills-workflow-r2" x="927.2" y="117.6" textLength="12.2" clip-path="url(#skills-workflow-line-4)">
-</text><text class="skills-workflow-r2" x="0" y="142" textLength="207.4" clip-path="url(#skills-workflow-line-5)">&#160;&#160;&#160;/release-notes</text><text class="skills-workflow-r2" x="927.2" y="142" textLength="12.2" clip-path="url(#skills-workflow-line-5)">
-</text><text class="skills-workflow-r3" x="0" y="166.4" textLength="610" clip-path="url(#skills-workflow-line-6)">&#160;&#160;&#160;Or&#160;let&#160;the&#160;agent&#160;load&#160;it&#160;when&#160;it&#160;fits&#160;the&#160;task.</text><text class="skills-workflow-r2" x="927.2" y="166.4" textLength="12.2" clip-path="url(#skills-workflow-line-6)">
-</text><text class="skills-workflow-r2" x="927.2" y="190.8" textLength="12.2" clip-path="url(#skills-workflow-line-7)">
-</text><text class="skills-workflow-r1" x="0" y="215.2" textLength="317.2" clip-path="url(#skills-workflow-line-8)">3&#160;&#160;Follow&#160;the&#160;instructions</text><text class="skills-workflow-r2" x="927.2" y="215.2" textLength="12.2" clip-path="url(#skills-workflow-line-8)">
-</text><text class="skills-workflow-r2" x="0" y="239.6" textLength="658.8" clip-path="url(#skills-workflow-line-9)">&#160;&#160;&#160;Read&#160;commits&#160;→&#160;group&#160;changes&#160;→&#160;draft&#160;release&#160;notes.</text><text class="skills-workflow-r2" x="927.2" y="239.6" textLength="12.2" clip-path="url(#skills-workflow-line-9)">
-</text>
-    </g>
-    </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="472" viewBox="0 0 760 472" role="img">
+<title>Write once, use when needed</title>
+<style>text{font-family:system-ui,sans-serif;fill:#dce5ef}.detail{font-size:17px;fill:#acb9c9}.heading{font-size:21px;font-weight:600}</style>
+<rect width="760" height="472" rx="12" fill="#1c2531"/>
+<text x="32" y="30" font-size="12" letter-spacing="2" fill="#97acc5">CONCEPT DIAGRAM</text>
+<text x="32" y="64" class="heading">Write once, use when needed</text>
+<rect x="32" y="86" width="696" height="84" rx="8" fill="#273749" stroke="#49617e"/>
+<circle cx="61" cy="115" r="13" fill="#99badd"/>
+<text x="61" y="121" text-anchor="middle" style="fill:#182533;font-size:16px">1</text>
+<text x="86" y="121" class="heading">Install a skill</text>
+<text x="86" y="149" class="detail">Put instructions in .wizolt/skills/release-notes/SKILL.md</text>
+<path d="M380 170 v20 m-6 -6 l6 6 6 -6" fill="none" stroke="#91a9c5" stroke-width="2"/>
+<rect x="32" y="198" width="696" height="84" rx="8" fill="#273749" stroke="#49617e"/>
+<circle cx="61" cy="227" r="13" fill="#99badd"/>
+<text x="61" y="233" text-anchor="middle" style="fill:#182533;font-size:16px">2</text>
+<text x="86" y="233" class="heading">Invoke /release-notes</text>
+<text x="86" y="261" class="detail">Or let the agent load it when it fits the task.</text>
+<path d="M380 282 v20 m-6 -6 l6 6 6 -6" fill="none" stroke="#91a9c5" stroke-width="2"/>
+<rect x="32" y="310" width="696" height="84" rx="8" fill="#273749" stroke="#49617e"/>
+<circle cx="61" cy="339" r="13" fill="#99badd"/>
+<text x="61" y="345" text-anchor="middle" style="fill:#182533;font-size:16px">3</text>
+<text x="86" y="345" class="heading">Follow the instructions</text>
+<text x="86" y="373" class="detail">Read commits → group changes → draft release notes</text>
+<text x="32" y="450" class="detail">Only the short description is shown until the skill is used.</text></svg>

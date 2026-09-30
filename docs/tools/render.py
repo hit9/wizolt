@@ -12,6 +12,7 @@ import re
 import sys
 import tempfile
 import tomllib
+from html import escape
 from pathlib import Path
 from unittest.mock import patch
 
@@ -40,6 +41,20 @@ from wizolt.ui.tui import InputMode, TuiApp
 DOCS = ROOT / "docs"
 WIDTH = 76
 NOW = 20.0
+SAMPLE_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}">
+<title>Rendered UI sample</title>
+<style>
+.{unique_id}-matrix {{font-family:monospace;font-size:{char_height}px;line-height:{line_height}px}}
+{styles}
+</style>
+<defs><clipPath id="{unique_id}-clip-terminal">
+<rect width="{terminal_width}" height="{terminal_height}"/>
+</clipPath>{lines}</defs>
+<rect width="{width}" height="{height}" rx="8" fill="#282c34"/>
+<text x="18" y="26" fill="#aebac9" font-family="sans-serif" font-size="12" letter-spacing="2">RENDERED UI SAMPLE</text>
+<g transform="translate({terminal_x}, {terminal_y})" clip-path="url(#{unique_id}-clip-terminal)">
+{backgrounds}<g class="{unique_id}-matrix">{matrix}</g></g>
+</svg>"""
 # The virtual terminal's own colors; wizolt themes leave its background alone.
 TERMINAL_THEME = TerminalTheme(
     (40, 44, 52),
@@ -113,7 +128,8 @@ class Illustrations:
         for row in rows:
             console.print(row, soft_wrap=True)
         # Stable identifiers make a second run byte-identical, rather than churning SVG ids.
-        console.save_svg(str(self.output / f"{name}.svg"), title="wizolt", theme=TERMINAL_THEME, unique_id=name)
+        options = {} if name in {"appearance-picker", "appearance-input", "appearance-input-editor"} else {"code_format": SAMPLE_SVG}
+        console.save_svg(str(self.output / f"{name}.svg"), title="wizolt", theme=TERMINAL_THEME, unique_id=name, **options)
 
     def appearance_picker(self) -> None:
         picker = AppearancePicker(self.loop, NOW - 12)
@@ -249,87 +265,91 @@ class Illustrations:
             self.session.pending_user_inputs.clear()
             self.loop.presentation.tui = None
 
-    def compaction(self) -> None:
-        # A conceptual diagram, not an application screenshot: lengths are illustrative.
-        rows = [
-            self.label("Before compaction"),
-            Text.assemble(
-                ("  Older conversation  ", Theme.rich_color("muted")),
-                ("████████████████████", Theme.rich_color("muted")),
-                ("  recent messages", Theme.rich_color("text")),
-            ),
-            Text(""),
-            self.label("After compaction"),
-            Text.assemble(
-                ("  Short summary       ", Theme.rich_color("success")),
-                ("████", Theme.rich_color("success")),
-                ("                  recent messages", Theme.rich_color("text")),
-            ),
-            Text(""),
-            self.label("About eight recent messages stay unchanged."),
-            self.label("Earlier conversation remains available in history files."),
+    def diagram(self, name: str, title: str, steps: list[tuple[str, str]], note: str) -> None:
+        """Conceptual flows use labeled boxes and arrows, never terminal chrome."""
+        if name not in self.selected:
+            return
+        height = 136 + len(steps) * 112
+        parts = [
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="760" height="{height}" viewBox="0 0 760 {height}" role="img">',
+            f"<title>{escape(title)}</title>",
+            "<style>text{font-family:system-ui,sans-serif;fill:#dce5ef}.detail{font-size:17px;fill:#acb9c9}.heading{font-size:21px;font-weight:600}</style>",
+            f'<rect width="760" height="{height}" rx="12" fill="#1c2531"/>',
+            '<text x="32" y="30" font-size="12" letter-spacing="2" fill="#97acc5">CONCEPT DIAGRAM</text>',
+            f'<text x="32" y="64" class="heading">{escape(title)}</text>',
         ]
-        self.save("context-compaction", rows)
+        for index, (label, detail) in enumerate(steps):
+            y = 86 + index * 112
+            if index:
+                parts.append(f'<path d="M380 {y - 28} v20 m-6 -6 l6 6 6 -6" fill="none" stroke="#91a9c5" stroke-width="2"/>')
+            parts.extend(
+                [
+                    f'<rect x="32" y="{y}" width="696" height="84" rx="8" fill="#273749" stroke="#49617e"/>',
+                    f'<circle cx="61" cy="{y + 29}" r="13" fill="#99badd"/>',
+                    f'<text x="61" y="{y + 35}" text-anchor="middle" style="fill:#182533;font-size:16px">{index + 1}</text>',
+                    f'<text x="86" y="{y + 35}" class="heading">{escape(label)}</text>',
+                    f'<text x="86" y="{y + 63}" class="detail">{escape(detail)}</text>',
+                ]
+            )
+        parts.append(f'<text x="32" y="{height - 22}" class="detail">{escape(note)}</text></svg>')
+        (self.output / f"{name}.svg").write_text("\n".join(parts) + "\n", encoding="utf-8")
+
+    def compaction(self) -> None:
+        self.diagram(
+            "context-compaction",
+            "Make room without starting over",
+            [
+                ("Before: older conversation + recent messages", "A long conversation fills the model's window."),
+                ("After: short summary + recent messages", "About eight recent messages stay unchanged."),
+            ],
+            "Earlier conversation remains available in history files.",
+        )
 
     def caching(self) -> None:
-        prefix, tail = Theme.rich_color("success"), Theme.rich_color("muted")
-        self.save(
+        self.diagram(
             "context-cache",
+            "Reuse the unchanged beginning",
             [
-                Text.assemble(("Previous  ", tail), ("████████████████████████", prefix), ("░░░░░░", tail)),
-                Text.assemble(("Next      ", tail), ("████████████████████████", prefix), ("░░░░░░░░░░", tail)),
-                Text(""),
-                Text.assemble(("          █ unchanged prefix", prefix), ("   ░ new or changed input", tail)),
+                ("Previous request", "Shared instructions + conversation so far"),
+                ("Next request", "Same beginning + your new message and recent results"),
             ],
+            "The provider can reuse the shared prefix; new input adds work.",
         )
 
     def skills(self) -> None:
-        self.save(
+        self.diagram(
             "skills-workflow",
+            "Write once, use when needed",
             [
-                Text("1  Install", style=Theme.rich_color("accent") + " bold"),
-                Text("   .wizolt/skills/release-notes/SKILL.md"),
-                self.label("   A name, a description, and your instructions."),
-                Text(""),
-                Text("2  Invoke", style=Theme.rich_color("accent") + " bold"),
-                Text("   /release-notes"),
-                self.label("   Or let the agent load it when it fits the task."),
-                Text(""),
-                Text("3  Follow the instructions", style=Theme.rich_color("accent") + " bold"),
-                Text("   Read commits → group changes → draft release notes."),
+                ("Install a skill", "Put instructions in .wizolt/skills/release-notes/SKILL.md"),
+                ("Invoke /release-notes", "Or let the agent load it when it fits the task."),
+                ("Follow the instructions", "Read commits → group changes → draft release notes"),
             ],
+            "Only the short description is shown until the skill is used.",
         )
 
     def hooks(self) -> None:
-        self.save(
+        self.diagram(
             "hooks-workflow",
+            "Format after a successful edit",
             [
-                Text("Edit parser.py", style=Theme.rich_color("tool") + " bold"),
-                self.label("        ↓ review and approve the proposed change"),
-                Text("File updated"),
-                self.label("        ↓ PostToolUse hook"),
-                Text("ruff format --quiet .", style=Theme.rich_color("accent")),
-                self.label("        ↓ wait for the formatter"),
-                Text("Agent continues", style=Theme.rich_color("success")),
+                ("Review and approve", "The agent proposes a change to parser.py."),
+                ("Apply the edit, then run your hook", "PostToolUse runs: ruff format --quiet ."),
+                ("Continue the task", "The agent waits for the formatter before continuing."),
             ],
+            "A hook is your command, triggered by an event you choose.",
         )
 
     def worker(self) -> None:
-        # A workflow illustration; model names and token counts would distract from the handoff.
-        self.save(
+        self.diagram(
             "worker-handoff",
+            "A focused second opinion",
             [
-                Text("1  Main conversation", style=Theme.rich_color("accent") + " bold"),
-                Text("   Plan the refactor; ask a worker to review parser.py."),
-                self.label("                 ↓ you approve the order"),
-                Text(""),
-                Text("2  Worker", style=Theme.rich_color("status_worker") + " bold"),
-                Text("   Read the files, check the tests, return a focused report."),
-                self.label("                 ↓ the report comes back"),
-                Text(""),
-                Text("3  Main conversation", style=Theme.rich_color("accent") + " bold"),
-                Text("   Use the report and continue your original task."),
+                ("Main conversation → approved order", "Plan the refactor; ask a worker to review parser.py."),
+                ("Worker → report", "Read the files, check the tests, return findings."),
+                ("Main conversation continues", "Use the report to continue your original task."),
             ],
+            "Both share the workspace; each has its own conversation.",
         )
 
 
