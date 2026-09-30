@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- Send actual Space and Tab bytes in the Zellij test adapter; the appearance acceptance test's
+  "pin this layout" and "jump groups" presses were being typed as text, so its cycle that saves
+  `preset:rail` never pinned a layout and failed deterministically.
+
 ## 0.62.0 - 2026-09-30
 
 ### Added

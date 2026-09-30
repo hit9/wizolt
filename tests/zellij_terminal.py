@@ -193,8 +193,10 @@ class ZellijPane:
 
     def keys(self, *keys):
         for key in keys:
-            if key in {"C-c", "C-u", "Enter", "Escape"}:
-                self.action("write", str({"C-c": 3, "C-u": 21, "Enter": 13, "Escape": 27}[key]))
+            # Byte-valued keys: tmux's send-keys interprets these names, but write-chars would type
+            # them as text, so a scenario's Space or Tab press would silently do nothing.
+            if key in {"C-c", "C-u", "Enter", "Escape", "Space", "Tab"}:
+                self.action("write", str({"C-c": 3, "C-u": 21, "Enter": 13, "Escape": 27, "Space": 32, "Tab": 9}[key]))
             else:
                 self.literal(key)
 

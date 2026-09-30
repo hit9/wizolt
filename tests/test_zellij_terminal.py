@@ -30,14 +30,16 @@ def result(stdout, returncode=0):
     return SimpleNamespace(stdout=stdout, returncode=returncode, stderr="query failed" if returncode else "")
 
 
-def test_keys_delivers_ctrl_c_as_a_control_byte_and_preserves_literal_text(query):
+def test_keys_delivers_control_and_named_keys_as_bytes_and_preserves_literal_text(query):
     pane, run = query
     run.return_value = result("")
-    pane.keys("j", "C-c", "Enter", "Escape", "C-u")
+    pane.keys("j", "C-c", "Space", "Tab", "Enter", "Escape", "C-u")
     pane.literal("C-c")
     assert [call.args[0][-3:] for call in run.call_args_list] == [
         ["action", "write-chars", "j"],
         ["action", "write", "3"],
+        ["action", "write", "32"],
+        ["action", "write", "9"],
         ["action", "write", "13"],
         ["action", "write", "27"],
         ["action", "write", "21"],
