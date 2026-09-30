@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.60.0 - 2026-09-29
+
 ### Changed
 
 - Restyle the built-in bar presets other than `default`, `powerline`, `lualine` and the `comet`
