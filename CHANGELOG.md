@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Use `itertools.pairwise` in the sweep smoothness test so repository-wide Ruff checks pass.
+
 ## 0.59.0 - 2026-09-29
 
 ### Added

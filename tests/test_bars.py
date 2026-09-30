@@ -1,5 +1,7 @@
 """UI templates: observable layout, literal interpolation and rejected executable input."""
 
+from itertools import pairwise
+
 import pytest
 from prompt_toolkit.utils import get_cwidth
 
@@ -118,7 +120,7 @@ def test_normalized_sweeps_have_distinct_shapes_and_width_independent_timing():
     aurora = Sweep("preset:aurora")
     levels = [aurora.brightness(0, 1, 80, u=i / 100) for i in range(101)]
     assert max(levels) - min(levels) > 0.2
-    assert max(abs(a - b) for a, b in zip(levels, levels[1:])) < 0.05
+    assert max(abs(a - b) for a, b in pairwise(levels)) < 0.05
     for sweep in (comet, ripple, aurora):
         assert sweep.brightness(0, 1, 40, u=0.4) == sweep.brightness(0, 1, 200, u=0.4)
 
