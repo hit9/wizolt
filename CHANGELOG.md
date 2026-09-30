@@ -4,6 +4,8 @@
 
 ### Added
 
+- Templates support repeated short fill patterns and multiple fills sharing the available width,
+  including centered labels. Fill patterns reject control, combining and double-width characters.
 - Expand statusbar presets to ten, and divider and sweep presets to eight each: compact, bracketed, monitor and
   block status rows, plus Vim- and lualine-inspired layouts; dashed, dotted, double and
   right-aligned dividers; reverse, wave, twin

@@ -291,8 +291,11 @@ class Template:
                     value = token[1:-1]
                     if value == ">":
                         target.append(Node("fill", " "))
-                    elif value.startswith("fill:") and get_cwidth(value[5:]) == 1 and len(value[5:]) == 1:
-                        target.append(Node("fill", value[5:]))
+                    elif value.startswith("fill:"):
+                        fill_pattern = value[5:]
+                        if not 1 <= len(fill_pattern) <= 32 or clean(fill_pattern) != fill_pattern or any(get_cwidth(char) != 1 for char in fill_pattern):
+                            raise ValueError("fill needs 1–32 printable single-column characters")
+                        target.append(Node("fill", fill_pattern))
                     elif value in ("join:", "join:"):
                         target.append(Node("join", value[5:]))
                     else:
@@ -381,10 +384,9 @@ class Template:
             omitted.add(id(node))
             active = cells()
         fills = sum(cell.kind == "fill" for cell in active)
-        if fills > 1:
-            raise ValueError("only one elastic region is allowed per rendered line")
         fixed = sum(get_cwidth(cell.text) for cell in active if cell.kind != "fill")
         remaining = max(0, width - fixed)
+        fill_width, extra = divmod(remaining, fills or 1)
         fragments: Fragments = []
         position = 0
 
@@ -394,7 +396,9 @@ class Template:
         for i, cell in enumerate(active):
             style, text = cell.style, cell.text
             if cell.kind == "fill":
-                text *= remaining
+                size = fill_width + (extra > 0)
+                extra = max(0, extra - 1)
+                text = (text * ((size + len(text) - 1) // len(text)))[:size]
                 if sweep is not None and ramp and text.strip():
                     for offset, char in enumerate(text):
                         level = sweep.brightness(position + offset, t, width)
@@ -415,9 +419,9 @@ class Template:
                 position += get_cwidth(text)
         # Keep the right-hand group visible when fixed text alone exceeds the width.
         if fixed > width and fills:
-            cut = next(i for i, cell in enumerate(active) if cell.kind == "fill")
+            cut = max(i for i, cell in enumerate(active) if cell.kind == "fill")
             right_width = sum(get_cwidth(cell.text) for cell in active[cut + 1 :])
-            left_width = sum(get_cwidth(cell.text) for cell in active[:cut])
+            left_width = sum(get_cwidth(cell.text) for cell in active[:cut] if cell.kind != "fill")
             left = clip(fragments, left_width)
             right: Fragments = []
             skip = left_width

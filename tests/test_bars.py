@@ -68,6 +68,28 @@ def test_conditions_optional_spans_alignment_and_wide_characters():
     assert text(template.render(values, 3, {})).endswith("ok")
 
 
+def test_patterned_fills_share_the_width_and_center_wide_labels():
+    template = Template("{fill:─·} 模型 {fill:·─}")
+    assert text(template.render({}, 14, {})) == "─·─· 模型 ·─·─"
+    assert text(template.render({}, 15, {})) == "─·─·─ 模型 ·─·─"
+    assert text(Template("A{>}B{>}C").render({}, 8, {})) == "A   B  C"
+    assert text(Template("L{fill:ab}M{fill:cd}RIGHT").render({}, 6, {})) == "LRIGHT"
+    for width in range(20):
+        assert get_cwidth(text(template.render({}, width, {}))) <= width
+
+
+@pytest.mark.parametrize("pattern", ["", "a" * 33, "界", "a\u0301", "\x1b", "\n", "\t", "\x9b", "\u200b"])
+def test_fill_patterns_reject_controls_wide_and_combining_characters(pattern):
+    with pytest.raises(ValueError, match="fill needs"):
+        Template("{fill:" + pattern + "}")
+
+
+def test_sweep_crosses_multiple_patterned_fills_without_touching_the_label():
+    template = Template("[rule]{fill:─·}[/][label]AB[/][rule]{fill:·─}[/]")
+    parts = template.render({}, 10, {"rule": "rule", "label": "label"}, sweep=Sweep("x / max(1, w - 1)"), ramp=("dim", "bright"))
+    assert parts == [("dim", "─·─·"), ("label", "AB"), ("bright", "·─·─")]
+
+
 def test_powerline_joins_use_adjacent_backgrounds_and_restore_nested_styles():
     template = Template("[a] A {join:}[b] B [/][reset]{>}{join:}[a] C [reset]")
     parts = template.render({}, 30, {"a": "fg:#000000 bg:#ff0000", "b": "fg:#ffffff bg:#0000ff"})

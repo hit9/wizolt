@@ -384,14 +384,16 @@ sweep = "preset:none"
 | `[fg=#fff bg=#333 bold]…[/]` | Explicit foreground, background and attributes; colors can also name theme roles |
 | `[reset]` | Restore terminal defaults |
 | `{>}` | Push the remaining content to the right |
-| `{fill:─}` | Fill the remaining width with a single-column character |
+| `{fill:─}` / `{fill:─·}` | Fill space by repeating a character or short pattern |
 | `{join:}` / `{join:}` | Join adjacent background colors automatically |
 | `{% if worker.active %}…{% else %}…{% endif %}` | Conditional content; `else` is optional |
 | `{% optional priority=10 %}…{% endoptional %}` | Omit the whole span when space is short; lower priorities go first |
 
-Use at most one `{>}` or `{fill:…}` in a rendered line. Include a separator inside its optional
-span so both disappear together. Remaining text is clipped to one terminal row, preserving the
-right-hand group where possible. Close styles inside conditional and optional spans. Double
+Multiple `{>}` or `{fill:…}` regions share the free space equally. For example,
+`{fill:─} {label} {fill:─}` centers a label between two rules. Patterns accept 1–32 printable
+single-column characters. Include a separator inside its optional span so both disappear together.
+Remaining text is clipped to one terminal row, preserving the group after the last fill where
+possible. Close styles inside conditional and optional spans. Double
 brackets to print them literally: `{{`, `}}`, `[[`, `]]`.
 
 Conditions support comparisons, parentheses, `and`, `or` and `not`. For example:
