@@ -36,6 +36,32 @@ The script uses the project's Rich and prompt_toolkit dependencies. It uses fixe
 text and a temporary session, without contacting a provider or reading your personal config.
 The clock, terminal size and SVG identifiers are fixed.
 
+## Compare color proposals
+
+`theme_preview.py` builds a standalone HTML comparison using the same message, diff, menu,
+statusbar and divider renderers. Open the generated file in your browser:
+
+```sh
+uv run --no-sync python docs/tools/theme_preview.py
+# Default output: theme-preview.html in the repository root.
+
+uv run --no-sync python docs/tools/theme_preview.py --output /tmp/theme-preview.html
+```
+
+The page compares five proposed palettes against their current base themes. Switch the
+statusbar and divider selectors to compare combinations, then mark a favorite. The color
+configuration is available below the comparison. `dark` is an unchanged reference, and
+every sample uses the existing `classic` diff colors. Proposals live in `CANDIDATES` inside
+the script; they are not built-in themes. Regenerate the HTML after changing them.
+
+The right panel also proposes single-row input and message backgrounds with space below
+the divider. This is a layout draft; the displayed TOML changes colors and code highlighting.
+The page uses English text and monospace fonts throughout.
+
+The terminal samples have no window decorations: they are assembled rendered examples,
+not session screenshots. SVG preserves full-row backgrounds and Chinese character widths;
+powerline joins use vector paths, so the comparison needs no Nerd Font or online assets.
+
 ## Figure names
 
 | Guide | Names |

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Documentation
+
+- Add a standalone HTML color comparison and reusable generator with five palette proposals,
+  existing-theme comparisons, statusbar and divider selectors, and copyable color settings.
+  Keep the default dark palette and classic diff colors unchanged.
+
 ### Fixed
 
 - Join the input divider and padded input background into a continuous band; use whitespace
