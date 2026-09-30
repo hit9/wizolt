@@ -1,5 +1,50 @@
 # Local performance baselines
 
+## Appearance review against master
+
+The appearance branch and its bug fixes are compared with `master` (`6b6492a96f12`) in
+[`baselines/linux-arm64-py314-before-appearance-review.json`](baselines/linux-arm64-py314-before-appearance-review.json)
+and [`results/linux-arm64-py314-appearance-review.json`](results/linux-arm64-py314-appearance-review.json).
+The current source is identified by SHA-256 `da99649e2fa46bc6e1b0e2665a9a61eead6d23c35ec60c8b54b99ebc416c05ca`;
+the report's Git revision is the parent of the measured working tree.
+
+Both runs used Linux aarch64, installed CPython 3.14.7, nine samples per metric, identical
+dependencies and workloads, and source exports without bytecode on the same temporary filesystem.
+The baseline ran first, followed by the working tree, with no concurrent tests or builds.
+Frame measurements use warm filesystem caches and no terminal background-query replies.
+
+| Metric (median ms) | master | Appearance review |
+| --- | ---: | ---: |
+| Process → first prompt frame | 144.45 | 144.06 |
+| Banner → prompt | 94.25 | 99.94 |
+| CLI import | 174.61 | 181.83 |
+| Cold replay, 300 blocks | 265.18 | 262.94 |
+| First projection, 100 blocks | 98.58 | 100.02 |
+| New width, 100 blocks | 97.39 | 97.25 |
+| Emit 500 plain rows | 5.94 | 6.13 |
+| Recolor 100 blocks / 500 rows | 107.25 | 110.25 |
+| Append at 5,000-write limit | 0.878 | 0.961 |
+| Revisit width above cache budget | 244.46 | 255.66 |
+
+First-frame latency is essentially unchanged. Recoloring increased by 2.8%; appending at the
+write limit increased by 9.5% (0.083 ms), and replay above the cache budget increased by 4.6%.
+Two-width retained memory was 244,190 → 237,175 bytes. These single local runs do not establish
+a general speedup or slowdown. All replay output hashes match except recoloring, which switches
+to the changed light-theme syntax palette. The probes do not measure every custom theme,
+picker navigation latency, or animation smoothness; real tmux tests cover menu resizing separately.
+
+To repeat without replacing these results:
+
+```sh
+uv run --no-sync python benchmarks/run.py --revision 6b6492a96f12 --repeat 9 \
+  --output /tmp/wizolt-before-appearance-review.json
+uv run --no-sync python benchmarks/run.py --repeat 9 \
+  --baseline /tmp/wizolt-before-appearance-review.json \
+  --output /tmp/wizolt-appearance-review.json
+```
+
+## Earlier comparisons
+
 The retrospective 0.55.1 comparison is recorded in
 [`baselines/linux-arm64-py314-before-0.55.1.json`](baselines/linux-arm64-py314-before-0.55.1.json)
 and [`results/linux-arm64-py314-release-0.55.1.json`](results/linux-arm64-py314-release-0.55.1.json).

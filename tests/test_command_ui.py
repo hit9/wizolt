@@ -61,6 +61,7 @@ async def test_image_route_notice_matches_view_image_tree_vocabulary(tmp_path):
 
 class ModalHarness:
     def __init__(self, keys, *, consumed=False):
+        self.app = None
         self.keys = list(keys)
         # consumed=True hands each key to the next modal in line instead of replaying the whole
         # sequence for every modal, which is how a multi-modal flow (list -> detail -> list) is
@@ -277,7 +278,6 @@ async def test_api_command_uses_the_same_entry_policy_as_the_request_boundary(tm
 
 
 # --- /worker provider cascade: the no-arg picker flows provider -> model -> reasoning. ---
-
 
 
 

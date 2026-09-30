@@ -1511,7 +1511,7 @@ class TuiApp:
             Window(FormattedTextControl(self.input_prompt_above_fragments), wrap_lines=True, dont_extend_height=True),
             filter=Condition(lambda: bool(self._input_prompt_above)),
         )
-        self.modal_window = Window(FormattedTextControl(self.modal_fragments, focusable=True), wrap_lines=False, dont_extend_height=True)
+        self.modal_window = Window(FormattedTextControl(self.modal_fragments, focusable=True, show_cursor=False), wrap_lines=False, dont_extend_height=True)
         modal_active = Condition(lambda: self.modal is not None)
         exclusive_active = Condition(lambda: self.modal is not None and self.modal.exclusive)
         idle = Condition(lambda: self.input_mode == InputMode.CHAT)

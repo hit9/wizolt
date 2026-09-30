@@ -67,7 +67,8 @@ async def test_statusbar_preview_escape_restores_custom_template(command_loop):
     assert "ui" not in saved(command_loop)
 
 
-async def test_tabs_save_statusbar_layout_and_sweep_together(command_loop):
+async def test_tabs_save_statusbar_layout_and_sweep_together(command_loop, monkeypatch):
+    monkeypatch.setattr("wizolt.ui.cli.appearance.picker_height", lambda: 24)
     modal = command_loop.presentation.tui = BarModal(["right", "right", "j", "l", "j", " ", "tab", "j", " ", "enter"], consumed=True)
     result = await theme_command(command_loop, "")
     assert "statusbar.format: preset:minimal" in result
@@ -204,6 +205,26 @@ async def test_small_pane_prioritizes_choices_over_the_sample(command_loop, monk
     assert text.splitlines()[1].strip().startswith("h/l")
     assert "customization" in text.splitlines()[2] and "config" in text.splitlines()[2]
     assert 1 + text.count("\n") == 14
+
+
+@pytest.mark.parametrize("height", [4, 8, 14])
+def test_appearance_tabs_fit_after_the_terminal_shrinks(command_loop, monkeypatch, height):
+    import wizolt.ui.cli.appearance as appearance
+
+    monkeypatch.setattr(appearance, "picker_height", lambda: 24)
+    picker = appearance.AppearancePicker(command_loop, 0)
+    try:
+        picker.fragments()
+        monkeypatch.setattr(appearance, "picker_height", lambda: height)
+        for index, kind in enumerate(appearance.TAB_KINDS):
+            picker.tabs.tab = index
+            text = "".join(text for _, text in picker.fragments())
+            assert 1 + text.count("\n") <= height, kind
+            assert "Enter save" in text and "Esc cancel" in text
+        picker.handle_key("e")
+        assert 1 + sum(text.count("\n") for _, text in picker.fragments()) <= height
+    finally:
+        picker.restore()
 
 
 async def test_choosing_sweep_preserves_pinned_layout_while_crossing_other_layouts(command_loop):

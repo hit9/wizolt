@@ -34,6 +34,9 @@
 
 ### Changed
 
+- Record the appearance branch's nine-sample comparison against `master`, including startup,
+  replay, recoloring and memory measurements in the
+  [benchmark report](https://github.com/hit9/wizolt/blob/master/benchmarks/README.md#appearance-review-against-master).
 - Use the classic diff style in the getting-started guide's first-turn illustration.
 - Distinguish documentation concept diagrams from terminal previews: context, caching, skills,
   hooks and worker flows use transparent backgrounds, serif text and fine arrows that match
@@ -83,6 +86,14 @@
 
 ### Fixed
 
+- Hide the terminal cursor inside inline menus so it cannot appear as a blinking block
+  over the divider's sweep preview. The input cursor returns when the menu closes.
+- Custom themes using ANSI colors or `default` no longer crash statusbar or file-picker
+  rendering during contrast adjustment.
+- `/theme` recalculates its dimensions after a terminal resize and limits previews in small
+  panes. Very short panes keep the focused choice and controls visible.
+- Invalid array or table values for `ui.diff.style` report a configuration warning and use
+  `auto` instead of crashing startup.
 - A diff style other than `classic` is drawn in exact colors under `dark` and `light` too, on a
   terminal that sets `COLORTERM=truecolor`. It was rounded to 256 colors, where its dark added
   lines turned black.

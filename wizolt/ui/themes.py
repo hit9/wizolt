@@ -189,6 +189,10 @@ def lift(color: str, toward: str, against: str, minimum: float) -> str:
     Keeps the original wherever readable. If the preferred foreground cannot reach the floor
     (Solarized's menu text), continue toward black or white instead of silently falling short.
     """
+    # ANSI names and `default` belong to the user's terminal palette. Their RGB values
+    # are unknown, so keep explicit overrides rather than guessing or parsing names as hex.
+    if not all(value.startswith("#") for value in (color, toward, against)):
+        return color
     if contrast(toward, against) < minimum:
         toward = max(("#000000", "#ffffff"), key=lambda value: contrast(value, against))
     for step in range(11):

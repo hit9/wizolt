@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.formatted_text.utils import split_lines
+from prompt_toolkit.layout.dimension import to_dimension
 from prompt_toolkit.utils import get_cwidth
 
 from wizolt.agentsmd import display_path
@@ -28,7 +29,7 @@ from wizolt.ui.cli import bars
 from wizolt.ui.cli.modals import picker_height
 from wizolt.ui.render import InputStyle, Theme, UiPrinter
 from wizolt.ui.themes import DIFF_STYLES
-from wizolt.ui.tui import TUI_MODAL_PENDING, ChoiceViewState, TabbedViewState
+from wizolt.ui.tui import TUI_MODAL_PENDING, ChoiceViewState, TabbedViewState, TuiApp
 
 if TYPE_CHECKING:
     from wizolt.ui.cli.loop import CommandLoop
@@ -238,20 +239,21 @@ class AppearancePicker:
     def preview(self, kind: str) -> Any:
         if kind == "statusbar":
             return lambda _name: "The status bar below shows the highlighted layout."
-        if kind == "input":
-
-            def input_preview(name: str) -> StyleAndTextTuples:
-                style = self.input_style(name)
-                return self.input_preview(style)
-
-            return input_preview
 
         def draw(name: str) -> StyleAndTextTuples:
-            fragments = theme_preview(name) if kind == "theme" else diff_style_preview(name) if kind == "diff" else bars.preview(self.loop, kind, self.started)
+            if kind == "input":
+                fragments = self.input_preview(self.input_style(name))
+            else:
+                fragments = (
+                    theme_preview(name) if kind == "theme" else diff_style_preview(name) if kind == "diff" else bars.preview(self.loop, kind, self.started)
+                )
             # Leave room for about six choices and the key legend. Small panes prioritize the
             # list; the surrounding prompt and statusbar still preview the selected theme.
-            limit = max(0, min(5, self.height - 13)) if kind == "theme" else 9
-            rows = list(split_lines(fragments))[:limit]
+            limit = max(0, min(5, self.height - 13)) if kind == "theme" else max(0, min(9, self.height - 8 - (kind == "divider")))
+            rows = list(split_lines(fragments))
+            if kind == "input" and limit < 4:
+                rows = rows[1:4:2]
+            rows = rows[:limit]
             return [fragment for row in rows for fragment in (*row, ("", "\n"))]
 
         return draw
@@ -269,12 +271,47 @@ class AppearancePicker:
         ]
 
     def fragments(self) -> StyleAndTextTuples:
+        # Inline modal bounds follow terminal resizes. Reuse the same budget for every
+        # tab rather than keeping the dimensions from when the picker first opened.
+        self.height = picker_height()
+        self.width = shutil.get_terminal_size((80, 24)).columns
+        tui = self.loop.presentation.tui
+        if tui is not None and tui.app is not None:
+            size = tui.app.output.get_size()
+            self.height, self.width = TuiApp.modal_rows(size.rows), size.columns
+            if tui.modal_window is not None:
+                self.height = min(self.height, to_dimension(tui.modal_window.height).max)
         state = self.current_list()
         state.height = self.height - (self.kind() == "divider")
         titles = TITLES if self.width >= 60 else ("Colors", "Diff", "Status", "Divider", "Input")
         if self.width < 52:
             titles = ("Color", "Diff", "Bar", "Line", "Input")
         tabs: StyleAndTextTuples = [("", "  "), *UiPrinter.tab_segments(titles, self.tabs.tab), ("", "\n")]
+        if self.height < (11 if self.input_edit is not None else 9):
+            # At a few rows there is no room for a list plus a sample. Keep the focused
+            # value and its controls visible so a resize cannot strand the user in a menu.
+            if self.input_edit is not None:
+                label = ("Chat", "Running")[self.input_field]
+                focused = f"{label}: {self.input_edit[self.input_field]}▏"
+                keys = "Tab field · Enter apply · Esc back"
+            else:
+                choice = state.selected_choice()
+                focused = state.labels.get(choice, choice) if choice is not None else "no matches"
+                keys = "↑↓ move · h/l tab · Enter save · Esc cancel"
+                if self.kind() == "divider":
+                    keys = "Space choose · Tab group · Enter save · Esc cancel"
+                elif self.kind() == "input":
+                    keys = "↑↓ move · e edit · Enter save · Esc cancel"
+            rows = [("class:choice.selected", "  " + focused)]
+            if self.height > 1:
+                rows.insert(0, (Theme.fg("accent"), "  " + TITLES[self.tabs.tab] + (" /" + state.query if state.searching else "")))
+            if self.height > 2:
+                rows.append((Theme.fg("muted"), "  " + keys))
+            if self.kind() == "input" and self.input_edit is None and self.height > 3 and choice is not None:
+                rows.append((Theme.fg("text"), "  " + self.input_style(choice).prefix(running=False) + "Explain this function"))
+            if self.input_error and self.height > 3:
+                rows.append((Theme.fg("error"), "  " + self.input_error))
+            return [(style, Text.clip_width(text, self.width) + ("\n" if index < len(rows) - 1 else "")) for index, (style, text) in enumerate(rows)]
         path = self.loop.session.config.path
         hint = (
             f"{'Full customization: edit config' if self.width >= 70 else 'Customize config:'} {display_path(path)}"

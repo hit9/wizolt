@@ -281,6 +281,26 @@ def test_invalid_inline_theme_keeps_same_named_file(tmp_path):
     assert Theme.color("user") == Theme.BUILTIN["kanagawa"].colors["user"]
 
 
+@pytest.mark.parametrize("role", ["status_base", "divider_label", "warning", "error", "status_bg", "menu_bg", "accent", "syntax_default"])
+@pytest.mark.parametrize("color", ["ansicyan", "default"])
+def test_custom_terminal_colors_render_bars_and_file_picker(tmp_path, role, color):
+    write_theme(tmp_path, "mine", f'base = "one-dark"\n[colors]\n{role} = "{color}"\n')
+    assert Theme.configure("mine", str(tmp_path)) == []
+    assert Theme.color(role) == color
+    # Both adapters adjust contrast for named bases, but terminal-owned colors have no
+    # known RGB value. Valid custom colors must remain usable in either UI.
+    assert Theme.bar_styles({"status.detail", "divider.badge", "status.warning", "status.error"})
+    assert "fg:" in Theme.fzf_colors()
+
+
+@pytest.mark.parametrize("value", [[], {}, ["classic"], {"name": "classic"}])
+def test_invalid_diff_config_reports_a_problem_instead_of_crashing(value):
+    Theme.set_diff_style("classic")
+    problems = Theme.configure_diff_style({"diff": {"style": value}})
+    assert any("unknown ui.diff.style" in problem for problem in problems)
+    assert Theme.selected_diff_style() == "auto"
+
+
 def test_a_theme_file_overrides_roles_on_its_base(tmp_path):
     write_theme(tmp_path, "mine", 'base = "kanagawa"\npygments = "dracula"\n[colors]\naccent = "#AbC"\nerror = "ansired"\n')
 

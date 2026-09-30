@@ -672,7 +672,7 @@ class Theme:
             return ["ui.diff must be a table; using the theme's diff style"]
         name = table.get("style", cls.AUTO)
         cls.set_diff_style(name if isinstance(name, str) else cls.AUTO)
-        if name != cls.AUTO and name not in DIFF_STYLES:
+        if not isinstance(name, str) or (name != cls.AUTO and name not in DIFF_STYLES):
             return [f"unknown ui.diff.style {name!r}; using auto. Available: {', '.join((cls.AUTO, *DIFF_STYLES))}"]
         return []
 
