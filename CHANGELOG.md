@@ -4,6 +4,12 @@
 
 ### Added
 
+- Refine the sweep picker to `comet`, `ripple`, `aurora` and `none`. The comet now eases at the
+  ends with a directional fading tail; ripple expands from the middle and aurora overlaps slow
+  bands of light. A normalized `u` coordinate follows the fill regions, keeping preset timing
+  independent of terminal width and avoiding time spent behind labels. Existing `x`, `t`, `w`
+  formulas and older named presets remain supported.
+
 - Focus the divider picker on four layouts: the quiet `comet`, a centered rounded `capsule`,
   an inset `frame`, and a `rail` separating activity from metrics. Existing configured presets
   remain usable and can be kept as the current selection.

@@ -90,9 +90,9 @@ async def test_divider_cascade_saves_layout_then_sweep(command_loop):
     command_loop.presentation.tui = BarModal(["enter", "j", "enter"], consumed=True)
     result = await divider_command(command_loop, "")
     assert "divider.format: preset:comet" in result
-    assert "divider.sweep: preset:scan" in result
+    assert "divider.sweep: preset:ripple" in result
     saved = tomllib.loads(Path(command_loop.session.config.path).read_text())
-    assert saved["ui"]["divider"] == {"format": "preset:comet", "sweep": "preset:scan"}
+    assert saved["ui"]["divider"] == {"format": "preset:comet", "sweep": "preset:ripple"}
 
 
 async def test_divider_cascade_can_keep_custom_layout_and_sweep(command_loop):
@@ -118,6 +118,19 @@ async def test_divider_picker_is_curated_and_preserves_an_existing_older_preset(
     assert saved["ui"]["divider"]["format"] == "preset:powerline"
 
 
+async def test_sweep_picker_preserves_an_existing_older_preset(command_loop):
+    from wizolt.ui.cli.bars import pick_layout
+
+    layout = command_loop.presentation.status_bar.layout
+    assert not layout.configure({"sweep": "preset:wave"}, Theme.bar_styles)
+    modal = command_loop.presentation.tui = BarModal(["g", "j", "j", "j", "j", "enter"])
+    assert "preset:wave" in await pick_layout(command_loop, "sweep")
+    rendered = "".join(text for frame in modal.frames for _, text in frame)
+    assert all(name in rendered for name in ("none", "comet", "ripple", "aurora", "current (wave)"))
+    assert "breathe" not in rendered
+    assert layout.sources["sweep"] == "preset:wave"
+
+
 async def test_interrupted_preview_restores_layout_and_stops_animation(command_loop):
     class Interrupted(BarModal):
         async def show_modal(self, fragments_fn, key_fn, **kwargs):
@@ -139,7 +152,7 @@ async def test_interrupted_preview_restores_layout_and_stops_animation(command_l
 async def test_headless_lists_presets_and_direct_selection_handles_unknown_names(command_loop):
     command_loop.interactive_input = False
     assert "powerline" in await statusbar_command(command_loop, "")
-    assert "breathe" in await divider_command(command_loop, "")
+    assert "aurora" in await divider_command(command_loop, "")
     before = dict(command_loop.presentation.status_bar.layout.sources)
     assert "unknown preset" in await statusbar_command(command_loop, "not-a-preset")
     assert command_loop.presentation.status_bar.layout.sources == before

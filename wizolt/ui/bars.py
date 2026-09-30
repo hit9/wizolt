@@ -117,13 +117,15 @@ class Expression:
 
 SWEEPS = {
     "none": "0",
-    "comet": "exp(-((x - (pingpong(t * 20, w + 12) - 6)) / 4) ** 2)",
+    "comet": "exp(-((u - (1 - cos(t * 1.0471975512)) / 2) / (0.018 + 0.42 * sqrt(max(0, sin(t * 1.0471975512) * ((1 - cos(t * 1.0471975512)) / 2 - u))))) ** 2)",
     "scan": "exp(-((x - (t * 24 % (w + 12) - 6)) / 4) ** 2)",
     "breathe": "(1 - cos(t * 2)) / 2",
     "reverse": "exp(-((x - (w + 6 - t * 24 % (w + 12))) / 4) ** 2)",
     "wave": "(1 + sin(x / 6 - t * 3)) / 2",
     "twin": "max(exp(-((x - pingpong(t * 16, w)) / 3) ** 2), exp(-((x - w + pingpong(t * 16, w)) / 3) ** 2))",
     "pulse": "((1 - cos(t * 4)) / 2) ** 6",
+    "ripple": "max(0, cos(abs(u - 0.5) * 12.5663706144 - t * 2.0943951024)) ** 6 * (0.35 + 0.65 * (1 - abs(u - 0.5) * 2))",
+    "aurora": "0.08 + 0.92 * (0.5 + 0.5 * sin(u * 7 - t * 0.5235987756)) * (0.5 + 0.5 * cos(u * 4 + t * 1.0471975512))",
 }
 
 
@@ -139,15 +141,15 @@ def expand(source: str, presets: Mapping[str, str]) -> str:
 class Sweep:
     def __init__(self, source: str):
         self.source = expand(source, SWEEPS)
-        self.expression = Expression(self.source, frozenset(("x", "t", "w")))
+        self.expression = Expression(self.source, frozenset(("x", "t", "w", "u")))
         self.error = ""
         self.brightness(0, 0, 80)
         if self.error:
             raise ValueError(self.error)
 
-    def brightness(self, x: float, t: float, w: float) -> float:
+    def brightness(self, x: float, t: float, w: float, *, u: float | None = None) -> float:
         try:
-            value = float(self.expression.evaluate({"x": x, "t": t, "w": max(1, w)}))
+            value = float(self.expression.evaluate({"x": x, "t": t, "w": max(1, w), "u": u if u is not None else x / max(1, w - 1)}))
             if not math.isfinite(value):
                 raise ValueError("non-finite brightness")
             return min(1.0, max(0.0, value))
@@ -396,6 +398,7 @@ class Template:
         fill_width, extra = divmod(remaining, fills or 1)
         fragments: Fragments = []
         position = 0
+        fill_position = 0
 
         def background(style: str) -> str:
             return next((part[3:] for part in reversed(style.split()) if part.startswith("bg:")), "default")
@@ -408,14 +411,16 @@ class Template:
                 text = (text * ((size + len(text) - 1) // len(text)))[:size]
                 if sweep is not None and ramp and text.strip():
                     for offset, char in enumerate(text):
-                        level = sweep.brightness(position + offset, t, width)
+                        level = sweep.brightness(position + offset, t, width, u=(fill_position + offset) / max(1, remaining - 1))
                         selected = ramp[round(level * (len(ramp) - 1))]
                         if fragments and fragments[-1][0] == selected:
                             fragments[-1] = (selected, fragments[-1][1] + char)
                         else:
                             fragments.append((selected, char))
                     position += len(text)
+                    fill_position += len(text)
                     continue
+                fill_position += len(text)
             elif cell.kind == "join":
                 left_bg = background(active[i - 1].style) if i else "default"
                 right_bg = background(active[i + 1].style) if i + 1 < len(active) else "default"

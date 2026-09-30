@@ -90,6 +90,39 @@ def test_sweep_crosses_multiple_patterned_fills_without_touching_the_label():
     assert parts == [("dim", "─·─·"), ("label", "AB"), ("bright", "·─·─")]
 
 
+def test_normalized_sweep_skips_labels_without_changing_column_coordinates():
+    template = Template("[label]{label}[/][rule]{fill:─}[/]")
+    styles = {"label": "label", "rule": "rule"}
+    # A long label must not hide a light at the start of the fill track.
+    parts = template.render({"label": "L" * 16}, 20, styles, sweep=Sweep("u == 0"), ramp=("dim", "bright"))
+    assert parts == [("label", "L" * 16), ("bright", "─"), ("dim", "───")]
+    parts = template.render({"label": "L" * 16}, 20, styles, sweep=Sweep("x == 16 and w == 20"), ramp=("dim", "bright"))
+    assert parts == [("label", "L" * 16), ("bright", "─"), ("dim", "───")]
+    centered = Template("[rule]{fill:─}[/][label]long label[/][rule]{fill:─}[/]")
+    parts = centered.render({}, 18, styles, sweep=Sweep("u"), ramp=tuple(str(i) for i in range(8)))
+    assert parts == [(str(i), "─") for i in range(4)] + [("label", "long label")] + [(str(i), "─") for i in range(4, 8)]
+
+
+def test_normalized_sweeps_have_distinct_shapes_and_width_independent_timing():
+    comet = Sweep("preset:comet")
+    # At 1.5s it crosses the midpoint moving right: bright head, fading left tail, dark ahead.
+    assert comet.brightness(0, 1.5, 80, u=0.5) > 0.99
+    assert comet.brightness(0, 1.5, 80, u=0.4) > 0.5
+    assert comet.brightness(0, 1.5, 80, u=0.6) < 0.01
+    assert comet.brightness(0, 4.5, 80, u=0.6) > 0.5  # The tail reverses direction.
+    ripple = Sweep("preset:ripple")
+    assert ripple.brightness(0, 0, 80, u=0.5) > 0.99
+    assert ripple.brightness(0, 1.5, 80, u=0.25) > 0.6
+    assert ripple.brightness(0, 1.5, 80, u=0.25) == ripple.brightness(0, 1.5, 80, u=0.75)
+    assert ripple.brightness(0, 1.5, 80, u=0.5) < 0.01
+    aurora = Sweep("preset:aurora")
+    levels = [aurora.brightness(0, 1, 80, u=i / 100) for i in range(101)]
+    assert max(levels) - min(levels) > 0.2
+    assert max(abs(a - b) for a, b in zip(levels, levels[1:])) < 0.05
+    for sweep in (comet, ripple, aurora):
+        assert sweep.brightness(0, 1, 40, u=0.4) == sweep.brightness(0, 1, 200, u=0.4)
+
+
 def test_powerline_joins_use_adjacent_backgrounds_and_restore_nested_styles():
     template = Template("[a] A {join:}[b] B [/][reset]{>}{join:}[a] C [reset]")
     parts = template.render({}, 30, {"a": "fg:#000000 bg:#ff0000", "b": "fg:#ffffff bg:#0000ff"})

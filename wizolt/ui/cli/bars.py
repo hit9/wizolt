@@ -19,6 +19,7 @@ from wizolt.ui.render import Theme
 
 # Keep the picker focused; older preset names still work in config files.
 DIVIDER_CHOICES = ("comet", "capsule", "frame", "rail")
+SWEEP_CHOICES = ("none", "comet", "ripple", "aurora")
 
 if TYPE_CHECKING:
     from wizolt.ui.cli.loop import CommandLoop
@@ -87,7 +88,7 @@ async def pick_layout(loop: CommandLoop, kind: str) -> str | None:
     layout.errors = []
     original = layout.sources[kind]
     bar.layout = layout
-    presets = DIVIDER_CHOICES if kind == "divider" else tuple(PRESETS[kind])
+    presets = DIVIDER_CHOICES if kind == "divider" else SWEEP_CHOICES if kind == "sweep" else tuple(PRESETS[kind])
     current = original[7:] if original.startswith("preset:") and original[7:] in presets else "custom"
     choices = presets + (("custom",) if current == "custom" else ())
     current_label = f"current ({original[7:]})" if original.startswith("preset:") else "custom (current)"
@@ -144,7 +145,7 @@ async def divider_command(loop: CommandLoop, args: str) -> str | None:
             "Divider layouts: "
             + ", ".join(DIVIDER_CHOICES)
             + ". Sweeps: "
-            + ", ".join(PRESETS["sweep"])
+            + ", ".join(SWEEP_CHOICES)
             + ". Configure ui.divider.sweep or open /divider interactively."
         )
     layout_result = await pick_layout(loop, "divider")

@@ -341,18 +341,18 @@ Divider layouts in the picker:
 Existing divider preset names still work in config files. If you use one, the picker offers
 `current (name)` so you can keep it; custom templates appear as `custom (current)`.
 
-Sweeps:
+Sweeps in the picker:
 
 | Preset | Motion |
 | --- | --- |
 | `none` | No animation |
-| `comet` | A soft light travels back and forth |
-| `scan` | A soft light travels left to right |
-| `reverse` | A soft light travels right to left |
-| `breathe` | The whole rule slowly brightens and dims |
-| `wave` | Repeating waves travel along the rule |
-| `twin` | Two lights travel in opposite directions |
-| `pulse` | The whole rule flashes in short, smooth pulses |
+| `comet` | A bright head and fading tail ease back and forth in a six-second cycle |
+| `ripple` | Paired pulses spread outwards from the middle of the line |
+| `aurora` | Broad, slow bands of light overlap |
+
+These animations travel along the fill regions, skipping the labels, and keep their timing
+when the terminal width changes. Older sweep names still work in your config and can be kept
+through `current (name)` in the picker.
 
 The defaults are `preset:default`, `preset:comet` and `preset:comet`. Layout and sweep are
 independent: a sweep colors the divider's fill region only while running. The `powerline` and `lualine` statusbars and `powerline` divider require a
@@ -443,8 +443,10 @@ format = "[status.model] {model} {join:}[status.detail] {reasoning} {join:
 ### Sweep formulas
 
 A sweep is a brightness formula: `x` is the current terminal column, `t` is elapsed seconds, and
-`w` is the divider width. Its result is clamped to `0..1`, blending `divider_rule` with
-`divider_glow`. Labels cover the light without interrupting its movement.
+`w` is the divider width. `u` runs from `0` to `1` across the fill regions only, skipping fixed
+labels. Use `u` for a width-independent animation that stays on the line, or `x` for motion in
+terminal columns. The result is clamped to `0..1`, blending `divider_rule` with `divider_glow`.
+Labels keep their own colors.
 
 ```toml
 [ui.divider]
