@@ -37,6 +37,7 @@ Until the skill is used, the agent sees only its name and a short description. T
 instructions load when needed.
 
 ```{figure} _static/skills-workflow.svg
+:class: concept-diagram
 :alt: Install a SKILL.md, invoke it with /release-notes, and let the agent follow its instructions.
 
 Write once, use when needed.

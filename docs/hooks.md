@@ -20,6 +20,7 @@ Restart wizolt. After each successful Edit call, it runs the formatter before co
 This formats the project, so choose a narrower path if that is what you want.
 
 ```{figure} _static/hooks-workflow.svg
+:class: concept-diagram
 :alt: An Edit is approved and applied, a PostToolUse formatter runs, and the agent continues.
 
 Your formatter becomes part of the editing routine.

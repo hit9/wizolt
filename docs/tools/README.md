@@ -6,9 +6,9 @@ orphan: true
 
 `render.py` builds the SVG illustrations in these guides. Only complete UI previews drawn by
 wizolt's picker renderer use a terminal window frame. Composed examples and side-by-side
-comparisons use a plain “Rendered UI sample” panel. Concept diagrams use labeled boxes and
-arrows, a sans-serif font and a “Concept diagram” label. Neither samples nor diagrams have
-window controls or a wizolt title bar.
+comparisons use a plain “Rendered UI sample” panel. Concept diagrams sit directly on the page:
+transparent background, serif type, fine connecting lines and the documentation's muted colors.
+Avoid filled cards, badges, large repeated titles and window decorations.
 Rebuilding unchanged figures produces identical files.
 
 ## Run it

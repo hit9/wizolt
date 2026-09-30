@@ -5,6 +5,7 @@ A **worker** takes a focused part of your task, such as reviewing a file or chec
 You approve the order, the worker returns a report, and your main conversation continues.
 
 ```{figure} _static/worker-handoff.svg
+:class: concept-diagram
 :alt: The main conversation sends an approved order to a worker, receives its report and continues the original task.
 
 One task, a focused second opinion.

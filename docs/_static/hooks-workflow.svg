@@ -1,24 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="472" viewBox="0 0 760 472" role="img">
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="356" viewBox="0 0 760 356" role="img">
 <title>Format after a successful edit</title>
-<style>text{font-family:system-ui,sans-serif;fill:#dce5ef}.detail{font-size:17px;fill:#acb9c9}.heading{font-size:21px;font-weight:600}</style>
-<rect width="760" height="472" rx="12" fill="#1c2531"/>
-<text x="32" y="30" font-size="12" letter-spacing="2" fill="#97acc5">CONCEPT DIAGRAM</text>
-<text x="32" y="64" class="heading">Format after a successful edit</text>
-<rect x="32" y="86" width="696" height="84" rx="8" fill="#273749" stroke="#49617e"/>
-<circle cx="61" cy="115" r="13" fill="#99badd"/>
-<text x="61" y="121" text-anchor="middle" style="fill:#182533;font-size:16px">1</text>
-<text x="86" y="121" class="heading">Review and approve</text>
-<text x="86" y="149" class="detail">The agent proposes a change to parser.py.</text>
-<path d="M380 170 v20 m-6 -6 l6 6 6 -6" fill="none" stroke="#91a9c5" stroke-width="2"/>
-<rect x="32" y="198" width="696" height="84" rx="8" fill="#273749" stroke="#49617e"/>
-<circle cx="61" cy="227" r="13" fill="#99badd"/>
-<text x="61" y="233" text-anchor="middle" style="fill:#182533;font-size:16px">2</text>
-<text x="86" y="233" class="heading">Apply the edit, then run your hook</text>
-<text x="86" y="261" class="detail">PostToolUse runs: ruff format --quiet .</text>
-<path d="M380 282 v20 m-6 -6 l6 6 6 -6" fill="none" stroke="#91a9c5" stroke-width="2"/>
-<rect x="32" y="310" width="696" height="84" rx="8" fill="#273749" stroke="#49617e"/>
-<circle cx="61" cy="339" r="13" fill="#99badd"/>
-<text x="61" y="345" text-anchor="middle" style="fill:#182533;font-size:16px">3</text>
-<text x="86" y="345" class="heading">Continue the task</text>
-<text x="86" y="373" class="detail">The agent waits for the formatter before continuing.</text>
-<text x="32" y="450" class="detail">A hook is your command, triggered by an event you choose.</text></svg>
+<style>text{font-family:Georgia,serif;fill:#c9ccd1}.detail{font-size:18px;fill:#a2a9b3}.heading{font-size:23px;fill:#e8eaed}.number{font-family:monospace;font-size:14px;fill:#8b929c}</style>
+<text x="16" y="37" class="number">01</text>
+<text x="58" y="38" class="heading">Review and approve</text>
+<text x="58" y="68" class="detail">The agent proposes a change to parser.py.</text>
+<path d="M24 54 v53 m-4 -4 l4 4 4 -4" fill="none" stroke="#59616c" stroke-width="1"/>
+<text x="16" y="139" class="number">02</text>
+<text x="58" y="140" class="heading">Apply the edit, then run your hook</text>
+<text x="58" y="170" class="detail">PostToolUse runs: ruff format --quiet .</text>
+<path d="M24 156 v53 m-4 -4 l4 4 4 -4" fill="none" stroke="#59616c" stroke-width="1"/>
+<text x="16" y="241" class="number">03</text>
+<text x="58" y="242" class="heading">Continue the task</text>
+<text x="58" y="272" class="detail">The agent waits for the formatter before continuing.</text>
+<path d="M58 311 H728" stroke="#2c3138"/>
+<text x="58" y="340" class="detail" font-style="italic">A hook is your command, triggered by an event you choose.</text></svg>

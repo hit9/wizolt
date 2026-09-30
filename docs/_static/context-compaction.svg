@@ -1,18 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="360" viewBox="0 0 760 360" role="img">
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="254" viewBox="0 0 760 254" role="img">
 <title>Make room without starting over</title>
-<style>text{font-family:system-ui,sans-serif;fill:#dce5ef}.detail{font-size:17px;fill:#acb9c9}.heading{font-size:21px;font-weight:600}</style>
-<rect width="760" height="360" rx="12" fill="#1c2531"/>
-<text x="32" y="30" font-size="12" letter-spacing="2" fill="#97acc5">CONCEPT DIAGRAM</text>
-<text x="32" y="64" class="heading">Make room without starting over</text>
-<rect x="32" y="86" width="696" height="84" rx="8" fill="#273749" stroke="#49617e"/>
-<circle cx="61" cy="115" r="13" fill="#99badd"/>
-<text x="61" y="121" text-anchor="middle" style="fill:#182533;font-size:16px">1</text>
-<text x="86" y="121" class="heading">Before: older conversation + recent messages</text>
-<text x="86" y="149" class="detail">A long conversation fills the model&#x27;s window.</text>
-<path d="M380 170 v20 m-6 -6 l6 6 6 -6" fill="none" stroke="#91a9c5" stroke-width="2"/>
-<rect x="32" y="198" width="696" height="84" rx="8" fill="#273749" stroke="#49617e"/>
-<circle cx="61" cy="227" r="13" fill="#99badd"/>
-<text x="61" y="233" text-anchor="middle" style="fill:#182533;font-size:16px">2</text>
-<text x="86" y="233" class="heading">After: short summary + recent messages</text>
-<text x="86" y="261" class="detail">About eight recent messages stay unchanged.</text>
-<text x="32" y="338" class="detail">Earlier conversation remains available in history files.</text></svg>
+<style>text{font-family:Georgia,serif;fill:#c9ccd1}.detail{font-size:18px;fill:#a2a9b3}.heading{font-size:23px;fill:#e8eaed}.number{font-family:monospace;font-size:14px;fill:#8b929c}</style>
+<text x="16" y="37" class="number">01</text>
+<text x="58" y="38" class="heading">Before: older conversation + recent messages</text>
+<text x="58" y="68" class="detail">A long conversation fills the model&#x27;s window.</text>
+<path d="M24 54 v53 m-4 -4 l4 4 4 -4" fill="none" stroke="#59616c" stroke-width="1"/>
+<text x="16" y="139" class="number">02</text>
+<text x="58" y="140" class="heading">After: short summary + recent messages</text>
+<text x="58" y="170" class="detail">About eight recent messages stay unchanged.</text>
+<path d="M58 209 H728" stroke="#2c3138"/>
+<text x="58" y="238" class="detail" font-style="italic">Earlier conversation remains available in history files.</text></svg>

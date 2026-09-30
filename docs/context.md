@@ -21,6 +21,7 @@ messages**. The task continues. Summaries can lose detail, so restate an importa
 if the agent seems to have forgotten it.
 
 ```{figure} _static/context-compaction.svg
+:class: concept-diagram
 :alt: Concept diagram showing older conversation replaced by a summary while about eight recent messages remain unchanged.
 
 Keep recent details; summarize older conversation.
@@ -62,6 +63,7 @@ A provider can reuse the unchanged beginning of a request. A higher cache hit ra
 means less input cost.
 
 ```{figure} _static/context-cache.svg
+:class: concept-diagram
 :alt: Concept diagram comparing a previous request with the next request, which shares its beginning and adds new input.
 
 An unchanged beginning gives the provider more to reuse.

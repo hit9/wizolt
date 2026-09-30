@@ -266,32 +266,28 @@ class Illustrations:
             self.loop.presentation.tui = None
 
     def diagram(self, name: str, title: str, steps: list[tuple[str, str]], note: str) -> None:
-        """Conceptual flows use labeled boxes and arrows, never terminal chrome."""
+        """Quiet, transparent flows using the documentation's typography and palette."""
         if name not in self.selected:
             return
-        height = 136 + len(steps) * 112
+        height = 50 + len(steps) * 102
         parts = [
             f'<svg xmlns="http://www.w3.org/2000/svg" width="760" height="{height}" viewBox="0 0 760 {height}" role="img">',
             f"<title>{escape(title)}</title>",
-            "<style>text{font-family:system-ui,sans-serif;fill:#dce5ef}.detail{font-size:17px;fill:#acb9c9}.heading{font-size:21px;font-weight:600}</style>",
-            f'<rect width="760" height="{height}" rx="12" fill="#1c2531"/>',
-            '<text x="32" y="30" font-size="12" letter-spacing="2" fill="#97acc5">CONCEPT DIAGRAM</text>',
-            f'<text x="32" y="64" class="heading">{escape(title)}</text>',
+            "<style>text{font-family:Georgia,serif;fill:#c9ccd1}.detail{font-size:18px;fill:#a2a9b3}.heading{font-size:23px;fill:#e8eaed}.number{font-family:monospace;font-size:14px;fill:#8b929c}</style>",
         ]
         for index, (label, detail) in enumerate(steps):
-            y = 86 + index * 112
-            if index:
-                parts.append(f'<path d="M380 {y - 28} v20 m-6 -6 l6 6 6 -6" fill="none" stroke="#91a9c5" stroke-width="2"/>')
+            y = 12 + index * 102
             parts.extend(
                 [
-                    f'<rect x="32" y="{y}" width="696" height="84" rx="8" fill="#273749" stroke="#49617e"/>',
-                    f'<circle cx="61" cy="{y + 29}" r="13" fill="#99badd"/>',
-                    f'<text x="61" y="{y + 35}" text-anchor="middle" style="fill:#182533;font-size:16px">{index + 1}</text>',
-                    f'<text x="86" y="{y + 35}" class="heading">{escape(label)}</text>',
-                    f'<text x="86" y="{y + 63}" class="detail">{escape(detail)}</text>',
+                    f'<text x="16" y="{y + 25}" class="number">{index + 1:02}</text>',
+                    f'<text x="58" y="{y + 26}" class="heading">{escape(label)}</text>',
+                    f'<text x="58" y="{y + 56}" class="detail">{escape(detail)}</text>',
                 ]
             )
-        parts.append(f'<text x="32" y="{height - 22}" class="detail">{escape(note)}</text></svg>')
+            if index < len(steps) - 1:
+                parts.append(f'<path d="M24 {y + 42} v53 m-4 -4 l4 4 4 -4" fill="none" stroke="#59616c" stroke-width="1"/>')
+        parts.append(f'<path d="M58 {height - 45} H728" stroke="#2c3138"/>')
+        parts.append(f'<text x="58" y="{height - 16}" class="detail" font-style="italic">{escape(note)}</text></svg>')
         (self.output / f"{name}.svg").write_text("\n".join(parts) + "\n", encoding="utf-8")
 
     def compaction(self) -> None:

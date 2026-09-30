@@ -35,7 +35,8 @@
 ### Changed
 
 - Distinguish documentation concept diagrams from terminal previews: context, caching, skills,
-  hooks and worker flows now use labeled boxes and arrows without terminal window decorations.
+  hooks and worker flows use transparent backgrounds, serif text and fine arrows that match
+  the documentation, without terminal window decorations.
 - Simplify the remaining user guides, especially tools, skills, hooks, interaction and
   configuration. Add skill and hook workflow diagrams and explain inline theme setup.
   Wide reference tables scroll within the page on narrow screens.
