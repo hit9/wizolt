@@ -4,41 +4,21 @@
 </h1>
 
 <p align="center">
+  A terminal coding agent. Read code, edit files, run commands — and pick up where you left off.
+</p>
+
+<p align="center">
   <img src="https://raw.githubusercontent.com/hit9/wizolt/master/snapshots/wizolt3.gif" alt="wizolt working through a long session with background jobs, an edit preview, and a live status bar" width="600">
 </p>
 
-<p align="center">
-  A terminal coding agent I use, maintain, and customize, shipped as a self-contained Python package.
-</p>
-
-## Safety
-
-**Use at your own risk.** wizolt can edit files and run shell commands in the environment where it starts. It does not provide sandbox isolation; use a container or VM when needed.
-
-## What it is
-
-wizolt does not introduce a new kind of coding agent. It combines familiar features — reading and editing files, running commands, follow-ups, sessions, diffs, MCP, and skills — into a tool I use personally.
-
-It works on real repositories, including its own: I use wizolt to build and maintain wizolt. Everything ships in one self-contained Python package, so I can change the behavior directly whenever I want the workflow to work differently.
-
-Wizolt is the former minacode, which began as the single-file nanocode. The implementation outgrew both earlier names; the project history remains continuous.
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/hit9/wizolt/master/snapshots/wizolt2.gif" alt="wizolt resuming a saved session" width="600">
-</p>
-<p align="center"><sub>Resuming a saved session with its conversation and tool history.</sub></p>
-
 ## Highlights
 
-- **Prompt caching:** stable request prefixes help supported providers reuse earlier work, including during compaction. Check reported cache usage with `/status`.
-- **Continuity for long tasks:** automatic compaction carries working notes and recent tool activity forward, with older details available for recall. Resume saved conversation, tool history, and diffs with `-c` or `--resume`.
-- **Precise edits:** target a numbered source view or an exact, unique text match. Stale or ambiguous targets are rejected before the edit is applied.
-- **Review changes in place:** `/diff` shows both the latest round's changes and the net result of the session, without leaving the terminal.
-- **Steer work as it happens:** send a follow-up with `Enter`, hold a separate task with `Tab`, or interrupt with `Ctrl-C` once the draft is empty.
-- **Background commands:** let long-running commands continue as jobs, inspect their output, and wait for or stop them when needed.
-- **Worker delegation:** give a bounded task to a worker with its own provider and reusable context. Configure it with `/worker`; the agent delegates through `Delegate`.
-- **Choose your provider:** use OpenAI-compatible Chat Completions or Responses APIs, or Anthropic Messages. Optional provider-side web search shows searches and sources in the transcript.
-- **MCP and skills:** connect external tools through MCP and load reusable Markdown instructions on demand.
+- **Keep long tasks going.** Automatic context compaction, prompt caching on supported providers, and saved sessions. Resume conversation, tool history, and diffs with `wizolt -c`.
+- **Review every change.** Edits reject stale or ambiguous targets. `/diff` shows the latest round or the whole session.
+- **Steer while it works.** Send follow-ups, queue the next task, and let slow commands run as background jobs.
+- **Mix models.** Connect OpenAI-compatible Chat Completions, Responses, or Anthropic Messages APIs. Give a focused subtask to a worker using another model.
+- **Bring your tools.** MCP servers, reusable Markdown skills, and shell hooks for checks and formatters.
+- **Make it yours.** Preview themes, diff colors, statusbars, dividers, and input symbols in `/theme`; customize further in your config.
 
 ## Install
 
@@ -61,13 +41,15 @@ key = "sk-..."
 model = "deepseek-flash"
 ```
 
-Then run:
+Start in your project directory:
 
 ```sh
 wizolt
 ```
 
 Upgrade with `uv tool upgrade wizolt`.
+
+**No built-in sandbox.** wizolt can edit files and run commands. Use a container or VM when you need isolation.
 
 ## Links
 

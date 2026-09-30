@@ -25,6 +25,7 @@
 
 ### Documentation
 
+- Streamline the README around practical highlights and a short setup guide.
 - Add an English, monospace HTML comparison of actual presets with statusbar and divider
   selectors and copyable settings. Keep its reusable generator under `docs/tools/` and
   refresh the appearance guide, examples and illustrations.
