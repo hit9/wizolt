@@ -34,6 +34,8 @@
 
 ### Changed
 
+- Give each appearance preview a descriptive heading, report how many color samples fit,
+  clip wide samples without losing their colors, and show input-symbol samples on `user_bg`.
 - Label the Colorscheme preview's code, diff, user message, reply, tool call, result and menu
   samples; larger panes show all of them while small panes keep more choices visible.
 - Give the input area and sent user messages a subtle full-width background that follows

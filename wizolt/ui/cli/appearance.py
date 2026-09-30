@@ -17,7 +17,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit.formatted_text import StyleAndTextTuples
-from prompt_toolkit.formatted_text.utils import split_lines
+from prompt_toolkit.formatted_text.utils import fragment_list_width, split_lines
 from prompt_toolkit.layout.dimension import to_dimension
 from prompt_toolkit.utils import get_cwidth
 
@@ -27,7 +27,7 @@ from wizolt.config import ConfigFile
 from wizolt.ui.bars import PRESETS
 from wizolt.ui.cli import bars
 from wizolt.ui.cli.modals import picker_height
-from wizolt.ui.render import InputStyle, Theme, UiPrinter
+from wizolt.ui.render import InputStyle, StatusBar, Theme, UiPrinter
 from wizolt.ui.themes import DIFF_STYLES
 from wizolt.ui.tui import TUI_MODAL_PENDING, ChoiceViewState, TabbedViewState, TuiApp
 
@@ -50,7 +50,7 @@ def theme_preview(_name: str) -> StyleAndTextTuples:
     added = Theme.diff_style("diff.added.bg") + " " + Theme.diff_style("diff.added.fg")
     removed = Theme.diff_style("diff.removed.bg") + " " + Theme.diff_style("diff.removed.fg")
     rows: list[tuple[str, Sequence[tuple[str, str]]]] = [
-        ("Preview · Code", UiPrinter.syntax_segments("def split_words(text: str) -> list[str]:", "python", fg("text"))),
+        ("Code", UiPrinter.syntax_segments("def split_words(text: str) -> list[str]:", "python", fg("text"))),
         ("Removed", [(removed, "-    return text.split()")]),
         ("Added", [(added, "+    return WORD.findall(text)")]),
         ("Your message", [(fg("user", f"bg:{Theme.color('user_bg')}"), " • tighten the tokenizer ")]),
@@ -241,7 +241,7 @@ class AppearancePicker:
 
     def preview(self, kind: str) -> Any:
         if kind == "statusbar":
-            return lambda _name: "The status bar below shows the highlighted layout."
+            return lambda _name: Text.clip_width("The status bar below shows the highlighted layout.", self.width - 4)
 
         def draw(name: str) -> StyleAndTextTuples:
             if kind == "input":
@@ -257,6 +257,7 @@ class AppearancePicker:
             if kind == "input" and limit < 4:
                 rows = rows[1:4:2]
             rows = rows[:limit]
+            rows = [StatusBar.clip_fragments(row, self.width) if fragment_list_width(row) > self.width else row for row in rows]
             return [fragment for row in rows for fragment in (*row, ("", "\n"))]
 
         return draw
@@ -264,7 +265,10 @@ class AppearancePicker:
     def input_preview(self, style: InputStyle) -> StyleAndTextTuples:
         def sample(running: bool, text: str) -> StyleAndTextTuples:
             prefix = style.prefix(running=running)
-            return [("class:prompt", prefix), (Theme.fg("text"), Text.clip_width(text, max(0, self.width - 2 - get_cwidth(prefix))) + "\n")]
+            width = max(0, self.width - 2 - get_cwidth(prefix))
+            text = Text.clip_width(text, width)
+            background = f"bg:{Theme.color('user_bg')}"
+            return [(f"class:prompt {background}", prefix), (Theme.fg("text", background), text + " " * max(0, width - get_cwidth(text)) + "\n")]
 
         return [
             (Theme.fg("muted"), "  Chat\n  "),
@@ -341,9 +345,18 @@ class AppearancePicker:
             rows = 1 + sum(fragment[1].count("\n") for fragment in parts)
             return [*parts, ("", "\n" * max(0, self.height - rows))]
         # The list's own title row gives way to the tabs; its blank row after them stays.
+        shown = max(0, min(8, self.height - 13))
+        preview_title = {
+            "theme": f"Color samples · {shown}/8 shown" + (" · enlarge to see all" if shown < 8 else ""),
+            "diff": "Diff · removed, added and changed words",
+            "statusbar": "Status bar · live preview below",
+            "divider": "Divider · idle, running and queued",
+            "input": "Input symbols · chat and follow-up",
+        }[self.kind()]
         fragments = state.fragments(
             "",
             self.preview(self.kind()),
+            preview_title=Text.clip_width(preview_title, self.width - 2),
             keys=(
                 "h/l tabs · j/k move · Tab group · Space choose · Enter save · Esc cancel"
                 if self.kind() == "divider"

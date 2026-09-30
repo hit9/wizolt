@@ -22,8 +22,9 @@ The line beneath the shortcuts points to your config file for fuller customizati
 Choose a familiar classic or a newer favorite in the **Colorscheme** tab.
 Each theme colors code, menus and diffs together.
 The labeled samples show code, removed and added lines, your messages, replies, tool calls,
-result colors and a selected menu item. Small panes show fewer samples to leave room for
-choices. The other tabs preview diff details, the actual statusbar, idle/running/queued
+result colors and a selected menu item. The preview heading says how many of the eight types
+are shown. Small panes show fewer samples to leave room for choices; enlarge the pane to
+see them all. The other tabs preview diff details, the actual statusbar, idle/running/queued
 dividers and ordinary/follow-up input symbols.
 
 ```{figure} _static/appearance-colors.svg

@@ -264,6 +264,7 @@ class ChoiceViewState:
         preview_fn: Callable[[str], StyleAndTextTuples | str] | None = None,
         label_fn: Callable[[str], StyleAndTextTuples] | None = None,
         keys: str = "j/k/Tab move · Ctrl-D/U page · / search · Esc/q back/cancel",
+        preview_title: str = "",
     ) -> StyleAndTextTuples:
         """The list as fragments: the title and a blank row (always the first two fragments), the
         rows, and the `keys` legend closing the sheet. `label_fn` styles one row's label in pieces
@@ -345,7 +346,7 @@ class ChoiceViewState:
             # Its own row: joined to the legend, it pushed the line past a narrow terminal's edge.
             parts.append(("class:choice.disabled", f"  showing {start + 1}-{end} of {len(visible)}\n"))
         if preview:
-            parts.append(("class:choice.disabled", "  " + "─" * max(10, band - 2) + "\n"))
+            parts.append(("class:choice.disabled", "  " + (preview_title or "─" * max(10, band - 2)) + "\n"))
             parts.extend(preview)
         parts += [("", "\n"), ("class:choice.disabled", "  " + keys + "\n")]
         if self.searching:

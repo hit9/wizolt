@@ -202,6 +202,7 @@ async def test_small_pane_prioritizes_choices_over_the_sample(command_loop, monk
     text = "".join(text for _, text in modal.frames[0])
     assert "showing 1-6 of" in text
     assert "def " in text and "Enter save" in text
+    assert "Color samples · 1/8 shown" in text and "enlarge to see all" in text
     assert text.splitlines()[1].strip().startswith("h/l")
     assert "customization" in text.splitlines()[2] and "config" in text.splitlines()[2]
     assert 1 + text.count("\n") == 14
