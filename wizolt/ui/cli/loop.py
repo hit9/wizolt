@@ -424,6 +424,9 @@ class CommandLoop:
         `start_session` to report after the banner.
         """
         self.theme_problems = Theme.configure(self.session.settings.theme, self.session.data_path("themes"))
+        self.theme_problems.extend(Theme.configure_diff_style(self.session.config.ui))
+        if warning := Theme.true_color_warning():
+            self.theme_problems.append(warning)
         self.theme_problems.extend(self.presentation.status_bar.layout.load(self.session.config.ui, Theme.bar_styles))
 
     def start_session(self, *, show_banner: bool = True) -> None:

@@ -42,7 +42,7 @@ from wizolt.base import (
 )
 from wizolt.ui.bars import BarLayout, Value
 from wizolt.ui.themes import BUILTIN as NAMED_THEMES
-from wizolt.ui.themes import Palette, load_custom, normalize_color
+from wizolt.ui.themes import DIFF_STYLES, Palette, load_custom, normalize_color
 from wizolt.utils import terminal
 
 if TYPE_CHECKING:
@@ -338,25 +338,18 @@ class Theme:
     }
     ROLES: ClassVar[tuple[str, ...]] = tuple(key for key in DARK if key != "pygments")
 
-    # Diff colors are pinned, not derived. They were tuned against real diffs in both appearances
-    # and a palette reshuffle must never move them, so they stay their own fixed mapping in the
-    # frameworks' own spelling — the one place the palette deliberately does not own.
-    # `emph` is the heavier band under the words a modified line actually changed; the line keeps
-    # its `bg` everywhere else.
+    # Diff colors are pinned, not derived from the palette: a palette reshuffle must never move
+    # them. `dark` and `light` draw the `classic` style, tuned against real diffs in both
+    # appearances; the foregrounds below apply under every style. `emph` is the heavier band under
+    # the words a modified line actually changed; the line keeps its `bg` everywhere else.
     DIFF_DARK: ClassVar[dict[str, str]] = {
-        "diff.added.bg": "bg:#003b00",
-        "diff.added.emph": "bg:#1c7a1c",
+        **{key: "bg:" + color for key, color in (DIFF_STYLES["classic"].dark or {}).items()},
         "diff.added.fg": "fg:default",
-        "diff.removed.bg": "bg:#520000",
-        "diff.removed.emph": "bg:#9c1c1c",
         "diff.removed.fg": "fg:default",
     }
     DIFF_LIGHT: ClassVar[dict[str, str]] = {
-        "diff.added.bg": "bg:#d1f0d1",
-        "diff.added.emph": "bg:#8fd88f",
+        **{key: "bg:" + color for key, color in (DIFF_STYLES["classic"].light or {}).items()},
         "diff.added.fg": "fg:#003b00",
-        "diff.removed.bg": "bg:#f5c8c8",
-        "diff.removed.emph": "bg:#e88f8f",
         "diff.removed.fg": "fg:#520000",
     }
 
@@ -365,6 +358,7 @@ class Theme:
     AUTO: ClassVar[str] = "auto"
 
     _mode: ClassVar[str] = "dark"  # the active theme's name
+    _diff_style: ClassVar[str] = "auto"  # `ui.diff.style`: a DIFF_STYLES name, or `auto` for the theme's pairing
     _custom: ClassVar[dict[str, Palette]] = {}
     # Bumped whenever a theme's colors may have changed, including a theme file reloaded under the
     # same name, so anything rendered from the palette knows its colors are stale.
@@ -468,16 +462,40 @@ class Theme:
 
         The environment decides first -- `NO_COLOR` turns color off, and an explicit
         `PROMPT_TOOLKIT_COLOR_DEPTH` is obeyed -- for the transcript as it already is for the live
-        app. A theme that asks for true color (`Palette.true_color`) gets it on a terminal that
-        advertises it; prompt-toolkit never reads `COLORTERM` itself and would round it to 256
-        colors. Every other theme keeps the output's choice.
+        app. Exact colors (`wants_true_color`) are drawn on a terminal that advertises true color;
+        prompt-toolkit never reads `COLORTERM` itself and would round them to 256 colors. Anything
+        else keeps the output's choice.
         """
         chosen = ColorDepth.from_env()
         if chosen is not None:
             return chosen
-        if cls.active().true_color and os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit"):
+        if cls.wants_true_color() and cls.terminal_has_true_color():
             return ColorDepth.DEPTH_24_BIT
         return selected
+
+    @classmethod
+    def wants_true_color(cls) -> bool:
+        """Whether the colors in use are exact values that rounding would spoil: a named scheme's,
+        or a diff style's other than `classic`, the one tuned to survive 256 colors."""
+        return cls.active().true_color or cls.diff_style_name() != "classic"
+
+    @staticmethod
+    def terminal_has_true_color() -> bool:
+        return os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit")
+
+    @classmethod
+    def true_color_warning(cls) -> str | None:
+        """What to tell the user when exact colors will be rounded to 256: a dark diff band can
+        round to black. Silent when the environment chose the depth itself (`NO_COLOR`,
+        `PROMPT_TOOLKIT_COLOR_DEPTH`)."""
+        if not cls.wants_true_color() or cls.terminal_has_true_color() or ColorDepth.from_env() is not None:
+            return None
+        what = f"theme {cls.name()}" if cls.active().true_color else f"diff style {cls.diff_style_name()}"
+        return (
+            f"The {what} is drawn in exact colors, but COLORTERM is not `truecolor`, so they are rounded "
+            "to the nearest of 256 colors and dark diff lines can look black. If your terminal supports "
+            "true color, add `export COLORTERM=truecolor` to your shell profile."
+        )
 
     @classmethod
     def monochrome(cls) -> bool:
@@ -513,9 +531,54 @@ class Theme:
 
     @classmethod
     def diff_style(cls, key: str) -> str:
-        """A diff band: the appearance's pinned color, unless a theme file recolors that band."""
+        """A diff band: the selected diff style's, unless a theme file recolors that band.
+        Foregrounds stay the appearance's pinned ones."""
         recolored = cls.active().diff.get(key)
-        return recolored or (cls.DIFF_LIGHT if cls.appearance() == "light" else cls.DIFF_DARK)[key]
+        if recolored:
+            return recolored
+        band = (cls.diff_bands(cls.diff_style_name()) or {}).get(key)
+        return "bg:" + band if band else (cls.DIFF_LIGHT if cls.appearance() == "light" else cls.DIFF_DARK)[key]
+
+    @classmethod
+    def diff_bands(cls, name: str) -> dict[str, str] | None:
+        """A diff style's bands for the active appearance; None if it was not made for it."""
+        style = DIFF_STYLES[name]
+        return style.light if cls.appearance() == "light" else style.dark
+
+    @classmethod
+    def diff_style_name(cls) -> str:
+        """The diff style in use: the one selected, or the active theme's pairing under `auto` and
+        when the selected one was made only for the other appearance."""
+        selected = cls._diff_style
+        return selected if selected != cls.AUTO and cls.diff_bands(selected) else cls.active().diff_style
+
+    @classmethod
+    def diff_styles(cls) -> tuple[str, ...]:
+        """What the picker offers: `auto`, then every style made for the active appearance."""
+        return (cls.AUTO, *(name for name in DIFF_STYLES if cls.diff_bands(name)))
+
+    @classmethod
+    def selected_diff_style(cls) -> str:
+        """The `ui.diff.style` setting as selected, `auto` included."""
+        return cls._diff_style
+
+    @classmethod
+    def set_diff_style(cls, name: str) -> None:
+        cls._diff_style = name if name in DIFF_STYLES else cls.AUTO
+        cls._generation += 1
+
+    @classmethod
+    def configure_diff_style(cls, ui: dict) -> list[str]:
+        """Select `ui.diff.style`, reporting a value that could not be used."""
+        table = ui.get("diff", {})
+        if not isinstance(table, dict):
+            cls.set_diff_style(cls.AUTO)
+            return ["ui.diff must be a table; using the theme's diff style"]
+        name = table.get("style", cls.AUTO)
+        cls.set_diff_style(name if isinstance(name, str) else cls.AUTO)
+        if name != cls.AUTO and name not in DIFF_STYLES:
+            return [f"unknown ui.diff.style {name!r}; using auto. Available: {', '.join((cls.AUTO, *DIFF_STYLES))}"]
+        return []
 
     @classmethod
     def fg(cls, role: str, *attributes: str) -> str:

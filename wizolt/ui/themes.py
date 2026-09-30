@@ -33,9 +33,11 @@ class Palette:
     # them. A theme file inherits its base's choice.
     true_color: bool = False
     # Diff bands a theme file recolors, as `Theme.diff_style` spells them (`diff.added.bg` ->
-    # `bg:#rrggbb`); every other band keeps the pinned colors of the appearance.
+    # `bg:#rrggbb`); every other band follows the selected diff style.
     diff: dict[str, str] = field(default_factory=dict)
     highlights: dict[str, str] = field(default_factory=dict)
+    # The diff style this theme pairs with, drawn while `ui.diff.style` is `auto`.
+    diff_style: str = "classic"
 
 
 # `[diff]` keys in a theme file and the band each one recolors: the line, and the words it changed.
@@ -45,6 +47,52 @@ DIFF_KEYS = {
     "removed": "diff.removed.bg",
     "removed_word": "diff.removed.emph",
 }
+
+
+def bands(added: str, added_word: str, removed: str, removed_word: str) -> dict[str, str]:
+    """A diff style's four bands for one appearance: green under added lines and the words they
+    changed, red under removed ones."""
+    return {"diff.added.bg": added, "diff.added.emph": added_word, "diff.removed.bg": removed, "diff.removed.emph": removed_word}
+
+
+@dataclass(frozen=True)
+class DiffStyle:
+    """The red and green a diff is drawn on, for the appearances the style was made for."""
+
+    note: str  # what the picker says about it
+    dark: dict[str, str] | None = None
+    light: dict[str, str] | None = None
+
+
+# Solid red and green bands, each set taken as published. Beyond wizolt's own and delta's
+# defaults, they come from delta's theme collection
+# (https://github.com/dandavison/delta/blob/main/themes.gitconfig), most of them tuned by their
+# authors against the same syntax themes wizolt ships.
+# fmt: off
+DIFF_STYLES: dict[str, DiffStyle] = {
+    "classic": DiffStyle(
+        "wizolt's bright red and green",
+        dark=bands("#003b00", "#1c7a1c", "#520000", "#9c1c1c"),
+        light=bands("#d1f0d1", "#8fd88f", "#f5c8c8", "#e88f8f"),
+    ),
+    # https://github.com/dandavison/delta/blob/main/src/color.rs
+    "delta": DiffStyle(
+        "delta's defaults: deeper, so code reads more easily",
+        dark=bands("#002800", "#006000", "#3f0001", "#901011"),
+        light=bands("#d0ffd0", "#a0efa0", "#ffe0e0", "#ffc0c0"),
+    ),
+    "zebra": DiffStyle(
+        "soft bands that stay behind the code",
+        dark=bands("#0e2f19", "#174525", "#330f0f", "#4f1917"),
+        light=bands("#d6ffd6", "#adffad", "#fbdada", "#f6b6b6"),
+    ),
+    "gruvmax-fang": DiffStyle("made for gruvbox-dark", dark=bands("#001a00", "#003300", "#330011", "#80002a")),
+    "platypus": DiffStyle("made for solarized-dark", dark=bands("#2a5e37", "#1a861a", "#5d001e", "#b80000")),
+    "calochortus-lyallii": DiffStyle("made for nord", dark=bands("#004000", "#007800", "#400000", "#780000")),
+    "colibri": DiffStyle("made for One Half Dark, one-dark's sibling", dark=bands("#003500", "#007e5e", "#5e0000", "#80002a")),
+    "mantis-shrimp": DiffStyle("made for monokai", dark=bands("#004433", "#007800", "#5d001e", "#b80000")),
+}
+# fmt: on
 
 
 # `Theme.ramp` interpolates between these two, so they must be hex rather than a terminal color.
@@ -104,6 +152,7 @@ def scheme(
     aqua: str,
     orange: str,
     pygments: str,
+    diff_style: str,
 ) -> Palette:
     """Map a scheme's named colors onto wizolt's roles.
 
@@ -153,6 +202,7 @@ def scheme(
         },
         background,
         true_color=True,
+        diff_style=diff_style,
     )
     # UI labels must remain readable even when a scheme's original accent is too faint.
     # Keep syntax tokens and the independent diff bands out of this adjustment.
@@ -178,42 +228,44 @@ def scheme(
 
 
 # Published palettes, with UI contrast adjusted by scheme(); code uses Pygments' matching style.
+# Each pairs with the diff style made for it where delta's collection has one; the rest with the
+# style that suits its code: delta's deep bands under neon, zebra's soft ones elsewhere.
 # fmt: off
 BUILTIN: dict[str, Palette] = {
     "gruvbox-dark": scheme(
         "dark", fg="#ebdbb2", comment="#928374", surface="#3c3836", rule="#665c54", background="#282828",
         red="#fb4934", green="#b8bb26", yellow="#fabd2f", blue="#83a598", purple="#d3869b", aqua="#8ec07c", orange="#fe8019",
-        pygments="gruvbox-dark",
+        pygments="gruvbox-dark", diff_style="gruvmax-fang",
     ),
     "gruvbox-light": scheme(
         "light", fg="#3c3836", comment="#928374", surface="#ebdbb2", rule="#bdae93", background="#fbf1c7",
         red="#9d0006", green="#79740e", yellow="#b57614", blue="#076678", purple="#8f3f71", aqua="#427b58", orange="#af3a03",
-        pygments="gruvbox-light",
+        pygments="gruvbox-light", diff_style="zebra",
     ),
     "solarized-dark": scheme(
         "dark", fg="#839496", comment="#586e75", surface="#073642", rule="#586e75", background="#002b36",
         red="#dc322f", green="#859900", yellow="#b58900", blue="#268bd2", purple="#d33682", aqua="#2aa198", orange="#cb4b16",
-        pygments="solarized-dark",
+        pygments="solarized-dark", diff_style="platypus",
     ),
     "solarized-light": scheme(
         "light", fg="#657b83", comment="#93a1a1", surface="#eee8d5", rule="#93a1a1", background="#fdf6e3",
         red="#dc322f", green="#859900", yellow="#b58900", blue="#268bd2", purple="#d33682", aqua="#2aa198", orange="#cb4b16",
-        pygments="solarized-light",
+        pygments="solarized-light", diff_style="zebra",
     ),
     "nord": scheme(
         "dark", fg="#d8dee9", comment="#616e88", surface="#3b4252", rule="#4c566a", background="#2e3440",
         red="#bf616a", green="#a3be8c", yellow="#ebcb8b", blue="#81a1c1", purple="#b48ead", aqua="#88c0d0", orange="#d08770",
-        pygments="nord",
+        pygments="nord", diff_style="calochortus-lyallii",
     ),
     "dracula": scheme(
         "dark", fg="#f8f8f2", comment="#6272a4", surface="#44475a", rule="#44475a", background="#282a36",
         red="#ff5555", green="#50fa7b", yellow="#f1fa8c", blue="#bd93f9", purple="#ff79c6", aqua="#8be9fd", orange="#ffb86c",
-        pygments="dracula",
+        pygments="dracula", diff_style="delta",
     ),
     "one-dark": scheme(
         "dark", fg="#abb2bf", comment="#5c6370", surface="#3e4452", rule="#4b5263", background="#282c34",
         red="#e06c75", green="#98c379", yellow="#e5c07b", blue="#61afef", purple="#c678dd", aqua="#56b6c2", orange="#d19a66",
-        pygments="one-dark",
+        pygments="one-dark", diff_style="colibri",
     ),
     # https://github.com/sindresorhus/hyper-snazzy, with the comment and popup-menu greys from
     # https://github.com/connorholyday/vim-snazzy. Snazzy has no orange, so its yellow stands in,
@@ -221,19 +273,19 @@ BUILTIN: dict[str, Palette] = {
     "snazzy": scheme(
         "dark", fg="#eff0eb", comment="#606580", surface="#3a3d4d", rule="#606580", background="#282a36",
         red="#ff5c57", green="#5af78e", yellow="#f3f99d", blue="#57c7ff", purple="#ff6ac1", aqua="#9aedfe", orange="#f3f99d",
-        pygments="dracula",
+        pygments="dracula", diff_style="delta",
     ),
     # https://github.com/pygments/pygments/blob/master/pygments/styles/monokai.py
     "monokai": scheme(
         "dark", fg="#f8f8f2", comment="#959077", surface="#49483e", rule="#49483e", background="#272822",
         red="#ff4689", green="#a6e22e", yellow="#e6db74", blue="#66d9ef", purple="#ae81ff", aqua="#66d9ef", orange="#fd971f",
-        pygments="monokai",
+        pygments="monokai", diff_style="mantis-shrimp",
     ),
     # https://github.com/primer/github-vscode-theme (dark default), matching Pygments' gh_dark.py.
     "github-dark": scheme(
         "dark", fg="#e6edf3", comment="#8b949e", surface="#161b22", rule="#30363d", background="#0d1117",
         red="#f85149", green="#56d364", yellow="#d29922", blue="#79c0ff", purple="#d2a8ff", aqua="#a5d6ff", orange="#ffa657",
-        pygments="github-dark",
+        pygments="github-dark", diff_style="zebra",
     ),
 }
 # fmt: on
@@ -360,5 +412,5 @@ def load_custom(directory: str, builtins: dict[str, Palette], roles: tuple[str, 
         unknown = sorted(set(data) - {"base", "pygments", "colors", "diff", "highlights"})
         if unknown:
             problems.append(f"theme {path}: unknown key{'s' if len(unknown) > 1 else ''} {', '.join(unknown)}")
-        themes[name] = Palette(base.appearance, colors, base.background, base.true_color, diff, highlights)
+        themes[name] = Palette(base.appearance, colors, base.background, base.true_color, diff, highlights, base.diff_style)
     return themes, problems

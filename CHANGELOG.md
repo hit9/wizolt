@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Added
+
+- Diff styles: after a theme, `/theme` offers the red and green diffs are drawn on, with a live
+  preview, saved as `ui.diff.style`. Besides `classic`, the previous colors, there are delta's
+  defaults and six sets from delta's theme collection: `zebra`, `gruvmax-fang`, `platypus`,
+  `calochortus-lyallii`, `colibri` and `mantis-shrimp`. The default, `auto`, draws the style each
+  theme pairs with: the set made for it where one exists (gruvbox-dark, solarized-dark, nord,
+  one-dark, monokai), `delta` on dracula and snazzy, `zebra` on github-dark and the light themes,
+  and `classic` on `dark` and `light`.
+- A warning at startup and after `/theme` when exact colors (a named theme, or a diff style other
+  than `classic`) will be rounded to 256 colors because `COLORTERM` is not `truecolor`; rounded,
+  dark diff lines can look black. The docs explain how to set it.
+
+### Fixed
+
+- A diff style other than `classic` is drawn in exact colors under `dark` and `light` too, on a
+  terminal that sets `COLORTERM=truecolor`. It was rounded to 256 colors, where its dark added
+  lines turned black.
+
 ## 0.61.0 - 2026-09-30
 
 ### Added

@@ -19,7 +19,7 @@ from wizolt.config import ConfigFile
 from wizolt.ui.cli import CommandCompleter
 from wizolt.ui.cli.commands import theme_command, theme_preview
 from wizolt.ui.render import HorizontalRule, Theme, UiPrinter
-from wizolt.ui.themes import BUILTIN, HEX_ROLES, MENU_TEXT_CONTRAST, MUTED_CONTRAST, contrast
+from wizolt.ui.themes import BUILTIN, DIFF_STYLES, HEX_ROLES, MENU_TEXT_CONTRAST, MUTED_CONTRAST, contrast
 from wizolt.ui.tui.app import TuiApp
 from wizolt.utils import terminal
 
@@ -40,8 +40,12 @@ shell_timeout = 30
 def default_theme(monkeypatch):
     """Every test starts on the default dark theme with no theme files, and leaves it that way."""
     monkeypatch.setattr(Theme, "_mode", "dark")
+    monkeypatch.setattr(Theme, "_diff_style", "auto")
     monkeypatch.setattr(Theme, "_custom", {})
     monkeypatch.delenv("COLORFGBG", raising=False)
+    # The color environment decides the depth; each test sets the part it is about.
+    for name in ("COLORTERM", "PROMPT_TOOLKIT_COLOR_DEPTH", "NO_COLOR"):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(terminal, "background", lambda: None)  # never ask the machine's terminal
 
 
@@ -69,8 +73,8 @@ def themed_loop(tmp_path, theme="auto"):
 class ThemeModal(ModalHarness):
     """The picker's host: records which theme each repaint was asked for and each recolor."""
 
-    def __init__(self, keys):
-        super().__init__(keys)
+    def __init__(self, keys, *, consumed=False):
+        super().__init__(keys, consumed=consumed)
         self.painted = []
         self.recolored = 0
 
@@ -327,6 +331,48 @@ def test_a_theme_file_draws_at_its_bases_depth(monkeypatch, tmp_path):
     assert Theme.color_depth(ColorDepth.DEPTH_8_BIT) is ColorDepth.DEPTH_8_BIT
 
 
+def test_a_diff_style_other_than_classic_draws_exact_colors_under_the_default_theme(monkeypatch):
+    """Rounded to 256 colors, delta's dark added band became black, even on a true-color terminal
+    running the terminal-following `dark` theme."""
+    monkeypatch.setenv("COLORTERM", "truecolor")
+    assert Theme.color_depth(ColorDepth.DEPTH_8_BIT) is ColorDepth.DEPTH_8_BIT
+    Theme.set_diff_style("delta")
+    assert Theme.color_depth(ColorDepth.DEPTH_8_BIT) is ColorDepth.DEPTH_24_BIT
+
+
+@pytest.mark.parametrize(
+    ("theme", "diff_style", "env", "warned"),
+    [
+        ("nord", "auto", {}, "theme nord"),
+        ("dark", "delta", {}, "diff style delta"),
+        ("nord", "auto", {"COLORTERM": "truecolor"}, ""),
+        ("nord", "auto", {"PROMPT_TOOLKIT_COLOR_DEPTH": "DEPTH_8_BIT"}, ""),
+        # `classic` survives rounding, so the terminal-following themes never need true color.
+        ("dark", "auto", {}, ""),
+    ],
+)
+def test_exact_colors_on_a_terminal_without_true_color_are_warned_about(monkeypatch, theme, diff_style, env, warned):
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    Theme.set_mode(theme)
+    Theme.set_diff_style(diff_style)
+    warning = Theme.true_color_warning()
+    if warned:
+        assert warning and f"The {warned} is drawn in exact colors" in warning and "export COLORTERM=truecolor" in warning
+    else:
+        assert warning is None
+
+
+async def test_the_true_color_warning_shows_at_startup_and_after_theme(tmp_path):
+    command_loop = themed_loop(tmp_path, "nord")
+    command_loop.configure_theme()
+    assert any("COLORTERM" in problem for problem in command_loop.theme_problems)
+
+    command_loop.presentation.tui = ThemeModal([])
+    result = await theme_command(command_loop, "dracula")
+    assert "The theme dracula is drawn in exact colors" in result
+
+
 def test_the_app_draws_at_the_depth_the_theme_asks_for(monkeypatch):
     monkeypatch.setenv("COLORTERM", "24bit")
     app = TuiApp()
@@ -481,13 +527,123 @@ async def test_enter_keeps_the_previewed_theme_and_saves_it(tmp_path):
     command_loop = themed_loop(tmp_path, "nord")
     Theme.set_mode("nord")
     command_loop.interactive_input = True
-    tui = command_loop.presentation.tui = ThemeModal(["j", "enter"])
+    tui = command_loop.presentation.tui = ThemeModal(["j", "enter"], consumed=True)
 
     result = await theme_command(command_loop, "")
 
-    assert Theme.name() == "dracula" and tui.recolored == 1
+    assert Theme.name() == "dracula" and tui.recolored == 1 and Theme.selected_diff_style() == "auto"
     assert result.startswith("Theme: dracula (saved")
     assert 'theme = "dracula"' in (tmp_path / "config.toml").read_text()
+
+
+async def test_the_theme_menu_goes_on_to_the_diff_colors_and_saves_both(tmp_path):
+    command_loop = themed_loop(tmp_path, "nord")
+    Theme.set_mode("nord")
+    command_loop.interactive_input = True
+    # Theme: nord -> dracula. Diff colors: auto -> classic.
+    tui = command_loop.presentation.tui = ThemeModal(["j", "enter", "j", "enter"], consumed=True)
+
+    result = await theme_command(command_loop, "")
+
+    assert Theme.name() == "dracula" and Theme.diff_style_name() == "classic"
+    assert "Theme: dracula (saved" in result and "Diff colors: classic (saved as ui.diff.style" in result
+    config = (tmp_path / "config.toml").read_text()
+    assert 'theme = "dracula"' in config and '[ui.diff]\nstyle = "classic"' in config
+    assert command_loop.session.config.ui["diff"] == {"style": "classic"}
+    # One redraw for both choices, after the second.
+    assert tui.recolored == 1
+    # The preview is drawn in the focused style: classic's changed-word green, not dracula's delta.
+    assert any(style.endswith("bg:#1c7a1c") for style, _ in tui.frames[-1])
+
+
+async def test_escape_on_the_diff_colors_keeps_the_theme_just_picked(tmp_path):
+    command_loop = themed_loop(tmp_path, "nord")
+    Theme.set_mode("nord")
+    command_loop.interactive_input = True
+    tui = command_loop.presentation.tui = ThemeModal(["j", "enter", "j", "escape"], consumed=True)
+
+    result = await theme_command(command_loop, "")
+
+    assert Theme.name() == "dracula" and Theme.selected_diff_style() == "auto"
+    assert result.startswith("Theme: dracula") and "Diff colors" not in result
+    assert "[ui.diff]" not in (tmp_path / "config.toml").read_text()
+    assert tui.recolored == 1
+
+
+async def test_theme_by_name_leaves_the_diff_colors_alone(tmp_path):
+    command_loop = themed_loop(tmp_path)
+    command_loop.presentation.tui = ThemeModal([])
+    Theme.set_diff_style("classic")
+
+    result = await theme_command(command_loop, "nord")
+
+    assert "Diff colors" not in result and Theme.diff_style_name() == "classic"
+
+
+def test_auto_diff_colors_follow_each_themes_pairing():
+    # The terminal-following themes keep the colors they always had.
+    assert {name: palette.diff_style for name, palette in Theme.BUILTIN.items()} == {
+        "dark": "classic",
+        "light": "classic",
+        "gruvbox-dark": "gruvmax-fang",
+        "gruvbox-light": "zebra",
+        "solarized-dark": "platypus",
+        "solarized-light": "zebra",
+        "nord": "calochortus-lyallii",
+        "dracula": "delta",
+        "one-dark": "colibri",
+        "snazzy": "delta",
+        "monokai": "mantis-shrimp",
+        "github-dark": "zebra",
+    }
+    for name, palette in Theme.BUILTIN.items():
+        Theme.set_mode(name)
+        # Every pairing was made for its theme's appearance, and draws all four bands.
+        assert Theme.diff_style_name() == palette.diff_style, name
+        assert set(Theme.diff_bands(palette.diff_style) or {}) == {"diff.added.bg", "diff.added.emph", "diff.removed.bg", "diff.removed.emph"}, name
+    Theme.set_mode("dracula")
+    assert Theme.diff_style("diff.added.bg") == "bg:#002800"  # delta's, as published
+    Theme.set_diff_style("classic")
+    assert Theme.diff_style("diff.added.bg") == Theme.DIFF_DARK["diff.added.bg"]
+
+
+def test_the_menu_offers_the_styles_made_for_the_background_and_others_fall_back():
+    Theme.set_mode("nord")
+    assert Theme.diff_styles() == ("auto", *DIFF_STYLES)
+    Theme.set_mode("gruvbox-light")
+    assert Theme.diff_styles() == ("auto", "classic", "delta", "zebra")
+    # A style made only for dark backgrounds draws the light theme's own pairing instead.
+    Theme.set_diff_style("gruvmax-fang")
+    assert Theme.diff_style_name() == "zebra" and Theme.diff_style("diff.added.bg") == "bg:#d6ffd6"
+    Theme.set_mode("gruvbox-dark")
+    assert Theme.diff_style_name() == "gruvmax-fang" and Theme.diff_style("diff.removed.emph") == "bg:#80002a"
+
+
+def test_a_theme_file_inherits_its_bases_diff_pairing_and_its_bands_win(tmp_path):
+    write_theme(tmp_path, "mine", 'base = "github-dark"\n[diff]\nremoved = "#112233"\n')
+    assert not Theme.load_custom(str(tmp_path))
+    Theme.set_mode("mine")
+    assert Theme.diff_style_name() == "zebra"
+    Theme.set_diff_style("classic")
+    assert Theme.diff_style("diff.removed.bg") == "bg:#112233"
+    assert Theme.diff_style("diff.added.bg") == "bg:#003b00"
+    # Foregrounds keep the appearance's pinned ones under every style.
+    assert Theme.diff_style("diff.added.fg") == Theme.DIFF_DARK["diff.added.fg"]
+
+
+@pytest.mark.parametrize(
+    ("ui", "selected", "problem"),
+    [
+        ({}, "auto", ""),
+        ({"diff": {"style": "delta"}}, "delta", ""),
+        ({"diff": {"style": "rainbow"}}, "auto", "unknown ui.diff.style 'rainbow'"),
+        ({"diff": "delta"}, "auto", "ui.diff must be a table"),
+    ],
+)
+def test_the_configured_diff_style_is_selected_or_reported(ui, selected, problem):
+    problems = Theme.configure_diff_style(ui)
+    assert Theme.selected_diff_style() == selected
+    assert (problem in problems[0]) if problem else not problems
 
 
 async def test_picking_auto_saves_auto_and_draws_the_terminal_default(tmp_path, monkeypatch):

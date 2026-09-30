@@ -59,6 +59,7 @@ from wizolt.ui.cli.modals import (
 )
 from wizolt.ui.cli.update import UpdateChecker
 from wizolt.ui.render import Theme, UiPrinter, markdown_table, progress_bar
+from wizolt.ui.themes import DIFF_STYLES
 from wizolt.ui.tui import InputMode
 
 if TYPE_CHECKING:
@@ -819,6 +820,68 @@ def theme_preview(_name: str) -> StyleAndTextTuples:
     return [fragment for row in rows for fragment in ((fg("muted"), "  │ "), *row, ("", "\n"))]
 
 
+DIFF_STYLE_SAMPLE = """@@ -8,4 +8,4 @@ def tokenize(text):
+ def tokenize(text: str) -> list[str]:
+-    return text.split(" ", 1)  # first word
++    return text.split(maxsplit=1)  # first word
+     count = len(words)
+"""
+
+
+def diff_style_preview(_name: str) -> StyleAndTextTuples:
+    """A modified line in the highlighted diff style, which the picker has already applied."""
+    note = f"{Theme.diff_style_name()} diff colors on the {Theme.name()} theme\n"
+    return [(Theme.fg("muted"), note), *UiPrinter().diff_segments(DIFF_STYLE_SAMPLE, row_width=60)]
+
+
+async def pick_diff_style(loop: CommandLoop) -> str | None:
+    """The second step of `/theme`: pick the colors diffs are drawn in, with a live preview.
+
+    Saved to ui.diff.style; `auto` draws the pairing the active theme was tuned with. Esc keeps
+    the diff style as it was and returns None."""
+    tui = loop.presentation.tui
+    assert tui is not None
+    original = Theme.selected_diff_style()
+
+    def apply(name: str) -> None:
+        Theme.set_diff_style(name)
+        tui.invalidate()
+
+    chosen = None
+    try:
+        chosen = await choice_application(
+            loop,
+            "Theme › Diff colors",
+            Theme.diff_styles(),
+            {
+                Theme.AUTO: f"auto (this theme pairs with {Theme.active().diff_style})",
+                **{name: f"{name} · {style.note}" for name, style in DIFF_STYLES.items()},
+            },
+            original,
+            set(),
+            preview_fn=diff_style_preview,
+            on_focus=apply,
+        )
+    finally:
+        if not isinstance(chosen, str):
+            Theme.set_diff_style(original)
+            tui.invalidate()
+    if not isinstance(chosen, str):
+        return None
+    Theme.set_diff_style(chosen)
+    previous = loop.session.config.ui.get("diff", {})
+    loop.session.config.ui["diff"] = {**(previous if isinstance(previous, dict) else {}), "style": chosen}
+    result = f"Diff colors: {chosen}"
+    if loop.session.config.path:
+        try:
+            ConfigFile.set_ui_value(loop.session.config.path, ("ui", "diff"), "style", chosen)
+        except (OSError, ValueError, ConfigError) as error:
+            result += f"\nNot saved to {loop.session.config.path}: {error}"
+        else:
+            result += f" (saved as ui.diff.style in {display_path(loop.session.config.path)})"
+    return result
+
+
 async def theme_command(loop: CommandLoop, args: str) -> str | None:
     """`/theme [NAME]`: pick a color theme with a live preview, or switch to one by name.
 
@@ -829,6 +892,7 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
     current = Theme.canonical(loop.session.settings.theme or Theme.AUTO) or original
     tui = loop.presentation.tui
     chosen: object
+    picked = False  # chosen from the menu, which goes on to the diff colors
     if args.strip():
         chosen = Theme.canonical(args)
         if chosen is None:
@@ -864,11 +928,10 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
                 tui.invalidate()
         if not isinstance(chosen, str):
             return None
+        picked = True
     assert isinstance(chosen, str)
     Theme.set_mode(Theme.resolve(chosen))
     loop.session.settings.theme = chosen
-    if tui is not None:
-        tui.recolor()
     lines = [*problems, f"Theme: {chosen}"]
     if loop.session.config.path:
         try:
@@ -877,6 +940,14 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
             lines.append(f"Not saved to {loop.session.config.path}: {error}")
         else:
             lines[-1] += f" (saved as runtime.theme in {display_path(loop.session.config.path)})"
+    if picked:
+        diff = await pick_diff_style(loop)
+        if diff:
+            lines.append(diff)
+    if warning := Theme.true_color_warning():
+        lines.append(warning)
+    if tui is not None:
+        tui.recolor()
     return "\n".join(lines)
 
 

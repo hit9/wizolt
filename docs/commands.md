@@ -131,9 +131,10 @@ for templates, Powerline colors and sweep formulas.
 
 **`/theme [NAME]`** — Pick a color theme. The picker previews each theme as the cursor lands on
 it: a sample below the list, and the prompt, menus and status bar around it. Enter keeps it and
-Esc goes back to the one you had. `/theme NAME` switches straight away. Either way the output
-already on screen is redrawn in the new colors, and the choice is saved as `runtime.theme` in
-your config file. Themes are listed under [Appearance](appearance.md#color-themes).
+goes on to the diff colors, previewed the same way; Esc there keeps the theme you just picked.
+`/theme NAME` switches the theme straight away. Either way the output already on screen is
+redrawn in the new colors, and the choices are saved as `runtime.theme` and `ui.diff.style` in
+your config file. Themes and diff colors are listed under [Appearance](appearance.md#color-themes).
 
 ## While a turn runs
 

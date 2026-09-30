@@ -33,9 +33,48 @@ A named theme does not change your terminal's background, so pick the one that m
 `/theme` to preview code, status colors, menu text and selected rows. Hints and menu descriptions
 stay readable while separators remain quieter. `gruvbox` and `solarized` pick their dark or light variant to match
 your terminal, the way `auto` does; so does any name you give both a `-dark` and a `-light` theme
-file. Named themes, and theme files based on one, draw their exact colors when your terminal
-sets `COLORTERM=truecolor` (most modern terminals do); otherwise each color is the nearest of 256.
-`NO_COLOR=1` turns color off everywhere, keeping bold and the selection bar.
+file. `NO_COLOR=1` turns color off everywhere, keeping bold and the selection bar.
+
+Named themes, theme files based on one, and every diff style except `classic` are exact colors.
+wizolt draws them exactly only when your terminal sets `COLORTERM=truecolor` (most modern terminals
+support true color, but not every one sets the variable). Otherwise each color is rounded to the
+nearest of 256, where a dark diff line can look black, and wizolt warns you at startup and after
+`/theme`. If your terminal supports true color, add this to your shell profile:
+
+```sh
+export COLORTERM=truecolor
+```
+
+If it does not, use `dark` or `light` with the `classic` diff style, whose colors survive the
+rounding.
+
+### Diff colors
+
+After you pick a theme, `/theme` offers the colors diffs are drawn in, previewed on a changed
+line. The choice is saved as `ui.diff.style`:
+
+```toml
+[ui.diff]
+style = "auto"
+```
+
+| Style | Colors |
+| --- | --- |
+| `auto` | The style the theme is paired with (the default) |
+| `classic` | Bright red and green; `dark` and `light` pair with it |
+| `delta` | Deeper red and green, the delta diff viewer's defaults; `dracula` and `snazzy` pair with it |
+| `zebra` | Soft red and green that stay behind the code; `github-dark` and the light themes pair with it |
+| `gruvmax-fang` | Made for `gruvbox-dark` |
+| `platypus` | Made for `solarized-dark` |
+| `calochortus-lyallii` | Made for `nord` |
+| `colibri` | Made for One Half Dark; `one-dark` pairs with it |
+| `mantis-shrimp` | Made for `monokai` |
+
+Every style draws removed lines on red and added lines on green, with the changed words a shade
+stronger. Styles other than `classic`, `delta` and `zebra` exist only for dark backgrounds, so the
+menu offers them only with a dark theme; with a light one, they draw the theme's own pairing. The
+styles beyond `classic` and `delta` come from delta's theme collection. If red and green are hard
+to tell apart, a theme file's `[diff]` table can set other colors.
 
 To make your own, add `<data_dir>/themes/<name>.toml` (`~/.wizolt/themes/` by default). It starts
 from a built-in theme and changes only the colors you list:
@@ -56,8 +95,8 @@ status bar's `status_base`, `status_provider`, `status_reason`, `status_mcp`, `s
 two take `#rrggbb` only), and `selection_bg`, `selection_fg`, `menu_bg` and `menu_muted` (the
 completion menu's descriptions).
 
-Diffs keep the base theme's red and green unless a `[diff]` table recolors them. If red and green
-are hard to tell apart for you, blue and orange are a common replacement:
+A theme file pairs with its base theme's [diff colors](#diff-colors). A `[diff]` table sets
+individual bands instead; they win over whichever diff style is selected:
 
 ```toml
 [diff]
