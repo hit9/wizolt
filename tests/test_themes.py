@@ -925,7 +925,7 @@ def test_user_message_background_fills_wrapped_and_empty_rows(name):
         rows = list(split_lines(block.fragments(width)))[:-1]
         assert rows
         assert not "".join(text for _, text in rows[0]).strip()
-        assert not "".join(text for _, text in rows[-1]).strip()
+        assert "Another line" in "".join(text for _, text in rows[-1])
         for row in rows:
             assert sum(get_cwidth(text) for _, text in row) == width
             assert all(f"bg:{Theme.color('user_bg')}" in style for style, text in row if text)
@@ -940,7 +940,7 @@ def test_custom_user_background_preserves_full_width_padding(tmp_path, backgroun
     Theme.configure("review", str(tmp_path), {"review": {"base": "dark", "colors": {"user_bg": background}}})
     block = MessageBlock(UiPrinter(), "hello", "user", 0, False)
     rows = list(split_lines(block.fragments(20)))[:-1]
-    assert len(rows) == 3
+    assert len(rows) == 2
     assert all(sum(get_cwidth(text) for _, text in row) == 20 for row in rows)
 
 

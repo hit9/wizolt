@@ -76,14 +76,15 @@ A *role* names what a color is used for. Set only the roles you want to change:
 | Divider | `divider_glow`, `divider_rule`, `divider_label`; glow and rule require `#rrggbb` |
 | Menus | `selection_bg`, `selection_fg`, `menu_bg`, `menu_muted` |
 
-The input area and your sent messages share a subtle background, with one row of padding
-above and below the text. Set `user_bg` in your
+The input area and your sent messages share a subtle background. The input has one row of
+spacing above and below its text; the idle divider doubles as its top spacing. Sent messages
+have one shaded row above the text and ordinary whitespace before the reply. Set `user_bg` in your
 custom theme's `[colors]` table to change it, for example `user_bg = "#34363c"` on a dark
 terminal or `user_bg = "#eeeeee"` on a light terminal. Use `user_bg = "default"` for the
 terminal's own background.
 
 The input divider shares this background, so the input area forms one continuous band.
-Sent messages use their bottom padding to separate replies instead of an extra separator line.
+Sent messages use whitespace to separate replies instead of an extra separator line.
 Preset backgrounds gently lighten dark themes or darken light themes without adding a
 foreground tint. For the closest match, choose a theme whose background resembles your terminal.
 

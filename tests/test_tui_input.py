@@ -943,7 +943,7 @@ def test_interactive_divider_and_padded_input_share_a_continuous_background(monk
                     if screen.data_buffer[y][x].char  # a wide glyph paints its second cell
                 ]
             )
-            assert prompt.ypos == activity.ypos + activity.height + 1
+            assert prompt.ypos == activity.ypos + activity.height + int(running)
             assert status.ypos == prompt.ypos + prompt.height + 1
             rendered.set()
 

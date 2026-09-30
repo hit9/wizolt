@@ -1532,7 +1532,7 @@ class TuiApp:
                     approval_form,
                     ConditionalContainer(
                         Window(height=Dimension(min=0, preferred=1, max=1), style=lambda: f"bg:{Theme.color('user_bg')}"),
-                        filter=idle,
+                        filter=idle & Condition(lambda: not self.idle_divider_fragments_fn()),
                     ),
                     self.input_window,
                     ConditionalContainer(

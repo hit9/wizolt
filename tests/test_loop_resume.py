@@ -228,18 +228,18 @@ async def test_a_restored_transcript_is_spaced_like_the_live_turn(tmp_path, monk
 
     text = "".join(fragment for part in printed for _, fragment in to_formatted_text(part))
     rows = re.sub(r"\x1b\[[0-9;]*m", "", text).split("\n")[:-1]  # drop the newline that ends the last row
-    # The shaded bottom padding separates the user's message from the first reply.
+    # One unshaded blank row separates the user's message from the first reply.
     narration = next(index for index, row in enumerate(rows) if "looking" in row)
     assert not rows[narration - 1].strip()
     assert "• first" in rows[narration - 2]
     assert not any("─" in row for row in rows)
-    # User blocks own one shaded padding row at each edge.
-    padding = {edge for index, row in enumerate(rows) if row.lstrip().startswith("• ") for edge in (index - 1, index + 1)}
+    # User blocks own one shaded padding row above the text.
+    padding = {index - 1 for index, row in enumerate(rows) if row.lstrip().startswith("• ")}
     assert all(not rows[index].strip() for index in padding)
     rows = [row for index, row in enumerate(rows) if index not in padding]
     blanks = {index for index, row in enumerate(rows) if row.strip() == ""}
     assert not any(index + 1 in blanks for index in blanks), "\n".join(rows)  # never two blank rows together
-    for opener in ("Read  a.py 0:1", "found it", "• second"):
+    for opener in ("looking", "Read  a.py 0:1", "found it", "• second"):
         index = next(i for i, row in enumerate(rows) if opener in row)
         assert rows[index - 1].strip() == "", (opener, rows[index - 2 : index + 1])
 
