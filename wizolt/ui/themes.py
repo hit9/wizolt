@@ -35,6 +35,7 @@ class Palette:
     # Diff bands a theme file recolors, as `Theme.diff_style` spells them (`diff.added.bg` ->
     # `bg:#rrggbb`); every other band keeps the pinned colors of the appearance.
     diff: dict[str, str] = field(default_factory=dict)
+    highlights: dict[str, str] = field(default_factory=dict)
 
 
 # `[diff]` keys in a theme file and the band each one recolors: the line, and the words it changed.
@@ -322,8 +323,34 @@ def load_custom(directory: str, builtins: dict[str, Palette], roles: tuple[str, 
                 problems.append(f"theme {path}: diff {key} must be a #rrggbb color or a terminal color like ansiblue, not {value!r}")
             else:
                 diff[DIFF_KEYS[key]] = "bg:" + color
-        unknown = sorted(set(data) - {"base", "pygments", "colors", "diff"})
+        highlights = dict(base.highlights)
+        groups = data.get("highlights", {})
+        if not isinstance(groups, dict):
+            problems.append(f"theme {path}: [highlights] must be a table")
+            groups = {}
+        for group, spec in groups.items():
+            if not THEME_NAME.fullmatch(group) or not isinstance(spec, dict) or set(spec) - {"fg", "bg", "bold", "italic", "underline"}:
+                problems.append(f"theme {path}: invalid highlight group {group!r}")
+                continue
+            parts = []
+            valid = True
+            for key, value in spec.items():
+                if key in ("fg", "bg"):
+                    color = normalize_color(value)
+                    if color is None:
+                        valid = False
+                    else:
+                        parts.append(f"{key}:{color}")
+                elif not isinstance(value, bool):
+                    valid = False
+                else:
+                    parts.append(key if value else "no" + key)
+            if valid:
+                highlights[group] = " ".join(parts)
+            else:
+                problems.append(f"theme {path}: invalid highlight values for {group!r}")
+        unknown = sorted(set(data) - {"base", "pygments", "colors", "diff", "highlights"})
         if unknown:
             problems.append(f"theme {path}: unknown key{'s' if len(unknown) > 1 else ''} {', '.join(unknown)}")
-        themes[name] = Palette(base.appearance, colors, base.background, base.true_color, diff)
+        themes[name] = Palette(base.appearance, colors, base.background, base.true_color, diff, highlights)
     return themes, problems

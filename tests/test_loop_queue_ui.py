@@ -2,7 +2,6 @@
 
 import asyncio
 import hashlib
-import itertools
 import os
 import shutil
 import sys
@@ -128,48 +127,24 @@ def divider_glow_steps(fragments):
     return steps
 
 
-def test_divider_sweep_accelerates_both_ways_and_reverses_offscreen(tmp_path, monkeypatch):
-    """Equal time slices cover progressively more cells, while direction changes stay dark."""
+def test_divider_formula_moves_both_ways_and_restarts_with_the_turn(tmp_path, monkeypatch):
+    from wizolt.ui.render import Theme
+
     monkeypatch.setattr(shutil, "get_terminal_size", lambda fallback: os.terminal_size((100, 20)))
     loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda text: None), input_fn=lambda prompt: "", output_fn=lambda text: None)
     view = loop.view
-    assert view.QUEUE_SWEEP_CELLS_PER_SEC * TuiApp.ANIMATION_INTERVAL == pytest.approx(1.0)
-
-    label = "working"
-    span = (100 - 2) - 1  # cols - 2, then width - 1
-    outside = view.GLOW_REACH + view.SWEEP_OFFSCREEN_MARGIN
-    travel = span + 2 * outside
-    sweep = min(view.QUEUE_SWEEP_CELLS_PER_SEC, travel)
-    period = travel / sweep
-
-    with pytest.MonkeyPatch.context() as mp:
-        heads = []
-        for phase in (0.3, 0.4, 0.5, 0.6, 0.7, 0.8):
-            mp.setattr(time, "monotonic", lambda phase=phase: phase * period)
-            steps = divider_glow_steps(view.sweep_divider_fragments(label))
-            heads.append(min(range(len(steps)), key=lambda index: (steps[index] is None, steps[index])))
-        moves = [second - first for first, second in itertools.pairwise(heads)]
-        assert moves == sorted(moves)
-        assert moves[-1] > moves[0] > 0
-
-        returning_heads = []
-        for phase in (1.3, 1.4, 1.5, 1.6, 1.7, 1.8):
-            mp.setattr(time, "monotonic", lambda phase=phase: phase * period)
-            steps = divider_glow_steps(view.sweep_divider_fragments(label))
-            returning_heads.append(min(range(len(steps)), key=lambda index: (steps[index] is None, steps[index])))
-        return_moves = [first - second for first, second in itertools.pairwise(returning_heads)]
-        assert return_moves == sorted(return_moves)
-        assert return_moves[-1] > return_moves[0] > 0
-
-        # Every direction change is a full radius off the rule, so it cannot flash across it.
-        for phase in (0.0, 1.0 - 1e-9, 1.0, 2.0 - 1e-9):
-            mp.setattr(time, "monotonic", lambda phase=phase: phase * period)
-            assert all(step is None for step in divider_glow_steps(view.sweep_divider_fragments(label)))
-
-        # A new turn is the animation's origin, rather than appearing at a random global phase.
-        view.presentation.status_bar.started_at = 100.0
-        mp.setattr(time, "monotonic", lambda: 100.0)
-        assert all(step is None for step in divider_glow_steps(view.sweep_divider_fragments(label)))
+    formula = "exp(-((x - pingpong(t * 20, w + 12) + 6) / 4) ** 2)"
+    assert not view.presentation.status_bar.layout.configure({"sweep": formula}, Theme.bar_styles)
+    heads = []
+    for now in (2, 3, 4, 7, 8, 9):
+        monkeypatch.setattr(time, "monotonic", lambda now=now: now)
+        steps = divider_glow_steps(view.sweep_divider_fragments("working"))
+        heads.append(min(range(len(steps)), key=lambda index: (steps[index] is None, steps[index])))
+    assert heads[0] < heads[1] < heads[2]
+    assert heads[3] > heads[4] > heads[5]
+    view.presentation.status_bar.started_at = 100.0
+    monkeypatch.setattr(time, "monotonic", lambda: 100.0)
+    assert all(step is None for step in divider_glow_steps(view.sweep_divider_fragments("working")))
 
 
 def test_divider_glow_fades_between_cells_and_every_step_has_a_style(tmp_path):
@@ -189,19 +164,13 @@ def test_divider_glow_fades_between_cells_and_every_step_has_a_style(tmp_path):
     label = "working"
     trail_start = 3 + len(label) + 2
     with pytest.MonkeyPatch.context() as mp:
-        cols = shutil.get_terminal_size((80, 20)).columns
-        rule_span = max(20, cols - 2) - 1
-        outside = loop.view.GLOW_REACH + loop.view.SWEEP_OFFSCREEN_MARGIN
-        travel = rule_span + 2 * outside
+        from wizolt.ui.render import Theme
+
         target = trail_start + 3.5
-        progress = (target + outside) / travel
-        mp.setattr(loop.view, "_sweep_progress", lambda _phase: progress)
-        mp.setattr(time, "monotonic", lambda: 0.0)
+        assert not loop.presentation.status_bar.layout.configure({"sweep": f"exp(-((x - {target}) / 2) ** 2)"}, Theme.bar_styles)
         steps = divider_glow_steps(loop.view.sweep_divider_fragments(label))
 
-    shades_per_cell = loop.view.GLOW_STEPS / loop.view.GLOW_REACH
-    assert steps[trail_start + 3] == steps[trail_start + 4] == int(0.5 * shades_per_cell)
-    assert steps[trail_start + 3] > 0  # dimmer than a head sitting exactly on a cell
+    assert steps[trail_start + 3] == steps[trail_start + 4]
     assert steps[trail_start + 2] == steps[trail_start + 5] > steps[trail_start + 3]
 
 

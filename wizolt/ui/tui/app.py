@@ -343,6 +343,7 @@ class TuiApp:
         # owner can flush anything still queued (see UiPrinter.drain_scrollback).
         self.on_app_stop = on_app_stop or (lambda: None)
         self.activity_fragments_fn: Callable[[], StyleAndTextTuples] = activity_fragments_fn or list
+        self.idle_divider_fragments_fn: Callable[[], StyleAndTextTuples] = list
         self.input_hint_fn = input_hint_fn or (lambda: "")
         self.quick_hints_fn: Callable[[], tuple[str, ...]] = quick_hints_fn or (lambda: ())
         self.file_picker_available_fn = file_picker_available_fn or (lambda: False)
@@ -1477,9 +1478,11 @@ class TuiApp:
         )
         self.activity_window = Window(
             FormattedTextControl(
-                lambda: self.activity_fragments_fn(),
+                lambda: self.activity_fragments_fn() if self.input_mode == InputMode.RUNNING else self.idle_divider_fragments_fn(),
                 show_cursor=False,
-                get_cursor_position=lambda: Point(x=0, y=sum(fragment[1].count("\n") for fragment in self.activity_fragments_fn())),
+                get_cursor_position=lambda: Point(
+                    x=0, y=sum(fragment[1].count("\n") for fragment in self.activity_fragments_fn()) if self.input_mode == InputMode.RUNNING else 0
+                ),
             ),
             dont_extend_height=True,
             wrap_lines=True,
@@ -1487,7 +1490,7 @@ class TuiApp:
         running = Condition(lambda: self.input_mode == InputMode.RUNNING)
         activity = ConditionalContainer(
             self.activity_window,
-            filter=running,
+            filter=Condition(lambda: self.input_mode == InputMode.RUNNING or bool(self.idle_divider_fragments_fn())),
         )
         running_gap_above = ConditionalContainer(
             Window(height=1, dont_extend_height=True),

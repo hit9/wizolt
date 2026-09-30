@@ -99,3 +99,74 @@ def test_every_preset_renders_bounded_idle_and_running_rows():
     for name in SWEEPS:
         sweep = Sweep("preset:" + name)
         assert 0 <= sweep.brightness(10, 2, 80) <= 1
+
+
+def test_layout_reload_is_atomic_and_rejects_style_injection():
+    from wizolt.ui.bars import BarLayout
+    from wizolt.ui.render import Theme
+
+    layout = BarLayout()
+    assert not layout.load({"statusbar": {"format": "preset:minimal"}}, Theme.bar_styles)
+    original = dict(layout.sources)
+    assert layout.load({"divider": {"sweep": '__import__("os")'}}, Theme.bar_styles)
+    assert layout.sources == original
+    for style in ("class:evil", "fg=red bg:blue", "fg=#fff\x1b[2J", '__import__("os")'):
+        assert layout.configure({"statusbar": "[" + style + "]{model}[/]"}, Theme.bar_styles)
+        assert layout.sources == original
+    assert layout.load({"divider": {"sweep": 99}}, Theme.bar_styles)
+    assert layout.load({"statusbar": False}, Theme.bar_styles)
+
+
+def test_layout_configuration_renders_real_fields_and_idle_divider(tmp_path):
+    from tui_harness import loop
+
+    from wizolt.config import Config
+
+    command_loop = loop(tmp_path)
+    command_loop.session.config.ui = Config.from_dict(
+        {
+            "ui": {
+                "statusbar": {"format": "{provider}/{model}{>}ctx {context.percent}%"},
+                "divider": {"format": "{% if running %}{activity}{% else %}idle{% endif %}", "sweep": "preset:none"},
+            }
+        }
+    ).ui
+    command_loop.configure_theme()
+    assert not command_loop.theme_problems
+    bar = command_loop.presentation.status_bar
+    assert bar.values()["model"] in text(bar.fragments())
+    assert text(command_loop.view.idle_divider_fragments()) == "idle"
+    assert text(command_loop.view.queue_divider_fragments()) == "working"
+
+
+def test_ui_config_save_preserves_comments_mode_and_other_tables(tmp_path):
+    import os
+    import tomllib
+
+    from wizolt.config import ConfigFile
+
+    path = tmp_path / "config.toml"
+    path.write_text('# keep me\n[runtime]\ntheme = "auto"\n')
+    path.chmod(0o600)
+    ConfigFile.set_ui_value(str(path), ("ui", "divider"), "format", "preset:powerline")
+    ConfigFile.set_ui_value(str(path), ("ui", "divider"), "sweep", "preset:none")
+    document = tomllib.loads(path.read_text())
+    assert document["ui"]["divider"] == {"format": "preset:powerline", "sweep": "preset:none"}
+    assert document["runtime"]["theme"] == "auto" and "# keep me" in path.read_text()
+    assert os.stat(path).st_mode & 0o777 == 0o600
+
+
+def test_theme_highlights_are_validated_and_follow_theme_switches(tmp_path, monkeypatch):
+    from wizolt.ui.render import Theme
+
+    monkeypatch.setattr(Theme, "_custom", {})
+    monkeypatch.setattr(Theme, "_mode", "dark")
+    (tmp_path / "mine.toml").write_text(
+        'base = "github-dark"\n[highlights."status.model"]\nfg = "#123456"\nbg = "#abc"\nbold = true\n[highlights.bad]\nfg = "#fff bg:red"\n'
+    )
+    problems = Theme.load_custom(str(tmp_path))
+    assert len(problems) == 1 and "bad" in problems[0]
+    Theme.set_mode("mine")
+    assert Theme.bar_styles({"status.model"})["status.model"] == "fg:#123456 bg:#aabbcc bold"
+    Theme.set_mode("dark")
+    assert "#123456" not in Theme.bar_styles({"status.model"})["status.model"]

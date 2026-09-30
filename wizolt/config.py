@@ -367,6 +367,8 @@ class Config:
     mcp: Json = field(default_factory=dict)
     # The raw `[hooks]` table; wizolt.shellhooks validates it when a session is assembled.
     hooks: Json = field(default_factory=dict)
+    # UI owns parsing and validation; config only carries the raw tables.
+    ui: Json = field(default_factory=dict)
     # The provider entry a Delegate sends its worker to; empty disables the tool entirely. The
     # registration gate reads Session.worker_tool_enabled, the value frozen from this field at
     # session start, never the live field: a runtime /worker provider switch tunes an already-
@@ -455,6 +457,7 @@ class Config:
             data_dir=cls.str(paths, "data_dir", UserPaths.DEFAULT_DATA_DIR),
             mcp=cls.table(data, "mcp"),
             hooks=cls.table(data, "hooks"),
+            ui=cls.table(data, "ui"),
             worker_provider=worker_provider,
             worker_model=worker_model,
             worker_reasoning=worker_reasoning,
@@ -682,18 +685,26 @@ model = ""
         replaced by a plain file. A `runtime` that is not a table is a ConfigError, as a load
         reports its other mistakes.
         """
+        ConfigFile.set_ui_value(path, ("runtime",), key, value)
+
+    @staticmethod
+    def set_ui_value(path: str, section: tuple[str, ...], key: str, value: str) -> None:
+        """Persist a UI selection using the same atomic, comment-preserving config writer."""
         import tomlkit
 
         path = os.path.realpath(path)
         with open(path, encoding="utf-8") as file:
             document = tomlkit.parse(file.read())
-        runtime = document.get("runtime")
-        if runtime is None:
-            runtime = tomlkit.table()
-            document["runtime"] = runtime
-        elif not isinstance(runtime, MutableMapping):
-            raise ConfigError(f"runtime in {path} must be a table")
-        runtime[key] = value
+        table = document
+        for name in section:
+            child = table.get(name)
+            if child is None:
+                child = tomlkit.table()
+                table[name] = child
+            elif not isinstance(child, MutableMapping):
+                raise ConfigError(f"{'.'.join(section)} in {path} must be a table")
+            table = child
+        table[key] = value
         mode = stat.S_IMODE(os.stat(path).st_mode)
         temporary = path + ".tmp"
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)

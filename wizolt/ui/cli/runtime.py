@@ -467,6 +467,7 @@ class TuiRuntime:
         tui.on_expand_output = self.expand_output
         tui.status_fragments_fn = self.loop.presentation.status_bar.fragments
         tui.activity_fragments_fn = self.loop.view.tui_activity_fragments
+        tui.idle_divider_fragments_fn = self.loop.view.idle_divider_fragments
         tui.input_hint_fn = self.loop.view.tui_input_hint
         tui.quick_hints_fn = lambda: self.loop.session.quick_hints
         if self.loop.session.mentions:

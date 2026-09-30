@@ -61,7 +61,8 @@ def test_status_bar_keeps_semantic_colors(tmp_path):
     s.settings.yolo = True
     s.config.provider.model = "vendor/model"
     fragments = StatusBar(s).fragments()
-    by_text = {text: style for style, text in fragments}
+    labels = ("[yolo] ", "default/model", s.config.provider.reasoning, "mcp 0", "ctx 0%")
+    by_text = {label: next(style for style, text in fragments if label in text) for label in labels}
 
     assert by_text["[yolo] "] == Theme.fg("status_yolo")
     assert by_text["[yolo] "] != Theme.fg("status_base")

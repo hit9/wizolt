@@ -31,7 +31,7 @@ from wizolt.ui.cli.hints import HintPicker
 from wizolt.ui.cli.runtime import RESUME_STATUS_LABEL, STARTING_STATUS_LABEL
 from wizolt.ui.cli.worker import WORKER_SUBCOMMANDS
 from wizolt.ui.render import LiveSpark, Theme, UiPrinter
-from wizolt.ui.tui import InputMode, TuiApp
+from wizolt.ui.tui import InputMode
 
 if TYPE_CHECKING:
     from wizolt.ui.cli.presentation import Presentation
@@ -344,20 +344,6 @@ class View:
     )
     WAITING_PULSE_PERIOD: ClassVar[float] = 1.6
 
-    # The divider's light averages one cell per frame. It enters gently and accelerates toward the
-    # right edge, but stays well inside its four-cell glow between redraws so it still reads as
-    # motion rather than a dash blinking at scattered positions.
-    QUEUE_SWEEP_CELLS_PER_SEC: ClassVar[float] = 1.0 / TuiApp.ANIMATION_INTERVAL
-    # Symmetric speed range around the average. The integrated smoothstep below moves from 0.6x to
-    # 1.4x with acceleration easing to zero at both ends, avoiding a mechanical gear change.
-    SWEEP_SPEED_RANGE: ClassVar[float] = 0.4
-    # One fully dark cell beyond the four-cell glow gives the reset a real invisible window; ending
-    # exactly at the fade radius can still light the dimmest shade on the last frame before wrap.
-    SWEEP_OFFSCREEN_MARGIN: ClassVar[float] = 1.0
-    # A comet: a soft head with a tail fading into the dim rule, by distance from the head. The ramp
-    # is finer than one shade per cell, so a head between two cells lights both partially instead of
-    # snapping onto the nearer one. The divider is only drawn while a turn is running.
-    GLOW_REACH: ClassVar[float] = 4.0
     GLOW_STEPS: ClassVar[int] = 12
 
     QUEUE_EMPTY_HINT = "Enter follow-up · Tab next turn · Ctrl-C interrupts"
@@ -391,74 +377,39 @@ class View:
         idx = min(len(self.WAITING_PULSE_STYLES) - 1, int(intensity * len(self.WAITING_PULSE_STYLES)))
         return [(self.WAITING_PULSE_STYLES[idx], "● ")]
 
-    @classmethod
-    def _sweep_progress(cls, phase: float) -> float:
-        """Integrated smoothstep velocity: continuous acceleration from slow to fast."""
-        speed_range = cls.SWEEP_SPEED_RANGE
-        return (1.0 - speed_range) * phase + 2.0 * speed_range * phase**3 - speed_range * phase**4
+    def sweep_divider_fragments(
+        self,
+        label: str,
+        prefix: StyleAndTextTuples | None = None,
+        label_style: str = "class:divider.working",
+        *,
+        running: bool = True,
+        fields: dict | None = None,
+    ) -> StyleAndTextTuples:
+        bar = self.presentation.status_bar
+        values = bar.values()
+        values.update(fields or {})
+        values.update(running=running, label=label, spinner="".join(fragment[1] for fragment in (prefix or [])))
+        if not bar.started_at:
+            values["elapsed"] = time.monotonic() if running else 0.0
 
-    def sweep_divider_fragments(self, label: str, prefix: StyleAndTextTuples | None = None, label_style: str = "class:divider.working") -> StyleAndTextTuples:
-        prefix = prefix or []
-        prefix_len = sum(get_cwidth(fragment[1]) for fragment in prefix)
-        cols = shutil.get_terminal_size((80, 20)).columns
-        width = max(20, cols - 2)
-        lead = 3
-        # A comet needs a track long enough to read as motion. When the label is long (the
-        # status + elapsed + rate + queued counts), widen the rule so both sides
-        # keep at least MIN_TRAIL dashes instead of clipping the label; the terminal width is
-        # the ceiling, and the trail shrinks only when even that cannot fit.
-        min_trail = 12
-        body_len = prefix_len + get_cwidth(label) + 2  # prefix + " label "
-        width = min(max(cols - 2, 20), max(width, lead + body_len + min_trail))
-        trail = max(3, width - lead - body_len)
-        # Keep the label in the animation's coordinate space. The highlight is hidden while it
-        # passes behind the label; removing that width would make it teleport from the short lead
-        # rule to the trail.
-        span = max(1, width - 1)
-        # Each pass starts and finishes beyond the glow radius. Direction changes therefore happen
-        # while the light is invisible, without a hard turn on the rule. A narrow track keeps each
-        # pass at least a second; normal tracks average one cell per animation frame.
-        outside = self.GLOW_REACH + self.SWEEP_OFFSCREEN_MARGIN
-        travel = span + 2 * outside
-        sweep = min(self.QUEUE_SWEEP_CELLS_PER_SEC, travel / 1.0)
-        now = time.monotonic()
-        started_at = self.presentation.status_bar.started_at
-        elapsed = max(0.0, now - started_at) if started_at > 0 else now
-        cycle_phase = elapsed * sweep / travel % 2.0
-        returning = cycle_phase >= 1.0
-        phase = cycle_phase - 1.0 if returning else cycle_phase
-        # Integral of a smoothstep speed ramp, normalized to end at 1. The speed rises from
-        # 1-range to 1+range, while acceleration itself eases in and out rather than switching at
-        # an arbitrary point on the rule.
-        progress = self._sweep_progress(phase) * travel
-        head = span + outside - progress if returning else progress - outside
+        def styles(specs: set[str]) -> dict[str, str]:
+            resolved = Theme.bar_styles(specs)
+            resolved["divider.label"] = label_style
+            if prefix:
+                resolved["spinner"] = prefix[0][0]
+            return resolved
 
-        def dashes(offset: int, count: int) -> StyleAndTextTuples:
-            fragments: StyleAndTextTuples = []
-            for i in range(count):
-                step = int(abs(offset + i - head) / self.GLOW_REACH * self.GLOW_STEPS)
-                style = f"class:divider.glow{step}" if step < self.GLOW_STEPS else "class:queue.rule"
-                # A full-width divider can contain hundreds of plain cells. Keep only style
-                # boundaries as fragments so widening the terminal does not multiply per-frame
-                # rendering work.
-                if fragments and fragments[-1][0] == style:
-                    fragments[-1] = (style, fragments[-1][1] + "─")
-                else:
-                    fragments.append((style, "─"))
-            return fragments
+        ramp = ("class:queue.rule", *(f"class:divider.glow{step}" for step in reversed(range(self.GLOW_STEPS))))
+        return list(bar.layout.render("divider", values, max(0, shutil.get_terminal_size((80, 20)).columns - 2), styles, ramp=ramp))
 
-        return [
-            *dashes(0, lead),
-            ("class:queue.rule", " "),
-            *prefix,
-            (label_style, label),
-            ("class:queue.rule", " "),
-            *dashes(lead + body_len, trail),
-        ]
+    def idle_divider_fragments(self) -> StyleAndTextTuples:
+        return self.sweep_divider_fragments("", running=False)
 
     def queue_divider_fragments(self, queued: int = 0, next_turn: int = 0) -> StyleAndTextTuples:
         tui = self.presentation.tui
         status = tui.status_label if tui is not None and tui.status_label else "working"
+        activity, rate = status, ""
         if status in {"working", "retrying", "compacting context"}:
             retry_status = self.presentation.status_bar.retry_status()
             attempt_status = self.presentation.status_bar.model_attempt_status()
@@ -493,7 +444,12 @@ class View:
         # While the worker runs, the label takes the worker's color and no name: the status bar's
         # `worker ·` lead is the one place that says it in words, and the color ties this line to it.
         label_style = "class:divider.worker" if self.session.delegating_worker is not None else "class:divider.working"
-        return self.sweep_divider_fragments(label, prefix=self.waiting_pulse_fragments(), label_style=label_style)
+        return self.sweep_divider_fragments(
+            label,
+            prefix=self.waiting_pulse_fragments(),
+            label_style=label_style,
+            fields={"activity": activity, "rate": rate, "queue.total": queued + next_turn, "queue.followup": queued, "queue.next_turn": next_turn},
+        )
 
     def followup_fragments(self) -> tuple[StyleAndTextTuples, StyleAndTextTuples]:
         pending = list(self.session.pending_user_inputs)

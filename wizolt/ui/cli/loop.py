@@ -424,6 +424,7 @@ class CommandLoop:
         `start_session` to report after the banner.
         """
         self.theme_problems = Theme.configure(self.session.settings.theme, self.session.data_path("themes"))
+        self.theme_problems.extend(self.presentation.status_bar.layout.load(self.session.config.ui, Theme.bar_styles))
 
     def start_session(self, *, show_banner: bool = True) -> None:
         """Initialize output and background services shared by both command-loop frontends."""

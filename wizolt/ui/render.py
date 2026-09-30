@@ -40,8 +40,9 @@ from wizolt.base import (
     LogRole,
     Text,
 )
+from wizolt.ui.bars import BarLayout, Value
 from wizolt.ui.themes import BUILTIN as NAMED_THEMES
-from wizolt.ui.themes import Palette, load_custom
+from wizolt.ui.themes import Palette, load_custom, normalize_color
 from wizolt.utils import terminal
 
 if TYPE_CHECKING:
@@ -370,6 +371,50 @@ class Theme:
     _generation: ClassVar[int] = 0
     _transcript_style: ClassVar[tuple[tuple[str, int], BaseStyle] | None] = None
     _pygments_cache: ClassVar[dict[str, type[PygmentsStyle] | None]] = {}
+
+    @classmethod
+    def bar_styles(cls, specs: set[str]) -> dict[str, str]:
+        """Resolve template styles from semantic roles and theme highlight groups.
+
+        Only color values and named text attributes cross this boundary, never raw toolkit
+        style directives from configuration or interpolated model/provider names.
+        """
+        colors = cls.palette()
+        background = cls.active().background or ("#ffffff" if cls.appearance() == "light" else "#000000")
+        groups = {role: cls.fg(role) for role in cls.ROLES}
+        groups.update(
+            {
+                "status.model": f"fg:{background} bg:{colors['status_provider']} bold",
+                "status.detail": f"fg:{colors['status_base']} bg:{colors['menu_bg']}",
+                "status.usage": f"fg:{background} bg:{colors['status_context']}",
+                "divider.activity": f"fg:{background} bg:{colors['accent_secondary']} bold",
+                "divider.metrics": f"fg:{colors['status_base']} bg:{colors['menu_bg']}",
+                "divider.label": "class:divider.working",
+                "spinner": cls.fg("success"),
+            }
+        )
+        groups.update(cls.active().highlights)
+        detected = terminal.background()
+        result = {"__background": "#" + "".join(f"{value:02x}" for value in detected) if detected else background}
+        for spec in specs:
+            parts = []
+            for token in spec.split():
+                if token in groups:
+                    parts.append(groups[token])
+                elif token in ("bold", "italic", "underline", "reverse", "nobold", "noitalic", "nounderline", "noreverse"):
+                    parts.append(token)
+                elif token.startswith(("fg=", "bg=")):
+                    value = token[3:]
+                    color = normalize_color(colors.get(value, value))
+                    if color is None:
+                        raise ValueError(f"invalid color {value!r}")
+                    parts.append(token[:2] + ":" + color)
+                else:
+                    raise ValueError(f"unknown highlight or style {token!r}")
+            if not parts:
+                raise ValueError("empty highlight")
+            result[spec] = " ".join(parts)
+        return result
 
     @classmethod
     def themes(cls) -> dict[str, Palette]:
@@ -1945,6 +1990,8 @@ class StatusBar:
 
     def __init__(self, session: Session):
         self.session = session
+        self.layout = BarLayout()
+        self.layout_problems: list[str] = []
         self.started_at = 0.0
         self.running = False
         self.rendered = False
@@ -2060,50 +2107,42 @@ class StatusBar:
             return []
         return [[(f"worker ctx {percent}%", "worker")]]
 
-    def fragments(self) -> StyleAndTextTuples:
-        """Render the stable status row in its fixed group order and semantic colors.
-
-        Identity and usage are read off `active_session()`, so during a delegation the row answers
-        the question the reader actually has -- which model is running now, and how full its
-        context is -- instead of describing a parent that is parked inside a tool call. The
-        `worker ·` lead says whose numbers these are; they return to the parent's the moment
-        the worker answers. The session-wide groups (mcp, skills, yolo) stay the parent's:
-        the worker shares those objects, and yolo is the runtime's own flag. The one worker fact
-        shown while the parent runs is its context water level (`worker_context_group`), the
-        number the reader weighs before delegating again.
-        """
+    def values(self) -> dict[str, Value]:
+        """Fields describe the active agent; MCP, skills and YOLO describe the session."""
         source = self.active_session()
-        config = source.config
-        provider = config.provider
-        model = provider.model.rsplit("/", 1)[-1] or "(no model)"
+        provider = source.config.provider
         usage = source.usage
-        ctx_percent = usage.context_percent(source.state.context_percent)
-        cache_percent = usage.last_cached_prompt_tokens * 100 // usage.last_prompt_tokens if usage.last_prompt_tokens else 0
-        skill_count = len(self.session.skills.skills) if self.session.skills else 0
+        worker = self.session.worker
+        summary = self.worker_context_group(source)
+        return {
+            "provider": source.config.active_provider,
+            "model": provider.model.rsplit("/", 1)[-1] or "(no model)",
+            "reasoning": provider.reasoning,
+            "yolo": self.session.settings.yolo,
+            "worker.active": source is not self.session,
+            "worker.model": worker.config.provider.model if worker else "",
+            "worker.context": worker.usage.context_percent(worker.state.context_percent) if worker else 0,
+            "worker.summary": " | " + summary[0][0][0] if summary else "",
+            "context.percent": usage.context_percent(source.state.context_percent),
+            "cache.percent": usage.last_cached_prompt_tokens * 100 // usage.last_prompt_tokens if usage.last_prompt_tokens else 0,
+            "mcp.label": self.mcp_label(),
+            "mcp.count": sum(self.session.mcp.connected(item.name) for item in self.session.mcp.parse_configs()) if self.session.mcp else 0,
+            "skills.count": len(self.session.skills.skills) if self.session.skills else 0,
+            "running": self.running,
+            "elapsed": max(0.0, time.monotonic() - self.started_at) if self.started_at else 0.0,
+            "activity": "working" if self.running else "",
+            "rate": self.output_rate(),
+            "spinner": "",
+            "label": "",
+            "queue.total": 0,
+            "queue.followup": 0,
+            "queue.next_turn": 0,
+            "reset_pending": self.session.context_reset_requested,
+        }
 
-        identity: list[tuple[str, str]] = []
-        if self.session.settings.yolo:
-            identity.append(("[yolo] ", "yolo"))
-        if source is not self.session:
-            identity.extend([("worker", "worker"), (" · ", "sep")])
-        identity.extend([(config.active_provider + "/" + model, "provider"), (" · ", "sep"), (provider.reasoning, "reason")])
-        groups: list[list[tuple[str, str]]] = [
-            identity,
-            [(self.mcp_label(), "mcp"), (" · ", "sep"), (f"skills {skill_count}", "mcp")],
-            [(f"ctx {ctx_percent}%", "context"), (" · ", "sep"), (f"cache {cache_percent}%", "context")],
-            *self.worker_context_group(source),
-        ]
-        fragments: StyleAndTextTuples = []
-        for group in groups:
-            if fragments:
-                fragments.append((Theme.fg("subtle"), " | "))
-            fragments.extend((self.role_style(role), text) if role != "sep" else (Theme.fg("subtle"), text) for text, role in group)
-
-        text = "".join(fragment[1] for fragment in fragments)
+    def fragments(self) -> StyleAndTextTuples:
         columns = shutil.get_terminal_size((120, 20)).columns
-        if get_cwidth(text) >= columns:
-            return self.clip_fragments(fragments, columns - 1)
-        return fragments
+        return list(self.layout.render("statusbar", self.values(), columns - 1, Theme.bar_styles))
 
     def mcp_label(self) -> str:
         """The MCP group's text: `mcp N`, with a spinner frame in front of the count while

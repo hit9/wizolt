@@ -455,13 +455,9 @@ def test_divider_glow_passes_behind_the_label_instead_of_jumping_across_it(tmp_p
     # Put the head well inside the label. Neither visible side should glow until it emerges;
     # treating the two rule runs as adjacent makes it jump immediately to the right side.
     hidden_position = 3 + 1 + len(label) // 2
-    view = loop.view
-    rule_span = (60 - 2) - 1
-    outside = view.GLOW_REACH + view.SWEEP_OFFSCREEN_MARGIN
-    travel = rule_span + 2 * outside
-    progress = (hidden_position + outside) / travel
-    monkeypatch.setattr(view, "_sweep_progress", lambda _phase: progress)
-    monkeypatch.setattr(time, "monotonic", lambda: 0.0)
+    from wizolt.ui.render import Theme
+
+    assert not loop.presentation.status_bar.layout.configure({"sweep": f"exp(-((x - {hidden_position}) / 2) ** 2)"}, Theme.bar_styles)
     fragments = loop.view.sweep_divider_fragments(label)
 
     assert not any(style.startswith("class:divider.glow") for style, _ in fragments)

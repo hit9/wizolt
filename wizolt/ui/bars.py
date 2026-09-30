@@ -152,10 +152,13 @@ class Sweep:
             return 0.0
 
 
-IDENTITY = "{% if yolo %}[status_yolo]YOLO [/]{% endif %}{% if worker.active %}[status_worker]worker · [/]{% endif %}"
+IDENTITY = "{% if yolo %}[status_yolo][[yolo]] [/]{% endif %}{% if worker.active %}[status_worker]worker · [/]{% endif %}"
 STATS = "[status_mcp]{mcp.label} · skills {skills.count}[/][subtle] | [/][status_context]ctx {context.percent}% · cache {cache.percent}%[/]"
 STATUS_PRESETS = {
-    "default": IDENTITY + "[status_provider]{provider}/{model}[/][subtle] · [/][status_reason]{reasoning}[/][subtle] | [/]" + STATS + "{worker.summary}",
+    "default": IDENTITY
+    + "[status_provider]{provider}/{model}[/][subtle] · [/][status_reason]{reasoning}[/][subtle] | [/]"
+    + STATS
+    + "[status_worker]{worker.summary}[/]",
     "minimal": IDENTITY + "[status_provider]{model}[/]{>}[status_context]ctx {context.percent}%[/]",
     "split": IDENTITY + "[status_provider]{provider}/{model}[/]{% optional priority=10 %} · {reasoning}{% endoptional %}{>}" + STATS,
     "powerline": "[status.model] "
@@ -163,9 +166,9 @@ STATUS_PRESETS = {
     + "{model} {join:}[status.detail]{% optional priority=10 %} {reasoning} {% endoptional %}{join:}[reset]{>}{join:}[status.usage] ctx {context.percent}% [reset]",
 }
 DIVIDER_PRESETS = {
-    "plain": "[divider_rule]── [/]{% if running %}[divider.activity]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
-    "comet": "[divider_rule]─── [/]{% if running %}[divider.activity]{spinner}{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
-    "minimal": "{% if running %}[divider.activity]{label}[/]{% else %}[divider_rule]{fill:─}[/]{% endif %}",
+    "plain": "[divider_rule]── [/]{% if running %}[divider.label]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
+    "comet": "[divider_rule]─── [/]{% if running %}[spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
+    "minimal": "{% if running %}[divider.label]{label}[/]{% else %}[divider_rule]{fill:─}[/]{% endif %}",
     "powerline": "{% if running %}[divider.activity] {activity} · {elapsed:duration} {join:}[reset]{% endif %}[divider_rule]{fill:─}[/]{% if running %}{join:}[divider.metrics] {rate} {% if queue.total > 0 %}· {queue.total} queued {% endif %}{% if reset_pending %}· reset pending {% endif %}[reset]{% endif %}",
 }
 
@@ -202,7 +205,10 @@ def clip(fragments: Fragments, width: int) -> Fragments:
             part += char
             width -= size
         if part:
-            result.append((style, part))
+            if result and result[-1][0] == style:
+                result[-1] = (style, result[-1][1] + part)
+            else:
+                result.append((style, part))
         if part != text:
             break
     return result
@@ -324,7 +330,7 @@ class Template:
                         if len(stack) > 1:
                             stack.pop()
                     else:
-                        stack.append(stack[-1] + " " + styles[node.text])
+                        stack.append((stack[-1] + " " + styles[node.text]).strip())
                     result.append(Cell(stack[-1], ""))
                 elif node.kind == "field":
                     name, _, spec = node.text.partition(":")
@@ -333,7 +339,11 @@ class Template:
                     result.append(Cell(stack[-1], clean(text)[:4096]))
                 elif node.text:
                     result.append(Cell(stack[-1], clean(node.text), node.kind))
-            return result
+            visible = []
+            for cell in result:
+                if cell.text and not (cell.kind == "join" and visible and visible[-1].kind == "join"):
+                    visible.append(cell)
+            return visible
 
         active = cells()
         for node in sorted(optional, key=lambda node: node.priority):
@@ -369,7 +379,8 @@ class Template:
             elif cell.kind == "join":
                 left_bg = background(active[i - 1].style) if i else "default"
                 right_bg = background(active[i + 1].style) if i + 1 < len(active) else "default"
-                style = f"fg:{left_bg} bg:{right_bg}" if text == "" else f"fg:{right_bg} bg:{left_bg}"
+                fg, bg = (left_bg, right_bg) if text == "" else (right_bg, left_bg)
+                style = f"fg:{styles.get('__background', 'default') if fg == 'default' else fg} bg:{bg}"
             if text:
                 fragments.append((style, text))
                 position += get_cwidth(text)
@@ -388,3 +399,77 @@ class Template:
                 right.append((style, text))
             return clip(left, max(0, width - right_width)) + clip(right, width)
         return clip(fragments, width)
+
+
+DEFAULTS = {"statusbar": "preset:default", "divider": "preset:comet", "sweep": "preset:comet"}
+PRESETS = {"statusbar": STATUS_PRESETS, "divider": DIVIDER_PRESETS, "sweep": SWEEPS}
+
+
+class BarLayout:
+    """Session-local compiled settings. Failed reloads leave the previous settings intact."""
+
+    def __init__(self):
+        self.sources = dict(DEFAULTS)
+        self.templates = {key: Template(value, PRESETS[key]) for key, value in DEFAULTS.items() if key != "sweep"}
+        self.sweep = Sweep(DEFAULTS["sweep"])
+        self.errors: list[str] = []
+
+    def configure(self, sources: Mapping[str, str], styles: Callable[[set[str]], Mapping[str, str]]) -> list[str]:
+        templates = dict(self.templates)
+        sweep = self.sweep
+        problems = []
+        sample: dict[str, Value] = dict.fromkeys(FIELDS, 0)
+        for key, source in sources.items():
+            try:
+                if not isinstance(source, str):
+                    raise TypeError("must be a string")
+                if key == "sweep":
+                    sweep = Sweep(source)
+                else:
+                    template = Template(source, PRESETS[key])
+                    resolved = styles(template.styles)
+                    for running in (False, True):
+                        sample.update(running=running, yolo=running, **{"worker.active": running})
+                        template.render(sample, 80, resolved)
+                    templates[key] = template
+            except (ValueError, TypeError, ArithmeticError, KeyError) as error:
+                problems.append(f"ui.{('divider.sweep' if key == 'sweep' else key + '.format')}: {error}")
+        if not problems:
+            self.sources.update(sources)
+            self.templates, self.sweep = templates, sweep
+            self.errors = []
+        return problems
+
+    def load(self, raw: Mapping[str, Any], styles: Callable[[set[str]], Mapping[str, str]]) -> list[str]:
+        sources = dict(DEFAULTS)
+        for section, keys in (("statusbar", ("format",)), ("divider", ("format", "sweep"))):
+            table = raw.get(section, {})
+            if not isinstance(table, dict):
+                return [f"ui.{section} must be a table"]
+            unknown = set(table) - set(keys)
+            if unknown:
+                return [f"ui.{section}: unknown settings: {', '.join(sorted(unknown))}"]
+            for key in keys:
+                if key in table:
+                    sources["sweep" if key == "sweep" else section] = table[key]
+        return self.configure(sources, styles)
+
+    def render(
+        self, kind: str, values: Mapping[str, Value], width: int, styles: Callable[[set[str]], Mapping[str, str]], *, ramp: tuple[str, ...] = ()
+    ) -> Fragments:
+        template = self.templates[kind]
+        try:
+            return template.render(
+                values,
+                width,
+                styles(template.styles),
+                sweep=self.sweep if kind == "divider" and values.get("running") else None,
+                t=float(values.get("elapsed", 0)),
+                ramp=ramp,
+            )
+        except (ValueError, TypeError, ArithmeticError, KeyError) as error:
+            message = f"ui.{kind}: {error}"
+            if message not in self.errors:
+                self.errors = [message]
+            fallback = Template(DEFAULTS[kind], PRESETS[kind])
+            return fallback.render(values, width, styles(fallback.styles))

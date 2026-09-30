@@ -4,6 +4,10 @@
 
 ### Added
 
+- Configure `[ui.statusbar] format` and `[ui.divider] format` / `sweep` with `preset:name`
+  or a custom template/formula. Theme files accept named `[highlights]` groups for Powerline
+  segments. The divider also renders its idle template; invalid UI settings retain the previous
+  layout (or defaults at startup). Preserve active-worker fields and literal queue/status text.
 - A shared single-line UI template and sweep-expression engine, with preset expansion,
   conditional and optional spans, terminal-width layout, and Powerline joins. Expressions use
   an allowlisted, bounded AST interpreter; interpolated values stay literal and terminal control
