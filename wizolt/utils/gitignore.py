@@ -81,9 +81,15 @@ class GitIgnore:
                 # Everything below the prefix, at least one segment deep; the directory itself
                 # stays matchable only as the prefix of what is under it.
                 body += "[^/]+"
-            else:
+            elif ignores:
                 # A file rule also matches a directory of that name, so the walk prunes the subtree.
                 body += "(?:/|$)"
+            else:
+                # A negation decides only the path it names. Matching what sits under a directory
+                # of that name would un-ignore files Git keeps ignored: `!foo` cannot re-include
+                # `foo/bar/`, and whatever an excluded directory contains is decided before the
+                # walk ever descends into it.
+                body += "/?$"
         else:
             # A directory rule matches the directory itself -- and so everything under it, since
             # the walk never descends into an ignored directory -- but nothing else: matches()
@@ -92,9 +98,9 @@ class GitIgnore:
             if segments[-1] == "**":
                 # `dir/**/` names the directories under dir, at least one segment deep: never dir
                 # itself, never a file sitting directly inside it.
-                body += "[^/]+/"
+                body += "[^/]+/" if ignores else "[^/]+/$"
             else:
-                body += "/"
+                body += "/" if ignores else "/$"
         prefix = "" if rooted or segments[0] == "**" else "(?:[^/]+/)*"
         return re.compile("^" + prefix + body), ignores
 

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- Stop a .gitignore negation from un-ignoring paths below the name it negates: `!foo` now decides
+  only `foo` itself, never `foo/bar/`, so the no-Git/no-rg @-mention walk no longer offers files
+  Git keeps ignored (verified against `git check-ignore` on a materialized tree).
+
 ### Changed
 
 - Record the post-0.62.0 theme refresh's benchmarks against 0.62.0 (`11493363` → `ca45fa61`) on

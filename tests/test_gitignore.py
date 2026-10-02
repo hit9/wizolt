@@ -3,11 +3,12 @@
 It exists for one walk -- @-mention completion in a workspace with no Git and no ripgrep -- so
 the guarantee that matters is agreement: on every pattern shape that walk reads, it decides
 each path the same. pathspec is a dev-only dependency, imported here as the reference and never
-by wizolt itself. Three declared divergences are asserted below: `a/**` leaves the directory
+by wizolt itself. Four declared divergences are asserted below: `a/**` leaves the directory
 `a` itself undecided, where the reference marks it ignored; `dir/*` does the same so that a
-later `!dir/keep.txt` can still reach its file; and `dir/**/` stops one segment short of `dir`
-itself and the files directly inside it. Git agrees with all three, and the walk's resulting
-file set matches Git either way.
+later `!dir/keep.txt` can still reach its file; `dir/**/` stops one segment short of `dir`
+itself and the files directly inside it; and a negation decides only the path it names, where
+the reference lets `!foo` un-ignore `foo/bar` too. Git agrees with all four, and the walk's
+resulting file set matches Git either way.
 """
 
 import pytest
@@ -134,7 +135,6 @@ CORPUS_TWO_PATHS = [
     ("q/b/x", False),
     ("onlyroot", True),
     ("onlyroot/keep", True),
-    ("onlyroot/keep/x", False),
     ("onlyroot/x", False),
     ("d/onlyroot", True),
     ("onlyroot", False),
@@ -230,6 +230,22 @@ def test_a_double_star_directory_rule_stops_at_the_directory_itself():
     assert reader.matches("dir", True) is None
     assert reader.matches("dir/sub", True) is True
     assert reader.matches("dir/other.py", False) is None
+
+
+def test_a_negation_decides_only_the_path_it_names():
+    """`!foo` un-ignores `foo` itself, never `foo/bar`: a negation matching what sits under a
+    directory of that name un-ignores files Git keeps ignored, and the walk then lists files
+    Git would never offer. The reference reader shares that prefix match and disagrees with
+    Git here."""
+    reader = GitIgnore.from_lines(["foo/bar/", "!foo"])
+    assert reader.matches("foo", True) is False
+    assert reader.matches("foo/bar", True) is True
+    assert reader.matches("foo/bar/x", False) is True
+    reader = GitIgnore.from_lines(["a/b", "!a"])
+    assert reader.matches("a/b", False) is True
+    reader = GitIgnore.from_lines(["build/", "!dir/"])
+    assert reader.matches("dir", True) is False
+    assert reader.matches("dir/x.py", False) is None
 
 
 def test_comments_and_blank_lines_are_not_rules():
