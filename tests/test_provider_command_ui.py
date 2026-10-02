@@ -565,15 +565,42 @@ async def test_model_discovery_shows_loading_state_for_selected_provider(tmp_pat
     provider.available_models = ("configured-model",)
     provider.url = "https://example.com/v1"
     provider.key = "key"
-    transitions = []
     command_loop.presentation.tui = TuiApp()
-    command_loop.presentation.tui.set_dispatching = lambda prompt="": transitions.append(prompt)
-    monkeypatch.setattr(commands_mod, "remote_models", async_callable(lambda _loop, selected: ("remote-model",)))
+    app = command_loop.presentation.tui
+    app.set_running("working")
+    original_mode, original_prompt = app.input_mode, app.full_input_prompt()
+
+    async def discover(_loop, selected):
+        assert app.input_mode == "dispatch"
+        assert app.full_input_prompt() == "Loading models..."
+        return ("remote-model",)
+
+    monkeypatch.setattr(commands_mod, "remote_models", discover)
     selected = iter(["remote-model", "auto", "off"])
     monkeypatch.setattr(commands_mod, "select_choice", async_callable(lambda *_args, **_kwargs: next(selected)))
 
     assert "Set provider.model = remote-model" in await model(command_loop, "")
-    assert transitions == ["Loading models...", ""]
+    assert (app.input_mode, app.full_input_prompt()) == (original_mode, original_prompt)
+
+
+@pytest.mark.parametrize("error", [RuntimeError, asyncio.CancelledError])
+async def test_model_loading_failure_restores_running_input(tmp_path, monkeypatch, error):
+    command_loop = loop(tmp_path)
+    app = command_loop.presentation.tui = TuiApp()
+    app.set_running("working")
+    provider = command_loop.session.config.provider
+    provider.url, provider.key = "https://example.com/v1", "key"
+    original = (app.input_mode, app.full_input_prompt())
+
+    async def discover(*args):
+        assert app.input_mode == "dispatch"
+        raise error()
+
+    monkeypatch.setattr(commands_mod, "remote_models", discover)
+    with pytest.raises(error):
+        await model(command_loop, "")
+    assert (app.input_mode, app.full_input_prompt()) == original
+    command_loop.session.close()
 
 
 def test_interactive_provider_chain_uses_one_inline_tui_and_real_navigation(monkeypatch, tmp_path):

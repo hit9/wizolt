@@ -542,6 +542,20 @@ class TuiApp:
     def set_dispatching(self, prompt: str = "") -> None:
         self._set_mode(InputMode.DISPATCH, prompt)
 
+    @contextlib.contextmanager
+    def loading(self, prompt: str) -> Iterator[None]:
+        """Temporarily display loading text without taking ownership of the caller's input mode.
+
+        Model selection also runs inside a live turn's subagent approval. Leaving DISPATCH
+        behind there removes steering and makes the next approval restore an empty prompt.
+        """
+        mode, previous_prompt = self.input_mode, self.full_input_prompt()
+        self.set_dispatching(prompt)
+        try:
+            yield
+        finally:
+            self._set_mode(mode, previous_prompt)
+
     def set_idle(self) -> None:
         self.status_label = ""
         self._set_mode(InputMode.CHAT, self.input_style.prefix())

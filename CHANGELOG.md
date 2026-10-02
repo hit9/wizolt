@@ -16,6 +16,9 @@
 
 ### Fixed
 
+- Restore the running input mode after loading models inside a subagent approval, including
+  failures and cancellation, so steering remains available while the parent waits for children.
+
 - Audit main/subagent state ownership: isolate completion/instruction resolvers and MCP document
   injection memory (including reset/compaction invalidation), pin inherited provider/model/effort/API choices for child restore, and keep
   interleaved peer edits out of an agent's diff. Serialize shared-file Read/Edit transactions

@@ -8,6 +8,7 @@ Agent selection and its frontend supervision live in agents.py.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import shlex
@@ -973,13 +974,8 @@ async def model(loop: ModelSettingsHost, args: str) -> str:
     configured = tuple(dict.fromkeys(provider.available_models))
     tui = loop.presentation.tui
     show_loading = tui is not None and bool(provider.url and provider.key)
-    if show_loading and tui is not None:
-        tui.set_dispatching("Loading models...")
-    try:
+    with tui.loading("Loading models...") if show_loading and tui is not None else contextlib.nullcontext():
         remote = tuple(model for model in await remote_models(loop, provider) if model not in configured)
-    finally:
-        if show_loading and tui is not None:
-            tui.set_dispatching()
     choices: list[str] = []
     if configured:
         choices.extend((MODEL_CONFIGURED_LABEL, *configured))
