@@ -2415,6 +2415,8 @@ class StatusBar:
         width = max(0, width)
         if width == 0:
             return [("", "")]
+        if sum(get_cwidth(fragment[1]) for fragment in fragments) <= width:
+            return list(fragments)
         ellipsis = "." * min(3, width)
         available = width - get_cwidth(ellipsis)
         clipped: StyleAndTextTuples = []

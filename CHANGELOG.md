@@ -21,6 +21,9 @@
 
 ### Fixed
 
+- Preserve fitting styled text instead of replacing its last cells with an ellipsis, including
+  the agent picker's current-agent marker and preview rows.
+
 - Give every divider preset the green model-activity pulse, including plain, powerline, rail
   and capsule. Animate the same pulse in `/theme` running/queued previews, independently of
   the selected rule sweep; idle samples remain still.
@@ -99,6 +102,10 @@
   Git keeps ignored (verified against `git check-ignore` on a materialized tree).
 
 ### Changed
+
+- Align `/agents` names, states and context watermarks in bounded columns. Match selection
+  width to the preview frame, separate task/reply headings from their body in roomy panes,
+  and retain compact previews on small terminals.
 
 - Document and test that forked skills share the retained-child limit, including zero, and
   never silently fall back to the main conversation when creation is refused.

@@ -17,7 +17,7 @@ from wizolt.base import Text
 from wizolt.session import QueuedInput, Session
 from wizolt.ui.cli.modals import choice_application, picker_height, select_choice
 from wizolt.ui.cli.runtime import ScrollbackWriter, TuiRuntime
-from wizolt.ui.render import InputStyle, Theme
+from wizolt.ui.render import InputStyle, StatusBar, Theme
 
 if TYPE_CHECKING:
     from wizolt.ui.cli.loop import CommandLoop
@@ -49,16 +49,24 @@ class AgentPreview:
     def fragments(self, width: int, height: int) -> StyleAndTextTuples:
         if height < 5 or width < 20:
             return []
-        width, height = min(100, width), min(12, height)
-        task_rows = min(3, max(1, (height - 3) // 3))
-        reply_rows = height - 3 - task_rows
+        width, height = min(100, width), min(16, height)
+        roomy = width >= 40 and height >= 10
+        chrome = 7 if roomy else 3
+        task_rows = min(3, max(1, (height - chrome) // 3))
+        reply_rows = height - chrome - task_rows
         caption = Text.clip_width("─ " + self.name + " ", width - 4)
-        parts: StyleAndTextTuples = [("class:rule", "  ┌" + caption + "─" * (width - 4 - get_cwidth(caption)) + "┐\n")]
+        parts: StyleAndTextTuples = [
+            ("class:rule", "  ┌"),
+            ("class:accent bold", caption),
+            ("class:rule", "─" * (width - 4 - get_cwidth(caption)) + "┐\n"),
+        ]
 
         def bordered(row: list[tuple[str, str]]) -> None:
             used = sum(get_cwidth(text) for _, text in row)
             parts.extend([*row, ("class:rule", " " * max(0, width - 2 - used) + " │\n")])
 
+        if roomy:
+            bordered([("class:rule", "  │")])
         for title, text, budget, tail in (
             ("Task", self.task[:1500] or "(no task yet)", task_rows, False),
             ("Live" if self.streaming else "Reply", self.reply[-3000:] or "(no reply yet)", reply_rows, True),
@@ -66,23 +74,27 @@ class AgentPreview:
             if tail:
                 bordered([("class:rule", "  │")])
             rows: list[list[tuple[str, str]]] = []
-            prefix = [("class:rule", "  │ "), ("class:choice.disabled bold", f"{title:<5} ")]
-            continuation = [("class:rule", "  │ "), ("", "      ")]
+            if roomy:
+                bordered([("class:rule", "  │ "), ("class:choice.disabled bold", title)])
+            prefix = [("class:rule", "  │ "), ("", "  ")] if roomy else [("class:rule", "  │ "), ("class:choice.disabled bold", f"{title:<5} ")]
+            continuation = [("class:rule", "  │ "), ("", "  " if roomy else "      ")]
+            body_width = width - 4 - sum(get_cwidth(value) for _, value in prefix)
             for raw in text.splitlines():
                 rows.extend(Text.wrap_styled(prefix if not rows else continuation, continuation, [("class:text", raw)], width - 2))
             if len(rows) > budget:
                 # Keep the latest flowing rows and the opening task. The ellipsis stays on the
                 # final/first retained row, so even a five-row pane still shows both sections.
                 rows = rows[-budget:] if tail else rows[:budget]
-                marker = [("class:rule", "  │ "), ("class:choice.disabled bold", f"{title:<5} "), ("class:choice.disabled", "… ")]
                 if tail:
                     body = "".join(value for _, value in rows[0][2:])
-                    rows[0] = [*marker, ("class:text", Text.clip_width(body, width - 14))]
+                    rows[0] = [*prefix, ("class:choice.disabled", "… "), ("class:text", Text.clip_width(body, body_width))]
                 else:
                     body = "".join(value for _, value in rows[-1][2:])
-                    rows[-1] = [*(prefix if budget == 1 else continuation), ("class:text", Text.clip_width(body, width - 13) + "…")]
+                    rows[-1] = [*(prefix if budget == 1 else continuation), ("class:text", Text.clip_width(body, body_width + 1) + "…")]
             for row in rows:
                 bordered(row)
+        if roomy:
+            bordered([("class:rule", "  │")])
         parts.append(("class:rule", "  └" + "─" * (width - 4) + "┘\n"))
         return parts
 
@@ -208,6 +220,32 @@ class AgentsFrontend:
 
         labels = {entry.agent.session.uid: label(entry.agent.session.uid) for entry in entries}
 
+        def row(uid: str) -> StyleAndTextTuples:
+            entry = self.group.entry(uid)
+            session = entry.agent.session
+            available = max(1, min(100, shutil.get_terminal_size((80, 24)).columns) - 8)
+            wide = available >= 62
+            status_width, marker_width = (17, 10) if wide else (11, 2)
+            longest = max(get_cwidth(item.agent.session.agent_name) for item in entries)
+            name_width = min(max(8, longest), 28, max(4, available - status_width - marker_width - 12))
+
+            def cell(text: str, width: int) -> str:
+                text = Text.clip_width(text, width)
+                return text + " " * (width - get_cwidth(text))
+
+            state = entry.status if wide else entry.status.replace("waiting for input", "waiting")
+            state_style = {"running": "class:accent", "waiting for input": "class:warning", "failed": "class:error"}.get(entry.status, "class:muted")
+            context = session.usage.context_percent(session.state.context_percent)
+            marker = (" (current)" if wide else " *") if entry.agent is self.current.loop.agent else ""
+            parts: StyleAndTextTuples = [
+                ("class:text", cell(session.agent_name, name_width)),
+                (state_style, "  " + cell(state, status_width)),
+                ("class:muted", f"  ctx {context:3d}%"),
+                ("class:accent", cell(marker, marker_width)),
+            ]
+            parts.append(("", " " * max(0, available - sum(get_cwidth(fragment[1]) for fragment in parts))))
+            return StatusBar.clip_fragments(parts, available)
+
         def preview(uid: str) -> StyleAndTextTuples:
             entry = self.group.entry(uid)
             session = entry.agent.session
@@ -226,7 +264,8 @@ class AgentsFrontend:
                 current=current,
                 disabled=set(),
                 preview_fn=preview,
-                label_fn=lambda uid: [("", label(uid))],
+                label_fn=row,
+                preview_title=" ",
                 actions={"x": StopAgent, "X": self.group.stop},
                 keys="↑/↓ j/k move · Enter open · x stop · X stop now · Esc back",
             )

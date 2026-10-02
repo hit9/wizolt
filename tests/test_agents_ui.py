@@ -304,13 +304,51 @@ def test_agent_preview_is_a_bounded_box_with_wrapped_live_text(width, height):
     parts = preview.fragments(width, height)
     text = "".join(value for _, value in parts)
     lines = text.splitlines()
-    assert len(lines) <= min(height, 12)
+    assert len(lines) <= min(height, 16)
     assert "ui-review" in lines[0] and lines[0].strip().startswith("┌")
     assert lines[-1].strip().startswith("└")
     assert all(get_cwidth(line) == min(width, 100) for line in lines)
     assert "Task" in text and "Live" in text and "…" in text
     assert "live text" in text if width >= 40 else "text" in text
     assert any(style == "class:text" for style, value in parts if "text" in value)
+
+
+def test_roomy_agent_preview_separates_headings_and_aligns_body_text():
+    text = "".join(value for _, value in AgentPreview("Task body", "Latest reply", name="reviewer").fragments(80, 16))
+    rows = text.splitlines()
+    task = next(i for i, row in enumerate(rows) if row.strip(" │") == "Task")
+    reply = next(i for i, row in enumerate(rows) if row.strip(" │") == "Reply")
+    assert rows[task + 1].index("Task body") == rows[reply + 1].index("Latest reply") == 6
+    assert not rows[1].strip(" │") and not rows[-2].strip(" │")
+    assert not rows[reply - 1].strip(" │")
+
+
+@pytest.mark.parametrize("width", [40, 50, 70, 80, 140])
+async def test_agent_list_aligns_columns_and_selection_with_preview(frontend, monkeypatch, width):
+    from os import terminal_size
+
+    from prompt_toolkit.utils import get_cwidth
+
+    await child(frontend, "core-review")
+    await child(frontend, "中文界面-review")
+    await child(frontend, "test-gap-review")
+    monkeypatch.setattr(agents_module.shutil, "get_terminal_size", lambda _fallback: terminal_size((width, 40)))
+
+    async def choice(_loop, _title, choices, *, label_fn, preview_fn, preview_title, **kwargs):
+        rows = ["".join(text for _, text in label_fn(uid)) for uid in choices]
+        assert {get_cwidth(row) for row in rows} == {min(width, 100) - 8}
+        assert len({get_cwidth(row[:row.index("ctx")]) for row in rows}) == 1
+        assert len({get_cwidth(row[:row.index("%")]) for row in rows}) == 1
+        statuses = [frontend.group.entry(uid).status for uid in choices]
+        assert len({get_cwidth(row[:row.index(status)]) for row, status in zip(rows, statuses, strict=True)}) == 1
+        assert ("(current)" if width >= 70 else "*") in rows[0]
+        assert all(not row.rstrip().endswith("...") for row in rows)
+        assert preview_title == " "  # the frame supplies its own border; no redundant rule
+        frame = "".join(text for _, text in preview_fn(choices[-1])).splitlines()
+        assert get_cwidth(frame[0]) == get_cwidth(rows[0]) + 8
+
+    monkeypatch.setattr(agents_module, "choice_application", choice)
+    await frontend.select(frontend.root.loop)
 
 
 @pytest.mark.parametrize("keys,stopped,confirmed", [

@@ -267,6 +267,7 @@ async def choice_application(
     on_focus: Callable[[str], None] | None = None,
     actions: dict[str, Callable[[str], Any]] | None = None,
     keys: str = ChoiceViewState.KEYS,
+    preview_title: str = "",
 ) -> str | object | None:
     """Preview focus changes; optional actions operate on the highlighted row without closing.
 
@@ -290,7 +291,9 @@ async def choice_application(
             on_focus(landed)
         return result
 
-    result = await loop.presentation.tui.show_modal(lambda: state.fragments(title, preview_fn, label_fn, keys=keys), handle_key, exclusive=exclusive)
+    result = await loop.presentation.tui.show_modal(
+        lambda: state.fragments(title, preview_fn, label_fn, keys=keys, preview_title=preview_title), handle_key, exclusive=exclusive
+    )
     if isinstance(result, KeyboardInterrupt):
         raise result
     return result

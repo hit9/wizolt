@@ -121,6 +121,13 @@ def test_status_bar_clip_fragments_mirrors_clip_width_ellipsis():
         assert get_cwidth("".join(text for _, text in clipped)) <= width
 
 
+def test_fitting_fragments_keep_their_last_cells_and_styles():
+    fragments = [("#aaaaaa", "中文 "), ("#bbbbbb", "(current)")]
+    width = get_cwidth("".join(text for _, text in fragments))
+    for extra in (0, 1, 2, 3):
+        assert StatusBar.clip_fragments(fragments, width + extra) == fragments
+
+
 def test_status_bar_refreshes_facts_without_changing_its_shape(tmp_path):
     s = session(tmp_path)
     bar = StatusBar(s)

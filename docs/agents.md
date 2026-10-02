@@ -43,10 +43,12 @@ calls, the viewer keeps that agent's individual edits instead of combining other
 
 ## Select and inspect
 
-`/agents` lists the main agent and its children with their state and context percentage. Move
+`/agents` lists the main agent and its children in aligned name, state and context columns.
+`(current)` marks the open conversation, shortened to `*` in narrow panes. Move
 with j/k or the arrow keys to preview the highlighted agent in a small bordered window. It shows
 the task and recent reply, updating as new text arrives. Enter opens that agent's conversation;
-Escape keeps your current selection.
+Escape keeps your current selection. Roomy previews separate Task and Reply/Live headings from
+their text; small panes use a compact layout.
 
 Press **x** to stop the highlighted agent after confirmation, or **Shift+X** to stop it immediately.
 The picker stays open, and the stopped conversation remains available for inspection and new input.
