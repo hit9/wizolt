@@ -8,13 +8,15 @@ into it. Shared capability services have one root owner. See design/STATE_OWNERS
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Awaitable, Callable
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from wizolt.base import ToolError, oneline, run_blocking
+from wizolt.agent.results import settled_result
+from wizolt.base import Json, ToolError, oneline, run_blocking
 from wizolt.image import UserInput
 from wizolt.session import QueuedInput, Session, SessionSnapshotStore
 from wizolt.session.ownership import subagent_root_uid
@@ -42,6 +44,9 @@ class AgentEntry:
     instruction: str = ""
     task: asyncio.Task | None = None
     restart_requested: bool = False
+    # Published only after the child's final snapshot succeeds. Retain the previous
+    # result during a subsequent turn so a busy parent can still receive it.
+    result: Json = field(default_factory=dict)
 
     @property
     def error(self) -> str:
@@ -187,9 +192,13 @@ class Subagents:
         bootstrap_features(session)
         session.borrow_ownership(root)
         agent = Agent(session, input_fn=unavailable_input, output_fn=lambda _: None)
-        entry = AgentEntry(agent, parent, instruction)
+        entry = AgentEntry(agent, parent, instruction, result=session.state.turn_result)
         self.entries[session.uid] = entry
         try:
+            if session.resumed and session.state.last_turn_status == "interrupted" and not entry.result:
+                session.state.turn_result = settled_result(session, "")
+                await session.save_snapshot()
+                entry.result = session.state.turn_result
             if self.on_created is not None:
                 await self.on_created(agent)
         except BaseException:
@@ -275,6 +284,16 @@ class Subagents:
     def changed(self, entry: AgentEntry) -> None:
         if self.on_changed is not None:
             self.on_changed(entry)
+
+    def results_for(self, parent: str) -> list[Json]:
+        results = [entry.result for entry in self.entries.values() if entry.parent == parent and entry.result]
+        # Archival must not swallow a completion the parent has not received yet.
+        results.extend(
+            json.loads(item["result"])
+            for item in self.root.session.subagent_entries
+            if item.get("archived") and item.get("parent") == parent and item.get("result")
+        )
+        return results
 
     async def _run(self, entry: AgentEntry) -> None:
         """One inbox consumer per child; steering the active turn is claimed by Agent itself.
@@ -375,6 +394,7 @@ class Subagents:
                     "archived": "true",
                     "name": self.entries[item["uid"]].agent.session.agent_name,
                     "answer": self.entries[item["uid"]].answer[-3000:],
+                    "result": json.dumps(self.entries[item["uid"]].result, ensure_ascii=False) if self.entries[item["uid"]].result else "",
                 }
                 if item.get("uid") in uids
                 else item

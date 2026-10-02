@@ -18,6 +18,7 @@ from wizolt.agent.prompts import (
     INTERRUPT_MARKER,
     LIVE_FOLLOWUP_PREFIX,
 )
+from wizolt.agent.results import RESULT_EVENT, receive_results, settled_result
 from wizolt.agent.runner import ToolRunner
 from wizolt.agent.vision import VisionObserver
 from wizolt.agentsmd import AgentsReferenceError
@@ -171,6 +172,7 @@ class Agent:
         self.session.state.last_turn_error = ""
         self.session.state.turn_elapsed = 0.0
         self.session.state.turn_started_at = time.monotonic()
+        answer = ""
         try:
             if self.session.subagents is not None:
                 self.session.subagents.changed(self.session.subagents.entry(self.session.uid))
@@ -193,8 +195,14 @@ class Agent:
         finally:
             self.session.state.turn_elapsed = self.session.state.elapsed
             self.session.state.turn_started_at = 0.0
+            group = self.session.subagents
+            child = group is not None and group.root is not self
+            if child:
+                self.session.state.turn_result = settled_result(self.session, answer)
             try:
                 await self.session.save_snapshot()
+                if child and group is not None:
+                    group.entry(self.session.uid).result = self.session.state.turn_result
             finally:
                 self.session._active_runs -= 1
                 # Cleared together: a late cancel() cannot reach another turn.
@@ -590,6 +598,8 @@ class Agent:
         the partial turn stands (what the CLI showed happened) and an interrupt marker is
         appended, keeping the context valid and telling the model the turn ended early."""
         if not any(message.get("role") != "user" for message in transcript_messages):
+            # Retracting typed input must not retract independently delivered child results.
+            self.session.messages.extend(message for message in turn_messages if message.get(SESSION_EVENT_KEY) == RESULT_EVENT)
             self.session.clear_active_turn()
             self.session.state.turn_messages = 0
             return
@@ -634,6 +644,8 @@ class Agent:
         return projected
 
     async def prepare_request(self, turn_messages: list[Json]) -> PreparedRequest:
+        if self.session.subagents is not None:
+            receive_results(self.session, turn_messages, self.session.subagents.results_for(self.session.uid))
         pending = self.session.claim_user_inputs()
         # Without a queued follow-up this must be the real active-turn list: current-turn compaction
         # rewrites it in place, and a throwaway copy would make the next step compact the same prefix

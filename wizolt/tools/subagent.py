@@ -15,7 +15,8 @@ class SubagentTool(Tool):
     DESCRIPTION = (
         "Run parallel agents with isolated conversations in the SAME working directory and filesystem. "
         "File changes are immediately visible to all agents; no separate worktree is created. "
-        "The limit applies to all retained child agents in the group, including nested and completed agents; reuse send for follow-up work. "
+        "The limit applies to all non-archived child agents in the group, including nested and completed agents; reuse send for follow-up work. "
+        "Only the user can archive agents to free slots; archived agents are read-only history in /agents. "
         "spawn and send require user approval even under yolo; users can configure each child's model before approving spawn. "
         "spawn returns immediately; assign disjoint file boundaries and explicit verification. "
         "The creating agent must supply a short, unique, task-based name, e.g. api-review, ui-review, or test-check; main is reserved. "
@@ -23,6 +24,8 @@ class SubagentTool(Tool):
         "Use start=false to queue without waking an idle agent. list shows state; wait returns the latest answer. "
         "wait defaults to 180 seconds (3 minutes); choose timeout up to 600 seconds (10 minutes) for longer tasks. "
         "A wait timeout does not stop the child; wait again or continue other work. "
+        "Your direct children's latest settled results are reported automatically before your next model request; "
+        "this does not start a new turn. list/wait retrieves longer answer excerpts while the agent is not archived. "
         "Do not overwrite or revert other agents' edits. Inspect the actual changes before accepting a report."
     )
 
@@ -116,6 +119,7 @@ class SubagentTool(Tool):
                     "name": entry.agent.session.agent_name,
                     "parent": entry.parent,
                     "status": entry.status,
+                    "result_id": entry.result.get("result_id", "") if entry.status in {"completed", "failed", "interrupted"} else "",
                     "context_percent": entry.agent.session.usage.context_percent(entry.agent.session.state.context_percent),
                     "error": entry.error,
                     "answer": entry.answer[-12000:],

@@ -114,6 +114,211 @@ async def test_archive_cancels_running_child_without_closing_shared_mcp(group, m
     assert not closed
 
 
+async def test_child_results_are_delivered_once_without_starting_parent_or_polluting_transcript(group, monkeypatch):
+    from wizolt.agent.results import RESULT_EVENT
+    from wizolt.base import SESSION_EVENT_KEY
+
+    requests = []
+
+    async def request(client, messages, tools=None):
+        requests.append((client.session.uid, str(messages)))
+        text = "parent answer" if client.session is group.root.session else "child conclusion"
+        return {"role": "assistant", "content": text}, [], text
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    entry = await finished(group, await group.spawn(root, "review", "inspect"))
+    assert all(uid != root.uid for uid, _ in requests)
+    assert root.messages == []
+    await group.root.run("continue")
+    assert "child conclusion" in requests[-1][1]
+    events = [message for message in root.messages if message.get(SESSION_EVENT_KEY) == RESULT_EVENT]
+    assert len(events) == 1
+    assert not any(message.get(SESSION_EVENT_KEY) == RESULT_EVENT for message in root.transcript_messages)
+    assert root.state.child_results_seen[entry.agent.session.uid] == entry.result["result_id"]
+    await group.root.run("next")
+    assert len([message for message in root.messages if message.get(SESSION_EVENT_KEY) == RESULT_EVENT]) == 1
+
+
+@pytest.mark.parametrize("archive", [False, True])
+async def test_unseen_result_survives_resume_and_archive(group, monkeypatch, archive):
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "durable result"}, [], "durable result"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    entry = await finished(group, await group.spawn(root, "review", "inspect"))
+    if archive:
+        await group.archive(entry.agent.session.uid)
+    loaded = SessionSnapshotStore.load(root.uid, config=deepcopy(root.config), settings=deepcopy(root.settings))
+    loaded.borrow_ownership(root)
+    agent = Agent(loaded, output_fn=lambda _: None)
+    try:
+        await loaded.subagents.restore()
+        await agent.run("continue")
+        assert loaded.state.child_results_seen[entry.agent.session.uid] == entry.result["result_id"]
+    finally:
+        await close_agent_resources(agent)
+        loaded.close()
+
+
+@pytest.mark.parametrize("wait", [False, True])
+async def test_busy_parent_receives_result_at_next_request_and_wait_deduplicates(group, monkeypatch, wait):
+    from wizolt.agent.results import RESULT_EVENT
+    from wizolt.base import SESSION_EVENT_KEY
+
+    started, release = asyncio.Event(), asyncio.Event()
+    parent_requests = []
+    entry = None
+
+    async def request(client, messages, tools=None):
+        if client.session is not group.root.session:
+            started.set()
+            await release.wait()
+            return {"role": "assistant", "content": "review complete"}, [], "review complete"
+        parent_requests.append(str(messages))
+        if len(parent_requests) == 1:
+            release.set()
+            if wait:
+                action = call("Subagent", [{"action": "wait", "agent_id": entry.agent.session.uid}])
+            else:
+                await finished(group, entry)
+                action = call("Read", [{"path": "missing.txt", "ranges": [[0, 0]]}])
+            return {"role": "assistant", "content": None}, [action], ""
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await group.spawn(group.root.session, "review", "inspect")
+    await started.wait()
+    await group.root.run("other work")
+    assert len(parent_requests) == 2
+    assert "review complete" not in parent_requests[0]
+    assert "review complete" in parent_requests[1]
+    events = [message for message in group.root.session.messages if message.get(SESSION_EVENT_KEY) == RESULT_EVENT]
+    assert len(events) == (0 if wait else 1)
+
+
+async def test_failed_child_result_never_reuses_previous_answer_and_routes_only_to_parent(group, monkeypatch):
+    async def request(client, messages, tools=None):
+        if messages[-1].get("content") == "fail":
+            raise ModelError("provider failed")
+        return {"role": "assistant", "content": "previous success"}, [], "previous success"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    parent = await finished(group, await group.spawn(group.root.session, "parent", "work"))
+    child = await finished(group, await group.spawn(parent.agent.session, "nested", "work"))
+    await group.send(child.agent.session.uid, "fail")
+    await finished(group, child)
+    assert child.result["status"] == "failed"
+    assert child.result["text"] == "provider failed"
+    assert child.result not in group.results_for(group.root.session.uid)
+    assert group.results_for(parent.agent.session.uid) == [child.result]
+
+
+async def test_interrupting_parent_before_first_answer_keeps_delivered_result(group, monkeypatch):
+    from wizolt.agent.results import RESULT_EVENT
+    from wizolt.base import SESSION_EVENT_KEY
+
+    entered = asyncio.Event()
+
+    async def request(client, messages, tools=None):
+        if client.session is group.root.session:
+            entered.set()
+            await asyncio.Event().wait()
+        return {"role": "assistant", "content": "child result"}, [], "child result"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    await finished(group, await group.spawn(group.root.session, "review", "work"))
+    task = asyncio.create_task(group.root.run("retracted input"))
+    await entered.wait()
+    group.root.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    assert len(group.root.session.messages) == 1
+    assert group.root.session.messages[0][SESSION_EVENT_KEY] == RESULT_EVENT
+    assert group.root.session.transcript_messages == []
+
+
+async def test_crashed_turn_restores_an_interruption_result_and_receipt_survives_resume(group, monkeypatch):
+    from wizolt.agent.results import RESULT_EVENT
+    from wizolt.base import SESSION_EVENT_KEY
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "old success"}, [], "old success"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    entry = await finished(group, await group.spawn(root, "review", "inspect"))
+    old_receipt = entry.result["result_id"]
+    entry.agent.session.state.last_turn_status = "running"
+    await entry.agent.session.save_snapshot()
+    for iteration in range(2):
+        loaded = SessionSnapshotStore.load(root.uid, config=deepcopy(root.config), settings=deepcopy(root.settings))
+        loaded.borrow_ownership(root)
+        agent = Agent(loaded, output_fn=lambda _: None)
+        try:
+            await loaded.subagents.restore()
+            result = loaded.subagents.entry(entry.agent.session.uid).result
+            assert result["status"] == "interrupted"
+            assert result["result_id"] != old_receipt
+            assert "old success" not in result["text"]
+            await agent.run(f"continue {iteration}")
+            assert sum(message.get(SESSION_EVENT_KEY) == RESULT_EVENT for message in loaded.messages) == 1
+        finally:
+            await close_agent_resources(agent)
+            loaded.close()
+
+
+async def test_old_tool_receipt_cannot_reannounce_a_newer_result(group):
+    from wizolt.agent.results import receive_results
+
+    root = group.root.session
+    tool = {"role": "tool", "content": 'tool tr.1 Subagent wait\noutput:\n[{"agent_id":"child", "result_id":"old"}]'}
+    result = {"agent_id": "child", "result_id": "new", "status": "completed", "text": "new answer"}
+    turn = [tool]
+    receive_results(root, turn, [result])
+    receive_results(root, turn, [result])
+    assert len(turn) == 2
+    assert root.state.child_results_seen == {"child": "new"}
+
+
+async def test_failure_before_child_admits_input_still_persists_its_result(group, monkeypatch):
+    async def start(agent):
+        raise RuntimeError("startup failed")
+
+    monkeypatch.setattr(Agent, "start_session", start)
+    entry = await finished(group, await group.spawn(group.root.session, "review", "work"))
+    root = group.root.session
+    saved = SessionSnapshotStore.load(entry.agent.session.uid, config=deepcopy(root.config), settings=deepcopy(root.settings))
+    assert saved.state.turn_result["status"] == "failed"
+    assert saved.state.turn_result["text"] == "startup failed"
+    assert saved.pending_user_inputs == []
+    saved.close()
+
+
+async def test_archive_manifest_save_failure_keeps_agent_recoverable(group, monkeypatch):
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "answer"}, [], "answer"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await finished(group, await group.spawn(group.root.session, "review", "inspect"))
+    save = Session.save_snapshot
+
+    async def fail(session):
+        if session is group.root.session:
+            raise OSError("disk full")
+        return await save(session)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Session, "save_snapshot", fail)
+        with pytest.raises(OSError, match="disk full"):
+            await group.archive(entry.agent.session.uid)
+    assert group.entry(entry.agent.session.uid) is entry
+    assert not group.root.session.subagent_entries[0].get("archived")
+    await group.send(entry.agent.session.uid, "continue")
+    await finished(group, entry)
+    assert entry.status == "completed"
+
+
 async def test_subagent_defaults_seed_independent_approvals_and_survive_resume(group, monkeypatch):
     root = group.root.session
     root.config.providers["deepseek"] = ProviderConfig(url="http://test", key="test", model="base")

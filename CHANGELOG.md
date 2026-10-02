@@ -10,6 +10,10 @@
 
 ### Added
 
+- Report direct children's latest settled results automatically at the parent's next model request,
+  with bounded excerpts and persistent delivery receipts. Preserve unseen results across resume
+  and archival; avoid duplicate notifications after successful `list`/`wait` retrieval.
+
 - Archive agent branches with confirmation in `/agents`, freeing slots while retaining read-only
   history at the end of the same picker. Archived agents stay archived after resume.
 

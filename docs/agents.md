@@ -94,6 +94,11 @@ The model uses `Subagent` to **spawn**, **send**, **list**, **wait** and **stop*
 returns immediately. Waiting defaults to **3 minutes**, up to **10 minutes** per call
 (`timeout=600`); `timeout=0` checks immediately. A timeout does not stop the child.
 
+The parent receives each direct child's latest completed, failed or interrupted result before
+its next model request, even while doing other work. Notifications include up to **1000 characters**;
+`list` or `wait` retrieves more while the child is not archived. Results already returned by those
+tools are not announced again. This does not start a new parent turn or add user input to history.
+
 Tasks must be self-contained: children receive system and project guidance, not the parent's
 conversation or notes. See [forked skills](skills.md) for tasks that run in their own child.
 Creating or sending tasks requires interactive approval; piped input cannot approve child tools.

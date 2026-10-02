@@ -33,7 +33,7 @@ Every instance field is classified below. Class constants contain policy, not ag
 | `system_prompt`, `tool_names`, `listed`, `resumed` | Local assembly metadata. Child workspace instructions are added on attachment, not persisted repeatedly. Children stay out of standalone listings/latest pointers and resume through the root. |
 | `messages`, `state`, `active_skills`, `context_reset_requested` | Local durable conversation/working memory. Reset and compaction affect this agent only. Skill activation controls this agent's tool permissions and hooks. |
 | `pending_user_inputs` | Local durable inbox, including held next-turn inputs, images and frontend command provenance. Model-authored tasks never execute CLI commands. Child frontends leave the inbox to the group consumer rather than draining/re-enqueuing and losing provenance. Live input-form references inside entries are transient. Restore retains input without starting work. |
-| `tool_counter`, `tool_results`, `tool_records`, `tool_errors`, `recent_commands` | Local durable receipts and bounded activity. Pruning one agent cannot delete another's records. A report from a child becomes only an explicit caller tool result. |
+| `tool_counter`, `tool_results`, `tool_records`, `tool_errors`, `recent_commands` | Local durable receipts and bounded activity. Pruning one agent cannot delete another's records. Child reports enter a parent only through explicit tool results or bounded result events. |
 | `source_view_counter`, `source_views` | Local durable evidence; values are immutable. Equal numeric view keys do not authorize edits using another agent's evidence. |
 | `turn_diffs`, `history`, `usage`, `compaction_usage` | Local durable edits, compacted spans and request statistics. Compaction usage is separate from conversation usage and from every sibling. |
 | `transcript_messages`, `transcript_tool_records`, `transcript_turn_diffs`, `transcript_incomplete` | Local durable visible history/replay metadata. Legacy tool records are a read-only replay bridge; live transcript does not aggregate siblings. |
@@ -102,6 +102,9 @@ hunks, never today's file. Legacy records without snapshots use conservative rec
 fall back to receipts. Rename inference requires an unambiguous continuous history.
 
 Stopping a turn leaves its committed edits and background jobs available in the same session.
+Archiving is different: it joins a descendant branch, marks its root-manifest entries archived,
+and closes its frontend and engine resources. Logs and assets remain available to the picker's
+read-only viewer; archived entries neither consume slots nor attach engines on resume.
 Application-session close stops owned jobs, joins promoted output threads, removes temporary
 logs and closes clients. Resume reconstructs services, restores each child without running it,
 and preserves its pinned provider/model/effort/API choices over the root's current configuration.
@@ -117,6 +120,13 @@ The inbox consumer retains ownership through its final snapshot. Input arriving 
 must schedule another consumer after settlement, not overlap it. Failure and interruption pause
 existing queued work; a fresh start request during settlement is explicit permission to resume.
 `AgentEntry.restart_requested` is a transient wake request, never conversation state or a counter.
+
+Turn timing and the bounded latest result belong to each `AgentState`; the monotonic live clock
+is never persisted. `AgentEntry.result` publishes that result only after the child's save succeeds.
+Delivery receipts belong to the receiving parent's `AgentState`, not to the group: independent
+parents must not consume each other's notifications. Receipts and their session events enter the
+same snapshot; they never enter user input history or the visible transcript. The archived
+manifest retains the last result envelope after its engine is gone.
 
 ## Regression boundaries
 

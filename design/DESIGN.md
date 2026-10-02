@@ -920,7 +920,13 @@ into tool descriptions and `/status`.
 history, approvals, queues, transcript and statistics. One application projects the selected
 frontend onto the terminal; switching suspends it and replays the next frontend. The fast-start
 application is adopted into the same supervisor. Background output stays in its own transcript.
-Notifications identify their source and never enter model context.
+Transcript notices identify their source and never enter model context. Independently, each
+child persists a bounded latest-turn result envelope before publishing it to the group. At a
+parent request boundary, `agent/results.py` appends unseen direct-child results as session events,
+with parent-owned receipts staged atomically alongside them. No turn is started by delivery.
+Retracting an unanswered user turn retains these independent events; tool results suppress a
+notification only when their visible JSON carries the same receipt. Archived manifest entries
+retain the last envelope so retirement cannot swallow an unseen completion.
 
 Child snapshots use `root.uid + ".a" + random_id` and borrow the root's ownership lease. The root
 manifest references children; children are hidden from session listings and expire with their

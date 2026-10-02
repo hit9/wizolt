@@ -185,6 +185,7 @@ class SessionSnapshotCodec:
                 bool(cls.snapshot_transcript_messages(session) or cls.active_transcript_messages(session)),
                 bool(session.pending_user_inputs),
                 bool(session.subagent_entries),
+                bool(state.turn_result),
                 session.context_reset_requested,
                 bool(session.tool_records),
                 bool(session.tool_errors),
@@ -303,6 +304,8 @@ class SessionSnapshotCodec:
                 "last_turn_status",
                 "last_turn_error",
                 "turn_elapsed",
+                "turn_result",
+                "child_results_seen",
             )
         }
 
@@ -317,6 +320,9 @@ class SessionSnapshotCodec:
         state = AgentState(**{key: item for key, item in data.items() if key in known})
         if state.last_turn_status == "running":
             state.last_turn_status = "interrupted"
+            # Restore publishes an interruption for this unfinished turn, not the previous
+            # turn's successful result. The group supplies its agent identity on attachment.
+            state.turn_result = {}
         return state
 
     @staticmethod
