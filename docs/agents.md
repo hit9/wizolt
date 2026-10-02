@@ -1,9 +1,32 @@
 # Subagents
 
-Ask wizolt to split a task into parallel work. It can start up to three child agents alongside
+Ask wizolt to split a task into parallel work. By default it can start up to three child agents alongside
 your main conversation. Each has its own conversation, model requests, context budget and usage
-statistics. New children start with the creating agent's model and settings; additional agents
+statistics. New children inherit the creating agent's model unless you change it before approval; additional agents
 increase total model usage.
+
+## Approve and configure
+
+Creating a child or sending it another task requires approval, including with `--yolo`.
+Choose **View agent task** (`v`) to read the full task. Before creating a child, choose
+**Config** (`c`) to set its provider, model, reasoning effort or request API. Return with
+**done** or Escape, then approve to start its first turn. Each creation has its own configuration;
+configuring one child does not change the main agent or another child. Refusing discards the
+pending child and its settings.
+
+Forked skills offer the same configuration before approval. Once a child exists, select it
+with `/agents` to change its settings for subsequent turns.
+
+## Agent limit
+
+Set `max_subagents` under `[runtime]` in your config file, or use
+`/set runtime.max_subagents NUMBER` in the main conversation. The default is `3`; valid values
+are `0` through `32`, excluding the main agent. `0` prevents new children. The limit includes
+nested children and completed children whose conversations remain available. Lowering it keeps
+existing conversations and prevents new children until there is room.
+
+The model sees the configured limit. `/status` shows retained children and the limit for the
+whole group. Reuse a child for follow-up work instead of creating another one.
 
 ## One shared workspace
 
@@ -41,8 +64,7 @@ queued work waits for new input rather than restarting automatically.
 The `Subagent` tool starts agents with `spawn`, adds input with `send`, and exposes `list`,
 `wait` and `stop`. Spawn returns an agent ID immediately, so the caller can continue working.
 Waiting has a timeout of up to 60 seconds; timing out leaves the child running. A child keeps
-its conversation for subsequent inputs. The three-child limit applies to retained children,
-so reuse an existing child for follow-up work.
+its conversation for subsequent inputs.
 
 A skill with `context: fork` starts a child agent after you confirm its task. Its report returns
 to the caller; `/agents` lets you inspect the child's work and add input while it runs.

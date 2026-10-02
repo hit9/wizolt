@@ -16,6 +16,10 @@
 
 ### Fixed
 
+- Restore mandatory subagent spawn/send approvals under `--yolo` and the approval-time
+  provider/model/effort/API picker. Each child has an independent draft before its first request,
+  including forked skills. Add `runtime.max_subagents` (default 3, range 0–32) across the whole
+  group, expose it to models and `/status`, and remove the obsolete `/set runtime.worker` entry.
 - Cover named-theme startup scrollback after renaming the agent status color; every built-in
   palette defines the new role. Adopt the fast-start TUI into the agent supervisor, and retain
   task previews before the first answer. Report children cancelled before their first turn as

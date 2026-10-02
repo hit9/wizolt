@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from prompt_toolkit.styles import DynamicStyle
@@ -11,12 +12,51 @@ from wizolt.agent.engine import Agent
 from wizolt.agent.subagents import AgentEntry
 from wizolt.base import Text
 from wizolt.image import UserInput
-from wizolt.ui.cli.modals import choice_application
+from wizolt.session import Session
+from wizolt.ui.cli.modals import choice_application, select_choice
 from wizolt.ui.cli.runtime import ScrollbackWriter, TuiRuntime
 from wizolt.ui.render import InputStyle, Theme
 
 if TYPE_CHECKING:
     from wizolt.ui.cli.loop import CommandLoop
+    from wizolt.ui.cli.presentation import Presentation
+
+
+@dataclass
+class ModelSettingsEditor:
+    """A draft model configuration using the caller's terminal, without its turn machinery."""
+
+    session: Session
+    presentation: Presentation
+    interactive_input: bool
+
+
+async def configure_subagent(loop: CommandLoop, settings: Session) -> None:
+    """Reuse model commands against a call's detached settings and the caller's modal owner."""
+    from wizolt.ui.cli import commands
+
+    editor = ModelSettingsEditor(settings, loop.presentation, loop.interactive_input)
+    while True:
+        provider = settings.config.provider
+        labels = {
+            "provider": f"provider: {settings.config.active_provider}",
+            "model": f"model: {provider.model or '(no model)'}",
+            "effort": f"effort: {provider.reasoning}",
+            "api": f"api: {provider.api}",
+            "done": "done - return to the confirmation prompt",
+        }
+        choice = await select_choice(loop, "Subagent config", tuple(labels), labels=labels, current="done")
+        if choice == "provider":
+            result = await commands.provider(editor, "")
+        elif choice == "model":
+            result = await commands.model(editor, "")
+        elif choice == "effort":
+            result = await commands.reason(editor, "")
+        elif choice == "api":
+            result = await commands.api(editor, "")
+        else:
+            return
+        loop.presentation.tool_output(result)
 
 
 class AgentsFrontend:

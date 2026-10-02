@@ -49,8 +49,6 @@ class AgentEntry:
 class Subagents:
     """Own child engines and serial inboxes; the frontend may supply their turn driver."""
 
-    LIMIT = 4  # root plus three children; bounds concurrent model/tool activity.
-
     def __init__(self, root: Agent):
         self.root = root
         self.entries = {root.session.uid: AgentEntry(root)}
@@ -59,6 +57,10 @@ class Subagents:
         self.on_changed: Callable[[AgentEntry], None] | None = None
         self.closed = False
         self._admission_lock = asyncio.Lock()
+
+    @property
+    def limit(self) -> int:
+        return self.root.session.settings.max_subagents
 
     def entry(self, uid: str) -> AgentEntry:
         try:
@@ -112,22 +114,23 @@ class Subagents:
             await self.on_created(agent)
         return entry
 
-    async def spawn(self, parent: Session, name: str, message: str) -> AgentEntry:
+    async def spawn(self, parent: Session, name: str, message: str, *, model_settings: Session | None = None) -> AgentEntry:
         async with self._admission_lock:
             if self.closed:
                 raise ToolError("Agent group is closed")
-            if len(self.entries) >= self.LIMIT:
-                raise ToolError(f"Agent limit reached ({self.LIMIT}, including main)")
+            if len(self.entries) - 1 >= self.limit:
+                raise ToolError(f"Subagent limit reached ({self.limit}, excluding main); reuse an existing agent with send")
             if not isinstance(name, str) or not isinstance(message, str) or not name.strip() or not message.strip():
                 raise ToolError("spawn requires name and message")
             name = oneline("".join(char if char.isprintable() else " " for char in name), 40)
             if not name:
                 raise ToolError("spawn requires name and message")
+            model_settings = model_settings or parent
             session = Session(
                 uid=self.root.session.uid + ".a" + uuid4().hex[:12],
                 cwd=parent.cwd,
-                config=deepcopy(parent.config),
-                provider_overrides=deepcopy(parent.provider_overrides),
+                config=deepcopy(model_settings.config),
+                provider_overrides=deepcopy(model_settings.provider_overrides),
                 settings=replace(parent.settings),
                 created_at=parent.created_at,
                 system_prompt=self.root.session.system_prompt,

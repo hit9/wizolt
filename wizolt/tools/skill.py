@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from functools import cached_property
 
 from wizolt.base import ApprovalView, Json, ToolArgs, ToolError
+from wizolt.session import Session
 from wizolt.skill.invocation import Arguments, Invocation
 from wizolt.tools.base import Tool
+from wizolt.tools.subagent import SubagentTool
 
 
 class SkillTool(Tool):
@@ -66,9 +69,19 @@ class SkillTool(Tool):
     def always_confirms(self) -> bool:
         return bool(self.fork_order)
 
+    @cached_property
+    def _fork_tool(self) -> SubagentTool | None:
+        if not self.fork_order:
+            return None
+        return SubagentTool(self.session, [{"action": "spawn", "name": f"skill {self.invocation().skill.name}", "message": self.fork_order}])
+
+    def approval_config(self) -> Session | None:
+        return self._fork_tool.approval_config() if self._fork_tool else None
+
     def approval_view(self) -> ApprovalView | None:
         if self.fork_order:
-            return ApprovalView("skill task", self.fork_order, "markdown")
+            view = self._fork_tool.approval_view() if self._fork_tool else None
+            return replace(view, label="skill task") if view else None
         resolution = self._resolution
         commands = resolution.commands() if isinstance(resolution, Invocation) else []
         return ApprovalView("commands", "\n".join(commands), "bash") if commands else None
@@ -78,7 +91,7 @@ class SkillTool(Tool):
             group = self.session.subagents
             if group is None:
                 raise ToolError("Subagents are unavailable")
-            entry = await group.spawn(self.session, f"skill {self.invocation().skill.name}", self.fork_order)
+            entry = await group.spawn(self.session, f"skill {self.invocation().skill.name}", self.fork_order, model_settings=self.approval_config())
             while entry.task is not None:
                 await group.wait(entry.agent.session.uid)
             if entry.error:

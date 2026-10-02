@@ -15,6 +15,8 @@ paths with the same care you would use when running them yourself.
 - **Confirmations.** File-changing and command-running tools — Edit, Bash, Job, and MCP
   calls — ask before they act. <span class="marker">This is on by default</span>; `--yolo` and
   `/yolo` turn it off. Your hooks and loaded skills can pre-approve covered calls.
+  Creating a subagent or sending it a task still requires approval under yolo; inspect its task
+  and configure its model before starting it.
 - **Checked edits.** An edit is refused if its target changed since it was read, or if the
   target text matches more than one place. The agent must resolve that before trying again.
 - **Reviewable changes.** `/diff` shows exactly what changed this round and across the

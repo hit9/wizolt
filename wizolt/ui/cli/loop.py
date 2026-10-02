@@ -152,8 +152,7 @@ class CommandLoop:
         self.agent.final_output_fn = self.presentation.agent_answer_output
         self.agent.tools.output_fn = self.presentation.tool_output
         self.agent.tools.input_fn = self.tool_input
-        # Everything the loop shows for a turn it did not print itself goes through one object, so
-        # a delegated worker can be handed the same seam (see wizolt.agent.hooks and delegate.py).
+        # Every frontend wires its own hooks, keeping interaction and output with that agent.
         hooks = self.agent.hooks
         hooks.on_stream = self.presentation.model_stream_output
         hooks.on_builtin_call = self.presentation.builtin_call_output
@@ -167,6 +166,9 @@ class CommandLoop:
         hooks.live_output = self.presentation.tool_live_output
         hooks.question_fn = lambda specs: question_interaction(self, specs)
         hooks.text_viewer = lambda view: approval_text_viewer(self, view)
+        from wizolt.ui.cli.agents import configure_subagent
+
+        hooks.approval_config = lambda settings: configure_subagent(self, settings)
         hooks.approval_form = self.set_approval_form
         hooks.cancel_input = self.cancel_tool_input
         hooks.script_status = self.presentation.toolscript_run_status

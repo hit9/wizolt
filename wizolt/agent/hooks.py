@@ -5,18 +5,21 @@ answers. Every field here is that answer, optional because a headless embedding 
 call, a piped run) has none of it. `None` is not "no-op": several fields switch the owning
 layer to a different fallback, which is documented on each one.
 
-One instance is shared by an agent's model, context, and tools, so wiring is one object, and
-a delegated worker is handed a new instance built from the parent's fields in one place
-(`delegate._wire_worker_agent`). Fields are grouped by the layer that reads them.
+One instance is shared by an agent's model, context, and tools. Each child frontend wires
+its own instance, so background interactions stay with their agent. Fields are grouped by
+the layer that reads them.
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from wizolt.base import ApprovalView, ImageRouteNotice
+
+if TYPE_CHECKING:
+    from wizolt.session import Session
 
 # The Ask tool's question set, as (label, ...) specs, and the answers it gets back.
 QuestionFn = Callable[[list[Any]], Awaitable[list[str]]]
@@ -67,6 +70,8 @@ class UiHooks:
     # body) for the confirm-time `v`/`view` key (see cli.modals.approval_text_viewer). None
     # degrades `v` to printing the whole text; the viewer's close signal is the return value.
     text_viewer: Callable[[ApprovalView], Awaitable[object] | object] | None = None
+    # Configure detached settings for this call; never mutate the calling agent's model.
+    approval_config: Callable[[Session], Awaitable[None]] | None = None
     # The next approval prompt's actions as a selectable row (see TuiApp.set_approval_form).
     # None, or a False return, means the answer has to be typed -- headless runs, piped stdin.
     approval_form: Callable[[list[tuple[str, str]]], bool] | None = None
@@ -74,7 +79,7 @@ class UiHooks:
     # pending, so the divider would sit on "working" for the whole batch. The running source
     # rides along so Ctrl-O can offer the script while it runs. None degrades to no phase label.
     script_status: Callable[[bool, str], None] | None = None
-    # Resolves a pending approval/Ask prompt with "cancelled", so a worker parked on the user can
+    # Resolves a pending approval/Ask prompt with "cancelled", so an agent parked on the user can
     # be unblocked when the turn is cancelled. None (headless, piped stdin) leaves the injected
     # input function to own its own unblocking.
     cancel_input: Callable[[], None] | None = None

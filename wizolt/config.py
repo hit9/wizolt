@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from wizolt.providers.compat import ProviderPolicy
 
 DEFAULT_MAX_CONTEXT_TOKENS = 256 * 1024
+MAX_SUBAGENTS = 32
 PROVIDER_API_CHOICES = ("auto", "chat", "responses", "anthropic")
 REASONING_HISTORY_CHOICES = ("auto", "all", "current_turn", "tool_calls")
 
@@ -324,6 +325,7 @@ class RuntimeSettings:
     session_retention_days: int = 7
     # Max read-only tool calls from one model batch to execute concurrently; 1 disables parallelism.
     max_parallel_tools: int = 4
+    max_subagents: int = 3
     yolo: bool = False
     theme: str = "auto"
     language: str = "auto"  # forced reply language; "auto" injects nothing (see /language)
@@ -339,6 +341,7 @@ class RuntimeSettings:
             max_steps=max(1, Config.int(runtime, "max_agent_steps", 400)),
             max_context_tokens=max(1, Config.int(runtime, "max_context_tokens", DEFAULT_MAX_CONTEXT_TOKENS)),
             max_parallel_tools=max(1, Config.int(runtime, "max_parallel_tools", 4)),
+            max_subagents=cls.clean_max_subagents(Config.int(runtime, "max_subagents", 3)),
             session_retention_days=max(0, Config.int(runtime, "session_retention_days", 7)),
             yolo=yolo or Config.bool(runtime, "yolo", False),
             theme=theme or Config.str(runtime, "theme", "auto"),
@@ -346,6 +349,12 @@ class RuntimeSettings:
             attribution=Config.bool(runtime, "attribution", True),
             agents_md=Config.bool(runtime, "agents_md", True),
         )
+
+    @staticmethod
+    def clean_max_subagents(value: int) -> int:
+        if isinstance(value, bool) or not 0 <= value <= MAX_SUBAGENTS:
+            raise ConfigError(f"max_subagents must be between 0 and {MAX_SUBAGENTS}")
+        return value
 
     @staticmethod
     def clean_language(value: str) -> str:
@@ -586,6 +595,7 @@ model = ""
 # max_context_tokens = 262144      # 256K; how much of the model's window to use, not its size.
                                # Raise it for a 1M-window model; lower it for a smaller one.
 # max_agent_steps = 400
+# max_subagents = 3            # retained children across the whole group; 0 disables spawn, maximum 32
 # shell_timeout = 60
                                # (flipping it changes the tool block and thus the prompt-cache scope)
 # language = "auto"           # auto follows your messages and injects nothing; set a language

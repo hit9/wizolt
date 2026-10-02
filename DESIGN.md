@@ -902,6 +902,14 @@ changes. Config, clients, messages, usage, skill activation and provider overrid
 feature discovery and MCP transport are shared. Children inherit their creator's model settings
 but start without its conversation.
 
+Spawn approval keeps a detached settings draft per tool call. The configuration picker reuses
+model commands through `ModelSettingsHost`, with only the draft and the calling frontend's
+terminal dependencies; no live engine configuration is changed. Approval publishes the draft
+to the new child before its first request. Spawn and send opt out of yolo auto-approval.
+Forked skills use the same spawn approval draft. Admission reads the root's `max_subagents`
+under the group lock; child settings cannot enlarge it. The group limit is also projected
+into tool descriptions and `/status`.
+
 `ui/cli/agents.py` owns selection and each agent's frontend. A frontend retains its input buffer,
 history, approvals, queues, transcript and statistics. One application projects the selected
 frontend onto the terminal; switching suspends it and replays the next frontend. The fast-start

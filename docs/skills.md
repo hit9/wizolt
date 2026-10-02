@@ -182,9 +182,10 @@ A patterned Bash rule never covers commands that chain, pipe, substitute or redi
 ### Running in a subagent
 
 `context: fork` runs the skill in a [subagent](agents.md). You confirm its task before it starts.
-The child inherits your model and has its own conversation, commands and skill hooks; its report
+Use **Config** at approval to choose its provider, model, reasoning effort and request API;
+otherwise it inherits your model. The child has its own conversation, commands and skill hooks; its report
 returns to the caller. Select it with `/agents` to inspect its work or add input. A skill loaded
 inside a subagent stays in that subagent.
 
 Claude Code's `agent` and `model` fields are not supported. `/skills` lists them as warnings:
-new subagents inherit the creating agent's model.
+choose the child's model at approval instead.

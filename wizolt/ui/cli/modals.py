@@ -13,7 +13,7 @@ import re
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples, to_formatted_text
 from prompt_toolkit.utils import get_cwidth
@@ -37,6 +37,15 @@ from wizolt.ui.tui import (
 if TYPE_CHECKING:
     from wizolt.session import HistorySegment
     from wizolt.ui.cli import CommandLoop
+    from wizolt.ui.cli.presentation import Presentation
+
+
+class ChoiceHost(Protocol):
+    """The terminal owner a selector needs, independent of the settings being edited."""
+
+    presentation: Presentation
+    interactive_input: bool
+
 
 # A detail opened from the Ctrl-O browser can say ``Esc`` to go back to the list instead of
 # closing the whole browser. ``show_modal`` closes on any non-pending return, so the viewer
@@ -221,7 +230,7 @@ async def mcp_manager(loop: CommandLoop) -> None:
 
 
 async def select_choice(
-    loop: CommandLoop,
+    loop: ChoiceHost,
     title: str,
     choices: tuple[str, ...],
     *,
@@ -244,7 +253,7 @@ async def select_choice(
 
 
 async def choice_application(
-    loop: CommandLoop,
+    loop: ChoiceHost,
     title: str,
     choices: tuple[str, ...],
     labels: dict[str, str],

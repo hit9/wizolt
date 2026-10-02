@@ -15,6 +15,10 @@ from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli import agents as agents_module
 from wizolt.ui.cli.agents import AgentsFrontend, agents_command
 from wizolt.ui.cli.commands import COMMAND_LOOKUP, status
+from wizolt.ui.cli.commands import set_value
+from wizolt.tools import SubagentTool
+from wizolt.config import ProviderConfig
+from test_command_ui import ModalHarness
 from wizolt.ui.cli.runtime import TuiRuntime
 from wizolt.ui.tui import InputMode
 
@@ -69,6 +73,51 @@ async def child(frontend, name="child"):
     entry = await frontend.group.spawn(frontend.root.loop.session, name, "child task")
     await asyncio.wait_for(asyncio.shield(entry.task), 3)
     return frontend.runtimes[entry.agent.session.uid]
+
+
+async def test_approval_config_picker_edits_only_its_draft_and_returns_to_approval(frontend, monkeypatch):
+    command_loop = frontend.root.loop
+    root = command_loop.session
+    root.config.providers["alternate"] = ProviderConfig(model="o3", available_models=("o3", "o4-mini"), reasoning="low")
+    spawn = SubagentTool(root, [{"action": "spawn", "name": "child", "message": "task"}])
+    sibling = SubagentTool(root, [{"action": "spawn", "name": "sibling", "message": "other task"}])
+    draft = spawn.approval_config()
+    harness = ModalHarness([
+        "g", "enter",  # config -> provider
+        "g", "enter",  # alternate provider
+        "enter",          # o3
+        "enter",          # automatic API
+        "G", "enter",  # high effort
+        "up", "enter",   # config -> API
+        "G", "enter",  # anthropic API
+        "escape",         # return to approval
+    ], consumed=True)
+    monkeypatch.setattr(frontend.root.tui, "show_modal", harness.show_modal)
+    await command_loop.agent.hooks.approval_config(draft)
+    assert draft.config.active_provider == "alternate"
+    assert draft.config.provider.model == "o3"
+    assert draft.config.provider.reasoning == "high"
+    assert draft.config.provider.api == "anthropic"
+    assert draft.provider_overrides["active_provider"] == "alternate"
+    assert root.config.active_provider == "default"
+    assert sibling.approval_config().config.active_provider == "default"
+    assert len(frontend.group.entries) == 1
+    assert harness.pos == len(harness.keys)
+
+
+async def test_group_limit_setting_validation_and_status_from_each_agent(frontend):
+    root = frontend.root.loop
+    assert set_value(root, "runtime.max_subagents 5") == "Set runtime.max_subagents"
+    for value in ("-1", "33", "many"):
+        assert set_value(root, "runtime.max_subagents " + value) == "Invalid value for runtime.max_subagents"
+    assert root.session.settings.max_subagents == 5
+    assert set_value(root, "runtime.worker on") == "Unknown config key: runtime.worker"
+    runtime = await child(frontend)
+    assert "1/5 retained (group-wide)" in status(root, "")
+    assert "1/5 retained (group-wide)" in status(runtime.loop, "")
+    assert "main agent" in set_value(runtime.loop, "runtime.max_subagents 32")
+    assert set_value(root, "runtime.max_subagents 0") == "Set runtime.max_subagents"
+    assert "1/0 retained (group-wide)" in status(runtime.loop, "")
 
 
 async def pick(frontend, runtime, monkeypatch):

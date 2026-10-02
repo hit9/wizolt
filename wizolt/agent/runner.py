@@ -959,14 +959,14 @@ class ToolRunner:
                 return False, ""
             answer = reply.strip()
             lower = answer.lower()
+            if lower in {"c", "config"} and (settings := tool.approval_config()) is not None:
+                if self.hooks.approval_config is not None:
+                    await self.await_user(self.hooks.approval_config(settings))
+                else:
+                    self.emit("Model configuration requires the interactive CLI; use /agents after creation.")
+                continue
             if lower in {"v", "view"} and (view := tool.approval_view()) is not None:
-                # Same whole-line exact-match rule as `c`: `v`/`view` opens the read-only viewer on
-                # whatever text this call commits to -- an order, a script -- and anything else
-                # (e.g. "cost too high") stays an ordinary refusal reason.
-                #
-                # Built here rather than before the loop: `c` can have edited the worker config
-                # since, and a viewer that reports the configuration a send will run under has to
-                # read it now, not as it stood when the prompt was first drawn.
+                # Read the view now: Config may have changed the model since the initial brief.
                 await self.view_text(view)
                 continue  # re-ask; viewing changed nothing, so there is nothing to redraw
             if lower in {"", "y", "yes"}:

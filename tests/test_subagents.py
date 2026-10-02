@@ -14,6 +14,12 @@ from wizolt.model.client import ModelClient
 from wizolt.session import Session, SessionSnapshotStore
 from wizolt.shellhooks import HookCommand, ShellHooks
 from wizolt.tools import SkillTool, SubagentTool, Tool
+from wizolt.tools import toolblocks
+from wizolt.config import RuntimeSettings, ProviderConfig
+from wizolt.base import ConfigError
+from wizolt.ui.cli import CommandLoop
+from wizolt.ui.cli.agents import ModelSettingsEditor
+from wizolt.ui.cli import commands
 
 
 @pytest.fixture
@@ -29,6 +35,124 @@ async def finished(group, entry):
     if task is not None:
         await asyncio.wait_for(asyncio.shield(task), 3)
     return entry
+
+
+async def test_two_spawns_have_independent_approval_settings_before_first_request_and_on_resume(group, monkeypatch):
+    root = group.root.session
+    root.settings.yolo = True
+    root.config.providers["alternate"] = ProviderConfig(url="http://alternate", key="sk-test", model="gpt-4", reasoning="low")
+    replies = iter(["c", "v", "", "config", "view", ""])
+    command_loop = CommandLoop(group.root, input_fn=lambda _: next(replies), output_fn=lambda _: None)
+    settings_seen, views, requests = [], [], {}
+
+    async def configure(settings):
+        assert len(group.entries) == 1 + len(settings_seen)
+        assert settings is not root
+        editor = ModelSettingsEditor(settings, command_loop.presentation, False)
+        if not settings_seen:
+            commands.set_provider(editor, "alternate")
+        await commands.set_model(editor, "o3" if not settings_seen else "o4-mini")
+        commands.set_reasoning(editor, "high" if not settings_seen else "low")
+        commands.set_api(editor, "responses")
+        settings_seen.append(settings)
+
+    async def view(task):
+        views.append(dict(task.rows))
+
+    async def request(client, messages, tools=None):
+        s = client.session
+        requests[s.agent_name] = (s.config.active_provider, s.config.provider.model, s.config.provider.reasoning, s.config.provider.api)
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    group.root.hooks.approval_config = configure
+    group.root.hooks.text_viewer = view
+    await group.root.tools.run([
+        call("Subagent", [{"action": "spawn", "name": "one", "message": "task one"}]),
+        call("Subagent", [{"action": "spawn", "name": "two", "message": "task two"}]),
+    ])
+    assert not root.tool_errors
+    children = [entry for entry in group.entries.values() if entry.parent]
+    assert len(children) == 2
+    for entry in children:
+        await finished(group, entry)
+        restored = SessionSnapshotStore.load(entry.agent.session.uid, config=deepcopy(root.config), settings=deepcopy(root.settings), cwd=root.cwd)
+        assert restored.config.active_provider == entry.agent.session.config.active_provider
+        assert restored.config.provider.model == entry.agent.session.config.provider.model
+        assert restored.config.provider.reasoning == entry.agent.session.config.provider.reasoning
+        assert restored.config.provider.api == "responses"
+    assert requests == {"one": ("alternate", "o3", "high", "responses"), "two": ("default", "o4-mini", "low", "responses")}
+    assert settings_seen[0] is not settings_seen[1]
+    assert [view["model"] for view in views] == ["o3", "o4-mini"]
+    assert root.config.active_provider == "default"
+    assert root.config.provider.model == "gpt-4"
+    assert root.provider_overrides == {}
+
+
+@pytest.mark.parametrize("reply", ["n", None, "cost too high"])
+async def test_yolo_spawn_refusal_after_configuration_leaves_no_child_or_parent_changes(group, reply):
+    root = group.root.session
+    root.settings.yolo = True
+    replies = iter(["c", reply])
+    CommandLoop(group.root, input_fn=lambda _: next(replies), output_fn=lambda _: None)
+
+    async def configure(settings):
+        settings.config.provider.model = "different"
+
+    group.root.hooks.approval_config = configure
+    await group.root.tools.run([call("Subagent", [{"action": "spawn", "name": "child", "message": "task"}])])
+    assert len(group.entries) == 1
+    assert root.subagent_entries == []
+    assert root.config.provider.model == "gpt-4"
+    assert "Cancelled" in root.tool_errors[-1].error
+
+
+async def test_yolo_send_requires_approval_and_does_not_change_child_settings(group):
+    root = group.root.session
+    root.settings.yolo = True
+    child = await group.spawn(root, "child", "initial")
+    task = child.task
+    group.stop(child.agent.session.uid)
+    await asyncio.gather(task, return_exceptions=True)
+    pending = list(child.agent.session.pending_user_inputs)
+    prompts = []
+    CommandLoop(group.root, input_fn=lambda prompt: prompts.append(prompt) or "n", output_fn=lambda _: None)
+    await group.root.tools.run([call("Subagent", [{"action": "send", "agent_id": child.agent.session.uid, "message": "extra"}])])
+    assert len(prompts) == 1
+    assert child.agent.session.pending_user_inputs == pending
+    assert "Cancelled" in root.tool_errors[-1].error
+
+
+@pytest.mark.parametrize("limit", [0, 1, 5, 32])
+async def test_configured_limit_is_group_wide_and_visible_to_all_models(group, limit):
+    root = group.root.session
+    root.settings.max_subagents = limit
+    root_schema = next(s for s in Tool.resolved_schemas(root) if s["function"]["name"] == "Subagent")
+    assert f"Maximum retained child agents: {limit} (excluding main)" in root_schema["function"]["description"]
+    parent = root
+    for index in range(min(limit, 5)):
+        entry = await group.spawn(parent, f"child {index}", "task")
+        task = entry.task
+        group.stop(entry.agent.session.uid)
+        await asyncio.gather(task, return_exceptions=True)
+        parent = entry.agent.session
+        parent.settings.max_subagents = 32  # child settings cannot increase group admission.
+    if limit <= 5:
+        with pytest.raises(ToolError, match="Subagent limit reached"):
+            await group.spawn(parent, "overflow", "task")
+    child_schema = next(s for s in Tool.resolved_schemas(parent) if s["function"]["name"] == "Subagent")
+    assert f"Maximum retained child agents: {limit} (excluding main)" in child_schema["function"]["description"]
+
+
+@pytest.mark.parametrize("value", [-1, 33, True, "3", 1.5])
+def test_invalid_subagent_limit_config_is_rejected(value):
+    with pytest.raises(ConfigError):
+        RuntimeSettings.from_dict({"runtime": {"max_subagents": value}})
+
+
+@pytest.mark.parametrize("value", [0, 3, 32])
+def test_valid_subagent_limit_config(value):
+    assert RuntimeSettings.from_dict({"runtime": {"max_subagents": value}}).max_subagents == value
 
 
 async def test_parallel_engines_isolate_context_config_and_statistics(group, monkeypatch):
@@ -336,6 +460,20 @@ async def test_tool_is_available_by_default_and_returns_agent_state(group, monke
     assert payload[0]["agent_id"] == group.root.session.uid
 
 
+def test_spawn_approval_shows_settings_and_config_action_without_repeating_task(tmp_path):
+    root = session_with_provider(tmp_path)
+    invocation = call("Subagent", [{"action": "spawn", "name": "child", "message": "TASK-ONCE"}])
+    tool = SubagentTool(root, invocation.args)
+    block = toolblocks.approval_display(root, invocation, tool, "confirm")
+    fields = {row.label.strip(): row.text for row, _ in block.walk()}
+    assert fields["provider"] == "default"
+    assert fields["model"] == "gpt-4"
+    assert fields["effort"] == "medium"
+    assert fields["files"] == "shared with all agents"
+    assert str(block).count("TASK-ONCE") == 1
+    assert toolblocks.approval_actions(tool) == [("Approve", ""), ("View agent task", "v"), ("Config", "c"), ("Refuse", "n")]
+
+
 async def test_forked_skill_uses_a_child_without_forking_again(group, isolate_home, monkeypatch):
     folder = isolate_home / ".claude" / "skills" / "inspect"
     folder.mkdir(parents=True)
@@ -354,9 +492,14 @@ async def test_forked_skill_uses_a_child_without_forking_again(group, isolate_ho
     monkeypatch.setattr(ModelClient, "request", request)
     skill = SkillTool(root, ["inspect"])
     assert skill.always_confirms()
+    draft = skill.approval_config()
+    draft.config.provider.model = "o3"
+    assert dict(skill.approval_view().rows)["model"] == "o3"
     assert await skill.call() == "parser checked"
     assert len(group.entries) == 2
     entry = next(entry for entry in group.entries.values() if entry.agent is not group.root)
+    assert entry.agent.session.config.provider.model == "o3"
+    assert root.config.provider.model == "gpt-4"
     assert entry.agent.session.active_skills == ["inspect"]
     assert root.active_skills == []
     assert "Check the parser carefully" in str(requests[1])

@@ -232,12 +232,13 @@ Optional; the defaults shown are used when omitted.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `yolo` | `false` | Start without confirmation prompts |
+| `yolo` | `false` | Skip ordinary tool confirmations; creating a subagent or sending it a task still requires approval |
 | `max_context_tokens` | `262144` (256K) | Default for every provider entry that does not set its own `max_context_tokens`. How much of the model's context window to use, which sets the automatic-compaction budget — a budget, not the window's size: raise it for a 1M-window model, lower it for a smaller one |
 | `max_agent_steps` | `400` | Maximum tool steps in one turn |
 | `shell_timeout` | `60` | Maximum shell-command lifetime, in seconds |
 | `bash_wait_timeout` | `10` | Foreground wait before a running command becomes a background job; `0` disables promotion |
 | `max_parallel_tools` | `4` | Maximum read-only tool calls executed concurrently; `1` disables parallelism |
+| `max_subagents` | `3` | Retained children across the whole agent group, excluding main; `0` disables creation, maximum `32`. Change it from main with `/set runtime.max_subagents NUMBER` |
 | `session_retention_days` | `7` | Delete saved sessions untouched for this many days, swept in the background at startup; `0` keeps them indefinitely |
 | `theme` | `auto` | Color theme: `auto`, `light`, `dark`, or a named theme (see [Color themes](appearance.md#color-themes)); overridden by `--theme`, and set for you by `/theme`. `auto` asks the terminal for its background color, then reads `COLORFGBG`, and falls back to `dark` |
 | `language` | `auto` | Force the reply language (`auto` follows your messages and injects nothing); set a name like `Chinese` to append a fixed `LANGUAGE OVERRIDE` block to the system prompt. Change for the current session with `/language` |

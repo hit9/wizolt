@@ -71,6 +71,7 @@ class Tool:
             MCPTool,
             NextHintsTool,
             SkillTool,
+            SubagentTool,
         )
 
         strict = session.policy.resolve(session.config.provider).strict_tools_active
@@ -80,7 +81,7 @@ class Tool:
         has_skills = session.skills is not None and SkillListing.of(session, session.skills).tool
         has_mcp = bool(session.mcp and (session.mcp.tools or session.mcp.resources))
         return [
-            tool.schema(strict)
+            tool.session_schema(session, strict) if tool is SubagentTool else tool.schema(strict)
             for tool in TOOL_REGISTRY.values()
             if (not session.tool_names or tool.NAME in session.tool_names)
             and (tool is not SkillTool or has_skills)
@@ -178,6 +179,10 @@ class Tool:
         The runner renders a clipped excerpt of it inside the approval block and opens the whole
         thing on `v`; the Ctrl-O browser opens the same view afterwards, which is the only way to
         read it under yolo."""
+        return None
+
+    def approval_config(self) -> Session | None:
+        """Detached model settings to configure before approval, if this call creates an agent."""
         return None
 
     def blocks_agent(self) -> bool:

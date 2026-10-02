@@ -16,7 +16,7 @@ import sys
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.utils import get_cwidth
@@ -49,6 +49,7 @@ from wizolt.session import Session, SessionBusyError, SessionEntry, SessionLease
 from wizolt.ui.cli import appearance
 from wizolt.ui.cli.agents import agents_command
 from wizolt.ui.cli.modals import (
+    ChoiceHost,
     choice_application,
     compaction_log_viewer,
     diff_viewer,
@@ -84,16 +85,15 @@ SET_HANDLERS: dict[str, SetHandler] = {
     "runtime.max_agent_steps": ("settings", "max_steps", lambda v: max(1, int(v))),
     "runtime.max_context_tokens": ("settings", "max_context_tokens", lambda v: max(1, int(v))),
     "runtime.max_parallel_tools": ("settings", "max_parallel_tools", lambda v: max(1, int(v))),
+    "runtime.max_subagents": ("settings", "max_subagents", lambda v: RuntimeSettings.clean_max_subagents(int(v))),
     "runtime.shell_timeout": ("settings", "shell_timeout", lambda v: max(1, int(v))),
     "runtime.bash_wait_timeout": ("settings", "bash_wait_timeout", lambda v: max(0, int(v))),
-    "runtime.worker": ("settings", "worker", lambda v: v == "on"),
     "runtime.attribution": ("settings", "attribution", lambda v: v == "on"),
 }
 SET_KEYS = tuple(SET_HANDLERS)
 # Keys whose values are a closed set: rejected by /set when unknown, and offered whole as completions.
 SET_CHOICES: dict[str, tuple[str, ...]] = {
     "provider.stream": ("on", "off"),
-    "runtime.worker": ("on", "off"),
     "runtime.attribution": ("on", "off"),
 }
 SET_VALUES: dict[str, tuple[str, ...]] = {
@@ -170,7 +170,11 @@ async def mcp_command(loop: CommandLoop, args: str) -> str | None:
     raise AssertionError("unreachable MCP subcommand")
 
 
-async def select_reasoning(loop: CommandLoop, model: str = "") -> str | object | None:
+class ModelSettingsHost(ChoiceHost, Protocol):
+    session: Session
+
+
+async def select_reasoning(loop: ModelSettingsHost, model: str = "") -> str | object | None:
     """Offer the efforts `model` accepts — the entry's own model when none is named.
 
     The list is the model's scale, not wizolt's: a level this model has no spelling for is not
@@ -194,7 +198,7 @@ async def select_reasoning(loop: CommandLoop, model: str = "") -> str | object |
     return await select_choice(loop, "Reasoning effort", choices, labels=labels, current=current, preview_fn=(lambda _choice: footer) if why else None)
 
 
-async def select_api(loop: CommandLoop, model: str) -> str | object | None:
+async def select_api(loop: ModelSettingsHost, model: str) -> str | object | None:
     # An endpoint that lists several model families rarely serves them all over one protocol, and
     # a /models listing does not say which. Confirm the wire alongside the model that needs it.
     provider = loop.session.config.provider
@@ -223,9 +227,7 @@ def status(loop: CommandLoop, args: str) -> str:
     if loop.session.jobs:
         activity.append(("jobs", f"{running_jobs}/{len(loop.session.jobs)}"))
 
-    # One flat table: the session's own facts, then the parent's, then the worker's under
-    # `worker*` labels. /status is an explicit query, so the worker rows appear whenever a
-    # worker session exists, in flight or not.
+    # Statistics belong to the selected agent; only the admission budget is group-wide.
     rows = [
         ("agent", f"`{loop.session.agent_name}` · `{loop.session.uid}`"),
         ("workspace", "`" + loop.session.cwd + "`"),
@@ -235,6 +237,7 @@ def status(loop: CommandLoop, args: str) -> str:
     if group is not None:
         entry = group.entry(loop.session.uid)
         rows.append(("state", entry.status))
+        rows.append(("subagents", f"{len(group.entries) - 1}/{group.limit} retained (group-wide)"))
         if entry.parent:
             rows.append(("parent", "`" + entry.parent + "`"))
     if loop.session.state.goal:
@@ -500,6 +503,7 @@ def config(loop: CommandLoop, args: str) -> str:
             f"runtime.max_agent_steps: {loop.session.settings.max_steps}",
             f"runtime.max_context_tokens: {loop.session.settings.max_context_tokens}",
             f"runtime.max_parallel_tools: {loop.session.settings.max_parallel_tools}",
+            f"runtime.max_subagents: {loop.session.subagents.limit if loop.session.subagents else loop.session.settings.max_subagents}",
             f"runtime.session_retention_days: {loop.session.settings.session_retention_days}",
             f"runtime.yolo: {'on' if loop.session.settings.yolo else 'off'}",
             f"runtime.language: {loop.session.settings.language}",
@@ -906,7 +910,7 @@ async def context_command(loop: CommandLoop, args: str) -> str:
     )
 
 
-async def provider(loop: CommandLoop, args: str) -> str:
+async def provider(loop: ModelSettingsHost, args: str) -> str:
     parts = args.split()
     if len(parts) > 1:
         return "Usage: /provider [NAME]"
@@ -935,7 +939,7 @@ def record_provider_override(session: Session, field: str, value: str) -> None:
     session.provider_overrides.setdefault("providers", {}).setdefault(session.config.active_provider, {})[field] = value
 
 
-def realign_reasoning(loop: CommandLoop) -> str:
+def realign_reasoning(loop: ModelSettingsHost) -> str:
     """Move the stored effort onto the session model's scale, and say so when it moves.
 
     The alternative to saying it is a request that silently sends something other than the effort
@@ -950,7 +954,7 @@ def realign_reasoning(loop: CommandLoop) -> str:
     return f"Reasoning {previous} is not offered by {provider.model}, using {aligned}"
 
 
-def set_provider(loop: CommandLoop, name: str) -> str:
+def set_provider(loop: ModelSettingsHost, name: str) -> str:
     if name not in loop.session.config.providers:
         return "Unknown provider: " + name
     loop.session.config.active_provider = name
@@ -958,7 +962,7 @@ def set_provider(loop: CommandLoop, name: str) -> str:
     return "\n".join(line for line in ("Set provider = " + name, realign_reasoning(loop)) if line)
 
 
-async def model(loop: CommandLoop, args: str) -> str:
+async def model(loop: ModelSettingsHost, args: str) -> str:
     parts = args.split()
     if len(parts) > 1:
         return "Usage: /model [MODEL]"
@@ -1001,7 +1005,7 @@ async def model(loop: CommandLoop, args: str) -> str:
         return str(result)
 
 
-async def remote_models(loop: CommandLoop, provider: ProviderConfig) -> tuple[str, ...]:
+async def remote_models(loop: ModelSettingsHost, provider: ProviderConfig) -> tuple[str, ...]:
     if not provider.url or not provider.key:
         return ()
     try:
@@ -1031,7 +1035,7 @@ async def remote_models(loop: CommandLoop, provider: ProviderConfig) -> tuple[st
     return tuple(sorted(dict.fromkeys(names)))
 
 
-async def set_model(loop: CommandLoop, model: str, *, back_to_model: bool = False) -> str | object:
+async def set_model(loop: ModelSettingsHost, model: str, *, back_to_model: bool = False) -> str | object:
     while True:
         api = await select_api(loop, model)
         if api is SELECTION_BACK:
@@ -1056,14 +1060,14 @@ async def set_model(loop: CommandLoop, model: str, *, back_to_model: bool = Fals
     return "\n".join(lines)
 
 
-def set_reasoning(loop: CommandLoop, value: str) -> str:
+def set_reasoning(loop: ModelSettingsHost, value: str) -> str:
     provider = loop.session.config.provider
     provider.reasoning = value
     record_provider_override(loop.session, "reasoning", value)
     return "Set provider.reasoning = " + value
 
 
-async def reason(loop: CommandLoop, args: str) -> str:
+async def reason(loop: ModelSettingsHost, args: str) -> str:
     value = args.strip()
     if value:
         # Typed efforts are held to the same list the picker offers, so `/reason` and the picker
@@ -1076,7 +1080,7 @@ async def reason(loop: CommandLoop, args: str) -> str:
     return set_reasoning(loop, choice) if isinstance(choice, str) else "No change"
 
 
-async def api(loop: CommandLoop, args: str) -> str:
+async def api(loop: ModelSettingsHost, args: str) -> str:
     value = args.strip()
     provider = loop.session.config.provider
     if value:
@@ -1087,7 +1091,7 @@ async def api(loop: CommandLoop, args: str) -> str:
     return set_api(loop, choice) if isinstance(choice, str) else "No change"
 
 
-def set_api(loop: CommandLoop, value: str) -> str:
+def set_api(loop: ModelSettingsHost, value: str) -> str:
     provider = loop.session.config.provider
     provider.api = value
     record_provider_override(loop.session, "api", value)
@@ -1133,6 +1137,8 @@ def set_value(loop: CommandLoop, args: str) -> str:
     if choices is not None and value not in choices:
         return "Invalid value for " + key
     obj = loop.session.config.provider if target_name == "provider" else loop.session.settings
+    if key == "runtime.max_subagents" and loop.session.agent_parent:
+        return "Set runtime.max_subagents in the main agent; the limit applies to the whole group"
     try:
         if coerce is not None:
             value = coerce(value)

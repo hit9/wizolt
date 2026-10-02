@@ -218,6 +218,90 @@ def test_cli_agents_switch_rebuilds_only_selected_transcript(pane):
     pane.send("/exit")
 
 
+def test_cli_subagent_approval_config_survives_resize_under_yolo(pane):
+    config = pane.path / "approval.toml"
+    config.write_text(
+        f'[paths]\ndata_dir = "{pane.path}/data"\n'
+        '[provider]\nactive = "test"\n[provider.test]\n'
+        'url = "http://127.0.0.1:9/v1"\nkey = "test-only"\nmodel = "gpt-4"\n'
+        'available_models = ["gpt-4", "o3"]\n[runtime]\ntheme = "forest"\n'
+    )
+    entry = pane.path / "approval.py"
+    entry.write_text(
+        "from wizolt.base import ToolCall\n"
+        "from wizolt.model.client import ModelClient\n"
+        "from wizolt.ui.cli.update import UpdateChecker\n"
+        "from wizolt.ui.cli import commands\n"
+        "from wizolt.providers.sync import CatalogRuntime\n"
+        "from wizolt.__main__ import main\n"
+        "async def models(*args): return ()\n"
+        "async def request(self, messages, tools=None):\n"
+        "    if self.session.agent_parent:\n"
+        "        p = self.session.config.provider\n"
+        "        text = 'CHILD-CONFIG-' + p.model + '-' + p.reasoning\n"
+        "        return {'role': 'assistant', 'content': text}, [], text\n"
+        "    if not any(m.get('role') == 'tool' for m in messages):\n"
+        "        return {}, [ToolCall('spawn-1', 'Subagent', [{'action': 'spawn', 'name': 'child', 'message': 'APPROVAL-TASK-MARKER'}])], ''\n"
+        "    return {'role': 'assistant', 'content': 'PARENT-DONE'}, [], 'PARENT-DONE'\n"
+        "ModelClient.request = request\n"
+        "commands.remote_models = models\n"
+        "UpdateChecker.load_cached = lambda self: False\n"
+        "CatalogRuntime.refresh_due = lambda self: False\n"
+        "main()\n"
+    )
+    pane.send(f"{sys.executable} {entry} --config {config} --yolo")
+
+    def wait(needle):
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            visible = pane.visible()
+            assert "Unhandled exception" not in visible, visible
+            if needle in visible:
+                return visible
+            time.sleep(0.05)
+        raise AssertionError(f"missing {needle!r}:\n{visible}")
+
+    wait("[main]")
+    pane.send("start children")
+    wait("View agent task")
+    assert "PARENT-DONE" not in pane.visible()
+    pane.send("c")
+    wait("Subagent config")
+    for cycle in range(CYCLES):
+        pane.resize(NARROW if cycle % 2 else WIDE, SHORT if cycle % 2 else TALL)
+        _settled_capture(pane)
+        wait("Subagent config")
+        assert "\n".join(pane.capture()).count("APPROVAL-TASK-MARKER") == 1
+    pane.keys("Up", "Up", "Up", "Enter")
+    wait("Configured models")
+    pane.keys("Down", "Enter")
+    wait("Request API")
+    pane.keys("Enter")
+    wait("Reasoning effort")
+    pane.literal("G")
+    pane.keys("Enter")
+    wait("Set provider.reasoning = high")
+    wait("Subagent config")
+    pane.resize(WIDE, TALL)
+    _settled_capture(pane)
+    pane.keys("Escape")
+    wait("View agent task")
+    pane.send("v")
+    wait("read-only")
+    assert "o3" in pane.visible()
+    pane.keys("Escape")
+    wait("View agent task")
+    pane.keys("Enter")
+    wait("PARENT-DONE")
+    wait("[child] completed")
+    assert "CHILD-CONFIG" not in pane.visible()
+    pane.send("/agents")
+    wait("Agents")
+    pane.keys("Down", "Enter")
+    wait("CHILD-CONFIG-o3-high")
+    pane.send("/exit")
+
+
 def _wait_for_markers(log: Path, count: int, timeout: float = 30.0) -> None:
     """Block until the driver has written at least `count` markers."""
     deadline = time.monotonic() + timeout

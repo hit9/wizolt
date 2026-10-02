@@ -44,6 +44,7 @@ APPROVAL_LEGEND_SEGMENTS: tuple[tuple[str, str], ...] = (
     ("", "Y/Enter approve"),
     ("n", "n refuse"),
     ("v", "v view {label}"),
+    ("c", "c config"),
 )
 
 
@@ -122,6 +123,8 @@ def approval_actions(tool: Tool) -> list[tuple[str, str]]:
     view = tool.approval_view()
     if view is not None:
         actions.append((f"View {view.label}", "v"))  # a tool with nothing to view returns None, so it is never offered
+    if tool.approval_config() is not None:
+        actions.append(("Config", "c"))
     actions.append(("Refuse", "n"))
     return actions
 
@@ -200,6 +203,8 @@ def approval_display(
         # change that call makes.
         children.extend(LogLine("", line, LogRole.DIFF, LogEdge.CONTINUE) for line in preview.rstrip().splitlines())
     elif (view := tool.approval_view()) is not None:
+        if tool.always_confirms():
+            children.extend(LogLine(label, value, LogRole.FIELD, LogEdge.CONTINUE) for label, value in field_pairs(view.rows))
         children.extend(view_excerpt_children(view, status, form or [], actions or approval_actions(tool), root.text))
     return LogBlock.hierarchy(root, children)
 
