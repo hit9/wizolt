@@ -315,11 +315,95 @@ def test_blocks_join_rectangles_without_unpainted_gaps():
     from wizolt.ui.render import Theme
 
     template = Template("preset:blocks", STATUS_PRESETS)
+    styles = Theme.bar_styles(template.styles)
     values = {"agent.name": "main", "model": "model", "provider": "test", "reasoning": "high", "context.percent": 37, "cache.percent": 88}
-    parts = template.render(values, 120, Theme.bar_styles(template.styles))
+    parts = template.render(values, 120, styles)
     # Only the alignment space between left and right groups is transparent.
     gaps = [(style, value) for style, value in parts if value.isspace() and "bg:" not in style]
     assert len(gaps) == 1 and len(gaps[0][1]) > 1
+    # Identity, yolo and counts drop as whole units; none of them leaves an unpainted hole or drifts.
+    values.update(yolo=True, **{"agents.count": 4, "agents.running": 2})
+    for width in range(121):
+        parts = template.render(values, width, styles)
+        assert get_cwidth(text(parts)) == width
+        assert sum(value.isspace() and "bg:" not in style for style, value in parts) <= 1
+
+
+@pytest.mark.parametrize(
+    "identity",
+    [
+        {"agent.name": "main", "yolo": True, "agents.count": 4, "agents.running": 2, "agents.waiting": 1},
+        {"agent.name": "main"},
+        {"yolo": True},
+        {"agents.count": 4, "agents.running": 2},
+    ],
+    ids=["identity-yolo-counts-waiting", "identity", "yolo", "counts"],
+)
+def test_blocks_never_draws_the_text_divider_inside_the_provider_band(identity):
+    from wizolt.ui.render import Theme
+
+    template = Template("preset:blocks", STATUS_PRESETS)
+    styles = Theme.bar_styles(template.styles)
+    values = {"model": "model", "provider": "test", "reasoning": "high", "context.percent": 37, "cache.percent": 88, **identity}
+    for width in (200, 120, 60, 30, 20):
+        assert "·" not in text(template.render(values, width, styles))
+
+
+def test_blocks_identity_parts_separate_by_space_and_weight_not_glyphs():
+    from prompt_toolkit.styles import Style
+
+    from wizolt.ui.render import Theme
+
+    template = Template("preset:blocks", STATUS_PRESETS)
+    values = {
+        "agent.name": "main",
+        "model": "model",
+        "provider": "test",
+        "reasoning": "high",
+        "yolo": True,
+        "context.percent": 37,
+        "cache.percent": 88,
+        "agents.count": 4,
+        "agents.running": 2,
+    }
+    parts = template.render(values, 200, Theme.bar_styles(template.styles))
+    rendered = text(parts)
+    # The counts stop short of the provider only where the surface hands over.
+    assert "agents 4 run 2 test" in rendered
+    assert rendered.index("main") < rendered.index("yolo") < rendered.index("agents 4 run 2")
+    name = next(spec for spec, value in parts if "main" in value)
+    flag = next(spec for spec, value in parts if "yolo" in value)
+    counts = next(spec for spec, value in parts if "agents 4 run 2" in value)
+    attrs = Style([])
+    assert "bold" in name and "bold" in flag and "bold" not in counts
+    backgrounds = {attrs.get_attrs_for_style_str(spec).bgcolor for spec in (name, flag, counts)}
+    assert len(backgrounds) == 1 and None not in backgrounds
+
+
+def test_blocks_waiting_alert_leads_the_row_on_its_own_surface():
+    from prompt_toolkit.styles import Style
+
+    from wizolt.ui.render import Theme
+
+    template = Template("preset:blocks", STATUS_PRESETS)
+    styles = Theme.bar_styles(template.styles)
+    values = {
+        "agent.name": "main",
+        "model": "model",
+        "provider": "test",
+        "context.percent": 37,
+        "cache.percent": 88,
+        "agents.waiting": 1,
+    }
+    for width in (8, 24, 160):
+        parts = template.render(values, width, styles)
+        assert text(parts).startswith(" wait 1 ")
+    parts = template.render(values, 160, styles)
+    alert = next(spec for spec, value in parts if "wait 1" in value)
+    identity = next(spec for spec, value in parts if "main" in value)
+    attrs = Style([])
+    assert attrs.get_attrs_for_style_str(alert).bgcolor not in (None, "")
+    assert attrs.get_attrs_for_style_str(alert).bgcolor != attrs.get_attrs_for_style_str(identity).bgcolor
 
 
 @pytest.mark.parametrize("name", ["powerline", "lualine"])
