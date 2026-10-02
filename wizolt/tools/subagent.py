@@ -26,7 +26,9 @@ class SubagentTool(Tool):
         "Use start=false to queue without waking an idle agent. list shows state; wait returns the latest answer. "
         "inspect reads a bounded snapshot of an active or archived agent: task, plan, recent messages, tool activity, settings and result; no approval is needed. "
         "wait defaults to 180 seconds (3 minutes); choose timeout up to 600 seconds (10 minutes) for longer tasks. "
-        "wait requires a non-empty agent_ids list, even for one child. It returns all currently settled targets when any completes, fails or is interrupted, "
+        "Omit agent_ids to wait for any of your currently running direct children; if none are running, return [] immediately. "
+        "Or pass a non-empty agent_ids list to select targets, including already settled agents. "
+        "wait returns all currently settled targets when any completes, fails or is interrupted, "
         "or [] on timeout. Other agents keep running. Remove returned IDs before waiting again; already settled targets return immediately. "
         "A wait timeout does not stop the child; wait again or continue other work. "
         "Your direct children's latest settled results are reported automatically before your next model request; "
@@ -91,7 +93,7 @@ class SubagentTool(Tool):
                     "type": "array",
                     "items": {"type": "string"},
                     "minItems": 1,
-                    "description": "Required for wait: return when any listed child settles",
+                    "description": "Optional for wait: select targets explicitly; omit to wait for currently running direct children",
                 },
                 "start": {"type": "boolean", "description": "Wake an idle agent on send (default true)"},
                 "timeout": {
@@ -130,7 +132,15 @@ class SubagentTool(Tool):
                 raise ToolError("send requires message")
             await group.send(uid, message, start=payload.get("start", True))
         elif action == "wait":
-            uids = payload.get("agent_ids", [])
+            if payload.get("agent_id"):
+                raise ToolError("wait uses agent_ids, not agent_id; omit agent_ids to wait for running direct children")
+            uids = payload.get("agent_ids")
+            if uids is None:
+                # Freeze this call's targets; completed history must not repeatedly wake a
+                # default wait. Future spawns belong to a later call, not this observation.
+                uids = [key for key, entry in group.entries.items() if entry.parent == self.session.uid and entry.task is not None and not entry.task.done()]
+                if not uids:
+                    return "[]"
             if isinstance(uids, list) and self.session.uid in uids:
                 raise ToolError("Cannot wait for the calling agent")
             entries = await group.wait(uids, payload.get("timeout", group.DEFAULT_WAIT_TIMEOUT))

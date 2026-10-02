@@ -21,6 +21,9 @@
 
 ### Added
 
+- Allow `Subagent wait` without `agent_ids` to wait for any currently running direct child.
+  Return immediately when none are running; explicit lists still support reading settled targets.
+
 - Wait for any of several subagents with `agent_ids`, returning all settled targets without
   stopping the others. Single-target waits also use a list; timeouts return an empty list.
 

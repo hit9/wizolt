@@ -1016,10 +1016,44 @@ async def test_wait_follows_consumer_handoff(group, monkeypatch):
         await group.wait([entry.agent.session.uid, group.root.session.uid], 0)
 
 
-@pytest.mark.parametrize("ids", [None, [], "one", [None], [1], [""], ["missing"]])
+@pytest.mark.parametrize("ids", [[], "one", [None], [1], [""], ["missing"]])
 async def test_wait_rejects_invalid_targets(group, ids):
     with pytest.raises(ToolError):
         await SubagentTool(group.root.session, [{"action": "wait", "agent_ids": ids}]).call()
+
+
+@pytest.mark.parametrize("optional_fields", [{}, {"agent_ids": None}])
+async def test_default_wait_selects_only_running_direct_children(group, monkeypatch, optional_fields):
+    release = {name: asyncio.Event() for name in ("parent", "nested")}
+
+    async def request(client, messages, tools=None):
+        if client.session.agent_name in release:
+            await release[client.session.agent_name].wait()
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    payload = {"action": "wait", **optional_fields}
+    assert json.loads(await SubagentTool(root, [payload]).call()) == []
+    await finished(group, await group.spawn(root, "old-result", "work"))
+    parent = await group.spawn(root, "parent", "work")
+    nested = await group.spawn(parent.agent.session, "nested", "work")
+    assert not SubagentTool(root, [payload]).needs_confirmation()
+    assert json.loads(await SubagentTool(nested.agent.session, [payload]).call()) == []
+    main_wait = asyncio.create_task(SubagentTool(root, [payload]).call())
+    parent_wait = asyncio.create_task(SubagentTool(parent.agent.session, [payload]).call())
+    await asyncio.sleep(0)
+    assert not main_wait.done() and not parent_wait.done()
+    release["nested"].set()
+    rows = json.loads(await asyncio.wait_for(parent_wait, 3))
+    assert [row["agent_id"] for row in rows] == [nested.agent.session.uid]
+    assert not main_wait.done()
+    release["parent"].set()
+    rows = json.loads(await asyncio.wait_for(main_wait, 3))
+    assert [row["agent_id"] for row in rows] == [parent.agent.session.uid]
+    assert json.loads(await SubagentTool(root, [payload]).call()) == []
+    with pytest.raises(ToolError, match="uses agent_ids"):
+        await SubagentTool(root, [{"action": "wait", "agent_id": parent.agent.session.uid}]).call()
 
 
 def test_wait_schema_exposes_long_wait_limit_and_default():
