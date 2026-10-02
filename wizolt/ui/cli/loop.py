@@ -124,10 +124,16 @@ class CommandLoop:
         # remainder here lets the loop use non-blocking os.read() without losing a following line.
         self._stdin_buffer = bytearray()
         if self.interactive_input:
-            history_path = os.path.join(SessionSnapshotStore.project_dir(self.session.config.data_dir, self.session.cwd), self.session.uid + ".history")
+            # Keyboard recall is a user convenience, never model context. Main keeps the
+            # cross-session/project history; children must not read or append that shared file.
+            history_path = (
+                os.path.join(SessionSnapshotStore.project_dir(self.session.config.data_dir, self.session.cwd), self.session.uid + ".history")
+                if self.session.agent_parent
+                else self.session.data_path("history.txt")
+            )
             os.makedirs(os.path.dirname(history_path), exist_ok=True)
             self.trim_input_history(history_path)
-            # Reserve the history before startup cleanup prunes directories with no session log.
+            # Reserve a child's sidecar before startup cleanup prunes empty project directories.
             with open(history_path, "a", encoding="utf-8"):
                 pass
             self.input_history = FileHistory(history_path)

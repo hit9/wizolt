@@ -21,6 +21,9 @@
 
 ### Fixed
 
+- Restore main-session Up/Ctrl-P recall across sessions and projects from `history.txt`, while
+  keeping each child's keyboard history private. Keyboard recall does not populate model context.
+
 - Restore the running input mode after loading models inside a subagent approval, including
   failures and cancellation, so steering remains available while the parent waits for children.
 - Keep `Subagent list/stop/wait` usable when interrupted tool-call messages have null content.

@@ -341,5 +341,6 @@ Sessions live under `<data_dir>/projects/`, grouped by working directory. `wizol
 the latest session in your current project. See [Sessions](usage.md#sessions) for retention
 settings and other ways to resume.
 
-`<data_dir>/history.txt` holds the input history that Up and Ctrl-P recall, across every project.
-It is capped at 512 KB, keeping the most recent entries.
+`<data_dir>/history.txt` holds the main conversation's input history that Up and Ctrl-P recall,
+across sessions and projects. Each child agent recalls only its own inputs, saved beside its
+session log. These histories are capped at 512 KB, keeping the most recent entries.

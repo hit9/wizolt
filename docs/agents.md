@@ -48,6 +48,8 @@ Press **x** to stop the highlighted agent after confirmation, or **Shift+X** to 
 The picker stays open, and the stopped conversation remains available for inspection and new input.
 
 The selected agent owns the conversation you see, your input, draft, history and queued messages.
+Main's Up/Ctrl-P recall includes earlier main sessions across projects; a child recalls only its
+own inputs. Earlier recalled inputs enter an agent's context only when you send them.
 Its statusbar shows its name, model and context usage. When children exist, it also shows group
 counts, such as `agents 3 · run 1 · wait 1`: three retained agents including main, one running
 and one waiting for input. Completed agents remain in the total. With only main, the default
