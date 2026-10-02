@@ -135,6 +135,33 @@ async def test_exiting_child_prints_root_resume_uid(frontend, monkeypatch):
     assert runtime.loop.session.uid not in output[-1]
 
 
+@pytest.mark.parametrize("keys,modals", [(["X", "down"], 1), (["x", "up", "enter", "down"], 2)])
+async def test_stopping_the_viewed_agent_closes_a_picker_hosted_outside_its_inbox(frontend, monkeypatch, keys, modals):
+    # `/agents` typed while the child's turn is still settling runs as a runtime task, not in the
+    # child's inbox task, so stopping the child cancels nothing. The picker must still close
+    # instead of reopening and swallowing the next typed command as its filter (CI tmux 3.4).
+    runtime = await child(frontend)
+    frontend.current = runtime
+    modal = ModalHarness(keys, consumed=True)
+    monkeypatch.setattr(runtime.tui, "show_modal", modal.show_modal)
+    await frontend.select(runtime.loop)
+    assert len(modal.exclusive) == modals  # the picker (and confirmation) only; no reopen
+    assert modal.pos == len(keys) - 1  # the trailing key never reached a reopened picker
+    assert frontend.current is runtime
+
+
+async def test_stopping_another_agent_keeps_the_picker_open(frontend, monkeypatch):
+    viewed, other = await child(frontend, "viewed"), await child(frontend, "other")
+    frontend.current = viewed
+    stopped = []
+    monkeypatch.setattr(frontend.group, "stop", stopped.append)
+    modal = ModalHarness(["down", "down", "X", "escape"], consumed=True)
+    monkeypatch.setattr(viewed.tui, "show_modal", modal.show_modal)
+    await frontend.select(viewed.loop)
+    assert stopped == [other.loop.session.uid]
+    assert modal.pos == 4  # Escape reached the same, still-open picker
+
+
 @pytest.mark.parametrize("keys", [["X"], ["x", "up", "enter"]])
 async def test_completed_child_can_stop_itself_from_its_picker(frontend, monkeypatch, keys):
     runtime = await child(frontend)

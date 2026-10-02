@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+
+- Close the `/agents` picker when it stops the agent on screen, whether by **x** or **X**. A
+  picker opened while that agent's turn was still settling ran outside the agent's own task, so
+  the stop left it open and it reopened; the next typed command then landed in its filter. The
+  tmux 3.4 acceptance job hit this timing. Stopping another agent still keeps the picker open.
+
 ## 0.70.0 - 2026-10-02
 
 ### Performance

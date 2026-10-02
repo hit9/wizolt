@@ -114,6 +114,13 @@ class ArchiveAgent:
     uid: str
 
 
+@dataclass(frozen=True)
+class StoppedView:
+    """The agent on screen was stopped: close its picker rather than reopen it."""
+
+    uid: str
+
+
 async def configure_subagent(loop: CommandLoop, settings: Session) -> None:
     """Reuse model commands against a call's detached settings and the caller's modal owner."""
     from wizolt.ui.cli import commands
@@ -343,6 +350,14 @@ class AgentsFrontend:
             caption = f"{session.agent_name} · {entry.status} · {elapsed(uid)}"
             return AgentPreview(opening, active or entry.answer, bool(active), caption).fragments(shutil.get_terminal_size((80, 24)).columns, height)
 
+        def stop_now(key: str) -> object | None:
+            if key not in self.group.entries:
+                return None
+            self.group.stop(key)
+            # Stopping the agent on screen ends its picker, whichever task hosts the picker: a
+            # command typed while that agent's turn was settling runs outside its inbox task.
+            return StoppedView(key) if key == self.current.loop.session.uid else None
+
         current = self.current.loop.session.uid
         while True:
             uid = await choice_application(
@@ -357,7 +372,7 @@ class AgentsFrontend:
                 preview_title=" ",
                 actions={
                     "x": lambda key: StopAgent(key) if key in self.group.entries else None,
-                    "X": lambda key: self.group.stop(key) if key in self.group.entries else None,
+                    "X": stop_now,
                     "d": lambda key: ArchiveAgent(key) if key in self.group.entries and key != self.root.loop.session.uid else None,
                 },
                 keys="↑/↓ j/k move · Enter open · x stop · X stop now · d archive · Esc back",
@@ -388,6 +403,8 @@ class AgentsFrontend:
             name = self.group.entry(current).agent.session.agent_name
             if await select_choice(loop, f"Stop {name}?", ("stop", "back"), labels={"stop": "Stop this agent", "back": "Back"}, current="back") == "stop":
                 self.group.stop(current)
+                if current == self.current.loop.session.uid:
+                    return  # see stop_now: the same rule whichever task hosts this picker
         if isinstance(uid, str) and uid != self.current.loop.session.uid:
             if uid in archived:
                 try:
