@@ -205,6 +205,37 @@ async def test_turn_clock_is_live_then_frozen_and_restored(group, monkeypatch):
     assert loaded.state.elapsed == 192
 
 
+@pytest.mark.parametrize("action", ["inspect", "list", "wait"])
+@pytest.mark.parametrize("truncated", [False, True])
+async def test_result_receipts_are_independent_of_tool_framing_and_survive_snapshot(group, monkeypatch, action, truncated):
+    from wizolt.agent.results import receive_results
+    from wizolt.base import SUBAGENT_RECEIPTS_KEY
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "answer"}, [], "answer"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await finished(group, await group.spawn(group.root.session, "review", "work"))
+    runner = group.root.tools
+    if truncated:
+        monkeypatch.setattr("wizolt.agent.context.MAX_TOOL_OUTPUT_TOKENS", 1)
+    monkeypatch.setattr(runner, "tool_message", lambda call, key, output, **kwargs: "New framing: " + runner.context.bound_output(output) + "\nHook feedback")
+    payload = {"action": action, "agent_ids": [entry.agent.session.uid]} if action == "wait" else {"action": action, "agent_id": entry.agent.session.uid}
+    turn = await runner.run([call("Subagent", [payload])])
+    assert bool(turn[0].get(SUBAGENT_RECEIPTS_KEY)) is not truncated
+    root = group.root.session
+    root.stage_active_turn(turn)
+    await root.save_snapshot()
+    loaded = SessionSnapshotStore.load(root.uid, config=root.config, settings=root.settings)
+    try:
+        restored = [message for message in loaded.messages if message.get("role") == "tool"]
+        assert len(restored) == 1
+        receive_results(loaded, restored, group.results_for(root.uid))
+        assert len(restored) == (2 if truncated else 1)
+    finally:
+        loaded.close()
+
+
 async def test_archive_releases_branch_slots_preserves_history_and_survives_resume(group, monkeypatch):
     async def request(client, messages, tools=None):
         return {"role": "assistant", "content": "saved answer"}, [], "saved answer"
@@ -217,7 +248,7 @@ async def test_archive_releases_branch_slots_preserves_history_and_survives_resu
     await group.archive(first.agent.session.uid)
     assert set(group.entries) == {root.uid}
     assert group.counts.total == 1
-    assert all(item["archived"] for item in root.subagent_entries)
+    assert all(item["archived"] is True and isinstance(item["result"], dict) and "answer" not in item for item in root.subagent_entries)
     for entry in (first, nested):
         saved = SessionSnapshotStore.load(entry.agent.session.uid, config=root.config, settings=root.settings)
         assert any(message.get("content") == "saved answer" for message in saved.messages)
@@ -418,9 +449,10 @@ async def test_crashed_turn_restores_an_interruption_result_and_receipt_survives
 
 async def test_old_tool_receipt_cannot_reannounce_a_newer_result(group):
     from wizolt.agent.results import receive_results
+    from wizolt.base import SUBAGENT_RECEIPTS_KEY
 
     root = group.root.session
-    tool = {"role": "tool", "content": 'tool tr.1 Subagent wait\noutput:\n[{"agent_id":"child", "result_id":"old"}]'}
+    tool = {"role": "tool", "content": "old result", SUBAGENT_RECEIPTS_KEY: {"child": "old"}}
     result = {"agent_id": "child", "result_id": "new", "status": "completed", "text": "new answer"}
     turn = [tool]
     receive_results(root, turn, [result])

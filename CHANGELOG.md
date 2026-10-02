@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- Keep subagent delivery receipts in structured message metadata instead of parsing rendered
+  output, so tool framing and hook feedback cannot cause duplicate completion notices.
+- Use typed archive records with boolean flags and structured result envelopes; remove duplicated
+  answer excerpts. Centralize child inbox ownership at frontend turn boundaries.
+
 - Drain child frontend input before model-initiated archival takes the group lock, preventing
   cancellation from deadlocking on an accepted between-turn submission. Reopen retained views
   if archival fails or is cancelled.

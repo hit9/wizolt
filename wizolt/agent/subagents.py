@@ -8,7 +8,6 @@ into it. Shared capability services have one root owner. See design/STATE_OWNERS
 from __future__ import annotations
 
 import asyncio
-import json
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, AsyncExitStack
 from copy import deepcopy
@@ -74,7 +73,7 @@ class AgentEntry:
     def status(self) -> str:
         if self.agent.session.state.awaiting_input:
             return "waiting for input"
-        if self.agent._active_task is not None:
+        if self.agent.turn_active:
             return "running"
         state = self.agent.session.state
         return state.last_turn_status if state.last_turn_status != "idle" else "completed" if state.round_count else "idle"
@@ -135,11 +134,7 @@ class Subagents:
     @property
     def quiescent(self) -> bool:
         return all(
-            (entry.task is None or entry.task.done())
-            and not entry.agent.session._active_runs
-            and (entry.agent.session._snapshot_gate is None or not entry.agent.session._snapshot_gate.locked())
-            for entry in self.entries.values()
-            if entry.agent is not self.root
+            (entry.task is None or entry.task.done()) and entry.agent.session.quiescent for entry in self.entries.values() if entry.agent is not self.root
         )
 
     async def restore(self) -> list[str]:
@@ -273,7 +268,7 @@ class Subagents:
             entry.task = asyncio.create_task(self._run(entry), name=f"agent:{entry.agent.session.uid}")
             entry.task.add_done_callback(lambda task: self._cancelled_before_start(entry, task))
             self.changed(entry)
-        elif entry.agent._active_task is None or entry.agent.session.state.last_turn_status in {"failed", "interrupted"}:
+        elif not entry.agent.turn_active or entry.agent.session.state.last_turn_status in {"failed", "interrupted"}:
             # A follow-up after the turn has settled may resume it, including while the engine
             # or frontend is still publishing its last snapshot. Mid-turn steering is not retry.
             entry.restart_requested = True
@@ -293,7 +288,7 @@ class Subagents:
         results = [entry.result for entry in self.entries.values() if entry.parent == parent and entry.result]
         # Archival must not swallow a completion the parent has not received yet.
         results.extend(
-            json.loads(item["result"])
+            item.get("result", {})
             for item in self.root.session.subagent_entries
             if item.get("archived") and item.get("parent") == parent and item.get("result")
         )
@@ -433,10 +428,9 @@ class Subagents:
                 root.subagent_entries = [
                     {
                         **item,
-                        "archived": "true",
+                        "archived": True,
                         "name": self.entries[item["uid"]].agent.session.agent_name,
-                        "answer": self.entries[item["uid"]].answer[-3000:],
-                        "result": json.dumps(self.entries[item["uid"]].result, ensure_ascii=False) if self.entries[item["uid"]].result else "",
+                        "result": self.entries[item["uid"]].result,
                     }
                     if item.get("uid") in uids
                     else item

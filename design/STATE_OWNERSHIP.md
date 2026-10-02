@@ -131,6 +131,11 @@ Delivery receipts belong to the receiving parent's `AgentState`, not to the grou
 parents must not consume each other's notifications. Receipts and their session events enter the
 same snapshot; they never enter user input history or the visible transcript. The archived
 manifest retains the last result envelope after its engine is gone.
+Successful, untruncated Subagent tool messages carry structured local receipt metadata; the
+request boundary acknowledges only receipts actually present in the turn. Tool framing and hook
+feedback are not a delivery protocol. Wire adapters strip this metadata, and transcript projection
+omits it. Archive records use a boolean flag and a structured result envelope, whose bounded text
+also supplies the preview; the full answer remains in the child's snapshot.
 
 `agent/inspection.py` copies a bounded projection on the owning loop; it never lends callers
 mutable state, credentials, hidden reasoning or raw image data. The runner owns its active

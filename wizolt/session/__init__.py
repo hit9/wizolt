@@ -42,7 +42,7 @@ from wizolt.session.store import (
     SessionSnapshotStore,
     local_timestamp,
 )
-from wizolt.session.types import AgentState, HistorySegment, PlanItem, QueuedInput, ToolErrorRecord, ToolResultRecord, TurnDiff
+from wizolt.session.types import AgentState, HistorySegment, PlanItem, QueuedInput, SubagentRecord, ToolErrorRecord, ToolResultRecord, TurnDiff
 from wizolt.source import SourceView, SourceViewDraft
 
 __all__ = [
@@ -122,7 +122,7 @@ class Session:
     listed: bool = True  # False -> no latest pointer, hidden from /sessions
     agent_name: str = "main"
     agent_parent: str = ""
-    subagent_entries: list[dict[str, str]] = field(default_factory=list)
+    subagent_entries: list[SubagentRecord] = field(default_factory=list)
     subagents: Subagents | None = field(default=None, repr=False, compare=False)
     tool_counter: int = 0
     # Source views are owned by the Session: only it allocates keys and mutates the mapping, so
@@ -190,10 +190,16 @@ class Session:
             self.system_info = SystemInfo.detect(self.cwd, self.config.data_dir)
         self.apply_provider_overrides()
 
-    def stage_active_turn(self, turn_messages: list[Json], transcript_messages: list[Json]) -> None:
+    def stage_active_turn(self, turn_messages: list[Json], transcript_messages: list[Json] | None = None) -> None:
         """Hold the in-flight turn outside durable history, where a checkpoint persists it."""
         self._active_turn_messages = list(turn_messages)
-        self._active_transcript_messages = list(transcript_messages)
+        if transcript_messages is not None:
+            self._active_transcript_messages = list(transcript_messages)
+
+    @property
+    def quiescent(self) -> bool:
+        """Whether no engine run or snapshot writer still owns this Session."""
+        return not self._active_runs and (self._snapshot_gate is None or not self._snapshot_gate.locked())
 
     def clear_active_turn(self) -> None:
         """End the in-flight turn: committed to history, retracted, or abandoned unsettled."""

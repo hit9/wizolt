@@ -162,6 +162,7 @@ def builtin_tool_label(name: str) -> str:
 # Protocol-neutral metadata for lifecycle/context checkpoint messages. Provider adapters remove
 # this key while preserving the canonical role/content pair in the conversation log.
 SESSION_EVENT_KEY = "_session_event"
+SUBAGENT_RECEIPTS_KEY = "_subagent_receipts"
 
 
 # Image-delivery states of the active main route (REQUIREMENT-3 main-first image fallback).

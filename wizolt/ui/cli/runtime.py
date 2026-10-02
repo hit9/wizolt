@@ -283,10 +283,7 @@ class TuiRuntime:
                 if submission.turn_boundary is not None:
                     await self.loop.session.save_snapshot()
                     self.turn_active = False
-                    # The group consumes child inboxes directly, retaining command provenance
-                    # and held-turn boundaries. Only main transfers input into this runtime.
-                    if not self.child_agent:
-                        self.submit_next(self.loop.take_pending_inputs())
+                    self.flush_pending()
                     if not submission.turn_boundary.done():
                         submission.turn_boundary.set_result(None)
                     continue
@@ -506,6 +503,15 @@ class TuiRuntime:
         for text in entered[1:]:
             self.loop.session.enqueue_user_input(text)
 
+    def flush_pending(self) -> None:
+        """Only main transfers inbox input to the frontend's next-turn queue.
+
+        The group consumes child inboxes directly, retaining command provenance and
+        held-turn boundaries. Draining a child's inbox here loses that ownership.
+        """
+        if not self.child_agent:
+            self.submit_next(self.loop.take_pending_inputs())
+
     def reset_turn(self) -> None:
         self.loop.presentation.model_stream_output("", "")
         # A request can fail after permanent promotion but before Agent re-publishes the text and
@@ -531,8 +537,7 @@ class TuiRuntime:
             # Runtime shutdown still propagates, even if the command caught its cancellation.
             self.loop.agent.raise_if_cancelled()
             self.loop.presentation.emit_turn(f"Error: {error}" if isinstance(error, WizoltError) else "Cancelled")
-            if not self.child_agent:
-                self.submit_next(self.loop.take_pending_inputs())
+            self.flush_pending()
             self.reset_turn()
             return True
         if exit_now:
@@ -542,8 +547,7 @@ class TuiRuntime:
             # A command must not strand queued follow-ups: flush them as run_agent_turn does, so
             # they keep chaining once the command completes (e.g. /compact then queued input).
             # Submit before restoring the idle prompt, where newer input can enter `pending`.
-            if not self.child_agent:
-                self.submit_next(self.loop.take_pending_inputs())
+            self.flush_pending()
             self.reset_turn()
             return True
         return False
@@ -621,8 +625,7 @@ class TuiRuntime:
         if self.submissions_task is None:
             await self.loop.session.save_snapshot()
             self.turn_active = False
-            if not self.child_agent:
-                self.submit_next(self.loop.take_pending_inputs())
+            self.flush_pending()
             return
         boundary = asyncio.get_running_loop().create_future()
         self.submissions.put_nowait(_Submission(turn_boundary=boundary))

@@ -11,10 +11,24 @@ import json
 from collections.abc import Iterable
 from uuid import uuid4
 
-from wizolt.base import SESSION_EVENT_KEY, Json
+from wizolt.base import SESSION_EVENT_KEY, SUBAGENT_RECEIPTS_KEY, Json
 from wizolt.session import Session
 
 RESULT_EVENT = "subagent_result"
+
+
+def result_receipts(output: str) -> dict[str, str]:
+    """Read the Subagent tool's JSON contract before presentation framing or hook feedback."""
+    rows = json.loads(output)
+    if isinstance(rows, dict):
+        rows = [rows.get("result", {})]  # inspect carries its result beside the snapshot.
+    if not isinstance(rows, list):
+        return {}
+    return {
+        row["agent_id"]: row["result_id"]
+        for row in rows
+        if isinstance(row, dict) and isinstance(row.get("agent_id"), str) and isinstance(row.get("result_id"), str) and row["result_id"]
+    }
 
 
 def settled_result(session: Session, answer: str) -> Json:
@@ -33,26 +47,18 @@ def settled_result(session: Session, answer: str) -> Json:
 def receive_results(session: Session, turn: list[Json], results: Iterable[Json]) -> None:
     """Append only unseen results at a request boundary, never during an in-flight request.
 
-    A successful list/wait may already carry the exact result. Read its visible JSON rather
-    than acknowledging at tool execution time: a cancelled batch may never enter context.
-    Truncated/non-JSON tool output cannot prove receipt and does not suppress notification.
+    The runner attaches receipts only to successful, untruncated tool messages. A cancelled
+    batch that never enters this turn cannot acknowledge delivery, even if its tools ran.
     """
     seen = session.state.child_results_seen
     results = list(results)
     available = {result["agent_id"]: result["result_id"] for result in results}
     for message in turn:
-        if message.get("role") != "tool" or not isinstance(content := message.get("content"), str):
+        if message.get("role") != "tool":
             continue
-        try:
-            rows = json.loads(content.partition("\noutput:\n")[2])
-        except ValueError:
-            continue
-        if isinstance(rows, dict) and isinstance(rows.get("result"), dict):
-            rows = [rows["result"]]  # inspect returns a bounded envelope alongside its snapshot.
-        if isinstance(rows, list):
-            for row in rows:
-                if isinstance(row, dict) and isinstance(uid := row.get("agent_id"), str) and row.get("result_id") == available.get(uid) and uid in available:
-                    seen[uid] = available[uid]
+        for uid, receipt in message.get(SUBAGENT_RECEIPTS_KEY, {}).items():
+            if uid in available and receipt == available[uid]:
+                seen[uid] = receipt
     for result in results:
         uid, receipt = result["agent_id"], result["result_id"]
         if seen.get(uid) == receipt:
@@ -67,4 +73,4 @@ def receive_results(session: Session, turn: list[Json], results: Iterable[Json])
         seen[uid] = receipt
     # Staged turns are copies. Update the checkpoint before any await can let another
     # family member save main, otherwise a receipt could survive without its event.
-    session._active_turn_messages = list(turn)
+    session.stage_active_turn(turn)

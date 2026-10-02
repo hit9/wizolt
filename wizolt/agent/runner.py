@@ -15,9 +15,11 @@ from typing import Any, Literal, TypeVar
 
 from wizolt.agent.context import ContextManager
 from wizolt.agent.hooks import UiHooks
+from wizolt.agent.results import result_receipts
 from wizolt.agent.vision import VisionObserver
 from wizolt.base import (
     MAX_TOOL_OUTPUT_TOKENS,
+    SUBAGENT_RECEIPTS_KEY,
     ApprovalView,
     Json,
     LogBlock,
@@ -194,6 +196,7 @@ class ToolRunner:
         self._capacity: asyncio.Semaphore | None = None
         self._gateway: _NestedGateway | None = None
         self.active_calls: tuple[ToolCall, ...] = ()
+        self._result_receipts: dict[str, dict[str, str]] = {}
 
     @contextlib.contextmanager
     def nested(self):
@@ -381,10 +384,12 @@ class ToolRunner:
         self._capacity = asyncio.Semaphore(max(1, self.session.settings.max_parallel_tools))
         self._gateway = _NestedGateway(self, loop)
         self.active_calls = tuple(calls)
+        self._result_receipts.clear()
         try:
             return await self._run_batch(calls, batch_suffix)
         finally:
             self.active_calls = ()
+            self._result_receipts.clear()
             gateway, self._gateway = self._gateway, None
             self._capacity = None
             if gateway is not None:
@@ -536,6 +541,8 @@ class ToolRunner:
                 call, batch_suffix=suffix, planned_edit=plan.planned.get(call.id), plan_error=plan.errors.get(call.id, "")
             )
             messages.append({"role": "tool", "tool_call_id": call.id, "content": content})
+            if receipts := self._result_receipts.pop(call.id, None):
+                messages[-1][SUBAGENT_RECEIPTS_KEY] = receipts
             if observation is not None:
                 observations.append(observation)
             if status == "refused":
@@ -868,6 +875,10 @@ class ToolRunner:
             )
         if not (tool_class is not None and tool_class.SILENT) or failed:
             self.emit(toolblocks.finish_display(self.session, call, key, model_text, failed=failed, elapsed=elapsed, d=d))
+        if call.name == "Subagent" and not failed and self.context.bound_output(model_text, path=artifact_path).rstrip() == model_text.rstrip():
+            # Keep proof of delivery with the matching message, never with rendered text or
+            # the Session yet: cancellation can still discard this whole tool batch.
+            self._result_receipts[call.id] = result_receipts(model_text)
         return self.tool_message(call, key, model_text, status="failed" if failed else "ok", display=d.display, bound=bound, artifact_path=artifact_path)
 
     async def _source_output(self, call: ToolCall, tool_output: ToolOutput, *, retain: bool) -> tuple[str, str]:

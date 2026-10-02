@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from model_harness import _MockClientFactory, _session, _StreamClientFactory, async_create, record_backoff
 
-from wizolt.base import SEARCH_SOURCES_KEY, SESSION_EVENT_KEY, ModelError, ModelOutputTruncated, ToolCall
+from wizolt.base import SEARCH_SOURCES_KEY, SESSION_EVENT_KEY, SUBAGENT_RECEIPTS_KEY, ModelError, ModelOutputTruncated, ToolCall
 from wizolt.image import IMAGE_TEXT_ONLY_KEY, TOOL_IMAGE_OBSERVATION_KEY, TOOL_IMAGE_QUESTION_KEY
 from wizolt.model import ModelClient, resilience
 from wizolt.model.chat import ChatWire
@@ -160,7 +160,8 @@ async def test_chat_request_success(tmp_path, monkeypatch):
     assert streamed == []
 
 
-async def test_chat_request_strips_session_event_metadata(tmp_path, monkeypatch):
+@pytest.mark.parametrize("metadata", [{SESSION_EVENT_KEY: "resumed"}, {SUBAGENT_RECEIPTS_KEY: {"child": "receipt"}}])
+async def test_chat_request_strips_session_event_metadata(tmp_path, monkeypatch, metadata):
     s = _session(tmp_path, stream=False)
     model = ModelClient(s)
     factory = _MockClientFactory(
@@ -180,7 +181,7 @@ async def test_chat_request_strips_session_event_metadata(tmp_path, monkeypatch)
     )
     monkeypatch.setattr(model, "client", factory)
 
-    await model.request([{"role": "user", "content": "<session_event />", SESSION_EVENT_KEY: "resumed"}])
+    await model.request([{"role": "user", "content": "<session_event />", **metadata}])
 
     assert json.loads(factory.calls[0].content)["messages"] == [{"role": "user", "content": "<session_event />"}]
 

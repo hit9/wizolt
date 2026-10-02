@@ -8,7 +8,7 @@ import pytest
 from model_harness import _MockClientFactory, _session, _StreamClientFactory, async_create, record_backoff
 from openai import AsyncOpenAI
 
-from wizolt.base import SESSION_EVENT_KEY, ModelError, ModelOutputTruncated, ModelStreamIncomplete, ToolCall
+from wizolt.base import SESSION_EVENT_KEY, SUBAGENT_RECEIPTS_KEY, ModelError, ModelOutputTruncated, ModelStreamIncomplete, ToolCall
 from wizolt.config import ProviderConfig
 from wizolt.model import ModelClient, resilience
 from wizolt.tools import BashTool
@@ -93,10 +93,11 @@ async def test_responses_request_preserves_output_items_and_uses_responses_shape
     assert streamed == []
 
 
-def test_responses_input_strips_session_event_metadata(tmp_path):
+@pytest.mark.parametrize("metadata", [{SESSION_EVENT_KEY: "resumed"}, {SUBAGENT_RECEIPTS_KEY: {"child": "receipt"}}])
+def test_responses_input_strips_session_event_metadata(tmp_path, metadata):
     s = _session(tmp_path, api="responses", model="gpt-5", stream=False)
 
-    converted = ModelClient(s).wire(s.config.provider).messages([{"role": "user", "content": "<session_event />", SESSION_EVENT_KEY: "resumed"}])
+    converted = ModelClient(s).wire(s.config.provider).messages([{"role": "user", "content": "<session_event />", **metadata}])
 
     assert converted == [{"role": "user", "content": "<session_event />"}]
 

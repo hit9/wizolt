@@ -10,10 +10,25 @@ import re
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import ClassVar, cast
+from typing import ClassVar, NotRequired, TypedDict, cast
 
 from wizolt.base import Json, ToolArgs
 from wizolt.image import IMAGE_REFS_KEY, ImageRef, UserInput
+
+
+class SubagentRecord(TypedDict):
+    """Root-owned child identity; archived results preserve undelivered notifications.
+
+    Full conversation text lives only in the child's snapshot. The bounded result envelope
+    also supplies the archived picker preview, without copying a second answer into main.
+    """
+
+    uid: str
+    parent: str
+    instruction: str
+    name: NotRequired[str]
+    archived: NotRequired[bool]
+    result: NotRequired[Json]
 
 
 @dataclass

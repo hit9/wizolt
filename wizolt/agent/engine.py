@@ -113,6 +113,11 @@ class Agent:
 
             session.subagents = Subagents(self)
 
+    @property
+    def turn_active(self) -> bool:
+        """True through the active turn's final snapshot and cleanup."""
+        return self._active_task is not None
+
     def use_hooks(self, hooks: UiHooks) -> None:
         """Install the presentation seam on this agent and every layer it owns.
 

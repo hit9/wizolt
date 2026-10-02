@@ -292,7 +292,7 @@ class AgentsFrontend:
         def preview(uid: str) -> StyleAndTextTuples:
             if uid in archived:
                 item = archived[uid]
-                return AgentPreview(item.get("instruction", ""), item.get("answer", ""), name=labels[uid]).fragments(
+                return AgentPreview(item.get("instruction", ""), item.get("result", {}).get("text", ""), name=labels[uid]).fragments(
                     shutil.get_terminal_size((80, 24)).columns, picker_height() - 9
                 )
             entry = displayed[uid]

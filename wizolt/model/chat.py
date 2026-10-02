@@ -10,7 +10,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import wizolt.model.responses as responses_module
-from wizolt.base import PROVIDER_ECHO_KEYS, SESSION_EVENT_KEY, Billing, Json, ModelError, Text, ToolCall
+from wizolt.base import PROVIDER_ECHO_KEYS, SESSION_EVENT_KEY, SUBAGENT_RECEIPTS_KEY, Billing, Json, ModelError, Text, ToolCall
 from wizolt.config import ProviderConfig
 from wizolt.image import IMAGE_REFS_KEY, IMAGE_TEXT_ONLY_KEY, TOOL_IMAGE_OBSERVATION_KEY, TOOL_IMAGE_QUESTION_KEY, ImageInputs
 from wizolt.model.protocol import keeps_reasoning, omit_request_fields
@@ -47,7 +47,16 @@ def chat_messages(
         clean = {
             key: value
             for key, value in message.items()
-            if key not in (*PROVIDER_ECHO_KEYS, IMAGE_REFS_KEY, IMAGE_TEXT_ONLY_KEY, TOOL_IMAGE_OBSERVATION_KEY, TOOL_IMAGE_QUESTION_KEY, SESSION_EVENT_KEY)
+            if key
+            not in (
+                *PROVIDER_ECHO_KEYS,
+                IMAGE_REFS_KEY,
+                IMAGE_TEXT_ONLY_KEY,
+                TOOL_IMAGE_OBSERVATION_KEY,
+                TOOL_IMAGE_QUESTION_KEY,
+                SESSION_EVENT_KEY,
+                SUBAGENT_RECEIPTS_KEY,
+            )
         }
         if message.get("role") == "assistant" and not keeps_reasoning(resolved.reasoning_history, message, index, latest_user):
             # `encrypted_content` is the same turn's reasoning in sealed form: a host that returns
