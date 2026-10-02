@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.70.1 - 2026-10-02
+
 ### Fixed
 
 - Close the `/agents` picker when it stops the agent on screen, whether by **x** or **X**. A
