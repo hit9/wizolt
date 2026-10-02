@@ -21,6 +21,9 @@
 
 ### Fixed
 
+- Restore the input prompt when a child stops itself from `/agents`, including completed
+  children using either confirmed `x` or immediate `X`; do not leave the view stuck cancelling.
+
 - Preserve fitting styled text instead of replacing its last cells with an ellipsis, including
   the agent picker's current-agent marker and preview rows.
 

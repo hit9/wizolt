@@ -74,6 +74,34 @@ async def child(frontend, name="child"):
     return frontend.runtimes[entry.agent.session.uid]
 
 
+@pytest.mark.parametrize("keys", [["X"], ["x", "up", "enter"]])
+async def test_completed_child_can_stop_itself_from_its_picker(frontend, monkeypatch, keys):
+    runtime = await child(frontend)
+    frontend.current = runtime
+    modal = ModalHarness(keys, consumed=True)
+
+    async def show_modal(fragments_fn, key_fn, **kwargs):
+        result = modal._drive(fragments_fn, key_fn, **kwargs)
+        # Real modals suspend until a key closes them or their owner is cancelled.
+        await asyncio.sleep(0)
+        return result
+
+    monkeypatch.setattr(runtime.tui, "show_modal", show_modal)
+    runtime.tui.set_dispatching()
+    runtime.submit_chat("/agents")
+    await runtime.submissions.join()
+    entry = frontend.group.entry(runtime.loop.session.uid)
+    await asyncio.wait_for(asyncio.shield(entry.task), 3)
+    assert runtime.tui.input_mode == InputMode.CHAT
+    assert runtime.command_task is None
+    assert not runtime.cancel_pending
+    assert entry.task is None
+    runtime.submit_chat("continue")
+    await runtime.submissions.join()
+    await asyncio.wait_for(asyncio.shield(entry.task), 3)
+    assert entry.status == "completed"
+
+
 @pytest.mark.parametrize("message", ["exit", "quit", "/yolo", "/clear", "/src/api.py: fix the 500"])
 async def test_model_tasks_are_literal_inputs_not_frontend_commands(frontend, message):
     entry = await frontend.group.spawn(frontend.root.loop.session, "literal", message)

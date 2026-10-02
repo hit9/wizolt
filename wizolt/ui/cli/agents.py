@@ -203,9 +203,11 @@ class AgentsFrontend:
                 runtime.loop.presentation.ui.emit_answer(value.display_text(), role="user", rule=False)
             await runtime.run_agent_turn(value)
         finally:
-            if runtime.turn_active:
-                runtime.turn_active = False
-                runtime.reset_turn()
+            # The inbox owns commands as well as model turns. Stopping this child from its
+            # own picker cancels dispatch before it can restore the prompt; no model turn
+            # was active in that case. Always settle the presentation when its driver exits.
+            runtime.turn_active = False
+            runtime.reset_turn()
 
     async def select(self, loop: CommandLoop) -> None:
         entries = tuple(self.group.entries.values())

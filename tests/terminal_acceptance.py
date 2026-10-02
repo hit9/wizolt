@@ -348,6 +348,9 @@ def test_cli_agents_live_preview_and_stop_keys(pane):
         "        for name in ('api-review', 'ui-review'):\n"
         "            await self.session.subagents.spawn(self.session, name, 'Review the shared workspace without editing files.')\n"
         "async def request(self, messages, tools=None):\n"
+        "    if messages[-1].get('content') == 'finish':\n"
+        "        answer = 'SELF-STOP-READY-' + str(sum(m.get('content') == 'finish' for m in messages))\n"
+        "        return {'role': 'assistant', 'content': answer}, [], answer\n"
         "    counter = 0\n"
         "    while True:\n"
         "        counter += 1\n"
@@ -396,7 +399,26 @@ def test_cli_agents_live_preview_and_stop_keys(pane):
     wait("ui-review   interrupted")
     assert "Stop ui-review?" not in pane.visible()
     wait("agents 3 · run 0")
-    pane.keys("Escape")
+    pane.keys("Enter")  # Enter the stopped child, then let it complete a fresh turn.
+    wait("ui-review  test-model", absent="┌─ ui-review")
+    for turn, key in enumerate(("x", "X"), 1):
+        pane.send("finish")
+        wait(f"SELF-STOP-READY-{turn}")
+        pane.send("/agents")
+        wait("ui-review   completed")
+        wait("┌─ ui-review")
+        pane.literal(key)
+        if key == "x":
+            wait("Stop ui-review?")
+            pane.keys("Up", "Enter")
+        wait("agents 3 · run 0", absent="┌─ ui-review")
+        # A cancelled command must restore the prompt, not strand it in DISPATCH.
+        pane.send("/agents")
+        wait("┌─ ui-review")
+        assert "cancelling" not in pane.visible()
+        pane.keys("Escape")
+        wait("agents 3 · run 0", absent="┌─ ui-review")
+        _settled_capture(pane)
     pane.send("/exit")
 
 
