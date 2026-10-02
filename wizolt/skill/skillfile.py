@@ -69,10 +69,9 @@ class SkillFile:
     MAX_DESCRIPTION_CHARS: ClassVar[int] = 1024
     # Real frontmatter is a few hundred characters; a hooks table a few thousand.
     MAX_FRONTMATTER_CHARS: ClassVar[int] = 64_000
-    # Claude Code picks a subagent type and a model per skill. wizolt has one worker, configured
-    # under [worker], and sends the model the session chose (a per-skill switch would re-price the
-    # conversation's cache), so these are named rather than silently dropped.
-    UNSUPPORTED: ClassVar[dict[str, str]] = {"agent": "the worker runs this skill", "model": "the session's model runs this skill"}
+    # Agent type/model frontmatter is not a wizolt configuration surface. Forked skills use
+    # the ordinary subagent approval, where the user can choose their model settings.
+    UNSUPPORTED: ClassVar[dict[str, str]] = {"agent": "context: fork starts a subagent", "model": "choose model settings in the session or subagent approval"}
 
     def __init__(self, meta: Json):
         self.meta = meta

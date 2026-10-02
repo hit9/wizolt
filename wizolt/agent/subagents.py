@@ -14,7 +14,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from wizolt.base import ToolError, WizoltError, oneline, run_blocking
+from wizolt.base import ToolError, oneline, run_blocking
 from wizolt.image import UserInput
 from wizolt.session import QueuedInput, Session, SessionSnapshotStore
 from wizolt.session.ownership import subagent_root_uid
@@ -153,12 +153,12 @@ class Subagents:
                             uid, config=deepcopy(self.root.session.config), settings=replace(self.root.session.settings), cwd=self.root.session.cwd
                         )
                     )
-                except (WizoltError, OSError, ValueError, TypeError, KeyError) as error:
+                    await self._attach(session, str(item.get("parent", self.root.session.uid)), str(item.get("instruction", "")))
+                except Exception as error:  # noqa: BLE001 - isolate each child's decoding and feature/frontend assembly.
                     # A damaged child's log cannot make healthy family conversations unusable.
                     # Keep its manifest reference and files for recovery; never overwrite them.
                     problems.append(f"Could not restore subagent {uid}: {error}")
                     continue
-                await self._attach(session, str(item.get("parent", self.root.session.uid)), str(item.get("instruction", "")))
         return problems
 
     async def _attach(self, session: Session, parent: str, instruction: str = "") -> AgentEntry:
@@ -183,8 +183,16 @@ class Subagents:
         agent = Agent(session, input_fn=unavailable_input, output_fn=lambda _: None)
         entry = AgentEntry(agent, parent, instruction)
         self.entries[session.uid] = entry
-        if self.on_created is not None:
-            await self.on_created(agent)
+        try:
+            if self.on_created is not None:
+                await self.on_created(agent)
+        except BaseException:
+            # The frontend must publish only a fully assembled runtime. Roll back the
+            # engine handle without shutting down services borrowed from the family.
+            del self.entries[session.uid]
+            await agent.model.close()
+            session.close()
+            raise
         return entry
 
     async def spawn(self, parent: Session, name: str, message: str, *, model_settings: Session | None = None) -> AgentEntry:

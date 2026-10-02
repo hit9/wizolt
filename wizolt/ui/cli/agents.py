@@ -150,6 +150,7 @@ class AgentsFrontend:
         self.runtimes = {root.loop.session.uid: root}
         self.current = root
         self.switching = False
+        root.tui.on_attention = lambda: self.notice(root.loop.agent, "waiting for input")
         root.loop.agents_frontend = self
         self.group.on_created = self.attach
         self.group.on_changed = self.changed
@@ -172,6 +173,10 @@ class AgentsFrontend:
         loop.presentation.tui = runtime.build_tui()
         runtime.tui.managed = True
         runtime.tui.on_attention = lambda: self.notice(agent, "waiting for input")
+        # Replay can reject malformed stored presentation data. Finish it before publishing
+        # this runtime or starting background consumers that would outlive a failed attach.
+        if agent.session.resumed:
+            loop.resume.render_resumed_session()
         loop.background.open_background()
         assert runtime.runtime_loop is not None
         writer = ScrollbackWriter(runtime.runtime_loop, runtime.tui.write_to_scrollback, loop.presentation.ui.write_direct)
@@ -181,8 +186,6 @@ class AgentsFrontend:
         agent.hooks.output_barrier = writer.barrier
         runtime.submissions_task = runtime.spawn(runtime._consume_submissions(), name="agent-submissions")
         self.runtimes[agent.session.uid] = runtime
-        if agent.session.resumed:
-            loop.resume.render_resumed_session()
 
     def notice(self, agent: Agent, status: str) -> None:
         if self.current.loop.agent is not agent:

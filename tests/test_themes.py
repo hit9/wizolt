@@ -157,7 +157,9 @@ def test_a_status_band_belongs_to_the_preset_not_the_theme(theme):
         # The fill across the row carries the band in a banded preset, and nothing in the others.
         if banded:
             fill = max(parts, key=lambda part: len(part[1]) if not part[1].strip() else 0)
-            assert "bg:" in fill[0], name
+            role = {"split": "status.split", "monitor": "status.monitor"}.get(name, "status.band")
+            expected = next(part for part in Theme.bar_styles({role})[role].split() if part.startswith("bg:"))
+            assert expected in fill[0].split(), name
         elif name == "default":
             assert all("bg:" not in spec for spec, _ in parts)
         else:

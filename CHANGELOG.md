@@ -21,6 +21,14 @@
 
 ### Fixed
 
+- Protect admitted image assets from concurrent snapshot collection until queued/history ownership
+  takes over, and discard uncommitted log tails before retrying snapshot appends.
+- Isolate child frontend restoration failures, notify the selected child when main needs input,
+  and print the main conversation's resume command when exiting from a child.
+- Report interrupted forked skills as tool failures rather than returning an empty success.
+- Verify themed statusbar band colors and remove obsolete worker guidance from skill warnings
+  and input rendering comments.
+
 - Restore the input prompt when a child stops itself from `/agents`, including completed
   children using either confirmed `x` or immediate `X`; do not leave the view stuck cancelling.
 

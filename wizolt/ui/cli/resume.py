@@ -281,13 +281,19 @@ class ResumeRenderer:
         return None, tool_record_index
 
     async def save_and_emit_resume(self) -> None:
-        self.emit_resume_line(await self.session.save_snapshot())
+        uid = await self.session.save_snapshot()
+        group = self.session.subagents
+        target = group.root.session if group is not None else self.session
+        if target is not self.session:
+            uid = await target.save_snapshot()
+        self.emit_resume_line(uid)
 
     def emit_resume_line(self, uid: str) -> None:
         """The paste-ready resume line for a session that has just been persisted."""
         if uid:
             # The name goes in the sentence, never in the command: the line below is meant to be
             # pasted, and only the uid is guaranteed to still mean this session tomorrow.
-            name = self.session.name
+            group = self.session.subagents
+            name = group.root.session.name if group is not None and uid == group.root.session.uid else self.session.name
             self.presentation.ui.separate()
             self.presentation.emit(f"Resume {name!r} with:\nwizolt --resume {uid}" if name else f"Resume with:\nwizolt --resume {uid}")

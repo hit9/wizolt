@@ -74,6 +74,41 @@ async def child(frontend, name="child"):
     return frontend.runtimes[entry.agent.session.uid]
 
 
+async def test_main_attention_is_reported_in_selected_child(frontend, monkeypatch):
+    runtime = await child(frontend)
+    frontend.current = runtime
+    notices = []
+    monkeypatch.setattr(runtime.loop.presentation, "emit_turn", notices.append)
+    frontend.root.tui.on_attention()
+    assert notices == ["[main] waiting for input"]
+
+
+async def test_child_frontend_failure_reaches_group_without_affecting_sibling(frontend, monkeypatch):
+    from wizolt.base import ModelError
+
+    healthy = await child(frontend, "healthy")
+
+    async def request(client, messages, tools=None):
+        raise ModelError("provider failed")
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    broken = await child(frontend, "broken")
+    entry = frontend.group.entry(broken.loop.session.uid)
+    assert entry.status == "failed" and "provider failed" in entry.error
+    assert frontend.group.entry(healthy.loop.session.uid).status == "completed"
+    assert broken.tui.input_mode == InputMode.CHAT
+
+
+async def test_exiting_child_prints_root_resume_uid(frontend, monkeypatch):
+    runtime = await child(frontend)
+    output = []
+    monkeypatch.setattr(runtime.loop.presentation, "emit", output.append)
+    handled, exit_now = await runtime.loop.command("exit")
+    assert (handled, exit_now) == (True, True)
+    assert output[-1].endswith(f"wizolt --resume {frontend.root.loop.session.uid}")
+    assert runtime.loop.session.uid not in output[-1]
+
+
 @pytest.mark.parametrize("keys", [["X"], ["x", "up", "enter"]])
 async def test_completed_child_can_stop_itself_from_its_picker(frontend, monkeypatch, keys):
     runtime = await child(frontend)

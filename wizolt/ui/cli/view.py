@@ -449,12 +449,9 @@ class View:
 
         sent = [item for item in pending if item.inflight]
         queued = [item for item in pending if not item.inflight]
-        # A follow-up routed to the delegating worker wears the worker's color on its marker, the
-        # one thing that tells it from the parent's; the divider above already names the worker.
         transcript = render(sent, UiPrinter.USER_LOG_PREFIX, "class:prompt")
         # The divider is a standing boundary for the whole turn. Only messages that have not entered
         # a model request remain below it; sent messages render above it until the request commits them.
-        # The worker's queued follow-ups count as queued too: their colored marker says whose they are.
         waiting = self.queue_divider_fragments(
             sum(1 for item in queued if not item.next_turn),
             sum(1 for item in queued if item.next_turn),

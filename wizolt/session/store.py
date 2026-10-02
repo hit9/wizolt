@@ -118,9 +118,22 @@ class SnapshotWritePlan:
         if self.header_line:
             with open(self.log_path, "w", encoding="utf-8") as file:
                 file.write(self.header_line)
-        with open(self.log_path, "a", encoding="utf-8") as file:
-            file.writelines(self.blob_lines)
-            file.write(self.record_line)
+        with open(self.log_path, "a+b") as file:
+            # A failed append does not advance markers. Remove its uncommitted tail before
+            # retrying, or the new JSON record would be glued to a partial previous record.
+            end = file.tell()
+            while end:
+                start = max(0, end - 8192)
+                file.seek(start)
+                block = file.read(end - start)
+                newline = block.rfind(b"\n")
+                if newline >= 0:
+                    file.truncate(start + newline + 1)
+                    break
+                end = start
+            else:
+                file.truncate(0)
+            file.write(("".join(self.blob_lines) + self.record_line).encode("utf-8"))
         meta_written = False
         if self.latest_dir:
             with open(os.path.join(self.latest_dir, "latest"), "w", encoding="utf-8") as file:

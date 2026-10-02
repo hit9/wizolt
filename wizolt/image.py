@@ -260,7 +260,11 @@ class ImageInputs:
 
         if not isinstance(value, UserInput) or not value.images or self.session is None:
             return self._without_images(value)
-        return await run_blocking(lambda: self.prepare(value))
+        # Publication and pinning must be atomic with snapshot GC, including an older GC
+        # plan that already captured the same content hash. Pin on the loop even if the
+        # caller is cancelled after the copy; message() releases pins when history owns them.
+        async with self.session._save_gate():
+            return await run_blocking(lambda: self.prepare(value), commit=lambda stored: self.retain(stored.images))
 
     @staticmethod
     def _without_images(value: str | UserInput) -> UserInput:
@@ -296,7 +300,10 @@ class ImageInputs:
         staging file, so the request either publishes the completed content-addressed asset or
         nothing at all."""
 
-        return await run_blocking(lambda: self._load_sync(path, source_text=source_text or path))
+        if self.session is None:
+            return await run_blocking(lambda: self._load_sync(path, source_text=source_text or path))
+        async with self.session._save_gate():
+            return await run_blocking(lambda: self._load_sync(path, source_text=source_text or path), commit=lambda image: self.retain((image,)))
 
     def _load_sync(self, path: str, *, source_text: str) -> ImageRef:
         image = self._inspect(path, source_text=source_text)

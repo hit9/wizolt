@@ -722,7 +722,10 @@ class Session:
             lease.close()
 
     def _save_gate(self) -> asyncio.Lock:
-        """The per-session save gate, bound to the loop that is running now.
+        """The per-session save/asset-publication gate, bound to the loop running now.
+
+        Image admission holds this through copy and reference pinning, so neither an older GC
+        plan nor a newly captured snapshot can collect an asset before its owner is published.
 
         A `Session` outlives loops -- embedding and tests reuse one across separate `asyncio.run`
         invocations -- and a lock created on a loop that has closed is not a lock. So the gate is

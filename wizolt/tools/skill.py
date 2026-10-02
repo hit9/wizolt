@@ -105,5 +105,7 @@ class SkillTool(Tool):
                 await group.wait(entry.agent.session.uid)
             if entry.error:
                 raise ToolError(entry.error)
+            if entry.status == "interrupted":
+                raise ToolError(f"Skill subagent {entry.agent.session.agent_name} was interrupted")
             return entry.answer
         return await self.invocation().load(self.session)

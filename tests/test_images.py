@@ -754,6 +754,43 @@ async def test_admission_copy_blocked_still_lets_the_loop_advance(tmp_path, monk
     assert stored.images and not stored.images[0].source_path
 
 
+@pytest.mark.parametrize("via_tool", [False, True])
+async def test_admitted_image_survives_gc_before_queue_ownership(tmp_path, monkeypatch, via_tool):
+    import threading
+
+    s = session(tmp_path)
+    s.messages.append({"role": "user", "content": "existing turn"})
+    await s.save_snapshot()
+    path = image_file(tmp_path / "admitted.png")
+    value = s.images.recognize(path.name)
+    published, release = threading.Event(), threading.Event()
+    real_prepare = s.images.prepare
+
+    def prepare(value):
+        stored = real_prepare(value)
+        published.set()
+        assert release.wait(5)
+        return stored
+
+    monkeypatch.setattr(s.images, "prepare", prepare)
+    admission = asyncio.create_task(s.images.load(str(path)) if via_tool else s.images.admit(value))
+    assert await asyncio.to_thread(published.wait, 5)
+    saving = asyncio.create_task(s.save_snapshot())
+    try:
+        await asyncio.sleep(.02)
+        assert not saving.done()  # GC waits for publication and the loop-side pin.
+    finally:
+        release.set()
+    stored = await admission
+    if via_tool:
+        stored = UserInput(IMAGE_MARKER, (stored,))
+    await saving
+    await s.save_snapshot()  # Still not queued: the admitted draft owns the asset.
+    assert Path(s.images.asset_path(stored.images[0])).read_bytes() == path.read_bytes()
+    s.messages.append(s.images.message(stored))
+    assert not s.images.retained_refs
+
+
 async def test_cancelling_admission_quiesces_and_leaves_no_staging_residue(tmp_path, monkeypatch):
     """A cancelled admission waits for its copy worker (run_blocking) and leaves no `.image-*`
     staging file behind; the content-addressed asset either exists complete or not at all."""

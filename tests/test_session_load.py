@@ -50,6 +50,33 @@ def test_read_merged_refuses_a_truncated_header(tmp_path):
         SessionSnapshotStore.read_merged(str(path))
 
 
+@pytest.mark.parametrize("tail", [b'{"messages": [', b'{"blob": "' + b'x' * 20000, b'{"text": "\xe4\xb8'])
+async def test_save_retry_removes_uncommitted_tail_before_appending(tmp_path, tail):
+    s = session_with_data_dir(tmp_path)
+    s.messages.append({"role": "user", "content": "first"})
+    await s.save_snapshot()
+    path = SessionSnapshotStore.session_path(s.config.data_dir, s.cwd, s.uid)
+    def append_tail():
+        with open(path, "ab") as file:
+            file.write(tail)
+
+    await asyncio.to_thread(append_tail)
+    s.messages.append({"role": "user", "content": "second"})
+    await s.save_snapshot()
+    merged, _, _ = SessionSnapshotStore.read_merged(path)
+    assert [m["content"] for m in merged["messages"]] == ["first", "second"]
+
+
+@pytest.mark.parametrize("status", ["running", "completed", "interrupted", "failed"])
+async def test_reloaded_turn_status_only_normalizes_unfinished_work(tmp_path, status):
+    s = session_with_data_dir(tmp_path)
+    s.messages.append({"role": "user", "content": "task"})
+    s.state.last_turn_status = status
+    await s.save_snapshot()
+    restored = SessionSnapshotStore.load(s.uid, config=s.config, settings=s.settings, cwd=s.cwd)
+    assert restored.state.last_turn_status == ("interrupted" if status == "running" else status)
+
+
 @pytest.mark.parametrize("reverse", [False, True])
 def test_restore_applies_replacements_before_appends_and_ignores_unknown_fields(tmp_path, reverse):
     path = tmp_path / "log.jsonl"

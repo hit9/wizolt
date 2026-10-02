@@ -35,6 +35,27 @@ async def finished(group, entry):
     return entry
 
 
+async def test_second_turn_on_same_agent_is_rejected_without_touching_first(group, monkeypatch):
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def request(client, messages, tools=None):
+        entered.set()
+        await release.wait()
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    task = asyncio.create_task(group.root.run("first"))
+    await asyncio.wait_for(entered.wait(), 3)
+    try:
+        with pytest.raises(WizoltError, match="already has a turn"):
+            await group.root.run("second")
+        assert not task.done() and not task.cancelling()
+        assert not any(m.get("content") == "second" for m in group.root.session.messages)
+    finally:
+        release.set()
+        await task
+
+
 @pytest.mark.parametrize("tool,yolo", [("Bash", False), ("Subagent", True)])
 async def test_headless_child_approval_refuses_without_reading_process_stdin(group, monkeypatch, tool, yolo):
     def forbidden_input(*_args):
@@ -504,7 +525,7 @@ async def test_restored_group_keeps_child_context_usage_and_queue_without_runnin
         restored.close()
 
 
-@pytest.mark.parametrize("damage", ["missing", "header", "record"])
+@pytest.mark.parametrize("damage", ["missing", "header", "record", "attach"])
 async def test_bad_child_snapshot_does_not_block_healthy_family_restore(group, monkeypatch, damage):
     async def request(client, messages, tools=None):
         return {"role": "assistant", "content": "retained answer"}, [], "retained answer"
@@ -522,13 +543,18 @@ async def test_bad_child_snapshot_does_not_block_healthy_family_restore(group, m
         path.unlink()
     elif damage == "header":
         path.write_text("not json\n")
-    else:
+    elif damage == "record":
         path.write_text(path.read_text() + "not json\n")
     restored = SessionSnapshotStore.load(root.uid, config=deepcopy(root.config), settings=deepcopy(root.settings), cwd=root.cwd)
     bootstrap_features(restored)
     restored.borrow_ownership(root)
     agent = Agent(restored, output_fn=lambda _: None)
     try:
+        if damage == "attach":
+            async def created(child):
+                if child.session.uid == bad.agent.session.uid:
+                    raise ValueError("bad restored frontend")
+            restored.subagents.on_created = created
         problems = await restored.subagents.restore()
         assert len(problems) == 1 and bad.agent.session.uid in problems[0]
         assert set(restored.subagents.entries) == {root.uid, healthy.agent.session.uid, descendant.agent.session.uid}
@@ -773,3 +799,27 @@ async def test_forked_skills_respect_retained_limit_without_falling_back_inline(
         await SkillTool(root, ["inspect"]).call()
     assert len(group.entries) == limit + 1
     assert root.active_skills == [] and root.messages == []
+
+
+@pytest.mark.parametrize("stop", [False, True])
+async def test_forked_skill_reports_failure_or_interruption(group, isolate_home, monkeypatch, stop):
+    folder = isolate_home / ".claude" / "skills" / "inspect"
+    folder.mkdir(parents=True)
+    (folder / "SKILL.md").write_text("---\nname: inspect\ndescription: inspect\ncontext: fork\n---\nInspect.\n")
+    group.root.session.skills.reload()
+    entered = asyncio.Event()
+
+    async def request(client, messages, tools=None):
+        entered.set()
+        if stop:
+            await asyncio.Future()
+        raise ModelError("skill request failed")
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    task = asyncio.create_task(SkillTool(group.root.session, ["inspect"]).call())
+    await asyncio.wait_for(entered.wait(), 3)
+    if stop:
+        entry = next(entry for entry in group.entries.values() if entry.parent)
+        group.stop(entry.agent.session.uid)
+    with pytest.raises(ToolError, match="interrupted" if stop else "skill request failed"):
+        await asyncio.wait_for(task, 3)

@@ -46,7 +46,7 @@ Every instance field is classified below. Class constants contain policy, not ag
 | `quick_hints`, `next_hints_available`, `context_epoch` | Local runtime UI/context projection state. Context epochs invalidate only this model's frozen prefix. |
 | `_active_turn_messages`, `_active_transcript_messages` | Local staging buffers. Their messages enter checkpoints; the live containers/handles do not. |
 | `_snapshot_saved`, `_blobs_written`, `_meta_written` | Local write receipts/caches, initialized from this UID's log. Never reuse the parent's markers. |
-| `_snapshot_gate`, `_snapshot_gate_loop`, `_snapshot_path` | Local write serialization and resolved destination. The gate is loop-bound and never shared across agent UIDs. |
+| `_snapshot_gate`, `_snapshot_gate_loop`, `_snapshot_path` | Local write serialization and resolved destination. Image admission holds the same gate until publication and reference pinning finish, excluding snapshot GC. The gate is loop-bound and never shared across agent UIDs. |
 | `_lease`, `_lease_borrowed`, `_ownership_released`, `_active_runs` | The capability is shared within the family; borrow/release/run accounting is local. A child cannot release its owner's lease. |
 
 `AgentState` has durable `goal`, `plan`, `known`, `check`, `summary`, `name`, `name_source`,
