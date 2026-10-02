@@ -40,11 +40,20 @@ calls, the viewer keeps that agent's individual edits instead of combining other
 ## Select and inspect
 
 `/agents` lists the main agent and its children with their state and context percentage. Move
-the cursor to preview a task and its recent reply. Enter selects that agent; Escape keeps your
-current selection.
+with j/k or the arrow keys to preview the highlighted agent in a small bordered window. It shows
+the task and recent reply, updating as new text arrives. Enter opens that agent's conversation;
+Escape keeps your current selection.
+
+Press **x** to stop the highlighted agent after confirmation, or **Shift+X** to stop it immediately.
+The picker stays open, and the stopped conversation remains available for inspection and new input.
 
 The selected agent owns the conversation you see, your input, draft, history and queued messages.
-Its statusbar shows its name, model and context usage. `/status` reports its identity, state,
+Its statusbar shows its name, model and context usage. When children exist, it also shows group
+counts, such as `agents 3 · run 1 · wait 1`: three retained agents including main, one running
+and one waiting for input. Completed agents remain in the total. With only main, the default
+layouts hide the count; narrow terminals may omit it. Colors and separators follow your statusbar
+theme and layout, including segmented layouts.
+`/status` reports its identity, state,
 parent and statistics. Use `/model`, `/provider` and `/reason` after selecting an agent to change
 that agent's model.
 
@@ -72,8 +81,10 @@ because the parent's conversation, plan and notes are not copied.
 
 The `Subagent` tool starts agents with `spawn`, adds input with `send`, and exposes `list`,
 `wait` and `stop`. Spawn returns an agent ID immediately, so the caller can continue working.
+The creating agent assigns each child a unique task-based name, such as `api-review`,
+`ui-review` or `test-check`; `main` is reserved for your main conversation.
 Waiting has a timeout of up to 60 seconds; timing out leaves the child running. A child keeps
-its conversation for subsequent inputs.
+its conversation for subsequent inputs. Stopping a child returns after its turn has settled.
 
 A skill with `context: fork` starts a child agent after you confirm its task. Its report returns
 to the caller; `/agents` lets you inspect the child's work and add input while it runs.

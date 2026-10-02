@@ -4,6 +4,11 @@
 
 ### Added
 
+- Show retained agent totals (including main), running agents and input waits in every built-in
+  statusbar layout when children exist. Keep group counts separate from selected-agent usage,
+  follow independent statusbar themes and segmented colors, and expose `agents.count`,
+  `agents.running` and `agents.waiting` to custom templates. `/status` reports the same group counts.
+
 - Parallel subagents with separate conversations, model settings, input histories and usage
   statistics in one shared workspace. `/agents` previews tasks and replies before Enter switches
   the active conversation; `/status`, the statusbar and input follow the selected agent.
@@ -16,13 +21,16 @@
 
 ### Fixed
 
+- Restore the running input mode after loading models inside a subagent approval, including
+  failures and cancellation, so steering remains available while the parent waits for children.
 - Keep `Subagent list/stop/wait` usable when interrupted tool-call messages have null content.
   Return a stopped child's settled state, preserve its last textual answer, and keep siblings running.
 - Require unique task-based child names; freeze a distinct forked-skill name before approval so
   repeated and parallel invocations of the same skill can create separate children.
-
-- Restore the running input mode after loading models inside a subagent approval, including
-  failures and cancellation, so steering remains available while the parent waits for children.
+- Bound `/agents` previews in bordered windows with wrapped task summaries and live reply text.
+  Add **x** to stop the highlighted agent after confirmation and **Shift+X** to stop immediately;
+  retain conversations and keep the picker open. Integrate identity/counts into segmented
+  statusbar surfaces rather than inline bracket badges.
 
 - Audit main/subagent state ownership: isolate completion/instruction resolvers and MCP document
   injection memory (including reset/compaction invalidation), pin inherited provider/model/effort/API choices for child restore, and keep

@@ -195,6 +195,8 @@ class ChoiceViewState:
     # The rows the list was last drawn in: what a page means to Ctrl-D/U and PgDn/PgUp.
     drawn_rows: int = field(default=0, compare=False)
 
+    KEYS = "j/k/Tab move · Ctrl-D/U page · / search · Esc/q back/cancel"
+
     def visible(self) -> tuple[str, ...]:
         if not self.query:
             return self.choices
@@ -263,7 +265,7 @@ class ChoiceViewState:
         title: str,
         preview_fn: Callable[[str], StyleAndTextTuples | str] | None = None,
         label_fn: Callable[[str], StyleAndTextTuples] | None = None,
-        keys: str = "j/k/Tab move · Ctrl-D/U page · / search · Esc/q back/cancel",
+        keys: str = KEYS,
         preview_title: str = "",
     ) -> StyleAndTextTuples:
         """The list as fragments: the title and a blank row (always the first two fragments), the

@@ -228,7 +228,7 @@ def status(loop: CommandLoop, args: str) -> str:
     if loop.session.jobs:
         activity.append(("jobs", f"{running_jobs}/{len(loop.session.jobs)}"))
 
-    # Statistics belong to the selected agent; only the admission budget is group-wide.
+    # Usage belongs to the selected agent; admission and engine counts are group-wide.
     rows = [
         ("agent", f"`{loop.session.agent_name}` · `{loop.session.uid}`"),
         ("workspace", "`" + loop.session.cwd + "`"),
@@ -237,7 +237,9 @@ def status(loop: CommandLoop, args: str) -> str:
     group = loop.session.subagents
     if group is not None:
         entry = group.entry(loop.session.uid)
+        counts = group.counts
         rows.append(("state", entry.status))
+        rows.append(("agents", f"{counts.total} total · {counts.running} running · {counts.waiting} waiting for input (group-wide)"))
         rows.append(("subagents", f"{len(group.entries) - 1}/{group.limit} retained (group-wide)"))
         if entry.parent:
             rows.append(("parent", "`" + entry.parent + "`"))

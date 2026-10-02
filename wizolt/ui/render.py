@@ -2270,14 +2270,22 @@ class StatusBar:
         return text
 
     def values(self) -> dict[str, Value]:
-        """Fields describe the active agent; MCP, skills and YOLO describe the session."""
+        """Singular agent/usage fields are local; plural agents fields describe the shared group.
+
+        Counts are derived at render time and never cached on the selected Session. Switching
+        projection therefore preserves the same group counts while all usage stays agent-local.
+        """
         source = self.session
         provider = source.config.provider
         usage = source.usage
+        counts = source.subagents.counts if source.subagents else None
         return {
             "agent.name": source.agent_name,
             "agent.id": source.uid,
             "agent.state": source.subagents.entry(source.uid).status if source.subagents else source.state.last_turn_status,
+            "agents.count": counts.total if counts else 1,
+            "agents.running": counts.running if counts else int(self.running and not source.state.awaiting_input),
+            "agents.waiting": counts.waiting if counts else int(source.state.awaiting_input),
             "provider": source.config.active_provider,
             "model": provider.model.rsplit("/", 1)[-1] or "(no model)",
             "reasoning": provider.reasoning,

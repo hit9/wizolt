@@ -67,6 +67,15 @@ class AgentEntry:
         return state.last_turn_status if state.last_turn_status != "idle" else "completed" if state.round_count else "idle"
 
 
+@dataclass(frozen=True)
+class AgentCounts:
+    """A read-only group projection, including main; never persisted or used as agent usage."""
+
+    total: int
+    running: int
+    waiting: int
+
+
 class Subagents:
     """Own one family's admission, child engines and serial inboxes.
 
@@ -87,6 +96,16 @@ class Subagents:
     @property
     def limit(self) -> int:
         return self.root.session.settings.max_subagents
+
+    @property
+    def counts(self) -> AgentCounts:
+        """Derive one consistent view of retained engines, not an independently updated counter.
+
+        Waiting for user input takes precedence over running, as it does in the agent picker.
+        Completed/interrupted/failed children remain retained until the family closes.
+        """
+        states = [entry.status for entry in self.entries.values()]
+        return AgentCounts(len(states), states.count("running"), states.count("waiting for input"))
 
     def entry(self, uid: str) -> AgentEntry:
         try:

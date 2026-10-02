@@ -13,7 +13,7 @@ from wizolt.model.client import ModelClient
 from wizolt.session import SessionSnapshotStore
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli import agents as agents_module
-from wizolt.ui.cli.agents import AgentsFrontend, agents_command
+from wizolt.ui.cli.agents import AgentPreview, AgentsFrontend, agents_command
 from wizolt.ui.cli.commands import COMMAND_LOOKUP, status
 from wizolt.ui.cli.commands import set_value
 from wizolt.tools import SubagentTool
@@ -75,6 +75,42 @@ async def child(frontend, name="child"):
     return frontend.runtimes[entry.agent.session.uid]
 
 
+async def test_statusbar_group_counts_are_live_while_usage_remains_selected_agent_local(frontend, monkeypatch):
+    waiting = await child(frontend, "waiting")
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def request(client, messages, tools=None):
+        entered.set()
+        await release.wait()
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    work = await frontend.group.spawn(frontend.root.loop.session, "work", "task")
+    await asyncio.wait_for(entered.wait(), 3)
+    answer = asyncio.create_task(waiting.loop.agent.tools.await_user(waiting.tui.request_input("Approve?")))
+    try:
+        await asyncio.sleep(0)
+        for index, runtime in enumerate(frontend.runtimes.values(), 1):
+            runtime.loop.session.usage.add({"prompt_tokens": index * 100, "completion_tokens": 10}, budget=1000)
+            values = runtime.loop.presentation.status_bar.values()
+            assert (values["agents.count"], values["agents.running"], values["agents.waiting"]) == (3, 1, 1)
+            assert values["agent.name"] == runtime.loop.session.agent_name
+            assert values["context.percent"] == index * 10
+            assert "3 total · 1 running · 1 waiting for input (group-wide)" in status(runtime.loop, "")
+        waiting.tui.resolve_input("n")
+        assert await answer == "n"
+        assert frontend.root.loop.presentation.status_bar.values()["agents.waiting"] == 0
+        release.set()
+        await asyncio.wait_for(asyncio.shield(work.task), 3)
+        for runtime in frontend.runtimes.values():
+            values = runtime.loop.presentation.status_bar.values()
+            assert values["agents.count"] == 3 and values["agents.running"] == values["agents.waiting"] == 0
+    finally:
+        release.set()
+        answer.cancel()
+        await asyncio.gather(answer, return_exceptions=True)
+
+
 async def test_approval_config_picker_edits_only_its_draft_and_returns_to_approval(frontend, monkeypatch):
     command_loop = frontend.root.loop
     root = command_loop.session
@@ -129,13 +165,13 @@ async def pick(frontend, runtime, monkeypatch):
 
 
 async def test_picker_includes_main_without_children(frontend, monkeypatch):
-    async def choice(command_loop, title, choices, *, labels, current, preview_fn, disabled, label_fn):
+    async def choice(command_loop, title, choices, *, labels, current, preview_fn, disabled, label_fn, **kwargs):
         uid = frontend.root.loop.session.uid
         assert choices == (uid,)
         assert current == uid
         assert disabled == set()
         assert "main" in labels[uid] and "idle" in labels[uid]
-        assert preview_fn(uid).startswith("main")
+        assert "main" in "".join(text for _, text in preview_fn(uid))
         return uid
 
     monkeypatch.setattr(agents_module, "choice_application", choice)
@@ -149,7 +185,7 @@ async def test_picker_exposes_state_context_and_preview_without_changing_focus(f
     runtime.loop.session.usage.add({"prompt_tokens": 320, "completion_tokens": 10}, budget=1000)
     previews = []
 
-    async def choice(command_loop, title, choices, *, labels, current, preview_fn, disabled, label_fn):
+    async def choice(command_loop, title, choices, *, labels, current, preview_fn, disabled, label_fn, **kwargs):
         assert title == "Agents"
         assert "main" in labels[frontend.root.loop.session.uid]
         assert "completed" in labels[runtime.loop.session.uid]
@@ -158,7 +194,7 @@ async def test_picker_exposes_state_context_and_preview_without_changing_focus(f
         live = "".join(text for _, text in label_fn(runtime.loop.session.uid))
         assert "waiting for input" in live
         runtime.loop.session.state.awaiting_input = False
-        previews.append(preview_fn(runtime.loop.session.uid))
+        previews.append("".join(text for _, text in preview_fn(runtime.loop.session.uid)))
         assert frontend.current is frontend.root  # moving the cursor only previews.
         return None
 
@@ -210,13 +246,67 @@ async def test_preview_contains_the_task_before_the_first_answer(frontend, monke
     await asyncio.wait_for(entered.wait(), 3)
 
     async def choice(*args, **kwargs):
-        assert "inspect the pending work" in kwargs["preview_fn"](entry.agent.session.uid)
+        assert "inspect the pending work" in "".join(text for _, text in kwargs["preview_fn"](entry.agent.session.uid))
         return None
 
     monkeypatch.setattr(agents_module, "choice_application", choice)
     await frontend.select(frontend.root.loop)
     release.set()
     if entry.task is not None:
+        await asyncio.wait_for(asyncio.shield(entry.task), 3)
+
+
+@pytest.mark.parametrize("width", [20, 40, 80, 180])
+@pytest.mark.parametrize("height", [5, 8, 12, 40])
+def test_agent_preview_is_a_bounded_box_with_wrapped_live_text(width, height):
+    from prompt_toolkit.utils import get_cwidth
+
+    preview = AgentPreview("中文任务 " * 100, "old line\n" * 30 + "最新 live text", True, "ui-review")
+    parts = preview.fragments(width, height)
+    text = "".join(value for _, value in parts)
+    lines = text.splitlines()
+    assert len(lines) <= min(height, 12)
+    assert "ui-review" in lines[0] and lines[0].strip().startswith("┌")
+    assert lines[-1].strip().startswith("└")
+    assert all(get_cwidth(line) == min(width, 100) for line in lines)
+    assert "Task" in text and "Live" in text and "…" in text
+    assert "live text" in text if width >= 40 else "text" in text
+    assert any(style == "class:text" for style, value in parts if "text" in value)
+
+
+@pytest.mark.parametrize("keys,stopped,confirmed", [
+    (["down", "x", "enter", "escape"], False, True),
+    (["down", "x", "up", "enter", "escape"], True, True),
+    (["down", "X", "escape"], True, False),
+    (["/", "x", "X", "enter", "escape", "escape"], False, False),
+])
+async def test_agent_picker_confirmed_and_immediate_stops_keep_selection(frontend, monkeypatch, keys, stopped, confirmed):
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def request(client, messages, tools=None):
+        entered.set()
+        await release.wait()
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await frontend.group.spawn(frontend.root.loop.session, "api-review", "review the API")
+    await asyncio.wait_for(entered.wait(), 3)
+    modal = ModalHarness(keys, consumed=True)
+    monkeypatch.setattr(frontend.root.tui, "show_modal", modal.show_modal)
+    await frontend.select(frontend.root.loop)
+    assert frontend.current is frontend.root and not frontend.switching
+    frames = ["".join(value for _, value in frame) for frame in modal.frames]
+    assert any("Stop api-review?" in frame for frame in frames) == confirmed
+    if keys[0] != "/":
+        assert any("┌─ api-review" in frame for frame in frames)
+    if stopped:
+        task = entry.task
+        if task is not None:
+            await asyncio.wait_for(asyncio.shield(task), 3)
+        assert entry.status == "interrupted" and entry.task is None
+    else:
+        assert entry.status == "running"
+        release.set()
         await asyncio.wait_for(asyncio.shield(entry.task), 3)
 
 

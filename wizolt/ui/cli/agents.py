@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.styles import DynamicStyle
+from prompt_toolkit.utils import get_cwidth
 
 from wizolt.agent.engine import Agent
 from wizolt.agent.subagents import AgentEntry
 from wizolt.base import Text
 from wizolt.image import UserInput
 from wizolt.session import Session
-from wizolt.ui.cli.modals import choice_application, select_choice
+from wizolt.ui.cli.modals import choice_application, picker_height, select_choice
 from wizolt.ui.cli.runtime import ScrollbackWriter, TuiRuntime
 from wizolt.ui.render import InputStyle, Theme
 
@@ -29,6 +32,67 @@ class ModelSettingsEditor:
     session: Session
     presentation: Presentation
     interactive_input: bool
+
+
+@dataclass(frozen=True)
+class AgentPreview:
+    """A compact reading aid; entering the agent opens its complete conversation.
+
+    Wrap by terminal cells before bounding physical rows. A character limit alone lets CJK
+    or long paragraphs overrun the modal; preview chrome must leave room for navigation.
+    """
+
+    task: str
+    reply: str
+    streaming: bool = False
+    name: str = ""
+
+    def fragments(self, width: int, height: int) -> StyleAndTextTuples:
+        if height < 5 or width < 20:
+            return []
+        width, height = min(100, width), min(12, height)
+        task_rows = min(3, max(1, (height - 3) // 3))
+        reply_rows = height - 3 - task_rows
+        caption = Text.clip_width("─ " + self.name + " ", width - 4)
+        parts: StyleAndTextTuples = [("class:rule", "  ┌" + caption + "─" * (width - 4 - get_cwidth(caption)) + "┐\n")]
+
+        def bordered(row: list[tuple[str, str]]) -> None:
+            used = sum(get_cwidth(text) for _, text in row)
+            parts.extend([*row, ("class:rule", " " * max(0, width - 2 - used) + " │\n")])
+
+        for title, text, budget, tail in (
+            ("Task", self.task[:1500] or "(no task yet)", task_rows, False),
+            ("Live" if self.streaming else "Reply", self.reply[-3000:] or "(no reply yet)", reply_rows, True),
+        ):
+            if tail:
+                bordered([("class:rule", "  │")])
+            rows: list[list[tuple[str, str]]] = []
+            prefix = [("class:rule", "  │ "), ("class:choice.disabled bold", f"{title:<5} ")]
+            continuation = [("class:rule", "  │ "), ("", "      ")]
+            for raw in text.splitlines():
+                rows.extend(Text.wrap_styled(prefix if not rows else continuation, continuation, [("class:text", raw)], width - 2))
+            if len(rows) > budget:
+                # Keep the latest flowing rows and the opening task. The ellipsis stays on the
+                # final/first retained row, so even a five-row pane still shows both sections.
+                rows = rows[-budget:] if tail else rows[:budget]
+                marker = [("class:rule", "  │ "), ("class:choice.disabled bold", f"{title:<5} "), ("class:choice.disabled", "… ")]
+                if tail:
+                    body = "".join(value for _, value in rows[0][2:])
+                    rows[0] = [*marker, ("class:text", Text.clip_width(body, width - 14))]
+                else:
+                    body = "".join(value for _, value in rows[-1][2:])
+                    rows[-1] = [*(prefix if budget == 1 else continuation), ("class:text", Text.clip_width(body, width - 13) + "…")]
+            for row in rows:
+                bordered(row)
+        parts.append(("class:rule", "  └" + "─" * (width - 4) + "┘\n"))
+        return parts
+
+
+@dataclass(frozen=True)
+class StopAgent:
+    """Hand a requested confirmation out of the picker before opening the next modal."""
+
+    uid: str
 
 
 async def configure_subagent(loop: CommandLoop, settings: Session) -> None:
@@ -140,24 +204,34 @@ class AgentsFrontend:
 
         labels = {entry.agent.session.uid: label(entry.agent.session.uid) for entry in entries}
 
-        def preview(uid: str) -> str:
+        def preview(uid: str) -> StyleAndTextTuples:
             entry = self.group.entry(uid)
             session = entry.agent.session
             opening = entry.instruction or next((str(message.get("content", "")) for message in session.messages if message.get("role") == "user"), "")
-            recent = next((str(message.get("content", "")) for message in reversed(session.messages) if message.get("role") == "assistant"), "")
             active = self.runtimes[uid].loop.presentation.model_stream_text
-            return Text.clip_width(session.agent_name, 80) + "\n\nTask\n" + opening[:1500] + "\n\nLatest reply\n" + (active or recent)[-3000:]
+            height = picker_height() - 6 - min(3, len(entries))
+            return AgentPreview(opening, active or entry.answer, bool(active), session.agent_name).fragments(shutil.get_terminal_size((80, 24)).columns, height)
 
-        uid = await choice_application(
-            loop,
-            "Agents",
-            tuple(labels),
-            labels=labels,
-            current=self.current.loop.session.uid,
-            disabled=set(),
-            preview_fn=preview,
-            label_fn=lambda uid: [("", label(uid))],
-        )
+        current = self.current.loop.session.uid
+        while True:
+            uid = await choice_application(
+                loop,
+                "Agents",
+                tuple(labels),
+                labels=labels,
+                current=current,
+                disabled=set(),
+                preview_fn=preview,
+                label_fn=lambda uid: [("", label(uid))],
+                actions={"x": StopAgent, "X": self.group.stop},
+                keys="↑/↓ j/k move · Enter open · x stop · X stop now · Esc back",
+            )
+            if not isinstance(uid, StopAgent):
+                break
+            current = uid.uid
+            name = self.group.entry(current).agent.session.agent_name
+            if await select_choice(loop, f"Stop {name}?", ("stop", "back"), labels={"stop": "Stop this agent", "back": "Back"}, current="back") == "stop":
+                self.group.stop(current)
         if isinstance(uid, str) and uid != self.current.loop.session.uid:
             previous = self.current
             # Do not rebind hooks or transfer queues: input already accepted belongs to previous.

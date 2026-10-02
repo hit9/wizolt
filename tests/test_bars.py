@@ -226,10 +226,38 @@ def test_status_presets_preserve_identity_and_resolve_theme_styles(name):
     values = dict.fromkeys(FIELDS, 0)
     values.update(model="my-model", provider="test", reasoning="high", yolo=True, **{"agent.name": "reviewer"})
     rendered = text(layout.render("statusbar", values, 200, Theme.bar_styles))
-    assert "my-model" in rendered and "[yolo]" in rendered and "[reviewer]" in rendered
+    assert "my-model" in rendered and "yolo" in rendered and "reviewer" in rendered
     if name != "minimal":
         assert "test" in rendered
     assert not layout.errors
+
+
+@pytest.mark.parametrize("name", STATUS_PRESETS)
+def test_all_status_presets_show_group_counts_only_when_children_exist(name):
+    from wizolt.ui.render import Theme
+
+    template = Template("preset:" + name, STATUS_PRESETS)
+    values = dict.fromkeys(FIELDS, 0)
+    values.update(model="model", provider="test", **{"agent.name": "main", "agents.count": 1})
+    styles = Theme.bar_styles(template.styles)
+    assert "agents " not in text(template.render(values, 200, styles))
+    values.update(**{"agents.count": 4, "agents.running": 2, "agents.waiting": 1})
+    rendered = text(template.render(values, 200, styles))
+    assert "main" in rendered and "agents 4 · run 2 · wait 1" in rendered
+    if name in {"blocks", "lualine", "powerline"}:
+        assert "[main]" not in rendered and "[agents" not in rendered
+    else:
+        assert "[main]" in rendered and "[agents 4 · run 2 · wait 1]" in rendered
+    for width in (0, 1, 15, 30, 60, 100):
+        assert get_cwidth(text(template.render(values, width, styles))) <= width
+    values["agents.waiting"] = 0
+    rendered = text(template.render(values, 200, styles))
+    assert "agents 4 · run 2" in rendered and "wait" not in rendered
+
+
+def test_custom_status_template_can_always_show_total_and_runtime_counts():
+    template = Template("[status_agent]{agents.count} agents · {agents.running} running · {agents.waiting} waiting[/]")
+    assert text(template.render({"agents.count": 1, "agents.running": 0, "agents.waiting": 0}, 80, {"status_agent": "fg:#abcdef"})) == "1 agents · 0 running · 0 waiting"
 
 
 @pytest.mark.parametrize("name", ["default", "minimal", "compact", "brackets"])
@@ -264,7 +292,8 @@ def test_lualine_shows_provider_model_and_effort_with_distinct_styles(agent):
     parts = template.render(values, 160, Theme.bar_styles(template.styles))
     rendered = text(parts)
     assert "CHAT" not in rendered
-    assert "[yolo]" in rendered and f"[{agent}]" in rendered
+    assert f"{agent} · yolo · zai" in rendered
+    assert "[yolo]" not in rendered and f"[{agent}]" not in rendered
     assert rendered.index("zai") < rendered.index("glm-5.3") < rendered.index("high")
     styles = [next(style for style, value in parts if label in value) for label in ("zai", "glm-5.3", "high")]
     assert len(set(styles)) == 3

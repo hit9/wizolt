@@ -196,12 +196,14 @@ def test_cli_agents_switch_rebuilds_only_selected_transcript(pane):
 
     visible_with("[main]")
     visible_with("[reader] completed")
+    visible_with("[agents 2 · run 0]")
     assert "CHILD-ANSWER" not in pane.visible()
     for _ in range(2):
         pane.send("/agents")
         visible_with("Agents")
         pane.keys("Down", "Enter")
         visible_with("[reader] [yolo]")
+        visible_with("[agents 2 · run 0]")
         for width, height in ((62, 18), (100, 30)):
             pane.resize(width, height)
             _settled_capture(pane)
@@ -228,6 +230,8 @@ def test_cli_subagent_approval_config_survives_resize_under_yolo(pane):
     )
     entry = pane.path / "approval.py"
     entry.write_text(
+        "import asyncio\n"
+        "from pathlib import Path\n"
         "from wizolt.base import ToolCall\n"
         "from wizolt.model.client import ModelClient\n"
         "from wizolt.ui.cli.update import UpdateChecker\n"
@@ -237,11 +241,15 @@ def test_cli_subagent_approval_config_survives_resize_under_yolo(pane):
         "async def models(*args): return ()\n"
         "async def request(self, messages, tools=None):\n"
         "    if self.session.agent_parent:\n"
+        f"        while not Path({str(pane.path / 'release-child')!r}).exists(): await asyncio.sleep(.02)\n"
         "        p = self.session.config.provider\n"
         "        text = 'CHILD-CONFIG-' + p.model + '-' + p.reasoning\n"
         "        return {'role': 'assistant', 'content': text}, [], text\n"
         "    if not any(m.get('role') == 'tool' for m in messages):\n"
         "        return {}, [ToolCall('spawn-1', 'Subagent', [{'action': 'spawn', 'name': 'child', 'message': 'APPROVAL-TASK-MARKER'}])], ''\n"
+        "    if sum(m.get('role') == 'tool' for m in messages) == 1:\n"
+        "        uid = next(uid for uid, e in self.session.subagents.entries.items() if e.parent)\n"
+        "        return {}, [ToolCall('wait-1', 'Subagent', [{'action': 'wait', 'agent_id': uid, 'timeout': 60}])], ''\n"
         "    return {'role': 'assistant', 'content': 'PARENT-DONE'}, [], 'PARENT-DONE'\n"
         "ModelClient.request = request\n"
         "commands.remote_models = models\n"
@@ -292,6 +300,21 @@ def test_cli_subagent_approval_config_survives_resize_under_yolo(pane):
     pane.keys("Escape")
     wait("View agent task")
     pane.keys("Enter")
+    # Loading model settings used to strand the parent in DISPATCH with an empty prefix.
+    # Hold the child so the assertion covers the waiting turn, before reset_turn hides it.
+    wait("Subagent  wait")
+    wait("+>")
+    pane.send("/agents")
+    wait("Agents")
+    pane.keys("Down")
+    wait("┌─ child")
+    pane.literal("x")
+    wait("Stop child?")
+    pane.keys("Enter")  # Back is the safe default; the child continues.
+    wait("Agents")
+    pane.keys("Escape")
+    wait("+>")
+    (pane.path / "release-child").touch()
     wait("PARENT-DONE")
     wait("[child] completed")
     assert "CHILD-CONFIG" not in pane.visible()
@@ -299,6 +322,81 @@ def test_cli_subagent_approval_config_survives_resize_under_yolo(pane):
     wait("Agents")
     pane.keys("Down", "Enter")
     wait("CHILD-CONFIG-o3-high")
+    pane.send("/exit")
+
+
+def test_cli_agents_live_preview_and_stop_keys(pane):
+    config = pane.path / "agent-controls.toml"
+    config.write_text(
+        f'[paths]\ndata_dir = "{pane.path}/data"\n'
+        '[provider]\nactive = "test"\n[provider.test]\n'
+        'url = "http://127.0.0.1:9/v1"\nkey = "test-only"\nmodel = "test-model"\n'
+        '[runtime]\ntheme = "forest"\n[ui.statusbar]\nformat = "preset:lualine"\n'
+    )
+    entry = pane.path / "agent-controls.py"
+    entry.write_text(
+        "import asyncio\n"
+        "from wizolt.agent.engine import Agent\n"
+        "from wizolt.model.client import ModelClient\n"
+        "from wizolt.ui.cli.update import UpdateChecker\n"
+        "from wizolt.providers.sync import CatalogRuntime\n"
+        "from wizolt.__main__ import main\n"
+        "original = Agent.start_session\n"
+        "async def start(self):\n"
+        "    await original(self)\n"
+        "    if not self.session.agent_parent:\n"
+        "        for name in ('api-review', 'ui-review'):\n"
+        "            await self.session.subagents.spawn(self.session, name, 'Review the shared workspace without editing files.')\n"
+        "async def request(self, messages, tools=None):\n"
+        "    counter = 0\n"
+        "    while True:\n"
+        "        counter += 1\n"
+        "        name = self.session.agent_name\n"
+        "        agent = self.session.subagents.entry(self.session.uid).agent\n"
+        "        agent.hooks.on_stream('output', 'FLOW-' + name + '-' + str(counter))\n"
+        "        await asyncio.sleep(.05)\n"
+        "Agent.start_session = start\n"
+        "ModelClient.request = request\n"
+        "UpdateChecker.load_cached = lambda self: False\n"
+        "CatalogRuntime.refresh_due = lambda self: False\n"
+        "main()\n"
+    )
+    pane.send(f"{sys.executable} {entry} --config {config} --yolo")
+
+    def wait(needle, absent=""):
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            visible = pane.visible()
+            assert "Unhandled exception" not in visible, visible
+            if needle in visible and (not absent or absent not in visible):
+                return visible
+            time.sleep(.05)
+        raise AssertionError(f"missing {needle!r}:\n{visible}")
+
+    wait("agents 3 · run 2")
+    assert "[agents" not in pane.visible()
+    pane.send("/agents")
+    wait("Agents")
+    pane.keys("Down")
+    first = wait("FLOW-api-review-")
+    assert "┌─ api-review" in first and "└" in first and "Live" in first
+    flow = re.search(r"FLOW-api-review-\d+", first).group()
+    wait("FLOW-api-review-", absent=flow)
+    pane.literal("x")
+    wait("Stop api-review?")
+    pane.keys("Enter")  # Decline; the picker opens again at the same row.
+    wait("api-review · running")
+    pane.literal("x")
+    wait("Stop api-review?")
+    pane.keys("Up", "Enter")
+    wait("api-review · interrupted")
+    pane.keys("Down")
+    wait("┌─ ui-review")
+    pane.literal("X")
+    wait("ui-review · interrupted")
+    assert "Stop ui-review?" not in pane.visible()
+    wait("agents 3 · run 0")
+    pane.keys("Escape")
     pane.send("/exit")
 
 

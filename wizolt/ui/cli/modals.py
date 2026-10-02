@@ -265,8 +265,14 @@ async def choice_application(
     exclusive: bool = False,
     max_rows: int = 0,
     on_focus: Callable[[str], None] | None = None,
+    actions: dict[str, Callable[[str], Any]] | None = None,
+    keys: str = ChoiceViewState.KEYS,
 ) -> str | object | None:
-    """`on_focus` hears each row the cursor lands on, for a picker that previews by applying."""
+    """Preview focus changes; optional actions operate on the highlighted row without closing.
+
+    Actions returning None keep the picker open; a result hands control back to its caller.
+    Action keys remain query text during search and never operate on a disabled/absent row.
+    """
     state = ChoiceViewState(choices, labels, disabled, max_rows=max_rows or 20, height=picker_height(exclusive=exclusive))
     options = state.enabled()
     state.selected = options.index(current) if current in options else 0
@@ -275,12 +281,16 @@ async def choice_application(
 
     def handle_key(key: str, data: str = "") -> Any:
         focused = state.selected_choice()
+        action_key = data if key == "any" else key
+        if not state.searching and focused is not None and actions and action_key in actions:
+            result = actions[action_key](focused)
+            return TUI_MODAL_PENDING if result is None else result
         result = state.handle_key(key, data)
         if on_focus is not None and (landed := state.selected_choice()) is not None and landed != focused:
             on_focus(landed)
         return result
 
-    result = await loop.presentation.tui.show_modal(lambda: state.fragments(title, preview_fn, label_fn), handle_key, exclusive=exclusive)
+    result = await loop.presentation.tui.show_modal(lambda: state.fragments(title, preview_fn, label_fn, keys=keys), handle_key, exclusive=exclusive)
     if isinstance(result, KeyboardInterrupt):
         raise result
     return result

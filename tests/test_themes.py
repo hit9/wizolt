@@ -10,6 +10,7 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.formatted_text.utils import split_lines
 from prompt_toolkit.output import ColorDepth
+from prompt_toolkit.styles import Style
 from prompt_toolkit.utils import get_cwidth
 from rich.console import Console
 from test_command_ui import ModalHarness
@@ -20,6 +21,7 @@ import wizolt.ui.render as render_module
 from wizolt.config import ConfigFile
 from wizolt.ui.cli import CommandCompleter
 from wizolt.ui.cli.appearance import theme_command, theme_preview
+from wizolt.ui.bars import STATUS_PRESETS, Template
 from wizolt.ui.render import HorizontalRule, MessageBlock, Theme, UiPrinter
 from wizolt.ui.themes import BUILTIN, DIFF_STYLES, HEX_ROLES, MENU_TEXT_CONTRAST, MUTED_CONTRAST, contrast
 from wizolt.ui.tui.app import TuiApp
@@ -1039,6 +1041,35 @@ def test_component_themes_keep_transcript_colors_and_respect_no_color(monkeypatc
     assert Theme.color_depth(ColorDepth.DEPTH_8_BIT) == ColorDepth.DEPTH_24_BIT
     monkeypatch.setenv("NO_COLOR", "1")
     assert Theme.color_depth(ColorDepth.DEPTH_24_BIT) == ColorDepth.DEPTH_1_BIT
+
+
+@pytest.mark.parametrize("preset", STATUS_PRESETS)
+@pytest.mark.parametrize("theme", ["sand", "forest", "papercolor-light"])
+def test_agent_counts_follow_independent_bar_theme_and_segment_colors(preset, theme):
+    Theme.set_mode("plum")
+    transcript = Theme.transcript_style().get_attrs_for_style_str("class:role.user")
+    Theme.set_bar_theme("statusbar", theme)
+    template = Template("preset:" + preset, STATUS_PRESETS)
+    styles = Theme.bar_styles(template.styles)
+    values = {"agent.name": "main", "agents.count": 3, "agents.running": 1, "agents.waiting": 0, "provider": "test", "model": "model", "context.percent": 10}
+    parts = template.render(values, 200, styles)
+    count_style = next(style for style, value in parts if "agents " in value)
+    attrs = Style.from_dict({"count": count_style}).get_attrs_for_style_str("class:count")
+    if preset in {"blocks", "lualine", "powerline"}:
+        band = Style.from_dict({"band": styles["status.provider"]}).get_attrs_for_style_str("class:band")
+        assert (attrs.color, attrs.bgcolor) == (band.color, band.bgcolor)
+    else:
+        assert attrs.color == Theme.bar_palette("statusbar").colors["status_agent"].lstrip("#")
+    assert Theme.transcript_style().get_attrs_for_style_str("class:role.user") == transcript
+
+
+def test_agent_counts_follow_custom_status_color_override(tmp_path):
+    write_theme(tmp_path, "agents", 'base = "sand"\n[colors]\nstatus_agent = "#123abc"\n')
+    Theme.load_custom(str(tmp_path))
+    Theme.set_bar_theme("statusbar", "agents")
+    template = Template("preset:default", STATUS_PRESETS)
+    parts = template.render({"agents.count": 2, "agents.running": 1, "model": "model", "context.percent": 10}, 200, Theme.bar_styles(template.styles))
+    assert "#123abc" in next(style for style, value in parts if "agents " in value)
 
 
 def test_reloading_or_removing_custom_component_theme(tmp_path):

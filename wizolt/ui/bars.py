@@ -25,6 +25,9 @@ FIELDS = frozenset(
         "agent.name",
         "agent.id",
         "agent.state",
+        "agents.count",
+        "agents.running",
+        "agents.waiting",
         "reasoning",
         "yolo",
         "context.percent",
@@ -172,8 +175,18 @@ def pressure(body: str, normal: str = "status_context", warning: str = "status.w
     )
 
 
-IDENTITY = "{% if agent.name %}[status_agent bold][[{agent.name}]] [/]{% endif %}{% if yolo %}[status_yolo][[yolo]] [/]{% endif %}"
-SEGMENT_IDENTITY = IDENTITY.replace("[status_yolo]", "[bold]").replace("[status_agent bold]", "[bold]")
+AGENT_GROUP = (
+    "{% if agents.count > 1 %}{% optional priority=25 %}[status_agent][[agents {agents.count} · run {agents.running}"
+    "{% if agents.waiting %} · wait {agents.waiting}{% endif %}]] [/]{% endoptional %}{% endif %}"
+)
+IDENTITY = "{% if agent.name %}[status_agent bold][[{agent.name}]] [/]{% endif %}{% if yolo %}[status_yolo][[yolo]] [/]{% endif %}" + AGENT_GROUP
+# A segmented preset uses its own surface and separators, including identity and group counts.
+# Inline badges would read as unrelated widgets inside the continuous provider band.
+SEGMENT_IDENTITY = (
+    "{% if agent.name %}[bold]{agent.name}[/] · {% endif %}{% if yolo %}[bold]yolo[/] · {% endif %}"
+    "{% if agents.count > 1 %}{% optional priority=25 %}agents {agents.count} · run {agents.running}"
+    "{% if agents.waiting %} · wait {agents.waiting}{% endif %} · {% endoptional %}{% endif %}"
+)
 PROVIDER_MODEL = "[status_provider]{provider}/[/][status_base bold]{model}[/]"
 SEGMENT_USAGE = pressure(" ctx {context.percent}% ", "status.context", "status.usage bg=warning", "status.usage bg=error")
 STATUS_PRESETS = {
