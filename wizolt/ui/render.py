@@ -2155,14 +2155,9 @@ class StatusBar:
     ROLE_KEYS: ClassVar[tuple[str, ...]] = ("provider", "reason", "mcp", "context", "yolo", "worker")
     SPINNER_FRAMES: ClassVar[str] = "⠋⠙⠹⠸⠼⠴⠦⠧"
 
-    @classmethod
-    def role_style(cls, role: str) -> str:
-        return Theme.fg("status_" + role) if role in cls.ROLE_KEYS else Theme.fg("status_base")
-
     def __init__(self, session: Session):
         self.session = session
         self.layout = BarLayout()
-        self.layout_problems: list[str] = []
         self.started_at = 0.0
         self.running = False
         self.rendered = False
