@@ -174,6 +174,13 @@
 
 ### Changed
 
+- Open archived agents from `/agents` in the ordinary agent view, replayed from their snapshot
+  with an `archived` statusbar state and a read-only input line whose Enter opens `/agents`,
+  replacing the separate raw-JSON text viewer. The view is built on first open, never joins the
+  live group and holds no session lease, so it cannot drive turns or write snapshots; live agent
+  views are unchanged. Archiving the agent on screen, from `/agents` or by main's model, keeps
+  you on it in that read-only view instead of switching to main.
+
 - Give every `blocks` identity part its own solid rectangle — agent, YOLO, group counts and
   provider no longer share one band — and drop the `·` text divider, so the preset is cut by
   background rectangles only. Group counts read `agents 4 run 2`. Redraw the statusbar preset

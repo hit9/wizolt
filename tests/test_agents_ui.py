@@ -176,10 +176,13 @@ async def test_child_archives_its_own_view_and_history_remains_in_picker(fronten
         await asyncio.wait_for(asyncio.gather(command, return_exceptions=True), 3)
     tasks = [task for task in frontend.root.tasks if task.get_name() == "archive-agent"]
     await asyncio.wait_for(asyncio.gather(*tasks), 3)
-    assert frontend.current is frontend.root
-    assert uid not in frontend.runtimes
+    # Archiving never moves the user: the view they were reading becomes read-only in place.
+    assert frontend.current is frontend.runtimes[uid] is not runtime
+    assert frontend.current.tui.read_only_notice
+    assert uid in frontend.read_only
     assert uid not in frontend.group.entries
     assert not frontend.root.shutdown.is_set()
+    frontend.current = frontend.root
 
     async def choice(_loop, _title, choices, *, label_fn, preview_fn, **kwargs):
         assert choices[-1] == uid
@@ -189,23 +192,134 @@ async def test_child_archives_its_own_view_and_history_remains_in_picker(fronten
         assert "child reply" in "".join(text for _, text in preview_fn(uid))
         return uid
 
-    async def viewer(_loop, view, **kwargs):
-        assert "child task" in view.text and "child reply" in view.text
-        assert ("mode", "read-only") in view.rows
+    monkeypatch.setattr(agents_module, "choice_application", choice)
+    await frontend.select(frontend.root.loop)
+    assert frontend.current is frontend.runtimes[uid]
+    assert frontend.current.tui.read_only_notice
+
+
+async def archived_view(frontend, monkeypatch, output=None):
+    runtime = await child(frontend)
+    uid = runtime.loop.session.uid
+    await frontend.group.archive(uid)
+
+    async def choice(*args, **kwargs):
+        return uid
 
     monkeypatch.setattr(agents_module, "choice_application", choice)
-    monkeypatch.setattr(agents_module, "approval_text_viewer", viewer)
+    if output is not None:
+        # Views inherit main's printer output; the uncolored harness prints replay there.
+        monkeypatch.setattr(frontend.root.loop.presentation.ui, "output_fn", output.append)
     await frontend.select(frontend.root.loop)
+    return frontend.runtimes[uid]
+
+
+async def test_archived_agent_opens_in_the_ordinary_view_without_input(frontend, monkeypatch):
+    output: list[str] = []
+    view = await archived_view(frontend, monkeypatch, output)
+    uid = view.loop.session.uid
+    assert frontend.current is view
+    # The same projection as a live child: replayed transcript, status bar, idle prompt.
+    replay = "\n".join(output)
+    assert f"Restored session: {uid}" in replay
+    assert "child task" in replay and "child reply" in replay
+    assert view.loop.presentation.status_bar.values()["agent.state"] == "archived"
+    assert view.tui.input_mode == InputMode.CHAT
+    # Read-only: the notice is the placeholder, edits are refused and nothing can be driven.
+    assert view.tui.placeholder_text() == view.tui.read_only_notice
+    assert view.tui.input_buffer.read_only()
+    assert view.tui.quick_hints() == ()
+    assert uid not in frontend.group.entries
+    assert view.submissions_task is None and not view.accepting
+    with pytest.raises(Exception, match="closed"):
+        await view.loop.session.save_snapshot()
+
+
+async def test_enter_in_archived_view_opens_picker_and_never_submits(frontend, monkeypatch):
+    view = await archived_view(frontend, monkeypatch)
+    opened = []
+
+    async def select(loop):
+        opened.append(loop)
+
+    monkeypatch.setattr(frontend, "select", select)
+    view.tui.input_buffer.validate_and_handle()
+    await asyncio.gather(*view.tasks)
+    assert opened == [view.loop]
+    assert view.submissions.empty()
+    assert not view.loop.session.pending_user_inputs
+
+
+async def test_archived_view_exit_goes_through_main(frontend, monkeypatch):
+    view = await archived_view(frontend, monkeypatch)
+    # The view has no submission consumer of its own; Ctrl-D must reach main's resume path.
+    assert view.tui.on_exit_request == frontend.root.request_exit
+
+
+async def test_read_only_view_leaves_live_views_unchanged(frontend, monkeypatch):
+    live = await child(frontend, "live")
+    await archived_view(frontend, monkeypatch)
+    for runtime in (frontend.root, live):
+        assert not runtime.tui.read_only_notice
+        assert not runtime.tui.input_buffer.read_only()
+        assert runtime.tui.placeholder_text() != "Archived · read-only · Enter opens /agents"
+    # A live child still accepts typed input and runs it as a turn.
+    entry = frontend.group.entry(live.loop.session.uid)
+    live.submit_chat("follow up")
+    await live.submissions.join()
+    await asyncio.wait_for(asyncio.shield(entry.task), 3)
+    assert entry.status == "completed"
+    assert any(message.get("content") == "follow up" for message in live.loop.session.messages)
+
+
+async def test_closing_frontend_releases_archived_view(frontend, monkeypatch):
+    view = await archived_view(frontend, monkeypatch)
+    uid = view.loop.session.uid
+    closed = []
+    monkeypatch.setattr(view.loop.session, "close", lambda: closed.append(uid))
+    await frontend.close_runtime(uid)
+    assert closed == [uid]
+    assert uid not in frontend.runtimes and uid not in frontend.read_only
 
 
 async def test_archive_rechecks_selected_view_after_confirmation(frontend):
     runtime = await child(frontend)
     # The user can switch back while archival is waiting for snapshots to drain.
+    uid = runtime.loop.session.uid
     frontend.current = runtime
+    await frontend.group.archive(uid)
+    assert frontend.current is frontend.runtimes[uid] is not runtime
+    assert frontend.current.tui.read_only_notice
+    assert frontend.switching
+    # The live entry is gone, so the retained view's statusbar now reports archived.
+    assert frontend.current.loop.presentation.status_bar.values()["agent.state"] == "archived"
+
+
+async def test_archiving_another_branch_or_closing_keeps_or_returns_to_main(frontend):
+    viewed, other = await child(frontend, "viewed"), await child(frontend, "other")
+    frontend.current = viewed
+    await frontend.group.archive(other.loop.session.uid)
+    assert frontend.current is viewed  # archiving elsewhere never moves the view
+    assert other.loop.session.uid not in frontend.runtimes
+    # Shutdown disposal is not archival: a live view on screen falls back to main.
+    await frontend.close_runtime(viewed.loop.session.uid)
+    assert frontend.current is frontend.root
+
+
+async def test_unreadable_archive_falls_back_to_main(frontend, monkeypatch):
+    runtime = await child(frontend)
+    frontend.current = runtime
+
+    async def broken(uid):
+        raise OSError("unreadable snapshot")
+
+    monkeypatch.setattr(frontend, "open_archived", broken)
+    errors = []
+    monkeypatch.setattr(frontend.root.loop.presentation, "emit", errors.append)
     await frontend.group.archive(runtime.loop.session.uid)
     assert frontend.current is frontend.root
-    assert frontend.switching
-    assert runtime.loop.session.uid not in frontend.runtimes
+    assert runtime.loop.session.uid not in frontend.group.entries
+    assert errors == ["Could not open archived agent: unreadable snapshot"]
 
 
 async def test_model_archive_drains_admission_before_joining_cancelled_turn(frontend, monkeypatch):
@@ -243,8 +357,9 @@ async def test_model_archive_drains_admission_before_joining_cancelled_turn(fron
     assert not runtime.accepting
     release.set()
     await asyncio.wait_for(archive, 3)
-    assert frontend.current is frontend.root
-    assert runtime.loop.session.uid not in frontend.runtimes
+    # Model-initiated archival of the viewed agent keeps the user on it, read-only.
+    assert frontend.current is frontend.runtimes[runtime.loop.session.uid] is not runtime
+    assert frontend.current.tui.read_only_notice
     assert not frontend.root.shutdown.is_set()
     assert frontend.root.error is None
 

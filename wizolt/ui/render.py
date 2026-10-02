@@ -2359,10 +2359,12 @@ class StatusBar:
         provider = source.config.provider
         usage = source.usage
         counts = source.subagents.counts if source.subagents else None
+        # A displayed session outside the group's live entries is an archived, read-only view.
+        entry = source.subagents.entries.get(source.uid) if source.subagents else None
         return {
             "agent.name": source.agent_name,
             "agent.id": source.uid,
-            "agent.state": source.subagents.entry(source.uid).status if source.subagents else source.state.last_turn_status,
+            "agent.state": entry.status if entry else "archived" if source.subagents else source.state.last_turn_status,
             "agents.count": counts.total if counts else 1,
             "agents.running": counts.running if counts else int(self.running and not source.state.awaiting_input),
             "agents.waiting": counts.waiting if counts else int(source.state.awaiting_input),

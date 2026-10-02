@@ -52,8 +52,10 @@ The input box, history, statusbar, `/status` and `/diff` follow the selected age
 Use `/provider`, `/model` or `/reason` there to change its settings.
 
 Archived agents appear last, marked **archived** with a still, muted dot. Move to preview;
-Enter opens their read-only history. Archiving keeps conversations and file changes, and
-returns you to main if you were viewing an archived agent.
+Enter opens the conversation in the same view as a live agent, with its statusbar showing
+**archived**. The input line is read-only: Enter there opens `/agents`. Archiving keeps
+conversations and file changes. If you are viewing an agent when it is archived, you stay on
+it and its view becomes read-only.
 
 ### Notice when an agent needs you
 

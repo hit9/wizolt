@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import shutil
 import time
 from contextlib import asynccontextmanager
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from prompt_toolkit.formatted_text import StyleAndTextTuples
@@ -16,10 +15,10 @@ from prompt_toolkit.styles import DynamicStyle
 from prompt_toolkit.utils import get_cwidth
 
 from wizolt.agent.engine import Agent
-from wizolt.agent.subagents import AgentEntry
-from wizolt.base import ApprovalView, Text, ToolError, run_blocking
+from wizolt.agent.subagents import AgentEntry, unavailable_input
+from wizolt.base import Text, ToolError, run_blocking
 from wizolt.session import QueuedInput, Session, SessionSnapshotStore
-from wizolt.ui.cli.modals import approval_text_viewer, choice_application, picker_height, select_choice
+from wizolt.ui.cli.modals import choice_application, picker_height, select_choice
 from wizolt.ui.cli.runtime import ScrollbackWriter, TuiRuntime
 from wizolt.ui.render import ActivityPulse, InputStyle, StatusBar, Theme
 
@@ -157,6 +156,8 @@ class AgentsFrontend:
         assert group is not None
         self.group = group
         self.runtimes = {root.loop.session.uid: root}
+        # Archived views in `runtimes`; they own their decoded Session, unlike live children.
+        self.read_only: set[str] = set()
         self.current = root
         self.switching = False
         root.tui.on_attention = lambda: self.notice(root.loop.agent, "waiting for input")
@@ -167,10 +168,11 @@ class AgentsFrontend:
         self.group.archive_admission = self.archive_admission
         self.group.driver = self.drive
 
-    async def attach(self, agent: Agent) -> None:
+    def _build_runtime(self, agent: Agent, *, input_fn) -> TuiRuntime:
+        """One projection for a child's conversation, live or archived; never starts input or turns."""
         from wizolt.ui.cli.loop import CommandLoop
 
-        loop = CommandLoop(agent, input_fn=self.root.loop.input_fn, output_fn=self.root.loop.presentation.ui.output_fn)
+        loop = CommandLoop(agent, input_fn=input_fn, output_fn=self.root.loop.presentation.ui.output_fn)
         loop.interactive_input = self.root.loop.interactive_input
         loop.agents_frontend = self
         loop.presentation.input_style, loop.theme_problems = InputStyle.load(agent.session.config.ui)
@@ -178,25 +180,62 @@ class AgentsFrontend:
         runtime = TuiRuntime(loop)
         runtime.child_agent = True
         runtime.runtime_loop = self.root.runtime_loop
-        runtime.accepting = True
         runtime.shutdown = self.root.shutdown
         runtime.application_ready = self.root.application_ready
         loop.presentation.tui = runtime.build_tui()
         runtime.tui.managed = True
-        runtime.tui.on_attention = lambda: self.notice(agent, "waiting for input")
         # Replay can reject malformed stored presentation data. Finish it before publishing
         # this runtime or starting background consumers that would outlive a failed attach.
         if agent.session.resumed:
             loop.resume.render_resumed_session()
-        loop.background.open_background()
         assert runtime.runtime_loop is not None
         writer = ScrollbackWriter(runtime.runtime_loop, runtime.tui.write_to_scrollback, loop.presentation.ui.write_direct)
         runtime.scrollback = writer
         loop.presentation.scrollback = writer
         loop.presentation.background_output_lock = writer.lock
         agent.hooks.output_barrier = writer.barrier
+        return runtime
+
+    async def attach(self, agent: Agent) -> None:
+        runtime = self._build_runtime(agent, input_fn=self.root.loop.input_fn)
+        runtime.accepting = True
+        runtime.tui.on_attention = lambda: self.notice(agent, "waiting for input")
+        runtime.loop.background.open_background()
         runtime.submissions_task = runtime.spawn(runtime._consume_submissions(), name="agent-submissions")
         self.runtimes[agent.session.uid] = runtime
+
+    async def open_archived(self, uid: str) -> TuiRuntime:
+        """Project an archived child through the ordinary view, without input, engine or writes.
+
+        The snapshot is decoded without the family lease, so any save from this view fails
+        instead of writing. The session never joins group entries: it cannot be driven,
+        counted, stopped or archived again. Built on first open; disposed with the frontend.
+        """
+        if (runtime := self.runtimes.get(uid)) is not None:
+            return runtime
+        root = self.root.loop.session
+        session = await run_blocking(lambda: SessionSnapshotStore.load(uid, config=deepcopy(root.config), settings=replace(root.settings), cwd=root.cwd))
+        try:
+            session.listed = False
+            session.subagents = self.group  # read for group-wide statusbar counts only
+            session.skills, session.mcp, session.catalog = root.skills, root.mcp, root.catalog
+            session.system_info = root.system_info
+            agent = Agent(session, input_fn=unavailable_input, output_fn=lambda _: None)
+            runtime = self._build_runtime(agent, input_fn=unavailable_input)
+        except BaseException:
+            session.close()
+            raise
+        runtime.tui.read_only_notice = "Archived · read-only · Enter opens /agents"
+
+        def open_picker(_: object) -> None:
+            runtime.spawn(self.select(runtime.loop), name="agents-picker")
+
+        runtime.tui.on_chat_submit = open_picker
+        # This view has no submission consumer; main saves and prints the resume line.
+        runtime.tui.on_exit_request = self.root.request_exit
+        self.runtimes[uid] = runtime
+        self.read_only.add(uid)
+        return runtime
 
     def notice(self, agent: Agent, status: str) -> None:
         if self.current.loop.agent is not agent:
@@ -336,11 +375,10 @@ class AgentsFrontend:
                     )
                     == "archive"
                 ):
-                    # The command itself may be running in the branch being retired. Switch
-                    # first, then let a root-owned task join it before cancelling that branch.
+                    # The command itself may be running in the branch being retired: a
+                    # root-owned task joins it before cancelling that branch. The view stays
+                    # put; disposal moves it to the read-only view (close_runtime).
                     owner = asyncio.current_task()
-                    if self.current.loop.session.uid in self.group.branch(current):
-                        self.switch_to(self.root)
                     self.root.spawn(self.archive_after_command(current, owner), name="archive-agent")
                     return
                 continue
@@ -350,10 +388,13 @@ class AgentsFrontend:
             name = self.group.entry(current).agent.session.agent_name
             if await select_choice(loop, f"Stop {name}?", ("stop", "back"), labels={"stop": "Stop this agent", "back": "Back"}, current="back") == "stop":
                 self.group.stop(current)
-        if isinstance(uid, str):
+        if isinstance(uid, str) and uid != self.current.loop.session.uid:
             if uid in archived:
-                await self.show_archive(loop, uid)
-            elif uid in self.runtimes and uid != self.current.loop.session.uid:
+                try:
+                    self.switch_to(await self.open_archived(uid))
+                except Exception as error:  # noqa: BLE001 - an unreadable archive must not end the picker's owner.
+                    loop.presentation.emit(f"Could not open archived agent: {error}")
+            elif uid in self.runtimes:
                 self.switch_to(self.runtimes[uid])
 
     def switch_to(self, runtime: TuiRuntime) -> None:
@@ -385,6 +426,8 @@ class AgentsFrontend:
                 drained.append(runtime)
                 await runtime._close_submissions()
             yield
+            # Live entries are gone only now; redraw so a retained view's statusbar says archived.
+            self.current.tui.invalidate()
         finally:
             # Failure or cancellation before disposal leaves the retained view usable.
             for runtime in drained:
@@ -392,29 +435,29 @@ class AgentsFrontend:
                     runtime.accepting = True
                     runtime.submissions_task = runtime.spawn(runtime._consume_submissions(), name="agent-submissions")
 
-    async def show_archive(self, loop: CommandLoop, uid: str) -> None:
-        root = self.root.loop.session
-        session = await run_blocking(lambda: SessionSnapshotStore.load(uid, config=deepcopy(root.config), settings=deepcopy(root.settings), cwd=root.cwd))
+    async def replacement_view(self, uid: str) -> TuiRuntime:
+        """Where the user lands when the live view on screen is retired.
+
+        Archiving the agent you are reading keeps you on it, now read-only; its final snapshot
+        and the manifest are saved before views are disposed. Anything else returns to main.
+        """
+        if not any(item.get("uid") == uid and item.get("archived") for item in self.root.loop.session.subagent_entries):
+            return self.root
         try:
-            text = "\n\n".join(
-                f"## {message.get('role', '')}\n\n"
-                + (
-                    message["content"]
-                    if isinstance(message.get("content"), str) and not message.get("tool_calls")
-                    else json.dumps(message, ensure_ascii=False, indent=2)
-                )
-                for message in session.transcript_messages
-            )
-            await approval_text_viewer(loop, ApprovalView(f"Archived · {session.agent_name}", text or "(No messages)", rows=[("mode", "read-only")]))
-        finally:
-            session.close()
+            return await self.open_archived(uid)
+        except Exception as error:  # noqa: BLE001 - an unreadable snapshot must not block archival.
+            self.root.loop.presentation.emit(f"Could not open archived agent: {error}")
+            return self.root
 
     async def close_runtime(self, uid: str) -> None:
         runtime = self.runtimes.pop(uid)
+        # Decided before the switch: retiring a live view registers a read-only one for this uid.
+        read_only = uid in self.read_only
+        self.read_only.discard(uid)
         # Selection can change while archival drains pending submissions/snapshots.
         # Recheck at disposal, not only when the user confirmed the archive.
         if self.current is runtime:
-            self.switch_to(self.root)
+            self.switch_to(self.root if read_only else await self.replacement_view(uid))
         await runtime._close_submissions()
         for task in tuple(runtime.tasks):
             task.cancel()
@@ -427,6 +470,10 @@ class AgentsFrontend:
         runtime.tui.cancel_input()
         if runtime.tui.modal is not None:
             runtime.tui.close_modal(None)
+        if read_only:
+            # Live children are closed by the group; an archived view owns what it decoded.
+            await runtime.loop.agent.model.close()
+            runtime.loop.session.close()
 
     async def run_application(self, initial: asyncio.Task | None = None) -> None:
         try:

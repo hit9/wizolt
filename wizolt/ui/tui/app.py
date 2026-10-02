@@ -363,6 +363,9 @@ class TuiApp:
         self._search_start_draft: str | UserInput = ""
         self.input_error = ""
         self.history = history
+        # Non-empty for a view that must never produce input (an archived agent): the text is the
+        # placeholder, the buffer refuses edits, and Enter asks for /agents. Empty everywhere else.
+        self.read_only_notice = ""
         self.input_buffer = Buffer(
             history=history,
             completer=completer,
@@ -370,6 +373,7 @@ class TuiApp:
             enable_history_search=True,
             multiline=True,
             accept_handler=self._accept,
+            read_only=Condition(lambda: bool(self.read_only_notice)),
         )
         self.input_buffer.on_text_changed += self._on_input_text_changed
         self.input_buffer.on_text_insert += self._offer_slash_completions
@@ -669,6 +673,9 @@ class TuiApp:
         self._schedule(close)
 
     def _accept(self, buffer: Buffer) -> bool:
+        if self.read_only_notice:
+            self.on_chat_submit(UserInput("/agents"))
+            return False
         text = buffer.text
         if self.input_mode == InputMode.APPROVAL and self._input_pending is not None:
             if text.strip() == "/agents":
@@ -778,7 +785,7 @@ class TuiApp:
         self._reset_input(self._search_start_draft)
 
     def quick_hints(self) -> tuple[str, ...]:
-        hints = self.quick_hints_fn()
+        hints = () if self.read_only_notice else self.quick_hints_fn()
         if hints != self._last_quick_hints:
             changed = self._last_quick_hints is not None
             self._last_quick_hints = hints
@@ -1007,6 +1014,8 @@ class TuiApp:
         return True
 
     def placeholder_text(self) -> str:
+        if self.read_only_notice:
+            return self.read_only_notice
         if self.input_mode == InputMode.CHAT and self.quick_hints():
             return "" if self.quick_hint_focus >= 0 else "Tab cycles suggestions \u00b7 Enter picks \u00b7 Enter sends"
         return self.input_hint_fn()
@@ -1780,7 +1789,7 @@ class TuiApp:
                 self._search_start_draft = UserInput(self.input_buffer.text, self.input_images, self.input_pastes)
                 pt_search.start_search(direction=direction)
 
-        bindings.add("c-r", filter=~modal, eager=True)(history_search)
+        bindings.add("c-r", filter=~modal & Condition(lambda: not self.read_only_notice), eager=True)(history_search)
         bindings.add("c-o", filter=~modal, eager=True)(lambda _: self.on_expand_output())
 
         # Ctrl-P mirrors Up here: readline treats them as synonyms, and both recall the latest
@@ -1805,7 +1814,7 @@ class TuiApp:
         # $VISUAL/$EDITOR (fallback vim) for editing, matching Claude Code's editor bindings. The
         # `c-x c-e` chord means a lone Ctrl-X waits for the second key instead of firing eagerly.
         # No key retries the model request: recalling a claimed follow-up above is the only manual one.
-        edits_input = Condition(lambda: self.input_mode in {InputMode.CHAT, InputMode.RUNNING, InputMode.APPROVAL})
+        edits_input = Condition(lambda: self.input_mode in {InputMode.CHAT, InputMode.RUNNING, InputMode.APPROVAL} and not self.read_only_notice)
 
         def edit_in_editor(_):  # pragma: no cover — interactive path
             self.edit_input_in_editor()
