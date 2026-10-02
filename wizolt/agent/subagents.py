@@ -30,6 +30,11 @@ Report the files changed and verification performed. Do not create specialized a
 """
 
 
+def unavailable_input(_prompt: str) -> str:
+    """A background engine never owns process stdin; its frontend must provide approvals."""
+    raise ToolError("Subagent approval requires an interactive frontend; no input was read")
+
+
 @dataclass
 class AgentEntry:
     agent: Agent
@@ -161,7 +166,7 @@ class Subagents:
         # Discovery/transport are group services; resolvers and their frontend callbacks are local.
         bootstrap_features(session)
         session.borrow_ownership(root)
-        agent = Agent(session, output_fn=lambda _: None)
+        agent = Agent(session, input_fn=unavailable_input, output_fn=lambda _: None)
         entry = AgentEntry(agent, parent, instruction)
         self.entries[session.uid] = entry
         if self.on_created is not None:

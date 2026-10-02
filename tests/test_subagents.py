@@ -3,6 +3,7 @@
 import asyncio
 import json
 from copy import deepcopy
+from pathlib import Path
 
 import pytest
 from agent_harness import call, session_with_provider
@@ -31,6 +32,31 @@ async def finished(group, entry):
     while (task := entry.task) is not None:
         await asyncio.wait_for(asyncio.shield(task), 3)
     return entry
+
+
+@pytest.mark.parametrize("tool,yolo", [("Bash", False), ("Subagent", True)])
+async def test_headless_child_approval_refuses_without_reading_process_stdin(group, monkeypatch, tool, yolo):
+    def forbidden_input(*_args):
+        pytest.fail("background child read process stdin")
+
+    monkeypatch.setattr("builtins.input", forbidden_input)
+    group.root.session.settings.yolo = yolo
+    requests = []
+
+    async def request(client, messages, tools=None):
+        requests.append(deepcopy(messages))
+        if len(requests) == 1:
+            args = ["touch child-approval-sentinel"] if tool == "Bash" else [{"action": "spawn", "name": "nested", "message": "task"}]
+            return {}, [call(tool, args)], ""
+        return {"role": "assistant", "content": "approval unavailable"}, [], "approval unavailable"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await group.spawn(group.root.session, "headless", "task")
+    await finished(group, entry)
+    assert entry.status == "completed"
+    assert "Subagent approval requires an interactive frontend" in str(requests[-1])
+    assert len(group.entries) == 2
+    assert not Path(group.root.session.cwd, "child-approval-sentinel").exists()
 
 
 async def test_child_tool_cannot_stop_main_or_wait_for_itself(group, monkeypatch):

@@ -13,6 +13,8 @@ Choose **View agent task** (`v`) to read the full task. Before creating a child,
 **done** or Escape, then approve to start its first turn. Each creation has its own configuration;
 configuring one child does not change the main agent or another child. Refusing discards the
 pending child and its settings.
+In piped/non-interactive mode, child tools that require approval return an error. They do not
+read the main conversation's input. `--yolo` still permits tools eligible for automatic approval.
 
 Forked skills offer the same configuration before approval. Once a child exists, select it
 with `/agents` to change its settings for subsequent turns.

@@ -977,8 +977,8 @@ class ToolRunner:
         """Await one line of user input for an approval.
 
         The injected `input_fn` is awaitable under the CLI, which puts the prompt on the runtime
-        loop. A plain callable (headless, a test, an embedding) runs on a worker instead, and its
-        injector owns unblocking it -- nothing here can interrupt a blocking read."""
+        loop. Other injectors must return immediately or provide an awaitable; blocking readers
+        need an adapter owned by their frontend. Background children never inherit stdin."""
 
         async def read():
             reply = self.input_fn(prompt)

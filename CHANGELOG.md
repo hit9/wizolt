@@ -21,6 +21,9 @@
 
 ### Fixed
 
+- Refuse child approvals when no interactive frontend is attached, rather than blocking the
+  event loop or consuming stdin intended for the main conversation.
+
 - Refuse subagent tool requests to stop main or wait for the calling agent, while preserving
   user control through the agent picker and Ctrl-C.
 
