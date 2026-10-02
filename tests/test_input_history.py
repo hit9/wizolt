@@ -67,7 +67,7 @@ async def test_children_never_read_or_append_main_or_sibling_keyboard_history(tm
     try:
         entries = [await group.spawn(root.session, name, "independent task") for name in ("api-review", "ui-review")]
         for entry in entries:
-            await group.wait(entry.agent.session.uid, 3)
+            await group.wait([entry.agent.session.uid], 3)
         children = [CommandLoop(entry.agent, output_fn=lambda _: None) for entry in entries]
         assert all(list(child.input_history.load_history_strings()) == [] for child in children)
         children[0].input_history.append_string("private child input")

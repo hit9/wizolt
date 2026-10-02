@@ -94,6 +94,12 @@ The model uses one `Subagent` tool with **spawn**, **send**, **list**, **inspect
 returns immediately. Waiting defaults to **3 minutes**, up to **10 minutes** per call
 (`timeout=600`); `timeout=0` checks immediately. A timeout does not stop the child.
 
+Wait for several agents with `{"action": "wait", "agent_ids": ["A", "B"]}`.
+As soon as **any** target finishes, fails or is interrupted, the call returns all currently
+settled targets and their results. Other agents keep working. An already settled target returns
+immediately; remove returned IDs before waiting again. A timeout returns `[]`.
+For one agent, use a one-item `agent_ids` list. Waiting requires no approval.
+
 The parent receives each direct child's latest completed, failed or interrupted result before
 its next model request, even while doing other work. Notifications include up to **1000 characters**;
 `list` or `wait` retrieves more while the child is not archived. Results already returned by those

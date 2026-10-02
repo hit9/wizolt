@@ -328,7 +328,7 @@ async def test_busy_parent_receives_result_at_next_request_and_wait_deduplicates
         if len(parent_requests) == 1:
             release.set()
             if wait:
-                action = call("Subagent", [{"action": "wait", "agent_id": entry.agent.session.uid}])
+                action = call("Subagent", [{"action": "wait", "agent_ids": [entry.agent.session.uid]}])
             else:
                 await finished(group, entry)
                 action = call("Read", [{"path": "missing.txt", "ranges": [[0, 0]]}])
@@ -565,7 +565,8 @@ async def test_child_tool_cannot_stop_main_or_wait_for_itself(group, monkeypatch
             await SubagentTool(child.agent.session, [{"action": "stop", "agent_id": group.root.session.uid}]).call()
         for action in ("stop", "wait"):
             with pytest.raises(ToolError, match="calling agent"):
-                await SubagentTool(child.agent.session, [{"action": action, "agent_id": child.agent.session.uid}]).call()
+                target = {"agent_ids": [child.agent.session.uid]} if action == "wait" else {"agent_id": child.agent.session.uid}
+                await SubagentTool(child.agent.session, [{"action": action, **target}]).call()
         assert not main_turn.done() and not main_turn.cancelling()
     finally:
         release.set()
@@ -856,7 +857,7 @@ async def test_timeout_and_stop_do_not_cancel_siblings(group, monkeypatch):
     one = await group.spawn(group.root.session, "one", "one")
     two = await group.spawn(group.root.session, "two", "two")
     await asyncio.wait_for(started.wait(), 3)
-    await group.wait(one.agent.session.uid, 0)
+    await group.wait([one.agent.session.uid], 0)
     assert one.status == two.status == "running"
     group.stop(one.agent.session.uid)
     await finished(group, one)
@@ -882,21 +883,111 @@ async def test_wait_timeout_defaults_and_bounds_leave_child_running(group, monke
     real_wait = asyncio.wait
     timeouts = []
 
-    async def immediate_wait(tasks, *, timeout):
+    async def immediate_wait(tasks, *, timeout, return_when):
         timeouts.append(timeout)
-        return await real_wait(tasks, timeout=0)
+        assert return_when == asyncio.FIRST_COMPLETED
+        return await real_wait(tasks, timeout=0, return_when=return_when)
 
-    payload = {"action": "wait", "agent_id": entry.agent.session.uid}
+    payload = {"action": "wait", "agent_ids": [entry.agent.session.uid]}
     if timeout is not None:
         payload["timeout"] = timeout
     with monkeypatch.context() as clock:
         clock.setattr(asyncio, "wait", immediate_wait)
         result = json.loads(await SubagentTool(group.root.session, [payload]).call())
     assert timeouts == [expected]
-    assert entry.status == result[0]["status"] == "running"
+    assert result == []
+    assert entry.status == "running"
     assert not entry.task.cancelling()
     release.set()
     await finished(group, entry)
+
+
+@pytest.mark.parametrize("outcome", ["completed", "failed", "interrupted"])
+async def test_wait_any_returns_first_settled_target_and_keeps_others_running(group, monkeypatch, outcome):
+    release = {name: asyncio.Event() for name in ("first", "second", "outside")}
+
+    async def request(client, messages, tools=None):
+        name = client.session.agent_name
+        await release[name].wait()
+        if name == "second" and outcome == "failed":
+            raise ModelError("test failure")
+        return {"role": "assistant", "content": name}, [], name
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    first, second, outside = [await group.spawn(group.root.session, name, "task") for name in release]
+    ids = [first.agent.session.uid, second.agent.session.uid]
+    waiter = asyncio.create_task(SubagentTool(group.root.session, [{"action": "wait", "agent_ids": ids}]).call())
+    release["outside"].set()
+    await finished(group, outside)
+    assert not waiter.done()
+    if outcome == "interrupted":
+        group.stop(ids[1])
+    else:
+        release["second"].set()
+    rows = json.loads(await asyncio.wait_for(waiter, 3))
+    assert [(row["agent_id"], row["status"]) for row in rows] == [(ids[1], outcome)]
+    assert first.task is not None and not first.task.done() and not first.task.cancelling()
+    release["first"].set()
+    await finished(group, first)
+    settled = await group.wait([ids[1], ids[0], ids[1]], 0)
+    assert settled == [second, first]
+
+
+async def test_cancel_wait_does_not_cancel_children(group, monkeypatch):
+    async def request(client, messages, tools=None):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entries = [await group.spawn(group.root.session, name, "task") for name in ("first", "second")]
+    waiter = asyncio.create_task(group.wait([entry.agent.session.uid for entry in entries]))
+    await asyncio.sleep(0)
+    waiter.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiter
+    assert all(entry.task is not None and not entry.task.cancelling() for entry in entries)
+
+
+async def test_wait_follows_consumer_handoff(group, monkeypatch):
+    saving, release_save, resumed, release_turn = (asyncio.Event() for _ in range(4))
+    original = Session.save_snapshot
+    gated = False
+
+    async def save(session):
+        nonlocal gated
+        if session.agent_parent and session.state.last_turn_status == "completed" and not session._active_runs and not gated:
+            gated = True
+            saving.set()
+            await release_save.wait()
+        return await original(session)
+
+    async def request(client, messages, tools=None):
+        if gated:
+            resumed.set()
+            await release_turn.wait()
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(Session, "save_snapshot", save)
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await group.spawn(group.root.session, "handoff", "first")
+    await asyncio.wait_for(saving.wait(), 3)
+    waiter = asyncio.create_task(group.wait([entry.agent.session.uid]))
+    await group.send(entry.agent.session.uid, "second")
+    release_save.set()
+    await asyncio.wait_for(resumed.wait(), 3)
+    assert not waiter.done()
+    release_turn.set()
+    assert await asyncio.wait_for(waiter, 3) == [entry]
+    assert entry.task is None
+    with pytest.raises(ToolError):
+        await group.wait([entry.agent.session.uid, "missing"], 0)
+    with pytest.raises(ToolError, match="main"):
+        await group.wait([entry.agent.session.uid, group.root.session.uid], 0)
+
+
+@pytest.mark.parametrize("ids", [None, [], "one", [None], [1], [""], ["missing"]])
+async def test_wait_rejects_invalid_targets(group, ids):
+    with pytest.raises(ToolError):
+        await SubagentTool(group.root.session, [{"action": "wait", "agent_ids": ids}]).call()
 
 
 def test_wait_schema_exposes_long_wait_limit_and_default():
@@ -951,7 +1042,7 @@ async def test_stop_and_list_survive_interrupted_tool_call_only_history(group, m
 async def test_agent_names_are_required_and_unique_across_the_group(group, name):
     entry = await group.spawn(group.root.session, "api-review", "review")
     group.stop(entry.agent.session.uid)
-    await group.wait(entry.agent.session.uid, 3)
+    await group.wait([entry.agent.session.uid], 3)
     with pytest.raises(ToolError, match="name already in use"):
         await group.spawn(entry.agent.session, name, "nested review")
     assert len(group.entries) == 2

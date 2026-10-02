@@ -336,14 +336,29 @@ class Subagents:
             else:
                 self.changed(entry)
 
-    async def wait(self, uid: str, timeout: float = DEFAULT_WAIT_TIMEOUT) -> AgentEntry:
-        entry = self.entry(uid)
-        if entry.agent is self.root:
+    async def wait(self, uids: list[str], timeout: float = DEFAULT_WAIT_TIMEOUT) -> list[AgentEntry]:
+        """Observe any selected inbox settling without cancelling its work.
+
+        A consumer can hand off queued input to a replacement task during cleanup.
+        Recheck the entries after wakeup so that handoff is not reported as completion.
+        """
+        if not isinstance(uids, list) or not uids or any(not isinstance(uid, str) or not uid for uid in uids):
+            raise ToolError("wait requires a non-empty agent_ids list")
+        entries = [self.entry(uid) for uid in dict.fromkeys(uids)]
+        if any(entry.agent is self.root for entry in entries):
             raise ToolError("Cannot wait for main from its own agent group")
-        task = entry.task
-        if task is not None:
-            await asyncio.wait({task}, timeout=max(0, min(timeout, self.MAX_WAIT_TIMEOUT)))
-        return entry
+        remaining = max(0, min(timeout, self.MAX_WAIT_TIMEOUT))
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + remaining
+        while True:
+            settled = [entry for entry in entries if entry.task is None or entry.task.done()]
+            if settled:
+                return settled
+            tasks = {entry.task for entry in entries if entry.task is not None}
+            done, _ = await asyncio.wait(tasks, timeout=remaining, return_when=asyncio.FIRST_COMPLETED)
+            if not done:
+                return []
+            remaining = max(0, deadline - loop.time())
 
     def stop(self, uid: str) -> None:
         entry = self.entry(uid)

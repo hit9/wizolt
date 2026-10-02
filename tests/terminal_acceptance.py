@@ -249,7 +249,7 @@ def test_cli_subagent_approval_config_survives_resize_under_yolo(pane):
         "        return {}, [ToolCall('spawn-1', 'Subagent', [{'action': 'spawn', 'name': 'child', 'message': 'APPROVAL-TASK-MARKER'}])], ''\n"
         "    if sum(m.get('role') == 'tool' for m in messages) == 1:\n"
         "        uid = next(uid for uid, e in self.session.subagents.entries.items() if e.parent)\n"
-        "        return {}, [ToolCall('wait-1', 'Subagent', [{'action': 'wait', 'agent_id': uid, 'timeout': 60}])], ''\n"
+        "        return {}, [ToolCall('wait-1', 'Subagent', [{'action': 'wait', 'agent_ids': [uid], 'timeout': 60}])], ''\n"
         "    return {'role': 'assistant', 'content': 'PARENT-DONE'}, [], 'PARENT-DONE'\n"
         "ModelClient.request = request\n"
         "commands.remote_models = models\n"

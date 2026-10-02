@@ -102,7 +102,7 @@ class SkillTool(Tool):
             # neither merges its notes/history nor transfers ownership to the calling turn.
             # Cancelling the caller ends the wait; only an explicit group stop cancels the child.
             while entry.task is not None:
-                await group.wait(entry.agent.session.uid)
+                await group.wait([entry.agent.session.uid])
             if entry.error:
                 raise ToolError(entry.error)
             if entry.status == "interrupted":

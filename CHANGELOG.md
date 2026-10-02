@@ -10,6 +10,9 @@
 
 ### Added
 
+- Wait for any of several subagents with `agent_ids`, returning all settled targets without
+  stopping the others. Single-target waits also use a list; timeouts return an empty list.
+
 - Let main request `Subagent archive`, with human confirmation even under yolo. Preview the
   affected branch and reject changed scopes; children cannot request archival. Keep `send`
   approval unchanged and safely settle child frontend input during model-initiated archival.

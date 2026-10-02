@@ -26,6 +26,8 @@ class SubagentTool(Tool):
         "Use start=false to queue without waking an idle agent. list shows state; wait returns the latest answer. "
         "inspect reads a bounded snapshot of an active or archived agent: task, plan, recent messages, tool activity, settings and result; no approval is needed. "
         "wait defaults to 180 seconds (3 minutes); choose timeout up to 600 seconds (10 minutes) for longer tasks. "
+        "wait requires a non-empty agent_ids list, even for one child. It returns all currently settled targets when any completes, fails or is interrupted, "
+        "or [] on timeout. Other agents keep running. Remove returned IDs before waiting again; already settled targets return immediately. "
         "A wait timeout does not stop the child; wait again or continue other work. "
         "Your direct children's latest settled results are reported automatically before your next model request; "
         "this does not start a new turn. list/wait retrieves longer answer excerpts while the agent is not archived. "
@@ -84,7 +86,13 @@ class SubagentTool(Tool):
                 "action": {"type": "string", "enum": ["spawn", "send", "list", "inspect", "wait", "stop", "archive"]},
                 "name": {"type": "string", "description": "Required for spawn: unique task-based name, e.g. api-review, ui-review, test-check. Never main."},
                 "message": {"type": "string", "description": "Standalone task or additional steering input"},
-                "agent_id": {"type": "string"},
+                "agent_id": {"type": "string", "description": "Target for send, inspect, stop or archive"},
+                "agent_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 1,
+                    "description": "Required for wait: return when any listed child settles",
+                },
                 "start": {"type": "boolean", "description": "Wake an idle agent on send (default true)"},
                 "timeout": {
                     "type": "integer",
@@ -104,6 +112,7 @@ class SubagentTool(Tool):
         if group is None:
             raise ToolError("Subagents are unavailable")
         action = payload.get("action")
+        entries = []
         uid = payload.get("agent_id", "")
         if action == "inspect":
             return json.dumps(await group.inspect(uid), ensure_ascii=False)
@@ -121,9 +130,10 @@ class SubagentTool(Tool):
                 raise ToolError("send requires message")
             await group.send(uid, message, start=payload.get("start", True))
         elif action == "wait":
-            if uid == self.session.uid:
+            uids = payload.get("agent_ids", [])
+            if isinstance(uids, list) and self.session.uid in uids:
                 raise ToolError("Cannot wait for the calling agent")
-            await group.wait(uid, payload.get("timeout", group.DEFAULT_WAIT_TIMEOUT))
+            entries = await group.wait(uids, payload.get("timeout", group.DEFAULT_WAIT_TIMEOUT))
         elif action == "stop":
             if uid == self.session.uid:
                 raise ToolError("Cannot stop the calling agent")
@@ -138,7 +148,8 @@ class SubagentTool(Tool):
                 await asyncio.wait({task})
         elif action != "list":
             raise ToolError(f"Unknown Subagent action: {action}")
-        entries = list(group.entries.values()) if action == "list" else [group.entry(uid)]
+        if action != "wait":
+            entries = list(group.entries.values()) if action == "list" else [group.entry(uid)]
         rows = [
             {
                 "agent_id": entry.agent.session.uid,
@@ -165,7 +176,10 @@ class SubagentTool(Tool):
 
     def short_args(self) -> list[str]:
         payload = self.single_dict_arg("Subagent requires named fields")
-        return [str(value) for value in (payload.get("action"), payload.get("name") or payload.get("agent_id")) if value]
+        target = payload.get("agent_ids") if payload.get("action") == "wait" else payload.get("name") or payload.get("agent_id")
+        if isinstance(target, list):
+            target = ", ".join(str(uid) for uid in target)
+        return [str(value) for value in (payload.get("action"), target) if value]
 
     def always_confirms(self) -> bool:
         return self.single_dict_arg("Subagent requires named fields").get("action") in {"spawn", "send", "archive"}
