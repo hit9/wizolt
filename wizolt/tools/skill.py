@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 from functools import cached_property
+from uuid import uuid4
 
-from wizolt.base import ApprovalView, Json, ToolArgs, ToolError
+from wizolt.base import ApprovalView, Json, ToolArgs, ToolError, oneline
 from wizolt.session import Session
 from wizolt.skill.invocation import Arguments, Invocation
 from wizolt.tools.base import Tool
@@ -70,10 +71,15 @@ class SkillTool(Tool):
         return bool(self.fork_order)
 
     @cached_property
+    def fork_name(self) -> str:
+        """A meaningful, stable approval name, unique even for parallel calls of one skill."""
+        return f"skill-{oneline(self.invocation().skill.name, 27)}-{uuid4().hex[:6]}"
+
+    @cached_property
     def _fork_tool(self) -> SubagentTool | None:
         if not self.fork_order:
             return None
-        return SubagentTool(self.session, [{"action": "spawn", "name": f"skill {self.invocation().skill.name}", "message": self.fork_order}])
+        return SubagentTool(self.session, [{"action": "spawn", "name": self.fork_name, "message": self.fork_order}])
 
     def approval_config(self) -> Session | None:
         return self._fork_tool.approval_config() if self._fork_tool else None
@@ -91,7 +97,7 @@ class SkillTool(Tool):
             group = self.session.subagents
             if group is None:
                 raise ToolError("Subagents are unavailable")
-            entry = await group.spawn(self.session, f"skill {self.invocation().skill.name}", self.fork_order, model_settings=self.approval_config())
+            entry = await group.spawn(self.session, self.fork_name, self.fork_order, model_settings=self.approval_config())
             # This is the same independent child as a Subagent spawn. Waiting for its report
             # neither merges its notes/history nor transfers ownership to the calling turn.
             # Cancelling the caller ends the wait; only an explicit group stop cancels the child.
@@ -99,5 +105,5 @@ class SkillTool(Tool):
                 await group.wait(entry.agent.session.uid)
             if entry.error:
                 raise ToolError(entry.error)
-            return next((str(message.get("content", "")) for message in reversed(entry.agent.session.messages) if message.get("role") == "assistant"), "")
+            return entry.answer
         return await self.invocation().load(self.session)

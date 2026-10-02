@@ -42,6 +42,22 @@ class AgentEntry:
         return self.agent.session.state.last_turn_error
 
     @property
+    def answer(self) -> str:
+        """Latest textual answer; a tool-call-only assistant message may have null content.
+
+        Interruption can leave such a message as the history tail. It is valid conversation
+        state, not a damaged agent, and must not break list/stop or turn into literal 'None'.
+        """
+        return next(
+            (
+                text
+                for message in reversed(self.agent.session.messages)
+                if message.get("role") == "assistant" and isinstance(text := message.get("content"), str) and text
+            ),
+            "",
+        )
+
+    @property
     def status(self) -> str:
         if self.agent.session.state.awaiting_input:
             return "waiting for input"
@@ -144,6 +160,8 @@ class Subagents:
             name = oneline("".join(char if char.isprintable() else " " for char in name), 40)
             if not name:
                 raise ToolError("spawn requires name and message")
+            if any(entry.agent.session.agent_name.casefold() == name.casefold() for entry in self.entries.values()):
+                raise ToolError(f"Agent name already in use: {name}; choose a unique task-based name")
             model_settings = model_settings or parent
             # Inherit values, never semantic state or request clients. A full provider-choice
             # snapshot also preserves an inherited model if the parent changes it before resume.

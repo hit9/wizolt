@@ -271,6 +271,58 @@ async def test_timeout_and_stop_do_not_cancel_siblings(group, monkeypatch):
     assert two.status == "completed"
 
 
+@pytest.mark.parametrize("previous", ["", "earlier answer"])
+async def test_stop_and_list_survive_interrupted_tool_call_only_history(group, monkeypatch, previous):
+    entered, release = asyncio.Event(), asyncio.Event()
+    requests = {}
+    blocked = 0
+
+    async def request(client, messages, tools=None):
+        nonlocal blocked
+        uid = client.session.uid
+        requests[uid] = requests.get(uid, 0) + 1
+        if requests[uid] == 1:
+            return {"role": "assistant", "content": None}, [call("Read", [{"path": "missing.txt", "ranges": [[0, 0]]}])], ""
+        blocked += 1
+        if blocked == 2:
+            entered.set()
+        await release.wait()
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    root.messages.append({"role": "assistant", "content": None})
+    one = await group.spawn(root, "api-review", "inspect API")
+    if previous:
+        one.agent.session.messages.append({"role": "assistant", "content": previous})
+    two = await group.spawn(root, "ui-review", "inspect UI")
+    await asyncio.wait_for(entered.wait(), 3)
+    stop = SubagentTool(root, [{"action": "stop", "agent_id": one.agent.session.uid}])
+    result = json.loads(await stop.call())[0]
+    assert result["status"] == "interrupted"
+    assert result["answer"] == previous
+    assert one.task is None and one.agent._active_task is None
+    assert two.status == "running"
+    assert any(
+        m.get("role") == "assistant" and m.get("content") is None for m in one.agent.session.messages
+    )
+    assert json.loads(await stop.call())[0]["status"] == "interrupted"  # repeated stops are safe.
+    listing = json.loads(await SubagentTool(root, [{"action": "list"}]).call())
+    assert len(listing) == 3 and listing[0]["answer"] == ""
+    release.set()
+    await finished(group, two)
+
+
+@pytest.mark.parametrize("name", ["main", "MAIN", "api-review", " API-review "])
+async def test_agent_names_are_required_and_unique_across_the_group(group, name):
+    entry = await group.spawn(group.root.session, "api-review", "review")
+    group.stop(entry.agent.session.uid)
+    await group.wait(entry.agent.session.uid, 3)
+    with pytest.raises(ToolError, match="name already in use"):
+        await group.spawn(entry.agent.session, name, "nested review")
+    assert len(group.entries) == 2
+
+
 async def test_failed_child_can_be_followed_up_without_losing_context(group, monkeypatch):
     failed = True
 
@@ -504,3 +556,9 @@ async def test_forked_skill_uses_a_child_without_forking_again(group, isolate_ho
     assert root.active_skills == []
     assert "Check the parser carefully" in str(requests[1])
     assert not SkillTool(entry.agent.session, ["inspect"]).fork_order
+    assert entry.agent.session.agent_name == dict(skill.approval_view().rows)["agent"]
+    repeats = [SkillTool(root, ["inspect"]), SkillTool(root, ["inspect"])]
+    names = [dict(repeat.approval_view().rows)["agent"] for repeat in repeats]
+    assert len(set(names)) == 2 and all(name.startswith("skill-inspect-") for name in names)
+    assert await asyncio.gather(*(repeat.call() for repeat in repeats)) == ["parser checked", "parser checked"]
+    assert {entry.agent.session.agent_name for entry in group.entries.values() if entry.parent} == {skill.fork_name, *names}

@@ -16,6 +16,11 @@
 
 ### Fixed
 
+- Keep `Subagent list/stop/wait` usable when interrupted tool-call messages have null content.
+  Return a stopped child's settled state, preserve its last textual answer, and keep siblings running.
+- Require unique task-based child names; freeze a distinct forked-skill name before approval so
+  repeated and parallel invocations of the same skill can create separate children.
+
 - Restore the running input mode after loading models inside a subagent approval, including
   failures and cancellation, so steering remains available while the parent waits for children.
 

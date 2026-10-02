@@ -1,5 +1,6 @@
 """Model-facing operations on the shared agent group."""
 
+import asyncio
 from copy import deepcopy
 from dataclasses import replace
 from functools import cached_property
@@ -18,6 +19,7 @@ class SubagentTool(Tool):
         "The limit applies to all retained child agents in the group, including nested and completed agents; reuse send for follow-up work. "
         "spawn and send require user approval even under yolo; users can configure each child's model before approving spawn. "
         "spawn returns immediately; assign disjoint file boundaries and explicit verification. "
+        "The creating agent must supply a short, unique, task-based name, e.g. api-review, ui-review, or test-check; main is reserved. "
         "send steers a running agent or starts another turn in its existing context. "
         "Use start=false to queue without waking an idle agent. list shows state; wait returns the latest answer. "
         "Do not overwrite or revert other agents' edits. Inspect the actual changes before accepting a report."
@@ -53,7 +55,7 @@ class SubagentTool(Tool):
         return cls.object_schema(
             {
                 "action": {"type": "string", "enum": ["spawn", "send", "list", "wait", "stop"]},
-                "name": {"type": "string", "description": "Short agent name for spawn"},
+                "name": {"type": "string", "description": "Required for spawn: unique task-based name, e.g. api-review, ui-review, test-check. Never main."},
                 "message": {"type": "string", "description": "Standalone task or additional steering input"},
                 "agent_id": {"type": "string"},
                 "start": {"type": "boolean", "description": "Wake an idle agent on send (default true)"},
@@ -84,7 +86,12 @@ class SubagentTool(Tool):
         elif action == "stop":
             if uid == self.session.uid:
                 raise ToolError("Cannot stop the calling agent")
+            task = group.entry(uid).task
             group.stop(uid)
+            if task is not None:
+                # Report after the child settles. asyncio.wait observes cancellation without
+                # re-raising the child's CancelledError or cancelling its snapshot cleanup.
+                await asyncio.wait({task})
         elif action != "list":
             raise ToolError(f"Unknown Subagent action: {action}")
         entries = list(group.entries.values()) if action == "list" else [group.entry(uid)]
@@ -97,9 +104,7 @@ class SubagentTool(Tool):
                     "status": entry.status,
                     "context_percent": entry.agent.session.usage.context_percent(entry.agent.session.state.context_percent),
                     "error": entry.error,
-                    "answer": next(
-                        (message.get("content", "") for message in reversed(entry.agent.session.messages) if message.get("role") == "assistant"), ""
-                    )[-12000:],
+                    "answer": entry.answer[-12000:],
                 }
                 for entry in entries
             ],
