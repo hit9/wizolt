@@ -420,6 +420,30 @@ async def test_legacy_diff_reconstructed_from_disk(tmp_path):
     assert "+lineFOUR" in diff and "-line4" in diff
 
 
+async def test_legacy_diff_keeps_lines_that_render_as_headers(tmp_path):
+    """A deleted SQL/Lua comment renders as '--- drop ...' inside a hunk; the hunk splitter used
+    to drop any such line as a file header, so the deletion silently vanished from the
+    reconstructed /diff."""
+    import difflib
+
+    fpath = tmp_path / "query.sql"
+    original = "-- keep\nSELECT 1;\n-- drop the staging table\nSELECT 2;\n"
+    edited = "-- keep\nSELECT 1;\nSELECT 2;\n"
+    fpath.write_text(edited)
+
+    s = session(tmp_path)
+    s.cwd = str(tmp_path)
+    diff_text = "".join(difflib.unified_diff(original.splitlines(True), edited.splitlines(True), fromfile="query.sql", tofile="query.sql"))
+    s.store_turn_diff("t1", 1, "query.sql", diff_text, round=1)
+
+    sections = s.session_diff_sections()
+
+    assert len(sections) == 1
+    diff = sections[0][2]
+    assert "--- drop the staging table" in diff  # the deleted comment, not a file header
+    assert "-- keep" in diff
+
+
 async def test_legacy_diff_falls_back_when_disk_drifted(tmp_path):
     import difflib
 

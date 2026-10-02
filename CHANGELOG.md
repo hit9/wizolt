@@ -11,6 +11,15 @@
   annotations feed the same source footer the non-streaming path builds.
 - Raise a clean ModelError when a 200 chat response carries no choices (gateway error envelopes),
   instead of an IndexError escaping outside the request's error contract.
+- Keep a snapshot write from deleting an image attached while the write runs: the asset
+  collector now judges only the files that existed when the plan was frozen, so a mid-write
+  upload survives for the next reference set.
+- Read a session log with a torn trailing record (a crash or full disk mid-append) instead of
+  failing every later load with a JSONDecodeError traceback; a torn first line is refused cleanly.
+- Keep hunk lines that render as file headers (`--- drop ...` SQL/Lua comments) when
+  reconstructing legacy diffs, so those deletions stop vanishing from `/diff`.
+- Report a killed background job as `killed` (with its negative exit code) instead of `done`;
+  `Job kill` and `Job list` now tell the model what actually happened.
 - Stop a .gitignore negation from un-ignoring paths below the name it negates: `!foo` now decides
   only `foo` itself, never `foo/bar/`, so the no-Git/no-rg @-mention walk no longer offers files
   Git keeps ignored (verified against `git check-ignore` on a materialized tree).

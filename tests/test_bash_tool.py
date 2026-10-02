@@ -553,7 +553,8 @@ async def test_bash_promoted_job_is_killable(tmp_path):
     assert "job.1" in s.jobs
     job = s.jobs["job.1"]
     job.kill()
-    assert job.status in {"done", "killed"}
+    assert job.status == "killed"  # update_status() reaps the signal as an ordinary exit; kill reports it as its own
+    assert job.exit_code < 0
     assert job.process.poll() is not None
 
 

@@ -88,6 +88,11 @@ class SnapshotWritePlan:
     latest_dir: str  # "" when this session must not claim the project's latest pointer
     assets_dir: str
     asset_refs: frozenset[str]
+    # The files that existed in the assets directory when the plan was frozen. The write runs on a
+    # worker while the loop keeps accepting input, so a file that arrives during the write is newer
+    # than this plan and may only be judged by a later one; collecting it here would delete a
+    # just-attached image the next reference set has not seen yet.
+    asset_names: frozenset[str]
     # Installed by `SessionSnapshotStore.commit` once the write succeeds; never written by a worker.
     snapshot_saved: Json
     blobs_written: frozenset[str]
@@ -142,7 +147,7 @@ class SnapshotWritePlan:
                     if entry.name.startswith(".image-") and entry.is_file() and time.time() - entry.stat().st_mtime > IMAGE_STAGING_MAX_AGE:
                         os.unlink(entry.path)
                     continue
-                if entry.is_file() and entry.name not in self.asset_refs:
+                if entry.is_file() and entry.name in self.asset_names and entry.name not in self.asset_refs:
                     os.unlink(entry.path)
             if not any(os.scandir(self.assets_dir)):
                 os.rmdir(self.assets_dir)
@@ -195,6 +200,14 @@ class SessionSnapshotStore:
             header_line = ""
             record = SessionSnapshotCodec.delta(session, session._snapshot_saved, blobs, current=marker)
         new_blobs = {ref: text for ref, text in blobs.items() if ref not in session._blobs_written}
+        assets_dir = session.images.assets_dir()
+        asset_names: frozenset[str] = frozenset()
+        with contextlib.suppress(OSError):
+            if os.path.isdir(assets_dir):
+                # Frozen with the reference set: only what is on disk now may be collected by this
+                # write. An image the loop accepts while the worker runs is not in this snapshot and
+                # is not this write's to judge.
+                asset_names = frozenset(entry.name for entry in os.scandir(assets_dir) if entry.is_file())
         meta_line, meta_path, meta = "", "", session._meta_written
         latest_dir = ""
         if session.listed:
@@ -213,8 +226,9 @@ class SessionSnapshotStore:
             meta_path=meta_path,
             meta_line=meta_line,
             latest_dir=latest_dir,
-            assets_dir=session.images.assets_dir(),
+            assets_dir=assets_dir,
             asset_refs=frozenset(self._asset_refs(session)),
+            asset_names=asset_names,
             snapshot_saved=marker,
             blobs_written=frozenset(session._blobs_written | new_blobs.keys()),
             meta_written=meta,
@@ -635,11 +649,29 @@ class SessionSnapshotStore:
         transcript_sync_seen = False
         transcript_incomplete = False
         with open(path, encoding="utf-8") as file:
-            for index, line in enumerate(file):
-                line = line.strip()
+            for index, raw_line in enumerate(file):
+                torn = not raw_line.endswith("\n")  # a committed record always ends with a newline
+                line = raw_line.strip()
                 if not line:
                     continue
-                parsed = json.loads(line)
+                try:
+                    parsed = json.loads(line)
+                except json.JSONDecodeError:
+                    if torn:
+                        # A torn record (a crash or a full disk mid-append) was never committed:
+                        # the write markers do not advance on a failed append, and the next save
+                        # appends the same record again -- it merges there. Skip the fragment
+                        # instead of failing every later read of the log.
+                        continue
+                    if index == 0:
+                        raise WizoltError(f"Corrupt session file header: {path}") from None
+                    raise
+                if not isinstance(parsed, dict):
+                    if index == 0:
+                        raise WizoltError(f"Corrupt session file header: {path}")
+                    if torn:
+                        continue
+                    raise ValueError(f"corrupt session record in {path}: not a JSON object")
                 if index == 0:
                     cls.check_header(parsed, path)
                     header = parsed
@@ -653,6 +685,8 @@ class SessionSnapshotStore:
                         transcript_incomplete = True
                     SessionSnapshotCodec.merge(merged, parsed)
                     transcript_sync_seen = transcript_sync_seen or "transcript_sync" in parsed
+        if header == {}:
+            raise WizoltError(f"Corrupt session file header: {path}")
         if merged is None:
             raise WizoltError(f"Empty session file: {path}")
         if transcript_incomplete:

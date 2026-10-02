@@ -16,6 +16,42 @@ from wizolt.config import (
 from wizolt.session import Session, SessionSnapshotCodec, SessionSnapshotStore, TurnDiff
 
 
+
+
+def test_read_merged_skips_a_torn_record_and_non_object_lines(tmp_path):
+    """A crash (or a full disk) mid-append leaves a torn trailing line: no newline, never
+    committed -- the write markers do not advance on a failed append, so the next save re-appends
+    the same record. Reading must skip the fragment instead of failing every later load of the
+    log, while a complete line that is not valid JSON stays a corruption error."""
+    s = session_with_data_dir(tmp_path)
+    header = SessionSnapshotStore.header(s)
+    snapshot = {"messages": [{"role": "user", "content": "hello"}], "transcript_sync": 1}
+    delta = {"messages": [{"role": "user", "content": "appended"}]}
+    intact = "\n".join(json.dumps(record) for record in (header, snapshot, delta)) + "\n"
+    path = tmp_path / "log.jsonl"
+    path.write_text(intact + '{"messages": [{"role": "user", "content": "tor')
+
+    merged, blobs, hdr = SessionSnapshotStore.read_merged(str(path))
+
+    assert [item["content"] for item in merged["messages"]] == ["hello", "appended"]
+    assert hdr["v"] == SessionSnapshotStore.FORMAT_VERSION
+
+    # a complete line that fails to parse is committed corruption, not a torn tail
+    path.write_text(intact + "{not json}\n")
+    with pytest.raises(json.JSONDecodeError):
+        SessionSnapshotStore.read_merged(str(path))
+
+
+def test_read_merged_refuses_a_truncated_header(tmp_path):
+    """A torn first line leaves no header to check, so the log is refused cleanly rather than
+    surfacing a JSONDecodeError from inside the loader."""
+    path = tmp_path / "log.jsonl"
+    path.write_text('{"v": 3, "uid": "tor')
+
+    with pytest.raises(WizoltError, match="Corrupt session file header"):
+        SessionSnapshotStore.read_merged(str(path))
+
+
 @pytest.mark.parametrize("reverse", [False, True])
 def test_restore_applies_replacements_before_appends_and_ignores_unknown_fields(tmp_path, reverse):
     path = tmp_path / "log.jsonl"

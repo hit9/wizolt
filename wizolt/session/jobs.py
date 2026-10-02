@@ -78,10 +78,10 @@ class BackgroundJob:
                     self.process.kill()
                 self.process.wait()
             self.update_status()
-            if self.status == "running":
+            if self.status == "done":
+                # update_status() reaped the exit as an ordinary one (the signal arrives as a
+                # negative code); this exit came from the kill, so report it as that.
                 self.status = "killed"
-                self.exit_code = -1
-                self.finished_at = time.monotonic()
         if self.log_path:
             with contextlib.suppress(OSError):
                 os.unlink(self.log_path)

@@ -9,6 +9,7 @@ from test_session_persistence import log_path, project_dir, read_jsonl, session_
 from wizolt.agent.context import ContextManager
 from wizolt.agent.lifecycle import load_session
 from wizolt.base import SESSION_EVENT_KEY
+from wizolt.session import SessionSnapshotStore
 
 
 @pytest.mark.parametrize("mutation", ["unchanged", "append", "replace", "edit_then_append", "shorten", "clear"])
@@ -120,6 +121,33 @@ async def test_materialized_tool_output_survives_the_asset_collector(tmp_path):
     await s.save_snapshot()  # the collector runs on every save, not only the first
 
     assert await asyncio.to_thread(Path(path).read_text, encoding="utf-8") == large
+
+async def test_snapshot_write_does_not_collect_an_asset_that_arrives_mid_write(tmp_path):
+    """The write runs on a worker while the loop keeps accepting input, and an image attached in
+    that window is not in the plan's reference set. Collecting everything unreferenced deleted the
+    user's upload before any later request could reference it, failing the turn with "stored
+    image is missing" instead of sending it."""
+    s = session_with_data_dir(tmp_path)
+    s.messages.append({"role": "user", "content": "hello"})
+    assets = s.images.assets_dir()
+    os.makedirs(assets, exist_ok=True)
+    stale = os.path.join(assets, "stale-hash.png")
+    Path(stale).write_bytes(b"stale")  # unreferenced and present when the plan is frozen
+
+    s.ensure_ownership()
+    store = SessionSnapshotStore(s)
+    plan = store.plan()
+    assert plan is not None
+
+    # the input the loop accepted while the worker was running: newer than this plan
+    Path(os.path.join(assets, "fresh-hash.png")).write_bytes(b"fresh")
+
+    receipt = await asyncio.to_thread(plan.execute)
+    store.commit(plan, receipt)
+
+    assert not os.path.exists(stale)
+    assert os.path.exists(os.path.join(assets, "fresh-hash.png"))
+
 
 def test_owns_asset_covers_the_assets_directory_and_nothing_else(tmp_path):
     """The predicate that waives the out-of-workspace approval, so its edges are a permission

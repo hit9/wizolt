@@ -183,7 +183,10 @@ def _split_hunks(chunk: str) -> list[tuple[str, str]] | None:
     before_lines: list[str] | None = None
     after_lines: list[str] | None = None
     for line in chunk.splitlines():
-        if line.startswith(("--- ", "+++ ")):
+        if before_lines is None and line.startswith(("--- ", "+++ ")):
+            # The file headers precede the first hunk. Inside one, a deleted line whose content
+            # starts with "-- " (SQL and Lua comments) renders as "--- ..." and is content, not a
+            # header: dropping it here silently ate that line out of the reconstructed diff.
             continue
         if _HUNK_RE.match(line):
             if before_lines is not None and after_lines is not None:
