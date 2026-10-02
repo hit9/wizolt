@@ -82,10 +82,15 @@ class SubagentTool(Tool):
                 raise ToolError("send requires message")
             await group.send(uid, message, start=payload.get("start", True))
         elif action == "wait":
+            if uid == self.session.uid:
+                raise ToolError("Cannot wait for the calling agent")
             await group.wait(uid, payload.get("timeout", 30))
         elif action == "stop":
             if uid == self.session.uid:
                 raise ToolError("Cannot stop the calling agent")
+            if uid == group.root.session.uid:
+                # The user may stop main through the frontend, but another model cannot.
+                raise ToolError("Cannot stop the main agent from a subagent")
             task = group.entry(uid).task
             group.stop(uid)
             if task is not None:

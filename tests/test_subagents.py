@@ -33,6 +33,32 @@ async def finished(group, entry):
     return entry
 
 
+async def test_child_tool_cannot_stop_main_or_wait_for_itself(group, monkeypatch):
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def request(client, messages, tools=None):
+        if client.session is group.root.session:
+            entered.set()
+            await release.wait()
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    child = await group.spawn(group.root.session, "child", "task")
+    await finished(group, child)
+    main_turn = asyncio.create_task(group.root.run("main work"))
+    try:
+        await asyncio.wait_for(entered.wait(), 3)
+        with pytest.raises(ToolError, match="Cannot stop the main"):
+            await SubagentTool(child.agent.session, [{"action": "stop", "agent_id": group.root.session.uid}]).call()
+        for action in ("stop", "wait"):
+            with pytest.raises(ToolError, match="calling agent"):
+                await SubagentTool(child.agent.session, [{"action": action, "agent_id": child.agent.session.uid}]).call()
+        assert not main_turn.done() and not main_turn.cancelling()
+    finally:
+        release.set()
+        await main_turn
+
+
 async def test_two_spawns_have_independent_approval_settings_before_first_request_and_on_resume(group, monkeypatch):
     root = group.root.session
     root.settings.yolo = True

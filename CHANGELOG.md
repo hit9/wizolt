@@ -21,6 +21,9 @@
 
 ### Fixed
 
+- Refuse subagent tool requests to stop main or wait for the calling agent, while preserving
+  user control through the agent picker and Ctrl-C.
+
 - Wake child inputs accepted during the final snapshot without overlapping inbox consumers.
   Failed or interrupted children retain queued work without automatically restarting it.
 
