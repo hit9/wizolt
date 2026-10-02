@@ -192,14 +192,13 @@ IDENTITY = (
     "{% if agent.name %}[status_agent bold]{agent.name}[/][status_mcp] / [/]{% endif %}"
     "{% if yolo %}[status_yolo bold]yolo[/][status_mcp] · [/]{% endif %}" + AGENT_GROUP
 )
-# A segmented preset uses its own surface and separators, including identity and group counts.
-# Inline badges would read as unrelated widgets inside the continuous provider band. In the blocks
-# preset a row is cut by surface changes only, so parts inside one segment separate by space and
-# weight, not by glyphs.
-SEGMENT_IDENTITY = (
-    "{% if agent.name %}[bold]{agent.name}[/] {% endif %}{% if yolo %}{% optional priority=40 %}[bold]yolo[/] {% endoptional %}{% endif %}"
-    "{% if agents.count > 1 %}{% optional priority=15 %}agents {agents.count} run {agents.running}"
-    " {% endoptional %}{% endif %}"
+# Segmented presets own their surfaces, including identity and group counts; a row is cut by
+# background rectangles, never by inline badges or text dividers. Blocks carries the idea to the
+# extreme: every identity part is its own solid rectangle.
+BLOCKS_IDENTITY = (
+    "{% if agent.name %}[status.agent] {agent.name} [reset]{% endif %}"
+    "{% if yolo %}{% optional priority=40 %}[status.yolo] yolo [reset]{% endoptional %}{% endif %}"
+    "{% if agents.count > 1 %}{% optional priority=15 %}[status.detail] agents {agents.count} run {agents.running} [reset]{% endoptional %}{% endif %}"
 )
 SEGMENT_USAGE = pressure(" ctx {context.percent}% ", "status.usage", "status.usage.warning", "status.usage.error")
 SEGMENT_DETAILS = (
@@ -255,9 +254,9 @@ STATUS_PRESETS = {
     + pressure("ctx {context.percent}%{% optional priority=12 %} " + meter(6) + "{% endoptional %}")
     + "{% endoptional %}"
     + "{% optional priority=10 %} [status.cache] cache {cache.percent}% [/]{% endoptional %} [reset]",
-    "blocks": "[status.provider] "
-    + SEGMENT_IDENTITY
-    + "{% optional priority=35 %}{provider}{% endoptional %} [reset][status.model] {model} [reset]"
+    "blocks": BLOCKS_IDENTITY
+    + "{% optional priority=35 %}[status.provider] {provider} [reset]{% endoptional %}"
+    + "[status.model] {model} [reset]"
     + "{% optional priority=20 %}[status.reason] {reasoning} [reset]{% endoptional %}{>}"
     + "{% optional priority=10 %}[status.cache] cache {cache.percent}% [reset]{% endoptional %}"
     + "{% optional priority=30 %}"

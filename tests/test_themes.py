@@ -1078,7 +1078,7 @@ def test_agent_counts_follow_independent_bar_theme_and_segment_colors(preset, th
     count_style = next(style for style, value in parts if "agents " in value)
     attrs = Style.from_dict({"count": count_style}).get_attrs_for_style_str("class:count")
     if preset in {"blocks", "lualine", "powerline"}:
-        band = Style.from_dict({"band": styles["status.detail" if preset in {"lualine", "powerline"} else "status.provider"]}).get_attrs_for_style_str("class:band")
+        band = Style.from_dict({"band": styles["status.detail"]}).get_attrs_for_style_str("class:band")
         assert (attrs.color, attrs.bgcolor) == (band.color, band.bgcolor)
     else:
         assert attrs.color == Theme.bar_palette("statusbar").colors["status_agent"].lstrip("#")

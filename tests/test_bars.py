@@ -339,7 +339,7 @@ def test_blocks_join_rectangles_without_unpainted_gaps():
     ],
     ids=["identity-yolo-counts-waiting", "identity", "yolo", "counts"],
 )
-def test_blocks_never_draws_the_text_divider_inside_the_provider_band(identity):
+def test_blocks_never_draws_the_text_divider(identity):
     from wizolt.ui.render import Theme
 
     template = Template("preset:blocks", STATUS_PRESETS)
@@ -349,7 +349,7 @@ def test_blocks_never_draws_the_text_divider_inside_the_provider_band(identity):
         assert "·" not in text(template.render(values, width, styles))
 
 
-def test_blocks_identity_parts_separate_by_space_and_weight_not_glyphs():
+def test_blocks_identity_parts_get_their_own_surfaces():
     from prompt_toolkit.styles import Style
 
     from wizolt.ui.render import Theme
@@ -368,16 +368,12 @@ def test_blocks_identity_parts_separate_by_space_and_weight_not_glyphs():
     }
     parts = template.render(values, 200, Theme.bar_styles(template.styles))
     rendered = text(parts)
-    # The counts stop short of the provider only where the surface hands over.
-    assert "agents 4 run 2 test" in rendered
-    assert rendered.index("main") < rendered.index("yolo") < rendered.index("agents 4 run 2")
-    name = next(spec for spec, value in parts if "main" in value)
-    flag = next(spec for spec, value in parts if "yolo" in value)
-    counts = next(spec for spec, value in parts if "agents 4 run 2" in value)
+    words = ("main", "yolo", "agents 4", "test", "model", "high")
+    for before, after in pairwise(words):
+        assert rendered.index(before) < rendered.index(after)
     attrs = Style([])
-    assert "bold" in name and "bold" in flag and "bold" not in counts
-    backgrounds = {attrs.get_attrs_for_style_str(spec).bgcolor for spec in (name, flag, counts)}
-    assert len(backgrounds) == 1 and None not in backgrounds
+    backgrounds = [attrs.get_attrs_for_style_str(next(spec for spec, value in parts if word in value)).bgcolor for word in words]
+    assert None not in backgrounds and len(set(backgrounds)) == len(backgrounds)
 
 
 def test_blocks_waiting_alert_leads_the_row_on_its_own_surface():

@@ -147,9 +147,10 @@
 
 ### Changed
 
-- Separate `blocks` identity parts by space and weight instead of the `·` text divider, so the
-  preset is cut by background rectangles only. Group counts read `agents 4 run 2`. Redraw the
-  statusbar preset comparison figure.
+- Give every `blocks` identity part its own solid rectangle — agent, YOLO, group counts and
+  provider no longer share one band — and drop the `·` text divider, so the preset is cut by
+  background rectangles only. Group counts read `agents 4 run 2`. Redraw the statusbar preset
+  comparison figure.
 
 - Align `/agents` names, states and context watermarks in bounded columns. Match selection
   width to the preview frame, separate task/reply headings from their body in roomy panes,
