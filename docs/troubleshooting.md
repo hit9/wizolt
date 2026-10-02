@@ -54,7 +54,7 @@ Rate limits, timeouts, and server errors do retry, counting up on the divider as
 | Blanks where details belong | The session predates the feature; new activity fills these details in |
 | `/sessions` refuses to switch | A request is in flight. Press `Ctrl-C`, then run it again |
 
-## Delegation
+## Subagents
 
 | Symptom | Fix |
 |---|---|

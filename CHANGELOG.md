@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Documentation
+
+- Shorten the subagent guide with terminal illustrations and key tables; replace obsolete
+  delegation/worker terminology while retaining the documented `[worker]` configuration alias.
+
 ### Added
 
 - Label child transcript notices with `subagent [name]` and main notices with `agent [main]`.

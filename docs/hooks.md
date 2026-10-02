@@ -69,7 +69,7 @@ event, handler type or command option is a configuration error. Supported comman
 A refused or cancelled tool call does not fire `PostToolUseFailure`. Cancellation and the step
 limit do not fire `Stop` or `SubagentStop`. A cancelled compaction does not fire `PostCompact`.
 
-Workers run configured tool, compaction and model-failure hooks, plus their own loaded skills'
+Subagents run configured tool, compaction and model-failure hooks, plus their own loaded skills'
 hooks. `UserPromptSubmit`, `SessionStart`, `SessionEnd` and `Stop` belong to the main session.
 A parent's loaded skills can also supply `SubagentStart` and `SubagentStop` hooks. Subagent
 feedback goes to the subagent; use `PostToolUse` on `Subagent` to give feedback to the parent.

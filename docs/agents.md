@@ -1,124 +1,91 @@
 # Subagents
 
-Ask wizolt to split a task into parallel work. By default it can start up to three child agents alongside
-your main conversation. Each has its own conversation, model requests, context budget and usage
-statistics, plan and notes. New children use your subagent defaults, or inherit the creating agent's model;
-you can change settings before approval. Additional agents
-increase total model usage.
+Split a task among agents working in parallel. Each has its own conversation, plan, notes and
+usage statistics. **Files are shared**, so give agents separate files to edit. More agents use
+more model tokens.
 
 ## Approve and configure
 
-Set a default provider for new children in `~/.wizolt/config.toml`:
+Ask for a concrete split, for example:
+
+> Start api-review to review the API and ui-review to review the UI. Keep both read-only.
+
+Approve each task, even with `--yolo`. **v** opens the task; **c** changes that child's provider,
+model, effort or API before it starts.
+
+<div class="term-shot" role="img" aria-label="A subagent creation approval with its name, provider, model, shared workspace and task, followed by approve, view, config and refuse actions."><span class="fs-tool">  Subagent  spawn api-review</span><span>    │ agent      api-review</span><span>    │ provider   deepseek</span><span>    │ model      deepseek-chat</span><span>    │ files      shared with all agents</span><span class="fs-dim">    ├ agent task</span><span>    │ Review the API. Do not edit files.</span><span> </span><span class="fs-approve">  Approve · View agent task (v) · Config (c) · Refuse</span></div>
+
+Set defaults in `~/.wizolt/config.toml`:
 
 ```toml
 [subagent]
-provider = "deepseek"
+provider = "deepseek"  # an existing [provider.deepseek] entry
 ```
 
-The name must match an existing `[provider.deepseek]` entry. Optional `model`, `reasoning` and
-`api` fields override that provider's settings. Omitted or empty fields inherit; without a
-provider override, children inherit their parent's currently selected provider.
-The old `[worker]` section is also accepted. If both sections exist, `[subagent]` wins per field.
-These defaults apply to newly created children, including forked skills, not existing or resumed
-children. Each child's approval configuration takes precedence over the defaults.
+Optional `model`, `reasoning` and `api` override that provider's settings. Without a provider
+override, the parent's current provider is used. Empty fields inherit.
 
-Creating a child or sending it another task requires approval, including with `--yolo`.
-Choose **View agent task** (`v`) to read the full task. Before creating a child, choose
-**Config** (`c`) to set its provider, model, reasoning effort or request API. Return with
-**done** or Escape, then approve to start its first turn. Each creation has its own configuration;
-configuring one child does not change the main agent or another child. Refusing discards the
-pending child and its settings.
-In piped/non-interactive mode, child tools that require approval return an error. They do not
-read the main conversation's input. `--yolo` still permits tools eligible for automatic approval.
-
-Forked skills offer the same configuration before approval. Once a child exists, select it
-with `/agents` to change its settings for subsequent turns.
-
-## Agent limit
-
-Set `max_subagents` under `[runtime]` in your config file, or use
-`/set runtime.max_subagents NUMBER` in the main conversation. The default is `3`; valid values
-are `0` through `32`, excluding the main agent. `0` prevents new children. The limit includes
-nested children and completed children whose conversations remain available. Lowering it keeps
-existing conversations and prevents new children until there is room.
-Forked skills use these same slots; stopping a child does not free its retained slot.
-
-The model sees the configured limit. `/status` shows retained children and the limit for the
-whole group. Reuse a child for follow-up work instead of creating another one.
-If a child fails or is interrupted, its queued inputs remain paused. Send a follow-up to resume it.
-
-## One shared workspace
-
-All agents work in the same directory and see file changes immediately. Give concurrent tasks
-separate files to edit. Ask agents to coordinate before changing the same file, and review their
-actual changes before accepting a report. Stopping an agent leaves its file changes in place.
-
-`/diff` reviews the selected agent's recorded edits. If agents edit the same file between its
-calls, the viewer keeps that agent's individual edits instead of combining other agents' changes.
+**Old config still works:** `[worker]` is accepted; `[subagent]` wins per field when both exist.
+Approval choices win over defaults. Changes affect new children, including forked skills;
+existing and resumed children keep their saved settings.
 
 ## Select and inspect
 
-`/agents` lists the main agent and its children in aligned name, state and context columns.
-`(current)` marks the open conversation, shortened to `*` in narrow panes. Move
-with j/k or the arrow keys to preview the highlighted agent in a small bordered window. It shows
-the task and recent reply, updating as new text arrives. Enter opens that agent's conversation;
-Escape keeps your current selection. Roomy previews separate Task and Reply/Live headings from
-their text; small panes use a compact layout.
+Run **`/agents`**. Move to preview; press Enter to switch conversations.
 
-Press **x** to stop the highlighted agent after confirmation, or **Shift+X** to stop it immediately.
-The picker stays open, and the stopped conversation remains available for inspection and new input.
+<div class="term-shot" role="img" aria-label="The agents picker with aligned names, states and context usage. api-review is highlighted with a green activity dot, and its task and live reply appear in a bordered preview."><span class="fs-title">  Agents</span><span> </span><span>  1. ● main        completed          ctx  10% (current)</span><span class="fs-selected">  2. <span class="fs-i fs-ok">●</span> api-review  running            ctx  24%          </span><span>  3. <span class="fs-i fs-approve">●</span> ui-review   waiting for input  ctx  18%          </span><span> </span><span class="fs-rule">  ┌─ api-review ────────────────────────────────────────┐</span><span>  │                                                     │</span><span>  │ Task                                                │</span><span>  │   Review the API. Do not edit files.                │</span><span>  │                                                     │</span><span>  │ Live                                                │</span><span>  │   Checking validation and error handling…           │</span><span>  │                                                     │</span><span class="fs-rule">  └─────────────────────────────────────────────────────┘</span><span> </span><span class="fs-hint">  ↑/↓ j/k move · Enter open · x stop · X stop now · Esc back</span></div>
 
-The selected agent owns the conversation you see, your input, draft, history and queued messages.
-Main's Up/Ctrl-P recall includes earlier main sessions across projects; a child recalls only its
-own inputs. Earlier recalled inputs enter an agent's context only when you send them.
-Its statusbar shows its name, model and context usage. When children exist, it also shows group
-counts, such as `agents 3 · run 1` with a separate `wait 1` alert: three retained agents including main, one running
-and one waiting for input. Completed agents remain in the total. With only main, the default
-layouts hide the count; narrow terminals may omit it. Colors and separators follow your statusbar
-theme and layout, including segmented layouts.
-`/status` reports its identity, state,
-parent and statistics. Use `/model`, `/provider` and `/reason` after selecting an agent to change
-that agent's model.
+Green dots breathe while an agent works. Warning-colored dots need input; other dots stay still.
 
-Background agents continue working. Their output stays in their own conversations. Emphasized
-notices identify agents that finish, fail or need input, using your theme's success, error and
-warning colors. A warning includes the `/agents` shortcut; select that agent to respond.
-Child notices include a `subagent` prefix, such as `✓ subagent [ui-review] completed`;
-main's notices use `agent [main]`.
-The `/agents` list marks working agents with a breathing green dot, input waits with a warning
-dot, and other agents with a static dot in the theme's text color.
-The statusbar highlights `wait N` separately and keeps it visible ahead of ordinary details on
-narrow screens. Notices do not switch your selection.
+| Key | In the picker |
+|---|---|
+| ↑/↓ or j/k | Move and preview |
+| Enter | Open the highlighted conversation |
+| x | Stop it after confirmation |
+| Shift+X | Stop it immediately |
+| Esc | Return without switching |
+
+The input box, history, statusbar, `/status` and `/diff` follow the selected agent.
+Use `/provider`, `/model` or `/reason` there to change its settings.
+
+### Notice when an agent needs you
+
+Background agents keep working. Notices identify completion, failure and input waits without
+switching your conversation. Colors follow your theme; the statusbar gives `wait N` priority.
+
+<div class="term-shot" role="img" aria-label="A successful subagent completion and a warning that another child needs input, followed by a statusbar with a highlighted wait count."><span class="fs-ok">  ✓ subagent [api-review] completed</span><span> </span><span class="fs-approve"><b>  ! subagent [ui-review] needs input</b></span><span class="fs-dim">    Open /agents and select this agent to respond.</span><span> </span><span><span class="fs-i fs-approve"><b>[wait 1]</b></span> [main] [agents 3 · run 0] deepseek/deepseek-chat</span></div>
 
 ## Add input and stop work
 
-Enter sends additional instructions to the selected running agent. For an idle or completed
-agent, it starts another turn in that agent's existing conversation. Tab holds input for its
-next turn. Input accepted before a switch keeps its original destination.
+| Key | In an agent's running conversation |
+|---|---|
+| Enter | Send a follow-up to the current turn |
+| Tab | Queue the text for its next turn |
+| Ctrl-C | Interrupt this agent's current work |
 
-Ctrl-C interrupts the selected agent. `/agents stop-all` interrupts every agent. Exiting wizolt
-stops all agents and saves their conversations. Resume the main session to restore its children;
-queued work waits for new input rather than restarting automatically.
-Each child's provider, model, effort and request API survive resume independently of later
-changes to the main agent. Background shell jobs stop when you exit and are not restored.
+Stopping keeps the conversation and file changes. After an interruption or failure, queued
+inputs pause; send another message to continue. `/agents stop-all` interrupts the whole group.
+
+Exit saves the conversations. **Resume main** to restore its children; queued work waits for
+new input. Main's input history includes earlier sessions; each child's history stays separate.
+
+## Agent limit
+
+```toml
+[runtime]
+max_subagents = 3
+```
+
+The default is **3**, excluding main; allowed values are **0–32**. Completed children and forked
+skills still count. Stopping does not free a slot: reuse a child's conversation for more work.
+Change the limit from main with `/set runtime.max_subagents NUMBER`; check it with `/status`.
 
 ## Model tools
 
-Children use wizolt's system instructions and project guidance, with an additional reminder
-that workspace files are shared. The task is their first input; it must include what they need
-because the parent's conversation, plan and notes are not copied.
+The model uses `Subagent` to **spawn**, **send**, **list**, **wait** and **stop**. Creating agents
+returns immediately. Waiting defaults to **3 minutes**, up to **10 minutes** per call
+(`timeout=600`); `timeout=0` checks immediately. A timeout does not stop the child.
 
-The `Subagent` tool starts agents with `spawn`, adds input with `send`, and exposes `list`,
-`wait` and `stop`. Spawn returns an agent ID immediately, so the caller can continue working.
-The creating agent assigns each child a unique task-based name, such as `api-review`,
-`ui-review` or `test-check`; `main` is reserved for your main conversation.
-Waiting defaults to 3 minutes, with a maximum of 10 minutes per call (`timeout=600` seconds).
-Use `timeout=0` to check immediately. Timing out leaves the child running. A child keeps
-its conversation for subsequent inputs. Stopping a child returns after its turn has settled.
-
-A skill with `context: fork` starts a child agent after you confirm its task. Its report returns
-to the caller; `/agents` lets you inspect the child's work and add input while it runs.
-
-Resuming main also restores its child conversations without starting their queued work. If a
-child snapshot is missing or damaged, wizolt reports it and restores the healthy conversations;
-the damaged child's files are kept for recovery.
+Tasks must be self-contained: children receive system and project guidance, not the parent's
+conversation or notes. See [forked skills](skills.md) for tasks that run in their own child.
+Creating or sending tasks requires interactive approval; piped input cannot approve child tools.

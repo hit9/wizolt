@@ -158,7 +158,7 @@ first, under a model name or a glob:
 Those levels become what `/reason` offers for models the glob matches, replacing wizolt's own.
 They can include names wizolt does not know — `ultra` above — since they are sent as written.
 Each list must contain unique levels and must not include `off`; wizolt adds `off` unless the
-catalog documents that the model always reasons. Worker and compaction reasoning overrides use
+catalog documents that the model always reasons. Subagent and compaction reasoning overrides use
 the scale declared for their effective model too.
 
 ## Provider-side tools
