@@ -195,7 +195,8 @@ async def test_switching_tabs_and_search_keeps_the_picker_height(command_loop, m
     for frame in modal.frames:
         text = "".join(text for _, text in frame)
         if "no matches" in text:
-            assert text.splitlines()[1].strip().startswith("h/l")
+            assert text.splitlines()[1] == ""
+            assert text.splitlines()[2].strip().startswith("h/l")
 
 
 async def test_small_pane_prioritizes_choices_over_the_sample(command_loop, monkeypatch):
@@ -213,7 +214,7 @@ async def test_small_pane_prioritizes_choices_over_the_sample(command_loop, monk
     assert 1 + text.count("\n") == 14
 
 
-@pytest.mark.parametrize("height", [4, 8, 14])
+@pytest.mark.parametrize("height", [4, 8, 14, 20, 24, 40])
 def test_appearance_tabs_fit_after_the_terminal_shrinks(command_loop, monkeypatch, height):
     from wizolt.ui.cli import appearance
 
@@ -229,6 +230,35 @@ def test_appearance_tabs_fit_after_the_terminal_shrinks(command_loop, monkeypatc
             assert "Enter save" in text and "Esc cancel" in text
         picker.handle_key("e")
         assert 1 + sum(text.count("\n") for _, text in picker.fragments()) <= height
+    finally:
+        picker.restore()
+
+
+@pytest.mark.parametrize("width", [52, 80, 140])
+def test_roomy_appearance_previews_have_bounded_frames(command_loop, monkeypatch, width):
+    from os import terminal_size
+
+    from prompt_toolkit.utils import get_cwidth
+
+    from wizolt.ui.cli import appearance
+
+    monkeypatch.setattr(appearance, "picker_height", lambda: 32)
+    monkeypatch.setattr(appearance.shutil, "get_terminal_size", lambda _fallback: terminal_size((width, 32)))
+    picker = appearance.AppearancePicker(command_loop, 0)
+    try:
+        for index, kind in enumerate(appearance.TAB_KINDS):
+            picker.tabs.tab = index
+            rows = "".join(text for _, text in picker.fragments()).split("\n")
+            assert len(rows) == 32, kind
+            assert rows[1] == rows[4] == ""
+            top = next(i for i, row in enumerate(rows) if row.startswith("  ╭"))
+            bottom = next(i for i, row in enumerate(rows) if row.startswith("  ╰"))
+            assert not rows[top - 1].strip()
+            assert bottom > top + 3
+            assert {get_cwidth(row) for row in rows[top : bottom + 1]} == {min(width - 4, 100) + 2}
+            assert not rows[top + 1].strip(" │") and not rows[bottom - 1].strip(" │")
+            if kind == "theme":
+                assert "8/8 shown" in rows[top]
     finally:
         picker.restore()
 

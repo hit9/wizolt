@@ -7,7 +7,7 @@ For your own colors, define `[ui.themes.my-theme]` in your config or keep a sepa
 See the [copyable examples](appearance-reference.md#define-a-theme-in-your-config).
 
 ```{figure} _static/appearance-picker.svg
-:alt: The appearance picker with slate selected and labeled samples of code, removed and added lines, user messages, replies, tool calls, results and menu selection colors.
+:alt: The appearance picker with slate selected, spaced navigation and a bordered panel showing five labeled color samples.
 
 One picker for the whole look.
 ```
@@ -16,6 +16,8 @@ One picker for the whole look.
 The screen previews each choice as you move. **Enter** saves everything you changed;
 **Esc** cancels. Use **/** to search a long list.
 The line beneath the shortcuts points to your config file for fuller customization.
+Roomy panes separate the choices from a bordered sample panel. Small panes use a compact
+preview so more choices remain visible.
 
 ## Color themes
 

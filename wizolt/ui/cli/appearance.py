@@ -250,12 +250,20 @@ class AppearancePicker:
         if self.loop.presentation.tui is not None:
             self.loop.presentation.tui.invalidate()
 
-    def preview(self, kind: str) -> Any:
-        if kind == "statusbar":
+    def preview_limit(self, kind: str, framed: bool) -> int:
+        # A roomy layout spends six rows on header spacing, borders and inner padding.
+        # Charge these to the preview, not the choices, so navigation keeps a useful window.
+        room = self.height - (6 if framed else 0)
+        return max(0, min(8, room - 13)) if kind == "theme" else max(0, min(9, room - 8 - (kind == "divider")))
+
+    def preview(self, kind: str, *, framed: bool = False, title: str = "") -> Any:
+        if kind == "statusbar" and not framed:
             return lambda _name: Text.clip_width("The status bar below shows the highlighted layout and colors.", self.width - 4)
 
         def draw(name: str) -> StyleAndTextTuples:
-            if kind == "input":
+            if kind == "statusbar":
+                fragments = [(Theme.fg("muted"), "The status bar below previews the highlighted layout and colors.")]
+            elif kind == "input":
                 fragments = self.input_preview(self.input_style(name))
             else:
                 fragments = (
@@ -263,15 +271,32 @@ class AppearancePicker:
                 )
             # Leave room for about six choices and the key legend. Small panes prioritize the
             # list; the surrounding prompt and statusbar still preview the selected theme.
-            limit = max(0, min(8, self.height - 13)) if kind == "theme" else max(0, min(9, self.height - 8 - (kind == "divider")))
+            limit = self.preview_limit(kind, framed)
             rows = list(split_lines(fragments))
+            if rows and not rows[-1]:
+                rows.pop()
             if kind == "input" and limit < 4:
                 rows = rows[1:4:2]
             rows = rows[:limit]
+            if framed:
+                return self.preview_box(rows, title)
             rows = [StatusBar.clip_fragments(row, self.width) if fragment_list_width(row) > self.width else row for row in rows]
             return [fragment for row in rows for fragment in (*row, ("", "\n"))]
 
         return draw
+
+    def preview_box(self, rows: list[StyleAndTextTuples], title: str) -> StyleAndTextTuples:
+        """A bounded sample panel; preserve sample colors and measure terminal cells, not chars."""
+        width = min(self.width - 4, 100)
+        inside = width - 4
+        border = Theme.fg("rule")
+        caption = " " + Text.clip_width(title, width - 4) + " "
+        parts: StyleAndTextTuples = [(border, "  ╭" + caption + "─" * (width - 2 - get_cwidth(caption)) + "╮\n")]
+        for row in [[], *rows, []]:
+            clipped = StatusBar.clip_fragments(row, inside)
+            parts.extend([(border, "  │ "), *clipped, ("", " " * (inside - fragment_list_width(clipped))), (border, " │\n")])
+        parts.append((border, "  ╰" + "─" * (width - 2) + "╯\n"))
+        return parts
 
     def input_preview(self, style: InputStyle) -> StyleAndTextTuples:
         def sample(running: bool, text: str) -> StyleAndTextTuples:
@@ -300,7 +325,8 @@ class AppearancePicker:
             if tui.modal_window is not None:
                 self.height = min(self.height, to_dimension(tui.modal_window.height).max)
         state = self.current_list()
-        state.height = self.height - (self.kind() in self.bar_focus)
+        framed = self.height >= 20 and self.width >= 52
+        state.height = self.height - (self.kind() in self.bar_focus) - (2 if framed else 0)
         titles = TITLES if self.width >= 60 else ("Colors", "Diff", "Status", "Divider", "Input")
         if self.width < 52:
             titles = ("Color", "Diff", "Bar", "Line", "Input")
@@ -356,7 +382,7 @@ class AppearancePicker:
             rows = 1 + sum(fragment[1].count("\n") for fragment in parts)
             return [*parts, ("", "\n" * max(0, self.height - rows))]
         # The list's own title row gives way to the tabs; its blank row after them stays.
-        shown = max(0, min(8, self.height - 13))
+        shown = self.preview_limit("theme", framed)
         preview_title = {
             "theme": f"Color samples · {shown}/8 shown" + (" · enlarge to see all" if shown < 8 else ""),
             "diff": "Diff · removed, added and changed words",
@@ -366,8 +392,8 @@ class AppearancePicker:
         }[self.kind()]
         fragments = state.fragments(
             "",
-            self.preview(self.kind()),
-            preview_title=Text.clip_width(preview_title, self.width - 2),
+            self.preview(self.kind(), framed=framed, title=preview_title),
+            preview_title=" " if framed else Text.clip_width(preview_title, self.width - 2),
             keys=(
                 "h/l tabs · j/k move · Tab group · Space choose · Enter save · Esc cancel"
                 if self.kind() in self.bar_focus
@@ -388,7 +414,8 @@ class AppearancePicker:
             summary += f" · Colors: {self.selected[kind + '_theme']}"
             fragments.insert(2, (Theme.fg("muted"), Text.clip_width(summary, self.width) + "\n"))
         # Keep the list's filter text beside the tabs and its blank row below them.
-        parts = [*tabs[:-1], fragments[0], legend, *fragments[1:]]
+        gap = [("", "\n")] if framed else []
+        parts = [*tabs[:-1], fragments[0], *gap, legend, fragments[1], *gap, *fragments[2:]]
         # The inline window anchors to the bottom. Shorter tabs must occupy the same rows,
         # otherwise switching tabs moves the header and scrolls the context above the picker.
         rows = 1 + sum(fragment[1].count("\n") for fragment in parts)

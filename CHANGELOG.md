@@ -79,6 +79,10 @@
 
 ### Changed
 
+- Give `/theme` tabs, controls and choices more breathing room, with titled, padded preview
+  panels in roomy panes. Keep compact previews in small panes and stable height across tabs,
+  search and terminal resizes; refresh the picker illustration.
+
 - Refresh statusbar colors with restrained theme-derived surfaces. Preserve `default`'s original
   plain, left-aligned layout; give `powerline` and `lualine` separate arrow-linked identity, model,
   provider, effort, YOLO and group-count segments. Prioritize left-hand identity over right-hand
