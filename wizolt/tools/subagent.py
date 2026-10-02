@@ -1,7 +1,6 @@
 """Model-facing operations on the shared agent group."""
 
 import asyncio
-from copy import deepcopy
 from dataclasses import replace
 from functools import cached_property
 
@@ -40,12 +39,13 @@ class SubagentTool(Tool):
 
         Reusing the caller's live Session or a shared draft would make Config/refusal alter a
         sibling's first request. The group copies this draft only after approval succeeds.
+        Live config already includes the parent's switches; replaying its old override map
+        after applying creation defaults would switch the draft back to the parent's provider.
         """
         return Session(
             cwd=self.session.cwd,
-            config=deepcopy(self.session.config),
+            config=self.session.config.for_subagent(policy=self.session.policy),
             settings=replace(self.session.settings),
-            provider_overrides=deepcopy(self.session.provider_overrides),
             catalog=self.session.catalog,
         )
 
@@ -64,7 +64,9 @@ class SubagentTool(Tool):
                 "agent_id": {"type": "string"},
                 "start": {"type": "boolean", "description": "Wake an idle agent on send (default true)"},
                 "timeout": {
-                    "type": "integer", "minimum": 0, "maximum": Subagents.MAX_WAIT_TIMEOUT,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": Subagents.MAX_WAIT_TIMEOUT,
                     "description": f"Wait timeout in seconds (default {Subagents.DEFAULT_WAIT_TIMEOUT}); 0 polls without waiting. Timeout does not stop the child.",
                 },
             },

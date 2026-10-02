@@ -211,14 +211,12 @@ class Subagents:
                 raise ToolError("spawn requires name and message")
             if any(entry.agent.session.agent_name.casefold() == name.casefold() for entry in self.entries.values()):
                 raise ToolError(f"Agent name already in use: {name}; choose a unique task-based name")
-            model_settings = model_settings or parent
             # Inherit values, never semantic state or request clients. A full provider-choice
             # snapshot also preserves an inherited model if the parent changes it before resume.
             session = Session(
                 uid=self.root.session.uid + ".a" + uuid4().hex[:12],
                 cwd=parent.cwd,
-                config=deepcopy(model_settings.config),
-                provider_overrides=model_settings.frozen_provider_overrides(),
+                config=deepcopy(model_settings.config) if model_settings is not None else parent.config.for_subagent(policy=parent.policy),
                 settings=replace(parent.settings),
                 created_at=parent.created_at,
                 system_prompt=self.root.session.system_prompt,
@@ -226,6 +224,7 @@ class Subagents:
                 agent_name=name,
                 agent_parent=parent.uid,
             )
+            session.provider_overrides = session.frozen_provider_overrides()
             entry = await self._attach(session, parent.uid, message)
             # Save the child before publishing its reference, so resume never points at a missing log.
             session.enqueue_user_input(message)

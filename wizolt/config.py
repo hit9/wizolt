@@ -12,6 +12,7 @@ import stat
 import sys
 import tomllib
 from collections.abc import MutableMapping
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, ClassVar
 
@@ -366,10 +367,21 @@ class RuntimeSettings:
         return value
 
 
+@dataclass(frozen=True)
+class SubagentDefaults:
+    """Creation defaults only; live/resumed children keep their own approved settings."""
+
+    provider: str = ""
+    model: str = ""
+    reasoning: str = ""
+    api: str = ""
+
+
 @dataclass
 class Config:
     active_provider: str = "default"
     providers: dict[str, ProviderConfig] = field(default_factory=lambda: {"default": ProviderConfig()})
+    subagent: SubagentDefaults = field(default_factory=SubagentDefaults)
     data_dir: str = UserPaths.DEFAULT_DATA_DIR
     mcp: Json = field(default_factory=dict)
     # The raw `[hooks]` table; wizolt.shellhooks validates it when a session is assembled.
@@ -399,6 +411,28 @@ class Config:
     @property
     def provider(self) -> ProviderConfig:
         return self.providers[self.active_provider]
+
+    def for_subagent(self, *, policy: ProviderPolicy | None = None) -> Config:
+        """Resolve defaults into a detached approval draft, after the parent's live switches.
+
+        The approved draft is copied verbatim at spawn. Reapplying defaults there would undo
+        user choices; applying them on restore would overwrite the child's saved choices.
+        """
+        config = deepcopy(self)
+        defaults = self.subagent
+        if defaults.provider:
+            if defaults.provider not in config.providers:
+                raise ConfigError(f"subagent.provider `{defaults.provider}` does not exist")
+            config.active_provider = defaults.provider
+        for key in ("model", "reasoning", "api"):
+            if value := getattr(defaults, key):
+                setattr(config.provider, key, value)
+        if defaults.api and defaults.api not in PROVIDER_API_CHOICES:
+            raise ConfigError("subagent.api must be one of " + ", ".join(PROVIDER_API_CHOICES))
+        choices = (policy or bundled_policy()).reasoning_values(config.provider, config.provider.model)
+        if defaults.reasoning and defaults.reasoning not in choices:
+            raise ConfigError("subagent.reasoning must be one of " + ", ".join(choices))
+        return config
 
     @classmethod
     def from_dict(cls, data: Json, *, policy: ProviderPolicy | None = None, path: str = "") -> Config:
@@ -432,9 +466,14 @@ class Config:
         vision_provider = cls.str(vision_root, "provider", "")
         if vision_provider and vision_provider not in providers:
             raise ConfigError(f"vision.provider `{vision_provider}` does not exist")
-        return cls(
+        # Legacy spelling is normalized only here. New keys, including explicit empty values,
+        # win per field; no worker-era behavior escapes into the engine or approval UI.
+        subagent_root = {**cls.table(data, "worker"), **cls.table(data, "subagent")}
+        subagent = SubagentDefaults(**{key: cls.str(subagent_root, key, "") for key in ("provider", "model", "reasoning", "api")})
+        config = cls(
             active_provider=active,
             providers=providers,
+            subagent=subagent,
             data_dir=cls.str(paths, "data_dir", UserPaths.DEFAULT_DATA_DIR),
             mcp=cls.table(data, "mcp"),
             hooks=cls.table(data, "hooks"),
@@ -446,6 +485,8 @@ class Config:
             vision_provider=vision_provider,
             path=path,
         )
+        config.for_subagent(policy=policy)  # reject invalid creation defaults at config load
+        return config
 
     @classmethod
     def data_dir_from(cls, data: Json) -> str:
@@ -616,6 +657,12 @@ model = ""
 # theme = "inherit"           # own colors: an existing theme name, or auto for terminal light/dark
 # [ui.divider]
 # theme = "inherit"           # line, glow and labels; /theme divider theme forest
+
+# [subagent]                   # defaults for new children; approval can override each field
+# provider = "default"         # name of a configured provider entry; omitted = inherit parent
+# model = ""                   # omitted/empty = inherit the selected provider's value
+# reasoning = ""               # reasoning effort; omitted/empty = inherit
+# api = ""                     # auto | chat | responses | anthropic; omitted/empty = inherit
 
 # [vision]                     # optional: provider entry used only by explicit ViewImage calls
 # provider = "vision"          # its model receives the local image and optional question, then

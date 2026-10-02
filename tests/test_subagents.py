@@ -12,7 +12,7 @@ from agent_harness import call, session_with_provider
 from wizolt.agent.engine import Agent
 from wizolt.agent.lifecycle import bootstrap_features, close_agent_resources
 from wizolt.base import ConfigError, ModelError, ToolError, WizoltError
-from wizolt.config import ProviderConfig, RuntimeSettings
+from wizolt.config import ProviderConfig, RuntimeSettings, SubagentDefaults
 from wizolt.model.client import ModelClient
 from wizolt.session import Session, SessionSnapshotStore
 from wizolt.shellhooks import HookCommand, ShellHooks
@@ -33,6 +33,39 @@ async def finished(group, entry):
     while (task := entry.task) is not None:
         await asyncio.wait_for(asyncio.shield(task), 3)
     return entry
+
+
+async def test_subagent_defaults_seed_independent_approvals_and_survive_resume(group, monkeypatch):
+    root = group.root.session
+    root.config.providers["deepseek"] = ProviderConfig(url="http://test", key="test", model="base")
+    root.config.subagent = SubagentDefaults(provider="deepseek", model="child-default", reasoning="high", api="responses")
+    root.provider_overrides = {"active_provider": root.config.active_provider}
+    one = SubagentTool(root, [{"action": "spawn", "name": "one", "message": "task"}])
+    two = SubagentTool(root, [{"action": "spawn", "name": "two", "message": "task"}])
+    first, second = one.approval_config(), two.approval_config()
+    assert first.config.active_provider == second.config.active_provider == "deepseek"
+    assert first.config.provider.model == second.config.provider.model == "child-default"
+    first.config.active_provider = root.config.active_provider
+    first.config.provider.model = "approved-model"
+    assert second.config.provider.model == "child-default"
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    await one.call()
+    await two.call()
+    direct = await group.spawn(root, "direct", "task")
+    for entry in tuple(group.entries.values())[1:]:
+        await finished(group, entry)
+    assert direct.agent.session.config.active_provider == "deepseek"
+    children = {entry.agent.session.agent_name: entry.agent.session for entry in group.entries.values() if entry.parent}
+    assert children["one"].config.provider.model == "approved-model"
+    assert children["two"].config.provider.model == "child-default"
+    assert root.config.provider.model != "approved-model"
+    root.config.subagent = SubagentDefaults(provider="deepseek", model="changed-after-spawn")
+    loaded = SessionSnapshotStore.load(children["one"].uid, config=deepcopy(root.config), settings=deepcopy(root.settings), cwd=root.cwd)
+    assert loaded.config.provider.model == "approved-model"
 
 
 async def test_second_turn_on_same_agent_is_rejected_without_touching_first(group, monkeypatch):
@@ -784,6 +817,7 @@ async def test_forked_skill_uses_a_child_without_forking_again(group, isolate_ho
     (folder / "SKILL.md").write_text("---\nname: inspect\ndescription: inspect\ncontext: fork\n---\nCheck the parser carefully.\n")
     root = group.root.session
     root.skills.reload()
+    root.config.subagent = SubagentDefaults(model="fork-default")
     root.settings.yolo = True
     requests = []
 
@@ -797,6 +831,7 @@ async def test_forked_skill_uses_a_child_without_forking_again(group, isolate_ho
     skill = SkillTool(root, ["inspect"])
     assert skill.always_confirms()
     draft = skill.approval_config()
+    assert draft.config.provider.model == "fork-default"
     draft.config.provider.model = "o3"
     assert dict(skill.approval_view().rows)["model"] == "o3"
     assert await skill.call() == "parser checked"

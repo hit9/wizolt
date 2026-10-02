@@ -2,10 +2,25 @@
 
 Ask wizolt to split a task into parallel work. By default it can start up to three child agents alongside
 your main conversation. Each has its own conversation, model requests, context budget and usage
-statistics, plan and notes. New children inherit the creating agent's model unless you change it before approval; additional agents
+statistics, plan and notes. New children use your subagent defaults, or inherit the creating agent's model;
+you can change settings before approval. Additional agents
 increase total model usage.
 
 ## Approve and configure
+
+Set a default provider for new children in `~/.wizolt/config.toml`:
+
+```toml
+[subagent]
+provider = "deepseek"
+```
+
+The name must match an existing `[provider.deepseek]` entry. Optional `model`, `reasoning` and
+`api` fields override that provider's settings. Omitted or empty fields inherit; without a
+provider override, children inherit their parent's currently selected provider.
+The old `[worker]` section is also accepted. If both sections exist, `[subagent]` wins per field.
+These defaults apply to newly created children, including forked skills, not existing or resumed
+children. Each child's approval configuration takes precedence over the defaults.
 
 Creating a child or sending it another task requires approval, including with `--yolo`.
 Choose **View agent task** (`v`) to read the full task. Before creating a child, choose

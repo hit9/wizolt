@@ -4,6 +4,9 @@
 
 ### Added
 
+- Configure new child defaults with `[subagent]` provider/model/reasoning/api settings, including
+  forked skills. Accept legacy `[worker]` fields as fallbacks; per-child approval and saved settings win.
+
 - Emphasize background agent completion, failure and input requests with theme-aware notices;
   highlight waiting agents separately in every statusbar preset, including narrow screens.
   Show breathing activity dots in `/agents`, with static themed dots for settled/input-wait states.
