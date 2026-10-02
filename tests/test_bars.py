@@ -204,10 +204,10 @@ def test_rail_separates_activity_and_metrics_and_keeps_queue_kinds_distinct():
 
     template = Template("preset:rail", DIVIDER_PRESETS)
     values = dict.fromkeys(FIELDS, 0)
-    values.update(running=True, activity="thinking", elapsed=12, rate="42 tok/s", **{"queue.followup": 2, "queue.next_turn": 1})
+    values.update(running=True, activity="thinking", elapsed=12, rate="42 tok/s", spinner="● ", **{"queue.followup": 2, "queue.next_turn": 1})
     styles = Theme.bar_styles(template.styles)
     rendered = text(template.render(values, 100, styles))
-    assert rendered.startswith("◆ thinking ")
+    assert rendered.startswith("● thinking ")
     assert rendered.endswith("12s · 42 tok/s · 2 queued · 1 next turn")
     for width in range(100):
         assert get_cwidth(text(template.render(values, width, styles))) <= width

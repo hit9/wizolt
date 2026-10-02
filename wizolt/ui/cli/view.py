@@ -31,7 +31,7 @@ from wizolt.ui.cli.commands import COMMAND_NAMES, NEEDS_ARGUMENT, SET_KEYS, SET_
 from wizolt.ui.cli.hints import Context as HintContext
 from wizolt.ui.cli.hints import HintPicker
 from wizolt.ui.cli.runtime import RESUME_STATUS_LABEL, STARTING_STATUS_LABEL
-from wizolt.ui.render import InputStyle, LiveSpark, Theme, UiPrinter
+from wizolt.ui.render import ActivityPulse, InputStyle, LiveSpark, Theme, UiPrinter
 from wizolt.ui.tui import InputMode
 
 if TYPE_CHECKING:
@@ -330,22 +330,6 @@ class CommandCompleter(Completer):
 class View:
     """Fragments and style derived from session and presentation state."""
 
-    # Breathing green dot shown on the divider while a model request is in flight. The label moves
-    # from working to thinking/responding as stream events arrive; the pulse remains until completion.
-    # Deliberately outside the palette: this is a liveness signal rather than a piece of the
-    # interface's color scheme, it reads the same green on light and dark terminals, and it is a
-    # ramp, not a color. Its neighbour LiveSpark does take the palette's accent, because that mark
-    # caps the divider's own rule and has to keep sharing its color.
-    WAITING_PULSE_STYLES: ClassVar[tuple[str, ...]] = (
-        "fg:#0a3d0a",
-        "fg:#146114",
-        "fg:#1f8a1f",
-        "fg:#2dbf2d bold",
-        "fg:#43e043 bold",
-        "fg:#7bff7b bold",
-    )
-    WAITING_PULSE_PERIOD: ClassVar[float] = 1.6
-
     GLOW_STEPS: ClassVar[int] = 12
 
     QUEUE_EMPTY_HINT = "Enter follow-up · Tab next turn · Ctrl-C interrupts"
@@ -372,11 +356,7 @@ class View:
     def waiting_pulse_fragments(self) -> StyleAndTextTuples:
         if self.session.state.current_model_call_started_at <= 0:
             return []
-        # Triangular breath: 0 → 1 → 0 over WAITING_PULSE_PERIOD seconds, mapped onto the palette.
-        phase = (time.monotonic() % self.WAITING_PULSE_PERIOD) / self.WAITING_PULSE_PERIOD
-        intensity = 1.0 - abs(2.0 * phase - 1.0)
-        idx = min(len(self.WAITING_PULSE_STYLES) - 1, int(intensity * len(self.WAITING_PULSE_STYLES)))
-        return [(self.WAITING_PULSE_STYLES[idx], "● ")]
+        return ActivityPulse.fragments(time.monotonic())
 
     def sweep_divider_fragments(
         self,

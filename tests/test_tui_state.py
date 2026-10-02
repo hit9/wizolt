@@ -17,7 +17,6 @@ from wizolt.config import (
 from wizolt.session import Session
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.runtime import RESUME_STATUS_LABEL
-from wizolt.ui.cli.view import View
 from wizolt.ui.render import BashLivePreview, LiveSpark, Theme
 from wizolt.ui.tui import TUI_MODAL_PENDING, ChoiceViewState, DiffViewState, TabbedViewState
 
@@ -258,7 +257,7 @@ def test_live_spark_breathes_across_a_wide_range_of_the_divider_accent(monkeypat
     """A slow triangular breath, dark to bright and back, around the divider's own accent.
 
     The reach matters as much as the curve: a shallow fade reads as the terminal mis-drawing a
-    cell. It spans at least as far as WAITING_PULSE_STYLES, the pulse it is a sibling of."""
+    cell. It spans at least as far as ActivityPulse, the pulse it is a sibling of."""
     clock = [0.0]
     monkeypatch.setattr(render_module.time, "monotonic", lambda: clock[0])
     ramp = LiveSpark.ramp()
@@ -301,7 +300,7 @@ def test_live_spark_breathes_across_a_wide_range_of_the_divider_accent(monkeypat
 
     accent = Theme.color(LiveSpark.ROLE)
     assert luma(ramp[0]) < luma(accent) < luma(ramp[-1])  # the breath brackets the accent
-    assert luma(ramp[-1]) - luma(ramp[0]) >= luma(View.WAITING_PULSE_STYLES[-1]) - luma(View.WAITING_PULSE_STYLES[0])
+    assert luma(ramp[-1]) - luma(ramp[0]) >= luma(render_module.ActivityPulse.STYLES[-1]) - luma(render_module.ActivityPulse.STYLES[0])
     assert all(step.endswith(" bold") for step in ramp)  # the star is thin; bold carries its weight
 
     # The crest is the loudest frame on the ramp: close enough to white to clear the gray rows
@@ -310,7 +309,7 @@ def test_live_spark_breathes_across_a_wide_range_of_the_divider_accent(monkeypat
     assert all(channel >= 230 for channel in crest)
 
     # Slower than the divider's in-flight heartbeat, which sits above a much quieter line.
-    assert LiveSpark.PERIOD > View.WAITING_PULSE_PERIOD
+    assert LiveSpark.PERIOD > render_module.ActivityPulse.PERIOD
 
 
 def test_live_spark_keeps_range_on_a_light_terminal(monkeypatch):

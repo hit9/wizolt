@@ -289,17 +289,17 @@ STATUS_PRESETS = {
 }
 
 DIVIDER_PRESETS = {
-    "plain": "[divider_rule]──[/]{% if running %} [divider.label]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
+    "plain": "[divider_rule]──[/]{% if running %} [spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
     "comet": "[divider_rule]───[/]{% if running %} [spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
     "minimal": "{% if running %}[spinner]{spinner}[/][divider.label]{label}[/]{% else %}[divider_rule]{fill:─}[/]{% endif %}",
-    "powerline": "{% if running %}[divider.activity] {activity} · {elapsed:duration} {join:}[reset]{% endif %}[divider_rule]{fill:─}[/]{% if running %}{join:}[divider.metrics] {rate} {% if queue.total > 0 %}· {queue.total} queued {% endif %}{% if reset_pending %}· reset pending {% endif %}[reset]{% endif %}",
+    "powerline": "{% if running %}[spinner]{spinner}[/][divider.activity] {activity} · {elapsed:duration} {join:}[reset]{% endif %}[divider_rule]{fill:─}[/]{% if running %}{join:}[divider.metrics] {rate} {% if queue.total > 0 %}· {queue.total} queued {% endif %}{% if reset_pending %}· reset pending {% endif %}[reset]{% endif %}",
     "dashed": "[divider_rule]╌╌╌[/]{% if running %} [spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:╌}[/]",
     "dotted": "[divider_rule]┈┈┈[/]{% if running %} [spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:┈}[/]",
     "double": "[divider_rule]══[/]{% if running %}[divider_rule]╡[/] [spinner]{spinner}[/][divider.label]{label}[/] [divider_rule]╞[/]{% endif %}[divider_rule]{fill:═}[/]",
     "right": "[divider_rule]{fill:─}[/]{% if running %}[divider_rule]┤[/] [spinner]{spinner}[/][divider.label]{label}[/] [divider_rule]├──[/]{% endif %}",
-    "capsule": "[divider_rule]{fill:─}[/]{% if running %}[fg=menu_bg][/][divider.badge] {spinner}{label} [/][fg=menu_bg][/]{% endif %}[divider_rule]{fill:─}[/]",
+    "capsule": "[divider_rule]{fill:─}[/]{% if running %}[fg=menu_bg][/][divider.badge] [spinner]{spinner}[/]{label} [/][fg=menu_bg][/]{% endif %}[divider_rule]{fill:─}[/]",
     "frame": "[divider_rule]╭─[/]{% if running %}[divider_rule]┤[/] [spinner]{spinner}[/][divider.label]{label}[/] [divider_rule]├[/]{% endif %}[divider_rule]{fill:─}╮[/]",
-    "rail": "{% if running %}[fg=divider_glow bold]◆ [/][divider.label]{activity}[/] {% endif %}[divider_rule]{fill:─}[/]"
+    "rail": "{% if running %}[spinner]{spinner}[/][divider.label]{activity}[/] {% endif %}[divider_rule]{fill:─}[/]"
     + "{% if running %} [fg=status_base]{elapsed:duration}[/]{% optional priority=10 %}{% if rate %}[muted] · [/][divider.label]{rate}[/]{% endif %}{% endoptional %}"
     + "{% if queue.followup > 0 %}[warning] · {queue.followup} queued[/]{% endif %}"
     + "{% if queue.next_turn > 0 %}[warning] · {queue.next_turn} next turn[/]{% endif %}"

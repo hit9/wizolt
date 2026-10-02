@@ -10,7 +10,7 @@ from prompt_toolkit.formatted_text import StyleAndTextTuples
 
 from wizolt.base import ConfigError
 from wizolt.config import ConfigFile
-from wizolt.ui.render import Theme
+from wizolt.ui.render import ActivityPulse, Theme
 
 # Keep the picker focused; older preset names still work in config files.
 DIVIDER_CHOICES = ("comet", "capsule", "frame", "rail", "powerline")
@@ -75,7 +75,15 @@ def preview(loop: CommandLoop, kind: str, started: float) -> StyleAndTextTuples:
     result: StyleAndTextTuples = []
     # The real statusbar already previews the selection at its actual terminal width.
     if kind != "statusbar":
-        elapsed = max(0.0, time.monotonic() - started)
+        now = time.monotonic()
+        elapsed = max(0.0, now - started)
+        pulse = ActivityPulse.fragments(now)
+
+        def styles(specs: set[str], kind: str) -> dict[str, str]:
+            resolved = Theme.bar_styles(specs, kind=kind)
+            resolved["spinner"] = pulse[0][0]
+            return resolved
+
         ramp = tuple(reversed(Theme.ramp("divider_glow", "divider_rule", 16, kind="divider")))
         for index, (label, running, queued) in enumerate((("Idle", False, 0), ("Running", True, 0), ("Queued", True, 2))):
             if index:
@@ -85,12 +93,12 @@ def preview(loop: CommandLoop, kind: str, started: float) -> StyleAndTextTuples:
                 elapsed=elapsed if running else 0,
                 activity="working" if running else "",
                 rate="42 tok/s" if running else "",
-                spinner="● " if running else "",
+                spinner=pulse[0][1] if running else "",
                 label=(f"working ({int(elapsed)}s · 42 tok/s)" + (" [ 2 queued ]" if queued else "")) if running else "",
                 **{"queue.total": queued, "queue.followup": queued, "queue.next_turn": 0},
             )
             result.extend([(Theme.fg("muted"), label + " (preview)\n")])
-            result.extend(bar.layout.render("divider", values, width, Theme.bar_styles, ramp=ramp))
+            result.extend(bar.layout.render("divider", values, width, styles, ramp=ramp))
             result.append(("", "\n"))
     for problem in (*bar.layout.errors, *((bar.layout.sweep.error,) if bar.layout.sweep.error else ())):
         result.append((Theme.fg("error"), "\n" + problem))

@@ -21,6 +21,10 @@
 
 ### Fixed
 
+- Give every divider preset the green model-activity pulse, including plain, powerline, rail
+  and capsule. Animate the same pulse in `/theme` running/queued previews, independently of
+  the selected rule sweep; idle samples remain still.
+
 - Restore healthy child conversations even when another child's snapshot is missing or corrupt;
   report the skipped snapshot and preserve its recovery files. Serialize restore with child
   admission, and restore retained children in the non-TTY frontend too.

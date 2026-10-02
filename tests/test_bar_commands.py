@@ -9,6 +9,7 @@ from prompt_toolkit.document import Document
 from test_command_ui import ModalHarness
 from tui_harness import loop
 
+from wizolt.ui.bars import DIVIDER_PRESETS
 from wizolt.ui.cli.appearance import theme_command
 from wizolt.ui.cli.commands import COMMAND_NAMES
 from wizolt.ui.cli.view import CommandCompleter
@@ -167,6 +168,36 @@ def test_idle_preview_uses_idle_values_even_without_a_condition(command_loop):
     rows = "".join(fragment[1] for fragment in preview(command_loop, "divider", 0)).splitlines()
     assert rows[rows.index("Idle (preview)") + 1] == "|||0s"
     assert rows[rows.index("Running (preview)") - 1] == "" and rows[rows.index("Queued (preview)") - 1] == ""
+
+
+@pytest.mark.parametrize("preset", DIVIDER_PRESETS)
+def test_every_divider_previews_the_same_breathing_dot_as_live_activity(command_loop, monkeypatch, preset):
+    from prompt_toolkit.styles import Style
+
+    from wizolt.ui.cli.bars import preview
+    from wizolt.ui.render import ActivityPulse
+
+    clock = [0.0]
+    monkeypatch.setattr("time.monotonic", lambda: clock[0])
+    layout = command_loop.presentation.status_bar.layout
+    assert not layout.configure({"divider": "preset:" + preset, "sweep": "preset:none"}, Theme.bar_styles)
+    command_loop.session.state.current_model_call_started_at = 1
+    colors = []
+    for now in (0.0, ActivityPulse.PERIOD / 2, ActivityPulse.PERIOD):
+        clock[0] = now
+        sample = preview(command_loop, "divider", 0)
+        live = command_loop.view.queue_divider_fragments()
+        sample_dots = [Style([]).get_attrs_for_style_str(style).color for style, text in sample if "●" in text]
+        live_dots = [Style([]).get_attrs_for_style_str(style).color for style, text in live if "●" in text]
+        assert len(sample_dots) == 2  # Running and Queued; Idle never claims activity.
+        assert len(live_dots) == 1 and sample_dots == live_dots * 2
+        red, green, blue = (int(live_dots[0][offset : offset + 2], 16) for offset in (0, 2, 4))
+        assert green > red and green > blue
+        colors.append(live_dots[0])
+    assert colors[0] == colors[2] != colors[1]
+    assert "●" not in "".join(text for _, text in command_loop.view.idle_divider_fragments())
+    command_loop.session.state.current_model_call_started_at = 0
+    assert "●" not in "".join(text for _, text in command_loop.view.queue_divider_fragments())
 
 
 def test_appearance_command_completion():

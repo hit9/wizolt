@@ -2024,6 +2024,31 @@ class UiPrinter:
         return lines
 
 
+class ActivityPulse:
+    """One green liveness signal shared by model activity and simulated divider previews.
+
+    Deliberately independent of theme accents: this marks an in-flight request, not the rule.
+    Callers decide whether activity exists; the renderer only maps a clock to its breath.
+    """
+
+    STYLES: ClassVar[tuple[str, ...]] = (
+        "fg:#0a3d0a",
+        "fg:#146114",
+        "fg:#1f8a1f",
+        "fg:#2dbf2d bold",
+        "fg:#43e043 bold",
+        "fg:#7bff7b bold",
+    )
+    PERIOD: ClassVar[float] = 1.6
+
+    @classmethod
+    def fragments(cls, now: float) -> StyleAndTextTuples:
+        phase = (now % cls.PERIOD) / cls.PERIOD
+        intensity = 1.0 - abs(2.0 * phase - 1.0)
+        index = min(len(cls.STYLES) - 1, int(intensity * len(cls.STYLES)))
+        return [(cls.STYLES[index], "● ")]
+
+
 class LiveSpark:
     """The mark that says a live region is still alive, for regions with nothing else moving.
 

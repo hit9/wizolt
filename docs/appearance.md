@@ -107,13 +107,15 @@ The **Divider** tab changes the line above your input. Choose a **Layout**, **Sw
 its animation, and **Colorscheme** for its colors. **Space** chooses the highlighted value;
 **Tab** jumps between groups. A star marks each chosen value. Browsing previews leaves
 your confirmed choices in place; **Enter** saves those choices.
+Every layout shows a green breathing dot during model requests. The running and queued
+samples animate that dot too, even with **Sweep: none**; the idle sample has no dot.
 
 Both bars default to **inherit**, following the main Colorscheme. Choose a theme to give
 either bar its own colors, or **auto** to follow your terminal's light or dark background
 independently. Custom themes are available here too.
 
 ```{figure} _static/appearance-dividers.svg
-:alt: The comet, frame and rail dividers showing a running task with elapsed time and output speed.
+:alt: The comet, frame and rail dividers showing a green activity dot, elapsed time and output speed.
 
 A quiet line, a frame, or activity and speed.
 ```
