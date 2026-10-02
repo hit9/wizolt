@@ -236,6 +236,47 @@ async def test_result_receipts_are_independent_of_tool_framing_and_survive_snaps
         loaded.close()
 
 
+@pytest.mark.parametrize("encoding", ["legacy", "current", "invalid-json", "invalid-shape"])
+async def test_loaded_archive_normalizes_results_for_model_and_preview(group, monkeypatch, encoding):
+    from wizolt.agent.results import receive_results
+    from wizolt.ui.cli.agents import AgentPreview
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "saved answer"}, [], "saved answer"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    entry = await finished(group, await group.spawn(root, "review", "original task"))
+    await group.archive(entry.agent.session.uid)
+    manifest = dict(root.subagent_entries[0])
+    if encoding != "current":
+        manifest.update(archived="true", answer="obsolete duplicate")
+        manifest["result"] = json.dumps(entry.result) if encoding == "legacy" else "{" if encoding == "invalid-json" else '"not an envelope"'
+    # Write the historical on-disk shape, then use the real loader and both runtime consumers.
+    root.subagent_entries = [manifest]
+    await root.save_snapshot()
+    loaded = SessionSnapshotStore.load(root.uid, config=deepcopy(root.config), settings=deepcopy(root.settings))
+    loaded.borrow_ownership(root)
+    agent = Agent(loaded, output_fn=lambda _: None)
+    try:
+        item = loaded.subagent_entries[0]
+        assert item["archived"] is True and "answer" not in item
+        assert isinstance(item["result"], dict)
+        turn = []
+        receive_results(loaded, turn, loaded.subagents.results_for(root.uid))
+        expected = encoding in {"legacy", "current"}
+        assert bool(turn) == expected
+        preview = AgentPreview(item["instruction"], item["result"].get("text", ""), name="review")
+        assert ("saved answer" in "".join(text for _, text in preview.fragments(80, 16))) == expected
+        await loaded.save_snapshot()
+        again = SessionSnapshotStore.load(root.uid, config=loaded.config, settings=loaded.settings)
+        assert again.subagent_entries == loaded.subagent_entries
+        again.close()
+    finally:
+        await close_agent_resources(agent)
+        loaded.close()
+
+
 async def test_archive_releases_branch_slots_preserves_history_and_survives_resume(group, monkeypatch):
     async def request(client, messages, tools=None):
         return {"role": "assistant", "content": "saved answer"}, [], "saved answer"
@@ -900,7 +941,7 @@ async def test_timeout_and_stop_do_not_cancel_siblings(group, monkeypatch):
     assert two.status == "completed"
 
 
-@pytest.mark.parametrize("timeout,expected", [(None, 180), (0, 0), (180, 180), (600, 600), (900, 600)])
+@pytest.mark.parametrize("timeout,expected", [(None, 180), ("omitted", 180), (0, 0), (180, 180), (600, 600), (900, 600)])
 async def test_wait_timeout_defaults_and_bounds_leave_child_running(group, monkeypatch, timeout, expected):
     entered, release = asyncio.Event(), asyncio.Event()
 
@@ -921,7 +962,7 @@ async def test_wait_timeout_defaults_and_bounds_leave_child_running(group, monke
         return await real_wait(tasks, timeout=0, return_when=return_when)
 
     payload = {"action": "wait", "agent_ids": [entry.agent.session.uid]}
-    if timeout is not None:
+    if timeout != "omitted":
         payload["timeout"] = timeout
     with monkeypatch.context() as clock:
         clock.setattr(asyncio, "wait", immediate_wait)
@@ -1054,6 +1095,21 @@ async def test_default_wait_selects_only_running_direct_children(group, monkeypa
     assert json.loads(await SubagentTool(root, [payload]).call()) == []
     with pytest.raises(ToolError, match="uses agent_ids"):
         await SubagentTool(root, [{"action": "wait", "agent_id": parent.agent.session.uid}]).call()
+
+
+@pytest.mark.parametrize("timeout", ["60", True, [], {}, 0.5])
+async def test_wait_rejects_invalid_timeout_even_for_settled_or_empty_targets(group, monkeypatch, timeout):
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    entry = await finished(group, await group.spawn(root, "review", "work"))
+    for selection in ({}, {"agent_ids": [entry.agent.session.uid]}):
+        with pytest.raises(ToolError, match="timeout must be an integer"):
+            await SubagentTool(root, [{"action": "wait", "timeout": timeout, **selection}]).call()
+    rows = json.loads(await SubagentTool(root, [{"action": "wait", "timeout": None, "agent_ids": [entry.agent.session.uid]}]).call())
+    assert rows[0]["status"] == "completed"
 
 
 def test_wait_schema_exposes_long_wait_limit_and_default():

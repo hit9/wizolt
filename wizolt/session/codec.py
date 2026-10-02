@@ -12,7 +12,7 @@ import hashlib
 import json
 import re
 from dataclasses import asdict, fields
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, cast
 
 from wizolt.base import SESSION_EVENT_KEY, Json, ModelUsage, Text, oneline, split_lines
 from wizolt.image import ImageInputs
@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from wizolt.session import (
         TurnDiff as TurnDiffT,
     )
+    from wizolt.session.types import SubagentRecord
     from wizolt.source import SourceView
 
 
@@ -308,6 +309,34 @@ class SessionSnapshotCodec:
                 "child_results_seen",
             )
         }
+
+    @staticmethod
+    def subagent_entries(value: list[Json]) -> list[SubagentRecord]:
+        """Normalize the development-era string archive format at the load boundary.
+
+        Keep obsolete encoding out of runtime consumers. A damaged optional result must not
+        prevent opening the family; the child's own snapshot still retains its conversation.
+        """
+        entries = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            record = dict(item)
+            if "archived" in record:
+                record["archived"] = record["archived"] in (True, "true")
+            result = record.get("result", {})
+            if isinstance(result, str):
+                try:
+                    result = json.loads(result)
+                except ValueError:
+                    result = {}
+            if not isinstance(result, dict) or not all(isinstance(result.get(key), str) for key in ("agent_id", "result_id", "status", "text")):
+                result = {}
+            if "result" in record:
+                record["result"] = result
+            record.pop("answer", None)
+            entries.append(cast("SubagentRecord", record))
+        return entries
 
     @staticmethod
     def agent_state(value: object) -> AgentState:

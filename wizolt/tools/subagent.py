@@ -29,6 +29,7 @@ class SubagentTool(Tool):
         "Omit agent_ids to wait for any of your currently running direct children; if none are running, return [] immediately. "
         "Or pass a non-empty agent_ids list to select targets, including already settled agents. "
         "wait returns all currently settled targets when any completes, fails or is interrupted, "
+        "after any immediately resumed queued work also settles, "
         "or [] on timeout. Other agents keep running. Remove returned IDs before waiting again; already settled targets return immediately. "
         "A wait timeout does not stop the child; wait again or continue other work. "
         "Your direct children's latest settled results are reported automatically before your next model request; "
@@ -132,6 +133,11 @@ class SubagentTool(Tool):
                 raise ToolError("send requires message")
             await group.send(uid, message, start=payload.get("start", True))
         elif action == "wait":
+            timeout = payload.get("timeout")
+            if timeout is None:
+                timeout = group.DEFAULT_WAIT_TIMEOUT
+            if isinstance(timeout, bool) or not isinstance(timeout, int):
+                raise ToolError("wait timeout must be an integer number of seconds")
             if payload.get("agent_id"):
                 raise ToolError("wait uses agent_ids, not agent_id; omit agent_ids to wait for running direct children")
             uids = payload.get("agent_ids")
@@ -143,7 +149,7 @@ class SubagentTool(Tool):
                     return "[]"
             if isinstance(uids, list) and self.session.uid in uids:
                 raise ToolError("Cannot wait for the calling agent")
-            entries = await group.wait(uids, payload.get("timeout", group.DEFAULT_WAIT_TIMEOUT))
+            entries = await group.wait(uids, timeout)
         elif action == "stop":
             if uid == self.session.uid:
                 raise ToolError("Cannot stop the calling agent")

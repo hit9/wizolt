@@ -10,6 +10,7 @@ from tui_harness import loop, session
 
 from wizolt.agent.engine import Agent
 from wizolt.agent.lifecycle import close_agent_resources
+from wizolt.base import ToolError
 from wizolt.config import ProviderConfig
 from wizolt.model.client import ModelClient
 from wizolt.session import Session, SessionSnapshotStore
@@ -246,6 +247,19 @@ async def test_model_archive_drains_admission_before_joining_cancelled_turn(fron
     assert runtime.loop.session.uid not in frontend.runtimes
     assert not frontend.root.shutdown.is_set()
     assert frontend.root.error is None
+
+
+async def test_archive_reports_missing_frontend_without_retiring_child(frontend):
+    runtime = await child(frontend)
+    uid = runtime.loop.session.uid
+    del frontend.runtimes[uid]
+    try:
+        with pytest.raises(ToolError, match=f"Cannot archive agent {uid}: its frontend runtime is unavailable"):
+            await SubagentTool(frontend.root.loop.session, [{"action": "archive", "agent_id": uid}]).call()
+        assert uid in frontend.group.entries
+        assert not any(item.get("archived") for item in frontend.root.loop.session.subagent_entries)
+    finally:
+        frontend.runtimes[uid] = runtime
 
 
 async def test_failed_archive_reopens_child_input(frontend, monkeypatch):

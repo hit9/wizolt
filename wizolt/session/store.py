@@ -565,7 +565,7 @@ class SessionSnapshotStore:
             provider_overrides=data.get("provider_overrides") or {},
             agent_name=str(data.get("agent_name", "main")),
             agent_parent=str(data.get("agent_parent", "")),
-            subagent_entries=data.get("subagent_entries") or [],
+            subagent_entries=SessionSnapshotCodec.subagent_entries(data.get("subagent_entries") or []),
             active_skills=[name for name in data.get("active_skills") or [] if isinstance(name, str)],
             messages=messages,
             transcript_messages=transcript_messages,

@@ -17,7 +17,7 @@ from prompt_toolkit.utils import get_cwidth
 
 from wizolt.agent.engine import Agent
 from wizolt.agent.subagents import AgentEntry
-from wizolt.base import ApprovalView, Text, run_blocking
+from wizolt.base import ApprovalView, Text, ToolError, run_blocking
 from wizolt.session import QueuedInput, Session, SessionSnapshotStore
 from wizolt.ui.cli.modals import approval_text_viewer, choice_application, picker_height, select_choice
 from wizolt.ui.cli.runtime import ScrollbackWriter, TuiRuntime
@@ -379,7 +379,9 @@ class AgentsFrontend:
         drained: list[TuiRuntime] = []
         try:
             for key in uids:
-                runtime = self.runtimes[key]
+                runtime = self.runtimes.get(key)
+                if runtime is None:
+                    raise ToolError(f"Cannot archive agent {key}: its frontend runtime is unavailable")
                 drained.append(runtime)
                 await runtime._close_submissions()
             yield

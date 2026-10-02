@@ -98,8 +98,9 @@ Use `{"action": "wait"}` to wait for any of your currently running direct childr
 If none are running, it returns `[]` immediately. Already completed agents are skipped.
 
 Select specific agents with `{"action": "wait", "agent_ids": ["A", "B"]}`.
-As soon as **any** target finishes, fails or is interrupted, the call returns all currently
-settled targets and their results. Other agents keep working. An already settled target returns
+When **any** target stops running, the call returns all currently settled targets and their results.
+If a target continues with queued input, waiting continues until that work settles too.
+Other agents keep working. An already settled target returns
 immediately; remove returned IDs before waiting again. A timeout returns `[]`.
 For one agent, use a one-item `agent_ids` list. Waiting requires no approval.
 

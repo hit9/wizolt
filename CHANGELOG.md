@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- Normalize older string-encoded archived results on session load, preserving resumable family
+  histories. Treat null wait timeouts as the default and report invalid timeout types clearly.
+  Clarify waiting through queued turns and report missing archive frontends without a bare KeyError.
+
 - Keep subagent delivery receipts in structured message metadata instead of parsing rendered
   output, so tool framing and hook feedback cannot cause duplicate completion notices.
 - Use typed archive records with boolean flags and structured result envelopes; remove duplicated
