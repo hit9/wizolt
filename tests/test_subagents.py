@@ -28,8 +28,7 @@ async def group(tmp_path):
 
 
 async def finished(group, entry):
-    task = entry.task
-    if task is not None:
+    while (task := entry.task) is not None:
         await asyncio.wait_for(asyncio.shield(task), 3)
     return entry
 
@@ -238,6 +237,57 @@ async def test_followup_reuses_child_history_and_queue_only_does_not_wake_it(gro
     assert "queued instruction" in str(requests[1])
     assert "second task" in str(requests[1])
     assert entry.agent.session.state.round_count == 2
+
+
+async def test_send_during_final_snapshot_hands_off_to_a_new_consumer(group, monkeypatch):
+    saving, release = asyncio.Event(), asyncio.Event()
+    original = Session.save_snapshot
+    gated = False
+
+    async def save(session):
+        nonlocal gated
+        if session.agent_parent and session.state.round_count and not session._active_runs and not gated:
+            gated = True
+            saving.set()
+            await release.wait()
+        return await original(session)
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(Session, "save_snapshot", save)
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await group.spawn(group.root.session, "handoff", "first")
+    await asyncio.wait_for(saving.wait(), 3)
+    await group.send(entry.agent.session.uid, "second")
+    release.set()
+    await finished(group, entry)
+    assert entry.agent.session.state.round_count == 2
+    assert not entry.agent.session.pending_user_inputs
+    assert sum(item.get("content") == "second" for item in entry.agent.session.messages) == 1
+
+
+@pytest.mark.parametrize("failure", [False, True])
+async def test_interrupted_or_failed_child_keeps_held_work_paused(group, monkeypatch, failure):
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def request(client, messages, tools=None):
+        entered.set()
+        await release.wait()
+        raise ModelError("provider failed")
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await group.spawn(group.root.session, "paused", "first")
+    await asyncio.wait_for(entered.wait(), 3)
+    entry.agent.session.enqueue_user_input("held work", next_turn=True)
+    if failure:
+        release.set()
+    else:
+        group.stop(entry.agent.session.uid)
+    await finished(group, entry)
+    assert entry.status == ("failed" if failure else "interrupted")
+    assert [item.text for item in entry.agent.session.pending_user_inputs] == ["held work"]
+    assert entry.task is None
 
 
 async def test_timeout_and_stop_do_not_cancel_siblings(group, monkeypatch):

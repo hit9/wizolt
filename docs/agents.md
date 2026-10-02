@@ -27,6 +27,7 @@ existing conversations and prevents new children until there is room.
 
 The model sees the configured limit. `/status` shows retained children and the limit for the
 whole group. Reuse a child for follow-up work instead of creating another one.
+If a child fails or is interrupted, its queued inputs remain paused. Send a follow-up to resume it.
 
 ## One shared workspace
 

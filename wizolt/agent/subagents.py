@@ -244,6 +244,7 @@ class Subagents:
         exception path, and notifications are presentation events rather than model messages.
         """
         agent, session = entry.agent, entry.agent.session
+        drained = False
         try:
             while session.pending_user_inputs:
                 value = session.pending_user_inputs.pop(0)
@@ -251,6 +252,7 @@ class Subagents:
                     await agent.run(value.user_input())
                 else:
                     await self.driver(agent, value)
+            drained = True
         except asyncio.CancelledError:
             session.state.last_turn_status = "interrupted"
         except Exception as error:  # noqa: BLE001 - a child failure is reported, never takes down siblings.
@@ -260,11 +262,18 @@ class Subagents:
             try:
                 await session.save_snapshot()
             except Exception as error:  # noqa: BLE001 - retain a failed save as a visible child failure.
+                drained = False
                 session.state.last_turn_status = "failed"
                 session.state.last_turn_error = str(error)
             # Clear before reporting, so the notification reflects the settled state.
             entry.task = None
-            self.changed(entry)
+            # send() may have accepted work during the final snapshot while _start still saw
+            # this consumer. Handoff only after that save settles; never overlap two writers.
+            # Failure/cancellation intentionally pauses the inbox instead of retrying work.
+            if drained and session.pending_user_inputs and not self.closed:
+                self._start(entry)
+            else:
+                self.changed(entry)
 
     async def wait(self, uid: str, timeout: float = 30) -> AgentEntry:
         entry = self.entry(uid)

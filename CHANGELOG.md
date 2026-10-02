@@ -21,6 +21,9 @@
 
 ### Fixed
 
+- Wake child inputs accepted during the final snapshot without overlapping inbox consumers.
+  Failed or interrupted children retain queued work without automatically restarting it.
+
 - Keep model-authored child tasks literal, including `exit` and slash-prefixed paths. Persist
   frontend command provenance so only user submissions can execute child-session commands.
 
