@@ -211,6 +211,9 @@ class QueuedInput:
     # mid-turn and the runtime starts it as a fresh turn instead. Persisted so a resumed queue keeps
     # one held input per turn instead of merging them into the first one.
     next_turn: bool = False
+    # Only frontend submissions may be interpreted as commands. Model-authored tasks are
+    # literal turn input, even when they say "exit" or start with a slash. Preserve on resume.
+    commands: bool = False
     # The submitted form this entry came from, while it is still live in memory: the queue's
     # rows, the echo, and recall read it, so a folded paste stays a chip and an attached image
     # stays a label everywhere the text is still the user's own. Never serialized -- a snapshot
@@ -218,13 +221,15 @@ class QueuedInput:
     source: UserInput | None = None
 
     def to_json(self) -> str | Json:
-        if not self.images and not self.next_turn:
+        if not self.images and not self.next_turn and not self.commands:
             return self.text
         data: Json = {"text": self.text, "draft": self.draft}
         if self.images:
             data[IMAGE_REFS_KEY] = [image.to_json() for image in self.images]
         if self.next_turn:
             data["next_turn"] = True
+        if self.commands:
+            data["commands"] = True
         return data
 
     @classmethod
@@ -238,11 +243,12 @@ class QueuedInput:
         images = tuple(image for raw in raw_images if (image := ImageRef.from_json(raw)) is not None) if isinstance(raw_images, list) else ()
         draft = str(value.get("draft") or text)
         next_turn = value.get("next_turn") is True  # absent in snapshots written before the flag
+        commands = value.get("commands") is True
         if not text.strip():
             return None
         if draft.count("\ufffc") != len(images):
-            return cls(text, next_turn=next_turn)
-        return cls(text, images, draft, next_turn=next_turn)
+            return cls(text, next_turn=next_turn, commands=commands)
+        return cls(text, images, draft, next_turn=next_turn, commands=commands)
 
     def user_input(self) -> UserInput:
         return self.source if self.source is not None else UserInput(self.draft or self.text, self.images)

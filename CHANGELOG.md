@@ -21,6 +21,9 @@
 
 ### Fixed
 
+- Keep model-authored child tasks literal, including `exit` and slash-prefixed paths. Persist
+  frontend command provenance so only user submissions can execute child-session commands.
+
 - Restore main-session Up/Ctrl-P recall across sessions and projects from `history.txt`, while
   keeping each child's keyboard history private. Keyboard recall does not populate model context.
 

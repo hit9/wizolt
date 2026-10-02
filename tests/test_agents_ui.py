@@ -74,6 +74,48 @@ async def child(frontend, name="child"):
     return frontend.runtimes[entry.agent.session.uid]
 
 
+@pytest.mark.parametrize("message", ["exit", "quit", "/yolo", "/clear", "/src/api.py: fix the 500"])
+async def test_model_tasks_are_literal_inputs_not_frontend_commands(frontend, message):
+    entry = await frontend.group.spawn(frontend.root.loop.session, "literal", message)
+    await asyncio.wait_for(asyncio.shield(entry.task), 3)
+    await frontend.group.send(entry.agent.session.uid, message)
+    await asyncio.wait_for(asyncio.shield(entry.task), 3)
+    assert not frontend.root.shutdown.is_set()
+    assert entry.agent.session.settings.yolo == frontend.root.loop.session.settings.yolo
+    assert sum(item.get("content") == message for item in entry.agent.session.messages) == 2
+    assert entry.agent.session.state.round_count == 2
+
+
+async def test_user_child_commands_keep_their_origin_across_held_turns_and_snapshots(frontend, monkeypatch):
+    runtime = await child(frontend)
+    runtime.submit_chat("/yolo")
+    await runtime.submissions.join()
+    entry = frontend.group.entry(runtime.loop.session.uid)
+    if entry.task is not None:
+        await asyncio.wait_for(asyncio.shield(entry.task), 3)
+    assert runtime.loop.session.settings.yolo != frontend.root.loop.session.settings.yolo
+    assert runtime.loop.session.state.round_count == 1
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def request(client, messages, tools=None):
+        entered.set()
+        await release.wait()
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    await frontend.group.send(entry.agent.session.uid, "continue")
+    await asyncio.wait_for(entered.wait(), 3)
+    runtime.submit_next_turn("/yolo")
+    await runtime.submissions.join()
+    queued = runtime.loop.session.pending_user_inputs[0]
+    assert queued.commands and queued.next_turn
+    assert type(queued).from_json(queued.to_json()).commands
+    release.set()
+    await asyncio.wait_for(asyncio.shield(entry.task), 3)
+    assert runtime.loop.session.settings.yolo == frontend.root.loop.session.settings.yolo
+    assert runtime.loop.session.state.round_count == 2
+
+
 async def test_statusbar_group_counts_are_live_while_usage_remains_selected_agent_local(frontend, monkeypatch):
     waiting = await child(frontend, "waiting")
     entered, release = asyncio.Event(), asyncio.Event()

@@ -14,8 +14,7 @@ from prompt_toolkit.utils import get_cwidth
 from wizolt.agent.engine import Agent
 from wizolt.agent.subagents import AgentEntry
 from wizolt.base import Text
-from wizolt.image import UserInput
-from wizolt.session import Session
+from wizolt.session import QueuedInput, Session
 from wizolt.ui.cli.modals import choice_application, picker_height, select_choice
 from wizolt.ui.cli.runtime import ScrollbackWriter, TuiRuntime
 from wizolt.ui.render import InputStyle, Theme
@@ -181,11 +180,16 @@ class AgentsFrontend:
     def changed(self, entry: AgentEntry) -> None:
         self.notice(entry.agent, entry.status)
 
-    async def drive(self, agent: Agent, value: UserInput) -> None:
+    async def drive(self, agent: Agent, queued: QueuedInput) -> None:
         runtime = self.runtimes[agent.session.uid]
+        value = queued.user_input()
         try:
-            if not await runtime.dispatch(value):
-                await runtime.run_agent_turn(value)
+            if queued.commands:
+                if await runtime.dispatch(value):
+                    return
+            else:
+                runtime.loop.presentation.ui.emit_answer(value.display_text(), role="user", rule=False)
+            await runtime.run_agent_turn(value)
         finally:
             if runtime.turn_active:
                 runtime.turn_active = False

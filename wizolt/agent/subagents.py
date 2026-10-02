@@ -16,7 +16,7 @@ from uuid import uuid4
 
 from wizolt.base import ToolError, oneline, run_blocking
 from wizolt.image import UserInput
-from wizolt.session import Session, SessionSnapshotStore
+from wizolt.session import QueuedInput, Session, SessionSnapshotStore
 from wizolt.session.ownership import subagent_root_uid
 
 if TYPE_CHECKING:
@@ -87,7 +87,7 @@ class Subagents:
     def __init__(self, root: Agent):
         self.root = root
         self.entries = {root.session.uid: AgentEntry(root)}
-        self.driver: Callable[[Agent, UserInput], Awaitable[object]] | None = None
+        self.driver: Callable[[Agent, QueuedInput], Awaitable[object]] | None = None
         self.on_created: Callable[[Agent], Awaitable[None]] | None = None
         self.on_changed: Callable[[AgentEntry], None] | None = None
         self.closed = False
@@ -205,7 +205,7 @@ class Subagents:
             self._start(entry)
             return entry
 
-    async def send(self, uid: str, message: str | UserInput, *, start: bool = True) -> None:
+    async def send(self, uid: str, message: str | UserInput, *, start: bool = True, commands: bool = False) -> None:
         async with self._admission_lock:
             entry = self.entry(uid)
             if entry.agent is self.root:
@@ -214,7 +214,7 @@ class Subagents:
                 raise ToolError("Agent group is closed")
             if not str(message).strip():
                 raise ToolError("send requires message")
-            entry.agent.session.enqueue_user_input(message)
+            entry.agent.session.enqueue_user_input(message, commands=commands)
             await entry.agent.session.save_snapshot()
             if start:
                 self._start(entry)
@@ -246,9 +246,9 @@ class Subagents:
         agent, session = entry.agent, entry.agent.session
         try:
             while session.pending_user_inputs:
-                value = session.pending_user_inputs.pop(0).user_input()
+                value = session.pending_user_inputs.pop(0)
                 if self.driver is None:
-                    await agent.run(value)
+                    await agent.run(value.user_input())
                 else:
                     await self.driver(agent, value)
         except asyncio.CancelledError:

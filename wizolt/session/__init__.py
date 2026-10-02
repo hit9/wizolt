@@ -406,7 +406,7 @@ class Session:
         self.source_views = {key: view for key, view in self.source_views.items() if key in referenced}
         return before - len(self.source_views)
 
-    def enqueue_user_input(self, value: str | UserInput, *, next_turn: bool = False) -> None:
+    def enqueue_user_input(self, value: str | UserInput, *, next_turn: bool = False, commands: bool = False) -> None:
         # `source` keeps the submitted form for as long as the entry is live in memory: the
         # queue's rows, the echo, and recall read it so a folded paste stays a chip. The
         # flattened fields below are the model's and the snapshot's -- a resumed entry has no
@@ -424,13 +424,13 @@ class Session:
             draft = text
         if not text:
             return
-        self.pending_user_inputs.append(QueuedInput(text, images, draft, next_turn=next_turn, source=source))
+        self.pending_user_inputs.append(QueuedInput(text, images, draft, next_turn=next_turn, commands=commands, source=source))
 
     def claim_user_inputs(self) -> list[QueuedInput]:
         # claim/ack/release is a transaction across model retries; keep this boundary even though each step is small.
         # Input held back for the next turn is skipped: the engine must not see it, so the runtime
         # can start it as a fresh turn once this one ends.
-        claimed = [item for item in self.pending_user_inputs if not item.next_turn]
+        claimed = [item for item in self.pending_user_inputs if not item.next_turn and not item.commands]
         for item in claimed:
             item.inflight = True
         return claimed
