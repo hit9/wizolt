@@ -113,6 +113,11 @@ dispatching new turns. A child decode/I/O failure is isolated and reported; its 
 and files remain intact. Healthy descendants still load with their own history and frozen model
 choices; if their parent is unavailable, runtime hook inheritance falls back to main.
 
+The inbox consumer retains ownership through its final snapshot. Input arriving in that await
+must schedule another consumer after settlement, not overlap it. Failure and interruption pause
+existing queued work; a fresh start request during settlement is explicit permission to resume.
+`AgentEntry.restart_requested` is a transient wake request, never conversation state or a counter.
+
 ## Regression boundaries
 
 - `tests/test_subagents.py`: independent requests/config/usage, steering, sibling cancellation,

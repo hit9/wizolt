@@ -292,32 +292,42 @@ async def test_followup_reuses_child_history_and_queue_only_does_not_wake_it(gro
     assert entry.agent.session.state.round_count == 2
 
 
-async def test_send_during_final_snapshot_hands_off_to_a_new_consumer(group, monkeypatch):
+@pytest.mark.parametrize("outcome", ["completed", "failed", "interrupted"])
+@pytest.mark.parametrize("start", [False, True])
+@pytest.mark.parametrize("boundary", ["turn", "consumer"])
+async def test_send_during_final_snapshot_hands_off_to_a_new_consumer(group, monkeypatch, outcome, start, boundary):
     saving, release = asyncio.Event(), asyncio.Event()
     original = Session.save_snapshot
     gated = False
 
     async def save(session):
         nonlocal gated
-        if session.agent_parent and session.state.round_count and not session._active_runs and not gated:
+        if session.agent_parent and session.state.last_turn_status == outcome and bool(session._active_runs) == (boundary == "turn") and not gated:
             gated = True
             saving.set()
             await release.wait()
         return await original(session)
 
     async def request(client, messages, tools=None):
+        if not gated:
+            if outcome == "failed":
+                raise ModelError("provider failed")
+            if outcome == "interrupted":
+                raise asyncio.CancelledError
         return {"role": "assistant", "content": "done"}, [], "done"
 
     monkeypatch.setattr(Session, "save_snapshot", save)
     monkeypatch.setattr(ModelClient, "request", request)
     entry = await group.spawn(group.root.session, "handoff", "first")
     await asyncio.wait_for(saving.wait(), 3)
-    await group.send(entry.agent.session.uid, "second")
+    await group.send(entry.agent.session.uid, "second", start=start)
     release.set()
     await finished(group, entry)
-    assert entry.agent.session.state.round_count == 2
-    assert not entry.agent.session.pending_user_inputs
-    assert sum(item.get("content") == "second" for item in entry.agent.session.messages) == 1
+    resumed = start or outcome == "completed"
+    assert entry.agent.session.state.round_count == (2 if resumed else 1)
+    assert entry.status == ("completed" if resumed else outcome)
+    assert [item.text for item in entry.agent.session.pending_user_inputs] == ([] if resumed else ["second"])
+    assert sum(item.get("content") == "second" for item in entry.agent.session.messages) == int(resumed)
 
 
 @pytest.mark.parametrize("failure", [False, True])
@@ -513,8 +523,7 @@ async def test_bad_child_snapshot_does_not_block_healthy_family_restore(group, m
     elif damage == "header":
         path.write_text("not json\n")
     else:
-        with path.open("a") as log:
-            log.write("not json\n")
+        path.write_text(path.read_text() + "not json\n")
     restored = SessionSnapshotStore.load(root.uid, config=deepcopy(root.config), settings=deepcopy(root.settings), cwd=root.cwd)
     bootstrap_features(restored)
     restored.borrow_ownership(root)

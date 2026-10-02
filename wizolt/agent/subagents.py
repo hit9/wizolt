@@ -41,6 +41,7 @@ class AgentEntry:
     parent: str = ""
     instruction: str = ""
     task: asyncio.Task | None = None
+    restart_requested: bool = False
 
     @property
     def error(self) -> str:
@@ -239,10 +240,15 @@ class Subagents:
 
     def _start(self, entry: AgentEntry) -> None:
         if entry.task is None or entry.task.done():
+            entry.restart_requested = False
             entry.agent.session.state.last_turn_error = ""
             entry.task = asyncio.create_task(self._run(entry), name=f"agent:{entry.agent.session.uid}")
             entry.task.add_done_callback(lambda task: self._cancelled_before_start(entry, task))
             self.changed(entry)
+        elif entry.agent._active_task is None or entry.agent.session.state.last_turn_status in {"failed", "interrupted"}:
+            # A follow-up after the turn has settled may resume it, including while the engine
+            # or frontend is still publishing its last snapshot. Mid-turn steering is not retry.
+            entry.restart_requested = True
 
     def _cancelled_before_start(self, entry: AgentEntry, task: asyncio.Task) -> None:
         # Cancellation can prevent _run from entering its try/finally at all.
@@ -265,6 +271,7 @@ class Subagents:
         drained = False
         try:
             while session.pending_user_inputs:
+                entry.restart_requested = False
                 value = session.pending_user_inputs.pop(0)
                 if self.driver is None:
                     await agent.run(value.user_input())
@@ -281,6 +288,7 @@ class Subagents:
                 await session.save_snapshot()
             except Exception as error:  # noqa: BLE001 - retain a failed save as a visible child failure.
                 drained = False
+                entry.restart_requested = False
                 session.state.last_turn_status = "failed"
                 session.state.last_turn_error = str(error)
             # Clear before reporting, so the notification reflects the settled state.
@@ -288,7 +296,7 @@ class Subagents:
             # send() may have accepted work during the final snapshot while _start still saw
             # this consumer. Handoff only after that save settles; never overlap two writers.
             # Failure/cancellation intentionally pauses the inbox instead of retrying work.
-            if drained and session.pending_user_inputs and not self.closed:
+            if (drained or entry.restart_requested) and session.pending_user_inputs and not self.closed:
                 self._start(entry)
             else:
                 self.changed(entry)
@@ -304,6 +312,7 @@ class Subagents:
 
     def stop(self, uid: str) -> None:
         entry = self.entry(uid)
+        entry.restart_requested = False
         entry.agent.cancel()
         if entry.task is not None:
             entry.task.cancel()
