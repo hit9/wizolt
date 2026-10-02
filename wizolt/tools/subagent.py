@@ -22,6 +22,8 @@ class SubagentTool(Tool):
         "The creating agent must supply a short, unique, task-based name, e.g. api-review, ui-review, or test-check; main is reserved. "
         "send steers a running agent or starts another turn in its existing context. "
         "Use start=false to queue without waking an idle agent. list shows state; wait returns the latest answer. "
+        "wait defaults to 180 seconds (3 minutes); choose timeout up to 600 seconds (10 minutes) for longer tasks. "
+        "A wait timeout does not stop the child; wait again or continue other work. "
         "Do not overwrite or revert other agents' edits. Inspect the actual changes before accepting a report."
     )
 
@@ -52,6 +54,8 @@ class SubagentTool(Tool):
 
     @classmethod
     def params_schema(cls) -> Json:
+        from wizolt.agent.subagents import Subagents
+
         return cls.object_schema(
             {
                 "action": {"type": "string", "enum": ["spawn", "send", "list", "wait", "stop"]},
@@ -59,7 +63,10 @@ class SubagentTool(Tool):
                 "message": {"type": "string", "description": "Standalone task or additional steering input"},
                 "agent_id": {"type": "string"},
                 "start": {"type": "boolean", "description": "Wake an idle agent on send (default true)"},
-                "timeout": {"type": "integer", "minimum": 0, "maximum": 60},
+                "timeout": {
+                    "type": "integer", "minimum": 0, "maximum": Subagents.MAX_WAIT_TIMEOUT,
+                    "description": f"Wait timeout in seconds (default {Subagents.DEFAULT_WAIT_TIMEOUT}); 0 polls without waiting. Timeout does not stop the child.",
+                },
             },
             ["action"],
         )
@@ -84,7 +91,7 @@ class SubagentTool(Tool):
         elif action == "wait":
             if uid == self.session.uid:
                 raise ToolError("Cannot wait for the calling agent")
-            await group.wait(uid, payload.get("timeout", 30))
+            await group.wait(uid, payload.get("timeout", group.DEFAULT_WAIT_TIMEOUT))
         elif action == "stop":
             if uid == self.session.uid:
                 raise ToolError("Cannot stop the calling agent")

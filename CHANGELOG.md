@@ -8,6 +8,8 @@
   highlight waiting agents separately in every statusbar preset, including narrow screens.
   Show breathing activity dots in `/agents`, with static themed dots for settled/input-wait states.
 
+- Let subagent waits last up to 10 minutes, defaulting to 3 minutes. Timeouts leave children running.
+
 - Show retained agent totals (including main), running agents and input waits in every built-in
   statusbar layout when children exist. Keep group counts separate from selected-agent usage,
   follow independent statusbar themes and segmented colors, and expose `agents.count`,

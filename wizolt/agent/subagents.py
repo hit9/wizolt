@@ -90,6 +90,9 @@ class Subagents:
     must not become storage or a second engine driver.
     """
 
+    DEFAULT_WAIT_TIMEOUT = 180
+    MAX_WAIT_TIMEOUT = 600
+
     def __init__(self, root: Agent):
         self.root = root
         self.entries = {root.session.uid: AgentEntry(root)}
@@ -309,13 +312,13 @@ class Subagents:
             else:
                 self.changed(entry)
 
-    async def wait(self, uid: str, timeout: float = 30) -> AgentEntry:
+    async def wait(self, uid: str, timeout: float = DEFAULT_WAIT_TIMEOUT) -> AgentEntry:
         entry = self.entry(uid)
         if entry.agent is self.root:
             raise ToolError("Cannot wait for main from its own agent group")
         task = entry.task
         if task is not None:
-            await asyncio.wait({task}, timeout=max(0, min(timeout, 60)))
+            await asyncio.wait({task}, timeout=max(0, min(timeout, self.MAX_WAIT_TIMEOUT)))
         return entry
 
     def stop(self, uid: str) -> None:

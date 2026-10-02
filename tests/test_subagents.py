@@ -402,6 +402,44 @@ async def test_timeout_and_stop_do_not_cancel_siblings(group, monkeypatch):
     assert two.status == "completed"
 
 
+@pytest.mark.parametrize("timeout,expected", [(None, 180), (0, 0), (180, 180), (600, 600), (900, 600)])
+async def test_wait_timeout_defaults_and_bounds_leave_child_running(group, monkeypatch, timeout, expected):
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def request(client, messages, tools=None):
+        entered.set()
+        await release.wait()
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await group.spawn(group.root.session, "long-task", "task")
+    await asyncio.wait_for(entered.wait(), 3)
+    real_wait = asyncio.wait
+    timeouts = []
+
+    async def immediate_wait(tasks, *, timeout):
+        timeouts.append(timeout)
+        return await real_wait(tasks, timeout=0)
+
+    payload = {"action": "wait", "agent_id": entry.agent.session.uid}
+    if timeout is not None:
+        payload["timeout"] = timeout
+    with monkeypatch.context() as clock:
+        clock.setattr(asyncio, "wait", immediate_wait)
+        result = json.loads(await SubagentTool(group.root.session, [payload]).call())
+    assert timeouts == [expected]
+    assert entry.status == result[0]["status"] == "running"
+    assert not entry.task.cancelling()
+    release.set()
+    await finished(group, entry)
+
+
+def test_wait_schema_exposes_long_wait_limit_and_default():
+    schema = SubagentTool.params_schema()["properties"]["timeout"]
+    assert schema["minimum"] == 0 and schema["maximum"] == 600
+    assert "180" in schema["description"]
+
+
 @pytest.mark.parametrize("previous", ["", "earlier answer"])
 async def test_stop_and_list_survive_interrupted_tool_call_only_history(group, monkeypatch, previous):
     entered, release = asyncio.Event(), asyncio.Event()

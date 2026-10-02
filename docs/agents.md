@@ -95,7 +95,8 @@ The `Subagent` tool starts agents with `spawn`, adds input with `send`, and expo
 `wait` and `stop`. Spawn returns an agent ID immediately, so the caller can continue working.
 The creating agent assigns each child a unique task-based name, such as `api-review`,
 `ui-review` or `test-check`; `main` is reserved for your main conversation.
-Waiting has a timeout of up to 60 seconds; timing out leaves the child running. A child keeps
+Waiting defaults to 3 minutes, with a maximum of 10 minutes per call (`timeout=600` seconds).
+Use `timeout=0` to check immediately. Timing out leaves the child running. A child keeps
 its conversation for subsequent inputs. Stopping a child returns after its turn has settled.
 
 A skill with `context: fork` starts a child agent after you confirm its task. Its report returns
