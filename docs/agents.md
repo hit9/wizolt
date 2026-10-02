@@ -90,14 +90,19 @@ Change the limit from main with `/set runtime.max_subagents NUMBER`; check it wi
 
 ## Model tools
 
-The model uses `Subagent` to **spawn**, **send**, **list**, **wait** and **stop**. Creating agents
+The model uses one `Subagent` tool with **spawn**, **send**, **list**, **inspect**, **wait** and **stop** actions. Creating agents
 returns immediately. Waiting defaults to **3 minutes**, up to **10 minutes** per call
 (`timeout=600`); `timeout=0` checks immediately. A timeout does not stop the child.
 
 The parent receives each direct child's latest completed, failed or interrupted result before
 its next model request, even while doing other work. Notifications include up to **1000 characters**;
 `list` or `wait` retrieves more while the child is not archived. Results already returned by those
-tools are not announced again. This does not start a new parent turn or add user input to history.
+tools or `inspect` are not announced again. This does not start a new parent turn or add user input to history.
+
+**inspect** reads an active or archived agent without approval: its task, plan, model settings,
+duration, eight recent messages, four recent tool results and current tool batch. Long text is
+clipped; partial streaming text is not included. **list** also includes archived agents so the
+model can find their IDs. Neither action starts work or changes the selected conversation.
 
 Tasks must be self-contained: children receive system and project guidance, not the parent's
 conversation or notes. See [forked skills](skills.md) for tasks that run in their own child.

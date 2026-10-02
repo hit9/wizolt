@@ -47,6 +47,8 @@ def receive_results(session: Session, turn: list[Json], results: Iterable[Json])
             rows = json.loads(content.partition("\noutput:\n")[2])
         except ValueError:
             continue
+        if isinstance(rows, dict) and isinstance(rows.get("result"), dict):
+            rows = [rows["result"]]  # inspect returns a bounded envelope alongside its snapshot.
         if isinstance(rows, list):
             for row in rows:
                 if isinstance(row, dict) and isinstance(uid := row.get("agent_id"), str) and row.get("result_id") == available.get(uid) and uid in available:

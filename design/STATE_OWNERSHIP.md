@@ -60,7 +60,7 @@ are local runtime state: `context_percent`, `context_tokens`, `turn_step`, `turn
 
 | Boundary | Ownership |
 | --- | --- |
-| `Agent`, `ContextManager`, `ToolRunner`, `ModelClient` | Constructed per Session. Turn task/loop, source collection, hook redirects, compaction guards, runner capacity/gateways, vision client, model retry metadata and wire clients are local. One `UiHooks` instance binds the layers of one agent only. |
+| `Agent`, `ContextManager`, `ToolRunner`, `ModelClient` | Constructed per Session. Turn task/loop, source collection, hook redirects, compaction guards, runner capacity/gateways/active tool batch, vision client, model retry metadata and wire clients are local. One `UiHooks` instance binds the layers of one agent only. |
 | Model request leases | A request installs its own ContextVar lease and resets it after settlement. Context inheritance by an asyncio task is not permission to reuse a parent's provider clients. Cache keys may share a workspace prefix; request messages and usage remain local. |
 | `Subagents`, `AgentEntry`, `AgentCounts` | One group controls retained entries, root limit, admission lock and drivers. Each entry owns its child task and task description; displayed status derives from that child's Session/engine. Counts are a fresh immutable projection including main; input waits take precedence over running. Never persist counters or aggregate usage into them. A child exception or wait timeout cannot cancel a sibling. |
 | `CommandLoop`, `TuiRuntime`, `Presentation`, `TuiApp`, `ScrollbackWriter` | One set per agent: draft/buffer, history/completion, submissions, pending reads, approvals/modals, transcript, stream/progress, output admission/drain and view state. A switch changes projection, not hooks or data ownership. |
@@ -127,6 +127,11 @@ Delivery receipts belong to the receiving parent's `AgentState`, not to the grou
 parents must not consume each other's notifications. Receipts and their session events enter the
 same snapshot; they never enter user input history or the visible transcript. The archived
 manifest retains the last result envelope after its engine is gone.
+
+`agent/inspection.py` copies a bounded projection on the owning loop; it never lends callers
+mutable state, credentials, hidden reasoning or raw image data. The runner owns its active
+top-level batch and clears it on every exit. Archived inspection loads detached session values
+without assembling an engine. Model inspection and frontend previews do not share UI objects.
 
 ## Regression boundaries
 

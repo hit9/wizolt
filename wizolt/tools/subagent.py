@@ -22,6 +22,7 @@ class SubagentTool(Tool):
         "The creating agent must supply a short, unique, task-based name, e.g. api-review, ui-review, or test-check; main is reserved. "
         "send steers a running agent or starts another turn in its existing context. "
         "Use start=false to queue without waking an idle agent. list shows state; wait returns the latest answer. "
+        "inspect reads a bounded snapshot of an active or archived agent: task, plan, recent messages, tool activity, settings and result; no approval is needed. "
         "wait defaults to 180 seconds (3 minutes); choose timeout up to 600 seconds (10 minutes) for longer tasks. "
         "A wait timeout does not stop the child; wait again or continue other work. "
         "Your direct children's latest settled results are reported automatically before your next model request; "
@@ -61,7 +62,7 @@ class SubagentTool(Tool):
 
         return cls.object_schema(
             {
-                "action": {"type": "string", "enum": ["spawn", "send", "list", "wait", "stop"]},
+                "action": {"type": "string", "enum": ["spawn", "send", "list", "inspect", "wait", "stop"]},
                 "name": {"type": "string", "description": "Required for spawn: unique task-based name, e.g. api-review, ui-review, test-check. Never main."},
                 "message": {"type": "string", "description": "Standalone task or additional steering input"},
                 "agent_id": {"type": "string"},
@@ -85,6 +86,8 @@ class SubagentTool(Tool):
             raise ToolError("Subagents are unavailable")
         action = payload.get("action")
         uid = payload.get("agent_id", "")
+        if action == "inspect":
+            return json.dumps(await group.inspect(uid), ensure_ascii=False)
         if action == "spawn":
             entry = await group.spawn(self.session, payload.get("name", ""), payload.get("message", ""), model_settings=self.approval_config())
             uid = entry.agent.session.uid
@@ -112,22 +115,26 @@ class SubagentTool(Tool):
         elif action != "list":
             raise ToolError(f"Unknown Subagent action: {action}")
         entries = list(group.entries.values()) if action == "list" else [group.entry(uid)]
-        return json.dumps(
-            [
-                {
-                    "agent_id": entry.agent.session.uid,
-                    "name": entry.agent.session.agent_name,
-                    "parent": entry.parent,
-                    "status": entry.status,
-                    "result_id": entry.result.get("result_id", "") if entry.status in {"completed", "failed", "interrupted"} else "",
-                    "context_percent": entry.agent.session.usage.context_percent(entry.agent.session.state.context_percent),
-                    "error": entry.error,
-                    "answer": entry.answer[-12000:],
-                }
-                for entry in entries
-            ],
-            ensure_ascii=False,
-        )
+        rows = [
+            {
+                "agent_id": entry.agent.session.uid,
+                "name": entry.agent.session.agent_name,
+                "parent": entry.parent,
+                "status": entry.status,
+                "result_id": entry.result.get("result_id", "") if entry.status in {"completed", "failed", "interrupted"} else "",
+                "context_percent": entry.agent.session.usage.context_percent(entry.agent.session.state.context_percent),
+                "error": entry.error,
+                "answer": entry.answer[-12000:],
+            }
+            for entry in entries
+        ]
+        if action == "list":
+            rows.extend(
+                {"agent_id": item["uid"], "name": item.get("name", ""), "parent": item.get("parent", ""), "status": "archived"}
+                for item in group.root.session.subagent_entries
+                if item.get("archived")
+            )
+        return json.dumps(rows, ensure_ascii=False)
 
     def needs_confirmation(self) -> bool:
         return self.single_dict_arg("Subagent requires named fields").get("action") in {"spawn", "send", "stop"}

@@ -15,6 +15,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from wizolt.agent.inspection import inspect_session
 from wizolt.agent.results import settled_result
 from wizolt.base import Json, ToolError, oneline, run_blocking
 from wizolt.image import UserInput
@@ -358,6 +359,20 @@ class Subagents:
         while children := {key for key, entry in self.entries.items() if entry.parent in result} - result:
             result.update(children)
         return result
+
+    async def inspect(self, uid: str) -> Json:
+        if uid in self.entries:
+            entry = self.entries[uid]
+            return inspect_session(entry.agent.session, status=entry.status, instruction=entry.instruction, calls=entry.agent.tools.active_calls)
+        item = next((item for item in self.root.session.subagent_entries if item.get("uid") == uid and item.get("archived")), None)
+        if item is None:
+            raise ToolError(f"Unknown agent: {uid}")
+        root = self.root.session
+        session = await run_blocking(lambda: SessionSnapshotStore.load(uid, config=deepcopy(root.config), settings=replace(root.settings), cwd=root.cwd))
+        try:
+            return inspect_session(session, status="archived", instruction=item.get("instruction", ""))
+        finally:
+            session.close()
 
     async def archive(self, uid: str) -> None:
         """User-only retirement, retaining snapshots/assets while releasing live slots.

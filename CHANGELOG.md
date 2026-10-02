@@ -10,6 +10,9 @@
 
 ### Added
 
+- Add read-only `Subagent inspect` for bounded task, plan, message and tool-activity snapshots,
+  including archived agents. Include archived IDs in `list`; inspecting a result avoids a duplicate notification.
+
 - Report direct children's latest settled results automatically at the parent's next model request,
   with bounded excerpts and persistent delivery receipts. Preserve unseen results across resume
   and archival; avoid duplicate notifications after successful `list`/`wait` retrieval.

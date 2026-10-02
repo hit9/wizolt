@@ -193,6 +193,7 @@ class ToolRunner:
         # semaphore belongs to the loop that created it, and this runner outlives any single loop.
         self._capacity: asyncio.Semaphore | None = None
         self._gateway: _NestedGateway | None = None
+        self.active_calls: tuple[ToolCall, ...] = ()
 
     @contextlib.contextmanager
     def nested(self):
@@ -379,9 +380,11 @@ class ToolRunner:
         # Per invocation, never per runner: these are loop-bound, and this runner outlives loops.
         self._capacity = asyncio.Semaphore(max(1, self.session.settings.max_parallel_tools))
         self._gateway = _NestedGateway(self, loop)
+        self.active_calls = tuple(calls)
         try:
             return await self._run_batch(calls, batch_suffix)
         finally:
+            self.active_calls = ()
             gateway, self._gateway = self._gateway, None
             self._capacity = None
             if gateway is not None:

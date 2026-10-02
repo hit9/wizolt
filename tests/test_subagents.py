@@ -35,6 +35,84 @@ async def finished(group, entry):
     return entry
 
 
+async def test_inspect_is_bounded_readonly_and_includes_archived_history(group, monkeypatch):
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "reply " * 500}, [], "reply " * 500
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    entry = await finished(group, await group.spawn(root, "review", "inspect task"))
+    child = entry.agent.session
+    child.state.plan = ["check API", "check tests"]
+    child.store_tool_result("Read", [], "body " * 500)
+    child.config.provider.key = "secret-never-project"
+    child.messages.append({"role": "assistant", "content": "answer", "reasoning_content": "hidden-never-project"})
+    root.settings.yolo = False
+    prompts = []
+    CommandLoop(group.root, input_fn=lambda prompt: prompts.append(prompt) or "n", output_fn=lambda _: None)
+    before = deepcopy(child.messages)
+    await group.root.tools.run([call("Subagent", [{"action": "inspect", "agent_id": child.uid}])])
+    result = json.loads(root.tool_records[-1].output)
+    assert not prompts
+    assert result["task"] == "inspect task"
+    assert "check API" in str(result["plan"])
+    assert len(result["recent_messages"]) <= 8
+    assert all(len(message["text"]) <= 1000 for message in result["recent_messages"])
+    assert len(result["recent_tools"][0]["output"]) == 1000
+    assert "secret-never-project" not in str(result)
+    assert "hidden-never-project" not in str(result)
+    assert child.messages == before
+    assert result["model"] == child.config.provider.model
+    await group.archive(child.uid)
+    archived = json.loads(await SubagentTool(root, [{"action": "inspect", "agent_id": child.uid}]).call())
+    assert archived["status"] == "archived"
+    assert archived["task"] == "inspect task"
+    assert child.uid not in group.entries
+    listing = json.loads(await SubagentTool(root, [{"action": "list"}]).call())
+    assert listing[-1]["agent_id"] == child.uid and listing[-1]["status"] == "archived"
+    with pytest.raises(ToolError, match="Unknown agent"):
+        await group.inspect("not-in-this-family")
+
+
+async def test_inspect_reads_running_tool_batch_and_clears_it_after_cancel(group, monkeypatch):
+    entered = asyncio.Event()
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": None}, [call("Read", [{"path": "pending.txt", "ranges": [[0, 0]]}])], ""
+
+    async def batch(runner, calls, batch_suffix=""):
+        entered.set()
+        await asyncio.Event().wait()
+
+    from wizolt.agent.runner import ToolRunner
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    monkeypatch.setattr(ToolRunner, "_run_batch", batch)
+    entry = await group.spawn(group.root.session, "review", "work")
+    await entered.wait()
+    inspected = await group.inspect(entry.agent.session.uid)
+    assert inspected["status"] == "running"
+    assert inspected["current_tool_batch"][0]["name"] == "Read"
+    assert "pending.txt" in inspected["current_tool_batch"][0]["arguments"]
+    group.stop(entry.agent.session.uid)
+    await finished(group, entry)
+    assert (await group.inspect(entry.agent.session.uid))["current_tool_batch"] == []
+
+
+async def test_inspect_result_suppresses_duplicate_completion_notification(group, monkeypatch):
+    from wizolt.agent.results import receive_results
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await finished(group, await group.spawn(group.root.session, "review", "work"))
+    turn = await group.root.tools.run([call("Subagent", [{"action": "inspect", "agent_id": entry.agent.session.uid}])])
+    receive_results(group.root.session, turn, group.results_for(group.root.session.uid))
+    assert len(turn) == 1
+    assert group.root.session.state.child_results_seen[entry.agent.session.uid] == entry.result["result_id"]
+
+
 async def test_turn_clock_is_live_then_frozen_and_restored(group, monkeypatch):
     from wizolt.session import types
 
