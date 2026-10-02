@@ -16,6 +16,42 @@ from wizolt.config import (
 from wizolt.session import Session, SessionSnapshotCodec, SessionSnapshotStore, TurnDiff
 
 
+async def test_compact_deltas_keep_agent_metadata_and_clear_default_state(tmp_path):
+    s = session_with_data_dir(tmp_path)
+    s.messages = [{"role": "user", "content": "hello"}]
+    s.subagent_entries = [{"uid": s.uid + ".achild", "parent": s.uid, "instruction": "review"}]
+    s.state.last_turn_status = "failed"
+    s.state.last_turn_error = "old error"
+    s.state.turn_result = {"result_id": "old"}
+    s.state.child_results_seen = {"child": "old"}
+    try:
+        await s.save_snapshot()
+        await s.save_snapshot()
+        unchanged = read_jsonl(log_path(s))[-1]
+        assert not {"agent_name", "agent_parent", "subagent_entries"} & unchanged.keys()
+        loaded = SessionSnapshotStore.load(s.uid, config=s.config, settings=s.settings)
+        assert loaded.subagent_entries == s.subagent_entries
+        loaded.close()
+
+        s.agent_name = "renamed"
+        s.subagent_entries.clear()
+        s.state.last_turn_status = "idle"
+        s.state.last_turn_error = ""
+        s.state.turn_result.clear()
+        s.state.child_results_seen.clear()
+        await s.save_snapshot()
+        cleared = read_jsonl(log_path(s))[-1]
+        assert cleared["subagent_entries"] == []
+        assert "last_turn_error" not in cleared["state"]
+        loaded = SessionSnapshotStore.load(s.uid, config=s.config, settings=s.settings)
+        assert loaded.agent_name == "renamed" and loaded.subagent_entries == []
+        assert loaded.state.last_turn_status == "idle" and loaded.state.last_turn_error == ""
+        assert loaded.state.turn_result == loaded.state.child_results_seen == {}
+        loaded.close()
+    finally:
+        s.close()
+
+
 def test_read_merged_skips_a_torn_record_and_non_object_lines(tmp_path):
     """A crash (or a full disk) mid-append leaves a torn trailing line: no newline, never
     committed -- the write markers do not advance on a failed append, so the next save re-appends

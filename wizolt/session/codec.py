@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from copy import deepcopy
 from dataclasses import asdict, fields
 from typing import TYPE_CHECKING, ClassVar, cast
 
@@ -82,6 +83,7 @@ class SessionSnapshotCodec:
             "history_len": len(session.history), "history_keys_digest": cls.digest([seg.key for seg in session.history]),
             "provider_overrides_digest": cls.digest(session.provider_overrides),
             "active_skills_digest": cls.digest(session.active_skills),
+            "agent_metadata_digest": cls.digest([session.agent_name, session.agent_parent, session.subagent_entries]),
             "source_views_len": len(session.source_views), "source_views_keys_digest": cls.digest([view.key for view in cls.ordered_views(session.source_views)]),
         }
         # fmt: on
@@ -288,27 +290,30 @@ class SessionSnapshotCodec:
 
     @staticmethod
     def state(state: AgentState) -> Json:
-        data = asdict(state)
-        data["turn_elapsed"] = state.elapsed
-        return {
-            key: data[key]
-            for key in (
-                "goal",
-                "plan",
-                "known",
-                "check",
-                "summary",
-                "name",
-                "name_source",
-                "compaction_count",
-                "round_count",
-                "last_turn_status",
-                "last_turn_error",
-                "turn_elapsed",
-                "turn_result",
-                "child_results_seen",
-            )
+        from wizolt.session.types import PlanItem
+
+        # Project only durable fields. asdict(state) also recursively copies every runtime
+        # counter/stream/retry field, only for this boundary to discard them again.
+        data = {
+            "goal": state.goal,
+            "plan": [asdict(item) if isinstance(item, PlanItem) else deepcopy(item) for item in state.plan],
+            "known": list(state.known),
+            "check": state.check,
+            "summary": state.summary,
+            "name": state.name,
+            "name_source": state.name_source,
+            "compaction_count": state.compaction_count,
+            "round_count": state.round_count,
+            "last_turn_status": state.last_turn_status,
+            "last_turn_error": state.last_turn_error,
+            "turn_elapsed": state.elapsed,
+            "turn_result": deepcopy(state.turn_result),
+            "child_results_seen": dict(state.child_results_seen),
         }
+        # State is replaced as a whole, not merged field by field. Omitted defaults therefore
+        # clear an earlier error/result just as explicit empty values would, without repeating
+        # empty subagent envelopes in every checkpoint of a main-only conversation.
+        return {key: value for key, value in data.items() if value and (key != "last_turn_status" or value != "idle")}
 
     @staticmethod
     def subagent_entries(value: list[Json]) -> list[SubagentRecord]:
@@ -399,10 +404,9 @@ class SessionSnapshotCodec:
             "context_layout_version": session.context_layout_version,
             "transcript_sync": TRANSCRIPT_SYNC_VERSION,
             "context_reset_requested": session.context_reset_requested,
-            "agent_name": session.agent_name,
-            "agent_parent": session.agent_parent,
-            "subagent_entries": list(session.subagent_entries),
         }
+        if current["agent_metadata_digest"] != saved.get("agent_metadata_digest"):
+            delta.update(agent_name=session.agent_name, agent_parent=session.agent_parent, subagent_entries=list(session.subagent_entries))
         cls.add_sequence_delta(delta, "messages", cls.snapshot_messages(session), saved, "messages_len", "messages_digest", current["messages_digest"])
         cls.add_append_only_delta(delta, "transcript_messages", cls.snapshot_transcript_messages(session), saved)
         active_transcript_messages = cls.active_transcript_messages(session)

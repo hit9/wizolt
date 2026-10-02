@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Performance
+
+- Avoid repeating unchanged agent metadata and empty default state in session checkpoints;
+  copy only durable state fields. Update the [local benchmark reference](https://github.com/hit9/wizolt/blob/master/benchmarks/README.md#subagent-review)
+  with paired and interleaved measurements, including the remaining cost of final turn snapshots.
+
 ### Fixed
 
 - Normalize older string-encoded archived results on session load, preserving resumable family

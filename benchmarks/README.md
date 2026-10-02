@@ -1,5 +1,68 @@
 # Local performance baselines
 
+## Subagent review
+
+The current reference for future comparisons is
+[`baselines/linux-arm64-py314-subagents.json`](baselines/linux-arm64-py314-subagents.json).
+It compares the reviewed subagent branch with `master` at `4cc040f2`, recorded in
+[`baselines/linux-arm64-py314-before-subagents.json`](baselines/linux-arm64-py314-before-subagents.json).
+The optimized source SHA-256 is `1ab879b2eaeb5d86e5f9767782fdf7f71481a6a7ee52b54004e451396eaf93fd`;
+the report's revision, `a7d2c6cc`, is the parent of the measured working tree.
+
+Both full runs used Linux aarch64, installed CPython 3.14.7, identical dependencies and workloads,
+nine samples per metric, temporary source exports without bytecode, warm filesystem caches, and
+no concurrent tests or builds. These probes make no external model requests.
+
+The [initial result](results/linux-arm64-py314-subagents-before-optimization.json) showed
+10,000-delta merging +18.6% and ten headless turns +14.4%. A
+[reverse-order repeat](results/linux-arm64-py314-subagents-reverse-repeat.json) reproduced both
+(+15.3% and +16.5%). Checkpoints now omit unchanged agent metadata and empty default state;
+state projection copies only durable fields rather than copying and discarding runtime fields.
+Final turn snapshots remain mandatory.
+
+Four [interleaved rounds](results/linux-arm64-py314-subagents-interleaved.json), alternating
+master/optimized and optimized/master, measured the final change. Optimization metrics pool
+12 samples per side; replay metrics pool 20. Medians are milliseconds:
+
+| Metric | master | Optimized | Change |
+| --- | ---: | ---: | ---: |
+| Merge 10,000 session deltas | 46.901 | 41.272 | -12.0% |
+| Prepare a 1 MB request | 7.252 | 7.172 | -1.1% |
+| Ten headless turns, no hooks | 22.121 | 26.205 | +18.5% |
+| Ten headless turns, configured hooks | 39.134 | 44.316 | +13.2% |
+| Twenty reads, no hooks | 5.803 | 5.659 | -2.5% |
+| Twenty reads, configured hooks | 36.975 | 38.184 | +3.3% |
+| Rescan 100 cached skills | 0.530 | 0.636 | +19.9% |
+| First projection, 100 blocks | 98.165 | 99.933 | +1.8% |
+| Revisit width, 100 blocks | 0.022 | 0.022 | -1.0% |
+| Append, 100 blocks | 0.610 | 0.675 | +10.5% |
+| Append at 5,000-write limit | 0.861 | 0.891 | +3.5% |
+| Revisit width above cache budget | 244.458 | 246.715 | +0.9% |
+| Emit 500 plain rows | 6.127 | 6.337 | +3.4% |
+| Recolor 100 blocks / 500 rows | 104.752 | 106.118 | +1.3% |
+
+The merge regression is recovered. Headless turns still cost about **0.41 ms more per turn**
+without hooks: unlike master, `Agent.run` now saves the final answer, settled status, elapsed time
+and child result before returning. This is extra durability work, not identical persistence
+semantics; removing that save would weaken recovery. The smaller rescan/append differences are
+retained in the report rather than rounded away; cached skill rescanning itself has no behavior
+change in this branch.
+
+The full paired run measured first-frame latency at 139.61 → 144.99 ms. Every replay output hash
+matches in both the paired and interleaved runs. These local measurements do not establish a
+general speedup, and do not measure provider latency or many simultaneously active children.
+
+To compare future work against the updated reference:
+
+```sh
+uv run --no-sync python benchmarks/run.py --repeat 9 \
+  --baseline benchmarks/baselines/linux-arm64-py314-subagents.json \
+  --output /tmp/wizolt-next-benchmark.json
+# Reproduce interleaving with git archive exports, alternating source order for four rounds:
+uv run --no-sync python benchmarks/optimization.py --source /path/to/export --repeat 3
+uv run --no-sync python benchmarks/replay.py --source /path/to/export --repeat 5
+```
+
 ## Theme refresh against 0.62.0
 
 The theme, spacing, statusbar and live-preview commits after 0.62.0 (`ca45fa61`) are compared with
