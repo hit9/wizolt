@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 import time
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -14,9 +16,9 @@ from prompt_toolkit.utils import get_cwidth
 
 from wizolt.agent.engine import Agent
 from wizolt.agent.subagents import AgentEntry
-from wizolt.base import Text
-from wizolt.session import QueuedInput, Session
-from wizolt.ui.cli.modals import choice_application, picker_height, select_choice
+from wizolt.base import ApprovalView, Text, run_blocking
+from wizolt.session import QueuedInput, Session, SessionSnapshotStore
+from wizolt.ui.cli.modals import approval_text_viewer, choice_application, picker_height, select_choice
 from wizolt.ui.cli.runtime import ScrollbackWriter, TuiRuntime
 from wizolt.ui.render import ActivityPulse, InputStyle, StatusBar, Theme
 
@@ -107,6 +109,11 @@ class StopAgent:
     uid: str
 
 
+@dataclass(frozen=True)
+class ArchiveAgent:
+    uid: str
+
+
 async def configure_subagent(loop: CommandLoop, settings: Session) -> None:
     """Reuse model commands against a call's detached settings and the caller's modal owner."""
     from wizolt.ui.cli import commands
@@ -155,6 +162,7 @@ class AgentsFrontend:
         root.loop.agents_frontend = self
         self.group.on_created = self.attach
         self.group.on_changed = self.changed
+        self.group.on_archived = self.close_runtime
         self.group.driver = self.drive
 
     async def attach(self, agent: Agent) -> None:
@@ -219,14 +227,16 @@ class AgentsFrontend:
 
     async def select(self, loop: CommandLoop) -> None:
         entries = tuple(self.group.entries.values())
+        displayed = {entry.agent.session.uid: entry for entry in entries}
+        archived = {item["uid"]: item for item in self.root.loop.session.subagent_entries if item.get("archived")}
 
         def elapsed(uid: str) -> str:
-            seconds = int(self.group.entry(uid).agent.session.state.elapsed)
+            seconds = int(displayed[uid].agent.session.state.elapsed)
             minutes, seconds = divmod(seconds, 60)
             return f"{minutes}m{seconds:02d}s" if minutes else f"{seconds}s"
 
         def label(uid: str) -> str:
-            entry = self.group.entry(uid)
+            entry = displayed[uid]
             return (
                 f"{entry.agent.session.agent_name} · {entry.status} · {elapsed(uid)} · "
                 f"ctx {entry.agent.session.usage.context_percent(entry.agent.session.state.context_percent)}%"
@@ -234,21 +244,27 @@ class AgentsFrontend:
             )
 
         labels = {entry.agent.session.uid: label(entry.agent.session.uid) for entry in entries}
+        labels.update({uid: f"{item.get('name', uid)} · archived" for uid, item in archived.items()})
 
         def row(uid: str) -> StyleAndTextTuples:
-            entry = self.group.entry(uid)
-            session = entry.agent.session
             available = max(1, min(100, shutil.get_terminal_size((80, 24)).columns) - 8)
             wide = available >= 62
             status_width, marker_width = (17, 10) if wide else (11, 2)
             clock_width = 9 if available >= 72 else 0
-            longest = max(get_cwidth(item.agent.session.agent_name) for item in entries)
+            longest = max(
+                get_cwidth(name) for name in [*(item.agent.session.agent_name for item in entries), *(item.get("name", "") for item in archived.values())]
+            )
             name_width = min(max(8, longest), 28, max(4, available - status_width - marker_width - clock_width - 14))
 
             def cell(text: str, width: int) -> str:
                 text = Text.clip_width(text, width)
                 return text + " " * (width - get_cwidth(text))
 
+            if uid in archived:
+                text = "● " + cell(archived[uid].get("name", uid), name_width) + "  " + cell("archived", status_width)
+                return [("class:muted", cell(text, available))]
+            entry = displayed[uid]
+            session = entry.agent.session
             state = entry.status if wide else entry.status.replace("waiting for input", "waiting")
             state_style = {"running": "class:accent", "waiting for input": "class:warning", "failed": "class:error"}.get(entry.status, "class:muted")
             context = session.usage.context_percent(session.state.context_percent)
@@ -272,10 +288,16 @@ class AgentsFrontend:
             return StatusBar.clip_fragments(parts, available)
 
         def preview(uid: str) -> StyleAndTextTuples:
-            entry = self.group.entry(uid)
+            if uid in archived:
+                item = archived[uid]
+                return AgentPreview(item.get("instruction", ""), item.get("answer", ""), name=labels[uid]).fragments(
+                    shutil.get_terminal_size((80, 24)).columns, picker_height() - 9
+                )
+            entry = displayed[uid]
             session = entry.agent.session
             opening = entry.instruction or next((str(message.get("content", "")) for message in session.messages if message.get("role") == "user"), "")
-            active = self.runtimes[uid].loop.presentation.model_stream_text
+            runtime = self.runtimes.get(uid)
+            active = runtime.loop.presentation.model_stream_text if runtime else ""
             height = picker_height() - 6 - min(3, len(entries))
             caption = f"{session.agent_name} · {entry.status} · {elapsed(uid)}"
             return AgentPreview(opening, active or entry.answer, bool(active), caption).fragments(shutil.get_terminal_size((80, 24)).columns, height)
@@ -292,23 +314,105 @@ class AgentsFrontend:
                 preview_fn=preview,
                 label_fn=row,
                 preview_title=" ",
-                actions={"x": StopAgent, "X": self.group.stop},
-                keys="↑/↓ j/k move · Enter open · x stop · X stop now · Esc back",
+                actions={
+                    "x": lambda key: StopAgent(key) if key in self.group.entries else None,
+                    "X": lambda key: self.group.stop(key) if key in self.group.entries else None,
+                    "d": lambda key: ArchiveAgent(key) if key in self.group.entries and key != self.root.loop.session.uid else None,
+                },
+                keys="↑/↓ j/k move · Enter open · x stop · X stop now · d archive · Esc back",
             )
+            if isinstance(uid, ArchiveAgent):
+                current = uid.uid
+                name = self.group.entry(current).agent.session.agent_name
+                if (
+                    await select_choice(
+                        loop,
+                        f"Archive {name} and its children?",
+                        ("archive", "back"),
+                        labels={"archive": "Stop work and free slots; keep history", "back": "Back"},
+                        current="back",
+                    )
+                    == "archive"
+                ):
+                    # The command itself may be running in the branch being retired. Switch
+                    # first, then let a root-owned task join it before cancelling that branch.
+                    owner = asyncio.current_task()
+                    if self.current.loop.session.uid in self.group.branch(current):
+                        self.switch_to(self.root)
+                    self.root.spawn(self.archive_after_command(current, owner), name="archive-agent")
+                    return
+                continue
             if not isinstance(uid, StopAgent):
                 break
             current = uid.uid
             name = self.group.entry(current).agent.session.agent_name
             if await select_choice(loop, f"Stop {name}?", ("stop", "back"), labels={"stop": "Stop this agent", "back": "Back"}, current="back") == "stop":
                 self.group.stop(current)
-        if isinstance(uid, str) and uid != self.current.loop.session.uid:
-            previous = self.current
-            # Do not rebind hooks or transfer queues: input already accepted belongs to previous.
-            self.current = self.runtimes[uid]
-            self.switching = True
-            previous.tui.managed = True
-            self.current.tui.managed = True
-            previous.tui.exit()
+        if isinstance(uid, str):
+            if uid in archived:
+                await self.show_archive(loop, uid)
+            elif uid in self.runtimes and uid != self.current.loop.session.uid:
+                self.switch_to(self.runtimes[uid])
+
+    def switch_to(self, runtime: TuiRuntime) -> None:
+        previous = self.current
+        # Accepted inputs and hooks retain their owner across projection switches.
+        self.current = runtime
+        self.switching = True
+        previous.tui.managed = True
+        runtime.tui.managed = True
+        previous.tui.exit()
+
+    async def archive_after_command(self, uid: str, owner: asyncio.Task | None) -> None:
+        if owner is not None:
+            await asyncio.wait({owner})
+        drained: list[TuiRuntime] = []
+        try:
+            # Drain frontend admission before the group takes its admission lock: a
+            # submission may itself be waiting inside group.send().
+            for key in self.group.branch(uid):
+                runtime = self.runtimes[key]
+                await runtime._close_submissions()
+                drained.append(runtime)
+            await self.group.archive(uid)
+        except Exception as error:  # noqa: BLE001 - a failed archive must not shut down the application.
+            for runtime in drained:
+                if runtime.loop.session.uid in self.runtimes:
+                    runtime.accepting = True
+                    runtime.submissions_task = runtime.spawn(runtime._consume_submissions(), name="agent-submissions")
+            self.root.loop.presentation.emit(f"Could not archive agent: {error}")
+
+    async def show_archive(self, loop: CommandLoop, uid: str) -> None:
+        root = self.root.loop.session
+        session = await run_blocking(lambda: SessionSnapshotStore.load(uid, config=deepcopy(root.config), settings=deepcopy(root.settings), cwd=root.cwd))
+        try:
+            text = "\n\n".join(
+                f"## {message.get('role', '')}\n\n"
+                + (
+                    message["content"]
+                    if isinstance(message.get("content"), str) and not message.get("tool_calls")
+                    else json.dumps(message, ensure_ascii=False, indent=2)
+                )
+                for message in session.transcript_messages
+            )
+            await approval_text_viewer(loop, ApprovalView(f"Archived · {session.agent_name}", text or "(No messages)", rows=[("mode", "read-only")]))
+        finally:
+            session.close()
+
+    async def close_runtime(self, uid: str) -> None:
+        runtime = self.runtimes.pop(uid)
+        await runtime._close_submissions()
+        for task in tuple(runtime.tasks):
+            task.cancel()
+        if runtime.tasks:
+            await asyncio.gather(*runtime.tasks, return_exceptions=True)
+        await runtime.loop.background.close_background()
+        runtime.loop.presentation.close_background_output()
+        if runtime.scrollback is not None:
+            await runtime.scrollback.close()
+        runtime.tui.cancel_input()
+        if runtime.tui.modal is not None:
+            runtime.tui.close_modal(None)
 
     async def run_application(self, initial: asyncio.Task | None = None) -> None:
         try:
@@ -338,20 +442,9 @@ class AgentsFrontend:
         try:
             await self.group.close()
         finally:
-            for runtime in tuple(self.runtimes.values()):
-                if runtime is self.root:
-                    continue
-                for task in tuple(runtime.tasks):
-                    task.cancel()
-                if runtime.tasks:
-                    await asyncio.gather(*runtime.tasks, return_exceptions=True)
-                await runtime.loop.background.close_background()
-                runtime.loop.presentation.close_background_output()
-                if runtime.scrollback is not None:
-                    await runtime.scrollback.close()
-                runtime.tui.cancel_input()
-                if runtime.tui.modal is not None:
-                    runtime.tui.close_modal(None)
+            for uid in tuple(self.runtimes):
+                if uid != self.root.loop.session.uid:
+                    await self.close_runtime(uid)
 
 
 async def agents_command(loop: CommandLoop, args: str) -> str | None:

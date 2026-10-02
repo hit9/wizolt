@@ -419,6 +419,18 @@ def test_cli_agents_live_preview_and_stop_keys(pane):
         pane.keys("Escape")
         wait("agents 3 · run 0", absent="┌─ ui-review")
         _settled_capture(pane)
+    pane.send("/agents")
+    wait("┌─ ui-review")
+    pane.literal("d")
+    wait("Archive ui-review and its children?")
+    pane.keys("Up", "Enter")
+    wait("agents 2 · run 0", absent="Archive ui-review")
+    pane.send("/agents")
+    wait("archived")
+    pane.keys("Down", "Down", "Enter")
+    wait("read-only")
+    assert "SELF-STOP-READY-2" in pane.visible()
+    pane.keys("Escape")
     pane.send("/exit")
 
 

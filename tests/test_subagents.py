@@ -57,6 +57,63 @@ async def test_turn_clock_is_live_then_frozen_and_restored(group, monkeypatch):
     assert loaded.state.elapsed == 192
 
 
+async def test_archive_releases_branch_slots_preserves_history_and_survives_resume(group, monkeypatch):
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "saved answer"}, [], "saved answer"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    root.settings.max_subagents = 2
+    first = await finished(group, await group.spawn(root, "review", "original task"))
+    nested = await finished(group, await group.spawn(first.agent.session, "nested", "nested task"))
+    await group.archive(first.agent.session.uid)
+    assert set(group.entries) == {root.uid}
+    assert group.counts.total == 1
+    assert all(item["archived"] for item in root.subagent_entries)
+    for entry in (first, nested):
+        saved = SessionSnapshotStore.load(entry.agent.session.uid, config=root.config, settings=root.settings)
+        assert any(message.get("content") == "saved answer" for message in saved.messages)
+        assert saved.pending_user_inputs == []
+        saved.close()
+    with pytest.raises(ToolError, match="Unknown agent"):
+        await group.send(first.agent.session.uid, "must not restart")
+    with pytest.raises(ToolError, match="Cannot archive main"):
+        await group.archive(root.uid)
+    replacement = await finished(group, await group.spawn(root, "review", "new task"))
+    assert replacement.agent.session.uid != first.agent.session.uid
+    loaded = SessionSnapshotStore.load(root.uid, config=deepcopy(root.config), settings=deepcopy(root.settings))
+    loaded.borrow_ownership(root)
+    agent = Agent(loaded, output_fn=lambda _: None)
+    try:
+        await loaded.subagents.restore()
+        assert set(loaded.subagents.entries) == {root.uid, replacement.agent.session.uid}
+    finally:
+        await close_agent_resources(agent)
+        loaded.close()
+
+
+async def test_archive_cancels_running_child_without_closing_shared_mcp(group, monkeypatch):
+    started = asyncio.Event()
+
+    async def request(client, messages, tools=None):
+        started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    closed = []
+
+    async def close():
+        closed.append(True)
+
+    monkeypatch.setattr(group.root.session.mcp, "close", close)
+    entry = await group.spawn(group.root.session, "busy", "work")
+    await started.wait()
+    await asyncio.wait_for(group.archive(entry.agent.session.uid), 3)
+    assert entry.task is None
+    assert entry.status == "interrupted"
+    assert not closed
+
+
 async def test_subagent_defaults_seed_independent_approvals_and_survive_resume(group, monkeypatch):
     root = group.root.session
     root.config.providers["deepseek"] = ProviderConfig(url="http://test", key="test", model="base")

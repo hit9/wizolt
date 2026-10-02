@@ -10,6 +10,9 @@
 
 ### Added
 
+- Archive agent branches with confirmation in `/agents`, freeing slots while retaining read-only
+  history at the end of the same picker. Archived agents stay archived after resume.
+
 - Show each agent's current or last turn duration in `/agents`, retaining it across resume.
 
 - Label child transcript notices with `subagent [name]` and main notices with `agent [main]`.

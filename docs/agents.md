@@ -33,7 +33,7 @@ existing and resumed children keep their saved settings.
 
 Run **`/agents`**. Move to preview; press Enter to switch conversations.
 
-<div class="term-shot" role="img" aria-label="The agents picker with aligned names, states and context usage. api-review is highlighted with a green activity dot, and its task and live reply appear in a bordered preview."><span class="fs-title">  Agents</span><span> </span><span>  1. ● main        completed          ctx  10% (current)</span><span class="fs-selected">  2. <span class="fs-i fs-ok">●</span> api-review  running            ctx  24%          </span><span>  3. <span class="fs-i fs-approve">●</span> ui-review   waiting for input  ctx  18%          </span><span> </span><span class="fs-rule">  ┌─ api-review ────────────────────────────────────────┐</span><span>  │                                                     │</span><span>  │ Task                                                │</span><span>  │   Review the API. Do not edit files.                │</span><span>  │                                                     │</span><span>  │ Live                                                │</span><span>  │   Checking validation and error handling…           │</span><span>  │                                                     │</span><span class="fs-rule">  └─────────────────────────────────────────────────────┘</span><span> </span><span class="fs-hint">  ↑/↓ j/k move · Enter open · x stop · X stop now · Esc back</span></div>
+<div class="term-shot" role="img" aria-label="The agents picker shows each agent's status, turn duration and context usage. Archived agents have muted dots and appear last. The selected agent has a bordered task and live reply preview."><span class="fs-title">  Agents</span><span> </span><span>  1. ● main        completed          12s      ctx  10% (current)</span><span class="fs-selected">  2. <span class="fs-i fs-ok">●</span> api-review  running            3m12s    ctx  24%          </span><span>  3. <span class="fs-i fs-approve">●</span> ui-review   waiting for input  2m08s    ctx  18%          </span><span class="fs-dim">  4. ● old-review  archived</span><span> </span><span class="fs-rule">  ┌─ api-review · running · 3m12s ───────────────────────┐</span><span>  │                                                     │</span><span>  │ Task                                                │</span><span>  │   Review the API. Do not edit files.                 │</span><span>  │                                                     │</span><span>  │ Live                                                │</span><span>  │   Checking validation and error handling…            │</span><span>  │                                                     │</span><span class="fs-rule">  └─────────────────────────────────────────────────────┘</span><span> </span><span class="fs-hint">  ↑/↓ j/k move · Enter open · x stop · X stop now · d archive · Esc back</span></div>
 
 Green dots breathe while an agent works. Warning-colored dots need input; other dots stay still.
 The preview shows this turn's elapsed time; wider lists show it alongside the status.
@@ -45,10 +45,15 @@ The time freezes when the turn ends and survives resume.
 | Enter | Open the highlighted conversation |
 | x | Stop it after confirmation |
 | Shift+X | Stop it immediately |
+| d | Archive it and its children after confirmation; free their slots |
 | Esc | Return without switching |
 
 The input box, history, statusbar, `/status` and `/diff` follow the selected agent.
 Use `/provider`, `/model` or `/reason` there to change its settings.
+
+Archived agents appear last, marked **archived** with a still, muted dot. Move to preview;
+Enter opens their read-only history. Archiving keeps conversations and file changes, and
+returns you to main if you were viewing an archived agent.
 
 ### Notice when an agent needs you
 
@@ -79,7 +84,8 @@ max_subagents = 3
 ```
 
 The default is **3**, excluding main; allowed values are **0–32**. Completed children and forked
-skills still count. Stopping does not free a slot: reuse a child's conversation for more work.
+skills still count. Stopping does not free a slot. Archive finished agents with **d** in `/agents`
+to make room for new tasks with fresh conversations.
 Change the limit from main with `/set runtime.max_subagents NUMBER`; check it with `/status`.
 
 ## Model tools

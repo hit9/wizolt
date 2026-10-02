@@ -162,6 +162,41 @@ async def test_completed_child_can_stop_itself_from_its_picker(frontend, monkeyp
     assert entry.status == "completed"
 
 
+async def test_child_archives_its_own_view_and_history_remains_in_picker(frontend, monkeypatch):
+    runtime = await child(frontend)
+    uid = runtime.loop.session.uid
+    frontend.current = runtime
+    modal = ModalHarness(["d", "up", "enter"], consumed=True)
+    monkeypatch.setattr(runtime.tui, "show_modal", modal.show_modal)
+    runtime.submit_chat("/agents")
+    await runtime.submissions.join()
+    command = frontend.group.entry(uid).task
+    if command is not None:
+        await asyncio.wait_for(asyncio.gather(command, return_exceptions=True), 3)
+    tasks = [task for task in frontend.root.tasks if task.get_name() == "archive-agent"]
+    await asyncio.wait_for(asyncio.gather(*tasks), 3)
+    assert frontend.current is frontend.root
+    assert uid not in frontend.runtimes
+    assert uid not in frontend.group.entries
+    assert not frontend.root.shutdown.is_set()
+
+    async def choice(_loop, _title, choices, *, label_fn, preview_fn, **kwargs):
+        assert choices[-1] == uid
+        row = label_fn(uid)
+        assert all(style == "class:muted" for style, _ in row)
+        assert "archived" in "".join(text for _, text in row)
+        assert "child reply" in "".join(text for _, text in preview_fn(uid))
+        return uid
+
+    async def viewer(_loop, view, **kwargs):
+        assert "child task" in view.text and "child reply" in view.text
+        assert ("mode", "read-only") in view.rows
+
+    monkeypatch.setattr(agents_module, "choice_application", choice)
+    monkeypatch.setattr(agents_module, "approval_text_viewer", viewer)
+    await frontend.select(frontend.root.loop)
+
+
 @pytest.mark.parametrize("message", ["exit", "quit", "/yolo", "/clear", "/src/api.py: fix the 500"])
 async def test_model_tasks_are_literal_inputs_not_frontend_commands(frontend, message):
     entry = await frontend.group.spawn(frontend.root.loop.session, "literal", message)

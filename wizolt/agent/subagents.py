@@ -99,6 +99,7 @@ class Subagents:
         self.driver: Callable[[Agent, QueuedInput], Awaitable[object]] | None = None
         self.on_created: Callable[[Agent], Awaitable[None]] | None = None
         self.on_changed: Callable[[AgentEntry], None] | None = None
+        self.on_archived: Callable[[str], Awaitable[None]] | None = None
         self.closed = False
         self._admission_lock = asyncio.Lock()
 
@@ -144,6 +145,8 @@ class Subagents:
                 raise ToolError("Agent group is closed")
             for item in self.root.session.subagent_entries:
                 if not isinstance(item, dict):
+                    continue
+                if item.get("archived"):
                     continue
                 uid = item.get("uid", "")
                 if not isinstance(uid, str) or subagent_root_uid(uid) != self.root.session.uid or uid == self.root.session.uid:
@@ -202,6 +205,8 @@ class Subagents:
         async with self._admission_lock:
             if self.closed:
                 raise ToolError("Agent group is closed")
+            if parent.uid not in self.entries:
+                raise ToolError("Cannot spawn from an archived agent")
             if len(self.entries) - 1 >= self.limit:
                 raise ToolError(f"Subagent limit reached ({self.limit}, excluding main); reuse an existing agent with send")
             if not isinstance(name, str) or not isinstance(message, str) or not name.strip() or not message.strip():
@@ -326,6 +331,67 @@ class Subagents:
         entry.agent.cancel()
         if entry.task is not None:
             entry.task.cancel()
+
+    def branch(self, uid: str) -> set[str]:
+        """An archive owns a whole descendant branch; no active child loses its parent."""
+        self.entry(uid)
+        result = {uid}
+        while children := {key for key, entry in self.entries.items() if entry.parent in result} - result:
+            result.update(children)
+        return result
+
+    async def archive(self, uid: str) -> None:
+        """User-only retirement, retaining snapshots/assets while releasing live slots.
+
+        Publish the archived manifest before disposing engines. Resume consults this manifest,
+        never filesystem discovery, so no tombstone or destructive log deletion is needed.
+        The caller must outlive the branch (the frontend schedules this on the root runtime).
+        """
+        from wizolt.agent.lifecycle import close_agent_resources
+
+        async with self._admission_lock:
+            if uid == self.root.session.uid:
+                raise ToolError("Cannot archive main")
+            if self.closed:
+                raise ToolError("Agent group is closed")
+            uids = self.branch(uid)
+            entries = [self.entries[key] for key in uids]
+            tasks = {task for entry in entries for task in (entry.task, entry.agent._active_task) if task is not None}
+            if asyncio.current_task() in tasks:
+                raise ToolError("Archive must run outside the agent being archived")
+            for entry in entries:
+                if entry.task is not None or entry.agent._active_task is not None:
+                    self.stop(entry.agent.session.uid)
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            for entry in entries:
+                entry.agent.session.pending_user_inputs.clear()
+                await entry.agent.session.save_snapshot()
+            root = self.root.session
+            previous = root.subagent_entries
+            root.subagent_entries = [
+                {
+                    **item,
+                    "archived": "true",
+                    "name": self.entries[item["uid"]].agent.session.agent_name,
+                    "answer": self.entries[item["uid"]].answer[-3000:],
+                }
+                if item.get("uid") in uids
+                else item
+                for item in previous
+            ]
+            try:
+                await root.save_snapshot()
+            except BaseException:
+                root.subagent_entries = previous
+                raise
+            for entry in entries:
+                key = entry.agent.session.uid
+                if self.on_archived is not None:
+                    await self.on_archived(key)
+                await close_agent_resources(entry.agent, shared_mcp=True)
+                entry.agent.session.close()
+                del self.entries[key]
 
     async def close(self) -> None:
         """Stop admission, join engines and settle child snapshots before resources close.

@@ -927,6 +927,12 @@ manifest references children; children are hidden from session listings and expi
 family. Resume restores child contexts without automatically replaying queued work. Shutdown
 joins engines before closing clients and releasing ownership.
 
+User-only archival retires a whole descendant branch under admission control. Its manifest
+entries retain archive metadata and references to the unchanged logs/assets; restore skips those
+entries. The frontend switches away before a root-owned task joins the originating command and
+retires the branch, so a child never awaits its own cancellation. Archived history is loaded for
+read-only viewing without attaching engines or borrowing mutable live provider configuration.
+
 ## Shell-hook boundaries
 
 Hooks run only at lifecycle points wizolt owns. The runner distinguishes a rejected call from
