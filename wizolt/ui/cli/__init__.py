@@ -5,7 +5,7 @@ so `from wizolt.ui.cli import CommandLoop` and the command registry keep working
 keeps the sibling modules importable from the package root.
 """
 
-from wizolt.ui.cli import commands, hints, modals, worker
+from wizolt.ui.cli import agents, commands, hints, modals
 from wizolt.ui.cli.commands import (
     COMMAND_LOOKUP,
     COMMANDS,
@@ -25,8 +25,8 @@ __all__ = [
     "CommandLoop",
     "TuiRuntime",
     "View",
+    "agents",
     "commands",
     "hints",
     "modals",
-    "worker",
 ]

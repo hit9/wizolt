@@ -257,7 +257,7 @@ class TestNestedCalls:
         ("code", "expected"),
         [
             ('call("ToolScript", {})\n', 'call("ToolScript", ...) is not allowed'),
-            ('call("Delegate", {})\n', "Delegate is not scriptable"),
+            ('call("Subagent", {})\n', "Subagent is not scriptable"),
             ('call("Job", {})\n', "Job is not scriptable"),
             ('call("Reed", {})\n', 'unknown tool "Reed"'),
         ],
@@ -440,7 +440,7 @@ class TestConfirmationBlockShowsScript:
         runner = _runner(s)
         code = "\n".join(f"x{index} = {index}" for index in range(30))
         tool = ToolScript(s, [{"action": "call", "code": code}])
-        assert ("View script", "v") in toolblocks.approval_actions(tool, False)
+        assert ("View script", "v") in toolblocks.approval_actions(tool)
         views = []
         runner.hooks.text_viewer = views.append
         replies = iter(["v", "y"])
@@ -455,7 +455,7 @@ class TestConfirmationBlockShowsScript:
         s = _mcp_session(tmp_path)
         tool = ToolScript(s, [{"action": "describe", "tools": ["Read"]}])
         assert tool.approval_view() is None
-        assert ("View script", "v") not in toolblocks.approval_actions(tool, False)
+        assert ("View script", "v") not in toolblocks.approval_actions(tool)
 
 
 # ---------------------------------------------------------------------------
@@ -947,9 +947,9 @@ class TestCallMany:
 
     async def test_forbidden_names_are_refused_in_a_batch_too(self, tmp_path):
         s = _mcp_session(tmp_path)
-        content = await _run_script(s, 'call_many([("Delegate", {})])\n')
+        content = await _run_script(s, 'call_many([("Subagent", {})])\n')
         assert "ToolScript failed" in content
-        assert "Delegate is not scriptable" in content
+        assert "Subagent is not scriptable" in content
 
 
 class TestScriptCancellation:

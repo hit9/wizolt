@@ -4,21 +4,14 @@ from __future__ import annotations
 
 import json
 import re
-from typing import NamedTuple
 
-from wizolt.base import Text, ToolCall, oneline
+from wizolt.base import ToolCall, oneline
 from wizolt.session import Session
 from wizolt.tools.base import Tool
 
 BASH_TRANSCRIPT_PREVIEW_LINES = 3
 BASH_PREVIEW_LINE_LIMIT = 220
 MCP_CALL_RE = re.compile(r"(?s)<MCPCall\b[^>]*>\n?(.*?)\n?</MCPCall>\s*$")
-# The envelope DelegateTool._send returns for a finished delegation: attributes in fixed order,
-# the worker's answer wrapped in <worker> tags. Parsed with a couple of string scans — the
-# format is ours, so no XML parser is needed.
-DELEGATE_META_RE = re.compile(
-    r'<Delegate action="send" steps="(\d+)" elapsed="([^"]+)" files="([^"]*)" stopped_at_max_steps="(true|false)"(?: tokens="([^"]*)")?(?: rounds="(\d+)")?(?: context_percent="(\d+)")?>'
-)
 # What a scrolling viewer renders: generous next to the three-line transcript preview, but not
 # unbounded. Stored output has no cap of its own, and the text wrapper costs time quadratic in
 # the length of a single line, so one minified-JSON line would freeze the modal until it gave
@@ -31,20 +24,6 @@ OMITTED_RE = re.compile(r"\.\.\. (\d+) lines? omitted \.\.\.")
 # `calls: 5 [tr.95-99]`, `calls: 0`, or the bounded `calls: ... +120 keys` form, all of which
 # lead with the count -- the keys themselves are already in the log, one per nested call line.
 TOOLSCRIPT_CALLS_RE = re.compile(r"^calls: (?:\.\.\. \+)?(\d+)", re.MULTILINE)
-
-
-class DelegateFields(NamedTuple):
-    """The display fields of a finished Delegate send envelope. Named rather than a plain tuple
-    because both readers want a different subset, and the envelope keeps gaining attributes."""
-
-    steps: str
-    elapsed: str
-    files: str
-    in_tokens: str
-    out_tokens: str
-    stopped: bool
-    rounds: str
-    context_percent: str
 
 
 def bash_result_preview(output: str, line_limit: int, char_limit: int | None = None) -> str:
@@ -198,55 +177,6 @@ def mcp_result_summary(call: ToolCall, output: str, elapsed: float | None) -> st
     if elapsed is not None:
         parts.append(f"{elapsed:.1f}s")
     return "→ " + " · ".join(parts)
-
-
-def delegate_result_fields(output: str) -> DelegateFields | None:
-    """Parse a finished Delegate send envelope into its display fields, or None when the
-    envelope is missing. rounds/context_percent are "" when the envelope was written before
-    they existed. Shared by delegate_result_summary (the fallback child line) and the finish
-    rule label, so both show the same numbers.
-    """
-    match = DELEGATE_META_RE.search(output)
-    if not match:
-        return None
-    steps, elapsed, files, stopped, tokens, rounds, context_percent = match.groups()
-    if tokens is not None:
-        in_tokens, out_tokens = tokens.split("/", 1)
-        in_tokens = Text.abbreviate_count(int(in_tokens))
-        out_tokens = Text.abbreviate_count(int(out_tokens))
-    else:
-        in_tokens = out_tokens = ""
-    return DelegateFields(steps, elapsed, files, in_tokens, out_tokens, stopped == "true", rounds or "", context_percent or "")
-
-
-def delegate_result_summary(output: str) -> str:
-    """The one-line summary of a finished Delegate send, from its envelope attributes."""
-    fields = delegate_result_fields(output)
-    if fields is None:
-        return ""
-    parts = [f"steps {fields.steps}", fields.elapsed, fields.files]
-    if fields.in_tokens:
-        parts.append(f"{fields.in_tokens} in / {fields.out_tokens} out")
-    if fields.rounds:
-        parts.append(f"round {fields.rounds}")
-    if fields.context_percent:
-        parts.append(f"ctx {fields.context_percent}%")
-    if fields.stopped:
-        parts.append("stopped at max steps")
-    return " · ".join(parts)
-
-
-def delegate_answer_preview(output: str) -> str:
-    """The worker's answer (the text between <worker> and </worker>), bounded like the Bash
-    transcript preview: clipped per line and capped at BASH_TRANSCRIPT_PREVIEW_LINES."""
-    start = output.find("<worker>")
-    end = output.find("</worker>")
-    if start < 0 or end <= start:
-        return ""
-    answer = output[start + len("<worker>") : end].strip()
-    if not answer:
-        return ""
-    return "\n".join(preview_lines(answer, BASH_TRANSCRIPT_PREVIEW_LINES))
 
 
 def human_size(num_bytes: int) -> str:

@@ -216,7 +216,7 @@ def test_status_bar_keeps_the_session_entry_when_compaction_has_its_own(tmp_path
     """The row names the entry serving the turn; a `[compaction]` provider runs summaries only."""
     s = _compaction_bar_session(tmp_path, provider="cheap", model="haiku", reasoning="off")
 
-    assert "".join(text for _, text in StatusBar(s).fragments()).startswith("default/big-model · high | ")
+    assert "".join(text for _, text in StatusBar(s).fragments()).startswith("[main] default/big-model · high | ")
 
 
 def test_status_bar_output_rate_reads_the_stream_that_is_running(tmp_path):
@@ -240,20 +240,6 @@ def test_status_bar_output_rate_reads_the_stream_that_is_running(tmp_path):
     assert bar.output_rate() == ""
 
 
-def test_status_bar_output_rate_follows_an_in_flight_worker(tmp_path):
-    """Same in-flight predicate as every other value on the row: while a delegation runs, the speed
-    shown is the worker's, and it goes back to the parent's the moment the worker answers."""
-    s = _compaction_bar_session(tmp_path)
-    worker = Session(cwd=str(tmp_path), config=s.config)
-    s.worker = worker
-    bar = StatusBar(s)
-
-    worker.state.stream_started_at = time.monotonic() - 2.0
-    worker.state.stream_chars = 800
-    assert bar.output_rate() == ""  # an idle worker never shadows the parent
-
-    worker._active_turn_messages = [{"role": "user", "content": "order"}]
-    assert bar.output_rate() == "↓ 100 tok/s"
 
 
 def test_model_client_counts_streamed_output_per_request(tmp_path):

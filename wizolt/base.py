@@ -193,8 +193,7 @@ DISMISSED = "(The user dismissed the question without answering.)"
 
 # The line prefixes a rendered Note body can open with (memory.py writes them). A fact about the
 # Note format rather than about drawing, so it lives here: the renderer uses it to pick the
-# per-line memory colors, and the Delegate worker wrapper uses it to recognize a worker's Note
-# output and pass it through to that same renderer.
+# per-line memory colors.
 MEMORY_PREFIXES = ("goal:", "check:", "plan:", "known:")
 
 
@@ -480,7 +479,6 @@ class LogRole(Enum):
     ERROR = auto()
     MUTED = auto()
     DIFF = auto()
-    WORKER = auto()
     FIELD = auto()
     CODE = auto()
 

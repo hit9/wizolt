@@ -177,11 +177,11 @@ async def test_resume_restores_what_the_session_loaded(tmp_path, isolate_home):
     assert "blocked by PreToolUse hook" in message["content"]
 
 
-async def test_a_worker_does_not_inherit_the_parents_loaded_skills(tmp_path, isolate_home):
+async def test_a_child_does_not_inherit_the_parents_loaded_skills(tmp_path, isolate_home):
     _user_skill(isolate_home, "deploy", GUARD)
     parent = session(tmp_path)
     await SkillTool(parent, ["deploy"]).call()
-    # What Delegate builds: the shared library, the parent's configured hooks, its own active list.
+    # What a child shares: the shared library, the parent's configured hooks, its own active list.
     worker = Session(cwd=parent.cwd, config=parent.config, skills=parent.skills)
     worker.shell_hooks = parent.shell_hooks.detached()
     worker.settings.yolo = True

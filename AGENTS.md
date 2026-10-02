@@ -30,7 +30,7 @@ Keep this file short. It is an entry point, not a second design document.
 - `wizolt/config.py`, `wizolt/providers/`: config-file settings, the model capability catalog
   (`providers/catalog.py`), and evidence-backed compatibility policy (`providers/compat.py`).
 - `wizolt/ui/cli/`, `wizolt/ui/tui/`, `wizolt/ui/render.py`: commands (`cli/commands.py`,
-  `cli/modals.py`, `/worker`'s flow in `cli/worker.py`), resume replay (`cli/resume.py`), TUI runtime (`cli/runtime.py`), view
+  `cli/modals.py`, agent selection in `cli/agents.py`), resume replay (`cli/resume.py`), TUI runtime (`cli/runtime.py`), view
   fragments (`cli/view.py`), interaction, and presentation state (`cli/presentation.py`).
   `View` and replay receive bounded dependencies rather than a `CommandLoop` handle.
 - `tests/`: behavior-oriented tests grouped by subsystem and boundary.

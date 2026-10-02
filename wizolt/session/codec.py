@@ -184,6 +184,7 @@ class SessionSnapshotCodec:
                 bool(cls.snapshot_messages(session)),
                 bool(cls.snapshot_transcript_messages(session) or cls.active_transcript_messages(session)),
                 bool(session.pending_user_inputs),
+                bool(session.subagent_entries),
                 session.context_reset_requested,
                 bool(session.tool_records),
                 bool(session.tool_errors),
@@ -298,6 +299,8 @@ class SessionSnapshotCodec:
                 "name_source",
                 "compaction_count",
                 "round_count",
+                "last_turn_status",
+                "last_turn_error",
             )
         }
 
@@ -309,7 +312,10 @@ class SessionSnapshotCodec:
 
         data = value if isinstance(value, dict) else {}
         known = {item.name for item in fields(AgentState)}
-        return AgentState(**{key: item for key, item in data.items() if key in known})
+        state = AgentState(**{key: item for key, item in data.items() if key in known})
+        if state.last_turn_status == "running":
+            state.last_turn_status = "interrupted"
+        return state
 
     @staticmethod
     def usage(usage: ModelUsage) -> Json:
@@ -324,6 +330,8 @@ class SessionSnapshotCodec:
             "transcript_messages": cls.snapshot_transcript_messages(session),
             "active_transcript_messages": cls.active_transcript_messages(session), "transcript_sync": TRANSCRIPT_SYNC_VERSION,
             "context_reset_requested": session.context_reset_requested,
+            "agent_name": session.agent_name, "agent_parent": session.agent_parent,
+            "subagent_entries": list(session.subagent_entries),
             "pending_user_inputs": [item.to_json() for item in session.pending_user_inputs],
             "state": cls.state(session.state), "usage": cls.usage(session.usage), "tool_counter": session.tool_counter,
             "source_view_counter": session.source_view_counter,
@@ -354,6 +362,9 @@ class SessionSnapshotCodec:
             "context_layout_version": session.context_layout_version,
             "transcript_sync": TRANSCRIPT_SYNC_VERSION,
             "context_reset_requested": session.context_reset_requested,
+            "agent_name": session.agent_name,
+            "agent_parent": session.agent_parent,
+            "subagent_entries": list(session.subagent_entries),
         }
         cls.add_sequence_delta(delta, "messages", cls.snapshot_messages(session), saved, "messages_len", "messages_digest", current["messages_digest"])
         cls.add_append_only_delta(delta, "transcript_messages", cls.snapshot_transcript_messages(session), saved)
@@ -579,6 +590,9 @@ class SessionSnapshotCodec:
             "context_layout_version",
             "transcript_sync",
             "context_reset_requested",
+            "agent_name",
+            "agent_parent",
+            "subagent_entries",
         }
     )
 

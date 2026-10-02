@@ -154,7 +154,6 @@ async def main(log) -> None:
                 ui.emit_phase_rule()
                 ui.emit("ANSWER-BEGIN " + "a" * 70 + " ANSWER-END")
                 ui.emit_turn_end(time.monotonic() - 65)
-                ui.emit_worker_rule("[worker] 完成")
             if log is not None:
                 log.write("rules complete\n")
                 log.flush()

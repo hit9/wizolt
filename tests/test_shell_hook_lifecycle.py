@@ -119,31 +119,6 @@ async def test_cancel_does_not_fire_stop_failure(tmp_path):
     assert _events(tmp_path) == []
 
 
-async def test_worker_start_stop_and_context_stay_in_worker(tmp_path, monkeypatch):
-    from test_worker_handoff import FakeModelClient, _delegate_call, _delegate_runner, _delegate_session
-
-    parent = _hooks(
-        _delegate_session(tmp_path),
-        {
-            **_record("SubagentStart", "worker", json.dumps({"hookSpecificOutput": {"additionalContext": "worker guidance"}})),
-            **_hook("SubagentStop", "cat >> events.jsonl; echo >> events.jsonl; test -f verified && exit 0; touch verified; echo finish tests >&2; exit 2"),
-            **_hook("Stop", "touch parent-stop"),
-            **_hook("SessionStart", "touch parent-start"),
-        },
-    )
-    model = FakeModelClient([({"role": "assistant", "content": answer}, [], answer) for answer in ["draft", "verified answer", "second report"]])
-    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda _: model)
-    runner = _delegate_runner(parent)
-    assert "verified answer" in await _delegate_call(parent, runner, action="send", order="work")
-    await _delegate_call(parent, runner, action="send", order="continue")
-    events = _events(tmp_path)
-    assert [item["hook_event_name"] for item in events] == ["SubagentStart", "SubagentStop", "SubagentStop", "SubagentStart", "SubagentStop"]
-    assert all(item["session_id"] == parent.uid and item["agent_id"] == parent.worker.uid for item in events)
-    assert str(model.requests[-1]).count("worker guidance") == 1
-    assert "finish tests" in str(model.requests[1])
-    assert "worker guidance" not in str(parent.messages)
-    assert not (tmp_path / "parent-stop").exists()
-    assert not (tmp_path / "parent-start").exists()
 
 
 class _CompactionModel:
@@ -206,26 +181,3 @@ async def test_blocked_compaction_does_not_request_or_rewrite(tmp_path, trigger)
     assert s.messages == original
     assert model.requests == []
     assert _events(tmp_path) == []
-
-
-async def test_parent_skill_subagent_hooks_refresh_between_sends(tmp_path, monkeypatch, isolate_home):
-    from test_skill_scope import _user_skill
-    from test_worker_handoff import FakeModelClient, _delegate_call, _delegate_runner, _delegate_session
-
-    from wizolt.tools import SkillTool
-
-    _user_skill(isolate_home, "guide", "hooks:\n  SubagentStart:\n    - matcher: worker\n      hooks:\n        - command: touch inherited-hook\n")
-    parent = _delegate_session(tmp_path)
-    model = FakeModelClient([({"role": "assistant", "content": "done"}, [], "done")] * 3)
-    monkeypatch.setattr("wizolt.agent.engine.ModelClient", lambda _: model)
-    runner = _delegate_runner(parent)
-    await _delegate_call(parent, runner, action="send", order="first")
-    assert not (tmp_path / "inherited-hook").exists()
-    await SkillTool(parent, ["guide"]).call()
-    await _delegate_call(parent, runner, action="send", order="second")
-    assert (tmp_path / "inherited-hook").exists()
-    assert parent.worker.active_skills == []
-    (tmp_path / "inherited-hook").unlink()
-    parent.active_skills.clear()
-    await _delegate_call(parent, runner, action="send", order="third")
-    assert not (tmp_path / "inherited-hook").exists()

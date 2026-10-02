@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, ClassVar
 from wizolt.base import HISTORY_INDEX_ASSET, SESSION_EVENT_KEY, TOOL_OUTPUT_ASSET_SUFFIX, Json, WizoltError
 from wizolt.image import IMAGE_REFS_KEY, ImageRef
 from wizolt.session.codec import SessionSnapshotCodec
-from wizolt.session.ownership import SessionLease, SessionOwnershipError
+from wizolt.session.ownership import SessionLease, SessionOwnershipError, subagent_root_uid
 
 if TYPE_CHECKING:
     from wizolt.config import Config, RuntimeSettings
@@ -341,7 +341,7 @@ class SessionSnapshotStore:
                 if not entry.name.endswith(".jsonl") or not entry.is_file():
                     continue
                 uid = entry.name[:-6]
-                if uid.endswith(".w"):
+                if subagent_root_uid(uid) != uid:
                     # Worker sessions are subordinates, not resumable sessions: hidden from listings.
                     continue
                 meta = cls.read_meta(directory, uid)
@@ -411,7 +411,7 @@ class SessionSnapshotStore:
                 if not entry.name.endswith(".jsonl") or not entry.is_file():
                     continue
                 uid = entry.name[:-6]
-                families.setdefault(uid.removesuffix(".w"), []).append(entry)
+                families.setdefault(subagent_root_uid(uid), []).append(entry)
             stale_latest = False
             for parent_uid, members in families.items():
                 # An idle but live session is protected even when its log looks old, so the family
@@ -432,10 +432,10 @@ class SessionSnapshotStore:
                     for entry in members:
                         uid = entry.name[:-6]
                         try:
-                            # A worker outlives its parent only by accident: once the parent log is
-                            # gone the worker is an orphan and expires even if its own mtime is fresh.
-                            if uid.endswith(".w"):
-                                expired = not parent_exists or parent_expired or entry.stat().st_mtime < cutoff
+                            # A child outlives its root only by accident: once the root log is
+                            # gone the child is an orphan and expires even if its own mtime is fresh.
+                            if subagent_root_uid(uid) != uid:
+                                expired = not parent_exists or parent_expired
                             else:
                                 expired = parent_expired
                             if not expired:
@@ -445,6 +445,8 @@ class SessionSnapshotStore:
                             # The sidecar describes a log that no longer exists; it expires with it.
                             with contextlib.suppress(OSError):
                                 os.unlink(os.path.join(directory, uid + cls.META_SUFFIX))
+                            with contextlib.suppress(OSError):
+                                os.unlink(os.path.join(directory, uid + ".history"))
                             removed += 1
                             stale_latest = stale_latest or cls.read_latest(directory) == uid
                         except OSError:
@@ -548,6 +550,9 @@ class SessionSnapshotStore:
             config=config,
             settings=settings,
             provider_overrides=data.get("provider_overrides") or {},
+            agent_name=str(data.get("agent_name", "main")),
+            agent_parent=str(data.get("agent_parent", "")),
+            subagent_entries=data.get("subagent_entries") or [],
             active_skills=[name for name in data.get("active_skills") or [] if isinstance(name, str)],
             messages=messages,
             transcript_messages=transcript_messages,

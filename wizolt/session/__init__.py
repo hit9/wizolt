@@ -63,7 +63,7 @@ __all__ = [
 ]
 
 if TYPE_CHECKING:
-    from wizolt.agent.engine import Agent
+    from wizolt.agent.subagents import Subagents
     from wizolt.agentsmd import AgentsMentions
     from wizolt.mcp import MCPManager
     from wizolt.mentions import FileMentions
@@ -121,9 +121,10 @@ class Session:
     system_prompt: str = SYSTEM_PROMPT  # role definition; the parent's default is unchanged
     tool_names: tuple[str, ...] = ()  # empty tuple = no filtering (parent behavior)
     listed: bool = True  # False -> no latest pointer, hidden from /sessions
-    worker: Session | None = None  # runtime handle of the delegated session
-    worker_tool_enabled: bool = False  # Delegate registration gate, frozen at construction from bool(config.worker_provider)
-    _agent: Agent | None = None  # runtime handle of the worker's Agent; same lifetime as the worker Session
+    agent_name: str = "main"
+    agent_parent: str = ""
+    subagent_entries: list[dict[str, str]] = field(default_factory=list)
+    subagents: Subagents | None = field(default=None, repr=False, compare=False)
     tool_counter: int = 0
     # Source views are owned by the Session: only it allocates keys and mutates the mapping, so
     # read-only tools can create immutable drafts on worker threads without a lock.
@@ -135,7 +136,7 @@ class Session:
     job_counter: int = 0
     usage: ModelUsage = field(default_factory=ModelUsage)
     # Summary requests are counted apart from the conversation: they can run on another provider
-    # entry entirely, and one blended total cannot be multiplied by any single price. A worker's
+    # entry entirely, and one blended total cannot be multiplied by any single price. A subagent's
     # spending is already separate by virtue of its own Session; this gives compaction the same.
     compaction_usage: ModelUsage = field(default_factory=ModelUsage)
     mcp: MCPManager | None = None
@@ -186,12 +187,6 @@ class Session:
             self.uid = datetime.now().strftime("%Y%m%d%H%M%S") + "-" + str(uuid.uuid4())[:12]  # noqa: DTZ005 - IDs intentionally use local wall time.
         if self.system_info is None:
             self.system_info = SystemInfo.detect(self.cwd, self.config.data_dir)
-        # The Delegate registration gate is frozen per session: computed once from the config this
-        # session was constructed with, so a runtime /worker provider switch tunes an already-
-        # enabled delegation and prepares the next session without flipping the tool block (and
-        # thus the prompt-cache scope) mid-session. Recomputes on every load because the config
-        # passed to SessionSnapshotStore.load is the caller's freshly built one.
-        self.worker_tool_enabled = bool(self.config.worker_provider)
         self.apply_provider_overrides()
 
     def stage_active_turn(self, turn_messages: list[Json], transcript_messages: list[Json]) -> None:
@@ -203,17 +198,6 @@ class Session:
         """End the in-flight turn: committed to history, retracted, or abandoned unsettled."""
         self._active_turn_messages.clear()
         self._active_transcript_messages.clear()
-
-    @property
-    def delegating_worker(self) -> Session | None:
-        """The worker while a delegation is in flight, else None.
-
-        The in-flight predicate is the engine's own: `_active_turn_messages` is filled when a turn
-        starts and cleared when it settles, so a live but idle worker is not delegating. The status
-        bar, the working divider, `/worker`, and follow-up routing all ask this one question.
-        """
-        worker = self.worker
-        return worker if worker is not None and worker._active_turn_messages else None
 
     @property
     def policy(self) -> ProviderPolicy:
@@ -640,7 +624,7 @@ class Session:
     def ownership_root_path(self) -> str:
         """The parent snapshot path this session's ownership family is keyed on.
 
-        A worker `<parent>.w` names its parent's log; a resumed session keeps the path it was
+        A child `<root>.a<id>` names its root's log; a resumed session keeps the path it was
         loaded from, so an alias or a cross-project search cannot key a different lock file."""
 
         path = self._snapshot_path or SessionSnapshotStore.session_path(self.config.data_dir, self.cwd, self.uid)
@@ -689,7 +673,7 @@ class Session:
         self.assert_ownership()
 
     def borrow_ownership(self, parent: Session) -> None:
-        """Authorize this worker session with its parent's lease; it can never release it."""
+        """Authorize this child session with its root's lease; it can never release it."""
 
         lease = parent.ensure_ownership()
         lease.assert_owned(self.ownership_root_path())
@@ -705,10 +689,11 @@ class Session:
 
         if self._active_runs:
             raise WizoltError(f"cannot close session {self.uid} while an agent run is active")
+        group = self.subagents
+        if group is not None and group.root.session is self and len(group.entries) > 1 and (not group.closed or not group.quiescent):
+            raise WizoltError(f"cannot close session {self.uid} before its subagents are closed")
         if self._snapshot_gate is not None and self._snapshot_gate.locked():
             raise WizoltError(f"cannot close session {self.uid} while a snapshot write is in flight")
-        if self.worker is not None:
-            self.worker.close()
         lease, self._lease = self._lease, None
         borrowed, self._lease_borrowed = self._lease_borrowed, False
         self._ownership_released = True

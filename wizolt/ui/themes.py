@@ -208,7 +208,7 @@ def scheme(
             "status_mcp": comment,
             "status_context": blue,
             "status_yolo": red,
-            "status_worker": orange,
+            "status_agent": orange,
             "status_bg": status,
             "user_bg": blend(background, "#ffffff" if appearance == "dark" else "#000000", 0.04),
             "divider_glow": aqua,
@@ -240,7 +240,7 @@ def scheme(
     ):
         palette.colors[role] = lift(palette.colors[role], fg, background, 4.5)
     palette.colors["user"] = lift(palette.colors["user"], fg, palette.colors["user_bg"], 4.5)
-    for role in ("status_base", "status_provider", "status_reason", "status_mcp", "status_context", "status_yolo", "status_worker"):
+    for role in ("status_base", "status_provider", "status_reason", "status_mcp", "status_context", "status_yolo", "status_agent"):
         palette.colors[role] = lift(lift(palette.colors[role], fg, status, MUTED_CONTRAST), fg, background, MUTED_CONTRAST)
     return palette
 

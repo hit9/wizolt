@@ -109,9 +109,9 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
   - Runs a Python script the agent writes, so many tool calls happen in one call instead of
     one at a time. Only what the script prints returns to the conversation, which saves
     tokens; see [ToolScript](#toolscript).
-* - **`Delegate`**
-  - Asks a worker to handle a focused task and return a report. The worker remembers earlier
-    orders until reset. See [Worker delegation](worker.md#worker-delegation).
+* - **`Subagent`**
+  - Starts parallel agents in the shared workspace. List, steer, wait for or stop a child by
+    its ID. See [Subagents](agents.md).
 ::::
 
 (toolscript)=

@@ -179,11 +179,12 @@ hooks:
 A patterned Bash rule never covers commands that chain, pipe, substitute or redirect
 (`;`, `&&`, `|`, `$(…)`, `>`); those still ask. A bare `Bash` rule approves every Bash call.
 
-### Running in the worker
+### Running in a subagent
 
-`context: fork` runs the skill in the [worker](worker.md). You confirm it like a Delegate send,
-and only the worker's report comes back, so the skill's instructions, commands and hooks stay
-out of your conversation. Without a configured worker, the skill loads normally.
+`context: fork` runs the skill in a [subagent](agents.md). You confirm its task before it starts.
+The child inherits your model and has its own conversation, commands and skill hooks; its report
+returns to the caller. Select it with `/agents` to inspect its work or add input. A skill loaded
+inside a subagent stays in that subagent.
 
 Claude Code's `agent` and `model` fields are not supported. `/skills` lists them as warnings:
-wizolt has one worker, set under `[worker]`, and keeps your session's model.
+new subagents inherit the creating agent's model.

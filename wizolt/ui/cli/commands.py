@@ -2,7 +2,7 @@
 
 Each handler takes `(loop, args)` and is referenced directly by the registry below. Handlers that await a modal or the network are coroutines; the dispatcher
 accepts either shape. A `None` result means the handler rendered its own UI (e.g. /diff's viewer).
-The multi-stage /worker flow lives in the WorkerFlow class in worker.py.
+Agent selection and its frontend supervision live in agents.py.
 """
 
 from __future__ import annotations
@@ -46,7 +46,8 @@ from wizolt.providers.compat import builtin_tools_issue
 from wizolt.providers.schema import CatalogSyncError
 from wizolt.providers.sync import CATALOG_URL
 from wizolt.session import Session, SessionBusyError, SessionEntry, SessionLease, SessionSnapshotStore
-from wizolt.ui.cli import appearance, worker
+from wizolt.ui.cli import appearance
+from wizolt.ui.cli.agents import agents_command
 from wizolt.ui.cli.modals import (
     choice_application,
     compaction_log_viewer,
@@ -226,9 +227,16 @@ def status(loop: CommandLoop, args: str) -> str:
     # `worker*` labels. /status is an explicit query, so the worker rows appear whenever a
     # worker session exists, in flight or not.
     rows = [
+        ("agent", f"`{loop.session.agent_name}` · `{loop.session.uid}`"),
         ("workspace", "`" + loop.session.cwd + "`"),
         ("session", "`" + loop.session.uid + "`"),
     ]
+    group = loop.session.subagents
+    if group is not None:
+        entry = group.entry(loop.session.uid)
+        rows.append(("state", entry.status))
+        if entry.parent:
+            rows.append(("parent", "`" + entry.parent + "`"))
     if loop.session.state.goal:
         rows.append(("goal", loop.session.state.goal))
     # The runtime switches get a row each: joined into one, they were the row that wrapped first.
@@ -275,22 +283,6 @@ def status(loop: CommandLoop, args: str) -> str:
         # the only place that says whether it did. Without it the reuse is unfalsifiable.
         rows.append(("compaction cache", _status_cache_line(compaction_usage)))
 
-    worker = loop.session.worker
-    if worker is None:
-        configured = loop.session.config.worker_provider
-        rows.append(("worker", "off — `[worker] provider` " + (f"= `{configured}`" if configured else "unset")))
-    else:
-        worker_usage = worker.usage
-        state = f"{'delegating' if loop.session.delegating_worker else 'idle'}, rounds `{worker.state.round_count}`"
-        rows.append(("worker", _status_model_line(worker, worker.config)))
-        if worker_usage.last_prompt_tokens and worker_usage.last_prompt_budget:
-            percent = worker_usage.context_percent()
-            context = _status_context_line(worker_usage.last_prompt_tokens, worker_usage.last_prompt_budget, percent)
-        else:
-            context = "(no requests yet)"
-        rows.append(("worker ctx", f"{context} · {state}"))
-        if worker_usage.prompt_tokens:
-            rows.append(("worker cache", _status_cache_line(worker_usage)))
     # The command reference lives in the documentation, so every /status ends with where to read
     # it. Last row: the rows above are the session's own facts.
     rows.append(("docs", "https://wizolt.readthedocs.io"))
@@ -510,14 +502,9 @@ def config(loop: CommandLoop, args: str) -> str:
             f"runtime.max_parallel_tools: {loop.session.settings.max_parallel_tools}",
             f"runtime.session_retention_days: {loop.session.settings.session_retention_days}",
             f"runtime.yolo: {'on' if loop.session.settings.yolo else 'off'}",
-            f"runtime.worker: {'on' if loop.session.settings.worker else 'off'}",
             f"runtime.language: {loop.session.settings.language}",
             f"runtime.attribution: {'on' if loop.session.settings.attribution else 'off'}",
             f"runtime.agents_md: {'on' if loop.session.settings.agents_md else 'off'}",
-            f"worker.provider: {loop.session.config.worker_provider or '(off)'}",
-            f"worker.model: {loop.session.config.worker_model or '(inherit)'}",
-            f"worker.reasoning: {loop.session.config.worker_reasoning or '(inherit)'}",
-            f"worker.api: {loop.session.config.worker_api or '(inherit)'}",
             f"compaction.provider: {loop.session.config.compaction_provider or loop.session.config.active_provider}",
             f"compaction.model: {compaction_effective.model}",
             f"compaction.reasoning: {compaction_effective.reasoning}",
@@ -1185,6 +1172,7 @@ class Command:
 # Dispatch, completion and queue admission share one registry.
 # fmt: off
 COMMANDS: tuple[Command, ...] = (
+    Command("/agents", agents_command, queue_safe=True),
     Command("/status", status, queue_safe=True, render="compact"),
     Command("/catalog", catalog_command, queue_safe=True, render="answer"),
     Command("/ps", ps_command, queue_safe=True, render="answer"),
@@ -1203,7 +1191,6 @@ COMMANDS: tuple[Command, ...] = (
     Command("/mcp", mcp_command, queue_safe=True, render="answer"),
     Command("/name", name_command),
     Command("/sessions", sessions_command, aliases=("/resume",)),
-    Command("/worker", worker.worker_command),
     Command("/language", language_command),
     Command("/theme", appearance.theme_command),
 )

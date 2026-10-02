@@ -20,7 +20,7 @@ from prompt_toolkit.utils import get_cwidth
 
 from wizolt.base import DISMISSED, SELECTION_BACK, ApprovalView, Text, ToolCall, ToolError, TurnBox, oneline
 from wizolt.session import BackgroundJob, ToolResultRecord
-from wizolt.tools import AskSpec, BashTool, DelegateTool, JobTool, ToolScript, tooloutput
+from wizolt.tools import AskSpec, BashTool, JobTool, ToolScript, tooloutput
 from wizolt.ui.render import UiPrinter
 from wizolt.ui.tui import (
     ASK_DONE,
@@ -414,11 +414,8 @@ def running_script_entry(loop: CommandLoop) -> OutputEntry | None:
 async def tool_output_viewer(loop: CommandLoop) -> None:
     """Browse what recent calls produced without copying it into scrollback.
 
-    Every entry -- a Bash command with its output, a ToolScript with its script and result, a
-    Delegate order with the worker's answer -- opens the same read-only scrolling viewer.
-    ToolScript is here because yolo has no other door to it; Bash is here because a bounded excerpt
-    under the list was never the whole answer; Delegate is here because judging the answer means
-    reading the order again, and the transcript kept only the `Delegate send` line.
+    Bash commands and ToolScript calls open the same read-only scrolling viewer with their full
+    source and output. A bounded excerpt under the list cannot show the entire result.
 
     A detail's Esc (or q, or Ctrl-C) returns to the list with the cursor where it was; Ctrl-O
     closes the whole browser."""
@@ -459,29 +456,7 @@ def record_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView | N
         return bash_view(loop, record)
     if record.name == "ToolScript":
         return script_view(loop, record)
-    if record.name == "Delegate":
-        return delegate_view(loop, record)
-    if record.name == "Job":
-        return job_view(loop, record)
     return None
-
-
-def delegate_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView | None:
-    """The stored Delegate call as its order plus what the worker sent back.
-
-    An order is the one text in a session written to be read twice: once at the send prompt, and
-    again when the worker's answer has to be judged against what was actually asked. The transcript
-    keeps neither -- just the `Delegate send` line -- so this is the second reading. Only a send has
-    an order; status and reset return None from `approval_view` and are skipped like any other
-    record this browser does not show."""
-    view = DelegateTool(loop.session, record.args).approval_view()
-    if view is None:
-        return None
-    result, note = tooloutput.viewer_text(record.output)
-    rows = [("key", record.key), *view.rows]
-    if note:
-        rows.append(("shown", note))
-    return ApprovalView(f"order · {record.key}", view.text, view.lexer, rows, result)
 
 
 def job_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView:

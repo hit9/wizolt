@@ -14,7 +14,6 @@ from tui_harness import ResizableOutput, loop, rendered_screen_text, request_inp
 from wizolt.config import PROVIDER_API_CHOICES
 from wizolt.ui.cli import CommandCompleter
 from wizolt.ui.cli.commands import COMMAND_NAMES, NEEDS_ARGUMENT, SET_KEYS, set_value
-from wizolt.ui.cli.worker import WORKER_SUBCOMMANDS
 from wizolt.ui.tui import TuiApp
 from wizolt.ui.tui.app import InputMode, _AlignedCompletionsMenu, default_completion
 
@@ -150,8 +149,6 @@ def test_only_set_needs_an_argument_and_bare_it_prints_its_usage(tmp_path):
         ("/api ", set(), set(PROVIDER_API_CHOICES)),
         ("/model ", set(), {"model-a"}),
         ("/provider ", set(), {"prov-a"}),
-        # Every `/worker` subcommand opens its own picker bare, so none is held back.
-        ("/worker ", set(), set(WORKER_SUBCOMMANDS)),
     ],
     ids=lambda value: value if isinstance(value, str) else None,
 )

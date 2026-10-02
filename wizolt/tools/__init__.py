@@ -5,12 +5,12 @@ from __future__ import annotations
 from wizolt.base import ToolArgs, drop_nulls
 from wizolt.tools.ask import AskSpec, AskTool
 from wizolt.tools.base import Tool
-from wizolt.tools.delegate import WORKER_TOOLS, DelegateTool
 from wizolt.tools.files import Edit, EditApplyResult, EditTool, ReadTool, ViewImageTool
 from wizolt.tools.mcp import MCPTool
 from wizolt.tools.memory import ContextTool, NextHintsTool, NoteTool
 from wizolt.tools.shell import BashTool, JobTool
 from wizolt.tools.skill import SkillTool
+from wizolt.tools.subagent import SubagentTool
 from wizolt.tools.toolscript import ToolScript
 
 TOOLS: tuple[type[Tool], ...] = (
@@ -26,7 +26,7 @@ TOOLS: tuple[type[Tool], ...] = (
     ContextTool,
     NextHintsTool,
     AskTool,
-    DelegateTool,
+    SubagentTool,
 )
 TOOL_REGISTRY: dict[str, type[Tool]] = {tool.NAME: tool for tool in TOOLS}
 
@@ -43,12 +43,10 @@ def tool_payload(name: str, payload: object) -> ToolArgs:
 __all__ = [
     "TOOLS",
     "TOOL_REGISTRY",
-    "WORKER_TOOLS",
     "AskSpec",
     "AskTool",
     "BashTool",
     "ContextTool",
-    "DelegateTool",
     "Edit",
     "EditApplyResult",
     "EditTool",
@@ -58,6 +56,7 @@ __all__ = [
     "NoteTool",
     "ReadTool",
     "SkillTool",
+    "SubagentTool",
     "Tool",
     "ToolScript",
     "ViewImageTool",

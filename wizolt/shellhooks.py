@@ -41,7 +41,7 @@ SUBAGENT_STOP = "SubagentStop"
 STOP_FAILURE = "StopFailure"
 TOOL_EVENTS = (PRE_TOOL_USE, POST_TOOL_USE, POST_TOOL_USE_FAILURE, PERMISSION_REQUEST)
 EVENTS = (*TOOL_EVENTS, USER_PROMPT_SUBMIT, STOP, SESSION_START, SESSION_END, PRE_COMPACT, POST_COMPACT, SUBAGENT_START, SUBAGENT_STOP, STOP_FAILURE)
-WORKER_EVENTS = (*TOOL_EVENTS, PRE_COMPACT, POST_COMPACT, SUBAGENT_START, SUBAGENT_STOP, STOP_FAILURE)
+SUBAGENT_EVENTS = (*TOOL_EVENTS, PRE_COMPACT, POST_COMPACT, SUBAGENT_START, SUBAGENT_STOP, STOP_FAILURE)
 BLOCKING_EVENTS = (PRE_TOOL_USE, POST_TOOL_USE, USER_PROMPT_SUBMIT, STOP, SUBAGENT_STOP, PRE_COMPACT)
 CONTEXT_EVENTS = (PRE_TOOL_USE, POST_TOOL_USE, POST_TOOL_USE_FAILURE, USER_PROMPT_SUBMIT, SESSION_START, SUBAGENT_START, STOP, SUBAGENT_STOP)
 MATCH_FIELDS = {
@@ -216,13 +216,13 @@ class ShellHooks:
         self.events = events
 
     def detached(self, session: Session | None = None) -> ShellHooks:
-        """A worker gets configured tool/compaction hooks and its own start/stop events.
+        """A subagent gets configured tool/compaction hooks and its own start/stop events.
 
-        Only subagent events from the parent's skills cross the handoff. The worker never reads
-        or mutates the parent session; this snapshot is refreshed at each delegation."""
+        Only subagent events from the parent's skills cross the handoff. The child never reads
+        or mutates the parent session; hooks are frozen at child creation."""
         skills = session.skills.active(session.active_skills) if session is not None and session.skills is not None else []
         inherited = tuple(hook for skill in skills for hook in skill.hooks if hook.event in (SUBAGENT_START, SUBAGENT_STOP))
-        return ShellHooks((*self.configured, *inherited), self.project_dir, WORKER_EVENTS)
+        return ShellHooks((*self.configured, *inherited), self.project_dir, SUBAGENT_EVENTS)
 
     def active(self, session: Session) -> tuple[HookCommand, ...]:
         skills = session.skills.active(session.active_skills) if session.skills is not None else []

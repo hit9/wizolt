@@ -69,11 +69,9 @@ class AgentState:
     model_retry_reason: str = ""
     model_retry_until: float = 0.0  # monotonic deadline of the current retry wait; 0 when idle
     compaction_count: int = 0
-    # The last delegation that failed on this worker, for `Delegate status` to tell the parent
-    # (which cannot see the worker) why it stopped, instead of the parent having to remember.
-    # Live display state: never persisted.
-    last_error: str = ""
-    last_error_round: int = 0
+    awaiting_input: bool = False  # runtime only: approvals and Ask are scoped to this agent.
+    last_turn_status: str = "idle"
+    last_turn_error: str = ""
     # The current request's output stream, for the throughput the running divider shows. Characters
     # rather than tokens because token deltas are not on the wire: providers report usage once, when
     # the request is over. Reset at the start of every attempt and cleared when it ends, so the rate

@@ -169,14 +169,11 @@ def warm_imports(modules: list[str], *, start: bool = True) -> threading.Thread:
 def startup_imports(session) -> list[str]:
     """Warm the configured request routes, leaving unused SDKs on their lazy request path."""
     from wizolt.config import compaction_provider_config
-    from wizolt.tools.delegate import worker_provider_config
 
     config = session.config
     providers = [config.provider, compaction_provider_config(config)]
     if config.vision_provider:
         providers.append(config.providers[config.vision_provider])
-    if config.worker_provider:
-        providers.append(worker_provider_config(config, config.worker_provider))
     modules = list(dict.fromkeys("anthropic" if session.policy.resolve(provider).api == "anthropic" else "openai" for provider in providers))
     if session.mcp is not None and any(entry.auto_connect for entry in session.mcp.parse_configs()):
         modules.append("mcp.client")

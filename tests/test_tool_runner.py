@@ -88,23 +88,6 @@ async def test_unstored_tool_result_does_not_create_a_new_key(tmp_path):
     assert [record.key for record in s.tool_records] == [key]
 
 
-def test_replayed_delegate_keeps_its_call_line(tmp_path):
-    # The finish block drops its own root when a worker_rule is wired, because live the closing
-    # full-width rule carries the call instead. Transcript replay wires no rule and passes no
-    # output, so the rule never fired and the saved call rendered as an orphaned `stored tr.N`
-    # under nothing. Replay takes the fallback root; the live path still hands its rule over.
-    from wizolt.base import ToolCall
-
-    s = session(tmp_path)
-    delegate = ToolCall(id="", name="Delegate", args=[{"action": "send", "order": "do it"}])
-
-    replayed = str(toolblocks.finish_display(s, delegate, "tr.7", "", failed=False))
-    assert replayed.splitlines()[0].strip().startswith("[worker]")
-    assert "stored tr.7" in replayed
-
-    # Live, a wired rule still takes the root away: the rule is the call line there.
-    live = str(toolblocks.finish_display(s, delegate, "tr.7", "", failed=False, worker_rule=lambda text: None))
-    assert "[worker]" not in live
 
 
 async def test_read_only_batch_keeps_model_order_and_honors_the_concurrency_cap(tmp_path, monkeypatch):

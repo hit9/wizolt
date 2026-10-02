@@ -1,6 +1,6 @@
 """Exclusive session ownership: the `flock` lease one runtime holds per session family.
 
-A session family -- a parent snapshot and its `<uid>.w` worker -- has exactly one writable owner at
+A session family -- a root snapshot and its `<uid>.a<id>` children -- has one writable owner at
 a time. The lease is an open file descriptor locked with `fcntl.flock(fd, LOCK_EX | LOCK_NB)`; the
 descriptor, not a timestamp or a PID file, is the authority. The kernel releases it when the last
 descriptor closes, so a crash needs no stale-lock cleanup. Lock files live under
@@ -19,6 +19,7 @@ import errno
 import fcntl
 import hashlib
 import os
+import re
 
 from wizolt.base import WizoltError
 
@@ -55,11 +56,17 @@ def canonical_snapshot_path(path: str) -> str:
 
 
 def ownership_identity(snapshot_path: str) -> str:
-    """The parent JSONL path a snapshot path belongs to; a `.w` worker maps to its parent."""
+    """The root JSONL path a snapshot belongs to; generated child IDs map to the root."""
 
-    if snapshot_path.endswith(".w.jsonl"):
-        return snapshot_path[: -len(".w.jsonl")] + ".jsonl"
-    return snapshot_path
+    directory, name = os.path.split(snapshot_path)
+    uid = name.removesuffix(".jsonl")
+    return os.path.join(directory, subagent_root_uid(uid) + ".jsonl")
+
+
+def subagent_root_uid(uid: str) -> str:
+    """Only generated child suffixes belong to another session's ownership family."""
+    match = re.fullmatch(r"(.+)\.a[0-9a-f]{12}", uid)
+    return match[1] if match else uid
 
 
 def _uid_for(identity: str) -> str:

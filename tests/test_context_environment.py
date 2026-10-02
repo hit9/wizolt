@@ -240,7 +240,7 @@ def test_environment_agents_md_cache_stable(tmp_path):
 
 def test_environment_agents_md_cache_stable_across_worker(tmp_path):
     """A worker inherits the parent's shared system_info and settings, so its Environment is
-    byte-identical — the spawn invariant DelegateTool._spawn_worker relies on (cache-critical)."""
+    byte-identical — the spawn invariant Subagents.spawn relies on (cache-critical)."""
     (tmp_path / "AGENTS.md").write_text("# Rules\nAlways run pytest.\n", encoding="utf-8")
     parent = session(tmp_path)
     worker = Session(

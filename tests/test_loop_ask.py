@@ -476,18 +476,6 @@ async def test_turn_end_rule_resets_rule_distance(tmp_path):
     assert loop.presentation.ui.rows_since_rule == 0
 
 
-async def test_worker_interim_output_gets_the_same_phase_rule(tmp_path):
-    """A worker's interim text is an interim reply like any other; it closes with the same rule,
-    through the same narration path the main agent uses."""
-    loop = _colored_loop(tmp_path)
-    rules = []
-    loop.presentation.ui.emit_phase_rule = lambda: rules.append(1)
-    loop.presentation.ui.rows_since_rule = loop.presentation.MIN_ROWS_BETWEEN_RULES - 1
-    loop.presentation.ui.trailing_blanks = 0
-
-    loop.presentation.worker_answer_output("working")
-
-    assert rules == [1]
 
 
 async def test_full_turn_parts_at_user_rule_narration_and_silent_batches(tmp_path):

@@ -29,6 +29,13 @@ class FakeTui:
         # Counted so a test can wait for the terminal to have been asked, rather than racing the
         # shutdown drain that reports the failure.
         self.write_attempts = 0
+        self.modal = None
+
+    def finish(self):
+        pass
+
+    def cancel_input(self):
+        pass
 
     async def run(self, style=None):
         del style

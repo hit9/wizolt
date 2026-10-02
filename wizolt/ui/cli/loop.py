@@ -11,9 +11,8 @@ import sys
 import threading
 import time
 from collections.abc import Callable
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
-from prompt_toolkit import print_formatted_text
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import FileHistory
 
@@ -29,8 +28,6 @@ from wizolt.base import (
 )
 from wizolt.image import UserInput
 from wizolt.session import QueuedInput, SessionLease, SessionSnapshotStore
-from wizolt.tools.delegate import worker_provider_config
-from wizolt.ui.cli import worker
 from wizolt.ui.cli.commands import COMMAND_LOOKUP, COMMAND_NAMES, QUEUED_SUBCOMMANDS
 from wizolt.ui.cli.modals import approval_text_viewer, question_interaction
 from wizolt.ui.cli.presentation import Presentation
@@ -39,6 +36,9 @@ from wizolt.ui.cli.runtime import TuiRuntime
 from wizolt.ui.cli.update import UpdateChecker
 from wizolt.ui.cli.view import CommandCompleter, View
 from wizolt.ui.render import InputStyle, Theme, UiPrinter, search_sources_footer
+
+if TYPE_CHECKING:
+    from wizolt.ui.cli.agents import AgentsFrontend
 
 
 class CommandLoop:
@@ -101,6 +101,7 @@ class CommandLoop:
 
     def __init__(self, agent: Agent, input_fn=input, output_fn=print):
         self.agent = agent
+        self.agents_frontend: AgentsFrontend | None = None
         self.session = agent.session
         self.presentation = Presentation(self.session, output_fn)
         self.background = BackgroundServices(self.session, self.presentation.emit_background)
@@ -123,9 +124,12 @@ class CommandLoop:
         # remainder here lets the loop use non-blocking os.read() without losing a following line.
         self._stdin_buffer = bytearray()
         if self.interactive_input:
-            history_path = self.session.data_path("history.txt")
+            history_path = os.path.join(SessionSnapshotStore.project_dir(self.session.config.data_dir, self.session.cwd), self.session.uid + ".history")
             os.makedirs(os.path.dirname(history_path), exist_ok=True)
             self.trim_input_history(history_path)
+            # Reserve the history before startup cleanup prunes directories with no session log.
+            with open(history_path, "a", encoding="utf-8"):
+                pass
             self.input_history = FileHistory(history_path)
         else:
             self.input_history = None
@@ -133,17 +137,6 @@ class CommandLoop:
             providers=lambda: tuple(sorted(self.session.config.providers)),
             models=lambda: self.session.config.provider.available_models,
             reasoning_choices=lambda: self.session.policy.reasoning_choices(self.session.config.provider),
-            worker_reasoning_choices=lambda: self.session.policy.reasoning_choices(
-                worker_provider_config(
-                    self.session.config,
-                    self.session.config.worker_provider or self.session.config.active_provider,
-                )
-            ),
-            worker_models=lambda: tuple(
-                dict.fromkeys(
-                    (*self.session.config.providers[self.session.config.worker_provider or self.session.config.active_provider].available_models, "default")
-                )
-            ),
             mcp_servers=lambda: tuple(config.name for config in self.session.mcp.parse_configs()) if self.session.mcp else (),
             mcp_connected_servers=lambda: (
                 tuple(config.name for config in self.session.mcp.parse_configs() if self.session.mcp.connected(config.name)) if self.session.mcp else ()
@@ -173,9 +166,6 @@ class CommandLoop:
         hooks.live_start = self.presentation.tool_live_start
         hooks.live_output = self.presentation.tool_live_output
         hooks.question_fn = lambda specs: question_interaction(self, specs)
-        hooks.worker_rule = self.presentation.ui.emit_worker_rule
-        hooks.worker_answer = self.presentation.worker_answer_output
-        hooks.worker_config_picker = worker.WorkerFlow(self).run_worker_config
         hooks.text_viewer = lambda view: approval_text_viewer(self, view)
         hooks.approval_form = self.set_approval_form
         hooks.cancel_input = self.cancel_tool_input
@@ -219,7 +209,8 @@ class CommandLoop:
                 fragments.append(("", "\n"))
             fragments.extend([("class:prompt", UiPrinter.USER_LOG_PREFIX), (UiPrinter.user_log_style(), text), ("", "\n")])
         fragments.append(("", "\n"))
-        print_formatted_text(FormattedText(fragments), style=self.view.style(), end="", flush=True)
+        rendered = FormattedText([(UiPrinter.user_log_style() if style == "class:prompt" else style, text) for style, text in fragments])
+        self.presentation.write_scrollback(lambda: self.presentation.ui.print_parts([rendered]))
 
     def editor_context(self) -> str:
         """The agent's recent replies, newest first, restated as read-only reference for the

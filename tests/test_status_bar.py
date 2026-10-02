@@ -52,7 +52,7 @@ def test_status_bar_has_fixed_order_and_no_working_only_fields(tmp_path):
 
     text = status_text(StatusBar(s))
 
-    assert text == f"[yolo] default/model · high | mcp 0 · skills {len(s.skills.skills)} | ctx 23% · cache 0%"
+    assert text == f"[main] [yolo] default/model · high | mcp 0 · skills {len(s.skills.skills)} | ctx 23% · cache 0%"
     assert all(word not in text for word in ("worker", "compaction", "jobs", "update", "step", "retry", "attempt"))
 
 
@@ -82,10 +82,19 @@ def test_status_bar_clips_wide_model_name_by_display_width(tmp_path, monkeypatch
     assert get_cwidth("".join(text for _, text in fragments)) < 20
 
 
+def test_status_bar_bounds_and_sanitizes_agent_names(tmp_path, monkeypatch):
+    s = session(tmp_path)
+    s.agent_name = "\x1b[2J\n模型" * 40
+    monkeypatch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((20, 24)))
+    text = status_text(StatusBar(s))
+    assert "\x1b" not in text and "\n" not in text
+    assert get_cwidth(text) < 20
+
+
 def test_status_bar_clip_keeps_role_colors(tmp_path, monkeypatch):
     s = session(tmp_path)
     with monkeypatch.context() as patch:
-        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((30, 24)))
+        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((38, 24)))
         fragments = StatusBar(s).fragments()
     styles = {style for style, text in fragments if text.strip()}
     assert len(styles) > 1
@@ -93,7 +102,7 @@ def test_status_bar_clip_keeps_role_colors(tmp_path, monkeypatch):
     assert Theme.inline("status_base") + " bold" in styles
     assert "ctx 0%" in "".join(text for _, text in fragments)
     assert Theme.inline("status_reason") not in styles  # context survives after optional effort is dropped
-    assert get_cwidth("".join(text for _, text in fragments)) < 30
+    assert get_cwidth("".join(text for _, text in fragments)) < 38
 
 
 def test_status_bar_clip_fragments_preserves_segment_styles():

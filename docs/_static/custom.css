@@ -250,16 +250,16 @@ table.docutils th { background: var(--nc-surface); color: var(--nc-fg-strong); }
 .fs-diff-del { background: #520000; }
 .fs-goal { color: #c678dd; }
 .fs-doing { color: #e5c07b; }
-.fs-worker { color: #fbbf24; } /* worker identity color, mirroring render.py Theme.DARK status.worker */
 /* Status bar roles, mirroring the dark palette in wizolt/render.py (Theme.DARK). */
-.sb-base { color: #60a5fa; }
+.sb-base { color: #cbd5e1; }
+.sb-provider { color: #60a5fa; }
+.sb-agent { color: #fbbf24; font-weight: bold; }
 .sb-sep { color: #4b5563; }
 .sb-reason { color: #a5b4fc; }
 .sb-mcp { color: #93c5fd; }
 .sb-ctx { color: #facc15; }
 .sb-yolo { color: #c084fc; }
 .sb-warn { color: #fb7185; }
-.sb-worker { color: #fbbf24; } /* worker identity color, mirroring render.py Theme.DARK status.worker */
 
 /* Admonitions */
 .admonition, .note, .topic, .seealso {

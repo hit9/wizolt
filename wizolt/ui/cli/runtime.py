@@ -168,6 +168,7 @@ class TuiRuntime:
         self.submissions: asyncio.Queue[_Submission] = asyncio.Queue()
         self.submissions_task: asyncio.Task | None = None
         self.accepting = False
+        self.child_agent = False
         self.turn_active = False
         self.cancel_pending = False
         self.command_task: asyncio.Task | None = None
@@ -291,21 +292,13 @@ class TuiRuntime:
                     if admitted is None:
                         continue  # refused: the draft went back to the editor, nothing was queued
                     if not self.turn_active:
-                        self.pending.put_nowait(admitted)
+                        if self.child_agent:
+                            assert self.loop.session.subagents is not None
+                            await self.loop.session.subagents.send(self.loop.session.uid, admitted)
+                        else:
+                            self.pending.put_nowait(admitted)
                         continue
-                    # A live follow-up typed while a delegation is running goes to the worker, whose
-                    # next model request claims it from its own queue; anything else (a Tab-held
-                    # input, a command, an attachment) stays with the parent, which is the only
-                    # turn the runtime owns the boundaries of.
-                    worker = self.loop.session.delegating_worker
-                    if worker is not None and not submission.next_turn and not admitted.images and not admitted.pastes:
-                        worker.enqueue_user_input(admitted)
-                        # The parent's save below no longer carries this input (it left the
-                        # parent's queue), so persist the worker's queue itself: until the
-                        # worker's next checkpoint the text would live in no snapshot at all.
-                        await worker.save_snapshot()
-                    else:
-                        self.loop.session.enqueue_user_input(admitted, next_turn=submission.next_turn)
+                    self.loop.session.enqueue_user_input(admitted, next_turn=submission.next_turn)
                 uid = await self.loop.session.save_snapshot()
                 if submission.resume_notice:
                     self.loop.resume.emit_resume_line(uid)
@@ -505,6 +498,10 @@ class TuiRuntime:
     def submit_next(self, entered: Sequence[str | UserInput]) -> None:
         if not entered:
             return
+        if self.child_agent:
+            for value in entered:
+                self.loop.session.enqueue_user_input(value)
+            return
         first = entered[0] if isinstance(entered[0], UserInput) else UserInput(entered[0])
         self.pending.put_nowait(first)
         for text in entered[1:]:
@@ -573,6 +570,7 @@ class TuiRuntime:
         self.turn_active = True
         started = time.monotonic()
         cancelled = False
+        turn_error: Exception | None = None
         malformed_tool_call = False
         answered = False
         try:
@@ -581,9 +579,11 @@ class TuiRuntime:
         except _TurnCancelled:
             cancelled = True
         except MalformedToolCallError as error:
+            turn_error = error
             answer = str(error)
             malformed_tool_call = True
         except WizoltError as error:
+            turn_error = error
             answer = f"Error: {error}"
         finally:
             self.loop.session.state.manual_model_retry_requested = False
@@ -608,6 +608,11 @@ class TuiRuntime:
         finally:
             self.turn_active = False
             self.reset_turn()
+        if self.child_agent:
+            if cancelled:
+                raise asyncio.CancelledError
+            if turn_error is not None:
+                raise turn_error
 
     async def _finish_turn_submissions(self) -> None:
         """Place a FIFO boundary after inputs accepted during this turn and await its commit."""
@@ -682,6 +687,9 @@ class TuiRuntime:
         rather than leaving the turn and the writer running with no terminal under them."""
 
         try:
+            if self.loop.agents_frontend is not None:
+                await self.loop.agents_frontend.run_application()
+                return
             # Dynamic, so `/theme` repaints the app by switching the palette.
             await self.tui.run(style=DynamicStyle(self.loop.view.style))
         except BaseException as error:
@@ -712,23 +720,27 @@ class TuiRuntime:
         self.shutdown = asyncio.Event()
         self.application_ready = asyncio.Event()
         self.loop.presentation.tui = self.build_tui() if tui is None else self.build_tui(tui)
+        from wizolt.ui.cli.agents import AgentsFrontend
+
+        frontend = AgentsFrontend(self)
         # Record the banner before terminal probing starts. Printing it before build_tui
         # bypasses the transcript, so the next width-change replay would lose it forever.
         if show_banner:
             self.loop.emit_banner()
+        self.tui.managed = True
         if application is None:
             self.tui.on_ready = self.application_ready.set
             application = self.spawn(self._run_application(), name="tui-application")
             assert application is not None
         else:
             self.application_ready.set()
-            self.tasks.add(application)
-            application.add_done_callback(self._task_done)
-            application.add_done_callback(lambda _: self.request_shutdown())
+            application = self.spawn(frontend.run_application(application), name="tui-application")
+            assert application is not None
         for value in initial_inputs:
             self.submit_chat(value)
         self.submissions_task = self.spawn(self._consume_submissions(), name="submissions")
         try:
+            await frontend.group.restore()
             await self._await_ready(application)
             # The application's initial render has flushed before readiness reaches this task.
             # Let imports compete with typing only once the user can see the prompt.
@@ -836,6 +848,8 @@ class TuiRuntime:
         # Before anything is cancelled: an accepted submission is a keystroke the reader already
         # sent, and its save is bounded. Cancelling the consumer first would drop it.
         await settle(self._close_submissions())
+        if self.loop.agents_frontend is not None:
+            await settle(self.loop.agents_frontend.close())
         self.loop.agent.cancel()
         owned = [task for task in self.tasks if task is not application]
         for task in owned:
@@ -853,13 +867,23 @@ class TuiRuntime:
         self.loop.presentation.scrollback = None
         self.loop.agent.hooks.output_barrier = None
         try:
-            self.tui.exit()
+            frontend = self.loop.agents_frontend
+            (frontend.current.tui if frontend is not None else self.tui).exit()
         except BaseException as error:  # noqa: BLE001 - still await the application and release references.
             cleanup_errors.append(error)
             if self.error is None:
                 self.error = error
             application.cancel()
         await settle(application)
+        try:
+            if self.loop.agents_frontend is not None:
+                self.loop.agents_frontend.current.tui.finish()
+                self.tui.cancel_input()
+                if self.tui.modal is not None:
+                    self.tui.close_modal(None)
+        except BaseException as error:  # noqa: BLE001 - release frontend references even if the terminal has gone away.
+            cleanup_errors.append(error)
+        self.loop.presentation.ui.transcript_sink = None
         self.loop.presentation.tui = None
         if self.force_exit_timer is not None:
             self.force_exit_timer.cancel()

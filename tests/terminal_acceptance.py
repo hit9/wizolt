@@ -128,6 +128,14 @@ def test_cli_startup_banner_survives_growing_and_shrinking_pane(pane):
     while "starting…" in "\n".join(pane.capture()):
         assert time.monotonic() < deadline, "CLI never finished starting"
         time.sleep(0.05)
+    _settled_capture(pane)
+    pane.send("/agents")
+    deadline = time.monotonic() + 15
+    while "(current)" not in pane.visible():
+        assert time.monotonic() < deadline, "main-only agent picker did not open:\n" + pane.visible()
+        time.sleep(0.05)
+    assert "main" in pane.visible()
+    pane.keys("Escape")
     for cycle, (width, height) in enumerate([(140, 45), (62, 18), (100, 30)] * 3):
         pane.resize(width, height)
         # Editing (without submitting) confirms a fresh frame after each resize, rather than
@@ -144,6 +152,70 @@ def test_cli_startup_banner_survives_growing_and_shrinking_pane(pane):
         assert "starting…" not in "\n".join(lines)
         assert sum(line == ">" or line.startswith("> ") for line in lines) == 1
         assert sum("tmux-startup-model" in line for line in lines) == 1
+
+
+def test_cli_agents_switch_rebuilds_only_selected_transcript(pane):
+    config = pane.path / "agents.toml"
+    config.write_text(
+        f'[paths]\ndata_dir = "{pane.path}/data"\n'
+        '[provider]\nactive = "test"\n[provider.test]\n'
+        'url = "http://127.0.0.1:9/v1"\nkey = "test-only"\nmodel = "agents-model"\n'
+        '[runtime]\ntheme = "forest"\n'
+    )
+    entry = pane.path / "agents.py"
+    entry.write_text(
+        "from wizolt.agent.engine import Agent\n"
+        "from wizolt.model.client import ModelClient\n"
+        "from wizolt.ui.cli.update import UpdateChecker\n"
+        "from wizolt.providers.sync import CatalogRuntime\n"
+        "from wizolt.__main__ import main\n"
+        "original = Agent.start_session\n"
+        "async def start(self):\n"
+        "    await original(self)\n"
+        "    if not self.session.agent_parent:\n"
+        "        await self.session.subagents.spawn(self.session, 'reader', 'CHILD-TASK')\n"
+        "async def request(self, messages, tools=None):\n"
+        "    return {'role': 'assistant', 'content': 'CHILD-ANSWER'}, [], 'CHILD-ANSWER'\n"
+        "Agent.start_session = start\n"
+        "ModelClient.request = request\n"
+        "UpdateChecker.load_cached = lambda self: False\n"
+        "CatalogRuntime.refresh_due = lambda self: False\n"
+        "main()\n"
+    )
+    pane.send(f"{sys.executable} {entry} --config {config} --yolo")
+
+    def visible_with(needle):
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            visible = pane.visible()
+            assert "Unhandled exception" not in visible, visible
+            if needle in visible:
+                return visible
+            time.sleep(0.05)
+        raise AssertionError(f"missing {needle!r}:\n{visible}")
+
+    visible_with("[main]")
+    visible_with("[reader] completed")
+    assert "CHILD-ANSWER" not in pane.visible()
+    for _ in range(2):
+        pane.send("/agents")
+        visible_with("Agents")
+        pane.keys("Down", "Enter")
+        visible_with("[reader] [yolo]")
+        for width, height in ((62, 18), (100, 30)):
+            pane.resize(width, height)
+            _settled_capture(pane)
+            visible = visible_with("[reader] [yolo]")
+            assert "CHILD-TASK" in "\n".join(pane.capture()), visible
+        pane.send("/status")
+        visible_with("completed")
+        _settled_capture(pane)
+        pane.send("/agents")
+        visible_with("Agents")
+        pane.keys("Up", "Enter")
+        visible_with("[main] [yolo]")
+        assert "CHILD-TASK" not in pane.visible()
+    pane.send("/exit")
 
 
 def _wait_for_markers(log: Path, count: int, timeout: float = 30.0) -> None:
@@ -316,10 +388,10 @@ def test_completed_rules_fit_each_width_without_losing_text(pane, markers):
         pane.resize(width, TALL)
         lines = _settled_capture(pane)
         joined = "".join(lines)
-        for marker in ("USER-BEGIN", "USER-END", "ANSWER-BEGIN", "ANSWER-END", "done in 1m05s", "[worker] 完成"):
+        for marker in ("USER-BEGIN", "USER-END", "ANSWER-BEGIN", "ANSWER-END", "done in 1m05s"):
             assert joined.count(marker) == 1, (width, marker, lines)
         rules = [line for line in lines if "─" in line]
-        assert len(rules) == 3, f"expected three single-row rules at width {width}: {rules}"
+        assert len(rules) == 2, f"expected two single-row rules at width {width}: {rules}"
         assert all(get_cwidth(line) == width for line in rules), (width, rules)
 
 

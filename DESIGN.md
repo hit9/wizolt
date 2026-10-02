@@ -46,13 +46,13 @@ fresh-interpreter tests also check that lower-level imports do not pull in appli
 
 Deferred edges remain explicit at their call sites; lifting them to module scope introduces cycles:
 
-- **Worker execution (`tools/` → agent).** `Delegate` constructs `agent.engine.Agent` at the worker
-  handoff. `ToolScript` receives its runner and uses `TYPE_CHECKING` for its type. Within `tools/`,
+- **Agent execution (`tools/` → agent).** `Subagent` calls the session's agent group, which
+  constructs child engines at the spawn boundary. `ToolScript` receives its runner and uses `TYPE_CHECKING` for its type. Within `tools/`,
   consumers of the registry import it locally because the registry is assembled from tool modules.
 - **Persistence (`session/store.py` → Session).** The store constructs the dataclass at decode time.
   It does not attach capabilities. `agent.lifecycle.create_session` and `load_session` own feature
   assembly, including lease acquisition before resume decoding and rollback if assembly fails.
-  A worker instead borrows the parent's MCP, skill library and catalog.
+  A subagent instead borrows the parent's MCP, skill library and catalog.
 - **Assets (`image.py` → session/store.py).** Image value types sit below Session; asset-directory
   lookup reaches back to the store's path convention when needed.
 
@@ -187,7 +187,7 @@ Tests protect observable contracts and reproduced regressions, not implementatio
   refreshes context accounting after replay.
 - `BackgroundServices` owns tasks for one frontend invocation: scan coalescing, admission, error
   reporting, cancellation and joining. Reopening on another event loop creates a fresh scope.
-  Resource shutdown closes worker models before the root model and shared MCP manager; workers
+  Resource shutdown closes subagent models before the root model and shared MCP manager; children
   borrow MCP and cannot close it on their own. Session ownership leases survive resource shutdown
   until the entry point finishes saving and handing off.
 - `TuiApp` owns input, keys, layout and modals; `ui/render.py` owns terminal formatting.
@@ -204,7 +204,7 @@ Tests protect observable contracts and reproduced regressions, not implementatio
   Keeping them out of `ToolRunner` is what lets transcript replay render a saved call without
   standing up a live runner.
 - Inside `toolblocks`, `finish_display`/`approval_display` branch on `call.name` for the handful of
-  tools with a shaped result (Note, Bash, MCP, ToolScript, Ask, Delegate, ViewImage). That switch
+  tools with a shaped result (Note, Bash, MCP, ToolScript, Ask, ViewImage). That switch
   stays deliberately: a rendering hook on the `Tool` base would put six special cases into the
   interface every tool implements, and one chain that reads top to bottom is easier to keep
   consistent than seven overrides. Push the branches down onto the tool classes when a tool outside
@@ -223,7 +223,7 @@ the `mcp` SDK (~0.25s), `ModelClient` defers `anthropic`/`openai` (~0.8s togethe
 under `TYPE_CHECKING`. Do not lift them back to module scope; `tests/test_cli.py` asserts a fresh
 interpreter loads neither SDK.
 
-`main` warms only the SDKs selected by the resolved main, compaction, vision and worker routes
+`main` warms only the SDKs selected by the resolved main, compaction and vision routes
 (and the MCP SDK, when a server auto-connects) on a daemon thread, started by the interactive
 runtime after its first render has flushed (immediately for non-TTY runs), so
 deferral does not move the cost to the first request; racing is safe because CPython locks imports
@@ -889,31 +889,29 @@ threshold; provider integration tests verify reported usage and acceptance witho
   back for detail, snapshots support resume, deterministic compaction preserves progress when the
   summarizer is unavailable.
 
-## Worker handoff
+## Parallel agents
 
-A worker is the same process's second wizolt session, driven serially by the parent through one
-`Delegate` tool call per round: a full wizolt (compaction, history files, tr.N, Job, Skill, MCP,
-diff, confirmation, snapshots) with its own system prompt and reduced tool list. The worker never
-reaches back. Three decisions are easy to reopen; their reasons follow.
+`agent/subagents.py` owns admission, serial inboxes, tasks and child snapshots. The `Subagent`
+tool exposes spawn/send/list/wait/stop without presenting UI or re-entering an engine. Each
+`Agent.run` has one writer; concurrent input enters its durable inbox. Wait timeouts do not
+cancel children. Stopping one agent does not cancel siblings.
 
-**No worker-to-parent tool calls.** A reverse call would re-enter the parent's `Agent.run` mid-turn;
-the agent loop is the serialized writer of active-turn messages (see "Context is a projection"), so
-a second writer would corrupt `_active_turn_messages` and the checkpoint, and the parent could not
-settle its own interrupt meanwhile. The worker's channel back is its final text; questions end its
-turn.
+Every agent shares the cwd and filesystem. There is no implicit worktree or merge. Tool
+descriptions and child prompts require disjoint file boundaries and prohibit reverting peers'
+changes. Config, clients, messages, usage, skill activation and provider overrides are independent;
+feature discovery and MCP transport are shared. Children inherit their creator's model settings
+but start without its conversation.
 
-**Worker snapshots are subordinate; reset discards process, not product.** The worker uid is
-`parent.uid + ".w"`, keying its log/meta/assets by the parent's identity: listings, latest-pointer
-resolution, and expiry skip or cascade over them; reset derives its delete path from the parent's
-uid (the model's arguments carry no path). Reset drops the worker's context and cached agent — the
-wrong beliefs accumulated across failed delegations — while file changes and merged diffs belong to
-the repo and survive.
+`ui/cli/agents.py` owns selection and each agent's frontend. A frontend retains its input buffer,
+history, approvals, queues, transcript and statistics. One application projects the selected
+frontend onto the terminal; switching suspends it and replays the next frontend. The fast-start
+application is adopted into the same supervisor. Background output stays in its own transcript.
+Notifications identify their source and never enter model context.
 
-**The worker's cache prefix is a per-session constant.** The order must be the worker's first user
-message, never spliced into its system prompt, or every delegation starts a fresh cache epoch. The
-worker inherits the parent's `created_at` (Environment byte-identical across spawns), keeps its
-tool list fixed, and shares the parent's SkillLibrary/MCPManager so no index changes between
-delegations.
+Child snapshots use `root.uid + ".a" + random_id` and borrow the root's ownership lease. The root
+manifest references children; children are hidden from session listings and expire with their
+family. Resume restores child contexts without automatically replaying queued work. Shutdown
+joins engines before closing clients and releasing ownership.
 
 ## Shell-hook boundaries
 
@@ -921,8 +919,8 @@ Hooks run only at lifecycle points wizolt owns. The runner distinguishes a rejec
 an execution failure: no failure hook runs for approvals, invalid calls or cancellation. Hook
 feedback remains attached to its matching tool result; it is never spliced into the stable prefix.
 Session-start context waits for an accepted input and enters that turn as a runtime event.
-Subagent hook configurations cross the Delegate handoff as values, refreshed each send; the worker
-never reads the parent's Session. A matching start-context copy already in worker history is not
+Subagent hook configurations are detached values at creation; the child never reads the parent's
+mutable Session state. A matching start-context copy already in child history is not
 injected again. Stop feedback shares the five-redirect cap for both ordinary and NextHints endings.
 Compaction hooks bracket manual and automatic application, including deterministic fallback;
 automatic refusal ends the turn rather than submitting the known over-budget request.

@@ -93,7 +93,7 @@ def test_a_malformed_declaration_is_a_config_error():
     assert ProviderConfig.from_dict({}).model_overrides == ()
 
 
-def test_custom_levels_validate_worker_and_compaction_against_their_effective_models():
+def test_custom_levels_validate_compaction_against_its_effective_model():
     data = {
         "provider": {
             "active": "p",
@@ -105,16 +105,14 @@ def test_custom_levels_validate_worker_and_compaction_against_their_effective_mo
                 },
             },
         },
-        "worker": {"model": "small", "reasoning": "careful"},
         "compaction": {"model": "main", "reasoning": "deep"},
     }
 
     config = Config.from_dict(data)
-    assert config.worker_reasoning == "careful"
     assert config.compaction_reasoning == "deep"
 
-    data["worker"]["reasoning"] = "deep"
-    with pytest.raises(ConfigError, match="worker.reasoning"):
+    data["compaction"]["reasoning"] = "careful"
+    with pytest.raises(ConfigError, match="compaction.reasoning"):
         Config.from_dict(data)
 
 

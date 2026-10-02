@@ -387,7 +387,7 @@ async def test_opposite_switches_do_not_deadlock(tmp_path):
 async def test_cleanup_skips_a_live_family_and_deletes_it_after_release(tmp_path):
     parent = stored_session(tmp_path, "parent")
     await parent.save_snapshot()
-    worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
+    worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".a000000000001", listed=False)
     worker.messages.append({"role": "user", "content": "worker"})
     worker.borrow_ownership(parent)
     await worker.save_snapshot()
@@ -440,7 +440,7 @@ async def test_cleanup_races_a_resume_without_deleting_under_it(tmp_path):
 async def test_cleanup_deletes_an_orphan_worker_under_the_parent_identity(tmp_path):
     parent = stored_session(tmp_path, "parent")
     await parent.save_snapshot()
-    worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
+    worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".a000000000001", listed=False)
     worker.messages.append({"role": "user", "content": "worker"})
     worker.borrow_ownership(parent)
     await worker.save_snapshot()
@@ -457,7 +457,7 @@ async def test_cleanup_deletes_an_orphan_worker_under_the_parent_identity(tmp_pa
 async def test_worker_borrows_the_parent_capability_and_cannot_release_it(tmp_path):
     parent = stored_session(tmp_path, "parent")
     await parent.save_snapshot()
-    worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
+    worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".a000000000001", listed=False)
     worker.messages.append({"role": "user", "content": "worker"})
     worker.borrow_ownership(parent)
     await worker.save_snapshot()
@@ -467,18 +467,18 @@ async def test_worker_borrows_the_parent_capability_and_cannot_release_it(tmp_pa
     parent.messages.append({"role": "user", "content": "more"})
     await parent.save_snapshot()
 
-    foreign = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid="other.w", listed=False)
+    foreign = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid="other.a000000000001", listed=False)
     with pytest.raises(SessionOwnershipError):
         foreign.borrow_ownership(parent)
 
-    with pytest.raises(WizoltError, match="worker session"):
+    with pytest.raises(WizoltError, match="subagent directly"):
         load_session(worker.uid, config=parent.config, cwd=str(tmp_path))
 
 
 async def test_a_worker_cannot_write_after_its_parent_capability_closes(tmp_path):
     parent = stored_session(tmp_path, "parent")
     await parent.save_snapshot()
-    worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".w", listed=False)
+    worker = Session(cwd=str(tmp_path), config=parent.config, settings=parent.settings, uid=parent.uid + ".a000000000001", listed=False)
     worker.messages.append({"role": "user", "content": "worker"})
     worker.borrow_ownership(parent)
     await worker.save_snapshot()

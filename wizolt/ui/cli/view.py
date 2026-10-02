@@ -31,7 +31,6 @@ from wizolt.ui.cli.commands import COMMAND_NAMES, NEEDS_ARGUMENT, SET_KEYS, SET_
 from wizolt.ui.cli.hints import Context as HintContext
 from wizolt.ui.cli.hints import HintPicker
 from wizolt.ui.cli.runtime import RESUME_STATUS_LABEL, STARTING_STATUS_LABEL
-from wizolt.ui.cli.worker import WORKER_SUBCOMMANDS
 from wizolt.ui.render import InputStyle, LiveSpark, Theme, UiPrinter
 from wizolt.ui.tui import InputMode
 
@@ -55,11 +54,9 @@ class CommandCompleter(Completer):
         self,
         providers: Callable[[], tuple[str, ...]] = tuple,
         models: Callable[[], tuple[str, ...]] = tuple,
-        worker_models: Callable[[], tuple[str, ...]] = tuple,
         # The active model's own scale, so completion offers exactly what `/reason` accepts.
         reasoning_choices: Callable[[], tuple[str, ...]] = lambda: ("off", *bundled_policy().effort_order),
         # Workers can target another provider/model, so offer the catalog-wide vocabulary here.
-        worker_reasoning_choices: Callable[[], tuple[str, ...]] = lambda: ("off", *bundled_policy().effort_order),
         mcp_servers: Callable[[], tuple[str, ...]] = tuple,
         mcp_connected_servers: Callable[[], tuple[str, ...]] = tuple,
         mcp_tools: Callable[[str], tuple[str, ...]] = lambda _server: (),
@@ -74,9 +71,7 @@ class CommandCompleter(Completer):
     ):
         self.providers = providers
         self.models = models
-        self.worker_models = worker_models
         self.reasoning_choices = reasoning_choices
-        self.worker_reasoning_choices = worker_reasoning_choices
         self.mcp_servers = mcp_servers
         self.mcp_connected_servers = mcp_connected_servers
         self.mcp_tools = mcp_tools
@@ -99,24 +94,6 @@ class CommandCompleter(Completer):
             key, _, value = tail.partition(" ")
             yield from self.matches(SET_VALUES.get(key, ()), value)
             return
-        if text.startswith("/worker "):
-            tail = text[len("/worker ") :]
-            if " " not in tail:
-                yield from self.matches(WORKER_SUBCOMMANDS, tail)
-                return
-            sub, _, value = tail.partition(" ")
-            if sub == "provider":
-                yield from self.matches(tuple(dict.fromkeys((*self.providers(), "off"))), value)
-                return
-            if sub == "model":
-                yield from self.matches(self.worker_models(), value)
-                return
-            if sub == "reason":
-                yield from self.matches((*self.worker_reasoning_choices(), "default"), value)
-                return
-            if sub == "api":
-                yield from self.matches((*PROVIDER_API_CHOICES, "default"), value)
-                return
         if text.startswith("/theme "):
             tail = text[len("/theme ") :]
             if " " not in tail:
@@ -373,7 +350,6 @@ class View:
 
     QUEUE_EMPTY_HINT = "Enter follow-up · Tab next turn · Ctrl-C interrupts"
     QUEUE_PENDING_HINT = "↑ recalls queued · Tab next turn · Ctrl-C interrupts"
-    QUEUE_WORKER_HINT = "follow-up queued for the worker · Ctrl-C interrupts"
 
     # Line-level markdown tokens the live stream preview styles. Block constructs (headings,
     # lists, fenced code) are deliberately not parsed: the preview shows partial streaming text,
@@ -467,9 +443,7 @@ class View:
             counts.append(f"{next_turn} next turn")
         if counts:
             label = f"{label} [ {' · '.join(counts)} ]"
-        # While the worker runs, the label takes the worker's color and no name: the status bar's
-        # `worker ·` lead is the one place that says it in words, and the color ties this line to it.
-        label_style = "class:divider.worker" if self.session.delegating_worker is not None else "class:divider.working"
+        label_style = "class:divider.working"
         return self.sweep_divider_fragments(
             label,
             prefix=self.waiting_pulse_fragments(),
@@ -479,8 +453,6 @@ class View:
 
     def followup_fragments(self) -> tuple[StyleAndTextTuples, StyleAndTextTuples]:
         pending = list(self.session.pending_user_inputs)
-        worker_session = self.session.worker
-        worker_pending = list(worker_session.pending_user_inputs) if worker_session is not None else []
 
         def render(items: list[QueuedInput], marker: str, marker_style: str) -> StyleAndTextTuples:
             fragments: StyleAndTextTuples = []
@@ -497,24 +469,21 @@ class View:
 
         sent = [item for item in pending if item.inflight]
         queued = [item for item in pending if not item.inflight]
-        worker_sent = [item for item in worker_pending if item.inflight]
-        worker_queued = [item for item in worker_pending if not item.inflight]
         # A follow-up routed to the delegating worker wears the worker's color on its marker, the
         # one thing that tells it from the parent's; the divider above already names the worker.
-        transcript = [*render(sent, UiPrinter.USER_LOG_PREFIX, "class:prompt"), *render(worker_sent, UiPrinter.USER_LOG_PREFIX, "class:divider.worker")]
+        transcript = render(sent, UiPrinter.USER_LOG_PREFIX, "class:prompt")
         # The divider is a standing boundary for the whole turn. Only messages that have not entered
         # a model request remain below it; sent messages render above it until the request commits them.
         # The worker's queued follow-ups count as queued too: their colored marker says whose they are.
         waiting = self.queue_divider_fragments(
-            sum(1 for item in queued if not item.next_turn) + len(worker_queued),
+            sum(1 for item in queued if not item.next_turn),
             sum(1 for item in queued if item.next_turn),
         )
-        if queued or worker_queued:
+        if queued:
             # A blank row lifts the queued block off the divider, so the queue reads as its own
             # region below the boundary instead of a list glued to the divider's label.
             waiting.append(("", "\n"))
         waiting.extend(render(queued, "+ ", UiPrinter.user_log_style()))
-        waiting.extend(render(worker_queued, "+ ", "class:divider.worker"))
         return transcript, waiting
 
     def tui_activity_fragments(self) -> StyleAndTextTuples:
@@ -607,12 +576,6 @@ class View:
         if tui.input_mode == InputMode.RUNNING:
             if any(not item.inflight for item in self.session.pending_user_inputs):
                 return self.QUEUE_PENDING_HINT
-            worker = self.session.worker
-            if worker is not None and any(not item.inflight for item in worker.pending_user_inputs):
-                # Queued for the delegating worker, not the parent: `↑` cannot recall it, so the
-                # hint names where the text went instead of promising a recall that would not
-                # find it and hide the fact that the queue is not empty.
-                return self.QUEUE_WORKER_HINT
             return self.QUEUE_EMPTY_HINT
         if tui.input_mode == InputMode.CHAT:
             if self.presentation.starting:
@@ -669,7 +632,6 @@ class View:
                 "image.attachment": role("accent", "bold"),
                 "input.error": role("error"),
                 "divider.working": f"fg:{divider['divider_label']} bold",
-                "divider.worker": f"fg:{divider['status_worker']} bold",
                 "approval": role("warning"),
                 "approval.wait": role("accent_secondary"),
                 "approval.action": role("warning"),

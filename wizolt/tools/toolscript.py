@@ -382,7 +382,7 @@ class ToolScript(Tool):
         """
         if name == "ToolScript":
             raise ToolError('call("ToolScript", ...) is not allowed')
-        if name in ("Delegate", "Job"):
+        if name in ("Subagent", "Job"):
             raise ToolError(f"{name} is not scriptable")
         target = self._mcp_target(name)
         if target is not None:

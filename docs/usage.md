@@ -21,11 +21,9 @@ A `+` joins the current task at the next model step. A `↪ next turn` starts a 
 after this one. Sent messages move above the divider into the conversation; if the request
 fails, they return to the queue so you can retry.
 
-While a [delegated worker](worker.md) is running, `Enter` follows up the **worker** instead: the
-queued text — its marker in the worker's color, like the divider's label — joins the worker's
-next model step. A follow-up the worker never reached, or reached in a request that then failed,
-falls back to the parent as queued input. `Tab` keeps holding for the parent's next task, and `↑`
-still recalls only the parent's queued messages.
+Input belongs to the agent selected with [`/agents`](agents.md). Enter adds steering input
+while that agent is running, or starts its next turn while idle. Tab holds a message for that
+agent's next turn. Switching keeps their drafts and queues separate.
 
 | Key | When | Effect |
 |---|---|---|
@@ -72,7 +70,7 @@ Press **Ctrl-O** to browse results, newest first. Use `j`/`k` or the arrows to s
 | Bash | The command and its output |
 | ToolScript | The complete script and its printed result; a running script appears first |
 | Job | Its live log, or the saved result after resuming a session |
-| Delegation | The order and the worker's answer |
+| Subagents | Select `/agents` to preview a task and its recent answer |
 
 This viewer also works under `--yolo`, when there is no approval preview.
 Very large results show their beginning and end, with a notice when text was shortened.
@@ -83,7 +81,7 @@ The stored tool result remains complete.
 ## Status bar
 
 A single line beneath the prompt summarizes the session. The default layout is:
-`[yolo] provider/model · level | mcp N · skills N | ctx N% · cache N%`.
+`[agent] [yolo] provider/model · level | mcp N · skills N | ctx N% · cache N%`.
 `[yolo]` appears only when enabled.
 
 Use `/theme`’s StatusBar tab to preview other layouts in that bottom row. Its Divider tab
@@ -91,9 +89,9 @@ lets you choose the line above the input and its animation. Enter saves all chan
 cancels them. See [Statusbar and divider](appearance.md#statusbar-and-divider)
 for presets, custom templates and sweep formulas.
 
-In the default layout, once a [worker](worker.md) has actually run, its own context fill rides the row too, as
-`worker ctx N%`; a worker that has never been delegated to (or was reset) adds nothing. While a
-delegation is in flight the row shows the worker's figures instead, led by `worker ·`.
+The statusbar names the selected agent and shows its model, context and cache usage. Its
+divider, queue and `/status` use the same agent's statistics. Background agents keep running
+without mixing their output into the selected conversation.
 
 Context and cache figures update after each request. A spinner beside `mcp` means connections
 are still opening; `mcp 0` without a spinner means none are connected.
@@ -105,7 +103,7 @@ with the time spent so far beside it, and an estimated output speed while text i
 `responding (12s · ↓ 48 tok/s)`. The `↓` marks the speed as the model's incoming stream; it is
 still an estimate, and it disappears between requests and on providers that do not stream.
 
-<div class="term-shot" role="img" aria-label="A static, semantically colored status bar: yolo mode, provider and model with reasoning level, MCP and skill counts, and context and cache percentages."><span><span class="fs-i sb-yolo">[yolo] </span><span class="fs-i sb-base">dashscope/qwen3.7-plus</span><span class="fs-i sb-sep"> · </span><span class="fs-i sb-reason">high</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-mcp">mcp 2 · skills 3</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-ctx">ctx 23% · cache 98%</span></span></div>
+<div class="term-shot" role="img" aria-label="The main agent statusbar: selected agent, yolo, model, reasoning, connected services and independent context and cache usage."><span><span class="fs-i sb-agent">[main] </span><span class="fs-i sb-yolo">[yolo] </span><span class="fs-i sb-provider">dashscope/</span><span class="fs-i sb-base"><b>qwen3.7-plus</b></span><span class="fs-i sb-sep"> · </span><span class="fs-i sb-reason">high</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-mcp">mcp 2 · skills 3</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-base">ctx 23%</span><span class="fs-i sb-mcp"> · cache 98%</span></span></div>
 
 ## Quick hints
 

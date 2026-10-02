@@ -60,17 +60,10 @@ class UiHooks:
     # None degrades to no preview.
     live_start: Callable[..., None] | None = None
     live_output: Callable[[str, str], None] | None = None
-    # The visual rule that opens a delegated worker's block, labelled with a one-line order
-    # summary. None falls back to the plain "[worker]" root line.
-    worker_rule: Callable[[str], None] | None = None
-    worker_answer: Callable[[str], None] | None = None
     # Ask's question set. None falls back to the runner's input_fn, which is what a headless
     # embedding wants; a presenter that can show a selector sets it.
     question_fn: QuestionFn | None = None
-    # The Delegate confirm-time `c` config loop, through the shared choice selector (see
-    # CommandLoop.run_worker_config). None degrades `c` to printing the config only.
-    worker_config_picker: Callable[[], Awaitable[None] | None] | None = None
-    # A read-only viewer for the text behind a confirmation (a Delegate order, a ToolScript
+    # A read-only viewer for the text behind a confirmation (a subagent task, a ToolScript
     # body) for the confirm-time `v`/`view` key (see cli.modals.approval_text_viewer). None
     # degrades `v` to printing the whole text; the viewer's close signal is the return value.
     text_viewer: Callable[[ApprovalView], Awaitable[object] | object] | None = None

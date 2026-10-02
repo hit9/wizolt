@@ -35,7 +35,7 @@ def test_startup_prewarms_only_the_resolved_protocol(tmp_path, url, api, expecte
     assert startup_imports(Session(config=config, cwd=str(tmp_path))) == [expected, "wizolt.ui.markdown"]
 
 
-@pytest.mark.parametrize("route", ["compaction", "vision", "worker"])
+@pytest.mark.parametrize("route", ["compaction", "vision"])
 def test_startup_includes_configured_auxiliary_protocols(tmp_path, route):
     from wizolt.__main__ import startup_imports
     from wizolt.config import Config, ProviderConfig

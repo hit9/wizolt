@@ -228,6 +228,13 @@ async def test_tui_runtime_warms_file_mentions_after_startup(tmp_path, monkeypat
         """The application as the runtime now sees it: a task it awaits, not a thread it joins."""
 
         ready = threading.Event()
+        modal = None
+
+        def finish(self):
+            pass
+
+        def cancel_input(self):
+            pass
 
         async def run(self, style=None):
             del style
@@ -270,6 +277,13 @@ async def test_tui_run_shows_resuming_status_while_restoring(tmp_path, monkeypat
 
     class FakeTui:
         ready = threading.Event()
+        modal = None
+
+        def finish(self):
+            pass
+
+        def cancel_input(self):
+            pass
 
         def __init__(self):
             self.ready.set()
@@ -492,63 +506,6 @@ async def test_turn_boundary_orders_slow_running_input_before_new_idle_input(tmp
 
         assert [runtime.pending.get_nowait(), runtime.pending.get_nowait()] == ["older", "newer"]
         assert command_loop.session.pending_user_inputs == []
-    finally:
-        consumer.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await consumer
-
-
-async def test_running_input_routes_to_an_inflight_worker_delegation(tmp_path, monkeypatch):
-    """Enter during a running delegation queues the follow-up on the worker, whose next request
-    claims it; Tab keeps holding for the parent's next turn, and once the send ends plain
-    follow-ups go back to the parent."""
-    command_loop = loop(tmp_path)
-    command_loop.presentation.tui = TuiApp()
-    runtime = TuiRuntime(command_loop)
-    runtime.accepting = True
-    runtime.turn_active = True
-    worker = session(tmp_path)
-    worker.uid = command_loop.session.uid + ".w"
-    command_loop.session.worker = worker
-    worker._active_turn_messages.append({"role": "user", "content": "order"})
-
-    async def admit(value):
-        return value if isinstance(value, UserInput) else UserInput(str(value))
-
-    saves: list[str] = []
-
-    async def save():
-        saves.append("parent")
-        return command_loop.session.uid
-
-    async def save_worker():
-        saves.append("worker")
-        return worker.uid
-
-    monkeypatch.setattr(runtime, "_admit_input", admit)
-    monkeypatch.setattr(command_loop.session, "save_snapshot", save)
-    monkeypatch.setattr(worker, "save_snapshot", save_worker)
-    consumer = asyncio.create_task(runtime._consume_submissions())
-    runtime.submissions_task = consumer
-    try:
-        runtime.submit_running("fix the parser too")
-        await runtime.submissions.join()
-        assert [item.text for item in worker.pending_user_inputs] == ["fix the parser too"]
-        assert command_loop.session.pending_user_inputs == []
-
-        runtime.submit_next_turn(UserInput("hold this for the parent"))  # Tab stays with the parent
-        await runtime.submissions.join()
-        assert [item.text for item in command_loop.session.pending_user_inputs] == ["hold this for the parent"]
-        assert [item.text for item in worker.pending_user_inputs] == ["fix the parser too"]
-
-        worker._active_turn_messages.clear()  # the send ended: plain follow-ups go to the parent again
-        runtime.submit_running("and this one")
-        await runtime.submissions.join()
-        assert [item.text for item in command_loop.session.pending_user_inputs] == ["hold this for the parent", "and this one"]
-        assert [item.text for item in worker.pending_user_inputs] == ["fix the parser too"]
-        # Routed to the worker, the text left the parent's queue: the worker's own snapshot has
-        # to carry it, or a crash before its next checkpoint would lose the follow-up outright.
-        assert saves == ["worker", "parent", "parent", "parent"]
     finally:
         consumer.cancel()
         with pytest.raises(asyncio.CancelledError):

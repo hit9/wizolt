@@ -93,7 +93,7 @@ The same session, five layouts.
 band, and reasoning effort beside them. `blocks` uses separate rectangular bands.
 `minimal` shows only the model and context usage. Other layouts include the provider too;
 `compact` drops it when space is tight. Optional details disappear before reasoning effort.
-Context usage turns yellow at 70% and red at 90%. YOLO and worker labels appear when active.
+Context usage turns yellow at 70% and red at 90%. Every preset shows the selected agent's name; YOLO appears when enabled.
 
 The **Divider** tab changes the line above your input. Choose a **Layout**, **Sweep** for
 its animation, and **Colorscheme** for its colors. **Space** chooses the highlighted value;

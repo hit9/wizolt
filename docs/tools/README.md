@@ -71,7 +71,6 @@ powerline joins use vector paths, so the comparison needs no Nerd Font or online
 | Getting started | `getting-started-turn` |
 | Interaction | `usage-followups` |
 | Context | `context-compaction`, `context-cache` |
-| Workers | `worker-handoff` |
 | Skills | `skills-workflow` |
 | Hooks | `hooks-workflow` |
 

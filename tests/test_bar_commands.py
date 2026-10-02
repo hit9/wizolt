@@ -399,7 +399,6 @@ async def test_custom_component_highlights_and_sweep_use_the_selected_palette(co
     styles = command_loop.view.style()
     assert styles.get_attrs_for_style_str("class:queue.rule").color == "112233"
     assert styles.get_attrs_for_style_str("class:divider.glow0").color == "aabbcc"
-    assert styles.get_attrs_for_style_str("class:divider.worker").color == Theme.bar_palette("divider").colors["status_worker"].lstrip("#")
     await theme_command(command_loop, "plum")
     assert command_loop.view.style().get_attrs_for_style_str("class:queue.rule").color == "112233"
 

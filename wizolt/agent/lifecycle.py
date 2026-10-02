@@ -18,7 +18,7 @@ from wizolt.config import Config, ConfigFile, RuntimeSettings
 from wizolt.mentions import FilePick
 from wizolt.providers.sync import CatalogRuntime
 from wizolt.session import Session, SessionLease, SessionSnapshotStore
-from wizolt.session.ownership import canonical_snapshot_path, ownership_identity
+from wizolt.session.ownership import canonical_snapshot_path, ownership_identity, subagent_root_uid
 from wizolt.utils.workspace import Workspace
 
 if TYPE_CHECKING:
@@ -67,8 +67,8 @@ def load_session(
             settings = RuntimeSettings()
         cwd = cwd or os.getcwd()
         resolved = SessionSnapshotStore.resolve_uid(uid, config.data_dir, cwd)
-        if resolved.endswith(".w"):
-            raise WizoltError(f"cannot resume a worker session directly: {resolved}")
+        if subagent_root_uid(resolved) != resolved:
+            raise WizoltError(f"cannot resume a subagent directly; resume its main session: {resolved}")
         path = SessionSnapshotStore.find_session_path(config.data_dir, resolved)
         if not path:
             raise WizoltError(
@@ -106,7 +106,7 @@ def bootstrap_features(session: Session) -> None:
     """Attach the session's feature objects (MCP, skills, file mentions) when not already injected.
 
     Session itself stays feature-free: the dataclass constructor never reaches upward. Callers that
-    need the features -- the runtime entry points and the worker handoff -- opt in explicitly after
+    need the features -- the runtime entry points and agent creation -- opt in explicitly after
     construction, so the feature packages sit above session/ without a module-scope cycle.
     """
     if session.mcp is None:
@@ -143,22 +143,32 @@ def bootstrap_features(session: Session) -> None:
 async def close_agent_resources(agent: Agent, *, shared_mcp: bool = False, reason: str = "other") -> None:
     """Quiesce request clients, then the root's MCP manager, on their owning event loop.
 
-    A worker borrows the parent's MCP capability; closing its model must not close that manager.
+    A subagent borrows the root's MCP capability; closing its model must not close that manager.
     Individual close failures must not prevent the remaining resources from being settled.
     """
+    group = agent.session.subagents
+    closing_error: Exception | None = None
+    if group is not None and group.root is agent:
+        try:
+            await group.close()
+        except Exception as error:  # noqa: BLE001 - a failed save must not leak request clients.
+            closing_error = error
+        for entry in tuple(group.entries.values()):
+            if entry.agent is not agent:
+                await close_agent_resources(entry.agent, shared_mcp=True, reason=reason)
+                entry.agent.session.close()
     try:
         await agent.end_session(reason)
     except Exception as error:  # noqa: BLE001 - a shutdown hook must not prevent resource cleanup
         with contextlib.suppress(Exception):
             agent.output_fn(f"SessionEnd hook failed: {error}")
-    worker = agent.session.worker
-    if worker is not None and worker._agent is not None:
-        await close_agent_resources(worker._agent, shared_mcp=True)
     with contextlib.suppress(Exception):
         await agent.model.close()
     if not shared_mcp and agent.session.mcp is not None:
         with contextlib.suppress(Exception):
             await agent.session.mcp.close()
+    if closing_error is not None:
+        raise closing_error
 
 
 class BackgroundServices:

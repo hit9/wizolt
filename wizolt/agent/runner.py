@@ -9,7 +9,7 @@ import inspect
 import json
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from typing import Any, Literal, TypeVar
 
@@ -37,12 +37,12 @@ from wizolt.tools import (
     TOOL_REGISTRY,
     AskTool,
     BashTool,
-    DelegateTool,
     EditTool,
     JobTool,
     MCPTool,
     NextHintsTool,
     SkillTool,
+    SubagentTool,
     Tool,
     ToolScript,
     ViewImageTool,
@@ -332,11 +332,9 @@ class ToolRunner:
         if isinstance(tool, ToolScript):
             tool.runner = self
             return await self._run_script(tool)
-        if isinstance(tool, (DelegateTool, SkillTool)):
-            # Awaited directly: the worker's turn (a Delegate send, or a forked skill's) is a child
-            # of this one, so the parent's cancellation reaches it by propagation and its diffs
-            # still merge on every ending.
-            tool.runner = self
+        if isinstance(tool, SkillTool):
+            # Skill loading and command expansion are native asynchronous operations.
+            # A fork submits work to the agent group and waits for its report.
             return await tool.call()
         if isinstance(tool, BashTool):
             return await tool.call()
@@ -345,8 +343,9 @@ class ToolRunner:
             # background job can outlive the turn and the loop that started it.
             return await tool.call()
         if isinstance(tool, AskTool):
-            # The user is asked on the loop and may take as long as they like; the prompt stays
-            # live and cancellable rather than parking a worker on them.
+            return await self.await_user(tool.call())
+        if isinstance(tool, SubagentTool):
+            # Agent-group operations use native asyncio tasks and never enter the thread pool.
             return await tool.call()
         if isinstance(tool, MCPTool):
             # Native: the manager's operations are coroutines on this loop, so a cancelled turn
@@ -592,7 +591,7 @@ class ToolRunner:
         if (
             (self.session.tool_names and call.name not in self.session.tool_names)
             or tool_class is None
-            or call.name in ("Delegate", "Edit", "NextHints")
+            or call.name in ("Subagent", "Edit", "NextHints")
             or tool_class in (BashTool, JobTool, AskTool, ToolScript)
             or tool_class.PRODUCES_MODEL_OBSERVATION
             or (self.session.shell_hooks is not None and self.session.shell_hooks.watches_tool(self.session, call.name))
@@ -709,12 +708,7 @@ class ToolRunner:
                     self.emit(approval)
                     d.nested_display = True
             elif needs_confirmation:
-                if not isinstance(tool, DelegateTool):
-                    # Nested displays drop the root line to avoid duplicating the confirmation
-                    # block's own root. A Delegate send keeps its root: the finish block is the
-                    # closing marker of the delegation bracket and must carry the same yellow
-                    # [worker] identity as the start marker.
-                    d.nested_display = True
+                d.nested_display = True
                 confirmed, reason = await self.confirm(call, tool, batch_suffix=batch_suffix, planned_edit=planned_edit, force_prompt=pre.permission == "ask")
                 if not confirmed:
                     output = "Cancelled: user refused tool call" + ((": " + reason) if reason else "")
@@ -870,7 +864,7 @@ class ToolRunner:
                 round=self.session.state.round_count,
             )
         if not (tool_class is not None and tool_class.SILENT) or failed:
-            self.emit(toolblocks.finish_display(self.session, call, key, model_text, failed=failed, elapsed=elapsed, d=d, worker_rule=self.hooks.worker_rule))
+            self.emit(toolblocks.finish_display(self.session, call, key, model_text, failed=failed, elapsed=elapsed, d=d))
         return self.tool_message(call, key, model_text, status="failed" if failed else "ok", display=d.display, bound=bound, artifact_path=artifact_path)
 
     async def _source_output(self, call: ToolCall, tool_output: ToolOutput, *, retain: bool) -> tuple[str, str]:
@@ -945,10 +939,9 @@ class ToolRunner:
             return False, permission.reason
         if permission.permission == "allow" and not force_prompt and not tool.always_confirms():
             return True, ""
-        always_option = isinstance(tool, DelegateTool) and tool.always_confirms()
         # Decided before the brief is drawn: the brief needs the actions either way -- live in the
         # form, or spelled out in the typed legend when there is no form to show them.
-        actions = toolblocks.approval_actions(tool, always_option)
+        actions = toolblocks.approval_actions(tool)
         form = actions if self.declare_approval_form(actions) else []
         # Printed once, outside the loop. The `c` and `v` actions come back here to ask again, and
         # a second copy of the brief in the transcript is noise: the first one is still on screen,
@@ -958,7 +951,7 @@ class ToolRunner:
         )
         while True:
             self.declare_approval_form(actions)  # the TUI drops the form when a prompt resolves
-            reply = await self.request_input(LogBlock.prefix(2, LogEdge.CONTINUE) + toolblocks.approval_prompt(always_option, form))
+            reply = await self.request_input(LogBlock.prefix(2, LogEdge.CONTINUE) + toolblocks.approval_prompt(form))
             if reply is None:
                 # The TUI cancelled the prompt (Ctrl-C, Ctrl-D on an empty line, app shutdown).
                 # A cancel is a plain refusal: never the default approve, and never a reason —
@@ -966,11 +959,6 @@ class ToolRunner:
                 return False, ""
             answer = reply.strip()
             lower = answer.lower()
-            if always_option and lower in {"c", "config"}:
-                # The whole-line `c`/`config` opens the worker configuration loop; anything else
-                # (e.g. "cost too high") is an ordinary refusal reason, so only exact matches enter.
-                await self.delegate_config_cycle()
-                continue  # re-ask; the config cycle printed what it changed
             if lower in {"v", "view"} and (view := tool.approval_view()) is not None:
                 # Same whole-line exact-match rule as `c`: `v`/`view` opens the read-only viewer on
                 # whatever text this call commits to -- an order, a script -- and anything else
@@ -992,31 +980,29 @@ class ToolRunner:
         loop. A plain callable (headless, a test, an embedding) runs on a worker instead, and its
         injector owns unblocking it -- nothing here can interrupt a blocking read."""
 
-        reply = self.input_fn(prompt)
-        if inspect.isawaitable(reply):
+        async def read():
+            reply = self.input_fn(prompt)
+            return await reply if inspect.isawaitable(reply) else reply
+
+        return await self.await_user(read())
+
+    async def await_user(self, reply: Awaitable[_ResultT]) -> _ResultT:
+        """One per-agent wait state for approval prompts and question selectors."""
+        group = self.session.subagents
+        self.session.state.awaiting_input = True
+        if group is not None:
+            group.changed(group.entry(self.session.uid))
+        try:
             return await reply
-        return reply
+        finally:
+            self.session.state.awaiting_input = False
+            if group is not None:
+                group.changed(group.entry(self.session.uid))
 
     def declare_approval_form(self, actions: list[tuple[str, str]]) -> bool:
         """Offer the actions to the TUI as a selectable row; report whether it took them. False
         (headless, piped stdin) sends the brief back to printing the typed legend."""
         return self.hooks.approval_form is not None and self.hooks.approval_form(actions)
-
-    async def delegate_config_cycle(self) -> None:
-        """The `c` action of a Delegate send prompt: hand the interactive editing to the injected
-        picker loop (CommandLoop.run_worker_config), which reuses the shared choice selector and
-        writes back through the /worker pickers, then print the worker's provider/model/effort/api.
-
-        Printed after the picker, not before: the picker already shows each current value as the
-        preselected option, so what is worth logging is the config the send would now run under.
-        The approval brief above keeps its original rows, so the two together read as a change.
-        Without an injected picker (headless, or a runner outside CommandLoop) this just prints the
-        current values; the confirmation prompt re-asks either way."""
-        if self.hooks.worker_config_picker is not None:
-            result = self.hooks.worker_config_picker()
-            if inspect.isawaitable(result):
-                await result
-        self.emit(toolblocks.worker_config_block(self.session))
 
     async def view_text(self, view: ApprovalView) -> None:
         """The `v` action of a confirmation prompt: open a read-only viewer with the full,

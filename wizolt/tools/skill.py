@@ -3,15 +3,10 @@
 from __future__ import annotations
 
 from functools import cached_property
-from typing import TYPE_CHECKING
 
 from wizolt.base import ApprovalView, Json, ToolArgs, ToolError
 from wizolt.skill.invocation import Arguments, Invocation
 from wizolt.tools.base import Tool
-from wizolt.tools.delegate import DelegateTool
-
-if TYPE_CHECKING:
-    from wizolt.agent.runner import ToolRunner
 
 
 class SkillTool(Tool):
@@ -20,7 +15,6 @@ class SkillTool(Tool):
         "Load a skill's full instructions by name (skills are listed in the SKILLS section). "
         "Follow the returned steps, running any bundled scripts it references via Bash."
     )
-    runner: ToolRunner | None = None  # injected by ToolRunner.call_tool; a forked skill sends through it
 
     @classmethod
     def params_schema(cls) -> Json:
@@ -58,32 +52,36 @@ class SkillTool(Tool):
         return self._resolution
 
     @cached_property
-    def delegation(self) -> DelegateTool | None:
-        """The Delegate send a `context: fork` skill becomes when this session has a worker; None
-        to load inline, which is also what the worker itself does (it cannot delegate)."""
+    def fork_order(self) -> str:
+        """Fork once; skills loaded inside a child stay in that child's context."""
         resolution = self._resolution
-        if isinstance(resolution, ToolError) or not resolution.skill.fork or not DelegateTool.enabled(self.session):
-            return None
-        return DelegateTool(self.session, [{"action": "send", "order": resolution.fork_order(), "title": f"skill {resolution.skill.name}"}])
+        if isinstance(resolution, ToolError) or not resolution.skill.fork or self.session.agent_parent:
+            return ""
+        return resolution.fork_order()
 
     def needs_confirmation(self) -> bool:
-        # Loading instructions is reading; loading one that runs `!`commands`` is running them, and
-        # forking one is a Delegate send. A call that resolves to no skill reports that when run.
         resolution = self._resolution
-        return self.delegation is not None or (isinstance(resolution, Invocation) and bool(resolution.commands()))
+        return bool(self.fork_order) or (isinstance(resolution, Invocation) and bool(resolution.commands()))
 
     def always_confirms(self) -> bool:
-        return self.delegation is not None  # a send, which yolo never skips (see DelegateTool)
+        return bool(self.fork_order)
 
     def approval_view(self) -> ApprovalView | None:
-        if self.delegation is not None:
-            return self.delegation.approval_view()
+        if self.fork_order:
+            return ApprovalView("skill task", self.fork_order, "markdown")
         resolution = self._resolution
         commands = resolution.commands() if isinstance(resolution, Invocation) else []
         return ApprovalView("commands", "\n".join(commands), "bash") if commands else None
 
     async def call(self) -> str:
-        if self.delegation is not None:
-            self.delegation.runner = self.runner
-            return await self.delegation.call()
+        if self.fork_order:
+            group = self.session.subagents
+            if group is None:
+                raise ToolError("Subagents are unavailable")
+            entry = await group.spawn(self.session, f"skill {self.invocation().skill.name}", self.fork_order)
+            while entry.task is not None:
+                await group.wait(entry.agent.session.uid)
+            if entry.error:
+                raise ToolError(entry.error)
+            return next((str(message.get("content", "")) for message in reversed(entry.agent.session.messages) if message.get("role") == "assistant"), "")
         return await self.invocation().load(self.session)

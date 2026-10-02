@@ -68,7 +68,6 @@ class Tool:
 
         from wizolt.tools import (  # local import: the registry is built on top of every tool
             TOOL_REGISTRY,
-            DelegateTool,
             MCPTool,
             NextHintsTool,
             SkillTool,
@@ -87,7 +86,6 @@ class Tool:
             and (tool is not SkillTool or has_skills)
             and (tool is not MCPTool or has_mcp)
             and (tool is not NextHintsTool or session.next_hints_available)
-            and (tool is not DelegateTool or DelegateTool.enabled(session))
         ]
 
     @staticmethod
@@ -176,7 +174,7 @@ class Tool:
         already says everything.
 
         A tool returns one of these when what it is asking approval for does not fit on a log line
-        and clipping it would hide the part worth checking -- a Delegate order, a ToolScript body.
+        and clipping it would hide the part worth checking -- a subagent task, a ToolScript body.
         The runner renders a clipped excerpt of it inside the approval block and opens the whole
         thing on `v`; the Ctrl-O browser opens the same view afterwards, which is the only way to
         read it under yolo."""
@@ -187,7 +185,7 @@ class Tool:
 
         The runner prints the call line before such a call so the user sees what is being waited
         on, instead of a blank screen until the result lands. Tools that stream their own output
-        (Bash) or that draw their own progress (Delegate) say False: they are already visible."""
+        (Bash) say False: they are already visible."""
         return False
 
     @classmethod

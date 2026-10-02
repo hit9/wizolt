@@ -54,7 +54,7 @@ turn so you can resolve it before continuing.
 - Keep the same model and connected tools during a task to improve cache reuse.
 - Give summaries a cheaper model with [compaction settings](configuration.md#compaction-model).
   Check `/status` to compare its usage and cache hit rate.
-- Delegate a bounded task to a cheaper [worker](worker.md).
+- Start a [subagent](agents.md) with its own context for a bounded task.
 - Lower `runtime.max_context_tokens` if you prefer smaller requests and more frequent summaries.
 
 ## Prompt caching

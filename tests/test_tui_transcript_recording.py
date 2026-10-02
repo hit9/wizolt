@@ -127,19 +127,16 @@ def test_recorded_rules_resize_without_recomputing_labels(recorded, monkeypatch,
         printer.emit("ordinary ────────── text")
         printer.emit_phase_rule()
         printer.emit_turn_end(35)
-        printer.emit_worker_rule("[worker] 中文完成")
     monkeypatch.setattr("wizolt.ui.render.time.monotonic", lambda: 3600.0)
 
     output = "".join(entry(width) if callable(entry) else entry for entry in tui.scrollback.transcript)
     lines = "".join(text for _, text in to_formatted_text(ANSI(output.replace("\x1b[?7h", "")))).splitlines()
     assert lines[0] == "ordinary ────────── text", "ordinary text was mistaken for a UI rule"
     rules = [line for line in lines[1:] if line]
-    assert len(rules) == 3
+    assert len(rules) == 2
     assert all(get_cwidth(line) == width for line in rules)
     if width >= 17:
         assert "done in 1m05s" in rules[1], "replay recomputed a completed turn's elapsed time"
-    if width >= 22:
-        assert "[worker] 中文完成" in rules[2]
 
 
 @pytest.mark.parametrize("depth", [ColorDepth.DEPTH_1_BIT, ColorDepth.DEPTH_4_BIT, ColorDepth.DEPTH_8_BIT, ColorDepth.TRUE_COLOR])
@@ -365,7 +362,6 @@ def test_a_diff_block_is_cut_for_the_width_it_lands_in(recorded):
         pytest.param(lambda printer: printer.emit_answer("a message with **bold** and a list\n\n- one\n- two\n", role="assistant"), id="message"),
         pytest.param(lambda printer: printer.emit_answer("plain answer", role="assistant", rule=False), id="message-no-rule"),
         pytest.param(lambda printer: printer.emit_phase_rule(), id="phase-rule"),
-        pytest.param(lambda printer: printer.emit_worker_rule("[worker] busy"), id="worker-rule"),
         pytest.param(lambda printer: printer.emit("a plain line"), id="plain"),
         pytest.param(
             lambda printer: printer.emit(LogBlock([LogLine("edit", line, LogRole.DIFF, LogEdge.BRANCH) for line in ["--- a", "+++ b", "@@ -1 +1 @@", "-x", "+y"]])),

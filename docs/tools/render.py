@@ -338,17 +338,6 @@ class Illustrations:
             "A hook is your command, triggered by an event you choose.",
         )
 
-    def worker(self) -> None:
-        self.diagram(
-            "worker-handoff",
-            "A focused second opinion",
-            [
-                ("Main conversation → approved order", "Plan the refactor; ask a worker to review parser.py."),
-                ("Worker → report", "Read the files, check the tests, return findings."),
-                ("Main conversation continues", "Use the report to continue your original task."),
-            ],
-            "Both share the workspace; each has its own conversation.",
-        )
 
 
 RECIPES = {
@@ -368,7 +357,6 @@ RECIPES = {
     "usage-followups": "followups",
     "context-compaction": "compaction",
     "context-cache": "caching",
-    "worker-handoff": "worker",
     "skills-workflow": "skills",
     "hooks-workflow": "hooks",
 }

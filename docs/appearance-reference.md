@@ -71,7 +71,7 @@ A *role* names what a color is used for. Set only the roles you want to change:
 | Reading and navigation | `text`, `muted`, `subtle`, `accent`, `accent_secondary`, `info`, `rule` |
 | Messages and results | `user`, `user_bg`, `tool`, `success`, `warning`, `error` |
 | Code | `syntax_assign`, `syntax_string`, `syntax_number`, `syntax_ident`, `syntax_builtin`, `syntax_default` |
-| Statusbar fields | `status_base`, `status_provider`, `status_reason`, `status_mcp`, `status_context`, `status_yolo`, `status_worker` |
+| Statusbar fields | `status_base`, `status_provider`, `status_reason`, `status_mcp`, `status_context`, `status_yolo`, `status_agent` |
 | Statusbar background | `status_bg` — the band in `vim`, `split` and `monitor` |
 | Divider | `divider_glow`, `divider_rule`, `divider_label`; glow and rule require `#rrggbb` |
 | Menus | `selection_bg`, `selection_fg`, `menu_bg`, `menu_muted` |
@@ -268,7 +268,7 @@ Statusbars and dividers share this syntax:
 | `{>}` | Push the remaining content to the right |
 | `{fill:─}` / `{fill:─·}` | Fill space by repeating a character or short pattern |
 | `{join:}` / `{join:}` | Join adjacent background colors automatically |
-| `{% if worker.active %}…{% else %}…{% endif %}` | Conditional content; `else` is optional |
+| `{% if running %}…{% else %}…{% endif %}` | Conditional content; `else` is optional |
 | `{% optional priority=10 %}…{% endoptional %}` | Omit the whole span when space is short; lower priorities go first |
 
 Multiple `{>}` or `{fill:…}` regions share the free space equally. For example,
@@ -288,9 +288,9 @@ Available fields:
 
 | Fields | Meaning |
 | --- | --- |
-| `provider`, `model`, `reasoning`, `context.percent`, `cache.percent` | Current agent; during delegation these follow the worker |
+| `provider`, `model`, `reasoning`, `context.percent`, `cache.percent` | Selected agent |
 | `yolo`, `mcp.count`, `mcp.label`, `skills.count` | Session settings and connected services; `mcp.label` includes discovery activity |
-| `worker.active`, `worker.model`, `worker.context`, `worker.summary` | Worker activity, model, context percentage, and the parked worker's context label |
+| `agent.name`, `agent.id`, `agent.state` | Selected agent's name, identity and state |
 | `running`, `elapsed`, `rate` | Whether the agent is running, seconds since the turn started, and the current output-rate label |
 | `activity`, `spinner`, `label` | Divider activity, waiting dot, and the complete activity/elapsed/queue label used by default |
 | `queue.total`, `queue.followup`, `queue.next_turn`, `reset_pending` | Divider queue counts and pending context reset |

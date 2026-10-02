@@ -45,8 +45,8 @@ class _CountingModel:
 # The request that opened a turn survives compaction because latest_user_index protects the last
 # plain user message. Every user message the runtime generates on its own -- a mention expansion, a
 # protocol correction -- therefore has to be marked as a session event, or it takes that protection
-# for itself and the request it was expanding gets summarized away mid-turn. The worker is where
-# this bites hardest: that message is the entire order (docs/worker.md), the worker cannot see the
+# for itself and the request it was expanding gets summarized away mid-turn. A subagent is where
+# this bites hardest: that message is the entire task (docs/agents.md), the child cannot see the
 # parent's history, and nothing re-sends it.
 
 RUNTIME_GENERATED_EVENTS = (

@@ -104,6 +104,8 @@ def test_every_builtin_theme_defines_every_role_in_a_shape_the_adapters_accept()
         Theme.set_mode(name)
         assert Theme.pygments_style() is not None, name
         Console(theme=Theme.rich_theme()).get_style("wizolt.user")  # raises for a color Rich cannot read
+        # Startup scrollback resolves every role, including those used only by the statusbar.
+        assert UiPrinter.render_to_ansi([FormattedText([(Theme.fg("user"), "ready")])], columns=80), name
 
 
 def test_named_themes_keep_grey_text_readable():
@@ -132,7 +134,7 @@ def test_named_themes_footer_reads_on_its_band_and_off_it_and_the_divider_keeps_
         assert re.fullmatch(r"#[0-9a-f]{6}", colors["status_bg"]), name
         assert colors["divider_label"] == colors["accent"], name
         # A preset lays the footer on the band or leaves it on the background: both must read.
-        for role in ("status_base", "status_provider", "status_reason", "status_mcp", "status_context", "status_yolo", "status_worker"):
+        for role in ("status_base", "status_provider", "status_reason", "status_mcp", "status_context", "status_yolo", "status_agent"):
             assert contrast(colors[role], colors["status_bg"]) >= MUTED_CONTRAST, (name, role)
             assert contrast(colors[role], palette.background) >= MUTED_CONTRAST, (name, role)
     # The terminal-following themes keep the label they always had.
@@ -146,7 +148,7 @@ def test_a_status_band_belongs_to_the_preset_not_the_theme(theme):
 
     Theme.set_mode(theme)
     values = dict.fromkeys(FIELDS, 0)
-    values.update(model="m", provider="p", reasoning="high", **{"mcp.label": "mcp 0", "worker.summary": ""})
+    values.update(model="m", provider="p", reasoning="high", **{"mcp.label": "mcp 0"})
     band = "bg:" + Theme.color("status_bg")
     for name, banded in (("default", False), ("powerline", False), ("vim", True), ("split", True), ("monitor", True)):
         template = Template("preset:" + name, STATUS_PRESETS)
@@ -936,8 +938,7 @@ def test_every_builtin_bar_keeps_text_readable_on_its_actual_background(name):
         rate="42 tok/s",
         spinner="● ",
         **{
-            "worker.active": True,
-            "worker.summary": " worker 25%",
+            "agent.name": "reader",
             "cache.percent": 88,
             "mcp.label": "mcp 2",
             "skills.count": 3,

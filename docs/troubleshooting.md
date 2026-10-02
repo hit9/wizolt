@@ -58,4 +58,4 @@ Rate limits, timeouts, and server errors do retry, counting up on the divider as
 
 | Symptom | Fix |
 |---|---|
-| Nothing ever delegates | The model decides, and there is no way to force one. See [When nothing delegates](worker.md#when-nothing-delegates) |
+| No subagents appear | Ask the model to split the task into parallel work; `/agents` lists existing agents. See [Subagents](agents.md) |

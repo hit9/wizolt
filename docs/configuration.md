@@ -213,7 +213,7 @@ Without a vision provider, an incompatible model reports its own error.
 
 ## Hooks
 
-Use `[hooks]` to run shell commands at session, tool, turn, worker and compaction boundaries.
+Use `[hooks]` to run shell commands at session, tool, turn, subagent and compaction boundaries.
 For example, record failed Bash calls:
 
 ```toml
@@ -240,7 +240,6 @@ Optional; the defaults shown are used when omitted.
 | `max_parallel_tools` | `4` | Maximum read-only tool calls executed concurrently; `1` disables parallelism |
 | `session_retention_days` | `7` | Delete saved sessions untouched for this many days, swept in the background at startup; `0` keeps them indefinitely |
 | `theme` | `auto` | Color theme: `auto`, `light`, `dark`, or a named theme (see [Color themes](appearance.md#color-themes)); overridden by `--theme`, and set for you by `/theme`. `auto` asks the terminal for its background color, then reads `COLORFGBG`, and falls back to `dark` |
-| `worker` | `false` | Let the model delegate to a second in-process session; see below |
 | `language` | `auto` | Force the reply language (`auto` follows your messages and injects nothing); set a name like `Chinese` to append a fixed `LANGUAGE OVERRIDE` block to the system prompt. Change for the current session with `/language` |
 | `attribution` | `true` | Ask the model to end every commit message and pull-request body it writes with `Generated with [wizolt](https://wizolt.readthedocs.io).` — a prompt-level request, not a guarantee. `/set runtime.attribution off` stops it for the session, `false` for good |
 | `agents_md` | `true` | Inject your instructions into every request, as one block of their own ahead of the skills and MCP indexes: the global `~/.wizolt/AGENTS.md` followed by the project's `AGENTS.md` files (each falling back to `CLAUDE.md`) from the repository root down to the working directory, together bounded to about 8,000 tokens |
@@ -265,21 +264,11 @@ See [Appearance](appearance.md#statusbar-and-divider) for presets, or
 The Input tab also offers prompt symbols and editable prefixes, saved as `[ui.input] prompt`
 and `running`. See [Input symbols](appearance.md#input-symbols).
 
-## Worker delegation
+## Subagents
 
-The `Delegate` tool and `/worker` command let another model handle a focused part of your task.
-Concepts, quick start, and what you see in the terminal: [Worker delegation](worker.md).
-
-Worker keys inherit the `[worker]` provider entry by default:
-
-| Key | Default | Meaning |
-|---|---|---|
-| `[worker] provider` | — | Worker provider entry key; unset disables delegation |
-| `[worker] model` | inherit | Override the entry's model; empty inherits |
-| `[worker] reasoning` | inherit | Override the entry's reasoning effort; empty inherits |
-| `[worker] api` | inherit | Override the entry's wire protocol; empty inherits |
-
-`[runtime] worker` and `[runtime] language` are in the [Runtime](#runtime) table above.
+[Subagents](agents.md) are available by default, with up to three children per session. Each
+starts with the creating agent's model and settings. Select one with `/agents` and use `/model`,
+`/provider` or `/reason` to change its model. Each agent makes its own model requests.
 
 ## Compaction model
 

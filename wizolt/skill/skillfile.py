@@ -47,7 +47,7 @@ class Skill:
     hooks: tuple[HookCommand, ...] = ()
     # `allowed-tools`: calls that need no approval while the skill is active.
     allowed_tools: tuple[ToolRule, ...] = ()
-    # `context: fork`: the skill runs in a Delegate worker, and only the worker's report returns.
+    # `context: fork`: the skill runs in a subagent, and its report returns to the caller.
     fork: bool = False
 
     @property

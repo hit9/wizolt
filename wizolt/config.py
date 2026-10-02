@@ -325,7 +325,6 @@ class RuntimeSettings:
     # Max read-only tool calls from one model batch to execute concurrently; 1 disables parallelism.
     max_parallel_tools: int = 4
     yolo: bool = False
-    worker: bool = False  # register the Delegate tool (see [worker] in ConfigFile.DEFAULT_TEXT)
     theme: str = "auto"
     language: str = "auto"  # forced reply language; "auto" injects nothing (see /language)
     attribution: bool = True  # ask the model to sign the commits and PR bodies it writes
@@ -342,7 +341,6 @@ class RuntimeSettings:
             max_parallel_tools=max(1, Config.int(runtime, "max_parallel_tools", 4)),
             session_retention_days=max(0, Config.int(runtime, "session_retention_days", 7)),
             yolo=yolo or Config.bool(runtime, "yolo", False),
-            worker=Config.bool(runtime, "worker", False),
             theme=theme or Config.str(runtime, "theme", "auto"),
             language=RuntimeSettings.clean_language(Config.str(runtime, "language", "auto")),
             attribution=Config.bool(runtime, "attribution", True),
@@ -369,19 +367,6 @@ class Config:
     hooks: Json = field(default_factory=dict)
     # UI owns parsing and validation; config only carries the raw tables.
     ui: Json = field(default_factory=dict)
-    # The provider entry a Delegate sends its worker to; empty disables the tool entirely. The
-    # registration gate reads Session.worker_tool_enabled, the value frozen from this field at
-    # session start, never the live field: a runtime /worker provider switch tunes an already-
-    # enabled delegation and prepares the next session, but never flips the tool block (and thus
-    # the prompt-cache scope) mid-session. worker_model/worker_reasoning/worker_api are
-    # runtime-switchable via /worker model|reason|api (temporary, like /provider: snapshots
-    # rebuild Config from the config file), and also come from [worker] model/reasoning/api:
-    # an empty string means "inherit the chosen provider entry's value".
-    worker_provider: str = ""
-    worker_model: str = ""
-    worker_reasoning: str = ""
-    worker_api: str = ""
-
     # The provider entry compaction summaries run on, mirroring [worker]: compaction_provider names
     # a base provider entry (empty = the active provider), and compaction_model/reasoning/api
     # override that entry per field (empty = inherit the entry's value). Resolved per call by
@@ -419,19 +404,6 @@ class Config:
         if active not in providers:
             raise ConfigError(f"provider.active `{active}` does not exist")
         paths = cls.table(data, "paths")
-        worker_root = cls.table(data, "worker")
-        worker_provider = cls.str(worker_root, "provider", "")
-        if worker_provider and worker_provider not in providers:
-            raise ConfigError(f"worker.provider `{worker_provider}` does not exist")
-        worker_model = cls.str(worker_root, "model", "")
-        worker_reasoning = cls.str(worker_root, "reasoning", "")
-        worker_entry = providers[worker_provider or active]
-        worker_choices = policy.reasoning_values(worker_entry, worker_model or worker_entry.model)
-        if worker_reasoning and worker_reasoning not in worker_choices:
-            raise ConfigError("worker.reasoning must be one of " + ", ".join(worker_choices))
-        worker_api = cls.str(worker_root, "api", "")
-        if worker_api and worker_api not in PROVIDER_API_CHOICES:
-            raise ConfigError("worker.api must be one of " + ", ".join(PROVIDER_API_CHOICES))
         compaction_root = cls.table(data, "compaction")
         compaction_provider = cls.str(compaction_root, "provider", "")
         if compaction_provider and compaction_provider not in providers:
@@ -458,10 +430,6 @@ class Config:
             mcp=cls.table(data, "mcp"),
             hooks=cls.table(data, "hooks"),
             ui=cls.table(data, "ui"),
-            worker_provider=worker_provider,
-            worker_model=worker_model,
-            worker_reasoning=worker_reasoning,
-            worker_api=worker_api,
             compaction_provider=compaction_provider,
             compaction_model=compaction_model,
             compaction_reasoning=compaction_reasoning,
@@ -619,7 +587,6 @@ model = ""
                                # Raise it for a 1M-window model; lower it for a smaller one.
 # max_agent_steps = 400
 # shell_timeout = 60
-# worker = false               # register the Delegate tool; toggle with /worker on|off
                                # (flipping it changes the tool block and thus the prompt-cache scope)
 # language = "auto"           # auto follows your messages and injects nothing; set a language
                                # name (e.g. "Chinese") to force the reply language
@@ -640,13 +607,6 @@ model = ""
 # [ui.divider]
 # theme = "inherit"           # line, glow and labels; /theme divider theme forest
 
-# [worker]                     # optional: hand tasks to a second wizolt session (Delegate tool)
-# provider = "fast"           # a provider entry; pick one from a DIFFERENT vendor than
-                               # provider.active, so the worker's reviews cross-validate the
-                               # parent's -- same-family models share blind spots
-# model = ""                  # optional: override the entry's model (inherit by default)
-# reasoning = ""              # optional: override the entry's reasoning; /worker reason at runtime
-# api = ""                    # optional: override the entry's api protocol; empty = inherit the entry's own
 # [vision]                     # optional: provider entry used only by explicit ViewImage calls
 # provider = "vision"          # its model receives the local image and optional question, then
                                # returns a text observation to the active model
@@ -739,7 +699,7 @@ def compaction_provider_config(config: Config) -> ProviderConfig:
     `[compaction]` section, then the base entry's own value — per-provider wins over global, and a
     fully empty pair leaves the entry's value. Never shares or mutates the base entry object:
     dataclasses.replace is shallow, so folding onto a shared object would leak compaction-only
-    overrides into the main provider (same reasoning as worker_provider_config in tools/delegate.py).
+    overrides into the main provider.
     Resolved per call, never cached, so a runtime /provider switch is picked up by the next
     compaction.
     """

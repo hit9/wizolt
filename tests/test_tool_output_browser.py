@@ -323,29 +323,6 @@ async def test_tool_output_viewer_folds_a_multiline_command_into_one_row(tmp_pat
     assert view is not None and view.text.count("\n") == 2
 
 
-async def test_tool_output_viewer_reopens_a_delegate_order_with_the_worker_answer(tmp_path):
-    """An order is written to be read twice: at the send prompt, and again when the worker's answer
-    has to be judged against what was actually asked. The transcript keeps only the `Delegate send`
-    line, so this browser is the second reading."""
-    command_loop = loop(tmp_path)
-    order = "Goal: rename the flag.\nFiles: wizolt/config.py\nVerify: uv run pytest tests/test_cli.py"
-    command_loop.session.store_tool_result(
-        "Delegate",
-        [{"action": "send", "order": order, "title": "rename the flag"}],
-        '<Delegate action="send" files="wizolt/config.py">\n<worker>renamed it at config.py:118</worker>\n</Delegate>',
-    )
-    command_loop.session.store_tool_result("Delegate", [{"action": "status"}], '<Delegate action="status" alive="true"/>')
-    modal = ModalHarness(["enter"])
-    command_loop.presentation.tui = modal
-
-    await tool_output_viewer(command_loop)
-
-    listing = "".join(value for _, value in modal.frames[0])
-    assert "Tool output · latest 1" in listing  # a status carries no order and is not an entry
-    viewer = next(frame for frame in ("".join(value for _, value in f) for f in modal.frames) if "read-only" in frame)
-    assert "Order · tr.1 · read-only" in viewer
-    assert "rename the flag" in viewer and "Verify: uv run pytest" in viewer
-    assert "renamed it at config.py:118" in viewer  # the answer, below the order it is judged against
 
 
 async def test_tool_output_viewer_shows_the_whole_output_not_the_transcript_preview(tmp_path):

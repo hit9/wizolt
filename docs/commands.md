@@ -2,10 +2,10 @@
 
 ## Looking around
 
-**`/status`** — Check your model, context usage, cache hit rate, background jobs and session
-information. Start here when you want to know what is running or how much context remains.
+**`/status`** — Check the selected agent's identity, state, model, context usage, cache hit rate,
+background jobs and session information. Start here when you want to know what is running or how much context remains.
 
-<div class="term-shot" role="img" aria-label="The /status command: a boxed two-column table of the workspace, session, yolo, step limit, AGENTS.md state, model, a context fill bar, cache hit ratios, request usage, and worker state, with the documentation link as its last row."><span class="fs-user">• /status</span><span> </span><span><span class="fs-i">  </span><span class="fs-i fs-dim">╭──────────────────────────────────────────────────────────╮</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> workspace </span><span class="fs-i fs-dim"> </span><span class="fs-i fs-sel">~/dev/github/wizolt</span><span class="fs-i">                           </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> session   </span><span class="fs-i fs-dim"> </span><span class="fs-i fs-sel">20260923101532-4c64ec94-a1f</span><span class="fs-i">                   </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> yolo      </span><span class="fs-i fs-dim"> </span><span class="fs-i">off                                           </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> steps     </span><span class="fs-i fs-dim"> </span><span class="fs-i">400                                           </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> agents.md </span><span class="fs-i fs-dim"> </span><span class="fs-i">on (./AGENTS.md; global active)               </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> model     </span><span class="fs-i fs-dim"> </span><span class="fs-i fs-sel">openai/gpt-5.6</span><span class="fs-i"> · responses · reasoning medium </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> context   </span><span class="fs-i fs-dim"> </span><span class="fs-i">[███▋░░░░░░░░░░] </span><span class="fs-i fs-sel">~62.4K / 240.5K</span><span class="fs-i"> (26%)        </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> cache     </span><span class="fs-i fs-dim"> </span><span class="fs-i">total </span><span class="fs-i fs-sel">92.7%</span><span class="fs-i"> · last </span><span class="fs-i fs-sel">97.2%</span><span class="fs-i">                      </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> usage     </span><span class="fs-i fs-dim"> </span><span class="fs-i">calls </span><span class="fs-i fs-sel">215</span><span class="fs-i"> · total </span><span class="fs-i fs-sel">13.8M</span><span class="fs-i">                       </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> worker    </span><span class="fs-i fs-dim"> </span><span class="fs-i">off — </span><span class="fs-i fs-sel">[worker] provider</span><span class="fs-i"> unset                 </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">│</span><span class="fs-i"> docs      </span><span class="fs-i fs-dim"> </span><span class="fs-i">https://wizolt.readthedocs.io                 </span><span class="fs-i fs-dim">│</span></span><span><span class="fs-i">  </span><span class="fs-i fs-dim">╰──────────────────────────────────────────────────────────╯</span></span></div>
+<div class="term-shot" role="img" aria-label="Selected main agent status, model and independent context and usage statistics."><span class="fs-user">• /status</span><span> </span><span class="fs-dim">  ╭──────────────────────────────────────────────────────────────────╮</span><span>  │ agent     main · 20261002101532-4c64ec94-a1f                     │</span><span>  │ workspace ~/dev/github/wizolt                                    │</span><span>  │ session   20261002101532-4c64ec94-a1f                            │</span><span>  │ state     completed                                              │</span><span>  │ yolo      off                                                    │</span><span>  │ steps     400                                                    │</span><span>  │ agents.md on (./AGENTS.md; global active)                        │</span><span>  │ model     openai/gpt-5.6 · responses · reasoning medium          │</span><span>  │ context   [███▋░░░░░░░░░░] ~62.4K / 240.5K (26%)                 │</span><span>  │ cache     total 92.7% · last 97.2%                               │</span><span>  │ usage     calls 215 · total 13.8M                                │</span><span>  │ activity  history 12                                             │</span><span>  │ docs      https://wizolt.readthedocs.io                          │</span><span class="fs-dim">  ╰──────────────────────────────────────────────────────────────────╯</span></div>
 
 **`/diff`** — Review changes from the latest turn or the whole session. See
 [Reviewing changes](usage.md#reviewing-changes).
@@ -75,29 +75,15 @@ See [Keeping context manageable](context.md#keeping-context-manageable).
 Use it between turns. Your files, visible transcript and working notes remain.
 See [Starting a new window](context.md#starting-a-new-window).
 
-**`/worker [SUBCOMMAND]`** — Inspect or control the worker session. Tab completion offers the
-subcommands and their values; see [Worker delegation](worker.md#worker-delegation) for what a
-worker is.
+**`/agents`** — Browse agents, their states and context usage. Move the cursor to preview a task
+and recent reply; Enter switches to that agent. Its conversation, input and statusbar become
+active. Background agents keep running. See [Subagents](agents.md).
 
-| Subcommand | Effect |
-|---|---|
-| `status` (default) | provider/model, reasoning, state, rounds, and context percent — or `worker: no active session` with the configured `[worker] provider` |
-| `on` · `off` | Toggle the `runtime.worker` setting |
-| `reset` | Clear the worker's context; file changes and merged diffs survive |
-| `provider` | Pick an entry, then flow on into the model and reasoning pickers, mirroring `/provider`'s chain; backing out of a stage keeps the earlier ones |
-| `provider NAME` · `provider off` | Re-target or clear the entry immediately, without the picker chain |
-| `model` · `reason` · `api` | Pick from that entry's models, reasoning efforts, and wire protocols (`auto`, `chat`, `responses`, `anthropic`); `default` restores inheritance |
-
-Changes apply to a live worker and to later spawns alike. The `Delegate` tool block itself is
-fixed when the session starts, so a worker turned on mid-session takes effect next time.
-
-Every `Delegate send` asks for approval, even under `yolo` — the order is a spec the model wrote
-for itself, so the brief is the one cheap check on it. A refusal carries your reason back to the
-model.
+**`/agents stop-all`** — Stop all running agents. Ctrl-C stops only the selected agent.
 
 **`/language [NAME]`** — Show or force the session's reply language. `auto`, the default,
 follows the language you write in; a name like `Chinese` fixes it. The setting lives in the
-session rather than the config file, and workers inherit it.
+session rather than the config file, and new subagents inherit it.
 
 ## Settings and toggles
 
@@ -127,7 +113,7 @@ layouts and custom templates.
 ## While a turn runs
 
 Commands that only read the session answer without interrupting it: `/status`, `/ps`, `/diff`,
-`/skills`, `/config`, `/catalog`, and `/mcp`'s tool list, along with the `/yolo` toggle.
+`/skills`, `/config`, `/catalog`, `/agents`, and `/mcp`'s tool list, along with the `/yolo` toggle.
 Any other one waits for the turn to end.
 
 A request that fails transiently — transport, timeout, a 5xx — is retried on its own, up to five

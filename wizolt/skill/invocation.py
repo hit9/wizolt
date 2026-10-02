@@ -139,8 +139,8 @@ class Invocation:
         return "\nIn force for the rest of this session:\n" + "\n".join(lines) if lines else ""
 
     def fork_order(self) -> str:
-        """The Delegate order for a `context: fork` skill. The worker loads the skill itself, so its
-        `!`commands``, hooks and allowed-tools belong to the worker's session, not the parent's."""
+        """The task for a `context: fork` skill. The child loads the skill itself, so its
+        `!`commands``, hooks and allowed-tools belong to the child's session."""
         return (
             f"Run the `{self.skill.name}` skill: call {self.call_text()} and follow its instructions to the end.\n"
             "Report what you did and what you found; that report is all the requester will see."

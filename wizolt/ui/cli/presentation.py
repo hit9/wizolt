@@ -313,11 +313,6 @@ class Presentation:
 
         self.with_status_paused(output)
 
-    def worker_answer_output(self, text: str) -> None:
-        """The worker's interim and final model text, rendered like an agent answer (markdown) rather than the
-        plain log lines tool execution prints as."""
-        self.with_status_paused(lambda: self.emit_narration(text))
-
     def _begin_cli_preview(self) -> None:
         """Pause the status bar if running and start the CLI Bash live-preview line."""
         self.live_status_paused = self.status_bar.is_running()

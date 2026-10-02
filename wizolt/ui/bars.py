@@ -22,11 +22,11 @@ FIELDS = frozenset(
     [
         "provider",
         "model",
+        "agent.name",
+        "agent.id",
+        "agent.state",
         "reasoning",
         "yolo",
-        "worker.active",
-        "worker.model",
-        "worker.context",
         "context.percent",
         "cache.percent",
         "mcp.count",
@@ -42,7 +42,6 @@ FIELDS = frozenset(
         "queue.next_turn",
         "reset_pending",
         "label",
-        "worker.summary",
     ]
 )
 
@@ -173,8 +172,8 @@ def pressure(body: str, normal: str = "status_context", warning: str = "status.w
     )
 
 
-IDENTITY = "{% if yolo %}[status_yolo][[yolo]] [/]{% endif %}{% if worker.active %}[status_worker]worker · [/]{% endif %}"
-SEGMENT_IDENTITY = IDENTITY.replace("[status_yolo]", "[bold]").replace("[status_worker]", "[bold]")
+IDENTITY = "{% if agent.name %}[status_agent bold][[{agent.name}]] [/]{% endif %}{% if yolo %}[status_yolo][[yolo]] [/]{% endif %}"
+SEGMENT_IDENTITY = IDENTITY.replace("[status_yolo]", "[bold]").replace("[status_agent bold]", "[bold]")
 PROVIDER_MODEL = "[status_provider]{provider}/[/][status_base bold]{model}[/]"
 SEGMENT_USAGE = pressure(" ctx {context.percent}% ", "status.context", "status.usage bg=warning", "status.usage bg=error")
 STATUS_PRESETS = {
@@ -184,8 +183,7 @@ STATUS_PRESETS = {
     + "{% optional priority=5 %}[subtle] | [/][status_mcp]{mcp.label} · skills {skills.count}[/]{% endoptional %}"
     + "[subtle] | [/]"
     + pressure("ctx {context.percent}%", "status_base")
-    + "{% optional priority=10 %}[status_mcp] · cache {cache.percent}%[/]{% endoptional %}"
-    + "[status_worker]{worker.summary}[/]",
+    + "{% optional priority=10 %}[status_mcp] · cache {cache.percent}%[/]{% endoptional %}",
     "minimal": IDENTITY + "[status_base bold]{model}[/] " + pressure(meter(5) + " {context.percent}%", "status_mcp"),
     "split": "[status.band] "
     + IDENTITY
@@ -213,7 +211,7 @@ STATUS_PRESETS = {
     + "{% optional priority=20 %}[status_mcp]  effort [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
     + "{% optional priority=5 %}[status_mcp]{mcp.label} · skills {skills.count}[/]  {% endoptional %}"
     + pressure("ctx {context.percent}%", "status_base")
-    + "{% optional priority=10 %}[status_mcp]  cache {cache.percent}%[/]{% endoptional %}[status_worker]{worker.summary}[/] [reset]",
+    + "{% optional priority=10 %}[status_mcp]  cache {cache.percent}%[/]{% endoptional %} [reset]",
     "blocks": "[status.provider] "
     + SEGMENT_IDENTITY
     + "{provider} [reset] [status.model] {model} [reset]"
@@ -531,7 +529,7 @@ class BarLayout:
                     template = Template(source, PRESETS[key])
                     resolved = styles(template.styles, key)
                     for running in (False, True):
-                        sample.update(running=running, yolo=running, **{"worker.active": running})
+                        sample.update(running=running, yolo=running)
                         template.render(sample, 80, resolved)
                     templates[key] = template
             except (ValueError, TypeError, ArithmeticError, KeyError) as error:

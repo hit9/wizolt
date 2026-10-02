@@ -4,6 +4,11 @@
 
 ### Added
 
+- Parallel subagents with separate conversations, model settings, input histories and usage
+  statistics in one shared workspace. `/agents` previews tasks and replies before Enter switches
+  the active conversation; `/status`, the statusbar and input follow the selected agent.
+  `Subagent` tool calls spawn, steer, list, wait for and stop children; Ctrl-C stops the selected
+  agent and `/agents stop-all` stops the group. Main-session resume restores child conversations.
 - Independent statusbar and divider color themes via `ui.statusbar.theme` and
   `ui.divider.theme`, including custom themes, `inherit` (the default) and terminal-following
   `auto`. Select and preview colors in their `/theme` tabs or with
@@ -11,6 +16,12 @@
 
 ### Fixed
 
+- Cover named-theme startup scrollback after renaming the agent status color; every built-in
+  palette defines the new role. Adopt the fast-start TUI into the agent supervisor, and retain
+  task previews before the first answer. Report children cancelled before their first turn as
+  interrupted. Preserve first-input history through startup cleanup, show `/agents` with only
+  the main agent, and settle accepted admission before shutting down. Drain final selected-agent
+  output and close model clients even if saving fails. Add real-terminal switching and resize coverage.
 - Strip the remaining image bookkeeping keys (`_images_text_only`, `_tool_image_question`) from
   Chat Completions request bodies; the Responses and Anthropic wires never carried them.
 - Keep streamed Chat refusals and citations: refusal deltas now stream as the answer (as the
@@ -33,6 +44,9 @@
 
 ### Changed
 
+- Replace serial worker delegation with the agent group and independent frontend runtimes;
+  remove `Delegate`, `/worker`, `[worker]` and `runtime.worker`. Update the user and design docs
+  for shared files, separate statistics, steering and child lifecycle; no compatibility aliases.
 - Record the post-0.62.0 theme refresh's benchmarks against 0.62.0 (`11493363` → `ca45fa61`) on
   Linux aarch64 / CPython 3.14.7. Apparent regressions in a paired nine-sample run (banner +5.2%,
   sub-millisecond replay appends +5.8%) did not reproduce in six interleaved rounds: first prompt

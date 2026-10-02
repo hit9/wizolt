@@ -9,7 +9,6 @@ can render the same call the same way.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 
 from prompt_toolkit.utils import get_cwidth
@@ -18,7 +17,6 @@ from wizolt.base import ApprovalView, LogBlock, LogEdge, LogLine, LogRole, ToolC
 from wizolt.session import Session
 from wizolt.tools import tooloutput
 from wizolt.tools.base import Tool
-from wizolt.tools.delegate import DelegateTool
 from wizolt.tools.editplan import EditBatchPlan
 from wizolt.tools.files import EditTool
 
@@ -45,7 +43,6 @@ CALL_LINE_SLACK = 1
 APPROVAL_LEGEND_SEGMENTS: tuple[tuple[str, str], ...] = (
     ("", "Y/Enter approve"),
     ("n", "n refuse"),
-    ("c", "c worker config"),
     ("v", "v view {label}"),
 )
 
@@ -113,7 +110,7 @@ def field_pairs(rows: list[tuple[str, str]]) -> list[tuple[str, str]]:
     return [(label + " " * max(0, width - get_cwidth(label)), value) for label, value in rows]
 
 
-def approval_actions(tool: Tool, always_option: bool) -> list[tuple[str, str]]:
+def approval_actions(tool: Tool) -> list[tuple[str, str]]:
     """What this prompt can do, as (label, answer) pairs with the default first.
 
     The one answer to the question, so the action row and the typed legend cannot disagree about
@@ -125,19 +122,17 @@ def approval_actions(tool: Tool, always_option: bool) -> list[tuple[str, str]]:
     view = tool.approval_view()
     if view is not None:
         actions.append((f"View {view.label}", "v"))  # a tool with nothing to view returns None, so it is never offered
-    if always_option:
-        actions.append(("Worker config", "c"))
     actions.append(("Refuse", "n"))
     return actions
 
 
-def approval_prompt(always_option: bool, form: list[tuple[str, str]]) -> str:
+def approval_prompt(form: list[tuple[str, str]]) -> str:
     """The one-line prompt after the brief. The form renders its own labels above the input row,
     so it only needs the field name; without one the prompt carries the typed protocol, which is
     all a headless run has."""
     if form:
         return "reason › "
-    return "Approve delegation? [Y/n/c] " if always_option else "Approve? [Y/n or reason] "
+    return "Approve? [Y/n or reason] "
 
 
 def approval_legend(actions: list[tuple[str, str]], view_label: str = "") -> str:
@@ -186,33 +181,6 @@ def view_excerpt_children(view: ApprovalView, status: str, form: list[tuple[str,
     return children
 
 
-def delegate_approval_children(tool: DelegateTool, form: list[tuple[str, str]] | None = None, actions: list[tuple[str, str]] | None = None) -> list[LogLine]:
-    """Approval brief for a Delegate send: title, a one-line order excerpt, explicit send
-    parameters, and the worker configuration the send will run under. FIELD-role rows render
-    cyan left-aligned labels (padded to one column, CJK-safe) with default-foreground values;
-    everything is derived from the call and the session config, never from mutable worker state.
-
-    The key legend closes the brief only when there is no action row: with one, the same
-    choices sit live above the input line, and a copy frozen into the transcript would go stale
-    the moment the worker config is edited."""
-    order = tool.payload_dict().get("order")
-    order_row = None
-    if isinstance(order, str) and order.strip():
-        lines = order.strip().splitlines()
-        text = oneline(lines[0].strip(), 100)
-        if len(lines) > 1:
-            text += f"  (… {len(lines) - 1} more lines)"
-        order_row = ("order", text)
-    rows: list[tuple[str, str, LogRole]] = [(label, value, LogRole.FIELD) for label, value in field_pairs(tool.header_rows(order_row))]
-    if not form:
-        rows.append(("", approval_legend(actions if actions is not None else approval_actions(tool, True), "order"), LogRole.META))
-    last = len(rows) - 1
-    return [
-        LogLine(label, value, role, LogEdge.END if index == last else LogEdge.BRANCH if index == 0 else LogEdge.CONTINUE)
-        for index, (label, value, role) in enumerate(rows)
-    ]
-
-
 def approval_display(
     session: Session,
     call: ToolCall,
@@ -226,15 +194,13 @@ def approval_display(
     role = LogRole.TOOL if status == "confirm" else LogRole.AUTO
     root = log_root(tooloutput.short_call(session, call), role, batch_suffix, call)
     children = []
-    if isinstance(tool, DelegateTool) and tool.always_confirms():
-        children.extend(delegate_approval_children(tool, form or [], actions))
-    elif tool.NAME == "Edit":
+    if tool.NAME == "Edit":
         preview = planned_edit.preview(tool) if planned_edit and isinstance(tool, EditTool) else tool.preview()
         # The diff hangs off the call line's rail with no caption: under an Edit it can only be the
         # change that call makes.
         children.extend(LogLine("", line, LogRole.DIFF, LogEdge.CONTINUE) for line in preview.rstrip().splitlines())
     elif (view := tool.approval_view()) is not None:
-        children.extend(view_excerpt_children(view, status, form or [], actions or approval_actions(tool, False), root.text))
+        children.extend(view_excerpt_children(view, status, form or [], actions or approval_actions(tool), root.text))
     return LogBlock.hierarchy(root, children)
 
 
@@ -261,35 +227,18 @@ def finish_display(
     failed: bool,
     elapsed: float | None = None,
     d: ToolDisplay | None = None,
-    worker_rule: Callable[[str], None] | None = None,
 ) -> str | LogBlock:
-    """The block a finished call prints.
-
-    `worker_rule` is the one output sink this reaches for rather than returns: a finished Delegate
-    send closes its bracket with a full-width rule that has to be drawn as a sibling of the block,
-    not inside it. Without one wired (headless, or a runner outside CommandLoop) the same detail
-    falls back into the block's own child lines."""
+    """The block a finished call prints."""
     d = d or ToolDisplay()
     if call.name == "Note" and not failed and d.display:
         return tooloutput.with_batch_suffix(d.display.removeprefix("Note ").strip(), d.batch_suffix)
     tag = " [refused]" if failed and "user refused" in output else " [failed]" if failed else " [approved]" if d.approved else " [auto]" if d.auto else ""
-    tree = d.nested_display or call.name in ("Bash", "Delegate") or bool(d.vision_entry)
+    tree = d.nested_display or call.name == "Bash" or bool(d.vision_entry)
     # A failed call explains itself in the error child below, so its root only has to identify
     # the call -- collapsed to one line, or a multi-line display (Note keeps the whole rendered
     # note there) paints its entire body red under the tag.
     label = d.display or tooloutput.short_call(session, call)
     root = log_root(oneline(label, 120) if failed else label, LogRole.ERROR if failed else LogRole.TOOL, d.batch_suffix, call)
-    is_reset = call.name == "Delegate" and not failed and 'action="reset"' in output
-    if call.name == "Delegate" and not failed and not is_reset:
-        # The delegation bracket: the start marker opens with the yellow full-width rule; the
-        # finish closes it with the sibling rule carrying the done summary. Without a wired
-        # worker_rule the finish block falls back to the "[worker] ◀" root line with the detail
-        # in the child lines below. Reset is a one-shot tool call, not a bracket: it keeps its
-        # ordinary tool root and does not print a full-width rule.
-        if worker_rule is not None:
-            root = None
-        else:
-            root = log_root("[worker] ◀", LogRole.WORKER, d.batch_suffix, call)
     children = []
     # Set by the Bash branch: it always places its own key -- on the call line like every other
     # tool, or in the block's closing row when the runner already drew the call line above a
@@ -347,35 +296,6 @@ def finish_display(
         # No answer to show (a replay whose record was compacted away) draws no empty label.
         if output:
             children.append(LogLine("answer", oneline(output, 220), LogRole.META, LogEdge.END))
-    elif call.name == "Delegate":
-        if 'action="reset"' in output:
-            # Reset is a one-shot tool call, not a delegation bracket: it keeps its ordinary
-            # tool root (above) and only adds a plain done child stating what it cleared and
-            # what survives. No full-width `worker reset` rule runs.
-            children.append(LogLine("done", "worker context cleared; file changes and merged diffs kept", LogRole.META, LogEdge.BRANCH))
-        else:
-            summary = tooloutput.delegate_result_summary(output)
-            if summary:
-                if worker_rule is not None:
-                    fields = tooloutput.delegate_result_fields(output)
-                    # `summary` only renders when the envelope parsed, so fields is never None
-                    # here; the guard exists for the type checker.
-                    if fields is not None:
-                        title = ""
-                        if call.args and isinstance(call.args[0], dict):
-                            raw_title = call.args[0].get("title")
-                            title = raw_title.strip() if isinstance(raw_title, str) else ""
-                        parts = ([title] if title else []) + [f"steps {fields.steps}", fields.elapsed]
-                        if fields.in_tokens:
-                            parts.append(f"{fields.in_tokens} in / {fields.out_tokens} out")
-                        if fields.files != "(none)":
-                            parts.append(fields.files if len(fields.files) <= 48 else fields.files[:47].rstrip() + "…")
-                        worker_rule("worker done · " + " · ".join(parts))
-                else:
-                    children.append(LogLine("done", summary, LogRole.META, LogEdge.BRANCH))
-                preview = tooloutput.delegate_answer_preview(output)
-                if preview:
-                    children.extend(LogLine("", line, LogRole.OUTPUT, LogEdge.CONTINUE) for line in preview.splitlines())
     elif call.name == "ViewImage" and d.vision_entry:
         # The vision-provider observation is a child of the call line, drawn before the stored row, so
         # the trace can never appear above its own call (the attachment path's standalone
@@ -393,9 +313,8 @@ def finish_display(
             # not keep. There it is the block's content, not bookkeeping, so it keeps its row.
             children.append(LogLine("stored" if key else "done", citation, LogRole.META, LogEdge.END))
     elif root is not None and not d.nested_display and (not tree or bash_key_handled):
-        # root is never shown for a nested block (the runner drew its call line already) or on
-        # the Delegate worker_rule path, where tree is always True -- both keep whatever key
-        # display their own path chose, and neither reaches the root-tail rewrite.
+        # A nested block's runner already drew its call line, so only standalone blocks
+        # receive the root-tail rewrite.
         tail = ((" → " + key) if key else "") + tag
         root = LogLine(root.label, root.text, root.role, meta=root.meta + tail, syntax=root.syntax)
     return LogBlock.hierarchy(None if d.nested_display else root, children)
@@ -411,19 +330,5 @@ def full_text_block(view: ApprovalView) -> LogBlock:
             LogLine(view.label, "", LogRole.FIELD, LogEdge.BRANCH),
             *(LogLine(label, value, LogRole.FIELD, LogEdge.CONTINUE) for label, value in field_pairs(view.rows)),
             *(LogLine("", line, role, LogEdge.CONTINUE, syntax=view.lexer) for line in view.text.splitlines()),
-        ]
-    )
-
-
-def worker_config_block(session: Session) -> LogBlock:
-    """The current effective worker config as a log block: one row per knob, inherited values
-    marked `(inherit)`, matching the approval brief's four worker rows (same cyan aligned labels).
-
-    The rows come from DelegateTool, which also builds the send brief's header rows from them, so
-    the `c` cycle and the brief can never disagree about what the worker is configured as."""
-    return LogBlock(
-        [
-            LogLine("worker config", "", LogRole.FIELD, LogEdge.BRANCH),
-            *(LogLine(label, value, LogRole.FIELD, LogEdge.CONTINUE) for label, value in field_pairs(DelegateTool.worker_config_rows(session.config))),
         ]
     )

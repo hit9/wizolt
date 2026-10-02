@@ -375,6 +375,10 @@ class TuiApp:
         self.input_buffer.on_text_insert += self._offer_slash_completions
         self.search_toolbar = SearchToolbar()
         self.app: Application | None = None
+        # Managed agent views keep drafts, approvals and transcript while another view is visible.
+        self.managed = False
+        self.on_attention: Callable[[], None] = lambda: None
+        self.view_ready = asyncio.Event()
         self.on_ready: Callable[[], None] = lambda: None
         self.input_mode = InputMode.CHAT
         self.quick_hint_focus = -1  # -1 = input focused; 0..n-1 = that quick-input chip
@@ -446,6 +450,7 @@ class TuiApp:
             self._set_mode(mode, prompt_text)
 
         switch(Document(""), InputMode.APPROVAL, prompt)
+        self.on_attention()
         try:
             return await pending
         finally:
@@ -621,7 +626,7 @@ class TuiApp:
         straight away; the rest wait for a render that can place them above the app.
         """
         app = self.app
-        if app is None or not app.is_running:
+        if (app is None or not app.is_running) and not self.managed:
             self.scrollback.write_direct(text)
             return
         self.scrollback.enqueue(text)
@@ -652,6 +657,10 @@ class TuiApp:
     def _accept(self, buffer: Buffer) -> bool:
         text = buffer.text
         if self.input_mode == InputMode.APPROVAL and self._input_pending is not None:
+            if text.strip() == "/agents":
+                self._reset_input("")
+                self.on_running_submit(UserInput("/agents"))
+                return False
             # Enter fires the focused action while the line is empty, and sends the reason once
             # there is one. Both submit a plain string, so the approval loop reads one protocol.
             self.resolve_input(self._approval_actions[self._approval_focus][1] if not text and self._approval_actions else text)
@@ -1246,6 +1255,9 @@ class TuiApp:
         The modal's key handling already runs on this loop, so awaiting here is what keeps a
         runtime-owned command or viewer task from parking the loop on a threading primitive."""
 
+        if self.managed:
+            self.on_attention()
+            await self.view_ready.wait()
         app = self.app
         if app is None or not app.is_running or self.modal_window is None:
             return None
@@ -2220,6 +2232,7 @@ class TuiApp:
             # pre_run already runs inside the application's loop, and the task it starts is
             # cancelled with the rest of the application's background tasks on exit.
             app.create_background_task(self.animate())
+            self.view_ready.set()
             self.on_ready()
 
         try:
@@ -2231,6 +2244,16 @@ class TuiApp:
     def _after_run(self) -> None:
         # Flush anything still queued in the scrollback batching window before the terminal is
         # handed back; a timer fired inside the app loop would never get to run again.
+        if self.managed:
+            self.view_ready.clear()
+            self.app = None
+            return
+        self.finish()
+
+    def finish(self) -> None:
+        """Drain the final selected transcript and dismiss input after its writers have settled."""
+        self.managed = False
+        self.view_ready.clear()
         self.on_app_stop()
         # The final render may have no geometry to flush against. No live app remains, so
         # accepted writes must drain directly instead of waiting forever for another frame.

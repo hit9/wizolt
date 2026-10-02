@@ -63,8 +63,8 @@ event, handler type or command option is a configuration error. Supported comman
 | `StopFailure` | When a model error ends the turn | `unknown` | Record the error; cannot restart the turn |
 | `PreCompact` | Before automatic compaction or `/compact` | `auto` or `manual` | Refuse compaction; an automatic refusal ends the turn |
 | `PostCompact` | After compaction, including a fallback trim | `auto` or `manual` | Record the new summary |
-| `SubagentStart` | At each Delegate send, including a forked skill | `worker` | Add context to the worker |
-| `SubagentStop` | Before the worker finishes its response | `worker` | Send it back to work, at most 5 times per worker turn |
+| `SubagentStart` | At each child agent turn, including a forked skill | `subagent` | Add context to the subagent |
+| `SubagentStop` | Before the subagent finishes its response | `subagent` | Send it back to work, at most 5 times per subagent turn |
 
 A refused or cancelled tool call does not fire `PostToolUseFailure`. Cancellation and the step
 limit do not fire `Stop` or `SubagentStop`. A cancelled compaction does not fire `PostCompact`.
@@ -72,7 +72,7 @@ limit do not fire `Stop` or `SubagentStop`. A cancelled compaction does not fire
 Workers run configured tool, compaction and model-failure hooks, plus their own loaded skills'
 hooks. `UserPromptSubmit`, `SessionStart`, `SessionEnd` and `Stop` belong to the main session.
 A parent's loaded skills can also supply `SubagentStart` and `SubagentStop` hooks. Subagent
-feedback goes to the worker; use `PostToolUse` on `Delegate` to give feedback to the parent.
+feedback goes to the subagent; use `PostToolUse` on `Subagent` to give feedback to the parent.
 
 ## What a hook receives
 
@@ -97,7 +97,7 @@ A hook reads one JSON object on stdin:
 | `StopFailure` | `error: "unknown"`, `error_details`, `last_assistant_message` (the error text) |
 | `SessionStart`, `SessionEnd` | `source` and `model` at start; `reason` at end |
 | `PreCompact`, `PostCompact` | `trigger`; `custom_instructions: null` before; `compact_summary` after |
-| `SubagentStart`, `SubagentStop` | The parent's `session_id`, the worker's `agent_id`, `agent_type: "worker"` |
+| `SubagentStart`, `SubagentStop` | The parent's `session_id`, the subagent's `agent_id`, `agent_type: "subagent"` |
 
 ## What a hook returns
 

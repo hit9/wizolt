@@ -335,7 +335,7 @@ class Theme:
         "status_mcp": "#93c5fd",
         "status_context": "#facc15",
         "status_yolo": "#c084fc",
-        "status_worker": "#fbbf24",
+        "status_agent": "#fbbf24",
         "divider_glow": "#67e8f9",
         "divider_rule": "#4b5563",
         "divider_label": "ansimagenta",
@@ -372,7 +372,7 @@ class Theme:
         "status_mcp": "#1e40af",
         "status_context": "#a16207",
         "status_yolo": "#7e22ce",
-        "status_worker": "#b45309",
+        "status_agent": "#b45309",
         "divider_glow": "#0e7490",
         "divider_rule": "#9ca3af",
         "divider_label": "ansimagenta",
@@ -1411,27 +1411,6 @@ class UiPrinter:
         # Distance to the next rule is measured from here, so the rule's own row does not count.
         self.rows_since_rule = 0
 
-    def emit_worker_rule(self, label: str) -> None:
-        """Open or close a delegation with a full-width rule whose yellow label names the worker.
-
-        The durable counterpart to the start marker's live divider and a sibling of the turn-end
-        rule: gray dashes run edge to edge, the label sits just past a short lead, and the trail
-        fills the terminal width. The label is yellow (the worker's identity color) instead of the
-        turn-end label's default tone, so the bracket reads at a glance. Blank lines on both
-        sides lift the rule off the content above and below it.
-        """
-        if not self.color:
-            self.output_fn(label)
-            return
-        self.separate()
-        fragments = HorizontalRule(Theme.fg("rule"), label, Theme.fg("status_worker"))
-        if self._batch_parts is not None:
-            self._batch_parts.append(fragments)
-        else:
-            self._scrollback_print(fragments)
-        self.track_layout(label + "\n")
-        self.separate()
-
     @staticmethod
     def indent_message(text: str, role: str = "", indent: int = 0) -> str:
         body = "\n".join(LogBlock.margin(indent) + line for line in text.splitlines() or [""])
@@ -1506,7 +1485,6 @@ class UiPrinter:
         LogRole.TOOL: ("tool", "text"),
         LogRole.AUTO: ("info", "text"),
         LogRole.META: ("muted", "muted"),
-        LogRole.WORKER: ("status_worker", "text"),
         LogRole.FIELD: ("accent", "text"),
         LogRole.OUTPUT: ("muted", "muted"),
         LogRole.ERROR: ("error", "text"),
@@ -2196,7 +2174,7 @@ class StatusBar:
     """
 
     RETRY_NOTICE_DURATION: ClassVar[float] = 2.0
-    ROLE_KEYS: ClassVar[tuple[str, ...]] = ("provider", "reason", "mcp", "context", "yolo", "worker")
+    ROLE_KEYS: ClassVar[tuple[str, ...]] = ("provider", "reason", "mcp", "context", "yolo", "agent")
     SPINNER_FRAMES: ClassVar[str] = "⠋⠙⠹⠸⠼⠴⠦⠧"
 
     def __init__(self, session: Session):
@@ -2259,22 +2237,13 @@ class StatusBar:
 
         Read off the in-flight worker when there is one, like every other value on this row.
         """
-        state = self.active_session().state
+        state = self.session.state
         if not state.stream_started_at or not state.stream_chars:
             return ""
         elapsed = time.monotonic() - state.stream_started_at
         if elapsed < 1.0:
             return ""
         return f"↓ {round(state.stream_chars / 4 / elapsed)} tok/s"
-
-    def active_session(self) -> Session:
-        """The session whose work this row describes: the worker while a delegation is in flight,
-        the parent otherwise.
-
-        A live but idle worker never shadows the parent (`Session.delegating_worker`). The working
-        divider marks the same condition by drawing its label in the worker's color.
-        """
-        return self.session.delegating_worker or self.session
 
     def model_attempt_status(self) -> str:
         attempt = self.session.state.current_model_attempt
@@ -2300,39 +2269,19 @@ class StatusBar:
             text += f" · {remaining}s"
         return text
 
-    def worker_context_group(self, source: Session) -> list[list[tuple[str, str]]]:
-        """The parked worker's context water level, appended to the parent's row as `worker ctx N%`.
-
-        Shown only while the parent is the active session: in flight the row already carries the
-        worker's numbers behind its `worker ·` lead, and a second group would repeat them. And
-        only when the worker has real context: a worker that was never delegated to, or was
-        reset, adds nothing -- `worker ctx 0%` is noise, not information. Read off the attached
-        worker Session alone; the bar never loads one from disk to fill this row.
-        """
-        worker = self.session.worker
-        if worker is None or source is not self.session:
-            return []
-        percent = worker.usage.context_percent(worker.state.context_percent)
-        if percent <= 0:
-            return []
-        return [[(f"worker ctx {percent}%", "worker")]]
-
     def values(self) -> dict[str, Value]:
         """Fields describe the active agent; MCP, skills and YOLO describe the session."""
-        source = self.active_session()
+        source = self.session
         provider = source.config.provider
         usage = source.usage
-        worker = self.session.worker
-        summary = self.worker_context_group(source)
         return {
+            "agent.name": source.agent_name,
+            "agent.id": source.uid,
+            "agent.state": source.subagents.entry(source.uid).status if source.subagents else source.state.last_turn_status,
             "provider": source.config.active_provider,
             "model": provider.model.rsplit("/", 1)[-1] or "(no model)",
             "reasoning": provider.reasoning,
             "yolo": self.session.settings.yolo,
-            "worker.active": source is not self.session,
-            "worker.model": worker.config.provider.model if worker else "",
-            "worker.context": worker.usage.context_percent(worker.state.context_percent) if worker else 0,
-            "worker.summary": " | " + summary[0][0][0] if summary else "",
             "context.percent": usage.context_percent(source.state.context_percent),
             "cache.percent": usage.last_cached_prompt_tokens * 100 // usage.last_prompt_tokens if usage.last_prompt_tokens else 0,
             "mcp.label": self.mcp_label(),
@@ -2352,7 +2301,7 @@ class StatusBar:
 
     def fragments(self) -> StyleAndTextTuples:
         columns = shutil.get_terminal_size((120, 20)).columns
-        return list(self.layout.render("statusbar", self.values(), columns - 1, Theme.bar_styles))
+        return list(self.layout.render("statusbar", self.values(), max(1, columns - 1), Theme.bar_styles))
 
     def mcp_label(self) -> str:
         """The MCP group's text: `mcp N`, with a spinner frame in front of the count while

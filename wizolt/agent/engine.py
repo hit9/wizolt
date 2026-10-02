@@ -33,6 +33,7 @@ from wizolt.base import (
     ModelRequestRetry,
     Text,
     ToolCall,
+    WizoltError,
     oneline,
     run_blocking,
 )
@@ -42,7 +43,6 @@ from wizolt.session import QueuedInput, Session, SessionSnapshotCodec
 from wizolt.shellhooks import SESSION_END, SESSION_START, STOP, STOP_FAILURE, SUBAGENT_START, SUBAGENT_STOP, USER_PROMPT_SUBMIT, HookOutcome, PromptBlocked
 from wizolt.skill.listing import SkillListing
 from wizolt.tools import (
-    DelegateTool,
     Tool,
 )
 
@@ -100,25 +100,23 @@ class Agent:
         # Sources the provider's own search reported during the last turn, in the order they appeared.
         # The UI renders them under the answer; the turn's stored messages are left untouched.
         self.turn_sources: list[Json] = []
-        # Set when the last run ended because max_steps ran out (not because the model answered).
-        # Runtime fact for callers like the Delegate tool; never derived from the answer's wording.
-        self.stopped_at_max_steps = False
-        # Live follow-ups the last run committed into a request the provider rejected: read into
-        # the failed turn, never answered. A follow-up an accepted request carried is answered by
-        # that request's reply and never lands here. The Delegate tool hands these to the parent.
-        self.unanswered_inputs: list[str] = []
         # How many times Stop hooks sent the model back this turn (see stop_redirected).
         self._stop_redirects = 0
         self._session_started = False
         self._session_ended = False
         self._session_hook_context: tuple[str, ...] = ()
 
+        if session.subagents is None:
+            from wizolt.agent.subagents import Subagents
+
+            session.subagents = Subagents(self)
+
     def use_hooks(self, hooks: UiHooks) -> None:
         """Install the presentation seam on this agent and every layer it owns.
 
         The one place the sharing is spelled out: assigning `agent.hooks` alone would leave the
         model, context, and tools reporting into the previous object, which is exactly the bug a
-        second caller (the Delegate worker rebind) would hit.
+        child frontend rebind would hit.
         """
         self.hooks = hooks
         self.model.hooks = hooks
@@ -158,23 +156,43 @@ class Agent:
             raise asyncio.CancelledError
 
     async def run(self, user_input: str | UserInput) -> str:
+        if self._active_task is not None:
+            raise WizoltError("This agent already has a turn in progress; enqueue additional input instead")
         # Ownership before external activity: an embedded caller that never went through the CLI
         # acquires here, so no model request, tool, or snapshot write can run unowned.
         self.session.ensure_ownership()
         self.session._active_runs += 1
         self._active_task = asyncio.current_task()
         self._active_loop = asyncio.get_running_loop()
+        self.session.state.last_turn_status = "running"
+        self.session.state.last_turn_error = ""
         try:
+            if self.session.subagents is not None:
+                self.session.subagents.changed(self.session.subagents.entry(self.session.uid))
             await self.start_session()
-            return await self._run_turn(user_input)
+            answer = await self._run_turn(user_input)
+            self.session.state.last_turn_status = "completed"
+            return answer
+        except asyncio.CancelledError:
+            self.session.state.last_turn_status = "interrupted"
+            raise
         except ModelError as error:
+            self.session.state.last_turn_status = "failed"
+            self.session.state.last_turn_error = str(error)
             await self.fire_hooks(STOP_FAILURE, {"error": "unknown", "error_details": str(error), "last_assistant_message": str(error)})
             raise
+        except Exception as error:
+            self.session.state.last_turn_status = "failed"
+            self.session.state.last_turn_error = str(error)
+            raise
         finally:
-            self.session._active_runs -= 1
-            # Cleared together: a late cancel() must find nothing rather than a stale task.
-            self._active_task = None
-            self._active_loop = None
+            try:
+                await self.session.save_snapshot()
+            finally:
+                self.session._active_runs -= 1
+                # Cleared together: a late cancel() cannot reach another turn.
+                self._active_task = None
+                self._active_loop = None
 
     async def start_session(self) -> None:
         """Run startup hooks once, retaining their context until an input is admitted.
@@ -204,8 +222,6 @@ class Agent:
         # to an asset the write did not finish.
         if isinstance(user_input, UserInput) and user_input.images:
             user_input = await self.session.images.admit(user_input)
-        self.stopped_at_max_steps = False
-        self.unanswered_inputs = []
         self.turn_sources = []
         tool_batches = 0
         self._stop_redirects = 0
@@ -308,7 +324,6 @@ class Agent:
                 self.raise_if_cancelled()
                 await self.checkpoint_turn(turn_messages, transcript_messages)
             stopped = f"Stopped after max_agent_steps={self.session.settings.max_steps}"
-            self.stopped_at_max_steps = True
             (self.final_output_fn or self.output_fn)(stopped)
             self.finish_turn(turn_messages, transcript_messages, {"role": "assistant", "content": stopped})
             return stopped
@@ -390,7 +405,6 @@ class Agent:
             # same rejected image on every later request.
             if failed is not None and failed.pending:
                 self.accept_pending_inputs(turn_messages, transcript_messages, failed.pending, failed.turn_messages)
-                self.unanswered_inputs = [item.text for item in failed.pending]
             raise
 
     async def _send_image_fallback(
@@ -574,10 +588,6 @@ class Agent:
             return
 
         def cancelled_text(call: Json) -> str:
-            if (call.get("function") or {}).get("name") == "Delegate":
-                # Name who was cancelled and that the worker's context survives: the parent
-                # cannot see the worker, so the interrupt line is its only notice.
-                return "Cancelled: the worker's turn was interrupted; its context is kept, reset it with /worker reset."
             return "Cancelled: the user interrupted before this tool call finished."
 
         self.settle_unanswered_tool_calls(turn_messages, transcript_messages, cancelled_text)
@@ -596,7 +606,7 @@ class Agent:
         message whose tool_calls have no matching tool results, and providers reject a messages
         list with dangling calls: one such turn would fail every later request on this session.
         `text` is the result content for each unanswered call; a callable receives the call so
-        the wording can depend on the tool (the interrupt path's Delegate line)."""
+        the wording can depend on the tool."""
         answered = {message.get("tool_call_id") for message in turn_messages if message.get("role") == "tool"}
         for message in turn_messages:
             if message.get("role") != "assistant":
@@ -787,7 +797,8 @@ class Agent:
         if self.session.shell_hooks is None:
             return HookOutcome()
         if event in (SUBAGENT_START, SUBAGENT_STOP):
-            fields = {"session_id": self.session.uid.removesuffix(".w"), "agent_id": self.session.uid, "agent_type": "worker", **fields}
+            group = self.session.subagents
+            fields = {"session_id": group.root.session.uid if group else self.session.uid, "agent_id": self.session.uid, "agent_type": "subagent", **fields}
         outcome = await self.session.shell_hooks.fire(event, self.session, fields)
         for failure in outcome.failures:
             self.output_fn(f"Hook failed: {failure}")
@@ -810,7 +821,7 @@ class Agent:
         command = self.session.skills.command(text) if self.session.skills is not None else None
         if command is None:
             return ""
-        if command.skill.fork and DelegateTool.enabled(self.session):
+        if command.skill.fork and not self.session.agent_parent:
             return command.fork_notice()  # the worker is sent from the Skill tool
         return await command.load(self.session, invoked_by="user")
 

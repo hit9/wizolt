@@ -254,8 +254,8 @@ class CatalogRepository:
 class CatalogRuntime:
     """The catalog a session lives against: snapshot + compiled policy + sync state.
 
-    Not a global: each top-level ``Session`` owns one selected from its ``data_dir``. Delegate
-    workers share that exact runtime, so one conversation cannot resolve against two catalogs.
+    Not a global: each top-level ``Session`` owns one selected from its ``data_dir``. Subagents
+    share that runtime, so one agent group cannot resolve against two catalogs.
     """
 
     def __init__(self, data_dir: str):

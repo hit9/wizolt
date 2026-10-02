@@ -35,11 +35,11 @@ def test_sweeps_reject_code_and_unbounded_arithmetic(formula):
 
 
 def test_expression_dotted_fields_are_keys_not_attribute_access():
-    expression = Expression("worker.active and context.percent >= 80", FIELDS)
-    assert expression.evaluate({"worker.active": True, "context.percent": 85})
-    assert not expression.evaluate({"worker.active": False, "context.percent": 85})
+    expression = Expression("agent.state == 'running' and context.percent >= 80", FIELDS)
+    assert expression.evaluate({"agent.state": "running", "context.percent": 85})
+    assert not expression.evaluate({"agent.state": "idle", "context.percent": 85})
     with pytest.raises(ValueError, match="unknown field"):
-        Expression("worker.__class__", FIELDS)
+        Expression("agent.__class__", FIELDS)
 
 
 def test_sweep_motion_and_runtime_domain_errors():
@@ -142,7 +142,7 @@ def test_invalid_templates_report_errors(source):
 def test_every_preset_renders_bounded_idle_and_running_rows():
     values = dict.fromkeys(FIELDS, 0)
     values.update(
-        model="model", provider="provider", reasoning="medium", label="working (12s)", rate="12 tok/s", **{"mcp.label": "mcp 2", "worker.summary": ""}
+        model="model", provider="provider", reasoning="medium", label="working (12s)", rate="12 tok/s", **{"mcp.label": "mcp 2"}
     )
     for presets in (STATUS_PRESETS, DIVIDER_PRESETS):
         for name in presets:
@@ -224,9 +224,9 @@ def test_status_presets_preserve_identity_and_resolve_theme_styles(name):
     layout = BarLayout()
     assert not layout.configure({"statusbar": "preset:" + name}, Theme.bar_styles)
     values = dict.fromkeys(FIELDS, 0)
-    values.update(model="my-model", provider="test", reasoning="high", yolo=True, **{"worker.active": True})
+    values.update(model="my-model", provider="test", reasoning="high", yolo=True, **{"agent.name": "reviewer"})
     rendered = text(layout.render("statusbar", values, 200, Theme.bar_styles))
-    assert "my-model" in rendered and "[yolo]" in rendered and "worker" in rendered
+    assert "my-model" in rendered and "[yolo]" in rendered and "[reviewer]" in rendered
     if name != "minimal":
         assert "test" in rendered
     assert not layout.errors
@@ -236,7 +236,7 @@ def test_status_presets_preserve_identity_and_resolve_theme_styles(name):
 def test_single_sided_status_presets_do_not_spread_across_the_terminal(name):
     template = Template("preset:" + name, STATUS_PRESETS)
     values = dict.fromkeys(FIELDS, 0)
-    values.update(model="model", provider="test", reasoning="high", **{"mcp.label": "mcp 0", "worker.summary": ""})
+    values.update(model="model", provider="test", reasoning="high", **{"mcp.label": "mcp 0"})
     styles = dict.fromkeys(template.styles, "")
     assert text(template.render(values, 200, styles)) == text(template.render(values, 300, styles))
 
@@ -254,17 +254,17 @@ def test_vim_style_presets_keep_context_at_the_right_on_narrow_terminals(name):
         assert rendered.endswith("ctx 42% ")
 
 
-@pytest.mark.parametrize("worker", (False, True))
-def test_lualine_shows_provider_model_and_effort_with_distinct_styles(worker):
+@pytest.mark.parametrize("agent", ("main", "reviewer"))
+def test_lualine_shows_provider_model_and_effort_with_distinct_styles(agent):
     from wizolt.ui.render import Theme
 
     template = Template("preset:lualine", STATUS_PRESETS)
     values = dict.fromkeys(FIELDS, 0)
-    values.update(provider="zai", model="glm-5.3", reasoning="high", yolo=True, **{"worker.active": worker})
+    values.update(provider="zai", model="glm-5.3", reasoning="high", yolo=True, **{"agent.name": agent})
     parts = template.render(values, 160, Theme.bar_styles(template.styles))
     rendered = text(parts)
     assert "CHAT" not in rendered
-    assert "[yolo]" in rendered and ("worker" in rendered) == worker
+    assert "[yolo]" in rendered and f"[{agent}]" in rendered
     assert rendered.index("zai") < rendered.index("glm-5.3") < rendered.index("high")
     styles = [next(style for style, value in parts if label in value) for label in ("zai", "glm-5.3", "high")]
     assert len(set(styles)) == 3
@@ -285,7 +285,7 @@ def test_restyled_statusbars_color_context_by_pressure(name):
     template = Template("preset:" + name, STATUS_PRESETS)
     styles = Theme.bar_styles(template.styles)
     values = dict.fromkeys(FIELDS, 0)
-    values.update(model="m", provider="p", reasoning="high", **{"mcp.label": "mcp 0", "worker.summary": ""})
+    values.update(model="m", provider="p", reasoning="high", **{"mcp.label": "mcp 0"})
 
     def context_style(percent):
         values["context.percent"] = percent
