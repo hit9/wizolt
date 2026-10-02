@@ -19,6 +19,7 @@ from wizolt.base import (
     WizoltError,
 )
 from wizolt.image import UserInput
+from wizolt.model.client import ModelClient
 from wizolt.session import SessionSnapshotStore
 from wizolt.ui.cli import CommandLoop, TuiRuntime
 from wizolt.ui.cli.runtime import RESUME_STATUS_LABEL
@@ -33,6 +34,35 @@ async def _returns_immediately():
 async def _noop():
     """An awaited stand-in that answers at once, for a startup task a test only counts."""
     return ()
+
+
+async def test_startup_inputs_precede_input_accepted_while_children_restore(tmp_path, monkeypatch):
+    command_loop = loop(tmp_path)
+    runtime = TuiRuntime(command_loop)
+    received = []
+
+    async def restore():
+        runtime.submit_chat(UserInput("typed during restore"))
+        await asyncio.sleep(0)
+        assert received == []
+        return []
+
+    async def request(client, messages, tools=None):
+        received.append(next(item["content"] for item in reversed(messages) if item["role"] == "user"))
+        if len(received) == 2:
+            asyncio.get_running_loop().call_soon(runtime.request_shutdown)
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(command_loop.session.subagents, "restore", restore)
+    monkeypatch.setattr(ModelClient, "request", request)
+    real_application = Application
+    try:
+        with create_pipe_input() as pipe_input:
+            monkeypatch.setattr(tui_module, "Application", lambda **kwargs: real_application(input=pipe_input, **(kwargs | {"output": DummyOutput()})))
+            assert await asyncio.wait_for(runtime.run(show_banner=False, initial_inputs=[UserInput("startup input")]), 5) == 0
+        assert received == ["startup input", "typed during restore"]
+    finally:
+        command_loop.session.close()
 
 
 def handled_command(exit_now=False, handled=True):

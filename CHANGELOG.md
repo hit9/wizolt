@@ -21,6 +21,10 @@
 
 ### Fixed
 
+- Restore healthy child conversations even when another child's snapshot is missing or corrupt;
+  report the skipped snapshot and preserve its recovery files. Serialize restore with child
+  admission, and restore retained children in the non-TTY frontend too.
+
 - Refuse child approvals when no interactive frontend is attached, rather than blocking the
   event loop or consuming stdin intended for the main conversation.
 

@@ -93,3 +93,7 @@ its conversation for subsequent inputs. Stopping a child returns after its turn 
 
 A skill with `context: fork` starts a child agent after you confirm its task. Its report returns
 to the caller; `/agents` lets you inspect the child's work and add input while it runs.
+
+Resuming main also restores its child conversations without starting their queued work. If a
+child snapshot is missing or damaged, wizolt reports it and restores the healthy conversations;
+the damaged child's files are kept for recovery.

@@ -14,7 +14,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from wizolt.base import ToolError, oneline, run_blocking
+from wizolt.base import ToolError, WizoltError, oneline, run_blocking
 from wizolt.image import UserInput
 from wizolt.session import QueuedInput, Session, SessionSnapshotStore
 from wizolt.session.ownership import subagent_root_uid
@@ -128,26 +128,37 @@ class Subagents:
             if entry.agent is not self.root
         )
 
-    async def restore(self) -> None:
+    async def restore(self) -> list[str]:
         """Rebuild handles from child snapshots without waking persisted inboxes.
 
         The root configuration supplies current credentials; frozen child provider choices
         override it. Restoring is never implicit authorization to restart interrupted work.
         """
-        for item in self.root.session.subagent_entries:
-            if not isinstance(item, dict):
-                continue
-            uid = item.get("uid", "")
-            if uid in self.entries:
-                continue
-            if not isinstance(uid, str) or subagent_root_uid(uid) != self.root.session.uid or uid == self.root.session.uid:
-                continue
-            session = await run_blocking(
-                lambda uid=uid: SessionSnapshotStore.load(
-                    uid, config=deepcopy(self.root.session.config), settings=replace(self.root.session.settings), cwd=self.root.session.cwd
-                )
-            )
-            await self._attach(session, str(item.get("parent", self.root.session.uid)), str(item.get("instruction", "")))
+        problems = []
+        async with self._admission_lock:
+            if self.closed:
+                raise ToolError("Agent group is closed")
+            for item in self.root.session.subagent_entries:
+                if not isinstance(item, dict):
+                    continue
+                uid = item.get("uid", "")
+                if not isinstance(uid, str) or subagent_root_uid(uid) != self.root.session.uid or uid == self.root.session.uid:
+                    continue
+                if uid in self.entries:
+                    continue
+                try:
+                    session = await run_blocking(
+                        lambda uid=uid: SessionSnapshotStore.load(
+                            uid, config=deepcopy(self.root.session.config), settings=replace(self.root.session.settings), cwd=self.root.session.cwd
+                        )
+                    )
+                except (WizoltError, OSError, ValueError, TypeError, KeyError) as error:
+                    # A damaged child's log cannot make healthy family conversations unusable.
+                    # Keep its manifest reference and files for recovery; never overwrite them.
+                    problems.append(f"Could not restore subagent {uid}: {error}")
+                    continue
+                await self._attach(session, str(item.get("parent", self.root.session.uid)), str(item.get("instruction", "")))
+        return problems
 
     async def _attach(self, session: Session, parent: str, instruction: str = "") -> AgentEntry:
         from wizolt.agent.engine import Agent
@@ -161,7 +172,9 @@ class Subagents:
         # Attachment adds the guard once. Child snapshots persist semantic messages, not this
         # runtime prompt; nested creation starts from root.system_prompt to avoid repeated guards.
         session.system_prompt += "\n" + SHARED_WORKSPACE
-        parent_session = self.entry(parent).agent.session
+        # A healthy descendant can outlive an unreadable parent snapshot. Its own identity and
+        # history survive; only runtime hook inheritance falls back to the family root.
+        parent_session = self.entries.get(parent, self.entries[root.uid]).agent.session
         session.shell_hooks = parent_session.shell_hooks.detached(parent_session) if parent_session.shell_hooks else None
         # Discovery/transport are group services; resolvers and their frontend callbacks are local.
         bootstrap_features(session)

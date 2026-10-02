@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import threading
 from copy import deepcopy
 from pathlib import Path
 
@@ -489,6 +490,85 @@ async def test_restored_group_keeps_child_context_usage_and_queue_without_runnin
         assert "child history" not in str(restored.messages)
         assert restored.usage.calls == 0
     finally:
+        await close_agent_resources(agent)
+        restored.close()
+
+
+@pytest.mark.parametrize("damage", ["missing", "header", "record"])
+async def test_bad_child_snapshot_does_not_block_healthy_family_restore(group, monkeypatch, damage):
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "retained answer"}, [], "retained answer"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    bad = await group.spawn(root, "bad", "bad task")
+    healthy = await group.spawn(root, "healthy", "healthy task")
+    descendant = await group.spawn(bad.agent.session, "descendant", "descendant task")
+    for entry in (bad, healthy, descendant):
+        await finished(group, entry)
+    await close_agent_resources(group.root)
+    path = Path(SessionSnapshotStore.find_session_path(root.config.data_dir, bad.agent.session.uid))
+    if damage == "missing":
+        path.unlink()
+    elif damage == "header":
+        path.write_text("not json\n")
+    else:
+        with path.open("a") as log:
+            log.write("not json\n")
+    restored = SessionSnapshotStore.load(root.uid, config=deepcopy(root.config), settings=deepcopy(root.settings), cwd=root.cwd)
+    bootstrap_features(restored)
+    restored.borrow_ownership(root)
+    agent = Agent(restored, output_fn=lambda _: None)
+    try:
+        problems = await restored.subagents.restore()
+        assert len(problems) == 1 and bad.agent.session.uid in problems[0]
+        assert set(restored.subagents.entries) == {root.uid, healthy.agent.session.uid, descendant.agent.session.uid}
+        for original in (healthy, descendant):
+            loaded = restored.subagents.entry(original.agent.session.uid)
+            assert loaded.answer == "retained answer" and loaded.task is None
+        assert len(restored.subagent_entries) == 3  # keep the damaged log recoverable
+    finally:
+        await close_agent_resources(agent)
+        restored.close()
+
+
+@pytest.mark.parametrize("limit,name,error", [(1, "new", "limit reached"), (2, "existing", "name already in use")])
+async def test_restore_serializes_admission_before_limit_and_name_checks(group, monkeypatch, limit, name, error):
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await group.spawn(group.root.session, "existing", "task")
+    await finished(group, entry)
+    root = group.root.session
+    restored = SessionSnapshotStore.load(root.uid, config=deepcopy(root.config), settings=deepcopy(root.settings), cwd=root.cwd)
+    restored.settings.max_subagents = limit
+    bootstrap_features(restored)
+    restored.borrow_ownership(root)
+    agent = Agent(restored, output_fn=lambda _: None)
+    loading, release = threading.Event(), threading.Event()
+    original = SessionSnapshotStore.load
+
+    def load(*args, **kwargs):
+        loading.set()
+        assert release.wait(3)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(SessionSnapshotStore, "load", load)
+    restoring = asyncio.create_task(restored.subagents.restore())
+    spawning = None
+    try:
+        assert await asyncio.to_thread(loading.wait, 3)
+        spawning = asyncio.create_task(restored.subagents.spawn(restored, name, "new task"))
+        await asyncio.sleep(0)
+        assert not spawning.done()
+        release.set()
+        assert await restoring == []
+        with pytest.raises(ToolError, match=error):
+            await spawning
+    finally:
+        release.set()
+        await asyncio.gather(restoring, *([spawning] if spawning else []), return_exceptions=True)
         await close_agent_resources(agent)
         restored.close()
 

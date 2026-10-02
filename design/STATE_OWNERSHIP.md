@@ -108,6 +108,11 @@ and preserves its pinned provider/model/effort/API choices over the root's curre
 Do not persist the whole Config: secrets, machine paths and transient runtime controls have a
 different lifetime from conversation data.
 
+Restore holds the admission lock while loading and registering children, before a frontend starts
+dispatching new turns. A child decode/I/O failure is isolated and reported; its manifest reference
+and files remain intact. Healthy descendants still load with their own history and frozen model
+choices; if their parent is unavailable, runtime hook inheritance falls back to main.
+
 ## Regression boundaries
 
 - `tests/test_subagents.py`: independent requests/config/usage, steering, sibling cancellation,

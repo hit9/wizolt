@@ -333,6 +333,9 @@ class CommandLoop:
         self.start_session(show_banner=show_banner)
         discovery = asyncio.ensure_future(self.discover_mcp())
         try:
+            if self.session.subagents is not None:
+                for problem in await self.session.subagents.restore():
+                    self.presentation.emit_turn(problem)
             # This frontend has no TUI settle task. Scan before even a local command can
             # freeze the model's listing (for example through /status).
             if self.session.skills is not None:

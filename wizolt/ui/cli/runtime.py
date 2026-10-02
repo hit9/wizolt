@@ -738,11 +738,13 @@ class TuiRuntime:
             self.application_ready.set()
             application = self.spawn(frontend.run_application(application), name="tui-application")
             assert application is not None
+        # Preserve arrival order: startup inputs predate anything typed while restore awaits IO.
+        # Admission may queue now; the consumer and main turn driver start only after restore.
         for value in initial_inputs:
             self.submit_chat(value)
-        self.submissions_task = self.spawn(self._consume_submissions(), name="submissions")
         try:
-            await frontend.group.restore()
+            restore_problems = await frontend.group.restore()
+            self.submissions_task = self.spawn(self._consume_submissions(), name="submissions")
             await self._await_ready(application)
             # The application's initial render has flushed before readiness reaches this task.
             # Let imports compete with typing only once the user can see the prompt.
@@ -765,6 +767,8 @@ class TuiRuntime:
                 assert app is not None
                 app._redraw()
             self.loop.start_session(show_banner=False)
+            for problem in restore_problems:
+                self.loop.presentation.emit_turn(problem)
             if resuming:
                 self.tui.set_idle()
             self.command_task = self.spawn(self.loop.agent.start_session(), name="session-hooks")
