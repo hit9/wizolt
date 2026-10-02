@@ -241,9 +241,11 @@ def test_all_status_presets_show_group_counts_only_when_children_exist(name):
     values.update(model="model", provider="test", **{"agent.name": "main", "agents.count": 1})
     styles = Theme.bar_styles(template.styles)
     assert "agents " not in text(template.render(values, 200, styles))
+    # Blocks are cut by surface changes only, so its counts drop the text separator.
+    counts = "agents 4 run 2" if name == "blocks" else "agents 4 · run 2"
     values.update(**{"agents.count": 4, "agents.running": 2, "agents.waiting": 1})
     rendered = text(template.render(values, 200, styles))
-    assert "main" in rendered and "agents 4 · run 2" in rendered and "wait 1" in rendered
+    assert "main" in rendered and counts in rendered and "wait 1" in rendered
     if name == "default":
         assert "[main]" in rendered and "[agents 4 · run 2]" in rendered and "[wait 1]" in rendered
     else:
@@ -252,7 +254,7 @@ def test_all_status_presets_show_group_counts_only_when_children_exist(name):
         assert get_cwidth(text(template.render(values, width, styles))) <= width
     values["agents.waiting"] = 0
     rendered = text(template.render(values, 200, styles))
-    assert "agents 4 · run 2" in rendered and "wait" not in rendered
+    assert counts in rendered and "wait" not in rendered
 
 
 def test_custom_status_template_can_always_show_total_and_runtime_counts():

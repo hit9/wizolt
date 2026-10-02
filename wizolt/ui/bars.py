@@ -193,11 +193,13 @@ IDENTITY = (
     "{% if yolo %}[status_yolo bold]yolo[/][status_mcp] · [/]{% endif %}" + AGENT_GROUP
 )
 # A segmented preset uses its own surface and separators, including identity and group counts.
-# Inline badges would read as unrelated widgets inside the continuous provider band.
+# Inline badges would read as unrelated widgets inside the continuous provider band. In the blocks
+# preset a row is cut by surface changes only, so parts inside one segment separate by space and
+# weight, not by glyphs.
 SEGMENT_IDENTITY = (
-    "{% if agent.name %}[bold]{agent.name}[/] · {% endif %}{% if yolo %}{% optional priority=40 %}[bold]yolo[/] · {% endoptional %}{% endif %}"
-    "{% if agents.count > 1 %}{% optional priority=15 %}agents {agents.count} · run {agents.running}"
-    " · {% endoptional %}{% endif %}"
+    "{% if agent.name %}[bold]{agent.name}[/] {% endif %}{% if yolo %}{% optional priority=40 %}[bold]yolo[/] {% endoptional %}{% endif %}"
+    "{% if agents.count > 1 %}{% optional priority=15 %}agents {agents.count} run {agents.running}"
+    " {% endoptional %}{% endif %}"
 )
 SEGMENT_USAGE = pressure(" ctx {context.percent}% ", "status.usage", "status.usage.warning", "status.usage.error")
 SEGMENT_DETAILS = (
