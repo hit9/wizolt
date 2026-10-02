@@ -719,7 +719,13 @@ class ModelClient:
         self.apply_request(params, provider, resolved, wire=resolved.api)
 
     def assistant_message(self, message: Any) -> Json:
-        data: Json = {"role": "assistant", "content": self.message_field(message, "content")}
+        content = self.message_field(message, "content")
+        if not content and (refusal := self.message_field(message, "refusal")):
+            # A Chat refusal is the answer, not an absence of one: without this the durable
+            # assistant message would carry no text while the turn's answer (the wire's content
+            # fallback) shows the refusal, and the transcript would drop what was actually said.
+            content = str(refusal)
+        data: Json = {"role": "assistant", "content": content}
         # `encrypted_content` is the sealed form of the same reasoning, and the half the model
         # actually reads back: a host that returns both treats the plaintext as a summary and
         # ignores it once the sealed block is present. It is replayed verbatim or not at all.

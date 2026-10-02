@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 import wizolt.model.responses as responses_module
 from wizolt.base import PROVIDER_ECHO_KEYS, SESSION_EVENT_KEY, Billing, Json, ModelError, Text, ToolCall
 from wizolt.config import ProviderConfig
-from wizolt.image import IMAGE_REFS_KEY, TOOL_IMAGE_OBSERVATION_KEY, ImageInputs
+from wizolt.image import IMAGE_REFS_KEY, IMAGE_TEXT_ONLY_KEY, TOOL_IMAGE_OBSERVATION_KEY, TOOL_IMAGE_QUESTION_KEY, ImageInputs
 from wizolt.model.protocol import keeps_reasoning, omit_request_fields
 from wizolt.providers.compat import ResolvedProvider
 
@@ -45,7 +45,9 @@ def chat_messages(
     latest_user = latest_user_position(messages)
     for index, message in enumerate(messages):
         clean = {
-            key: value for key, value in message.items() if key not in (*PROVIDER_ECHO_KEYS, IMAGE_REFS_KEY, TOOL_IMAGE_OBSERVATION_KEY, SESSION_EVENT_KEY)
+            key: value
+            for key, value in message.items()
+            if key not in (*PROVIDER_ECHO_KEYS, IMAGE_REFS_KEY, IMAGE_TEXT_ONLY_KEY, TOOL_IMAGE_OBSERVATION_KEY, TOOL_IMAGE_QUESTION_KEY, SESSION_EVENT_KEY)
         }
         if message.get("role") == "assistant" and not keeps_reasoning(resolved.reasoning_history, message, index, latest_user):
             # `encrypted_content` is the same turn's reasoning in sealed form: a host that returns
@@ -129,6 +131,7 @@ async def reassemble_stream(
     stream deltas — all ModelClient hooks passed in by the caller.
     """
     content: list[str] = []
+    annotations: list[Any] = []
     reasoning_content: list[str] = []
     encrypted_content: list[str] = []
     reasoning: list[str] = []
@@ -206,6 +209,16 @@ async def reassemble_stream(
             if content_delta := str(message_field(delta, "content") or ""):
                 content.append(content_delta)
                 emit("output", content_delta)
+            # A refusal is the answer on this wire (finish_reason "stop"), the same way the
+            # Responses wire streams response.refusal.delta as output text.
+            if refusal_delta := str(message_field(delta, "refusal") or ""):
+                content.append(refusal_delta)
+                emit("output", refusal_delta)
+            # Chat citations arrive as whole annotation objects on delta chunks; collect them so
+            # the reassembled message carries what assistant_message reads on the non-streaming
+            # path (client.assistant_message -> SEARCH_SOURCES_KEY).
+            if raw_annotations := message_field(delta, "annotations"):
+                annotations.extend(raw_annotations)
             raw_tool_calls = message_field(delta, "tool_calls") or []
             for position, raw in enumerate(raw_tool_calls):
                 raw_index = message_field(raw, "index")
@@ -243,6 +256,8 @@ async def reassemble_stream(
         message["reasoning_details"] = reasoning_details
     if tool_calls:
         message["tool_calls"] = [tool_calls[index] for index in sorted(tool_calls)]
+    if annotations:
+        message["annotations"] = annotations
     return message, usage, finish_reason
 
 
@@ -287,12 +302,20 @@ class ChatWire:
         else:
             response = await self._client.call_client(client, lambda: client.chat.completions.create(**params), response_timeout=response_timeout)
             usage = getattr(response, "usage", None)
-            message = response.choices[0].message
-            finish_reason = str(self._client.message_field(response.choices[0], "finish_reason") or "")
+            choices = getattr(response, "choices", None) or []
+            if not choices:
+                # A gateway can answer 200 with an error envelope or an empty choices list; raised
+                # here it stays a ModelError the retry loop and the UI understand, instead of an
+                # IndexError from outside the flattening in call_client.
+                raise ModelError("chat completion response carried no choices")
+            message = choices[0].message
+            finish_reason = str(self._client.message_field(choices[0], "finish_reason") or "")
         self._client._record_usage(usage, billing=billing)
         assistant = self._client.assistant_message(message)
         calls = self._client.tool_calls(message)
         content = str(self._client.message_field(message, "content") or "")
+        if not content:
+            content = str(self._client.message_field(message, "refusal") or "")
         # Raised outside call_client, which flattens every exception into a plain ModelError.
         if finish_reason == "length" and not calls and not content.strip():
             raise self._client.empty_length_error(usage)

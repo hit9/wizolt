@@ -6,7 +6,8 @@ from types import SimpleNamespace
 import pytest
 from model_harness import _MockClientFactory, _session, _StreamClientFactory, async_create, record_backoff
 
-from wizolt.base import SESSION_EVENT_KEY, ModelError, ModelOutputTruncated, ToolCall
+from wizolt.base import SESSION_EVENT_KEY, SEARCH_SOURCES_KEY, ModelError, ModelOutputTruncated, ToolCall
+from wizolt.image import IMAGE_TEXT_ONLY_KEY, TOOL_IMAGE_OBSERVATION_KEY, TOOL_IMAGE_QUESTION_KEY
 from wizolt.model import ModelClient, resilience
 from wizolt.model.chat import ChatWire
 
@@ -811,3 +812,126 @@ async def test_chat_request_drops_responses_only_metadata(tmp_path, monkeypatch)
 
     body = json.loads(factory.calls[0].content)
     assert body["messages"] == [{"role": "assistant", "content": "old"}]
+
+
+async def test_chat_request_strips_image_bookkeeping_keys(tmp_path, monkeypatch):
+    s = _session(tmp_path, stream=False)
+    model = ModelClient(s)
+    factory = _MockClientFactory([_chat_completion("ok", "stop")])
+    monkeypatch.setattr(model, "client", factory)
+
+    await model.request(
+        [
+            {"role": "user", "content": "text-only", IMAGE_TEXT_ONLY_KEY: True},
+            {"role": "user", "content": "observed", TOOL_IMAGE_OBSERVATION_KEY: True, TOOL_IMAGE_QUESTION_KEY: "what changed?"},
+        ],
+        None,
+    )
+
+    body = json.loads(factory.calls[0].content)
+    assert body["messages"] == [{"role": "user", "content": "text-only"}, {"role": "user", "content": "observed"}]
+
+
+async def test_chat_stream_preserves_refusal_and_citations(tmp_path, monkeypatch):
+    """A refusal is the answer on this wire (the Responses wire streams its refusal as output
+    text), and streamed citations arrive as annotation objects on delta chunks — neither may be
+    dropped on the default streaming path."""
+    s = _session(tmp_path)
+    model = ModelClient(s)
+    chunks = [
+        {
+            "id": "chatcmpl-stream",
+            "object": "chat.completion.chunk",
+            "created": 1,
+            "model": "gpt-4",
+            "choices": [{"index": 0, "delta": {"refusal": "I can't help with that."}, "finish_reason": None}],
+        },
+        {
+            "id": "chatcmpl-stream",
+            "object": "chat.completion.chunk",
+            "created": 1,
+            "model": "gpt-4",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"annotations": [{"type": "url_citation", "url_citation": {"url": "https://example.com/a", "title": "A"}}]},
+                    "finish_reason": "stop",
+                }
+            ],
+        },
+        {
+            "id": "chatcmpl-stream",
+            "object": "chat.completion.chunk",
+            "created": 1,
+            "model": "gpt-4",
+            "choices": [],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        },
+    ]
+    factory = _StreamClientFactory(chunks)
+    streamed = []
+    model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
+    monkeypatch.setattr(model, "client", factory)
+
+    assistant, calls, content = await model.request([{"role": "user", "content": "run"}], None)
+
+    assert content == "I can't help with that."
+    assert assistant["content"] == "I can't help with that."
+    assert assistant[SEARCH_SOURCES_KEY] == [{"url": "https://example.com/a", "title": "A"}]
+    assert streamed == [("output", "I can't help with that."), ("", "")]
+
+
+async def test_chat_non_streaming_refusal_is_the_answer(tmp_path, monkeypatch):
+    """Without this the turn reports "empty final response" and the refusal text is lost, where
+    the same refusal on the Responses wire is a visible answer."""
+    s = _session(tmp_path, stream=False)
+    model = ModelClient(s)
+    factory = _MockClientFactory(
+        [
+            (
+                200,
+                {
+                    "id": "chatcmpl-test",
+                    "object": "chat.completion",
+                    "created": 1,
+                    "model": "gpt-4",
+                    "choices": [{"index": 0, "message": {"role": "assistant", "content": None, "refusal": "I can't help with that."}, "finish_reason": "stop"}],
+                    "usage": {},
+                },
+            )
+        ]
+    )
+    monkeypatch.setattr(model, "client", factory)
+
+    assistant, calls, content = await model.request([{"role": "user", "content": "hi"}], None)
+
+    assert content == "I can't help with that."
+    assert assistant["content"] == "I can't help with that."
+
+
+async def test_chat_response_without_choices_raises_model_error(tmp_path, monkeypatch):
+    """A gateway can answer 200 with an error envelope or an empty choices list; the request
+    must fail as a ModelError (visible error, classified by the retry policy) rather than an
+    IndexError from outside call_client's flattening."""
+    s = _session(tmp_path, stream=False)
+    model = ModelClient(s)
+    factory = _MockClientFactory(
+        [
+            (
+                200,
+                {
+                    "id": "chatcmpl-test",
+                    "object": "chat.completion",
+                    "created": 1,
+                    "model": "gpt-4",
+                    "choices": [],
+                    "usage": {},
+                },
+            )
+        ]
+    )
+    monkeypatch.setattr(model, "client", factory)
+
+    with pytest.raises(ModelError, match="no choices"):
+        await model.request([{"role": "user", "content": "hi"}], None)
+

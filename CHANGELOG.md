@@ -4,6 +4,13 @@
 
 ### Fixed
 
+- Strip the remaining image bookkeeping keys (`_images_text_only`, `_tool_image_question`) from
+  Chat Completions request bodies; the Responses and Anthropic wires never carried them.
+- Keep streamed Chat refusals and citations: refusal deltas now stream as the answer (as the
+  Responses wire already does) instead of failing the turn as an empty response, and delta
+  annotations feed the same source footer the non-streaming path builds.
+- Raise a clean ModelError when a 200 chat response carries no choices (gateway error envelopes),
+  instead of an IndexError escaping outside the request's error contract.
 - Stop a .gitignore negation from un-ignoring paths below the name it negates: `!foo` now decides
   only `foo` itself, never `foo/bar/`, so the no-Git/no-rg @-mention walk no longer offers files
   Git keeps ignored (verified against `git check-ignore` on a materialized tree).
