@@ -287,6 +287,7 @@ class SessionSnapshotCodec:
     @staticmethod
     def state(state: AgentState) -> Json:
         data = asdict(state)
+        data["turn_elapsed"] = state.elapsed
         return {
             key: data[key]
             for key in (
@@ -301,6 +302,7 @@ class SessionSnapshotCodec:
                 "round_count",
                 "last_turn_status",
                 "last_turn_error",
+                "turn_elapsed",
             )
         }
 

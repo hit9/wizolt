@@ -36,6 +36,8 @@ Run **`/agents`**. Move to preview; press Enter to switch conversations.
 <div class="term-shot" role="img" aria-label="The agents picker with aligned names, states and context usage. api-review is highlighted with a green activity dot, and its task and live reply appear in a bordered preview."><span class="fs-title">  Agents</span><span> </span><span>  1. ● main        completed          ctx  10% (current)</span><span class="fs-selected">  2. <span class="fs-i fs-ok">●</span> api-review  running            ctx  24%          </span><span>  3. <span class="fs-i fs-approve">●</span> ui-review   waiting for input  ctx  18%          </span><span> </span><span class="fs-rule">  ┌─ api-review ────────────────────────────────────────┐</span><span>  │                                                     │</span><span>  │ Task                                                │</span><span>  │   Review the API. Do not edit files.                │</span><span>  │                                                     │</span><span>  │ Live                                                │</span><span>  │   Checking validation and error handling…           │</span><span>  │                                                     │</span><span class="fs-rule">  └─────────────────────────────────────────────────────┘</span><span> </span><span class="fs-hint">  ↑/↓ j/k move · Enter open · x stop · X stop now · Esc back</span></div>
 
 Green dots breathe while an agent works. Warning-colored dots need input; other dots stay still.
+The preview shows this turn's elapsed time; wider lists show it alongside the status.
+The time freezes when the turn ends and survives resume.
 
 | Key | In the picker |
 |---|---|

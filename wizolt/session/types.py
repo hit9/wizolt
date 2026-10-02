@@ -7,6 +7,7 @@ projects is one import away from the behavior that mutates it.
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import ClassVar, cast
@@ -72,12 +73,20 @@ class AgentState:
     awaiting_input: bool = False  # runtime only: approvals and Ask are scoped to this agent.
     last_turn_status: str = "idle"
     last_turn_error: str = ""
+    # Only Agent.run owns this clock. Menus/inbox drivers are not model turns. Persist
+    # elapsed time, never a monotonic timestamp from a previous process.
+    turn_started_at: float = 0.0
+    turn_elapsed: float = 0.0
     # The current request's output stream, for the throughput the running divider shows. Characters
     # rather than tokens because token deltas are not on the wire: providers report usage once, when
     # the request is over. Reset at the start of every attempt and cleared when it ends, so the rate
     # belongs to the response being watched and never survives it. Live display state, never persisted.
     stream_started_at: float = 0.0
     stream_chars: int = 0
+
+    @property
+    def elapsed(self) -> float:
+        return max(0.0, time.monotonic() - self.turn_started_at) if self.turn_started_at else self.turn_elapsed
 
     def __post_init__(self) -> None:
         self.plan = cast(list[PlanItem | Json | str], self.plan_items(self.plan))

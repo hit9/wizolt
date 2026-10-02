@@ -427,6 +427,7 @@ async def test_agent_list_aligns_columns_and_selection_with_preview(frontend, mo
     await child(frontend, "core-review")
     await child(frontend, "中文界面-review")
     await child(frontend, "test-gap-review")
+    frontend.root.loop.session.state.turn_elapsed = 192
     monkeypatch.setattr(agents_module.shutil, "get_terminal_size", lambda _fallback: terminal_size((width, 40)))
 
     async def choice(_loop, _title, choices, *, label_fn, preview_fn, preview_title, **kwargs):
@@ -437,6 +438,9 @@ async def test_agent_list_aligns_columns_and_selection_with_preview(frontend, mo
         statuses = [frontend.group.entry(uid).status for uid in choices]
         assert len({get_cwidth(row[:row.index(status)]) for row, status in zip(rows, statuses, strict=True)}) == 1
         assert ("(current)" if width >= 70 else "*") in rows[0]
+        if width >= 80:
+            assert "3m12s" in rows[0]
+        assert "3m12s" in "".join(text for _, text in preview_fn(choices[0]))
         assert all(not row.rstrip().endswith("...") for row in rows)
         assert preview_title == " "  # the frame supplies its own border; no redundant rule
         frame = "".join(text for _, text in preview_fn(choices[-1])).splitlines()

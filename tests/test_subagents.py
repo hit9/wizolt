@@ -35,6 +35,28 @@ async def finished(group, entry):
     return entry
 
 
+async def test_turn_clock_is_live_then_frozen_and_restored(group, monkeypatch):
+    from wizolt.session import types
+
+    now = [100.0]
+    monkeypatch.setattr(types.time, "monotonic", lambda: now[0])
+
+    async def request(client, messages, tools=None):
+        now[0] += 192
+        assert client.session.state.elapsed == 192
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    await group.root.run("work")
+    state = group.root.session.state
+    assert state.turn_started_at == 0
+    assert state.elapsed == 192
+    now[0] += 40
+    assert state.elapsed == 192
+    loaded = SessionSnapshotStore.load(group.root.session.uid, config=group.root.session.config, settings=group.root.session.settings)
+    assert loaded.state.elapsed == 192
+
+
 async def test_subagent_defaults_seed_independent_approvals_and_survive_resume(group, monkeypatch):
     root = group.root.session
     root.config.providers["deepseek"] = ProviderConfig(url="http://test", key="test", model="base")

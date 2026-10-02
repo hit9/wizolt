@@ -220,10 +220,15 @@ class AgentsFrontend:
     async def select(self, loop: CommandLoop) -> None:
         entries = tuple(self.group.entries.values())
 
+        def elapsed(uid: str) -> str:
+            seconds = int(self.group.entry(uid).agent.session.state.elapsed)
+            minutes, seconds = divmod(seconds, 60)
+            return f"{minutes}m{seconds:02d}s" if minutes else f"{seconds}s"
+
         def label(uid: str) -> str:
             entry = self.group.entry(uid)
             return (
-                f"{entry.agent.session.agent_name} · {entry.status} · "
+                f"{entry.agent.session.agent_name} · {entry.status} · {elapsed(uid)} · "
                 f"ctx {entry.agent.session.usage.context_percent(entry.agent.session.state.context_percent)}%"
                 + (" (current)" if entry.agent is self.current.loop.agent else "")
             )
@@ -236,8 +241,9 @@ class AgentsFrontend:
             available = max(1, min(100, shutil.get_terminal_size((80, 24)).columns) - 8)
             wide = available >= 62
             status_width, marker_width = (17, 10) if wide else (11, 2)
+            clock_width = 9 if available >= 72 else 0
             longest = max(get_cwidth(item.agent.session.agent_name) for item in entries)
-            name_width = min(max(8, longest), 28, max(4, available - status_width - marker_width - 14))
+            name_width = min(max(8, longest), 28, max(4, available - status_width - marker_width - clock_width - 14))
 
             def cell(text: str, width: int) -> str:
                 text = Text.clip_width(text, width)
@@ -258,6 +264,7 @@ class AgentsFrontend:
                 *activity,
                 ("class:text", cell(session.agent_name, name_width)),
                 (state_style, "  " + cell(state, status_width)),
+                ("class:muted", cell("  " + elapsed(uid), clock_width) if clock_width else ""),
                 ("class:muted", f"  ctx {context:3d}%"),
                 ("class:accent", cell(marker, marker_width)),
             ]
@@ -270,7 +277,8 @@ class AgentsFrontend:
             opening = entry.instruction or next((str(message.get("content", "")) for message in session.messages if message.get("role") == "user"), "")
             active = self.runtimes[uid].loop.presentation.model_stream_text
             height = picker_height() - 6 - min(3, len(entries))
-            return AgentPreview(opening, active or entry.answer, bool(active), session.agent_name).fragments(shutil.get_terminal_size((80, 24)).columns, height)
+            caption = f"{session.agent_name} · {entry.status} · {elapsed(uid)}"
+            return AgentPreview(opening, active or entry.answer, bool(active), caption).fragments(shutil.get_terminal_size((80, 24)).columns, height)
 
         current = self.current.loop.session.uid
         while True:

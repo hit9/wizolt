@@ -7,6 +7,7 @@ import contextlib
 import inspect
 import json
 import re
+import time
 from collections.abc import Callable
 
 from wizolt.agent.context import ContextManager
@@ -168,6 +169,8 @@ class Agent:
         self._active_loop = asyncio.get_running_loop()
         self.session.state.last_turn_status = "running"
         self.session.state.last_turn_error = ""
+        self.session.state.turn_elapsed = 0.0
+        self.session.state.turn_started_at = time.monotonic()
         try:
             if self.session.subagents is not None:
                 self.session.subagents.changed(self.session.subagents.entry(self.session.uid))
@@ -188,6 +191,8 @@ class Agent:
             self.session.state.last_turn_error = str(error)
             raise
         finally:
+            self.session.state.turn_elapsed = self.session.state.elapsed
+            self.session.state.turn_started_at = 0.0
             try:
                 await self.session.save_snapshot()
             finally:

@@ -10,6 +10,8 @@
 
 ### Added
 
+- Show each agent's current or last turn duration in `/agents`, retaining it across resume.
+
 - Label child transcript notices with `subagent [name]` and main notices with `agent [main]`.
 
 - Configure new child defaults with `[subagent]` provider/model/reasoning/api settings, including
