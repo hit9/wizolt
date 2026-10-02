@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- Drain child frontend input before model-initiated archival takes the group lock, preventing
+  cancellation from deadlocking on an accepted between-turn submission. Reopen retained views
+  if archival fails or is cancelled.
+
 ### Documentation
 
 - Add macOS-style window chrome to terminal illustrations while leaving SVG figures unchanged.

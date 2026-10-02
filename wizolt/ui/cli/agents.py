@@ -6,6 +6,7 @@ import asyncio
 import json
 import shutil
 import time
+from contextlib import asynccontextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -163,6 +164,7 @@ class AgentsFrontend:
         self.group.on_created = self.attach
         self.group.on_changed = self.changed
         self.group.on_archived = self.close_runtime
+        self.group.archive_admission = self.archive_admission
         self.group.driver = self.drive
 
     async def attach(self, agent: Agent) -> None:
@@ -366,21 +368,27 @@ class AgentsFrontend:
     async def archive_after_command(self, uid: str, owner: asyncio.Task | None) -> None:
         if owner is not None:
             await asyncio.wait({owner})
-        drained: list[TuiRuntime] = []
         try:
-            # Drain frontend admission before the group takes its admission lock: a
-            # submission may itself be waiting inside group.send().
-            for key in self.group.branch(uid):
-                runtime = self.runtimes[key]
-                await runtime._close_submissions()
-                drained.append(runtime)
             await self.group.archive(uid)
         except Exception as error:  # noqa: BLE001 - a failed archive must not shut down the application.
+            self.root.loop.presentation.emit(f"Could not archive agent: {error}")
+
+    @asynccontextmanager
+    async def archive_admission(self, uids: set[str]):
+        """Quiesce frontend input before group admission, for UI and model archival alike."""
+        drained: list[TuiRuntime] = []
+        try:
+            for key in uids:
+                runtime = self.runtimes[key]
+                drained.append(runtime)
+                await runtime._close_submissions()
+            yield
+        finally:
+            # Failure or cancellation before disposal leaves the retained view usable.
             for runtime in drained:
                 if runtime.loop.session.uid in self.runtimes:
                     runtime.accepting = True
                     runtime.submissions_task = runtime.spawn(runtime._consume_submissions(), name="agent-submissions")
-            self.root.loop.presentation.emit(f"Could not archive agent: {error}")
 
     async def show_archive(self, loop: CommandLoop, uid: str) -> None:
         root = self.root.loop.session
@@ -405,11 +413,6 @@ class AgentsFrontend:
         # Recheck at disposal, not only when the user confirmed the archive.
         if self.current is runtime:
             self.switch_to(self.root)
-        # Model-initiated archival holds group admission while disposing frontends.
-        # A submission waiting on group.send cannot be drained under that same lock.
-        # Retirement discards queued work; cancel/join the consumer before closing it.
-        if runtime.submissions_task is not None:
-            runtime.submissions_task.cancel()
         await runtime._close_submissions()
         for task in tuple(runtime.tasks):
             task.cancel()

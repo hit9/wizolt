@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
+from contextlib import AbstractAsyncContextManager, AsyncExitStack
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
@@ -106,8 +107,10 @@ class Subagents:
         self.on_created: Callable[[Agent], Awaitable[None]] | None = None
         self.on_changed: Callable[[AgentEntry], None] | None = None
         self.on_archived: Callable[[str], Awaitable[None]] | None = None
+        self.archive_admission: Callable[[set[str]], AbstractAsyncContextManager[None]] | None = None
         self.closed = False
         self._admission_lock = asyncio.Lock()
+        self._archive_lock = asyncio.Lock()
 
     @property
     def limit(self) -> int:
@@ -398,52 +401,59 @@ class Subagents:
         """
         from wizolt.agent.lifecycle import close_agent_resources
 
-        async with self._admission_lock:
+        async with self._archive_lock, AsyncExitStack() as admission:
             if uid == self.root.session.uid:
                 raise ToolError("Cannot archive main")
-            if self.closed:
-                raise ToolError("Agent group is closed")
             uids = self.branch(uid)
             if expected is not None and uids != expected:
                 raise ToolError("Agent branch changed since approval; request archive again to approve the current targets")
-            entries = [self.entries[key] for key in uids]
-            tasks = {task for entry in entries for task in (entry.task, entry.agent._active_task) if task is not None}
-            if asyncio.current_task() in tasks:
-                raise ToolError("Archive must run outside the agent being archived")
-            for entry in entries:
-                if entry.task is not None or entry.agent._active_task is not None:
-                    self.stop(entry.agent.session.uid)
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
-            for entry in entries:
-                entry.agent.session.pending_user_inputs.clear()
-                await entry.agent.session.save_snapshot()
-            root = self.root.session
-            previous = root.subagent_entries
-            root.subagent_entries = [
-                {
-                    **item,
-                    "archived": "true",
-                    "name": self.entries[item["uid"]].agent.session.agent_name,
-                    "answer": self.entries[item["uid"]].answer[-3000:],
-                    "result": json.dumps(self.entries[item["uid"]].result, ensure_ascii=False) if self.entries[item["uid"]].result else "",
-                }
-                if item.get("uid") in uids
-                else item
-                for item in previous
-            ]
-            try:
-                await root.save_snapshot()
-            except BaseException:
-                root.subagent_entries = previous
-                raise
-            for entry in entries:
-                key = entry.agent.session.uid
-                if self.on_archived is not None:
-                    await self.on_archived(key)
-                await close_agent_resources(entry.agent, shared_mcp=True)
-                entry.agent.session.close()
-                del self.entries[key]
+            # A frontend consumer may be in send(), and a cancelled turn waits for that
+            # consumer's FIFO boundary. Drain it BEFORE acquiring group admission.
+            if self.archive_admission is not None:
+                await admission.enter_async_context(self.archive_admission(uids))
+            async with self._admission_lock:
+                if self.closed:
+                    raise ToolError("Agent group is closed")
+                if self.branch(uid) != uids:
+                    raise ToolError("Agent branch changed during archival; request archive again")
+                entries = [self.entries[key] for key in uids]
+                tasks = {task for entry in entries for task in (entry.task, entry.agent._active_task) if task is not None}
+                if asyncio.current_task() in tasks:
+                    raise ToolError("Archive must run outside the agent being archived")
+                for entry in entries:
+                    if entry.task is not None or entry.agent._active_task is not None:
+                        self.stop(entry.agent.session.uid)
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                for entry in entries:
+                    entry.agent.session.pending_user_inputs.clear()
+                    await entry.agent.session.save_snapshot()
+                root = self.root.session
+                previous = root.subagent_entries
+                root.subagent_entries = [
+                    {
+                        **item,
+                        "archived": "true",
+                        "name": self.entries[item["uid"]].agent.session.agent_name,
+                        "answer": self.entries[item["uid"]].answer[-3000:],
+                        "result": json.dumps(self.entries[item["uid"]].result, ensure_ascii=False) if self.entries[item["uid"]].result else "",
+                    }
+                    if item.get("uid") in uids
+                    else item
+                    for item in previous
+                ]
+                try:
+                    await root.save_snapshot()
+                except BaseException:
+                    root.subagent_entries = previous
+                    raise
+                for entry in entries:
+                    key = entry.agent.session.uid
+                    if self.on_archived is not None:
+                        await self.on_archived(key)
+                    await close_agent_resources(entry.agent, shared_mcp=True)
+                    entry.agent.session.close()
+                    del self.entries[key]
 
     async def close(self) -> None:
         """Stop admission, join engines and settle child snapshots before resources close.

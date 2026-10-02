@@ -105,6 +105,10 @@ Stopping a turn leaves its committed edits and background jobs available in the 
 Archiving is different: it joins a descendant branch, marks its root-manifest entries archived,
 and closes its frontend and engine resources. Logs and assets remain available to the picker's
 read-only viewer; archived entries neither consume slots nor attach engines on resume.
+Every archive entry point first drains frontend submissions outside the group's admission lock:
+a cancelled turn may need its consumer to commit a FIFO boundary, while that consumer needs
+admission to send between-turn input. The frontend admission context reopens retained views on
+failure; a separate archive lock serializes this preparation and retirement sequence.
 Application-session close stops owned jobs, joins promoted output threads, removes temporary
 logs and closes clients. Resume reconstructs services, restores each child without running it,
 and preserves its pinned provider/model/effort/API choices over the root's current configuration.

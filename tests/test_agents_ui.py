@@ -207,29 +207,39 @@ async def test_archive_rechecks_selected_view_after_confirmation(frontend):
     assert runtime.loop.session.uid not in frontend.runtimes
 
 
-async def test_model_archive_cancels_admission_waiting_on_group_lock(frontend, monkeypatch):
+async def test_model_archive_drains_admission_before_joining_cancelled_turn(frontend, monkeypatch):
     runtime = await child(frontend)
     frontend.current = runtime
-    saving, submitted, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
-    save, send = Session.save_snapshot, frontend.group.send
-
-    async def blocked_save(session):
-        if session is runtime.loop.session:
-            saving.set()
-            await release.wait()
-        return await save(session)
+    submitted, release, running, draining = (asyncio.Event() for _ in range(4))
+    send, close = frontend.group.send, TuiRuntime._close_submissions
 
     async def blocked_send(*args, **kwargs):
         submitted.set()
+        await release.wait()
         return await send(*args, **kwargs)
 
-    monkeypatch.setattr(Session, "save_snapshot", blocked_save)
+    async def request(client, messages, tools=None):
+        running.set()
+        await asyncio.Event().wait()
+
+    async def close_submissions(self):
+        if self is runtime:
+            draining.set()
+        await close(self)
+
+    monkeypatch.setattr(ModelClient, "request", request)
     monkeypatch.setattr(frontend.group, "send", blocked_send)
+    monkeypatch.setattr(TuiRuntime, "_close_submissions", close_submissions)
+    # Input starts admission while idle; another queued turn starts before send gets the lock.
+    runtime.submit_chat("accepted between turns")
+    await asyncio.wait_for(submitted.wait(), 3)
+    await send(runtime.loop.session.uid, "next turn")
+    await asyncio.wait_for(running.wait(), 3)
     tool = SubagentTool(frontend.root.loop.session, [{"action": "archive", "agent_id": runtime.loop.session.uid}])
     archive = asyncio.create_task(tool.call())
-    await asyncio.wait_for(saving.wait(), 3)
-    runtime.submit_chat("arrived during archival")
-    await asyncio.wait_for(submitted.wait(), 3)
+    await asyncio.wait_for(draining.wait(), 3)
+    assert not frontend.group._admission_lock.locked()
+    assert not runtime.accepting
     release.set()
     await asyncio.wait_for(archive, 3)
     assert frontend.current is frontend.root
