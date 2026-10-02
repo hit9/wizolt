@@ -177,6 +177,8 @@ def scheme(
 ) -> Palette:
     """Map a palette onto UI roles, lifting text contrast on its actual surfaces."""
     muted = lift(comment, fg, background, MUTED_CONTRAST)
+    provider, model = aqua, purple
+    success = "#98c78d" if appearance == "dark" else "#327244"
     # Tool arguments are colored like code: keys as properties, values as strings and numbers.
     code = {"assign": blue, "string": green, "number": purple, "ident": aqua, "builtin": yellow}
     palette = Palette(
@@ -191,7 +193,7 @@ def scheme(
             "user": orange,
             "tool": green,
             # Keep success green even when a theme uses cyan for tools. Custom colors can override it.
-            "success": "#98c78d" if appearance == "dark" else "#327244",
+            "success": success,
             "warning": yellow,
             "error": red,
             "rule": comment,
@@ -203,12 +205,24 @@ def scheme(
             # Code tokens in the scheme's foreground render as the terminal's default.
             "syntax_default": fg,
             "status_base": fg,
-            "status_provider": aqua,
-            "status_reason": purple,
+            "status_provider": provider,
+            "status_model": model,
+            "status_reason": yellow,
             "status_mcp": comment,
-            "status_context": blue,
+            "status_context": success,
+            "status_cache": blue,
             "status_yolo": red,
             "status_agent": orange,
+            # Mix raw accents with the theme's background, before text contrast is lifted.
+            # Lifted ink reused as a surface makes all segments pale; saturated accent fills
+            # overpower the theme. Only the model gets a stronger, still blended surface.
+            "status_provider_bg": blend(background, provider, 0.28),
+            "status_model_bg": blend(background, model, 0.5),
+            "status_reason_bg": blend(background, yellow, 0.35),
+            "status_context_bg": blend(background, success, 0.27),
+            "status_cache_bg": blend(background, blue, 0.21),
+            "status_agent_bg": blend(background, orange, 0.17),
+            "status_yolo_bg": blend(background, red, 0.27),
             "status_bg": status,
             "user_bg": blend(background, "#ffffff" if appearance == "dark" else "#000000", 0.04),
             "divider_glow": aqua,
@@ -240,8 +254,19 @@ def scheme(
     ):
         palette.colors[role] = lift(palette.colors[role], fg, background, 4.5)
     palette.colors["user"] = lift(palette.colors["user"], fg, palette.colors["user_bg"], 4.5)
-    for role in ("status_base", "status_provider", "status_reason", "status_mcp", "status_context", "status_yolo", "status_agent"):
-        palette.colors[role] = lift(lift(palette.colors[role], fg, status, MUTED_CONTRAST), fg, background, MUTED_CONTRAST)
+    for role in (
+        "status_base",
+        "status_provider",
+        "status_model",
+        "status_reason",
+        "status_mcp",
+        "status_context",
+        "status_cache",
+        "status_yolo",
+        "status_agent",
+    ):
+        edge = "#ffffff" if appearance == "dark" else "#000000"
+        palette.colors[role] = lift(lift(palette.colors[role], edge, status, MUTED_CONTRAST), edge, background, MUTED_CONTRAST)
     return palette
 
 

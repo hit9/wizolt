@@ -42,7 +42,7 @@ from wizolt.base import (
 )
 from wizolt.ui.bars import BarLayout, Value
 from wizolt.ui.themes import BUILTIN as NAMED_THEMES
-from wizolt.ui.themes import DIFF_STYLES, Palette, generated_pygments_style, lift, load_custom, normalize_color
+from wizolt.ui.themes import DIFF_STYLES, Palette, blend, contrast, generated_pygments_style, lift, load_custom, normalize_color
 from wizolt.utils import terminal
 
 if TYPE_CHECKING:
@@ -330,12 +330,21 @@ class Theme:
         "syntax_builtin": "#79c0ff",
         "syntax_default": "#e6edf3",
         "status_base": "#cbd5e1",
-        "status_provider": "#60a5fa",
-        "status_reason": "#a5b4fc",
-        "status_mcp": "#93c5fd",
-        "status_context": "#facc15",
-        "status_yolo": "#c084fc",
-        "status_agent": "#fbbf24",
+        "status_provider": "#67d4e8",
+        "status_model": "#d7b0ff",
+        "status_reason": "#f0c77f",
+        "status_mcp": "#93a4b7",
+        "status_context": "#8dd6a1",
+        "status_cache": "#80b8ef",
+        "status_yolo": "#ff8f9c",
+        "status_agent": "#e7ac80",
+        "status_provider_bg": "#2f4e58",
+        "status_model_bg": "#665378",
+        "status_reason_bg": "#615641",
+        "status_context_bg": "#3c5645",
+        "status_cache_bg": "#384a60",
+        "status_agent_bg": "#4b3f38",
+        "status_yolo_bg": "#603d47",
         "divider_glow": "#67e8f9",
         "divider_rule": "#4b5563",
         "divider_label": "ansimagenta",
@@ -367,12 +376,21 @@ class Theme:
         "syntax_builtin": "#005cc5",
         "syntax_default": "#24292e",
         "status_base": "#4b5563",
-        "status_provider": "#1d4ed8",
-        "status_reason": "#5b21b6",
-        "status_mcp": "#1e40af",
-        "status_context": "#a16207",
-        "status_yolo": "#7e22ce",
-        "status_agent": "#b45309",
+        "status_provider": "#006d77",
+        "status_model": "#7547a3",
+        "status_reason": "#855d12",
+        "status_mcp": "#596879",
+        "status_context": "#236d48",
+        "status_cache": "#285da6",
+        "status_yolo": "#b63f58",
+        "status_agent": "#a64b27",
+        "status_provider_bg": "#b7d2d6",
+        "status_model_bg": "#bca5d1",
+        "status_reason_bg": "#dcd1a6",
+        "status_context_bg": "#bcd2bf",
+        "status_cache_bg": "#c1cfe1",
+        "status_agent_bg": "#e0cfc4",
+        "status_yolo_bg": "#e2bec9",
         "divider_glow": "#0e7490",
         "divider_rule": "#9ca3af",
         "divider_label": "ansimagenta",
@@ -460,19 +478,41 @@ class Theme:
         # Solid segments use their own surface; a color readable on the transcript can disappear
         # on the popup grey or the badge. User highlight overrides still take precedence below.
         detail = colors["status_base"]
-        provider = colors["status_provider"]
-        context = colors["status_base"]
+        context = colors["status_context"]
         badge = colors["divider_label"]
         warning, error = colors["warning"], colors["error"]
         if palette.background:
             detail = lift(detail, detail, colors["menu_bg"], 5.5)
-            provider = lift(provider, detail, colors["status_bg"], 4.5)
             context = lift(context, detail, colors["status_bg"], 4.5)
             badge = lift(badge, detail, colors["menu_bg"], 4.5)
             # Pressure text needs to read on a band, while transcript warnings retain their hue.
             toward = "#000000" if palette.appearance == "light" else "#ffffff"
             warning = lift(warning, toward, colors["status_bg"], 4.5)
             error = lift(error, toward, colors["status_bg"], 4.5)
+
+        def solid(color: str, *, bold: bool = False) -> str:
+            # A foreground readable on the terminal can disappear on a colored segment.
+            # Prefer the theme's own ink; use black/white only when neither native ink reads.
+            ink = background
+            if color.startswith("#"):
+                candidates = [value for value in (colors["status_base"], background) if value.startswith("#")]
+                ink = max(candidates, key=lambda value: contrast(value, color))
+                if contrast(ink, color) < 4.5:
+                    ink = max(("#000000", "#ffffff"), key=lambda value: contrast(value, color))
+            return f"fg:{ink} bg:{color}" + (" bold" if bold else "")
+
+        def tinted(role: str) -> str:
+            base, accent = colors["status_bg"], colors[role]
+            surface = blend(base, accent, 0.2) if base.startswith("#") and accent.startswith("#") else base
+            # A tinted row carries all the semantic inks, including pressure and YOLO.
+            # Move the surface toward the appearance's edge until each remains readable.
+            toward = "#000000" if palette.appearance == "dark" else "#ffffff"
+            inks = [color for name, color in colors.items() if name.startswith("status_") and not name.endswith("_bg")]
+            for ink in (*inks, warning, error):
+                surface = lift(surface, toward, ink, 4.5)
+            ink = lift(colors["status_base"], colors["status_base"], surface, 5.5)
+            return f"fg:{ink} bg:{surface}"
+
         # Bars are live rows. Inline colors must not be overridden by transcript role classes.
         groups = {role: f"fg:{colors[role]}" for role in cls.ROLES}
         groups.update(
@@ -480,10 +520,17 @@ class Theme:
                 "status.warning": f"fg:{warning}",
                 "status.error": f"fg:{error}",
                 "status.context": f"fg:{context} bg:{colors['status_bg']}",
-                "status.provider": f"fg:{provider} bg:{colors['status_bg']}",
-                "status.model": f"fg:{background} bg:{colors['status_provider']} bold",
+                "status.agent": solid(colors["status_agent_bg"], bold=True),
+                "status.provider": solid(colors["status_provider_bg"]),
+                "status.model": solid(colors["status_model_bg"], bold=True),
+                "status.reason": solid(colors["status_reason_bg"]),
+                "status.yolo": solid(colors["status_yolo_bg"], bold=True),
                 "status.detail": f"fg:{detail} bg:{colors['menu_bg']}",
-                "status.usage": f"fg:{background} bg:{colors['status_context']}",
+                "status.cache": f"fg:{colors['status_cache']} bg:{colors['menu_bg']}",
+                "status.cache.segment": solid(colors["status_cache_bg"]),
+                "status.usage": solid(colors["status_context_bg"]),
+                "status.usage.warning": solid(warning, bold=True),
+                "status.usage.error": solid(error, bold=True),
                 # A status line's own band, which a preset lays the whole row on.
                 "status.band": f"fg:{colors['status_base']} bg:{colors['status_bg']}",
                 "divider.activity": f"fg:{background} bg:{colors['accent_secondary']} bold",
@@ -493,6 +540,11 @@ class Theme:
                 "spinner": f"fg:{colors['success']}",
             }
         )
+        # Only these two layouts need a derived row surface. Ordinary statusbar and divider
+        # refreshes must not compute contrast for unused tinted surfaces.
+        for group, role in (("status.split", "status_provider"), ("status.monitor", "status_context")):
+            if any(group in spec.split() for spec in specs):
+                groups[group] = tinted(role)
         groups.update(palette.highlights)
         detected = terminal.background()
         result = {"__background": "#" + "".join(f"{value:02x}" for value in detected) if detected else background}

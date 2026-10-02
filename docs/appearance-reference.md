@@ -71,16 +71,20 @@ A *role* names what a color is used for. Set only the roles you want to change:
 | Reading and navigation | `text`, `muted`, `subtle`, `accent`, `accent_secondary`, `info`, `rule` |
 | Messages and results | `user`, `user_bg`, `tool`, `success`, `warning`, `error` |
 | Code | `syntax_assign`, `syntax_string`, `syntax_number`, `syntax_ident`, `syntax_builtin`, `syntax_default` |
-| Statusbar fields | `status_base`, `status_provider`, `status_reason`, `status_mcp`, `status_context`, `status_yolo`, `status_agent` |
-| Statusbar background | `status_bg` — the band in `vim`, `split` and `monitor` |
+| Statusbar fields | `status_base`, `status_provider`, `status_model`, `status_reason`, `status_mcp`, `status_context`, `status_cache`, `status_yolo`, `status_agent` |
+| Statusbar segments | `status_provider_bg`, `status_model_bg`, `status_reason_bg`, `status_context_bg`, `status_cache_bg`, `status_yolo_bg`, `status_agent_bg` |
+| Statusbar background | `status_bg` — the band in `vim` and `lualine`, and the base tint in `split` and `monitor` |
 | Divider | `divider_glow`, `divider_rule`, `divider_label`; glow and rule require `#rrggbb` |
 | Menus | `selection_bg`, `selection_fg`, `menu_bg`, `menu_muted` |
 
 Your sent messages shade only their text rows. The input adds one shaded row above and below its text,
 and one unshaded row before the statusbar. A plain row also separates input from the divider.
 Panes shorter than 20 rows omit both shaded padding rows; the plain divider and statusbar gaps remain.
-Replies are separated by ordinary
-whitespace, with no extra divider beneath each sent message.
+Replies are separated by ordinary whitespace, with no extra divider beneath each sent message.
+
+Segment backgrounds are independent of text colors. For example, change `status_model_bg` to
+recolor a model block; its text uses the theme's foreground, falling back to black or white when
+needed for readability. Use a `[highlights]` override when you want to choose both colors yourself.
 
 Set `user_bg` in your custom theme's `[colors]` table to change the background: try
 `user_bg = "#34363c"` on a dark terminal or `user_bg = "#eeeeee"` on a light one.

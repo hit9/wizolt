@@ -136,7 +136,7 @@ def test_named_themes_footer_reads_on_its_band_and_off_it_and_the_divider_keeps_
         assert re.fullmatch(r"#[0-9a-f]{6}", colors["status_bg"]), name
         assert colors["divider_label"] == colors["accent"], name
         # A preset lays the footer on the band or leaves it on the background: both must read.
-        for role in ("status_base", "status_provider", "status_reason", "status_mcp", "status_context", "status_yolo", "status_agent"):
+        for role in ("status_base", "status_provider", "status_model", "status_reason", "status_mcp", "status_context", "status_cache", "status_yolo", "status_agent"):
             assert contrast(colors[role], colors["status_bg"]) >= MUTED_CONTRAST, (name, role)
             assert contrast(colors[role], palette.background) >= MUTED_CONTRAST, (name, role)
     # The terminal-following themes keep the label they always had.
@@ -151,15 +151,17 @@ def test_a_status_band_belongs_to_the_preset_not_the_theme(theme):
     Theme.set_mode(theme)
     values = dict.fromkeys(FIELDS, 0)
     values.update(model="m", provider="p", reasoning="high", **{"mcp.label": "mcp 0"})
-    band = "bg:" + Theme.color("status_bg")
-    for name, banded in (("default", False), ("powerline", False), ("vim", True), ("split", True), ("monitor", True)):
+    for name, banded in (("default", False), ("powerline", False), ("vim", True), ("split", True), ("monitor", True), ("lualine", True)):
         template = Template("preset:" + name, STATUS_PRESETS)
         parts = template.render(values, 80, Theme.bar_styles(template.styles))
         # The fill across the row carries the band in a banded preset, and nothing in the others.
-        fill = max(parts, key=lambda part: len(part[1]) if not part[1].strip() else 0)
-        assert (band in fill[0]) == banded and ("bg:" in fill[0]) == banded, name
         if banded:
-            assert all(band in style for style, _ in parts), name
+            fill = max(parts, key=lambda part: len(part[1]) if not part[1].strip() else 0)
+            assert "bg:" in fill[0], name
+        elif name == "default":
+            assert all("bg:" not in spec for spec, _ in parts)
+        else:
+            assert any(not spec and text.isspace() for spec, text in parts)
 
 
 def test_powerline_joins_fade_into_the_status_band(tmp_path):
@@ -1056,7 +1058,7 @@ def test_agent_counts_follow_independent_bar_theme_and_segment_colors(preset, th
     count_style = next(style for style, value in parts if "agents " in value)
     attrs = Style.from_dict({"count": count_style}).get_attrs_for_style_str("class:count")
     if preset in {"blocks", "lualine", "powerline"}:
-        band = Style.from_dict({"band": styles["status.provider"]}).get_attrs_for_style_str("class:band")
+        band = Style.from_dict({"band": styles["status.detail" if preset in {"lualine", "powerline"} else "status.provider"]}).get_attrs_for_style_str("class:band")
         assert (attrs.color, attrs.bgcolor) == (band.color, band.bgcolor)
     else:
         assert attrs.color == Theme.bar_palette("statusbar").colors["status_agent"].lstrip("#")
@@ -1070,6 +1072,22 @@ def test_agent_counts_follow_custom_status_color_override(tmp_path):
     template = Template("preset:default", STATUS_PRESETS)
     parts = template.render({"agents.count": 2, "agents.running": 1, "model": "model", "context.percent": 10}, 200, Theme.bar_styles(template.styles))
     assert "#123abc" in next(style for style, value in parts if "agents " in value)
+
+
+@pytest.mark.parametrize("preset", ["default", "blocks", "powerline", "lualine"])
+def test_model_ink_and_segment_background_can_be_configured_independently(tmp_path, preset):
+    write_theme(tmp_path, "segments", 'base = "gruvbox-dark"\n[colors]\nstatus_model = "#c8a1e0"\nstatus_model_bg = "#334455"\n')
+    Theme.load_custom(str(tmp_path))
+    Theme.set_bar_theme("statusbar", "segments")
+    template = Template("preset:" + preset, STATUS_PRESETS)
+    parts = template.render({"model": "model", "provider": "test", "context.percent": 10}, 160, Theme.bar_styles(template.styles))
+    spec = next(style for style, value in parts if value.strip() == "model")
+    attrs = Style([]).get_attrs_for_style_str(spec)
+    if preset == "default":
+        assert attrs.color == "c8a1e0" and not attrs.bgcolor
+    else:
+        assert attrs.bgcolor == "334455"
+        assert contrast("#" + attrs.color, "#" + attrs.bgcolor) >= 4.5
 
 
 def test_reloading_or_removing_custom_component_theme(tmp_path):

@@ -79,6 +79,12 @@
 
 ### Changed
 
+- Refresh statusbar colors with restrained theme-derived surfaces. Preserve `default`'s original
+  plain, left-aligned layout; give `powerline` and `lualine` separate arrow-linked identity, model,
+  provider, effort, YOLO and group-count segments. Prioritize left-hand identity over right-hand
+  metrics on narrow rows, and join `blocks` without gaps. Separate segment backgrounds from
+  readable text colors, choose contrasting segment text, and refresh all ten layout illustrations.
+
 - Clean up test import ordering, unused bindings and redundant returns so `ruff check tests` passes;
   include tests in the local lint target and contributor quality checks.
 

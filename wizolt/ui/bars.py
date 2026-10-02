@@ -175,83 +175,116 @@ def pressure(body: str, normal: str = "status_context", warning: str = "status.w
     )
 
 
+def segment(body: str, style: str, *, priority: int = 0, when: str = "", right: bool = False) -> str:
+    """One complete segment, including its join, disappears as a unit on a narrow row."""
+    chip = f"[{style}] {body} [/]"
+    source = "{join:}" + chip if right else chip + "{join:}"
+    if priority:
+        source = f"{{% optional priority={priority} %}}{source}{{% endoptional %}}"
+    return f"{{% if {when} %}}{source}{{% endif %}}" if when else source
+
+
 AGENT_GROUP = (
-    "{% if agents.count > 1 %}{% optional priority=25 %}[status_agent][[agents {agents.count} · run {agents.running}"
-    "{% if agents.waiting %} · wait {agents.waiting}{% endif %}]] [/]{% endoptional %}{% endif %}"
+    "{% if agents.count > 1 %}{% optional priority=15 %}[status_agent]agents {agents.count} · run {agents.running}"
+    "{% if agents.waiting %} · wait {agents.waiting}{% endif %}[/][status_mcp] │ [/]{% endoptional %}{% endif %}"
 )
-IDENTITY = "{% if agent.name %}[status_agent bold][[{agent.name}]] [/]{% endif %}{% if yolo %}[status_yolo][[yolo]] [/]{% endif %}" + AGENT_GROUP
+IDENTITY = (
+    "{% if agent.name %}[status_agent bold]{agent.name}[/][status_mcp] / [/]{% endif %}"
+    "{% if yolo %}[status_yolo bold]yolo[/][status_mcp] · [/]{% endif %}" + AGENT_GROUP
+)
 # A segmented preset uses its own surface and separators, including identity and group counts.
 # Inline badges would read as unrelated widgets inside the continuous provider band.
 SEGMENT_IDENTITY = (
-    "{% if agent.name %}[bold]{agent.name}[/] · {% endif %}{% if yolo %}[bold]yolo[/] · {% endif %}"
-    "{% if agents.count > 1 %}{% optional priority=25 %}agents {agents.count} · run {agents.running}"
+    "{% if agent.name %}[bold]{agent.name}[/] · {% endif %}{% if yolo %}{% optional priority=40 %}[bold]yolo[/] · {% endoptional %}{% endif %}"
+    "{% if agents.count > 1 %}{% optional priority=15 %}agents {agents.count} · run {agents.running}"
     "{% if agents.waiting %} · wait {agents.waiting}{% endif %} · {% endoptional %}{% endif %}"
 )
-PROVIDER_MODEL = "[status_provider]{provider}/[/][status_base bold]{model}[/]"
-SEGMENT_USAGE = pressure(" ctx {context.percent}% ", "status.context", "status.usage bg=warning", "status.usage bg=error")
+SEGMENT_USAGE = pressure(" ctx {context.percent}% ", "status.usage", "status.usage.warning", "status.usage.error")
+SEGMENT_DETAILS = (
+    segment("{provider}", "status.provider", priority=35)
+    + segment("{reasoning}", "status.reason", priority=20, when="reasoning")
+    + segment("yolo", "status.yolo", priority=40, when="yolo")
+    + segment(
+        "agents {agents.count} · run {agents.running}{% if agents.waiting %} · wait {agents.waiting}{% endif %}",
+        "status.detail",
+        priority=15,
+        when="agents.count > 1",
+    )
+)
+RIGHT_USAGE = "{% optional priority=30 %}{join:}" + SEGMENT_USAGE + "{% endoptional %}"
+# Presets own geometry, not colors. Semantic ink is shared by the transparent layouts;
+# solid segments resolve the same roles against their own surface through Theme.bar_styles.
+# Optional groups keep their separators inside, so shrinking never leaves empty segments.
 STATUS_PRESETS = {
-    "default": IDENTITY
-    + PROVIDER_MODEL
+    # Default keeps its plain, left-aligned text contract. Only semantic inks change here.
+    "default": "{% if agent.name %}[status_agent bold][[{agent.name}]] [/]{% endif %}{% if yolo %}[status_yolo][[yolo]] [/]{% endif %}"
+    + "{% if agents.count > 1 %}{% optional priority=25 %}[status_agent][[agents {agents.count} · run {agents.running}"
+    + "{% if agents.waiting %} · wait {agents.waiting}{% endif %}]] [/]{% endoptional %}{% endif %}"
+    + "[status_provider]{provider}/[/][status_model bold]{model}[/]"
     + "{% optional priority=20 %}[subtle] · [/][status_reason]{reasoning}[/]{% endoptional %}"
     + "{% optional priority=5 %}[subtle] | [/][status_mcp]{mcp.label} · skills {skills.count}[/]{% endoptional %}"
     + "[subtle] | [/]"
-    + pressure("ctx {context.percent}%", "status_base")
-    + "{% optional priority=10 %}[status_mcp] · cache {cache.percent}%[/]{% endoptional %}",
-    "minimal": IDENTITY + "[status_base bold]{model}[/] " + pressure(meter(5) + " {context.percent}%", "status_mcp"),
-    "split": "[status.band] "
+    + pressure("ctx {context.percent}%")
+    + "{% optional priority=10 %}[status_cache] · cache {cache.percent}%[/]{% endoptional %}",
+    "minimal": IDENTITY + "[status_base bold]{model}[/] " + pressure(meter(5) + " {context.percent}%"),
+    "split": "[status.split] [status_provider]▎ [/]"
     + IDENTITY
-    + PROVIDER_MODEL
-    + "{% optional priority=20 %}[subtle] · [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
-    + "{% optional priority=5 %}[status_mcp]{mcp.label} · skills {skills.count}[/][subtle] │ [/]{% endoptional %}"
-    + pressure("ctx " + meter(10) + " {context.percent}%", "status_base")
-    + "{% optional priority=10 %}[status_mcp] · cache {cache.percent}%[/]{% endoptional %} [reset]",
+    + "{% optional priority=35 %}[status_provider]{provider}/[/]{% endoptional %}[status_model bold]{model}[/]"
+    + "{% optional priority=20 %}[status_mcp] · [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
+    + "{% optional priority=30 %}"
+    + pressure("{% optional priority=12 %}" + meter(8) + " {% endoptional %}ctx {context.percent}%")
+    + "{% endoptional %}"
+    + "{% optional priority=10 %}[status_mcp] │ [/][status_cache]cache {cache.percent}%[/]{% endoptional %} [reset]",
     "compact": IDENTITY
-    + "{% optional priority=10 %}[status_provider]{provider}/[/]{% endoptional %}[status_base bold]{model}[/]"
-    + "{% optional priority=20 %}[subtle] › [/][status_reason]{reasoning}[/]{% endoptional %}[subtle] › [/]"
-    + pressure("{context.percent}%", "status_base"),
+    + "{% optional priority=10 %}[status_provider]{provider} [/]{% endoptional %}[status.model] {model} [/]"
+    + "{% optional priority=20 %}[status_mcp] › [/][status_reason]{reasoning}[/]{% endoptional %}[status_mcp] › [/]"
+    + pressure("{context.percent}%"),
     "brackets": IDENTITY
-    + "[subtle][[[/]"
-    + PROVIDER_MODEL
-    + "[subtle]]][/] "
-    + "{% optional priority=20 %}[subtle][[[/][status_reason]{reasoning}[/][subtle]]][/] {% endoptional %}"
-    + "[subtle][[[/]"
-    + pressure("ctx {context.percent}%", "status_base")
-    + "[subtle]]][/]"
-    + "{% optional priority=10 %}[status_mcp] [[cache {cache.percent}%]][/]{% endoptional %}",
-    "monitor": "[status.band] "
+    + "[status_provider][[{provider}[/][status_mcp]/[/][status_model bold]{model}]][/] "
+    + "{% optional priority=20 %}[status_reason][[{reasoning}]][/] {% endoptional %}"
+    + pressure("[[ctx {context.percent}%]]")
+    + "{% optional priority=10 %}[status_cache] [[cache {cache.percent}%]][/]{% endoptional %}",
+    "monitor": "[status.monitor] [status_context]◆ [/]"
     + IDENTITY
-    + PROVIDER_MODEL
-    + "{% optional priority=20 %}[status_mcp]  effort [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
-    + "{% optional priority=5 %}[status_mcp]{mcp.label} · skills {skills.count}[/]  {% endoptional %}"
-    + pressure("ctx {context.percent}%", "status_base")
-    + "{% optional priority=10 %}[status_mcp]  cache {cache.percent}%[/]{% endoptional %} [reset]",
+    + "{% optional priority=35 %}[status_provider]{provider}/[/]{% endoptional %}[status_model bold]{model}[/]"
+    + "{% optional priority=20 %}[status_mcp]  [/][status.reason] {reasoning} [/]{% endoptional %}{>}"
+    + "{% optional priority=5 %}[status_mcp]{mcp.label} · skills {skills.count} │ [/]{% endoptional %}"
+    + "{% optional priority=30 %}"
+    + pressure("ctx {context.percent}%{% optional priority=12 %} " + meter(6) + "{% endoptional %}")
+    + "{% endoptional %}"
+    + "{% optional priority=10 %} [status.cache] cache {cache.percent}% [/]{% endoptional %} [reset]",
     "blocks": "[status.provider] "
     + SEGMENT_IDENTITY
-    + "{provider} [reset] [status.model] {model} [reset]"
-    + "{% optional priority=20 %} [status.detail] {reasoning} [reset]{% endoptional %}{>}"
-    + "{% optional priority=10 %}[status.detail] cache {cache.percent}% [reset] {% endoptional %}"
-    + SEGMENT_USAGE,
-    "vim": "[status.band] "
-    + IDENTITY
-    + PROVIDER_MODEL
-    + "{% optional priority=20 %} [status_reason][[{reasoning}]][/]{% endoptional %}{>}"
-    + "{% optional priority=5 %}[status_mcp]{mcp.label}[/][subtle] · [/]{% endoptional %}"
-    + pressure("ctx {context.percent}%", "status_base")
-    + " [reset]",
-    "lualine": "[status.provider] "
-    + SEGMENT_IDENTITY
-    + "{provider} {join:}[status.model] {model} {join:}[reset]"
-    + "{% optional priority=20 %} [status_reason]{reasoning}[/]{% endoptional %}{>}"
-    + "{% optional priority=5 %}[status_mcp]{mcp.label} · skills {skills.count}[/] {% endoptional %}"
-    + "{% optional priority=10 %}{join:}[status.detail] cache {cache.percent}% [/]{% endoptional %}"
-    + "{join:}"
+    + "{% optional priority=35 %}{provider}{% endoptional %} [reset][status.model] {model} [reset]"
+    + "{% optional priority=20 %}[status.reason] {reasoning} [reset]{% endoptional %}{>}"
+    + "{% optional priority=10 %}[status.cache] cache {cache.percent}% [reset]{% endoptional %}"
+    + "{% optional priority=30 %}"
     + SEGMENT_USAGE
+    + "{% endoptional %}",
+    "vim": "[status.band]{% if agent.name %}[status.agent] {agent.name} [/]{% endif %} "
+    + "{% if yolo %}[status_yolo bold]yolo[/] · {% endif %}"
+    + AGENT_GROUP
+    + "{% optional priority=35 %}[status_provider]{provider}[/][status_mcp] / [/]{% endoptional %}[status_base bold]{model}[/]"
+    + "{% optional priority=20 %} [status_reason underline]{reasoning}[/]{% endoptional %}{>}"
+    + "{% optional priority=5 %}[status_mcp]{mcp.label} │ [/]{% endoptional %}"
+    + "{% optional priority=30 %}"
+    + SEGMENT_USAGE
+    + "{% endoptional %}"
     + "[reset]",
-    "powerline": "[status.provider] "
-    + SEGMENT_IDENTITY
-    + "{provider} {join:}[status.model] {model} {join:}[reset]"
-    + "{% optional priority=20 %} [status_reason]{reasoning}[/]{% endoptional %}{>}{join:}"
-    + SEGMENT_USAGE
+    "lualine": "[status.band]"
+    + segment("{agent.name}", "status.agent", when="agent.name")
+    + segment("{model}", "status.model")
+    + SEGMENT_DETAILS
+    + "{>}"
+    + segment("{mcp.label} · skills {skills.count}", "status.detail", priority=5, right=True)
+    + segment("cache {cache.percent}%", "status.cache.segment", priority=10, right=True)
+    + RIGHT_USAGE
+    + "[reset]",
+    "powerline": segment("{agent.name}", "status.detail bold", when="agent.name")
+    + segment("{model}", "status.model")
+    + SEGMENT_DETAILS
+    + "{>}"
+    + RIGHT_USAGE
     + "[reset]",
 }
 

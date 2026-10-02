@@ -32,7 +32,7 @@ from wizolt.agent.engine import Agent
 from wizolt.base import LogBlock, LogEdge, LogLine, LogRole
 from wizolt.config import Config
 from wizolt.session import QueuedInput, Session
-from wizolt.ui.bars import BarLayout
+from wizolt.ui.bars import STATUS_PRESETS, BarLayout
 from wizolt.ui.cli.appearance import DIFF_STYLE_SAMPLE, AppearancePicker
 from wizolt.ui.cli.loop import CommandLoop
 from wizolt.ui.render import MessageBlock, Theme, UiPrinter
@@ -64,6 +64,20 @@ TERMINAL_THEME = TerminalTheme(
 )
 
 
+def powerline_paths(svg: str) -> str:
+    """Draw joins as cell-sized paths; exported samples must not need a Nerd Font."""
+
+    def shape(match):
+        attrs, glyph = match.groups()
+        x = float(re.search(r'x="([\d.]+)"', attrs)[1])
+        y = float(re.search(r'y="([\d.]+)"', attrs)[1]) - 18.5
+        css_class = re.search(r'class="([^"]+)"', attrs)[1]
+        points = "M0 0 L12.2 12.2 L0 24.4 Z" if glyph == "" else "M12.2 0 L0 12.2 L12.2 24.4 Z"
+        return f'<path class="{css_class}" transform="translate({x:g},{y:g})" d="{points}"/>'
+
+    return re.sub(r"<text ([^>]+)>(|)</text>", shape, svg)
+
+
 def example(name: str) -> dict:
     """Read a marked TOML example, so its picture cannot quietly diverge from its instructions."""
     source = (DOCS / "appearance-reference.md").read_text(encoding="utf-8")
@@ -92,7 +106,7 @@ class Illustrations:
             rate="42 tok/s",
             spinner="● ",
             label="working (12s · 42 tok/s)",
-            **{"context.percent": 37, "cache.percent": 88, "mcp.count": 2, "mcp.label": "2", "skills.count": 3, "queue.total": 0},
+            **{"context.percent": 37, "cache.percent": 88, "mcp.count": 2, "mcp.label": "mcp 2", "skills.count": 3, "queue.total": 0},
         )
 
     def styled(self, fragments, width: int = WIDTH) -> Text:
@@ -129,7 +143,8 @@ class Illustrations:
             console.print(row, soft_wrap=True)
         # Stable identifiers make a second run byte-identical, rather than churning SVG ids.
         options = {} if name in {"appearance-picker", "appearance-input", "appearance-input-editor"} else {"code_format": SAMPLE_SVG}
-        console.save_svg(str(self.output / f"{name}.svg"), title="wizolt", theme=TERMINAL_THEME, unique_id=name, **options)
+        svg = console.export_svg(title="wizolt", theme=TERMINAL_THEME, unique_id=name, **options)
+        (self.output / f"{name}.svg").write_text(powerline_paths(svg), encoding="utf-8")
 
     def appearance_picker(self) -> None:
         picker = AppearancePicker(self.loop, NOW - 12)
@@ -162,9 +177,9 @@ class Illustrations:
 
     def appearance_statusbars(self) -> None:
         rows = []
-        for name in ("default", "minimal", "split", "blocks", "vim"):
-            rows.extend([self.label(name), self.bar({"statusbar": {"format": "preset:" + name}}), Text("")])
-        self.save("appearance-statusbars", rows[:-1])
+        for name in STATUS_PRESETS:
+            rows.extend([self.label(name), self.bar({"statusbar": {"format": "preset:" + name}}, width=100), Text("")])
+        self.save("appearance-statusbars", rows[:-1], width=100)
 
     def appearance_dividers(self) -> None:
         rows = []

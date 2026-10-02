@@ -103,7 +103,7 @@ with the time spent so far beside it, and an estimated output speed while text i
 `responding (12s · ↓ 48 tok/s)`. The `↓` marks the speed as the model's incoming stream; it is
 still an estimate, and it disappears between requests and on providers that do not stream.
 
-<div class="term-shot" role="img" aria-label="The main agent statusbar: selected agent, yolo, model, reasoning, connected services and independent context and cache usage."><span><span class="fs-i sb-agent">[main] </span><span class="fs-i sb-yolo">[yolo] </span><span class="fs-i sb-provider">dashscope/</span><span class="fs-i sb-base"><b>qwen3.7-plus</b></span><span class="fs-i sb-sep"> · </span><span class="fs-i sb-reason">high</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-mcp">mcp 2 · skills 3</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-base">ctx 23%</span><span class="fs-i sb-mcp"> · cache 98%</span></span></div>
+<div class="term-shot" role="img" aria-label="The main agent statusbar: selected agent, yolo, model, reasoning, connected services and independent context and cache usage."><span><span class="fs-i sb-agent">[main] </span><span class="fs-i sb-yolo">[yolo] </span><span class="fs-i sb-provider">dashscope/</span><span class="fs-i sb-model"><b>qwen3.7-plus</b></span><span class="fs-i sb-sep"> · </span><span class="fs-i sb-reason">high</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-mcp">mcp 2 · skills 3</span><span class="fs-i sb-sep"> | </span><span class="fs-i sb-ctx">ctx 23%</span><span class="fs-i sb-cache"> · cache 98%</span></span></div>
 
 ## Quick hints
 

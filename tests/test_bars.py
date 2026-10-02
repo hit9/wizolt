@@ -244,10 +244,10 @@ def test_all_status_presets_show_group_counts_only_when_children_exist(name):
     values.update(**{"agents.count": 4, "agents.running": 2, "agents.waiting": 1})
     rendered = text(template.render(values, 200, styles))
     assert "main" in rendered and "agents 4 · run 2 · wait 1" in rendered
-    if name in {"blocks", "lualine", "powerline"}:
-        assert "[main]" not in rendered and "[agents" not in rendered
-    else:
+    if name == "default":
         assert "[main]" in rendered and "[agents 4 · run 2 · wait 1]" in rendered
+    else:
+        assert "[main]" not in rendered and "[agents" not in rendered
     for width in (0, 1, 15, 30, 60, 100):
         assert get_cwidth(text(template.render(values, width, styles))) <= width
     values["agents.waiting"] = 0
@@ -269,17 +269,19 @@ def test_single_sided_status_presets_do_not_spread_across_the_terminal(name):
     assert text(template.render(values, 200, styles)) == text(template.render(values, 300, styles))
 
 
-@pytest.mark.parametrize("name", ["vim", "lualine"])
-def test_vim_style_presets_keep_context_at_the_right_on_narrow_terminals(name):
+@pytest.mark.parametrize("name", ["split", "monitor", "blocks", "vim", "lualine", "powerline"])
+def test_segmented_presets_keep_left_identity_before_right_metrics_on_narrow_terminals(name):
     from wizolt.ui.render import Theme
 
     template = Template("preset:" + name, STATUS_PRESETS)
     values = dict.fromkeys(FIELDS, 0)
-    values.update(model="a-long-model-name", provider="test", reasoning="high", **{"context.percent": 42, "mcp.label": "mcp 3"})
-    for width in (20, 40, 80, 160):
+    values.update(model="model", provider="test", reasoning="high", **{"agent.name": "main", "context.percent": 42, "mcp.label": "mcp 3"})
+    for width in (20, 30, 40, 80, 160):
         rendered = text(template.render(values, width, Theme.bar_styles(template.styles)))
         assert get_cwidth(rendered) == width
-        assert rendered.endswith("ctx 42% ")
+        assert "main" in rendered and "model" in rendered
+        if width >= 80:
+            assert "ctx 42%" in rendered
 
 
 @pytest.mark.parametrize("agent", ("main", "reviewer"))
@@ -292,9 +294,9 @@ def test_lualine_shows_provider_model_and_effort_with_distinct_styles(agent):
     parts = template.render(values, 160, Theme.bar_styles(template.styles))
     rendered = text(parts)
     assert "CHAT" not in rendered
-    assert f"{agent} · yolo · zai" in rendered
+    assert agent in rendered and "yolo" in rendered
     assert "[yolo]" not in rendered and f"[{agent}]" not in rendered
-    assert rendered.index("zai") < rendered.index("glm-5.3") < rendered.index("high")
+    assert rendered.index(agent) < rendered.index("glm-5.3") < rendered.index("zai") < rendered.index("high")
     styles = [next(style for style, value in parts if label in value) for label in ("zai", "glm-5.3", "high")]
     assert len(set(styles)) == 3
 
@@ -305,6 +307,43 @@ def test_context_meter_fills_to_the_nearest_cell():
     for percent, filled in ((0, 0), (9, 0), (10, 1), (37, 2), (89, 4), (90, 5), (100, 5)):
         rendered = text(template.render({"model": "m", "context.percent": percent}, 80, styles))
         assert rendered == "m " + "▰" * filled + "▱" * (5 - filled) + f" {percent}%"
+
+
+def test_blocks_join_rectangles_without_unpainted_gaps():
+    from wizolt.ui.render import Theme
+
+    template = Template("preset:blocks", STATUS_PRESETS)
+    values = {"agent.name": "main", "model": "model", "provider": "test", "reasoning": "high", "context.percent": 37, "cache.percent": 88}
+    parts = template.render(values, 120, Theme.bar_styles(template.styles))
+    # Only the alignment space between left and right groups is transparent.
+    gaps = [(style, value) for style, value in parts if value.isspace() and "bg:" not in style]
+    assert len(gaps) == 1 and len(gaps[0][1]) > 1
+
+
+@pytest.mark.parametrize("name", ["powerline", "lualine"])
+def test_arrow_presets_give_identity_settings_and_group_counts_separate_segments(name):
+    from prompt_toolkit.styles import Style
+
+    from wizolt.ui.render import Theme
+
+    template = Template("preset:" + name, STATUS_PRESETS)
+    values = {
+        "agent.name": "reviewer", "model": "glm-5.3", "provider": "zai", "reasoning": "high", "yolo": True,
+        "agents.count": 3, "agents.running": 2, "agents.waiting": 1, "context.percent": 37,
+        "cache.percent": 88, "mcp.label": "mcp 2", "skills.count": 3,
+    }
+    parts = template.render(values, 240, Theme.bar_styles(template.styles))
+    rendered = text(parts)
+    labels = ("reviewer", "glm-5.3", "zai", "high", "yolo", "agents 3")
+    for before, after in pairwise(labels):
+        assert "" in rendered[rendered.index(before) + len(before):rendered.index(after)]
+    style = Style([])
+    backgrounds = [style.get_attrs_for_style_str(next(spec for spec, label in parts if word in label)).bgcolor for word in labels[:-1]]
+    assert all(backgrounds) and all(left != right for left, right in pairwise(backgrounds))
+    for width in (24, 28, 40):
+        narrow = text(template.render(values, width, Theme.bar_styles(template.styles)))
+        assert "reviewer" in narrow and "glm-5.3" in narrow
+        assert "" not in narrow and get_cwidth(narrow) <= width
 
 
 @pytest.mark.parametrize("name", ["minimal", "split", "compact", "brackets", "monitor", "blocks", "vim"])

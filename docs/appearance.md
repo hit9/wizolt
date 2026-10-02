@@ -82,18 +82,24 @@ or a fuller one for tools, context and cache usage. Choose **Layout** and **Colo
 separately; **Space** chooses the highlighted value and **Tab** jumps between groups.
 
 ```{figure} _static/appearance-statusbars.svg
-:alt: Five statusbar layouts: default, minimal, split, blocks and vim, showing the same model and usage.
+:alt: All ten statusbar layouts, showing the same agent, model and usage with different grouping and color segments.
 
-The same session, five layouts.
+The same session, ten layouts.
 ```
 
-`default` stays transparent. `vim`, `split` and `monitor` have a background band.
-`powerline` and `lualine` use arrow-shaped color segments and need a Nerd Font.
-`lualine` and `powerline` show the provider on a subdued band, the model on a stronger accent
-band, and reasoning effort beside them. `blocks` uses separate rectangular bands.
-`minimal` shows only the model and context usage. Other layouts include the provider too;
-`compact` drops it when space is tight. Optional details disappear before reasoning effort.
-Context usage turns yellow at 70% and red at 90%. Every preset shows the selected agent's name; YOLO appears when enabled.
+`default` keeps its plain, transparent text and familiar information order, all on the left.
+`powerline` connects separate agent, model, provider, effort, YOLO and
+group-count segments with arrows, leaving the middle transparent. `lualine` adds a full background
+band and right-hand tool/cache segments. Both arrow layouts need a Nerd Font.
+
+For other shapes, try `blocks` for adjoining rectangles, `vim` for a colored agent tab, `split`
+for a context meter across a tinted row, or `monitor` for a fuller dashboard. `brackets` uses
+colored outlines; `compact` highlights the model; `minimal` pairs it with a small meter.
+The colors follow your chosen theme, with separate text and segment colors.
+
+Every preset names the selected agent and shows YOLO when enabled. Narrow rows drop optional
+details; segmented layouts keep the agent and model ahead of right-hand metrics.
+Context usage turns yellow at 70% and red at 90%.
 
 The **Divider** tab changes the line above your input. Choose a **Layout**, **Sweep** for
 its animation, and **Colorscheme** for its colors. **Space** chooses the highlighted value;

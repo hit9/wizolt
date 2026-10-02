@@ -53,6 +53,7 @@ def test_status_bar_has_fixed_order_and_no_working_only_fields(tmp_path):
     text = status_text(StatusBar(s))
 
     assert text == f"[main] [yolo] default/model · high | mcp 0 · skills {len(s.skills.skills)} | ctx 23% · cache 0%"
+    assert all("bg:" not in style for style, _ in StatusBar(s).fragments())
     assert all(word not in text for word in ("worker", "compaction", "jobs", "update", "step", "retry", "attempt"))
 
 
@@ -65,12 +66,11 @@ def test_status_bar_keeps_semantic_colors(tmp_path):
     by_text = {label: next(style for style, text in fragments if label in text) for label in labels}
 
     assert by_text["[yolo] "] == Theme.inline("status_yolo")
-    assert by_text["[yolo] "] != Theme.inline("status_base")
     assert by_text["default/"] == Theme.inline("status_provider")
-    assert by_text["model"] == Theme.inline("status_base") + " bold"
+    assert by_text["model"] == Theme.inline("status_model") + " bold"
     assert by_text[s.config.provider.reasoning] == Theme.inline("status_reason")
     assert by_text["mcp 0"] == Theme.inline("status_mcp")
-    assert by_text["ctx 0%"] == Theme.inline("status_base")
+    assert by_text["ctx 0%"] == Theme.inline("status_context")
 
 
 def test_status_bar_clips_wide_model_name_by_display_width(tmp_path, monkeypatch):
@@ -99,7 +99,7 @@ def test_status_bar_clip_keeps_role_colors(tmp_path, monkeypatch):
     styles = {style for style, text in fragments if text.strip()}
     assert len(styles) > 1
     assert Theme.inline("status_provider") in styles
-    assert Theme.inline("status_base") + " bold" in styles
+    assert Theme.inline("status_model") + " bold" in styles
     assert "ctx 0%" in "".join(text for _, text in fragments)
     assert Theme.inline("status_reason") not in styles  # context survives after optional effort is dropped
     assert get_cwidth("".join(text for _, text in fragments)) < 38

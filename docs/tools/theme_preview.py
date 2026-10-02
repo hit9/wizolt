@@ -9,7 +9,6 @@ import argparse
 import io
 import json
 import os
-import re
 import sys
 import tempfile
 from pathlib import Path
@@ -18,7 +17,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from render import NOW, TERMINAL_THEME, WIDTH, Illustrations
+from render import NOW, TERMINAL_THEME, WIDTH, Illustrations, powerline_paths
 from rich.color import Color
 from rich.console import Console
 from rich.terminal_theme import TerminalTheme
@@ -54,19 +53,7 @@ def html_text(text: Text, terminal: TerminalTheme) -> str:
     template = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {terminal_width} {terminal_height}">
 <style>{styles}\n.{unique_id}-matrix {{font-family:monospace;font-size:{char_height}px;line-height:{line_height}px}}</style>
 <defs>{lines}</defs>{backgrounds}<g class="{unique_id}-matrix">{matrix}</g></svg>"""
-    svg = console.export_svg(code_format=template, theme=terminal)
-
-    def join_shape(match):
-        attrs, glyph = match.groups()
-        x = float(re.search(r'x="([\d.]+)"', attrs)[1])
-        y = float(re.search(r'y="([\d.]+)"', attrs)[1]) - 18.5
-        css_class = re.search(r'class="([^"]+)"', attrs)[1]
-        points = "M0 0 L12.2 12.2 L0 24.4 Z" if glyph == "" else "M12.2 0 L0 12.2 L12.2 24.4 Z"
-        return f'<path class="{css_class}" transform="translate({x:g},{y:g})" d="{points}"/>'
-
-    # The actual bar renderer supplies join colors. Draw its two glyphs as paths so
-    # comparing powerline colors does not require a Nerd Font in the browser.
-    return re.sub(r"<text ([^>]+)>(|)</text>", join_shape, svg)
+    return powerline_paths(console.export_svg(code_format=template, theme=terminal))
 
 
 def sample(figures: Illustrations, terminal: TerminalTheme) -> dict:
