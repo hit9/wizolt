@@ -16,8 +16,6 @@ from wizolt.config import (
 from wizolt.session import Session, SessionSnapshotCodec, SessionSnapshotStore, TurnDiff
 
 
-
-
 def test_read_merged_skips_a_torn_record_and_non_object_lines(tmp_path):
     """A crash (or a full disk) mid-append leaves a torn trailing line: no newline, never
     committed -- the write markers do not advance on a failed append, so the next save re-appends
@@ -31,7 +29,7 @@ def test_read_merged_skips_a_torn_record_and_non_object_lines(tmp_path):
     path = tmp_path / "log.jsonl"
     path.write_text(intact + '{"messages": [{"role": "user", "content": "tor')
 
-    merged, blobs, hdr = SessionSnapshotStore.read_merged(str(path))
+    merged, _blobs, hdr = SessionSnapshotStore.read_merged(str(path))
 
     assert [item["content"] for item in merged["messages"]] == ["hello", "appended"]
     assert hdr["v"] == SessionSnapshotStore.FORMAT_VERSION

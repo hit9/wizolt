@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from model_harness import _MockClientFactory, _session, _StreamClientFactory, async_create, record_backoff
 
-from wizolt.base import SESSION_EVENT_KEY, SEARCH_SOURCES_KEY, ModelError, ModelOutputTruncated, ToolCall
+from wizolt.base import SEARCH_SOURCES_KEY, SESSION_EVENT_KEY, ModelError, ModelOutputTruncated, ToolCall
 from wizolt.image import IMAGE_TEXT_ONLY_KEY, TOOL_IMAGE_OBSERVATION_KEY, TOOL_IMAGE_QUESTION_KEY
 from wizolt.model import ModelClient, resilience
 from wizolt.model.chat import ChatWire
@@ -873,7 +873,7 @@ async def test_chat_stream_preserves_refusal_and_citations(tmp_path, monkeypatch
     model.hooks.on_stream = lambda kind, delta: streamed.append((kind, delta))
     monkeypatch.setattr(model, "client", factory)
 
-    assistant, calls, content = await model.request([{"role": "user", "content": "run"}], None)
+    assistant, _calls, content = await model.request([{"role": "user", "content": "run"}], None)
 
     assert content == "I can't help with that."
     assert assistant["content"] == "I can't help with that."
@@ -903,7 +903,7 @@ async def test_chat_non_streaming_refusal_is_the_answer(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(model, "client", factory)
 
-    assistant, calls, content = await model.request([{"role": "user", "content": "hi"}], None)
+    assistant, _calls, content = await model.request([{"role": "user", "content": "hi"}], None)
 
     assert content == "I can't help with that."
     assert assistant["content"] == "I can't help with that."
@@ -934,4 +934,3 @@ async def test_chat_response_without_choices_raises_model_error(tmp_path, monkey
 
     with pytest.raises(ModelError, match="no choices"):
         await model.request([{"role": "user", "content": "hi"}], None)
-

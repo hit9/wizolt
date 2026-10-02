@@ -79,6 +79,9 @@
 
 ### Changed
 
+- Clean up test import ordering, unused bindings and redundant returns so `ruff check tests` passes;
+  include tests in the local lint target and contributor quality checks.
+
 - Replace serial worker delegation with the agent group and independent frontend runtimes;
   remove `Delegate`, `/worker`, `[worker]` and `runtime.worker`. Update the user and design docs
   for shared files, separate statistics, steering and child lifecycle; no compatibility aliases.

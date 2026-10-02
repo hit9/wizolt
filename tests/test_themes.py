@@ -19,9 +19,9 @@ from tui_harness import loop, run_interactive_tui, wait_until
 
 import wizolt.ui.render as render_module
 from wizolt.config import ConfigFile
+from wizolt.ui.bars import STATUS_PRESETS, Template
 from wizolt.ui.cli import CommandCompleter
 from wizolt.ui.cli.appearance import theme_command, theme_preview
-from wizolt.ui.bars import STATUS_PRESETS, Template
 from wizolt.ui.render import HorizontalRule, MessageBlock, Theme, UiPrinter
 from wizolt.ui.themes import BUILTIN, DIFF_STYLES, HEX_ROLES, MENU_TEXT_CONTRAST, MUTED_CONTRAST, contrast
 from wizolt.ui.tui.app import TuiApp

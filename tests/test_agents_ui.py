@@ -5,20 +5,19 @@ import sys
 
 import pytest
 from prompt_toolkit.document import Document
+from test_command_ui import ModalHarness
 from tui_harness import loop, session
 
-from wizolt.agent.lifecycle import close_agent_resources
 from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import close_agent_resources
+from wizolt.config import ProviderConfig
 from wizolt.model.client import ModelClient
 from wizolt.session import SessionSnapshotStore
+from wizolt.tools import SubagentTool
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli import agents as agents_module
 from wizolt.ui.cli.agents import AgentPreview, AgentsFrontend, agents_command
-from wizolt.ui.cli.commands import COMMAND_LOOKUP, status
-from wizolt.ui.cli.commands import set_value
-from wizolt.tools import SubagentTool
-from wizolt.config import ProviderConfig
-from test_command_ui import ModalHarness
+from wizolt.ui.cli.commands import COMMAND_LOOKUP, set_value, status
 from wizolt.ui.cli.runtime import TuiRuntime
 from wizolt.ui.tui import InputMode
 
@@ -196,7 +195,6 @@ async def test_picker_exposes_state_context_and_preview_without_changing_focus(f
         runtime.loop.session.state.awaiting_input = False
         previews.append("".join(text for _, text in preview_fn(runtime.loop.session.uid)))
         assert frontend.current is frontend.root  # moving the cursor only previews.
-        return None
 
     monkeypatch.setattr(agents_module, "choice_application", choice)
     await agents_command(frontend.root.loop, "")
@@ -247,7 +245,6 @@ async def test_preview_contains_the_task_before_the_first_answer(frontend, monke
 
     async def choice(*args, **kwargs):
         assert "inspect the pending work" in "".join(text for _, text in kwargs["preview_fn"](entry.agent.session.uid))
-        return None
 
     monkeypatch.setattr(agents_module, "choice_application", choice)
     await frontend.select(frontend.root.loop)

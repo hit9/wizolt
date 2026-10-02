@@ -20,7 +20,6 @@ from wizolt.image import IMAGE_MARKER, ImageRef, UserInput
 from wizolt.paste import PASTE_MARKER, PasteRef
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.commands import COMMAND_NAMES
-from wizolt.ui.tui import TuiApp
 
 
 def test_queue_live_region_shows_divider_and_pending(tmp_path):

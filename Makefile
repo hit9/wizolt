@@ -5,7 +5,7 @@ DIST_FILES := dist/wizolt-$(VERSION)*
 .PHONY: lint test clean-dist build publish-check publish
 
 lint:
-	$(PYTHON) -m ruff check wizolt
+	$(PYTHON) -m ruff check wizolt tests
 	$(PYTHON) -m ruff format --check wizolt
 
 test:

@@ -9,17 +9,14 @@ from agent_harness import call, session_with_provider
 
 from wizolt.agent.engine import Agent
 from wizolt.agent.lifecycle import bootstrap_features, close_agent_resources
-from wizolt.base import ModelError, ToolError, WizoltError
+from wizolt.base import ConfigError, ModelError, ToolError, WizoltError
+from wizolt.config import ProviderConfig, RuntimeSettings
 from wizolt.model.client import ModelClient
 from wizolt.session import Session, SessionSnapshotStore
 from wizolt.shellhooks import HookCommand, ShellHooks
-from wizolt.tools import SkillTool, SubagentTool, Tool
-from wizolt.tools import toolblocks
-from wizolt.config import RuntimeSettings, ProviderConfig
-from wizolt.base import ConfigError
-from wizolt.ui.cli import CommandLoop
+from wizolt.tools import SkillTool, SubagentTool, Tool, toolblocks
+from wizolt.ui.cli import CommandLoop, commands
 from wizolt.ui.cli.agents import ModelSettingsEditor
-from wizolt.ui.cli import commands
 
 
 @pytest.fixture
