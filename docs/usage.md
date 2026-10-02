@@ -179,8 +179,8 @@ Long inline lists scroll as you move, leaving a few rows of recent output visibl
 - `Ctrl-D` — exit from an empty prompt
 - `Ctrl-R` — reverse-search your history; `Enter` puts the match in the input to edit, a second
   `Enter` sends it
-- `Ctrl-O` — browse recent Bash outputs, ToolScript scripts, background Job logs, and delegation
-  orders; press it again to close
+- `Ctrl-O` — browse the selected agent's recent Bash outputs, ToolScript scripts and background
+  Job logs; press it again to close
 - `Ctrl-X Ctrl-E` or `Ctrl-G` — edit the current input in `$VISUAL` / `$EDITOR` (falls back to
   vim), as a temporary Markdown file
 
@@ -281,7 +281,11 @@ Sessions saved before names existed list under their id until the next time they
 `/diff` opens an interactive, tabbed viewer with two views:
 
 - **Latest** — what changed during the most recent round of your requests
-- **Session** — the net diff for everything since the session began
+- **Session** — the selected agent's recorded edits since its session began
+
+Both views show edits recorded by the selected agent. Changes from another agent or an external
+editor are separate; where they interrupt a file's edit history, `/diff` shows the selected
+agent's individual edits. Use Git to inspect all changes in the shared workspace.
 
 Navigate with `j`/`k`, `g`/`G`, and `/` search; press `Esc` to close.
 

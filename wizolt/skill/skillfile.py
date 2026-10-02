@@ -96,7 +96,7 @@ class SkillFile:
     def frontmatter(cls, text: str) -> Json:
         """The frontmatter as a map. A cloned repository writes these files, so nothing in one may
         stop wizolt: oversized or pathologically nested YAML is refused like malformed YAML."""
-        import yaml  # local import: only sessions with skills pay for the parser (see DEPENDENCY_REVIEW.md)
+        import yaml  # local import: only sessions with skills pay for the parser (see design/DEPENDENCY_REVIEW.md)
 
         if len(text) > cls.MAX_FRONTMATTER_CHARS:
             raise SkillFormatError(f"frontmatter is longer than {cls.MAX_FRONTMATTER_CHARS} characters")

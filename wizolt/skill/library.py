@@ -45,7 +45,7 @@ class SkillLibrary:
         """A library wired to the session's skill sources with its index still empty.
 
         The symmetric other half of `load`: `load` attaches and scans, for callers that need
-        skills immediately (tests, the worker path). Interactive startup attaches here and runs
+        skills immediately (tests, headless runs). Interactive startup attaches here and runs
         the first scan (`reload`) during the "starting" settle, the way MCP connects its servers
         in the background rather than before the first frame.
         """
@@ -62,7 +62,10 @@ class SkillLibrary:
         return library
 
     def reload(self) -> None:
-        """Scan the disk again and apply the trust decision, in place: a worker shares this object."""
+        """Refresh the shared workspace catalog and trust decision in place.
+
+        Activation and what each model has been told live on its Session, not in this library.
+        """
         if self.discovery is None or self.trust is None:
             return
         skills, self.problems = self.discovery.scan()

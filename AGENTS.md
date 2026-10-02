@@ -4,11 +4,12 @@ Keep this file short. It is an entry point, not a second design document.
 
 ## Start here
 
-- New: read [Orientation](DESIGN.md#orientation) (objectives, module layers, one turn's shape)
-  and skim [Common pitfalls](DESIGN.md#common-pitfalls) — changes that look like cleanups and are
+- New: read [Orientation](design/DESIGN.md#orientation) (objectives, module layers, one turn's shape)
+  and skim [Common pitfalls](design/DESIGN.md#common-pitfalls) — changes that look like cleanups and are
   not.
-- Read [DESIGN.md](DESIGN.md) before changing cross-cutting behavior or module ownership; follow
+- Read [design/DESIGN.md](design/DESIGN.md) before changing cross-cutting behavior or module ownership; follow
   the nearest existing pattern before introducing a new abstraction or dependency.
+- For main/subagent state ownership, read [State ownership](design/STATE_OWNERSHIP.md).
 
 ## Project map
 
@@ -69,7 +70,7 @@ Keep this file short. It is an entry point, not a second design document.
 
 - Make the smallest cohesive change; no pass-through wrappers or speculative specialization.
 - Prefer black-box tests at the narrowest stable public boundary; bug fixes cover the reproduced
-  failure, intended result, and important rejection paths (see `DESIGN.md` for the full policy).
+  failure, intended result, and important rejection paths (see `design/DESIGN.md` for the full policy).
 - Mock external uncertainty, not the core behavior under test; keep tests deterministic and fast.
 - Keep `CHANGELOG.md` aligned with notable project changes, including internal work.
 - Never rebuild or re-sync the project `.venv` (no `uv run --python X` / `uv sync --python X`

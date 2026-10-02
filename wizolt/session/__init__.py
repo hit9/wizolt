@@ -94,7 +94,8 @@ class Session:
     settings: RuntimeSettings = field(default_factory=RuntimeSettings)
     # Runtime /provider /model /reason /api switches, keyed for restore: {"active_provider": name,
     # "providers": {entry: {"model"/"reasoning"/"api": value}}}. Only fields the slash commands
-    # changed are recorded, and never url/key; a resume applies them best-effort over the config file.
+    # changed are recorded; children also freeze inherited model choices. Never url/key.
+    # A resume applies them best-effort over the config file.
     provider_overrides: dict[str, Any] = field(default_factory=dict)
     # Skills loaded in this session, in load order. Their hooks and allowed-tools stay in force for
     # the session's life, so a resumed session restores them with the conversation that loaded them.
@@ -115,11 +116,9 @@ class Session:
     # Runtime: bumped whenever the conversation's head is rebuilt (compaction, context reset), which
     # is when prefix context frozen for the old head may be rebuilt too. Never persisted.
     context_epoch: int = field(default=0, repr=False, compare=False)
-    # Worker handoff (see DESIGN.md): the second session this one delegates to, and its per-session
-    # projection knobs. None of these are persisted — SessionSnapshotCodec.snapshot is an explicit
-    # whitelist, so they return to their defaults on load and must be re-set by the delegate caller.
-    system_prompt: str = SYSTEM_PROMPT  # role definition; the parent's default is unchanged
-    tool_names: tuple[str, ...] = ()  # empty tuple = no filtering (parent behavior)
+    # Runtime projection settings; assembly restores them without persisting executable handles.
+    system_prompt: str = SYSTEM_PROMPT
+    tool_names: tuple[str, ...] = ()  # empty tuple = no filtering
     listed: bool = True  # False -> no latest pointer, hidden from /sessions
     agent_name: str = "main"
     agent_parent: str = ""
@@ -140,6 +139,8 @@ class Session:
     # spending is already separate by virtue of its own Session; this gives compaction the same.
     compaction_usage: ModelUsage = field(default_factory=ModelUsage)
     mcp: MCPManager | None = None
+    # Per-context knowledge; transport/catalog are shared, document injection and its epoch are not.
+    mcp_resource_reads: set[tuple[str, str]] = field(default_factory=set, repr=False)
     skills: SkillLibrary | None = None
     skill_listing: SkillListing | None = None  # runtime; what the model has been told about skills
     shell_hooks: ShellHooks | None = None  # runtime handle; the user's hooks in force for this session
@@ -231,6 +232,13 @@ class Session:
         active = overrides.get("active_provider")
         if active and active in providers:
             self.config.active_provider = active
+
+    def frozen_provider_overrides(self) -> dict[str, Any]:
+        """Pin inherited model choices for child restore, excluding credentials and paths."""
+        return {
+            "active_provider": self.config.active_provider,
+            "providers": {name: {"model": entry.model, "reasoning": entry.reasoning, "api": entry.api} for name, entry in self.config.providers.items()},
+        }
 
     def store_turn_diff(
         self,
@@ -329,6 +337,10 @@ class Session:
         return ["provider." + name for name in self.config.provider.missing_fields()]
 
     def store_tool_result(self, name: str, args: ToolArgs, output: str, note: str = "") -> str:
+        """Allocate a session-scoped receipt; tr.1 in another agent is a different record.
+
+        Assets and snapshots must resolve it with this Session's UID, never a group-wide counter.
+        """
         self.tool_counter += 1
         key = f"tr.{self.tool_counter}"
         args, output = Text.value(list(args)), Text.clean(output)
@@ -446,7 +458,7 @@ class Session:
     def request_context_reset(self) -> bool:
         """Ask for the conversation to be dropped when the running turn settles.
 
-        A turn is a transaction (DESIGN.md, "A turn, and its three endings"): clearing history from
+        A turn is a transaction (design/DESIGN.md, "A turn, and its three endings"): clearing history from
         inside a tool batch would leave the assistant message whose calls are still being answered
         without its results, and every provider rejects that replay. So the request is recorded here
         and applied at settlement, by `apply_context_reset`; a batch that asks twice is one reset.
@@ -466,6 +478,15 @@ class Session:
         index = os.path.join(self.images.assets_dir(), HISTORY_INDEX_ASSET)
         return f"Compacted history: {index} (one history.N.md per compaction beside it)" if os.path.isfile(index) else ""
 
+    def advance_context_epoch(self) -> None:
+        """Invalidate knowledge tied to the old context after reset or compaction.
+
+        Skill listings refreeze lazily by epoch. MCP documentation may have left the window,
+        so its next tool call must inject it again; neither operation touches sibling knowledge.
+        """
+        self.context_epoch += 1
+        self.mcp_resource_reads.clear()
+
     def apply_context_reset(self) -> bool:
         """Start a new model window with a frozen working-state checkpoint; retain the transcript.
 
@@ -477,7 +498,7 @@ class Session:
         if not self.context_reset_requested or self._active_turn_messages or self._active_transcript_messages:
             return False
         self.context_reset_requested = False
-        self.context_epoch += 1
+        self.advance_context_epoch()
         self.messages.clear()
         self.state.summary = ""
         checkpoint = self.state_checkpoint_event()

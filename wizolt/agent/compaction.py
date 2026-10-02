@@ -259,7 +259,7 @@ class Compactor:
         None to use the flattened payload instead.
 
         This is the half of compaction that reads the cache; the rebuild that follows it does not
-        (see ContextManager._summary_block and DESIGN.md, "Compaction reads the cache; the rebuild
+        (see ContextManager._summary_block and design/DESIGN.md, "Compaction reads the cache; the rebuild
         does not").
 
         A cache hit needs a byte-identical prefix, so this slices `model_messages` -- the very list

@@ -68,9 +68,10 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
     programs that require a terminal are not supported. Each write accepts all the text or
     refuses it without sending anything; oversized input reports the limit so you can split it.
     You can inspect the exact input before approving it. The same jobs are visible through `/ps`.
+    Jobs belong to their creating agent; exiting wizolt stops them, and resume does not restart them.
 * - **`Note`**
   - Keeps the task's goal, plan, success check and learned facts in the conversation.
-    It does not change your project files.
+    Each agent has its own notes and plan. It does not change your project files.
 
     `Note(view)` also shows recent file modifications, command exit results, and tool failures
     when available. These read-only records describe past activity, not current task status.

@@ -1,7 +1,7 @@
 """Application assembly: create/resume sessions and attach their feature resources.
 
 Persistence only restores semantic state. These entry points own feature discovery, writable
-resume leases and rollback if assembly fails. Worker assembly explicitly borrows the parent's
+resume leases and rollback if assembly fails. Subagent assembly explicitly borrows the parent's
 MCP/skills/catalog instead of creating another owner.
 """
 
@@ -13,7 +13,7 @@ import os
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
-from wizolt.base import WizoltError
+from wizolt.base import WizoltError, run_blocking
 from wizolt.config import Config, ConfigFile, RuntimeSettings
 from wizolt.mentions import FilePick
 from wizolt.providers.sync import CatalogRuntime
@@ -141,7 +141,7 @@ def bootstrap_features(session: Session) -> None:
 
 
 async def close_agent_resources(agent: Agent, *, shared_mcp: bool = False, reason: str = "other") -> None:
-    """Quiesce request clients, then the root's MCP manager, on their owning event loop.
+    """Quiesce engines, owned jobs/clients, then the root's shared MCP manager.
 
     A subagent borrows the root's MCP capability; closing its model must not close that manager.
     Individual close failures must not prevent the remaining resources from being settled.
@@ -162,6 +162,12 @@ async def close_agent_resources(agent: Agent, *, shared_mcp: bool = False, reaso
     except Exception as error:  # noqa: BLE001 - a shutdown hook must not prevent resource cleanup
         with contextlib.suppress(Exception):
             agent.output_fn(f"SessionEnd hook failed: {error}")
+    for job in tuple(agent.session.jobs.values()):
+        try:
+            await run_blocking(job.kill)
+        except Exception as error:  # noqa: BLE001 - settle other jobs and resources after a failure
+            with contextlib.suppress(Exception):
+                agent.output_fn(f"Job {job.id} cleanup failed: {error}")
     with contextlib.suppress(Exception):
         await agent.model.close()
     if not shared_mcp and agent.session.mcp is not None:

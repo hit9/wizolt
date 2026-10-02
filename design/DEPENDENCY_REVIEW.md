@@ -134,8 +134,8 @@ installations. The remaining development dependencies support tests, linting and
 
 ## References
 
-- Local declarations: [pyproject.toml](pyproject.toml).
-- Existing performance methodology: [benchmarks/README.md](benchmarks/README.md).
+- Local declarations: [pyproject.toml](../pyproject.toml).
+- Existing performance methodology: [benchmarks/README.md](../benchmarks/README.md).
 - [Official MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
 - [MCP client transports](https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/client/transports.md).
 - [MCP OAuth clients](https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/client/oauth-clients.md).

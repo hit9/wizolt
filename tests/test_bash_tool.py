@@ -13,6 +13,7 @@ import pytest
 import wizolt.ui.render as render_module
 from wizolt.agent.context import ContextManager
 from wizolt.agent.engine import Agent
+from wizolt.agent.lifecycle import close_agent_resources
 from wizolt.agent.runner import ToolRunner
 from wizolt.base import LogBlock, LogEdge, LogLine, LogRole, ToolCall, ToolError
 from wizolt.session import Session
@@ -509,6 +510,23 @@ async def test_bash_fast_command_does_not_promote(tmp_path):
     assert "hi" in output
     assert "backgrounded" not in output
     assert not s.jobs
+
+
+async def test_session_shutdown_reaps_promoted_process_and_output_thread(tmp_path):
+    s = session(tmp_path)
+    s.settings.bash_wait_timeout = 0.05
+    agent = Agent(s, output_fn=lambda _: None)
+    try:
+        result = await BashTool(s, ["printf started; sleep 30"]).call()
+        assert "backgrounded" in result
+        job = s.jobs["job.1"]
+        assert job.stream_thread is not None and job.stream_thread.is_alive()
+        await close_agent_resources(agent)
+        assert job.process.poll() is not None
+        assert not job.stream_thread.is_alive()
+    finally:
+        await close_agent_resources(agent)
+        s.close()
 
 
 def test_bash_live_preview_skips_unchanged_redraws(monkeypatch):

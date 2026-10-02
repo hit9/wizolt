@@ -32,6 +32,11 @@ class SubagentTool(Tool):
 
     @cached_property
     def _model_settings(self) -> Session:
+        """One unpublished approval draft per call, including two spawns in the same batch.
+
+        Reusing the caller's live Session or a shared draft would make Config/refusal alter a
+        sibling's first request. The group copies this draft only after approval succeeds.
+        """
         return Session(
             cwd=self.session.cwd,
             config=deepcopy(self.session.config),

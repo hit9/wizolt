@@ -2,7 +2,7 @@
 
 Ask wizolt to split a task into parallel work. By default it can start up to three child agents alongside
 your main conversation. Each has its own conversation, model requests, context budget and usage
-statistics. New children inherit the creating agent's model unless you change it before approval; additional agents
+statistics, plan and notes. New children inherit the creating agent's model unless you change it before approval; additional agents
 increase total model usage.
 
 ## Approve and configure
@@ -34,6 +34,9 @@ All agents work in the same directory and see file changes immediately. Give con
 separate files to edit. Ask agents to coordinate before changing the same file, and review their
 actual changes before accepting a report. Stopping an agent leaves its file changes in place.
 
+`/diff` reviews the selected agent's recorded edits. If agents edit the same file between its
+calls, the viewer keeps that agent's individual edits instead of combining other agents' changes.
+
 ## Select and inspect
 
 `/agents` lists the main agent and its children with their state and context percentage. Move
@@ -58,8 +61,14 @@ next turn. Input accepted before a switch keeps its original destination.
 Ctrl-C interrupts the selected agent. `/agents stop-all` interrupts every agent. Exiting wizolt
 stops all agents and saves their conversations. Resume the main session to restore its children;
 queued work waits for new input rather than restarting automatically.
+Each child's provider, model, effort and request API survive resume independently of later
+changes to the main agent. Background shell jobs stop when you exit and are not restored.
 
 ## Model tools
+
+Children use wizolt's system instructions and project guidance, with an additional reminder
+that workspace files are shared. The task is their first input; it must include what they need
+because the parent's conversation, plan and notes are not copied.
 
 The `Subagent` tool starts agents with `spawn`, adds input with `send`, and exposes `list`,
 `wait` and `stop`. Spawn returns an agent ID immediately, so the caller can continue working.

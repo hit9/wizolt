@@ -16,6 +16,18 @@
 
 ### Fixed
 
+- Audit main/subagent state ownership: isolate completion/instruction resolvers and MCP document
+  injection memory (including reset/compaction invalidation), pin inherited provider/model/effort/API choices for child restore, and keep
+  interleaved peer edits out of an agent's diff. Serialize shared-file Read/Edit transactions
+  within the process, including symlink aliases, and refuse stale concurrent plans. Reap owned
+  background jobs and promoted output threads on session shutdown. Add isolation, concurrent
+  persistence, edit attribution and resource-lifetime regressions.
+- Consolidate maintainer documents under `design/`, update references, and document the complete
+  state-sharing contract alongside subagent ownership constraints in code. Refresh user guidance
+  on independent notes/plans, selected-agent diffs, resume settings and background-job lifetime.
+- Send actual arrow-key sequences in the Zellij acceptance driver so agent selection and
+  approval configuration scenarios exercise navigation rather than literal `Up`/`Down` text.
+
 - Restore mandatory subagent spawn/send approvals under `--yolo` and the approval-time
   provider/model/effort/API picker. Each child has an independent draft before its first request,
   including forked skills. Add `runtime.max_subagents` (default 3, range 0–32) across the whole
@@ -633,7 +645,7 @@
   first line. A skill whose frontmatter is not valid YAML, is nested pathologically deep, or
   exceeds 64,000 characters is listed under "Not loaded" in `/skills` with the reason; names that break the spec or do not match their folder load with a
   warning. `${CLAUDE_SKILL_DIR}` expands like `{skill_dir}`. Adds the `pyyaml` dependency,
-  imported only when a skill is parsed (see `DEPENDENCY_REVIEW.md`).
+  imported only when a skill is parsed (see `design/DEPENDENCY_REVIEW.md`).
 - Skills are found where other agents keep them: `.claude/skills` and `.agents/skills` beside
   `.wizolt/skills`, at every level from the repository top down to the working directory, plus
   `~/.claude/skills` and `~/.agents/skills` at user level. Starting wizolt in a subdirectory
@@ -695,7 +707,7 @@
 - Real Zellij terminal acceptance tests and a dedicated CI job, alongside the tmux suite.
 - A benchmark runner that records source revisions, environment details, timing samples and replay
   output hashes, with a versioned Linux ARM64 baseline and comparison reports.
-- `DEPENDENCY_REVIEW.md`, documenting production dependency costs and replacement or optional-install
+- `design/DEPENDENCY_REVIEW.md`, documenting production dependency costs and replacement or optional-install
   candidates. No production dependencies have been removed.
 
 ### Changed

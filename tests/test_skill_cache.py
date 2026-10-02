@@ -2,7 +2,7 @@
 prefix the provider already cached.
 
 Each scenario runs the real agent and ModelClient against the test-only OpenAI behavior model
-(DESIGN.md, "Cache test boundary") and checks every request against the previous one: the tool
+(design/DESIGN.md, "Cache test boundary") and checks every request against the previous one: the tool
 block is byte-identical, the previous request's items are an exact prefix of the next, and the
 provider reports a cache read. A change that reshapes the prefix fails here, not in production.
 """

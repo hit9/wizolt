@@ -12,7 +12,7 @@ import signal
 import subprocess
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import ClassVar
 
 
@@ -38,6 +38,8 @@ class BackgroundJob:
     stream_buffer: list[str] | None = None
     stream_lock: threading.Lock | None = None
     stream_truncated: bool = False
+    stream_stop: threading.Event = field(default_factory=threading.Event, repr=False)
+    stream_thread: threading.Thread | None = field(default=None, repr=False)
     workdir: str = ""
 
     BUFFER_LIMIT: ClassVar[int] = 32 * 1024  # promoted-job tail cap in chars
@@ -63,7 +65,11 @@ class BackgroundJob:
         return (self.finished_at if self.finished_at is not None else time.monotonic()) - self.started_at
 
     def kill(self, grace: float = 3.0) -> None:
-        """SIGTERM, wait grace seconds, then SIGKILL if still running. Removes the log file."""
+        """Reap the process, settle its output thread and remove its temporary log.
+
+        A job may outlive a turn and its event loop, but never its owning application session.
+        Session shutdown calls this on a worker before releasing the ownership lease.
+        """
         if self.status == "running":
             try:
                 os.killpg(self.process.pid, signal.SIGTERM)
@@ -85,6 +91,9 @@ class BackgroundJob:
         if self.log_path:
             with contextlib.suppress(OSError):
                 os.unlink(self.log_path)
+        self.stream_stop.set()
+        if self.stream_thread is not None:
+            self.stream_thread.join()
 
     def tail(self, limit: int) -> str:
         """Return the last `limit` chars from the merged stdout+stderr log."""

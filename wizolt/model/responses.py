@@ -392,7 +392,7 @@ class ResponsesWire:
             # sent message is irrevocable, and a resume must rebuild from the snapshot alone.
             # Server-held state moves the truth off the machine that owns it. Prefix caching is
             # unaffected -- it keys on the rendered prefix, not on stored conversations. See
-            # DESIGN.md "Cache epochs and breakpoints".
+            # design/DESIGN.md "Cache epochs and breakpoints".
             "store": False,
         }
         if resolved.output_max_tokens > 0:

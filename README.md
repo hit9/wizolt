@@ -16,7 +16,7 @@
 - **Keep long tasks going.** Automatic context compaction, prompt caching on supported providers, and saved sessions. Resume conversation, tool history, and diffs with `wizolt -c`.
 - **Review every change.** Edits reject stale or ambiguous targets. `/diff` shows the latest round or the whole session.
 - **Steer while it works.** Send follow-ups, queue the next task, and let slow commands run as background jobs.
-- **Mix models.** Connect OpenAI-compatible Chat Completions, Responses, or Anthropic Messages APIs. Give a focused subtask to a worker using another model.
+- **Mix models.** Connect OpenAI-compatible Chat Completions, Responses, or Anthropic Messages APIs. Run parallel subagents with independent conversations and model settings.
 - **Bring your tools.** MCP servers, reusable Markdown skills, and shell hooks for checks and formatters.
 - **Make it yours.** Preview themes, diff colors, statusbars, dividers, and input symbols in `/theme`; customize further in your config.
 
@@ -54,4 +54,5 @@ Upgrade with `uv tool upgrade wizolt`.
 ## Links
 
 - [Documentation](https://wizolt.readthedocs.io/en/latest/) — full usage guide and reference.
+- [Maintainer design notes](design/README.md) — architecture, state ownership and known trade-offs.
 - [Blog post](https://hit9.dev/post/nanocode) — why and how it was built.

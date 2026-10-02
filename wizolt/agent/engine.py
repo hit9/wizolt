@@ -127,13 +127,15 @@ class Agent:
         """Request cancellation of the turn in flight. Safe from a TUI callback on any thread.
 
         A request, not an act: the turn is one task, and cancelling it is what reaches the model
-        request, the tool batch, and a delegated worker -- each layer then performs and awaits its
+        request and the tool batch -- each layer then performs and awaits its
         own cleanup. Nothing here calls a stop method on ModelClient or ToolRunner from the calling
         thread, and nothing calls Task.cancel() from a foreign one; the cancellation is scheduled on
         the loop that owns the task.
 
         The task and its loop are installed at turn entry and cleared together when it ends, so a
-        request that arrives after the turn finished is ignored and can never reach the next one."""
+        request that arrives after the turn finished is ignored and can never reach the next one.
+        Child engines are independent: stopping this agent does not implicitly stop its children.
+        Group shutdown explicitly stops and joins every child before closing shared services."""
 
         task, loop = self._active_task, self._active_loop
         if task is None or loop is None or task.done():

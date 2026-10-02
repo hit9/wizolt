@@ -57,7 +57,7 @@ class MCPManager:
     understand MCP schemas or failure states.
 
     Each operation opens its own short-lived client, so no connection is durable state. That costs a
-    process start per stdio call and is why the lifecycle rework is on the roadmap in DESIGN.md.
+    process start per stdio call and is why the lifecycle rework is on the roadmap in design/DESIGN.md.
 
     Every operation is a coroutine on the caller's loop -- the one the runtime owns -- so a client
     is entered, used, and exited in one place, and a cancelled turn brings its MCP call down with
@@ -81,7 +81,6 @@ class MCPManager:
         self.session = session
         self.tools: dict[str, list[MCPToolInfo]] = {}
         self.resources: dict[str, list[MCPResourceInfo]] = {}
-        self._auto_read_done: set[tuple[str, str]] = set()
         self.server_errors: dict[str, str] = {}
         self.server_skips: dict[str, str] = {}
         self.discovery_status: str = "stale"  # stale | discovering | ready | error
@@ -151,7 +150,6 @@ class MCPManager:
     def _forget(self, name: str) -> None:
         self.tools.pop(name, None)
         self.resources.pop(name, None)
-        self._auto_read_done = {entry for entry in self._auto_read_done if entry[0] != name}
         self.server_errors.pop(name, None)
         self.server_skips.pop(name, None)
 
@@ -828,12 +826,14 @@ class MCPManager:
 
     AUTO_READ_LIMIT: ClassVar[int] = 6_000  # per-doc cap for resources auto-injected on first tool call
 
-    async def auto_read_prefix(self, server: str, tool_name: str) -> str:
+    async def auto_read_prefix(self, server: str, tool_name: str, seen: set[tuple[str, str]]) -> str:
         """On the first call to a tool whose description references a resource doc, fetch it once.
 
         Returns a block to attach to that call's result (so the grammar reaches the model on the
         first attempt and lands in cached history), or "" when there is nothing new to inject.
-        Best-effort: failures are swallowed and never retried for the same uri.
+        `seen` belongs to the calling conversation: this manager is shared by independent
+        agents, and transport reuse does not mean they have read one another's documents.
+        Best-effort: failures are swallowed and never retried for the same uri in that conversation.
         """
         info = self.tool_info(server, tool_name)
         if info is None:
@@ -841,14 +841,14 @@ class MCPManager:
         advertised = {res.uri for res in self.resources.get(server, [])}
         blocks: list[str] = []
         for uri in self._extract_uris(info.description):
-            if (server, uri) in self._auto_read_done:
+            if (server, uri) in seen:
                 continue
             scheme = uri.split("://", 1)[0].lower()
             # Only fetch things we can actually read over MCP: advertised resources or custom
             # (non-web) schemes. Plain http(s) links are left for the model to read explicitly.
             if uri not in advertised and scheme in ("http", "https"):
                 continue
-            self._auto_read_done.add((server, uri))  # mark before fetching so failures don't retry
+            seen.add((server, uri))  # mark before fetching so failures don't retry in this conversation
             try:
                 blocks.append((await self.read_resource(server, uri))[: self.AUTO_READ_LIMIT])
             except Exception:  # noqa: BLE001, S112 - referenced resources are injected best-effort.

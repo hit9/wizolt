@@ -87,7 +87,7 @@ class MCPTool(Tool):
                 # schema (params_schema has no `format`), so only scripts can reach it.
                 data = await mcp.call_tool_structured(server, tool_name, arguments)
                 return json.dumps(data, ensure_ascii=False, indent=2)
-            prefix = await mcp.auto_read_prefix(server, tool_name)
+            prefix = await mcp.auto_read_prefix(server, tool_name, self.session.mcp_resource_reads)
             try:
                 output = await mcp.call_tool(server, tool_name, arguments)
             except ToolError as error:

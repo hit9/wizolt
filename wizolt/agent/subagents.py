@@ -1,4 +1,9 @@
-"""Parallel agents with separate conversations and one shared working directory."""
+"""Parallel engines with independent state in one shared working directory.
+
+The group owns admission and child tasks, not a combined conversation. A child receives only
+its task and detached configuration; parent notes, messages and usage must never be projected
+into it. Shared capability services have one root owner. See design/STATE_OWNERSHIP.md.
+"""
 
 from __future__ import annotations
 
@@ -47,7 +52,12 @@ class AgentEntry:
 
 
 class Subagents:
-    """Own child engines and serial inboxes; the frontend may supply their turn driver."""
+    """Own one family's admission, child engines and serial inboxes.
+
+    This is the sole group-wide mutable coordinator. Nested children join the same registry and
+    limit. Each engine still writes only its own Session. UI callbacks project that state and
+    must not become storage or a second engine driver.
+    """
 
     def __init__(self, root: Agent):
         self.root = root
@@ -79,6 +89,11 @@ class Subagents:
         )
 
     async def restore(self) -> None:
+        """Rebuild handles from child snapshots without waking persisted inboxes.
+
+        The root configuration supplies current credentials; frozen child provider choices
+        override it. Restoring is never implicit authorization to restart interrupted work.
+        """
         for item in self.root.session.subagent_entries:
             if not isinstance(item, dict):
                 continue
@@ -96,16 +111,20 @@ class Subagents:
 
     async def _attach(self, session: Session, parent: str, instruction: str = "") -> AgentEntry:
         from wizolt.agent.engine import Agent
+        from wizolt.agent.lifecycle import bootstrap_features
 
         root = self.root.session
         session.listed = False
         session.subagents = self
         session.skills, session.mcp, session.catalog = root.skills, root.mcp, root.catalog
         session.system_info = root.system_info
-        session.mentions, session.agents = root.mentions, root.agents
+        # Attachment adds the guard once. Child snapshots persist semantic messages, not this
+        # runtime prompt; nested creation starts from root.system_prompt to avoid repeated guards.
         session.system_prompt += "\n" + SHARED_WORKSPACE
         parent_session = self.entry(parent).agent.session
         session.shell_hooks = parent_session.shell_hooks.detached(parent_session) if parent_session.shell_hooks else None
+        # Discovery/transport are group services; resolvers and their frontend callbacks are local.
+        bootstrap_features(session)
         session.borrow_ownership(root)
         agent = Agent(session, output_fn=lambda _: None)
         entry = AgentEntry(agent, parent, instruction)
@@ -126,11 +145,13 @@ class Subagents:
             if not name:
                 raise ToolError("spawn requires name and message")
             model_settings = model_settings or parent
+            # Inherit values, never semantic state or request clients. A full provider-choice
+            # snapshot also preserves an inherited model if the parent changes it before resume.
             session = Session(
                 uid=self.root.session.uid + ".a" + uuid4().hex[:12],
                 cwd=parent.cwd,
                 config=deepcopy(model_settings.config),
-                provider_overrides=deepcopy(model_settings.provider_overrides),
+                provider_overrides=model_settings.frozen_provider_overrides(),
                 settings=replace(parent.settings),
                 created_at=parent.created_at,
                 system_prompt=self.root.session.system_prompt,
@@ -180,6 +201,11 @@ class Subagents:
             self.on_changed(entry)
 
     async def _run(self, entry: AgentEntry) -> None:
+        """One inbox consumer per child; steering the active turn is claimed by Agent itself.
+
+        Held inputs remain queued for another turn. Sibling engines never share this queue or
+        exception path, and notifications are presentation events rather than model messages.
+        """
         agent, session = entry.agent, entry.agent.session
         try:
             while session.pending_user_inputs:
@@ -219,6 +245,11 @@ class Subagents:
             entry.task.cancel()
 
     async def close(self) -> None:
+        """Stop admission, join engines and settle child snapshots before resources close.
+
+        Clients, jobs and the shared MCP owner are closed by lifecycle.close_agent_resources;
+        the group must quiesce all writers before that owner releases the family lease.
+        """
         # Admission includes its durable save and scheduling: no child can start after this gate.
         async with self._admission_lock:
             if self.closed:

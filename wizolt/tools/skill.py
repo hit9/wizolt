@@ -92,6 +92,9 @@ class SkillTool(Tool):
             if group is None:
                 raise ToolError("Subagents are unavailable")
             entry = await group.spawn(self.session, f"skill {self.invocation().skill.name}", self.fork_order, model_settings=self.approval_config())
+            # This is the same independent child as a Subagent spawn. Waiting for its report
+            # neither merges its notes/history nor transfers ownership to the calling turn.
+            # Cancelling the caller ends the wait; only an explicit group stop cancels the child.
             while entry.task is not None:
                 await group.wait(entry.agent.session.uid)
             if entry.error:

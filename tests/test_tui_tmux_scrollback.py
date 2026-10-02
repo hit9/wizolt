@@ -1,6 +1,6 @@
 """Real-tmux acceptance test for transcript integrity across repeated resizes.
 
-The Terminal boundary section in `DESIGN.md` requires a real-tmux test: a deterministic
+The Terminal boundary section in `design/DESIGN.md` requires a real-tmux test: a deterministic
 terminal model cannot reproduce tmux's reflow across multiple width transitions, its persistent
 wrap flags, or the ordering between resize, SIGWINCH and redraw. Every earlier attempt at this
 problem looked correct against a model or a single clean resize and failed on the second one.
@@ -137,7 +137,7 @@ class Pane(NamedTuple):
 
 
 test_zoom_on_a_fresh_pane_leaves_one_live_region = pytest.mark.xfail(
-    reason="see KNOWN_ISSUES.md: a pane height change cannot remove the rows it already drew", strict=False
+    reason="see design/KNOWN_ISSUES.md: a pane height change cannot remove the rows it already drew", strict=False
 )(acceptance.test_zoom_on_a_fresh_pane_leaves_one_live_region)
 
 

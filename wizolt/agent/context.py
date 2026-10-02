@@ -385,7 +385,7 @@ class ContextManager:
 
         This is the rebuild half of compaction, and it does not read the cache: it replaces the
         head of the conversation, so the next request misses on everything past the header
-        whatever this block says. Two consequences, both load-bearing (DESIGN.md, "Compaction
+        whatever this block says. Two consequences, both load-bearing (design/DESIGN.md, "Compaction
         reads the cache; the rebuild does not"):
 
         Adding to this block is close to free -- the write it joins is a miss either way, and
@@ -427,7 +427,7 @@ class ContextManager:
         title: str = "",
     ) -> None:
         self.session.state.compaction_count += 1
-        self.session.context_epoch += 1
+        self.session.advance_context_epoch()
         # What this compaction was: the turn scope is the only caller that rewrites `turn_messages`,
         # and no summary data means the model call failed and `keep` is all that survives. Recorded
         # on the segment so `/compact log` can say which evictions were lossier than the rest.

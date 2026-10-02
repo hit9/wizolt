@@ -541,6 +541,35 @@ def _diff(key, turn, path, before, after, text):
     return TurnDiff(key, turn, path, text, before=before, after=after, round=turn)
 
 
+def test_snapshotless_tail_does_not_include_later_external_edits(tmp_path):
+    (tmp_path / "x.py").write_text("peer\n")
+    kept = _diff("tr.1", 1, "x.py", "a\n", "b\n", "--- x.py\n+++ x.py\n@@ -1 +1 @@\n-a\n+b\n")
+    tail = _diff("tr.2", 2, "x.py", "", "", "--- x.py\n+++ x.py\n@@ -1 +1 @@\n-b\n+c\n")
+    text = net_diff_sections([kept, tail], "overall", cwd=str(tmp_path))[0][2]
+    assert "+c\n" in text and "-a\n" in text
+    assert "peer" not in text
+
+
+def test_snapshotless_prefix_and_middle_both_survive_net_diff():
+    records = [
+        _diff("tr.1", 1, "x.py", "", "", "--- x.py\n+++ x.py\n@@ -1 +1 @@\n-a\n+b\n"),
+        _diff("tr.2", 2, "x.py", "b\n", "c\n", "--- x.py\n+++ x.py\n@@ -1 +1 @@\n-b\n+c\n"),
+        _diff("tr.3", 3, "x.py", "", "", "--- x.py\n+++ x.py\n@@ -1 +1 @@\n-c\n+d\n"),
+        _diff("tr.4", 4, "x.py", "d\n", "e\n", "--- x.py\n+++ x.py\n@@ -1 +1 @@\n-d\n+e\n"),
+    ]
+    text = net_diff_sections(records, "overall")[0][2]
+    assert text.count("--- x.py") == 1
+    assert "-a\n" in text and "+e\n" in text
+
+
+def test_external_edit_breaking_legacy_prefix_preserves_own_receipts():
+    prefix = _diff("tr.1", 1, "x.py", "", "", "--- x.py\n+++ x.py\n@@ -1 +1 @@\n-a\n+b\n")
+    latest = _diff("tr.2", 2, "x.py", "peer\n", "own\n", "--- x.py\n+++ x.py\n@@ -1 +1 @@\n-peer\n+own\n")
+    text = net_diff_sections([prefix, latest], "overall")[0][2]
+    assert "-a\n" in text and "+b\n" in text and "+own\n" in text
+    assert text.count("--- x.py") == 2
+
+
 async def test_net_diff_emits_one_description_per_path_when_snapshots_stop(tmp_path):
     """A file that grows past the snapshot size limit partway through leaves some edits with
     snapshots and some without. Both describe the same file, so only one may be emitted."""
@@ -561,7 +590,7 @@ async def test_net_diff_prefers_snapshots_when_the_last_edit_has_them(tmp_path):
     (tmp_path / "x.py").write_text("unused\n")
     first = _diff("tr.1", 1, "x.py", "a\n", "b\n", "--- x.py\n+++ x.py\n@@ -1 +1 @@\n-a\n+b\n")
     dropped = _diff("tr.2", 2, "x.py", "", "", "--- x.py\n+++ x.py\n@@ -1 +1 @@\n-b\n+c\n")
-    last = _diff("tr.3", 3, "x.py", "b\n", "c\n", "--- x.py\n+++ x.py\n@@ -1 +1 @@\n-b\n+c\n")
+    last = _diff("tr.3", 3, "x.py", "c\n", "d\n", "--- x.py\n+++ x.py\n@@ -1 +1 @@\n-c\n+d\n")
 
     sections = net_diff_sections([first, dropped, last], "overall", cwd=str(tmp_path))
 
@@ -569,7 +598,7 @@ async def test_net_diff_prefers_snapshots_when_the_last_edit_has_them(tmp_path):
     assert len(sections) == 1
     text = sections[0][2]
     assert text.count("--- ") == 1
-    assert [line for line in text.splitlines() if line[:1] in "+-" and not line.startswith(("---", "+++"))] == ["-a", "+c"]
+    assert [line for line in text.splitlines() if line[:1] in "+-" and not line.startswith(("---", "+++"))] == ["-a", "+d"]
 
 
 async def test_net_diff_recovers_legacy_prefix_when_the_file_shrinks(tmp_path):

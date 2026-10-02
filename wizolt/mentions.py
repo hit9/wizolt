@@ -180,6 +180,7 @@ class FileMentions:
         self._pending_match: tuple[int, str, Callable[[], None] | None] | None = None
         self._match_worker_running = False
         # Installed by CommandLoop while its background owner is open, and cleared when it closes.
+        # This makes FileMentions agent-local even though every agent scans the same workspace.
         # A callable, never a task: the coalescing task is loop-bound and this object outlives
         # loops, so a future kept here would be a handle onto a loop the next run cannot await.
         self.refresh_owner: Callable[[], Awaitable[tuple[tuple[str, str], ...]] | None] | None = None

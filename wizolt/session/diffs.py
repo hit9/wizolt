@@ -14,6 +14,7 @@ from __future__ import annotations
 import difflib
 import os
 import re
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from wizolt.base import split_lines
@@ -29,87 +30,88 @@ def net_diff_for_path(status: str, path: str, before: str, after: str) -> tuple[
     return (status, path, text) if text else None
 
 
-def net_diff_sections(diffs: list[TurnDiff], status: str, *, cwd: str = "") -> list[tuple[str, str, str]]:
-    states: dict[str, tuple[str, str]] = {}
-    legacy: dict[str, list[str]] = {}
-    # Whether the most recent edit to each path carried snapshots. A path can hold both kinds
-    # when a file grows past the snapshot size limit partway through a session, and the two
-    # descriptions overlap — emitting both would repeat the file's changes.
-    snapshot_tail: dict[str, bool] = {}
-    paths: list[str] = []
-    for diff in diffs:
-        if diff.path not in paths:
-            paths.append(diff.path)
-        snapshot_tail[diff.path] = bool(diff.before or diff.after)
-        if not diff.before and not diff.after:
-            legacy.setdefault(diff.path, []).append(diff.diff)
-            continue
-        before, _ = states.get(diff.path, (diff.before, diff.after))
-        states[diff.path] = (before, diff.after)
+@dataclass
+class PathEdits:
+    """One agent's receipts for one path; external changes break snapshot continuity.
 
-    # Bash can move a file between Edit calls. When one path's `.after` matches another path's
-    # `.before` uniquely on both sides, that's the boundary of a move: merge into the target so
-    # the logical history follows the file to its final path.
-    while (move := _find_unambiguous_move(states, legacy)) is not None:
+    A net diff needs an unbroken chain of this agent's states. Gaps are not its edits: retain
+    individual receipts rather than attributing a peer's changes or guessing how to undo them.
+    """
+
+    snapshots: tuple[str, str] | None = None
+    discontinuous: bool = False
+    recorded: list[str] = field(default_factory=list)
+    legacy: list[str] = field(default_factory=list)
+    trailing: list[str] = field(default_factory=list)
+
+    def add(self, diff: TurnDiff) -> None:
+        self.recorded.append(diff.diff)
+        if not (diff.before or diff.after):
+            self.legacy.append(diff.diff)
+            self.trailing.append(diff.diff)
+            return
+        before = diff.before
+        if self.snapshots is not None:
+            previous = self.snapshots[1]
+            expected = _forward_apply(previous, self.trailing) if self.trailing else previous
+            if diff.before != expected:
+                self.discontinuous = True
+            before = self.snapshots[0]
+        elif self.trailing:
+            # Recover a snapshot-less prefix before clearing it; later middle edits must never
+            # be reverse-applied to this first baseline. Failed recovery retains all receipts.
+            original = _reverse_apply(before, self.trailing)
+            if original is None:
+                self.discontinuous = True
+            else:
+                before = original
+        self.snapshots = (before, diff.after)
+        self.trailing.clear()
+
+    def chunk(self, path: str, status: str, cwd: str) -> str:
+        if self.discontinuous:
+            return self.receipts()
+        if self.snapshots is not None:
+            before, after = self.snapshots
+            if self.trailing:
+                # Today's shared file is not our final state. Derive it from our own receipts.
+                final = _forward_apply(after, self.trailing)
+                if final is None:
+                    return self.receipts()
+                after = final
+            section = net_diff_for_path(status, path, before, after)
+            return section[2] if section else ""
+        # No snapshots: reverse application changes only our recorded hunks. If context is
+        # ambiguous or was changed externally, retain the individual receipts.
+        reconstructed = _reconstruct_legacy_diff(cwd, path, self.legacy, status) if cwd else None
+        return reconstructed if reconstructed is not None else self.receipts()
+
+    def receipts(self) -> str:
+        return "\n".join(chunk.rstrip("\n") for chunk in self.recorded)
+
+
+def net_diff_sections(diffs: list[TurnDiff], status: str, *, cwd: str = "") -> list[tuple[str, str, str]]:
+    histories: dict[str, PathEdits] = {}
+    for diff in diffs:
+        histories.setdefault(diff.path, PathEdits()).add(diff)
+
+    # Bash can move a file between Edit calls. Only continuous snapshot histories can identify
+    # a unique move; a shared-file gap must never be interpreted as our rename.
+    while True:
+        states = {path: history.snapshots for path, history in histories.items() if history.snapshots is not None and not history.discontinuous}
+        legacy = {path: history.legacy for path, history in histories.items() if history.legacy}
+        move = _find_unambiguous_move(states, legacy)
+        if move is None:
+            break
         source, target = move
-        states[target] = (states[source][0], states[target][1])
-        del states[source]
+        histories[target].snapshots = (states[source][0], states[target][1])
+        del histories[source]
 
     sections = []
-    for path in paths:
-        chunk = net_diff_chunk(path, status, states, legacy, snapshot_tail, cwd)
-        if chunk:
+    for path, history in histories.items():
+        if chunk := history.chunk(path, status, cwd):
             sections.append((status, path, chunk.rstrip("\n") + "\n"))
     return sections
-
-
-def net_diff_chunk(
-    path: str,
-    status: str,
-    states: dict[str, tuple[str, str]],
-    legacy: dict[str, list[str]],
-    snapshot_tail: dict[str, bool],
-    cwd: str,
-) -> str:
-    """One diff per path, from exactly one description of its history."""
-    if path in states and snapshot_tail.get(path):
-        # The last edit carried snapshots, so the recorded `after` is the file's final content.
-        before, after = states[path]
-        if legacy_chunks := legacy.get(path, []):
-            # Snapshots cover only a suffix: snapshot-less edits ran before the first snapshot
-            # (the file shrank past the limit mid-session), and their starting content isn't in
-            # `states`. Walk their hunks back from the first snapshot's `before` to recover it so
-            # the net diff spans the whole path. If they don't apply cleanly — they were
-            # interleaved between snapshots, so the snapshot span already reflects them, or the
-            # file was mutated outside Edit — the snapshot span stands as-is.
-            original = _reverse_apply(before, legacy_chunks)
-            if original is not None:
-                before = original
-        section = net_diff_for_path(status, path, before, after)
-        return section[2] if section else ""
-    if path in states and not snapshot_tail.get(path):
-        # Snapshots stop partway through the path's history (the file grew past the limit); the
-        # starting content is still known exactly. The end state is the file's current on-disk
-        # content; if the file is gone, forward-apply the trailing snapshot-less hunks onto the
-        # last snapshot's `after` to recover it, so the exactly-known snapshot history isn't
-        # discarded. If neither is available, fall through to the raw-hunks fallback below.
-        final = _current_content(cwd, path)
-        if final is None:
-            final = _forward_apply(states[path][1], legacy.get(path, []))
-        if final is not None:
-            section = net_diff_for_path(status, path, states[path][0], final)
-            return section[2] if section else ""
-    legacy_chunks = legacy.get(path, [])
-    if not legacy_chunks:
-        return ""
-    # No usable snapshots for this file. Best effort: reconstruct the pre-edit content by
-    # reverse-applying the recorded per-Edit hunks to the file's current on-disk state, then emit
-    # one clean synthesized diff. Falls back to the raw per-Edit hunks concatenated when
-    # reconstruction can't uniquely locate a hunk (e.g. the file was mutated outside Edit).
-    reconstructed = _reconstruct_legacy_diff(cwd, path, legacy_chunks, status) if cwd else None
-    if reconstructed is not None:
-        return reconstructed
-    return "\n".join(chunk.rstrip("\n") for chunk in legacy_chunks)
 
 
 def _current_content(cwd: str, path: str) -> str | None:

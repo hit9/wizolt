@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from wizolt.base import ToolCall, ToolError, run_blocking, split_lines
 from wizolt.source import SOURCE_TARGET_CONSUMED, SourceView, ToolOutput, source_error
 from wizolt.tools.files import MIXED_EDIT_EVIDENCE, MODE_CREATE, Edit, EditTool, edit_mode
+from wizolt.utils.filelock import path_lock
 
 if TYPE_CHECKING:
     from wizolt.session import Session
@@ -87,22 +88,27 @@ class EditBatchPlan:
             return tool.diff(self.path, self.before, self.after, created=self.created) or f"Edit({self.path})"
 
         def transact(self) -> EditBatchPlan.PlannedEdit:
-            """Check-before-write and write on a blocking worker, returning its receipt."""
-            if os.path.isdir(self.path):
-                raise ToolError("planned edit is stale; path is a directory")
-            if os.path.exists(self.path):
-                with open(self.path, encoding="utf-8") as file:
-                    current = file.read()
-            elif self.created and not self.before:
-                current = ""
-            else:
-                raise ToolError("planned edit is stale; file changed")
-            if current != self.before:
-                raise ToolError("planned edit is stale; file changed")
-            if self.created:
-                os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
-            with open(self.path, "w", encoding="utf-8") as file:
-                file.write(self.after)
+            """Check and write under one path lock on a worker, returning its receipt.
+
+            Each agent has its own planner. Their plans may share a baseline; only one can
+            commit it. Locking just the write would let both stale checks succeed and lose edits.
+            """
+            with path_lock(self.path):
+                if os.path.isdir(self.path):
+                    raise ToolError("planned edit is stale; path is a directory")
+                if os.path.exists(self.path):
+                    with open(self.path, encoding="utf-8") as file:
+                        current = file.read()
+                elif self.created and not self.before:
+                    current = ""
+                else:
+                    raise ToolError("planned edit is stale; file changed")
+                if current != self.before:
+                    raise ToolError("planned edit is stale; file changed")
+                if self.created:
+                    os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+                with open(self.path, "w", encoding="utf-8") as file:
+                    file.write(self.after)
             return self
 
         async def apply(self, tool: EditTool) -> ToolOutput:
@@ -264,13 +270,14 @@ class EditBatchPlan:
     @staticmethod
     def snapshot(path: str) -> FileSnapshot:
         """Read one edit target and the metadata needed to validate creation."""
-        if os.path.exists(path):
-            if os.path.isdir(path):
-                return EditBatchPlan.FileSnapshot(True, True, "", True, True)
-            with open(path, encoding="utf-8") as file:
-                return EditBatchPlan.FileSnapshot(True, False, file.read(), True, True)
-        parent = os.path.dirname(path) or "."
-        return EditBatchPlan.FileSnapshot(False, False, "", os.path.exists(parent), os.path.isdir(parent))
+        with path_lock(path):
+            if os.path.exists(path):
+                if os.path.isdir(path):
+                    return EditBatchPlan.FileSnapshot(True, True, "", True, True)
+                with open(path, encoding="utf-8") as file:
+                    return EditBatchPlan.FileSnapshot(True, False, file.read(), True, True)
+            parent = os.path.dirname(path) or "."
+            return EditBatchPlan.FileSnapshot(False, False, "", os.path.exists(parent), os.path.isdir(parent))
 
     def apply(self, tool: EditTool, state: FileState, edits: list[Edit], view: SourceView | None) -> ApplyResult:
         """Apply one call to the planned file, then rebuild the planned lines with their origins.

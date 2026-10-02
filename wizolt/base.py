@@ -105,7 +105,7 @@ TOOL_OUTPUT_ASSET_SUFFIX = ".txt"
 # them, and the checkpoint names this index.
 HISTORY_INDEX_ASSET = "history.md"
 # Cap on the AGENTS.md (or CLAUDE.md fallback) content injected into every request's fixed
-# prefix, per DESIGN.md's "bound the fixed prefix" rule; truncation happens in
+# prefix, per design/DESIGN.md's "bound the fixed prefix" rule; truncation happens in
 # ContextManager.environment, so SystemInfo.detect returns the file verbatim.
 MAX_AGENTS_MD_TOKENS = 8_000
 MODEL_REQUEST_RETRIES = 5

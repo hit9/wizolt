@@ -118,8 +118,8 @@ class _RequestLease:
         self.active = True
 
 
-# Set inside the attempt's coroutine, so every wire and stream reader beneath it reads its own
-# request's lease. Tasks copy the context at creation, so leases never leak between attempts.
+# Tasks inherit context, including a parent's lease. call_client installs a fresh lease before
+# invoking each wire, so a child/sibling attempt never reuses that inherited callback authority.
 _active_lease: contextvars.ContextVar[_RequestLease | None] = contextvars.ContextVar("wizolt_model_request_lease", default=None)
 
 
@@ -680,7 +680,7 @@ class ModelClient:
         It steers which machine serves a request so that requests sharing a prefix land together;
         it does not pin routing and never substitutes for a byte-identical prefix. Everything that
         changes the rendered prefix therefore belongs in the key -- notably the tool set below.
-        See DESIGN.md "Cache epochs and breakpoints"."""
+        See design/DESIGN.md "Cache epochs and breakpoints"."""
         configured = provider.prompt_cache_key
         if configured == "off":
             return ""

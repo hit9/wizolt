@@ -486,6 +486,11 @@ class ImageInputs:
         return total
 
     def assets_dir(self) -> str:
+        """Resolve this UID's artifacts, even when a sibling uses the same image hash/tr.N key.
+
+        Workspace sharing is not asset ownership: cleanup and tool-output materialization must
+        never resolve through the selected frontend or the root's assets directory.
+        """
         session = self._session()
         from wizolt.session import SessionSnapshotStore  # local import: session is built on top of image
 

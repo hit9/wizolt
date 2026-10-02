@@ -31,6 +31,7 @@ from wizolt.source import (
     source_error,
 )
 from wizolt.tools.base import Tool
+from wizolt.utils.filelock import path_lock
 
 
 class ReadTool(Tool):
@@ -136,7 +137,7 @@ class ReadTool(Tool):
 
     def read_one(self, path: str, ranges: list[tuple[int, int]]) -> ToolOutput:
         try:
-            with open(path, encoding="utf-8") as file:
+            with path_lock(path), open(path, encoding="utf-8") as file:
                 lines = file.readlines()
         except FileNotFoundError:
             raise ToolError(f"no such file: {self.session.relpath(path)}; check the path and retry") from None
@@ -524,26 +525,27 @@ class EditTool(Tool):
         mode = edit_mode(source_name, edits)
         creating = mode == MODE_CREATE
         view = self.resolve_view(path, source_name, mode, edits)
-        if self._validate_target(path, creating):
-            with open(path, encoding="utf-8") as file:
-                original = file.read()
-            created = False
-        else:
-            original, created = "", True
-        result = self.apply(original, edits, view)
-        if result.content == original and not created:
-            raise ToolError(self.no_changes_error(original, result), recovery=self.no_op_recovery(path, view, original, result.replacements))
-        if created:
-            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        return self.write_result(
-            path,
-            original,
-            result.content,
-            result.changes,
-            self.warnings_block(edits, result.seam_duplicates),
-            result.relocations,
-            created=created,
-        )
+        with path_lock(path):
+            if self._validate_target(path, creating):
+                with open(path, encoding="utf-8") as file:
+                    original = file.read()
+                created = False
+            else:
+                original, created = "", True
+            result = self.apply(original, edits, view)
+            if result.content == original and not created:
+                raise ToolError(self.no_changes_error(original, result), recovery=self.no_op_recovery(path, view, original, result.replacements))
+            if created:
+                os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            return self.write_result(
+                path,
+                original,
+                result.content,
+                result.changes,
+                self.warnings_block(edits, result.seam_duplicates),
+                result.relocations,
+                created=created,
+            )
 
     def write_result(
         self,

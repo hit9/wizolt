@@ -9,7 +9,7 @@ the latest eligible user or tool message. Older families place them at model-dep
 instead, which this does not model -- a partial-coverage contract would weaken every assertion
 built on it, and the layout rules the tests exist to protect are the same either way.
 
-Out of scope on purpose, per DESIGN.md "Cache test boundary": the 1,024-token cacheable minimum
+Out of scope on purpose, per design/DESIGN.md "Cache test boundary": the 1,024-token cacheable minimum
 and the 30-minute retention window. Both are provider thresholds, not contract shape; asserting
 them here would claim evidence a mock cannot give.
 """

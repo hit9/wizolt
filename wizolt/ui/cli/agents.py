@@ -60,7 +60,12 @@ async def configure_subagent(loop: CommandLoop, settings: Session) -> None:
 
 
 class AgentsFrontend:
-    """Keep engines running while one prompt-toolkit application owns the terminal."""
+    """Select a projection while each agent keeps its frontend and input destination.
+
+    Switching changes only which application draws the terminal. Drafts, accepted submissions,
+    modals, transcript writers and statistics stay attached to their original runtime. Shared
+    ready/shutdown events describe the application lifetime, never one agent's turn lifetime.
+    """
 
     def __init__(self, root: TuiRuntime):
         self.root = root
@@ -155,6 +160,7 @@ class AgentsFrontend:
         )
         if isinstance(uid, str) and uid != self.current.loop.session.uid:
             previous = self.current
+            # Do not rebind hooks or transfer queues: input already accepted belongs to previous.
             self.current = self.runtimes[uid]
             self.switching = True
             previous.tui.managed = True

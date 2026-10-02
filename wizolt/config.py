@@ -376,7 +376,7 @@ class Config:
     hooks: Json = field(default_factory=dict)
     # UI owns parsing and validation; config only carries the raw tables.
     ui: Json = field(default_factory=dict)
-    # The provider entry compaction summaries run on, mirroring [worker]: compaction_provider names
+    # The provider entry compaction summaries run on: compaction_provider names
     # a base provider entry (empty = the active provider), and compaction_model/reasoning/api
     # override that entry per field (empty = inherit the entry's value). Resolved per call by
     # compaction_provider_config, never cached, so a runtime /provider switch is picked up by the

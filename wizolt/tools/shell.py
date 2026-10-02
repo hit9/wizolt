@@ -401,8 +401,8 @@ class BashTool(Tool):
             try:
                 for stream, pipe in pipes.items():
                     selector.register(pipe, selectors.EVENT_READ, stream)
-                while selector.get_map():
-                    for key, _ in selector.select():
+                while selector.get_map() and not job.stream_stop.is_set():
+                    for key, _ in selector.select(timeout=0.1):
                         try:
                             data = os.read(cast(Any, key.fileobj).fileno(), 4096)
                         except OSError:
@@ -419,11 +419,15 @@ class BashTool(Tool):
                             with contextlib.suppress(Exception):
                                 cast(Any, key.fileobj).close()
             finally:
+                for pipe in pipes.values():
+                    with contextlib.suppress(Exception):
+                        pipe.close()
                 selector.close()
 
         # A promoted process intentionally outlives the turn and its event loop.
         # One daemon owns both pipes; ordinary foreground Bash execution creates no worker thread.
-        threading.Thread(target=drain_pipes, daemon=True).start()
+        job.stream_thread = threading.Thread(target=drain_pipes, daemon=True)
+        job.stream_thread.start()
         # Leads with status, not wait: this note is read right after backgrounding handed control
         # back, and waiting is what gives it away again. Getting on with other work is the point.
         note = (

@@ -1,5 +1,6 @@
 """mcp resources (split from tests/test_mcp_tools.py)."""
 
+import asyncio
 from types import SimpleNamespace
 from typing import ClassVar
 
@@ -7,6 +8,7 @@ import pytest
 from mcp_harness import _fake_resource, mcp_cfg, session
 
 from wizolt.agent.lifecycle import bootstrap_features
+from wizolt.agent.context import ContextManager
 from wizolt.base import ToolError
 from wizolt.config import (
     Config,
@@ -246,6 +248,71 @@ class TestMCPResources:
         with pytest.raises(ToolError) as exc:
             await MCPTool(s, [{"action": "call", "server": "test", "tool": "query", "arguments": {}}]).call()
         assert "Invalid body" in str(exc.value) and "GRAMMAR DOC" in str(exc.value)
+
+    async def test_shared_transport_injects_resources_once_in_each_conversation(self, monkeypatch):
+        reads = []
+        main = await self._server_with_doc_tool(monkeypatch, "See metabase://docs/cq.md", reads)
+        child = Session(cwd=main.cwd, config=main.config, mcp=main.mcp)
+
+        async def ok(config, headers, name, arguments):
+            return SimpleNamespace(content=[SimpleNamespace(type="text", text="ROWS")])
+
+        monkeypatch.setattr(main.mcp, "_call_tool", ok)
+        for conversation in [main, child]:
+            output = await MCPTool(conversation, [{"server": "test", "tool": "query", "arguments": {}}]).call()
+            assert "GRAMMAR DOC" in output
+            repeated = await MCPTool(conversation, [{"server": "test", "tool": "query", "arguments": {}}]).call()
+            assert "GRAMMAR DOC" not in repeated
+        assert reads == ["metabase://docs/cq.md", "metabase://docs/cq.md"]
+        # Reset and compaction drop prior document knowledge in just their owning context.
+        child.request_context_reset()
+        assert child.apply_context_reset()
+        assert main.mcp_resource_reads and not child.mcp_resource_reads
+        output = await MCPTool(child, [{"server": "test", "tool": "query", "arguments": {}}]).call()
+        assert "GRAMMAR DOC" in output
+        ContextManager(main).apply_compaction({"summary": "compact"}, [])
+        assert child.mcp_resource_reads and not main.mcp_resource_reads
+        output = await MCPTool(main, [{"server": "test", "tool": "query", "arguments": {}}]).call()
+        assert "GRAMMAR DOC" in output
+        assert reads == ["metabase://docs/cq.md"] * 4
+
+    async def test_cancelling_one_shared_manager_call_does_not_cancel_another(self, monkeypatch):
+        main = await self._server_with_resources(monkeypatch, [])
+        child = Session(cwd=main.cwd, config=main.config, mcp=main.mcp)
+        entered, release = asyncio.Event(), asyncio.Event()
+        callers, cancelled = set(), set()
+
+        async def remote(config, headers, name, arguments):
+            caller = arguments["caller"]
+            callers.add(caller)
+            if len(callers) == 2:
+                entered.set()
+            try:
+                await release.wait()
+            except asyncio.CancelledError:
+                cancelled.add(caller)
+                raise
+            return SimpleNamespace(content=[SimpleNamespace(type="text", text=caller)])
+
+        monkeypatch.setattr(main.mcp, "_call_tool", remote)
+        tasks = [
+            asyncio.create_task(MCPTool(conversation, [{"server": "test", "tool": "query", "arguments": {"caller": label}}]).call())
+            for conversation, label in [(main, "main"), (child, "child")]
+        ]
+        try:
+            await asyncio.wait_for(entered.wait(), 3)
+            tasks[0].cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await tasks[0]
+            assert cancelled == {"main"}
+            assert not tasks[1].done()
+            release.set()
+            assert "child" in await asyncio.wait_for(tasks[1], 3)
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await main.mcp.close()
 
     async def test_auto_read_skips_web_links(self, monkeypatch):
         reads = []

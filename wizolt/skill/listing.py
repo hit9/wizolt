@@ -1,7 +1,7 @@
 """What one session's model has been told about the skills: a record that only grows by appending.
 
 The SKILLS index rides the cache-stable prefix and the Skill tool rides the tool block; rewriting
-either mid-conversation would re-price everything after it (DESIGN.md, "Context is a projection").
+either mid-conversation would re-price everything after it (design/DESIGN.md, "Context is a projection").
 So both are frozen at the session's first request. A skill that appears later -- installed,
 trusted, or found in a subdirectory the agent worked in -- is announced once as an appended
 message, and the index is rebuilt only where the prefix is rebuilt anyway: after a compaction or

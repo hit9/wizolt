@@ -891,6 +891,9 @@ threshold; provider integration tests verify reported usage and acceptance witho
 
 ## Parallel agents
 
+The full field inventory and sharing/lifetime contract live in
+[State ownership](STATE_OWNERSHIP.md). Keep load-bearing constraints beside the owning code too.
+
 `agent/subagents.py` owns admission, serial inboxes, tasks and child snapshots. The `Subagent`
 tool exposes spawn/send/list/wait/stop without presenting UI or re-entering an engine. Each
 `Agent.run` has one writer; concurrent input enters its durable inbox. Wait timeouts do not
@@ -900,7 +903,10 @@ Every agent shares the cwd and filesystem. There is no implicit worktree or merg
 descriptions and child prompts require disjoint file boundaries and prohibit reverting peers'
 changes. Config, clients, messages, usage, skill activation and provider overrides are independent;
 feature discovery and MCP transport are shared. Children inherit their creator's model settings
-but start without its conversation.
+but start without its conversation, plan or notes. Inherited provider/model/effort/API choices
+are pinned in child snapshots; later parent switches cannot silently change a restored child.
+Completion and instruction resolvers remain local because they bind agent/frontend callbacks.
+MCP document-injection memory and skill announcement memory are per conversation.
 
 Spawn approval keeps a detached settings draft per tool call. The configuration picker reuses
 model commands through `ModelSettingsHost`, with only the draft and the calling frontend's
