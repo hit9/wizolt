@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+
+- Record the post-0.62.0 theme refresh's benchmarks against 0.62.0 (`11493363` → `ca45fa61`) on
+  Linux aarch64 / CPython 3.14.7. Apparent regressions in a paired nine-sample run (banner +5.2%,
+  sub-millisecond replay appends +5.8%) did not reproduce in six interleaved rounds: first prompt
+  frame 182.49 → 178.29 ms (30 samples), appending 100 blocks 0.631 → 0.601 ms and recoloring
+  106.39 → 106.51 ms (54 samples). All replay output hashes match. See the
+  [benchmark report](https://github.com/hit9/wizolt/blob/master/benchmarks/README.md#theme-refresh-against-0620).
+
 ## 0.63.0 - 2026-09-30
 
 ### Changed

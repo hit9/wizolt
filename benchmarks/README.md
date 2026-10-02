@@ -1,5 +1,54 @@
 # Local performance baselines
 
+## Theme refresh against 0.62.0
+
+The theme, spacing, statusbar and live-preview commits after 0.62.0 (`ca45fa61`) are compared with
+0.62.0 (`11493363`), the last source benchmarked by the appearance review below, in
+[`baselines/linux-arm64-py314-before-theme-refresh.json`](baselines/linux-arm64-py314-before-theme-refresh.json)
+and [`results/linux-arm64-py314-theme-refresh.json`](results/linux-arm64-py314-theme-refresh.json).
+Both runs used Linux aarch64, installed CPython 3.14.7, nine samples per metric, identical
+dependencies and workloads, an idle machine and warm filesystem caches.
+
+That paired run, and a second pass in reverse order, pooled to 18 samples per side, showed
+`frame.banner` +7.3%, `replay.append_100_blocks` +10.9% and `replay.revisited_width_100_blocks`
++15.9%. The two replay probes take under 1 ms and their medians varied as much between two runs
+of the same revision. Six interleaved rounds of the frame and replay probes, alternating fresh
+exports of each revision, did not reproduce any of them; see
+[`results/linux-arm64-py314-theme-refresh-interleaved.json`](results/linux-arm64-py314-theme-refresh-interleaved.json),
+which also keeps the reverse-order pass.
+
+| Metric (median ms, interleaved) | 0.62.0 | Theme refresh | Samples |
+| --- | ---: | ---: | ---: |
+| Process → first prompt frame | 182.49 | 178.29 | 30 |
+| Process → banner | 51.67 | 50.99 | 30 |
+| First projection, 100 blocks | 99.76 | 98.17 | 54 |
+| Revisit width, 100 blocks | 0.018 | 0.018 | 54 |
+| Append, 100 blocks | 0.631 | 0.601 | 54 |
+| Append at 5,000-write limit | 0.942 | 0.887 | 54 |
+| Revisit width above cache budget | 247.83 | 251.13 | 54 |
+| Emit 500 plain rows | 6.14 | 6.29 | 54 |
+| Recolor 100 blocks / 500 rows | 106.39 | 106.51 | 54 |
+
+Two-width retained memory medians were 243,401 → 242,084 bytes. Every replay output hash matches:
+the changes leave the replay and append paths untouched, and the probes do not draw padded user
+messages, statusbars or live command previews. Interleaved frame probes launch each export
+directly, so their absolute times differ from `run.py`'s; compare them only within this table.
+These single local runs show no regression; they do not establish a speedup.
+
+To repeat without replacing these results:
+
+```sh
+uv run --no-sync python benchmarks/run.py --revision 11493363 --repeat 9 \
+  --output /tmp/wizolt-before-theme-refresh.json
+uv run --no-sync python benchmarks/run.py --revision ca45fa61 --repeat 9 \
+  --baseline /tmp/wizolt-before-theme-refresh.json --output /tmp/wizolt-theme-refresh.json
+# Interleave: export each revision with `git archive`, then alternate per round
+uv run --no-sync python benchmarks/frame.py --source /tmp/wizolt-11493363 --repeat 5
+uv run --no-sync python benchmarks/frame.py --source /tmp/wizolt-ca45fa61 --repeat 5
+uv run --no-sync python benchmarks/replay.py --source /tmp/wizolt-11493363 --repeat 9
+uv run --no-sync python benchmarks/replay.py --source /tmp/wizolt-ca45fa61 --repeat 9
+```
+
 ## Appearance review against master
 
 The appearance branch and its bug fixes are compared with `master` (`6b6492a96f12`) in
