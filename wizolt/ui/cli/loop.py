@@ -425,6 +425,7 @@ class CommandLoop:
         """
         self.theme_problems = Theme.configure(self.session.settings.theme, self.session.data_path("themes"), self.session.config.ui.get("themes"))
         self.theme_problems.extend(Theme.configure_diff_style(self.session.config.ui))
+        self.theme_problems.extend(Theme.configure_bar_themes(self.session.config.ui))
         if warning := Theme.true_color_warning():
             self.theme_problems.append(warning)
         self.theme_problems.extend(self.presentation.status_bar.layout.load(self.session.config.ui, Theme.bar_styles))

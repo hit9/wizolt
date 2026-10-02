@@ -44,6 +44,7 @@ def default_theme(monkeypatch):
     monkeypatch.setattr(Theme, "_mode", "dark")
     monkeypatch.setattr(Theme, "_diff_style", "auto")
     monkeypatch.setattr(Theme, "_custom", {})
+    monkeypatch.setattr(Theme, "_bar_themes", {"statusbar": "inherit", "divider": "inherit"})
     monkeypatch.delenv("COLORFGBG", raising=False)
     # The color environment decides the depth; each test sets the part it is about.
     for name in ("COLORTERM", "PROMPT_TOOLKIT_COLOR_DEPTH", "NO_COLOR"):
@@ -1008,3 +1009,45 @@ def test_papercolor_code_colors_are_inherited_by_custom_themes(name, tmp_path):
     assert style.style_for_token(Keyword.Type)["color"] == expected[0]
     assert style.style_for_token(Name.Class)["color"] == expected[0]
     assert style.style_for_token(Operator)["color"] == ("8700af" if name.endswith("light") else "af87d7")
+
+
+def test_component_auto_and_pairs_follow_terminal_independently(monkeypatch, tmp_path):
+    command_loop = themed_loop(tmp_path, "plum")
+    command_loop.session.config.ui = {"statusbar": {"theme": "papercolor"}, "divider": {"theme": "auto"}}
+    command_loop.configure_theme()
+    assert Theme.bar_palette("statusbar") is Theme.BUILTIN["papercolor-dark"]
+    assert Theme.bar_palette("divider") is Theme.BUILTIN["dark"]
+    before = command_loop.view.style()
+    monkeypatch.setattr(terminal, "background", lambda: (255, 255, 255))
+    assert Theme.bar_palette("statusbar") is Theme.BUILTIN["papercolor-light"]
+    assert Theme.bar_palette("divider") is Theme.BUILTIN["light"]
+    assert command_loop.view.style() is not before
+    assert command_loop.view.style().get_attrs_for_style_str("class:queue.rule").color == "9ca3af"
+    assert Theme.name() == "plum"
+
+
+def test_component_themes_keep_transcript_colors_and_respect_no_color(monkeypatch):
+    Theme.set_mode("dark")
+    before = Theme.transcript_style().get_attrs_for_style_str("class:role.user")
+    Theme.set_bar_theme("statusbar", "sand")
+    Theme.set_bar_theme("divider", "forest")
+    assert Theme.transcript_style().get_attrs_for_style_str("class:role.user") == before
+    assert Theme.wants_true_color()
+    assert "statusbar theme sand" in Theme.true_color_warning()
+    monkeypatch.setenv("COLORTERM", "truecolor")
+    assert Theme.color_depth(ColorDepth.DEPTH_8_BIT) == ColorDepth.DEPTH_24_BIT
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert Theme.color_depth(ColorDepth.DEPTH_24_BIT) == ColorDepth.DEPTH_1_BIT
+
+
+def test_reloading_or_removing_custom_component_theme(tmp_path):
+    write_theme(tmp_path, "mine", 'base = "sand"\n[colors]\nstatus_base = "#123456"\n')
+    Theme.load_custom(str(tmp_path))
+    Theme.set_bar_theme("statusbar", "mine")
+    assert "#123456" in Theme.bar_styles({"status_base"})["status_base"]
+    write_theme(tmp_path, "mine", 'base = "forest"\n[colors]\nstatus_base = "#abcdef"\n')
+    Theme.load_custom(str(tmp_path))
+    assert "#abcdef" in Theme.bar_styles({"status_base"})["status_base"]
+    Path(tmp_path, "mine.toml").unlink()
+    Theme.load_custom(str(tmp_path))
+    assert Theme.bar_palette("statusbar") is Theme.active()

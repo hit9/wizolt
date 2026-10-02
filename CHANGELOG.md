@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- Independent statusbar and divider color themes via `ui.statusbar.theme` and
+  `ui.divider.theme`, including custom themes, `inherit` (the default) and terminal-following
+  `auto`. Select and preview colors in their `/theme` tabs or with
+  `/theme statusbar|divider theme NAME`; Space confirms choices and Tab switches groups.
+
 ### Fixed
 
 - Strip the remaining image bookkeeping keys (`_images_text_only`, `_tool_image_question`) from

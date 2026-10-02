@@ -20,6 +20,31 @@ if TYPE_CHECKING:
     from wizolt.ui.cli.loop import CommandLoop
 
 
+def select_theme(loop: CommandLoop, kind: str, name: str) -> str:
+    try:
+        Theme.set_bar_theme(kind, name)
+    except ValueError as error:
+        return str(error)
+    name = Theme.selected_bar_theme(kind)
+    previous = loop.session.config.ui.get(kind, {})
+    raw = dict(previous) if isinstance(previous, dict) else {}
+    raw["theme"] = name
+    loop.session.config.ui[kind] = raw
+    if loop.presentation.tui is not None:
+        loop.presentation.tui.invalidate()
+    result = f"{kind}.theme: {name}"
+    if loop.session.config.path:
+        try:
+            ConfigFile.set_ui_value(loop.session.config.path, ("ui", kind), "theme", name)
+        except (OSError, ValueError, ConfigError) as error:
+            result += f"\nApplied for this session; not saved: {error}"
+        else:
+            result += " (saved)"
+    if warning := Theme.true_color_warning():
+        result += "\n" + warning
+    return result
+
+
 def select_layout(loop: CommandLoop, kind: str, source: str) -> str:
     layout = loop.presentation.status_bar.layout
     problems = layout.configure({kind: source}, Theme.bar_styles)
@@ -51,7 +76,7 @@ def preview(loop: CommandLoop, kind: str, started: float) -> StyleAndTextTuples:
     # The real statusbar already previews the selection at its actual terminal width.
     if kind != "statusbar":
         elapsed = max(0.0, time.monotonic() - started)
-        ramp = tuple(reversed(Theme.ramp("divider_glow", "divider_rule", 16)))
+        ramp = tuple(reversed(Theme.ramp("divider_glow", "divider_rule", 16, kind="divider")))
         for index, (label, running, queued) in enumerate((("Idle", False, 0), ("Running", True, 0), ("Queued", True, 2))):
             if index:
                 result.append(("", "\n"))  # a blank line between examples, so each reads on its own

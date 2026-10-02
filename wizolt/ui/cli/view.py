@@ -120,9 +120,17 @@ class CommandCompleter(Completer):
         if text.startswith("/theme "):
             tail = text[len("/theme ") :]
             if " " not in tail:
-                yield from self.matches((*Theme.choices(), *KINDS[1:]), tail, more=KINDS[1:])
+                yield from self.matches((*Theme.choices(), *KINDS[1:6]), tail, more=KINDS[1:6])
                 return
             kind, _, value = tail.partition(" ")
+            if kind in ("statusbar", "divider"):
+                if value.startswith("theme "):
+                    yield from self.matches(("inherit", *Theme.choices()), value[len("theme ") :])
+                    return
+                if " " not in value:
+                    presets = STATUS_PRESETS if kind == "statusbar" else DIVIDER_PRESETS
+                    yield from self.matches((*presets, "theme"), value, more=("theme",))
+                    return
             values = {
                 "diff": Theme.diff_styles(),
                 "statusbar": tuple(STATUS_PRESETS),
@@ -383,7 +391,7 @@ class View:
         self._hint_picker = HintPicker()  # idle-placeholder tips; see wizolt/ui/cli/hints.py
         # The app reads the style on every render through a DynamicStyle; it is rebuilt only when
         # the theme changes.
-        self._style: tuple[tuple[str, int], Style] | None = None
+        self._style: tuple[tuple[tuple[str, int], str], Style] | None = None
 
     def waiting_pulse_fragments(self) -> StyleAndTextTuples:
         if self.session.state.current_model_call_started_at <= 0:
@@ -410,9 +418,10 @@ class View:
         if not bar.started_at:
             values["elapsed"] = time.monotonic() if running else 0.0
 
-        def styles(specs: set[str]) -> dict[str, str]:
-            resolved = Theme.bar_styles(specs)
-            resolved["divider.label"] = label_style
+        def styles(specs: set[str], kind: str) -> dict[str, str]:
+            resolved = Theme.bar_styles(specs, kind=kind)
+            if "divider.label" not in Theme.bar_palette(kind).highlights:
+                resolved["divider.label"] = label_style
             if prefix:
                 resolved["spinner"] = prefix[0][0]
             return resolved
@@ -636,28 +645,31 @@ class View:
         names the view's own widgets in terms of it. Light and dark therefore differ only inside the
         palette, never in a branch here.
         """
-        if self._style is None or self._style[0] != Theme.key():
-            self._style = Theme.key(), self._build_style()
+        # Component auto/pair themes follow a late terminal reply even with a fixed global theme.
+        key = Theme.key(), Theme.detect()
+        if self._style is None or self._style[0] != key:
+            self._style = key, self._build_style()
         return self._style[1]
 
     def _build_style(self) -> Style:
         role = Theme.inline
         menu_bg = Theme.color("menu_bg")
+        divider = Theme.bar_palette("divider").colors
         return Style.from_dict(
             {
                 **Theme.tui_styles(),
                 "prompt": role("accent", "bold"),
                 # The comet fades into the rule it travels over, so both come from the palette.
-                "queue.rule": role("divider_rule"),
-                **{f"divider.glow{step}": color for step, color in enumerate(Theme.ramp("divider_glow", "divider_rule", self.GLOW_STEPS))},
+                "queue.rule": f"fg:{divider['divider_rule']}",
+                **{f"divider.glow{step}": color for step, color in enumerate(Theme.ramp("divider_glow", "divider_rule", self.GLOW_STEPS, kind="divider"))},
                 "queue.hint": role("muted"),
                 "quickhint": role("accent"),
                 "quickhint.focused": Theme.selection(),
                 "quickhint.sep": role("muted"),
                 "image.attachment": role("accent", "bold"),
                 "input.error": role("error"),
-                "divider.working": role("divider_label", "bold"),
-                "divider.worker": role("status_worker", "bold"),
+                "divider.working": f"fg:{divider['divider_label']} bold",
+                "divider.worker": f"fg:{divider['status_worker']} bold",
                 "approval": role("warning"),
                 "approval.wait": role("accent_secondary"),
                 "approval.action": role("warning"),

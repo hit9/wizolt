@@ -406,15 +406,17 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
         pane.resize(100, 30)
         visible_containing("Running (preview)")
         if cycle == 0:
-            pane.keys("G", "k")
+            pane.keys("Tab", "j")
             visible_containing("ripple")
             pane.keys("Escape")
         elif cycle == 1:
             pane.keys("C-c")
         else:
-            pane.keys("Space", "Tab", "G")
+            pane.keys("Space", "Tab", "j", "j")
             visible_containing("aurora")
-            pane.keys("Space", "Enter")
+            pane.keys("Space", "Tab", "j", "j", "j", "j", "Space")
+            visible_containing("Colors: slate")
+            pane.keys("Enter")
         deadline = time.monotonic() + 15
         while f"closed {cycle}:" not in log.read_text():
             assert time.monotonic() < deadline, log.read_text()
@@ -426,6 +428,7 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
     assert "closed 1: interrupted" in log.read_text()
     assert "divider.format: preset:rail" in log.read_text()
     assert "divider.sweep: preset:aurora" in log.read_text()
+    assert "divider.theme: slate" in log.read_text()
     log.with_suffix(".open-3").touch()
     visible_containing("Colorscheme")
     pane.keys("l", "l")

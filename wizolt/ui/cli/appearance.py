@@ -34,8 +34,8 @@ from wizolt.ui.tui import TUI_MODAL_PENDING, ChoiceViewState, TabbedViewState, T
 if TYPE_CHECKING:
     from wizolt.ui.cli.loop import CommandLoop
 
-# Each tab's setting, in tab order, and the word `/theme KIND NAME` sets it by.
-KINDS = ("theme", "diff", "statusbar", "divider", "sweep", "input")
+# Picker settings; the first six also name direct `/theme KIND NAME` commands.
+KINDS = ("theme", "diff", "statusbar", "divider", "sweep", "input", "statusbar_theme", "divider_theme")
 TAB_KINDS = ("theme", "diff", "statusbar", "divider", "input")
 TITLES = ("Colorscheme", "Diff", "StatusBar", "Divider", "Input")
 LEGEND = "h/l tab · j/k move · / search · Enter save · Esc cancel"
@@ -157,13 +157,19 @@ class AppearancePicker:
         input_name = (
             self.input_before.prompt.removeprefix("preset:") if self.input_before.prompt.startswith("preset:") and self.input_before.running is None else CUSTOM
         )
-        self.original = {"theme": theme, "diff": Theme.selected_diff_style(), **{kind: self.preset(kind) for kind in KINDS[2:5]}, "input": input_name}
+        self.original = {
+            "theme": theme,
+            "diff": Theme.selected_diff_style(),
+            **{kind: self.preset(kind) for kind in KINDS[2:5]},
+            "input": input_name,
+            **{kind + "_theme": Theme.selected_bar_theme(kind) for kind in ("statusbar", "divider")},
+        }
         self.selected = dict(self.original)
         self.tabs = TabbedViewState(TITLES)
         self.height = picker_height()
         self.width = shutil.get_terminal_size((80, 24)).columns
         self.lists = {kind: ChoiceViewState((), {}, set(), max_rows=20, height=self.height) for kind in TAB_KINDS}
-        self.divider_focus = "divider:" + self.selected["divider"]
+        self.bar_focus = {kind: kind + ":" + self.selected[kind] for kind in ("statusbar", "divider")}
 
     @staticmethod
     def presets(kind: str) -> tuple[str, ...]:
@@ -202,27 +208,30 @@ class AppearancePicker:
                 for name, prefix in (*InputStyle.PRESETS.items(), (CUSTOM, ""))
             }
         else:
-            kinds = ("divider", "sweep") if kind == "divider" else (kind,)
             choices: list[str] = []
             state.labels = {}
             state.disabled = set()
-            for setting in kinds:
-                source = self.layout_before.sources[setting]
-                presets = self.presets(setting) + ((CUSTOM,) if self.original[setting] == CUSTOM else ())
-                if kind == "divider":
-                    choices.append(setting)
-                    state.disabled.add(setting)
-                    state.labels[setting] = "Layout" if setting == "divider" else "Sweep"
+            for setting in self.groups(kind):
+                choices.append(setting)
+                state.disabled.add(setting)
+                state.labels[setting] = "Colorscheme" if setting.endswith("_theme") else "Sweep" if setting == "sweep" else "Layout"
+                if setting.endswith("_theme"):
+                    presets = tuple(dict.fromkeys(("inherit", *Theme.choices())))
+                    if self.selected[setting] not in presets:
+                        presets += (self.selected[setting],)
+                else:
+                    presets = self.presets(setting) + ((CUSTOM,) if self.original[setting] == CUSTOM else ())
                 for name in presets:
-                    row = setting + ":" + name if kind == "divider" else name
+                    row = setting + ":" + name
                     choices.append(row)
-                    label = name
-                    if name == CUSTOM:
+                    label = "inherit (follows Colorscheme)" if name == "inherit" else name
+                    if name == CUSTOM and not setting.endswith("_theme"):
+                        source = self.layout_before.sources[setting]
                         label = f"current ({source.removeprefix('preset:')})" if source.startswith("preset:") else "custom (current)"
                     state.labels[row] = ("* " if name == self.selected[setting] else "  ") + label
             state.choices = tuple(choices)
         options = state.enabled()
-        focused = self.divider_focus if kind == "divider" else self.selected[kind]
+        focused = self.bar_focus[kind] if kind in self.bar_focus else self.selected[kind]
         if not state.searching and not state.query and focused in options:
             state.selected = options.index(focused)
         return state
@@ -232,6 +241,8 @@ class AppearancePicker:
             Theme.set_mode(Theme.resolve(name))
         elif kind == "diff":
             Theme.set_diff_style(name)
+        elif kind.endswith("_theme"):
+            Theme.set_bar_theme(kind.removesuffix("_theme"), name)
         elif kind == "input":
             apply_input(self.loop, self.input_style(name))
         else:
@@ -241,7 +252,7 @@ class AppearancePicker:
 
     def preview(self, kind: str) -> Any:
         if kind == "statusbar":
-            return lambda _name: Text.clip_width("The status bar below shows the highlighted layout.", self.width - 4)
+            return lambda _name: Text.clip_width("The status bar below shows the highlighted layout and colors.", self.width - 4)
 
         def draw(name: str) -> StyleAndTextTuples:
             if kind == "input":
@@ -289,7 +300,7 @@ class AppearancePicker:
             if tui.modal_window is not None:
                 self.height = min(self.height, to_dimension(tui.modal_window.height).max)
         state = self.current_list()
-        state.height = self.height - (self.kind() == "divider")
+        state.height = self.height - (self.kind() in self.bar_focus)
         titles = TITLES if self.width >= 60 else ("Colors", "Diff", "Status", "Divider", "Input")
         if self.width < 52:
             titles = ("Color", "Diff", "Bar", "Line", "Input")
@@ -305,7 +316,7 @@ class AppearancePicker:
                 choice = state.selected_choice()
                 focused = state.labels.get(choice, choice) if choice is not None else "no matches"
                 keys = "↑↓ move · h/l tab · Enter save · Esc cancel"
-                if self.kind() == "divider":
+                if self.kind() in self.bar_focus:
                     keys = "Space choose · Tab group · Enter save · Esc cancel"
                 elif self.kind() == "input":
                     keys = "↑↓ move · e edit · Enter save · Esc cancel"
@@ -359,7 +370,7 @@ class AppearancePicker:
             preview_title=Text.clip_width(preview_title, self.width - 2),
             keys=(
                 "h/l tabs · j/k move · Tab group · Space choose · Enter save · Esc cancel"
-                if self.kind() == "divider"
+                if self.kind() in self.bar_focus
                 else "h/l tab · j/k move · e edit · Enter save · Esc cancel"
                 if self.kind() == "input"
                 else LEGEND
@@ -368,9 +379,14 @@ class AppearancePicker:
         # Keep navigation beside the tabs, rather than below a preview or padding.
         legend = fragments.pop(-2 if state.searching else -1)
         fragments[1] = config_hint
-        if self.kind() == "divider":
+        if self.kind() in self.bar_focus:
             # Chosen values remain visible even when the cursor scrolls into the other group.
-            fragments.insert(2, (Theme.fg("muted"), f"  Layout: {self.selected['divider']} · Sweep: {self.selected['sweep']}\n"))
+            kind = self.kind()
+            summary = f"  Layout: {self.selected[kind]}"
+            if kind == "divider":
+                summary += f" · Sweep: {self.selected['sweep']}"
+            summary += f" · Colors: {self.selected[kind + '_theme']}"
+            fragments.insert(2, (Theme.fg("muted"), Text.clip_width(summary, self.width) + "\n"))
         # Keep the list's filter text beside the tabs and its blank row below them.
         parts = [*tabs[:-1], fragments[0], legend, *fragments[1:]]
         # The inline window anchors to the bottom. Shorter tabs must occupy the same rows,
@@ -381,14 +397,17 @@ class AppearancePicker:
             parts.append(("", "\n" * padding))
         return parts
 
-    def preview_divider(self, row: str) -> None:
-        self.divider_focus = row
+    @staticmethod
+    def groups(kind: str) -> tuple[str, ...]:
+        return (kind, "sweep", kind + "_theme") if kind == "divider" else (kind, kind + "_theme")
+
+    def preview_bar(self, kind: str, row: str) -> None:
+        self.bar_focus[kind] = row
         setting, name = row.split(":", 1)
-        sources = {kind: self.source(kind, self.selected[kind]) for kind in ("divider", "sweep")}
-        sources[setting] = self.source(setting, name)
+        groups = self.groups(kind)
+        self.apply(kind + "_theme", name if setting == kind + "_theme" else self.selected[kind + "_theme"])
+        sources = {group: self.source(group, name if group == setting else self.selected[group]) for group in groups if not group.endswith("_theme")}
         self.layout.configure(sources, Theme.bar_styles)
-        if self.loop.presentation.tui is not None:
-            self.loop.presentation.tui.invalidate()
 
     def handle_key(self, key: str, data: str = "") -> Any:
         if key == "c-c":
@@ -428,31 +447,34 @@ class AppearancePicker:
             self.input_error = ""
             return TUI_MODAL_PENDING
         if not state.searching and key in {"h", "left", "l", "right"}:
-            if kind == "divider":
-                self.layout.configure({setting: self.source(setting, self.selected[setting]) for setting in ("divider", "sweep")}, Theme.bar_styles)
+            if kind in self.bar_focus:
+                focused = self.bar_focus[kind]
+                self.preview_bar(kind, kind + "_theme:" + self.selected[kind + "_theme"])
+                self.bar_focus[kind] = focused
             self.tabs.switch(-1 if key in {"h", "left"} else 1)
-            if self.kind() == "divider" and (row := self.current_list().selected_choice()) is not None:
-                self.preview_divider(row)
+            if self.kind() in self.bar_focus and (row := self.current_list().selected_choice()) is not None:
+                self.preview_bar(self.kind(), row)
             return TUI_MODAL_PENDING
-        if kind == "divider" and not state.searching and before is not None:
+        if kind in self.bar_focus and not state.searching and before is not None:
             setting, name = before.split(":", 1)
             if key in {"space", " "} or (key == "any" and data == " "):
                 self.selected[setting] = name
-                self.preview_divider(before)
+                self.preview_bar(kind, before)
                 return TUI_MODAL_PENDING
             if key in {"tab", "s-tab"}:
-                other = "sweep" if setting == "divider" else "divider"
+                groups = self.groups(kind)
+                other = groups[(groups.index(setting) + (-1 if key == "s-tab" else 1)) % len(groups)]
                 options = state.enabled()
                 target = other + ":" + self.selected[other]
                 if target not in options:
                     target = next((row for row in options if row.startswith(other + ":")), before)
                 state.selected = options.index(target)
-                self.preview_divider(target)
+                self.preview_bar(kind, target)
                 return TUI_MODAL_PENDING
         result = state.handle_key(key, data)
         if (landed := state.selected_choice()) is not None and landed != before:
-            if kind == "divider":
-                self.preview_divider(landed)
+            if kind in self.bar_focus:
+                self.preview_bar(kind, landed)
             else:
                 self.selected[kind] = landed
                 self.apply(kind, landed)
@@ -466,12 +488,14 @@ class AppearancePicker:
         self.loop.presentation.status_bar.layout = self.layout_before
         Theme.set_mode(self.mode_before)
         Theme.set_diff_style(self.original["diff"])
+        for kind in self.bar_focus:
+            Theme.set_bar_theme(kind, self.original[kind + "_theme"])
         apply_input(self.loop, self.input_before)
 
     def save(self) -> list[str]:
         """Persist every setting a tab changed; the lines say what was saved where."""
         lines: list[str] = []
-        for kind in KINDS:
+        for kind in ("theme", "diff", "statusbar_theme", "divider_theme", *KINDS[2:6]):
             name = self.selected[kind]
             if name == self.original[kind] and (kind != "input" or self.input_style(name) == self.input_before):
                 continue
@@ -479,6 +503,8 @@ class AppearancePicker:
                 lines.append(save_theme(self.loop, name))
             elif kind == "diff":
                 lines.append(save_diff_style(self.loop, name))
+            elif kind.endswith("_theme"):
+                lines.append(bars.select_theme(self.loop, kind.removesuffix("_theme"), name))
             elif kind == "input":
                 lines.append(save_input(self.loop, self.input_style(name)))
             else:
@@ -548,7 +574,9 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
     already on screen is redrawn in it once, the way a resize redraws it."""
     problems = Theme.load_custom(loop.session.data_path("themes"), loop.session.config.ui.get("themes"))
     words = args.split()
-    if len(words) == 2 and words[0] in KINDS[1:]:
+    if len(words) == 3 and words[0] in ("statusbar", "divider") and words[1] == "theme":
+        return "\n".join([*problems, bars.select_theme(loop, words[0], words[2])])
+    if len(words) == 2 and words[0] in KINDS[1:6]:
         return "\n".join([*problems, direct(loop, words[0], words[1])])
     tui = loop.presentation.tui
     if args.strip():
@@ -570,9 +598,11 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
                 *listing,
                 f"Diff styles: {', '.join((Theme.AUTO, *DIFF_STYLES))}",
                 f"Statusbar presets: {', '.join(PRESETS['statusbar'])}",
+                f"Statusbar theme: {Theme.selected_bar_theme('statusbar')}",
                 f"Divider layouts: {', '.join(bars.DIVIDER_CHOICES)}. Sweeps: {', '.join(bars.SWEEP_CHOICES)}",
+                f"Divider theme: {Theme.selected_bar_theme('divider')}",
                 f"Input presets: {', '.join(InputStyle.PRESETS)}",
-                "Use /theme NAME, or /theme diff|statusbar|divider|sweep|input NAME.",
+                "Use /theme NAME, /theme diff|statusbar|divider|sweep|input NAME, or /theme statusbar|divider theme NAME.",
             ]
         )
     for problem in problems:

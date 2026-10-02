@@ -516,7 +516,7 @@ class BarLayout:
         self.sweep = Sweep(DEFAULTS["sweep"])
         self.errors: list[str] = []
 
-    def configure(self, sources: Mapping[str, str], styles: Callable[[set[str]], Mapping[str, str]]) -> list[str]:
+    def configure(self, sources: Mapping[str, str], styles: Callable[[set[str], str], Mapping[str, str]]) -> list[str]:
         templates = dict(self.templates)
         sweep = self.sweep
         problems = []
@@ -529,7 +529,7 @@ class BarLayout:
                     sweep = Sweep(source)
                 else:
                     template = Template(source, PRESETS[key])
-                    resolved = styles(template.styles)
+                    resolved = styles(template.styles, key)
                     for running in (False, True):
                         sample.update(running=running, yolo=running, **{"worker.active": running})
                         template.render(sample, 80, resolved)
@@ -542,13 +542,13 @@ class BarLayout:
             self.errors = []
         return problems
 
-    def load(self, raw: Mapping[str, Any], styles: Callable[[set[str]], Mapping[str, str]]) -> list[str]:
+    def load(self, raw: Mapping[str, Any], styles: Callable[[set[str], str], Mapping[str, str]]) -> list[str]:
         sources = dict(DEFAULTS)
         for section, keys in (("statusbar", ("format",)), ("divider", ("format", "sweep"))):
             table = raw.get(section, {})
             if not isinstance(table, dict):
                 return [f"ui.{section} must be a table"]
-            unknown = set(table) - set(keys)
+            unknown = set(table) - {*keys, "theme"}
             if unknown:
                 return [f"ui.{section}: unknown settings: {', '.join(sorted(unknown))}"]
             for key in keys:
@@ -557,14 +557,14 @@ class BarLayout:
         return self.configure(sources, styles)
 
     def render(
-        self, kind: str, values: Mapping[str, Value], width: int, styles: Callable[[set[str]], Mapping[str, str]], *, ramp: tuple[str, ...] = ()
+        self, kind: str, values: Mapping[str, Value], width: int, styles: Callable[[set[str], str], Mapping[str, str]], *, ramp: tuple[str, ...] = ()
     ) -> Fragments:
         template = self.templates[kind]
         try:
             return template.render(
                 values,
                 width,
-                styles(template.styles),
+                styles(template.styles, kind),
                 sweep=self.sweep if kind == "divider" and values.get("running") else None,
                 t=float(values.get("elapsed", 0)),
                 ramp=ramp,
@@ -574,4 +574,4 @@ class BarLayout:
             if message not in self.errors:
                 self.errors = [message]
             fallback = Template(DEFAULTS[kind], PRESETS[kind])
-            return fallback.render(values, width, styles(fallback.styles))
+            return fallback.render(values, width, styles(fallback.styles, kind))

@@ -800,6 +800,12 @@ selection, temporary preview state and preview-task cancellation; `cli/bars.py` 
 previews and config saves. The existing TUI still owns row placement and scrollback; configurable
 bars are live rows, never transcript entries.
 
+Each bar selects its own palette (`inherit` follows the global theme; `auto` and pairs follow
+the terminal). The same scoped resolver validates and draws templates, while the divider's
+style classes and animation ramp use its selected palette too. These live colors carry no
+transcript role classes. A late terminal background reply invalidates the view style even when
+the global theme is fixed. Layout parsing remains independent of palette selection.
+
 Picker choices are a curated subset of the preset registry; older names remain valid configuration
 and appear as the current selection. Fills share the remaining terminal columns and repeat bounded
 single-column patterns. Sweeps keep `x`/`w` in terminal columns; `u` spans the fill regions only,

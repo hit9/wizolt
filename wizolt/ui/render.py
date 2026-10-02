@@ -408,6 +408,7 @@ class Theme:
 
     _mode: ClassVar[str] = "dark"  # the active theme's name
     _diff_style: ClassVar[str] = "auto"  # `ui.diff.style`: a DIFF_STYLES name, or `auto` for the theme's pairing
+    _bar_themes: ClassVar[dict[str, str]] = {"statusbar": "inherit", "divider": "inherit"}
     _custom: ClassVar[dict[str, Palette]] = {}
     # Bumped whenever a theme's colors may have changed, including a theme file reloaded under the
     # same name, so anything rendered from the palette knows its colors are stale.
@@ -447,14 +448,15 @@ class Theme:
         return ",".join([cls.appearance(), *(f"{key}:{ansi.get(value, value)}" for key, value in values.items())])
 
     @classmethod
-    def bar_styles(cls, specs: set[str]) -> dict[str, str]:
+    def bar_styles(cls, specs: set[str], kind: str = "statusbar") -> dict[str, str]:
         """Resolve template styles from semantic roles and theme highlight groups.
 
         Only color values and named text attributes cross this boundary, never raw toolkit
         style directives from configuration or interpolated model/provider names.
         """
-        colors = cls.palette()
-        background = cls.active().background or ("#ffffff" if cls.appearance() == "light" else "#000000")
+        palette = cls.bar_palette(kind)
+        colors = palette.colors
+        background = palette.background or ("#ffffff" if palette.appearance == "light" else "#000000")
         # Solid segments use their own surface; a color readable on the transcript can disappear
         # on the popup grey or the badge. User highlight overrides still take precedence below.
         detail = colors["status_base"]
@@ -462,16 +464,17 @@ class Theme:
         context = colors["status_base"]
         badge = colors["divider_label"]
         warning, error = colors["warning"], colors["error"]
-        if cls.active().background:
+        if palette.background:
             detail = lift(detail, detail, colors["menu_bg"], 5.5)
             provider = lift(provider, detail, colors["status_bg"], 4.5)
             context = lift(context, detail, colors["status_bg"], 4.5)
             badge = lift(badge, detail, colors["menu_bg"], 4.5)
             # Pressure text needs to read on a band, while transcript warnings retain their hue.
-            toward = "#000000" if cls.appearance() == "light" else "#ffffff"
+            toward = "#000000" if palette.appearance == "light" else "#ffffff"
             warning = lift(warning, toward, colors["status_bg"], 4.5)
             error = lift(error, toward, colors["status_bg"], 4.5)
-        groups = {role: cls.fg(role) for role in cls.ROLES}
+        # Bars are live rows. Inline colors must not be overridden by transcript role classes.
+        groups = {role: f"fg:{colors[role]}" for role in cls.ROLES}
         groups.update(
             {
                 "status.warning": f"fg:{warning}",
@@ -487,10 +490,10 @@ class Theme:
                 "divider.metrics": f"fg:{detail} bg:{colors['menu_bg']}",
                 "divider.badge": f"fg:{badge} bg:{colors['menu_bg']} bold",
                 "divider.label": "class:divider.working",
-                "spinner": cls.fg("success"),
+                "spinner": f"fg:{colors['success']}",
             }
         )
-        groups.update(cls.active().highlights)
+        groups.update(palette.highlights)
         detected = terminal.background()
         result = {"__background": "#" + "".join(f"{value:02x}" for value in detected) if detected else background}
         for spec in specs:
@@ -532,6 +535,40 @@ class Theme:
         return cls.themes().get(cls._mode, cls.BUILTIN["dark"])
 
     @classmethod
+    def bar_palette(cls, kind: str) -> Palette:
+        selected = cls._bar_themes[kind]
+        if selected == "inherit" or cls.canonical(selected) is None:
+            return cls.active()
+        return cls.themes()[cls.resolve(selected)]
+
+    @classmethod
+    def selected_bar_theme(cls, kind: str) -> str:
+        return cls._bar_themes[kind]
+
+    @classmethod
+    def set_bar_theme(cls, kind: str, name: str) -> None:
+        selected = "inherit" if name.strip().lower() == "inherit" else cls.canonical(name)
+        if selected is None:
+            raise ValueError(f"unknown ui.{kind}.theme {name!r}")
+        cls._bar_themes = {**cls._bar_themes, kind: selected}
+        cls._generation += 1
+
+    @classmethod
+    def configure_bar_themes(cls, ui: dict) -> list[str]:
+        problems = []
+        for kind in ("statusbar", "divider"):
+            table = ui.get(kind, {})
+            name = table.get("theme", "inherit") if isinstance(table, dict) else "inherit"
+            try:
+                if not isinstance(name, str):
+                    raise TypeError(f"ui.{kind}.theme must be a string")
+                cls.set_bar_theme(kind, name)
+            except (TypeError, ValueError) as error:
+                cls.set_bar_theme(kind, "inherit")
+                problems.append(f"{error}; using inherit")
+        return problems
+
+    @classmethod
     def set_mode(cls, name: str) -> None:
         cls._mode = name if name in cls.themes() else "dark"
         cls._generation += 1
@@ -547,6 +584,10 @@ class Theme:
             del cls._custom[name]
             source = f"ui.themes.{name}" if isinstance(inline, dict) and name in inline else os.path.join(directory, name + ".toml")
             problems.append(f"theme {source}: `{name}` already means something to runtime.theme; choose another name")
+        for kind, selected in cls._bar_themes.items():
+            if selected != "inherit" and cls.canonical(selected) is None:
+                cls.set_bar_theme(kind, "inherit")
+                problems.append(f"unknown ui.{kind}.theme {selected!r}; using inherit")
         cls._generation += 1
         return problems
 
@@ -581,7 +622,7 @@ class Theme:
     def wants_true_color(cls) -> bool:
         """Whether the colors in use are exact values that rounding would spoil: a named scheme's,
         or a diff style's other than `classic`, the one tuned to survive 256 colors."""
-        return cls.active().true_color or cls.diff_style_name() != "classic"
+        return cls.active().true_color or any(cls.bar_palette(kind).true_color for kind in cls._bar_themes) or cls.diff_style_name() != "classic"
 
     @staticmethod
     def terminal_has_true_color() -> bool:
@@ -595,6 +636,8 @@ class Theme:
         if not cls.wants_true_color() or cls.terminal_has_true_color() or ColorDepth.from_env() is not None:
             return None
         what = f"theme {cls.name()}" if cls.active().true_color else f"diff style {cls.diff_style_name()}"
+        if not cls.active().true_color and cls.diff_style_name() == "classic":
+            what = next(f"{kind} theme {cls.selected_bar_theme(kind)}" for kind in cls._bar_themes if cls.bar_palette(kind).true_color)
         return (
             f"The {what} is drawn in exact colors, but COLORTERM is not `truecolor`, so they are rounded "
             "to the nearest of 256 colors and dark diff lines can look black. If your terminal supports "
@@ -791,9 +834,10 @@ class Theme:
         }
 
     @classmethod
-    def ramp(cls, start_role: str, end_role: str, steps: int) -> list[str]:
+    def ramp(cls, start_role: str, end_role: str, steps: int, *, kind: str | None = None) -> list[str]:
         """Interpolate `steps` hex colors from one role to another."""
-        start, end = cls.rgb(cls.color(start_role)), cls.rgb(cls.color(end_role))
+        colors = cls.bar_palette(kind).colors if kind else cls.palette()
+        start, end = cls.rgb(colors[start_role]), cls.rgb(colors[end_role])
         span = max(1, steps - 1)
         return [cls.mix(start, end, index / span) for index in range(steps)]
 

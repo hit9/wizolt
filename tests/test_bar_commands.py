@@ -32,6 +32,7 @@ def command_loop(tmp_path, monkeypatch):
     monkeypatch.setattr(Theme, "_mode", "dark")
     monkeypatch.setattr(Theme, "_diff_style", "auto")
     monkeypatch.setattr(Theme, "_custom", {})
+    monkeypatch.setattr(Theme, "_bar_themes", {"statusbar": "inherit", "divider": "inherit"})
     command_loop = loop(tmp_path)
     path = tmp_path / "config.toml"
     path.write_text('# keep comment\n[runtime]\ntheme = "auto"\n')
@@ -69,7 +70,7 @@ async def test_statusbar_preview_escape_restores_custom_template(command_loop):
 
 async def test_tabs_save_statusbar_layout_and_sweep_together(command_loop, monkeypatch):
     monkeypatch.setattr("wizolt.ui.cli.appearance.picker_height", lambda: 24)
-    modal = command_loop.presentation.tui = BarModal(["right", "right", "j", "l", "j", " ", "tab", "j", " ", "enter"], consumed=True)
+    modal = command_loop.presentation.tui = BarModal(["right", "right", "j", " ", "l", "j", " ", "tab", "j", " ", "enter"], consumed=True)
     result = await theme_command(command_loop, "")
     assert "statusbar.format: preset:minimal" in result
     assert "divider.format: preset:capsule" in result
@@ -78,7 +79,7 @@ async def test_tabs_save_statusbar_layout_and_sweep_together(command_loop, monke
     frames = ["".join(fragment[1] for fragment in frame) for frame in modal.frames]
     assert all("Colorscheme" in frame and "StatusBar" in frame for frame in frames)
     assert any("Running (preview)" in frame and "Queued (preview)" in frame for frame in frames)
-    assert modal.pos == 10
+    assert modal.pos == 11
 
 
 async def test_escape_after_switching_tabs_restores_everything(command_loop):
@@ -92,7 +93,7 @@ async def test_escape_after_switching_tabs_restores_everything(command_loop):
 
 
 async def test_search_letters_do_not_switch_tabs_and_tab_focus_is_retained(command_loop):
-    modal = command_loop.presentation.tui = BarModal(["l", "l", "/", "l", "u", "a", "escape", "right", "left", "enter"])
+    modal = command_loop.presentation.tui = BarModal(["l", "l", "/", "l", "u", "a", "escape", " ", "right", "left", "enter"])
     await theme_command(command_loop, "")
     assert saved(command_loop)["ui"]["statusbar"]["format"] == "preset:lualine"
     assert "/lua (filtered)" in "".join(text for frame in modal.frames for _, text in frame)
@@ -101,7 +102,7 @@ async def test_search_letters_do_not_switch_tabs_and_tab_focus_is_retained(comma
 async def test_older_presets_and_custom_sweep_can_be_kept(command_loop):
     layout = command_loop.presentation.status_bar.layout
     assert not layout.configure({"divider": "preset:plain", "sweep": "0.5"}, Theme.bar_styles)
-    modal = command_loop.presentation.tui = BarModal(["h", "h", "g", "j", "j", "j", "j", "j", "G", "enter"])
+    modal = command_loop.presentation.tui = BarModal(["h", "h", "g", "tab", "enter"])
     assert await theme_command(command_loop, "") is None
     rendered = "".join(text for frame in modal.frames for _, text in frame)
     assert "current (plain)" in rendered and "custom (current)" in rendered
@@ -321,3 +322,130 @@ async def test_invalid_input_preset_is_rejected_without_mutating_settings(comman
     original = command_loop.presentation.input_style
     assert "Unknown input preset" in await theme_command(command_loop, "input nope")
     assert command_loop.presentation.input_style == original and "ui" not in saved(command_loop)
+
+
+async def test_component_themes_persist_independently_and_survive_global_switch(command_loop):
+    for args in ("statusbar lualine", "divider frame", "statusbar theme gruvbox-dark", "divider theme forest"):
+        assert "saved" in await theme_command(command_loop, args)
+    assert saved(command_loop)["ui"] == {
+        "statusbar": {"format": "preset:lualine", "theme": "gruvbox-dark"},
+        "divider": {"format": "preset:frame", "theme": "forest"},
+    }
+    await theme_command(command_loop, "plum")
+    assert Theme.name() == "plum"
+    assert Theme.bar_palette("statusbar") is Theme.BUILTIN["gruvbox-dark"]
+    assert Theme.bar_palette("divider") is Theme.BUILTIN["forest"]
+    command_loop.configure_theme()
+    assert not command_loop.presentation.status_bar.layout.errors
+    assert Theme.selected_bar_theme("divider") == "forest"
+    assert "saved" in await theme_command(command_loop, "statusbar theme inherit")
+    assert Theme.bar_palette("statusbar") is Theme.active()
+    assert Theme.bar_palette("divider") is Theme.BUILTIN["forest"]
+
+
+@pytest.mark.parametrize("kind", ["statusbar", "divider"])
+async def test_unknown_component_theme_does_not_change_or_save_settings(command_loop, kind):
+    assert f"unknown ui.{kind}.theme" in await theme_command(command_loop, f"{kind} theme missing")
+    assert Theme.selected_bar_theme(kind) == "inherit"
+    assert "ui" not in saved(command_loop)
+
+
+@pytest.mark.parametrize("kind,keys", [("statusbar", ["l", "l", "tab"]), ("divider", ["h", "h", "tab", "tab"])])
+async def test_picker_component_color_confirmation_and_cancel(command_loop, kind, keys):
+    # inherit -> auto -> dark -> light -> slate; Space pins slate, forest stays a hover.
+    command_loop.presentation.tui = BarModal([*keys, "j", "j", "j", "j", " ", "j", "enter"])
+    assert f"{kind}.theme: slate" in await theme_command(command_loop, "")
+    assert saved(command_loop)["ui"] == {kind: {"theme": "slate"}}
+    command_loop.presentation.tui = BarModal([*keys, "j", " ", "escape"])
+    assert await theme_command(command_loop, "") is None
+    assert Theme.selected_bar_theme(kind) == "slate"
+    assert saved(command_loop)["ui"] == {kind: {"theme": "slate"}}
+
+
+def test_component_theme_completion():
+    completer = CommandCompleter()
+    for text, expected in (("/theme statusbar th", "theme "), ("/theme divider theme inh", "inherit"), ("/theme statusbar theme gru", "gruvbox-dark")):
+        assert [item.text for item in completer.get_completions(Document(text), None)] == [expected]
+
+
+@pytest.mark.parametrize("value", ["missing", 123, False])
+def test_invalid_component_config_falls_back_without_rejecting_layout(command_loop, value):
+    command_loop.session.config.ui = {"statusbar": {"format": "preset:minimal", "theme": value}, "divider": {"theme": "forest"}}
+    command_loop.configure_theme()
+    assert any("ui.statusbar.theme" in error for error in command_loop.theme_problems)
+    assert Theme.selected_bar_theme("statusbar") == "inherit"
+    assert Theme.selected_bar_theme("divider") == "forest"
+    assert command_loop.presentation.status_bar.layout.sources["statusbar"] == "preset:minimal"
+
+
+async def test_custom_component_highlights_and_sweep_use_the_selected_palette(command_loop):
+    command_loop.session.config.ui = {
+        "themes": {
+            "mine": {
+                "base": "forest",
+                "colors": {"divider_rule": "#112233", "divider_glow": "#aabbcc"},
+                "highlights": {"badge": {"fg": "#123456"}, "divider.label": {"fg": "#fedcba"}},
+            }
+        },
+        "divider": {"theme": "mine", "format": "[badge]{activity}[/] [divider.label]{label}[/][divider_rule]{fill:─}[/]"},
+        "statusbar": {"theme": "sand"},
+    }
+    command_loop.configure_theme()
+    assert not command_loop.presentation.status_bar.layout.errors
+    assert not any("unknown highlight" in problem for problem in command_loop.theme_problems)
+    parts = command_loop.view.queue_divider_fragments()
+    assert any("#123456" in style for style, _ in parts)
+    assert any("#fedcba" in style for style, _ in parts)
+    styles = command_loop.view.style()
+    assert styles.get_attrs_for_style_str("class:queue.rule").color == "112233"
+    assert styles.get_attrs_for_style_str("class:divider.glow0").color == "aabbcc"
+    assert styles.get_attrs_for_style_str("class:divider.worker").color == Theme.bar_palette("divider").colors["status_worker"].lstrip("#")
+    await theme_command(command_loop, "plum")
+    assert command_loop.view.style().get_attrs_for_style_str("class:queue.rule").color == "112233"
+
+
+async def test_component_picker_accepts_a_theme_named_custom(command_loop):
+    command_loop.session.config.ui = {"themes": {"custom": {"base": "forest"}}}
+    command_loop.configure_theme()
+    command_loop.presentation.tui = BarModal(["l", "l", "tab", "G", " ", "enter"])
+    assert "statusbar.theme: custom" in await theme_command(command_loop, "")
+    assert saved(command_loop)["ui"]["statusbar"]["theme"] == "custom"
+
+
+async def test_statusbar_powerline_and_warning_colors_are_scoped(command_loop):
+    command_loop.session.config.ui = {
+        "themes": {"mine": {"base": "sand", "highlights": {"status.model": {"fg": "#112233", "bg": "#aabbcc"}}}},
+        "statusbar": {"format": "preset:lualine", "theme": "mine"},
+        "divider": {"theme": "forest"},
+    }
+    command_loop.configure_theme()
+    parts = command_loop.presentation.status_bar.fragments()
+    assert any("fg:#112233 bg:#aabbcc" in style for style, _ in parts)
+    colors = Theme.bar_styles({"status.warning", "status.error"})
+    await theme_command(command_loop, "plum")
+    assert Theme.bar_styles({"status.warning", "status.error"}) == colors
+    assert command_loop.view.style().get_attrs_for_style_str("class:divider.working").color == Theme.BUILTIN["forest"].colors["divider_label"].lstrip("#")
+
+
+async def test_leaving_color_preview_restores_custom_highlights_and_keeps_focus(command_loop):
+    from wizolt.ui.cli.appearance import AppearancePicker
+
+    command_loop.session.config.ui = {
+        "themes": {"mine": {"base": "forest", "highlights": {"badge": {"fg": "#123456"}}}},
+        "statusbar": {"theme": "mine", "format": "[badge]{model}[/]"},
+    }
+    command_loop.configure_theme()
+    picker = AppearancePicker(command_loop, 0)
+    try:
+        for key in ("l", "l", "tab", *(["k"] * (len(Theme.choices()) - 1))):
+            picker.handle_key(key)
+        assert Theme.selected_bar_theme("statusbar") == "auto"
+        focused = picker.current_list().selected_choice()
+        picker.handle_key("l")
+        assert Theme.selected_bar_theme("statusbar") == "mine"
+        assert not picker.layout.errors
+        assert any("#123456" in style for style, _ in command_loop.presentation.status_bar.fragments())
+        picker.handle_key("h")
+        assert picker.current_list().selected_choice() == focused
+    finally:
+        picker.restore()

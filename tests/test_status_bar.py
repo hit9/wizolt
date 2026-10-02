@@ -64,13 +64,13 @@ def test_status_bar_keeps_semantic_colors(tmp_path):
     labels = ("[yolo] ", "default/", "model", s.config.provider.reasoning, "mcp 0", "ctx 0%")
     by_text = {label: next(style for style, text in fragments if label in text) for label in labels}
 
-    assert by_text["[yolo] "] == Theme.fg("status_yolo")
-    assert by_text["[yolo] "] != Theme.fg("status_base")
-    assert by_text["default/"] == Theme.fg("status_provider")
-    assert by_text["model"] == Theme.fg("status_base") + " bold"
-    assert by_text[s.config.provider.reasoning] == Theme.fg("status_reason")
-    assert by_text["mcp 0"] == Theme.fg("status_mcp")
-    assert by_text["ctx 0%"] == Theme.fg("status_base")
+    assert by_text["[yolo] "] == Theme.inline("status_yolo")
+    assert by_text["[yolo] "] != Theme.inline("status_base")
+    assert by_text["default/"] == Theme.inline("status_provider")
+    assert by_text["model"] == Theme.inline("status_base") + " bold"
+    assert by_text[s.config.provider.reasoning] == Theme.inline("status_reason")
+    assert by_text["mcp 0"] == Theme.inline("status_mcp")
+    assert by_text["ctx 0%"] == Theme.inline("status_base")
 
 
 def test_status_bar_clips_wide_model_name_by_display_width(tmp_path, monkeypatch):
@@ -89,10 +89,10 @@ def test_status_bar_clip_keeps_role_colors(tmp_path, monkeypatch):
         fragments = StatusBar(s).fragments()
     styles = {style for style, text in fragments if text.strip()}
     assert len(styles) > 1
-    assert Theme.fg("status_provider") in styles
-    assert Theme.fg("status_base") + " bold" in styles
+    assert Theme.inline("status_provider") in styles
+    assert Theme.inline("status_base") + " bold" in styles
     assert "ctx 0%" in "".join(text for _, text in fragments)
-    assert Theme.fg("status_reason") not in styles  # context survives after optional effort is dropped
+    assert Theme.inline("status_reason") not in styles  # context survives after optional effort is dropped
     assert get_cwidth("".join(text for _, text in fragments)) < 30
 
 

@@ -125,6 +125,31 @@ reported at startup and when `/theme` opens; the rest of the file still applies.
 Put these examples in your [config file](configuration.md), then restart wizolt.
 Replace existing values rather than adding a second table with the same name.
 
+### Independent bar colors
+
+Choose a theme for each bar without changing your messages, code or menus:
+
+```toml
+[ui.statusbar]
+format = "preset:lualine"
+theme = "gruvbox-dark"
+
+[ui.divider]
+format = "preset:frame"
+sweep = "preset:comet"
+theme = "forest"
+```
+
+Omit `theme` or use `"inherit"` to follow the main Colorscheme. `"auto"` follows the terminal's
+light or dark background independently; pairs such as `"papercolor"` also follow the terminal.
+An unknown name reports the setting and falls back to `"inherit"`.
+
+To choose your own foregrounds, backgrounds or Powerline segments, define a
+[custom theme](#define-a-theme-in-your-config) and use its name here. The divider's line,
+glow and labels all use its chosen theme. The green waiting dot keeps its usual pulse.
+Select colors without restarting with `/theme statusbar theme NAME` or
+`/theme divider theme NAME`. Use `inherit` as the name to return to the main Colorscheme.
+
 ### Input prefixes
 
 Choose or edit input prefixes in `/theme`'s **Input** tab, or set them in the config file:

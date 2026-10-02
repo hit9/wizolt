@@ -78,7 +78,8 @@ your custom theme can override its diff backgrounds.
 ## Statusbar and divider
 
 The **StatusBar** tab changes the bottom row. Try a compact layout for fewer details,
-or a fuller one for tools, context and cache usage.
+or a fuller one for tools, context and cache usage. Choose **Layout** and **Colorscheme**
+separately; **Space** chooses the highlighted value and **Tab** jumps between groups.
 
 ```{figure} _static/appearance-statusbars.svg
 :alt: Five statusbar layouts: default, minimal, split, blocks and vim, showing the same model and usage.
@@ -94,9 +95,14 @@ band, and reasoning effort beside them. `blocks` uses separate rectangular bands
 `compact` drops it when space is tight. Optional details disappear before reasoning effort.
 Context usage turns yellow at 70% and red at 90%. YOLO and worker labels appear when active.
 
-The **Divider** tab changes the line above your input. Choose a **Layout**, then scroll down
-to **Sweep** for its animation. **Space** chooses the highlighted value; **Tab** jumps between
-the two groups. A star marks each chosen value. Browsing animations keeps your chosen layout.
+The **Divider** tab changes the line above your input. Choose a **Layout**, **Sweep** for
+its animation, and **Colorscheme** for its colors. **Space** chooses the highlighted value;
+**Tab** jumps between groups. A star marks each chosen value. Browsing previews leaves
+your confirmed choices in place; **Enter** saves those choices.
+
+Both bars default to **inherit**, following the main Colorscheme. Choose a theme to give
+either bar its own colors, or **auto** to follow your terminal's light or dark background
+independently. Custom themes are available here too.
 
 ```{figure} _static/appearance-dividers.svg
 :alt: The comet, frame and rail dividers showing a running task with elapsed time and output speed.
@@ -144,7 +150,9 @@ You can also choose without opening the picker:
 /theme slate
 /theme diff zebra
 /theme statusbar vim
+/theme statusbar theme sand
 /theme divider frame
+/theme divider theme forest
 /theme sweep aurora
 /theme input chevron
 ```

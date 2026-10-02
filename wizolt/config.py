@@ -635,6 +635,10 @@ model = ""
 # [ui.themes.mine.colors]
 # user = "#f2c97d"
 # tool = "#8bd5ca"
+# [ui.statusbar]
+# theme = "inherit"           # own colors: an existing theme name, or auto for terminal light/dark
+# [ui.divider]
+# theme = "inherit"           # line, glow and labels; /theme divider theme forest
 
 # [worker]                     # optional: hand tasks to a second wizolt session (Delegate tool)
 # provider = "fast"           # a provider entry; pick one from a DIFFERENT vendor than
