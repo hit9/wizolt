@@ -80,14 +80,14 @@ async def test_main_attention_is_reported_in_selected_child(frontend, monkeypatc
     notices = []
     monkeypatch.setattr(runtime.loop.presentation, "agent_notice", lambda *args: notices.append(args))
     frontend.root.tui.on_attention()
-    assert notices == [("main", "waiting for input")]
+    assert notices == [("agent [main]", "waiting for input")]
 
 
 @pytest.mark.parametrize("theme", ["forest", "paper"])
 @pytest.mark.parametrize("status,role,label", [
-    ("waiting for input", "warning", "! [child] needs input"),
-    ("completed", "success", "✓ [child] completed"),
-    ("failed", "error", "! [child] failed"),
+    ("waiting for input", "warning", "! subagent [child] needs input"),
+    ("completed", "success", "✓ subagent [child] completed"),
+    ("failed", "error", "! subagent [child] failed"),
 ])
 async def test_background_agent_notices_use_selected_theme(frontend, monkeypatch, theme, status, role, label):
     from wizolt.ui.render import Theme

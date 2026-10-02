@@ -83,6 +83,8 @@ that agent's model.
 Background agents continue working. Their output stays in their own conversations. Emphasized
 notices identify agents that finish, fail or need input, using your theme's success, error and
 warning colors. A warning includes the `/agents` shortcut; select that agent to respond.
+Child notices include a `subagent` prefix, such as `✓ subagent [ui-review] completed`;
+main's notices use `agent [main]`.
 The `/agents` list marks working agents with a breathing green dot, input waits with a warning
 dot, and other agents with a static dot in the theme's text color.
 The statusbar highlights `wait N` separately and keeps it visible ahead of ordinary details on

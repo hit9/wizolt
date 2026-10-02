@@ -190,10 +190,11 @@ class AgentsFrontend:
 
     def notice(self, agent: Agent, status: str) -> None:
         if self.current.loop.agent is not agent:
+            label = f"{'agent' if agent is self.group.root else 'subagent'} [{agent.session.agent_name}]"
             if status in {"waiting for input", "completed", "failed"}:
-                self.current.loop.presentation.agent_notice(agent.session.agent_name, status)
+                self.current.loop.presentation.agent_notice(label, status)
             else:
-                self.current.loop.presentation.emit_turn(f"[{agent.session.agent_name}] {status}")
+                self.current.loop.presentation.emit_turn(f"{label} {status}")
         self.current.tui.invalidate()
 
     def changed(self, entry: AgentEntry) -> None:

@@ -53,14 +53,14 @@ class Presentation:
     def context_reset_notice(self, text: str) -> None:
         self.emit(LogBlock.hierarchy(LogLine(text, role=LogRole.META), []))
 
-    def agent_notice(self, name: str, status: str) -> None:
+    def agent_notice(self, identity: str, status: str) -> None:
         """Theme-aware outcomes and attention requests; never added to model history."""
         symbol, label, role = {
             "waiting for input": ("!", "needs input", LogRole.WARNING),
             "completed": ("✓", "completed", LogRole.SUCCESS),
             "failed": ("!", "failed", LogRole.ERROR),
         }[status]
-        lines: list[LogLine | LogBlock] = [LogLine(f"{symbol} [{name}] {label}", role=role)]
+        lines: list[LogLine | LogBlock] = [LogLine(f"{symbol} {identity} {label}", role=role)]
         if status == "waiting for input":
             lines.append(LogLine("", "Open /agents and select this agent to respond.", role=LogRole.META))
         self.ui.separate()

@@ -4,6 +4,8 @@
 
 ### Added
 
+- Label child transcript notices with `subagent [name]` and main notices with `agent [main]`.
+
 - Configure new child defaults with `[subagent]` provider/model/reasoning/api settings, including
   forked skills. Accept legacy `[worker]` fields as fallbacks; per-child approval and saved settings win.
 
