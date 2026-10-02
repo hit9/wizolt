@@ -12,7 +12,7 @@ from wizolt.agent.engine import Agent
 from wizolt.agent.lifecycle import close_agent_resources
 from wizolt.config import ProviderConfig
 from wizolt.model.client import ModelClient
-from wizolt.session import SessionSnapshotStore
+from wizolt.session import Session, SessionSnapshotStore
 from wizolt.tools import SubagentTool
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli import agents as agents_module
@@ -195,6 +195,38 @@ async def test_child_archives_its_own_view_and_history_remains_in_picker(fronten
     monkeypatch.setattr(agents_module, "choice_application", choice)
     monkeypatch.setattr(agents_module, "approval_text_viewer", viewer)
     await frontend.select(frontend.root.loop)
+
+
+async def test_archive_rechecks_selected_view_after_confirmation(frontend):
+    runtime = await child(frontend)
+    # The user can switch back while archival is waiting for snapshots to drain.
+    frontend.current = runtime
+    await frontend.group.archive(runtime.loop.session.uid)
+    assert frontend.current is frontend.root
+    assert frontend.switching
+    assert runtime.loop.session.uid not in frontend.runtimes
+
+
+async def test_failed_archive_reopens_child_input(frontend, monkeypatch):
+    runtime = await child(frontend)
+    save = Session.save_snapshot
+
+    async def fail(session):
+        if session is frontend.root.loop.session:
+            raise OSError("disk full")
+        return await save(session)
+
+    # Fail before publishing the archive manifest, after frontend admission was drained.
+    with monkeypatch.context() as patch:
+        patch.setattr(Session, "save_snapshot", fail)
+        await frontend.archive_after_command(runtime.loop.session.uid, None)
+    assert runtime.accepting
+    assert runtime.submissions_task is not None
+    runtime.submit_chat("continue")
+    await runtime.submissions.join()
+    entry = frontend.group.entry(runtime.loop.session.uid)
+    await asyncio.wait_for(asyncio.shield(entry.task), 3)
+    assert entry.status == "completed"
 
 
 @pytest.mark.parametrize("message", ["exit", "quit", "/yolo", "/clear", "/src/api.py: fix the 500"])

@@ -401,6 +401,10 @@ class AgentsFrontend:
 
     async def close_runtime(self, uid: str) -> None:
         runtime = self.runtimes.pop(uid)
+        # Selection can change while archival drains pending submissions/snapshots.
+        # Recheck at disposal, not only when the user confirmed the archive.
+        if self.current is runtime:
+            self.switch_to(self.root)
         await runtime._close_submissions()
         for task in tuple(runtime.tasks):
             task.cancel()
