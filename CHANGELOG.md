@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.70.0 - 2026-10-02
+
 ### Performance
 
 - Avoid repeating unchanged agent metadata and empty default state in session checkpoints;
