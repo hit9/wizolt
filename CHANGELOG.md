@@ -4,6 +4,7 @@
 
 ### Documentation
 
+- Add macOS-style window chrome to terminal illustrations while leaving SVG figures unchanged.
 - Shorten the subagent guide with terminal illustrations and key tables; replace obsolete
   delegation/worker terminology while retaining the documented `[worker]` configuration alias.
 
