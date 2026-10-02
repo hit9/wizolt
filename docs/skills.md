@@ -187,5 +187,9 @@ otherwise it inherits your model. The child has its own conversation, commands a
 returns to the caller. Select it with `/agents` to inspect its work or add input. A skill loaded
 inside a subagent stays in that subagent.
 
+Each fork uses one retained child slot, including after it finishes. At `max_subagents = 0`
+or when the group is full, a new fork is refused; it never runs inline in main instead.
+Raise the limit from main or load the skill inside an existing child for follow-up work.
+
 Claude Code's `agent` and `model` fields are not supported. `/skills` lists them as warnings:
 choose the child's model at approval instead.

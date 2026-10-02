@@ -95,6 +95,9 @@
 
 ### Changed
 
+- Document and test that forked skills share the retained-child limit, including zero, and
+  never silently fall back to the main conversation when creation is refused.
+
 - Give `/theme` tabs, controls and choices more breathing room, with titled, padded preview
   panels in roomy panes. Keep compact previews in small panes and stable height across tabs,
   search and terminal resizes; refresh the picker illustration.

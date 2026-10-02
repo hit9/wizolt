@@ -741,3 +741,26 @@ async def test_forked_skill_uses_a_child_without_forking_again(group, isolate_ho
     assert len(set(names)) == 2 and all(name.startswith("skill-inspect-") for name in names)
     assert await asyncio.gather(*(repeat.call() for repeat in repeats)) == ["parser checked", "parser checked"]
     assert {entry.agent.session.agent_name for entry in group.entries.values() if entry.parent} == {skill.fork_name, *names}
+
+
+@pytest.mark.parametrize("limit", [0, 1])
+async def test_forked_skills_respect_retained_limit_without_falling_back_inline(group, isolate_home, monkeypatch, limit):
+    folder = isolate_home / ".claude" / "skills" / "inspect"
+    folder.mkdir(parents=True)
+    (folder / "SKILL.md").write_text("---\nname: inspect\ndescription: inspect\ncontext: fork\n---\nInspect in isolation.\n")
+    root = group.root.session
+    root.skills.reload()
+    root.settings.max_subagents = limit
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    if limit:
+        assert await SkillTool(root, ["inspect"]).call() == "done"
+    # User slash invocation and model invocation both preserve the fork boundary.
+    assert await group.root.skill_command("/inspect")
+    with pytest.raises(ToolError, match="Subagent limit reached"):
+        await SkillTool(root, ["inspect"]).call()
+    assert len(group.entries) == limit + 1
+    assert root.active_skills == [] and root.messages == []

@@ -26,6 +26,7 @@ Set `max_subagents` under `[runtime]` in your config file, or use
 are `0` through `32`, excluding the main agent. `0` prevents new children. The limit includes
 nested children and completed children whose conversations remain available. Lowering it keeps
 existing conversations and prevents new children until there is room.
+Forked skills use these same slots; stopping a child does not free its retained slot.
 
 The model sees the configured limit. `/status` shows retained children and the limit for the
 whole group. Reuse a child for follow-up work instead of creating another one.
