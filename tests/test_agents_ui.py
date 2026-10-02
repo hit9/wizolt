@@ -78,9 +78,34 @@ async def test_main_attention_is_reported_in_selected_child(frontend, monkeypatc
     runtime = await child(frontend)
     frontend.current = runtime
     notices = []
-    monkeypatch.setattr(runtime.loop.presentation, "emit_turn", notices.append)
+    monkeypatch.setattr(runtime.loop.presentation, "agent_notice", lambda *args: notices.append(args))
     frontend.root.tui.on_attention()
-    assert notices == ["[main] waiting for input"]
+    assert notices == [("main", "waiting for input")]
+
+
+@pytest.mark.parametrize("theme", ["forest", "paper"])
+@pytest.mark.parametrize("status,role,label", [
+    ("waiting for input", "warning", "! [child] needs input"),
+    ("completed", "success", "✓ [child] completed"),
+    ("failed", "error", "! [child] failed"),
+])
+async def test_background_agent_notices_use_selected_theme(frontend, monkeypatch, theme, status, role, label):
+    from wizolt.ui.render import Theme
+
+    runtime = await child(frontend)
+    monkeypatch.setattr(Theme, "_mode", theme)
+    blocks = []
+    presentation = frontend.root.loop.presentation
+    monkeypatch.setattr(presentation, "emit", lambda block, indent=0: blocks.append(block))
+    frontend.notice(runtime.loop.agent, status)
+    parts = presentation.ui.log_segments(blocks[0])
+    style = next(style for style, text in parts if label in text)
+    assert Theme.fg(role) in style
+    if role != "error":
+        assert "bold" in style
+    text = "".join(text for _, text in parts)
+    assert ("/agents" in text) == (status == "waiting for input")
+    assert not frontend.root.loop.session.messages
 
 
 async def test_child_frontend_failure_reaches_group_without_affecting_sibling(frontend, monkeypatch):
@@ -350,6 +375,13 @@ async def test_preview_contains_the_task_before_the_first_answer(frontend, monke
 
     async def choice(*args, **kwargs):
         assert "inspect the pending work" in "".join(text for _, text in kwargs["preview_fn"](entry.agent.session.uid))
+        with monkeypatch.context() as clock:
+            clock.setattr(agents_module.time, "monotonic", lambda: 0)
+            first = kwargs["label_fn"](entry.agent.session.uid)
+            clock.setattr(agents_module.time, "monotonic", lambda: .8)
+            second = kwargs["label_fn"](entry.agent.session.uid)
+        assert first[0][1] == second[0][1] == "● " and first[0][0] != second[0][0]
+        assert kwargs["label_fn"](frontend.root.loop.session.uid)[0] == ("class:text", "● ")
 
     monkeypatch.setattr(agents_module, "choice_application", choice)
     await frontend.select(frontend.root.loop)

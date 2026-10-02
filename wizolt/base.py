@@ -477,6 +477,8 @@ class LogRole(Enum):
     META = auto()
     OUTPUT = auto()
     ERROR = auto()
+    WARNING = auto()
+    SUCCESS = auto()
     MUTED = auto()
     DIFF = auto()
     FIELD = auto()

@@ -57,7 +57,7 @@ The selected agent owns the conversation you see, your input, draft, history and
 Main's Up/Ctrl-P recall includes earlier main sessions across projects; a child recalls only its
 own inputs. Earlier recalled inputs enter an agent's context only when you send them.
 Its statusbar shows its name, model and context usage. When children exist, it also shows group
-counts, such as `agents 3 · run 1 · wait 1`: three retained agents including main, one running
+counts, such as `agents 3 · run 1` with a separate `wait 1` alert: three retained agents including main, one running
 and one waiting for input. Completed agents remain in the total. With only main, the default
 layouts hide the count; narrow terminals may omit it. Colors and separators follow your statusbar
 theme and layout, including segmented layouts.
@@ -65,9 +65,13 @@ theme and layout, including segmented layouts.
 parent and statistics. Use `/model`, `/provider` and `/reason` after selecting an agent to change
 that agent's model.
 
-Background agents continue working. Their output stays in their own conversations. A notice
-identifies an agent that finishes, fails or needs input; it does not switch your selection.
-Select that agent to answer an approval or question.
+Background agents continue working. Their output stays in their own conversations. Emphasized
+notices identify agents that finish, fail or need input, using your theme's success, error and
+warning colors. A warning includes the `/agents` shortcut; select that agent to respond.
+The `/agents` list marks working agents with a breathing green dot, input waits with a warning
+dot, and other agents with a static dot in the theme's text color.
+The statusbar highlights `wait N` separately and keeps it visible ahead of ordinary details on
+narrow screens. Notices do not switch your selection.
 
 ## Add input and stop work
 

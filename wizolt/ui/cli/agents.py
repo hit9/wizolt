@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -17,7 +18,7 @@ from wizolt.base import Text
 from wizolt.session import QueuedInput, Session
 from wizolt.ui.cli.modals import choice_application, picker_height, select_choice
 from wizolt.ui.cli.runtime import ScrollbackWriter, TuiRuntime
-from wizolt.ui.render import InputStyle, StatusBar, Theme
+from wizolt.ui.render import ActivityPulse, InputStyle, StatusBar, Theme
 
 if TYPE_CHECKING:
     from wizolt.ui.cli.loop import CommandLoop
@@ -189,7 +190,10 @@ class AgentsFrontend:
 
     def notice(self, agent: Agent, status: str) -> None:
         if self.current.loop.agent is not agent:
-            self.current.loop.presentation.emit_turn(f"[{agent.session.agent_name}] {status}")
+            if status in {"waiting for input", "completed", "failed"}:
+                self.current.loop.presentation.agent_notice(agent.session.agent_name, status)
+            else:
+                self.current.loop.presentation.emit_turn(f"[{agent.session.agent_name}] {status}")
         self.current.tui.invalidate()
 
     def changed(self, entry: AgentEntry) -> None:
@@ -232,7 +236,7 @@ class AgentsFrontend:
             wide = available >= 62
             status_width, marker_width = (17, 10) if wide else (11, 2)
             longest = max(get_cwidth(item.agent.session.agent_name) for item in entries)
-            name_width = min(max(8, longest), 28, max(4, available - status_width - marker_width - 12))
+            name_width = min(max(8, longest), 28, max(4, available - status_width - marker_width - 14))
 
             def cell(text: str, width: int) -> str:
                 text = Text.clip_width(text, width)
@@ -242,7 +246,15 @@ class AgentsFrontend:
             state_style = {"running": "class:accent", "waiting for input": "class:warning", "failed": "class:error"}.get(entry.status, "class:muted")
             context = session.usage.context_percent(session.state.context_percent)
             marker = (" (current)" if wide else " *") if entry.agent is self.current.loop.agent else ""
+            # The menu redraws on the application's existing timer, even when main is idle.
+            # Pulse the engine's running state (tools included), not just model streaming.
+            activity = (
+                ActivityPulse.fragments(time.monotonic())
+                if entry.status == "running"
+                else [("class:warning" if entry.status == "waiting for input" else "class:text", "● ")]
+            )
             parts: StyleAndTextTuples = [
+                *activity,
                 ("class:text", cell(session.agent_name, name_width)),
                 (state_style, "  " + cell(state, status_width)),
                 ("class:muted", f"  ctx {context:3d}%"),

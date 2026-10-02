@@ -186,7 +186,7 @@ def segment(body: str, style: str, *, priority: int = 0, when: str = "", right: 
 
 AGENT_GROUP = (
     "{% if agents.count > 1 %}{% optional priority=15 %}[status_agent]agents {agents.count} · run {agents.running}"
-    "{% if agents.waiting %} · wait {agents.waiting}{% endif %}[/][status_mcp] │ [/]{% endoptional %}{% endif %}"
+    "[/][status_mcp] │ [/]{% endoptional %}{% endif %}"
 )
 IDENTITY = (
     "{% if agent.name %}[status_agent bold]{agent.name}[/][status_mcp] / [/]{% endif %}"
@@ -197,7 +197,7 @@ IDENTITY = (
 SEGMENT_IDENTITY = (
     "{% if agent.name %}[bold]{agent.name}[/] · {% endif %}{% if yolo %}{% optional priority=40 %}[bold]yolo[/] · {% endoptional %}{% endif %}"
     "{% if agents.count > 1 %}{% optional priority=15 %}agents {agents.count} · run {agents.running}"
-    "{% if agents.waiting %} · wait {agents.waiting}{% endif %} · {% endoptional %}{% endif %}"
+    " · {% endoptional %}{% endif %}"
 )
 SEGMENT_USAGE = pressure(" ctx {context.percent}% ", "status.usage", "status.usage.warning", "status.usage.error")
 SEGMENT_DETAILS = (
@@ -205,7 +205,7 @@ SEGMENT_DETAILS = (
     + segment("{reasoning}", "status.reason", priority=20, when="reasoning")
     + segment("yolo", "status.yolo", priority=40, when="yolo")
     + segment(
-        "agents {agents.count} · run {agents.running}{% if agents.waiting %} · wait {agents.waiting}{% endif %}",
+        "agents {agents.count} · run {agents.running}",
         "status.detail",
         priority=15,
         when="agents.count > 1",
@@ -219,7 +219,7 @@ STATUS_PRESETS = {
     # Default keeps its plain, left-aligned text contract. Only semantic inks change here.
     "default": "{% if agent.name %}[status_agent bold][[{agent.name}]] [/]{% endif %}{% if yolo %}[status_yolo][[yolo]] [/]{% endif %}"
     + "{% if agents.count > 1 %}{% optional priority=25 %}[status_agent][[agents {agents.count} · run {agents.running}"
-    + "{% if agents.waiting %} · wait {agents.waiting}{% endif %}]] [/]{% endoptional %}{% endif %}"
+    + "]] [/]{% endoptional %}{% endif %}"
     + "[status_provider]{provider}/[/][status_model bold]{model}[/]"
     + "{% optional priority=20 %}[subtle] · [/][status_reason]{reasoning}[/]{% endoptional %}"
     + "{% optional priority=5 %}[subtle] | [/][status_mcp]{mcp.label} · skills {skills.count}[/]{% endoptional %}"
@@ -286,6 +286,20 @@ STATUS_PRESETS = {
     + "{>}"
     + RIGHT_USAGE
     + "[reset]",
+}
+
+# Waiting for the user is actionable even when ordinary group metrics have been elided.
+# Put the alert before optional identity/details so hard clipping cannot hide it on a narrow
+# terminal. Only the alert uses the warning surface; each preset keeps its ordinary geometry.
+STATUS_ATTENTION = {
+    "powerline": segment("wait {agents.waiting}", "status.attention", when="agents.waiting"),
+    "lualine": segment("wait {agents.waiting}", "status.attention", when="agents.waiting"),
+    "blocks": "{% if agents.waiting %}[status.attention] wait {agents.waiting} [reset]{% endif %}",
+    "default": "{% if agents.waiting %}[status.warning bold][[wait {agents.waiting}]] [/] {% endif %}",
+}
+STATUS_PRESETS = {
+    name: STATUS_ATTENTION.get(name, "{% if agents.waiting %}[status.warning bold]wait {agents.waiting}[/][status_mcp] │ [/]{% endif %}") + source
+    for name, source in STATUS_PRESETS.items()
 }
 
 DIVIDER_PRESETS = {

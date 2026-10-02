@@ -166,6 +166,24 @@ def test_a_status_band_belongs_to_the_preset_not_the_theme(theme):
             assert any(not spec and text.isspace() for spec, text in parts)
 
 
+@pytest.mark.parametrize("name", ["default", "minimal", "split", "compact", "brackets", "monitor", "blocks", "vim", "lualine", "powerline"])
+def test_wait_alert_keeps_component_theme_and_survives_narrow_width(name):
+    from wizolt.ui.bars import FIELDS, STATUS_PRESETS, Template
+
+    Theme.set_mode("forest")
+    Theme.set_bar_theme("statusbar", "sand")
+    values = dict.fromkeys(FIELDS, 0)
+    values.update(model="long-model-name", provider="provider", **{"agent.name": "main", "agents.count": 3, "agents.waiting": 1})
+    template = Template("preset:" + name, STATUS_PRESETS)
+    styles = Theme.bar_styles(template.styles)
+    for width in (20, 40, 160):
+        parts = template.render(values, width, styles)
+        style = next(style for style, text in parts if "wait 1" in text)
+        assert "bold" in style
+        warning = Theme.BUILTIN["sand"].colors["warning"]
+        assert f"bg:{warning}" in style if name in {"blocks", "powerline", "lualine"} else f"fg:{warning}" in style
+
+
 def test_powerline_joins_fade_into_the_status_band(tmp_path):
     from tui_harness import loop
 

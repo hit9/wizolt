@@ -307,7 +307,8 @@ while they are empty. Field contents never become template instructions.
 ### Powerline colors
 
 Built-in Powerline templates use the highlight groups `status.provider`, `status.model`, `status.detail`, `status.context`,
-`status.usage`, `divider.activity` and `divider.metrics`. They follow the selected color theme.
+`status.usage`, `status.attention`, `divider.activity` and `divider.metrics`. They follow the selected color theme.
+`status.attention` is a bold warning segment for agents that need your input.
 Override them, or define your own groups, in a theme file:
 
 ```toml

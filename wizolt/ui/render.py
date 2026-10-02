@@ -533,6 +533,7 @@ class Theme:
                 "status.usage.error": solid(error, bold=True),
                 # A status line's own band, which a preset lays the whole row on.
                 "status.band": f"fg:{colors['status_base']} bg:{colors['status_bg']}",
+                "status.attention": solid(warning, bold=True),
                 "divider.activity": f"fg:{background} bg:{colors['accent_secondary']} bold",
                 "divider.metrics": f"fg:{detail} bg:{colors['menu_bg']}",
                 "divider.badge": f"fg:{badge} bg:{colors['menu_bg']} bold",
@@ -1540,6 +1541,8 @@ class UiPrinter:
         LogRole.FIELD: ("accent", "text"),
         LogRole.OUTPUT: ("muted", "muted"),
         LogRole.ERROR: ("error", "text"),
+        LogRole.WARNING: ("warning", "text"),
+        LogRole.SUCCESS: ("success", "text"),
         LogRole.MUTED: ("muted", "muted"),
         LogRole.DIFF: ("text", "text"),
         LogRole.CODE: ("text", "text"),
@@ -1549,7 +1552,7 @@ class UiPrinter:
     def log_styles(cls, role: LogRole) -> tuple[str, str]:
         """One log role's (label, text) styles under the active theme."""
         label, text = cls.LOG_ROLES[role]
-        return Theme.fg(label), Theme.fg(text)
+        return Theme.fg(label) + (" bold" if role in {LogRole.WARNING, LogRole.SUCCESS} else ""), Theme.fg(text)
 
     def log_segments(self, block: LogBlock, columns: int | None = None) -> list[tuple[str, str]]:
         """Lay a log block out for `columns`, defaulting to the terminal's current width.

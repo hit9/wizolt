@@ -243,9 +243,9 @@ def test_all_status_presets_show_group_counts_only_when_children_exist(name):
     assert "agents " not in text(template.render(values, 200, styles))
     values.update(**{"agents.count": 4, "agents.running": 2, "agents.waiting": 1})
     rendered = text(template.render(values, 200, styles))
-    assert "main" in rendered and "agents 4 · run 2 · wait 1" in rendered
+    assert "main" in rendered and "agents 4 · run 2" in rendered and "wait 1" in rendered
     if name == "default":
-        assert "[main]" in rendered and "[agents 4 · run 2 · wait 1]" in rendered
+        assert "[main]" in rendered and "[agents 4 · run 2]" in rendered and "[wait 1]" in rendered
     else:
         assert "[main]" not in rendered and "[agents" not in rendered
     for width in (0, 1, 15, 30, 60, 100):
@@ -342,7 +342,7 @@ def test_arrow_presets_give_identity_settings_and_group_counts_separate_segments
     assert all(backgrounds) and all(left != right for left, right in pairwise(backgrounds))
     for width in (24, 28, 40):
         narrow = text(template.render(values, width, Theme.bar_styles(template.styles)))
-        assert "reviewer" in narrow and "glm-5.3" in narrow
+        assert "wait 1" in narrow and "reviewer" in narrow
         assert "" not in narrow and get_cwidth(narrow) <= width
 
 

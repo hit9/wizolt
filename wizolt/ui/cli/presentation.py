@@ -53,6 +53,20 @@ class Presentation:
     def context_reset_notice(self, text: str) -> None:
         self.emit(LogBlock.hierarchy(LogLine(text, role=LogRole.META), []))
 
+    def agent_notice(self, name: str, status: str) -> None:
+        """Theme-aware outcomes and attention requests; never added to model history."""
+        symbol, label, role = {
+            "waiting for input": ("!", "needs input", LogRole.WARNING),
+            "completed": ("✓", "completed", LogRole.SUCCESS),
+            "failed": ("!", "failed", LogRole.ERROR),
+        }[status]
+        lines: list[LogLine | LogBlock] = [LogLine(f"{symbol} [{name}] {label}", role=role)]
+        if status == "waiting for input":
+            lines.append(LogLine("", "Open /agents and select this agent to respond.", role=LogRole.META))
+        self.ui.separate()
+        self.emit(LogBlock(lines), TurnBox.CONTENT_LEVEL)
+        self.ui.separate()
+
     def image_route_notice(self, notice: ImageRouteNotice) -> None:
         """Show the one gray routing notice for a text-only image delivery decision.
 
