@@ -207,6 +207,37 @@ async def test_archive_rechecks_selected_view_after_confirmation(frontend):
     assert runtime.loop.session.uid not in frontend.runtimes
 
 
+async def test_model_archive_cancels_admission_waiting_on_group_lock(frontend, monkeypatch):
+    runtime = await child(frontend)
+    frontend.current = runtime
+    saving, submitted, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    save, send = Session.save_snapshot, frontend.group.send
+
+    async def blocked_save(session):
+        if session is runtime.loop.session:
+            saving.set()
+            await release.wait()
+        return await save(session)
+
+    async def blocked_send(*args, **kwargs):
+        submitted.set()
+        return await send(*args, **kwargs)
+
+    monkeypatch.setattr(Session, "save_snapshot", blocked_save)
+    monkeypatch.setattr(frontend.group, "send", blocked_send)
+    tool = SubagentTool(frontend.root.loop.session, [{"action": "archive", "agent_id": runtime.loop.session.uid}])
+    archive = asyncio.create_task(tool.call())
+    await asyncio.wait_for(saving.wait(), 3)
+    runtime.submit_chat("arrived during archival")
+    await asyncio.wait_for(submitted.wait(), 3)
+    release.set()
+    await asyncio.wait_for(archive, 3)
+    assert frontend.current is frontend.root
+    assert runtime.loop.session.uid not in frontend.runtimes
+    assert not frontend.root.shutdown.is_set()
+    assert frontend.root.error is None
+
+
 async def test_failed_archive_reopens_child_input(frontend, monkeypatch):
     runtime = await child(frontend)
     save = Session.save_snapshot

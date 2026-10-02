@@ -933,11 +933,16 @@ manifest references children; children are hidden from session listings and expi
 family. Resume restores child contexts without automatically replaying queued work. Shutdown
 joins engines before closing clients and releasing ownership.
 
-User-only archival retires a whole descendant branch under admission control. Its manifest
+Confirmed archival retires a whole descendant branch under admission control. Main may request
+it through the tool, but children cannot; yolo never skips this confirmation. Tool approval
+freezes the target UID set and admission rejects a changed branch before stopping anything.
+Its manifest
 entries retain archive metadata and references to the unchanged logs/assets; restore skips those
 entries. The frontend switches away before a root-owned task joins the originating command and
 retires the branch, so a child never awaits its own cancellation. Archived history is loaded for
 read-only viewing without attaching engines or borrowing mutable live provider configuration.
+Model-initiated archival may dispose a frontend under the group's admission lock; cancel/join
+its submission consumer rather than waiting for a `send` that needs that same lock.
 
 ## Shell-hook boundaries
 

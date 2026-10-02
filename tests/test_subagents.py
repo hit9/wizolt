@@ -35,6 +35,76 @@ async def finished(group, entry):
     return entry
 
 
+@pytest.mark.parametrize("yolo", [False, True])
+@pytest.mark.parametrize("approve", [False, True])
+async def test_main_archive_always_confirms_affected_branch(group, monkeypatch, yolo, approve):
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    parent = await finished(group, await group.spawn(root, "review", "work"))
+    nested = await finished(group, await group.spawn(parent.agent.session, "nested", "work"))
+    root.settings.yolo = yolo
+    prompts = []
+    CommandLoop(group.root, input_fn=lambda prompt: prompts.append(prompt) or ("y" if approve else "n"), output_fn=lambda _: None)
+    payload = {"action": "archive", "agent_id": parent.agent.session.uid}
+    view = SubagentTool(root, [payload]).approval_view()
+    assert "review: completed" in view.text and "nested: completed" in view.text
+    assert ("slots released", "2") in view.rows
+    await group.root.tools.run([call("Subagent", [payload])])
+    assert len(prompts) == 1
+    if approve:
+        result = json.loads(root.tool_records[-1].output)
+        assert result["released_slots"] == 2
+        assert {row["agent_id"] for row in result["archived"]} == {parent.agent.session.uid, nested.agent.session.uid}
+        assert set(group.entries) == {root.uid}
+        assert (await group.inspect(parent.agent.session.uid))["status"] == "archived"
+    else:
+        assert len(group.entries) == 3
+        assert not any(item.get("archived") for item in root.subagent_entries)
+
+
+async def test_archive_rejects_child_caller_main_target_and_new_unapproved_descendants(group, monkeypatch):
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    parent = await finished(group, await group.spawn(root, "review", "work"))
+    with pytest.raises(ToolError, match="Only main"):
+        await SubagentTool(parent.agent.session, [{"action": "archive", "agent_id": parent.agent.session.uid}]).call()
+    with pytest.raises(ToolError, match="Cannot archive main"):
+        await SubagentTool(root, [{"action": "archive", "agent_id": root.uid}]).call()
+    for strict in (False, True):
+        assert "archive" not in SubagentTool.session_schema(parent.agent.session, strict)["function"]["parameters"]["properties"]["action"]["enum"]
+        assert "archive" in SubagentTool.session_schema(root, strict)["function"]["parameters"]["properties"]["action"]["enum"]
+    tool = SubagentTool(root, [{"action": "archive", "agent_id": parent.agent.session.uid}])
+    tool.approval_view()
+    nested = await finished(group, await group.spawn(parent.agent.session, "new-child", "work"))
+    with pytest.raises(ToolError, match="changed since approval"):
+        await tool.call()
+    assert group.entry(nested.agent.session.uid).status == "completed"
+    assert len(group.entries) == 3
+    assert not any(item.get("archived") for item in root.subagent_entries)
+
+
+async def test_send_to_archived_agent_is_rejected_before_asking_for_approval(group, monkeypatch):
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    entry = await finished(group, await group.spawn(root, "review", "work"))
+    await group.archive(entry.agent.session.uid)
+    prompts = []
+    CommandLoop(group.root, input_fn=lambda prompt: prompts.append(prompt) or "y", output_fn=lambda _: None)
+    await group.root.tools.run([call("Subagent", [{"action": "send", "agent_id": entry.agent.session.uid, "message": "more work"}])])
+    assert not prompts
+    assert "Unknown agent" in root.tool_errors[-1].error
+    assert set(group.entries) == {root.uid}
+
+
 async def test_inspect_is_bounded_readonly_and_includes_archived_history(group, monkeypatch):
     async def request(client, messages, tools=None):
         return {"role": "assistant", "content": "reply " * 500}, [], "reply " * 500

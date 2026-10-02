@@ -10,6 +10,10 @@
 
 ### Added
 
+- Let main request `Subagent archive`, with human confirmation even under yolo. Preview the
+  affected branch and reject changed scopes; children cannot request archival. Keep `send`
+  approval unchanged and safely settle child frontend input during model-initiated archival.
+
 - Add read-only `Subagent inspect` for bounded task, plan, message and tool-activity snapshots,
   including archived agents. Include archived IDs in `list`; inspecting a result avoids a duplicate notification.
 

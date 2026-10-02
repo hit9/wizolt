@@ -405,6 +405,11 @@ class AgentsFrontend:
         # Recheck at disposal, not only when the user confirmed the archive.
         if self.current is runtime:
             self.switch_to(self.root)
+        # Model-initiated archival holds group admission while disposing frontends.
+        # A submission waiting on group.send cannot be drained under that same lock.
+        # Retirement discards queued work; cancel/join the consumer before closing it.
+        if runtime.submissions_task is not None:
+            runtime.submissions_task.cancel()
         await runtime._close_submissions()
         for task in tuple(runtime.tasks):
             task.cancel()

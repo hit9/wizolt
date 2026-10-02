@@ -16,11 +16,13 @@ class SubagentTool(Tool):
         "Run parallel agents with isolated conversations in the SAME working directory and filesystem. "
         "File changes are immediately visible to all agents; no separate worktree is created. "
         "The limit applies to all non-archived child agents in the group, including nested and completed agents; reuse send for follow-up work. "
-        "Only the user can archive agents to free slots; archived agents are read-only history in /agents. "
+        "Only main can request archive: it stops a child and its descendants, frees their slots and preserves read-only history. "
+        "archive always requires human approval, even under yolo; the approval lists the affected agents. "
         "spawn and send require user approval even under yolo; users can configure each child's model before approving spawn. "
         "spawn returns immediately; assign disjoint file boundaries and explicit verification. "
         "The creating agent must supply a short, unique, task-based name, e.g. api-review, ui-review, or test-check; main is reserved. "
         "send steers a running agent or starts another turn in its existing context. "
+        "Archived agents cannot receive input; spawn a new agent for fresh work. "
         "Use start=false to queue without waking an idle agent. list shows state; wait returns the latest answer. "
         "inspect reads a bounded snapshot of an active or archived agent: task, plan, recent messages, tool activity, settings and result; no approval is needed. "
         "wait defaults to 180 seconds (3 minutes); choose timeout up to 600 seconds (10 minutes) for longer tasks. "
@@ -35,7 +37,24 @@ class SubagentTool(Tool):
         schema = cls.schema(strict)
         limit = session.subagents.limit if session.subagents is not None else session.settings.max_subagents
         schema["function"]["description"] += f" Maximum retained child agents: {limit} (excluding main)."
+        if session.agent_parent:
+            schema["function"]["parameters"]["properties"]["action"]["enum"].remove("archive")
         return schema
+
+    @cached_property
+    def _archive_scope(self) -> frozenset[str]:
+        """Freeze identities, not names/status, across approval and execution.
+
+        A descendant spawned while the approval is open is not implicitly approved.
+        The coordinator checks this scope again while holding admission control.
+        """
+        group = self.session.subagents
+        if group is None or self.session is not group.root.session or self.session.agent_parent:
+            raise ToolError("Only main can request archive")
+        uid = self.single_dict_arg("Subagent requires named fields").get("agent_id", "")
+        if uid == group.root.session.uid:
+            raise ToolError("Cannot archive main")
+        return frozenset(group.branch(uid))
 
     @cached_property
     def _model_settings(self) -> Session:
@@ -62,7 +81,7 @@ class SubagentTool(Tool):
 
         return cls.object_schema(
             {
-                "action": {"type": "string", "enum": ["spawn", "send", "list", "inspect", "wait", "stop"]},
+                "action": {"type": "string", "enum": ["spawn", "send", "list", "inspect", "wait", "stop", "archive"]},
                 "name": {"type": "string", "description": "Required for spawn: unique task-based name, e.g. api-review, ui-review, test-check. Never main."},
                 "message": {"type": "string", "description": "Standalone task or additional steering input"},
                 "agent_id": {"type": "string"},
@@ -88,6 +107,11 @@ class SubagentTool(Tool):
         uid = payload.get("agent_id", "")
         if action == "inspect":
             return json.dumps(await group.inspect(uid), ensure_ascii=False)
+        if action == "archive":
+            scope = self._archive_scope
+            targets = [{"agent_id": key, "name": entry.agent.session.agent_name, "status": "archived"} for key, entry in group.entries.items() if key in scope]
+            await group.archive(uid, expected=scope)
+            return json.dumps({"archived": targets, "released_slots": len(targets)}, ensure_ascii=False)
         if action == "spawn":
             entry = await group.spawn(self.session, payload.get("name", ""), payload.get("message", ""), model_settings=self.approval_config())
             uid = entry.agent.session.uid
@@ -137,23 +161,41 @@ class SubagentTool(Tool):
         return json.dumps(rows, ensure_ascii=False)
 
     def needs_confirmation(self) -> bool:
-        return self.single_dict_arg("Subagent requires named fields").get("action") in {"spawn", "send", "stop"}
+        return self.single_dict_arg("Subagent requires named fields").get("action") in {"spawn", "send", "stop", "archive"}
 
     def short_args(self) -> list[str]:
         payload = self.single_dict_arg("Subagent requires named fields")
         return [str(value) for value in (payload.get("action"), payload.get("name") or payload.get("agent_id")) if value]
 
     def always_confirms(self) -> bool:
-        return self.single_dict_arg("Subagent requires named fields").get("action") in {"spawn", "send"}
+        return self.single_dict_arg("Subagent requires named fields").get("action") in {"spawn", "send", "archive"}
 
     def approval_view(self) -> ApprovalView | None:
         payload = self.single_dict_arg("Subagent requires named fields")
+        if payload.get("action") == "archive":
+            scope = self._archive_scope
+            group = self.session.subagents
+            assert group is not None
+            targets = [entry for key, entry in group.entries.items() if key in scope]
+            text = "Stop these agents, discard queued inputs and free their slots. Keep conversation history and file changes.\n\n"
+            text += "\n".join(f"- {entry.agent.session.agent_name}: {entry.status}" for entry in targets)
+            return ApprovalView(
+                "archive agents",
+                text,
+                rows=[
+                    ("target", group.entry(payload["agent_id"]).agent.session.agent_name),
+                    ("slots released", str(len(scope))),
+                    ("history", "kept, read-only in /agents"),
+                ],
+            )
         message = payload.get("message", "")
         if payload.get("action") in {"spawn", "send"} and isinstance(message, str) and message.strip():
             target = self.approval_config()
             if target is None and self.session.subagents is not None:
-                entry = self.session.subagents.entries.get(payload.get("agent_id", ""))
-                target = entry.agent.session if entry else None
+                entry = self.session.subagents.entry(payload.get("agent_id", ""))
+                if entry.agent is self.session.subagents.root:
+                    raise ToolError("Send steering directly through the main agent's input")
+                target = entry.agent.session
             target = target or self.session
             provider = target.config.provider
             return ApprovalView(

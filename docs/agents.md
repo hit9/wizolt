@@ -90,7 +90,7 @@ Change the limit from main with `/set runtime.max_subagents NUMBER`; check it wi
 
 ## Model tools
 
-The model uses one `Subagent` tool with **spawn**, **send**, **list**, **inspect**, **wait** and **stop** actions. Creating agents
+The model uses one `Subagent` tool with **spawn**, **send**, **list**, **inspect**, **wait**, **stop** and **archive** actions. Creating agents
 returns immediately. Waiting defaults to **3 minutes**, up to **10 minutes** per call
 (`timeout=600`); `timeout=0` checks immediately. A timeout does not stop the child.
 
@@ -103,6 +103,21 @@ tools or `inspect` are not announced again. This does not start a new parent tur
 duration, eight recent messages, four recent tool results and current tool batch. Long text is
 clipped; partial streaming text is not included. **list** also includes archived agents so the
 model can find their IDs. Neither action starts work or changes the selected conversation.
+
+Main can request **archive**. Approval lists the target, its descendants, their status and the
+slots freed. Archiving stops their work and discards queued inputs while retaining history and
+file changes. If the branch changes during approval, main must request approval again.
+
+| Action | Human approval |
+|---|---|
+| list, inspect, wait | Not required by default |
+| spawn, send | Required, including with `--yolo` |
+| archive | Main only; required, including with `--yolo` |
+| stop | Required normally; `--yolo` can skip it |
+
+**send** adds steering input at the child's next safe boundary; it does not interrupt an ongoing
+model request or tool call. An idle child starts another turn by default. Archived agents cannot
+receive input.
 
 Tasks must be self-contained: children receive system and project guidance, not the parent's
 conversation or notes. See [forked skills](skills.md) for tasks that run in their own child.

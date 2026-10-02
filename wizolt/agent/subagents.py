@@ -374,8 +374,8 @@ class Subagents:
         finally:
             session.close()
 
-    async def archive(self, uid: str) -> None:
-        """User-only retirement, retaining snapshots/assets while releasing live slots.
+    async def archive(self, uid: str, *, expected: frozenset[str] | None = None) -> None:
+        """Confirmed retirement, retaining snapshots/assets while releasing live slots.
 
         Publish the archived manifest before disposing engines. Resume consults this manifest,
         never filesystem discovery, so no tombstone or destructive log deletion is needed.
@@ -389,6 +389,8 @@ class Subagents:
             if self.closed:
                 raise ToolError("Agent group is closed")
             uids = self.branch(uid)
+            if expected is not None and uids != expected:
+                raise ToolError("Agent branch changed since approval; request archive again to approve the current targets")
             entries = [self.entries[key] for key in uids]
             tasks = {task for entry in entries for task in (entry.task, entry.agent._active_task) if task is not None}
             if asyncio.current_task() in tasks:

@@ -336,6 +336,7 @@ def test_cli_agents_live_preview_and_stop_keys(pane):
     entry = pane.path / "agent-controls.py"
     entry.write_text(
         "import asyncio\n"
+        "from wizolt.base import ToolCall\n"
         "from wizolt.agent.engine import Agent\n"
         "from wizolt.model.client import ModelClient\n"
         "from wizolt.ui.cli.update import UpdateChecker\n"
@@ -344,10 +345,17 @@ def test_cli_agents_live_preview_and_stop_keys(pane):
         "original = Agent.start_session\n"
         "async def start(self):\n"
         "    await original(self)\n"
-        "    if not self.session.agent_parent:\n"
+        "    if not self.session.agent_parent and not self.session.subagent_entries:\n"
         "        for name in ('api-review', 'ui-review'):\n"
         "            await self.session.subagents.spawn(self.session, name, 'Review the shared workspace without editing files.')\n"
         "async def request(self, messages, tools=None):\n"
+        "    if not self.session.agent_parent:\n"
+        "        if self.session.state.turn_step <= 2:\n"
+        "            group = self.session.subagents\n"
+        "            uid = next(uid for uid in group.entries if uid != self.session.uid)\n"
+        "            action = 'inspect' if self.session.state.turn_step == 1 else 'archive'\n"
+        "            return {}, [ToolCall(action, 'Subagent', [{'action': action, 'agent_id': uid}])], ''\n"
+        "        return {'role': 'assistant', 'content': 'MAIN-ARCHIVE-DONE'}, [], 'MAIN-ARCHIVE-DONE'\n"
         "    if messages[-1].get('content') == 'finish':\n"
         "        answer = 'SELF-STOP-READY-' + str(sum(m.get('content') == 'finish' for m in messages))\n"
         "        return {'role': 'assistant', 'content': answer}, [], answer\n"
@@ -430,6 +438,17 @@ def test_cli_agents_live_preview_and_stop_keys(pane):
     pane.keys("Down", "Down", "Enter")
     wait("read-only")
     assert "SELF-STOP-READY-2" in pane.visible()
+    pane.keys("Escape")
+    wait("main  test-model", absent="read-only")
+    _settled_capture(pane)
+    pane.send("archive via model")
+    wait("slots released")
+    wait("api-review: interrupted")
+    wait("Approve")  # Even --yolo must stop here, after inspect ran without approval.
+    pane.keys("Enter")
+    wait("MAIN-ARCHIVE-DONE")
+    pane.send("/agents")
+    wait("api-review  archived")
     pane.keys("Escape")
     pane.send("/exit")
 
