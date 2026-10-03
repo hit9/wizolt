@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Replace the price-dependent plugin example with session token counts, including its illustrations
+  and executable workshop example.
+
 - Add declared and persistent plugin component spacing, included in the shared height budget;
   manage order and gaps through the layout plugin instead of the `/plugins` menu.
 - Rewrite the plugins guide around user wishes and iterative prompts; move executable examples

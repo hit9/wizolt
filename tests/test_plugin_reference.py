@@ -26,8 +26,8 @@ EXAMPLES = REFERENCE / "EXAMPLES.md"
 
 
 def authoring_examples() -> list[tuple[str, str]]:
-    """Every plugin in the authoring reference, named as its figure marker names it (cost, meter, ...)."""
-    names = ("meter", "cost", "note", "recall")
+    """Every plugin in the authoring reference, named as its figure marker names it (tokens, meter, ...)."""
+    names = ("meter", "tokens", "note", "recall")
     blocks = re.findall(r"(?:<!-- figure: plugins-(\w+) -->\s*)?```python\n(.*?)```", EXAMPLES.read_text(), re.DOTALL)
     examples = [(marker or names[index], code) for index, (marker, code) in enumerate(blocks)]
     assert [name for name, _ in examples] == list(names), "keep this list in the reference order"

@@ -82,7 +82,7 @@ def powerline_paths(svg: str) -> str:
 
 
 def plugin_example(name: str) -> Plugin:
-    """Run a marked plugin example from the plugins guide, so its picture shows that exact code."""
+    """Run a marked plugin example from the workshop reference, so its picture shows that exact code."""
     source = (ROOT / "wizolt/skill/builtin/plugin-workshop/EXAMPLES.md").read_text(encoding="utf-8")
     match = re.search(r"<!-- figure: plugins-" + re.escape(name) + r" -->\s*```python\n(.*?)\n```", source, re.DOTALL)
     if match is None:
@@ -92,7 +92,7 @@ def plugin_example(name: str) -> Plugin:
 
 def load_plugin(name: str, code: str) -> Plugin:
     namespace: dict = {}
-    exec(compile(code, f"<plugin {name}>", "exec"), namespace)  # noqa: S102 - the guide's own examples.
+    exec(compile(code, f"<plugin {name}>", "exec"), namespace)  # noqa: S102 - the workshop's own examples.
     plugin = Plugin(name)
     namespace["setup"](plugin)
     return plugin
@@ -365,7 +365,7 @@ class Illustrations:
         return load_plugin("pet", (ROOT / "wizolt/plugins/builtin/pet.py").read_text(encoding="utf-8"))
 
     def plugins_overview(self) -> None:
-        meter, cost, pet = plugin_example("meter"), plugin_example("cost"), self.pet()
+        meter, tokens, pet = plugin_example("meter"), plugin_example("tokens"), self.pet()
         context = self.plugin_context()
         prompt = [(Theme.fg("text"), "> "), (Theme.fg("text"), "▏")]
         self.save(
@@ -378,7 +378,7 @@ class Illustrations:
                 self.panel(pet, "above_input", context),
                 self.styled(prompt),
                 Text(""),
-                self.plugin_bar(cost, "cost", context),
+                self.plugin_bar(tokens, "tokens", context),
             ],
         )
 
@@ -392,8 +392,8 @@ class Illustrations:
     def plugins_meter(self) -> None:
         self.save("plugins-meter", [self.panel(plugin_example("meter"), "above_divider", self.plugin_context())])
 
-    def plugins_cost(self) -> None:
-        self.save("plugins-cost", [self.plugin_bar(plugin_example("cost"), "cost", self.plugin_context())])
+    def plugins_tokens(self) -> None:
+        self.save("plugins-tokens", [self.plugin_bar(plugin_example("tokens"), "tokens", self.plugin_context())])
 
     def plugins_tool(self) -> None:
         self.save(
@@ -490,7 +490,7 @@ RECIPES = {
     "plugins-overview": "plugins_overview",
     "plugins-pet": "plugins_pet",
     "plugins-meter": "plugins_meter",
-    "plugins-cost": "plugins_cost",
+    "plugins-tokens": "plugins_tokens",
     "plugins-tool": "plugins_tool",
     "plugins-workflow": "plugins_workflow",
 }

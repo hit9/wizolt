@@ -3,7 +3,7 @@
 Make wizolt yours: describe what you want, and let the agent build a plugin for you.
 You do not need to write Python or edit configuration files yourself.
 
-![A context meter above the divider, a pet above the input and a cost field in the statusbar.](_static/plugins-overview.svg)
+![A context meter above the divider, a pet above the input and token counts in the statusbar.](_static/plugins-overview.svg)
 
 ## Start with a wish
 
@@ -33,11 +33,12 @@ Type `@plugin:` to name an installed plugin. Mentioning it does not enable or ru
 
 ![A context bar split by category, with token counts underneath.](_static/plugins-meter.svg)
 
-### Track cost and activity
+### Track tokens and activity
 
-> Add the session cost to my statusbar. Ask me for my provider's token prices first.
+> Show this session’s input and output token counts in my statusbar, using compact
+> numbers like 42k. Match my current theme.
 
-![A statusbar with the model, context usage and session cost.](_static/plugins-cost.svg)
+![A statusbar with the model, input and output token counts.](_static/plugins-tokens.svg)
 
 > Show a small token-speed wave below my input, plus the current tool and this turn's
 > tool-call count. Keep it to two lines.

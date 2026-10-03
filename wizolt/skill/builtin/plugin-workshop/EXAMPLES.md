@@ -33,39 +33,27 @@ def setup(plugin):
 ```
 
 
-### Session cost in the statusbar
+### Session tokens in the statusbar
 
-Adds a `cost` field and a statusbar layout that shows it. Prices come from your config.
+Uses the current agent's cumulative usage; no prices or external services are needed.
 
-<!-- figure: plugins-cost -->
+<!-- figure: plugins-tokens -->
 ```python
 SDK_VERSION = 1
 
 
 def setup(plugin):
-    prices = {"input": 3.0, "cached": 0.3, "output": 15.0}  # dollars per million tokens
-    plugin.configure({"type": "object", "properties": {name: {"type": "number"} for name in prices}}, defaults=prices)
-
-    def cost(context):
-        usage, price = context.usage, plugin.config
-        # Input tokens include cache reads, which providers bill at their own, lower rate.
-        fresh = usage.input_tokens - usage.cached_tokens
-        return (fresh * price["input"] + usage.cached_tokens * price["cached"] + usage.output_tokens * price["output"]) / 1e6
-
-    plugin.field("dollars", cost)
-    plugin.preset("statusbar", "cost", "[status.model] {model} [/]{>}[status_context]ctx {context.percent}%[/] [warning]${plugins.cost.dollars:.2f}[/]")
+    plugin.field("input_k", lambda context: context.usage.input_tokens / 1000)
+    plugin.field("output_k", lambda context: context.usage.output_tokens / 1000)
+    plugin.preset(
+        "statusbar", "tokens",
+        "[status.model] {model} [/]{>}"
+        "[info]in {plugins.tokens.input_k:.1f}k[/] "
+        "[success]out {plugins.tokens.output_k:.1f}k[/]",
+    )
 ```
 
-
-Pick **plugins.cost.cost** in `/theme`, or use `{plugins.cost.dollars:.2f}` in your own
-[format](APPEARANCE.md). Set your prices:
-
-```toml
-[plugins.cost]
-input = 3.0    # per million new input tokens
-cached = 0.3   # per million tokens read from the provider's cache
-output = 15.0
-```
+Pick **plugins.tokens.tokens** in `/theme`. Counts depend on the provider's usage reports.
 
 ### A command for you
 
