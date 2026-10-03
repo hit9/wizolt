@@ -1,0 +1,59 @@
+{
+  "baseline_revision": "ca66036d",
+  "changed_source_sha256": "84c7c240d55ebc54646079ad911d0c018a16c28bcb478cbcea29f8842ee17694",
+  "environment": {
+    "platform": "Linux-6.8.0-111-generic-aarch64-with-glibc2.39",
+    "python": "3.14.7 (main, Sep  1 2026, 14:16:03) [Clang 22.1.3 ]"
+  },
+  "method": "Five interleaved cold DetailSheet layouts per implementation after a warmup. Only Text.wrap_styled is swapped with the baseline AST-extracted function; all other code and dependencies are identical. No concurrent tests or builds. Terminal 60x24, unified diff adding one unbroken line. Cache is new for each sample.",
+  "workloads": [
+    {
+      "line_characters": 1000,
+      "samples_ms": {
+        "before": [
+          0.727,
+          0.668,
+          0.728,
+          0.675,
+          0.667
+        ],
+        "after": [
+          0.472,
+          0.471,
+          0.46,
+          0.447,
+          0.445
+        ]
+      },
+      "median_ms": {
+        "before": 0.675,
+        "after": 0.46
+      },
+      "output_identical": true
+    },
+    {
+      "line_characters": 100000,
+      "samples_ms": {
+        "before": [
+          2399.996,
+          2387.89,
+          2392.611,
+          2443.135,
+          2446.015
+        ],
+        "after": [
+          27.272,
+          31.372,
+          26.881,
+          26.483,
+          26.484
+        ]
+      },
+      "median_ms": {
+        "before": 2399.996,
+        "after": 26.881
+      },
+      "output_identical": true
+    }
+  ]
+}

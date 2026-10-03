@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from itertools import groupby
 from typing import Any, ClassVar, TypeVar
 
 __version__ = "0.70.1"
@@ -31,6 +32,9 @@ def _cwidth(text: str) -> int:
 
 Json = dict[str, Any]
 ToolArgs = list[Any]
+TextFragments = list[tuple[str, str]]
+TextRows = list[TextFragments]
+_TextCell = tuple[str, str, int]
 
 
 class Billing(str, Enum):
@@ -322,13 +326,24 @@ class Text:
         return "".join(clipped).rstrip() + ellipsis
 
     @staticmethod
+    def _styled_row(prefix: TextFragments, cells: list[_TextCell]) -> TextFragments:
+        row = list(prefix)
+        for style, group in groupby(cells, key=lambda cell: cell[0]):
+            text = "".join(char for _, char, _ in group)
+            if row and row[-1][0] == style:
+                row[-1] = (style, row[-1][1] + text)
+            else:
+                row.append((style, text))
+        return row
+
+    @staticmethod
     def wrap_styled(
-        prefix: list[tuple[str, str]],
-        continuation: list[tuple[str, str]],
-        content: list[tuple[str, str]],
+        prefix: TextFragments,
+        continuation: TextFragments,
+        content: TextFragments,
         width: int | None = None,
-    ) -> list[list[tuple[str, str]]]:
-        logical_lines: list[list[tuple[str, str, int]]] = [[]]
+    ) -> TextRows:
+        logical_lines: list[list[_TextCell]] = [[]]
         for style, text in content:
             for char in text:
                 if char == "\n":
@@ -336,35 +351,31 @@ class Text:
                 else:
                     logical_lines[-1].append((style, char, _cwidth(char)))
 
-        def row_segments(row_prefix: list[tuple[str, str]], cells: list[tuple[str, str, int]]) -> list[tuple[str, str]]:
-            row = list(row_prefix)
-            for style, char, _ in cells:
-                if row and row[-1][0] == style:
-                    row[-1] = (style, row[-1][1] + char)
-                else:
-                    row.append((style, char))
-            return row
-
-        rows: list[list[tuple[str, str]]] = []
+        rows: TextRows = []
         row_prefix = prefix
         for logical in logical_lines:
-            remaining = logical
+            start = 0
+            remaining_width = sum(cell_width for _, _, cell_width in logical)
             while True:
                 prefix_width = sum(_cwidth(text) for _, text in row_prefix)
                 available = max(1, width - prefix_width) if width else None
-                if available is None or sum(cell_width for _, _, cell_width in remaining) <= available:
-                    rows.append(row_segments(row_prefix, remaining))
+                if available is None or remaining_width <= available:
+                    rows.append(Text._styled_row(row_prefix, logical[start:]))
                     break
                 used = 0
-                fit = 0
-                while fit < len(remaining) and used + remaining[fit][2] <= available:
-                    used += remaining[fit][2]
+                fit = start
+                while fit < len(logical) and used + logical[fit][2] <= available:
+                    used += logical[fit][2]
                     fit += 1
-                fit = max(1, fit)
-                whitespace = max((index for index in range(fit) if remaining[index][1].isspace()), default=-1)
-                cut = whitespace if whitespace > 0 else fit
-                rows.append(row_segments(row_prefix, remaining[:cut]))
-                remaining = remaining[cut + 1 :] if whitespace > 0 else remaining[cut:]
+                fit = max(start + 1, fit)
+                whitespace = max((index for index in range(start, fit) if logical[index][1].isspace()), default=-1)
+                cut = whitespace if whitespace > start else fit
+                rows.append(Text._styled_row(row_prefix, logical[start:cut]))
+                end = cut + 1 if whitespace > start else cut
+                # Advance through consumed cells only. Rescanning/copying the remaining tail
+                # on every row makes a single minified line quadratic and blocks the TUI.
+                remaining_width -= sum(cell_width for _, _, cell_width in logical[start:end])
+                start = end
                 row_prefix = continuation
             row_prefix = continuation
         return rows

@@ -35,6 +35,10 @@
 
 ### Fixed
 
+- Avoid quadratic wrapping of long lines in Ctrl-O and other text views without truncating
+  their contents. A 100,000-character diff line measured 2,400 → 27 ms for a new 60-column
+  detail layout on Linux ARM64 / Python 3.14; see the
+  [comparison](https://github.com/hit9/wizolt/blob/master/benchmarks/README.md#detail-wrapping).
 - Keep silent failed Bash calls available in Ctrl-O, preserve literal Job output instead of
   interpreting it as Markdown or shell source, and fit long detail titles to narrow terminals.
 - Mark stored failed ToolScript executions as failures in Ctrl-O instead of showing a success check.

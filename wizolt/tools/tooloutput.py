@@ -13,9 +13,8 @@ BASH_TRANSCRIPT_PREVIEW_LINES = 3
 BASH_PREVIEW_LINE_LIMIT = 220
 MCP_CALL_RE = re.compile(r"(?s)<MCPCall\b[^>]*>\n?(.*?)\n?</MCPCall>\s*$")
 # What a scrolling viewer renders: generous next to the three-line transcript preview, but not
-# unbounded. Stored output has no cap of its own, and the text wrapper costs time quadratic in
-# the length of a single line, so one minified-JSON line would freeze the modal until it gave
-# up. Whatever these drop is still whole under the result's own tr.N key.
+# unbounded. Stored output has no cap of its own; limit the layout and syntax-highlighting
+# work a result can trigger. Whatever these drop is still whole under the result's own tr.N key.
 VIEWER_LINES = 2000
 VIEWER_LINE_CHARS = 1000
 # The marker preview_lines writes where it elided; read back to describe the bound, so the note

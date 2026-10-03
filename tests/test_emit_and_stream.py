@@ -162,6 +162,27 @@ def test_styled_wrapping_respects_terminal_width_for_unicode(width):
     assert "".join(text for row in rows for _, text in row).replace("  Read  ", "", 1).replace("        ", "") == content_text
 
 
+@pytest.mark.parametrize("width", [None, 32, 81])
+def test_styled_wrapping_keeps_complete_long_lines_and_styles(width):
+    content = [("red", "a" * 100_000), ("blue", "中e\u0301" * 100)]
+    rows = Text.wrap_styled([], [], content, width)
+    for style, source in content:
+        assert "".join(text for row in rows for color, text in row if color == style) == source
+    if width:
+        assert all(get_cwidth("".join(text for _, text in row)) <= width for row in rows)
+
+
+def test_styled_wrapping_preserves_word_breaks_newlines_and_prefixes():
+    rows = Text.wrap_styled([("prefix", "> ")], [("prefix", "  ")], [("red", "one two"), ("blue", " three\n\n尾巴")], 9)
+    assert rows == [
+        [("prefix", "> "), ("red", "one")],
+        [("prefix", "  "), ("red", "two")],
+        [("prefix", "  "), ("blue", "three")],
+        [("prefix", "  ")],
+        [("prefix", "  "), ("blue", "尾巴")],
+    ]
+
+
 @pytest.mark.parametrize("mode", ["dark", "light"])
 def test_every_lexer_token_maps_to_a_style_in_both_themes(mode):
     """A pygments style only covers the tokens its authors thought about, and `style_for_token`

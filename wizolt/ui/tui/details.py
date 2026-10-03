@@ -9,11 +9,11 @@ from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples, to_formatted
 from prompt_toolkit.utils import get_cwidth
 
 from wizolt.base import ApprovalView, Text
+from wizolt.base import TextFragments as Row
+from wizolt.base import TextRows as Rows
 from wizolt.ui.render import UiPrinter
 from wizolt.ui.tui.views import TUI_MODAL_PENDING
 
-Row = list[tuple[str, str]]
-Rows = list[Row]
 DETAIL_BACK = object()
 DIFF_LEXER = "diff"
 

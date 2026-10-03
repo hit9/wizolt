@@ -1,5 +1,24 @@
 # Local performance baselines
 
+## Detail wrapping
+
+[Recorded samples](results/linux-arm64-py314-detail-wrapping.json) compare `ca66036d` with
+the shared text-wrapper fix (source SHA-256 in the report). Five interleaved samples per side,
+after warmup, used CPython 3.14.7 on Linux ARM64 with no concurrent tests or builds.
+Only `Text.wrap_styled` was replaced with its baseline implementation; the detail renderer
+and dependencies were identical. Each sample created a new `DetailSheet` for a unified diff
+adding one unbroken line, then called `fragments()` at 60×24 terminal cells.
+
+| Added line | Before | After |
+| --- | ---: | ---: |
+| 1,000 characters | 0.675 ms | 0.460 ms |
+| 100,000 characters | 2,399.996 ms | 26.881 ms |
+
+Visible fragments matched exactly. The wrapper now advances over consumed cells instead of
+rescanning and copying the remaining tail. Layout still allocates cells and rows proportional
+to the full document; this is not a constant-memory or lazy-rendering change. These focused
+measurements do not replace the broader startup/session baselines below.
+
 ## Subagent review
 
 The current reference for future comparisons is
