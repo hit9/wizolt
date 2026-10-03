@@ -66,6 +66,10 @@ Keep this file short. It is an entry point, not a second design document.
 - **Release (only when requested):** bump `pyproject.toml` and `wizolt/base.py`, move Unreleased
   entries under the dated version, run tests, quality checks, the doc build, and `uv build`,
   commit `Release X.Y.Z`, and create the lightweight tag `vX.Y.Z`. Do not push or publish.
+- **Performance baseline:** branch reviews save comparisons under `benchmarks/results/`, never
+  replace the reference. After merging to `master`/`main`, rerun against the previous baseline
+  in a comparable environment and update the reference before release. Investigate significant
+  regressions first; record justified trade-offs instead of hiding them in a new baseline.
 
 ## Working rules
 

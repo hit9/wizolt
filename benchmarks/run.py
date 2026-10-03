@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SUITES = ("optimization", "replay", "frame")
+SUITES = ("optimization", "replay", "frame", "plugins")
 
 
 def git(*args):
@@ -113,7 +113,7 @@ def main():
         else:
             # Put both revisions on the same filesystem and start without bytecode caches.
             # A mounted checkout and a local /tmp export can have very different import costs.
-            for path in [*ROOT.glob("wizolt/**/*.py"), *ROOT.glob("wizolt/**/*.json"), ROOT / "pyproject.toml", ROOT / "uv.lock"]:
+            for path in [*ROOT.glob("wizolt/**/*.py"), *ROOT.glob("wizolt/**/*.json"), *ROOT.glob("wizolt/**/*.md"), ROOT / "pyproject.toml", ROOT / "uv.lock"]:
                 target = source / path.relative_to(ROOT)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(path, target)
@@ -123,7 +123,7 @@ def main():
             "gc_policy": "collect before each in-process sample; enabled during timing; subprocess defaults",
             "workload_sha256": digest([ROOT / "benchmarks" / f"{name}.py" for name in (*SUITES, "run")], ROOT),
             "source": {"revision": revision, "working_tree": not bool(args.revision),
-                       "sha256": digest([*source.glob("wizolt/**/*.py"), *source.glob("wizolt/**/*.json"), source / "pyproject.toml", source / "uv.lock"], source)},
+                       "sha256": digest([*source.glob("wizolt/**/*.py"), *source.glob("wizolt/**/*.json"), *source.glob("wizolt/**/*.md"), source / "pyproject.toml", source / "uv.lock"], source)},
             "results": measure(source, args.repeat),
         }
     if args.baseline:

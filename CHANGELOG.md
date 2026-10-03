@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add enabled-plugin benchmarks and include bundled Markdown in benchmark source exports.
+  The [dev26 review measurements](benchmarks/README.md#complete-branch-review) show no material
+  regression against master on Linux ARM64 / CPython 3.14.7; retain the official baseline until
+  the merged commit is measured. Document that baseline-update rule for releases.
+
 - Keep plugin identities stable across reload/startup and preserve each revision's dependency
   interpreter for rollback. Validate plugin tool arguments inside the bounded worker, with no
   automatic remote schema retrieval, so slow schemas cannot freeze the host. Add regression tests

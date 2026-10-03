@@ -1,6 +1,64 @@
 # Local performance baselines
 
+## Baseline updates
+
+Branch reviews record measurements under `results/`; they do not replace the official baseline.
+After merging into `master`/`main`, measure the merged commit with the same environment and workload
+as the previous reference. Investigate significant regressions, optimize where practical and
+document any retained cost. Update `baselines/` and this README's reference before releasing;
+never accept a regression merely by replacing the baseline. If the environment or workload changed,
+remeasure the previous reference revision too so the comparison remains meaningful.
+
 ## Plugin foundation
+
+### Complete branch review
+
+[Master measurement](results/linux-arm64-py314-dev26-master.json) (`2110ac18`) and
+[reviewed dev26 measurement](results/linux-arm64-py314-dev26-review.json) (working tree over
+`bd930548`, exact source SHA-256 in the report) use Linux ARM64 / CPython 3.14.7, identical
+dependencies and workloads, nine samples per metric, natural GC and warm filesystem caches.
+Runs were sequential with no concurrent tests or builds. Plugins remain disabled for the
+existing suites. No material regression was observed; all replay output hashes match.
+
+| Workload | Master (ms) | Reviewed branch (ms) | Change |
+| --- | ---: | ---: | ---: |
+| First prompt frame | 145.253 | 138.879 | -4.4% |
+| Startup bootstrap, three user skills | 89.883 | 91.146 | +1.4% |
+| CLI import | 176.697 | 180.118 | +1.9% |
+| Ten headless turns, no hooks | 26.299 | 25.843 | -1.7% |
+| Prepare a 1 MB request | 7.129 | 6.610 | -7.3% |
+| Append, 100 replay blocks | 0.595 | 0.624 | +4.9% |
+| Emit 500 plain rows | 6.272 | 6.421 | +2.4% |
+
+These local observations do not establish a general speedup. The largest relative increase
+is a 0.029 ms replay append difference. The reference under `baselines/` is unchanged; remeasure
+the merged commit before replacing it.
+
+`plugins.py` adds four long-term probes through actual workers. Its fixed plugins expose one
+field, one panel and a local tool; they make no network/model requests. Sampling is explicit,
+so the automatic 5 Hz refresh cannot overlap timing. Workers import the selected source export,
+not whichever wizolt is installed. Each metric has a warmup and nine measured samples:
+
+| Enabled-plugin workload | Median (ms) |
+| --- | ---: |
+| Enable and close one worker | 83.135 |
+| Sample three workers, 20 rounds | 5.236 |
+| Invoke one tool, 20 calls including refresh | 6.516 |
+| Read cached fields and project three panels, 1,000 times | 8.430 |
+
+These are new observations, not comparisons with master (which has no plugins). Wall-clock
+thresholds are deliberately not CI assertions. `run.py` now includes packaged Markdown in
+working-tree exports and source hashes: omitting the built-in skill would make them differ
+from Git revision exports. Historical reports with the old workload must be remeasured for
+an apples-to-apples comparison.
+
+```sh
+uv run --no-sync python benchmarks/run.py --revision master --repeat 9 --output /tmp/master.json
+uv run --no-sync python benchmarks/run.py --repeat 9 --baseline /tmp/master.json --output /tmp/review.json
+uv run --no-sync python benchmarks/plugins.py --repeat 9
+```
+
+### Initial foundation
 
 [Baseline](results/linux-arm64-py314-before-plugins.json) at `2110ac18` and
 [plugin result](results/linux-arm64-py314-plugins.json) at `81b09124` use the same repaired
