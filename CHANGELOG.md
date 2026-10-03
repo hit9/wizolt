@@ -9,6 +9,8 @@
   height-only resizes now share the shell-history purge cost of width changes. Promote fresh-pane
   zoom checks from expected failures to regressions and update the documented terminal trade-offs.
 - Let the terminal test model grow its cell storage after clearing a shorter screen.
+- Make the agent self-stop terminal test wait for the restored input prompt, rather than the
+  completed-agent count already visible in its confirmation dialog; exercise repeated stops.
 
 ## 0.71.1 - 2026-10-03
 

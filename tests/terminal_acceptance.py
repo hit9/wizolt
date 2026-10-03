@@ -407,12 +407,12 @@ def test_cli_agents_live_preview_and_stop_keys(pane):
     )
     pane.send(f"{sys.executable} {entry} --config {config} --yolo")
 
-    def wait(needle, absent=""):
+    def wait(needle, absent="", *, prompt=False):
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             visible = pane.visible()
             assert "Unhandled exception" not in visible, visible
-            if needle in visible and (not absent or absent not in visible):
+            if needle in visible and (not absent or absent not in visible) and (not prompt or re.search(r"(?m)^>(?:\s|$)", visible)):
                 return visible
             time.sleep(.05)
         raise AssertionError(f"missing {needle!r}:\n{visible}")
@@ -442,7 +442,7 @@ def test_cli_agents_live_preview_and_stop_keys(pane):
     wait("agents 3 · run 0")
     pane.keys("Enter")  # Enter the stopped child, then let it complete a fresh turn.
     wait("ui-review  test-model", absent="┌─ ui-review")
-    for turn, key in enumerate(("x", "X"), 1):
+    for turn, key in enumerate(("x", "X") * 3, 1):
         pane.send("finish")
         wait(f"SELF-STOP-READY-{turn}")
         pane.send("/agents")
@@ -452,7 +452,9 @@ def test_cli_agents_live_preview_and_stop_keys(pane):
         if key == "x":
             wait("Stop ui-review?")
             pane.keys("Up", "Enter")
-        wait("agents 3 · run 0", absent="┌─ ui-review")
+        # A completed child already shows run 0 in its Stop confirmation, which also has
+        # no preview frame. Wait for the actual prompt before typing into the next view.
+        wait("agents 3 · run 0", absent="┌─ ui-review", prompt=True)
         # A cancelled command must restore the prompt, not strand it in DISPATCH.
         pane.send("/agents")
         wait("┌─ ui-review")
@@ -699,9 +701,8 @@ def test_zoom_on_a_fresh_pane_leaves_one_live_region(pane):
     rows the app actually occupies, and the previous live region -- divider, prompt and status
     row -- stays on screen as text while the app redraws lower.
 
-    Left executable rather than deleted: it is the reproduction behind the KNOWN_ISSUES entry,
-    and it is what a future attempt has to turn green. Erasing more is not that attempt -- the
-    measurements in that entry are of erasing more making it worse.
+    Height changes must replay the retained transcript too: erasing only the visible screen
+    cannot remove a displaced live region that has already entered native scrollback.
     """
     log = pane.path / "zoom.log"
     pane.send(f"{sys.executable} {DRIVER} 60 0.05 {log} fresh")
