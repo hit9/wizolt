@@ -187,7 +187,7 @@ def test_plugin_cli_defaults_to_the_calling_agents_config_and_project(tmp_path, 
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)  # The agent has cd'ed away from its project.
     monkeypatch.setenv("WIZOLT_CONFIG", str(config))
-    monkeypatch.setenv("WIZOLT_PROJECT_DIR", str(project))
+    monkeypatch.setenv("WIZOLT_SESSION_CWD", str(project))
     assert main(["list"]) == 0
     listed = json.loads(capsys.readouterr().out)
     assert listed["catalog_directory"] == str(PluginCatalog.for_project(str(tmp_path / "data"), str(project)).directory)

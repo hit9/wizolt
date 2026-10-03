@@ -50,7 +50,7 @@
 - Give the agent one small, always-present `Plugin` tool: `reload` applies saved plugin choices,
   and `list`/`describe`/`call` reach tools that plugins register, disclosed on request. Its
   schema never changes, so enabling plugins does not break the prompt cache; calls need approval.
-- Agent shell commands receive `WIZOLT_EXECUTABLE`, `WIZOLT_CONFIG` and `WIZOLT_PROJECT_DIR`, and
+- Agent shell commands receive `WIZOLT_EXECUTABLE`, `WIZOLT_CONFIG` and `WIZOLT_SESSION_CWD`, and
   `wizolt plugin` defaults `--config`/`--project` to them, so an agent manages its own session's
   plugins even after `cd` or with several wizolt installations.
 - `wizolt plugin test` previews each statusbar/divider preset a plugin contributes, with its

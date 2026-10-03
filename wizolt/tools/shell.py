@@ -40,13 +40,15 @@ def wizolt_executable() -> str:
 
 
 def session_environment(session: Session) -> dict[str, str]:
-    """The inherited environment plus which wizolt, config and project the agent belongs to.
+    """The inherited environment plus which wizolt, config and session directory the agent has.
 
     `wizolt plugin` defaults to these, so its saved choices reach this session even after a
     `cd`. An unset value removes an inherited one rather than pointing at an outer session.
+    Not WIZOLT_PROJECT_DIR: hooks set that to the repository root, Claude Code's meaning, while
+    plugin choices are saved per session directory, which differs when started in a subfolder.
     """
     env = dict(os.environ)
-    for key, value in (("WIZOLT_EXECUTABLE", wizolt_executable()), ("WIZOLT_CONFIG", session.config.path), ("WIZOLT_PROJECT_DIR", session.cwd)):
+    for key, value in (("WIZOLT_EXECUTABLE", wizolt_executable()), ("WIZOLT_CONFIG", session.config.path), ("WIZOLT_SESSION_CWD", session.cwd)):
         if value:
             env[key] = value
         else:

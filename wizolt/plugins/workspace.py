@@ -32,8 +32,8 @@ class PluginWorkspace:
 
     @staticmethod
     def default_project() -> str:
-        """The session's project, not the shell's current directory, which an agent may change."""
-        return os.environ.get("WIZOLT_PROJECT_DIR") or str(Path.cwd())
+        """The session's directory, not the shell's current one, which an agent may change."""
+        return os.environ.get("WIZOLT_SESSION_CWD") or str(Path.cwd())
 
     @classmethod
     def open(cls, config: str | None, project: str) -> "PluginWorkspace":

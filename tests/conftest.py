@@ -23,7 +23,7 @@ def isolate_home(tmp_path_factory, monkeypatch):
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     # A wizolt agent's shell names its session's config and project; a suite started there must
     # not have `wizolt plugin` commands default to the developer's real ones.
-    for name in ("WIZOLT_CONFIG", "WIZOLT_PROJECT_DIR", "WIZOLT_EXECUTABLE"):
+    for name in ("WIZOLT_CONFIG", "WIZOLT_SESSION_CWD", "WIZOLT_PROJECT_DIR", "WIZOLT_EXECUTABLE"):
         monkeypatch.delenv(name, raising=False)
     return home
 

@@ -605,6 +605,8 @@ async def test_shell_commands_name_their_session_config_and_project(tmp_path, mo
     # An outer session's value must not leak through when this one has none.
     monkeypatch.setenv("WIZOLT_EXECUTABLE", "/outer/wizolt")
     monkeypatch.setattr("wizolt.tools.shell.wizolt_executable", lambda: "")
-    output = await BashTool(s, ['printf "%s|%s|%s" "$WIZOLT_CONFIG" "$WIZOLT_PROJECT_DIR" "${WIZOLT_EXECUTABLE-unset}"', "sub"]).call()
-    # A per-call workdir changes where the command runs, not which project it belongs to.
-    assert f"{tmp_path}/config.toml|{tmp_path}|unset" in output
+    command = 'printf "%s|%s|%s|%s" "$WIZOLT_CONFIG" "$WIZOLT_SESSION_CWD" "${WIZOLT_EXECUTABLE-unset}" "${WIZOLT_PROJECT_DIR-unset}"'
+    output = await BashTool(s, [command, "sub"]).call()
+    # A per-call workdir changes where the command runs, not which session it belongs to. Hooks
+    # own WIZOLT_PROJECT_DIR, meaning the repository root; Bash must not redefine it.
+    assert f"{tmp_path}/config.toml|{tmp_path}|unset|unset" in output
