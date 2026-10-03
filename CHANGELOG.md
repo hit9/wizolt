@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Keep plugin identities stable across reload/startup and preserve each revision's dependency
+  interpreter for rollback. Validate plugin tool arguments inside the bounded worker, with no
+  automatic remote schema retrieval, so slow schemas cannot freeze the host. Add regression tests
+  for renamed packages, dependency rollback, external references and blocking schema evaluation.
+
 - Make the built-in plugin skill self-contained with a public API/type index, limits, appearance
   grammar, source-discovery guidance and executable reference tests. Add `wizolt plugin paths`
   to locate the current executable's documentation and SDK source without loading configuration.

@@ -26,6 +26,7 @@ class Generation:
     plugin: Capabilities
     worker: PluginProcess
     settings: dict = field(default_factory=dict)
+    python: str = ""
     snapshot: Snapshot = field(default_factory=lambda: Snapshot({}, {}))
     error: str = ""
     calls: int = 0
@@ -49,11 +50,12 @@ class Generation:
 
 @dataclass
 class Entry:
-    """Rollback retains source, not a second idle worker or its mutable state."""
+    """Rollback retains launch inputs, not a second idle worker or its mutable state."""
 
     active: Generation
     previous: PluginSource | None = None
     previous_settings: dict = field(default_factory=dict)
+    previous_python: str = ""
     pending: Generation | None = None
     disabling: bool = False
 
@@ -81,10 +83,17 @@ class PluginRuntime:
         self.on_change: Callable[[], None] | None = None
         self.host_service: HostCall | None = None
 
-    async def prepare(self, path: str, source: PluginSource | None = None, settings: dict | None = None) -> Generation:
+    async def prepare(self, path: str, source: PluginSource | None = None, settings: dict | None = None, *, python: str | None = None) -> Generation:
         revision = source if source is not None else PluginSource.read(path)
+        for name, entry in self.entries.items():
+            if entry.active.source.path == revision.path:
+                revision.require_name(name)
+        for name, pending in self._pending_new.items():
+            if pending.source.path == revision.path:
+                revision.require_name(name)
         settings = self.settings.read(revision.name) if settings is None else settings
-        worker, description = await PluginProcess.start(revision, python=self.interpreters.get(revision.name, ""), cwd=self.context().cwd, config=settings)
+        python = self.interpreters.get(revision.name, "") if python is None else python
+        worker, description = await PluginProcess.start(revision, python=python, cwd=self.context().cwd, config=settings)
         worker.host_calls.handler = self.host_service
         try:
             capabilities = Capabilities.decode(revision.name, description)
@@ -105,7 +114,7 @@ class PluginRuntime:
                     occupied.update(candidate.plugin.commands)
             if collisions := occupied.intersection(capabilities.commands):
                 raise PluginError(f"Command names already registered: {', '.join(sorted(collisions))}")
-            candidate = Generation(revision, capabilities, worker, settings=settings)
+            candidate = Generation(revision, capabilities, worker, settings=settings, python=python)
             await candidate.refresh(self.context())
             if candidate.error:
                 raise WorkerError(candidate.error, log=worker.stderr, traceback=worker.traceback)
@@ -152,7 +161,7 @@ class PluginRuntime:
                 elif action == "rollback":
                     if entry.previous is None:
                         raise PluginError(f"{name}: no previous version")
-                    candidate = await self.prepare(entry.previous.path, entry.previous, entry.previous_settings)
+                    candidate = await self.prepare(entry.previous.path, entry.previous, entry.previous_settings, python=entry.previous_python)
                 elif action == "disable":
                     if entry.pending:
                         self._retire(entry.pending)
@@ -228,6 +237,9 @@ class PluginRuntime:
             elif entry.pending:
                 self._retire(entry.active)
                 entry.previous_settings = entry.active.settings
+                # The installation may already point at a newer dependency environment.
+                # Rollback needs the interpreter that actually ran this source revision.
+                entry.previous_python = entry.active.python
                 entry.previous, entry.active, entry.pending = entry.active.source, entry.pending, None
         if self.entries and (self._refresh_task is None or self._refresh_task.done()):
             self._refresh_task = asyncio.create_task(self._refresh_loop())
@@ -296,12 +308,8 @@ class PluginRuntime:
         operation = (generation.plugin.commands if kind == "command" else generation.plugin.tools).get(action)
         if operation is None:
             raise PluginError(f"Unknown {kind}: {name}.{action}")
-        if kind == "tool":
-            from jsonschema import Draft202012Validator
-
-            error = next(Draft202012Validator(operation.parameters).iter_errors(arguments), None)
-            if error:
-                raise PluginError(f"Invalid arguments for {name}.{action}: {error.message}")
+        # Schema evaluation can itself block (for example, a pathological regex). The
+        # worker validates before calling the handler, under the same action deadline.
         self._invocations += 1
         try:
             result = await generation.worker.request(

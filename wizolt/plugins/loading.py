@@ -35,6 +35,11 @@ class PluginSource:
     entry: str = ""
     package: PackageSnapshot | None = None
 
+    def require_name(self, expected: str) -> None:
+        """An installed name owns settings, tools and preferences; reload cannot rename it."""
+        if self.name != expected:
+            raise PluginError(f"Plugin identity changed from {expected!r} to {self.name!r}; restore the installed name before reloading")
+
     def descriptor(self) -> dict:
         """Small RPC metadata; package bytes travel through a parent-owned frozen directory."""
         return {"path": self.path, "text": self.text, "name": self.name, "digest": self.digest, "dependencies": self.dependencies, "entry": self.entry}

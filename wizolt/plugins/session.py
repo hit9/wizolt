@@ -38,12 +38,17 @@ class SessionPlugins(PluginRuntime):
         self.read_context: Callable[[], list[tuple[str, int]]] | None = None
         super().__init__(self.snapshot, PluginSettings(session.config.plugins, session.config.path))
 
-    async def prepare(self, path: str, source: PluginSource | None = None, settings: dict | None = None):
+    async def prepare(self, path: str, source: PluginSource | None = None, settings: dict | None = None, *, python: str | None = None):
         # Populate an idle/resumed agent's meter when enabling a plugin too. This is an
         # admission boundary, not a render/sample callback; the engine supplies the estimator.
         if self.read_context is not None:
             self.context_parts = tuple(self.read_context())
-        return await super().prepare(path, source, settings)
+        source = source if source is not None else PluginSource.read(path)
+        records, _ = self.catalog.read()
+        for item in records.values():
+            if item.path == source.path:
+                source.require_name(item.name)
+        return await super().prepare(path, source, settings, python=python)
 
     def snapshot(self) -> Context:
         session = self.session

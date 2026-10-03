@@ -52,13 +52,88 @@ async def test_tool_arguments_are_validated_before_plugin_code(tmp_path):
 def setup(p):
     async def echo(ctx, args):
         return str(args["n"] * 2)
-    p.tool("double", "Double", {"type": "object", "properties": {"n": {"type": "integer"}}, "required": ["n"]}, echo)
+    p.tool("double", "Double", {"type": "object", "$defs": {"number": {"type": "integer"}}, "properties": {"n": {"$ref": "#/$defs/number"}}, "required": ["n"]}, echo)
 """)
     await runtime.manage("enable", str(path))
     assert await runtime.invoke("echo", "tool", "double", {"n": 3}) == "6"
     with pytest.raises(PluginError, match="Invalid arguments"):
         await runtime.invoke("echo", "tool", "double", {"n": "3"})
     await runtime.close()
+
+
+@pytest.mark.parametrize("reference", ["$ref", "$dynamicRef"])
+async def test_tool_schema_validation_never_fetches_remote_references(tmp_path, monkeypatch, reference):
+    import io
+    import urllib.request
+
+    fetched = []
+
+    def remote(request):
+        fetched.append(request.full_url)
+        return io.BytesIO(b'{"type": "integer"}')
+
+    monkeypatch.setattr(urllib.request, "urlopen", remote)
+    marker = tmp_path / "worker-fetched"
+    path = tmp_path / "external.py"
+    path.write_text(f'''import io
+import urllib.request
+from pathlib import Path
+SDK_VERSION = 1
+def remote(request):
+    Path({str(marker)!r}).touch()
+    return io.BytesIO(b'{{"type": "integer"}}')
+urllib.request.urlopen = remote
+def setup(p):
+    async def act(ctx, args):
+        return "should not execute"
+    p.tool("act", "Act", {{"type": "object", "properties": {{"n": {{{reference!r}: "https://example.invalid/schema"}}}}}}, act)
+''')
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    try:
+        await runtime.manage("enable", str(path))
+        with pytest.raises(PluginError, match="Unresolvable"):
+            await runtime.invoke("external", "tool", "act", {"n": 3})
+        assert fetched == []
+        assert not marker.exists()
+    finally:
+        await runtime.close()
+
+
+def test_expensive_tool_schema_is_bounded_by_worker_deadline(tmp_path):
+    """Use an outer process deadline: the regression blocks the host event loop itself."""
+    import subprocess
+    import textwrap
+
+    path = tmp_path / "slow_schema.py"
+    path.write_text('''SDK_VERSION = 1
+def setup(p):
+    async def act(ctx, args):
+        return "unreachable"
+    p.tool("act", "Act", {"type": "object", "properties": {"text": {"type": "string", "pattern": "^(a+)+$"}}}, act)
+''')
+    script = textwrap.dedent('''
+        import asyncio
+        import sys
+        from wizolt.plugins.runtime import PluginRuntime
+        from wizolt.sdk import Context, PluginError
+
+        async def main():
+            runtime = PluginRuntime(lambda: Context("test", "main", sys.argv[2], "idle", 0, 0, "test", 0))
+            runtime.ACTION_TIMEOUT = 0.1
+            try:
+                await runtime.manage("enable", sys.argv[1])
+                try:
+                    await runtime.invoke("slow_schema", "tool", "act", {"text": "a" * 40 + "!"})
+                except PluginError as error:
+                    assert "timed out" in str(error), str(error)
+                else:
+                    raise AssertionError("expected worker deadline")
+            finally:
+                await runtime.close()
+        asyncio.run(main())
+    ''')
+    result = subprocess.run([sys.executable, "-P", "-c", script, str(path), str(tmp_path)], capture_output=True, text=True, timeout=10, check=False)
+    assert result.returncode == 0, result.stderr
 
 
 async def test_dependency_install_uses_new_environment_and_preserves_host(tmp_path, monkeypatch):
@@ -91,6 +166,18 @@ def setup(p):
     assert "wizolt_plugin_testdep" not in sys.modules
     await runtime.hot_reload("dependent")
     assert runtime.fields() == {"plugins.dependent.value": 43}
+    # A later installation can change interpreters. Rollback must retain the original
+    # dependency environment along with source/settings, not use the latest preference.
+    from wizolt.plugins.catalog import Installation
+
+    path.write_text('SDK_VERSION = 1\ndef setup(p):\n    p.field("value", lambda ctx: 99)\n')
+    runtime.catalog.save(Installation("dependent", str(path)))
+    await runtime.hot_reload("dependent")
+    assert runtime.fields() == {"plugins.dependent.value": 99}
+    await runtime.manage("rollback", "dependent")
+    assert runtime.fields() == {"plugins.dependent.value": 43}
+    await runtime.manage("rollback", "dependent")
+    assert runtime.fields() == {"plugins.dependent.value": 99}
     await runtime.close()
 
 

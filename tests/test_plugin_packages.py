@@ -34,6 +34,61 @@ def context():
     return Context("test", "main", "/tmp", "idle", 0, 0, "test", 0)
 
 
+@pytest.mark.parametrize("action", ["reload", "hot_reload", "load", "enable", "install"])
+async def test_installed_package_cannot_change_identity_on_reload(tmp_path, action):
+    from agent_harness import session_with_provider
+
+    from wizolt.plugins.session import SessionPlugins
+
+    root = tmp_path / "source"
+    package(root)
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    try:
+        await runtime.manage("enable", str(root))
+        manifest = root / "pyproject.toml"
+        manifest.write_text(manifest.read_text().replace('name = "sample-plugin"', 'name = "renamed"'))
+        if action == "reload":
+            with pytest.raises(PluginError, match="identity"):
+                await runtime.manage("reload", "sample_plugin")
+        elif action == "hot_reload":
+            [result] = (await runtime.hot_reload("sample_plugin"))["plugins"]
+            assert result["status"] == "failed" and "identity" in result["error"]
+        elif action == "load":
+            await runtime.close()
+            runtime = SessionPlugins(session_with_provider(tmp_path))
+            await runtime.load()
+            assert "identity" in runtime.problems["sample_plugin"]
+            assert not runtime.entries
+            return
+        else:
+            from wizolt.plugins.installation import PluginInstallations
+
+            with pytest.raises(PluginError, match="identity"):
+                await PluginInstallations(runtime.catalog, runtime.session.cwd).manage(action, "sample_plugin")
+        assert list(runtime.entries) == ["sample_plugin"]
+        assert runtime.entries["sample_plugin"].active.plugin.name == "sample_plugin"
+        assert runtime.fields()["plugins.sample_plugin.value"] == 1
+    finally:
+        await runtime.close()
+
+
+async def test_pending_package_cannot_change_identity_before_publication(tmp_path):
+    root = tmp_path / "source"
+    package(root)
+    runtime = PluginRuntime(context)
+    try:
+        await runtime.start_turn()
+        await runtime.manage("enable", str(root))
+        manifest = root / "pyproject.toml"
+        manifest.write_text(manifest.read_text().replace('name = "sample-plugin"', 'name = "renamed"'))
+        with pytest.raises(PluginError, match="identity"):
+            await runtime.manage("enable", str(root))
+        await runtime.finish_turn()
+        assert list(runtime.entries) == ["sample_plugin"]
+    finally:
+        await runtime.close()
+
+
 @pytest.mark.parametrize("src", [False, True])
 async def test_package_relative_imports_resources_reload_and_full_rollback(tmp_path, src):
     root = tmp_path / "source"

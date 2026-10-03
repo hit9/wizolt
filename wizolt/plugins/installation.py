@@ -42,6 +42,9 @@ class PluginInstallations:
         elif action in ("enable", "install"):
             previous = records.get(target)
             source = PluginSource.read(previous.path if previous else target)
+            for record in records.values():
+                if record.path == source.path:
+                    source.require_name(record.name)
             previous = records.get(source.name)
             if previous and previous.path != source.path:
                 raise PluginError(f"Plugin name {source.name!r} is already installed from another path")

@@ -48,8 +48,11 @@ CLI manager / Plugin tool / agent lifecycle
 Validation constructs an unpublished generation. A failed candidate leaves active code intact.
 An active turn or command/tool invocation holds a lease; replacement returns pending and publishes
 after both leases end. Publication has no awaits. Each entry retains at most one previous and one
-pending generation. The previous revision is source only, not a second worker; superseded
-workers are retired by owned tasks that shutdown joins.
+pending generation. The previous revision retains source, settings and its interpreter path,
+not a second worker; superseded workers are retired by owned tasks that shutdown joins. Never
+resolve a rollback's interpreter from today's installation preferences: dependencies may have
+changed since that revision ran. Reload must also retain the installed identity, which owns
+settings and tool namespaces, even if a package's manifest was renamed on disk.
 
 The turn guard remains held while completion observers run. Never clear the engine's active task
 before awaiting observers: another turn could otherwise overlap the old generation. Cancellation
@@ -84,7 +87,9 @@ tokens per request than a reload-only tool, and saves about 116 once any plugin 
 catalog for completion, collision checks and turn admission. Offline handler trials are fresh
 instances with preview context, never a claim to inspect or mutate live plugin memory.
 
-Observers and actions run in workers. Host-enforced deadlines can kill a blocked worker. A bounded
+Observers and actions run in workers. Tool argument validation belongs there too: schema regexes
+can take unbounded time, and reference resolution must never initiate implicit network IO.
+Host-enforced deadlines can kill a blocked worker. A bounded
 JSON protocol carries immutable context and plain values; ordinary prints are drained into a
 bounded stderr tail. Cached UI snapshots refresh at 5 Hz outside terminal rendering. Width changes
 update the next sample; immediate host clipping keeps stale-width snapshots inside the viewport.

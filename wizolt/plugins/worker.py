@@ -122,8 +122,16 @@ class Worker:
             registry = plugin.commands if request["kind"] == "command" else plugin.tools
             if request["kind"] == "tool":
                 from jsonschema import Draft202012Validator
+                from jsonschema.exceptions import ValidationError
+                from referencing import Registry
 
-                Draft202012Validator(dict(registry[request["name"]].parameters)).validate(request["arguments"])
+                # An empty retrieval registry retains in-document references without
+                # jsonschema's implicit network fetches. Validation is worker-owned so
+                # expensive schemas cannot block the host's event loop or cancellation.
+                try:
+                    Draft202012Validator(dict(registry[request["name"]].parameters), registry=Registry()).validate(request["arguments"])
+                except ValidationError as error:
+                    raise PluginError(f"Invalid arguments for {plugin.name}.{request['name']}: {error.message}") from error
             with plugin.services.invocation():
                 result = await registry[request["name"]].handler(context, request["arguments"])
             if not isinstance(result, str):

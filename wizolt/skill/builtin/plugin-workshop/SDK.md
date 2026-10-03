@@ -150,7 +150,8 @@ errors omit values, but plugin-authored logs and callback output remain the plug
 
 Validate/test/install use the selected config. Live reload rereads only its `[plugins]` table,
 and fixes settings for the candidate's lifetime. Failed validation preserves the active instance;
-rollback restores both retained source and settings. Other running agents remain unchanged.
+rollback restores retained source, settings and the dependency environment. Keep the installed
+package name unchanged when editing its manifest. Other running agents remain unchanged.
 
 ### Model requests
 
@@ -266,6 +267,8 @@ Registration methods:
   safe alongside a turn. Built-in and other plugins' command names cannot be replaced.
   `/plugins run filename name '{"key": "value"}'` passes structured arguments instead.
 - `tool(name, description, parameters, handler)`: same async signature, with a JSON Schema object.
+  Arguments are checked before the handler, within its deadline. In-document references work;
+  external schemas are not fetched.
   This is how a plugin gives the agent a capability. The agent's `Plugin` tool lists tools by name
   and description, describes one's parameters on request, then calls it with the user's approval
   (yolo auto-approves); arguments are validated before your handler runs. Write the description
