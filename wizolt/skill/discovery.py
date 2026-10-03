@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import stat
 from dataclasses import dataclass, replace
+from typing import ClassVar
 
 from wizolt.agentsmd import display_path
 from wizolt.skill.skillfile import Skill, SkillFile, SkillFormatError
@@ -16,7 +17,7 @@ class SkillRoot:
     """One directory whose subfolders are skills."""
 
     path: str
-    source: str  # "user" or "project"
+    source: str  # "builtin", "user" or "project"
     label: str  # how /skills names it: "~/.claude/skills", ".wizolt/skills", "web/.agents/skills"
 
 
@@ -32,6 +33,7 @@ class SkillDiscovery:
     LEGACY_PROJECT_DIRS = (".minacode", ".nanocode")
     # Below `<data_dir>/skills`, which is wizolt's own and therefore the strongest user root.
     SHARED_USER_ROOTS = ("~/.claude/skills", "~/.agents/skills")
+    BUILTIN_ROOT: ClassVar[str] = os.path.join(os.path.dirname(__file__), "builtin")
 
     def __init__(self, workspace: Workspace, user_skills: str):
         self.workspace = workspace
@@ -48,11 +50,12 @@ class SkillDiscovery:
         self.nested.update(self.workspace.levels_above(path))
 
     def roots(self) -> list[SkillRoot]:
-        """Every skill root, lowest precedence first: user roots, then nested package levels, then
+        """Every skill root, lowest precedence first: built-ins, user roots, nested package levels, then
         each level from the repository top down to cwd. Deeper beats shallower on the working
         path, as the directory nearer the work is the more specific one; a package level only adds
         skills, and never replaces one the working path already has."""
-        found = [SkillRoot(os.path.expanduser(path), "user", path) for path in self.SHARED_USER_ROOTS]
+        found = [SkillRoot(self.BUILTIN_ROOT, "builtin", "wizolt built-ins")]
+        found.extend(SkillRoot(os.path.expanduser(path), "user", path) for path in self.SHARED_USER_ROOTS)
         found.append(SkillRoot(self.user_skills, "user", display_path(self.user_skills)))
         path_levels = self.workspace.path_levels()
         for level in [*sorted(self.nested - set(path_levels)), *path_levels]:

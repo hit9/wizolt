@@ -12,6 +12,8 @@ from pathlib import Path
 import pytest
 import terminal_acceptance as acceptance
 
+test_builtin_plugin_can_be_enabled_resized_and_disabled = acceptance.test_builtin_plugin_can_be_enabled_resized_and_disabled
+
 # Pytest collects the same behavioral scenarios against each backend fixture.
 test_command_preview_follows_header_without_moving_input = acceptance.test_command_preview_follows_header_without_moving_input
 test_detail_sheets_stay_navigable_across_resize = acceptance.test_detail_sheets_stay_navigable_across_resize

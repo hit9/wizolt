@@ -46,6 +46,9 @@ dependencies = [
     # Direct, not transitive: the update check imports httpx2 itself. The provider SDKs bring it
     # in too, but a dependency wizolt imports is wizolt's to declare.
     "httpx2>=2.12.0",
+    # Plugin tool schemas are checked at registration and invocation, not trusted to providers.
+    "jsonschema>=4.20",
+    "packaging>=23.0",
     "openai>=3.0.0",
     # 3.0.53 fixed Application.invalidate() so it is safe to call from any thread; older versions
     # crash with "no running event loop" when the agent thread asks for a redraw.
@@ -93,10 +96,10 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["wizolt", "wizolt.agent", "wizolt.ui", "wizolt.ui.cli", "wizolt.model", "wizolt.mcp", "wizolt.providers", "wizolt.session", "wizolt.skill", "wizolt.source", "wizolt.tools", "wizolt.ui.tui", "wizolt.utils"]
+packages = ["wizolt", "wizolt.agent", "wizolt.ui", "wizolt.ui.cli", "wizolt.model", "wizolt.mcp", "wizolt.providers", "wizolt.session", "wizolt.skill", "wizolt.source", "wizolt.tools", "wizolt.ui.tui", "wizolt.utils", "wizolt.sdk", "wizolt.plugins"]
 
 [tool.setuptools.package-data]
-wizolt = ["providers/catalog.json"]
+wizolt = ["providers/catalog.json", "skill/builtin/*/*.md", "plugins/builtin/*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

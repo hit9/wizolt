@@ -30,9 +30,10 @@ def test_project_folders_of_other_agents_are_merged(tmp_path):
     _skill(tmp_path / ".wizolt" / "skills", "from-wizolt", "wizolt")
     skills = session(tmp_path).skills
 
-    assert {skill.name for skill in skills.all()} == {"from-claude", "from-agents", "from-wizolt"}
+    assert {skill.name for skill in skills.all()} == {"from-claude", "from-agents", "from-wizolt", "plugin-workshop"}
     assert skills.get("from-claude").location == ".claude/skills/from-claude"
-    assert all(skill.source == "project" for skill in skills.all())
+    assert all(skill.source == "project" for skill in skills.all() if skill.name != "plugin-workshop")
+    assert skills.get("plugin-workshop").source == "builtin"
 
 
 def test_user_folders_of_other_agents_are_read(tmp_path, isolate_home):
@@ -41,7 +42,7 @@ def test_user_folders_of_other_agents_are_read(tmp_path, isolate_home):
     _skill(tmp_path / "data" / "skills", "home-wizolt", "w")
     skills = session(tmp_path).skills
 
-    assert {skill.name for skill in skills.all()} == {"home-claude", "home-agents", "home-wizolt"}
+    assert {skill.name for skill in skills.all()} == {"home-claude", "home-agents", "home-wizolt", "plugin-workshop"}
     assert skills.get("home-claude").source == "user"
     assert skills.get("home-claude").location == "~/.claude/skills/home-claude"
 
@@ -117,8 +118,8 @@ def test_mention_menu_labels_each_skill_with_its_source(tmp_path, isolate_home):
     def menu(text):
         return {row.text: row.display_meta_text for row in loop.input_completer.get_completions(Document(text), None)}
 
-    assert menu("@skill:") == {"@skill:mine": "user", "@skill:theirs": "project"}
-    assert menu("$") == {"@skill:mine": "user", "@skill:theirs": "project"}
+    assert menu("@skill:") == {"@skill:mine": "user", "@skill:theirs": "project", "@skill:plugin-workshop": "builtin"}
+    assert menu("$") == {"@skill:mine": "user", "@skill:theirs": "project", "@skill:plugin-workshop": "builtin"}
     assert menu("@the")["@skill:theirs"] == "skill · project"
 
 
@@ -129,7 +130,7 @@ def test_plain_files_and_empty_folders_in_a_root_are_not_skills(tmp_path):
     (root / "empty").mkdir()
     s = session(tmp_path)
 
-    assert [skill.name for skill in s.skills.all()] == ["real"]
+    assert [skill.name for skill in s.skills.all()] == ["plugin-workshop", "real"]
     assert s.skills.problems == ()
 
 

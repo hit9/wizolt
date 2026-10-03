@@ -56,3 +56,11 @@ class RecordingOutput:
 @pytest.fixture
 def recording_output():
     return RecordingOutput()
+
+
+@pytest.fixture
+def without_builtin_skills(tmp_path, monkeypatch):
+    """Exercise empty-catalog behavior without relying on the packaged skill inventory."""
+    from wizolt.skill.discovery import SkillDiscovery
+
+    monkeypatch.setattr(SkillDiscovery, "BUILTIN_ROOT", str(tmp_path / "empty-builtins"))

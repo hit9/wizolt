@@ -124,6 +124,9 @@ returns to `working` once the replacement request is running:
 
 ## MCP
 
+**`/plugins`** — Manage [plugins](plugins.md): inspect, enable, disable, reload, or roll back.
+The built-in pet is disabled until you enable it here.
+
 **`/mcp`** — Manage [MCP](mcp.md) server connections. Sub-commands:
 
 | Usage | Effect |

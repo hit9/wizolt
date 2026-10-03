@@ -231,7 +231,7 @@ def test_a_command_that_needs_more_opens_its_next_level(monkeypatch, keys, sent,
     ("typed", "deletes", "expected"),
     [
         # A fully typed command has no menu; Backspace brings back the commands it narrows to.
-        ("/ps", 1, ["/ps", "/provider"]),
+        ("/ps", 1, ["/plugins", "/ps", "/provider"]),
         ("/ps", 2, None),  # `/` alone: every command, checked below by count
         ("use @skill:rele", 3, ["@skill:release", "@skill:review"]),
         ("use $rele", 2, ["@skill:release", "@skill:review"]),
@@ -646,7 +646,7 @@ def test_fast_slash_typing_keeps_a_current_menu_ready_for_tab():
     assert _completions(app) == _command_rows()
 
     app.input_buffer.insert_text("p")
-    assert _completions(app) == ["/ps", "/provider"]
+    assert _completions(app) == ["/plugins", "/ps", "/provider"]
     assert app._mention_transition_timer is None
 
     app.tab_or_complete(app.input_buffer, reverse=False)
@@ -769,4 +769,3 @@ def test_typing_a_command_word_tints_it_by_what_it_is(monkeypatch):
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive, output=output)
-

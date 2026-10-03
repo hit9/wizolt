@@ -42,6 +42,62 @@ def test_transcript_survives_resize_roundtrip_between_frames(pane):
         assert len(re.findall(rf"RESULT-{index}\b", text)) == 1, text
 
 
+def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
+    """Manage a real packaged plugin while the input and renderer remain host-owned."""
+    config = pane.path / "plugins.toml"
+    config.write_text(
+        f'[paths]\ndata_dir = "{pane.path}/data"\n'
+        '[provider]\nactive = "test"\n[provider.test]\n'
+        'url = "http://127.0.0.1:9/v1"\nkey = "test"\nmodel = "test-model"\n'
+    )
+    entry = pane.path / "plugins.py"
+    entry.write_text(
+        "from wizolt.ui.cli.update import UpdateChecker\n"
+        "from wizolt.providers.sync import CatalogRuntime\n"
+        "from wizolt.__main__ import main\n"
+        "UpdateChecker.load_cached = lambda self: False\n"
+        "CatalogRuntime.refresh_due = lambda self: False\n"
+        "main()\n"
+    )
+    pane.send(f"{sys.executable} {entry} --config {config} --yolo")
+
+    def wait(text):
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            visible = pane.visible()
+            assert "Unhandled exception" not in visible, visible
+            if text in visible:
+                return visible
+            time.sleep(.05)
+        raise AssertionError(f"missing {text!r}: {visible}")
+
+    wait("test-model")
+    pane.send("/plugins")
+    wait("disabled")
+    pane.keys("Enter")
+    wait("1. enable")
+    pane.keys("Enter")
+    wait("pet  enabled")
+    pane.keys("Escape")
+    wait("on standby")
+    for width, height in ((40, 18), (100, 30), (60, 20)):
+        pane.resize(width, height)
+        wait("on standby")
+    pane.send("/plugins")
+    wait("Plugins")
+    pane.keys("Enter")
+    wait("1. reload")
+    pane.keys("Down")
+    wait("2. disable")
+    pane.keys("Enter")
+    wait("pet  disabled")
+    pane.keys("Escape")
+    pane.send("/plugins")
+    visible = wait("Plugins")
+    assert "on standby" not in visible
+    pane.keys("Escape", "C-d")
+
+
 def test_detail_sheets_stay_navigable_across_resize(pane):
     log = pane.path / "details.log"
     # Shell-exported dimensions can stay frozen while the PTY is resized.

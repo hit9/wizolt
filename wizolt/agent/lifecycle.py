@@ -109,6 +109,10 @@ def bootstrap_features(session: Session) -> None:
     need the features -- the runtime entry points and agent creation -- opt in explicitly after
     construction, so the feature packages sit above session/ without a module-scope cycle.
     """
+    if session.plugins is None:
+        from wizolt.plugins.session import SessionPlugins
+
+        session.plugins = SessionPlugins(session)
     if session.mcp is None:
         from wizolt.mcp import MCPManager  # local import: mcp is built on top of session
 
@@ -162,6 +166,8 @@ async def close_agent_resources(agent: Agent, *, shared_mcp: bool = False, reaso
     except Exception as error:  # noqa: BLE001 - a shutdown hook must not prevent resource cleanup
         with contextlib.suppress(Exception):
             agent.output_fn(f"SessionEnd hook failed: {error}")
+    if agent.session.plugins is not None:
+        await agent.session.plugins.close()
     for job in tuple(agent.session.jobs.values()):
         try:
             await run_blocking(job.kill)

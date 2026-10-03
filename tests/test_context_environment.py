@@ -120,6 +120,7 @@ def test_environment_uses_cached_system_info(tmp_path, monkeypatch):
 def test_agents_md_rides_a_message_of_its_own(tmp_path):
     (tmp_path / "AGENTS.md").write_text("# Rules\nAlways run pytest.\n", encoding="utf-8")
     s = session(tmp_path)
+    s.skills = SkillLibrary({})  # isolate instruction ordering from built-in skill discovery
     context = ContextManager(s)
 
     instructions = context.instructions_context()
@@ -154,6 +155,7 @@ def test_agents_md_precedence(tmp_path):
 def test_agents_md_disabled(tmp_path):
     (tmp_path / "AGENTS.md").write_text("# Rules\nAlways run pytest.\n", encoding="utf-8")
     s = session(tmp_path)
+    s.skills = SkillLibrary({})
     s.settings.agents_md = False
     context = ContextManager(s)
 

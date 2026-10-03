@@ -182,6 +182,8 @@ class Agent:
             if self.session.subagents is not None:
                 self.session.subagents.changed(self.session.subagents.entry(self.session.uid))
             await self.start_session()
+            if self.session.plugins is not None:
+                await self.session.plugins.start_turn()
             answer = await self._run_turn(user_input)
             self.session.state.last_turn_status = "completed"
             return answer
@@ -209,10 +211,16 @@ class Agent:
                 if child and group is not None:
                     group.entry(self.session.uid).result = self.session.state.turn_result
             finally:
-                self.session._active_runs -= 1
-                # Cleared together: a late cancel() cannot reach another turn.
-                self._active_task = None
-                self._active_loop = None
+                try:
+                    # Completion observers still belong to this turn. Keep its guard and
+                    # cancellation target until they finish; another turn must not overlap them.
+                    if self.session.plugins is not None:
+                        await self.session.plugins.finish_turn()
+                finally:
+                    self.session._active_runs -= 1
+                    # Cleared together: a late cancel() cannot reach another turn.
+                    self._active_task = None
+                    self._active_loop = None
 
     async def start_session(self) -> None:
         """Run startup hooks once, retaining their context until an input is admitted.
@@ -225,6 +233,8 @@ class Agent:
         self.session.ensure_ownership()
         self._session_ended = False
         self._session_started = True
+        if self.session.plugins is not None:
+            await self.session.plugins.load()
         start = await self.fire_hooks(SESSION_START, {"source": "resume" if self.session.resumed else "startup", "model": self.session.config.provider.model})
         self._session_hook_context = start.context
 

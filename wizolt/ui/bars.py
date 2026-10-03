@@ -49,6 +49,15 @@ FIELDS = frozenset(
 )
 
 
+def plugin_field(name: str) -> bool:
+    """Reserve a namespaced scalar lookup; this never resolves Python attributes.
+
+    Plugin fields may be absent before activation or after disable. Like absent built-in values,
+    they read as zero; templates remain loadable independently of installed plugin generations.
+    """
+    return re.fullmatch(r"plugins\.[A-Za-z_][A-Za-z_0-9]*\.[A-Za-z_][A-Za-z_0-9]*", name) is not None
+
+
 def pingpong(value: float, width: float) -> float:
     return width - abs(value % (2 * width) - width) if width > 0 else 0.0
 
@@ -80,7 +89,7 @@ class Expression:
             return lambda values: value
         if isinstance(node, (ast.Name, ast.Attribute)):
             name = ast.unparse(node)
-            if name not in fields:
+            if name not in fields and not (fields == FIELDS and plugin_field(name)):
                 raise ValueError(f"unknown field {name!r}")
             return lambda values: values.get(name, 0)
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.Not, ast.USub, ast.UAdd)):
@@ -506,7 +515,7 @@ class Template:
                         target.append(Node("join", value[5:]))
                     else:
                         name, _, spec = value.partition(":")
-                        if name not in FIELDS or (spec and not re.fullmatch(r"duration|d|\.[0-6]f", spec)):
+                        if (name not in FIELDS and not plugin_field(name)) or (spec and not re.fullmatch(r"duration|d|\.[0-6]f", spec)):
                             raise ValueError(f"unknown field or format {value!r}")
                         target.append(Node("field", value))
             except ValueError as error:
@@ -568,7 +577,7 @@ class Template:
                     result.append(Cell(stack[-1], ""))
                 elif node.kind == "field":
                     name, _, spec = node.text.partition(":")
-                    value = values.get(name, "")
+                    value = values.get(name, 0 if plugin_field(name) else "")
                     text = f"{int(float(value))}s" if spec == "duration" else format(value, spec)
                     result.append(Cell(stack[-1], clean(text)[:4096]))
                 elif node.text:

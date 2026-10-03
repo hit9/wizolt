@@ -66,6 +66,7 @@ if TYPE_CHECKING:
     from wizolt.agentsmd import AgentsMentions
     from wizolt.mcp import MCPManager
     from wizolt.mentions import FileMentions
+    from wizolt.plugins.session import SessionPlugins
     from wizolt.shellhooks import ShellHooks
     from wizolt.skill.library import SkillLibrary
     from wizolt.skill.listing import SkillListing
@@ -141,6 +142,7 @@ class Session:
     # Per-context knowledge; transport/catalog are shared, document injection and its epoch are not.
     mcp_resource_reads: set[tuple[str, str]] = field(default_factory=set, repr=False)
     skills: SkillLibrary | None = None
+    plugins: SessionPlugins | None = None
     skill_listing: SkillListing | None = None  # runtime; what the model has been told about skills
     shell_hooks: ShellHooks | None = None  # runtime handle; the user's hooks in force for this session
     mentions: FileMentions | None = None  # runtime handle; holds the cached @file: path list

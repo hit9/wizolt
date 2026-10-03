@@ -56,6 +56,7 @@ from wizolt.ui.cli.modals import (
     segment_columns,
     select_choice,
 )
+from wizolt.ui.cli.plugins import plugins_command
 from wizolt.ui.cli.status import StatusReport, StatusView
 from wizolt.ui.render import WidthDependent, markdown_table
 from wizolt.ui.tui import InputMode
@@ -1013,6 +1014,7 @@ class Command:
 # Dispatch, completion and queue admission share one registry.
 # fmt: off
 COMMANDS: tuple[Command, ...] = (
+    Command("/plugins", plugins_command),
     Command("/agents", agents_command, queue_safe=True),
     Command("/status", status, queue_safe=True),
     Command("/catalog", catalog_command, queue_safe=True, render="answer"),

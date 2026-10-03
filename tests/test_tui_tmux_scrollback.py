@@ -32,6 +32,8 @@ from typing import NamedTuple
 
 import pytest
 import terminal_acceptance as acceptance
+
+test_builtin_plugin_can_be_enabled_resized_and_disabled = acceptance.test_builtin_plugin_can_be_enabled_resized_and_disabled
 from terminal_acceptance import (
     TALL,
     WIDE,

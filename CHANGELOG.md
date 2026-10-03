@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Experimental Python plugins with agent-local instances, safe-boundary reload, rollback,
+  project enable/disable preferences, a human `/plugins` manager, and a core `Plugin` tool.
+  Plugins can register commands, tools, bar fields, turn observers, and bounded theme-aware
+  components above the input or in `/status`. Dependency installation prepares a separate
+  environment and returns an explicit restart command.
+- Built-in `plugin-workshop` skill with inline SDK examples, and a small theme-aware pet plugin,
+  installed but disabled by default. Added lifecycle, dependency and UI tests and design notes.
+
 ## 0.72.0 - 2026-10-03
 
 ### Added

@@ -463,6 +463,10 @@ class TuiRuntime:
         tui.activity_fragments_fn = self.loop.view.tui_activity_fragments
         tui.activity_follows_transcript_fn = lambda: self.loop.presentation.live_preview.active
         tui.idle_divider_fragments_fn = self.loop.view.idle_divider_fragments
+        if self.loop.session.plugins is not None:
+            from wizolt.ui.cli.plugins import PluginView
+
+            tui.above_input_fragments_fn = PluginView(self.loop.session.plugins).above_input
         tui.input_hint_fn = self.loop.view.tui_input_hint
         tui.quick_hints_fn = lambda: self.loop.session.quick_hints
         if self.loop.session.mentions:

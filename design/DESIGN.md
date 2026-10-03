@@ -30,19 +30,23 @@ Modules (runtime imports point downward, with the explicit deferred edges below)
      |
  model/                                    common client + complete adapters per wire
      |
- tools/   mcp/   skill/   mentions.py       vertical capabilities
+ tools/   mcp/   skill/   plugins/          vertical capabilities
      |
  session/                                  semantic state, value types, codecs and persistence
      |
  image.py   source.py                       assets and source values
      |
- base.py   config.py   providers/           shared values, settings and capability policy
+base.py   config.py   providers/           shared values, settings and capability policy
+ sdk/                                      public plugin values and registration contracts
 ```
 
 `agent/hooks.py` and `agent/prompts.py` are dependency leaves even though their names belong to
 agent execution. `agent/__init__.py` and `ui/__init__.py` stay empty of imports: reaching a small
 contract must not assemble the subsystem. `tests/test_layers.py` checks module-level direction;
 fresh-interpreter tests also check that lower-level imports do not pull in application assembly.
+
+Plugins use a separate public contract instead of importing these internals. See
+[Plugin boundaries](PLUGINS.md) for generation leases, dependency environments and UI ownership.
 
 Deferred edges remain explicit at their call sites; lifting them to module scope introduces cycles:
 

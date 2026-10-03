@@ -2426,6 +2426,7 @@ class StatusBar:
             "queue.followup": 0,
             "queue.next_turn": 0,
             "reset_pending": self.session.context_reset_requested,
+            **(source.plugins.fields() if source.plugins is not None else {}),
         }
 
     def fragments(self) -> StyleAndTextTuples:

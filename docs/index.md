@@ -65,6 +65,7 @@ Working through a repository task in an interactive session.
 | **[MCP](mcp.md)** | Connect external Model Context Protocol servers and use their tools. |
 | **[Subagents](agents.md)** | Run parallel agents and switch between their separate conversations. |
 | **[Skills](skills.md)** | Load reusable instruction packs on demand, or start one with `/name`. |
+| **[Plugins](plugins.md)** | Customize wizolt with Python, or enable the built-in pet. |
 | **[Hooks](hooks.md)** | Automatically run your checks, formatters and cleanup commands. |
 | **[Appearance](appearance.md)** | Themes, statusbar layouts, dividers and sweep animations. |
 | **[Configuration](configuration.md)** | Providers, runtime settings, and data location. |
@@ -97,6 +98,7 @@ catalog
 agents
 mcp
 skills
+plugins
 hooks
 ```
 

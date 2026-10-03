@@ -118,12 +118,12 @@ def test_skill_tool_absent_only_when_no_skills(tmp_path):
 
 def test_skills_command_lists_installed(tmp_path):
     base = CommandLoop(Agent(session(tmp_path), output_fn=lambda t: None), output_fn=lambda t: None)
-    assert skills_command(base, "").startswith("No skills installed.")
+    assert "plugin-workshop" in skills_command(base, "")
 
     _write_skill(tmp_path, "release-notes", "Draft a CHANGELOG entry.", "body")
     loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda t: None), output_fn=lambda t: None)
     output = skills_command(loop, "")
-    assert "### Skills · 1" in output
+    assert "### Skills · 2" in output
     assert "| skill | source | from | description |" in output
     assert "| `release-notes` | project | `.wizolt/skills/release-notes` | Draft a CHANGELOG entry. |" in output
 
@@ -154,7 +154,7 @@ def test_status_and_bar_show_skill_count(tmp_path):
     loop = CommandLoop(Agent(s, output_fn=lambda t: None), output_fn=lambda t: None)
 
     count = len(s.skills.skills)
-    assert count == 2
+    assert count == 3  # two project skills and the built-in plugin development skill
     report = StatusReport.of(loop)
     activity = dict(report.snapshot.activity.rows)
     assert activity["mcp servers"] == "1"

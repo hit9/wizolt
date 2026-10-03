@@ -76,7 +76,7 @@ async def test_skills_changing_on_disk_never_rewrite_the_prefix(tmp_path, monkey
 
 
 @pytest.mark.parametrize("api", ["chat", "responses"])
-async def test_a_session_without_skills_keeps_its_tool_block_when_one_appears(tmp_path, monkeypatch, api):
+async def test_a_session_without_skills_keeps_its_tool_block_when_one_appears(tmp_path, monkeypatch, api, without_builtin_skills):
     session = _session(tmp_path, api)
     agent, server = _agent(session, monkeypatch, ["one", "two"])
 

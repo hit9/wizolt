@@ -61,7 +61,7 @@ async def test_compaction_folds_announced_skills_into_the_index(tmp_path):
     assert "third" in (await agent.skill_announcement())[0]["content"]  # later arrivals: announced again
 
 
-async def test_session_without_skill_tool_does_not_grow_one(tmp_path):
+async def test_session_without_skill_tool_does_not_grow_one(tmp_path, without_builtin_skills):
     s = session(tmp_path)
     agent = Agent(s, output_fn=lambda _text: None)
     assert "Skill" not in _tools(s)

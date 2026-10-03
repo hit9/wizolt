@@ -20,6 +20,7 @@ from prompt_toolkit.utils import get_cwidth
 
 from wizolt.base import LogBlock, ModelUsage, Text, TextFragments, TextRows, TurnBox
 from wizolt.config import compaction_provider_config
+from wizolt.sdk import Panel
 from wizolt.ui.bars import clip
 from wizolt.ui.cli.modals import picker_height
 from wizolt.ui.cli.update import UpdateChecker
@@ -114,6 +115,7 @@ class StatusSnapshot:
     usage: tuple[Section, ...]
     activity: Section
     configuration: Section
+    plugins: tuple[Panel, ...] = ()
 
     @classmethod
     def collect(cls, loop: CommandLoop) -> StatusSnapshot:
@@ -149,6 +151,7 @@ class StatusSnapshot:
             usage=tuple(usage),
             activity=Section("Activity", activity_rows(loop), numeric=True),
             configuration=Section("", configuration_rows(loop)),
+            plugins=tuple(session.plugins.panels("status")) if session.plugins is not None else (),
         )
 
 
@@ -335,7 +338,14 @@ class StatusTabs:
         return table([section.entries() for section in (*self.snapshot.usage, self.snapshot.activity)], width, self.column)
 
     def session(self, width: int) -> TextRows:
-        return table([self.snapshot.configuration.entries()], width, self.column)
+        from wizolt.ui.cli.plugins import PluginView
+
+        rows = table([self.snapshot.configuration.entries()], width, self.column)
+        if self.snapshot.plugins:
+            rows += [[], [(Theme.fg("accent"), "Plugins")]]
+            for panel in self.snapshot.plugins:
+                rows.extend(PluginView.render([Panel((row,))], width, 1) for row in panel.rows)
+        return rows
 
     def segments(self, width: int) -> list[tuple[str, int]]:
         """The parts drawn at `width`, with their cells. Each takes the cells its cumulative share

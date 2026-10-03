@@ -41,7 +41,7 @@ async def test_user_only_skill_is_out_of_the_index_and_refused_to_the_model(tmp_
     assert "(only the user can start this one, with /deploy)" in s.skills.resolve_mentions("run $deploy")
 
 
-def test_only_user_only_skills_offer_no_skill_tool(tmp_path):
+def test_only_user_only_skills_offer_no_skill_tool(tmp_path, without_builtin_skills):
     _skill(tmp_path / ".wizolt" / "skills", "deploy", "description: Ship it.\ndisable-model-invocation: true\n")
     s = session(tmp_path)
 
@@ -79,6 +79,5 @@ def test_index_budget_keeps_project_skills_first_and_counts_the_rest(tmp_path, i
     rows = [line for line in index.splitlines() if line.startswith("- ")]
     assert "- zz-project [project]: the project's own" in rows  # sorted last by name, kept first by source
     assert sum(len(row) + 1 for row in rows) <= 200
-    listed_users = sum(row.startswith("- user-") for row in rows)
-    assert f"({5 - listed_users} more skills are installed but not listed here" in index
-    assert listed_users < 5
+    assert f"({7 - len(rows)} more skills are installed but not listed here" in index  # project, five user skills, one built-in
+    assert sum(row.startswith("- user-") for row in rows) < 5

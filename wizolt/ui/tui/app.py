@@ -384,6 +384,9 @@ class TuiApp:
         self.activity_follows_transcript_fn: Callable[[], bool] = lambda: False
         self.activity_gap_rows = 0
         self.idle_divider_fragments_fn: Callable[[], StyleAndTextTuples] = list
+        self.above_input_fragments_fn: Callable[[int, int], StyleAndTextTuples] = lambda columns, rows: []
+        self._above_input_frame: tuple[int, int, int] | None = None
+        self._above_input_parts: StyleAndTextTuples = []
         self.input_hint_fn = input_hint_fn or (lambda: "")
         self.quick_hints_fn: Callable[[], tuple[str, ...]] = quick_hints_fn or (lambda: ())
         self.file_picker_available_fn = file_picker_available_fn or (lambda: False)
@@ -457,6 +460,22 @@ class TuiApp:
         self.modal_window: Window | None = None
         self.exclusive_modal_window: Window | None = None
         self.status_window: Window | None = None
+
+    def above_input_fragments(self) -> StyleAndTextTuples:
+        """Project input additions once per frame for both visibility and window content.
+
+        Layout can ask for fragments repeatedly. Re-running extension callbacks for each query
+        wastes work and can disagree on height; all queries must see one bounded projection.
+        The actual output supplies dimensions, including tmux resizing and test outputs.
+        """
+        if self.app is None or self.input_mode == InputMode.APPROVAL:
+            return []
+        size = self.app.output.get_size()
+        frame = (self.app.render_counter, size.columns, size.rows)
+        if frame != self._above_input_frame:
+            self._above_input_frame = frame
+            self._above_input_parts = self.above_input_fragments_fn(size.columns, size.rows)
+        return self._above_input_parts
 
     async def request_input(self, prompt: str) -> str | None:
         """Ask for a line of user input inline (an approval prompt, an Ask free-text page) and await it.
@@ -1616,6 +1635,10 @@ class TuiApp:
                     activity,
                     running_gap_below,
                     prompt_above,
+                    ConditionalContainer(
+                        Window(FormattedTextControl(self.above_input_fragments), dont_extend_height=True, wrap_lines=False),
+                        filter=Condition(lambda: bool(self.above_input_fragments())),
+                    ),
                     input_error,
                     approval_form,
                     ConditionalContainer(

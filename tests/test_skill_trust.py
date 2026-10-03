@@ -31,7 +31,7 @@ def test_untrusted_project_skill_that_runs_commands_is_held_back(tmp_path, isola
 
     # Nothing that looks skills up can reach it: index, lookup, /name, mentions.
     assert s.skills.get("status") is None
-    assert "status" not in s.skills.index()
+    assert "- status [" not in s.skills.index()
     assert s.skills.command("/status-x") is None and s.skills.command("/status") is None
     assert s.skills.resolve_mentions("$status") == ""
     # Instructions alone, and the user's own skills, need no trust.

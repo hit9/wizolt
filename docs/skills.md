@@ -11,6 +11,9 @@ warnings in `/skills`.
 
 ## Creating and installing skills
 
+**plugin-workshop** is built in: ask the agent to create or manage a [plugin](plugins.md).
+Its full instructions and SDK examples load only when needed.
+
 ### What a skill looks like
 
 A skill is a folder containing a `SKILL.md` file with YAML frontmatter:
