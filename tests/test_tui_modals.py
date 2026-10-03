@@ -35,10 +35,10 @@ def test_interactive_tui_modal_uses_real_j_and_enter_keys(monkeypatch):
         wait_until(lambda: app.app is not None and app.app.is_running)
         modal = show_modal_from_driver(app, lambda: [("", "one\ntwo")], key)
         wait_until(lambda: app.modal is not None)
-        wait_until(lambda: app.app.renderer.last_rendered_screen is not None and not app.app.renderer.last_rendered_screen.show_cursor)
+        wait_until(lambda: (screen := app.app.renderer.last_rendered_screen) is not None and not screen.show_cursor)
         pipe_input.send_text("j\r")
         result.append(modal.result(timeout=2))
-        wait_until(lambda: app.app.renderer.last_rendered_screen.show_cursor)
+        wait_until(lambda: (screen := app.app.renderer.last_rendered_screen) is not None and screen.show_cursor)
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive)

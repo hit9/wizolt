@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Run the CPR resize test's transition and frame assertions on the application's event loop,
+  rather than treating the previous frame's height as resize completion. Read modal cursor
+  visibility from one published frame while renderer resets are in progress.
 - Rebuild terminal transcript on resize notifications even when the final dimensions match the
   previous frame. Coalesced shrink/grow events could otherwise leave gaps in tool output.
   Add a controlled event-loop pause regression and retain raw tmux output and driver logs as

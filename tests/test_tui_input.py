@@ -15,7 +15,7 @@ from prompt_toolkit.history import FileHistory
 from prompt_toolkit.input.defaults import create_pipe_input
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.output import DummyOutput
-from tui_harness import ResizableOutput, loop, run_interactive_tui, session, wait_until
+from tui_harness import ResizableOutput, loop, run_interactive_tui, session, wait_for, wait_until
 
 import wizolt.ui.tui.app as tui_module
 from wizolt.agent.engine import Agent
@@ -336,7 +336,7 @@ def test_animation_ticker_only_asks_for_frames_while_the_running_region_is_up():
     assert set(frames) == {"running"}
 
 
-def test_interactive_tui_uses_cpr_again_after_resize_without_warning(monkeypatch):
+def test_interactive_tui_uses_startup_cpr_and_reanchors_resize_without_warning(monkeypatch):
     class CprOutput(ResizableOutput):
         def __init__(self):
             super().__init__()
@@ -355,35 +355,37 @@ def test_interactive_tui_uses_cpr_again_after_resize_without_warning(monkeypatch
     output = CprOutput()
     app = TuiApp()
 
-    heights: list[int] = []
+    async def resize_and_check():
+        application = app.app
+        renderer = application.renderer
+        await wait_for(lambda: renderer.last_rendered_screen is not None)
+        callback = renderer.cpr_not_supported_callback
+        assert getattr(callback, "__self__", None) is None
+        assert callback() is None
+        renderer.report_absolute_cursor_row(20)
+        assert not renderer.waiting_for_cpr
+
+        # Schedule the resize and inspect its completed frame in one loop task. A positive
+        # available height can belong to the OLD frame, and renderer.reset() temporarily
+        # clears last_rendered_screen; neither is a cross-thread completion signal.
+        output.size = Size(rows=40, columns=120)
+        application._on_resize()
+        screen = renderer.last_rendered_screen
+        assert screen is not None
+        assert renderer._last_size == output.size
+        assert renderer._min_available_height >= screen.height > 0
+        assert not renderer.waiting_for_cpr, "resize must reanchor without another cursor position report"
+        application.exit()
 
     def drive(_pipe_input):
         wait_until(lambda: app.app is not None and output.requests == 1)
-        callback = app.app.renderer.cpr_not_supported_callback
-        assert getattr(callback, "__self__", None) is None
-        assert callback() is None
-        app.app.loop.call_soon_threadsafe(app.app.renderer.report_absolute_cursor_row, 20)
-        wait_until(lambda: not app.app.renderer.waiting_for_cpr)
-        output.size = Size(rows=40, columns=120)
-        app.app.loop.call_soon_threadsafe(app.app._on_resize)
-        wait_until(lambda: app.app.renderer._min_available_height > 0)
-        renderer = app.app.renderer
-        heights.append((renderer._min_available_height, renderer.last_rendered_screen.height, renderer.waiting_for_cpr))
-        app.app.loop.call_soon_threadsafe(app.app.exit)
+        asyncio.run_coroutine_threadsafe(resize_and_check(), app.app.loop).result(timeout=10)
 
     run_interactive_tui(monkeypatch, app, drive=drive, output=output)
 
     # The startup CPR still happens, and answering it must not leave the renderer believing CPR
     # is unsupported -- that was a real bug, and the first half of this test still guards it.
     assert output.requests == 1
-    # The resize does not ask again. The app is always flush with the pane bottom, so its origin
-    # is `rows - height` and can be handed to the renderer; a CPR answer would describe a screen
-    # that the next resize of a drag has already replaced. See TuiApp._install_resize_reanchor.
-    available, _height, waiting = heights[0]
-    assert not waiting, "the resize asked for a cursor position report instead of anchoring itself"
-    # The origin was established regardless: without this the renderer would keep treating its
-    # available height as unknown and draw the app from wherever the cursor happened to be.
-    assert available > 0
 
 
 def test_tui_app_accept_handler_fires_on_submit_and_clears_buffer():
