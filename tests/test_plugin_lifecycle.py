@@ -173,6 +173,26 @@ async def test_failed_live_reload_reports_where_the_plugin_failed(tmp_path):
         await runtime.close()
 
 
+def test_plugin_cli_defaults_to_the_calling_agents_config_and_project(tmp_path, monkeypatch, capsys):
+    import json
+
+    from wizolt.plugins.catalog import PluginCatalog
+    from wizolt.ui.cli.plugin_commands import main
+
+    config = tmp_path / "agent.toml"
+    config.write_text(f'[paths]\ndata_dir = "{tmp_path / "data"}"\n')
+    project = tmp_path / "project"
+    project.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)  # The agent has cd'ed away from its project.
+    monkeypatch.setenv("WIZOLT_CONFIG", str(config))
+    monkeypatch.setenv("WIZOLT_PROJECT_DIR", str(project))
+    assert main(["list"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed["catalog_directory"] == str(PluginCatalog.for_project(str(tmp_path / "data"), str(project)).directory)
+
+
 async def test_errored_generation_inspection_includes_its_traceback(tmp_path):
     runtime = SessionPlugins(session_with_provider(tmp_path))
     path = tmp_path / "later.py"

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import codecs
 import contextlib
+import functools
 import json
 import os
 import re
@@ -13,6 +14,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -22,6 +24,34 @@ from typing import Any, ClassVar, cast
 from wizolt.base import ApprovalView, Json, ToolArgs, ToolError, run_blocking
 from wizolt.session import BackgroundJob, Session
 from wizolt.tools.base import Tool
+
+
+@functools.cache
+def wizolt_executable() -> str:
+    """This process's `wizolt` launcher, or "" when it was not started through one.
+
+    Several installations can coexist (a release on PATH, a checkout's virtualenv); a command
+    the agent runs to manage this session must reach this one, not whichever PATH finds first.
+    """
+    for candidate in (sys.argv[0], os.path.join(os.path.dirname(sys.executable), "wizolt")):
+        if os.path.basename(candidate) == "wizolt" and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return os.path.abspath(candidate)
+    return ""
+
+
+def session_environment(session: Session) -> dict[str, str]:
+    """The inherited environment plus which wizolt, config and project the agent belongs to.
+
+    `wizolt plugin` defaults to these, so its saved choices reach this session even after a
+    `cd`. An unset value removes an inherited one rather than pointing at an outer session.
+    """
+    env = dict(os.environ)
+    for key, value in (("WIZOLT_EXECUTABLE", wizolt_executable()), ("WIZOLT_CONFIG", session.config.path), ("WIZOLT_PROJECT_DIR", session.cwd)):
+        if value:
+            env[key] = value
+        else:
+            env.pop(key, None)
+    return env
 
 
 class BashTool(Tool):
@@ -253,7 +283,13 @@ class BashTool(Tool):
             # Keep a Popen handle because an auto-promoted command must outlive this event loop;
             # all potentially blocking pipe I/O below is event-loop driven.
             proc = subprocess.Popen(  # noqa: ASYNC220
-                [bash, "-lc", command], cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
+                [bash, "-lc", command],
+                cwd=cwd,
+                env=session_environment(self.session),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
             )
             with self._process_lock:
                 self._process = proc
@@ -578,6 +614,7 @@ class JobTool(Tool):
                 proc = subprocess.Popen(
                     ["bash", "-lc", command],
                     cwd=self.session.cwd,
+                    env=session_environment(self.session),
                     # Default EOF keeps unattended readers from waiting forever for an answer.
                     stdin=subprocess.PIPE if payload.get("stdin") else subprocess.DEVNULL,
                     stdout=log,

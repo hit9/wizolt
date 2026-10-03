@@ -596,3 +596,15 @@ def test_read_merges_one_view_per_path_across_request_items(tmp_path):
     with pytest.raises(ToolError, match="source range unseen"):
         a_view.range_lines(6, 9)
 
+
+
+async def test_shell_commands_name_their_session_config_and_project(tmp_path, monkeypatch):
+    s = session(tmp_path)
+    s.config.path = str(tmp_path / "config.toml")
+    (tmp_path / "sub").mkdir()
+    # An outer session's value must not leak through when this one has none.
+    monkeypatch.setenv("WIZOLT_EXECUTABLE", "/outer/wizolt")
+    monkeypatch.setattr("wizolt.tools.shell.wizolt_executable", lambda: "")
+    output = await BashTool(s, ['printf "%s|%s|%s" "$WIZOLT_CONFIG" "$WIZOLT_PROJECT_DIR" "${WIZOLT_EXECUTABLE-unset}"', "sub"]).call()
+    # A per-call workdir changes where the command runs, not which project it belongs to.
+    assert f"{tmp_path}/config.toml|{tmp_path}|unset" in output

@@ -4,6 +4,7 @@ An absent default config is valid for offline authoring. An explicitly selected 
 malformed config is an error: silently falling back could modify the wrong project's choices.
 """
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,6 +24,16 @@ class PluginWorkspace:
     @property
     def settings(self) -> PluginSettings:
         return PluginSettings(Config.table(self.data, "plugins"))
+
+    @staticmethod
+    def default_config() -> str | None:
+        """The session's config when run from a wizolt agent's shell; otherwise the usual default."""
+        return os.environ.get("WIZOLT_CONFIG") or None
+
+    @staticmethod
+    def default_project() -> str:
+        """The session's project, not the shell's current directory, which an agent may change."""
+        return os.environ.get("WIZOLT_PROJECT_DIR") or str(Path.cwd())
 
     @classmethod
     def open(cls, config: str | None, project: str) -> "PluginWorkspace":
