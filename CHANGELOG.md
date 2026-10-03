@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.71.0 - 2026-10-02
+
 ### Added
 
 - `Ctrl-O` opens an edit's recorded diff, whole and syntax-highlighted, in the same red/green
