@@ -38,6 +38,9 @@
   `wizolt`, says to install before testing plugins with dependencies, explains installed names,
   and tells the agent to add abilities for itself as plugin tools. Appearance examples write the
   invisible Powerline join glyphs as ``/``.
+- `/status` gains a **Progress** tab, second after Overview: the agent's own note, with its goal,
+  a done-of-total meter, each plan step marked done, in progress, blocked or to do, what it knows,
+  and its check. It only reads the note; requests are unchanged.
 - The `/status` Context tab names its parts for what you configure: system prompt, system tools,
   MCP servers, memory files (AGENTS.md), skills and messages. Plugins see the same names in
   `context.window.parts`. Only the labels change; requests and their cached prefix do not.

@@ -31,7 +31,9 @@ if TYPE_CHECKING:
     from wizolt.ui.cli import CommandLoop
 
 DOCS_URL = "https://wizolt.readthedocs.io"
-TABS = ("Overview", "Context", "Usage", "Session")
+TABS = ("Overview", "Progress", "Context", "Usage", "Session")
+# A plan step's marker and theme role; `doing` takes the accent the running agent wears.
+STEP_MARKS = {"done": ("✓", "success"), "doing": ("●", "accent"), "blocked": ("✕", "error"), "todo": ("○", "muted")}
 KEYS = "h/l tabs · j/k scroll · Esc close"
 # The statusbar's context pressure thresholds (`ui.bars.pressure`).
 WARNING_PERCENT, ERROR_PERCENT = 70, 90
@@ -116,6 +118,10 @@ class StatusSnapshot:
     activity: Section
     configuration: Section
     plugins: tuple[Panel, ...] = ()
+    # The agent's own note, as it last wrote it: (status, text) steps, facts it keeps, its check.
+    plan: tuple[tuple[str, str], ...] = ()
+    known: tuple[str, ...] = ()
+    check: str = ""
 
     @classmethod
     def collect(cls, loop: CommandLoop) -> StatusSnapshot:
@@ -152,6 +158,9 @@ class StatusSnapshot:
             activity=Section("Activity", activity_rows(loop), numeric=True),
             configuration=Section("", configuration_rows(loop)),
             plugins=tuple(session.plugins.panels("status")) if session.plugins is not None else (),
+            plan=tuple((item.status, item.text) for item in session.state.plan_items(session.state.plan)),
+            known=tuple(session.state.known),
+            check=session.state.check,
         )
 
 
@@ -243,10 +252,37 @@ class StatusTabs:
         sections = [row.label for section in (*snapshot.usage, snapshot.activity, snapshot.configuration) for row in section.rows]
         parts = [name for name, tokens in snapshot.context.parts if tokens]
         fixed = ["agent", "model", "goal", "context", "usage", "agents", "used", "total", "over by", "compacts at", "window"]
+        fixed += ["progress", "plan", "known", "check"]
         self.column = label_column([*sections, *parts, *fixed])
 
     def rows(self, tab: str, width: int) -> TextRows:
-        return {"Overview": self.overview, "Context": self.context, "Usage": self.usage, "Session": self.session}[tab](width)
+        tabs = {"Overview": self.overview, "Progress": self.progress, "Context": self.context, "Usage": self.usage, "Session": self.session}
+        return tabs[tab](width)
+
+    def progress(self, width: int) -> TextRows:
+        """The note the agent keeps for itself: what it is after, how far along, what it knows."""
+        snapshot = self.snapshot
+        if not (snapshot.goal or snapshot.plan or snapshot.known or snapshot.check):
+            return [[words("No plan yet. The agent writes its goal, steps and checks here as it works.")]]
+        entries = [Entry("goal", text(snapshot.goal) if snapshot.goal else [words("none yet")])]
+        if snapshot.plan:
+            counts = {status: sum(step == status for step, _ in snapshot.plan) for status in STEP_MARKS}
+            cells = min(OVERVIEW_METER, len(snapshot.plan) * 4)
+            filled = round(counts["done"] * cells / len(snapshot.plan))
+            summary = [(Theme.fg("success"), "█" * filled), (Theme.fg("subtle"), "░" * (cells - filled)), ("", "  ")]
+            summary += [figure(str(counts["done"])), words(f" of {len(snapshot.plan)} done")]
+            for status in ("doing", "blocked"):
+                if counts[status]:
+                    summary += [words(" · "), figure(str(counts[status]), STEP_MARKS[status][1]), words(f" {status}")]
+            entries.append(Entry("progress", summary))
+            for index, (status, step) in enumerate(snapshot.plan):
+                mark, role = STEP_MARKS.get(status, STEP_MARKS["todo"])
+                # Finished steps recede; the live and blocked ones keep full weight.
+                entries.append(Entry("plan" if index == 0 else "", [(Theme.fg(role), mark + " "), (Theme.fg("muted" if status == "done" else "text"), step)]))
+        entries += [Entry("known" if index == 0 else "", [words("• "), *text(fact)]) for index, fact in enumerate(snapshot.known)]
+        if snapshot.check:
+            entries.append(Entry("check", text(snapshot.check)))
+        return table([("", entries)], width, self.column)
 
     def overview(self, width: int) -> TextRows:
         """What most visits want: who, on what, how full, how much so far."""

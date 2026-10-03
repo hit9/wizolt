@@ -369,10 +369,42 @@ def test_printed_status_frames_every_tab_at_any_width(tmp_path, width):
         return  # rows wrap under their own column; layout and order are checked wider
     # Overview first, then each tab once, in order; the session id appears once.
     assert value(text, "agent") == "main · " + loop.session.state.last_turn_status
-    order = [text.index(title) for title in ("agent ", "Context", "Next request", "Usage", "All requests", "Activity", "Session", "docs")]
+    order = [text.index(title) for title in ("agent ", "Progress", "Context", "Next request", "Usage", "All requests", "Activity", "Session", "docs")]
     assert order == sorted(order)
     if width >= 80:  # narrower, the id wraps under its own column
         assert text.count(loop.session.uid) == 1
+
+
+def test_progress_tab_shows_the_agents_note_with_step_states(tmp_path):
+    loop = status_loop(tmp_path)
+    state = loop.session.state
+    state.plan = [
+        {"status": "done", "text": "Read the guide"},
+        {"status": "doing", "text": "Write the examples"},
+        {"status": "blocked", "text": "Render figures"},
+        {"status": "todo", "text": "Build the docs"},
+    ]
+    state.known, state.check = ["uv run pytest passes"], "uv run pytest -q"
+    tabs = StatusTabs(StatusReport.of(loop).snapshot)
+    rows = ["".join(text for _, text in row) for row in tabs.rows("Progress", 76)]
+    text = "\n".join(rows)
+
+    assert "1 of 4 done · 1 doing · 1 blocked" in text
+    assert [mark for mark in "✓●✕○" if mark in text] == list("✓●✕○")
+    plan = [row for row in rows if row.lstrip().startswith(("plan", *"✓●✕○"))]
+    assert plan[0].startswith("plan") and all(row[tabs.column] in "✓●✕○" for row in plan)  # one column
+    assert value(StatusReport.of(loop).text(100), "known") == "• uv run pytest passes"
+    assert value(StatusReport.of(loop).text(100), "check") == "uv run pytest -q"
+    # Each step wears its state's role: blocked reads as an error, the live step as the accent.
+    styles = {text.strip(): style for row in tabs.rows("Progress", 76) for style, text in row}
+    assert styles["✕"] == Theme.fg("error") and styles["●"] == Theme.fg("accent")
+
+
+def test_progress_tab_explains_an_empty_note(tmp_path):
+    s = session(tmp_path)
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
+    rows = StatusTabs(StatusReport.of(loop).snapshot).rows("Progress", 76)
+    assert "No plan yet" in "".join(text for row in rows for _, text in row)
 
 
 def test_status_shares_one_label_column_across_tabs(tmp_path):
@@ -406,7 +438,7 @@ def test_status_view_opens_on_a_concise_overview_and_switches_tabs(tmp_path):
     assert value(overview, "usage") == "1 request · 5.0K in · 100 out · 0% cached"
     assert "workspace" not in overview and "Activity" not in overview
     rows = len(overview.splitlines())
-    for key, expected in (("l", "last request, reported"), ("l", "All requests"), ("4", "workspace"), ("l", "context ")):
+    for key, expected in (("l", "a goal long enough"), ("l", "last request, reported"), ("l", "All requests"), ("5", "workspace"), ("l", "context ")):
         assert view.handle_key(key, key) is TUI_MODAL_PENDING
         assert expected in screen()
         # Every tab keeps the frame's height, so switching never moves it.
