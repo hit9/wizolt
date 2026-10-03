@@ -1,9 +1,8 @@
-"""Model-initiated context reset: the `Context` tool, `/context`, and what a reset keeps."""
+"""Model-initiated context reset: the `Context` tool, status readings, and what a reset keeps."""
 
 import asyncio
 import json
 import os
-import re
 
 import pytest
 from agent_harness import call, session, session_with_provider
@@ -223,10 +222,8 @@ def test_a_reset_names_no_index_that_was_never_written(tmp_path):
     assert "Compacted history:" not in s.messages[-1]["content"]
 
 
-async def test_context_command_reports_the_same_figure_as_status(tmp_path):
-    """Both commands answer the same question. `state.context_percent` is not persisted, so a
-    resumed session has no figure until something recomputes one -- and `/context` must not report
-    an empty window while the fixed prefix already fills part of it."""
+def test_status_recomputes_context_before_the_first_request(tmp_path):
+    """A resumed session must not report an empty window while its fixed prefix fills it."""
     s = session_with_provider(tmp_path)
     s.messages = [{"role": "user", "content": "earlier"}]
     s.usage.last_prompt_tokens = 0
@@ -235,17 +232,13 @@ async def test_context_command_reports_the_same_figure_as_status(tmp_path):
     agent = Agent(s, output_fn=lambda _text: None)
     loop = CommandLoop(agent, input_fn=lambda _prompt: "", output_fn=lambda _text: None)
 
-    report = await commands.context_command(loop, "")
     status = commands.status(loop, "")
-
-    match = re.search(r"Context (\d+)% used", report)
-    assert match is not None
-    percent = int(match.group(1))
+    percent = json.loads(ContextTool(s, [{"action": "remaining"}]).call())["percent"]
     assert percent > 0
     assert f"({percent}%)" in status
 
 
-async def test_context_command_reports_the_fill_and_resets_on_request(tmp_path):
+def test_status_reports_the_last_request_context_fill(tmp_path):
     s = session_with_provider(tmp_path)
     s.messages = [{"role": "user", "content": "earlier"}, {"role": "assistant", "content": "noted"}]
     s.usage.last_prompt_tokens = 250
@@ -253,10 +246,7 @@ async def test_context_command_reports_the_fill_and_resets_on_request(tmp_path):
     agent = Agent(s, output_fn=lambda _text: None)
     loop = CommandLoop(agent, input_fn=lambda _prompt: "", output_fn=lambda _text: None)
 
-    assert "25% used" in await commands.context_command(loop, "")
-    assert "Context reset." == await commands.context_command(loop, "reset")
-    assert len(s.messages) == 1 and s.messages[0][SESSION_EVENT_KEY] == "context_reset"
-    assert await commands.context_command(loop, "everything") == "Usage: /context [reset]"
+    assert "(25%)" in commands.status(loop, "")
 
 
 async def test_reset_seeds_the_next_request_without_rewriting_its_checkpoint(tmp_path):
@@ -376,16 +366,18 @@ def test_remaining_uses_exact_projection_when_provider_pair_is_missing(tmp_path,
     assert reading == {"percent": 0, "used": estimated, "budget": s.request_token_budget(), "remaining": s.request_token_budget() - estimated}
 
 
-async def test_context_command_and_tool_report_identical_estimates_after_reset(tmp_path):
+def test_status_and_context_tool_report_identical_estimates_after_reset(tmp_path):
     s = session_with_provider(tmp_path)
     agent = Agent(s, output_fn=lambda _: None)
     loop = CommandLoop(agent, input_fn=lambda _: "", output_fn=lambda _: None)
-    await commands.context_command(loop, "reset")
+    ContextTool(s, [{"action": "reset"}]).call()
+    s.apply_context_reset()
+    status = commands.status(loop, "")
     reading = json.loads(ContextTool(s, [{"action": "remaining"}]).call())
     expected = agent.context.request_tokens(agent.context.model_messages(s.system_prompt), Tool.resolved_schemas(s))
     assert reading["used"] == expected
     assert reading["remaining"] == reading["budget"] - expected
-    assert commands._context_reading(loop) == (reading["used"], reading["budget"], reading["percent"])
+    assert f"({reading['percent']}%)" in status
 
 
 @pytest.mark.parametrize("ending", ["success", "cancel", "failure"])

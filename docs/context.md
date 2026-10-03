@@ -35,10 +35,9 @@ Use **`/compact log`** to review past summaries, or `/compact log seg.N` to prin
 
 ### Starting a new window
 
-Run **`/context reset`** for a fresh model window. wizolt keeps the working notes and recent
-activity, your visible transcript, background jobs and workspace.
-The agent can also schedule a reset after its current turn; the divider shows `reset pending`
-until it happens.
+The agent can use its `Context` tool to schedule a fresh model window after its current turn.
+wizolt keeps the working notes and recent activity, your visible transcript, background jobs
+and workspace. The divider shows `reset pending` until it happens.
 
 ### When a summary does not arrive
 

@@ -112,19 +112,6 @@ def _status_context_line(tokens: int, budget: int, percent: int) -> str:
     return f"{progress_bar(tokens, budget)} `~{Text.abbreviate_count(tokens)} / {Text.abbreviate_count(budget)}` ({percent}%)"
 
 
-def _context_reading(loop: CommandLoop) -> tuple[int, int, int]:
-    """(tokens, budget, percent): the one reading `/status` and `/context` both report.
-
-    Recomputed from the current projection rather than read off `state.context_percent`, which is
-    not persisted: a resumed session would otherwise report an empty window while its fixed prefix
-    already fills part of one. The provider's last real request wins when there is one -- `/config`
-    reports the configured max_context_tokens immediately, while these describe one real request
-    and only catch up after the next one."""
-    loop.agent.context.update_current_tokens(loop.session.system_prompt)
-    reading = loop.session.context_fill()
-    return reading["used"], reading["budget"], reading["percent"]
-
-
 def _status_cache_line(counts: ModelUsage) -> str:
     # The read ratios carry the useful signal; the raw token pairs made this the one row that
     # wrapped on a normal terminal. Writes stay, but only when there were any.
@@ -211,7 +198,10 @@ async def select_api(loop: ModelSettingsHost, model: str) -> str | object | None
 
 def status(loop: CommandLoop, args: str) -> str:
     usage = loop.session.usage
-    context_tokens, context_budget, context_percent = _context_reading(loop)
+    # Rebuild the estimate after resume; context_fill prefers the last actual request
+    # when available, otherwise this current projection (never an uninitialized zero).
+    loop.agent.context.update_current_tokens(loop.session.system_prompt)
+    context = loop.session.context_fill()
     connected_mcp = sum(loop.session.mcp.connected(config.name) for config in loop.session.mcp.parse_configs()) if loop.session.mcp else 0
     activity: list[tuple[str, int | str]] = [
         ("history", len(loop.session.messages)),
@@ -265,7 +255,7 @@ def status(loop: CommandLoop, args: str) -> str:
     if update not in {"current", "unknown"}:
         rows.append(("update", update))
     rows.append(("model", _status_model_line(loop.session, loop.session.config)))
-    rows.append(("context", _status_context_line(context_tokens, context_budget, context_percent)))
+    rows.append(("context", _status_context_line(context["used"], context["budget"], context["percent"])))
     rows.append(("cache", _status_cache_line(usage) if usage.prompt_tokens else "(no requests yet)"))
     visible_activity = [(name, value) for name, value in activity if value]
     if visible_activity:
@@ -860,30 +850,6 @@ async def compact(loop: CommandLoop, args: str) -> str | LogBlock | None:
     )
 
 
-async def context_command(loop: CommandLoop, args: str) -> str:
-    """`/context`: report the window's fill, or `/context reset` to drop the conversation now.
-
-    The manual half of the `Context` tool: a person reaches for this when the model has filled its
-    window with exploration it has already distilled into `Note`, and wants the same reset without
-    asking for it in a message."""
-    action = args.strip() or "remaining"
-    if action == "reset":
-        loop.session.request_context_reset()
-        loop.session.apply_context_reset()
-        loop.agent.context.update_current_tokens(loop.session.system_prompt)
-        # The reset rewrote history in place. Persist it now: leaving the session without running
-        # another turn would otherwise resume from the conversation that was just dropped.
-        await loop.session.save_snapshot()
-        return "Context reset."
-    if action != "remaining":
-        return "Usage: /context [reset]"
-    tokens, budget, percent = _context_reading(loop)
-    return (
-        f"Context {percent}% used: ~{Text.abbreviate_count(tokens)} / "
-        f"{Text.abbreviate_count(budget)} tokens, ~{Text.abbreviate_count(max(0, budget - tokens))} left"
-    )
-
-
 async def provider(loop: ModelSettingsHost, args: str) -> str:
     parts = args.split()
     if len(parts) > 1:
@@ -1154,7 +1120,6 @@ COMMANDS: tuple[Command, ...] = (
     Command("/skills", skills_command, queue_safe=True, render="answer"),
     Command("/config", config, queue_safe=True),
     Command("/compact", compact),
-    Command("/context", context_command),
     Command("/provider", provider),
     Command("/model", model),
     Command("/reason", reason, aliases=("/effort",)),

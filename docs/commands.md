@@ -65,10 +65,6 @@ long sessions within budget on its own, but `/compact` trims on demand.
 **`/compact log [seg.N]`** — Browse past summaries, or print one by its segment name.
 See [Keeping context manageable](context.md#keeping-context-manageable).
 
-**`/context [reset]`** — Check context usage, or start a fresh model window with `/context reset`.
-Use it between turns. Your files, visible transcript and working notes remain.
-See [Starting a new window](context.md#starting-a-new-window).
-
 **`/agents`** — Browse agents, their states and context usage. Move the cursor to preview a task
 and live reply in a bordered window; Enter switches to that agent. Its conversation, input and
 statusbar become active. **x** stops the highlighted agent after confirmation; **Shift+X** stops

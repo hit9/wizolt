@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Removed
+
+- Remove `/context`, including its manual `reset` subcommand. Use `/status` to check context
+  usage; the agent's `Context` tool still supports scheduling a reset.
+
 ### Fixed
 
 - Size Ctrl-O details from the active terminal instead of stale `LINES`/`COLUMNS` variables,
