@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- Size Ctrl-O details from the active terminal instead of stale `LINES`/`COLUMNS` variables,
+  and keep `G` anchored to the end across resizes. Make the scrollback test wait for a completed
+  render snapshot instead of reading it while the renderer is resetting it.
+
 ## 0.71.0 - 2026-10-02
 
 ### Added

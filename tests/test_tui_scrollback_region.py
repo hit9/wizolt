@@ -80,9 +80,11 @@ def test_transcript_is_written_above_a_taller_app(monkeypatch, wired):
     def drive(_pipe_input):
         wait_until(lambda: any(line.startswith(UiPrinter.PROMPT_PREFIX) for line in output.lines))
         emit_and_wait(app, printer, "before selector")
-        before = app.app.renderer.last_rendered_screen.height
+        before = wait_until(lambda: app.app.renderer.last_rendered_screen).height
         open_modal(app, rows=8)
-        wait_until(lambda: app.app.renderer.last_rendered_screen.height > before)
+        # The renderer clears this snapshot while repainting. Read it once: the driver
+        # runs on another thread, so a separate existence check would still race.
+        wait_until(lambda: (screen := app.app.renderer.last_rendered_screen) is not None and screen.height > before)
         emit_and_wait(app, printer, "during selector")
         seen.append(list(output.lines))
         app.app.loop.call_soon_threadsafe(lambda: app.close_modal(None))

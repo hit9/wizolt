@@ -19,7 +19,8 @@ DRIVER = Path(__file__).with_name("tmux_driver.py")
 
 def test_detail_sheets_stay_navigable_across_resize(pane):
     log = pane.path / "details.log"
-    pane.send(f"{sys.executable} {DRIVER} 0 0 {log} details")
+    # Shell-exported dimensions can stay frozen while the PTY is resized.
+    pane.send(f"LINES=24 COLUMNS=80 {sys.executable} {DRIVER} 0 0 {log} details")
 
     def visible_with(text):
         deadline = time.monotonic() + 10

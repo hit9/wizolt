@@ -43,6 +43,21 @@ def test_detail_sheet_code_surface_does_not_color_plain_output(monkeypatch):
     assert sum("╭" in text for _, text in fragments) == 2
 
 
+def test_detail_sheet_end_anchor_survives_resize_and_can_be_left(monkeypatch):
+    size = [100, 30]
+    monkeypatch.setattr("shutil.get_terminal_size", lambda fallback: os.terminal_size(size))
+    body = "\n".join(f"BODY-{i:03}" for i in range(80))
+    sheet = DetailSheet(UiPrinter(), ApprovalView("output", body, "text", result="TAIL"))
+    sheet.handle_key("G", "")
+    for dimensions in ([100, 30], [62, 18], [80, 24], [100, 30]):
+        size[:] = dimensions
+        assert "TAIL" in "".join(text for _, text in sheet.fragments())
+    sheet.handle_key("c-u", "")
+    assert "TAIL" not in "".join(text for _, text in sheet.fragments())
+    sheet.handle_key("g", "")
+    assert "BODY-000" in "".join(text for _, text in sheet.fragments())
+
+
 @pytest.mark.parametrize("back", [True, False])
 def test_detail_sheet_legend_describes_its_navigation(monkeypatch, back):
     monkeypatch.setattr("shutil.get_terminal_size", lambda fallback: os.terminal_size((120, 30)))

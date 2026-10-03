@@ -52,8 +52,8 @@ class ResizableOutput(DummyOutput):
 def wait_until(predicate, timeout=5.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if predicate():
-            return
+        if value := predicate():
+            return value
         time.sleep(0.005)
     raise AssertionError("interactive TUI condition was not reached")
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 from typing import cast
 
+from prompt_toolkit.application import get_app_or_none
 from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples, to_formatted_text
 from prompt_toolkit.utils import get_cwidth
 
@@ -38,7 +39,7 @@ class DetailSheet:
         self.ui = ui
         self.view = view
         self.back_on_escape = back_on_escape
-        self.scroll = 0
+        self.scroll: int | None = 0  # None anchors the viewport to the end across resizes.
         self._width = 0
         self._rows: Rows = []
 
@@ -166,7 +167,14 @@ class DetailSheet:
 
     @staticmethod
     def _size() -> tuple[int, int]:
-        columns, rows = shutil.get_terminal_size((120, 24))
+        app = get_app_or_none()
+        if app is not None and app.is_running:
+            # Match the renderer's output device. Shell-exported LINES/COLUMNS can stay
+            # frozen after a resize; shutil prefers them over the actual PTY size.
+            size = app.output.get_size()
+            columns, rows = size.columns, size.rows
+        else:
+            columns, rows = shutil.get_terminal_size((120, 24))
         # Title, rule, gap, footer, statusbar and one slack row.
         return max(20, columns), max(3, rows - 6)
 
@@ -188,9 +196,9 @@ class DetailSheet:
         )
         return title
 
-    def _footer(self, width: int, height: int, count: int) -> Row:
+    def _footer(self, width: int, bottom: int, count: int) -> Row:
         action = "Esc/q back · Ctrl-O close" if self.back_on_escape else "Esc/q close"
-        position = f" {min(self.scroll + height, count)}/{count} "
+        position = f" {min(bottom, count)}/{count} "
         available = max(0, width - get_cwidth(position))
         legends = [
             f"  ↑/↓ scroll · Ctrl-D/U half-page · g/G top/bottom · {action}",
@@ -203,12 +211,15 @@ class DetailSheet:
     def fragments(self) -> StyleAndTextTuples:
         width, height = self._size()
         rows = self._layout(width)
-        self.scroll = min(self.scroll, max(0, len(rows) - height))
+        last = max(0, len(rows) - height)
+        top = last if self.scroll is None else min(self.scroll, last)
+        if self.scroll is not None:
+            self.scroll = top
         parts = self._header(width)
-        for row in rows[self.scroll : self.scroll + height]:
+        for row in rows[top : top + height]:
             parts.extend(row)
             parts.append(("", "\n"))
-        parts.extend(self._footer(width, height, len(rows)))
+        parts.extend(self._footer(width, top + height, len(rows)))
         return cast(StyleAndTextTuples, parts)
 
     def handle_key(self, key: str, _data: str) -> object:
@@ -216,7 +227,15 @@ class DetailSheet:
             return DETAIL_BACK
         if key in {"q", "c-o", "escape", "c-c"}:
             return None
-        _, height = self._size()
+        if key in {"g", "G"}:
+            self.scroll = 0 if key == "g" else None
+            return TUI_MODAL_PENDING
+        navigation = {"down", "j", "c-n", "up", "k", "c-p", "pagedown", "c-d", "pageup", "c-u"}
+        if key not in navigation:
+            return TUI_MODAL_PENDING
+        width, height = self._size()
+        if self.scroll is None:
+            self.scroll = max(0, len(self._layout(width)) - height)
         if key in {"down", "j", "c-n"}:
             self.scroll += 1
         elif key in {"up", "k", "c-p"}:
@@ -225,7 +244,5 @@ class DetailSheet:
             self.scroll += height if key == "pagedown" else max(1, height // 2)
         elif key in {"pageup", "c-u"}:
             self.scroll -= height if key == "pageup" else max(1, height // 2)
-        elif key in {"g", "G"}:
-            self.scroll = 0 if key == "g" else 10**9
         self.scroll = max(0, self.scroll)
         return TUI_MODAL_PENDING
