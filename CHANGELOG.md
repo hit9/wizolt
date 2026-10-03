@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.71.3 - 2026-10-03
+
 ### Fixed
 
 - Run the CPR resize test's transition and frame assertions on the application's event loop,
