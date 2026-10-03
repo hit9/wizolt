@@ -122,7 +122,7 @@ class Illustrations:
         return Text(text, style=Theme.rich_color("muted"))
 
     def message(self, text: str, role: str = "", indent: int = 1) -> Text:
-        return Text.from_ansi(MessageBlock(self.printer, text, role, indent, False).ansi(WIDTH))
+        return Text.from_ansi(MessageBlock(self.printer, text, role, indent).ansi(WIDTH))
 
     def log(self, label: str, detail: str, output: str = "") -> Text:
         children = [LogLine(output, role=LogRole.OUTPUT, edge=LogEdge.END)] if output else []
@@ -191,7 +191,7 @@ class Illustrations:
         self.save("appearance-colors", rows[:-1], width=44)
 
     def appearance_diff(self) -> None:
-        self.save("appearance-diff", [self.styled(self.printer.diff_segments(DIFF_STYLE_SAMPLE, row_width=72))])
+        self.save("appearance-diff", [self.styled(self.printer.diff_segments(DIFF_STYLE_SAMPLE), width=72)])
 
     def appearance_statusbars(self) -> None:
         rows = []
@@ -263,7 +263,7 @@ class Illustrations:
                 self.message("Fix the tokenizer crash on empty input", "user", 0),
                 self.log("Read", "parser.py"),
                 self.log("Edit", 'path="parser.py"'),
-                self.styled(self.printer.diff_segments(diff, row_width=72)),
+                self.styled(self.printer.diff_segments(diff), width=72),
                 self.styled(app.approval_form_fragments()),
                 Text(""),
                 self.log("Bash", "uv run pytest -q", "41 passed in 2.10s"),

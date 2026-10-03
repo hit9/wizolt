@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Updated benchmark and documentation render helpers for the current completed-message API.
+
 ### Added
 
 - Experimental Python plugins with agent-local instances, safe-boundary reload, rollback,

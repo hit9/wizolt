@@ -1,5 +1,17 @@
 # Local performance baselines
 
+## Plugin foundation
+
+[Baseline](results/linux-arm64-py314-before-plugins.json) at `2110ac18` and
+[plugin result](results/linux-arm64-py314-plugins.json) at `81b09124` use the same repaired
+benchmark workloads and installed dependencies on Linux ARM64 / CPython 3.14.7. Runs were
+sequential without concurrent tests or builds, with three samples per metric and natural GC.
+These are exploratory observations, not a replacement for the nine-sample reference below.
+
+Plugins were disabled (the shipped default). Startup bootstrap changed by +0.64%, first frame
+by −4.18%, and CLI import by +3.97%; replay output hashes matched. These samples do not establish
+a speedup or measure the cost of user-authored callbacks and enabled plugin workloads.
+
 ## Detail wrapping
 
 [Recorded samples](results/linux-arm64-py314-detail-wrapping.json) compare `ca66036d` with

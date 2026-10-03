@@ -51,7 +51,7 @@ def main():
     )
 
     def cell(text):
-        return partial(printer.render_to_ansi, [MessageBlock(printer, text, "assistant", 0, False)], color_depth=ColorDepth.DEPTH_8_BIT)
+        return partial(printer.render_to_ansi, [MessageBlock(printer, text, "assistant", 0)], color_depth=ColorDepth.DEPTH_8_BIT)
 
     def fresh(entries):
         region = ScrollbackRegion()

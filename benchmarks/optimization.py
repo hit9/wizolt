@@ -210,7 +210,7 @@ def main():
     markdown = "## Result\n\nSome **bold text** and 中文说明.\n\n```python\ndef hello(name):\n    return f'Hello {name}'\n```\n\n| Key | Value |\n| --- | --- |\n| status | ready |\n"
     printer = UiPrinter()
     region = ScrollbackRegion()
-    cells = [MessageBlock(printer, markdown + str(i), "assistant", 0, False).ansi for i in range(300)]
+    cells = [MessageBlock(printer, markdown + str(i), "assistant", 0).ansi for i in range(300)]
 
     def cold():
         nonlocal region
@@ -226,7 +226,7 @@ def main():
 
     def append_and_zoom():
         with contextlib.redirect_stdout(io.StringIO()):
-            region.write_direct(MessageBlock(printer, markdown, "assistant", 0, False).ansi)
+            region.write_direct(MessageBlock(printer, markdown, "assistant", 0).ansi)
         region._replay_layout(80)
         region._replay_layout(120)
 
