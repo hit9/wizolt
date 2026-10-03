@@ -657,6 +657,7 @@ class BarLayout:
     """Session-local compiled settings. Failed reloads leave the previous settings intact."""
 
     def __init__(self):
+        self.presets = {kind: dict(values) for kind, values in PRESETS.items()}
         self.sources = dict(DEFAULTS)
         self.templates = {key: Template(value, PRESETS[key]) for key, value in DEFAULTS.items() if key != "sweep"}
         self.sweep = Sweep(DEFAULTS["sweep"])
@@ -674,7 +675,7 @@ class BarLayout:
                 if key == "sweep":
                     sweep = Sweep(source)
                 else:
-                    template = Template(source, PRESETS[key])
+                    template = Template(source, self.presets[key])
                     resolved = styles(template.styles, key)
                     for running in (False, True):
                         sample.update(running=running, yolo=running)
@@ -700,7 +701,25 @@ class BarLayout:
             for key in keys:
                 if key in table:
                     sources["sweep" if key == "sweep" else section] = table[key]
-        return self.configure(sources, styles)
+        missing = {
+            kind: source
+            for kind, source in sources.items()
+            if isinstance(source, str) and source.startswith("preset:plugins.") and source[7:] not in self.presets[kind]
+        }
+        problems = self.configure({kind: DEFAULTS[kind] if kind in missing else source for kind, source in sources.items()}, styles)
+        if not problems:
+            self.sources.update(missing)
+        return problems
+
+    def project_presets(self, presets: dict[str, dict[str, str]], styles: Callable[[set[str], str], Mapping[str, str]]) -> None:
+        """Recompile referenced presets on reload; missing choices fall back without erasing intent."""
+        self.presets = presets
+        for kind, source in tuple(self.sources.items()):
+            if not source.startswith("preset:plugins."):
+                continue
+            if self.configure({kind: source}, styles):
+                self.configure({kind: DEFAULTS[kind]}, styles)
+                self.sources[kind] = source
 
     def render(
         self, kind: str, values: Mapping[str, Value], width: int, styles: Callable[[set[str], str], Mapping[str, str]], *, ramp: tuple[str, ...] = ()

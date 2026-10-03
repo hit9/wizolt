@@ -6,11 +6,13 @@ reconcile it; the distinction prevents a shell command from claiming a reload it
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict, replace
 
 from wizolt.plugins.catalog import Installation, PluginCatalog
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.process import PluginProcess
+from wizolt.plugins.protocol import Capabilities
 from wizolt.plugins.settings import PluginSettings
 from wizolt.sdk import PluginError
 
@@ -20,6 +22,7 @@ class PluginInstallations:
         self.catalog = catalog
         self.cwd = cwd
         self.settings = settings or PluginSettings()
+        self.validate: Callable[[Capabilities], None] | None = None
 
     async def manage(self, action: str, target: str = "") -> dict:
         records, problems = self.catalog.read()
@@ -48,8 +51,12 @@ class PluginInstallations:
 
                 result = await DependencyEnvironment(self.catalog.directory / "environments", [source], self.cwd, self.settings).prepare()
                 python = result["python"]
-            worker, _ = await PluginProcess.start(source, python=python, cwd=self.cwd, config=self.settings.read(source.name))
-            await worker.close()
+            worker, description = await PluginProcess.start(source, python=python, cwd=self.cwd, config=self.settings.read(source.name))
+            try:
+                if self.validate is not None:
+                    self.validate(Capabilities.decode(source.name, description))
+            finally:
+                await worker.close()
             item = Installation(source.name, source.path, python=python)
         else:
             raise PluginError(f"Unknown installation action: {action}")

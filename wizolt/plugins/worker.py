@@ -44,6 +44,8 @@ class Worker:
                 "fields": list(plugin.fields),
                 "slots": list(plugin.components),
                 "events": list(plugin.observers),
+                "themes": plugin.themes,
+                "presets": plugin.presets,
                 "commands": {
                     name: {"description": action.description, "parameters": dict(action.parameters), "during_turn": action.during_turn}
                     for name, action in plugin.commands.items()

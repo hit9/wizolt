@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Allow plugins to register namespaced colorschemes and statusbar/divider format presets in
+  `/theme`, with validation, live reload, agent-local catalogs and safe disabled fallbacks.
+
 - Support multi-file plugins through `pyproject.toml`, configurable entry callables, flat/src
   layouts and resources, with bounded source snapshots and whole-package reload/rollback.
 
@@ -20,10 +23,10 @@
 ### Added
 
 - Experimental Python plugins with agent-local instances, safe-boundary reload, rollback,
-  project enable/disable preferences, a human `/plugins` manager, and a core `Plugin` tool.
+  project enable/disable preferences, a human `/plugins` manager, and `PluginHotReload`.
   Plugins can register commands, tools, bar fields, turn observers, and bounded theme-aware
   components above the input or in `/status`. Dependency installation prepares a separate
-  environment and returns an explicit restart command.
+  worker environment without restarting the host.
 - Built-in `plugin-workshop` skill with inline SDK examples, and a small theme-aware pet plugin,
   installed but disabled by default. Added lifecycle, dependency and UI tests and design notes.
 

@@ -76,6 +76,8 @@ class PluginRuntime:
         self._retiring: set[asyncio.Task] = set()
         self.reserved_commands: frozenset[str] = frozenset()
         self.interpreters: dict[str, str] = {}
+        self.validate: Callable[[Capabilities], None] | None = None
+        self.on_change: Callable[[], None] | None = None
 
     async def prepare(self, path: str, source: PluginSource | None = None, settings: dict | None = None) -> Generation:
         revision = source if source is not None else PluginSource.read(path)
@@ -83,6 +85,8 @@ class PluginRuntime:
         worker, description = await PluginProcess.start(revision, python=self.interpreters.get(revision.name, ""), cwd=self.context().cwd, config=settings)
         try:
             capabilities = Capabilities.decode(revision.name, description)
+            if self.validate is not None:
+                self.validate(capabilities)
             occupied = set(self.reserved_commands)
             for name, entry in self.entries.items():
                 if name != revision.name:
@@ -179,6 +183,8 @@ class PluginRuntime:
             "commands": list(item.plugin.commands),
             "tools": {key: {"description": action.description, "parameters": action.parameters} for key, action in item.plugin.tools.items()},
             "slots": list(item.plugin.components),
+            "themes": list(item.plugin.themes),
+            "presets": {kind: list(values) for kind, values in item.plugin.presets.items()},
             "error": item.error,
             "calls": item.calls,
             "seconds": round(item.seconds, 6),
@@ -205,6 +211,8 @@ class PluginRuntime:
                 entry.previous, entry.active, entry.pending = entry.active.source, entry.pending, None
         if self.entries and (self._refresh_task is None or self._refresh_task.done()):
             self._refresh_task = asyncio.create_task(self._refresh_loop())
+        if self.on_change is not None:
+            self.on_change()
 
     async def _refresh_loop(self) -> None:
         while self.entries and not self._closed:

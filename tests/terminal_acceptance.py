@@ -1,6 +1,7 @@
 """Shared real-terminal scenarios; imported by each multiplexer acceptance module."""
 
 import re
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -96,6 +97,48 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     visible = wait("Plugins")
     assert "on standby" not in visible
     pane.keys("Escape", "C-d")
+
+
+def test_plugin_appearance_reload_preserves_input_and_updates_bars(pane):
+    config = pane.path / "appearance-plugin.toml"
+    config.write_text(
+        f'[paths]\ndata_dir = "{pane.path}/data"\n'
+        '[provider]\nactive = "test"\n[provider.test]\n'
+        'url = "http://127.0.0.1:9/v1"\nkey = "test"\nmodel = "test-model"\n'
+        '[ui.statusbar]\nformat = "preset:plugins.look.compact"\n'
+    )
+    source = pane.path / "look.py"
+    source.write_text('SDK_VERSION = 1\ndef setup(p):\n    p.preset("statusbar", "compact", "PLUGIN-LOOK {model}")\n')
+    subprocess.run(
+        [sys.executable, "-m", "wizolt", "plugin", "enable", str(source), "--config", str(config), "--project", str(pane.path)],
+        check=True, capture_output=True, text=True,
+    )
+    pane.send(f"{sys.executable} -m wizolt --config {config} --yolo")
+
+    def wait(text):
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            visible = pane.visible()
+            assert "Unhandled exception" not in visible, visible
+            if text in visible:
+                return visible
+            time.sleep(.05)
+        raise AssertionError(f"missing {text!r}: {visible}")
+
+    wait("PLUGIN-LOOK test-model")
+    pane.resize(50, 20)
+    wait("PLUGIN-LOOK test-model")
+    source.write_text('SDK_VERSION = 1\ndef setup(p):\n    p.preset("statusbar", "compact", "RELOADED-LOOK {model}")\n')
+    pane.send("/plugins reload look")
+    wait("RELOADED-LOOK test-model")
+    pane.send("/theme")
+    wait("h/l tab")
+    pane.keys("Escape")
+    pane.send("/plugins disable look")
+    wait('"disabled"')
+    pane.send("/plugins enable look")
+    wait("RELOADED-LOOK test-model")
+    pane.keys("C-d")
 
 
 def test_detail_sheets_stay_navigable_across_resize(pane):

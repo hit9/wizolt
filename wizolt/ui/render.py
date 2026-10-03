@@ -566,7 +566,16 @@ class Theme:
 
     @classmethod
     def themes(cls) -> dict[str, Palette]:
-        return {**cls.BUILTIN, **cls._custom}
+        return {**cls.BUILTIN, **cls._plugins, **cls._custom}
+
+    _plugins: ClassVar[dict[str, Palette]] = {}
+
+    @classmethod
+    def project_plugins(cls, themes: dict[str, Palette]) -> None:
+        """Project the focused agent's catalog, never accumulate other agents' contributions."""
+        if cls._plugins != themes:
+            cls._plugins = dict(themes)
+            cls._generation += 1
 
     @classmethod
     def name(cls) -> str:

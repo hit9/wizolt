@@ -76,7 +76,7 @@ class PluginManager:
         lines = [str(item["path"])]
         if item.get("builtin"):
             lines.insert(0, "Built in · enabled per project")
-        for key in ("fields", "commands", "tools", "slots"):
+        for key in ("fields", "commands", "tools", "slots", "themes", "presets"):
             if values := item.get(key):
                 lines.append(f"{key.capitalize()}: {', '.join(values)}")
         for key in ("error", "python"):

@@ -497,6 +497,11 @@ class AgentsFrontend:
         try:
             while True:
                 runtime = self.current
+                if runtime.loop.plugin_appearance is not None:
+                    runtime.loop.plugin_appearance.activate()
+                else:
+                    Theme.project_plugins({})
+                    Theme.set_mode(Theme.resolve(runtime.loop.session.settings.theme))
                 assert self.root.application_ready is not None
                 runtime.tui.on_ready = self.root.application_ready.set
                 if self.switching:

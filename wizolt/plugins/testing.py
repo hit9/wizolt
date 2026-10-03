@@ -8,12 +8,13 @@ The report contains semantic frames. UI exporters consume those frames in a high
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.process import PluginProcess, WorkerError
-from wizolt.plugins.protocol import Snapshot
+from wizolt.plugins.protocol import Capabilities, Snapshot
 from wizolt.plugins.settings import PluginSettings
 from wizolt.sdk import Context
 
@@ -29,6 +30,7 @@ class Stimulus:
 
 @dataclass
 class TrialReport:
+    name: str = ""
     status: str = "failed"
     stage: str = "load"
     version: str = ""
@@ -49,6 +51,7 @@ class PluginTrial:
         self.timeout = timeout
         self.python = python
         self.settings = settings or PluginSettings()
+        self.validate: Callable[[Capabilities], None] | None = None
 
     async def run(self, path: str, *, validate: bool = False, times: tuple[float, ...] = (0,), stimuli: tuple[Stimulus, ...] = ()) -> TrialReport:
         report = TrialReport()
@@ -56,10 +59,13 @@ class PluginTrial:
         started = time.monotonic()
         try:
             source = PluginSource.read(path)
+            report.name = source.name
             report.version = source.digest
             worker, report.capabilities = await PluginProcess.start(
                 source, timeout=self.timeout, python=self.python, cwd=self.context.cwd, config=self.settings.read(source.name)
             )
+            if self.validate is not None:
+                self.validate(Capabilities.decode(source.name, report.capabilities))
             if not validate:
                 for stimulus in stimuli:
                     report.stage = f"{stimulus.kind}:{stimulus.name}"

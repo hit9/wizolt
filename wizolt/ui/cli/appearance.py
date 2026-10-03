@@ -193,12 +193,14 @@ class AppearancePicker:
         self.lists = {kind: ChoiceViewState((), {}, set(), max_rows=20, height=self.height) for kind in TAB_KINDS}
         self.bar_focus = {kind: kind + ":" + self.selected[kind] for kind in ("statusbar", "divider")}
 
-    @staticmethod
-    def presets(kind: str) -> tuple[str, ...]:
-        return {"statusbar": tuple(PRESETS["statusbar"]), "divider": bars.DIVIDER_CHOICES, "sweep": bars.SWEEP_CHOICES}[kind]
+    def presets(self, kind: str) -> tuple[str, ...]:
+        builtins = {"statusbar": tuple(PRESETS["statusbar"]), "divider": bars.DIVIDER_CHOICES, "sweep": bars.SWEEP_CHOICES}[kind]
+        return (*builtins, *(name for name in self.layout.presets[kind] if name not in PRESETS[kind]))
 
     def preset(self, kind: str) -> str:
         source = self.layout_before.sources[kind]
+        if source.startswith("preset:plugins.") and source[7:] in self.presets(kind):
+            return source[7:]
         if kind == "statusbar":
             placement = status_layout(source)
             return CUSTOM if placement is None else placement[0]
@@ -211,7 +213,7 @@ class AppearancePicker:
         name = chosen[kind]
         if name == CUSTOM:
             return self.custom[kind]
-        if kind == "statusbar":
+        if kind == "statusbar" and name in PRESETS[kind]:
             return status_source(name, chosen["placement"] == "split")
         return "preset:" + name
 
@@ -220,16 +222,18 @@ class AppearancePicker:
         is shown, highlighted or chosen; only a custom format has none, and leaving one for a
         preset starts with both groups on the left."""
         chosen = {**self.selected, setting: name}
-        if setting == "statusbar" and (name == CUSTOM or self.selected["placement"] == CUSTOM):
-            chosen["placement"] = CUSTOM if name == CUSTOM else "left"
+        if setting == "statusbar" and (name not in PRESETS[setting] or self.selected["placement"] == CUSTOM):
+            chosen["placement"] = CUSTOM if name not in PRESETS[setting] else "left"
         return chosen
 
     def accept_format(self, setting: str, source: str) -> None:
         """Select an edited setting: as the preset (and placement) it spells, if any, else custom."""
         if setting == "statusbar" and (placement := status_layout(source)) is not None:
             self.selected.update(statusbar=placement[0], placement="split" if placement[1] else "left")
-        elif setting != "statusbar" and (name := next((name for name in self.presets(setting) if source in ("preset:" + name, PRESETS[setting][name])), None)):
+        elif name := next((name for name in self.presets(setting) if source in ("preset:" + name, self.layout.presets[setting][name])), None):
             self.selected[setting] = name
+            if setting == "statusbar":
+                self.selected["placement"] = CUSTOM
         else:
             self.custom[setting] = source
             self.selected[setting] = CUSTOM
@@ -728,7 +732,7 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
                 *problems,
                 *listing,
                 f"Diff styles: {', '.join((Theme.AUTO, *DIFF_STYLES))}",
-                f"Statusbar presets: {', '.join(PRESETS['statusbar'])}",
+                f"Statusbar presets: {', '.join(loop.presentation.status_bar.layout.presets['statusbar'])}",
                 f"Statusbar theme: {Theme.selected_bar_theme('statusbar')}",
                 f"Divider layouts: {', '.join(bars.DIVIDER_CHOICES)}. Sweeps: {', '.join(bars.SWEEP_CHOICES)}",
                 f"Divider theme: {Theme.selected_bar_theme('divider')}",

@@ -424,7 +424,6 @@ def load_custom(directory: str, builtins: dict[str, Palette], roles: tuple[str, 
         entries = sorted(entry for entry in os.listdir(directory) if entry.endswith(".toml"))
     except OSError:
         entries = []
-    themes: dict[str, Palette] = {}
     problems: list[str] = []
     sources: list[tuple[str, str, dict]] = []
     for entry in entries:
@@ -445,6 +444,20 @@ def load_custom(directory: str, builtins: dict[str, Palette], roles: tuple[str, 
                     sources.append((name, f"ui.themes.{name}", data))
     # Process inline definitions last. A usable definition replaces the same-named file;
     # an unusable one leaves that file available, just as invalid entries keep base colors.
+    accepted = []
+    for name, path, data in sources:
+        if name.startswith("plugins."):
+            problems.append(f"theme {path}: the plugins. namespace is reserved for plugin themes")
+        else:
+            accepted.append((name, path, data))
+    themes, validation = compile_themes(accepted, builtins, roles)
+    return themes, [*problems, *validation]
+
+
+def compile_themes(sources: list[tuple[str, str, dict]], builtins: dict[str, Palette], roles: tuple[str, ...]) -> tuple[dict[str, Palette], list[str]]:
+    """Validate theme values independently of their source: files, config or plugin metadata."""
+    themes: dict[str, Palette] = {}
+    problems: list[str] = []
     for name, path, data in sources:
         if not THEME_NAME.match(name):
             problems.append(f"theme {path}: the name must be letters, digits, '.', '_' or '-'")

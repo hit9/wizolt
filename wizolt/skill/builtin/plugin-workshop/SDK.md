@@ -28,6 +28,23 @@ after the original directory is deleted. Keep the import tree small: at most 4 M
 VCS, virtualenv, build and Python cache directories are excluded. Runtime writes belong outside
 the package snapshot, which is deleted when its worker closes.
 
+## Appearance contributions
+
+Register colors and format presets during setup:
+
+```python
+plugin.theme("night", {"base": "dark", "colors": {"accent": "#88aabb"}})
+plugin.preset("statusbar", "compact", "[status.agent] {agent} [/][status.model] {model} [/]")
+plugin.preset("divider", "quiet", "[spinner]{spinner}[/] {label} [divider_rule]{fill:─}[/]")
+```
+
+The picker and completion show `plugins.NAME.night` and `plugins.NAME.compact`. Themes use the
+existing `base`, `colors`, `diff`, `highlights`, and `pygments` schema; see the appearance docs for
+roles and format syntax. Presets are ordinary format strings, including conditions and plugin
+fields. Layout placement is encoded in the string; the built-in left/split toggle applies only
+to built-in layouts. Registration never selects a theme automatically. Validate checks both
+themes and presets; test can render a component with `--theme plugins.NAME.night`.
+
 ## Configuration
 
 User settings live in wizolt's `config.toml`, under `[plugins.NAME]`; NAME is the installed name.

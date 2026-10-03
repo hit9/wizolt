@@ -31,6 +31,8 @@ class Capabilities:
     observers: tuple[str, ...]
     commands: dict[str, Operation]
     tools: dict[str, Operation]
+    themes: dict[str, dict[str, Any]]
+    presets: dict[str, dict[str, str]]
 
     @classmethod
     def decode(cls, name: str, value: dict) -> "Capabilities":
@@ -41,6 +43,8 @@ class Capabilities:
             tuple(value["events"]),
             {key: Operation(**item) for key, item in value["commands"].items()},
             {key: Operation(**item) for key, item in value["tools"].items()},
+            value["themes"],
+            value["presets"],
         )
 
 

@@ -103,6 +103,8 @@ class Plugin:
         self.commands: dict[str, Action] = {}
         self.tools: dict[str, Action] = {}
         self.observers: dict[str, list[Observer]] = {}
+        self.themes: dict[str, dict[str, Any]] = {}
+        self.presets: dict[str, dict[str, str]] = {"statusbar": {}, "divider": {}}
 
     @property
     def config(self) -> Mapping[str, Any]:
@@ -114,6 +116,22 @@ class Plugin:
         from wizolt.sdk.settings import resolve
 
         self._config = resolve(self._settings, schema, defaults or {})
+
+    def theme(self, name: str, definition: Mapping[str, Any]) -> None:
+        """Contribute a theme using the same base/colors/diff/highlights data as theme TOML.
+
+        The host namespaces the choice as plugins.<plugin>.<name>. Registration never selects
+        it automatically or overwrites a user's existing theme choice.
+        """
+        self._register(self.themes, name, dict(definition), pattern=self.COMMAND_NAME)
+
+    def preset(self, kind: str, name: str, source: str) -> None:
+        """Contribute a statusbar/divider format string to the existing appearance picker."""
+        if kind not in self.presets:
+            raise PluginError("Preset kind must be statusbar or divider")
+        if not isinstance(source, str) or len(source) > 8192:
+            raise PluginError("Preset must be a format string with at most 8192 characters")
+        self._register(self.presets[kind], name, source, pattern=self.COMMAND_NAME)
 
     @classmethod
     def _register(cls, registry: dict, name: str, value: object, *, pattern: str = IDENTIFIER) -> None:

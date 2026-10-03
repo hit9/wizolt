@@ -11,9 +11,11 @@ from dataclasses import asdict
 from pathlib import Path
 
 from wizolt.config import Config
+from wizolt.plugins.protocol import Capabilities
 from wizolt.plugins.testing import PluginTrial, Stimulus
 from wizolt.plugins.workspace import PluginWorkspace
 from wizolt.sdk import Context
+from wizolt.ui.cli.plugin_appearance import AppearanceContribution
 from wizolt.ui.cli.plugin_preview import PreviewExporter
 from wizolt.ui.render import Theme
 
@@ -61,9 +63,14 @@ def main(argv: list[str]) -> int:
         parser.error("use test to execute events or actions")
     try:
         workspace = PluginWorkspace.open(args.config, args.project)
+        Theme.project_plugins({})
         requested_theme = args.theme or Config.table(workspace.data, "runtime").get("theme", "dark")
-        problems = Theme.configure(requested_theme, str(Path(workspace.data_dir) / "themes"), Config.table(workspace.data, "ui").get("themes"))
-        if Theme.canonical(requested_theme) is None:
+        problems = Theme.configure(
+            "dark" if requested_theme.startswith("plugins.") else requested_theme,
+            str(Path(workspace.data_dir) / "themes"),
+            Config.table(workspace.data, "ui").get("themes"),
+        )
+        if Theme.canonical(requested_theme) is None and not requested_theme.startswith("plugins."):
             raise ValueError(f"Unknown theme: {requested_theme}")
         installed, catalog_problems = workspace.installed(args.path)
         python = installed.python if installed else ""
@@ -73,9 +80,11 @@ def main(argv: list[str]) -> int:
         print(json.dumps({"status": "failed", "stage": "configuration", "error": str(error)}, ensure_ascii=False))
         return 1
     context = Context("preview", "main", workspace.cwd, args.status, args.context_percent, 0, "preview-model", 0, args.width)
+    trial = PluginTrial(context, timeout=args.timeout, python=python, settings=workspace.settings)
+    trial.validate = AppearanceContribution.validate
     report = asdict(
         asyncio.run(
-            PluginTrial(context, timeout=args.timeout, python=python, settings=workspace.settings).run(
+            trial.run(
                 args.path,
                 validate=args.action == "validate",
                 times=tuple(args.times),
@@ -83,6 +92,14 @@ def main(argv: list[str]) -> int:
             )
         )
     )
+    if report["status"] == "passed":
+        contribution = AppearanceContribution.compile(Capabilities.decode(report["name"], report["capabilities"]))
+        Theme.project_plugins(contribution.themes)
+        if Theme.canonical(requested_theme) is None:
+            report.update(status="failed", stage="configuration", error=f"Unknown theme: {requested_theme}")
+            report["frames"] = []
+        else:
+            Theme.set_mode(Theme.resolve(requested_theme))
     report["previews"] = []
     report["theme"] = Theme.name()
     report["warnings"] = [*problems, *catalog_problems]

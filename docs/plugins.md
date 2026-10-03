@@ -1,5 +1,10 @@
 # Plugins
 
+Plugins can add colorschemes and statusbar/divider presets to `/theme`. Choices are named
+`plugins.NAME.CHOICE`; selecting one uses the same theme and format settings as built-ins.
+Reload updates the chosen preset. Disabling its plugin temporarily uses the default appearance;
+enabling it restores the saved choice. Each agent has its own active appearance contributions.
+
 Plugins can be a single `.py` file or a directory with `pyproject.toml`. Packages support multiple
 modules, resource files and a configurable entry callable. Pass the directory to the same
 `wizolt plugin validate`, `test`, and `install` commands. Ask the built-in `plugin-workshop` skill

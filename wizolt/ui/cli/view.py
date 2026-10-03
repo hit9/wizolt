@@ -25,7 +25,7 @@ from wizolt.config import PROVIDER_API_CHOICES
 from wizolt.mentions import MentionSpan, active_mention, encode_file_mention, mention_spellings
 from wizolt.providers.compat import bundled_policy
 from wizolt.session import QueuedInput, Session
-from wizolt.ui.bars import DIVIDER_PRESETS, PRESETS, STATUS_PRESETS
+from wizolt.ui.bars import PRESETS, BarLayout
 from wizolt.ui.cli.appearance import KINDS
 from wizolt.ui.cli.commands import NEEDS_ARGUMENT, SET_KEYS, SET_VALUES
 from wizolt.ui.cli.hints import Context as HintContext
@@ -70,6 +70,7 @@ class CommandCompleter(Completer):
         file_matches: Callable[[str], tuple[str, ...]] | None = None,
         agents_rows: Callable[[], list[MenuRow]] = list,
         commands: CommandCatalog | None = None,
+        bar_layout: Callable[[], BarLayout] = BarLayout,
     ):
         self.providers = providers
         self.models = models
@@ -85,6 +86,7 @@ class CommandCompleter(Completer):
         self.file_matches = file_matches
         self.agents_rows = agents_rows
         self.commands = commands or CommandCatalog()
+        self.bar_layout = bar_layout
 
     def get_completions(self, document, complete_event):
         del complete_event
@@ -108,13 +110,13 @@ class CommandCompleter(Completer):
                     yield from self.matches(("inherit", *Theme.choices()), value[len("theme ") :])
                     return
                 if " " not in value:
-                    presets = STATUS_PRESETS if kind == "statusbar" else DIVIDER_PRESETS
+                    presets = self.bar_layout().presets[kind]
                     yield from self.matches((*presets, "theme"), value, more=("theme",))
                     return
             values = {
                 "diff": Theme.diff_styles(),
-                "statusbar": tuple(STATUS_PRESETS),
-                "divider": tuple(DIVIDER_PRESETS),
+                "statusbar": tuple(self.bar_layout().presets["statusbar"]),
+                "divider": tuple(self.bar_layout().presets["divider"]),
                 "sweep": tuple(PRESETS["sweep"]),
                 "input": tuple(InputStyle.PRESETS),
             }

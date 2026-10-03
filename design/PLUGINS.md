@@ -1,5 +1,11 @@
 # Plugin implementation boundaries
 
+Appearance contributions are plain metadata. The CLI injects its validator before activation,
+using the same theme compiler and format parser as user configuration. Each layout owns its
+preset catalog; `Theme` projects only the focused agent's palettes. Never publish a background
+agent's colors into the global renderer. Disabling a contribution falls back without rewriting
+the user's configured choice, so re-enabling can restore it.
+
 Package admission freezes regular files and resources before launching the worker. The parent
 owns the extracted directory, including cleanup after native exits; never let the worker own
 its only cleanup handle. Source rollback keeps the complete snapshot and settings, not just the

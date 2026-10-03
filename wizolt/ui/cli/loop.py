@@ -68,6 +68,9 @@ class CommandLoop:
         self.agents_frontend: AgentsFrontend | None = None
         self.session = agent.session
         self.presentation = Presentation(self.session, output_fn)
+        from wizolt.ui.cli.plugin_appearance import PluginAppearance
+
+        self.plugin_appearance = PluginAppearance(self.session.plugins, self.session, self.presentation, self.is_focused) if self.session.plugins else None
         self.background = BackgroundServices(self.session, self.presentation.emit_background)
         self.view = View(self.session, self.presentation)
         self.resume = ResumeRenderer(self.session, self.presentation, lambda: self.agent.context.update_current_tokens(self.session.system_prompt))
@@ -106,6 +109,7 @@ class CommandLoop:
         self.commands = CommandCatalog(self.session.plugins)
         self.input_completer = CommandCompleter(
             commands=self.commands,
+            bar_layout=lambda: self.presentation.status_bar.layout,
             providers=lambda: tuple(sorted(self.session.config.providers)),
             models=lambda: self.session.config.provider.available_models,
             reasoning_choices=lambda: self.session.policy.reasoning_choices(self.session.config.provider),
@@ -384,6 +388,9 @@ class CommandLoop:
         """Write the one static line that can safely precede interactive terminal setup."""
         self.presentation.emit(f"wizolt {__version__}. Type / for commands.")
 
+    def is_focused(self) -> bool:
+        return self.agents_frontend is None or self.agents_frontend.current.loop is self
+
     def configure_theme(self) -> None:
         """Activate the configured theme before either frontend draws anything.
 
@@ -391,6 +398,7 @@ class CommandLoop:
         theme set there showed the default palette first. What could not be used is kept for
         `start_session` to report after the banner.
         """
+        Theme.project_plugins(self.plugin_appearance.themes if self.plugin_appearance else {})
         self.theme_problems = Theme.configure(self.session.settings.theme, self.session.data_path("themes"), self.session.config.ui.get("themes"))
         self.theme_problems.extend(Theme.configure_diff_style(self.session.config.ui))
         self.theme_problems.extend(Theme.configure_bar_themes(self.session.config.ui))
