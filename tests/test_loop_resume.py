@@ -16,6 +16,9 @@ from wizolt.session import SessionSnapshotStore, ToolResultRecord
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.modals import select_choice
 
+# These scenarios exercise frontend behavior, not remote maintenance.
+pytestmark = pytest.mark.usefixtures("offline_frontend")
+
 
 async def test_empty_exit_does_not_print_resume_command(tmp_path):
     s = session(tmp_path)

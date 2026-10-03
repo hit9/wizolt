@@ -26,6 +26,9 @@ from wizolt.ui.cli.runtime import RESUME_STATUS_LABEL
 from wizolt.ui.cli.update import UpdateChecker
 from wizolt.ui.tui import TuiApp
 
+# These scenarios exercise frontend behavior, not remote maintenance.
+pytestmark = pytest.mark.usefixtures("offline_frontend")
+
 
 async def _returns_immediately():
     """Stands in for the runtime's input loop when a test only exercises startup."""

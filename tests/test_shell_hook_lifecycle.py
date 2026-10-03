@@ -16,6 +16,9 @@ from wizolt.base import ModelError, WizoltError
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.commands import compact
 
+# These scenarios exercise frontend behavior, not remote maintenance.
+pytestmark = pytest.mark.usefixtures("offline_frontend")
+
 
 def _record(event, matcher="", output=""):
     return _hook(event, "cat >> events.jsonl; echo >> events.jsonl" + ("; printf %s " + shlex.quote(output) if output else ""), matcher)

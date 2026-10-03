@@ -22,6 +22,9 @@ from wizolt.ui.cli import CommandLoop
 from wizolt.ui.render import Theme, UiPrinter
 from wizolt.ui.tui import TuiApp
 
+# These scenarios exercise frontend behavior, not remote maintenance.
+pytestmark = pytest.mark.usefixtures("offline_frontend")
+
 
 async def test_run_refuses_to_nest_the_cli_runtime(tmp_path):
     loop = CommandLoop(

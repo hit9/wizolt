@@ -5,6 +5,7 @@ import threading
 import time
 from dataclasses import replace
 
+import pytest
 from prompt_toolkit.application import Application
 from prompt_toolkit.formatted_text import fragment_list_to_text, to_formatted_text
 from prompt_toolkit.input.defaults import create_pipe_input
@@ -21,6 +22,9 @@ from wizolt.session import SessionSnapshotStore
 from wizolt.ui.cli import CommandLoop, TuiRuntime
 from wizolt.ui.cli.update import UpdateChecker
 from wizolt.ui.tui import TuiApp
+
+# These scenarios exercise frontend behavior, not remote maintenance.
+pytestmark = pytest.mark.usefixtures("offline_frontend")
 
 
 def test_resumed_tui_auto_dispatches_persisted_queue_as_one_request(tmp_path, monkeypatch):

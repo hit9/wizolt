@@ -38,6 +38,9 @@ from wizolt.ui.render import InputStyle, Theme
 from wizolt.ui.tui import CallbackPlaceholder, TuiApp
 from wizolt.ui.tui.app import InputMode
 
+# These scenarios exercise frontend behavior, not remote maintenance.
+pytestmark = pytest.mark.usefixtures("offline_frontend")
+
 
 @pytest.mark.parametrize("mode", [InputMode.CHAT, InputMode.RUNNING, InputMode.APPROVAL])
 def test_ctrl_space_keeps_typing_and_backspace_available(monkeypatch, mode):

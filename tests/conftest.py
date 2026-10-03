@@ -1,9 +1,34 @@
 import os
 import shutil
+import sys
 from dataclasses import dataclass, field
 
 import pytest
+from network_guard import NetworkGuard
 from rich.style import Style
+
+_network = NetworkGuard()
+sys.addaudithook(_network.audit)
+
+
+@pytest.fixture(autouse=True)
+def deny_external_network():
+    """Caught transport failures must still fail the test that attempted real network IO."""
+    _network.attempts.clear()
+    _network.active = True
+    yield
+    _network.active = False
+    assert not _network.attempts, "\n".join(_network.attempts)
+
+
+@pytest.fixture
+def offline_frontend(monkeypatch):
+    """Frontend scenarios don't exercise remote maintenance; its own tests mock HTTP."""
+    from wizolt.providers.sync import CatalogRuntime
+    from wizolt.ui.cli.update import UpdateChecker
+
+    monkeypatch.setattr(UpdateChecker, "load_cached", lambda _: False)
+    monkeypatch.setattr(CatalogRuntime, "refresh_due", lambda _: False)
 
 # Dedicated acceptance jobs must fail rather than silently skip if their multiplexer is missing.
 if shutil.which("tmux") is None and os.environ.get("WIZOLT_REQUIRE_TMUX"):
@@ -21,6 +46,13 @@ def isolate_home(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))  # expanduser prefers this on Windows
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    # An inherited COLUMNS=80 overrides the resized PTY in shutil.get_terminal_size.
+    # Acceptance tests own their terminal geometry, not the shell that launched pytest.
+    for name in ("COLUMNS", "LINES"):
+        monkeypatch.delenv(name, raising=False)
+    # A local proxy could otherwise turn an external request into an allowed loopback socket.
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        monkeypatch.delenv(name, raising=False)
     # A wizolt agent's shell names its session's config and project; a suite started there must
     # not have `wizolt plugin` commands default to the developer's real ones.
     for name in ("WIZOLT_CONFIG", "WIZOLT_SESSION_CWD", "WIZOLT_PROJECT_DIR", "WIZOLT_EXECUTABLE"):

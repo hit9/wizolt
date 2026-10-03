@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Isolate frontend tests from PyPI and GitHub background checks; reject external network
+  attempts even when a background task catches the transport error.
+- Clear inherited terminal-size variables in tests so tmux/Zellij resizing uses the actual PTY
+  size and plugin status counts are not clipped to a stale 80-column width.
+
 - Fix plugin model tests to use the declared `httpx2` dependency, allowing collection in clean environments without legacy `httpx`.
 
 ## 0.73.0a1 - 2026-10-03
