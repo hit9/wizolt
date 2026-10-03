@@ -44,6 +44,8 @@
   whose callback stops when asked; only an unresponsive worker is terminated.
 - A `{join:…}` without its Powerline glyph now names U+E0B0 / U+E0B2 instead of reporting an
   unknown field; the appearance references spell out the code points, which often render invisibly.
+- Failed `PluginHotReload` results and inspection of a failed plugin include bounded `traceback`
+  and `log` tails, so the failing line is visible without rerunning an offline trial.
 - A plugin whose setup fails now reports its own traceback in trials and reloads, instead of a
   later "Plugin is not loaded" from teardown.
 - A saved plugin theme no longer prints an "unknown theme" warning at every startup before the

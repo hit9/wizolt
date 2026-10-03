@@ -317,7 +317,8 @@ is modified, and the test process is always retired, including on timeout or can
 - Do not create detached processes, unmanaged threads/tasks, or access host internals. On timeout
   the host may kill the whole worker process group. That cannot undo completed external effects.
 - Check reload results: failed candidates retain the old version; pending waits for turn/invocation
-  completion. Existing agents do not inherit each other's plugin state. Resume reads saved choices;
+  completion. A failure includes `traceback` and `log` tails naming the failing line, as does
+  `/plugins inspect NAME` for a generation that failed later. Existing agents do not inherit each other's plugin state. Resume reads saved choices;
   ordinary Python variables do not survive a worker replacement or session restart.
 - For recovery, disable through the CLI, then reload; `/plugins` can restore previous source with
   rollback. `WIZOLT_NO_PLUGINS=1 wizolt` skips startup execution. Check config/project paths before

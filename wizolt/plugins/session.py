@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from wizolt.plugins.catalog import Installation, PluginCatalog
 from wizolt.plugins.loading import PluginSource
+from wizolt.plugins.process import WorkerError
 from wizolt.plugins.runtime import PluginRuntime
 from wizolt.plugins.settings import PluginSettings
 from wizolt.sdk import Context, ContextWindow, PluginError, Usage
@@ -114,7 +115,15 @@ class SessionPlugins(PluginRuntime):
                     results.append(result)
                 except Exception as error:  # noqa: BLE001 - one candidate must not prevent other reloads.
                     self.problems[key] = str(error)
-                    results.append({"name": key, "status": "failed", "error": str(error), "previous_retained": key in self.entries})
+                    results.append(
+                        {
+                            "name": key,
+                            "status": "failed",
+                            "error": str(error),
+                            "previous_retained": key in self.entries,
+                            **(WorkerError.diagnostics(error.log, error.traceback) if isinstance(error, WorkerError) else {}),
+                        }
+                    )
             return {"plugins": results, "problems": problems, "scope": "current agent"}
 
     async def manage(self, action: str, target: str = "") -> dict:

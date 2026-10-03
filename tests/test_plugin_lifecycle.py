@@ -153,6 +153,42 @@ async def test_hot_reload_reconciles_saved_choices_only_in_calling_agent(tmp_pat
         await sibling.close()
 
 
+async def test_failed_live_reload_reports_where_the_plugin_failed(tmp_path):
+    from wizolt.plugins.installation import PluginInstallations
+
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    path = tmp_path / "typo.py"
+    path.write_text('SDK_VERSION = 1\ndef setup(p):\n    p.field("width", lambda ctx: ctx.colums)\n')
+    await PluginInstallations(runtime.catalog, runtime.session.cwd).manage("enable", str(path))
+    try:
+        # A sample failure: the model needs the file and line, not only the exception text.
+        [result] = (await runtime.hot_reload("typo"))["plugins"]
+        assert result["status"] == "failed" and "colums" in result["error"]
+        assert f'File "{path}", line 3' in result["traceback"]
+        # A setup failure, with what the plugin printed before it.
+        path.write_text('SDK_VERSION = 1\ndef setup(p):\n    print("configuring")\n    raise RuntimeError("bad setup")\n')
+        [result] = (await runtime.hot_reload("typo"))["plugins"]
+        assert "bad setup" in result["traceback"] and "configuring" in result["log"]
+    finally:
+        await runtime.close()
+
+
+async def test_errored_generation_inspection_includes_its_traceback(tmp_path):
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    path = tmp_path / "later.py"
+    flag = tmp_path / "fail"
+    path.write_text(f'from pathlib import Path\nSDK_VERSION = 1\ndef value(ctx):\n    if Path({str(flag)!r}).exists():\n        raise KeyError("missing")\n    return 1\ndef setup(p):\n    p.field("value", value)\n')
+    try:
+        await runtime.manage("enable", str(path))
+        assert "traceback" not in (await runtime.manage("inspect", "later"))["plugins"][0]
+        flag.touch()
+        await runtime.refresh()
+        item = (await runtime.manage("inspect", "later"))["plugins"][0]
+        assert "missing" in item["error"] and "line 5" in item["traceback"]
+    finally:
+        await runtime.close()
+
+
 async def test_native_plugin_commands_share_completion_dispatch_and_conflict_checks(tmp_path):
     from prompt_toolkit.document import Document
 

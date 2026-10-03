@@ -29,6 +29,11 @@ class WorkerError(PluginError):
         self.log = log
         self.traceback = traceback
 
+    @staticmethod
+    def diagnostics(log: str, traceback: str) -> dict[str, str]:
+        """Bounded tails for a model-facing result: enough to find the failing line, never whole logs."""
+        return {key: value[-limit:] for key, value, limit in (("traceback", traceback, 4000), ("log", log, 2000)) if value.strip()}
+
 
 class PluginProcess:
     def __init__(self, process: asyncio.subprocess.Process):

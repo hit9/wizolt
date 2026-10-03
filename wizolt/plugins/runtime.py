@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from wizolt.plugins.loading import PluginSource
-from wizolt.plugins.process import PluginProcess
+from wizolt.plugins.process import PluginProcess, WorkerError
 from wizolt.plugins.protocol import Capabilities, Snapshot
 from wizolt.plugins.settings import PluginSettings
 from wizolt.sdk import Context, Panel, PluginError, Value
@@ -108,7 +108,7 @@ class PluginRuntime:
             candidate = Generation(revision, capabilities, worker, settings=settings)
             await candidate.refresh(self.context())
             if candidate.error:
-                raise PluginError(candidate.error)
+                raise WorkerError(candidate.error, log=worker.stderr, traceback=worker.traceback)
             return candidate
         except BaseException:
             await worker.close()
@@ -207,6 +207,7 @@ class PluginRuntime:
             "error": item.error,
             "calls": item.calls,
             "seconds": round(item.seconds, 6),
+            **(WorkerError.diagnostics(item.worker.stderr, item.worker.traceback) if item.error else {}),
         }
 
     def _retire(self, generation: Generation) -> None:
