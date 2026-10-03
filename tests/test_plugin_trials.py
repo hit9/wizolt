@@ -32,6 +32,12 @@ def plugin(tmp_path, body):
     return str(path)
 
 
+async def test_failed_setup_reports_its_own_traceback(trial, tmp_path):
+    report = await trial.run(plugin(tmp_path, 'def setup(p):\n    raise RuntimeError("bad setup")\n'))
+    assert report.status == "failed" and report.stage == "load"
+    assert "bad setup" in report.traceback and "not loaded" not in report.traceback
+
+
 async def test_trial_observes_explicit_actions_events_frames_and_logs(trial, tmp_path):
     path = plugin(
         tmp_path,

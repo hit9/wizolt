@@ -72,17 +72,20 @@ class Worker:
                 },
                 "tools": {name: {"description": action.description, "parameters": dict(action.parameters)} for name, action in plugin.tools.items()},
             }
-        if self.loaded is None:
-            raise PluginError("Plugin is not loaded")
-        plugin = self.loaded.plugin
         if operation == "shutdown":
             # Join callbacks before closing their resources. Never cancel this shutdown call.
             tasks = [task for task in self.tasks.values() if task is not asyncio.current_task()]
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-            await plugin.services.close()
+            # A failed load has nothing to close; answering with an error here would replace
+            # the load's traceback, which is the one the author needs.
+            if self.loaded is not None:
+                await self.loaded.plugin.services.close()
             return None
+        if self.loaded is None:
+            raise PluginError("Plugin is not loaded")
+        plugin = self.loaded.plugin
         context = Context.decode(request["context"])
         if operation == "compact":
             if plugin.summary_handler is None:
