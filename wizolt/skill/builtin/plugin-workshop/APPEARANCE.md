@@ -76,7 +76,7 @@ This is wizolt's small template language, not Jinja; there are no loops, include
 | `[reset]` | Reset all styles to terminal defaults |
 | `{>}` | Flexible spaces; following text moves right |
 | `{fill:─}` | Flexible repeated pattern, 1–32 printable single-cell characters |
-| `{join:}` / `{join:}` | Join neighboring background colors |
+| `{join:}` / `{join:}` | Join neighboring background colors; the glyphs are Powerline U+E0B0 / U+E0B2 and may render invisibly, so write `{join:}` / `{join:}` in Python strings |
 | `{% if running %}yes{% else %}no{% endif %}` | Conditional branch; `else` optional |
 | `{% optional priority=10 %} · detail{% endoptional %}` | Remove whole span when narrow; lower priorities disappear first |
 | `{{`, `}}`, `[[`, `]]` | Literal delimiters |

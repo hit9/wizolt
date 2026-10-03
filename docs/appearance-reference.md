@@ -277,7 +277,7 @@ Statusbars and dividers share this syntax:
 | `[reset]` | Restore terminal defaults |
 | `{>}` | Push the remaining content to the right |
 | `{fill:─}` / `{fill:─·}` | Fill space by repeating a character or short pattern |
-| `{join:}` / `{join:}` | Join adjacent background colors automatically |
+| `{join:}` / `{join:}` | Join adjacent background colors automatically; the glyphs are Powerline U+E0B0 / U+E0B2 |
 | `{% if running %}…{% else %}…{% endif %}` | Conditional content; `else` is optional |
 | `{% optional priority=10 %}…{% endoptional %}` | Omit the whole span when space is short; lower priorities go first |
 

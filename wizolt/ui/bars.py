@@ -521,6 +521,10 @@ class Template:
                         target.append(Node("fill", fill_pattern))
                     elif value in ("join:", "join:"):
                         target.append(Node("join", value[5:]))
+                    elif value.startswith("join:"):
+                        # The glyphs are private-use characters that often render as nothing,
+                        # so a hand-typed join tends to arrive empty; name them by code point.
+                        raise ValueError(f"{value!r}: join takes U+E0B0 (\\ue0b0) or U+E0B2 (\\ue0b2)")
                     else:
                         name, _, spec = value.partition(":")
                         if (name not in FIELDS and not plugin_field(name)) or (spec and not re.fullmatch(r"duration|d|\.[0-6]f", spec)):

@@ -145,6 +145,13 @@ def test_powerline_joins_use_adjacent_backgrounds_and_restore_nested_styles():
     assert get_cwidth(text(parts)) == 30
 
 
+@pytest.mark.parametrize("source", ["{join:}", "{join:>}"])
+def test_join_without_its_glyph_names_the_code_points(source):
+    # The glyphs are invisible in most renderings, so a model or person often types them empty.
+    with pytest.raises(ValueError, match=r"U\+E0B0.*U\+E0B2"):
+        Template(source)
+
+
 @pytest.mark.parametrize("source", ["{% if yolo %}bad", "{unknown}", "{model:999999999f}", "{% exec foo %}", "[/]", "{% if yolo %}[a]{% endif %}"])
 def test_invalid_templates_report_errors(source):
     with pytest.raises(ValueError):
