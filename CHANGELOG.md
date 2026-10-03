@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.71.2 - 2026-10-03
+
 ### Fixed
 
 - Track transcript projection dimensions independently of renderer resets, including height
