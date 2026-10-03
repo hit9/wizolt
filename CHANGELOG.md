@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Support multi-file plugins through `pyproject.toml`, configurable entry callables, flat/src
+  layouts and resources, with bounded source snapshots and whole-package reload/rollback.
+
 - Add per-plugin `[plugins.NAME]` settings, immutable SDK configuration with schema validation
   and defaults, shared CLI/live validation, and source-plus-settings rollback.
 

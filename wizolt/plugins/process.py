@@ -40,26 +40,36 @@ class PluginProcess:
         self.reader = asyncio.create_task(self._read())
         self.errors = asyncio.create_task(self._drain_errors())
         self._close_lock = asyncio.Lock()
+        self.snapshot = None
 
     @classmethod
     async def start(
         cls, source: PluginSource, *, timeout: float = 5, python: str = "", cwd: str | None = None, config: dict | None = None
     ) -> tuple[PluginProcess, dict]:
-        process = await asyncio.create_subprocess_exec(
-            python or sys.executable,
-            "-P",  # Workspace files must not shadow worker/validator dependencies.
-            "-m",
-            "wizolt.plugins.worker",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,
-            limit=MAX_FRAME,
-            cwd=cwd,
-        )
-        worker = cls(process)
+        snapshot = source.package.stage() if source.package else None
         try:
-            description = await worker.request("load", timeout=timeout, path=source.path, source=source.text, config=config or {})
+            process = await asyncio.create_subprocess_exec(
+                python or sys.executable,
+                "-P",  # Workspace files must not shadow worker/validator dependencies.
+                "-m",
+                "wizolt.plugins.worker",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
+                limit=MAX_FRAME,
+                cwd=cwd,
+            )
+        except BaseException:
+            if snapshot is not None:
+                snapshot.cleanup()
+            raise
+        worker = cls(process)
+        worker.snapshot = snapshot
+        try:
+            description = await worker.request(
+                "load", timeout=timeout, revision=source.descriptor(), directory=snapshot.name if snapshot else "", config=config or {}
+            )
             return worker, description
         except BaseException as error:
             await worker.close()
@@ -155,3 +165,6 @@ class PluginProcess:
             with contextlib.suppress(TimeoutError):
                 async with asyncio.timeout(1):
                     await self.process.wait()
+            if self.snapshot is not None:
+                self.snapshot.cleanup()
+                self.snapshot = None

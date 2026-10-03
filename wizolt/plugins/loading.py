@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import importlib
 import inspect
-import os
-import stat
 import sys
 import types
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from wizolt.plugins.files import read_regular
+from wizolt.plugins.package import PackageSnapshot
 from wizolt.sdk import SDK_VERSION, Plugin, PluginError
 
 MAX_SOURCE_BYTES = 256 * 1024
@@ -31,24 +32,27 @@ class PluginSource:
     name: str
     digest: str
     dependencies: tuple[str, ...]
+    entry: str = ""
+    package: PackageSnapshot | None = None
+
+    def descriptor(self) -> dict:
+        """Small RPC metadata; package bytes travel through a parent-owned frozen directory."""
+        return {"path": self.path, "text": self.text, "name": self.name, "digest": self.digest, "dependencies": self.dependencies, "entry": self.entry}
 
     @classmethod
     def read(cls, path: str, text: str | None = None) -> PluginSource:
         """Parse only literal metadata; discovering dependencies must not execute plugin code."""
         location = Path(path).expanduser().resolve()
+        if location.is_dir():
+            package = PackageSnapshot.read(location)
+            return cls(str(location), package.manifest, package.name, package.digest, package.dependencies, package.entry, package)
         if location.suffix != ".py" or not location.stem.isidentifier() or not location.stem.isascii():
             raise PluginError("Use a .py filename that is an ASCII Python identifier")
         if text is None:
             # A FIFO/device masquerading as a .py file must not block the host before the
             # worker exists. Inspect the opened descriptor, not a racy path stat, and bound
             # the read itself so concurrent file growth cannot bypass the source limit.
-            descriptor = os.open(location, os.O_RDONLY | os.O_NONBLOCK)
-            with os.fdopen(descriptor, "rb") as stream:
-                if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-                    raise PluginError("Plugin source must be a regular file")
-                data = stream.read(MAX_SOURCE_BYTES + 1)
-            if len(data) > MAX_SOURCE_BYTES:
-                raise PluginError("Plugin source exceeds 256 KiB")
+            data = read_regular(location, MAX_SOURCE_BYTES)
             text = data.decode("utf-8")
         elif len(text.encode("utf-8")) > MAX_SOURCE_BYTES:
             raise PluginError("Plugin source exceeds 256 KiB")
@@ -76,7 +80,7 @@ class LoadedPlugin:
     module_name: str
 
     @classmethod
-    def load(cls, source: PluginSource, config: dict | None = None) -> LoadedPlugin:
+    def load(cls, source: PluginSource, config: dict | None = None, directory: str = "") -> LoadedPlugin:
         """Execute trusted setup from exact source, bypassing timestamp-based bytecode caches."""
         if source.dependencies:
             from importlib.metadata import PackageNotFoundError, version
@@ -93,6 +97,22 @@ class LoadedPlugin:
                     raise PluginError(f"{source.name}: dependency {declaration!r} is unavailable; use install") from error
                 if not requirement.specifier.contains(installed, prereleases=True):
                     raise PluginError(f"{source.name}: {declaration} conflicts with installed {installed}; use install")
+        if source.entry:
+            # Each generation owns a fresh process. Normal package imports therefore support
+            # relative imports/resources without retaining stale submodules across reloads.
+            if not directory:
+                raise PluginError("Package loading requires an admitted source snapshot")
+            name, _, attribute = source.entry.partition(":")
+            if name.split(".")[0] in sys.modules:
+                raise PluginError(f"Entry module {name!r} conflicts with an already loaded module")
+            sys.path.insert(0, directory)
+            module = importlib.import_module(name)
+            setup = module
+            for part in attribute.split("."):
+                setup = getattr(setup, part)
+            plugin = Plugin(source.name, config)
+            cls.register(source.name, setup, plugin)
+            return cls(source, plugin, name)
         name = f"_wizolt_plugin_{source.name}_{uuid.uuid4().hex}"
         module = types.ModuleType(name)
         module.__file__ = source.path
@@ -102,16 +122,20 @@ class LoadedPlugin:
         try:
             exec(compile(source.text, source.path, "exec"), module.__dict__)  # noqa: S102 - explicitly trusted Python plugins.
             setup = module.__dict__.get("setup")
-            if not callable(setup) or inspect.iscoroutinefunction(setup):
-                raise PluginError(f"{source.name}: provide synchronous setup(plugin)")
             plugin = Plugin(source.name, config)
-            setup(plugin)
+            cls.register(source.name, setup, plugin)
             return cls(source, plugin, name)
         except BaseException as error:
             sys.modules.pop(name, None)
             if isinstance(error, SystemExit):
                 raise PluginError(f"{source.name}: setup attempted to exit the host") from error
             raise
+
+    @staticmethod
+    def register(name: str, setup: object, plugin: Plugin) -> None:
+        if not callable(setup) or inspect.iscoroutinefunction(setup):
+            raise PluginError(f"{name}: provide a synchronous plugin entry callable")
+        setup(plugin)
 
     def close(self) -> None:
         """Release host registration, not arbitrary side effects of imported Python code.

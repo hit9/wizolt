@@ -1,5 +1,10 @@
 # Plugins
 
+Plugins can be a single `.py` file or a directory with `pyproject.toml`. Packages support multiple
+modules, resource files and a configurable entry callable. Pass the directory to the same
+`wizolt plugin validate`, `test`, and `install` commands. Ask the built-in `plugin-workshop` skill
+to create either form. Hot reload and rollback include the package's helpers and resources.
+
 ## Plugin settings
 
 Put settings in your wizolt `config.toml`, under the installed plugin's name:

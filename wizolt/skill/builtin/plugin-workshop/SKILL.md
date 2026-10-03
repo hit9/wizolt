@@ -11,7 +11,8 @@ For the bundled pet, simply enable `pet` by name; it is installed but disabled b
 
 1. **Inspect:** `wizolt plugin list`, then `wizolt plugin inspect NAME`. Edit the returned path.
 2. **Create:** default to `~/.wizolt/plugins/<name>.py`; use `<project>/.wizolt/plugins/<name>.py`
-   for project-specific code. Use an ASCII identifier filename and absolute tool paths.
+   for project-specific code. For multiple files, use a directory with `pyproject.toml` and a
+   package entry (see SDK.md). Use an ASCII identifier filename and absolute tool paths.
 3. **Check:** `wizolt plugin validate PATH`, then `wizolt plugin test PATH --theme forest --width 80`.
    Read the JSON report and view its PNG. Test a narrow width too; `--times 0 0.5 1` samples animation.
    Trials execute trusted Python in a temporary process, with real filesystem/network access.

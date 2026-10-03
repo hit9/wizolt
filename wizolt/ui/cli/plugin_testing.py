@@ -21,7 +21,7 @@ from wizolt.ui.render import Theme
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="wizolt plugin", description="Validate or try trusted plugin Python without activating it.")
     parser.add_argument("action", choices=("validate", "test"))
-    parser.add_argument("path", help="Plugin .py source")
+    parser.add_argument("path", help="Installed name, .py file, or package directory")
     parser.add_argument("--config", default=None, help="Config file for installed plugin names")
     parser.add_argument("--project", default=str(Path.cwd()), help="Project directory for installed plugin names")
     parser.add_argument("--width", type=int, default=80, help="Terminal columns, 10–240")

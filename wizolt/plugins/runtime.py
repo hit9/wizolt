@@ -77,8 +77,8 @@ class PluginRuntime:
         self.reserved_commands: frozenset[str] = frozenset()
         self.interpreters: dict[str, str] = {}
 
-    async def prepare(self, path: str, source: str | None = None, settings: dict | None = None) -> Generation:
-        revision = PluginSource.read(path, source)
+    async def prepare(self, path: str, source: PluginSource | None = None, settings: dict | None = None) -> Generation:
+        revision = source if source is not None else PluginSource.read(path)
         settings = self.settings.read(revision.name) if settings is None else settings
         worker, description = await PluginProcess.start(revision, python=self.interpreters.get(revision.name, ""), cwd=self.context().cwd, config=settings)
         try:
@@ -141,7 +141,7 @@ class PluginRuntime:
                 elif action == "rollback":
                     if entry.previous is None:
                         raise PluginError(f"{name}: no previous version")
-                    candidate = await self.prepare(entry.previous.path, entry.previous.text, entry.previous_settings)
+                    candidate = await self.prepare(entry.previous.path, entry.previous, entry.previous_settings)
                 elif action == "disable":
                     if entry.pending:
                         self._retire(entry.pending)

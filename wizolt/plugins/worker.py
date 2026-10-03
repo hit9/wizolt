@@ -37,8 +37,8 @@ class Worker:
     async def dispatch(self, request: dict) -> Any:
         operation = request["operation"]
         if operation == "load":
-            source = PluginSource.read(request["path"], request["source"])
-            self.loaded = LoadedPlugin.load(source, request.get("config"))
+            source = PluginSource(**request["revision"])
+            self.loaded = LoadedPlugin.load(source, request.get("config"), request.get("directory", ""))
             plugin = self.loaded.plugin
             return {
                 "fields": list(plugin.fields),

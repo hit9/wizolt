@@ -1,5 +1,13 @@
 # Plugin implementation boundaries
 
+Package admission freezes regular files and resources before launching the worker. The parent
+owns the extracted directory, including cleanup after native exits; never let the worker own
+its only cleanup handle. Source rollback keeps the complete snapshot and settings, not just the
+entry module. A fresh worker provides module isolation for both single-file and package plugins.
+`pyproject.toml` is metadata only: admission must not invoke a build backend or install into the
+host interpreter. Descriptor-based bounded reads reject symlinks and special files before code
+execution.
+
 Read this with [the proposal](PLUGINS_PROPOSAL.md). The proposal is direction; the SDK and its
 packaged reference define what this implementation currently exposes.
 

@@ -1,5 +1,33 @@
 # Experimental Python SDK 1
 
+## Packages
+
+Single files declare `SDK_VERSION = 1`, optional `DEPENDENCIES`, and `setup(plugin)`.
+For multiple files, pass a directory containing `pyproject.toml` to the same CLI commands:
+
+```toml
+[project]
+name = "my-helper"
+version = "0.1.0"
+dependencies = []
+
+[tool.wizolt.plugin]
+sdk = 1
+entry = "my_helper:register"
+```
+
+Use `my_helper/__init__.py` or `src/my_helper/__init__.py`; ordinary relative imports and
+`importlib.resources` work. The entry defaults to `my_helper:setup`; an explicit entry can select
+another synchronous callable. The installed/configuration name is `my_helper` (hyphens and dots
+normalize to underscores). Package metadata replaces the single-file constants.
+
+Dependencies must be static; no build backend runs. `install` prepares a dependency environment.
+Source and resources are frozen together, so reload/rollback includes helpers and assets, even
+after the original directory is deleted. Keep the import tree small: at most 4 MiB, 512 files,
+1,024 directory entries and 32 directory levels; symlinks and special files are rejected.
+VCS, virtualenv, build and Python cache directories are excluded. Runtime writes belong outside
+the package snapshot, which is deleted when its worker closes.
+
 ## Configuration
 
 User settings live in wizolt's `config.toml`, under `[plugins.NAME]`; NAME is the installed name.
@@ -25,7 +53,9 @@ and fixes settings for the candidate's lifetime. Failed validation preserves the
 rollback restores both retained source and settings. Other running agents remain unchanged.
 Configuration is not provider access: model services and managed LSP connections are not SDK APIs yet.
 
-Every plugin declares `SDK_VERSION = 1` and synchronous `setup(plugin: wizolt.sdk.Plugin)`.
+## Callbacks
+
+The entry callable receives `plugin: wizolt.sdk.Plugin` and registers callbacks synchronously.
 Callbacks receive immutable `Context`: agent_id, agent_name, cwd, status, context_percent,
 elapsed seconds, model, monotonic now, and available columns.
 
