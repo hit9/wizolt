@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 from difflib import SequenceMatcher
+from functools import partial
 from typing import TYPE_CHECKING, ClassVar
 
 from wizolt.agent.prompts import (
@@ -147,6 +148,16 @@ class Compactor:
         echo_source: str = "",
     ) -> Json:
         model = self.model
+        model.last_compaction_model = ""
+        plugins = model.session.plugins
+        if plugins is not None:
+            result = await plugins.summarize(
+                context or self.ctx.messages_text(inline_messages or []), partial(self.validate_plugin_summary, echo_source=echo_source)
+            )
+            if result is not None:
+                name, summary = result
+                model.last_compaction_model = f"plugin:{name}"
+                return {"summary": summary}
         # The summary request runs on the [compaction]-resolved provider entry (empty [compaction]
         # = the active provider), resolved per call so a runtime /provider switch applies next
         # time. The context budget is untouched: compaction still measures against the main
@@ -159,7 +170,6 @@ class Compactor:
         # still degrades to deterministic trimming -- this only makes the fallback say why.
         if missing := provider.missing_fields():
             raise ModelError(f"compaction provider `{entry_name}` is missing {', '.join(missing)}; check [compaction] and [provider.{entry_name}]")
-        model.last_compaction_model = ""
         # Two shapes. The inline form is the agent's own request with a compaction instruction
         # appended: same tools, same system, same conversation, so the provider's prefix cache --
         # already warm from the turn that just ran -- covers everything but the tail, and the
@@ -177,6 +187,11 @@ class Compactor:
         data = await self.compact_attempts(messages, provider, response_timeout, entry_label, tools=tools if inline else None, echo_source=echo_source)
         model.last_compaction_model = provider.model
         return data
+
+    def validate_plugin_summary(self, summary: str, *, echo_source: str) -> None:
+        """Apply the same echo guard before any plugin result reaches durable state."""
+        if self.echoes_source(summary, echo_source):
+            raise ModelError("Plugin summarizer echoed the conversation")
 
     async def compact_attempts(
         self,
@@ -285,6 +300,10 @@ class Compactor:
         a rendering that drops tool calls -- but the reuse this method is named for does not apply
         there."""
         ctx = self.ctx
+        if ctx.session.plugins is not None and ctx.session.plugins.has_summarizer:
+            # A plugin consumes the flattened, selected span plus prior working state. It does
+            # not borrow the main provider's cached request or receive authority over the cut.
+            return None
         if ctx.session.config.compaction_provider or ctx.session.system_info is None:
             return None
         base_system = ctx.session.system_prompt

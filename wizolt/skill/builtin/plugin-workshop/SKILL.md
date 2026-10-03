@@ -30,5 +30,8 @@ Keep mutable state inside `setup`, use theme roles, and keep render callbacks ch
 Put user settings in `[plugins.NAME]` in wizolt's `config.toml`. Declare validation and defaults
 with `plugin.configure(...)`, then read immutable `plugin.config` (see SDK.md). Validate using
 the same `--config` as the live agent, and hot reload after editing settings.
+Use `plugin.service` for reusable connections, `plugin.models.complete` for explicit model
+requests, and `plugin.summarizer` for compaction. Explain extra model costs before enabling a
+model-backed feature; offline trials never make host model calls.
 Do not mutate host internals, create unmanaged tasks, or install packages
 into the running interpreter. No desktop notifications. Use the manager, not direct registry edits.

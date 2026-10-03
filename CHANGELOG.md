@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add a single active plugin summary strategy for manual/automatic compaction, with protected
+  history boundaries, core validation, builtin fallback, and an offline `--summarize` trial.
+
 - Let explicit plugin commands make isolated text requests through configured models, with
   per-request usage, bounded reverse RPC and cancellation; keep offline trials free of model calls.
 

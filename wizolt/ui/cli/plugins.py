@@ -90,6 +90,8 @@ class PluginManager:
         for key in ("fields", "commands", "tools", "slots", "themes", "presets"):
             if values := item.get(key):
                 lines.append(f"{key.capitalize()}: {', '.join(values)}")
+        if item.get("summarizer"):
+            lines.append("Compaction: supplies summary text")
         for key in ("error", "python"):
             if value := item.get(key):
                 lines.append(f"{key.capitalize()}: {value}")

@@ -34,6 +34,7 @@ class Capabilities:
     tools: dict[str, Operation]
     themes: dict[str, dict[str, Any]]
     presets: dict[str, dict[str, str]]
+    summarizer: bool = False
 
     @classmethod
     def decode(cls, name: str, value: dict) -> "Capabilities":
@@ -46,6 +47,7 @@ class Capabilities:
             {key: Operation(**item) for key, item in value["tools"].items()},
             value["themes"],
             value["presets"],
+            value.get("summarizer", False),
         )
 
 

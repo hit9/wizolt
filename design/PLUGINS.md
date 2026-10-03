@@ -110,6 +110,13 @@ replacement of an author's previous evidence.
 
 ## Verification
 
+A summarizer is a single-writer strategy, not a history transform. Admission rejects competing
+strategies before publication, including pending generations. The compactor supplies the selected
+flattened span and existing working state; this intentionally gives up main-prefix cache reuse.
+Plugins return bounded text only. The core retains split/keep, protocol pairing, echo validation,
+checkpoint application and persistence. Both automatic and manual compaction pin the generation;
+cancellation propagates, while other failures mark it unhealthy and fall back to the builtin path.
+
 `test_plugins.py` executes examples from the packaged SDK reference. Lifecycle tests exercise
 actual module loading and offline wheel installation; UI tests exercise the real selector and
 renderer boundaries. Keep source paths, disabled preferences, pending state and active state

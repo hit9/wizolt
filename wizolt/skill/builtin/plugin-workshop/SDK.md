@@ -70,7 +70,7 @@ and fixes settings for the candidate's lifetime. Failed validation preserves the
 rollback restores both retained source and settings. Other running agents remain unchanged.
 ### Model requests
 
-Inside a command, `await plugin.models.complete(prompt, system="", provider="", model="",
+Inside a command or summarizer, `await plugin.models.complete(prompt, system="", provider="", model="",
 effort="", api="")` makes one text-only request through a configured provider. Empty routing
 fields inherit the agent's configuration. It returns `.text`, `.model` and `.usage` (input,
 output and cached tokens). Put preferred routing names in your plugin's own configuration.
@@ -89,6 +89,32 @@ async def ask(context, arguments):
 
 plugin.command("ask-helper", "Ask my helper (uses model tokens)", ask)
 ```
+
+### Compaction
+
+`plugin.summarizer(async_callback)` supplies summary text for the history span selected by wizolt.
+The callback receives `(context, text)`, including previous summary and working state. Return
+non-empty text up to 16,000 characters. It may call `plugin.models.complete` or managed services.
+Enable only one summarizer plugin at a time. Enabling it opts into automatic calls on compaction;
+explain any model cost before enabling. Core history boundaries, notes and persistence remain
+unchanged. An exception, timeout, empty answer or copied source marks the plugin failed and falls
+back to built-in compaction; fix it and reload to try again.
+
+```python
+def setup(plugin):
+    async def summarize(context, text):
+        reply = await plugin.models.complete(
+            text,
+            system="Summarize completed work, decisions and outstanding tasks. Return concise plain text.",
+            provider=plugin.config.get("provider", ""),
+        )
+        return reply.text
+
+    plugin.summarizer(summarize)
+```
+
+Use `wizolt plugin test PATH --summarize history.txt` for a local algorithm. Model-backed trials
+report unavailable host services; enable and run `/compact` to exercise the configured model.
 
 ### Managed services
 

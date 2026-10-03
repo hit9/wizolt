@@ -8,6 +8,11 @@ A plugin command can also ask one of your configured models for help. It receive
 the plugin supplies, and uses extra model tokens. These calls have a 50-second limit; their usage
 is returned to the plugin separately from the main agent's statistics.
 
+A plugin can supply the summary used by `/compact` and automatic compaction. Only one summary
+plugin can be enabled at a time. If it fails, wizolt uses built-in compaction; reload the plugin
+after fixing it. A model-backed summary uses extra tokens and may lose the main model's cached
+prefix savings. Your notes and recent messages remain protected by wizolt.
+
 Plugins can add colorschemes and statusbar/divider presets to `/theme`. Choices are named
 `plugins.NAME.CHOICE`; selecting one uses the same theme and format settings as built-ins.
 Reload updates the chosen preset. Disabling its plugin temporarily uses the default appearance;

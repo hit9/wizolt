@@ -93,11 +93,15 @@ class PluginRuntime:
             occupied = set(self.reserved_commands)
             for name, entry in self.entries.items():
                 if name != revision.name:
+                    if capabilities.summarizer and (entry.active.plugin.summarizer or (entry.pending and entry.pending.plugin.summarizer)):
+                        raise PluginError(f"Summarizer already supplied by {name}; disable it before enabling another")
                     occupied.update(entry.active.plugin.commands)
                     if entry.pending:
                         occupied.update(entry.pending.plugin.commands)
             for name, candidate in self._pending_new.items():
                 if name != revision.name:
+                    if capabilities.summarizer and candidate.plugin.summarizer:
+                        raise PluginError(f"Summarizer already supplied by {name}; disable it before enabling another")
                     occupied.update(candidate.plugin.commands)
             if collisions := occupied.intersection(capabilities.commands):
                 raise PluginError(f"Command names already registered: {', '.join(sorted(collisions))}")
@@ -186,6 +190,7 @@ class PluginRuntime:
             "commands": list(item.plugin.commands),
             "tools": {key: {"description": action.description, "parameters": action.parameters} for key, action in item.plugin.tools.items()},
             "slots": list(item.plugin.components),
+            "summarizer": item.plugin.summarizer,
             "themes": list(item.plugin.themes),
             "presets": {kind: list(values) for kind, values in item.plugin.presets.items()},
             "error": item.error,
@@ -294,6 +299,32 @@ class PluginRuntime:
             )
             await generation.refresh(self.context())
             return result
+        finally:
+            self._invocations -= 1
+            self._publish()
+
+    @property
+    def _summary_generation(self) -> Generation | None:
+        """Admission guarantees one strategy; failed generations fall back until reload."""
+        return next((entry.active for entry in self.entries.values() if entry.active.plugin.summarizer and not entry.active.error), None)
+
+    @property
+    def has_summarizer(self) -> bool:
+        return self._summary_generation is not None
+
+    async def summarize(self, text: str, validate: Callable[[str], None]) -> tuple[str, str] | None:
+        """Lease the generation through manual compaction too; core validates semantics."""
+        generation = self._summary_generation
+        if generation is None or self._closed:
+            return None
+        self._invocations += 1
+        try:
+            summary = await generation.worker.request("compact", timeout=self.ACTION_TIMEOUT, text=text, context=asdict(self.context()))
+            validate(summary)
+            return generation.plugin.name, summary
+        except Exception as error:  # noqa: BLE001 - a broken strategy must not strand compaction.
+            generation.error = f"summarizer: {error}"
+            return None
         finally:
             self._invocations -= 1
             self._publish()
