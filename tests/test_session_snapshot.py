@@ -1,6 +1,5 @@
 """session snapshot (split from tests/test_session_persistence.py)."""
 import asyncio
-import itertools
 
 import pytest
 from test_session_persistence import log_path, read_jsonl, read_lines, rewrite_log, session_with_data_dir, write_log
@@ -18,7 +17,7 @@ async def test_transcript_diff_preview_is_bounded(tmp_path):
 
     preview = read_jsonl(log_path(s))[0]["transcript_turn_diffs"][0]["diff"]
     assert len(preview) < TurnDiff.TRANSCRIPT_CHAR_LIMIT + 100
-    assert preview.endswith("see /diff for the retained session diff")
+    assert preview.endswith("… diff preview truncated")
 
 async def test_loading_legacy_snapshot_migrates_surviving_history_before_later_compaction(tmp_path):
     s = session_with_data_dir(tmp_path)
@@ -173,10 +172,10 @@ async def test_delta_omits_tool_records_when_nothing_new(tmp_path):
 
 async def test_delta_omits_unchanged_turn_diffs_without_serializing_payload(tmp_path, monkeypatch):
     s = session_with_data_dir(tmp_path)
-    s.store_turn_diff("tr.1", 1, "large.py", "-old\n+new\n", before="old\n" * 1000, after="new\n" * 1000, round=1)
+    s.store_turn_diff("tr.1", 1, "large.py", "-old\n+new\n" * 1000, round=1)
     await s.save_snapshot()  # init
 
-    def fail_turn_diff(_diff, _blobs):
+    def fail_turn_diff(_diff):
         raise AssertionError("unchanged turn diffs should not be serialized")
 
     monkeypatch.setattr(SessionSnapshotCodec, "turn_diff", fail_turn_diff)
@@ -187,33 +186,15 @@ async def test_delta_omits_unchanged_turn_diffs_without_serializing_payload(tmp_
     assert "turn_diffs" not in lines[1]
     assert "turn_diffs_replace" not in lines[1]
 
-async def test_file_snapshots_are_stored_once_by_content_hash(tmp_path):
-    """Editing a file repeatedly makes each version appear twice — one edit's `after` is the next
-    edit's `before`. The log stores each version once and references it by hash."""
-    s = session_with_data_dir(tmp_path)
-    versions = [f"v{i}\n" for i in range(4)]
-    for turn, (before, after) in enumerate(itertools.pairwise(versions), start=1):
-        s.store_turn_diff(f"tr.{turn}", turn, "x.py", f"-{before}+{after}", before=before, after=after, round=turn)
-        await s.save_snapshot()
-
-    lines = read_lines(log_path(s))
-    blobs = [line for line in lines if "blob" in line]
-
-    assert sorted(line["text"] for line in blobs) == versions
-    assert len({line["blob"] for line in blobs}) == len(blobs)  # each hash written once
-    entry = [line for line in lines if "turn_diffs" in line][-1]["turn_diffs"][0]
-    assert entry["before_blob"] and entry["after_blob"]
-    assert "before" not in entry and "after" not in entry
-
 async def test_turn_diff_snapshots_survive_a_roundtrip(tmp_path):
     s = session_with_data_dir(tmp_path)
-    s.store_turn_diff("tr.1", 1, "x.py", "-old\n+new\n", before="old\n", after="new\n", round=1)
+    s.store_turn_diff("tr.1", 1, "x.py", "-old\n+new\n", round=1)
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
     restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
 
-    assert [(d.key, d.path, d.before, d.after) for d in restored.turn_diffs] == [("tr.1", "x.py", "old\n", "new\n")]
+    assert [(d.key, d.path, d.diff, d.round) for d in restored.turn_diffs] == [("tr.1", "x.py", "-old\n+new\n", 1)]
 
 
 async def test_source_views_survive_a_snapshot_roundtrip(tmp_path):
@@ -260,19 +241,18 @@ async def test_an_edit_still_resolves_its_view_after_a_restart(tmp_path):
 
 
 async def test_source_view_span_text_uses_content_addressed_blobs(tmp_path):
-    """Span text is stored as a content-addressed blob, deduplicating equal text across views and diffs."""
+    """Span text is stored as a content-addressed blob, deduplicating equal text across views."""
     from wizolt.tools import ReadTool
 
     s = session_with_data_dir(tmp_path)
     path = tmp_path / "a.py"
     path.write_text("one\ntwo\nthree\n")
     s.register_source_drafts(list(ReadTool(s, [{"path": "a.py"}]).call().drafts))
-    s.store_turn_diff("tr.1", 1, "a.py", "-one\n+ONE\n", before="one\n", after="ONE\n", round=1)
     await s.save_snapshot()
 
     lines = read_lines(log_path(s))
     blobs = sorted(line["text"] for line in lines if "blob" in line)
-    assert blobs == ["ONE\n", "one\n", "one\ntwo\nthree\n"]
+    assert blobs == ["one\ntwo\nthree\n"]
     entry = [line for line in lines if "source_views" in line][-1]["source_views"][0]
     assert entry["spans"][0]["blob"]
     assert "lines" not in entry["spans"][0]

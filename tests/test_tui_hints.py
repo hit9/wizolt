@@ -52,22 +52,6 @@ def test_tui_idle_hint_sessions_only_before_work(tmp_path):
     assert command_loop.view.tui_input_hint() == "Type / for commands"  # last technique hint
 
 
-def test_tui_idle_hint_favors_diff_right_after_editing(tmp_path):
-    command_loop = loop(tmp_path)
-    command_loop.presentation.tui = TuiApp()
-    command_loop.view._hint_picker = HintPicker(choice=lambda pool: pool[-1])
-    command_loop.session.store_tool_result("Bash", ["ls"], "ok")  # mature phase
-    command_loop.session.state.round_count = 1
-    command_loop.session.store_turn_diff("tr.1", 1, "a.py", "diff", round=1)
-
-    # The post-edit pool ends with the weighted /diff copies.
-    assert command_loop.view.tui_input_hint() == "/diff reviews recent edits"
-
-    # A later round without edits drops /diff back out of the pool.
-    command_loop.session.state.round_count = 2
-    assert command_loop.view.tui_input_hint() == "Type / for commands"
-
-
 def test_tui_idle_hint_ps_while_jobs_running(tmp_path):
     command_loop = loop(tmp_path)
     command_loop.presentation.tui = TuiApp()

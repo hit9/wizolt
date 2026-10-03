@@ -18,6 +18,8 @@ from wizolt.session.jobs import BackgroundJob
 from wizolt.tools import BashTool, JobTool, Tool, tooloutput
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.modals import job_view, tool_output_viewer
+from wizolt.ui.cli.resume import ResumeRenderer
+from wizolt.ui.render import Theme
 from wizolt.ui.tui import TuiApp
 
 
@@ -99,6 +101,110 @@ async def test_tool_output_browser_marks_bash_results_ok_and_fail(tmp_path, monk
     pairs = [(style, value) for frame in modal.frames for style, value in frame]
     assert ("class:choice.output.ok", "✓ ") in pairs
     assert ("class:choice.output.fail", "✗ ") in pairs
+
+
+def _styled(frames) -> list[tuple[str, str]]:
+    """The flat (style, text) fragments of the captured modal frames."""
+    return [(style, value) for frame in frames for style, value in frame]
+
+
+def _display_rows(frames) -> list[list[tuple[str, str]]]:
+    """Captured frames split back into display rows: the modal builds its sheet from fragments and
+    separates rows with a newline, so folding them back is what lets a test look at one row."""
+    rows: list[list[tuple[str, str]]] = [[]]
+    for style, value in _styled(frames):
+        for index, part in enumerate(value.split("\n")):
+            if index:
+                rows.append([])
+            if part:
+                rows[-1].append((style, part))
+    return rows
+
+
+def _rows_with(rows: list[list[tuple[str, str]]], needle: str) -> list[list[tuple[str, str]]]:
+    return [row for row in rows if any(needle in part for _, part in row)]
+
+
+async def _open_detail(command_loop, keys, monkeypatch, *, columns: int = 60, rows: int = 26):
+    """Drive the browser with `keys` against a fixed terminal size and return the harness."""
+    modal = ModalHarness(keys, consumed=True)
+    command_loop.presentation.tui = modal
+    with monkeypatch.context() as patch:
+        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((columns, rows)))
+        await tool_output_viewer(command_loop)
+    return modal
+
+
+async def test_tool_output_browser_opens_an_edits_whole_recorded_diff(tmp_path, monkeypatch):
+    """The transcript trims a long replay's diffs, so the browser is where an edit is read whole.
+
+    The detail scrolls to lines a replay would have dropped, and it keeps the preview's colors:
+    syntax-highlighted code, banded added and removed lines, unfilled context -- the bands filled
+    to the pane edge, which is how the diff viewer framed them."""
+    command_loop = loop(tmp_path)
+    count = ResumeRenderer.TRANSCRIPT_DIFF_LINES + 10  # longer than a replay redraws
+    added = "\n".join(f"+zebra{index}" for index in range(count))
+    diff = f"--- x.py\n+++ x.py\n@@ -1,1 +1,{count} @@\n-zebra_removed\n zebra_context\n{added}\n"
+    key = command_loop.session.store_tool_result("Edit", ["x.py"], '<Edit path="x.py">\n')
+    command_loop.session.store_turn_diff(key, 1, "x.py", diff, round=1)
+    modal = await _open_detail(command_loop, ["enter", "G"], monkeypatch)  # open the edit, then scroll to its end
+
+    assert "Edit" in "".join(value for _, value in modal.frames[0])
+    top, bottom = modal.frames[2], modal.frames[-1]
+    assert "Diff · x.py" in "".join(value for _, value in top)
+    assert f"zebra{count - 1}" not in "".join(value for _, value in top)  # one screen, not the whole diff
+    assert f"zebra{count - 1}" in "".join(value for _, value in bottom)  # and the rest is reachable
+    assert "more lines" not in "".join(value for _, value in top)  # no trimmed-away tail marker
+
+    added_band, removed_band = Theme.diff_style("diff.added.bg"), Theme.diff_style("diff.removed.bg")
+    removed_row = _rows_with(_display_rows([top]), "zebra_removed")[0]
+    context_row = _rows_with(_display_rows([top]), "zebra_context")[0]
+    assert any(removed_band in style for style, _ in removed_row)
+    assert not any(added_band in style or removed_band in style for style, _ in context_row)
+    changed = [row for row in _display_rows([bottom]) if any(part == "+" for _, part in row)]
+    assert changed and all(sum(get_cwidth(part) for _, part in row) == 60 for row in changed)
+    assert all(any(added_band in style for style, _ in row) for row in changed)
+
+
+async def test_tool_output_browser_opens_the_edit_its_row_names(tmp_path, monkeypatch):
+    """Each row carries the key of its own receipt: opening the older edit shows the older diff,
+    not whichever edit came last."""
+    command_loop = loop(tmp_path)
+    first = command_loop.session.store_tool_result("Edit", ["a.py"], '<Edit path="a.py">\n')
+    command_loop.session.store_turn_diff(first, 1, "a.py", "--- a.py\n+++ a.py\n@@ -1 +1 @@\n-zebra_first_old\n+zebra_first_new\n", round=1)
+    second = command_loop.session.store_tool_result("Edit", ["b.py"], '<Edit path="b.py">\n')
+    command_loop.session.store_turn_diff(second, 2, "b.py", "--- b.py\n+++ b.py\n@@ -1 +1 @@\n-zebra_second_old\n+zebra_second_new\n", round=2)
+    modal = await _open_detail(command_loop, ["j", "enter"], monkeypatch)  # newest first, so row two is a.py
+
+    text = "".join(value for _, value in _styled([modal.frames[-1]]))
+    assert "Diff · a.py" in text
+    assert "zebra_first_old" in text
+    assert "zebra_second" not in text
+
+
+async def test_tool_output_browser_still_lists_an_edit_whose_receipt_is_gone(tmp_path, monkeypatch):
+    """Past the retained window a session holds no receipt for an old edit. The row stays, opening
+    the output it did retain, which carries the diff inside the edit block."""
+    command_loop = loop(tmp_path)
+    command_loop.session.store_tool_result("Edit", ["x.py"], '<Edit path="x.py">\n--- x.py\n+++ x.py\n@@ -1 +1 @@\n-zebra_old\n+zebra_new\n</Edit>')
+    modal = await _open_detail(command_loop, ["enter"], monkeypatch)
+
+    assert "Edit" in "".join(value for _, value in modal.frames[0])
+    text = "".join(value for _, value in _styled([modal.frames[-1]]))
+    assert "Edit · tr.1" in text
+    assert "zebra_new" in text
+
+
+async def test_tool_output_browser_omits_a_section_whose_body_is_empty(tmp_path, monkeypatch):
+    """An empty body is not a rule with a blank numbered row under it: the section is left out, and
+    the sheet is its fields alone."""
+    command_loop = loop(tmp_path)
+    command_loop.session.store_tool_result("Job", [{"action": "status", "job": "job.9"}], "")
+    modal = await _open_detail(command_loop, ["enter"], monkeypatch)
+
+    text = "".join(value for _, value in _styled([modal.frames[-1]]))
+    assert "Job · tr.1" in text
+    assert "── job" not in text
 
 
 async def test_tool_output_browser_lists_past_the_old_fifty_entry_cap(tmp_path, monkeypatch):

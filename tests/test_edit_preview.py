@@ -1,6 +1,5 @@
 """edit preview (split from tests/test_edit_tool.py)."""
 
-from prompt_toolkit.utils import get_cwidth
 from test_edit_tool import session, view
 
 from wizolt.agent.context import ContextManager
@@ -153,8 +152,3 @@ def test_diff_segments_syntax_highlights_python(tmp_path):
     assert any("│" in text and style == "ansibrightblack bg:#520000" for style, text in segments)
     assert any("1" in text and "│" in text and "bg:" not in style for style, text in segments)
     assert any(text == "def" and "bg:" not in style for style, text in segments)
-
-    live = ui.segment_lines(ui.diff_segments_live(diff, row_width=40))
-    changed = [line for line in live if any("bg:" in style for style, _ in line)]
-    widths = [sum(get_cwidth(text.rstrip("\n")) for _, text in line) for line in changed]
-    assert set(widths) == {40}

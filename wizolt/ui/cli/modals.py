@@ -28,9 +28,7 @@ from wizolt.ui.tui import (
     TUI_MODAL_PENDING,
     AskViewState,
     ChoiceViewState,
-    DiffViewState,
     SegmentLogViewState,
-    TabbedViewState,
     TuiApp,
 )
 
@@ -52,6 +50,11 @@ class ChoiceHost(Protocol):
 # hands this sentinel back and ``tool_output_viewer`` reopens the list around it.
 
 _TOOL_OUTPUT_BACK = object()
+
+# An ApprovalView whose text is a unified diff renders through the diff renderer rather than a
+# pygments lexer, so the viewer shows the same syntax highlighting and red/green bands the
+# transcript's edit previews do.
+DIFF_LEXER = "diff"
 
 
 def picker_height(*, exclusive: bool = False) -> int:
@@ -478,7 +481,25 @@ def record_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView | N
         return bash_view(loop, record)
     if record.name == "ToolScript":
         return script_view(loop, record)
+    if record.name == "Edit":
+        return edit_view(loop, record)
     return None
+
+
+def edit_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView | None:
+    """An Edit as the browser opens it.
+
+    The recorded diff is preferred: it is the change alone, and it is whole, where the transcript
+    trims a long replay's diffs to a readable window. Once a session has more edits than the
+    retained window holds, the receipt is gone and the retained output -- which still carries the
+    diff inside the edit block -- is what remains."""
+    receipt = next((entry for entry in loop.session.turn_diffs if entry.key == record.key), None)
+    if receipt is not None and receipt.diff.strip():
+        return ApprovalView(f"diff · {receipt.path}", receipt.diff, DIFF_LEXER, [("file", receipt.path), ("key", record.key)])
+    text = record.output.strip()
+    if not text:
+        return None
+    return ApprovalView(f"edit · {record.key}", text, DIFF_LEXER, [("key", record.key)])
 
 
 def job_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView:
@@ -626,6 +647,26 @@ def code_rows(text: str, lexer: str, width: int, margin: str = "  ") -> list[Sty
     return rows
 
 
+def diff_rows(ui: UiPrinter, text: str, width: int, margin: str = "  ") -> list[StyleAndTextTuples]:
+    """A unified diff as display rows: the same syntax highlighting and red/green bands the
+    transcript's edit previews use, with each changed row filled to the pane edge, which is how the
+    diff viewer framed them.
+
+    A diff's hunk headers carry both numbers, so the sheet numbers nothing itself; a wrapped line
+    indents by the gutter it did not get, which keeps every line of the diff in one body column."""
+    body = margin + " " * ui.DIFF_GUTTER_WIDTH
+    rows: list[StyleAndTextTuples] = []
+    for source, line in zip(text.splitlines(), ui.segment_lines(ui.diff_segments(text))):
+        band = ui.diff_background(source)
+        rendered = ui.remove_line_ending(line)
+        for row in cast(list[StyleAndTextTuples], Text.wrap_styled([("", margin)], [("", body)], rendered, width)):
+            if band:
+                used = sum(get_cwidth(fragment[1]) for fragment in row)
+                row.append((band, " " * max(0, width - used)))
+            rows.append(row)
+    return rows
+
+
 def _approval_text_view(
     loop: CommandLoop,
     view: ApprovalView,
@@ -714,8 +755,15 @@ def _approval_text_view(
         # Every rule is flanked by a blank row: a rule with text tight against it reads as a line
         # struck through the page rather than a break in it, and a section rule with its body tight
         # underneath reads as a heading with no white space around it.
-        lines.extend([[], separator(width, view.label.split(" · ")[0]), []])
-        lines.extend(code_rows(view.text, view.lexer, width, margin) if view.lexer else markdown_rows(view.text, width))
+        body = view.text.rstrip()
+        if body:
+            lines.extend([[], separator(width, view.label.split(" · ")[0]), []])
+            if view.lexer == DIFF_LEXER:
+                lines.extend(diff_rows(loop.presentation.ui, body, width, margin))
+            elif view.lexer:
+                lines.extend(code_rows(body, view.lexer, width, margin))
+            else:
+                lines.extend(markdown_rows(body, width))
         if view.result.strip():
             # Plain, unlexed, and whole: this is the result exactly as the model received it, and a
             # viewer opened to check what a script did may not quietly edit or clip it. Default
@@ -789,95 +837,6 @@ async def approval_text_viewer(loop: CommandLoop, view: ApprovalView, *, back_on
     if modal is None or loop.presentation.tui is None:
         return None
     return await loop.presentation.tui.show_modal(*modal, exclusive=True)
-
-
-async def diff_viewer(loop: CommandLoop) -> None:
-    """Interactive diff viewer. First shows a file list; open a file to see its diff.
-
-    List mode: ↑/↓ or j/k move, h/l or ←/→ switches tabs, Enter opens the selected file,
-    r refreshes, q/Esc closes.
-    Diff mode: ↑/↓ scroll one line, Ctrl-U/Ctrl-D half a page, PgUp/PgDn a page,
-    Esc/← returns to list, r refreshes, q closes.
-    """
-    state = DiffViewState(TabbedViewState(("Latest", "Session")))
-
-    def build_model() -> list[list[tuple[str, str, str]]]:
-        latest = loop.agent.session.latest_round_diff_sections()
-        return [latest[1] if latest is not None else [], loop.agent.session.session_diff_sections()]
-
-    model = build_model()
-
-    def viewport() -> int:
-        return max(3, shutil.get_terminal_size().lines - 7)
-
-    def active_sections() -> list[tuple[str, str, str]]:
-        return model[state.view.tab]
-
-    def list_fragments(parts: StyleAndTextTuples, sections: list[tuple[str, str, str]]) -> None:
-        parts.append(("", "\n"))
-        counts = [loop.diff_counts(diff) for _, _, diff in sections]
-        added_width = max(len(str(added)) for added, _ in counts)
-        removed_width = max(len(str(removed)) for _, removed in counts)
-        for index, ((_, path, _), (added, removed)) in enumerate(zip(sections, counts)):
-            selected = index == state.file
-            marker = "> " if selected else "  "
-            style = "class:accent" if selected else "class:choice.disabled"
-            parts.extend(
-                [
-                    (style, marker),
-                    ("class:success", f"+{added:>{added_width}}"),
-                    ("", " "),
-                    ("class:error", f"-{removed:>{removed_width}}"),
-                    (style, f" {path}\n"),
-                ]
-            )
-        parts.append(("", "\n"))
-
-    def file_fragments(parts: StyleAndTextTuples, sections: list[tuple[str, str, str]]) -> None:
-        state.clamp_file(len(sections))
-        status, path, diff = sections[state.file]
-        parts.append(("", "\n"))
-        parts.append(("class:accent", f"  {status.title()} · {path}\n"))
-        lines = loop.presentation.ui.segment_lines(loop.presentation.ui.diff_segments_live(diff))
-        visible = state.view.visible(lines, viewport())
-        for line in visible:
-            parts.extend(line)
-        if not visible or not visible[-1] or not visible[-1][-1][1].endswith("\n"):
-            parts.append(("", "\n"))
-
-    def fragments() -> StyleAndTextTuples:
-        parts: StyleAndTextTuples = [("", "\n")]
-        parts.extend(loop.presentation.ui.tab_segments(state.view.titles, state.view.tab))
-        parts.append(("", "\n"))
-
-        sections = active_sections()
-        if not sections:
-            parts.append(("class:choice.disabled", "  No diffs\n"))
-        elif state.mode is DiffViewState.Mode.LIST:
-            list_fragments(parts, sections)
-        else:
-            file_fragments(parts, sections)
-        mode_hint = "list" if state.mode is DiffViewState.Mode.LIST else "diff"
-        if state.mode is DiffViewState.Mode.LIST:
-            hint = "↑/↓ or j/k move · ←/→ or h/l tab · Enter open · r refresh · Esc/q close"
-        else:
-            hint = "↑/↓ scroll · Ctrl-D/U half-page · PgUp/PgDn page · Esc/← back · r refresh · q close"
-        position = f"{state.file + 1 if sections else 0}/{len(sections)}"
-        parts.append(("class:choice.disabled", f"\n  [{mode_hint}] {hint} [{position}]\n"))
-        return parts
-
-    if loop.presentation.tui is None:
-        return
-
-    def modal_key(key: str, _data: str) -> Any:
-        nonlocal model
-        result = state.handle_key(key, len(active_sections()), viewport())
-        if result is DiffViewState.REFRESH:
-            model = build_model()
-            return TUI_MODAL_PENDING
-        return result
-
-    await loop.presentation.tui.show_modal(fragments, modal_key, exclusive=True)
 
 
 async def compaction_log_viewer(loop: CommandLoop) -> None:

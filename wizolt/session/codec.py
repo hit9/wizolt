@@ -44,9 +44,8 @@ class SessionSnapshotCodec:
     the unbounded visible transcript uses an append-only length and tail sentinel, while the active
     turn is replaced separately. The loader replays those deltas onto the last full snapshot.
 
-    Large repeated text — file snapshots behind diffs, message text evicted by compaction — is stored
-    once per unique content and referenced by hash, because the same content routinely appears as one
-    edit's `before` and the previous edit's `after`.
+    Large repeated text — message text evicted by compaction, tool output retained under a key — is
+    stored once per unique content and referenced by hash, so a re-serialized window stays small.
 
     Legacy system-role resume markers are filtered during migration. New lifecycle events are
     append-only user messages: durable model context with protocol-neutral metadata hidden from UI.
@@ -92,23 +91,9 @@ class SessionSnapshotCodec:
     def tail_digest(cls, values: list[Json]) -> str:
         return cls.digest(values[-1] if values else None)
 
-    @classmethod
-    def turn_diff(cls, diff: TurnDiffT, blobs: dict[str, str]) -> Json:
-        """File snapshots are stored by content hash, not inline. Editing one file repeatedly makes
-        each version appear twice — as one edit's `after` and the next edit's `before` — and a
-        rewrite of the retained window would otherwise re-serialize every snapshot again."""
-        from wizolt.session import TurnDiff
-
-        before, after = TurnDiff.bounded_snapshots(diff.before, diff.after)
-        return {
-            "key": diff.key,
-            "turn": diff.turn,
-            "path": diff.path,
-            "diff": diff.diff,
-            "before_blob": cls.blob_ref(before, blobs),
-            "after_blob": cls.blob_ref(after, blobs),
-            "round": diff.round,
-        }
+    @staticmethod
+    def turn_diff(diff: TurnDiffT) -> Json:
+        return {"key": diff.key, "turn": diff.turn, "path": diff.path, "diff": diff.diff, "round": diff.round}
 
     @staticmethod
     def blob_ref(text: str, blobs: dict[str, str]) -> str:
@@ -127,18 +112,12 @@ class SessionSnapshotCodec:
         return asdict(error)
 
     @staticmethod
-    def turn_diffs(data: list[Json], blobs: dict[str, str]) -> list[TurnDiffT]:
+    def turn_diffs(data: list[Json]) -> list[TurnDiffT]:
         from wizolt.session import TurnDiff
 
-        diffs = []
-        for d in data:
-            # A blob missing from the log leaves the snapshot empty, which `net_diff_sections`
-            # already handles by reconstructing that path's diff from its recorded hunks.
-            before = blobs.get(d.get("before_blob", ""), "")
-            after = blobs.get(d.get("after_blob", ""), "")
-            before, after = TurnDiff.bounded_snapshots(before, after)
-            diffs.append(TurnDiff(key=d["key"], turn=d["turn"], path=d["path"], diff=d["diff"], before=before, after=after, round=d.get("round", 0)))
-        return diffs
+        # A recording written before the net-diff view was removed still carries `before_blob` and
+        # `after_blob`; nothing reads them, so the state it restores is the receipt itself.
+        return [TurnDiff(key=d["key"], turn=d["turn"], path=d["path"], diff=d["diff"], round=d.get("round", 0)) for d in data]
 
     @classmethod
     def history_segment(cls, segment: HistorySegment, blobs: dict[str, str]) -> Json:
@@ -380,7 +359,7 @@ class SessionSnapshotCodec:
             "compaction_usage": cls.usage(session.compaction_usage),
             "tool_records": [cls.tool_record(record) for record in session.tool_records], "tool_errors": [cls.tool_error(error) for error in session.tool_errors],
             "recent_commands": list(session.recent_commands),
-            "turn_diffs": [cls.turn_diff(diff, blobs) for diff in session.turn_diffs],
+            "turn_diffs": [cls.turn_diff(diff) for diff in session.turn_diffs],
             "transcript_turn_diffs": [cls.transcript_turn_diff(diff) for diff in session.transcript_turn_diffs],
             "history": [cls.history_segment(segment, blobs) for segment in session.history],
             "source_views": [cls.source_view(view, blobs) for view in cls.ordered_views(session.source_views)],
@@ -436,7 +415,7 @@ class SessionSnapshotCodec:
         cls.add_sequence_delta(
             delta, "recent_commands", session.recent_commands, saved, "recent_commands_len", "recent_commands_digest", current["recent_commands_digest"]
         )
-        cls.add_turn_diffs_delta(delta, session.turn_diffs, saved, blobs)
+        cls.add_turn_diffs_delta(delta, session.turn_diffs, saved)
         cls.add_transcript_turn_diffs_delta(delta, session.transcript_turn_diffs, saved)
         cls.add_history_delta(delta, session.history, saved, blobs)
         cls.add_source_views_delta(delta, session.source_views, saved, blobs)
@@ -468,17 +447,15 @@ class SessionSnapshotCodec:
             delta[key + "_replace"] = current
 
     @classmethod
-    def add_turn_diffs_delta(cls, delta: Json, current: list[TurnDiffT], saved: Json, blobs: dict[str, str]) -> None:
+    def add_turn_diffs_delta(cls, delta: Json, current: list[TurnDiffT], saved: Json) -> None:
         keys = [diff.key for diff in current]
         last_len = int(saved.get("turn_diffs_len", 0) or 0)
         saved_digest = saved.get("turn_diffs_keys_digest")
         if cls.digest(keys[:last_len]) == saved_digest:
             if len(current) > last_len:
-                delta["turn_diffs"] = [cls.turn_diff(diff, blobs) for diff in current[last_len:]]
+                delta["turn_diffs"] = [cls.turn_diff(diff) for diff in current[last_len:]]
         elif cls.digest(keys) != saved_digest:
-            # Only the references are rewritten here; the snapshots they point at are already
-            # in the log, so a window rewrite stays small however large the files were.
-            delta["turn_diffs_replace"] = [cls.turn_diff(diff, blobs) for diff in current]
+            delta["turn_diffs_replace"] = [cls.turn_diff(diff) for diff in current]
 
     @staticmethod
     def transcript_turn_diff(diff: TurnDiffT) -> Json:

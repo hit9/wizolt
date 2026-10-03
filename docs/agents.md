@@ -48,7 +48,7 @@ The time freezes when the turn ends and survives resume.
 | d | Archive it and its children after confirmation; free their slots |
 | Esc | Return without switching |
 
-The input box, history, statusbar, `/status` and `/diff` follow the selected agent.
+The input box, history, statusbar and `/status` follow the selected agent.
 Use `/provider`, `/model` or `/reason` there to change its settings.
 
 Archived agents appear last, marked **archived** with a still, muted dot. Move to preview;

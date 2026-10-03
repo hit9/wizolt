@@ -581,8 +581,6 @@ class EditTool(Tool):
         """Render a completed edit receipt and expose its turn diff on the owning loop."""
         self.last_path = self.session.relpath(path)
         self.last_diff = self.diff(path, before, after, created=created)
-        self.last_before = before
-        self.last_after = after
         parts: list[str | SourceBlock] = [f"<Edit path={json.dumps(self.last_path)}>", self.last_diff.rstrip()]
         if warnings:
             parts.append(warnings)
@@ -612,7 +610,7 @@ class EditTool(Tool):
         path, diff = getattr(self, "last_path", ""), getattr(self, "last_diff", "")
         if not (path and diff):
             return None
-        return TurnDiff(key="", turn=0, path=path, diff=diff, before=getattr(self, "last_before", ""), after=getattr(self, "last_after", ""))
+        return TurnDiff(key="", turn=0, path=path, diff=diff)
 
     def preview(self) -> str:
         path, source_name, edits = self.parse()

@@ -6,7 +6,6 @@ import asyncio
 import contextlib
 import inspect
 import os
-import re
 import sys
 import threading
 import time
@@ -58,46 +57,10 @@ class CommandLoop:
     plain callables — which is also how the tests drive it.
     """
 
-    HUNK_HEADER_RE: ClassVar[re.Pattern] = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
     EDITOR_CONTEXT_MAX_LINES: ClassVar[int] = 200
     EDITOR_CONTEXT_ELLIPSIS: ClassVar[str] = "# [... earlier lines of this reply omitted ...]"
     EDITOR_CONTEXT_SEPARATOR: ClassVar[str] = "# --- (earlier reply) ---"
     INPUT_HISTORY_BYTES: ClassVar[int] = 512 * 1024
-    DIFF_MAX_BYTES: ClassVar[int] = 50_000
-    DIFF_MAX_LINES: ClassVar[int] = 1_200
-
-    @classmethod
-    def bounded_diff(cls, text: str) -> tuple[str, bool]:
-        if len(text.encode("utf-8")) <= cls.DIFF_MAX_BYTES and text.count("\n") <= cls.DIFF_MAX_LINES:
-            return text, False
-        clipped: list[str] = []
-        length = 0
-        for line in text.splitlines():
-            line_bytes = len(line.encode("utf-8")) + 1
-            if length + line_bytes > cls.DIFF_MAX_BYTES or len(clipped) >= cls.DIFF_MAX_LINES:
-                break
-            clipped.append(line)
-            length += line_bytes
-        return "\n".join(clipped), True
-
-    @staticmethod
-    def diff_counts(text: str) -> tuple[int, int]:
-        added = removed = 0
-        old_remaining = new_remaining = 0
-        for line in text.splitlines():
-            if match := CommandLoop.HUNK_HEADER_RE.match(line):
-                old_remaining = int(match.group(1) or 1)
-                new_remaining = int(match.group(2) or 1)
-            elif line.startswith("+") and new_remaining:
-                added += 1
-                new_remaining -= 1
-            elif line.startswith("-") and old_remaining:
-                removed += 1
-                old_remaining -= 1
-            elif line.startswith(" "):
-                old_remaining = max(0, old_remaining - 1)
-                new_remaining = max(0, new_remaining - 1)
-        return added, removed
 
     def __init__(self, agent: Agent, input_fn=input, output_fn=print):
         self.agent = agent
@@ -653,7 +616,7 @@ class CommandLoop:
         output = entry.handler(self, args.strip()) if entry else f"Unknown command: {name}"
         if inspect.isawaitable(output):
             output = await output
-        # None means the handler already rendered its own UI (e.g. /diff's viewer).
+        # None means the handler already rendered its own UI (e.g. a modal viewer).
         if output is not None:
             if isinstance(output, LogBlock):
                 self.presentation.emit(output)

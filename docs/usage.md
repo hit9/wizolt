@@ -68,6 +68,7 @@ Press **Ctrl-O** to browse results, newest first. Use `j`/`k` or the arrows to s
 | Result | What opens |
 | --- | --- |
 | Bash | The command and its output |
+| Edit | The file's full diff, syntax-highlighted with the added and removed lines banded |
 | ToolScript | The complete script and its printed result; a running script appears first |
 | Job | Its live log, or the saved result after resuming a session |
 | Subagents | Select `/agents` to preview a task and its recent answer |
@@ -179,8 +180,8 @@ Long inline lists scroll as you move, leaving a few rows of recent output visibl
 - `Ctrl-D` — exit from an empty prompt
 - `Ctrl-R` — reverse-search your history; `Enter` puts the match in the input to edit, a second
   `Enter` sends it
-- `Ctrl-O` — browse the selected agent's recent Bash outputs, ToolScript scripts and background
-  Job logs; press it again to close
+- `Ctrl-O` — browse the selected agent's recent Bash outputs, ToolScript scripts, background
+  Job logs and edit diffs; press it again to close
 - `Ctrl-X Ctrl-E` or `Ctrl-G` — edit the current input in `$VISUAL` / `$EDITOR` (falls back to
   vim), as a temporary Markdown file
 
@@ -239,7 +240,7 @@ session by name after moving directories. When a query matches more than one ses
 <span class="marker">lists the candidates instead of guessing</span> between them.
 
 Resuming replays the conversation into your scrollback, including the diff each edit made. Long
-diffs are trimmed there; `/diff` always has the full text.
+diffs are trimmed there.
 
 A session can be open in only one wizolt at a time. If it is already in use, close the other
 instance or choose another session.
@@ -278,32 +279,10 @@ Sessions saved before names existed list under their id until the next time they
 
 ### Reviewing changes
 
-`/diff` opens an interactive, tabbed viewer with two views:
-
-- **Latest** — what changed during the most recent round of your requests
-- **Session** — the selected agent's recorded edits since its session began
-
-Both views show edits recorded by the selected agent. Changes from another agent or an external
-editor are separate; where they interrupt a file's edit history, `/diff` shows the selected
-agent's individual edits. Use Git to inspect all changes in the shared workspace.
-
-Navigate with `j`/`k`, `g`/`G`, and `/` search; press `Esc` to close.
-
-```{figure} ../snapshots/wizolt-diff-list.png
-:alt: Interactive diff list showing changed files from the latest turn
-:width: 600px
-:align: center
-
-Choosing a file to diff.
-```
-
-```{figure} ../snapshots/wizolt-diff-file-detail.png
-:alt: Side-by-side file diff with syntax highlighting
-:width: 600px
-:align: center
-
-Side-by-side detail view of a changed file.
-```
+Each edit appears in the transcript with the diff it made, and a resumed session replays those
+diffs from its log rather than from the files — trimmed to a readable window, with the whole diff
+one `Ctrl-O` away. That record is per agent: it says what this agent changed. For the workspace as
+a whole, including work outside wizolt, use Git.
 
 ### Long sessions
 

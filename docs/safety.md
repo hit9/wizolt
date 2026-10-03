@@ -19,8 +19,8 @@ paths with the same care you would use when running them yourself.
   and configure its model before starting it.
 - **Checked edits.** An edit is refused if its target changed since it was read, or if the
   target text matches more than one place. The agent must resolve that before trying again.
-- **Reviewable changes.** `/diff` shows exactly what changed this round and across the
-  session before you rely on it.
+- **Reviewable changes.** Every edit is shown as the diff it made, and a resumed session replays
+  those diffs from the session log. Git remains the record for the workspace as a whole.
 - **Repository skills wait for trust.** A cloned repository's skills that run commands, carry
   hooks, or pre-approve tools stay off until you run `/skills trust` there. See
   [Trusting a repository](skills.md#trusting-a-repository).

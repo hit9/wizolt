@@ -54,7 +54,7 @@ def run_tui(monkeypatch, app, output, drive):
 
 
 def open_modal(app, *, rows: int, exclusive: bool = False):
-    """Open a real modal, the way `/effort` and `/diff` do, rather than poking at layout state."""
+    """Open a real modal, the way `/effort` does, rather than poking at layout state."""
     fragments = [("", f"option {index}\n") for index in range(rows)]
     return asyncio.run_coroutine_threadsafe(
         app.show_modal(lambda: fragments, lambda _key, _data="": None, exclusive=exclusive),
@@ -100,7 +100,8 @@ def test_transcript_is_written_above_a_taller_app(monkeypatch, wired):
 
 
 def test_width_change_under_an_exclusive_viewer_defers_the_rebuild(monkeypatch, wired):
-    """A rebuild must not run while /diff owns the alternate screen, and must not be forgotten.
+    """A rebuild must not run while an exclusive viewer owns the alternate screen, and must not be
+    forgotten.
 
     Purging there would take the primary screen's scrollback with it to redraw something nobody
     can see, and simply skipping the rebuild would leave the pane reflowed and unattributable

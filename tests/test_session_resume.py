@@ -231,7 +231,7 @@ async def test_resumed_transcript_trims_long_diffs(tmp_path):
 
     assert "+line 7" in text
     assert "+line 30" not in text
-    assert "more lines, see /diff" in text
+    assert "more lines" in text
 
 async def test_resumed_transcript_without_a_stored_diff_shows_the_call_only(tmp_path):
     """Edits whose diff has been evicted still render as a plain call line."""

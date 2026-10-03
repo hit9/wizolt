@@ -1340,10 +1340,11 @@ class TuiApp:
     def _use_alternate_screen(self, enabled: bool) -> None:
         """Move the persistent app between the primary and alternate screen.
 
-        Exclusive modals (the /diff viewer) fill the whole pane. Painted on the primary screen they
-        push the transcript above them off the top into scrollback, and closing the modal only
-        shrinks the app region back — the transcript never comes back down. Give them the alternate
-        screen instead, so the terminal restores the transcript on exit the way `less` does.
+        Exclusive modals (the tool-output browser) fill the whole pane. Painted on the primary
+        screen they push the transcript above them off the top into scrollback, and closing the
+        modal only shrinks the app region back — the transcript never comes back down. Give them
+        the alternate screen instead, so the terminal restores the transcript on exit the way
+        `less` does.
         """
         app = self.app
         if app is None or app.renderer.full_screen == enabled:
@@ -2238,9 +2239,10 @@ class TuiApp:
                 vanilla_render(*args, **kwargs)
                 owed = self.scrollback.note_width(renderer.output.get_size().columns)
                 if renderer.full_screen:
-                    # An exclusive viewer (/diff) owns the alternate screen. Purging there would
-                    # take the primary screen's scrollback with it for a rebuild nobody can see, so
-                    # the debt is carried and paid on the first render after the viewer closes.
+                    # An exclusive viewer (the tool-output browser) owns the alternate screen.
+                    # Purging there would take the primary screen's scrollback with it for a
+                    # rebuild nobody can see, so the debt is carried and paid on the first render
+                    # after the viewer closes.
                     return
                 if owed:
                     # Width changed: every row in the pane was rewrapped, and none of them can be

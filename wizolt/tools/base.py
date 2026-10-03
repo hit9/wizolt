@@ -46,7 +46,8 @@ class Tool:
 
     def turn_diff(self) -> TurnDiff | None:
         """The file diff this tool produced on its last run, or None if it made no edit. Overridden
-        by EditTool; the runner records it against the stored result for the /diff viewer."""
+        by EditTool; the runner records it against the stored result so a resumed session can
+        replay the diff."""
         return None
 
     def model_observation(self) -> Json | None:

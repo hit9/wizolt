@@ -165,31 +165,20 @@ class ToolErrorRecord:
 
 @dataclass
 class TurnDiff:
-    SNAPSHOT_CHAR_LIMIT: ClassVar[int] = 1_000_000
     TRANSCRIPT_CHAR_LIMIT: ClassVar[int] = 64 * 1024
 
     key: str
     turn: int
     path: str
     diff: str
-    before: str = ""
-    after: str = ""
     round: int = 0
-
-    @classmethod
-    def bounded_snapshots(cls, before: str, after: str) -> tuple[str, str]:
-        """Cap each snapshot on its own. Snapshots are stored once per unique content, so a pair
-        usually costs one new version rather than two, and summing the two would hold the ceiling at
-        half the file size it can actually afford. Both are dropped together when either is too
-        large: one alone would read as the file being created or deleted wholesale."""
-        return ("", "") if max(len(before), len(after)) > cls.SNAPSHOT_CHAR_LIMIT else (before, after)
 
     @classmethod
     def bounded_transcript(cls, diff: str) -> str:
         if len(diff) <= cls.TRANSCRIPT_CHAR_LIMIT:
             return diff
         clipped = diff[: cls.TRANSCRIPT_CHAR_LIMIT].rsplit("\n", 1)[0]
-        return clipped + "\n… diff preview truncated; see /diff for the retained session diff"
+        return clipped + "\n… diff preview truncated"
 
 
 @dataclass

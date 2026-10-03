@@ -497,7 +497,9 @@ class ApprovalView:
     text under yolo -- there is no confirmation prompt there to press `v` at.
 
     `label` names it in the viewer title and the action row ("order", "script"). `lexer` is a
-    pygments lexer name; empty means the text is prose and renders as markdown. `rows` are the
+    pygments lexer name; empty means the text is prose and renders as markdown. The one reserved
+    value is `diff`, which is not read as a lexer: it selects the diff renderer, so a diff keeps
+    the transcript's syntax highlighting and red/green bands. `rows` are the
     header fields shown above the text. `result` is what the call returned, shown below the text
     when the view is opened after the fact; it is empty at a confirmation prompt, where the call
     has not run yet.

@@ -87,7 +87,7 @@ async def test_notes_receipts_statistics_and_assets_remain_independent_after_par
         key = session.tool_records[-1].key
         assert key == "tr.1"
         assert session.source_view_counter == 1
-        session.store_turn_diff(key, 1, file.name, "-before\n+after\n", before=f"{label} before\n", after=f"{label} after\n", round=1)
+        session.store_turn_diff(key, 1, file.name, "-before\n+after\n", round=1)
         session.usage.add({"prompt_tokens": 100 + index, "completion_tokens": 10}, budget=1000)
         session.compaction_usage.add({"prompt_tokens": 20 + index, "completion_tokens": 2}, budget=1000)
         assets.append(await agent.context.materialize_output(key, f"output {label}"))
@@ -231,14 +231,16 @@ async def test_interleaved_edits_do_not_attribute_sibling_changes_to_main(family
         agent.session.settings.yolo = True
         await agent.tools.run([call("Edit", ["shared.txt", "", [{"old": old, "content": new}]])])
         assert not agent.session.tool_errors
-    main_diff = root.session_diff_sections()[0][2]
-    child_diff = child.session.session_diff_sections()[0][2]
-    assert "+ONE\n" in main_diff and "+THREE\n" in main_diff
-    assert "+TWO\n" not in main_diff and "-two\n" not in main_diff
-    assert "+TWO\n" in child_diff and "+ONE\n" not in child_diff
+    # Each session records its own edits and nothing else: the sibling's change is not in main's
+    # receipts, and main's are not in the child's.
+    main_diffs = "\n".join(diff.diff for diff in root.turn_diffs)
+    child_diffs = "\n".join(diff.diff for diff in child.session.turn_diffs)
+    assert "+ONE\n" in main_diffs and "+THREE\n" in main_diffs
+    assert "+TWO\n" not in main_diffs and "-two\n" not in main_diffs
+    assert "+TWO\n" in child_diffs and "+ONE\n" not in child_diffs
     await asyncio.gather(root.save_snapshot(), child.session.save_snapshot())
     restored = SessionSnapshotStore.load(root.uid, config=deepcopy(root.config), settings=deepcopy(root.settings), cwd=root.cwd)
-    assert restored.session_diff_sections()[0][2] == main_diff
+    assert [diff.diff for diff in restored.turn_diffs] == [diff.diff for diff in root.turn_diffs]
 
 
 async def test_job_ids_are_local_and_child_close_stops_only_its_jobs(family):

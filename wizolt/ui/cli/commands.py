@@ -1,7 +1,7 @@
 """Slash command implementations as free functions taking the CommandLoop.
 
 Each handler takes `(loop, args)` and is referenced directly by the registry below. Handlers that await a modal or the network are coroutines; the dispatcher
-accepts either shape. A `None` result means the handler rendered its own UI (e.g. /diff's viewer).
+accepts either shape. A `None` result means the handler rendered its own UI (e.g. a modal viewer).
 Agent selection and its frontend supervision live in agents.py.
 """
 
@@ -53,7 +53,6 @@ from wizolt.ui.cli.modals import (
     ChoiceHost,
     choice_application,
     compaction_log_viewer,
-    diff_viewer,
     mcp_manager,
     missing_summary_note,
     segment_columns,
@@ -425,34 +424,6 @@ def ps_command(loop: CommandLoop, args: str) -> str:
     rows = [(job.id, job.status, f"{job.elapsed():.1f}s", job.command[:80]) for job in running]
     table = markdown_table(["id", "status", "elapsed", "command"], rows)
     return f"### Active jobs · {len(running)}\n\n{table}"
-
-
-async def diff_command(loop: CommandLoop, args: str) -> str | None:
-    if args.strip():
-        return "Usage: /diff"
-    if loop.interactive_input and loop.presentation.ui.color and (loop.presentation.tui is None or await loop.presentation.tui.alternate_screen_available()):
-        await diff_viewer(loop)
-        return None
-    latest = loop.agent.session.latest_round_diff_sections()
-    session = loop.agent.session.session_diff_sections()
-    groups: list[tuple[str, list[tuple[str, str, str]]]] = []
-    if latest is not None and latest[1]:
-        round, sections = latest
-        groups.append((f"Latest · Round {round}", sections))
-    if session:
-        groups.append(("Session", session))
-    if not groups:
-        return "No changes"
-    lines: list[str] = []
-    for title, sections in groups:
-        lines.append("### " + title)
-        for _, path, diff in sections:
-            lines.append(f"#### {path}")
-            bounded, truncated = loop.bounded_diff(diff)
-            lines.append(f"```diff\n{bounded}\n```")
-            if truncated:
-                lines.append("\n*Diff truncated. Full edit output is stored in the session.*")
-    return "\n".join(lines)
 
 
 def config(loop: CommandLoop, args: str) -> str:
@@ -1180,7 +1151,6 @@ COMMANDS: tuple[Command, ...] = (
     Command("/status", status, queue_safe=True, render="compact"),
     Command("/catalog", catalog_command, queue_safe=True, render="answer"),
     Command("/ps", ps_command, queue_safe=True, render="answer"),
-    Command("/diff", diff_command, queue_safe=True, render="answer"),
     Command("/skills", skills_command, queue_safe=True, render="answer"),
     Command("/config", config, queue_safe=True),
     Command("/compact", compact),

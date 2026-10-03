@@ -97,7 +97,7 @@ async def test_transcript_appends_when_model_messages_are_replaced(tmp_path):
 async def test_transcript_tool_metadata_does_not_duplicate_retained_output_or_file_snapshots(tmp_path):
     s = session_with_data_dir(tmp_path)
     key = s.store_tool_result("Edit", ["x.py"], "full retained output")
-    s.store_turn_diff(key, 1, "x.py", "-old\n+new\n", before="old\n", after="new\n")
+    s.store_turn_diff(key, 1, "x.py", "-old\n+new\n")
     await s.save_snapshot()
 
     snapshot = next(line for line in read_jsonl(log_path(s)) if "uid" in line)

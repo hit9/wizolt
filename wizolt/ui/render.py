@@ -1310,7 +1310,7 @@ class UiPrinter:
     # Rich right-pads every rendered line with spaces up to the console width so backgrounds and
     # padding can fill the row. Uncolored padding gets baked into scrollback and turns into wrap
     # zigzags on a narrower terminal, so we strip it — but padding that carries a background color
-    # (syntax-highlighted code blocks, /diff previews) must be preserved so the block still reads
+    # (syntax-highlighted code blocks, edit previews) must be preserved so the block still reads
     # as a solid band. We track the SGR bg state per token and only strip whitespace rendered with
     # bg off.
     SGR_RE: ClassVar[re.Pattern[str]] = re.compile(r"\x1b\[([0-9;]*)m")
@@ -1572,21 +1572,13 @@ class UiPrinter:
                 while end < len(entries) and entries[end][0].role is LogRole.DIFF and entries[end][1] == level:
                     end += 1
                 diff_lines = [entry[0] for entry in entries[index:end]]
-                sample_prefix = [*margin, *self.edge_segments(diff_lines[0].edge)]
-                sample_prefix_width = sum(get_cwidth(fragment[1]) for fragment in sample_prefix)
-                diff_row_width = max(1, width - sample_prefix_width)
                 diff_text = "\n".join(item.text for item in diff_lines)
-                highlighted = self.segment_lines(self.diff_segments(diff_text, diff_row_width))
+                highlighted = self.segment_lines(self.diff_segments(diff_text))
                 for item, rendered in zip(diff_lines, highlighted):
                     prefix = [*margin, *self.edge_segments(item.edge)]
                     rendered = self.remove_line_ending(rendered)
                     for row in Text.wrap_styled(prefix, prefix, rendered, width):
-                        if item.text.startswith("+") and not item.text.startswith("+++"):
-                            background = Theme.diff_style("diff.added.bg")
-                        elif item.text.startswith("-") and not item.text.startswith("---"):
-                            background = Theme.diff_style("diff.removed.bg")
-                        else:
-                            background = ""
+                        background = self.diff_background(item.text)
                         if background:
                             used = sum(get_cwidth(fragment[1]) for fragment in row)
                             row.append((background, " " * max(0, width - used)))
@@ -1802,8 +1794,6 @@ class UiPrinter:
         except Exception:  # noqa: BLE001 - third-party lexer execution must degrade to plain rendering.
             return None
 
-    # Width taken by the line-number gutter emitted inside diff_segments (`NNNN NNNN │ `).
-    DIFF_GUTTER_WIDTH: ClassVar[int] = 12
     # A unified-diff file header, told apart from a removed or added line whose own content starts
     # with "---" or "+++" by the space that follows the marker in a header and nowhere else (both
     # git and difflib write `--- <path>`, and `--- ` even when the path is empty). Matching the
@@ -1811,6 +1801,10 @@ class UiPrinter:
     # header: no red band, and the row it then never counted shifted every old line number
     # under it in that hunk.
     DIFF_HEADER_PREFIXES: ClassVar[tuple[str, ...]] = ("--- ", "+++ ")
+    # Width of the line-number gutter `diff_segments` writes (`NNNN NNNN │ `). A caller wrapping a
+    # diff row indents its continuation by this much, so the wrapped text stays in the body column
+    # instead of falling back to the left margin.
+    DIFF_GUTTER_WIDTH: ClassVar[int] = 12
     # Word-level emphasis compares a removed line with the added line that replaces it. Lines this
     # long are skipped (a minified blob gains nothing from it), and a pair sharing less than this
     # much is a rewrite, where marking nearly every word would only restate the whole-line band.
@@ -1856,30 +1850,28 @@ class UiPrinter:
             offset += len(piece)
         return result
 
-    def diff_segments(self, text: str, row_width: int | None = None) -> list[tuple[str, str]]:
-        return self._diff_segments(text, row_width=row_width, live=False)
+    def diff_background(self, line: str) -> str:
+        """The band a diff line is painted with: the added or removed color, or none.
 
-    def diff_segments_live(self, text: str, row_width: int | None = None) -> list[tuple[str, str]]:
-        """Same as diff_segments, but pads the bg band to the current pane width. Only for live
-        live renderers that repaint on resize (the `/diff` viewer). Scrollback callers must
-        NOT use this — baked-in wide padding wraps on a later pane shrink and drops the bg color on
-        the wrapped continuation, which looks broken."""
-        return self._diff_segments(text, row_width=row_width, live=True)
+        One rule, so the renderer that draws a band and any caller padding it out to the pane edge
+        cannot disagree about which lines have one. A file header is told apart from a changed line
+        whose own content opens with the marker by the space after it, which is how `diff_segments`
+        reads them too -- matching the marker alone would band a `----` horizontal rule."""
+        if line.startswith(self.DIFF_HEADER_PREFIXES):
+            return ""
+        if line.startswith("+"):
+            return Theme.diff_style("diff.added.bg")
+        if line.startswith("-"):
+            return Theme.diff_style("diff.removed.bg")
+        return ""
 
-    def _diff_segments(self, text: str, *, row_width: int | None, live: bool) -> list[tuple[str, str]]:
+    def diff_segments(self, text: str) -> list[tuple[str, str]]:
         segments: list[tuple[str, str]] = []
         old_line: int | None = None
         new_line: int | None = None
         lines = text.splitlines()
-        # The live viewer repaints on resize, so it can pad directly to the current pane width.
-        # Scrollback is padded only after wrapping in log_segments; padding a logical line here
-        # would either be discarded at a word boundary or create an extra visual row.
-        changed_width: int | None = None
-        if live:
-            if row_width is None:
-                row_width = shutil.get_terminal_size((120, 20)).columns - 3
-            changed_width = max(1, row_width - self.DIFF_GUTTER_WIDTH)
-
+        # Bands are padded only after wrapping in log_segments; padding a logical line here would
+        # either be discarded at a word boundary or create an extra visual row.
         # Determine the target file path from the diff header.  The `+++` line
         # names the resulting file; for created files `---` is /dev/null.
         file_path: str | None = None
@@ -1972,9 +1964,7 @@ class UiPrinter:
             segments.append((styled(prefix_style), prefix))
             for style, piece, inside in self.split_at_spans(content_hl, spans or []):
                 segments.append((styled(style, emphasis if inside else background), piece))
-            width = get_cwidth(prefix) + sum(get_cwidth(fragment[1]) for fragment in content_hl)
-            padding = " " * max(0, changed_width - width) if background and changed_width is not None else ""
-            segments.append((background if padding else "", padding + suffix))
+            segments.append(("", suffix))
 
         for index, line in enumerate(lines):
             suffix = "\n" if index < len(lines) - 1 else ""
@@ -1989,13 +1979,13 @@ class UiPrinter:
                 number(None, None)
                 segments.append(("ansibrightblack", line + suffix))
             elif line.startswith("+"):
-                background = Theme.diff_style("diff.added.bg")
+                background = self.diff_background(line)
                 number(None, new_line, background)
                 content_hl = hl_by_index.get(index) or [(Theme.diff_style("diff.added.fg"), line[1:])]
                 append_hl("+", "ansigreen", content_hl, suffix, background, spans_by_index.get(index), Theme.diff_style("diff.added.emph"))
                 new_line = None if new_line is None else new_line + 1
             elif line.startswith("-"):
-                background = Theme.diff_style("diff.removed.bg")
+                background = self.diff_background(line)
                 number(old_line, None, background)
                 content_hl = [(Theme.diff_style("diff.removed.fg"), line[1:])]
                 append_hl("-", "ansired", content_hl, suffix, background, spans_by_index.get(index), Theme.diff_style("diff.removed.emph"))

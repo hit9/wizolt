@@ -39,86 +39,10 @@ class TabbedViewState:
 
 
 @dataclass
-class DiffViewState:
-    REFRESH: ClassVar[object] = object()
-
-    class Mode(Enum):
-        LIST = auto()
-        FILE = auto()
-
-    view: TabbedViewState
-    mode: Mode = Mode.LIST
-    file: int = 0
-
-    def reset(self) -> None:
-        self.mode = self.Mode.LIST
-        self.file = 0
-        self.view.scroll = 0
-
-    def switch_tab(self, delta: int) -> None:
-        self.view.switch(delta)
-        self.reset()
-
-    def move_file(self, delta: int, count: int) -> None:
-        if count:
-            self.file = (self.file + delta) % count
-
-    def clamp_file(self, count: int) -> None:
-        self.file = self.file % count if count else 0
-
-    def open_file(self, count: int) -> None:
-        if self.mode is self.Mode.LIST and count:
-            self.mode = self.Mode.FILE
-            self.view.scroll = 0
-
-    def close_file(self) -> None:
-        if self.mode is self.Mode.FILE:
-            self.mode = self.Mode.LIST
-            self.view.scroll = 0
-
-    def handle_key(self, key: str, file_count: int, viewport: int) -> Any:
-        if key in {"q", "c-c"}:
-            return None
-        if key == "escape":
-            if self.mode is self.Mode.LIST:
-                return None
-            self.close_file()
-        elif key in {"down", "j", "c-n", "up", "k", "c-p"}:
-            delta = 1 if key in {"down", "j", "c-n"} else -1
-            if self.mode is self.Mode.LIST and file_count:
-                self.move_file(delta, file_count)
-            elif self.mode is self.Mode.FILE:
-                self.view.scroll_by(delta)
-        elif key in {"h", "l", "tab"}:
-            self.switch_tab(1 if key in {"l", "tab"} else -1)
-        elif key == "right" and self.mode is self.Mode.LIST:
-            self.switch_tab(1)
-        elif key == "left":
-            if self.mode is self.Mode.FILE:
-                self.close_file()
-            else:
-                self.switch_tab(-1)
-        elif key == "enter" and self.mode is self.Mode.LIST and file_count:
-            self.open_file(file_count)
-        elif self.mode is self.Mode.FILE and key in {"pagedown", "pageup", "c-d", "c-u"}:
-            distance = max(1, viewport if key in {"pagedown", "pageup"} else viewport // 2)
-            self.view.scroll_by(distance if key in {"pagedown", "c-d"} else -distance)
-        elif key in {"g", "G"}:  # less-style: g→top, G→bottom
-            if self.mode is self.Mode.LIST and file_count:
-                self.file = 0 if key == "g" else file_count - 1
-            elif self.mode is self.Mode.FILE:
-                self.view.scroll = 0 if key == "g" else 10**9  # clamped to the last page on render
-        elif key == "r":
-            self.reset()
-            return self.REFRESH
-        return TUI_MODAL_PENDING
-
-
-@dataclass
 class SegmentLogViewState:
-    """List/detail state for the compaction log (`/compact log`). Same shape as DiffViewState
-    without tabs or refresh: the stored segments are a closed set while the viewer is open, since
-    only a compaction appends one and none can run during a modal."""
+    """List/detail state for the compaction log (`/compact log`): no tabs or refresh, since the
+    stored segments are a closed set while the viewer is open — only a compaction appends one and
+    none can run during a modal."""
 
     class Mode(Enum):
         LIST = auto()

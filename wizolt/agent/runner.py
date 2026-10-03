@@ -864,15 +864,7 @@ class ToolRunner:
         if failed:
             self.session.record_tool_error(key or "-", call.name, call.args, model_text)
         elif key and turn_diff and turn_diff.path and turn_diff.diff:
-            self.session.store_turn_diff(
-                key,
-                self.session.state.turn_step,
-                turn_diff.path,
-                turn_diff.diff,
-                before=turn_diff.before,
-                after=turn_diff.after,
-                round=self.session.state.round_count,
-            )
+            self.session.store_turn_diff(key, self.session.state.turn_step, turn_diff.path, turn_diff.diff, round=self.session.state.round_count)
         if not (tool_class is not None and tool_class.SILENT) or failed:
             self.emit(toolblocks.finish_display(self.session, call, key, model_text, failed=failed, elapsed=elapsed, d=d))
         if call.name == "Subagent" and not failed and self.context.bound_output(model_text, path=artifact_path).rstrip() == model_text.rstrip():

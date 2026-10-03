@@ -15,7 +15,7 @@ from wizolt.base import (
 )
 from wizolt.tools import AskSpec
 from wizolt.ui.render import UiPrinter
-from wizolt.ui.tui import ASK_DONE, ASK_FREE_TEXT, TUI_MODAL_PENDING, AskViewState, ChoiceViewState, DiffViewState, SegmentLogViewState, TabbedViewState
+from wizolt.ui.tui import ASK_DONE, ASK_FREE_TEXT, TUI_MODAL_PENDING, AskViewState, ChoiceViewState, SegmentLogViewState
 
 
 def test_choice_view_g_and_shift_g_jump_first_and_last():
@@ -108,15 +108,9 @@ def test_choice_view_ctrl_n_and_ctrl_p_move_like_the_completion_menu():
     assert (state.query, state.selected) == ("", 0)
 
 
-def test_the_other_list_views_take_ctrl_n_and_ctrl_p_too():
-    """The diff viewer's file list and the history viewer's segment list move on Ctrl-N/P as they
-    do on Down/Up, so no list in the TUI is the odd one out."""
-    diff = DiffViewState(view=TabbedViewState(titles=("latest",)))
-    diff.handle_key("c-n", 3, 10)
-    assert diff.file == 1
-    diff.handle_key("c-p", 3, 10)
-    assert diff.file == 0
-
+def test_the_history_list_view_takes_ctrl_n_and_ctrl_p_too():
+    """The history viewer's segment list moves on Ctrl-N/P as it does on Down/Up, so no list in
+    the TUI is the odd one out."""
     segments = SegmentLogViewState()
     segments.handle_key("c-n", 3, 10)
     assert segments.selected == 1

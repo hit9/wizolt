@@ -88,9 +88,8 @@ From your request to a reviewed change.
    Commands work the same way.
 4. **It reports.** The answer lands in your scrollback, and the prompt returns.
 
-From here: `/diff` reviews everything changed so far, and `/status` shows where the context stands
-and links to the full documentation. Your work is saved as you go — close the terminal and
-`wizolt -c` picks the session back up.
+From here: `/status` shows where the context stands and links to the full documentation. Your
+work is saved as you go — close the terminal and `wizolt -c` picks the session back up.
 
 ## Command-line flags
 

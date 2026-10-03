@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- `Ctrl-O` opens an edit's recorded diff, whole and syntax-highlighted, in the same red/green
+  bands the transcript uses. The transcript trims a long replay's diffs, so this is the way to
+  read one after the fact or after a resume.
+
+### Removed
+
+- Remove `/diff` and the net-diff view it fed. An edit record now describes only the edit that
+  produced it: no round or session aggregate is computed, and the before/after file snapshots
+  that aggregate needed are no longer stored. Edits still appear as diffs as they happen, and a
+  resumed session still replays them; `git` answers what the workspace holds.
+
 ### Fixed
 
 - Keep typing and Backspace working after Ctrl-Space: ignore the inherited text-selection

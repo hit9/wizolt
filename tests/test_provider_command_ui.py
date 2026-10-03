@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import openai as openai_module
 import pytest
 from catalog_harness import resolve
-from test_command_ui import ModalHarness, diff_loop
+from test_command_ui import ModalHarness
 from tui_harness import ResizableOutput, loop, rendered_screen_text, run_interactive_tui, wait_until
 
 import wizolt.ui.cli.commands as commands_mod
@@ -36,8 +36,8 @@ from wizolt.ui.cli.commands import (
     set_value,
     strict,
 )
-from wizolt.ui.cli.modals import choice_application, diff_viewer, select_choice
-from wizolt.ui.tui import TUI_MODAL_PENDING, DiffViewState, TabbedViewState, TuiApp
+from wizolt.ui.cli.modals import choice_application, select_choice
+from wizolt.ui.tui import TuiApp
 
 
 def async_callable(fn):
@@ -677,98 +677,6 @@ async def test_provider_auto_selects_sole_provider_and_model(tmp_path, monkeypat
 
     assert titles == ["Request API", "Reasoning effort"]
     assert "Set provider.model = only-model" in result
-
-
-async def test_diff_viewer_switches_tabs_and_opens_selected_file(tmp_path):
-    command_loop = diff_loop(tmp_path)
-    switched = ModalHarness(["l", "q"])
-    command_loop.presentation.tui = switched
-    await diff_viewer(command_loop)
-    opened = ModalHarness(["j", "enter", "q"])
-    command_loop.presentation.tui = opened
-    await diff_viewer(command_loop)
-
-    assert any(("class:tab.active", " Session ") in frame for frame in switched.frames)
-    assert switched.exclusive == [True]
-    assert opened.exclusive == [True]
-    text = "".join(text for frame in opened.frames for _, text in frame)
-    assert "Edit · b.py" in text
-    assert "[diff]" in text
-
-
-async def test_diff_viewer_ctrl_d_scrolls_file_preview(tmp_path):
-    command_loop = diff_loop(tmp_path)
-    initial = ModalHarness(["enter", "q"])
-    command_loop.presentation.tui = initial
-    await diff_viewer(command_loop)
-    scrolled = ModalHarness(["enter", "c-d", "c-d", "q"])
-    command_loop.presentation.tui = scrolled
-    await diff_viewer(command_loop)
-
-    initial_text = "".join(text for frame in initial.frames for _, text in frame)
-    scrolled_text = "".join(text for frame in scrolled.frames for _, text in frame)
-    assert initial_text != scrolled_text
-    assert "[diff]" in scrolled_text
-
-
-async def test_empty_diff_viewer_reports_zero_position(tmp_path):
-    command_loop = loop(tmp_path)
-    modal = ModalHarness(["q"])
-    command_loop.presentation.tui = modal
-    await diff_viewer(command_loop)
-    text = "".join(text for frame in modal.frames for _, text in frame)
-
-    assert "No diffs" in text
-    assert "[0/0]" in text
-
-
-async def test_diff_view_state_owns_navigation_transitions():
-    state = DiffViewState(TabbedViewState(("Latest", "Session")))
-
-    state.handle_key("down", 3, 10)
-    assert state.file == 1
-    state.handle_key("enter", 3, 10)
-    assert state.mode is DiffViewState.Mode.FILE
-    state.handle_key("c-d", 3, 10)
-    assert state.view.scroll == 5
-    assert state.handle_key("escape", 3, 10) is TUI_MODAL_PENDING
-    assert state.mode is DiffViewState.Mode.LIST
-
-    state.handle_key("right", 3, 10)
-    assert state.view.tab == 1
-    assert state.file == 0
-    assert state.handle_key("r", 3, 10) is DiffViewState.REFRESH
-    assert state.handle_key("q", 3, 10) is None
-
-
-async def test_diff_view_g_and_shift_g_jump_top_and_bottom():
-    state = DiffViewState(TabbedViewState(("Latest", "Session")))
-
-    # LIST mode: jump file selection to last / first.
-    state.handle_key("G", 5, 10)
-    assert state.file == 4
-    state.handle_key("g", 5, 10)
-    assert state.file == 0
-
-    # FILE mode: jump scroll to bottom (clamped on render) / top.
-    state.handle_key("enter", 5, 10)
-    assert state.mode is DiffViewState.Mode.FILE
-    state.handle_key("G", 5, 10)
-    assert state.view.scroll > 0
-    state.handle_key("g", 5, 10)
-    assert state.view.scroll == 0
-
-
-@pytest.mark.parametrize(("key", "expected_tab"), [("l", 1), ("tab", 1), ("h", 0)])
-async def test_diff_view_h_l_and_tab_switch_tabs_from_file_preview(key, expected_tab):
-    state = DiffViewState(TabbedViewState(("Latest", "Session"), tab=0 if key != "h" else 1))
-    state.open_file(3)
-
-    state.handle_key(key, 3, 10)
-
-    assert state.view.tab == expected_tab
-    assert state.mode is DiffViewState.Mode.LIST
-    assert state.file == 0
 
 
 async def test_switching_provider_says_when_it_had_to_move_the_effort(tmp_path):

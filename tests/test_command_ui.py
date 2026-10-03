@@ -1,5 +1,5 @@
-"""Interactive command surfaces: the provider/model/api/reason selection chains, the diff
-viewer, and the stored Bash output viewer."""
+"""Interactive command surfaces: the provider/model/api/reason selection chains and the stored
+Bash output viewer."""
 
 
 import pytest
@@ -19,15 +19,6 @@ from wizolt.ui.cli.commands import (
     status,
 )
 from wizolt.ui.tui import TUI_MODAL_PENDING
-
-
-def diff_loop(tmp_path):
-    command_loop = loop(tmp_path)
-    before = "".join(f"old {index}\n" for index in range(20))
-    after = "".join(f"new {index}\n" for index in range(20))
-    command_loop.session.store_turn_diff("tr.1", 1, "a.py", "unused", before=before, after=after, round=1)
-    command_loop.session.store_turn_diff("tr.2", 2, "b.py", "unused", before="old\n", after="new\n", round=1)
-    return command_loop
 
 
 async def test_status_ends_with_the_documentation_link(tmp_path):

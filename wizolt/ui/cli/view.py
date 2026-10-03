@@ -561,18 +561,10 @@ class View:
         return ""
 
     def _hint_context(self) -> HintContext:
-        """Project the session into the small situation the hint mechanism selects on.
-
-        round_count only advances at the start of the next turn, so at idle it still names the
-        round that just finished; edited_round therefore clears on its own once a later round
-        makes no edits.
-        """
+        """Project the session into the small situation the hint mechanism selects on."""
         session = self.session
-        round_count = session.state.round_count
-        edited = any((diff.round or diff.turn) == round_count for diff in session.turn_diffs)
         return HintContext(
             early=not session.tool_records,
-            edited_round=round_count if edited else None,
             skills_available=bool(session.skills and session.skills.skills),
             mcp_connected=bool(session.mcp and session.mcp.tools),
             jobs_running=any(job.status == "running" for job in session.jobs.values()),

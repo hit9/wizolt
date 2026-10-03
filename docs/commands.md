@@ -9,14 +9,6 @@ or how much context remains.
 
 <div class="term-shot" role="img" aria-label="Selected main agent status, model and independent context and usage statistics."><span class="fs-user">• /status</span><span> </span><span class="fs-dim">  ╭──────────────────────────────────────────────────────────────────╮</span><span>  │ agent     main · 20261002101532-4c64ec94-a1f                     │</span><span>  │ workspace ~/dev/github/wizolt                                    │</span><span>  │ session   20261002101532-4c64ec94-a1f                            │</span><span>  │ state     completed                                              │</span><span>  │ agents    1 total · 0 running · 0 waiting for input (group-wide) │</span><span>  │ subagents 0/3 retained (group-wide)                              │</span><span>  │ yolo      off                                                    │</span><span>  │ steps     400                                                    │</span><span>  │ agents.md on (./AGENTS.md; global active)                        │</span><span>  │ model     openai/gpt-5.6 · responses · reasoning medium          │</span><span>  │ context   [███▋░░░░░░░░░░] ~62.4K / 240.5K (26%)                 │</span><span>  │ cache     total 92.7% · last 97.2%                               │</span><span>  │ usage     calls 215 · total 13.8M                                │</span><span>  │ activity  history 12                                             │</span><span>  │ docs      https://wizolt.readthedocs.io                          │</span><span class="fs-dim">  ╰──────────────────────────────────────────────────────────────────╯</span></div>
 
-**`/diff`** — Review changes from the latest turn or the whole session. See
-[Reviewing changes](usage.md#reviewing-changes).
-
-<div class="term-shot" role="img" aria-label="The diff viewer: a Latest and Session tab above a list of changed files, each with added and removed line counts, and a key hint along the bottom."><span><span class="fs-i fs-tab-on"> Latest </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-off"> Session </span></span><span> </span><span class="fs-selected">&gt; +45 -12 docs/usage.md</span><span class="fs-dim">  <span class="fs-i fs-add">+12</span> <span class="fs-i fs-del">- 3</span> wizolt.py</span><span class="fs-dim">  <span class="fs-i fs-add">+ 4</span> <span class="fs-i fs-del">- 0</span> tests/test_mcp.py</span><span> </span><span class="fs-dim">  [list] ↑/↓ or j/k move · ←/→ or h/l tab · Enter open · r refresh · Esc/q close [1/3]</span></div>
-
-The two tabs pick the range; each row is one changed file with its added and removed line
-counts. `Enter` opens the selected file's diff.
-
 **`/ps`** — Lists active background jobs (see [Tools](tools.md#built-in-tools)).
 Each row shows job id, state, command, and elapsed time.
 
@@ -115,7 +107,7 @@ layouts and custom templates.
 
 ## While a turn runs
 
-Commands that only read the session answer without interrupting it: `/status`, `/ps`, `/diff`,
+Commands that only read the session answer without interrupting it: `/status`, `/ps`,
 `/skills`, `/config`, `/catalog`, `/agents`, and `/mcp`'s tool list, along with the `/yolo` toggle.
 Any other one waits for the turn to end.
 

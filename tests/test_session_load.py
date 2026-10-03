@@ -14,7 +14,7 @@ from wizolt.config import (
     Config,
     RuntimeSettings,
 )
-from wizolt.session import Session, SessionSnapshotCodec, SessionSnapshotStore, TurnDiff
+from wizolt.session import Session, SessionSnapshotCodec, SessionSnapshotStore
 
 
 async def test_compact_deltas_keep_agent_metadata_and_clear_default_state(tmp_path):
@@ -135,53 +135,20 @@ def test_restore_applies_replacements_before_appends_and_ignores_unknown_fields(
     assert "unexpected" not in restored and "unexpected_replace" not in restored
 
 
-async def test_oversized_snapshots_are_dropped_before_reaching_the_log(tmp_path):
-    """Snapshots over the size limit are still discarded, and leave no blob behind."""
+async def test_rewriting_the_retained_window_replaces_the_entries(tmp_path):
+    """Once the 100-entry cap starts evicting, every save rewrites the whole window. The entries
+    are small, so that rewrite is a delta rather than a fresh snapshot."""
     s = session_with_data_dir(tmp_path)
-    huge = "x" * (TurnDiff.SNAPSHOT_CHAR_LIMIT + 1)
-    s.store_turn_diff("tr.1", 1, "big.py", "-o\n+n\n", before=huge, after=huge, round=1)
-    await s.save_snapshot()
-
-    lines = read_lines(log_path(s))
-    entry = [line for line in lines if "turn_diffs" in line][-1]["turn_diffs"][0]
-
-    assert not [line for line in lines if "blob" in line]
-    assert (entry["before_blob"], entry["after_blob"]) == ("", "")
-    s.close()  # release the writer before reloading
-    assert load_session(s.uid, config=s.config, cwd=str(tmp_path)).turn_diffs[0].before == ""
-
-async def test_rewriting_the_retained_window_does_not_rewrite_snapshots(tmp_path):
-    """Once the 100-entry cap starts evicting, every save rewrites the whole window. It must
-    rewrite references only — the snapshots are already in the log."""
-    s = session_with_data_dir(tmp_path)
-    big = "x" * 100_000
     for i in range(100):
-        s.store_turn_diff(f"tr.{i}", i, "a.py", "-o\n+n\n", before=big, after=big + str(i), round=i)
+        s.store_turn_diff(f"tr.{i}", i, "a.py", "-o\n+n\n", round=i)
     await s.save_snapshot()
-    size_before = os.path.getsize(log_path(s))
 
-    s.store_turn_diff("tr.100", 100, "a.py", "-o\n+n\n", before=big, after=big + "100", round=100)
+    s.store_turn_diff("tr.100", 100, "a.py", "-o\n+n\n", round=100)
     await s.save_snapshot()
 
     lines = read_lines(log_path(s))
     assert "turn_diffs_replace" in lines[-1]  # the window was rewritten in full
     assert len(lines[-1]["turn_diffs_replace"]) == 100
-    # One new snapshot (~100KB), not 100 of them (~10MB).
-    assert os.path.getsize(log_path(s)) - size_before < 400_000
-
-async def test_resumed_session_does_not_rewrite_existing_blobs(tmp_path):
-    """A resumed session knows which snapshots its log already holds."""
-    s = session_with_data_dir(tmp_path)
-    s.store_turn_diff("tr.1", 1, "x.py", "-old\n+new\n", before="old\n", after="new\n", round=1)
-    await s.save_snapshot()
-
-    s.close()  # release the writer before reloading
-    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
-    restored.store_turn_diff("tr.2", 2, "x.py", "-new\n+newer\n", before="new\n", after="newer\n", round=2)
-    await restored.save_snapshot()
-
-    blobs = [line["text"] for line in read_lines(log_path(s)) if "blob" in line]
-    assert sorted(blobs) == ["new\n", "newer\n", "old\n"]  # "new\n" not stored a second time
 
 async def test_load_merges_init_and_deltas(tmp_path):
     """load_snapshot reads and merges all lines, returning the full session state."""
@@ -541,6 +508,31 @@ def test_real_legacy_snapshot_without_layout_field_converts_numeric_local_time(t
     checkpoint = next(message for message in loaded.messages if message.get(SESSION_EVENT_KEY) == "state_checkpoint")
     assert "Goal: migrate a real legacy record" in checkpoint["content"]
     assert checkpoint["content"].startswith("--- Working State Checkpoint ---")
+
+def test_a_log_written_with_file_snapshots_still_restores_its_receipts(tmp_path):
+    """The snapshots behind the old net-diff view are no longer written, but a log from when they
+    were still loads: the receipt is the state, and the before/after blobs it carried are not read."""
+    s = session_with_data_dir(tmp_path)
+    path = log_path(s)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    write_log(path, {"v": SessionSnapshotStore.FORMAT_VERSION, "uid": s.uid, "cwd": s.cwd}, mode="w")
+    write_log(
+        path,
+        {
+            "uid": s.uid,
+            "cwd": s.cwd,
+            "transcript_sync": 1,
+            "messages": [{"role": "user", "content": "legacy request"}],
+            "turn_diffs": [{"key": "tr.1", "turn": 1, "path": "x.py", "diff": "-old\n+new\n", "before_blob": "aaa", "after_blob": "bbb", "round": 1}],
+            "transcript_turn_diffs": [{"key": "tr.1", "turn": 1, "path": "x.py", "diff": "-old\n+new\n", "round": 1}],
+        },
+        mode="a",
+    )
+
+    s.close()  # release the writer before reloading
+    loaded = load_session(s.uid, config=s.config)
+
+    assert [(diff.key, diff.path, diff.diff, diff.round) for diff in loaded.turn_diffs] == [("tr.1", "x.py", "-old\n+new\n", 1)]
 
 async def test_empty_session_first_save_is_skipped(tmp_path):
     """A session with no recoverable content is not persisted."""

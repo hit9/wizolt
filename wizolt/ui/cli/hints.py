@@ -4,7 +4,7 @@ One centralized place for the low-noise tips shown in the empty input placeholde
 declares its text, a weight, and an optional applicability predicate over a small Context that
 describes the session's current situation. HintPicker draws a weighted random hint among the
 applicable ones and caches it per Context, so a frequently re-rendered placeholder stays stable
-and only re-rolls when the situation changes (a new editing round, leaving the early phase, ...).
+and only re-rolls when the situation changes (leaving the early phase, a job starting, ...).
 
 Adding a tip is one line in HINTS; adding a new kind of situation is one field on Context plus a
 predicate. The selection logic itself never changes.
@@ -22,7 +22,6 @@ class Context:
     """The session situation that decides which hints apply."""
 
     early: bool  # the session has done no work yet; navigation tips are welcome
-    edited_round: int | None  # the round that just edited files, or None
     skills_available: bool = False  # at least one skill is installed
     mcp_connected: bool = False  # at least one MCP server is connected
     jobs_running: bool = False  # a background job is still running
@@ -30,10 +29,6 @@ class Context:
 
 def _when_early(ctx: Context) -> bool:
     return ctx.early
-
-
-def _when_edited(ctx: Context) -> bool:
-    return ctx.edited_round is not None
 
 
 def _when_skills(ctx: Context) -> bool:
@@ -71,9 +66,6 @@ HINTS: tuple[Hint, ...] = (
     Hint("Questions about wizolt? Just ask"),
     Hint("Type / for commands"),
     Hint("/sessions resumes a past session", when=_when_early),
-    # Right after editing, /diff is the most useful tip: weight it high, but keep it a random
-    # pick so repeated edits do not show the same line every time.
-    Hint("/diff reviews recent edits", weight=3, when=_when_edited),
     # While a background job runs, remind the user it can be listed; clears once none run.
     Hint("/ps lists background jobs", weight=2, when=_when_jobs),
 )

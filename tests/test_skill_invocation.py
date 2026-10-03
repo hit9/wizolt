@@ -143,7 +143,6 @@ def test_slash_completion_offers_skill_commands(tmp_path):
     rows = {row.text: row.display_meta_text for row in completer.get_completions(Document("/d"), None)}
     assert rows["/deploy "] == "<env>"  # takes arguments: Enter opens them
     assert rows["/digest"] == "skill"
-    assert "/diff" in rows
     assert not any(text.startswith("/background") for text in completer_texts(completer, "/b"))
     assert completer_texts(completer, "/status") == ["/status"]  # built-ins appear once; the skill cannot shadow /status
 

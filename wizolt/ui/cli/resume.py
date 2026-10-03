@@ -235,13 +235,13 @@ class ResumeRenderer:
     def transcript_edit_preview(self, call: ToolCall, preview: str) -> LogBlock:
         lines = preview.rstrip().splitlines()
         # A long replay would bury the prompt under diffs, so each one is trimmed to a readable
-        # window; `/diff` still holds the full text.
+        # window; the stored result holds the full text, and Ctrl-O opens it.
         hidden = max(0, len(lines) - self.TRANSCRIPT_DIFF_LINES)
         if hidden:
             lines = lines[: self.TRANSCRIPT_DIFF_LINES]
         children = [LogLine("", line, LogRole.DIFF, LogEdge.CONTINUE) for line in lines]
         if hidden:
-            children.append(LogLine("", f"… {hidden} more lines, see /diff", LogRole.META, LogEdge.CONTINUE))
+            children.append(LogLine("", f"… {hidden} more lines, Ctrl-O for the full diff", LogRole.META, LogEdge.CONTINUE))
         return LogBlock.hierarchy(toolblocks.log_root(tooloutput.short_call(self.session, call), LogRole.AUTO, "", call), children)
 
     @staticmethod

@@ -538,7 +538,7 @@ class SessionSnapshotStore:
         data, blobs, header = cls.read_merged(path)
         messages = SessionSnapshotCodec.persistable_messages(data.get("messages", []))
         tool_records = SessionSnapshotCodec.tool_records(data.get("tool_records", []))
-        turn_diffs = SessionSnapshotCodec.turn_diffs(data.get("turn_diffs", []), blobs)
+        turn_diffs = SessionSnapshotCodec.turn_diffs(data.get("turn_diffs", []))
         source_views = SessionSnapshotCodec.source_views(data.get("source_views", []), blobs)
         raw_transcript_messages = data.get("transcript_messages", [])
         raw_active_transcript_messages = data.get("active_transcript_messages", [])
@@ -550,7 +550,7 @@ class SessionSnapshotStore:
             # Read-only bridge for the first transcript snapshot shape; new semantic tool events
             # carry their own call id/status/key and never write this duplicate metadata.
             transcript_tool_records = SessionSnapshotCodec.tool_records(data.get("transcript_tool_records", []))
-            transcript_turn_diffs = SessionSnapshotCodec.turn_diffs(data.get("transcript_turn_diffs", []), {})
+            transcript_turn_diffs = SessionSnapshotCodec.turn_diffs(data.get("transcript_turn_diffs", []))
         else:
             # Older snapshots used model context as their only transcript. Preserve what still
             # exists there; conversation already removed by an old compaction cannot be recovered.

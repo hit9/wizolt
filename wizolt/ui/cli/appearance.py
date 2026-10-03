@@ -73,7 +73,7 @@ DIFF_STYLE_SAMPLE = """@@ -8,4 +8,4 @@ def tokenize(text):
 def diff_style_preview(_name: str) -> StyleAndTextTuples:
     """A modified line in the highlighted diff style, which the picker has already applied."""
     note = f"{Theme.diff_style_name()} diff colors on the {Theme.name()} theme\n"
-    return [(Theme.fg("muted"), note), *UiPrinter().diff_segments(DIFF_STYLE_SAMPLE, row_width=60)]
+    return [(Theme.fg("muted"), note), *UiPrinter().diff_segments(DIFF_STYLE_SAMPLE)]
 
 
 def save_theme(loop: CommandLoop, name: str) -> str:

@@ -18,61 +18,7 @@ from wizolt.session import Session
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.runtime import RESUME_STATUS_LABEL
 from wizolt.ui.render import BashLivePreview, LiveSpark, Theme
-from wizolt.ui.tui import TUI_MODAL_PENDING, ChoiceViewState, DiffViewState, TabbedViewState
-
-
-def test_diff_view_state_tab_switching():
-    view = DiffViewState(view=TabbedViewState(titles=("latest", "net")))
-    assert view.view.tab == 0
-    view.switch_tab(1)
-    assert view.view.tab == 1
-    assert view.mode == view.Mode.LIST
-    view.switch_tab(-1)
-    assert view.view.tab == 0
-
-
-def test_diff_view_state_file_navigation():
-    view = DiffViewState(view=TabbedViewState(titles=("latest",)))
-    view.move_file(1, 3)
-    assert view.file == 1
-    view.move_file(1, 3)
-    assert view.file == 2
-    view.move_file(1, 3)
-    assert view.file == 0
-    view.move_file(-1, 3)
-    assert view.file == 2
-
-
-def test_diff_view_state_open_and_close_file():
-    view = DiffViewState(view=TabbedViewState(titles=("latest",)))
-    assert view.mode == view.Mode.LIST
-    view.open_file(2)
-    assert view.mode == view.Mode.FILE
-    assert view.view.scroll == 0
-    view.close_file()
-    assert view.mode == view.Mode.LIST
-
-
-def test_diff_view_state_handle_key():
-    view = DiffViewState(view=TabbedViewState(titles=("latest", "net")))
-    # Down in list mode moves file
-    result = view.handle_key("down", file_count=3, viewport=10)
-    assert result == TUI_MODAL_PENDING
-    assert view.file == 1
-    # Enter opens file
-    result = view.handle_key("enter", file_count=3, viewport=10)
-    assert result == TUI_MODAL_PENDING
-    assert view.mode == view.Mode.FILE
-    # Page down in file mode scrolls
-    result = view.handle_key("pagedown", file_count=3, viewport=10)
-    assert result == TUI_MODAL_PENDING
-    assert view.view.scroll == 10
-    # Escape closes file
-    result = view.handle_key("escape", file_count=3, viewport=10)
-    assert result == TUI_MODAL_PENDING
-    assert view.mode == view.Mode.LIST
-    # q exits
-    assert view.handle_key("q", file_count=3, viewport=10) is None
+from wizolt.ui.tui import ChoiceViewState
 
 
 def test_choice_view_state_filtering():

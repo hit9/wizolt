@@ -27,7 +27,6 @@ from wizolt.image import ImageInputs, UserInput
 from wizolt.providers.compat import ProviderPolicy, bundled_policy
 from wizolt.providers.sync import CatalogRuntime
 from wizolt.session.codec import TRANSCRIPT_SYNC_VERSION, SessionSnapshotCodec
-from wizolt.session.diffs import net_diff_sections
 from wizolt.session.images import ImageRoute
 from wizolt.session.jobs import BackgroundJob
 from wizolt.session.ownership import (
@@ -246,19 +245,8 @@ class Session:
             "providers": {name: {"model": entry.model, "reasoning": entry.reasoning, "api": entry.api} for name, entry in self.config.providers.items()},
         }
 
-    def store_turn_diff(
-        self,
-        key: str,
-        turn: int,
-        path: str,
-        diff: str,
-        *,
-        before: str = "",
-        after: str = "",
-        round: int = 0,
-    ) -> None:
-        before, after = TurnDiff.bounded_snapshots(before, after)
-        record = TurnDiff(key, turn, path, diff, before, after, round)
+    def store_turn_diff(self, key: str, turn: int, path: str, diff: str, *, round: int = 0) -> None:
+        record = TurnDiff(key, turn, path, diff, round)
         self.turn_diffs.append(record)
         self.transcript_turn_diffs.append(TurnDiff(key, turn, path, TurnDiff.bounded_transcript(diff), round=round))
         if len(self.turn_diffs) > 100:
@@ -527,19 +515,6 @@ class Session:
         usage.last_cached_prompt_tokens = 0
         usage.last_cache_write_prompt_tokens = 0
         return True
-
-    # The session owns the edit records; `diffs` owns what they mean. Both entry points pass the
-    # records and the working directory and read nothing else off the session, which is what let
-    # the reconstruction move out whole.
-    def latest_round_diff_sections(self) -> tuple[int, list[tuple[str, str, str]]] | None:
-        if not self.turn_diffs:
-            return None
-        round = max(diff.round or diff.turn for diff in self.turn_diffs)
-        diffs = [diff for diff in self.turn_diffs if (diff.round or diff.turn) == round]
-        return round, net_diff_sections(diffs, "edit", cwd=self.cwd)
-
-    def session_diff_sections(self) -> list[tuple[str, str, str]]:
-        return net_diff_sections(self.turn_diffs, "overall", cwd=self.cwd)
 
     def record_tool_error(self, key: str, name: str, args: ToolArgs, error: str) -> None:
         self.tool_errors.append(ToolErrorRecord(key, name, Text.value(list(args)), " ".join(Text.clean(error).split())))

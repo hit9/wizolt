@@ -258,7 +258,7 @@ async def _resumed_transcript(tmp_path, diff_text, *, lines_cap=None):
         }
     )
     s.store_tool_result("Edit", ["x.py"], '<Edit path="x.py"/>')
-    s.store_turn_diff("tr.1", 1, "x.py", diff_text, before="a\n", after="b\n", round=1)
+    s.store_turn_diff("tr.1", 1, "x.py", diff_text, round=1)
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
