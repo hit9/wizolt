@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.73.0a1 - 2026-10-03
+
+Alpha 1: experimental plugin support. The plugin SDK may change incompatibly before the stable release.
+
+- Compare Alpha/Beta/RC and final versions using Python package ordering in update checks.
+- Refresh the performance reference after merging: first frame +2.4%, with about eight
+  milliseconds of additional fresh-interpreter bootstrap cost retained for plugin assembly.
+  Replay output hashes match; see [measurements and trade-offs](https://github.com/hit9/wizolt/blob/master/benchmarks/README.md#alpha-1-release-reference).
+
 - Store plugin installations, enabled choices and layout at user level so they follow you
   across working directories; live plugin instances remain isolated per agent.
 
@@ -16,7 +25,7 @@
   to the bundled workshop reference while retaining example validation and generated illustrations.
 
 - Strongly recommend one local Git repository per user-authored plugin in the built-in workshop
-  skill, with single-file/package paths and an exception for plugins already tracked by their project.
+  skill, with single-file and package examples.
 
 - Clarify that registered plugin operations use the fixed `Plugin` gateway, not standalone
   model/ToolScript tool names, and distinguish offline trials from live host-service validation
@@ -25,8 +34,8 @@
 - Add `@plugin:NAME` completion and lightweight references. Mentions do not load plugins or
   inline capabilities; `Plugin list` can filter by exact plugin name before on-demand `describe`.
 
-- Give plugin components stable per-slot ordering, saved layout controls in `/plugins`, and an
-  optional built-in `layout` plugin for agent-driven arrangement through the same SDK API.
+- Give plugin components stable per-slot ordering and an optional built-in `layout` plugin
+  for agent-driven arrangement through the SDK API.
   Components receive viewport and remaining-height facts; the manager reports budget clipping.
   Add read-only session/tool events and actual agent-local execution counts, including parallel,
   nested, failed and cancelled tools. Document the contracts and cover them with worker-backed tests.

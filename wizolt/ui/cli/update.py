@@ -5,11 +5,13 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import re
 import sys
 import time
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
+
+if TYPE_CHECKING:
+    from packaging.version import Version
 
 from wizolt.base import (
     HTTP_USER_AGENT,
@@ -22,20 +24,24 @@ from wizolt.base import (
 
 @dataclass
 class UpdateStatus:
-    _VERSION_RE: ClassVar[re.Pattern] = re.compile(r"^\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?")
     latest: str = ""
     checking: bool = False
     error: str = ""
 
     def newer_than(self, current: str) -> bool:
-        current_version = self.version_tuple(current)
-        latest_version = self.version_tuple(self.latest)
-        return bool(current_version and latest_version and latest_version > current_version)
+        current_version = self.parse_version(current)
+        latest_version = self.parse_version(self.latest)
+        return current_version is not None and latest_version is not None and latest_version > current_version
 
     @staticmethod
-    def version_tuple(value: str) -> tuple[int, ...]:
-        match = UpdateStatus._VERSION_RE.match(value)
-        return tuple(int(part or 0) for part in match.groups()) if match else ()
+    def parse_version(value: str) -> Version | None:
+        """Use Python package ordering so an alpha can upgrade to its final release."""
+        from packaging.version import InvalidVersion, Version
+
+        try:
+            return Version(value)
+        except InvalidVersion:
+            return None
 
 
 class UpdateChecker:
@@ -88,7 +94,7 @@ class UpdateChecker:
             with open(self.cache_path, encoding="utf-8") as file:
                 data = json.load(file)
             latest = str(data.get("latest") or "")
-            if UpdateStatus.version_tuple(latest):
+            if UpdateStatus.parse_version(latest) is not None:
                 return float(data.get("checked_at") or 0), latest
         return 0.0, ""
 
@@ -129,7 +135,7 @@ class UpdateChecker:
         with contextlib.suppress(ValueError):
             data = json.loads(payload.decode("utf-8", "replace"))
             version = data.get("info", {}).get("version") if isinstance(data, dict) else ""
-            if isinstance(version, str) and UpdateStatus.version_tuple(version):
+            if isinstance(version, str) and UpdateStatus.parse_version(version) is not None:
                 return version
         raise WizoltError("invalid PyPI version response")
 

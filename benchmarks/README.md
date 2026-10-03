@@ -11,6 +11,33 @@ remeasure the previous reference revision too so the comparison remains meaningf
 
 ## Plugin foundation
 
+### Alpha 1 release reference
+
+The current reference is [0.73.0a1](baselines/linux-arm64-py314-0.73.0a1.json),
+measured after merging `dev26` into `master` (`6697f998`, with release changes;
+the report records the exact source hash). The previous published release, `2110ac18`,
+was [remeasured](results/linux-arm64-py314-before-0.73.0a1.json) with identical workloads,
+dependencies and environment: Linux ARM64, CPython 3.14.7, nine samples, sequential runs
+without concurrent tests or builds. Older historical baselines remain available; their
+workload metadata differs from the current plugin-aware suite.
+
+| Workload | 0.72.0 (ms) | Alpha 1 (ms) |
+| --- | ---: | ---: |
+| First prompt frame | 142.515 | 145.992 |
+| Startup bootstrap, three user skills | 82.372 | 91.372 |
+| CLI import | 173.043 | 182.732 |
+| Ten headless turns, no hooks | 26.442 | 25.826 |
+
+Replay output hashes match. An [alternating bootstrap check](results/linux-arm64-py314-0.73.0a1-bootstrap.json)
+confirmed the startup cost (82.696 → 90.470 ms), so it is retained, not dismissed as noise:
+assembling the plugin capability adds about eight milliseconds once per fresh interpreter.
+End-to-end first frame rises 2.4%; ordinary request and replay workloads have no material regression.
+
+Enabled-plugin probes measure 88.915 ms enable/close, 11.603 ms for twenty three-worker sample
+rounds, 15.811 ms for twenty tool calls including refresh, and 10.940 ms for 1,000 cached reads.
+They remain close to the optimized layout measurements below; these costs are additional to
+the disabled-plugin workloads above. This reference preserves the known allocation trade-off.
+
 ### Layout allocation and execution facts
 
 [Before](results/linux-arm64-py314-layout-before.json) (`90224631`),
@@ -117,7 +144,7 @@ measurements do not replace the broader startup/session baselines below.
 
 ## Subagent review
 
-The current reference for future comparisons is
+The historical subagent reference is
 [`baselines/linux-arm64-py314-subagents.json`](baselines/linux-arm64-py314-subagents.json).
 It compares the reviewed subagent branch with `master` at `4cc040f2`, recorded in
 [`baselines/linux-arm64-py314-before-subagents.json`](baselines/linux-arm64-py314-before-subagents.json).
