@@ -653,7 +653,9 @@ class Theme:
         """Load custom themes and activate the configured one, reporting what could not be used."""
         problems = cls.load_custom(directory, inline)
         name = cls.resolve(configured)
-        if configured.strip() and cls.canonical(configured) is None:
+        # Plugin themes are projected once plugins load, after the first paint. Like a plugin
+        # preset, a missing one falls back quietly and keeps the choice for that projection.
+        if configured.strip() and cls.canonical(configured) is None and not configured.startswith("plugins."):
             problems.append(f"unknown theme `{configured}`; using {name}. Available: {', '.join(cls.choices())}")
         cls.set_mode(name)
         return problems

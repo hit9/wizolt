@@ -103,6 +103,22 @@ def test_offline_validation_rejects_bad_appearance_and_accepts_plugin_theme(tmp_
     assert json.loads(capsys.readouterr().out)["status"] == "failed"
 
 
+async def test_configured_plugin_theme_is_resolved_after_startup_load_without_warning(tmp_path):
+    loop = make_loop(tmp_path)
+    loop.session.settings.theme = "plugins.look.night"
+    loop.configure_theme()
+    # Plugins load after the first paint; like a plugin preset, the choice waits for them.
+    assert not [problem for problem in loop.theme_problems if "unknown theme" in problem]
+    try:
+        await loop.session.plugins.manage("enable", source(tmp_path / "look.py"))
+        assert Theme.name() == "plugins.look.night"
+    finally:
+        await loop.session.plugins.close()
+    loop.session.settings.theme = "no-such-theme"
+    loop.configure_theme()
+    assert any("unknown theme `no-such-theme`" in problem for problem in loop.theme_problems)
+
+
 async def test_configured_plugin_preset_is_resolved_after_startup_load(tmp_path):
     loop = make_loop(tmp_path)
     loop.session.config.ui = {"statusbar": {"format": "preset:plugins.look.compact"}}

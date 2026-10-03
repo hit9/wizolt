@@ -38,6 +38,8 @@
   never reloaded: the runner did not await an async mutating tool.
 - Cancelling a plugin command or summarizer (for example with Ctrl-C) no longer kills a plugin
   whose callback stops when asked; only an unresponsive worker is terminated.
+- A saved plugin theme no longer prints an "unknown theme" warning at every startup before the
+  plugin loads and applies it.
 - Updated benchmark and documentation render helpers for the current completed-message API.
 
 ### Added
