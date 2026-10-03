@@ -144,6 +144,7 @@ class Plugin:
     COMMAND_NAME = r"[A-Za-z_][A-Za-z_0-9-]*"
 
     def __init__(self, name: str, config: Mapping[str, Any] | None = None):
+        from wizolt.sdk.models import Models
         from wizolt.sdk.services import Services
         from wizolt.sdk.settings import freeze
 
@@ -158,6 +159,7 @@ class Plugin:
         self.themes: dict[str, dict[str, Any]] = {}
         self.presets: dict[str, dict[str, str]] = {"statusbar": {}, "divider": {}}
         self.services = Services()
+        self.models = Models()
         self._service_handles: dict[str, Service] = {}
 
     def service(self, name: str, factory: Callable[[], AbstractAsyncContextManager[Resource]]) -> Service[Resource]:

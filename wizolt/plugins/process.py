@@ -15,6 +15,7 @@ import signal
 import sys
 from typing import Any
 
+from wizolt.plugins.hostcalls import HostCalls
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.protocol import MAX_FRAME
 from wizolt.sdk import PluginError
@@ -33,6 +34,8 @@ class PluginProcess:
     def __init__(self, process: asyncio.subprocess.Process):
         self.process = process
         self.pending: dict[int, asyncio.Future] = {}
+        self.operations: dict[int, str] = {}
+        self.host_calls = HostCalls(self._write, self.admits_host_call)
         self.sequence = 0
         self.stderr = ""
         self.error = ""
@@ -41,6 +44,10 @@ class PluginProcess:
         self.errors = asyncio.create_task(self._drain_errors())
         self._close_lock = asyncio.Lock()
         self.snapshot = None
+
+    def admits_host_call(self, identity: int) -> bool:
+        future = self.pending.get(identity)
+        return future is not None and not future.done() and self.operations.get(identity) in ("invoke", "compact")
 
     @classmethod
     async def start(
@@ -90,6 +97,7 @@ class PluginProcess:
         identity = self.sequence
         future = asyncio.get_running_loop().create_future()
         self.pending[identity] = future
+        self.operations[identity] = operation
         try:
             self._write({"id": identity, "operation": operation, **parameters})
             async with asyncio.timeout(timeout):
@@ -113,6 +121,8 @@ class PluginProcess:
             raise
         finally:
             self.pending.pop(identity, None)
+            self.operations.pop(identity, None)
+            await self.host_calls.cancel(identity)
             if future.done() and not future.cancelled():
                 future.exception()
             elif not future.done():
@@ -123,6 +133,9 @@ class PluginProcess:
         try:
             while line := await self.process.stdout.readline():
                 message = json.loads(line)
+                if "service_id" in message:
+                    self.host_calls.dispatch(message)
+                    continue
                 future = self.pending.get(message["id"])
                 if future is None or future.done():
                     continue
@@ -138,6 +151,7 @@ class PluginProcess:
             for future in self.pending.values():
                 if not future.done():
                     future.set_exception(PluginError(self.error))
+            await self.host_calls.cancel()
 
     async def _drain_errors(self) -> None:
         assert self.process.stderr is not None
@@ -147,6 +161,7 @@ class PluginProcess:
     async def close(self) -> None:
         """Offer bounded resource teardown, then kill the group and drain pipe consumers."""
         async with self._close_lock:
+            await self.host_calls.cancel()
             if not self.error and self.process.returncode is None:
                 # Do not use request(): its timeout calls close(), which would await this lock.
                 self.sequence += 1

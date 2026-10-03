@@ -80,7 +80,10 @@ class Agent:
         self.model = ModelClient(session)
         self.context = ContextManager(session, self.model)
         if session.plugins is not None:
+            from wizolt.agent.plugin_models import PluginModels
+
             session.plugins.read_context = lambda: self.context.breakdown(self.session.system_prompt)
+            session.plugins.host_service = PluginModels(session).call
         self.vision_observe = VisionObserver(self.model).observe
         self.tools = ToolRunner(session, self.context, input_fn=input_fn, output_fn=output_fn)
         self.output_fn = output_fn

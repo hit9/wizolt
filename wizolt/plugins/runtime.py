@@ -17,6 +17,7 @@ from wizolt.plugins.process import PluginProcess
 from wizolt.plugins.protocol import Capabilities, Snapshot
 from wizolt.plugins.settings import PluginSettings
 from wizolt.sdk import Context, Panel, PluginError, Value
+from wizolt.sdk.models import HostCall
 
 
 @dataclass
@@ -78,11 +79,13 @@ class PluginRuntime:
         self.interpreters: dict[str, str] = {}
         self.validate: Callable[[Capabilities], None] | None = None
         self.on_change: Callable[[], None] | None = None
+        self.host_service: HostCall | None = None
 
     async def prepare(self, path: str, source: PluginSource | None = None, settings: dict | None = None) -> Generation:
         revision = source if source is not None else PluginSource.read(path)
         settings = self.settings.read(revision.name) if settings is None else settings
         worker, description = await PluginProcess.start(revision, python=self.interpreters.get(revision.name, ""), cwd=self.context().cwd, config=settings)
+        worker.host_calls.handler = self.host_service
         try:
             capabilities = Capabilities.decode(revision.name, description)
             if self.validate is not None:

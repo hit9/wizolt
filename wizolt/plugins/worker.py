@@ -12,6 +12,7 @@ import json
 import math
 import sys
 import traceback
+from contextvars import ContextVar
 from dataclasses import asdict
 from typing import Any
 
@@ -26,6 +27,23 @@ class Worker:
         sys.stdout = sys.stderr
         self.loaded: LoadedPlugin | None = None
         self.tasks: dict[int, asyncio.Task] = {}
+        self.current_request: ContextVar[int | None] = ContextVar("plugin_request", default=None)
+        self.service_sequence = 0
+        self.services: dict[int, asyncio.Future] = {}
+
+    async def call_host(self, service: str, arguments: dict) -> dict:
+        parent = self.current_request.get()
+        if parent is None or self.loaded is None or not self.loaded.plugin.services.invoking.get():
+            raise PluginError("Host services require an explicit action")
+        self.service_sequence += 1
+        identity = self.service_sequence
+        future = asyncio.get_running_loop().create_future()
+        self.services[identity] = future
+        try:
+            self.write({"service_id": identity, "parent": parent, "service": service, "arguments": arguments})
+            return await future
+        finally:
+            self.services.pop(identity, None)
 
     def write(self, value: dict) -> None:
         frame = json.dumps(value, ensure_ascii=True, allow_nan=False)
@@ -40,6 +58,7 @@ class Worker:
             source = PluginSource(**request["revision"])
             self.loaded = LoadedPlugin.load(source, request.get("config"), request.get("directory", ""))
             plugin = self.loaded.plugin
+            plugin.models.call = self.call_host
             return {
                 "fields": list(plugin.fields),
                 "slots": list(plugin.components),
@@ -102,6 +121,7 @@ class Worker:
 
     async def respond(self, request: dict) -> None:
         identity = request["id"]
+        token = self.current_request.set(identity)
         try:
             value = await self.dispatch(request)
             self.write({"id": identity, "value": value})
@@ -109,6 +129,7 @@ class Worker:
             # SystemExit must be a failed call, while a native crash is detected by parent EOF.
             self.write({"id": identity, "error": f"{type(error).__name__}: {error}"[:8192], "traceback": traceback.format_exc()[-16384:]})
         finally:
+            self.current_request.reset(token)
             self.tasks.pop(identity, None)
 
     async def run(self) -> None:
@@ -117,7 +138,14 @@ class Worker:
                 if len(line) > MAX_FRAME:
                     raise PluginError("Plugin request exceeds protocol frame limit")
                 request = json.loads(line)
-                if request.get("operation") == "cancel":
+                if "service_result" in request:
+                    future = self.services.get(request["service_result"])
+                    if future is not None and not future.done():
+                        if error := request.get("error"):
+                            future.set_exception(PluginError(error))
+                        else:
+                            future.set_result(request["value"])
+                elif request.get("operation") == "cancel":
                     if task := self.tasks.get(request["target"]):
                         task.cancel()
                 else:

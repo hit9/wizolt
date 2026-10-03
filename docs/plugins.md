@@ -4,6 +4,10 @@ Plugins can keep connections such as LSP clients open between commands. They sta
 use and close when the plugin is disabled, reloaded, or wizolt exits. Ask `plugin-workshop` to
 use a managed service for a long-lived connection.
 
+A plugin command can also ask one of your configured models for help. It receives only the text
+the plugin supplies, and uses extra model tokens. These calls have a 50-second limit; their usage
+is returned to the plugin separately from the main agent's statistics.
+
 Plugins can add colorschemes and statusbar/divider presets to `/theme`. Choices are named
 `plugins.NAME.CHOICE`; selecting one uses the same theme and format settings as built-ins.
 Reload updates the chosen preset. Disabling its plugin temporarily uses the default appearance;

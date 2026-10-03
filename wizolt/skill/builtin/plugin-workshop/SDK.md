@@ -68,8 +68,27 @@ errors omit values, but plugin-authored logs and callback output remain the plug
 Validate/test/install use the selected config. Live reload rereads only its `[plugins]` table,
 and fixes settings for the candidate's lifetime. Failed validation preserves the active instance;
 rollback restores both retained source and settings. Other running agents remain unchanged.
-Configuration is not provider access: host model calls are not an SDK API yet.
-For long-lived connections such as LSP, use a managed service below.
+### Model requests
+
+Inside a command, `await plugin.models.complete(prompt, system="", provider="", model="",
+effort="", api="")` makes one text-only request through a configured provider. Empty routing
+fields inherit the agent's configuration. It returns `.text`, `.model` and `.usage` (input,
+output and cached tokens). Put preferred routing names in your plugin's own configuration.
+
+These are paid requests. State that in the command description. No agent history or tools are
+included; credentials stay in the host. Usage belongs to the returned result, not the main
+agent's counters. Calls have a 50-second limit and at most four run per plugin generation.
+Cancellation stops the request. Setup, observers and UI sampling cannot call host models.
+Offline trials report that host services are unavailable; test live calls with an explicit command.
+
+```python
+async def ask(context, arguments):
+    reply = await plugin.models.complete(arguments["input"], provider=plugin.config.get("provider", ""))
+    return reply.text
+
+
+plugin.command("ask-helper", "Ask my helper (uses model tokens)", ask)
+```
 
 ### Managed services
 

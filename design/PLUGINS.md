@@ -64,6 +64,15 @@ belong inside this scope; detached processes and unmanaged threads remain unsupp
 
 ## Execution and UI
 
+Host service RPC is bidirectional but request-scoped. Only an outstanding explicit invocation
+can admit a reverse call, with four concurrent calls and a 50-second deadline per generation.
+The pipe reader dispatches calls without awaiting them. Returning/cancelling the enclosing call,
+worker EOF, and retirement cancel and join its host work. No service may survive its request.
+`agent/plugin_models.py` assembles a detached request session using existing wire adapters;
+provider credentials stay host-side. No history, tools, hooks or persistence lease are copied.
+Returned usage is independent of agent ctx/cache counters. Offline trials deliberately have no
+model-service binding, so validation cannot silently incur model costs.
+
 The only permanent model gateway is PluginHotReload. Standalone CLI commands perform authoring
 and save installation choices; the gateway reconciles those choices into the calling agent.
 This avoids dynamic tool-schema disclosure and local session IPC. Resume sees the same small

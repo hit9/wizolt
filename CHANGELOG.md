@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Let explicit plugin commands make isolated text requests through configured models, with
+  per-request usage, bounded reverse RPC and cancellation; keep offline trials free of model calls.
+
 - Add lazy plugin services for reusable connections, with cancellation before teardown and
   bounded cleanup on disable, reload and exit. Keep validation and sampling free of service startup.
 
