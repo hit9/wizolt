@@ -809,6 +809,16 @@ style classes and animation ramp use its selected palette too. These live colors
 transcript role classes. A late terminal background reply invalidates the view style even when
 the global theme is fixed. Layout parsing remains independent of palette selection.
 
+Statusbar placement (**All left** or **Left / Right**) is not a setting: `format` is the only
+persisted state. Each preset is built from its two groups by one `compose` function; a preset
+reference is the All-left form and Left / Right is saved as its full template. The picker reads
+placement back only from an exact match with a preset's generated template, so any other text is
+custom and never rearranged. Do not add a placement flag or move groups by editing strings.
+`cli/formats.py` views, copies and edits format text for both bars; validation and preview go
+through `BarLayout.configure`, the same path config loading uses, so a draft cannot be accepted by
+a second, looser parser. Clipboard copies use a platform command so success is reported truthfully
+(an OSC 52 write has no acknowledgement).
+
 Picker choices are a curated subset of the preset registry; older names remain valid configuration
 and appear as the current selection. Fills share the remaining terminal columns and repeat bounded
 single-column patterns. Sweeps keep `x`/`w` in terminal columns; `u` spans the fill regions only,

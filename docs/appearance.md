@@ -82,6 +82,9 @@ your custom theme can override its diff backgrounds.
 The **StatusBar** tab changes the bottom row. Try a compact layout for fewer details,
 or a fuller one for tools, context and cache usage. Choose **Layout** and **Colorscheme**
 separately; **Space** chooses the highlighted value and **Tab** jumps between groups.
+Every layout starts with its details together on the left; press **p** to move context and
+cache usage to the right edge (**Left / Right**) and back (**All left**). The placement stays
+as you browse and choose other layouts.
 
 ```{figure} _static/appearance-statusbars.svg
 :alt: All ten statusbar layouts, showing the same agent, model and usage with different grouping and color segments.
@@ -89,10 +92,10 @@ separately; **Space** chooses the highlighted value and **Tab** jumps between gr
 The same session, ten layouts.
 ```
 
-`default` keeps its plain, transparent text and familiar information order, all on the left.
+`default` keeps its plain, transparent text and familiar information order.
 `powerline` connects separate agent, model, provider, effort, YOLO and
-group-count segments with arrows, leaving the middle transparent. `lualine` adds a full background
-band and right-hand tool/cache segments. Both arrow layouts need a Nerd Font.
+group-count segments with arrows. `lualine` adds a full background band and tool/cache
+segments. Both arrow layouts need a Nerd Font, and their arrows follow the segments to either edge.
 
 For other shapes, try `blocks` for adjoining rectangles, `vim` for a colored agent tab, `split`
 for a context meter across a tinted row, or `monitor` for a fuller dashboard. `brackets` uses
@@ -100,8 +103,12 @@ colored outlines; `compact` highlights the model; `minimal` pairs it with a smal
 The colors follow your chosen theme, with separate text and segment colors.
 
 Every preset names the selected agent and shows YOLO when enabled. Narrow rows drop optional
-details; segmented layouts keep the agent and model ahead of right-hand metrics.
+details; every layout keeps the agent and model ahead of usage.
 Context usage turns yellow at 70% and red at 90%.
+
+The placement is saved in `ui.statusbar.format`: **All left** as the preset's name, **Left /
+Right** as the preset's full format. A format you wrote yourself shows **custom format** instead,
+and moves only when you edit it.
 
 The **Divider** tab changes the line above your input. Choose a **Layout**, **Sweep** for
 its animation, and **Colorscheme** for its colors. **Space** chooses the highlighted value;
@@ -129,6 +136,19 @@ A quiet line, a frame, or activity and speed.
 
 The picker animates idle, running and queued examples without sending a model request.
 The rounded `capsule` layout and arrow-shaped `powerline` layout need a Nerd Font.
+
+### View, copy and edit a format
+
+On the StatusBar or Divider tab, press **f** to see the format that will be saved and, for a
+preset, the full format it stands for. **c** copies the format and **t** copies it as a
+`[ui.statusbar]` or `[ui.divider]` block for your config file. Copying uses `pbcopy`,
+`wl-copy`, `xclip`, `xsel` or `clip.exe`; without one, wizolt says so and leaves the text on
+screen to select.
+
+Press **e** to edit the format. The bar previews each valid change with your theme, and an
+invalid one shows its line and column without touching the preview. **Ctrl-S** keeps the edit
+and **Esc** discards it; **Enter** in the picker then saves it like any other choice. The
+[template reference](appearance-reference.md#custom-templates) lists every field and style.
 
 ## Input symbols
 

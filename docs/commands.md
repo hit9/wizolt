@@ -2,12 +2,21 @@
 
 ## Looking around
 
-**`/status`** — Check the selected agent's identity, state, model, context usage, cache hit rate,
-background jobs and session information. The `agents` row shows the group total, including main,
-and how many are running or waiting for input. Start here when you want to know what is running
-or how much context remains.
+**`/status`** — Check the selected agent at a glance. **Overview** shows its state, model,
+how full its context is and what it has used so far; when other agents share the session, it
+counts them too. Press **h**/**l** (or **1**–**4**) for the rest:
 
-<div class="term-shot" role="img" aria-label="Selected main agent status, model and independent context and usage statistics."><span class="fs-user">• /status</span><span> </span><span class="fs-dim">  ╭──────────────────────────────────────────────────────────────────╮</span><span>  │ agent     main · 20261002101532-4c64ec94-a1f                     │</span><span>  │ workspace ~/dev/github/wizolt                                    │</span><span>  │ session   20261002101532-4c64ec94-a1f                            │</span><span>  │ state     completed                                              │</span><span>  │ agents    1 total · 0 running · 0 waiting for input (group-wide) │</span><span>  │ subagents 0/3 retained (group-wide)                              │</span><span>  │ yolo      off                                                    │</span><span>  │ steps     400                                                    │</span><span>  │ agents.md on (./AGENTS.md; global active)                        │</span><span>  │ model     openai/gpt-5.6 · responses · reasoning medium          │</span><span>  │ context   [███▋░░░░░░░░░░] ~62.4K / 240.5K (26%)                 │</span><span>  │ cache     total 92.7% · last 97.2%                               │</span><span>  │ usage     calls 215 · total 13.8M                                │</span><span>  │ activity  history 12                                             │</span><span>  │ docs      https://wizolt.readthedocs.io                          │</span><span class="fs-dim">  ╰──────────────────────────────────────────────────────────────────╯</span></div>
+| Tab | Shows |
+| --- | --- |
+| Context | What the next request holds, by part, and where compaction starts |
+| Usage | Tokens and cache hits across every request, compaction, and activity counts |
+| Session | Workspace, session ID, permissions, limits and instruction files |
+
+Context figures marked `~` and **estimated** are wizolt's own count; others come from the
+provider's report of the last request. Without an interactive terminal, `/status` prints every
+tab, one after another.
+
+<div class="term-shot" role="img" aria-label="The /status Overview tab inside its frame: labeled rows for the selected agent and its state, the model in the statusbar's colors, a context meter beside the reading, and the usage totals with counts and the cache share highlighted, with the Context, Usage and Session tabs one key away."><span class="fs-user">• /status</span><span> </span><span class="fs-goal">  ╭────────────────────────────────────────────────────────────────────╮</span><span><span class="fs-i fs-goal">  │</span> <span class="fs-i fs-tab-on"> Overview </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-off"> Context </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-off"> Usage </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-off"> Session </span>                       <span class="fs-i fs-goal">│</span></span><span><span class="fs-i fs-goal">  │</span>                                                                    <span class="fs-i fs-goal">│</span></span><span><span class="fs-i fs-goal">  │</span> <span class="fs-i fs-dim">agent    </span><span class="fs-i" style="color:#e7ac80;font-weight:700">main</span><span class="fs-i fs-dim"> · completed</span>                                          <span class="fs-i fs-goal">│</span></span><span><span class="fs-i fs-goal">  │</span> <span class="fs-i fs-dim">model    </span><span class="fs-i" style="color:#67d4e8">openai</span><span class="fs-i fs-dim"> / </span><span class="fs-i" style="color:#d7b0ff;font-weight:700">gpt-5.6</span><span class="fs-i fs-dim"> · </span>responses<span class="fs-i fs-dim"> · effort </span><span class="fs-i" style="color:#f0c77f">medium</span>              <span class="fs-i fs-goal">│</span></span><span><span class="fs-i fs-goal">  │</span> <span class="fs-i fs-dim">context  </span><span class="fs-i" style="color:#8dd6a1;font-weight:700">██████</span><span class="fs-i fs-dim">░░░░░░░░░░░░░░░░░░</span> <span class="fs-i" style="color:#8dd6a1;font-weight:700">62.4K</span><span class="fs-i fs-dim"> / </span><span class="fs-i" style="color:#d2a8ff">240.5K</span><span class="fs-i fs-dim"> · </span><span class="fs-i" style="color:#8dd6a1;font-weight:700">25%</span>             <span class="fs-i fs-goal">│</span></span><span><span class="fs-i fs-goal">  │</span> <span class="fs-i fs-dim">usage    </span><span class="fs-i" style="color:#d2a8ff">215</span><span class="fs-i fs-dim"> requests · </span><span class="fs-i" style="color:#d2a8ff">13.6M</span><span class="fs-i fs-dim"> in · </span><span class="fs-i" style="color:#d2a8ff">182.4K</span><span class="fs-i fs-dim"> out · </span><span class="fs-i" style="color:#80b8ef">93%</span><span class="fs-i fs-dim"> cached</span>         <span class="fs-i fs-goal">│</span></span><span><span class="fs-i fs-goal">  ╰────────────────────────────────</span><span class="fs-i fs-dim"> h/l tabs · j/k scroll · Esc close </span><span class="fs-i fs-goal">─╯</span></span></div>
 
 **`/ps`** — Lists active background jobs (see [Tools](tools.md#built-in-tools)).
 Each row shows job id, state, command, and elapsed time.
@@ -126,8 +135,8 @@ returns to `working` once the replacement request is running:
 
 ## Help and exit
 
-The prompt lists and completes every command as you type, and `/status` ends with the link to the
-[documentation](https://wizolt.readthedocs.io).
+The prompt lists and completes every command as you type, and the Session tab of `/status` ends
+with the link to the [documentation](https://wizolt.readthedocs.io).
 
 **`/exit`, `/quit`** — Leave wizolt. Your session is saved automatically and can
 be resumed with `-c` or `--resume`.

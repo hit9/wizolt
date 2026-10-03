@@ -24,8 +24,8 @@ from wizolt.mentions import active_mention, scan_mentions
 from wizolt.session import Session
 from wizolt.tools import EditTool, ReadTool
 from wizolt.ui.cli import CommandCompleter, TuiRuntime
-from wizolt.ui.cli.commands import status
 from wizolt.ui.cli.loop import CommandLoop
+from wizolt.ui.cli.status import StatusReport
 from wizolt.ui.tui import TuiApp
 from wizolt.utils.workspace import Workspace
 
@@ -189,7 +189,7 @@ def test_a_subdirectory_session_loads_the_root_file_and_its_own(tmp_path):
     root_at = prefix.index("--- AGENTS.md (project · ../../AGENTS.md) ---")
     assert root_at < prefix.index("--- AGENTS.md (project · ./CLAUDE.md) ---")  # nearest reads last
     loop = CommandLoop(Agent(s, output_fn=lambda _text: None), output_fn=lambda _text: None)
-    assert "| agents.md | on (../../AGENTS.md; ./CLAUDE.md; global missing) |" in status(loop, "")
+    assert agents_md_row(loop) == "on (../../AGENTS.md; ./CLAUDE.md; global missing)"
 
 
 def test_a_middle_level_without_a_file_is_skipped(tmp_path):
@@ -830,19 +830,22 @@ def test_status_names_both_instruction_sources(tmp_path):
     s = agents_session(tmp_path, global_text=GLOBAL_TEXT, project_text=PROJECT_TEXT)
     command_loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
 
-    result = status(command_loop, "")
-    assert "| agents.md | on (./AGENTS.md; global active) |" in result
-    assert "| global AGENTS.md |" not in result
+    rows = dict(StatusReport.of(command_loop).snapshot.configuration.rows)
+    assert rows["agents.md"] == "on (./AGENTS.md; global active)"
+    assert "global AGENTS.md" not in rows
+
+
+def agents_md_row(command_loop) -> str:
+    return dict(StatusReport.of(command_loop).snapshot.configuration.rows)["agents.md"]
 
 
 def test_status_names_the_one_source_it_has(tmp_path):
     s = agents_session(tmp_path, project_text=PROJECT_TEXT)
     command_loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
-    assert "| agents.md | on (./AGENTS.md; global missing) |" in status(command_loop, "")
+    assert agents_md_row(command_loop) == "on (./AGENTS.md; global missing)"
 
     s.settings.agents_md = False
-    result = status(command_loop, "")
-    assert "| agents.md | off (global missing) |" in result
+    assert agents_md_row(command_loop) == "off (global missing)"
 
 
 def test_status_distinguishes_a_new_global_file_from_one_loaded_at_session_start(tmp_path):
@@ -850,15 +853,15 @@ def test_status_distinguishes_a_new_global_file_from_one_loaded_at_session_start
     command_loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
     path = global_agents_md_path(s.config.data_dir)
 
-    assert "| agents.md | on (global missing) |" in status(command_loop, "")
+    assert agents_md_row(command_loop) == "on (global missing)"
     (tmp_path / "data" / "AGENTS.md").write_text("# Rules\n", encoding="utf-8")
-    assert "| agents.md | on (global next session) |" in status(command_loop, "")
+    assert agents_md_row(command_loop) == "on (global next session)"
     assert f"- wizolt_global_agents_md: {path}" in ContextManager(s).environment()
     assert "auto-injected in this session: no" in ContextManager(s).environment()
 
     next_session = agents_session(tmp_path, global_text="# Rules\n")
     next_loop = CommandLoop(Agent(next_session, output_fn=lambda text: None), output_fn=lambda text: None)
-    assert "| agents.md | on (global active) |" in status(next_loop, "")
+    assert agents_md_row(next_loop) == "on (global active)"
     assert "auto-injected in this session: yes" in ContextManager(next_session).environment()
 
 

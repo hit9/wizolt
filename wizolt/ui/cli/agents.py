@@ -20,6 +20,7 @@ from wizolt.base import Text, ToolError, run_blocking
 from wizolt.session import QueuedInput, Session, SessionSnapshotStore
 from wizolt.ui.cli.modals import choice_application, picker_height, select_choice
 from wizolt.ui.cli.runtime import ScrollbackWriter, TuiRuntime
+from wizolt.ui.cli.status import STATE_ROLES
 from wizolt.ui.render import ActivityPulse, InputStyle, StatusBar, Theme
 
 if TYPE_CHECKING:
@@ -314,7 +315,7 @@ class AgentsFrontend:
             entry = displayed[uid]
             session = entry.agent.session
             state = entry.status if wide else entry.status.replace("waiting for input", "waiting")
-            state_style = {"running": "class:accent", "waiting for input": "class:warning", "failed": "class:error"}.get(entry.status, "class:muted")
+            state_style = "class:" + STATE_ROLES.get(entry.status, "muted")
             context = session.usage.context_percent(session.state.context_percent)
             marker = (" (current)" if wide else " *") if entry.agent is self.current.loop.agent else ""
             # The menu redraws on the application's existing timer, even when main is idle.

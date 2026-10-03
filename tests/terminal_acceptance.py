@@ -268,7 +268,9 @@ def test_cli_agents_switch_rebuilds_only_selected_transcript(pane):
             visible = visible_with("[reader] [yolo]")
             assert "CHILD-TASK" in "\n".join(pane.capture()), visible
         pane.send("/status")
+        visible_with("Overview")
         visible_with("completed")
+        pane.keys("Escape")
         _settled_capture(pane)
         pane.send("/agents")
         visible_with("Agents")
@@ -860,6 +862,80 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
     history = "\n".join(pane.capture())
     for marker in range(5):
         assert history.count(f"BAR-MARKER-{marker}") == 1
+
+
+def test_format_draft_and_status_tabs_survive_resizes(pane):
+    """A format draft keeps its text and keys through resizes, saves through the config, and the
+    /status view and its printed report stay single and framed as the pane changes."""
+    log = pane.path / "formats.log"
+    pane.send(f"{sys.executable} {DRIVER} 0 0 {log} formats")
+
+    def visible_containing(needle):
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            visible = pane.visible()
+            if needle in visible:
+                return visible
+            time.sleep(0.03)
+        raise AssertionError(f"missing {needle!r}:\n{visible}")
+
+    def logged(line):
+        deadline = time.monotonic() + 15
+        while line not in log.read_text():
+            assert time.monotonic() < deadline, log.read_text()
+            time.sleep(0.03)
+
+    sizes = ((100, 30), (60, 18), (80, 24), (50, 14), (120, 35))
+    visible_containing("FORMAT-MARKER")
+    log.with_suffix(".open").touch()
+    visible_containing("Colorscheme")
+    pane.keys("l", "l")
+    visible_containing("p placement")
+    pane.keys("f")
+    visible_containing("ui.statusbar.format")
+    pane.keys("e")
+    visible_containing("Ctrl-S apply")
+    pane.keys("Home")
+    pane.literal("MYBAR ")
+    visible_containing("MYBAR ")
+    for width, height in sizes:
+        pane.resize(width, height)
+        _settled_capture(pane)
+        # The draft and the keys that save or leave it stay on screen at every size.
+        visible = visible_containing("MYBAR")
+        assert "Ctrl-S apply" in visible, visible
+    pane.resize(100, 30)
+    pane.keys("C-s")
+    visible_containing("Draft applied")
+    pane.keys("Escape")
+    visible_containing("custom format, f to edit")
+    pane.keys("Enter")
+    logged("closed: statusbar.format: MYBAR ")
+
+    visible_containing("Overview")
+    pane.keys("l")
+    visible_containing("compacts at")
+    for width, height in sizes:
+        pane.resize(width, height)
+        _settled_capture(pane)
+        # One frame, its tabs and its keys, at every size; a short pane scrolls the rest.
+        visible = visible_containing("Overview")
+        assert visible.count("Overview") == 1 and visible.count("Esc close") == 1, visible
+    pane.resize(100, 30)
+    visible_containing("compacts at")
+    pane.keys("Escape")
+    logged("status view closed")
+    logged("status shown")
+    visible_containing("All requests")
+    for width, height in sizes:
+        pane.resize(width, height)
+        _settled_capture(pane)
+    # The printed report is replayed once at each width, its frame intact.
+    history = "\n".join(_settled_capture(pane))
+    assert history.count("All requests") == 1 and history.count("permissions") == 1, history
+    assert history.count("FORMAT-MARKER") == 1
+    log.with_suffix(".done").touch()
+    logged("driver exited")
 
 
 @pytest.mark.parametrize("vertical", [False, True], ids=["width", "height"])

@@ -1,9 +1,10 @@
 """`/theme`: one tabbed picker for how wizolt looks, and the direct forms that set one thing by name.
 
-The tabs are colors, diff colors, statusbar, divider layout/sweep, and input prefixes.
-Each row the cursor lands on is applied at once, so the screen around the picker is the preview;
-Divider rows preview without choosing: Space pins a layout or sweep, and Tab jumps groups.
-Enter saves the choices across tabs, and Esc restores all of them.
+The tabs are colors, diff colors, statusbar layout/placement, divider layout/sweep, and input
+prefixes. Each row the cursor lands on is applied at once, so the screen around the picker is the
+preview; bar rows preview without choosing: Space pins a choice, Tab jumps groups, and `f` opens
+the bar's format to view, copy or edit. Enter saves the choices across tabs, and Esc restores all
+of them.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ import contextlib
 import copy
 import shutil
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit.formatted_text import StyleAndTextTuples
@@ -24,8 +25,9 @@ from prompt_toolkit.utils import get_cwidth
 from wizolt.agentsmd import display_path
 from wizolt.base import SELECTION_BACK, ConfigError, Text
 from wizolt.config import ConfigFile
-from wizolt.ui.bars import PRESETS
+from wizolt.ui.bars import PRESETS, status_layout, status_source
 from wizolt.ui.cli import bars
+from wizolt.ui.cli.formats import FormatPanel
 from wizolt.ui.cli.modals import picker_height
 from wizolt.ui.render import InputStyle, StatusBar, Theme, UiPrinter
 from wizolt.ui.themes import DIFF_STYLES
@@ -41,6 +43,9 @@ TITLES = ("Colorscheme", "Diff", "StatusBar", "Divider", "Input")
 LEGEND = "h/l tab · j/k move · / search · Enter save · Esc cancel"
 # The row that keeps a layout no preset names: the user's own template, or an older preset.
 CUSTOM = "custom"
+# Where a statusbar preset puts its usage group. Not a setting: each is a different format.
+PLACEMENTS = {"left": "All left", "split": "Left / Right"}
+BAR_FORMATS = KINDS[2:5]  # the bar settings a format string holds
 _SAVE = object()
 
 
@@ -157,14 +162,19 @@ class AppearancePicker:
         input_name = (
             self.input_before.prompt.removeprefix("preset:") if self.input_before.prompt.startswith("preset:") and self.input_before.running is None else CUSTOM
         )
+        placement = status_layout(self.layout_before.sources["statusbar"])
         self.original = {
             "theme": theme,
             "diff": Theme.selected_diff_style(),
-            **{kind: self.preset(kind) for kind in KINDS[2:5]},
+            **{kind: self.preset(kind) for kind in BAR_FORMATS},
+            "placement": CUSTOM if placement is None else "split" if placement[1] else "left",
             "input": input_name,
             **{kind + "_theme": Theme.selected_bar_theme(kind) for kind in ("statusbar", "divider")},
         }
         self.selected = dict(self.original)
+        # The formats behind `custom` rows: what was saved, or a draft accepted in the format panel.
+        self.custom = {kind: self.layout_before.sources[kind] for kind in BAR_FORMATS if self.original[kind] == CUSTOM}
+        self.format: FormatPanel | None = None
         self.tabs = TabbedViewState(TITLES)
         self.height = picker_height()
         self.width = shutil.get_terminal_size((80, 24)).columns
@@ -177,11 +187,56 @@ class AppearancePicker:
 
     def preset(self, kind: str) -> str:
         source = self.layout_before.sources[kind]
+        if kind == "statusbar":
+            placement = status_layout(source)
+            return CUSTOM if placement is None else placement[0]
         name = source.removeprefix("preset:") if source.startswith("preset:") else ""
         return name if name in self.presets(kind) else CUSTOM
 
-    def source(self, kind: str, name: str) -> str:
-        return self.layout_before.sources[kind] if name == CUSTOM else "preset:" + name
+    def source(self, kind: str, chosen: Mapping[str, str] | None = None) -> str:
+        """The format a selection (the current one by default) gives one bar setting."""
+        chosen = chosen or self.selected
+        name = chosen[kind]
+        if name == CUSTOM:
+            return self.custom[kind]
+        if kind == "statusbar":
+            return status_source(name, chosen["placement"] == "split")
+        return "preset:" + name
+
+    def choice(self, setting: str, name: str) -> dict[str, str]:
+        """The selection with `setting` set to `name`. Placement is one toggle for whichever preset
+        is shown, highlighted or chosen; only a custom format has none, and leaving one for a
+        preset starts with both groups on the left."""
+        chosen = {**self.selected, setting: name}
+        if setting == "statusbar" and (name == CUSTOM or self.selected["placement"] == CUSTOM):
+            chosen["placement"] = CUSTOM if name == CUSTOM else "left"
+        return chosen
+
+    def accept_format(self, kind: str, source: str) -> None:
+        """Select an edited format: as the preset and placement it spells, if any, else as custom."""
+        if kind == "statusbar" and (placement := status_layout(source)) is not None:
+            self.selected.update(statusbar=placement[0], placement="split" if placement[1] else "left")
+        elif kind == "divider" and (name := next((name for name in self.presets(kind) if source in ("preset:" + name, PRESETS[kind][name])), None)):
+            self.selected[kind] = name
+        else:
+            self.custom[kind] = source
+            self.selected[kind] = CUSTOM
+            if kind == "statusbar":
+                self.selected["placement"] = CUSTOM
+        self.bar_focus[kind] = kind + ":" + self.selected[kind]
+        self.layout.configure({kind: self.source(kind)}, Theme.bar_styles)
+
+    def open_format(self, kind: str) -> None:
+        """The format panel shows the selection, so the preview leaves any merely highlighted row."""
+        self.layout.configure({group: self.source(group) for group in self.groups(kind) if group in BAR_FORMATS}, Theme.bar_styles)
+        self.format = FormatPanel(
+            kind,
+            lambda: self.source(kind),
+            self.layout_before.sources[kind],
+            apply=lambda source: self.layout.configure({kind: source}, Theme.bar_styles),
+            accept=lambda source: self.accept_format(kind, source),
+            preview=(lambda: bars.preview(self.loop, "divider", self.started)) if kind == "divider" else None,
+        )
 
     def kind(self) -> str:
         return TAB_KINDS[self.tabs.tab]
@@ -220,14 +275,16 @@ class AppearancePicker:
                     if self.selected[setting] not in presets:
                         presets += (self.selected[setting],)
                 else:
-                    presets = self.presets(setting) + ((CUSTOM,) if self.original[setting] == CUSTOM else ())
+                    presets = self.presets(setting) + ((CUSTOM,) if setting in self.custom else ())
                 for name in presets:
                     row = setting + ":" + name
                     choices.append(row)
                     label = "inherit (follows Colorscheme)" if name == "inherit" else name
                     if name == CUSTOM and not setting.endswith("_theme"):
-                        source = self.layout_before.sources[setting]
+                        source = self.custom[setting]
                         label = f"current ({source.removeprefix('preset:')})" if source.startswith("preset:") else "custom (current)"
+                        if source != self.layout_before.sources[setting]:
+                            label = "custom (edited)"
                     state.labels[row] = ("* " if name == self.selected[setting] else "  ") + label
             state.choices = tuple(choices)
         options = state.enabled()
@@ -245,8 +302,6 @@ class AppearancePicker:
             Theme.set_bar_theme(kind.removesuffix("_theme"), name)
         elif kind == "input":
             apply_input(self.loop, self.input_style(name))
-        else:
-            self.layout.configure({kind: self.source(kind, name)}, Theme.bar_styles)
         if self.loop.presentation.tui is not None:
             self.loop.presentation.tui.invalidate()
 
@@ -331,6 +386,11 @@ class AppearancePicker:
         if self.width < 52:
             titles = ("Color", "Diff", "Bar", "Line", "Input")
         tabs: StyleAndTextTuples = [("", "  "), *UiPrinter.tab_segments(titles, self.tabs.tab), ("", "\n")]
+        if self.format is not None:
+            # The panel keeps its keys first and its draft at the cursor at any height.
+            rows = self.format.rows(max(1, self.width - 4), max(1, self.height - 1))
+            parts = [*tabs, *(fragment for row in rows for fragment in (("", "  "), *row, ("", "\n")))]
+            return [*parts, ("", "\n" * max(0, self.height - 1 - len(rows)))]
         if self.height < (11 if self.input_edit is not None else 9):
             # At a few rows there is no room for a list plus a sample. Keep the focused
             # value and its controls visible so a resize cannot strand the user in a menu.
@@ -343,7 +403,7 @@ class AppearancePicker:
                 focused = state.labels.get(choice, choice) if choice is not None else "no matches"
                 keys = "↑↓ move · h/l tab · Enter save · Esc cancel"
                 if self.kind() in self.bar_focus:
-                    keys = "Space choose · Tab group · Enter save · Esc cancel"
+                    keys = "Space choose · Tab group · f format · Enter save · Esc cancel"
                 elif self.kind() == "input":
                     keys = "↑↓ move · e edit · Enter save · Esc cancel"
             rows = [("class:choice.selected", "  " + focused)]
@@ -395,7 +455,9 @@ class AppearancePicker:
             self.preview(self.kind(), framed=framed, title=preview_title),
             preview_title=" " if framed else Text.clip_width(preview_title, self.width - 2),
             keys=(
-                "h/l tabs · j/k move · Tab group · Space choose · Enter save · Esc cancel"
+                "h/l tabs · j/k move · Tab group · Space choose · "
+                + ("p placement · " if self.kind() == "statusbar" else "")
+                + "f format · Enter save · Esc cancel"
                 if self.kind() in self.bar_focus
                 else "h/l tab · j/k move · e edit · Enter save · Esc cancel"
                 if self.kind() == "input"
@@ -408,11 +470,20 @@ class AppearancePicker:
         if self.kind() in self.bar_focus:
             # Chosen values remain visible even when the cursor scrolls into the other group.
             kind = self.kind()
-            summary = f"  Layout: {self.selected[kind]}"
+            muted = Theme.fg("muted")
+            summary: StyleAndTextTuples = [(muted, f"  Layout: {self.selected[kind]} · ")]
             if kind == "divider":
-                summary += f" · Sweep: {self.selected['sweep']}"
-            summary += f" · Colors: {self.selected[kind + '_theme']}"
-            fragments.insert(2, (Theme.fg("muted"), Text.clip_width(summary, self.width) + "\n"))
+                summary.append((muted, f"Sweep: {self.selected['sweep']} · "))
+            elif self.selected["placement"] == CUSTOM:
+                # A template no preset produces is never rearranged; its groups move in the format.
+                summary.append((muted, "custom format, f to edit · "))
+            else:
+                # Placement is a toggle on this line, not a list: p switches it.
+                for name, label in PLACEMENTS.items():
+                    summary.append(("class:tab.active" if name == self.selected["placement"] else "class:tab.inactive", f" {label} "))
+                summary.append((muted, " p · "))
+            summary.append((muted, f"Colors: {self.selected[kind + '_theme']}"))
+            fragments[2:2] = [*StatusBar.clip_fragments(summary, self.width), ("", "\n")]
         # Keep the list's filter text beside the tabs and its blank row below them.
         gap = [("", "\n")] if framed else []
         parts = [*tabs[:-1], fragments[0], *gap, legend, fragments[1], *gap, *fragments[2:]]
@@ -429,16 +500,22 @@ class AppearancePicker:
         return (kind, "sweep", kind + "_theme") if kind == "divider" else (kind, kind + "_theme")
 
     def preview_bar(self, kind: str, row: str) -> None:
+        """Preview the highlighted row as if it were chosen, with the other groups as they are."""
         self.bar_focus[kind] = row
-        setting, name = row.split(":", 1)
-        groups = self.groups(kind)
-        self.apply(kind + "_theme", name if setting == kind + "_theme" else self.selected[kind + "_theme"])
-        sources = {group: self.source(group, name if group == setting else self.selected[group]) for group in groups if not group.endswith("_theme")}
-        self.layout.configure(sources, Theme.bar_styles)
+        chosen = self.choice(*row.split(":", 1))
+        self.apply(kind + "_theme", chosen[kind + "_theme"])
+        self.layout.configure({group: self.source(group, chosen) for group in self.groups(kind) if group in BAR_FORMATS}, Theme.bar_styles)
 
     def handle_key(self, key: str, data: str = "") -> Any:
         if key == "c-c":
             return KeyboardInterrupt()
+        if key == "any" and len(data) == 1 and data.isprintable():
+            key = data  # a typed letter that has no binding of its own
+        if self.format is not None:
+            if not self.format.handle_key(key, data):
+                self.format = None
+                self.preview_bar(self.kind(), self.bar_focus[self.kind()])
+            return TUI_MODAL_PENDING
         if self.input_edit is not None:
             if key == "escape":
                 self.input_edit = None
@@ -467,7 +544,14 @@ class AppearancePicker:
             return TUI_MODAL_PENDING
         state = self.current_list()
         kind, before = self.kind(), state.selected_choice()
-        if kind == "input" and not state.searching and (key == "e" or (key == "any" and data == "e")):
+        if kind in self.bar_focus and not state.searching and key == "f":
+            self.open_format(kind)
+            return TUI_MODAL_PENDING
+        if kind == "statusbar" and not state.searching and key == "p" and self.selected["placement"] != CUSTOM:
+            self.selected["placement"] = "left" if self.selected["placement"] == "split" else "split"
+            self.preview_bar(kind, self.bar_focus[kind])
+            return TUI_MODAL_PENDING
+        if kind == "input" and not state.searching and key == "e":
             style = self.input_style(self.selected["input"])
             self.input_edit = [style.prefix(), style.prefix(running=True)]
             self.input_field = 0
@@ -484,8 +568,8 @@ class AppearancePicker:
             return TUI_MODAL_PENDING
         if kind in self.bar_focus and not state.searching and before is not None:
             setting, name = before.split(":", 1)
-            if key in {"space", " "} or (key == "any" and data == " "):
-                self.selected[setting] = name
+            if key in {"space", " "}:
+                self.selected = self.choice(setting, name)
                 self.preview_bar(kind, before)
                 return TUI_MODAL_PENDING
             if key in {"tab", "s-tab"}:
@@ -524,6 +608,13 @@ class AppearancePicker:
         lines: list[str] = []
         for kind in ("theme", "diff", "statusbar_theme", "divider_theme", *KINDS[2:6]):
             name = self.selected[kind]
+            if kind in BAR_FORMATS:
+                # A bar is saved when its format text changes. One the picker merely recognizes,
+                # such as a saved placement template, stays exactly as it was written.
+                source = self.source(kind)
+                if source != self.layout_before.sources[kind]:
+                    lines.append(bars.select_layout(self.loop, kind, source))
+                continue
             if name == self.original[kind] and (kind != "input" or self.input_style(name) == self.input_before):
                 continue
             if kind == "theme":
@@ -534,8 +625,6 @@ class AppearancePicker:
                 lines.append(bars.select_theme(self.loop, kind.removesuffix("_theme"), name))
             elif kind == "input":
                 lines.append(save_input(self.loop, self.input_style(name)))
-            else:
-                lines.append(bars.select_layout(self.loop, kind, self.source(kind, name)))
         return lines
 
 

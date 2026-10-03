@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+### Added
+
+- `/status` opens a tabbed view inside one frame: **Overview** (agent, model, a context meter
+  and one-line usage totals) first, then **Context**, **Usage** and **Session**. The Context tab
+  breaks the next request's locally estimated tokens down by part (system, tool definitions, MCP
+  tools, instructions, skills, messages) on a bar measured against the compaction threshold, and
+  keeps the estimate apart from the provider-reported reading. Each tab is one table: a single
+  label column, numbers right-aligned together, and a heading only where a tab holds several
+  groups. Values take the theme's roles (the statusbar's colors for model, context and cache,
+  number colors for counts) against muted labels, inside a frame in the theme's second accent.
+  Without an interactive terminal it prints every tab in the same frame, and that report reflows
+  when the pane resizes.
+- `/theme`'s StatusBar tab moves usage between **All left** and **Left / Right** with **p**, for
+  the highlighted layout and any you choose next. The choice is saved only as
+  `ui.statusbar.format`: the preset's name, or its full template for Left / Right. Powerline and
+  lualine joins turn toward their neighbors on either side.
+- **f** on the StatusBar or Divider tab shows the selected format and what a preset stands for,
+  copies it or a TOML block through the system clipboard command (reporting when none worked), and
+  edits it in a multiline draft previewed with the real renderer. Invalid drafts report a line and
+  column and never reach the config; **Ctrl-S** keeps a draft and **Esc** discards it.
+
+### Changed
+
+- Built-in statusbar presets now default to **All left**. `split`, `monitor`, `blocks`, `vim`,
+  `lualine` and `powerline` previously kept usage at the right edge; press **p** in `/theme`
+  to restore that. Formats that no preset produces are recognized as custom and never rewritten.
+- Template errors for an unmatched `{`, `}`, `[` or `]` now name their line and column.
+- Internal: statusbar presets are built from their two groups by one placement function, and
+  `/status` collects a single snapshot before laying it out. The unused markdown "compact" answer
+  mode and `progress_bar` helper are removed.
+
+### Documentation
+
+- Describe the tabbed `/status`, statusbar placement and the format panel; redraw the `/status`
+  and cache term-shots and the statusbar figure.
+
+### Tests
+
+- Cover placement round trips through the format alone, join direction, the format panel's copy,
+  edit, validation and cancel paths, the clipboard commands, and the `/status` view. A new shared
+  tmux/Zellij scenario resizes a format draft, the `/status` view and its printed report.
+
 ## 0.71.3 - 2026-10-03
 
 ### Fixed

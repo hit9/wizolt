@@ -194,7 +194,9 @@ class ZellijPane:
     def keys(self, *keys):
         sequences = {
             "C-c": b"\x03",
+            "C-s": b"\x13",
             "C-u": b"\x15",
+            "Home": b"\x1b[H",
             "Enter": b"\r",
             "Escape": b"\x1b",
             "Space": b" ",

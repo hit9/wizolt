@@ -326,7 +326,7 @@ class TuiApp:
 
     ESCAPE_FLUSH: ClassVar[float] = 0.05  # seconds a lone Esc byte waits (see _build_application)
     MODAL_KEYS: ClassVar[tuple[str, ...]] = tuple(
-        "j k h l g G up down left right tab s-tab enter escape q r pagedown pageup c-d c-u c-n c-p c-o backspace c-h /".split()  # noqa: SIM905 - compact key table.
+        "j k h l g G up down left right tab s-tab enter escape q r pagedown pageup c-d c-u c-n c-p c-o backspace c-h / home end delete c-a c-e c-s".split()  # noqa: SIM905 - compact key table.
     )
     # Frame budget for the running divider. Motion is smooth only while a moving highlight advances
     # about one cell per frame, so this rate is what `View.QUEUE_SWEEP_CELLS_PER_SEC` follows.
@@ -1688,6 +1688,8 @@ class TuiApp:
         for number in range(1, 10):
             bindings.add(str(number), filter=modal, eager=True)(lambda event, number=number: self.dispatch_modal_key(str(number), event.data))
         bindings.add(Keys.Any, filter=modal)(lambda event: self.dispatch_modal_key("any", event.data))
+        # A modal editing text (the /theme format draft) receives a paste whole; lists ignore it.
+        bindings.add(Keys.BracketedPaste, filter=modal)(lambda event: self.dispatch_modal_key("paste", event.data))
 
         def completes_escape_chord(event) -> bool:
             """Whether this key press finishes the Esc+newline chord.

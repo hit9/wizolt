@@ -304,12 +304,12 @@ async def test_hook_that_ignores_a_large_stdin_is_fine(tmp_path):
 
 def test_status_counts_active_hooks(tmp_path):
     from wizolt.ui.cli import CommandLoop
-    from wizolt.ui.cli.commands import status
+    from wizolt.ui.cli.status import StatusReport
 
     s = _hooks(session(tmp_path), {**_hook("PreToolUse", "true"), **_hook("Stop", "true")})
     loop = CommandLoop(Agent(s, output_fn=lambda _text: None), output_fn=lambda _text: None)
 
-    assert "hooks `2`" in status(loop, "")
+    assert dict(StatusReport.of(loop).snapshot.activity.rows)["hooks"] == "2"
 
 
 def test_worker_keeps_tool_hooks_only(tmp_path):

@@ -191,6 +191,25 @@ class ContextManager:
         self.session.state.context_percent = min(100, tokens * 100 // self.request_token_budget())
         return tokens
 
+    def breakdown(self, base_system: str) -> list[tuple[str, int]]:
+        """The next request's parts with their locally estimated tokens, in request order.
+
+        The parts are disjoint, so they add up to their own total. That total is neither the wire
+        estimate nor a provider's count: the wire adds framing, and a provider tokenizes."""
+
+        def text(content: str) -> int:
+            return self.estimated_tokens([{"role": "user", "content": content}]) if content else 0
+
+        conversation = [*self.session.messages, *self.session._active_turn_messages]
+        return [
+            ("system", self.estimated_tokens(self.model_header(base_system)[:2])),
+            ("tools", self.estimated_tokens(Tool.resolved_schemas(self.session))),
+            ("mcp tools", text(self.mcp_tools_context())),
+            ("instructions", text(self.instructions_context())),
+            ("skills", text(self.skills_context())),
+            ("messages", self.estimated_tokens(self.dedup_skill_loads(self.dedup_mcp_describes(conversation)))),
+        ]
+
     async def prepare_messages(
         self, model: ModelClient, base_system: str, turn_messages: list[Json] | None = None, tools: list[Json] | None = None
     ) -> list[Json]:

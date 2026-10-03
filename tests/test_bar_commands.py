@@ -9,11 +9,12 @@ from prompt_toolkit.document import Document
 from test_command_ui import ModalHarness
 from tui_harness import loop
 
-from wizolt.ui.bars import DIVIDER_PRESETS
-from wizolt.ui.cli.appearance import theme_command
+from wizolt.ui.bars import DIVIDER_PRESETS, STATUS_PRESETS, status_template
+from wizolt.ui.cli.appearance import AppearancePicker, theme_command
 from wizolt.ui.cli.commands import COMMAND_NAMES
 from wizolt.ui.cli.view import CommandCompleter
 from wizolt.ui.render import InputStyle, Theme
+from wizolt.utils.clipboard import Clipboard
 
 
 class BarModal(ModalHarness):
@@ -488,8 +489,6 @@ async def test_statusbar_powerline_and_warning_colors_are_scoped(command_loop):
 
 
 async def test_leaving_color_preview_restores_custom_highlights_and_keeps_focus(command_loop):
-    from wizolt.ui.cli.appearance import AppearancePicker
-
     command_loop.session.config.ui = {
         "themes": {"mine": {"base": "forest", "highlights": {"badge": {"fg": "#123456"}}}},
         "statusbar": {"theme": "mine", "format": "[badge]{model}[/]"},
@@ -507,5 +506,139 @@ async def test_leaving_color_preview_restores_custom_highlights_and_keeps_focus(
         assert any("#123456" in style for style, _ in command_loop.presentation.status_bar.fragments())
         picker.handle_key("h")
         assert picker.current_list().selected_choice() == focused
+    finally:
+        picker.restore()
+
+
+def frames_text(modal):
+    return ["".join(fragment[1] for fragment in frame) for frame in modal.frames]
+
+
+def configure_statusbar(command_loop, source):
+    command_loop.session.config.ui = {"statusbar": {"format": source}}
+    command_loop.configure_theme()
+
+
+async def test_statusbar_placement_is_saved_as_the_format_alone(command_loop):
+    modal = command_loop.presentation.tui = BarModal(["l", "l", "p", "enter"])
+    assert "statusbar.format:" in await theme_command(command_loop, "")
+    assert saved(command_loop)["ui"] == {"statusbar": {"format": status_template("default", True)}}
+    assert any("Left / Right" in frame and "All left" in frame and "p placement" in frame for frame in frames_text(modal))
+
+    # Read back from the saved format; moving the groups together restores the preset reference.
+    configure_statusbar(command_loop, saved(command_loop)["ui"]["statusbar"]["format"])
+    command_loop.presentation.tui = BarModal(["l", "l", "p", "enter"])
+    await theme_command(command_loop, "")
+    assert saved(command_loop)["ui"] == {"statusbar": {"format": "preset:default"}}
+
+
+async def test_a_newly_chosen_preset_keeps_the_placement(command_loop):
+    configure_statusbar(command_loop, status_template("powerline", True))
+    # Recognized, so nothing is rewritten while it is left alone.
+    command_loop.presentation.tui = BarModal(["l", "l", "enter"])
+    assert await theme_command(command_loop, "") is None
+    assert "ui" not in saved(command_loop)
+
+    command_loop.presentation.tui = BarModal(["l", "l", "k", " ", "enter"])
+    await theme_command(command_loop, "")
+    assert saved(command_loop)["ui"] == {"statusbar": {"format": status_template("lualine", True)}}
+
+
+async def test_a_custom_format_offers_no_placement_and_is_never_rewritten(command_loop):
+    configure_statusbar(command_loop, "{model}{>}ctx {context.percent}%")
+    modal = command_loop.presentation.tui = BarModal(["l", "l", "p", "enter"])
+    assert await theme_command(command_loop, "") is None
+    assert "ui" not in saved(command_loop)
+    assert command_loop.presentation.status_bar.layout.sources["statusbar"] == "{model}{>}ctx {context.percent}%"
+    assert any("custom format, f to edit" in frame and "Left / Right" not in frame for frame in frames_text(modal))
+
+
+async def test_format_panel_copies_the_format_and_a_toml_snippet(command_loop, monkeypatch):
+    copied = []
+    monkeypatch.setattr(Clipboard, "copy", staticmethod(copied.append))
+    modal = command_loop.presentation.tui = BarModal(["l", "l", "f", "c", "t", "escape", "escape"])
+    assert await theme_command(command_loop, "") is None
+    assert copied[0] == "preset:default"
+    assert tomllib.loads(copied[1]) == {"ui": {"statusbar": {"format": "preset:default"}}}
+    frames = frames_text(modal)
+    # Which value, and what the preset stands for, are both on screen.
+    assert any("ui.statusbar.format · selected, saved" in frame and "expands to" in frame for frame in frames)
+    assert any("Copied a TOML snippet for ui.statusbar.format." in frame for frame in frames)
+
+
+async def test_format_panel_reports_a_failed_copy_and_leaves_the_text_to_select(command_loop, monkeypatch):
+    monkeypatch.setattr(Clipboard, "copy", staticmethod(lambda _text: "no clipboard command found (pbcopy)"))
+    modal = command_loop.presentation.tui = BarModal(["l", "l", "f", "t", "escape", "escape"])
+    await theme_command(command_loop, "")
+    last = frames_text(modal)[-3]
+    assert "Not copied: no clipboard command found (pbcopy). Select the text above" in last
+    assert 'format = "preset:default"' in last and "Copied" not in last
+
+
+async def test_an_edited_format_previews_and_saves_through_the_config(command_loop):
+    edit = ["l", "l", "f", "e", "home", "X", " ", "c-s", "escape", "enter"]
+    command_loop.presentation.tui = BarModal(edit)
+    assert "statusbar.format:" in await theme_command(command_loop, "")
+    assert saved(command_loop)["ui"] == {"statusbar": {"format": "X " + STATUS_PRESETS["default"]}}
+    assert "".join(text for _, text in command_loop.presentation.status_bar.fragments()).startswith("X ")
+
+
+async def test_an_unchanged_edit_keeps_the_preset_reference(command_loop):
+    command_loop.presentation.tui = BarModal(["l", "l", "f", "e", "c-s", "escape", "enter"])
+    assert await theme_command(command_loop, "") is None
+    assert "ui" not in saved(command_loop)
+
+
+async def test_an_invalid_draft_reports_where_and_never_reaches_the_config(command_loop):
+    layout = command_loop.presentation.status_bar.layout
+    keys = ["l", "l", "f", "e", "home", "]", "c-s", "escape", "escape", "escape"]
+    modal = command_loop.presentation.tui = BarModal(keys)
+    assert await theme_command(command_loop, "") is None
+    frames = frames_text(modal)
+    assert any("ui.statusbar.format: line 1, column 1: unmatched delimiter" in frame for frame in frames)
+    assert any("Fix the errors above before applying." in frame for frame in frames)
+    assert "Draft discarded." in frames[-3]
+    assert command_loop.presentation.status_bar.layout is layout and layout.sources["statusbar"] == "preset:default"
+    assert "ui" not in saved(command_loop)
+
+
+async def test_format_editor_keeps_its_draft_keys_and_preview_through_resizes(command_loop, monkeypatch):
+    picker = AppearancePicker(command_loop, 0)
+    try:
+        for key in ("l", "l", "l", "f", "e", "end", "Z"):  # the divider's format
+            picker.handle_key(key, key if len(key) == 1 else "")
+        assert picker.format is not None and picker.format.draft is not None
+        draft = picker.format.draft.text
+        for height in (30, 12, 6, 3, 2, 30):
+            monkeypatch.setattr("wizolt.ui.cli.appearance.picker_height", lambda height=height: height)
+            text = "".join(fragment[1] for fragment in picker.fragments())
+            assert text.count("\n") + 1 <= height + 1
+            assert "Ctrl-S apply · Esc discard" in text
+            if height >= 12:
+                assert "Running (preview)" in text and "Z" in text  # the real renderer, beside the draft
+        assert picker.format.draft.text == draft and draft.endswith("Z")
+        picker.handle_key("c-s")
+        assert picker.source("divider") == DIVIDER_PRESETS["comet"] + "Z"
+    finally:
+        picker.restore()
+
+
+async def test_placement_applies_to_the_highlighted_preset_and_stays_when_choosing(command_loop):
+    """Regression: with `blocks` chosen and `default` only highlighted, `p` changed nothing on
+    screen; the preview of a highlighted preset was forced to All left."""
+    configure_statusbar(command_loop, "preset:blocks")
+    picker = AppearancePicker(command_loop, 0)
+    try:
+        for key in ("l", "l", "g"):  # the StatusBar tab, cursor on `default`
+            picker.handle_key(key, key)
+        assert picker.layout.sources["statusbar"] == "preset:default"
+        picker.handle_key("p", "p")
+        assert picker.layout.sources["statusbar"] == status_template("default", True)
+        picker.handle_key("j", "j")  # browsing keeps the placement
+        assert picker.layout.sources["statusbar"] == status_template("minimal", True)
+        picker.handle_key(" ", " ")  # and so does choosing
+        assert picker.source("statusbar") == status_template("minimal", True)
+        picker.handle_key("p", "p")
+        assert picker.layout.sources["statusbar"] == picker.source("statusbar") == "preset:minimal"
     finally:
         picker.restore()

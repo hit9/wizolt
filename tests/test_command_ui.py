@@ -16,14 +16,15 @@ from wizolt.model import ModelClient
 from wizolt.ui.cli.commands import (
     api,
     config,
-    status,
 )
+from wizolt.ui.cli.status import StatusReport
 from wizolt.ui.tui import TUI_MODAL_PENDING
 
 
 async def test_status_ends_with_the_documentation_link(tmp_path):
     """The command list lives in the docs now, so every /status ends with the one place to read it."""
-    assert status(loop(tmp_path), "").splitlines()[-1] == "| docs | https://wizolt.readthedocs.io |"
+    last = StatusReport.of(loop(tmp_path)).text().splitlines()[-2]  # the row above the frame's edge
+    assert last.strip(" │").split() == ["docs", "https://wizolt.readthedocs.io"]
 
 
 async def test_image_route_notice_matches_view_image_tree_vocabulary(tmp_path):

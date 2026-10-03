@@ -5,7 +5,19 @@ from itertools import pairwise
 import pytest
 from prompt_toolkit.utils import get_cwidth
 
-from wizolt.ui.bars import DIVIDER_PRESETS, FIELDS, STATUS_PRESETS, SWEEPS, Expression, Sweep, Template
+from wizolt.ui.bars import (
+    DIVIDER_PRESETS,
+    FIELDS,
+    STATUS_LAYOUTS,
+    STATUS_PRESETS,
+    SWEEPS,
+    Expression,
+    Sweep,
+    Template,
+    status_layout,
+    status_source,
+    status_template,
+)
 
 
 def text(parts):
@@ -271,19 +283,68 @@ def test_single_sided_status_presets_do_not_spread_across_the_terminal(name):
     assert text(template.render(values, 200, styles)) == text(template.render(values, 300, styles))
 
 
+@pytest.mark.parametrize("split", [True, False])
 @pytest.mark.parametrize("name", ["split", "monitor", "blocks", "vim", "lualine", "powerline"])
-def test_segmented_presets_keep_left_identity_before_right_metrics_on_narrow_terminals(name):
+def test_segmented_presets_keep_identity_before_metrics_on_narrow_terminals(name, split):
     from wizolt.ui.render import Theme
 
-    template = Template("preset:" + name, STATUS_PRESETS)
+    template = Template(status_template(name, split))
     values = dict.fromkeys(FIELDS, 0)
     values.update(model="model", provider="test", reasoning="high", **{"agent.name": "main", "context.percent": 42, "mcp.label": "mcp 3"})
     for width in (20, 30, 40, 80, 160):
         rendered = text(template.render(values, width, Theme.bar_styles(template.styles)))
-        assert get_cwidth(rendered) == width
+        # The right edge is reached by the usage group, or by a band preset's surface.
+        assert get_cwidth(rendered) == width if split or name not in ("blocks", "powerline") else get_cwidth(rendered) <= width
         assert "main" in rendered and "model" in rendered
         if width >= 80:
             assert "ctx 42%" in rendered
+    # Together, the usage group follows the details; apart, the row's free space parts them.
+    assert (rendered.index("ctx 42%") - rendered.index("model") > 80) == split
+
+
+@pytest.mark.parametrize("name", STATUS_LAYOUTS)
+def test_status_placements_round_trip_through_the_format_alone(name):
+    assert status_source(name, False) == "preset:" + name
+    for split in (False, True):
+        assert status_layout(status_source(name, split)) == (name, split)
+    # The template of the default placement is recognized too, without becoming a preset reference.
+    assert status_layout(STATUS_PRESETS[name]) == (name, False)
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["{model}{>}ctx {context.percent}%", "preset:unknown", STATUS_PRESETS["powerline"] + " ", STATUS_PRESETS["default"].replace("ctx", "context")],
+)
+def test_templates_no_preset_produces_have_no_placement(source):
+    assert status_layout(source) is None
+
+
+@pytest.mark.parametrize("split", [True, False])
+@pytest.mark.parametrize("name", ["powerline", "lualine"])
+def test_moved_segments_keep_their_joins_connected(name, split):
+    from wizolt.ui.render import Theme
+
+    template = Template(status_template(name, split))
+    styles = Theme.bar_styles(template.styles)
+    values = dict.fromkeys(FIELDS, 0)
+    values.update(model="model", provider="test", reasoning="high", **{"agent.name": "main", "context.percent": 42, "mcp.label": "mcp 3", "skills.count": 2})
+    parts = template.render(values, 160, styles)
+
+    def background(style):
+        return next((part[3:] for part in reversed(style.split()) if part.startswith("bg:")), None)
+
+    # The usage group opens with the MCP segment in lualine and is the context alone in powerline.
+    group = next(index for index, (_, value) in enumerate(parts) if ("mcp 3" if name == "lualine" else "ctx 42%") in value)
+    joins = [index for index, (_, value) in enumerate(parts) if value in ("", "")]
+    assert len(joins) >= 4
+    for index in joins:
+        style, glyph = parts[index]
+        # Arrows point away from the segment they close: after it on the left, before it on the
+        # right edge. Either way the arrow is drawn in that segment's background.
+        on_right_edge = split and index >= group - 1
+        assert glyph == ("" if on_right_edge else "")
+        closed = parts[index + 1] if on_right_edge else parts[index - 1]
+        assert f"fg:{background(closed[0])}" in style
 
 
 @pytest.mark.parametrize("agent", ("main", "reviewer"))
@@ -311,22 +372,23 @@ def test_context_meter_fills_to_the_nearest_cell():
         assert rendered == "m " + "▰" * filled + "▱" * (5 - filled) + f" {percent}%"
 
 
-def test_blocks_join_rectangles_without_unpainted_gaps():
+@pytest.mark.parametrize("split", [True, False])
+def test_blocks_join_rectangles_without_unpainted_gaps(split):
     from wizolt.ui.render import Theme
 
-    template = Template("preset:blocks", STATUS_PRESETS)
+    template = Template(status_template("blocks", split))
     styles = Theme.bar_styles(template.styles)
     values = {"agent.name": "main", "model": "model", "provider": "test", "reasoning": "high", "context.percent": 37, "cache.percent": 88}
     parts = template.render(values, 120, styles)
-    # Only the alignment space between left and right groups is transparent.
+    # Only the alignment space between left and right groups is transparent; together, none is.
     gaps = [(style, value) for style, value in parts if value.isspace() and "bg:" not in style]
-    assert len(gaps) == 1 and len(gaps[0][1]) > 1
+    assert len(gaps) == split and all(len(value) > 1 for _, value in gaps)
     # Identity, yolo and counts drop as whole units; none of them leaves an unpainted hole or drifts.
     values.update(yolo=True, **{"agents.count": 4, "agents.running": 2})
     for width in range(121):
         parts = template.render(values, width, styles)
-        assert get_cwidth(text(parts)) == width
-        assert sum(value.isspace() and "bg:" not in style for style, value in parts) <= 1
+        assert get_cwidth(text(parts)) == width if split else get_cwidth(text(parts)) <= width
+        assert sum(value.isspace() and "bg:" not in style for style, value in parts) <= split
 
 
 @pytest.mark.parametrize(

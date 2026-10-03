@@ -14,8 +14,8 @@ from wizolt.base import SESSION_EVENT_KEY, ToolError
 from wizolt.skill.library import SkillLibrary
 from wizolt.tools import TOOL_REGISTRY, JobTool, Tool
 from wizolt.tools.memory import ContextTool, NoteTool
-from wizolt.ui.cli import commands
 from wizolt.ui.cli.loop import CommandLoop
+from wizolt.ui.cli.status import StatusReport
 
 
 def test_context_tool_is_registered(tmp_path):
@@ -232,10 +232,10 @@ def test_status_recomputes_context_before_the_first_request(tmp_path):
     agent = Agent(s, output_fn=lambda _text: None)
     loop = CommandLoop(agent, input_fn=lambda _prompt: "", output_fn=lambda _text: None)
 
-    status = commands.status(loop, "")
+    status = StatusReport.of(loop)
     percent = json.loads(ContextTool(s, [{"action": "remaining"}]).call())["percent"]
     assert percent > 0
-    assert f"({percent}%)" in status
+    assert status.snapshot.context.percent == percent
 
 
 def test_status_reports_the_last_request_context_fill(tmp_path):
@@ -246,7 +246,7 @@ def test_status_reports_the_last_request_context_fill(tmp_path):
     agent = Agent(s, output_fn=lambda _text: None)
     loop = CommandLoop(agent, input_fn=lambda _prompt: "", output_fn=lambda _text: None)
 
-    assert "(25%)" in commands.status(loop, "")
+    assert StatusReport.of(loop).snapshot.context.percent == 25
 
 
 async def test_reset_seeds_the_next_request_without_rewriting_its_checkpoint(tmp_path):
@@ -372,12 +372,12 @@ def test_status_and_context_tool_report_identical_estimates_after_reset(tmp_path
     loop = CommandLoop(agent, input_fn=lambda _: "", output_fn=lambda _: None)
     ContextTool(s, [{"action": "reset"}]).call()
     s.apply_context_reset()
-    status = commands.status(loop, "")
+    status = StatusReport.of(loop)
     reading = json.loads(ContextTool(s, [{"action": "remaining"}]).call())
     expected = agent.context.request_tokens(agent.context.model_messages(s.system_prompt), Tool.resolved_schemas(s))
     assert reading["used"] == expected
     assert reading["remaining"] == reading["budget"] - expected
-    assert f"({reading['percent']}%)" in status
+    assert (status.snapshot.context.used, status.snapshot.context.percent) == (reading["used"], reading["percent"])
 
 
 @pytest.mark.parametrize("ending", ["success", "cancel", "failure"])

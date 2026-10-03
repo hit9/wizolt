@@ -51,11 +51,10 @@ async def main(log) -> None:
             log.flush()
         await asyncio.Event().wait()
 
-    async def bar_selector_loop() -> None:
+    def appearance_loop():
         from wizolt.agent.engine import Agent
         from wizolt.config import Config
         from wizolt.session import Session
-        from wizolt.ui.cli.appearance import theme_command
         from wizolt.ui.cli.loop import CommandLoop
 
         session = Session(cwd=str(Path(log.name).parent), config=Config(data_dir=str(Path(log.name).parent / "data")))
@@ -65,6 +64,39 @@ async def main(log) -> None:
         command_loop.presentation.tui = app
         app.idle_divider_fragments_fn = command_loop.view.idle_divider_fragments
         app.status_fragments_fn = command_loop.presentation.status_bar.fragments
+        return session, command_loop
+
+    async def format_editor_loop() -> None:
+        """One /theme session for the format editor, then the /status view, then its printed report."""
+        from wizolt.ui.cli.appearance import theme_command
+        from wizolt.ui.cli.status import StatusReport, StatusView
+
+        session, command_loop = appearance_loop()
+        try:
+            ui.emit("FORMAT-MARKER")
+            while not Path(log.name).with_suffix(".open").exists():
+                await asyncio.sleep(0.02)
+            log.write(f"closed: {await theme_command(command_loop, '')}\n")
+            log.flush()
+            report = StatusReport.of(command_loop)
+            view = StatusView(command_loop, report.snapshot)
+            await app.show_modal(view.fragments, view.handle_key)
+            log.write("status view closed\n")
+            log.flush()
+            # The CommandLoop's own printer is uncolored here; the report goes through the app's.
+            ui.emit_block(report)
+            log.write("status shown\n")
+            log.flush()
+            while not Path(log.name).with_suffix(".done").exists():
+                await asyncio.sleep(0.02)
+            app.app.exit()
+        finally:
+            session.close()
+
+    async def bar_selector_loop() -> None:
+        from wizolt.ui.cli.appearance import theme_command
+
+        session, command_loop = appearance_loop()
         try:
             for marker in range(5):
                 ui.emit(f"BAR-MARKER-{marker}")
@@ -219,6 +251,9 @@ async def main(log) -> None:
             return
         if len(sys.argv) > 4 and sys.argv[4] == "bars":
             app.app.create_background_task(bar_selector_loop())
+            return
+        if len(sys.argv) > 4 and sys.argv[4] == "formats":
+            app.app.create_background_task(format_editor_loop())
             return
         if len(sys.argv) > 4 and sys.argv[4] == "choices":
             app.app.create_background_task(long_selector_loop())

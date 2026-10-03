@@ -146,24 +146,25 @@ def test_named_themes_footer_reads_on_its_band_and_off_it_and_the_divider_keeps_
 
 @pytest.mark.parametrize("theme", ["dark", "light", "forest", "sand"])
 def test_a_status_band_belongs_to_the_preset_not_the_theme(theme):
-    from wizolt.ui.bars import FIELDS, STATUS_PRESETS, Template
+    from wizolt.ui.bars import FIELDS, Template, status_template
 
     Theme.set_mode(theme)
     values = dict.fromkeys(FIELDS, 0)
     values.update(model="m", provider="p", reasoning="high", **{"mcp.label": "mcp 0"})
     for name, banded in (("default", False), ("powerline", False), ("vim", True), ("split", True), ("monitor", True), ("lualine", True)):
-        template = Template("preset:" + name, STATUS_PRESETS)
-        parts = template.render(values, 80, Theme.bar_styles(template.styles))
-        # The fill across the row carries the band in a banded preset, and nothing in the others.
-        if banded:
-            fill = max(parts, key=lambda part: len(part[1]) if not part[1].strip() else 0)
-            role = {"split": "status.split", "monitor": "status.monitor"}.get(name, "status.band")
-            expected = next(part for part in Theme.bar_styles({role})[role].split() if part.startswith("bg:"))
-            assert expected in fill[0].split(), name
-        elif name == "default":
-            assert all("bg:" not in spec for spec, _ in parts)
-        else:
-            assert any(not spec and text.isspace() for spec, text in parts)
+        for split in (False, True):
+            template = Template(status_template(name, split))
+            parts = template.render(values, 80, Theme.bar_styles(template.styles))
+            # The fill across the row carries the band in a banded preset, and nothing in the others.
+            if banded:
+                fill = max(parts, key=lambda part: len(part[1]) if not part[1].strip() else 0)
+                role = {"split": "status.split", "monitor": "status.monitor"}.get(name, "status.band")
+                expected = next(part for part in Theme.bar_styles({role})[role].split() if part.startswith("bg:"))
+                assert expected in fill[0].split(), (name, split)
+            elif name == "default":
+                assert all("bg:" not in spec for spec, _ in parts)
+            else:
+                assert any(not spec and text.isspace() for spec, text in parts) == split
 
 
 @pytest.mark.parametrize("name", ["default", "minimal", "split", "compact", "brackets", "monitor", "blocks", "vim", "lualine", "powerline"])
@@ -906,7 +907,7 @@ def test_theme_names_complete_after_the_command():
 @pytest.mark.parametrize("name", ("dark", "light", *BUILTIN))
 def test_user_message_background_fills_wrapped_and_empty_rows(name):
     Theme.set_mode(name)
-    block = MessageBlock(UiPrinter(), "A long message with 中文\n\nAnother line", "user", 0, False)
+    block = MessageBlock(UiPrinter(), "A long message with 中文\n\nAnother line", "user", 0)
     for width in (12, 40):
         rows = list(split_lines(block.fragments(width)))[:-1]
         assert rows
@@ -917,14 +918,14 @@ def test_user_message_background_fills_wrapped_and_empty_rows(name):
             assert all(f"bg:{Theme.color('user_bg')}" in style for style, text in row if text)
     if name in BUILTIN:
         assert contrast(Theme.color("user"), Theme.color("user_bg")) >= 4.5
-    reply = MessageBlock(UiPrinter(), "Reply", "assistant", 0, False)
+    reply = MessageBlock(UiPrinter(), "Reply", "assistant", 0)
     assert not any("bg:" in style for style, text in reply.fragments(40) if text)
 
 
 @pytest.mark.parametrize("background", ("#000000", "#123100", "#12313f"))
 def test_custom_user_background_preserves_full_width_padding(tmp_path, background):
     Theme.configure("review", str(tmp_path), {"review": {"base": "dark", "colors": {"user_bg": background}}})
-    block = MessageBlock(UiPrinter(), "hello", "user", 0, False)
+    block = MessageBlock(UiPrinter(), "hello", "user", 0)
     rows = list(split_lines(block.fragments(20)))[:-1]
     assert len(rows) == 1
     assert all(sum(get_cwidth(text) for _, text in row) == 20 for row in rows)

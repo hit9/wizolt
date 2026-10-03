@@ -73,7 +73,7 @@ pricing depend on your provider.
 
 ### Checking the hit rate
 
-**`/status`** shows the latest request and whole-session hit rates. The latest rate also appears
-in the statusbar.
+The **Usage** tab of **`/status`** shows the whole-session hit rate (`cache read`) and the
+latest request's (`last cache read`). The latest rate also appears in the statusbar.
 
-<div class="term-shot" role="img" aria-label="Two rows of /status: a cache row with a fill meter, the latest request's hit ratio and the session's, then a usage row with the call count and total tokens."><span><span class="fs-i fs-dim">cache</span>  <span class="fs-i fs-add">[████████████▊░]</span> last <span class="fs-i fs-sel">95.9%</span>; session <span class="fs-i fs-add">91.5%</span></span><span><span class="fs-i fs-dim">usage</span>  calls 14; total 182.3K</span></div>
+<div class="term-shot" role="img" aria-label="The Usage tab of /status: request count, input and output tokens, the whole-session cache hit rate and the latest request's."><span class="fs-title">All requests</span><span><span class="fs-i fs-dim">requests         </span>     14</span><span><span class="fs-i fs-dim">input            </span>  182.3K</span><span><span class="fs-i fs-dim">output           </span>    9.4K</span><span><span class="fs-i fs-dim">cache read       </span>   <span class="fs-i fs-add">91.5%</span></span><span><span class="fs-i fs-dim">last cache read  </span>   <span class="fs-i fs-sel">95.9%</span></span></div>

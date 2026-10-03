@@ -271,20 +271,31 @@ def test_markdown_table_with_empty_headings_is_a_key_value_list():
     assert rows == ["╭────────────╮", "│ model  x   │", "│ steps  200 │", "╰────────────╯"]
 
 
-def test_emit_answer_compact_keeps_boundary_blank_rows(monkeypatch):
+class _Ruler(render_module.WidthDependent):
+    def fragments(self, width):
+        return [("", "=" * width + "\n")]
+
+
+def test_emit_block_parts_from_output_above_and_stays_a_block(monkeypatch):
     out = []
     monkeypatch.setattr(render_module, "print_formatted_text", lambda part, **kwargs: out.append(part))
     ui = UiPrinter(output_fn=lambda text: None)
     ui.color = True
-    ui.emit_answer("### Parent\n| status | value |\n| --- | --- |\n| model | `x` |\n", rule=False, compact=True)
-    # A message is recorded as the block it is, not as the bytes Rich made of it at one width, so
-    # ask it for its layout. The spacing rule under test is the same either way.
-    rendered = out[0].ansi(80)
-    visible = [line for line in rendered.split("\n") if UiPrinter.SGR_RE.sub("", line).strip()]
-    # One blank row at each boundary keeps the command off the transcript above and the prompt
-    # below; every internal Rich padding row is gone.
-    assert rendered.split("\n") == ["", *visible, ""]
-    assert "Parent" in rendered and "model" in rendered
+    ui.emit("above")
+    block = _Ruler()
+    ui.emit_block(block)
+    # One blank row parts it from the line above, and the block itself is printed, so a replay
+    # lays it out again for the width it lands in.
+    assert ["".join(fragment[1] for fragment in part) for part in out[1:-1]] == ["\n"]
+    assert out[-1] is block and ui.trailing_blanks == 0
+
+
+def test_emit_block_without_color_prints_its_plain_rows():
+    lines = []
+    ui = UiPrinter(output_fn=lines.append)
+    ui.color = False
+    ui.emit_block(_Ruler())
+    assert lines == ["=" * render_module.shutil.get_terminal_size().columns]
 
 
 def _ask_state():

@@ -34,7 +34,7 @@ from wizolt.ui.cli.resume import ResumeRenderer
 from wizolt.ui.cli.runtime import TuiRuntime
 from wizolt.ui.cli.update import UpdateChecker
 from wizolt.ui.cli.view import CommandCompleter, View
-from wizolt.ui.render import InputStyle, Theme, UiPrinter, search_sources_footer
+from wizolt.ui.render import InputStyle, Theme, UiPrinter, WidthDependent, search_sources_footer
 
 if TYPE_CHECKING:
     from wizolt.ui.cli.agents import AgentsFrontend
@@ -620,8 +620,8 @@ class CommandLoop:
         if output is not None:
             if isinstance(output, LogBlock):
                 self.presentation.emit(output)
-            elif entry is not None and entry.render == "compact":
-                self.presentation.ui.emit_answer(output, rule=False, compact=True, indent=TurnBox.CONTENT_LEVEL)
+            elif isinstance(output, WidthDependent):
+                self.presentation.ui.emit_block(output)
             elif entry is not None and entry.render == "answer":
                 self.presentation.ui.emit_answer(output, indent=TurnBox.CONTENT_LEVEL)
             else:

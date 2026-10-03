@@ -2,24 +2,21 @@
 
 import pytest
 from agent_harness import session
+from prompt_toolkit.utils import get_cwidth
 from test_loop_commands import _write_skill
 
 from wizolt.agent.context import ContextManager
 from wizolt.agent.engine import Agent
 from wizolt.agent.lifecycle import create_session
 from wizolt.agent.prompts import SYSTEM_PROMPT
-from wizolt.base import (
-    ToolError,
-    TurnBox,
-)
+from wizolt.base import Text, ToolError
 from wizolt.skill.library import SkillLibrary
 from wizolt.tools import SkillTool, Tool
 from wizolt.ui.cli import CommandLoop
-from wizolt.ui.cli.commands import (
-    skills_command,
-    status,
-)
-from wizolt.ui.render import StatusBar
+from wizolt.ui.cli.commands import skills_command
+from wizolt.ui.cli.status import StatusReport, StatusTabs, StatusView
+from wizolt.ui.render import StatusBar, WidthDependent
+from wizolt.ui.tui import TUI_MODAL_PENDING
 
 
 def test_skill_library_index_and_lookup(tmp_path):
@@ -154,12 +151,13 @@ def test_status_and_bar_show_skill_count(tmp_path):
 
     count = len(s.skills.skills)
     assert count == 2
-    rendered = status(loop, "")
-    assert "mcp `1`" in rendered
-    assert f"skills `{count}`" in rendered
-    assert f"/ {loop.agent.context.request_token_budget() / 1_000:.1f}K" in rendered
-    assert "| cache | (no requests yet) |" in rendered
-    assert rendered.startswith("|  |  |\n")  # a key/value list: no header row
+    report = StatusReport.of(loop)
+    activity = dict(report.snapshot.activity.rows)
+    assert activity["mcp servers"] == "1"
+    assert activity["skills"] == str(count)
+    assert f"/ {loop.agent.context.request_token_budget() / 1_000:.1f}K" in report.text()
+    # Before any request, usage is unavailable rather than a column of zeros.
+    assert report.snapshot.usage[0].rows == (("requests", "none yet"),)
     bar_text = "".join(text for _, text in StatusBar(s).fragments())
     assert f"skills {count}" in bar_text
 
@@ -168,18 +166,21 @@ def test_status_shows_agents_md_state(tmp_path):
     # No candidate file in cwd: still on, but nothing loaded.
     s = session(tmp_path)
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
-    assert "| agents.md | on (global missing) |" in status(loop, "")
+    assert configuration(loop)["agents.md"] == "on (global missing)"
 
     # Loaded from the project's AGENTS.md.
     (tmp_path / "AGENTS.md").write_text("# Rules\n", encoding="utf-8")
     loaded = session(tmp_path)
     loaded_loop = CommandLoop(Agent(loaded, output_fn=lambda text: None), output_fn=lambda text: None)
-    rendered = status(loaded_loop, "")
-    assert "| agents.md | on (./AGENTS.md; global missing) |" in rendered
+    assert configuration(loaded_loop)["agents.md"] == "on (./AGENTS.md; global missing)"
 
     # Disabled at runtime: reports off.
     loaded.settings.agents_md = False
-    assert "| agents.md | off (global missing) |" in status(loaded_loop, "")
+    assert configuration(loaded_loop)["agents.md"] == "off (global missing)"
+
+
+def configuration(loop: CommandLoop) -> dict[str, str]:
+    return dict(StatusReport.of(loop).snapshot.configuration.rows)
 
 
 def test_status_keeps_active_turn_in_context_percentage(tmp_path):
@@ -192,16 +193,15 @@ def test_status_keeps_active_turn_in_context_percentage(tmp_path):
     persisted_percent = context.request_tokens(context.model_messages(SYSTEM_PROMPT), tools) * 100 // context.request_token_budget()
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
 
-    rendered = status(loop, "")
+    context = StatusReport.of(loop).snapshot.context
 
     # status recomputes context_percent with the active turn included, so it exceeds persisted-only
-    # and the rendered row shows that recomputed value (not a stale or persisted-only figure).
+    # and the report shows that recomputed value (not a stale or persisted-only figure).
     assert s.state.context_percent > persisted_percent
-    context_row = next(line for line in rendered.splitlines() if line.startswith("| context |"))
-    assert f"({s.state.context_percent}%)" in context_row
+    assert (context.percent, context.reported) == (s.state.context_percent, False)
 
 
-def test_status_context_row_uses_last_real_tokens_when_available(tmp_path):
+def test_status_context_uses_last_real_tokens_when_available(tmp_path):
     s = session(tmp_path)
     s.settings.max_context_tokens = 100_000
     estimate_percent = 61  # what the estimate would claim before the call recomputes it
@@ -210,20 +210,19 @@ def test_status_context_row_uses_last_real_tokens_when_available(tmp_path):
     s.usage.last_prompt_budget = 80_000  # the budget that request was prepared against
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
 
-    def context_row() -> str:
-        return next(line for line in status(loop, "").splitlines() if line.startswith("| context |"))
-
-    assert "`~20.0K / 80.0K`" in context_row()
-    assert "(25%)" in context_row()
-    assert f"({estimate_percent}%)" not in context_row()
+    report = StatusReport.of(loop)
+    assert (report.snapshot.context.used, report.snapshot.context.budget, report.snapshot.context.percent) == (20_000, 80_000, 25)
+    # A provider's figure carries no estimate marker, and says where it came from.
+    assert value(report.text(), "used") == "20.0K / 80.0K · 25%  last request, reported"
 
     # The recorded budget, not today's configuration, stays the denominator.
     s.config.provider.max_tokens = 60_000
-    assert "`~20.0K / 80.0K`" in context_row()
+    assert StatusReport.of(loop).snapshot.context.budget == 80_000
 
 
-def test_status_cache_row_labels_last_and_session_token_counts(tmp_path):
+def test_status_usage_reports_cache_ratios_and_writes(tmp_path):
     s = session(tmp_path)
+    s.usage.calls = 3
     s.usage.last_cached_prompt_tokens = 76_000
     s.usage.last_cache_write_prompt_tokens = 1_200
     s.usage.last_prompt_tokens = 76_100
@@ -232,27 +231,147 @@ def test_status_cache_row_labels_last_and_session_token_counts(tmp_path):
     s.usage.prompt_tokens = 100_000
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
 
-    cache_row = next(line for line in status(loop, "").splitlines() if line.startswith("| cache |"))
+    usage = dict(StatusReport.of(loop).snapshot.usage[0].rows)
 
-    # Ratios, not the raw pairs: this was the one row long enough to wrap on a normal terminal.
-    assert "last `99.9%` (w 1.2K) · session `83.4%` (w 4.5K)" in cache_row
-    assert "76.1K" not in cache_row
+    assert usage == {
+        "requests": "3",
+        "input": "100.0K",
+        "output": "0",
+        "cache read": "83.4%",
+        "last cache read": "99.9%",
+        "cache write": "4.5K",
+    }
 
 
-async def test_status_command_uses_rich_table_without_outer_rule(tmp_path):
-    loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda _text: None), output_fn=lambda _text: None)
-    plain = []
-    rich = []
-    loop.presentation.emit = lambda text="", indent=0: plain.append(text)
-    loop.presentation.ui.emit_answer = lambda text, **kwargs: rich.append((text, kwargs))
+def test_status_breakdown_is_an_estimate_of_disjoint_parts(tmp_path):
+    s = session(tmp_path)
+    s.settings.max_context_tokens = 100_000
+    s.messages = [{"role": "user", "content": "x" * 40_000}]
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
 
+    context = StatusReport.of(loop).snapshot.context
+    parts = dict(context.parts)
+
+    assert list(parts) == ["system", "tools", "mcp tools", "instructions", "skills", "messages"]
+    assert parts["messages"] >= 10_000 and parts["system"] > 0 and parts["tools"] > 0
+    # Without MCP, its part is absent from the legend rather than shown as a measured zero.
+    assert parts["mcp tools"] == 0
+    text = StatusReport.of(loop).text(100)
+    assert value(text, "messages").startswith("■") and "mcp tools" not in text
+    assert value(text, "total") == "~" + Text.abbreviate_count(sum(parts.values()))
+    assert value(text, "compacts at") == Text.abbreviate_count(context.threshold)
+    assert "Next request · estimated" in text
+
+
+def test_status_marks_an_estimate_over_the_compaction_threshold(tmp_path):
+    s = session(tmp_path)
+    s.settings.max_context_tokens = 40_000
+    s.messages = [{"role": "user", "content": "x" * 200_000}]
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
+
+    report = StatusReport.of(loop)
+    over = sum(tokens for _, tokens in report.snapshot.context.parts) - report.snapshot.context.threshold
+
+    assert over > 0
+    assert value(report.text(100), "over by") == Text.abbreviate_count(over)
+
+
+def value(text: str, label: str) -> str:
+    """The value on the first row of a framed report that `label` opens."""
+    for line in text.splitlines():
+        inside = line.strip().strip("│").strip()
+        if inside.startswith(label + "  "):
+            return inside.removeprefix(label).strip()
+    raise AssertionError(f"no {label!r} row in:\n{text}")
+
+
+def test_status_values_wear_theme_roles_and_unavailable_ones_stay_quiet(tmp_path):
+    s = session(tmp_path)
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
+
+    def role(tab, value):
+        """The theme role of the fragment that shows `value` on `tab`."""
+        tabs = StatusTabs(StatusReport.of(loop).snapshot)
+        return next(style.split("class:role.")[1].split()[0] for row in tabs.rows(tab, 76) for style, text in row if text.strip().endswith(value))
+
+    assert role("Usage", "none yet") == "muted"
+    s.usage.add({"prompt_tokens": 50_000, "completion_tokens": 900, "prompt_tokens_details": {"cached_tokens": 40_000}}, budget=100_000)
+    # Measured values stand out in the theme's roles; the words between them stay muted.
+    assert (role("Overview", "900"), role("Overview", "80%"), role("Overview", "cached")) == ("syntax_number", "status_cache", "muted")
+    assert role("Overview", "50.0K") == "status_context"  # the reading comes first, in the context color
+    assert role("Overview", "main") == "status_agent" and role("Overview", s.config.active_provider) == "status_provider"
+    assert (role("Usage", "50.0K"), role("Usage", "80.0%")) == ("syntax_number", "status_cache")
+    # The reading turns with the statusbar's pressure thresholds.
+    s.usage.last_prompt_tokens = 95_000
+    assert role("Overview", "95%") == "error"
+
+
+def status_loop(tmp_path) -> CommandLoop:
+    s = session(tmp_path)
+    s.state.goal = "a goal long enough to wrap " * 4
+    s.usage.add({"prompt_tokens": 5_000, "completion_tokens": 100}, budget=100_000)
+    return CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
+
+
+@pytest.mark.parametrize("width", [120, 80, 44])
+def test_printed_status_frames_every_tab_at_any_width(tmp_path, width):
+    loop = status_loop(tmp_path)
+    lines = StatusReport.of(loop).text(width).splitlines()
+    text = "\n".join(lines)
+
+    # One frame around everything, never wider than the pane.
+    assert max(get_cwidth(line) for line in lines) <= width
+    assert lines[0].strip().strip("╭─╮") == "" and lines[-1].strip().strip("╰─╯") == ""
+    assert all(line.strip().startswith("│") for line in lines[1:-1])
+    # Overview first, then each tab once, in order; the session id appears once.
+    assert value(text, "agent") == "main · " + loop.session.state.last_turn_status
+    order = [text.index(title) for title in ("agent ", "Context", "Next request", "Usage", "All requests", "Activity", "Session", "docs")]
+    assert order == sorted(order)
+    if width >= 80:  # narrower, the id wraps under its own column
+        assert text.count(loop.session.uid) == 1
+
+
+def test_status_view_opens_on_a_concise_overview_and_switches_tabs(tmp_path):
+    loop = status_loop(tmp_path)
+    view = StatusView(loop, StatusReport.of(loop).snapshot)
+
+    def screen():
+        return "".join(fragment[1] for fragment in view.fragments())
+
+    overview = screen()
+    assert value(overview, "usage") == "1 request · 5.0K in · 100 out · 0% cached"
+    assert "workspace" not in overview and "Activity" not in overview
+    rows = len(overview.splitlines())
+    for key, expected in (("l", "last request, reported"), ("l", "All requests"), ("4", "workspace"), ("l", "context ")):
+        assert view.handle_key(key, key) is TUI_MODAL_PENDING
+        assert expected in screen()
+        # Every tab keeps the frame's height, so switching never moves it.
+        assert len(screen().splitlines()) == rows
+    assert view.handle_key("escape") is None
+
+
+async def test_status_command_shows_the_view_interactively_and_prints_otherwise(tmp_path):
+    loop = status_loop(tmp_path)
+    blocks = []
+    loop.presentation.ui.emit_block = blocks.append
     assert await loop.command("/status") == (True, False)
-    assert plain == []
-    assert len(rich) == 1
-    assert rich[0][0].startswith("|  |  |\n")  # one flat key/value table, no section headings
-    assert "###" not in rich[0][0]
-    assert rich[0][0].count("| --- | --- |") == 1
-    assert rich[0][1] == {"rule": False, "compact": True, "indent": TurnBox.CONTENT_LEVEL}
+    [block] = blocks
+    assert isinstance(block, WidthDependent) and block.text(60) != block.text(120)
+
+    shown = []
+
+    class Modal:
+        app = None
+        modal_window = None
+
+        async def show_modal(self, fragments_fn, key_fn, **kwargs):
+            shown.append("".join(fragment[1] for fragment in fragments_fn()))
+            return key_fn("escape")
+
+    loop.presentation.tui = Modal()
+    loop.interactive_input = True
+    assert await loop.command("/status") == (True, False)
+    assert len(blocks) == 1 and "Overview" in shown[0]
 
 
 def test_session_from_config_file_theme_param(tmp_path):

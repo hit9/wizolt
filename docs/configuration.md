@@ -327,8 +327,8 @@ Two things to check when picking a summarizer:
 
 `/config` shows the effective `compaction.*` values, and `/compact log` records which model
 produced each stored segment. Summary
-tokens are counted apart from the conversation, on their own `compaction usage` row in `/status`,
-so each row can be read against one model's price.
+tokens are counted apart from the conversation, under **Compaction** on the Usage tab of
+`/status`, so each group can be read against one model's price.
 
 ## Data location
 

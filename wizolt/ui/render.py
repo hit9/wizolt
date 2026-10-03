@@ -137,7 +137,6 @@ class MessageBlock(WidthDependent):
     text: str
     role: str
     indent: int
-    compact: bool
 
     def ansi(self, width: int) -> str:
         # Rich loads on first render, not at import: the first frame needs no Markdown console.
@@ -151,15 +150,7 @@ class MessageBlock(WidthDependent):
         # A block owns its inside, never its outside: the gap above it is `separate`'s to open and
         # the one below belongs to whatever comes next, so a document that opens on a heading or
         # closes on a list cannot smuggle in blank rows of its own.
-        cleaned = cleaned.strip("\n") + "\n"
-        if self.compact:
-            # Rich markdown pads a blank line after every heading plus a whitespace row above and
-            # below each table box; /status wants the heading tight against its table, so drop
-            # internal blank lines -- but keep one blank row at each boundary so the command's
-            # output does not butt straight against the transcript above it or the prompt below.
-            lines = [line for line in cleaned.split("\n") if printer.SGR_RE.sub("", line).strip()]
-            cleaned = "\n" + "\n".join(lines) + "\n"
-        return cleaned
+        return cleaned.strip("\n") + "\n"
 
     def fragments(self, width: int) -> StyleAndTextTuples:
         return to_formatted_text(ANSI(self.ansi(width)))
@@ -236,15 +227,6 @@ class RecordedOutput(str):
             self.drawn = UiPrinter.render_to_ansi(self.parts, color_depth=self.color_depth)
             self.theme = Theme.key()
         return self.drawn
-
-
-def progress_bar(value: int, total: int, width: int = 14) -> str:
-    """A fixed-width meter in eighth-block characters, clamped to [0, total]."""
-    ratio = min(1.0, max(0.0, value / total)) if total else 0.0
-    eighths = int(ratio * width * 8 + 0.5)
-    full, partial = divmod(eighths, 8)
-    partials = "▏▎▍▌▋▊▉"
-    return "[" + "█" * full + (partials[partial - 1] if partial else "") + "░" * (width - full - bool(partial)) + "]"
 
 
 def markdown_table(headers: list[str], rows: list[tuple]) -> str:
@@ -1300,6 +1282,21 @@ class UiPrinter:
             return
         self._scrollback_print(part)
 
+    def emit_block(self, block: WidthDependent) -> None:
+        """Print a block that lays itself out, parted from what is above it. Uncolored output gets
+        the same rows as plain text, at the terminal's width."""
+        width = shutil.get_terminal_size().columns
+        text = "".join(fragment[1] for fragment in block.fragments(width))
+        if not self.color:
+            self.output_fn(text.rstrip("\n"))
+            return
+        self.separate()
+        self.track_layout(text)
+        if self._batch_parts is not None:
+            self._batch_parts.append(block)
+            return
+        self._scrollback_print(block)
+
     @staticmethod
     def indent_segments(segments: list[tuple[str, str]], margin: str) -> list[tuple[str, str]]:
         """Open every rendered line with `margin`, carrying the style of the fragment it opens.
@@ -1392,7 +1389,7 @@ class UiPrinter:
                 seen_content = True
         return "".join(payload for _, payload in tokens)
 
-    def emit_answer(self, text: str, *, role: str = "", rule: bool = True, indent: int = 0, compact: bool = False) -> None:
+    def emit_answer(self, text: str, *, role: str = "", rule: bool = True, indent: int = 0) -> None:
         if not self.color:
             if role == "user":
                 text, role = "\n" + self.USER_LOG_PREFIX + text, ""
@@ -1410,7 +1407,7 @@ class UiPrinter:
         # captured ANSI, and a 100-column rule replayed into a 60-column pane wraps onto a second
         # row -- the other three rules already avoid this the same way.
         drew_rule = rule and not self.is_error(text)
-        block = MessageBlock(self, text, role, indent, compact)
+        block = MessageBlock(self, text, role, indent)
         # Count the rule's row as Rich's own row was counted, so spacing decisions taken from
         # `rows_since_rule` and `trailing_blanks` are unchanged by where the rule is drawn.
         self.track_layout(("─\n" if drew_rule else "") + block.ansi(shutil.get_terminal_size().columns))

@@ -31,14 +31,12 @@ from wizolt.base import (
     LogEdge,
     LogLine,
     LogRole,
-    ModelUsage,
     Text,
     oneline,
     run_blocking,
 )
 from wizolt.config import (
     PROVIDER_API_CHOICES,
-    Config,
     ProviderConfig,
     RuntimeSettings,
     compaction_provider_config,
@@ -58,8 +56,8 @@ from wizolt.ui.cli.modals import (
     segment_columns,
     select_choice,
 )
-from wizolt.ui.cli.update import UpdateChecker
-from wizolt.ui.render import markdown_table, progress_bar
+from wizolt.ui.cli.status import StatusReport, StatusView
+from wizolt.ui.render import WidthDependent, markdown_table
 from wizolt.ui.tui import InputMode
 
 if TYPE_CHECKING:
@@ -103,29 +101,7 @@ SET_VALUES: dict[str, tuple[str, ...]] = {
 # fmt: on
 
 
-def _status_model_line(session: Session, config: Config) -> str:
-    active = config.provider
-    return f"`{config.active_provider}/{active.model or '(empty)'}` · {session.policy.resolve(active).api} · reasoning {active.reasoning}"
-
-
-def _status_context_line(tokens: int, budget: int, percent: int) -> str:
-    return f"{progress_bar(tokens, budget)} `~{Text.abbreviate_count(tokens)} / {Text.abbreviate_count(budget)}` ({percent}%)"
-
-
-def _status_cache_line(counts: ModelUsage) -> str:
-    # The read ratios carry the useful signal; the raw token pairs made this the one row that
-    # wrapped on a normal terminal. Writes stay, but only when there were any.
-    def part(label: str, cached: int, prompt: int, written: int) -> str:
-        write = f" (w {Text.abbreviate_count(written)})" if written else ""
-        return f"{label} `{cached * 100 / prompt:.1f}%`{write}"
-
-    last = (
-        part("last", counts.last_cached_prompt_tokens, counts.last_prompt_tokens, counts.last_cache_write_prompt_tokens)
-        if counts.last_prompt_tokens
-        else "last n/a"
-    )
-    session = part("session", counts.cached_prompt_tokens, counts.prompt_tokens, counts.cache_write_prompt_tokens)
-    return f"{progress_bar(counts.last_cached_prompt_tokens, counts.last_prompt_tokens)} {last} · {session}"
+CommandResult = str | LogBlock | WidthDependent | None
 
 
 async def mcp_command(loop: CommandLoop, args: str) -> str | None:
@@ -196,92 +172,15 @@ async def select_api(loop: ModelSettingsHost, model: str) -> str | object | None
     return await select_choice(loop, "Request API", PROVIDER_API_CHOICES, labels=labels, current=current)
 
 
-def status(loop: CommandLoop, args: str) -> str:
-    usage = loop.session.usage
-    # Rebuild the estimate after resume; context_fill prefers the last actual request
-    # when available, otherwise this current projection (never an uninitialized zero).
-    loop.agent.context.update_current_tokens(loop.session.system_prompt)
-    context = loop.session.context_fill()
-    connected_mcp = sum(loop.session.mcp.connected(config.name) for config in loop.session.mcp.parse_configs()) if loop.session.mcp else 0
-    activity: list[tuple[str, int | str]] = [
-        ("history", len(loop.session.messages)),
-        ("turn", loop.session.state.turn_messages),
-        ("tools", len(loop.session.tool_results)),
-        ("mcp", connected_mcp),
-        ("skills", len(loop.session.skills.skills) if loop.session.skills else 0),
-        ("hooks", len(loop.session.shell_hooks.active(loop.session)) if loop.session.shell_hooks else 0),
-        ("known", len(loop.session.state.known)),
-        ("compactions", loop.session.state.compaction_count),
-    ]
-    running_jobs = len(loop.session.running_jobs())
-    if loop.session.jobs:
-        activity.append(("jobs", f"{running_jobs}/{len(loop.session.jobs)}"))
-
-    # Usage belongs to the selected agent; admission and engine counts are group-wide.
-    rows = [
-        ("agent", f"`{loop.session.agent_name}` · `{loop.session.uid}`"),
-        ("workspace", "`" + loop.session.cwd + "`"),
-        ("session", "`" + loop.session.uid + "`"),
-    ]
-    group = loop.session.subagents
-    if group is not None:
-        entry = group.entry(loop.session.uid)
-        counts = group.counts
-        rows.append(("state", entry.status))
-        rows.append(("agents", f"{counts.total} total · {counts.running} running · {counts.waiting} waiting for input (group-wide)"))
-        rows.append(("subagents", f"{len(group.entries) - 1}/{group.limit} retained (group-wide)"))
-        if entry.parent:
-            rows.append(("parent", "`" + entry.parent + "`"))
-    if loop.session.state.goal:
-        rows.append(("goal", loop.session.state.goal))
-    # The runtime switches get a row each: joined into one, they were the row that wrapped first.
-    rows.append(("yolo", "on" if loop.session.settings.yolo else "off"))
-    rows.append(("steps", str(loop.session.settings.max_steps)))
-    info = loop.session.system_info
-    global_path = info.agents_md_global_path if info is not None else ""
-    global_exists = bool(global_path and os.path.isfile(global_path))
-    if loop.session.settings.agents_md:
-        sources = []
-        if info is not None:
-            sources.extend(file.display for file in info.agents_md_project)
-            if info.agents_md_global_display:
-                sources.append("global active" if global_exists else "global active (file removed)")
-            else:
-                sources.append("global next session" if global_exists else "global missing")
-        rows.append(("agents.md", f"on ({'; '.join(sources)})"))
-    else:
-        rows.append(("agents.md", f"off (global {'present' if global_exists else 'missing'})"))
-    update = UpdateChecker(loop.session.data_path(), loop.presentation.update).status_line().removeprefix("update: ")
-    if update not in {"current", "unknown"}:
-        rows.append(("update", update))
-    rows.append(("model", _status_model_line(loop.session, loop.session.config)))
-    rows.append(("context", _status_context_line(context["used"], context["budget"], context["percent"])))
-    rows.append(("cache", _status_cache_line(usage) if usage.prompt_tokens else "(no requests yet)"))
-    visible_activity = [(name, value) for name, value in activity if value]
-    if visible_activity:
-        rows.append(("activity", " · ".join(f"{name} `{value}`" for name, value in visible_activity)))
-    if usage.calls:
-        rows.append(("usage", f"calls `{usage.calls}` · total `{Text.abbreviate_count(usage.total_tokens)}`"))
-    # Summaries are counted apart from the conversation, so each row can be multiplied by one
-    # price: the entry they run on may be another account entirely. The row names the model for
-    # the same reason, and stays hidden until a summary has actually run.
-    compaction_usage = loop.session.compaction_usage
-    if compaction_usage.calls:
-        compaction_model = compaction_provider_config(loop.session.config).model or "(no model)"
-        rows.append(
-            (
-                "compaction usage",
-                f"calls `{compaction_usage.calls}` · total `{Text.abbreviate_count(compaction_usage.total_tokens)}` · `{compaction_model}`",
-            )
-        )
-        # The summary request is built to ride the conversation's own cached prefix, and this is
-        # the only place that says whether it did. Without it the reuse is unfalsifiable.
-        rows.append(("compaction cache", _status_cache_line(compaction_usage)))
-
-    # The command reference lives in the documentation, so every /status ends with where to read
-    # it. Last row: the rows above are the session's own facts.
-    rows.append(("docs", "https://wizolt.readthedocs.io"))
-    return markdown_table(["", ""], rows)
+async def status(loop: CommandLoop, args: str) -> StatusReport | None:
+    """The tabbed view where there is a TUI to show it, else every tab printed in one frame."""
+    report = StatusReport.of(loop)
+    tui = loop.presentation.tui
+    if tui is None or not loop.interactive_input:
+        return report
+    view = StatusView(loop, report.snapshot)
+    await tui.show_modal(view.fragments, view.handle_key)
+    return None
 
 
 async def catalog_command(loop: CommandLoop, args: str) -> str:
@@ -1099,12 +998,13 @@ class Command:
     name: str  # "/status"
     # A LogBlock result is the structured form of `render="plain"`: it goes to the log renderer as
     # tool output does, so a handler with rows to show does not have to pre-format them as text.
+    # A WidthDependent result lays itself out, and is laid out again when the pane resizes.
     # A handler that reaches the network returns an awaitable instead, which dispatch awaits on the
     # session's own loop; every other handler is local and bounded and returns its result directly.
-    handler: Callable[[CommandLoop, str], str | LogBlock | None | Awaitable[str | LogBlock | None]]
+    handler: Callable[[CommandLoop, str], CommandResult | Awaitable[CommandResult]]
     aliases: tuple[str, ...] = ()
     queue_safe: bool = False  # may run from the follow-up input while a turn works
-    render: str = "plain"  # "plain" | "answer" | "compact"
+    render: str = "plain"  # "plain" | "answer"
     # Does nothing without an argument (it would only print its usage). Picking it from the menu
     # fills it in and opens its arguments instead of running it bare.
     needs_argument: bool = False
@@ -1114,7 +1014,7 @@ class Command:
 # fmt: off
 COMMANDS: tuple[Command, ...] = (
     Command("/agents", agents_command, queue_safe=True),
-    Command("/status", status, queue_safe=True, render="compact"),
+    Command("/status", status, queue_safe=True),
     Command("/catalog", catalog_command, queue_safe=True, render="answer"),
     Command("/ps", ps_command, queue_safe=True, render="answer"),
     Command("/skills", skills_command, queue_safe=True, render="answer"),

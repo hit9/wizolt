@@ -558,7 +558,7 @@ def test_extended_layout_matches_uncached_markdown_and_row_counts(capsys):
     region = ScrollbackRegion()
     printer = UiPrinter()
     for index in range(4):
-        block = MessageBlock(printer, f"## 中文 {index}\n\n```python\nx = {index}\n```\n", "assistant", 0, False)
+        block = MessageBlock(printer, f"## 中文 {index}\n\n```python\nx = {index}\n```\n", "assistant", 0)
         region.write_direct(block.ansi)
         for width in (20, 80):
             fresh = ScrollbackRegion()

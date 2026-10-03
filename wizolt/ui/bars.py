@@ -175,10 +175,20 @@ def pressure(body: str, normal: str = "status_context", warning: str = "status.w
     )
 
 
+# Powerline arrows: a join after a segment points right into the next one; a join before a
+# segment points left into the previous one.
+JOIN_AFTER = "{join:\ue0b0}"
+JOIN_BEFORE = "{join:\ue0b2}"
+
+
+def joined(chip: str, *, right: bool) -> str:
+    """`chip` with its join on the side facing its neighbor: before it for a right-edge group."""
+    return JOIN_BEFORE + chip if right else chip + JOIN_AFTER
+
+
 def segment(body: str, style: str, *, priority: int = 0, when: str = "", right: bool = False) -> str:
     """One complete segment, including its join, disappears as a unit on a narrow row."""
-    chip = f"[{style}] {body} [/]"
-    source = "{join:}" + chip if right else chip + "{join:}"
+    source = joined(f"[{style}] {body} [/]", right=right)
     if priority:
         source = f"{{% optional priority={priority} %}}{source}{{% endoptional %}}"
     return f"{{% if {when} %}}{source}{{% endif %}}" if when else source
@@ -212,81 +222,121 @@ SEGMENT_DETAILS = (
         when="agents.count > 1",
     )
 )
-RIGHT_USAGE = "{% optional priority=30 %}{join:}" + SEGMENT_USAGE + "{% endoptional %}"
+
+
+def usage_segment(split: bool) -> str:
+    return "{% optional priority=30 %}" + joined(SEGMENT_USAGE, right=split) + "{% endoptional %}"
+
+
+def compose(left: str, right: str, split: bool, *, separator: str = "", tail: str = "", band: bool = False) -> str:
+    """Place a preset's two groups at opposite ends (`split`), or together on the left, parted by
+    the preset's own `separator`. A `band` preset's surface still spans the row either way."""
+    if split:
+        return left + "{>}" + right + tail
+    return left + separator + right + ("{>}" if band else "") + tail
+
+
 # Presets own geometry, not colors. Semantic ink is shared by the transparent layouts;
 # solid segments resolve the same roles against their own surface through Theme.bar_styles.
 # Optional groups keep their separators inside, so shrinking never leaves empty segments.
-STATUS_PRESETS = {
-    # Default keeps its plain, left-aligned text contract. Only semantic inks change here.
-    "default": "{% if agent.name %}[status_agent bold][[{agent.name}]] [/]{% endif %}{% if yolo %}[status_yolo][[yolo]] [/]{% endif %}"
-    + "{% if agents.count > 1 %}{% optional priority=25 %}[status_agent][[agents {agents.count} · run {agents.running}"
-    + "]] [/]{% endoptional %}{% endif %}"
-    + "[status_provider]{provider}/[/][status_model bold]{model}[/]"
-    + "{% optional priority=20 %}[subtle] · [/][status_reason]{reasoning}[/]{% endoptional %}"
-    + "{% optional priority=5 %}[subtle] | [/][status_mcp]{mcp.label} · skills {skills.count}[/]{% endoptional %}"
-    + "[subtle] | [/]"
-    + pressure("ctx {context.percent}%")
-    + "{% optional priority=10 %}[status_cache] · cache {cache.percent}%[/]{% endoptional %}",
-    "minimal": IDENTITY + "[status_base bold]{model}[/] " + pressure(meter(5) + " {context.percent}%"),
-    "split": "[status.split] [status_provider]▎ [/]"
-    + IDENTITY
-    + "{% optional priority=35 %}[status_provider]{provider}/[/]{% endoptional %}[status_model bold]{model}[/]"
-    + "{% optional priority=20 %}[status_mcp] · [/][status_reason]{reasoning}[/]{% endoptional %}{>}"
-    + "{% optional priority=30 %}"
-    + pressure("{% optional priority=12 %}" + meter(8) + " {% endoptional %}ctx {context.percent}%")
-    + "{% endoptional %}"
-    + "{% optional priority=10 %}[status_mcp] │ [/][status_cache]cache {cache.percent}%[/]{% endoptional %} [reset]",
-    "compact": IDENTITY
-    + "{% optional priority=10 %}[status_provider]{provider} [/]{% endoptional %}[status.model] {model} [/]"
-    + "{% optional priority=20 %}[status_mcp] › [/][status_reason]{reasoning}[/]{% endoptional %}[status_mcp] › [/]"
-    + pressure("{context.percent}%"),
-    "brackets": IDENTITY
-    + "[status_provider][[{provider}[/][status_mcp]/[/][status_model bold]{model}]][/] "
-    + "{% optional priority=20 %}[status_reason][[{reasoning}]][/] {% endoptional %}"
-    + pressure("[[ctx {context.percent}%]]")
-    + "{% optional priority=10 %}[status_cache] [[cache {cache.percent}%]][/]{% endoptional %}",
-    "monitor": "[status.monitor] [status_context]◆ [/]"
-    + IDENTITY
-    + "{% optional priority=35 %}[status_provider]{provider}/[/]{% endoptional %}[status_model bold]{model}[/]"
-    + "{% optional priority=20 %}[status_mcp]  [/][status.reason] {reasoning} [/]{% endoptional %}{>}"
-    + "{% optional priority=5 %}[status_mcp]{mcp.label} · skills {skills.count} │ [/]{% endoptional %}"
-    + "{% optional priority=30 %}"
-    + pressure("ctx {context.percent}%{% optional priority=12 %} " + meter(6) + "{% endoptional %}")
-    + "{% endoptional %}"
-    + "{% optional priority=10 %} [status.cache] cache {cache.percent}% [/]{% endoptional %} [reset]",
-    "blocks": BLOCKS_IDENTITY
-    + "{% optional priority=35 %}[status.provider] {provider} [reset]{% endoptional %}"
-    + "[status.model] {model} [reset]"
-    + "{% optional priority=20 %}[status.reason] {reasoning} [reset]{% endoptional %}{>}"
-    + "{% optional priority=10 %}[status.cache] cache {cache.percent}% [reset]{% endoptional %}"
-    + "{% optional priority=30 %}"
-    + SEGMENT_USAGE
-    + "{% endoptional %}",
-    "vim": "[status.band]{% if agent.name %}[status.agent] {agent.name} [/]{% endif %} "
-    + "{% if yolo %}[status_yolo bold]yolo[/] · {% endif %}"
-    + AGENT_GROUP
-    + "{% optional priority=35 %}[status_provider]{provider}[/][status_mcp] / [/]{% endoptional %}[status_base bold]{model}[/]"
-    + "{% optional priority=20 %} [status_reason underline]{reasoning}[/]{% endoptional %}{>}"
-    + "{% optional priority=5 %}[status_mcp]{mcp.label} │ [/]{% endoptional %}"
-    + "{% optional priority=30 %}"
-    + SEGMENT_USAGE
-    + "{% endoptional %}"
-    + "[reset]",
-    "lualine": "[status.band]"
-    + segment("{agent.name}", "status.agent", when="agent.name")
-    + segment("{model}", "status.model")
-    + SEGMENT_DETAILS
-    + "{>}"
-    + segment("{mcp.label} · skills {skills.count}", "status.detail", priority=5, right=True)
-    + segment("cache {cache.percent}%", "status.cache.segment", priority=10, right=True)
-    + RIGHT_USAGE
-    + "[reset]",
-    "powerline": segment("{agent.name}", "status.detail bold", when="agent.name")
-    + segment("{model}", "status.model")
-    + SEGMENT_DETAILS
-    + "{>}"
-    + RIGHT_USAGE
-    + "[reset]",
+# Each builder takes whether the usage group sits at the right edge; segments turn their joins
+# toward their neighbors, so both placements stay connected.
+STATUS_LAYOUTS: dict[str, Callable[[bool], str]] = {
+    # Default keeps its plain text contract. Only semantic inks change here.
+    "default": lambda split: compose(
+        "{% if agent.name %}[status_agent bold][[{agent.name}]] [/]{% endif %}{% if yolo %}[status_yolo][[yolo]] [/]{% endif %}"
+        + "{% if agents.count > 1 %}{% optional priority=25 %}[status_agent][[agents {agents.count} · run {agents.running}"
+        + "]] [/]{% endoptional %}{% endif %}"
+        + "[status_provider]{provider}/[/][status_model bold]{model}[/]"
+        + "{% optional priority=20 %}[subtle] · [/][status_reason]{reasoning}[/]{% endoptional %}"
+        + "{% optional priority=5 %}[subtle] | [/][status_mcp]{mcp.label} · skills {skills.count}[/]{% endoptional %}",
+        pressure("ctx {context.percent}%") + "{% optional priority=10 %}[status_cache] · cache {cache.percent}%[/]{% endoptional %}",
+        split,
+        separator="[subtle] | [/]",
+    ),
+    "minimal": lambda split: compose(IDENTITY + "[status_base bold]{model}[/]", pressure(meter(5) + " {context.percent}%"), split, separator=" "),
+    "split": lambda split: compose(
+        "[status.split] [status_provider]▎ [/]"
+        + IDENTITY
+        + "{% optional priority=35 %}[status_provider]{provider}/[/]{% endoptional %}[status_model bold]{model}[/]"
+        + "{% optional priority=20 %}[status_mcp] · [/][status_reason]{reasoning}[/]{% endoptional %}",
+        "{% optional priority=30 %}"
+        + pressure("{% optional priority=12 %}" + meter(8) + " {% endoptional %}ctx {context.percent}%")
+        + "{% endoptional %}"
+        + "{% optional priority=10 %}[status_mcp] │ [/][status_cache]cache {cache.percent}%[/]{% endoptional %}",
+        split,
+        separator="[status_mcp] │ [/]",
+        tail=" [reset]",
+        band=True,
+    ),
+    "compact": lambda split: compose(
+        IDENTITY
+        + "{% optional priority=10 %}[status_provider]{provider} [/]{% endoptional %}[status.model] {model} [/]"
+        + "{% optional priority=20 %}[status_mcp] › [/][status_reason]{reasoning}[/]{% endoptional %}",
+        pressure("{context.percent}%"),
+        split,
+        separator="[status_mcp] › [/]",
+    ),
+    "brackets": lambda split: compose(
+        IDENTITY
+        + "[status_provider][[{provider}[/][status_mcp]/[/][status_model bold]{model}]][/] "
+        + "{% optional priority=20 %}[status_reason][[{reasoning}]][/] {% endoptional %}",
+        pressure("[[ctx {context.percent}%]]") + "{% optional priority=10 %}[status_cache] [[cache {cache.percent}%]][/]{% endoptional %}",
+        split,
+    ),
+    "monitor": lambda split: compose(
+        "[status.monitor] [status_context]◆ [/]"
+        + IDENTITY
+        + "{% optional priority=35 %}[status_provider]{provider}/[/]{% endoptional %}[status_model bold]{model}[/]"
+        + "{% optional priority=20 %}[status_mcp]  [/][status.reason] {reasoning} [/]{% endoptional %}",
+        "{% optional priority=5 %}[status_mcp]{mcp.label} · skills {skills.count} │ [/]{% endoptional %}"
+        + "{% optional priority=30 %}"
+        + pressure("ctx {context.percent}%{% optional priority=12 %} " + meter(6) + "{% endoptional %}")
+        + "{% endoptional %}"
+        + "{% optional priority=10 %} [status.cache] cache {cache.percent}% [/]{% endoptional %}",
+        split,
+        separator="[status_mcp] │ [/]",
+        tail=" [reset]",
+        band=True,
+    ),
+    "blocks": lambda split: compose(
+        BLOCKS_IDENTITY
+        + "{% optional priority=35 %}[status.provider] {provider} [reset]{% endoptional %}"
+        + "[status.model] {model} [reset]"
+        + "{% optional priority=20 %}[status.reason] {reasoning} [reset]{% endoptional %}",
+        "{% optional priority=10 %}[status.cache] cache {cache.percent}% [reset]{% endoptional %}"
+        + "{% optional priority=30 %}"
+        + SEGMENT_USAGE
+        + "{% endoptional %}",
+        split,
+    ),
+    "vim": lambda split: compose(
+        "[status.band]{% if agent.name %}[status.agent] {agent.name} [/]{% endif %} "
+        + "{% if yolo %}[status_yolo bold]yolo[/] · {% endif %}"
+        + AGENT_GROUP
+        + "{% optional priority=35 %}[status_provider]{provider}[/][status_mcp] / [/]{% endoptional %}[status_base bold]{model}[/]"
+        + "{% optional priority=20 %} [status_reason underline]{reasoning}[/]{% endoptional %}",
+        "{% optional priority=5 %}[status_mcp]{mcp.label} │ [/]{% endoptional %}" + "{% optional priority=30 %}" + SEGMENT_USAGE + "{% endoptional %}",
+        split,
+        separator="[status_mcp] │ [/]",
+        tail="[reset]",
+        band=True,
+    ),
+    "lualine": lambda split: compose(
+        "[status.band]" + segment("{agent.name}", "status.agent", when="agent.name") + segment("{model}", "status.model") + SEGMENT_DETAILS,
+        segment("{mcp.label} · skills {skills.count}", "status.detail", priority=5, right=split)
+        + segment("cache {cache.percent}%", "status.cache.segment", priority=10, right=split)
+        + usage_segment(split),
+        split,
+        tail="[reset]",
+        band=True,
+    ),
+    "powerline": lambda split: compose(
+        segment("{agent.name}", "status.detail bold", when="agent.name") + segment("{model}", "status.model") + SEGMENT_DETAILS,
+        usage_segment(split),
+        split,
+        tail="[reset]",
+    ),
 }
 
 # Waiting for the user is actionable even when ordinary group metrics have been elided.
@@ -298,10 +348,33 @@ STATUS_ATTENTION = {
     "blocks": "{% if agents.waiting %}[status.attention] wait {agents.waiting} [reset]{% endif %}",
     "default": "{% if agents.waiting %}[status.warning bold][[wait {agents.waiting}]] [/] {% endif %}",
 }
-STATUS_PRESETS = {
-    name: STATUS_ATTENTION.get(name, "{% if agents.waiting %}[status.warning bold]wait {agents.waiting}[/][status_mcp] │ [/]{% endif %}") + source
-    for name, source in STATUS_PRESETS.items()
-}
+
+
+def status_template(name: str, split: bool) -> str:
+    """Preset `name`, with its usage group at the right edge (`split`) or beside the rest."""
+    attention = STATUS_ATTENTION.get(name, "{% if agents.waiting %}[status.warning bold]wait {agents.waiting}[/][status_mcp] │ [/]{% endif %}")
+    return attention + STATUS_LAYOUTS[name](split)
+
+
+# A preset reference keeps both groups on the left; the other placement is saved as its template.
+STATUS_PRESETS = {name: status_template(name, False) for name in STATUS_LAYOUTS}
+
+
+def status_layout(source: str) -> tuple[str, bool] | None:
+    """The preset and placement (`split`) that `source` spells, or None for any other template.
+
+    Only exact matches count: a template changed in any other way is its author's, and is never
+    rewritten to move its groups."""
+    if source.startswith("preset:"):
+        name = source.removeprefix("preset:")
+        return (name, False) if name in STATUS_LAYOUTS else None
+    return next(((name, split) for name in STATUS_LAYOUTS for split in (False, True) if source == status_template(name, split)), None)
+
+
+def status_source(name: str, split: bool) -> str:
+    """The `ui.statusbar.format` value for a preset placement."""
+    return status_template(name, True) if split else "preset:" + name
+
 
 DIVIDER_PRESETS = {
     "plain": "[divider_rule]──[/]{% if running %} [spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:─}[/]",
@@ -375,14 +448,23 @@ class Template:
         target = self.nodes
         stack: list[tuple[Node, list[Node]]] = []
         pattern = re.compile(r"\{\{|\}\}|\[\[|\]\]|\{%.*?%\}|\{[^{}]*\}|\[[^\[\]]*\]", re.DOTALL)
+
+        def located(position: int, problem: object) -> ValueError:
+            line = self.source.count("\n", 0, position) + 1
+            column = position - self.source.rfind("\n", 0, position)
+            return ValueError(f"line {line}, column {column}: {problem}")
+
+        def literal_text(start: int, stop: int) -> str:
+            literal = self.source[start:stop]
+            if stray := re.search(r"[{}\[\]]", literal):
+                raise located(start + stray.start(), "unmatched delimiter; escape literal brackets by doubling them")
+            return literal
+
         end = 0
         for index, match in enumerate(pattern.finditer(self.source)):
             if index >= 512:
                 raise ValueError("template exceeds 512 tokens")
-            literal = self.source[end : match.start()]
-            if any(char in literal for char in "{}[]"):
-                raise ValueError("unmatched delimiter; escape literal brackets by doubling them")
-            target.append(Node("text", literal))
+            target.append(Node("text", literal_text(end, match.start())))
             token = match.group()
             try:
                 if token in ("{{", "}}", "[[", "]]"):
@@ -428,13 +510,9 @@ class Template:
                             raise ValueError(f"unknown field or format {value!r}")
                         target.append(Node("field", value))
             except ValueError as error:
-                line = self.source.count("\n", 0, match.start()) + 1
-                column = match.start() - self.source.rfind("\n", 0, match.start())
-                raise ValueError(f"line {line}, column {column}: {error}") from error
+                raise located(match.start(), error) from error
             end = match.end()
-        if any(char in self.source[end:] for char in "{}[]"):
-            raise ValueError("unmatched delimiter; escape literal brackets by doubling them")
-        target.append(Node("text", self.source[end:]))
+        target.append(Node("text", literal_text(end, len(self.source))))
         if stack:
             raise ValueError("unclosed template block")
         self._check(self.nodes, 0)

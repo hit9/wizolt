@@ -18,8 +18,9 @@ from wizolt.tools import SubagentTool
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli import agents as agents_module
 from wizolt.ui.cli.agents import AgentPreview, AgentsFrontend, agents_command
-from wizolt.ui.cli.commands import COMMAND_LOOKUP, set_value, status
+from wizolt.ui.cli.commands import COMMAND_LOOKUP, set_value
 from wizolt.ui.cli.runtime import TuiRuntime
+from wizolt.ui.cli.status import StatusReport
 from wizolt.ui.tui import InputMode
 
 
@@ -489,7 +490,8 @@ async def test_statusbar_group_counts_are_live_while_usage_remains_selected_agen
             assert (values["agents.count"], values["agents.running"], values["agents.waiting"]) == (3, 1, 1)
             assert values["agent.name"] == runtime.loop.session.agent_name
             assert values["context.percent"] == index * 10
-            assert "3 total · 1 running · 1 waiting for input (group-wide)" in status(runtime.loop, "")
+            activity = dict(StatusReport.of(runtime.loop).snapshot.activity.rows)
+            assert (activity["group agents"], activity["group running"], activity["group waiting"]) == ("3", "1", "1")
         waiting.tui.resolve_input("n")
         assert await answer == "n"
         assert frontend.root.loop.presentation.status_bar.values()["agents.waiting"] == 0
@@ -542,11 +544,13 @@ async def test_group_limit_setting_validation_and_status_from_each_agent(fronten
     assert root.session.settings.max_subagents == 5
     assert set_value(root, "runtime.worker on") == "Unknown config key: runtime.worker"
     runtime = await child(frontend)
-    assert "1/5 retained (group-wide)" in status(root, "")
-    assert "1/5 retained (group-wide)" in status(runtime.loop, "")
+    def retained(loop) -> str:
+        return dict(StatusReport.of(loop).snapshot.activity.rows)["group subagents"]
+
+    assert retained(root) == retained(runtime.loop) == "1/5"
     assert "main agent" in set_value(runtime.loop, "runtime.max_subagents 32")
     assert set_value(root, "runtime.max_subagents 0") == "Set runtime.max_subagents"
-    assert "1/0 retained (group-wide)" in status(runtime.loop, "")
+    assert retained(runtime.loop) == "1/0"
 
 
 async def pick(frontend, runtime, monkeypatch):
@@ -616,7 +620,7 @@ async def test_selected_agent_owns_draft_model_and_statistics(frontend, monkeypa
     assert values["context.percent"] == 64
     bar = "".join(text for _, text in runtime.loop.presentation.status_bar.fragments())
     assert "editor" in bar and "child-model" in bar
-    report = status(frontend.current.loop, "")
+    report = StatusReport.of(frontend.current.loop).text()
     assert "editor" in report and "child-model" in report
     assert "main-model" not in report and "worker" not in report
     assert "64%" in report
