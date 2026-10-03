@@ -2255,6 +2255,11 @@ class TuiApp:
                 if not renderer.full_screen:
                     out = renderer.output
                     rows, columns = out.get_size()
+                    if renderer._last_size is not None and renderer._last_size != out.get_size():
+                        # A normal redraw can beat SIGWINCH. Rebuild before publishing the
+                        # new size, or the delayed resize callback treats it as a duplicate
+                        # and leaves displaced live output in the transcript permanently.
+                        self.scrollback.reanchor()
                     height = layout_height(rows, columns)
                     previous = renderer.last_rendered_screen
                     # Only changes to the live layout can move its top edge. Growing first uses

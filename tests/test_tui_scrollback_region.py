@@ -291,6 +291,32 @@ def test_stream_header_and_spark_survive_a_full_preview(monkeypatch, tmp_path, w
         command_loop.session.close()
 
 
+def test_redraw_before_resize_notification_rebuilds_the_transcript(monkeypatch, wired):
+    output, app, printer = wired
+
+    async def resize_before_signal():
+        await wait_for(lambda: app.app.renderer.last_rendered_screen is not None)
+        printer.emit("retained transcript")
+        await wait_for(lambda: "retained transcript" in "".join(app.scrollback.transcript))
+        app.app._redraw()
+        # A multiplexer can move old live output before SIGWINCH reaches the app.
+        # A tool completion then redraws first, using a different physical height.
+        output.size = Size(rows=ROWS - 1, columns=80)
+        output.lines[0] = "displaced live preview"
+        output.row = min(output.row, output.size.rows)
+        app.app._redraw()
+        app.app._on_resize()  # The delayed signal now sees an already-rendered size.
+        assert not any("displaced live preview" in line for line in output.lines)
+        assert any("retained transcript" in line for line in output.lines)
+        app.app.exit()
+
+    def drive(_pipe_input):
+        wait_until(lambda: any(line.startswith(UiPrinter.PROMPT_PREFIX) for line in output.lines))
+        asyncio.run_coroutine_threadsafe(resize_before_signal(), app.app.loop).result(timeout=10)
+
+    run_tui(monkeypatch, app, output, drive)
+
+
 def test_transcript_stays_on_screen_after_the_app_stops(monkeypatch, wired):
     """Output printed while the runtime unwinds still has to reach the terminal.
 
