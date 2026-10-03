@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- Track transcript projection dimensions independently of renderer resets, including height
+  changes after live output finishes. Rebuild retained output for either resize event order;
+  height-only resizes now share the shell-history purge cost of width changes. Promote fresh-pane
+  zoom checks from expected failures to regressions and update the documented terminal trade-offs.
+- Let the terminal test model grow its cell storage after clearing a shorter screen.
+
 ## 0.71.1 - 2026-10-03
 
 ### Removed

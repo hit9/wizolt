@@ -14,7 +14,8 @@ Two things fix it, and both are needed:
   The app stays anchored at the pane bottom. New output fills the gap after the transcript's
   tail before scrolling this region; it never moves or repaints the live input rows.
 
-* A width change invalidates every row the terminal holds, because it rewraps all of them.
+* A resize invalidates the projection: width changes rewrap rows, and height changes can
+  move live rows into scrollback or clip transcript while the app is repainting.
   Nothing can identify which reflowed rows belong to the app, so this module stops trying:
   it keeps the transcript in memory, purges the terminal, and re-emits. The terminal is a
   projection of the transcript, not the place the transcript lives.
@@ -130,7 +131,7 @@ class ScrollbackRegion:
         self.tail_row: int | None = None
         self.transcript: list[ScrollbackText] = []
         self._pending: list[ScrollbackText] = []
-        self._width: int | None = None
+        self._size: tuple[int, int] | None = None
         self._rebuild_owed = False
         self._transcript_start = 0
         self._layouts: dict[int, _ReplayLayout] = {}
@@ -167,16 +168,17 @@ class ScrollbackRegion:
         sys.stdout.flush()
         self._retain(pending)
 
-    def note_width(self, columns: int) -> bool:
-        """Record the width being rendered at, and report whether a rebuild is owed.
+    def note_size(self, rows: int, columns: int) -> bool:
+        """Record projection dimensions independently of the renderer's disposable screen.
 
-        The debt is sticky. A width change that happens while an exclusive viewer owns the
+        The debt is sticky. A size change that happens while an exclusive viewer owns the
         alternate screen cannot be paid off then -- the transcript is not on screen, and purging
         would destroy the primary screen's scrollback for a rebuild nobody can see -- so it is
         carried until the app is back on the primary screen.
         """
-        self._rebuild_owed = self._rebuild_owed or (self._width is not None and self._width != columns)
-        self._width = columns
+        size = (rows, columns)
+        self._rebuild_owed = self._rebuild_owed or (self._size is not None and self._size != size)
+        self._size = size
         return self._rebuild_owed
 
     def recolor(self) -> None:
@@ -267,8 +269,8 @@ class ScrollbackRegion:
     def rebuild(self, app: Application) -> None:
         """Purge the terminal and re-emit the transcript at the current width.
 
-        Called when the width changed, which rewrote every row in the pane. See the module
-        docstring for why purging is the deliberate choice here rather than a last resort.
+        Called when projection geometry or colors change. See the module docstring for why
+        purging is the deliberate choice here rather than a last resort.
         """
         renderer = app.renderer
         out = renderer.output

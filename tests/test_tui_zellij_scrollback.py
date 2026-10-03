@@ -93,10 +93,5 @@ def test_detach_and_reattach_at_new_size_preserves_transcript_and_draft(pane):
         pane.wait_for("> kept-draft")
 
 
-@pytest.mark.xfail(
-    reason="design/KNOWN_ISSUES.md #3 also reproduced on Zellij 0.45.1: stale live region after height-only zoom",
-    raises=AssertionError,
-    strict=False,
-)
 def test_zoom_on_a_fresh_pane_leaves_one_live_region(pane):
     acceptance.test_zoom_on_a_fresh_pane_leaves_one_live_region(pane)

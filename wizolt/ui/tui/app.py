@@ -2166,8 +2166,8 @@ class TuiApp:
         position report (CPR). A multiplexer reflow (tmux zoom/unzoom) moves the already drawn app
         before the resize is even detected, so that erase misses the moved copy and the CPR answer
         carries the drifted row. Re-anchor using the previous app height and the new pane bottom,
-        then hand that origin directly to the renderer without a CPR round trip. Width changes
-        also rebuild the transcript in the render hook; re-anchoring alone cannot undo reflow.
+        then hand that origin directly to the renderer without a CPR round trip. Projection
+        dimensions belong to ScrollbackRegion; the render hook rebuilds invalidated history.
         """
         vanilla_resize = app._on_resize
 
@@ -2184,10 +2184,6 @@ class TuiApp:
                     # Nothing rendered yet, or a full-screen app: the stock path is already right.
                     vanilla_resize()
                     return
-                if self.activity_follows_transcript_fn():
-                    # Height-only resizes can move the command header too. Reuse retained row
-                    # layouts, but recover its exact tail before attaching the preview again.
-                    self.scrollback.reanchor()
                 # Erase from where an app of this height belongs when flush with the pane bottom.
                 # An absolute row can only ever reach the app's own rows; erasing from the drifted
                 # cursor instead reaches the transcript sitting directly above it.
@@ -2255,11 +2251,9 @@ class TuiApp:
                 if not renderer.full_screen:
                     out = renderer.output
                     rows, columns = out.get_size()
-                    if renderer._last_size is not None and renderer._last_size != out.get_size():
-                        # A normal redraw can beat SIGWINCH. Rebuild before publishing the
-                        # new size, or the delayed resize callback treats it as a duplicate
-                        # and leaves displaced live output in the transcript permanently.
-                        self.scrollback.reanchor()
+                    # Projection geometry survives renderer.reset() and cannot depend on
+                    # whether a tool is still active when its old screen is resized.
+                    self.scrollback.note_size(rows, columns)
                     height = layout_height(rows, columns)
                     previous = renderer.last_rendered_screen
                     # Only changes to the live layout can move its top edge. Growing first uses
@@ -2290,7 +2284,7 @@ class TuiApp:
                         out.cursor_goto(rows - height + 1, 1)
                         renderer._min_available_height = height
                 vanilla_render(*args, **kwargs)
-                owed = self.scrollback.note_width(renderer.output.get_size().columns)
+                owed = self.scrollback.note_size(*renderer.output.get_size())
                 if renderer.full_screen:
                     # An exclusive viewer (the tool-output browser) owns the alternate screen.
                     # Purging there would take the primary screen's scrollback with it for a
@@ -2298,8 +2292,8 @@ class TuiApp:
                     # after the viewer closes.
                     return
                 if owed:
-                    # Width changed: every row in the pane was rewrapped, and none of them can be
-                    # attributed any more. Rebuild the projection from the transcript instead.
+                    # Geometry changed: native reflow/scrolling no longer identifies which
+                    # rows belong to the app. Rebuild from the retained transcript instead.
                     self.scrollback.rebuild(app)
                     # Replay establishes a new transcript tail. Padding measured before replay
                     # belongs to the old screen and can push the preview away from its header.

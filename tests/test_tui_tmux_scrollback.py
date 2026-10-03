@@ -14,7 +14,7 @@ What is asserted, and why each one is separate:
   implementation accumulates: erasing clears cells but does not remove rows from the text flow.
 * The prompt and status rows appear once. A stale copy left behind by a reflow shows up here.
 
-Pre-existing shell history is deliberately *not* asserted to survive. A width change rebuilds
+Pre-existing shell history is deliberately *not* asserted to survive. A pane resize rebuilds
 the terminal from the transcript and purges scrollback; see `wizolt/ui/tui/scrollback.py` for why
 that trade is taken rather than guessing how many physical rows to delete.
 """
@@ -139,9 +139,7 @@ class Pane(NamedTuple):
         tmux("resize-pane", "-Z", "-t", self.session)
 
 
-test_zoom_on_a_fresh_pane_leaves_one_live_region = pytest.mark.xfail(
-    reason="see design/KNOWN_ISSUES.md: a pane height change cannot remove the rows it already drew", strict=False
-)(acceptance.test_zoom_on_a_fresh_pane_leaves_one_live_region)
+test_zoom_on_a_fresh_pane_leaves_one_live_region = acceptance.test_zoom_on_a_fresh_pane_leaves_one_live_region
 
 
 @pytest.mark.parametrize("stable", [False, True])

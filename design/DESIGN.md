@@ -655,15 +655,16 @@ that projection. Its two mechanisms are inseparable:
   reply, conservatively write immediately above the app. Only a live-layout height change moves
   its top edge. Command previews use the gap after the transcript to stay beside their tool
   header, placing spare rows below the preview and keeping the input fixed. Reserve space for
-  pending transcript writes before measuring this gap. While a command preview is attached,
-  height-only resizes also replay retained output to recover the header's exact position.
+  pending transcript writes before measuring this gap.
   When growing, consume the gap first and scroll only the transcript rows that
   would be covered; when shrinking, clear the old live region and anchor the smaller one below.
   Bound preview bodies at their source (the model stream retains six text rows), not the combined
   activity window: its spark, phase label, spacing and divider need their own rows. Follow the
   activity tail only when the pane itself cannot fit it. Guard recent visible context as well as
   native history, including across modal changes.
-- A width change invalidates row ownership. Purge the terminal and replay retained completed
+- A width or height change invalidates row ownership. Track projection dimensions independently
+  of renderer resets and current tool activity: either the resize notification or an ordinary
+  redraw can arrive first. Purge the terminal and replay retained completed
   output, including startup/restored output and accepted pending writes. Defer the rebuild while
   an exclusive viewer owns the alternate screen, and pay the debt on return to the primary screen.
 - Re-anchor the app at the pane bottom and give the renderer its origin directly. A resize CPR
@@ -690,7 +691,7 @@ that projection. Its two mechanisms are inseparable:
   Direct runtime callers install the sink before printing their banner, still before terminal
   probing. Early visibility must not bypass recording: replay cannot recover unrecorded output.
 
-**Accepted cost:** the first width change removes pre-wizolt shell scrollback. `KNOWN_ISSUES.md`
+**Accepted cost:** the first pane resize removes pre-wizolt shell scrollback. `KNOWN_ISSUES.md`
 records what that costs users, and the evidence that the reference implementation of this design
 pays the same price. Replay retains at
 most 5,000 writes (a write can contain multiple lines); older output may disappear from terminal
@@ -774,8 +775,7 @@ The glyph/tab wrapping test uses the viewport; history checks validate text inte
 and growth in blank logical lines. This does not measure every physical scrollback row.
 `dump-screen` joins even viewport rows and cannot validate wrapping. Missing Zellij skips locally but fails when
 `WIZOLT_REQUIRE_ZELLIJ=1`, as in CI. Failed runs retain client ANSI output, driver logs and pane
-snapshots. The fresh-pane height-only zoom reproduces known issue 3 on both multiplexers and
-remains an explicit expected failure.
+snapshots. Fresh-pane height-only zoom also checks that replay removes the previous live region.
 
 **Remaining acceptance coverage:** changing thinking/activity previews, Ask/approval interactions,
 and selectors with rich previews still need real-tmux coverage. Future changes at those boundaries

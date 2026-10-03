@@ -291,7 +291,8 @@ def test_stream_header_and_spark_survive_a_full_preview(monkeypatch, tmp_path, w
         command_loop.session.close()
 
 
-def test_redraw_before_resize_notification_rebuilds_the_transcript(monkeypatch, wired):
+@pytest.mark.parametrize("signal_first", [False, True])
+def test_resize_rebuilds_the_transcript_regardless_of_notification_order(monkeypatch, wired, signal_first):
     output, app, printer = wired
 
     async def resize_before_signal():
@@ -304,6 +305,8 @@ def test_redraw_before_resize_notification_rebuilds_the_transcript(monkeypatch, 
         output.size = Size(rows=ROWS - 1, columns=80)
         output.lines[0] = "displaced live preview"
         output.row = min(output.row, output.size.rows)
+        if signal_first:
+            app.app._on_resize()
         app.app._redraw()
         app.app._on_resize()  # The delayed signal now sees an already-rendered size.
         assert not any("displaced live preview" in line for line in output.lines)

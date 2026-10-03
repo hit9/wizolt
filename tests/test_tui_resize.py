@@ -42,6 +42,12 @@ class ReflowingTerminal(ResizableOutput):
     def get_rows_below_cursor_position(self):
         raise NotImplementedError
 
+    def get_size(self):
+        # Clearing a short pane shrinks the cell storage. Growing it later exposes
+        # blank rows; writes to those rows must not fail inside the renderer callback.
+        self.lines.extend([""] * max(0, self.size.rows - len(self.lines)))
+        return self.size
+
     @property
     def responds_to_cpr(self):
         return True
