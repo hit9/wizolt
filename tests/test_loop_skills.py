@@ -345,16 +345,19 @@ def status_loop(tmp_path) -> CommandLoop:
     return CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
 
 
-@pytest.mark.parametrize("width", [120, 80, 44])
+@pytest.mark.parametrize("width", [120, 80, 44, 21, 18])
 def test_printed_status_frames_every_tab_at_any_width(tmp_path, width):
     loop = status_loop(tmp_path)
     lines = StatusReport.of(loop).text(width).splitlines()
     text = "\n".join(lines)
 
-    # One frame around everything, never wider than the pane.
+    # One frame around everything, never wider than the pane, however narrow (regression: at 21
+    # columns and under it overflowed by up to four).
     assert max(get_cwidth(line) for line in lines) <= width
     assert lines[0].strip().strip("╭─╮") == "" and lines[-1].strip().strip("╰─╯") == ""
     assert all(line.strip().startswith("│") for line in lines[1:-1])
+    if width < 44:
+        return  # rows wrap under their own column; layout and order are checked wider
     # Overview first, then each tab once, in order; the session id appears once.
     assert value(text, "agent") == "main · " + loop.session.state.last_turn_status
     order = [text.index(title) for title in ("agent ", "Context", "Next request", "Usage", "All requests", "Activity", "Session", "docs")]

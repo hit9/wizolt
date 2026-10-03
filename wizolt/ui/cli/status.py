@@ -448,7 +448,9 @@ def frame(body: TextRows, width: int, *, footer: str = "") -> TextRows:
 
 
 def frame_width(width: int) -> int:
-    return max(20, min(width, FRAME_WIDTH))
+    """The frame's columns for `width` available ones: its borders and padding take four, so it
+    keeps one cell inside however narrow the pane, and never outgrows what it is given."""
+    return max(5, min(width, FRAME_WIDTH))
 
 
 @dataclass(frozen=True)

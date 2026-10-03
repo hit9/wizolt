@@ -40,7 +40,19 @@ if TYPE_CHECKING:
 KINDS = ("theme", "diff", "statusbar", "divider", "sweep", "input", "statusbar_theme", "divider_theme")
 TAB_KINDS = ("theme", "diff", "statusbar", "divider", "input")
 TITLES = ("Colorscheme", "Diff", "StatusBar", "Divider", "Input")
-LEGEND = "h/l tab · j/k move · / search · Enter save · Esc cancel"
+LEGEND = ("j/k move", "h/l tab", "/ search")
+CLOSING_KEYS = ("Enter save", "Esc cancel")
+
+
+def fit_keys(keys: Sequence[str], width: int) -> str:
+    """A tab's key legend in `width` columns. `keys` run from the most familiar, which give way
+    first on a narrow pane; saving and cancelling are always shown."""
+    shown = [*keys, *CLOSING_KEYS]
+    while len(shown) > len(CLOSING_KEYS) and get_cwidth(" · ".join(shown)) > width:
+        shown.pop(0)
+    return " · ".join(shown)
+
+
 # The row that keeps a layout no preset names: the user's own template, or an older preset.
 CUSTOM = "custom"
 # Where a statusbar preset puts its usage group. Not a setting: each is a different format.
@@ -457,14 +469,13 @@ class AppearancePicker:
             "",
             self.preview(self.kind(), framed=framed, title=preview_title),
             preview_title=" " if framed else Text.clip_width(preview_title, self.width - 2),
-            keys=(
-                "h/l tabs · j/k move · Tab group · Space choose · "
-                + ("p placement · " if self.kind() == "statusbar" else "")
-                + "f format · Enter save · Esc cancel"
+            keys=fit_keys(
+                ("j/k move", "h/l tabs", "Tab group", "Space choose", *(("p placement",) if self.kind() == "statusbar" else ()), "f format")
                 if self.kind() in self.bar_focus
-                else "h/l tab · j/k move · e edit · Enter save · Esc cancel"
+                else ("j/k move", "h/l tab", "e edit")
                 if self.kind() == "input"
-                else LEGEND
+                else LEGEND,
+                self.width - 2,
             ),
         )
         # Keep navigation beside the tabs, rather than below a preview or padding.

@@ -1,17 +1,20 @@
 """Tabbed appearance previews, cancellation and persistence at the command boundary."""
 
 import asyncio
+import os
 import tomllib
 from pathlib import Path
 
 import pytest
 from prompt_toolkit.document import Document
+from prompt_toolkit.utils import get_cwidth
 from test_command_ui import ModalHarness
 from tui_harness import loop
 
 from wizolt.ui.bars import DIVIDER_PRESETS, STATUS_PRESETS, SWEEPS, status_template
 from wizolt.ui.cli.appearance import AppearancePicker, theme_command
 from wizolt.ui.cli.commands import COMMAND_NAMES
+from wizolt.ui.cli.formats import FormatPanel
 from wizolt.ui.cli.view import CommandCompleter
 from wizolt.ui.render import InputStyle, Theme
 from wizolt.utils.clipboard import Clipboard
@@ -228,7 +231,7 @@ async def test_switching_tabs_and_search_keeps_the_picker_height(command_loop, m
         text = "".join(text for _, text in frame)
         if "no matches" in text:
             assert text.splitlines()[1] == ""
-            assert text.splitlines()[2].strip().startswith("h/l")
+            assert text.splitlines()[2].strip().endswith("Enter save · Esc cancel")
 
 
 async def test_small_pane_prioritizes_choices_over_the_sample(command_loop, monkeypatch):
@@ -241,7 +244,7 @@ async def test_small_pane_prioritizes_choices_over_the_sample(command_loop, monk
     assert "showing 1-6 of" in text
     assert "def " in text and "Enter save" in text
     assert "Color samples · 1/8 shown" in text and "enlarge to see all" in text
-    assert text.splitlines()[1].strip().startswith("h/l")
+    assert text.splitlines()[1].strip().endswith("Enter save · Esc cancel")
     assert "customization" in text.splitlines()[2] and "config" in text.splitlines()[2]
     assert 1 + text.count("\n") == 14
 
@@ -657,3 +660,34 @@ async def test_placement_applies_to_the_highlighted_preset_and_stays_when_choosi
         assert picker.layout.sources["statusbar"] == picker.source("statusbar") == "preset:minimal"
     finally:
         picker.restore()
+
+
+@pytest.mark.parametrize("width", [60, 80, 120])
+async def test_every_tab_legend_fits_and_keeps_save_and_cancel(command_loop, monkeypatch, width):
+    """Regression: at 80 columns the StatusBar legend ran to 99 and the modal cut it before
+    `Enter save · Esc cancel`; a narrow pane now drops the most familiar keys first."""
+    monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=None: os.terminal_size((width, 30)))
+    monkeypatch.setattr("wizolt.ui.cli.appearance.picker_height", lambda: 24)
+    picker = AppearancePicker(command_loop, 0)
+    try:
+        for tab in range(len(picker.tabs.titles)):
+            legend = next(line for line in "".join(fragment[1] for fragment in picker.fragments()).splitlines() if "Esc cancel" in line)
+            assert get_cwidth(legend) <= width and legend.rstrip().endswith("Enter save · Esc cancel"), (tab, legend)
+            if width >= 120:
+                assert "j/k move" in legend  # nothing is dropped where everything fits
+            picker.handle_key("l", "l")
+    finally:
+        picker.restore()
+
+
+def test_an_empty_paste_or_key_types_nothing_into_a_draft():
+    """Regression: a bare bracketed paste arrives with empty data, and its key name was typed."""
+    panel = FormatPanel("statusbar", lambda: "preset:default", "preset:default", apply=lambda _source: [], accept=lambda _source: None)
+    panel.handle_key("e")
+    assert panel.draft is not None
+    before = panel.draft.text
+    for key in ("paste", "any"):
+        panel.handle_key(key, "")
+        assert panel.draft.text == before, key
+    panel.handle_key("paste", "{model}")
+    assert panel.draft.text == before + "{model}"

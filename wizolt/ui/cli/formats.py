@@ -123,7 +123,9 @@ class FormatPanel:
         elif key == "delete":
             text = text[:cursor] + text[cursor + 1 :]
         else:
-            typed = "\n" if key == "enter" else (data or key) if key in {"any", "paste"} or len(key) == 1 else ""
+            # "any" and "paste" carry their text in `data`, which can be empty (a bare bracketed
+            # paste); their names are never text. A one-character key name is its own character.
+            typed = "\n" if key == "enter" else data if key in {"any", "paste"} else (data or key) if len(key) == 1 else ""
             typed = typed.replace("\r\n", "\n").replace("\r", "\n")
             if not typed:
                 return
