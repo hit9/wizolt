@@ -338,7 +338,8 @@ class AppearancePicker:
             if kind == "statusbar":
                 fragments = [(Theme.fg("muted"), "The status bar below previews the highlighted layout and colors.")]
             elif kind == "input":
-                fragments = self.input_preview(self.input_style(name))
+                # Inside a frame the sample must fit the box, or clipping its padding draws "…".
+                fragments = self.input_preview(self.input_style(name), self.box_width() - 4 if framed else self.width)
             else:
                 fragments = (
                     theme_preview(name) if kind == "theme" else diff_style_preview(name) if kind == "diff" else bars.preview(self.loop, kind, self.started)
@@ -347,7 +348,8 @@ class AppearancePicker:
             # list; the surrounding prompt and statusbar still preview the selected theme.
             limit = self.preview_limit(kind, framed)
             rows = list(split_lines(fragments))
-            if rows and not rows[-1]:
+            # A trailing newline leaves a last row that is empty or holds only empty fragments.
+            if rows and not fragment_list_width(rows[-1]):
                 rows.pop()
             if kind == "input" and limit < 4:
                 rows = rows[1:4:2]
@@ -359,9 +361,12 @@ class AppearancePicker:
 
         return draw
 
+    def box_width(self) -> int:
+        return min(self.width - 4, 100)
+
     def preview_box(self, rows: list[StyleAndTextTuples], title: str) -> StyleAndTextTuples:
         """A bounded sample panel; preserve sample colors and measure terminal cells, not chars."""
-        width = min(self.width - 4, 100)
+        width = self.box_width()
         inside = width - 4
         border = Theme.fg("rule")
         caption = " " + Text.clip_width(title, width - 4) + " "
@@ -372,10 +377,10 @@ class AppearancePicker:
         parts.append((border, "  ╰" + "─" * (width - 2) + "╯\n"))
         return parts
 
-    def input_preview(self, style: InputStyle) -> StyleAndTextTuples:
+    def input_preview(self, style: InputStyle, columns: int | None = None) -> StyleAndTextTuples:
         def sample(running: bool, text: str) -> StyleAndTextTuples:
             prefix = style.prefix(running=running)
-            width = max(0, self.width - 2 - get_cwidth(prefix))
+            width = max(0, (self.width if columns is None else columns) - 2 - get_cwidth(prefix))
             text = Text.clip_width(text, width)
             background = f"bg:{Theme.color('user_bg')}"
             return [(f"class:prompt {background}", prefix), (Theme.fg("text", background), text + " " * max(0, width - get_cwidth(text)) + "\n")]

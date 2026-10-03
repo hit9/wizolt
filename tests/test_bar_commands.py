@@ -249,6 +249,25 @@ async def test_small_pane_prioritizes_choices_over_the_sample(command_loop, monk
     assert 1 + text.count("\n") == 14
 
 
+@pytest.mark.parametrize("framed", [False, True])
+def test_input_sample_has_no_blank_row_after_its_last_line(command_loop, monkeypatch, framed):
+    from wizolt.ui.cli import appearance
+
+    monkeypatch.setattr(appearance, "picker_height", lambda: 24)
+    picker = appearance.AppearancePicker(command_loop, 0)
+    try:
+        picker.width = 80
+        lines = "".join(text for _, text in picker.preview("input", framed=framed, title="Input")("chevron")).splitlines()
+        # The sample's own trailing newline once added an empty row, taking one from the list.
+        # A frame keeps one padding row inside its bottom border.
+        last = lines[-3] if framed else lines[-1]
+        assert "Add a test too" in last, lines
+        # Samples fit the frame: clipping their padding drew a stray ellipsis on every row.
+        assert not any("…" in line or "..." in line for line in lines), lines
+    finally:
+        picker.restore()
+
+
 @pytest.mark.parametrize("height", [4, 8, 14, 20, 24, 40])
 def test_appearance_tabs_fit_after_the_terminal_shrinks(command_loop, monkeypatch, height):
     from wizolt.ui.cli import appearance

@@ -61,6 +61,9 @@
   whose callback stops when asked; only an unresponsive worker is terminated.
 - A `{join:…}` without its Powerline glyph now names U+E0B0 / U+E0B2 instead of reporting an
   unknown field; the appearance references spell out the code points, which often render invisibly.
+- The `/theme` Input tab no longer spends a row on a blank line after its sample, so a 16-row
+  picker lists all six styles instead of four; samples inside a framed preview fit the frame
+  instead of ending in a stray `…`.
 - `wizolt plugin test --facts/--summarize` accept pipes and symlinks such as `<(...)`, and a
   rejected theme or preset reports stage `validate` instead of `load`.
 - Opening `/status` no longer lays out prompt-area plugin components for 80 columns until the
