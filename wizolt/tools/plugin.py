@@ -18,7 +18,7 @@ class PluginTool(Tool):
     """
 
     NAME = "Plugin"
-    DESCRIPTION = "Plugins: reload applies saved plugin choices (name: one plugin); list/describe/call use plugin tools"
+    DESCRIPTION = "Plugins: reload applies saved choices; list discovers current tools (optional name filters one plugin); describe/call use plugin tools"
     MUTATES = True
     ACTIONS: ClassVar[tuple[str, ...]] = ("reload", "list", "describe", "call")
 
@@ -86,7 +86,10 @@ class PluginTool(Tool):
                 tools = [
                     {"name": plugin, "tool": tool, "description": operation.description}
                     for plugin, entry in runtime.entries.items()
-                    if not entry.active.error
+                    if (not name or plugin == name)
+                    and not entry.active.error
+                    and not entry.active.worker.error
+                    and entry.active.worker.process.returncode is None
                     for tool, operation in entry.active.plugin.tools.items()
                 ]
                 return json.dumps({"tools": tools}, ensure_ascii=False)

@@ -878,7 +878,7 @@ AGENTS_ROWS = [
 def test_the_bare_menu_offers_the_agents_namespace_after_the_other_kinds():
     completer = CommandCompleter(mcp_servers=lambda: ("github",), skills=lambda: ("release",), files=lambda: ())
 
-    assert completions(completer, "use @") == ["@file:", "@mcp:", "@skill:", "@agents.md:"]
+    assert completions(completer, "use @") == ["@file:", "@mcp:", "@skill:", "@agents.md:", "@plugin:"]
 
 
 def test_agents_completions_come_from_the_rows_callable_including_all_applicable():

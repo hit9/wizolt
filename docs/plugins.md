@@ -31,6 +31,10 @@ The agent uses the built-in **plugin-workshop** skill. It checks the plugin's pi
 showing it to you, and asks before running plugin code in your session. The request lists what
 changes: which plugins are enabled, disabled, or have new code or settings. Nothing restarts.
 
+Type `@plugin:` to select an installed plugin in your message, including disabled ones.
+This names the plugin; the agent queries its tools only when needed. A mention does not enable
+the plugin, run code, or attach its source and tool schemas to your conversation.
+
 ## Arrange your plugins
 
 Open `/plugins`, select an enabled plugin, then **layout** to move its component up or down.

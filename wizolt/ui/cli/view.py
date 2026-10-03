@@ -48,6 +48,7 @@ class CommandCompleter(Completer):
         ("mcp:", "MCP servers and tools"),
         ("skill:", "installed skills"),
         ("agents.md:", "AGENTS.md instructions and sections"),
+        ("plugin:", "installed plugins"),
     )
     MAX_ROWS = 50  # SPEC R4: cap the menu.
 
@@ -71,6 +72,7 @@ class CommandCompleter(Completer):
         agents_rows: Callable[[], list[MenuRow]] = list,
         commands: CommandCatalog | None = None,
         bar_layout: Callable[[], BarLayout] = BarLayout,
+        plugins: Callable[[], tuple[str, ...]] = tuple,
     ):
         self.providers = providers
         self.models = models
@@ -87,6 +89,7 @@ class CommandCompleter(Completer):
         self.agents_rows = agents_rows
         self.commands = commands or CommandCatalog()
         self.bar_layout = bar_layout
+        self.plugins = plugins
 
     def get_completions(self, document, complete_event):
         del complete_event
@@ -231,6 +234,9 @@ class CommandCompleter(Completer):
             yield from self._skill_completions(span.payload, start)
         elif span.kind == "agents":
             yield from self._agents_completions(span.payload, start)
+        elif span.kind == "plugin":
+            for name in self._matching_names(self.plugins(), span.payload):
+                yield Completion(f"@plugin:{name}", start_position=start, display_meta="plugin")
         else:
             yield from self._merged_completions(span.payload, start)
 

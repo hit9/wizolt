@@ -51,7 +51,7 @@ def test_mention_opens_completions_while_typing(monkeypatch):
         wait_until(lambda: completions() == ["@mcp:github"])  # the list narrows as typing continues
 
         pipe_input.send_text(" and @")
-        wait_until(lambda: completions() == ["@file:", "@mcp:", "@skill:", "@agents.md:"])
+        wait_until(lambda: completions() == ["@file:", "@mcp:", "@skill:", "@agents.md:", "@plugin:"])
 
         pipe_input.send_text("mcp:")
         wait_until(lambda: completions() == ["@mcp:github", "@mcp:gitlab", "@mcp:playwright"])
@@ -88,11 +88,11 @@ def test_selecting_mention_kind_opens_its_candidate_list(monkeypatch):
     def drive(pipe_input):
         wait_until(lambda: app.app is not None and app.app.is_running)
         pipe_input.send_text("@")
-        wait_until(lambda: completions() == ["@file:", "@mcp:", "@skill:", "@agents.md:"])
+        wait_until(lambda: completions() == ["@file:", "@mcp:", "@skill:", "@agents.md:", "@plugin:"])
 
-        # Shift-Tab highlights the last namespace row; Enter commits it as real input, and Tab
+        # Shift-Tab passes plugin and highlights agents.md; Enter commits it, and Tab
         # then asks that namespace for its own candidates.
-        pipe_input.send_text("\x1b[Z")
+        pipe_input.send_text("\x1b[Z\x1b[Z")
         wait_until(lambda: app.input_buffer.text == "@agents.md:")
         pipe_input.send_text("\r")
         wait_until(lambda: state() is None and app.input_buffer.text == "@agents.md:")
@@ -364,7 +364,7 @@ def test_selecting_partially_typed_file_kind_opens_picker(monkeypatch, typed):
 )
 def test_browsing_bare_kind_menu_does_not_launch_file_picker(monkeypatch, steps):
     """Highlighting @file: in the bare-@ menu is a preview, not a choice: arrow/Tab/Ctrl-N through
-    the four kind rows without the file picker grabbing the terminal, and Enter on a later row
+    the kind rows without the file picker grabbing the terminal, and Enter on a later row
     commits it (the picker only opens on an explicit Enter on @file:). Tab is the one that used to
     slip: on a previewed @file: it read as "open the picker", not "next row"."""
     queries = []
@@ -378,7 +378,7 @@ def test_browsing_bare_kind_menu_does_not_launch_file_picker(monkeypatch, steps)
         current = app.input_buffer.complete_state
         return None if current is None else (current.complete_index, [c.text for c in current.completions])
 
-    kinds = ["@file:", "@mcp:", "@skill:", "@agents.md:"]
+    kinds = ["@file:", "@mcp:", "@skill:", "@agents.md:", "@plugin:"]
 
     def drive(pipe_input):
         wait_until(lambda: app.app is not None and app.app.is_running)
@@ -440,6 +440,7 @@ def test_tab_browses_past_the_file_kind_in_every_direction(monkeypatch, mode):
         press("\t", "@mcp:", 1)  # and Tab still moves on
         press("\t", "@skill:", 2)
         press("\t", "@agents.md:", 3)
+        press("\t", "@plugin:", 4)
         press("\t", "@", None)  # past the last row: back to what was typed
         press("\t", "@file:", 0)  # and round again, still a preview
         app.app.loop.call_soon_threadsafe(app.app.exit)

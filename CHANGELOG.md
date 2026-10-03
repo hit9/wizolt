@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add `@plugin:NAME` completion and lightweight references. Mentions do not load plugins or
+  inline capabilities; `Plugin list` can filter by exact plugin name before on-demand `describe`.
+
 - Give plugin components stable per-slot ordering, saved layout controls in `/plugins`, and an
   optional built-in `layout` plugin for agent-driven arrangement through the same SDK API.
   Components receive viewport and remaining-height facts; the manager reports budget clipping.

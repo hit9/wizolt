@@ -37,6 +37,8 @@ also offers rollback. Files never load just because they exist.
 **What a plugin can add:** UI (fields, components, themes, presets), slash commands for the user,
 and tools for you. Register `plugin.tool` when the user wants *you* to gain an ability; after
 activation, use `Plugin` actions `list`, `describe`, then `call` (the user approves calls).
+`@plugin:NAME` is a reference only. Use `Plugin(action="list", name="NAME")` to discover its
+current tools, or CLI `plugin inspect NAME` for saved installation state; mentioning does not enable it.
 Commands are typed by the user; you cannot run them.
 
 Keep mutable state inside `setup`, use theme roles, and keep render callbacks cheap and pure.

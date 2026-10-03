@@ -783,6 +783,8 @@ class Agent:
         Awaited for MCP alone: a mentioned server that is not connected yet is discovered here, and
         that discovery now runs on the runtime loop like every other MCP operation. The skill and
         file resolvers are local lookups and stay synchronous."""
+        from wizolt.plugins.mentions import resolve_mentions as plugin_mentions
+
         blocks: list[Json] = []
         for event, resolver in (
             ("skill_command", self.skill_command if self.session.skills is not None else None),
@@ -790,6 +792,7 @@ class Agent:
             ("skill_mentions", self.session.skills.resolve_mentions if self.session.skills is not None else None),
             ("agents_mentions", self.session.agents.resolve_mentions if self.session.agents is not None else None),
             ("file_mentions", self.session.mentions.resolve_mentions if self.session.mentions is not None else None),
+            ("plugin_mentions", plugin_mentions if self.session.plugins is not None else None),
         ):
             if resolver is None:
                 continue

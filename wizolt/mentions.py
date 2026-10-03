@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from wizolt.session import Session
 
 
-MentionKind = Literal["bare", "file", "mcp", "skill", "agents"]
+MentionKind = Literal["bare", "file", "mcp", "skill", "agents", "plugin"]
 _WORD = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 _IDENTIFIER = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
 _BARE_FILE = re.compile(r"^[A-Za-z0-9_./:+@%=-]+$")
@@ -47,7 +47,7 @@ def encode_file_mention(path: str) -> str:
 
 
 def scan_mentions(text: str) -> list[MentionSpan]:
-    """Scan file/MCP/skill mentions without allowing namespace or email collisions."""
+    """Scan namespaced references without allowing namespace or email collisions."""
     spans: list[MentionSpan] = []
     index = 0
     while index < len(text):
@@ -85,7 +85,7 @@ def active_mention(text_before_cursor: str) -> MentionSpan | None:
 
 def _scan_at(text: str, start: int) -> MentionSpan | None:
     payload_start = start + 1
-    for namespace in ("file", "mcp", "skill", "agents.md"):
+    for namespace in ("file", "mcp", "skill", "agents.md", "plugin"):
         prefix = namespace + ":"
         if text.startswith(prefix, payload_start):
             value_start = payload_start + len(prefix)

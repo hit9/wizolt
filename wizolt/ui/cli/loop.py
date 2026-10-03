@@ -109,6 +109,7 @@ class CommandLoop:
         self.commands = CommandCatalog(self.session.plugins)
         self.input_completer = CommandCompleter(
             commands=self.commands,
+            plugins=lambda: tuple(sorted(self.session.plugins.catalog.read()[0])) if self.session.plugins else (),
             bar_layout=lambda: self.presentation.status_bar.layout,
             providers=lambda: tuple(sorted(self.session.config.providers)),
             models=lambda: self.session.config.provider.available_models,
