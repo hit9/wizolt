@@ -78,6 +78,8 @@ If `/plugins` shows a panel as hidden or clipped, ask for a more compact design.
 
 Open **`/plugins`**, select a plugin and press **Enter**:
 
+The list shows its source (`builtin` or `user`), whether it is enabled, and its current state.
+
 | Action | What you get |
 | --- | --- |
 | Enable / Disable | Turn it on or off for this project |

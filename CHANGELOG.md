@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show an aligned `builtin` / `user` source column in the plugin manager.
+
 - Replace the price-dependent plugin example with session token counts, including its illustrations
   and executable workshop example.
 

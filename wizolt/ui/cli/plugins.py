@@ -119,13 +119,14 @@ class PluginManager:
         return self.state.fragments(title, self.preview, keys="↑/↓ j/k move · Enter manage · / search · Esc back")
 
     def labels(self, columns: int) -> dict[str, str]:
-        """Reserve state columns before clipping names; recompute after terminal resizing."""
-        states = max((len(str(item["status"])) for item in self.records.values()), default=0)
-        width = min(max(map(len, self.records), default=0), 28, max(4, columns - states - 12))
-        return {
-            name: Text.clip_width(f"{Text.clip_width(name, width):<{width}}  {'enabled' if item['enabled'] else 'disabled':<8}  {item['status']}", columns)
+        """Reserve origin and state columns before clipping names on terminal resizing."""
+        details = {
+            name: f"{'builtin' if item.get('builtin') else 'user':<7}  {'enabled' if item['enabled'] else 'disabled':<8}  {item['status']}"
             for name, item in self.records.items()
         }
+        reserved = max(map(len, details.values()), default=0) + 2
+        width = min(max(map(len, self.records), default=0), 28, max(4, columns - reserved))
+        return {name: Text.clip_width(f"{Text.clip_width(name, width):<{width}}  {detail}", columns) for name, detail in details.items()}
 
     async def run(self) -> None:
         tui = self.loop.presentation.tui

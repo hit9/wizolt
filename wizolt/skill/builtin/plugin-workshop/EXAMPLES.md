@@ -46,10 +46,9 @@ def setup(plugin):
     plugin.field("input_k", lambda context: context.usage.input_tokens / 1000)
     plugin.field("output_k", lambda context: context.usage.output_tokens / 1000)
     plugin.preset(
-        "statusbar", "tokens",
-        "[status.model] {model} [/]{>}"
-        "[info]in {plugins.tokens.input_k:.1f}k[/] "
-        "[success]out {plugins.tokens.output_k:.1f}k[/]",
+        "statusbar",
+        "tokens",
+        "[status.model] {model} [/]{>}[info]in {plugins.tokens.input_k:.1f}k[/] [success]out {plugins.tokens.output_k:.1f}k[/]",
     )
 ```
 
