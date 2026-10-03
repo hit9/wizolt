@@ -13,12 +13,13 @@ import math
 import sys
 import traceback
 from contextvars import ContextVar
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from typing import Any
 
+from wizolt.plugins.layout import SLOTS, LayoutBudget
 from wizolt.plugins.loading import LoadedPlugin, PluginSource
 from wizolt.plugins.protocol import MAX_FRAME, MAX_REQUEST, Snapshot
-from wizolt.sdk import Context, Event, PluginError
+from wizolt.sdk import Context, Event, PluginError, ToolActivity
 
 
 class Worker:
@@ -59,6 +60,7 @@ class Worker:
             self.loaded = LoadedPlugin.load(source, request.get("config"), request.get("directory", ""))
             plugin = self.loaded.plugin
             plugin.models.call = self.call_host
+            plugin.ui.components.call = self.call_host
             return {
                 "fields": list(plugin.fields),
                 "slots": list(plugin.components),
@@ -95,26 +97,43 @@ class Worker:
             if not isinstance(summary, str) or not summary.strip() or len(summary) > 16000:
                 raise PluginError("Summarizer must return non-empty text of at most 16000 characters")
             return summary.strip()
-        if operation == "snapshot":
+        if operation in ("snapshot", "sample", "sample_render"):
+            sampled = replace(context, layout=None)
             for callback in plugin.observers.get("sample", ()):
-                await callback(Event("sample", context))
+                await callback(Event("sample", sampled))
             fields = {}
             for name, callback in plugin.fields.items():
-                value = callback(context)
+                value = callback(sampled)
                 if type(value) not in (str, int, float, bool):
                     raise PluginError(f"Field {name} must return a scalar")
                 if isinstance(value, float) and not math.isfinite(value):
                     raise PluginError(f"Field {name} must return a finite number")
                 fields[name] = value
             panels = {}
-            for slot, callback in plugin.components.items():
-                panel = callback(context)
+            if operation == "snapshot":
+                budget = LayoutBudget(context.viewport)
+                for slot in SLOTS:
+                    if slot in plugin.components:
+                        panel = plugin.components[slot](budget.context(context, slot))
+                        Snapshot.check_panel(panel)
+                        panels[slot] = asdict(budget.consume(slot, panel))
+            elif operation == "sample_render":
+                if context.layout is None:
+                    raise PluginError("Component rendering requires a layout allocation")
+                panel = plugin.components[context.layout.slot](context)
                 Snapshot.check_panel(panel)
-                panels[slot] = asdict(panel)
+                panels[context.layout.slot] = asdict(panel)
             return {"fields": fields, "panels": panels}
+        if operation == "render":
+            if context.layout is None:
+                raise PluginError("Component rendering requires a layout allocation")
+            panel = plugin.components[context.layout.slot](context)
+            Snapshot.check_panel(panel)
+            return asdict(panel)
         if operation == "event":
+            tool = ToolActivity(**request["tool"]) if request.get("tool") else None
             for callback in plugin.observers.get(request["name"], ()):
-                await callback(Event(request["name"], context))
+                await callback(Event(request["name"], context, tool, request.get("reason", "")))
             return None
         if operation == "invoke":
             if request["kind"] not in ("command", "tool"):

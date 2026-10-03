@@ -2,8 +2,14 @@
 
 ## Unreleased
 
+- Give plugin components stable per-slot ordering, saved layout controls in `/plugins`, and an
+  optional built-in `layout` plugin for agent-driven arrangement through the same SDK API.
+  Components receive viewport and remaining-height facts; the manager reports budget clipping.
+  Add read-only session/tool events and actual agent-local execution counts, including parallel,
+  nested, failed and cancelled tools. Document the contracts and cover them with worker-backed tests.
+
 - Add enabled-plugin benchmarks and include bundled Markdown in benchmark source exports.
-  The [dev26 review measurements](benchmarks/README.md#complete-branch-review) show no material
+  The [dev26 review measurements](https://github.com/hit9/wizolt/blob/master/benchmarks/README.md#complete-branch-review) show no material
   regression against master on Linux ARM64 / CPython 3.14.7; retain the official baseline until
   the merged commit is measured. Document that baseline-update rule for releases.
 

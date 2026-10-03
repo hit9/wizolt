@@ -31,7 +31,7 @@ def test_manager_preview_names_presets_and_keeps_the_file_name_visible(monkeypat
     from wizolt.ui.cli.plugins import PluginManager
 
     monkeypatch.setattr("shutil.get_terminal_size", lambda *_: os.terminal_size((40, 24)))
-    manager = PluginManager(None, None)
+    manager = PluginManager(None, SimpleNamespace(components=lambda: ()))
     deep = "/very/long/directory/that/does/not/fit/in/a/narrow/terminal/gitline.py"
     manager.records = {
         "gitline": {"path": deep, "presets": {"statusbar": ["git"], "divider": []}},

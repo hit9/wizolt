@@ -11,6 +11,7 @@ from prompt_toolkit.formatted_text import StyleAndTextTuples
 
 from wizolt.agentsmd import display_path
 from wizolt.base import Text
+from wizolt.plugins.layout import INPUT_SLOTS, LayoutBudget
 from wizolt.sdk import Line, Panel, PluginError
 from wizolt.ui.bars import Fragments, clean, clip
 from wizolt.ui.cli.modals import choice_application, picker_height
@@ -24,9 +25,9 @@ if TYPE_CHECKING:
 
 
 class PluginView:
-    """Compose all plugins in registration order under one height budget, without terminal IO."""
+    """Project the host's ordered cache under one height budget, without terminal IO."""
 
-    INPUT_SLOTS: ClassVar = ("above_divider", "above_input", "below_input")
+    INPUT_SLOTS: ClassVar = INPUT_SLOTS
 
     def __init__(self, runtime: PluginRuntime):
         self.runtime = runtime
@@ -50,7 +51,7 @@ class PluginView:
     @staticmethod
     def input_rows(rows: int) -> int:
         """One height policy for live projection and offline component previews."""
-        return min(6, max(0, rows // 4 - 2))
+        return LayoutBudget.input_rows(rows)
 
     @classmethod
     def project(cls, panels: dict[str, list[Panel]], columns: int, rows: int) -> dict[str, Fragments]:
@@ -65,6 +66,7 @@ class PluginView:
         return projected
 
     def fragments(self, columns: int, rows: int) -> dict[str, StyleAndTextTuples]:
+        self.runtime.resize(columns, rows)
         return {
             slot: list(parts) for slot, parts in self.project({slot: self.runtime.panels(slot, columns) for slot in self.INPUT_SLOTS}, columns, rows).items()
         }
@@ -103,6 +105,9 @@ class PluginManager:
         for key in ("error", "python"):
             if value := item.get(key):
                 lines.append(f"{key.capitalize()}: {value}")
+        for component in self.runtime.components():
+            if component.plugin == name:
+                lines.append(f"{component.slot}: {component.visibility} · {component.rows}/{component.available_rows} rows")
         return "\n".join(lines)
 
     def fragments(self) -> StyleAndTextTuples:
@@ -154,13 +159,41 @@ class PluginManager:
         choices = ("reload", toggle) if entry else (toggle,)
         if entry and entry.previous is not None:
             choices += ("rollback",)
+        if entry and entry.active.plugin.components:
+            choices += ("layout",)
         # Unlike convenience selectors, an action menu must not auto-accept its only item.
         # Opening a disabled plugin shows Enable; it does not itself grant activation.
         action = await choice_application(self.loop, name, choices, {}, "", set())
         if not isinstance(action, str):
             return
+        if action == "layout":
+            await self.arrange(name)
+            return
         result = await self.runtime.manage(action, name)
         self.notice = f"{result['name']}: {result['status']}"
+
+    async def arrange(self, name: str) -> None:
+        """The human frontend uses the same host operation as a management plugin."""
+        components = self.runtime.components()
+        own = tuple(item.id for item in components if item.plugin == name)
+        selected = own[0] if len(own) == 1 else await choice_application(self.loop, "Component", own, {}, "", set())
+        if not isinstance(selected, str):
+            return
+        component = next(item for item in components if item.id == selected)
+        siblings = [item.id for item in components if item.slot == component.slot]
+        index = siblings.index(selected)
+        actions = (*(("move up",) if index else ()), *(("move down",) if index + 1 < len(siblings) else ()), "reset slot order")
+        action = await choice_application(self.loop, selected, actions, {}, "", set())
+        if action == "reset slot order":
+            await self.runtime.call_host("ui.components.reset_order", {"slot": component.slot})
+        elif action in ("move up", "move down"):
+            before = siblings[index - 1] if action == "move up" else ""
+            after = siblings[index + 1] if action == "move down" else ""
+            await self.runtime.call_host("ui.components.move", {"component": selected, "before": before, "after": after})
+        else:
+            return
+        await self.runtime.refresh()
+        self.notice = f"{selected}: {action}"
 
 
 async def plugins_command(loop: CommandLoop, args: str) -> str:

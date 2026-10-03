@@ -6,6 +6,22 @@ The TUI snapshots all slot fragments once per render, and offline previews reuse
 Context-category estimation runs at admission/request boundaries, not in the 5 Hz sampler.
 Sampling observers may keep bounded histories; render callbacks consume them without IO.
 
+`LayoutOrder` owns per-slot project preferences; `LayoutBudget` allocates once in visual order.
+The runtime samples each generation once, fusing that with its first allocated component, and
+publishes one completed layout. Paint only reads that cache. A revision counter discards a
+pass invalidated by resize, movement or generation replacement. The TUI's final clip still
+protects input while the next asynchronous sample catches up. Management UI and SDK use one
+host operation; the optional bundled layout plugin owns no policy or persistence. Never
+derive display order from process admission or dictionary insertion order.
+
+The runner owns `TurnActivity`, via its agent-local plugin runtime even with no plugins enabled.
+Observe the admitted execution boundary shared by serial and parallel paths, not PreToolUse
+(before approval) or model request count. Nested scripts propagate a ContextVar through their
+executor and gateway; every execution has its own ID and optional parent ID. Settle facts
+before notifying observers, including cancellation. Snapshots permit late activation without
+event replay. Plugin lifecycle observers are read-only and serial per generation; they cannot
+veto execution or replace shell hooks. Tool payloads/results never cross this observation seam.
+
 Appearance contributions are plain metadata. The CLI injects its validator before activation,
 using the same theme compiler and format parser as user configuration. Each layout owns its
 preset catalog; `Theme` projects only the focused agent's palettes. Never publish a background

@@ -12,12 +12,15 @@ from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
+from wizolt.plugins.activity import TurnActivity
+from wizolt.plugins.layout import SLOTS, LayoutBudget, LayoutOrder
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.process import PluginProcess, WorkerError
 from wizolt.plugins.protocol import Capabilities, Snapshot
 from wizolt.plugins.settings import PluginSettings
-from wizolt.sdk import Context, Panel, PluginError, Value
+from wizolt.sdk import Context, Panel, PluginError, ToolActivity, Value, Viewport
 from wizolt.sdk.models import HostCall
+from wizolt.sdk.ui import Component
 
 
 @dataclass
@@ -32,20 +35,36 @@ class Generation:
     calls: int = 0
     seconds: float = 0
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    events: asyncio.Lock = field(default_factory=asyncio.Lock)
 
-    async def refresh(self, context: Context) -> None:
+    async def refresh(self, context: Context, *, components: bool = False) -> None:
         """Serialize samples, never enqueue a sample for every terminal layout query."""
         async with self.lock:
             if self.error:
                 return
             started = time.monotonic()
             try:
-                self.snapshot = Snapshot.decode(await self.worker.request("snapshot", context=asdict(context)))
+                sampled = Snapshot.decode(await self.worker.request("snapshot" if components else "sample", context=asdict(context)))
+                self.snapshot = sampled if components else Snapshot(sampled.fields, self.snapshot.panels)
             except Exception as error:  # noqa: BLE001 - UI callback failures cannot fail turns.
                 self.error = str(error)
             finally:
                 self.calls += 1
                 self.seconds += time.monotonic() - started
+
+    async def render(self, context: Context, *, sample: bool) -> Panel:
+        """Fuse the first render with this generation's sample; retain one IPC per component."""
+        assert context.layout is not None
+        started = time.monotonic()
+        try:
+            value = await self.worker.request("sample_render" if sample else "render", context=asdict(context))
+            snapshot = Snapshot.decode(value if sample else {"fields": {}, "panels": {context.layout.slot: value}})
+            if sample:
+                self.snapshot = Snapshot(snapshot.fields, self.snapshot.panels)
+            return snapshot.panels[context.layout.slot]
+        finally:
+            self.calls += 1
+            self.seconds += time.monotonic() - started
 
 
 @dataclass
@@ -74,7 +93,12 @@ class PluginRuntime:
         self._invocations = 0
         self._lock = asyncio.Lock()
         self._closed = False
-        self._columns = 80
+        self.viewport = Viewport()
+        self.order = LayoutOrder()
+        self.activity = TurnActivity()
+        self._layout_version = 0
+        self._sampling = asyncio.Lock()
+        self._components: dict[str, Component] = {}
         self._refresh_task: asyncio.Task | None = None
         self._retiring: set[asyncio.Task] = set()
         self.reserved_commands: frozenset[str] = frozenset()
@@ -94,7 +118,7 @@ class PluginRuntime:
         settings = self.settings.read(revision.name) if settings is None else settings
         python = self.interpreters.get(revision.name, "") if python is None else python
         worker, description = await PluginProcess.start(revision, python=python, cwd=self.context().cwd, config=settings)
-        worker.host_calls.handler = self.host_service
+        worker.host_calls.handler = self.call_host
         try:
             capabilities = Capabilities.decode(revision.name, description)
             if self.validate is not None:
@@ -115,7 +139,7 @@ class PluginRuntime:
             if collisions := occupied.intersection(capabilities.commands):
                 raise PluginError(f"Command names already registered: {', '.join(sorted(collisions))}")
             candidate = Generation(revision, capabilities, worker, settings=settings, python=python)
-            await candidate.refresh(self.context())
+            await candidate.refresh(self.facts(), components=True)
             if candidate.error:
                 raise WorkerError(candidate.error, log=worker.stderr, traceback=worker.traceback)
             return candidate
@@ -228,6 +252,10 @@ class PluginRuntime:
         """Atomic registry switch: no await, and no imported Python objects cross generations."""
         if self.busy or self._closed:
             return
+        if not self._pending_new and not any(entry.disabling or entry.pending for entry in self.entries.values()):
+            return
+        self._layout_version += 1
+        self._components.clear()
         self.entries.update((name, Entry(candidate)) for name, candidate in self._pending_new.items())
         self._pending_new.clear()
         for name, entry in tuple(self.entries.items()):
@@ -252,31 +280,122 @@ class PluginRuntime:
             await self.refresh()
 
     async def refresh(self) -> None:
-        """Sample immutable facts outside painting; one slow plugin cannot block the terminal."""
-        context = replace(self.context(), columns=self._columns)
-        await asyncio.gather(*(entry.active.refresh(context) for entry in tuple(self.entries.values())))
+        """Allocate in visual order outside painting, then publish one coherent layout.
+
+        Samples may overlap actions, but never another layout pass. A resize, replacement or
+        move during IO invalidates this pass rather than publishing stale allocations.
+        """
+        if not self.entries:
+            return
+        async with self._sampling:
+            version = self._layout_version
+            generations = {name: entry.active for name, entry in self.entries.items()}
+            context = self.facts()
+            await asyncio.gather(*(item.refresh(context) for item in generations.values() if not item.plugin.components))
+            sampled: set[str] = set()
+            budget = LayoutBudget(self.viewport)
+            panels: dict[str, dict[str, Panel]] = {name: {} for name in generations}
+            components = {}
+            for slot in SLOTS:
+                candidates = {f"{name}.{slot}": item for name, item in generations.items() if slot in item.plugin.components and not item.error}
+                for identity in self.order.ordered(slot, candidates):
+                    generation = candidates[identity]
+                    if generation.error:
+                        continue
+                    allocated = budget.context(context, slot)
+                    assert allocated.layout is not None
+                    try:
+                        panel = await generation.render(allocated, sample=generation.plugin.name not in sampled)
+                        sampled.add(generation.plugin.name)
+                    except Exception as error:  # noqa: BLE001 - broken components cannot fail the host.
+                        generation.error = str(error)
+                        continue
+                    clipped = budget.consume(slot, panel)
+                    panels[generation.plugin.name][slot] = clipped
+                    available = allocated.layout.rows
+                    visibility = (
+                        "hidden by height budget"
+                        if available == 0
+                        else "clipped by height budget"
+                        if len(panel.rows) > available
+                        else "visible"
+                        if panel.rows
+                        else "empty"
+                    )
+                    components[identity] = Component(identity, generation.plugin.name, slot, len(clipped.rows), available, visibility)
+            if version == self._layout_version:
+                for name, item in generations.items():
+                    item.snapshot = Snapshot(item.snapshot.fields, panels[name])
+                self._components = components
+
+    def facts(self) -> Context:
+        return replace(self.context(), columns=self.viewport.columns, viewport=self.viewport, layout=None, turn=self.activity.snapshot())
+
+    def resize(self, columns: int, rows: int) -> None:
+        viewport = Viewport(max(0, columns), max(0, rows))
+        if viewport != self.viewport:
+            self.viewport = viewport
+            self._layout_version += 1
+
+    def components(self) -> tuple[Component, ...]:
+        result = []
+        for slot in SLOTS:
+            identities = {f"{name}.{slot}": name for name, entry in self.entries.items() if slot in entry.active.plugin.components}
+            for identity in self.order.ordered(slot, identities):
+                result.append(self._components.get(identity, Component(identity, identities[identity], slot, 0, 0, "pending layout")))
+        return tuple(result)
+
+    async def call_host(self, service: str, arguments: dict) -> dict:
+        """Route explicit host capabilities; model credentials stay in the assembly adapter."""
+        if service.startswith("ui.components."):
+            action = service.removeprefix("ui.components.")
+            expected = {"list": set(), "move": {"component", "before", "after"}, "reset_order": {"slot"}}
+            if action not in expected or set(arguments) != expected[action] or any(not isinstance(value, str) for value in arguments.values()):
+                raise PluginError("Invalid component layout request")
+            if action == "move":
+                self.order.move(arguments["component"], arguments["before"], arguments["after"], {item.id: item.slot for item in self.components()})
+            elif action == "reset_order":
+                self.order.reset(arguments["slot"])
+            if action != "list":
+                self._layout_version += 1
+            return {"components": [asdict(item) for item in self.components()]}
+        if self.host_service is None:
+            raise PluginError("Host services unavailable in offline trials")
+        return await self.host_service(service, arguments)
 
     async def start_turn(self) -> None:
+        self.activity.reset()
         self.turn_active = True
         await self.emit("turn.started")
+        await self.refresh()
 
     async def finish_turn(self) -> None:
         if not self.turn_active:
             return
         try:
             await self.emit("turn.finished")
+            await self.refresh()
         finally:
             self.turn_active = False
             self._publish()
 
-    async def emit(self, name: str) -> None:
-        for entry in tuple(self.entries.values()):
-            generation = entry.active
-            if name not in generation.plugin.observers or generation.error:
-                continue
+    async def emit(self, name: str, *, tool: ToolActivity | None = None, reason: str = "") -> None:
+        generations = [entry.active for entry in self.entries.values() if name in entry.active.plugin.observers and not entry.active.error]
+        if not generations:
+            return
+        context = self.facts()
+        await asyncio.gather(*(self._notify(item, name, context, tool, reason) for item in generations))
+
+    async def _notify(self, generation: Generation, name: str, context: Context, tool: ToolActivity | None, reason: str) -> None:
+        # Serialize each plugin's observers, not tool execution. Parallel plugins do not
+        # multiply the deadline, and a failed observer leaves other generations usable.
+        async with generation.events:
+            if generation.error:
+                return
             try:
-                await generation.worker.request("event", timeout=self.OBSERVER_TIMEOUT, name=name, context=asdict(self.context()))
-                await generation.refresh(self.context())
+                await generation.worker.request(
+                    "event", timeout=self.OBSERVER_TIMEOUT, name=name, context=asdict(context), tool=asdict(tool) if tool else None, reason=reason
+                )
             except Exception as error:  # noqa: BLE001 - observer failure cannot fail an agent turn.
                 generation.error = f"{name}: {error}"
 
@@ -292,8 +411,9 @@ class PluginRuntime:
         """Read cached panels. Only the live prompt projection passes its width: a reader without
         one, such as /status, must not resize what the sampler lays out for the prompt slots."""
         if columns is not None:
-            self._columns = columns
-        return [entry.active.snapshot.panels[slot] for entry in self.entries.values() if not entry.active.error and slot in entry.active.snapshot.panels]
+            self.resize(columns, self.viewport.rows)
+        identities = {f"{name}.{slot}": entry.active for name, entry in self.entries.items() if not entry.active.error and slot in entry.active.snapshot.panels}
+        return [identities[identity].snapshot.panels[slot] for identity in self.order.ordered(slot, identities)]
 
     async def invoke(self, name: str, kind: str, action: str, arguments: Mapping[str, Any]) -> str:
         """Pin the worker until completion; authorization remains at the user/model boundary."""
@@ -318,9 +438,9 @@ class PluginRuntime:
                 kind=kind,
                 name=action,
                 arguments=dict(arguments),
-                context=asdict(self.context()),
+                context=asdict(self.facts()),
             )
-            await generation.refresh(self.context())
+            await self.refresh()
             return result
         finally:
             self._invocations -= 1
@@ -342,7 +462,7 @@ class PluginRuntime:
             return None
         self._invocations += 1
         try:
-            summary = await generation.worker.request("compact", timeout=self.ACTION_TIMEOUT, text=text, context=asdict(self.context()))
+            summary = await generation.worker.request("compact", timeout=self.ACTION_TIMEOUT, text=text, context=asdict(self.facts()))
             validate(summary)
             return generation.plugin.name, summary
         except Exception as error:  # noqa: BLE001 - a broken strategy must not strand compaction.

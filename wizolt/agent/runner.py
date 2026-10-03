@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import contextlib
+import contextvars
 import inspect
 import json
 import threading
@@ -374,6 +375,37 @@ class ToolRunner:
         # Everything else -- reads, searches -- is bounded synchronous work.
         return await self._run_in_executor(tool.call, tool)
 
+    @contextlib.asynccontextmanager
+    async def execution(self, call: ToolCall, tool: Tool):
+        """Observe the admitted body, shared by serial, parallel and nested execution.
+
+        Approval and argument rejection happen before entry. A script is one execution and
+        its children are separate executions with parent IDs; no model-round approximation.
+        Cancellation settles facts before observers run, so live counts cannot remain stuck.
+        """
+        plugins = self.session.plugins
+        if plugins is None:
+            yield
+            return
+        item = plugins.activity.start(call.id, call.name)
+        token = plugins.activity.parent.set(item.id)
+        outcome = "completed"
+        try:
+            await plugins.emit("tool.started", tool=item)
+            yield
+            if isinstance(tool, BashTool) and tool.exit_code not in (None, 0):
+                outcome = "failed"
+        except (asyncio.CancelledError, ScriptCancelled):
+            outcome = "cancelled"
+            raise
+        except BaseException:
+            outcome = "failed"
+            raise
+        finally:
+            settled = plugins.activity.finish(item, outcome)
+            plugins.activity.parent.reset(token)
+            await plugins.emit("tool.finished", tool=settled)
+
     @staticmethod
     def _raise_if_cancelled() -> None:
         current = asyncio.current_task()
@@ -477,7 +509,9 @@ class ToolRunner:
         try:
             budget_holder: list[Any] = []
             tool.on_budget = budget_holder.append
-            future = loop.run_in_executor(executor, tool.call)
+            # Nested requests cross a thread before returning to the loop. Carry only the
+            # execution context, so their parent ID survives without global mutable state.
+            future = loop.run_in_executor(executor, contextvars.copy_context().run, tool.call)
             cancel_error: asyncio.CancelledError | None = None
             while not future.done():
                 try:
@@ -631,7 +665,8 @@ class ToolRunner:
                 raise ToolError(call.error)
             # Native async calls are cancelled at their resource; other read-only tools remain
             # bounded blocking work whose executor future is awaited through cancellation.
-            output = await (tool.call() if inspect.iscoroutinefunction(tool.call) else self._run_in_executor(tool.call))
+            async with self.execution(call, tool):
+                output = await (tool.call() if inspect.iscoroutinefunction(tool.call) else self._run_in_executor(tool.call))
         except ToolError as error:
             return "reject", f"ToolError: {error}", display, time.monotonic() - started, error.recovery
         except Exception as error:  # noqa: BLE001 - tool failures are serialized back to the model.
@@ -760,7 +795,8 @@ class ToolRunner:
                 )
                 d.nested_display = True
             executing = True
-            output = await self.call_tool(tool, planned_edit)
+            async with self.execution(call, tool):
+                output = await self.call_tool(tool, planned_edit)
             if isinstance(tool, ViewImageTool) and tool.vision_entry_label:
                 d.vision_entry = tool.vision_entry_label
             observation = tool.model_observation()

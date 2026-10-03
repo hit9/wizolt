@@ -15,6 +15,7 @@ from wizolt import sdk
 from wizolt.plugins.runtime import PluginRuntime
 from wizolt.plugins.testing import PluginTrial, Stimulus
 from wizolt.sdk.models import ModelReply
+from wizolt.sdk.ui import Component
 from wizolt.ui.bars import FIELDS, Template
 from wizolt.ui.cli.plugin_appearance import AppearanceContribution
 from wizolt.ui.render import Theme
@@ -102,7 +103,7 @@ def test_public_registration_methods_are_in_the_api_index():
     assert "plugin.models.complete(" in index and "handle.get()" in index
 
 
-@pytest.mark.parametrize("value", [sdk.Context, sdk.Usage, sdk.ContextWindow, sdk.Text, sdk.Line, sdk.Panel, sdk.Event, ModelReply])
+@pytest.mark.parametrize("value", [sdk.Context, sdk.Usage, sdk.ContextWindow, sdk.Viewport, sdk.Layout, sdk.Turn, sdk.ToolCounts, sdk.ToolActivity, Component, sdk.Text, sdk.Line, sdk.Panel, sdk.Event, ModelReply])
 def test_value_tables_cover_every_public_field(value):
     document = (REFERENCE / "SDK.md").read_text()
     row = next(line for line in document.splitlines() if line.startswith(f"| `{value.__name__}` |"))

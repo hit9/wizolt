@@ -14,7 +14,7 @@ from wizolt.config import Config
 from wizolt.plugins.protocol import Capabilities
 from wizolt.plugins.testing import PluginTrial, Stimulus
 from wizolt.plugins.workspace import PluginWorkspace
-from wizolt.sdk import Context, Value
+from wizolt.sdk import Context, Value, Viewport
 from wizolt.ui.bars import FIELDS, BarLayout
 from wizolt.ui.cli.plugin_appearance import AppearanceContribution
 from wizolt.ui.cli.plugin_preview import PreviewExporter
@@ -137,14 +137,18 @@ def main(argv: list[str]) -> int:
         python = installed.python if installed else ""
         if installed:
             args.path = installed.path
-        context = Context("preview", "main", workspace.cwd, args.status, args.context_percent, 0, "preview-model", 0, args.width)
+        context = Context(
+            "preview", "main", workspace.cwd, args.status, args.context_percent, 0, "preview-model", 0, args.width, viewport=Viewport(args.width, args.height)
+        )
         if args.facts:
             facts = json.loads(read_input(args.facts, 256 * 1024))
             if not isinstance(facts, dict):
                 raise ValueError("facts must be a JSON object")
             # A fixture supplies agent facts, not host IO settings. Viewport and working
             # directory remain the explicit --width / --project values used by the preview.
-            context = Context.decode({**asdict(context), **facts, "cwd": workspace.cwd, "columns": args.width})
+            context = Context.decode(
+                {**asdict(context), **facts, "cwd": workspace.cwd, "columns": args.width, "viewport": asdict(context.viewport), "layout": None}
+            )
     except Exception as error:  # noqa: BLE001 - configuration failures are structured feedback too.
         print(json.dumps({"status": "failed", "stage": "configuration", "error": str(error)}, ensure_ascii=False))
         return 1

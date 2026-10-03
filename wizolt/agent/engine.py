@@ -240,6 +240,7 @@ class Agent:
         self._session_started = True
         if self.session.plugins is not None:
             await self.session.plugins.load()
+            await self.session.plugins.emit("session.started", reason="resume" if self.session.resumed else "startup")
         start = await self.fire_hooks(SESSION_START, {"source": "resume" if self.session.resumed else "startup", "model": self.session.config.provider.model})
         self._session_hook_context = start.context
 
@@ -248,7 +249,11 @@ class Agent:
         if not self._session_started or self._session_ended:
             return
         self._session_ended = True
-        await self.fire_hooks(SESSION_END, {"reason": reason})
+        try:
+            await self.fire_hooks(SESSION_END, {"reason": reason})
+        finally:
+            if self.session.plugins is not None:
+                await self.session.plugins.emit("session.finished", reason=reason)
 
     async def _run_turn(self, user_input: str | UserInput) -> str:
         # Embedding and headless callers hand Agent a draft that may carry recognized-but-unstored

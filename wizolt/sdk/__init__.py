@@ -49,6 +49,53 @@ class ContextWindow:
 
 
 @dataclass(frozen=True)
+class Viewport:
+    """Terminal cells, not pixels. Layout may grant a component less space."""
+
+    columns: int = 80
+    rows: int = 24
+
+
+@dataclass(frozen=True)
+class Layout:
+    """The current component's allocation; present only during component rendering."""
+
+    slot: str
+    columns: int
+    rows: int
+
+
+@dataclass(frozen=True)
+class ToolActivity:
+    """One actual tool execution. IDs distinguish repeated provider call IDs and nesting."""
+
+    id: str
+    call_id: str
+    name: str
+    parent_id: str = ""
+    status: str = "running"
+    started_at: float = 0
+    elapsed: float = 0
+
+
+@dataclass(frozen=True)
+class ToolCounts:
+    """Actual executions this turn, excluding refusals and skipped calls."""
+
+    started: int = 0
+    completed: int = 0
+    failed: int = 0
+    cancelled: int = 0
+    running: int = 0
+
+
+@dataclass(frozen=True)
+class Turn:
+    tools: ToolCounts = field(default_factory=ToolCounts)
+    active_tools: tuple[ToolActivity, ...] = ()
+
+
+@dataclass(frozen=True)
 class Context:
     """Read-only facts for one callback, not a handle into the live session.
 
@@ -68,15 +115,22 @@ class Context:
     columns: int = 80
     usage: Usage = field(default_factory=Usage)
     window: ContextWindow = field(default_factory=ContextWindow)
+    viewport: Viewport = field(default_factory=Viewport)
+    layout: Layout | None = None
+    turn: Turn = field(default_factory=Turn)
 
     @classmethod
     def decode(cls, value: dict) -> Context:
         """Reconstitute immutable public values at the process boundary."""
         window = value.get("window", {})
+        turn = value.get("turn", {})
         return cls(
-            **{key: item for key, item in value.items() if key not in ("usage", "window")},
+            **{key: item for key, item in value.items() if key not in ("usage", "window", "viewport", "layout", "turn")},
             usage=Usage(**value.get("usage", {})),
             window=ContextWindow(**{**window, "parts": tuple(tuple(part) for part in window.get("parts", ()))}),
+            viewport=Viewport(**value.get("viewport", {"columns": value.get("columns", 80)})),
+            layout=Layout(**value["layout"]) if value.get("layout") else None,
+            turn=Turn(ToolCounts(**turn.get("tools", {})), tuple(ToolActivity(**item) for item in turn.get("active_tools", ()))),
         )
 
 
@@ -110,6 +164,8 @@ class Panel:
 class Event:
     name: str
     context: Context
+    tool: ToolActivity | None = None
+    reason: str = ""
 
 
 Field = Callable[[Context], Value]
@@ -138,7 +194,7 @@ class Plugin:
     imported module state, but have the user's filesystem/network permissions: not a sandbox.
     """
 
-    EVENTS = frozenset(("turn.started", "turn.finished", "sample"))
+    EVENTS = frozenset(("session.started", "session.finished", "turn.started", "turn.finished", "tool.started", "tool.finished", "sample"))
     SLOTS = frozenset(("above_divider", "above_input", "below_input", "status"))
     MAX_REGISTRATIONS = 64
     IDENTIFIER = r"[A-Za-z_][A-Za-z_0-9]*"
@@ -148,6 +204,7 @@ class Plugin:
         from wizolt.sdk.models import Models
         from wizolt.sdk.services import Services
         from wizolt.sdk.settings import freeze
+        from wizolt.sdk.ui import UI
 
         self.name = name
         self._settings = dict(config or {})
@@ -161,6 +218,7 @@ class Plugin:
         self.presets: dict[str, dict[str, str]] = {"statusbar": {}, "divider": {}}
         self.services = Services()
         self.models = Models()
+        self.ui = UI()
         self._service_handles: dict[str, Service] = {}
         self.summary_handler: Summarizer | None = None
 

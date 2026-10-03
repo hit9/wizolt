@@ -21,6 +21,9 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.service(name, factory)` | `factory() -> AsyncContextManager[T]`; returns `Service[T]` |
 | `plugin.summarizer(callback)` | Async `(Context, str) -> str`; one summary strategy per agent |
 | `plugin.models.complete(prompt, *, system="", provider="", model="", effort="", api="")` | Async text request; returns `ModelReply` |
+| `plugin.ui.components.list()` | Async; returns `tuple[Component, ...]` in visual order |
+| `plugin.ui.components.move(component, *, before="", after="")` | Async; exactly one anchor, same slot; persists project order and returns the updated list |
+| `plugin.ui.components.reset_order(slot="")` | Async; restore name order for one slot, or all; returns the updated list |
 | `handle.get()` | Async; returns the same acquired service object until the generation closes |
 
 Only the interfaces documented here are author APIs. Registration dictionaries, `Action`,
@@ -32,7 +35,7 @@ methods. SDK 1 is experimental; the bundled reference matches the installed wizo
 ## Public values and imports
 
 Import `Plugin`, `Context`, `Usage`, `ContextWindow`, `Text`, `Line`, `Panel`, `Event`,
-`PluginError` and `SDK_VERSION` from `wizolt.sdk`. For annotations, import `ModelReply` from
+`Viewport`, `Layout`, `Turn`, `ToolCounts`, `ToolActivity`, `PluginError` and `SDK_VERSION` from `wizolt.sdk`. For annotations, import `Component` from `wizolt.sdk.ui`, `ModelReply` from
 `wizolt.sdk.models` and `Service` from `wizolt.sdk.services`. `PluginError` derives from
 `ValueError`; raising it gives a readable action error. Exceptions and cancellation still require
 your own resource cleanup in `finally`.
@@ -43,13 +46,19 @@ also be used in plugin-owned tests.
 
 | Type | Fields / defaults |
 | --- | --- |
-| `Context` | Required: `agent_id: str`, `agent_name: str`, `cwd: str`, `status: str`, `context_percent: float`, `elapsed: float`, `model: str`, `now: float`; optional: `columns: int = 80`, `usage: Usage = Usage()`, `window: ContextWindow = ContextWindow()` |
+| `Context` | Required: `agent_id: str`, `agent_name: str`, `cwd: str`, `status: str`, `context_percent: float`, `elapsed: float`, `model: str`, `now: float`; optional: `columns: int = 80`, `usage: Usage = Usage()`, `window: ContextWindow = ContextWindow()`, `viewport: Viewport = Viewport()`, `layout: Layout \| None = None`, `turn: Turn = Turn()` |
+| `Viewport` | `columns: int = 80`, `rows: int = 24` |
+| `Layout` | `slot: str`, `columns: int`, `rows: int` |
+| `Turn` | `tools: ToolCounts = ToolCounts()`, `active_tools: tuple[ToolActivity, ...] = ()` |
+| `ToolCounts` | `started: int = 0`, `completed: int = 0`, `failed: int = 0`, `cancelled: int = 0`, `running: int = 0` |
+| `ToolActivity` | `id: str`, `call_id: str`, `name: str`, `parent_id: str = ""`, `status: str = "running"`, `started_at: float = 0`, `elapsed: float = 0` |
+| `Component` | `id: str`, `plugin: str`, `slot: str`, `rows: int`, `available_rows: int`, `visibility: str` |
 | `Usage` | `calls: int = 0`, `input_tokens: int = 0`, `output_tokens: int = 0`, `cached_tokens: int = 0`, `output_rate: float = 0` |
 | `ContextWindow` | `used: int = 0`, `limit: int = 0`, `budget: int = 0`, `parts: tuple[tuple[str, int], ...] = ()` |
 | `Text` | `text: str`, `role: str = "text"` |
 | `Line` | `spans: tuple[Text, ...] = ()`; read-only `.text` joins the spans |
 | `Panel` | `rows: tuple[Text \| Line, ...] = ()`; `Panel()` occupies no space |
-| `Event` | `name: str`, `context: Context` |
+| `Event` | `name: str`, `context: Context`, `tool: ToolActivity \| None = None`, `reason: str = ""` |
 | `ModelReply` | `text: str`, `model: str`, `usage: Usage` |
 
 Times are seconds; `now` is monotonic, not a date. `columns` is terminal cells, not characters.
@@ -71,7 +80,7 @@ One component is allowed per slot; compose multiple rows inside that callback.
 | Entry (`setup` or package entry) | No | No | Load: 5 seconds |
 | Field / component | No | No | Whole sample: 2 seconds |
 | `sample` observer | Yes | No | Shares the whole sample's 2 seconds |
-| `turn.started` / `turn.finished` observer | Yes | No | Event callbacks together: 1 second |
+| Lifecycle observer (session / turn / tool) | Yes | No | Each event's callbacks together: 1 second |
 | Command / tool handler | Yes | Yes; models unavailable offline | Live invocation: 60 seconds |
 | Summarizer | Yes | Yes; models unavailable offline | 60 seconds |
 
@@ -82,6 +91,43 @@ at most six visible rows. Single-file source is at most 256 KiB; package limits 
 Templates allow 8,192 characters. A timed-out worker can be killed; ordinary callback errors
 are reported. A failed render/observer/summary stays unhealthy until reload. Do not suppress
 `asyncio.CancelledError`; it must unwind resources and release the generation.
+
+## Layout and execution facts
+
+Components receive `context.layout` with the remaining rows and cell width for this callback;
+it is `None` for other callbacks. `context.viewport` describes the terminal. Return fewer rows
+to leave room for later components; when `layout.rows == 0`, return `Panel()`. The host clips
+whole rows as a final guard. Prompt slots share `min(6, max(0, viewport.rows // 4 - 2))` rows;
+the scrollable `status` slot allows twelve per component.
+
+Slots stay in visual order: above_divider → above_input → below_input. Within each slot,
+components default to plugin-name order, regardless of activation order. Component IDs are
+`NAME.SLOT`. `/plugins` → plugin → **layout** and `plugin.ui.components` share the same saved
+project preferences. Moves cannot cross slots; change the component registration for that.
+Disabled components retain their position. Other live agents adopt changes on reload.
+Layout calls are available inside explicit command/tool handlers and summarizers (not renderers or observers),
+and unavailable in offline trials. `visibility` is `pending layout`, `empty`, `visible`,
+`clipped by height budget`, or `hidden by height budget`; allocation updates on the next sample.
+
+`context.turn.tools` counts admitted executions in this agent's current/latest turn, even
+before a plugin is enabled. It resets at the next turn; it is not saved across resume.
+Refused, blocked and invalid calls rejected before execution do not count. A script and each
+nested call count separately; nested `ToolActivity.parent_id` identifies the script execution.
+Execution IDs are unique within this live agent; provider `call_id` may repeat. A background
+job's launch counts as one tool execution, not its entire later process lifetime.
+
+`tool.started` fires after approval, immediately before execution. `tool.finished` includes
+`event.tool.status` (`completed`, `failed`, or `cancelled`) and elapsed seconds. Nonzero Bash
+exit status counts as failed. Parallel calls may overlap; each plugin's lifecycle callbacks
+run serially. Events carry no tool arguments, output, or credentials. These are read-only
+notifications: no veto, argument rewrite, shell-hook replacement, or automatic model call.
+Use snapshots for current facts; observers are not a durable event log and receive no replay.
+
+`session.started` fires once per open/resume, with `reason` `startup` or `resume`;
+`session.finished` carries the host's closing reason. Neither callback is guaranteed after a
+process crash. `turn.finished` includes the final tool counts; rendering can read them until
+the next turn. An observer error disables that plugin's callbacks until reload without failing
+the agent's operation.
 
 ## Packages
 
@@ -275,7 +321,7 @@ Registration methods:
   for a model: what it does and when to use it. Offline: `wizolt plugin test NAME --call
   tool:OPERATION --arguments '{...}'` runs a fresh instance with preview context.
 - `on(event, observer)`: async `(Event) -> None`; Event has name and context.
-  Events: turn.started, turn.finished, sample. `sample` runs before fields/components are sampled
+  Events: session.started, session.finished, turn.started, turn.finished, tool.started, tool.finished, sample. `sample` runs before fields/components are sampled
   (normally 5 Hz); collect a bounded history here, then render it without side effects. Turn
   observers have a one-second deadline, a complete sample two seconds, live actions 60 seconds.
 

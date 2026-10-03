@@ -11,6 +11,32 @@ remeasure the previous reference revision too so the comparison remains meaningf
 
 ## Plugin foundation
 
+### Layout allocation and execution facts
+
+[Before](results/linux-arm64-py314-layout-before.json) (`90224631`),
+[initial implementation](results/linux-arm64-py314-layout-unoptimized.json), and
+[optimized implementation](results/linux-arm64-py314-layout-after.json) use Linux ARM64 /
+CPython 3.14.7, the same workload and dependencies, nine samples, and sequential runs without
+tests/builds in flight. Working-tree source hashes are recorded in each report.
+
+| Workload | Before (ms) | Initial (ms) | Optimized (ms) |
+| --- | ---: | ---: | ---: |
+| Three workers, 20 sample rounds | 5.682 | 18.871 | 12.039 |
+| Plugin tool, 20 calls including refresh | 7.163 | 22.676 | 15.938 |
+| Cached projection, 1,000 reads | 8.746 | 11.180 | 11.190 |
+| Enable and close one worker | 89.779 | 94.986 | 87.490 |
+
+Fusing sampling with each generation's first component removes one IPC per component-bearing
+plugin. Remaining allocation requires sequential component results, so enabled sampling still
+costs about 0.60 ms per round instead of 0.28 ms (roughly 1.6 ms extra per second at 5 Hz for
+this three-component workload). Cached drawing adds about 2.4 microseconds per read. This is a
+retained cost for responsive height allocation, not a speedup claim; user callbacks may cost more.
+
+With plugins disabled, first prompt frame is 141.748 → 142.279 ms (+0.4%); other principal
+workloads remain within 10%. Banner timing rose 11.9% (about 5 ms), while banner-to-prompt
+fell 5.3%; the total first frame did not materially regress. Replay output hashes match.
+The official baseline remains unchanged until the merged revision is measured.
+
 ### Complete branch review
 
 [Master measurement](results/linux-arm64-py314-dev26-master.json) (`2110ac18`) and

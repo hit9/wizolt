@@ -74,7 +74,14 @@ class PluginTrial:
                     if stimulus.kind == "event":
                         if stimulus.name not in report.capabilities["events"]:
                             raise ValueError(f"No observer registered for {stimulus.name}")
-                        result = await worker.request("event", timeout=self.timeout, name=stimulus.name, context=asdict(self.context))
+                        result = await worker.request(
+                            "event",
+                            timeout=self.timeout,
+                            name=stimulus.name,
+                            context=asdict(self.context),
+                            tool=stimulus.arguments.get("tool"),
+                            reason=stimulus.arguments.get("reason", ""),
+                        )
                     elif stimulus.kind == "summarizer":
                         result = await worker.request("compact", timeout=self.timeout, text=stimulus.arguments["text"], context=asdict(self.context))
                     else:

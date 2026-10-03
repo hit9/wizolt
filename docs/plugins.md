@@ -31,6 +31,23 @@ The agent uses the built-in **plugin-workshop** skill. It checks the plugin's pi
 showing it to you, and asks before running plugin code in your session. The request lists what
 changes: which plugins are enabled, disabled, or have new code or settings. Nothing restarts.
 
+## Arrange your plugins
+
+Open `/plugins`, select an enabled plugin, then **layout** to move its component up or down.
+The order is saved for this project and survives reloads and restarts. Without a saved order,
+components sort by plugin name. Moving within a region does not move it across the divider.
+
+Prefer to ask the agent? Enable the built-in **layout** plugin, then say “put my context meter
+before my pet.” This optional plugin uses the same saved order. Disabling it keeps your layout.
+
+Prompt components share at most six rows, fewer in short terminals. `/plugins` shows when a
+component is hidden or clipped by the height budget. Plugins can use their available rows to
+drop a legend or choose a compact view. Existing live agents adopt saved order changes on reload.
+
+Plugins can also show the current tool and actual tool counts for this agent's turn, including
+parallel and nested calls. They can observe session and tool start/finish events without model
+calls. Counts remain available when a plugin is enabled after the work has started.
+
 ## Examples
 
 Each example is a complete plugin. Ask the agent to install one, or save it under

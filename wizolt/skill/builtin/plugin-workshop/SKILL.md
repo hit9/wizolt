@@ -13,7 +13,8 @@ references; host internals are not plugin APIs. `wizolt plugin paths` prints the
 Run the CLI as `"${WIZOLT_EXECUTABLE:-wizolt}" plugin ...`: that is this session's own wizolt,
 even when another is first on PATH. Its config and project default to this session's, even
 after `cd`. `/plugins` is the user's interactive manager. The bundled `pet` is installed but
-disabled; enable it by name.
+disabled; enable it by name. The optional built-in `layout` plugin exposes list/move/reset tools:
+enable and reload it to arrange components for the user. `/plugins` also offers **layout**.
 
 1. **Inspect:** `plugin list`, then `plugin inspect NAME`. Edit the returned path.
 2. **Create:** default to `~/.wizolt/plugins/<name>.py`; use `<project>/.wizolt/plugins/<name>.py`
@@ -39,6 +40,8 @@ activation, use `Plugin` actions `list`, `describe`, then `call` (the user appro
 Commands are typed by the user; you cannot run them.
 
 Keep mutable state inside `setup`, use theme roles, and keep render callbacks cheap and pure.
+Use `context.layout.rows` to fit the remaining height, and `context.turn.tools` / `active_tools`
+for real execution counts and activity. Session/tool lifecycle events are read-only; see SDK.md.
 Settings go in `[plugins.NAME]` of wizolt's config; declare them with `plugin.configure(...)` and
 reload after editing. Use `plugin.service` for connections, `plugin.models.complete` for model
 requests and `plugin.summarizer` for compaction; tell the user about model costs first. Do not

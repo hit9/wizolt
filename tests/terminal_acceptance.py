@@ -76,10 +76,11 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     wait("test-model")
     pane.send("/plugins")
     wait("disabled")
+    pane.keys("Down")  # layout and pet are both bundled, disabled installations.
     pane.keys("Enter")
     wait("1. enable")
     pane.keys("Enter")
-    wait("pet  enabled")
+    wait("enabled   active")
     pane.keys("Escape")
     wait("on standby")
     pane.resize(160, 30)
@@ -94,7 +95,7 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     pane.keys("Down")
     wait("2. disable")
     pane.keys("Enter")
-    visible = wait("pet  disabled")
+    visible = wait("pet     disabled")
     assert "plugins 1" not in visible
     pane.keys("Escape")
     pane.send("/plugins")

@@ -10,6 +10,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from wizolt.plugins.catalog import Installation, PluginCatalog
+from wizolt.plugins.layout import LayoutOrder
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.process import WorkerError
 from wizolt.plugins.runtime import PluginRuntime
@@ -37,6 +38,15 @@ class SessionPlugins(PluginRuntime):
         self.context_parts: tuple[tuple[str, int], ...] = ()
         self.read_context: Callable[[], list[tuple[str, int]]] | None = None
         super().__init__(self.snapshot, PluginSettings(session.config.plugins, session.config.path))
+        self.order = LayoutOrder(self.catalog.directory / "layout")
+
+    def reload_layout(self) -> None:
+        try:
+            self.order.load()
+            self._layout_version += 1
+            self.problems.pop("layout", None)
+        except (OSError, ValueError) as error:
+            self.problems["layout"] = str(error)
 
     async def prepare(self, path: str, source: PluginSource | None = None, settings: dict | None = None, *, python: str | None = None):
         # Populate an idle/resumed agent's meter when enabling a plugin too. This is an
@@ -79,6 +89,7 @@ class SessionPlugins(PluginRuntime):
         if self.loaded:
             return
         self.loaded = True
+        self.reload_layout()
         records, _ = self.catalog.read()
         if os.environ.get("WIZOLT_NO_PLUGINS") == "1":
             return
@@ -138,6 +149,7 @@ class SessionPlugins(PluginRuntime):
             if self._closed:
                 raise PluginError("Plugin runtime is closed")
             records, problems = self.catalog.read()
+            self.reload_layout()
             if name and name not in records:
                 raise PluginError(f"Unknown installed plugin: {name}")
             self.loaded = True
