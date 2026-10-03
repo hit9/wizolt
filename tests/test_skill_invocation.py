@@ -176,9 +176,11 @@ async def test_cancelled_shell_leaves_nothing_running(tmp_path):
     group = os.getpgid(child)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await task
+        # Killing only the shell leaves its child's output pipes open. Do not let a
+        # broken cleanup wait out sleep's natural exit and then pass the liveness check.
+        await asyncio.wait_for(task, 5)
 
-    for _ in range(500):  # SIGKILL is delivered asynchronously; the orphan is reaped by init
+    for _ in range(500):  # SIGKILL is asynchronous; zombies need not be reaped to stop running.
         if not _alive(child):
             break
         await asyncio.sleep(0.01)
@@ -192,16 +194,30 @@ def _process_details(pid):
 
 
 def _alive(pid):
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    # A killed orphan can linger as a zombie until init reaps it; a zombie runs nothing.
-    try:
-        with open(f"/proc/{pid}/stat", encoding="utf-8") as handle:
-            return handle.read().split(")")[-1].split()[0] != "Z"
-    except OSError:
-        return True
+    """Observe state once: probing a PID before reading /proc races with its removal.
+
+    ps also works on macOS, where /proc is absent. Zombies and dead tasks cannot run;
+    every other state (including sleeping or stopped) still represents a leaked child.
+    """
+    result = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True, check=False)
+    assert result.returncode in (0, 1) and not result.stderr, result
+    state = result.stdout.strip()
+    return bool(state) and state[0] not in {"Z", "X"}
+
+
+@pytest.mark.parametrize("state, running", [("S", True), ("R+", True), ("T", True), ("D", True), ("Z", False), ("X", False), ("", False)])
+def test_child_liveness_distinguishes_running_from_exited(monkeypatch, state, running):
+    """An absent PID or unreaped corpse must not fail the process-group cancellation tests."""
+    result = subprocess.CompletedProcess([], 0 if state else 1, state + "\n", "")
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: result)
+    assert _alive(123) is running
+
+
+def test_child_liveness_does_not_hide_probe_errors(monkeypatch):
+    result = subprocess.CompletedProcess([], 2, "", "ps: failed")
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: result)
+    with pytest.raises(AssertionError):
+        _alive(123)
 
 
 async def test_cancellation_during_spawn_kills_the_started_group(tmp_path, monkeypatch):

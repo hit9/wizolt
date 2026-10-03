@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Check child process state in one observation in shell cancellation tests, avoiding false
+  failures when a killed process disappears between a PID probe and reading its state.
+
 - Test immediate Esc handling independently of CI scheduling delays, while still rejecting
   regressions that defer approval refusal or completion dismissal until a key-chord timeout.
 
