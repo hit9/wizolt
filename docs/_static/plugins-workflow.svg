@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="356" viewBox="0 0 760 356" role="img">
+<title>From a sentence to a running plugin</title>
+<style>text{font-family:Georgia,serif;fill:#c9ccd1}.detail{font-size:18px;fill:#a2a9b3}.heading{font-size:23px;fill:#e8eaed}.number{font-family:monospace;font-size:14px;fill:#8b929c}</style>
+<text x="16" y="37" class="number">01</text>
+<text x="58" y="38" class="heading">Ask</text>
+<text x="58" y="68" class="detail">Describe what you want to see or do.</text>
+<path d="M24 54 v53 m-4 -4 l4 4 4 -4" fill="none" stroke="#59616c" stroke-width="1"/>
+<text x="16" y="139" class="number">02</text>
+<text x="58" y="140" class="heading">The agent writes and previews it</text>
+<text x="58" y="170" class="detail">It checks pictures of the result at your width and theme.</text>
+<path d="M24 156 v53 m-4 -4 l4 4 4 -4" fill="none" stroke="#59616c" stroke-width="1"/>
+<text x="16" y="241" class="number">03</text>
+<text x="58" y="242" class="heading">Save and load it live</text>
+<text x="58" y="272" class="detail">You approve; it appears without restarting wizolt.</text>
+<path d="M58 311 H728" stroke="#2c3138"/>
+<text x="58" y="340" class="detail" font-style="italic">Change your mind later in /plugins: disable, reload or roll back.</text></svg>

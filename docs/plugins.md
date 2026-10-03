@@ -1,143 +1,173 @@
 # Plugins
 
-Make wizolt yours with small Python plugins: a companion above your input, custom statusbar
-fields, extra `/status` information, or your own commands.
+Plugins add small things to wizolt: a meter above the divider, a statusbar field, a `/command`,
+or a new ability for the agent. You describe what you want; the agent writes the plugin.
 
-Ask the agent to use **plugin-workshop** to create or change a plugin. The skill is built in;
-it includes the matching SDK reference and runnable examples.
-Run `wizolt plugin paths` to locate that executable's skill, API reference, appearance reference,
-SDK directory and package source. It prints absolute paths as JSON and needs no configuration.
+![A wizolt prompt with plugins: a context meter above the divider, a pet above the input and a cost field in the statusbar.](_static/plugins-overview.svg)
 
 ## Try the pet
 
-Open `/plugins`, select **pet**, and choose **enable**. The little cat sits above the input,
-animates while the agent works, and changes mood when your input is needed. Its colors follow
-your theme. It is installed but **disabled by default** and makes no model calls.
+Run `/plugins`, select **pet**, then choose **enable**. A small cat sits above your input and
+reacts to the agent. It is built in, disabled by default, and makes no model calls.
 
-```text
- /\_/\
-( • • )~  on it
+![The pet while the agent works, while it waits for you, and after it finishes.](_static/plugins-pet.svg)
 
-❯ Your next message
-```
-
-Choose **disable** to hide it. Disabling keeps a plugin installed so you can enable it again.
-
-To move the pet above the divider, add this to `config.toml`, then reload it:
+To move it, add this to `~/.wizolt/config.toml` and ask the agent to reload plugins:
 
 ```toml
 [plugins.pet]
-slot = "above_divider"
+slot = "below_input"  # or "above_divider", "above_input"
 ```
 
-Plugins can draw above the divider, above or below the input, and inside `/status`. Prompt
-additions share at most six rows and shrink in short terminals. They can use multicolor rows,
-context categories and token-speed samples; ask plugin-workshop for a context bar or speed graph.
+## Ask the agent for one
 
-## Manage your plugins
+Describe the plugin in plain words, for example:
 
-`/plugins` shows installed plugins, enablement, actual runtime status, and source paths.
-Move with **↑/↓** or **j/k**, press **Enter** for actions, and **Esc** to go back.
-Columns stay aligned when names are long or the terminal shrinks. The statusbar shows
-`plugins N` for healthy plugins loaded in this agent; zero is hidden. Custom formats can use
-`{plugins.count}`. A pending disable stays counted until the current turn finishes.
+> Make a plugin that shows what this session has cost in the statusbar.
 
-| Action | What it does |
-| --- | --- |
-| Enable / Disable | Turn an installed plugin on or off |
-| Reload | Load changes from its source file |
-| Rollback | Restore its previous in-memory version |
+![How the agent builds a plugin: write it, preview it, save it with your approval, and load it live.](_static/plugins-workflow.svg)
 
-Enablement is saved per project. Changes affect the current agent and future agents; existing
-agents keep their own instances. A change requested during a turn shows **pending** until that
-turn ends. Failed reloads keep the old version working.
+The agent uses the built-in **plugin-workshop** skill. It checks the plugin's pictures before
+showing it to you, and asks before running plugin code in your session. Nothing restarts.
 
-## Plugin settings
+## Examples
 
-Put settings in your wizolt `config.toml`, under the installed plugin's name:
+Each example is a complete plugin. Ask the agent to install one, or save it under
+`~/.wizolt/plugins/` and say "enable and reload it".
+
+### Context meter
+
+Shows what fills the context window, above the divider.
+
+<!-- figure: plugins-meter -->
+```python
+from wizolt.sdk import Line, Panel, Text
+
+SDK_VERSION = 1
+COLORS = ("accent", "success", "warning", "info")
+
+
+def draw(context):
+    window = context.window
+    width = context.columns - 2
+    spans, start = [], 0
+    for index, (_, tokens) in enumerate(window.parts):
+        end = start + round(tokens * width / max(1, window.limit))
+        spans.append(Text("█" * (end - start), COLORS[index % len(COLORS)]))
+        start = end
+    spans.append(Text("░" * max(0, width - start), "muted"))
+    names = " · ".join(f"{name} {tokens // 1000}k" for name, tokens in window.parts)
+    return Panel((Line(tuple(spans)), Text(names, "muted")))
+
+
+def setup(plugin):
+    plugin.component("above_divider", draw)
+```
+
+![The context meter: a colored bar split by system, tools and messages, with token counts below.](_static/plugins-meter.svg)
+
+### Session cost in the statusbar
+
+Adds a `cost` field and a statusbar layout that shows it. Prices come from your config.
+
+<!-- figure: plugins-cost -->
+```python
+SDK_VERSION = 1
+
+
+def setup(plugin):
+    plugin.configure(
+        {"type": "object", "properties": {"input": {"type": "number"}, "output": {"type": "number"}}},
+        defaults={"input": 3.0, "output": 15.0},  # dollars per million tokens
+    )
+
+    def cost(context):
+        usage = context.usage
+        return (usage.input_tokens * plugin.config["input"] + usage.output_tokens * plugin.config["output"]) / 1e6
+
+    plugin.field("dollars", cost)
+    plugin.preset("statusbar", "cost", "[status.model] {model} [/]{>}[status_context]ctx {context.percent}%[/] [warning]${plugins.cost.dollars:.2f}[/]")
+```
+
+![The cost statusbar: model on the left, context use and session cost on the right.](_static/plugins-cost.svg)
+
+Pick **plugins.cost.cost** in `/theme`, or use `{plugins.cost.dollars:.2f}` in your own
+[format](appearance.md). Set your prices:
 
 ```toml
-[plugins.context_helper]
-provider = "deepseek"
-model = "your-model"
+[plugins.cost]
+input = 3.0
+output = 15.0
 ```
 
-The plugin defines which settings it accepts. Run `wizolt plugin validate NAME --config PATH`
-to check them, then ask the agent to reload plugins to apply them to the current agent. Invalid settings
-leave the previous instance running. Rollback restores its previous source and settings.
-Keep credentials in environment variables or your provider configuration.
+### A command for you
 
-## More ways to customize
-
-| Capability | What you get |
-| --- | --- |
-| Themes and bar presets | New `plugins.NAME.CHOICE` entries in `/theme`; reload updates them live |
-| Model helpers | Commands can ask a configured model using only the text the plugin supplies |
-| Compaction | One enabled summary plugin can serve `/compact` and automatic compaction |
-| Services | Connections such as LSP start on first use and close on disable, reload or exit |
-
-Model helpers use extra tokens, have a 50-second limit, and return their usage separately from
-the main agent's statistics. Model-backed summaries can also lose the main model's cached-prefix
-savings. If a summary plugin fails, wizolt uses built-in compaction; fix and reload it to retry.
-Your notes and recent messages remain protected.
-
-Disabling a theme plugin temporarily uses the default appearance; enabling it restores your
-saved choice. Each agent has its own active plugins and appearance choices.
-
-## Create one
-
-Keep personal source in `~/.wizolt/plugins/name.py`, or project-specific source in
-`.wizolt/plugins/name.py`. Files are only loaded after explicit enablement.
-
-For multiple modules and resource files, use a directory with `pyproject.toml` and a configurable
-entry callable. Pass that directory to the same `validate`, `test`, and `install` commands.
-Reload and rollback include its helpers and resources.
+Adds `/note TEXT` to keep project notes in `.wizolt/notes.txt`.
 
 ```python
-from wizolt.sdk import Plugin
+from pathlib import Path
 
 SDK_VERSION = 1
 
-def setup(plugin: Plugin) -> None:
-    plugin.field("mood", lambda context: "busy" if context.status == "running" else "ready")
+
+def setup(plugin):
+    async def note(context, arguments):
+        path = Path(context.cwd) / ".wizolt" / "notes.txt"
+        path.parent.mkdir(exist_ok=True)
+        with path.open("a") as notes:
+            notes.write(arguments["input"] + "\n")
+        return "Noted."
+
+    plugin.command("note", "Save a project note", note)
 ```
 
-Save as `mood.py`, then ask the agent to install it using **plugin-workshop**. Use `{plugins.mood.mood}` in a
-statusbar or divider [format](appearance.md). The same SDK supports theme-aware components
-above the input and on `/status`'s Session tab.
+### An ability for the agent
 
-For installed plugins: `/plugins enable mood`, `/plugins reload mood`, and
-`/plugins disable mood`. Plugins can also add their own `/commands`.
+Lets the agent read those notes when it decides they help. It asks you before each use.
 
-## Try changes before enabling
+```python
+from pathlib import Path
 
-```sh
-wizolt plugin validate ~/.wizolt/plugins/mood.py
-wizolt plugin test ~/.wizolt/plugins/mood.py --theme forest --width 80
+SDK_VERSION = 1
+
+
+def setup(plugin):
+    async def recall(context, arguments):
+        path = Path(context.cwd) / ".wizolt" / "notes.txt"
+        return path.read_text() if path.exists() else "No notes yet."
+
+    plugin.tool("recall", "Read the user's project notes", {"type": "object", "properties": {}}, recall)
 ```
 
-The test returns a JSON report with errors, captured logs, and PNG/SVG previews for UI components and for each statusbar or divider preset the plugin adds.
-Use `--width 30` to check a narrow terminal, or `--times 0 0.5 1` to sample animation. Previews use
-the same text clipping and colors as the TUI. Use `--font` if the PNG font lacks your characters.
+![The agent calls the recall tool through Plugin and reads two notes back.](_static/plugins-tool.svg)
 
-`wizolt plugin list` and `inspect NAME` show saved project choices. `enable PATH` and `disable NAME`
-save changes for new agents. Ask the current agent to reload plugins to apply them now;
-it reloads one named plugin or all saved choices. A failed candidate keeps the old version.
-Use `--config PATH` and `--project DIR` when your running session uses different defaults.
+## Manage plugins
 
-Trials never change installation choices. They run real plugin code with your permissions;
-an explicitly tested command or event can still modify files or access the network.
+Run **`/plugins`** to see each plugin, whether it is enabled, and whether it is running.
+Select one and press **Enter**:
 
-## Dependencies and recovery
+| Action | What it does |
+| --- | --- |
+| Enable / Disable | Turn it on or off; your choice is saved for this project |
+| Reload | Load its latest code and settings |
+| Rollback | Go back to the previous version |
 
-A plugin can declare `DEPENDENCIES = ["package>=1.0"]`. Ask the agent to install it through
-**plugin-workshop**, or run `wizolt plugin install PATH`. wizolt builds a separate worker
-environment. Ask the agent to reload plugins to apply it; no wizolt restart is needed.
+A change made while the agent works shows **pending** and applies when the turn ends. A broken
+update keeps the old version running. The statusbar shows `plugins N` while any are running.
 
-That environment borrows your current wizolt installation; keep the installation available.
-Conflicting dependencies must be resolved before activation.
+## Settings
 
-Each plugin runs in its own process. A crash or blocking callback is reported without freezing
-wizolt's input. Plugins still execute trusted Python with your permissions. To start
-without loading plugins, run `WIZOLT_NO_PLUGINS=1 wizolt`, then disable the problematic plugin
-in `/plugins`. SDK 1 is experimental.
+A plugin reads its settings from `[plugins.NAME]` in your config, like the cost example above.
+After editing them, ask the agent to reload plugins. Invalid settings keep the old version.
+Keep secrets in environment variables, not in plugin settings.
+
+## Safety and recovery
+
+- Plugins are Python with your permissions. Only enable code you trust.
+- Each plugin runs in its own process, so a crash or a slow plugin cannot freeze wizolt.
+- Plugin tools ask before each use; commands run only when you type them.
+- If wizolt misbehaves after enabling one, start with `WIZOLT_NO_PLUGINS=1 wizolt`, then
+  disable it in `/plugins`.
+
+Plugin authors and the agent use the reference printed by `wizolt plugin paths`. SDK 1 is
+experimental and may change.

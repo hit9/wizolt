@@ -1,5 +1,6 @@
 """The shipped skill must describe public contracts and execute the code it teaches."""
 
+import asyncio
 import inspect
 import json
 import re
@@ -20,6 +21,26 @@ from wizolt.ui.render import Theme
 from wizolt.ui.themes import DIFF_KEYS
 
 REFERENCE = Path(__file__).parents[1] / "wizolt/skill/builtin/plugin-workshop"
+GUIDE = Path(__file__).parents[1] / "docs/plugins.md"
+
+
+def guide_examples() -> list[tuple[str, str]]:
+    """Every plugin in the user guide, named as its figure marker names it (cost, meter, ...)."""
+    names = ("meter", "cost", "note", "recall")
+    blocks = re.findall(r"(?:<!-- figure: plugins-(\w+) -->\s*)?```python\n(.*?)```", GUIDE.read_text(), re.DOTALL)
+    examples = [(marker or names[index], code) for index, (marker, code) in enumerate(blocks)]
+    assert [name for name, _ in examples] == list(names), "keep this list in the guide's order"
+    return examples
+
+
+@pytest.mark.parametrize(("name", "code"), guide_examples())
+async def test_user_guide_examples_pass_the_authoring_checks(tmp_path, name, code):
+    from wizolt.ui.cli.plugin_testing import main
+
+    path = tmp_path / f"{name}.py"
+    path.write_text(code)
+    # Shell-free and in-process: the same validation the agent runs before showing a plugin.
+    assert await asyncio.to_thread(main, ["test", str(path), "--project", str(tmp_path), "--output", str(tmp_path)]) == 0
 
 
 def section(document, title):

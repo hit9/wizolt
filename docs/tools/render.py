@@ -31,10 +31,12 @@ from rich.text import Text
 from wizolt.agent.engine import Agent
 from wizolt.base import ApprovalView, LogBlock, LogEdge, LogLine, LogRole
 from wizolt.config import Config
+from wizolt.sdk import Context, ContextWindow, Plugin, Usage
 from wizolt.session import QueuedInput, Session
 from wizolt.ui.bars import STATUS_PRESETS, BarLayout
 from wizolt.ui.cli.appearance import DIFF_STYLE_SAMPLE, AppearancePicker
 from wizolt.ui.cli.loop import CommandLoop
+from wizolt.ui.cli.plugins import PluginView
 from wizolt.ui.render import MessageBlock, Theme, UiPrinter
 from wizolt.ui.tui import InputMode, TuiApp
 from wizolt.ui.tui.details import DetailSheet
@@ -77,6 +79,23 @@ def powerline_paths(svg: str) -> str:
         return f'<path class="{css_class}" transform="translate({x:g},{y:g})" d="{points}"/>'
 
     return re.sub(r"<text ([^>]+)>(|)</text>", shape, svg)
+
+
+def plugin_example(name: str) -> Plugin:
+    """Run a marked plugin example from the plugins guide, so its picture shows that exact code."""
+    source = (DOCS / "plugins.md").read_text(encoding="utf-8")
+    match = re.search(r"<!-- figure: plugins-" + re.escape(name) + r" -->\s*```python\n(.*?)\n```", source, re.DOTALL)
+    if match is None:
+        raise ValueError(f"Missing plugin example: {name}")
+    return load_plugin(name, match[1])
+
+
+def load_plugin(name: str, code: str) -> Plugin:
+    namespace: dict = {}
+    exec(compile(code, f"<plugin {name}>", "exec"), namespace)  # noqa: S102 - the guide's own examples.
+    plugin = Plugin(name)
+    namespace["setup"](plugin)
+    return plugin
 
 
 def example(name: str) -> dict:
@@ -325,6 +344,80 @@ class Illustrations:
         parts.append(f'<text x="58" y="{height - 16}" class="detail" font-style="italic">{escape(note)}</text></svg>')
         (self.output / f"{name}.svg").write_text("\n".join(parts) + "\n", encoding="utf-8")
 
+    def plugin_context(self, status: str = "completed") -> Context:
+        """Fixed agent facts: what a plugin callback would receive mid-session."""
+        window = ContextWindow(74_000, 200_000, 160_000, (("system", 9_000), ("tools", 14_000), ("messages", 51_000)))
+        return Context("main", "main", self.session.cwd, status, 37, 12, "claude-sonnet", NOW, WIDTH - 4, Usage(6, 42_000, 3_100, 30_000, 42), window)
+
+    def panel(self, plugin: Plugin, slot: str, context: Context) -> Text:
+        return self.styled(PluginView.render([plugin.components[slot](context)], WIDTH - 4, 12))
+
+    def plugin_bar(self, plugin: Plugin, choice: str, context: Context) -> Text:
+        """A contributed statusbar preset, with the plugin's fields sampled from `context`."""
+        layout = BarLayout()
+        layout.presets["statusbar"].update({f"plugins.{plugin.name}.{key}": value for key, value in plugin.presets["statusbar"].items()})
+        if problems := layout.configure({"statusbar": f"preset:plugins.{plugin.name}.{choice}"}, Theme.bar_styles):
+            raise ValueError("; ".join(problems))
+        fields = {f"plugins.{plugin.name}.{key}": callback(context) for key, callback in plugin.fields.items()}
+        return self.styled(layout.render("statusbar", {**self.values, **fields}, WIDTH - 4, Theme.bar_styles), WIDTH - 4)
+
+    def pet(self) -> Plugin:
+        return load_plugin("pet", (ROOT / "wizolt/plugins/builtin/pet.py").read_text(encoding="utf-8"))
+
+    def plugins_overview(self) -> None:
+        meter, cost, pet = plugin_example("meter"), plugin_example("cost"), self.pet()
+        context = self.plugin_context()
+        prompt = [(Theme.fg("text"), "> "), (Theme.fg("text"), "▏")]
+        self.save(
+            "plugins-overview",
+            [
+                self.message("Empty input now returns an empty list. The tests pass."),
+                Text(""),
+                self.panel(meter, "above_divider", context),
+                self.bar({}, kind="divider", width=WIDTH - 4),
+                self.panel(pet, "above_input", context),
+                self.styled(prompt),
+                Text(""),
+                self.plugin_bar(cost, "cost", context),
+            ],
+        )
+
+    def plugins_pet(self) -> None:
+        pet = self.pet()
+        rows = []
+        for label, status in (("While the agent works", "running"), ("When it needs you", "waiting"), ("When it finishes", "completed")):
+            rows.extend([self.label(label), self.panel(pet, "above_input", self.plugin_context(status)), Text("")])
+        self.save("plugins-pet", rows[:-1])
+
+    def plugins_meter(self) -> None:
+        self.save("plugins-meter", [self.panel(plugin_example("meter"), "above_divider", self.plugin_context())])
+
+    def plugins_cost(self) -> None:
+        self.save("plugins-cost", [self.plugin_bar(plugin_example("cost"), "cost", self.plugin_context())])
+
+    def plugins_tool(self) -> None:
+        self.save(
+            "plugins-tool",
+            [
+                self.message("How do we cut a release here?", "user", 0),
+                self.log("Plugin", "call notes.recall", "Releases need a CHANGELOG entry. Tag vX.Y.Z; never push tags."),
+                Text(""),
+                self.message("Add a CHANGELOG entry, then tag it vX.Y.Z locally. Your notes say not to push tags."),
+            ],
+        )
+
+    def plugins_workflow(self) -> None:
+        self.diagram(
+            "plugins-workflow",
+            "From a sentence to a running plugin",
+            [
+                ("Ask", "Describe what you want to see or do."),
+                ("The agent writes and previews it", "It checks pictures of the result at your width and theme."),
+                ("Save and load it live", "You approve; it appears without restarting wizolt."),
+            ],
+            "Change your mind later in /plugins: disable, reload or roll back.",
+        )
+
     def compaction(self) -> None:
         self.diagram(
             "context-compaction",
@@ -394,6 +487,12 @@ RECIPES = {
     "context-cache": "caching",
     "skills-workflow": "skills",
     "hooks-workflow": "hooks",
+    "plugins-overview": "plugins_overview",
+    "plugins-pet": "plugins_pet",
+    "plugins-meter": "plugins_meter",
+    "plugins-cost": "plugins_cost",
+    "plugins-tool": "plugins_tool",
+    "plugins-workflow": "plugins_workflow",
 }
 
 

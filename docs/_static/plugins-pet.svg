@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 946 318.4">
+<title>Rendered UI sample</title>
+<style>
+.plugins-pet-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
+.plugins-pet-r1 { fill: #91a5b7 }
+.plugins-pet-r2 { fill: #abb2bf }
+.plugins-pet-r3 { fill: #6bb9ff }
+.plugins-pet-r4 { fill: #e8ca83 }
+.plugins-pet-r5 { fill: #98c78d }
+</style>
+<defs><clipPath id="plugins-pet-clip-terminal">
+<rect width="926.1999999999999" height="267.4"/>
+</clipPath><clipPath id="plugins-pet-line-0">
+    <rect x="0" y="1.5" width="927.2" height="24.65"/>
+            </clipPath>
+<clipPath id="plugins-pet-line-1">
+    <rect x="0" y="25.9" width="927.2" height="24.65"/>
+            </clipPath>
+<clipPath id="plugins-pet-line-2">
+    <rect x="0" y="50.3" width="927.2" height="24.65"/>
+            </clipPath>
+<clipPath id="plugins-pet-line-3">
+    <rect x="0" y="74.7" width="927.2" height="24.65"/>
+            </clipPath>
+<clipPath id="plugins-pet-line-4">
+    <rect x="0" y="99.1" width="927.2" height="24.65"/>
+            </clipPath>
+<clipPath id="plugins-pet-line-5">
+    <rect x="0" y="123.5" width="927.2" height="24.65"/>
+            </clipPath>
+<clipPath id="plugins-pet-line-6">
+    <rect x="0" y="147.9" width="927.2" height="24.65"/>
+            </clipPath>
+<clipPath id="plugins-pet-line-7">
+    <rect x="0" y="172.3" width="927.2" height="24.65"/>
+            </clipPath>
+<clipPath id="plugins-pet-line-8">
+    <rect x="0" y="196.7" width="927.2" height="24.65"/>
+            </clipPath>
+<clipPath id="plugins-pet-line-9">
+    <rect x="0" y="221.1" width="927.2" height="24.65"/>
+            </clipPath></defs>
+<rect width="946" height="318.4" rx="8" fill="#282c34"/>
+<text x="18" y="26" fill="#aebac9" font-family="sans-serif" font-size="12" letter-spacing="2">RENDERED UI SAMPLE</text>
+<g transform="translate(9, 41)" clip-path="url(#plugins-pet-clip-terminal)">
+<g class="plugins-pet-matrix"><text class="plugins-pet-r1" x="0" y="20" textLength="256.2" clip-path="url(#plugins-pet-line-0)">While&#160;the&#160;agent&#160;works</text><text class="plugins-pet-r2" x="927.2" y="20" textLength="12.2" clip-path="url(#plugins-pet-line-0)">
+</text><text class="plugins-pet-r3" x="0" y="44.4" textLength="73.2" clip-path="url(#plugins-pet-line-1)">&#160;/\_/\</text><text class="plugins-pet-r2" x="927.2" y="44.4" textLength="12.2" clip-path="url(#plugins-pet-line-1)">
+</text><text class="plugins-pet-r3" x="0" y="68.8" textLength="183" clip-path="url(#plugins-pet-line-2)">(&#160;•&#160;•&#160;)~&#160;&#160;on&#160;it</text><text class="plugins-pet-r2" x="927.2" y="68.8" textLength="12.2" clip-path="url(#plugins-pet-line-2)">
+</text><text class="plugins-pet-r2" x="927.2" y="93.2" textLength="12.2" clip-path="url(#plugins-pet-line-3)">
+</text><text class="plugins-pet-r1" x="0" y="117.6" textLength="207.4" clip-path="url(#plugins-pet-line-4)">When&#160;it&#160;needs&#160;you</text><text class="plugins-pet-r2" x="927.2" y="117.6" textLength="12.2" clip-path="url(#plugins-pet-line-4)">
+</text><text class="plugins-pet-r4" x="0" y="142" textLength="73.2" clip-path="url(#plugins-pet-line-5)">&#160;/\_/\</text><text class="plugins-pet-r2" x="927.2" y="142" textLength="12.2" clip-path="url(#plugins-pet-line-5)">
+</text><text class="plugins-pet-r4" x="0" y="166.4" textLength="231.8" clip-path="url(#plugins-pet-line-6)">(&#160;●&#160;●&#160;)~&#160;&#160;your&#160;move</text><text class="plugins-pet-r2" x="927.2" y="166.4" textLength="12.2" clip-path="url(#plugins-pet-line-6)">
+</text><text class="plugins-pet-r2" x="927.2" y="190.8" textLength="12.2" clip-path="url(#plugins-pet-line-7)">
+</text><text class="plugins-pet-r1" x="0" y="215.2" textLength="195.2" clip-path="url(#plugins-pet-line-8)">When&#160;it&#160;finishes</text><text class="plugins-pet-r2" x="927.2" y="215.2" textLength="12.2" clip-path="url(#plugins-pet-line-8)">
+</text><text class="plugins-pet-r5" x="0" y="239.6" textLength="73.2" clip-path="url(#plugins-pet-line-9)">&#160;/\_/\</text><text class="plugins-pet-r2" x="927.2" y="239.6" textLength="12.2" clip-path="url(#plugins-pet-line-9)">
+</text><text class="plugins-pet-r5" x="0" y="264" textLength="231.8" clip-path="url(#plugins-pet-line-10)">(&#160;■&#160;■&#160;)~&#160;&#160;nailed&#160;it</text><text class="plugins-pet-r2" x="927.2" y="264" textLength="12.2" clip-path="url(#plugins-pet-line-10)">
+</text></g></g>
+</svg>

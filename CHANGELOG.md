@@ -31,6 +31,9 @@
 - Add per-plugin `[plugins.NAME]` settings, immutable SDK configuration with schema validation
   and defaults, shared CLI/live validation, and source-plus-settings rollback.
 
+- Rewrite the plugins guide for users: shorter sections, four example plugins with pictures of
+  their effect, and figures drawn by `docs/tools/render.py` from the guide's own example code.
+  Tests run every guide example through the same checks the agent uses.
 - The plugin-workshop skill links its references by absolute path, runs this session's own
   `wizolt`, says to install before testing plugins with dependencies, explains installed names,
   and tells the agent to add abilities for itself as plugin tools. Appearance examples write the
