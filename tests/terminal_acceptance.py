@@ -1016,7 +1016,7 @@ def test_format_draft_and_status_tabs_survive_resizes(pane):
     logged("closed: statusbar.format: MYBAR ")
 
     visible_containing("Overview")
-    pane.keys("l")
+    pane.keys("l", "l")  # Past Progress to Context.
     visible_containing("compacts at")
     for width, height in sizes:
         pane.resize(width, height)
