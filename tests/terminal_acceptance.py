@@ -82,6 +82,8 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     wait("pet  enabled")
     pane.keys("Escape")
     wait("on standby")
+    pane.resize(160, 30)
+    wait("plugins 1")
     for width, height in ((40, 18), (100, 30), (60, 20)):
         pane.resize(width, height)
         wait("on standby")
@@ -92,7 +94,8 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     pane.keys("Down")
     wait("2. disable")
     pane.keys("Enter")
-    wait("pet  disabled")
+    visible = wait("pet  disabled")
+    assert "plugins 1" not in visible
     pane.keys("Escape")
     pane.send("/plugins")
     visible = wait("Plugins")

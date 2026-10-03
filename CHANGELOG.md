@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Align plugin-manager columns across resizing and long names. Show current-agent live plugin
+  counts in statusbar presets and expose `{plugins.count}` to custom formats; hide zero by default.
+
 - Add a single active plugin summary strategy for manual/automatic compaction, with protected
   history boundaries, core validation, builtin fallback, and an offline `--summarize` trial.
 

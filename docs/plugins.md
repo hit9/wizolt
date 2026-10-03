@@ -1,46 +1,7 @@
 # Plugins
 
-Plugins can keep connections such as LSP clients open between commands. They start on first
-use and close when the plugin is disabled, reloaded, or wizolt exits. Ask `plugin-workshop` to
-use a managed service for a long-lived connection.
-
-A plugin command can also ask one of your configured models for help. It receives only the text
-the plugin supplies, and uses extra model tokens. These calls have a 50-second limit; their usage
-is returned to the plugin separately from the main agent's statistics.
-
-A plugin can supply the summary used by `/compact` and automatic compaction. Only one summary
-plugin can be enabled at a time. If it fails, wizolt uses built-in compaction; reload the plugin
-after fixing it. A model-backed summary uses extra tokens and may lose the main model's cached
-prefix savings. Your notes and recent messages remain protected by wizolt.
-
-Plugins can add colorschemes and statusbar/divider presets to `/theme`. Choices are named
-`plugins.NAME.CHOICE`; selecting one uses the same theme and format settings as built-ins.
-Reload updates the chosen preset. Disabling its plugin temporarily uses the default appearance;
-enabling it restores the saved choice. Each agent has its own active appearance contributions.
-
-Plugins can be a single `.py` file or a directory with `pyproject.toml`. Packages support multiple
-modules, resource files and a configurable entry callable. Pass the directory to the same
-`wizolt plugin validate`, `test`, and `install` commands. Ask the built-in `plugin-workshop` skill
-to create either form. Hot reload and rollback include the package's helpers and resources.
-
-## Plugin settings
-
-Put settings in your wizolt `config.toml`, under the installed plugin's name:
-
-```toml
-[plugins.context_helper]
-provider = "deepseek"
-model = "your-model"
-```
-
-The plugin defines which settings it accepts. Run `wizolt plugin validate NAME --config PATH`
-to check them, then use `PluginHotReload` to apply them to the current agent. Invalid settings
-leave the previous instance running. Rollback restores its previous source and settings.
-Keep credentials in environment variables or your provider configuration; a provider name here
-only has meaning if that plugin supports it.
-
 Make wizolt yours with small Python plugins: a companion above your input, custom statusbar
-fields, extra `/status` information, or your own commands and tools.
+fields, extra `/status` information, or your own commands.
 
 Ask the agent to use **plugin-workshop** to create or change a plugin. The skill is built in;
 it includes the matching SDK reference and runnable examples.
@@ -75,6 +36,9 @@ context categories and token-speed samples; ask plugin-workshop for a context ba
 
 `/plugins` shows installed plugins, enablement, actual runtime status, and source paths.
 Move with **↑/↓** or **j/k**, press **Enter** for actions, and **Esc** to go back.
+Columns stay aligned when names are long or the terminal shrinks. The statusbar shows
+`plugins N` for healthy plugins loaded in this agent; zero is hidden. Custom formats can use
+`{plugins.count}`. A pending disable stays counted until the current turn finishes.
 
 | Action | What it does |
 | --- | --- |
@@ -86,10 +50,46 @@ Enablement is saved per project. Changes affect the current agent and future age
 agents keep their own instances. A change requested during a turn shows **pending** until that
 turn ends. Failed reloads keep the old version working.
 
+## Plugin settings
+
+Put settings in your wizolt `config.toml`, under the installed plugin's name:
+
+```toml
+[plugins.context_helper]
+provider = "deepseek"
+model = "your-model"
+```
+
+The plugin defines which settings it accepts. Run `wizolt plugin validate NAME --config PATH`
+to check them, then use `PluginHotReload` to apply them to the current agent. Invalid settings
+leave the previous instance running. Rollback restores its previous source and settings.
+Keep credentials in environment variables or your provider configuration.
+
+## More ways to customize
+
+| Capability | What you get |
+| --- | --- |
+| Themes and bar presets | New `plugins.NAME.CHOICE` entries in `/theme`; reload updates them live |
+| Model helpers | Commands can ask a configured model using only the text the plugin supplies |
+| Compaction | One enabled summary plugin can serve `/compact` and automatic compaction |
+| Services | Connections such as LSP start on first use and close on disable, reload or exit |
+
+Model helpers use extra tokens, have a 50-second limit, and return their usage separately from
+the main agent's statistics. Model-backed summaries can also lose the main model's cached-prefix
+savings. If a summary plugin fails, wizolt uses built-in compaction; fix and reload it to retry.
+Your notes and recent messages remain protected.
+
+Disabling a theme plugin temporarily uses the default appearance; enabling it restores your
+saved choice. Each agent has its own active plugins and appearance choices.
+
 ## Create one
 
 Keep personal source in `~/.wizolt/plugins/name.py`, or project-specific source in
 `.wizolt/plugins/name.py`. Files are only loaded after explicit enablement.
+
+For multiple modules and resource files, use a directory with `pyproject.toml` and a configurable
+entry callable. Pass that directory to the same `validate`, `test`, and `install` commands.
+Reload and rollback include its helpers and resources.
 
 ```python
 from wizolt.sdk import Plugin

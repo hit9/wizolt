@@ -35,6 +35,7 @@ FIELDS = frozenset(
         "mcp.count",
         "mcp.label",
         "skills.count",
+        "plugins.count",
         "running",
         "activity",
         "elapsed",
@@ -207,9 +208,11 @@ AGENT_GROUP = (
     "{% if agents.count > 1 %}{% optional priority=15 %}[status_agent]agents {agents.count} · run {agents.running}"
     "[/][status_mcp] │ [/]{% endoptional %}{% endif %}"
 )
+PLUGIN_GROUP = "{% if plugins.count %}{% optional priority=5 %}[status_mcp]plugins {plugins.count} │ [/]{% endoptional %}{% endif %}"
+SERVICE_DETAILS = "{mcp.label} · skills {skills.count}{% if plugins.count %} · plugins {plugins.count}{% endif %}"
 IDENTITY = (
     "{% if agent.name %}[status_agent bold]{agent.name}[/][status_mcp] / [/]{% endif %}"
-    "{% if yolo %}[status_yolo bold]yolo[/][status_mcp] · [/]{% endif %}" + AGENT_GROUP
+    "{% if yolo %}[status_yolo bold]yolo[/][status_mcp] · [/]{% endif %}" + AGENT_GROUP + PLUGIN_GROUP
 )
 # Segmented presets own their surfaces, including identity and group counts; a row is cut by
 # background rectangles, never by inline badges or text dividers. Blocks carries the idea to the
@@ -218,6 +221,7 @@ BLOCKS_IDENTITY = (
     "{% if agent.name %}[status.agent] {agent.name} [reset]{% endif %}"
     "{% if yolo %}{% optional priority=40 %}[status.yolo] yolo [reset]{% endoptional %}{% endif %}"
     "{% if agents.count > 1 %}{% optional priority=15 %}[status.detail] agents {agents.count} run {agents.running} [reset]{% endoptional %}{% endif %}"
+    "{% if plugins.count %}{% optional priority=5 %}[status.detail] plugins {plugins.count} [reset]{% endoptional %}{% endif %}"
 )
 SEGMENT_USAGE = pressure(" ctx {context.percent}% ", "status.usage", "status.usage.warning", "status.usage.error")
 SEGMENT_DETAILS = (
@@ -230,6 +234,7 @@ SEGMENT_DETAILS = (
         priority=15,
         when="agents.count > 1",
     )
+    + segment("plugins {plugins.count}", "status.detail", priority=5, when="plugins.count")
 )
 
 
@@ -258,7 +263,9 @@ STATUS_LAYOUTS: dict[str, Callable[[bool], str]] = {
         + "]] [/]{% endoptional %}{% endif %}"
         + "[status_provider]{provider}/[/][status_model bold]{model}[/]"
         + "{% optional priority=20 %}[subtle] · [/][status_reason]{reasoning}[/]{% endoptional %}"
-        + "{% optional priority=5 %}[subtle] | [/][status_mcp]{mcp.label} · skills {skills.count}[/]{% endoptional %}",
+        + "{% optional priority=5 %}[subtle] | [/][status_mcp]"
+        + SERVICE_DETAILS
+        + "[/]{% endoptional %}",
         pressure("ctx {context.percent}%") + "{% optional priority=10 %}[status_cache] · cache {cache.percent}%[/]{% endoptional %}",
         split,
         separator="[subtle] | [/]",
@@ -323,6 +330,7 @@ STATUS_LAYOUTS: dict[str, Callable[[bool], str]] = {
         "[status.band]{% if agent.name %}[status.agent] {agent.name} [/]{% endif %} "
         + "{% if yolo %}[status_yolo bold]yolo[/] · {% endif %}"
         + AGENT_GROUP
+        + PLUGIN_GROUP
         + "{% optional priority=35 %}[status_provider]{provider}[/][status_mcp] / [/]{% endoptional %}[status_base bold]{model}[/]"
         + "{% optional priority=20 %} [status_reason underline]{reasoning}[/]{% endoptional %}",
         "{% optional priority=5 %}[status_mcp]{mcp.label} │ [/]{% endoptional %}" + "{% optional priority=30 %}" + SEGMENT_USAGE + "{% endoptional %}",

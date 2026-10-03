@@ -274,6 +274,22 @@ def test_custom_status_template_can_always_show_total_and_runtime_counts():
     assert text(template.render({"agents.count": 1, "agents.running": 0, "agents.waiting": 0}, 80, {"status_agent": "fg:#abcdef"})) == "1 agents · 0 running · 0 waiting"
 
 
+@pytest.mark.parametrize("name", STATUS_LAYOUTS)
+@pytest.mark.parametrize("split", [False, True])
+def test_plugin_count_follows_each_preset_and_remains_bounded(name, split):
+    from wizolt.ui.render import Theme
+
+    template = Template(status_template(name, split))
+    values = dict.fromkeys(FIELDS, 0)
+    values.update(model="model", provider="test", reasoning="high", **{"mcp.label": "mcp 0", "agent.name": "main"})
+    styles = Theme.bar_styles(template.styles)
+    assert "plugins " not in text(template.render(values, 240, styles))
+    values["plugins.count"] = 3
+    assert text(template.render(values, 240, styles)).count("plugins 3") == 1
+    for width in (1, 20, 40, 80, 120):
+        assert get_cwidth(text(template.render(values, width, styles))) <= width
+
+
 @pytest.mark.parametrize("name", ["default", "minimal", "compact", "brackets"])
 def test_single_sided_status_presets_do_not_spread_across_the_terminal(name):
     template = Template("preset:" + name, STATUS_PRESETS)

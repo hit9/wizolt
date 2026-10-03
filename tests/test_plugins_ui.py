@@ -9,6 +9,53 @@ from wizolt.ui.cli.plugins import plugins_command
 from wizolt.ui.tui import TuiApp
 
 
+def test_plugin_columns_align_and_long_names_leave_space_for_states():
+    from wizolt.ui.cli.plugins import PluginManager
+
+    manager = PluginManager(None, None)
+    manager.records = {
+        "pet": {"enabled": False, "status": "disabled"},
+        "very_long_plugin_name_that_would_push_states_off_screen": {"enabled": True, "status": "active"},
+    }
+    for width in (35, 50, 80):
+        labels = list(manager.labels(width).values())
+        assert labels[0].index("disabled") == labels[1].index("enabled")
+        assert labels[0].rindex("disabled") == labels[1].index("active")
+        assert all(len(label) <= width for label in labels)
+        assert "..." in labels[1]
+
+
+async def test_statusbar_plugin_count_tracks_only_this_agents_live_generations(tmp_path):
+    from agent_harness import session_with_provider
+
+    from wizolt.plugins.runtime import PluginRuntime
+    from wizolt.ui.render import StatusBar
+
+    session = session_with_provider(tmp_path)
+    bar = StatusBar(session)
+    other = PluginRuntime(session.plugins.snapshot)
+    path = tmp_path / "counted.py"
+    path.write_text('SDK_VERSION = 1\ndef setup(p):\n    p.field("value", lambda ctx: 1)\n')
+    try:
+        assert bar.values()["plugins.count"] == 0  # Installed pet remains disabled.
+        await other.manage("enable", str(path))
+        assert other.active_count == 1 and bar.values()["plugins.count"] == 0
+        await session.plugins.manage("enable", str(path))
+        assert bar.values()["plugins.count"] == 1
+        await session.plugins.start_turn()
+        await session.plugins.manage("disable", "counted")
+        assert bar.values()["plugins.count"] == 1  # Deferred disable still has live callbacks.
+        await session.plugins.finish_turn()
+        assert bar.values()["plugins.count"] == 0
+        await session.plugins.manage("enable", str(path))
+        await session.plugins.entries["counted"].active.worker.close()
+        assert bar.values()["plugins.count"] == 0
+    finally:
+        await other.close()
+        await session.plugins.close()
+        session.close()
+
+
 async def test_manager_keeps_disabled_plugins_and_can_reenable(tmp_path):
     from agent_harness import session_with_provider
 

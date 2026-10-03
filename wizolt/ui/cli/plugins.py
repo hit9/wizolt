@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import shlex
+import shutil
 from typing import TYPE_CHECKING, ClassVar
 
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 
+from wizolt.base import Text
 from wizolt.sdk import Line, Panel, PluginError
 from wizolt.ui.bars import Fragments, clean, clip
 from wizolt.ui.cli.modals import choice_application, picker_height
@@ -99,10 +101,20 @@ class PluginManager:
 
     def fragments(self) -> StyleAndTextTuples:
         self.state.height = picker_height()
+        self.state.labels = self.labels(max(1, shutil.get_terminal_size((80, 24)).columns - 8))
         title = "Plugins · current agent"
         if self.notice:
             title += " · " + clean(self.notice)
         return self.state.fragments(title, self.preview, keys="↑/↓ j/k move · Enter manage · / search · Esc back")
+
+    def labels(self, columns: int) -> dict[str, str]:
+        """Reserve state columns before clipping names; recompute after terminal resizing."""
+        states = max((len(str(item["status"])) for item in self.records.values()), default=0)
+        width = min(max(map(len, self.records), default=0), 28, max(4, columns - states - 12))
+        return {
+            name: Text.clip_width(f"{Text.clip_width(name, width):<{width}}  {'enabled' if item['enabled'] else 'disabled':<8}  {item['status']}", columns)
+            for name, item in self.records.items()
+        }
 
     async def run(self) -> None:
         tui = self.loop.presentation.tui
@@ -112,12 +124,10 @@ class PluginManager:
             listing = await self.runtime.manage("list")
             self.records = {item["name"]: item for item in listing["plugins"]}
             names = tuple(self.records)
-            width = max(map(len, names), default=0)
-            labels = {name: f"{name:<{width}}  {'enabled' if item['enabled'] else 'disabled':<8}  {item['status']}" for name, item in self.records.items()}
             if not names:
                 self.loop.presentation.emit("No installed plugins. Ask the agent to create or install one with plugin-workshop.")
                 return
-            self.state = ChoiceViewState(names, labels, set(), height=picker_height())
+            self.state = ChoiceViewState(names, self.labels(80), set(), height=picker_height())
             if current in self.state.choices:
                 self.state.selected = self.state.choices.index(current)
             if problems := listing.get("problems"):

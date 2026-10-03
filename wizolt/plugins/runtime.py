@@ -177,6 +177,17 @@ class PluginRuntime:
     def busy(self) -> bool:
         return self.turn_active or self._invocations > 0
 
+    @property
+    def active_count(self) -> int:
+        """Count usable live generations, not saved preferences or unpublished candidates.
+
+        A deferred disable still runs until its lease ends, so it remains counted. Failed
+        callbacks and dead workers are excluded even before the next sampler notices EOF.
+        """
+        return sum(
+            not entry.active.error and not entry.active.worker.error and entry.active.worker.process.returncode is None for entry in self.entries.values()
+        )
+
     @staticmethod
     def describe(name: str, entry: Entry) -> dict[str, Any]:
         item = entry.active

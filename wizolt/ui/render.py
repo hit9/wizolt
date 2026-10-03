@@ -2420,6 +2420,7 @@ class StatusBar:
             "mcp.label": self.mcp_label(),
             "mcp.count": sum(self.session.mcp.connected(item.name) for item in self.session.mcp.parse_configs()) if self.session.mcp else 0,
             "skills.count": len(self.session.skills.skills) if self.session.skills else 0,
+            "plugins.count": source.plugins.active_count if source.plugins is not None else 0,
             "running": self.running,
             "elapsed": max(0.0, time.monotonic() - self.started_at) if self.started_at else 0.0,
             "activity": "working" if self.running else "",

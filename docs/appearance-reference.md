@@ -300,6 +300,7 @@ Available fields:
 | --- | --- |
 | `provider`, `model`, `reasoning`, `context.percent`, `cache.percent` | Selected agent |
 | `yolo`, `mcp.count`, `mcp.label`, `skills.count` | Session settings and connected services; `mcp.label` includes discovery activity |
+| `plugins.count` | Healthy, loaded plugins in the current agent; disabled or failed plugins do not count |
 | `agent.name`, `agent.id`, `agent.state` | Selected agent's name, identity and state |
 | `agents.count`, `agents.running`, `agents.waiting` | Group totals including main, currently running agents and agents waiting for input; completed agents stay in the total |
 | `running`, `elapsed`, `rate` | Whether the agent is running, seconds since the turn started, and the current output-rate label |
