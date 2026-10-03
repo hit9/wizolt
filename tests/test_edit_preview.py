@@ -22,7 +22,7 @@ def test_approval_segments_highlight_inline_edit_preview():
 
     assert (Theme.fg("tool"), "Edit") in segments
     assert any(style.endswith("bg:#003b00") and style != "bg:#003b00" and "return" in text for style, text in segments)
-    assert any(style == "ansigreen bg:#003b00" and text == "+" for style, text in segments)
+    assert any(style == "fg:ansigreen bg:#003b00" and text == "+" for style, text in segments)
     assert any(style == "fg:default bg:#520000" and "pass" in text for style, text in segments)
     assert "\n\n" not in rendered
 
@@ -55,7 +55,7 @@ def test_diff_reads_a_changed_line_starting_with_three_dashes_as_content():
     band = Theme.diff_style("diff.removed.bg")
 
     assert text[4].startswith("   2      │ ----")  # the removed rule, numbered on the old side
-    assert ("ansired " + band, "-") in rows[4] and any(part == "---" and band in style for style, part in rows[4])
+    assert ("fg:ansired " + band, "-") in rows[4] and any(part == "---" and band in style for style, part in rows[4])
     assert text[6].startswith("   3    3 ")  # counted, so the context row under it is still line 3
 
 
@@ -120,8 +120,8 @@ def test_diff_segments_gracefully_degrades_without_header_path(tmp_path):
     diff = "@@ -1,1 +1,1 @@\n- old\n+ new\n"
     segments = ui.diff_segments(diff)
 
-    assert any(t == "-" and s == "ansired bg:#520000" for s, t in segments)
-    assert any(t == "+" and s == "ansigreen bg:#003b00" for s, t in segments)
+    assert any(t == "-" and s == "fg:ansired bg:#520000" for s, t in segments)
+    assert any(t == "+" and s == "fg:ansigreen bg:#003b00" for s, t in segments)
 
 
 def test_diff_segments_gracefully_degrades_without_lexer(tmp_path):
@@ -129,9 +129,9 @@ def test_diff_segments_gracefully_degrades_without_lexer(tmp_path):
     diff = "--- foo.unknownxyz\n+++ foo.unknownxyz\n@@ -1,1 +1,1 @@\n- old\n+ new\n"
     segments = ui.diff_segments(diff)
 
-    assert any(t == "-" and s == "ansired bg:#520000" for s, t in segments)
+    assert any(t == "-" and s == "fg:ansired bg:#520000" for s, t in segments)
     assert any("old" in t and s == "fg:default " + Theme.diff_style("diff.removed.emph") for s, t in segments)
-    assert any(t == "+" and s == "ansigreen bg:#003b00" for s, t in segments)
+    assert any(t == "+" and s == "fg:ansigreen bg:#003b00" for s, t in segments)
 
 
 def test_diff_segments_syntax_highlights_python(tmp_path):
@@ -139,16 +139,16 @@ def test_diff_segments_syntax_highlights_python(tmp_path):
     diff = "--- foo.py\n+++ foo.py\n@@ -1,2 +1,2 @@\n def hello():\n-    pass\n+    return 42\n"
     segments = ui.diff_segments(diff)
 
-    assert any(t == "+" and s == "ansigreen bg:#003b00" for s, t in segments)
+    assert any(t == "+" and s == "fg:ansigreen bg:#003b00" for s, t in segments)
     # Highlighted by the theme's Pygments style, on the added band: the color is the style's, the
     # band is the diff's own pinned green.
     assert any(t == "return" and s.endswith("bg:#003b00") and s.startswith("fg:#") for s, t in segments)
 
-    assert any(t == "-" and s == "ansired bg:#520000" for s, t in segments)
+    assert any(t == "-" and s == "fg:ansired bg:#520000" for s, t in segments)
     assert any("pass" in t and s == "fg:default bg:#520000" for s, t in segments)
 
     # Changed-line gutters join the background band; context stays unfilled.
-    assert any("│" in text and style == "ansibrightblack bg:#003b00" for style, text in segments)
-    assert any("│" in text and style == "ansibrightblack bg:#520000" for style, text in segments)
+    assert any("│" in text and style == "fg:ansibrightblack bg:#003b00" for style, text in segments)
+    assert any("│" in text and style == "fg:ansibrightblack bg:#520000" for style, text in segments)
     assert any("1" in text and "│" in text and "bg:" not in style for style, text in segments)
     assert any(text == "def" and "bg:" not in style for style, text in segments)

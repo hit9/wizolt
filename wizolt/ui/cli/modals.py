@@ -405,7 +405,7 @@ def bash_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView | Non
         rows.append(("exit", code))
     if note:
         rows.append(("shown", note))
-    return ApprovalView(f"output · {record.key}", command, "bash", rows, streams)
+    return ApprovalView(f"output · {record.key}", command, "bash", rows, streams, section="command")
 
 
 @dataclass(frozen=True)
@@ -525,7 +525,7 @@ def job_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView:
     fallback_rows = [("key", record.key)]
     if note:
         fallback_rows.append(("shown", note))
-    fallback = ApprovalView(f"job · {record.key}", result, "", fallback_rows)
+    fallback = ApprovalView(f"job · {record.key}", result, "", fallback_rows, section="result")
     if action == "write" and (view := JobTool(loop.session, record.args).approval_view()) is not None:
         return ApprovalView(f"stdin · {record.key}", view.text, view.lexer, [*fallback_rows, *view.rows], result)
     if job is None:
@@ -548,7 +548,7 @@ def job_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView:
             rows.append(("shown", extra))
     if storage_bounded:
         rows.append(("shown", "job log was bounded"))
-    return ApprovalView(f"job · {record.key}", bounded, "bash", rows, result)
+    return ApprovalView(f"job · {record.key}", bounded, "bash", rows, result, section="log")
 
 
 async def _tool_output_list(loop: CommandLoop, entries: list[OutputEntry], state: ChoiceViewState | None = None) -> tuple[ApprovalView | None, ChoiceViewState]:
@@ -655,13 +655,16 @@ def diff_rows(ui: UiPrinter, text: str, width: int, margin: str = "  ") -> list[
     diff viewer framed them.
 
     A diff's hunk headers carry both numbers, so the sheet numbers nothing itself; a wrapped line
-    indents by the gutter it did not get, which keeps every line of the diff in one body column."""
+    indents by the gutter it did not get, which keeps every line of the diff in one body column.
+    A file header or hunk head has no line to place, so it opens the body at the margin instead
+    of floating past a gutter of blanks."""
     body = margin + " " * ui.DIFF_GUTTER_WIDTH
     rows: list[StyleAndTextTuples] = []
     for source, line in zip(text.splitlines(), ui.segment_lines(ui.diff_segments(text))):
         band = ui.diff_background(source)
         rendered = ui.remove_line_ending(line)
-        for row in cast(list[StyleAndTextTuples], Text.wrap_styled([("", margin)], [("", body)], rendered, width)):
+        lead = margin if source.startswith((*ui.DIFF_HEADER_PREFIXES, "@@ ")) else body
+        for row in cast(list[StyleAndTextTuples], Text.wrap_styled([("", margin)], [("", lead)], rendered, width)):
             if band:
                 used = sum(get_cwidth(fragment[1]) for fragment in row)
                 row.append((band, " " * max(0, width - used)))
@@ -743,13 +746,21 @@ def _approval_text_view(
         label_width = max((get_cwidth(label) for label, _ in header_rows), default=0)
         for label, value in header_rows:
             padded = label + " " * max(0, label_width - get_cwidth(label))
+            # A dim label over a plain value, the pairing the transcript's own keys use; the two
+            # values that state an outcome take the colors the list's verdict column gives the
+            # same call.
+            style = "class:text"
+            if label == "exit":
+                style = "class:choice.output.ok" if value == "0" else "class:choice.output.fail"
+            elif label == "status" and value == "running":
+                style = "class:choice.live"
             lines.extend(
                 cast(
                     list[StyleAndTextTuples],
                     Text.wrap_styled(
-                        [("", margin), ("class:accent", padded), ("", "  ")],
+                        [("", margin), ("class:choice.meta", padded), ("", "  ")],
                         [("", margin + " " * (label_width + 2))],
-                        [("class:text", value)],
+                        [(style, value)],
                         width,
                     ),
                 )
@@ -759,7 +770,7 @@ def _approval_text_view(
         # underneath reads as a heading with no white space around it.
         body = view.text.rstrip()
         if body:
-            lines.extend([[], separator(width, view.label.split(" · ")[0]), []])
+            lines.extend([[], separator(width, view.section or view.label.split(" · ")[0]), []])
             if view.lexer == DIFF_LEXER:
                 lines.extend(diff_rows(loop.presentation.ui, body, width, margin))
             elif view.lexer:
@@ -798,8 +809,19 @@ def _approval_text_view(
             legend = "  ↑/↓ scroll · Ctrl-D/U half-page · PgUp/PgDn page · g/G top/bottom · Esc/q back · Ctrl-O close"
         if get_cwidth(legend) > width:
             legend = "  ↑/↓ · Ctrl-D/U · g/G · Esc/q back · Ctrl-O close" if back_on_escape else "  ↑/↓ · Ctrl-D/U · g/G · Esc/q close"
+        # Three weights, not one: what the sheet is, in the title colour; what it names, in the
+        # body's; and the read-only notice, dim. A whole line of accent bold reads as a shout.
+        head, _, named = view.label.partition(" · ")
+        notice = " · read-only"
+        # The modal window never wraps, so a long name is clipped here rather than pushing the
+        # notice off its right edge.
+        room = max(0, width - get_cwidth(f"  {head}{notice}"))
+        title: StyleAndTextTuples = [("class:choice.title", f"  {head[:1].upper() + head[1:]}")]
+        if named:
+            title.append(("class:text", " · " + Text.clip_width(named, room)))
+        title.append(("class:choice.meta", notice + "\n"))
         parts: StyleAndTextTuples = [
-            ("class:choice.title", f"  {view.label[:1].upper() + view.label[1:]} · read-only\n"),
+            *title,
             # The rule under the title carries no label of its own -- the title is the label -- and at
             # the app's dim weight that only works with a blank row below it.
             ("class:rule", margin + "─" * max(0, width - 4) + "\n"),

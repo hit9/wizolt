@@ -137,6 +137,11 @@ def test_diff_colors_survive_the_palette_reorganization(monkeypatch):
         "diff.removed.bg": "bg:#520000",
         "diff.removed.emph": "bg:#9c1c1c",
         "diff.removed.fg": "fg:default",
+        "diff.gutter": "fg:ansibrightblack",
+        "diff.header": "fg:ansibrightblack",
+        "diff.hunk": "fg:ansicyan",
+        "diff.added.sign": "fg:ansigreen",
+        "diff.removed.sign": "fg:ansired",
     }
     assert Theme.DIFF_LIGHT == {
         "diff.added.bg": "bg:#d1f0d1",
@@ -145,6 +150,11 @@ def test_diff_colors_survive_the_palette_reorganization(monkeypatch):
         "diff.removed.bg": "bg:#f5c8c8",
         "diff.removed.emph": "bg:#e88f8f",
         "diff.removed.fg": "fg:#520000",
+        "diff.gutter": "fg:ansibrightblack",
+        "diff.header": "fg:ansibrightblack",
+        "diff.hunk": "fg:ansicyan",
+        "diff.added.sign": "fg:ansigreen",
+        "diff.removed.sign": "fg:ansired",
     }
     for mode, expected in (("dark", Theme.DIFF_DARK), ("light", Theme.DIFF_LIGHT)):
         monkeypatch.setattr(Theme, "_mode", mode)

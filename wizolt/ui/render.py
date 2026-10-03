@@ -409,15 +409,28 @@ class Theme:
     # them. `dark` and `light` draw the `classic` style, tuned against real diffs in both
     # appearances; the foregrounds below apply under every style. `emph` is the heavier band under
     # the words a modified line actually changed; the line keeps its `bg` everywhere else.
+    # The chrome around the bands -- the gutter rail and numbers, file and hunk heads, the +/-
+    # signs -- is pinned the same way in both appearances; a theme file recolors any of it through
+    # the `[diff]` keys `gutter`, `header`, `hunk`, `added_sign`, `removed_sign`.
     DIFF_DARK: ClassVar[dict[str, str]] = {
         **{key: "bg:" + color for key, color in (DIFF_STYLES["classic"].dark or {}).items()},
         "diff.added.fg": "fg:default",
         "diff.removed.fg": "fg:default",
+        "diff.gutter": "fg:ansibrightblack",
+        "diff.header": "fg:ansibrightblack",
+        "diff.hunk": "fg:ansicyan",
+        "diff.added.sign": "fg:ansigreen",
+        "diff.removed.sign": "fg:ansired",
     }
     DIFF_LIGHT: ClassVar[dict[str, str]] = {
         **{key: "bg:" + color for key, color in (DIFF_STYLES["classic"].light or {}).items()},
         "diff.added.fg": "fg:#003b00",
         "diff.removed.fg": "fg:#520000",
+        "diff.gutter": "fg:ansibrightblack",
+        "diff.header": "fg:ansibrightblack",
+        "diff.hunk": "fg:ansicyan",
+        "diff.added.sign": "fg:ansigreen",
+        "diff.removed.sign": "fg:ansired",
     }
 
     BUILTIN: ClassVar[dict[str, Palette]] = {"dark": Palette("dark", DARK), "light": Palette("light", LIGHT), **NAMED_THEMES}
@@ -1940,14 +1953,14 @@ class UiPrinter:
             except ValueError:
                 return None
 
-        # The styles below stay ANSI names on purpose. A diff's colors are pinned (see Theme's diff
-        # mapping): the signs, gutter, and hunk headers were tuned against these bands in both
-        # appearances, so they are not migrated to palette roles with the rest of the UI.
+        # The bands are the diff style's; the chrome around them -- the gutter, the file and hunk
+        # heads, the signs -- takes the diff family's own foregrounds (see `DIFF_DARK`), so a
+        # theme file recolors the whole diff through one `[diff]` table instead of half of it.
         def number(old: int | None, new: int | None, background: str = "") -> None:
             old_text = "" if old is None else str(old)
             new_text = "" if new is None else str(new)
             # The same box-drawing stroke as the tree rail beside it, so the two verticals match.
-            segments.append((("ansibrightblack " + background).strip(), f"{old_text:>4} {new_text:>4} │ "))
+            segments.append(((Theme.diff_style("diff.gutter") + " " + background).strip(), f"{old_text:>4} {new_text:>4} │ "))
 
         def append_hl(
             prefix: str,
@@ -1973,22 +1986,26 @@ class UiPrinter:
                 if len(parts) >= 3:
                     old_line = hunk_start(parts[1], "-")
                     new_line = hunk_start(parts[2], "+")
-                number(None, None)
-                segments.append(("ansicyan", line + suffix))
+                # A file header or hunk head has no line to place, so it steps out of the gutter:
+                # the rail is for the lines the numbers sit beside.
+                segments.append((Theme.diff_style("diff.hunk"), line + suffix))
             elif line.startswith(self.DIFF_HEADER_PREFIXES):
-                number(None, None)
-                segments.append(("ansibrightblack", line + suffix))
+                segments.append((Theme.diff_style("diff.header"), line + suffix))
             elif line.startswith("+"):
                 background = self.diff_background(line)
                 number(None, new_line, background)
                 content_hl = hl_by_index.get(index) or [(Theme.diff_style("diff.added.fg"), line[1:])]
-                append_hl("+", "ansigreen", content_hl, suffix, background, spans_by_index.get(index), Theme.diff_style("diff.added.emph"))
+                append_hl(
+                    "+", Theme.diff_style("diff.added.sign"), content_hl, suffix, background, spans_by_index.get(index), Theme.diff_style("diff.added.emph")
+                )
                 new_line = None if new_line is None else new_line + 1
             elif line.startswith("-"):
                 background = self.diff_background(line)
                 number(old_line, None, background)
                 content_hl = [(Theme.diff_style("diff.removed.fg"), line[1:])]
-                append_hl("-", "ansired", content_hl, suffix, background, spans_by_index.get(index), Theme.diff_style("diff.removed.emph"))
+                append_hl(
+                    "-", Theme.diff_style("diff.removed.sign"), content_hl, suffix, background, spans_by_index.get(index), Theme.diff_style("diff.removed.emph")
+                )
                 old_line = None if old_line is None else old_line + 1
             elif line.startswith(" "):
                 number(old_line, new_line)

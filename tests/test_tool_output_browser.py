@@ -76,7 +76,7 @@ async def test_tool_output_viewer_browses_recent_calls_through_a_viewport_and_op
     viewer = [frame for frame in frames if "read-only" in frame]
     assert "Output · tr.11 · read-only" in viewer[0]
     assert "1  printf command-10" in viewer[0]
-    assert "── result " in viewer[0]
+    assert "── command " in viewer[0] and "── result " in viewer[0]
     assert "stdout:" in viewer[0] and "line 0" in viewer[0]
     assert "stderr:" in viewer[-1] and "detail stderr" in viewer[-1]  # both streams, a scroll away
     assert modal.exclusive == [False, True]  # the list shares the screen; the viewer takes it

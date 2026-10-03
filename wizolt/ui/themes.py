@@ -57,12 +57,18 @@ class Syntax:
     italic_keywords: bool = False
 
 
-# `[diff]` keys in a theme file and the band each one recolors: the line, and the words it changed.
+# `[diff]` keys in a theme file: the diff key each one recolors and how its color is used -- "bg:"
+# for a band a line is painted with, "fg:" for the chrome drawn on one.
 DIFF_KEYS = {
-    "added": "diff.added.bg",
-    "added_word": "diff.added.emph",
-    "removed": "diff.removed.bg",
-    "removed_word": "diff.removed.emph",
+    "added": ("diff.added.bg", "bg:"),
+    "added_word": ("diff.added.emph", "bg:"),
+    "removed": ("diff.removed.bg", "bg:"),
+    "removed_word": ("diff.removed.emph", "bg:"),
+    "gutter": ("diff.gutter", "fg:"),
+    "header": ("diff.header", "fg:"),
+    "hunk": ("diff.hunk", "fg:"),
+    "added_sign": ("diff.added.sign", "fg:"),
+    "removed_sign": ("diff.removed.sign", "fg:"),
 }
 
 
@@ -483,7 +489,8 @@ def load_custom(directory: str, builtins: dict[str, Palette], roles: tuple[str, 
             elif color is None or color == "default":
                 problems.append(f"theme {path}: diff {key} must be a #rrggbb color or a terminal color like ansiblue, not {value!r}")
             else:
-                diff[DIFF_KEYS[key]] = "bg:" + color
+                band, prefix = DIFF_KEYS[key]
+                diff[band] = prefix + color
         highlights = dict(base.highlights)
         groups = data.get("highlights", {})
         if not isinstance(groups, dict):

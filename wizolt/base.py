@@ -496,7 +496,9 @@ class ApprovalView:
     The same view is what the post-hoc Ctrl-O browser shows, which is the only way to read the
     text under yolo -- there is no confirmation prompt there to press `v` at.
 
-    `label` names it in the viewer title and the action row ("order", "script"). `lexer` is a
+    `label` names it in the viewer title and the action row ("order", "script"). `section`
+    names the rule over the text itself -- "command" for a Bash call's command, "log" for a
+    job's -- falling back to `label`'s first word when empty. `lexer` is a
     pygments lexer name; empty means the text is prose and renders as markdown. The one reserved
     value is `diff`, which is not read as a lexer: it selects the diff renderer, so a diff keeps
     the transcript's syntax highlighting and red/green bands. `rows` are the
@@ -510,6 +512,7 @@ class ApprovalView:
     lexer: str = ""
     rows: list[tuple[str, str]] = field(default_factory=list)
     result: str = ""
+    section: str = ""
 
 
 @dataclass(frozen=True)

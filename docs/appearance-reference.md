@@ -115,9 +115,15 @@ added = "#003a66"          # the added line
 added_word = "#0061a8"     # the words it changed
 removed = "#5c3300"
 removed_word = "#a35a00"
+gutter = "#5a6470"         # the line numbers and their rail
+header = "#5a6470"         # the --- and +++ file lines
+hunk = "#3d9dbf"           # the @@ hunk position line
+added_sign = "#3d9dbf"     # the + that marks an added line
+removed_sign = "#a35a00"   # the - that marks a removed line
 ```
 
-`added_word` and `removed_word` make changed words stand out inside each line.
+`added_word` and `removed_word` make changed words stand out inside each line. The other five
+recolor the chrome around the bands; unset, they keep the built-in dim rail and markers.
 
 The file name is the theme's name, so it cannot be a built-in theme, `auto`, or a pair's name
 (`papercolor`, or `mine` once `mine-dark` and `mine-light` exist). A mistake in a theme file is
