@@ -23,6 +23,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from wizolt.base import LogBlock, LogEdge, LogLine, LogRole
 from wizolt.ui.cli.modals import choice_application
 from wizolt.ui.render import UiPrinter
 from wizolt.ui.tui.app import TuiApp
@@ -83,17 +84,24 @@ async def main(log) -> None:
         app.activity_fragments_fn = command_loop.view.tui_activity_fragments
         app.activity_follows_transcript_fn = lambda: command_loop.presentation.live_preview.active
         try:
-            for index, tool in enumerate(("Bash", "Job", "Bash")):
-                ui.emit(f"{tool} COMMAND-{index}")
+            streaming = sys.argv[4] == "command-stream"
+            for index, tool in enumerate(["Job"] * 24 if streaming else ("Bash", "Job", "Bash")):
+                ui.emit(LogBlock([LogLine(tool, f"COMMAND-{index}", LogRole.TOOL)]))
                 app.set_running("working")
                 command_loop.presentation.tool_live_start()
-                while not Path(log.name).with_suffix(f".output-{index}").exists():
-                    await asyncio.sleep(0.02)
+                if streaming:
+                    await asyncio.sleep(0.15)
+                else:
+                    while not Path(log.name).with_suffix(f".output-{index}").exists():
+                        await asyncio.sleep(0.02)
                 command_loop.presentation.tool_live_output("stdout", "one\ntwo\nthree\nfour\nfive")
-                while not Path(log.name).with_suffix(f".next-{index}").exists():
-                    await asyncio.sleep(0.02)
+                if streaming:
+                    await asyncio.sleep(0.15)
+                else:
+                    while not Path(log.name).with_suffix(f".next-{index}").exists():
+                        await asyncio.sleep(0.02)
                 command_loop.presentation.tool_live_output("stdout", "")
-                ui.emit(f"RESULT-{index}")
+                ui.emit(LogBlock.hierarchy(None, [LogLine("stored", f"RESULT-{index}", LogRole.META, LogEdge.END)]))
             app.set_idle()
             await asyncio.Event().wait()
         finally:
@@ -167,7 +175,7 @@ async def main(log) -> None:
         await asyncio.Event().wait()
 
     def start() -> None:
-        if len(sys.argv) > 4 and sys.argv[4] == "commands":
+        if len(sys.argv) > 4 and sys.argv[4] in {"commands", "command-stream"}:
             app.app.create_background_task(command_preview_loop())
             return
         if len(sys.argv) > 4 and sys.argv[4] == "bars":

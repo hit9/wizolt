@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Keep live Bash/Job previews and `stored` result rows attached to their tool calls when
+  terminal resizing overlaps tool output. Add continuous-output zoom coverage for tmux and Zellij.
+
 ## 0.70.1 - 2026-10-02
 
 ### Fixed

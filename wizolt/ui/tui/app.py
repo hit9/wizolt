@@ -33,6 +33,7 @@ from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.menus import CompletionsMenu, CompletionsMenuControl
 from prompt_toolkit.layout.processors import BeforeInput, HighlightIncrementalSearchProcessor, Processor, Transformation
 from prompt_toolkit.patch_stdout import patch_stdout
+from prompt_toolkit.renderer import HeightIsUnknownError
 from prompt_toolkit.styles import BaseStyle
 from prompt_toolkit.utils import get_cwidth
 from prompt_toolkit.widgets import SearchToolbar
@@ -48,7 +49,7 @@ from wizolt.image import IMAGE_MARKER, ImageInputs, ImageRef, UserInput
 from wizolt.mentions import MENU_KEYS, FilePick, MentionSpan, active_mention, encode_file_mention, mention_spellings, scan_mentions
 from wizolt.paste import PASTE_MARKER, PasteRef
 from wizolt.ui.render import InputStyle, ScrollbackText, Theme, UiPrinter
-from wizolt.ui.tui.scrollback import ScrollbackRegion
+from wizolt.ui.tui.scrollback import ScrollbackRegion, app_top_row
 from wizolt.ui.tui.views import TUI_MODAL_PENDING
 
 
@@ -2178,30 +2179,29 @@ class TuiApp:
 
         renderer.report_absolute_cursor_row = remember_tail
 
+        def layout_height(rows: int, columns: int) -> int:
+            self.activity_gap_rows = 0
+            height = min(rows, app.layout.container.preferred_height(columns, rows).preferred)
+            if self.input_mode == InputMode.RUNNING and self.modal is None and self.activity_follows_transcript_fn() and self.scrollback.tail_row is not None:
+                # Keep the live command beside its transcript header. Move unused space
+                # below the preview, leaving input/status fixed at the pane bottom.
+                # Pending writes need their space before this frame reserves the gap.
+                tail = self.scrollback.tail_row + self.scrollback.pending_rows(columns)
+                self.activity_gap_rows = max(0, rows - height - max(1, tail))
+                height += self.activity_gap_rows
+                if self.activity_gap_rows:
+                    # preferred_height cached the unpadded fragments for this render.
+                    # Begin a new layout pass so content and cursor share the padded rows.
+                    app.render_counter += 1
+            return height
+
         def render(*args: Any, **kwargs: Any) -> None:
             nonlocal reserved_height, reported_row
             with self._screen_update(app):
                 if not renderer.full_screen:
                     out = renderer.output
                     rows, columns = out.get_size()
-                    self.activity_gap_rows = 0
-                    height = min(rows, app.layout.container.preferred_height(columns, rows).preferred)
-                    if (
-                        self.input_mode == InputMode.RUNNING
-                        and self.modal is None
-                        and self.activity_follows_transcript_fn()
-                        and self.scrollback.tail_row is not None
-                    ):
-                        # Keep the live command beside its transcript header. Move unused space
-                        # below the preview, leaving input/status fixed at the pane bottom.
-                        # Pending writes need their space before this frame reserves the gap.
-                        tail = self.scrollback.tail_row + self.scrollback.pending_rows(columns)
-                        self.activity_gap_rows = max(0, rows - height - max(1, tail))
-                        height += self.activity_gap_rows
-                        if self.activity_gap_rows:
-                            # preferred_height cached the unpadded fragments for this render.
-                            # Begin a new layout pass so content and cursor share the padded rows.
-                            app.render_counter += 1
+                    height = layout_height(rows, columns)
                     previous = renderer.last_rendered_screen
                     # Only changes to the live layout can move its top edge. Growing first uses
                     # the gap below the transcript, then scrolls just enough to protect its tail.
@@ -2241,7 +2241,19 @@ class TuiApp:
                     # Width changed: every row in the pane was rewrapped, and none of them can be
                     # attributed any more. Rebuild the projection from the transcript instead.
                     self.scrollback.rebuild(app)
+                    # Replay establishes a new transcript tail. Padding measured before replay
+                    # belongs to the old screen and can push the preview away from its header.
+                    app.render_counter += 1
+                    layout_height(*renderer.output.get_size())
                     vanilla_render(*args, **kwargs)
+                    # Drawing the live frame can scroll the replayed tail upward. Keep the
+                    # insertion point in physical screen coordinates for the next tool result.
+                    if self.scrollback.tail_row is not None:
+                        try:
+                            self.scrollback.tail_row = min(self.scrollback.tail_row, app_top_row(renderer))
+                        except HeightIsUnknownError:
+                            # The terminal can resize again during synchronous rendering.
+                            self.scrollback.reanchor()
                 else:
                     self.scrollback.flush(app)
 

@@ -803,6 +803,36 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
         assert history.count(f"BAR-MARKER-{marker}") == 1
 
 
+@pytest.mark.parametrize("vertical", [False, True], ids=["width", "height"])
+def test_streaming_tool_results_stay_attached_during_zoom(pane, vertical):
+    """Tool completion and the next preview race resize; settled previews alone miss this."""
+    log = pane.path / "command-stream.log"
+    pane.send(f"{sys.executable} {DRIVER} 0 0 {log} command-stream")
+    deadline = time.monotonic() + 15
+    while "COMMAND-0" not in pane.visible():
+        assert time.monotonic() < deadline, pane.visible()
+        time.sleep(0.02)
+    pane.split(vertical=vertical)
+    for _ in range(30):
+        pane.zoom()
+        time.sleep(0.18)
+    deadline = time.monotonic() + 15
+    while "RESULT-23" not in "\n".join(pane.capture()):
+        assert time.monotonic() < deadline, pane.visible()
+        time.sleep(0.05)
+    lines = _settled_capture(pane)
+    (pane.path / "command-stream-capture.txt").write_text("\n".join(lines))
+    previous = None
+    for index in range(24):
+        headers = [i for i, line in enumerate(lines) if re.search(rf"COMMAND-{index}\b", line)]
+        results = [i for i, line in enumerate(lines) if re.search(rf"RESULT-{index}\b", line)]
+        assert len(headers) == len(results) == 1, "\n".join(lines)
+        assert results[0] == headers[0] + 1, "\n".join(lines)
+        if previous is not None:
+            assert headers[0] == previous + 1, "\n".join(lines)
+        previous = results[0]
+
+
 def test_command_preview_follows_header_without_moving_input(pane):
     pane.fresh_window()
     log = pane.path / "commands.log"
