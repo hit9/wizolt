@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import os
 import signal
+import subprocess
 import time
 
 import pytest
@@ -172,6 +173,7 @@ async def test_cancelled_shell_leaves_nothing_running(tmp_path):
             break
         await asyncio.sleep(0.01)
     child = int(pid_file.read_text(encoding="utf-8"))
+    group = os.getpgid(child)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
@@ -180,7 +182,13 @@ async def test_cancelled_shell_leaves_nothing_running(tmp_path):
         if not _alive(child):
             break
         await asyncio.sleep(0.01)
-    assert not _alive(child)
+    assert not _alive(child), f"child={child}, original process group={group}\n{_process_details(child)}"
+
+
+def _process_details(pid):
+    """Keep a failed cancellation actionable: kill(pid, 0) alone gives no state or ownership."""
+    result = subprocess.run(["ps", "-o", "pid,ppid,pgid,stat,args", "-p", str(pid)], capture_output=True, text=True, check=False)
+    return result.stdout + result.stderr
 
 
 def _alive(pid):
@@ -225,7 +233,7 @@ async def test_cancellation_during_spawn_kills_the_started_group(tmp_path, monke
             if not _alive(child):
                 break
             await asyncio.sleep(0.01)
-        assert not _alive(child)
+        assert not _alive(child), _process_details(child)
         assert process.returncode is not None
     finally:
         release.set()

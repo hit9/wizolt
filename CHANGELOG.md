@@ -9,6 +9,11 @@
   Add a controlled event-loop pause regression and retain raw tmux output and driver logs as
   CI failure artifacts.
 
+### Changed
+
+- Include the original process group and remaining process state in shell-cancellation test
+  failures to distinguish a surviving child from process-liveness reporting problems.
+
 ## 0.71.2 - 2026-10-03
 
 ### Fixed
