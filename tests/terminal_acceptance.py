@@ -17,6 +17,31 @@ MARKERS = 200
 DRIVER = Path(__file__).with_name("tmux_driver.py")
 
 
+def test_transcript_survives_resize_roundtrip_between_frames(pane):
+    """SIGWINCH can coalesce while the app is descheduled; equal final sizes prove nothing."""
+    log = pane.path / "roundtrip.log"
+    log.with_suffix(".pause").touch()
+    pane.send(f"{sys.executable} {DRIVER} 0 0 {log} command-stream")
+    deadline = time.monotonic() + 20
+    while not log.exists() or "frames paused" not in log.read_text():
+        assert time.monotonic() < deadline, pane.visible()
+        time.sleep(0.01)
+    try:
+        pane.resize(WIDE, 14)
+        _settled_capture(pane)
+        pane.resize(WIDE, TALL)
+        _settled_capture(pane)
+    finally:
+        log.with_suffix(".resume").touch()
+    while "RESULT-23" not in "\n".join(pane.capture()):
+        assert time.monotonic() < deadline, pane.visible()
+        time.sleep(0.05)
+    text = "\n".join(_settled_capture(pane))
+    for index in range(24):
+        assert len(re.findall(rf"COMMAND-{index}\b", text)) == 1, text
+        assert len(re.findall(rf"RESULT-{index}\b", text)) == 1, text
+
+
 def test_detail_sheets_stay_navigable_across_resize(pane):
     log = pane.path / "details.log"
     # Shell-exported dimensions can stay frozen while the PTY is resized.

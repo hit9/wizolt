@@ -2177,8 +2177,13 @@ class TuiApp:
                     self.modal_window.height = Dimension(max=self.modal_rows(app.output.get_size().rows))
                 renderer = app.renderer
                 last_screen = renderer.last_rendered_screen
+                # SIGWINCH reports a geometry transition, not just a new size. Several
+                # resizes can coalesce while the app is descheduled and return to the
+                # previous dimensions after the terminal has already moved its rows.
+                self.scrollback.reanchor()
                 if last_screen is not None and renderer._last_size == renderer.output.get_size():
-                    # A delayed duplicate SIGWINCH must not discard the known transcript tail.
+                    # Keep the live layout's origin, but replay even when sizes match.
+                    app._redraw()
                     return
                 if last_screen is None or renderer.full_screen:
                     # Nothing rendered yet, or a full-screen app: the stock path is already right.

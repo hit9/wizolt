@@ -292,7 +292,8 @@ def test_stream_header_and_spark_survive_a_full_preview(monkeypatch, tmp_path, w
 
 
 @pytest.mark.parametrize("signal_first", [False, True])
-def test_resize_rebuilds_the_transcript_regardless_of_notification_order(monkeypatch, wired, signal_first):
+@pytest.mark.parametrize("size_changed", [False, True])
+def test_resize_rebuilds_the_transcript_regardless_of_notification_order(monkeypatch, wired, signal_first, size_changed):
     output, app, printer = wired
 
     async def resize_before_signal():
@@ -302,7 +303,10 @@ def test_resize_rebuilds_the_transcript_regardless_of_notification_order(monkeyp
         app.app._redraw()
         # A multiplexer can move old live output before SIGWINCH reaches the app.
         # A tool completion then redraws first, using a different physical height.
-        output.size = Size(rows=ROWS - 1, columns=80)
+        # Signals can coalesce during a roundtrip: the terminal moved its rows even
+        # though the final dimensions equal the previous frame's dimensions.
+        if size_changed:
+            output.size = Size(rows=ROWS - 1, columns=80)
         output.lines[0] = "displaced live preview"
         output.row = min(output.row, output.size.rows)
         if signal_first:

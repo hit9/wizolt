@@ -22,6 +22,7 @@ that trade is taken rather than guessing how many physical rows to delete.
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
 import time
@@ -41,6 +42,7 @@ from terminal_acceptance import (
 test_command_preview_follows_header_without_moving_input = acceptance.test_command_preview_follows_header_without_moving_input
 test_detail_sheets_stay_navigable_across_resize = acceptance.test_detail_sheets_stay_navigable_across_resize
 test_streaming_tool_results_stay_attached_during_zoom = acceptance.test_streaming_tool_results_stay_attached_during_zoom
+test_transcript_survives_resize_roundtrip_between_frames = acceptance.test_transcript_survives_resize_roundtrip_between_frames
 test_bar_cascade_previews_survive_resize_and_cancel = acceptance.test_bar_cascade_previews_survive_resize_and_cancel
 test_blank_rows_do_not_grow_with_resize_cycles = acceptance.test_blank_rows_do_not_grow_with_resize_cycles
 test_cli_startup_banner_survives_growing_and_shrinking_pane = acceptance.test_cli_startup_banner_survives_growing_and_shrinking_pane
@@ -90,6 +92,7 @@ def panes(tmp_path, request):
         # exactly where a stray 1049 would go unnoticed until it ate someone's screen.
         tmux("set-option", "-t", session, "-w", "alternate-screen", request.param)
         created.append(session)
+        tmux("pipe-pane", "-O", "-t", session, f"cat > {shlex.quote(str(tmp_path / f'pane-{len(created)}.ansi'))}")
         time.sleep(0.4)
         return Pane(session, tmp_path)
 

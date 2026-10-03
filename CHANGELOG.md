@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+
+- Rebuild terminal transcript on resize notifications even when the final dimensions match the
+  previous frame. Coalesced shrink/grow events could otherwise leave gaps in tool output.
+  Add a controlled event-loop pause regression and retain raw tmux output and driver logs as
+  CI failure artifacts.
+
 ## 0.71.2 - 2026-10-03
 
 ### Fixed

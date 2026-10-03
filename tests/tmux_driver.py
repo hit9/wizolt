@@ -107,6 +107,17 @@ async def main(log) -> None:
                     while not Path(log.name).with_suffix(f".output-{index}").exists():
                         await asyncio.sleep(0.02)
                 command_loop.presentation.tool_live_output("stdout", "one\ntwo\nthree\nfour\nfive")
+                if streaming and index == 15 and Path(log.name).with_suffix(".pause").exists():
+                    ui.drain_scrollback()
+                    app.app._redraw()
+                    log.write("frames paused\n")
+                    log.flush()
+                    # Deliberately block the event loop, as when the process is descheduled.
+                    # SIGSTOP would instead return terminal ownership to the waiting shell.
+                    deadline = time.monotonic() + 10
+                    while not Path(log.name).with_suffix(".resume").exists():
+                        assert time.monotonic() < deadline, "resize controller did not resume frames"
+                        time.sleep(0.01)  # noqa: ASYNC251 — this test requires a blocked event loop
                 if streaming:
                     await asyncio.sleep(0.15)
                 else:
@@ -114,7 +125,20 @@ async def main(log) -> None:
                         await asyncio.sleep(0.02)
                 command_loop.presentation.tool_live_output("stdout", "")
                 ui.emit(LogBlock.hierarchy(None, [LogLine("stored", f"RESULT-{index}", LogRole.META, LogEdge.END)]))
+                if streaming:
+                    log.write(f"completed COMMAND-{index} RESULT-{index}\n")
+                    log.flush()
             app.set_idle()
+            if streaming:
+                # Observe after normal batching; diagnostics must not force a flush that
+                # changes the ordering this scenario is trying to exercise.
+                await asyncio.sleep(0.1)
+                log.write("retained transcript:\n")
+                for block in app.scrollback.transcript:
+                    log.write(block(100) if callable(block) else block)
+                for block in app.scrollback._pending:
+                    log.write(block(100) if callable(block) else block)
+                log.flush()
             await asyncio.Event().wait()
         finally:
             session.close()

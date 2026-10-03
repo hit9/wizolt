@@ -74,7 +74,16 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run the real-tmux acceptance tests
-        run: uv run pytest -q -m tmux
+        run: uv run pytest -q -m tmux --basetemp="$RUNNER_TEMP/tmux-tests"
+
+      - name: Upload terminal traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tmux-shipped-terminal-traces
+          path: ${{ runner.temp }}/tmux-tests
+          if-no-files-found: ignore
+          retention-days: 7
 
   # Run the shared terminal scenarios against an attached Zellij client in its own PTY.
   # Pin both the release and archive checksum so terminal behavior cannot change silently.
@@ -160,4 +169,13 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run the real-tmux acceptance tests
-        run: uv run pytest -q -m tmux
+        run: uv run pytest -q -m tmux --basetemp="$RUNNER_TEMP/tmux-tests"
+
+      - name: Upload terminal traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tmux-latest-terminal-traces
+          path: ${{ runner.temp }}/tmux-tests
+          if-no-files-found: ignore
+          retention-days: 7

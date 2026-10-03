@@ -664,7 +664,10 @@ that projection. Its two mechanisms are inseparable:
   native history, including across modal changes.
 - A width or height change invalidates row ownership. Track projection dimensions independently
   of renderer resets and current tool activity: either the resize notification or an ordinary
-  redraw can arrive first. Purge the terminal and replay retained completed
+  redraw can arrive first. A resize notification invalidates the projection even when the final
+  dimensions match: intermediate resizes can coalesce while the event loop is busy. Equal sizes
+  cannot distinguish a duplicate notification from a roundtrip that moved terminal rows.
+  Purge the terminal and replay retained completed
   output, including startup/restored output and accepted pending writes. Defer the rebuild while
   an exclusive viewer owns the alternate screen, and pay the debt on return to the primary screen.
 - Re-anchor the app at the pane bottom and give the renderer its origin directly. A resize CPR
