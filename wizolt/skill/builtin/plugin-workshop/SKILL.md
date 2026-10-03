@@ -5,44 +5,45 @@ description: Create, edit, install, and manage wizolt Python plugins for persona
 
 # Plugin workshop
 
-Use configuration when a format string is enough. For Python, read [SDK.md](SDK.md): public API,
-types, limits and executable examples. For colors or bar formats, also read
-[APPEARANCE.md](APPEARANCE.md); it contains the complete role/field tables and grammar.
-Run `wizolt plugin paths` to get their absolute paths for the **wizolt command you are using**:
-`api_reference`, `appearance_reference`, and `skill`. Read `api_reference` before writing code.
-Start with these packaged references; do not use host internals as plugin APIs.
-`/plugins` is the user's interactive manager.
-For the bundled pet, simply enable `pet` by name; it is installed but disabled by default.
+Use configuration when a format string is enough. For Python, read
+[SDK.md](${SKILL_DIR}/SDK.md) before writing code: public API, limits and runnable examples. For
+colors or bar formats, also read [APPEARANCE.md](${SKILL_DIR}/APPEARANCE.md). Start from these
+references; host internals are not plugin APIs. `wizolt plugin paths` prints the same paths.
 
-1. **Inspect:** `wizolt plugin list`, then `wizolt plugin inspect NAME`. Edit the returned path.
+Run the CLI as `"${WIZOLT_EXECUTABLE:-wizolt}" plugin ...`: that is this session's own wizolt,
+even when another is first on PATH. Its config and project default to this session's, even
+after `cd`. `/plugins` is the user's interactive manager. The bundled `pet` is installed but
+disabled; enable it by name.
+
+1. **Inspect:** `plugin list`, then `plugin inspect NAME`. Edit the returned path.
 2. **Create:** default to `~/.wizolt/plugins/<name>.py`; use `<project>/.wizolt/plugins/<name>.py`
-   for project-specific code. For multiple files, use a directory with `pyproject.toml` and a
-   package entry (see SDK.md). Use an ASCII identifier filename and absolute tool paths.
-3. **Check:** `wizolt plugin validate PATH`, then `wizolt plugin test PATH --theme forest --width 80`.
-   Read the JSON report and view its PNG. Test a narrow width too; `--times 0 0.5 1` samples animation.
-   Trials execute trusted Python in a temporary process, with real filesystem/network access.
-4. **Save:** `wizolt plugin enable PATH` (or installed NAME); use `install PATH` for declared dependencies.
-   These commands save preferences, not live activation. Use the running wizolt's `--config` and
-   `--project` when different from the defaults. `test` and `validate` also accept installed names.
-5. **Activate:** call `PluginHotReload(name="NAME")`; omit name to apply all saved choices.
-   It affects this agent only. Pending means activation waits for the current turn to finish.
+   for project-specific code, or a directory with `pyproject.toml` for several files (see SDK.md).
+   The installed NAME is the file stem, or the project name with `-`/`.` turned into `_`; it names
+   the `[plugins.NAME]` config table and `{plugins.NAME.FIELD}` fields.
+3. **Check:** `plugin validate PATH`, then `plugin test PATH --theme forest --width 80`. Read the
+   JSON report and view each PNG: components and contributed statusbar/divider presets. Test a
+   narrow width too; `--times 0 0.5 1` samples animation. Trials run trusted Python for real.
+   With `DEPENDENCIES`, run step 4's `install` first; then test by installed NAME.
+4. **Save:** `plugin enable PATH` (or `install PATH` for dependencies). This saves a preference;
+   it does not activate anything.
+5. **Activate:** call `Plugin(action="reload", name="NAME")`; omit name to apply all saved choices. It
+   affects this agent only; pending waits for the current turn. A failure includes `traceback`
+   and `log`; the previous version keeps running.
 
-Installation enables by default. `wizolt plugin disable NAME`, then `PluginHotReload`, hides it
-without removing its source. `/plugins` also offers live controls and source rollback. Files never
-auto-load merely because they exist. Saved choices apply to future agents in this project.
+`plugin disable NAME`, then a reload, turns a plugin off without deleting it. `/plugins`
+also offers rollback. Files never load just because they exist.
+
+**What a plugin can add:** UI (fields, components, themes, presets), slash commands for the user,
+and tools for you. Register `plugin.tool` when the user wants *you* to gain an ability; after
+activation, use `Plugin` actions `list`, `describe`, then `call` (the user approves calls).
+Commands are typed by the user; you cannot run them.
 
 Keep mutable state inside `setup`, use theme roles, and keep render callbacks cheap and pure.
-Put user settings in `[plugins.NAME]` in wizolt's `config.toml`. Declare validation and defaults
-with `plugin.configure(...)`, then read immutable `plugin.config` (see SDK.md). Validate using
-the same `--config` as the live agent, and hot reload after editing settings.
-Use `plugin.service` for reusable connections, `plugin.models.complete` for explicit model
-requests, and `plugin.summarizer` for compaction. Explain extra model costs before enabling a
-model-backed feature; offline trials never make host model calls.
-Do not mutate host internals, create unmanaged tasks, or install packages
-into the running interpreter. No desktop notifications. Use the manager, not direct registry edits.
+Settings go in `[plugins.NAME]` of wizolt's config; declare them with `plugin.configure(...)` and
+reload after editing. Use `plugin.service` for connections, `plugin.models.complete` for model
+requests and `plugin.summarizer` for compaction; tell the user about model costs first. Do not
+mutate host internals, create unmanaged tasks, install into the running interpreter, or send
+desktop notifications.
 
-If the reference is unclear, use the same command's `sdk` directory: read `__init__.py`,
-`models.py`, `services.py`, or `settings.py`. Its `source` directory contains `plugins/worker.py`
-and `plugins/runtime.py` for execution behavior. Discovery does not need configuration or a
-running session. If several wizolt executables are installed, invoke the same absolute executable
-path as the user's session. Read source to verify behavior; keep plugins on the documented API.
+If the reference is unclear, read the `sdk` directory from `plugin paths`, then `source` for
+`plugins/worker.py` and `plugins/runtime.py`. Keep plugins on the documented API.

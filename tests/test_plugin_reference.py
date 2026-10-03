@@ -27,12 +27,17 @@ def section(document, title):
 
 
 def test_skill_links_reach_the_reference_and_installed_source():
-    """Check relative links in the packaged bundle, including the source fallback."""
-    skill = (REFERENCE / "SKILL.md").read_text()
-    assert "[SDK.md](SDK.md)" in skill
-    assert "[APPEARANCE.md](APPEARANCE.md)" in skill
-    assert "wizolt plugin paths" in skill
-    for name in ("SKILL.md", "SDK.md", "APPEARANCE.md"):
+    """The loaded skill names its references by absolute path: no lookup before reading them."""
+    from wizolt.skill.invocation import Invocation
+    from wizolt.skill.skillfile import SkillFile
+
+    body = Invocation(SkillFile.parse(str(REFERENCE / "SKILL.md"), "plugin-workshop", "builtin")).prepared_body()
+    assert f"[SDK.md]({REFERENCE / 'SDK.md'})" in body
+    assert f"[APPEARANCE.md]({REFERENCE / 'APPEARANCE.md'})" in body
+    assert "wizolt plugin paths" in body and '"${WIZOLT_EXECUTABLE:-wizolt}" plugin' in body
+    for target in re.findall(r"\]\(([^)]+)\)", body):
+        assert Path(target).is_absolute() and Path(target).is_file(), target
+    for name in ("SDK.md", "APPEARANCE.md"):
         for target in re.findall(r"\]\(([^)]+)\)", (REFERENCE / name).read_text()):
             assert (REFERENCE / target).is_file(), (name, target)
 

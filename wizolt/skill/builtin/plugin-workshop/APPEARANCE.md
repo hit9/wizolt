@@ -76,7 +76,7 @@ This is wizolt's small template language, not Jinja; there are no loops, include
 | `[reset]` | Reset all styles to terminal defaults |
 | `{>}` | Flexible spaces; following text moves right |
 | `{fill:─}` | Flexible repeated pattern, 1–32 printable single-cell characters |
-| `{join:}` / `{join:}` | Join neighboring background colors; the glyphs are Powerline U+E0B0 / U+E0B2 and may render invisibly, so write `{join:}` / `{join:}` in Python strings |
+| `{join:\ue0b0}` / `{join:\ue0b2}` | Join neighboring background colors with Powerline arrows U+E0B0 / U+E0B2; written as Python escapes because the glyphs often render invisibly |
 | `{% if running %}yes{% else %}no{% endif %}` | Conditional branch; `else` optional |
 | `{% optional priority=10 %} · detail{% endoptional %}` | Remove whole span when narrow; lower priorities disappear first |
 | `{{`, `}}`, `[[`, `]]` | Literal delimiters |
@@ -129,7 +129,9 @@ def setup(plugin):
         },
     )
     plugin.preset(
-        "statusbar", "compact", "[status.agent] {agent.name} [/]{join:}[status.model] {model} [/]{join:}[reset]{>}[status_context]ctx {context.percent}%[/]"
+        "statusbar",
+        "compact",
+        "[status.agent] {agent.name} [/]{join:\ue0b0}[status.model] {model} [/]{join:\ue0b0}[reset]{>}[status_context]ctx {context.percent}%[/]",
     )
     plugin.preset(
         "divider", "quiet", "[divider_rule]{fill:─}[/]{% if running %} [spinner]{spinner}[/][divider.label]{label}[/] {% endif %}[divider_rule]{fill:─}[/]"

@@ -31,6 +31,10 @@
 - Add per-plugin `[plugins.NAME]` settings, immutable SDK configuration with schema validation
   and defaults, shared CLI/live validation, and source-plus-settings rollback.
 
+- The plugin-workshop skill links its references by absolute path, runs this session's own
+  `wizolt`, says to install before testing plugins with dependencies, explains installed names,
+  and tells the agent to add abilities for itself as plugin tools. Appearance examples write the
+  invisible Powerline join glyphs as ``/``.
 - Give the agent one small, always-present `Plugin` tool: `reload` applies saved plugin choices,
   and `list`/`describe`/`call` reach tools that plugins register, disclosed on request. Its
   schema never changes, so enabling plugins does not break the prompt cache; calls need approval.
