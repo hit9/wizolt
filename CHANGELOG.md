@@ -61,6 +61,9 @@
   whose callback stops when asked; only an unresponsive worker is terminated.
 - A `{join:…}` without its Powerline glyph now names U+E0B0 / U+E0B2 instead of reporting an
   unknown field; the appearance references spell out the code points, which often render invisibly.
+- A summarizer plugin no longer fails, and disappears for the rest of the session, when the span
+  to compact is large: non-English conversations passed the 1 MiB limit well inside a 200k
+  window. Requests from wizolt now have their own 64 MiB bound; plugin replies keep 1 MiB.
 - The `/plugins` preview lists a plugin's preset names instead of `statusbar, divider` for every
   plugin, and shortens long source paths from the left so the file name stays visible.
 - The `/theme` Input tab no longer spends a row on a blank line after its sample, so a 16-row

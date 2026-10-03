@@ -17,7 +17,7 @@ from typing import Any
 
 from wizolt.plugins.hostcalls import HostCalls
 from wizolt.plugins.loading import PluginSource
-from wizolt.plugins.protocol import MAX_FRAME
+from wizolt.plugins.protocol import MAX_FRAME, MAX_REQUEST
 from wizolt.sdk import PluginError
 
 
@@ -93,7 +93,7 @@ class PluginProcess:
         if self.error or self.process.returncode is not None or self.process.stdin is None:
             raise PluginError(self.error or "Plugin process is closed")
         frame = json.dumps(value, ensure_ascii=True, allow_nan=False).encode() + b"\n"
-        if len(frame) > MAX_FRAME:
+        if len(frame) > MAX_REQUEST:
             raise PluginError("Plugin request exceeds protocol frame limit")
         self.process.stdin.write(frame)
 

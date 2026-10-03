@@ -9,7 +9,10 @@ from typing import Any
 
 from wizolt.sdk import Line, Panel, PluginError, Text
 
-MAX_FRAME = 1024 * 1024
+MAX_FRAME = 1024 * 1024  # A worker's reply: plugin output, bounded before any renderer sees it.
+# A host request carries host data sized by the conversation: a compaction span can approach the
+# context window, and JSON escapes each non-ASCII character to six bytes. Bounded, but far larger.
+MAX_REQUEST = 64 * 1024 * 1024
 MAX_PANEL_ROWS = 12
 MAX_ROW_CHARACTERS = 4096
 MAX_ROW_SPANS = 256

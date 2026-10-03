@@ -23,6 +23,19 @@ def setup(p):
     return str(path)
 
 
+async def test_summarizer_receives_a_window_sized_non_english_span(tmp_path):
+    session = session_with_provider(tmp_path)
+    try:
+        await session.plugins.manage("enable", source(tmp_path, "return f'digest of {len(text)} characters'"))
+        # About 200k characters of Chinese fits a 200k-token window, yet escapes past 1 MiB of JSON.
+        text = "用户：请检查解析器的错误处理，并补充测试。\n" * 9000
+        assert await session.plugins.summarize(text, lambda _: None) == ("summaries", f"digest of {len(text)} characters")
+        assert session.plugins.has_summarizer  # Still healthy, not marked failed by a host limit.
+    finally:
+        await session.plugins.close()
+        session.close()
+
+
 async def test_core_applies_plugin_summary_and_retains_recent_tail_and_notes(tmp_path):
     session = session_with_provider(tmp_path)
     agent = Agent(session, output_fn=lambda _: None)

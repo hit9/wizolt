@@ -17,7 +17,7 @@ from dataclasses import asdict
 from typing import Any
 
 from wizolt.plugins.loading import LoadedPlugin, PluginSource
-from wizolt.plugins.protocol import MAX_FRAME, Snapshot
+from wizolt.plugins.protocol import MAX_FRAME, MAX_REQUEST, Snapshot
 from wizolt.sdk import Context, Event, PluginError
 
 
@@ -146,8 +146,8 @@ class Worker:
 
     async def run(self) -> None:
         try:
-            while line := await asyncio.to_thread(sys.stdin.readline, MAX_FRAME + 1):
-                if len(line) > MAX_FRAME:
+            while line := await asyncio.to_thread(sys.stdin.readline, MAX_REQUEST + 1):
+                if len(line) > MAX_REQUEST:
                     raise PluginError("Plugin request exceeds protocol frame limit")
                 request = json.loads(line)
                 if "service_result" in request:
