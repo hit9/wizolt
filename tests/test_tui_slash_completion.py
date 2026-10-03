@@ -28,6 +28,15 @@ def _completions(app):
     return None if state is None else [c.text for c in state.completions]
 
 
+def _defer_chord_timeout(application):
+    """Make a deferred Esc miss the harness deadline without timing CI thread scheduling.
+
+    The real pipe/parser still delivers Esc. Eager bindings must resolve it while the
+    competing Esc+Enter chord is pending, rather than waiting for its timeout.
+    """
+    application.timeoutlen = 60
+
+
 def test_completion_menu_anchors_at_the_replaced_word():
     app = TuiApp(completer=CommandCompleter())
 
@@ -352,13 +361,11 @@ def test_esc_closes_the_menu_without_waiting(monkeypatch):
         wait_until(lambda: app.app is not None and app.app.is_running)
         pipe_input.send_text("/st")
         wait_until(lambda: app.input_buffer.complete_state is not None)
-        sent = time.monotonic()
         pipe_input.send_text("\x1b")
         wait_until(lambda: app.input_buffer.complete_state is None)
-        assert time.monotonic() - sent < 0.3
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
-    run_interactive_tui(monkeypatch, app, drive=drive)
+    run_interactive_tui(monkeypatch, app, drive=drive, on_application=_defer_chord_timeout)
 
 
 @pytest.mark.parametrize(
@@ -442,19 +449,16 @@ def test_approval_esc_clears_the_reason_at_once_and_keeps_the_newline_chord(monk
         wait_until(lambda: app.input_mode == "approval")
         pipe_input.send_text("because")
         wait_until(lambda: app.input_buffer.text == "because")
-        sent = time.monotonic()
         for key in keys:
             pipe_input.send_text(key)
             if len(keys) > 1:
                 time.sleep(0.2)
         wait_until(lambda: app.input_buffer.text == text)
-        if keys == ["\x1b"]:
-            assert time.monotonic() - sent < 0.3
         time.sleep(0.1)
         results.append(pending.result() if pending.done() else "pending")
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
-    run_interactive_tui(monkeypatch, app, drive=drive)
+    run_interactive_tui(monkeypatch, app, drive=drive, on_application=_defer_chord_timeout)
     assert results == [answer]
 
 
@@ -468,13 +472,11 @@ def test_approval_esc_on_an_empty_line_refuses_at_once(monkeypatch):
         app.app.loop.call_soon_threadsafe(lambda: app.set_approval_form(APPROVAL_ACTIONS))
         pending = request_input_from_driver(app)
         wait_until(lambda: app.input_mode == "approval")
-        sent = time.monotonic()
         pipe_input.send_text("\x1b")
-        assert pending.result(timeout=2) is None
-        assert time.monotonic() - sent < 0.3
+        assert pending.result(timeout=5) is None
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
-    run_interactive_tui(monkeypatch, app, drive=drive)
+    run_interactive_tui(monkeypatch, app, drive=drive, on_application=_defer_chord_timeout)
 
 
 def test_approval_enter_long_after_esc_answers_normally(monkeypatch):

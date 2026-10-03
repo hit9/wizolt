@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Test immediate Esc handling independently of CI scheduling delays, while still rejecting
+  regressions that defer approval refusal or completion dismissal until a key-chord timeout.
+
 - Isolate frontend tests from PyPI and GitHub background checks; reject external network
   attempts even when a background task catches the transport error.
 - Clear inherited terminal-size variables in tests so tmux/Zellij resizing uses the actual PTY
