@@ -116,7 +116,7 @@ async def test_worker_dependencies_are_not_shadowed_by_workspace_files(tmp_path)
 async def test_installation_rejects_bad_settings_without_saving(tmp_path):
     source = tmp_path / "counter.py"
     source.write_text(SOURCE)
-    catalog = PluginCatalog.for_project(str(tmp_path / "data"), str(tmp_path))
+    catalog = PluginCatalog.for_user(str(tmp_path / "data"))
     manager = PluginInstallations(catalog, str(tmp_path), PluginSettings({"counter": {"count": 0}}))
     with pytest.raises(PluginError, match="minimum"):
         await manager.manage("enable", str(source))

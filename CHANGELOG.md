@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Store plugin installations, enabled choices and layout at user level so they follow you
+  across working directories; live plugin instances remain isolated per agent.
+
 - Show an aligned `builtin` / `user` source column in the plugin manager.
 
 - Replace the price-dependent plugin example with session token counts, including its illustrations

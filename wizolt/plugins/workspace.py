@@ -1,7 +1,7 @@
 """Provider-free authoring scope shared by standalone plugin commands.
 
 An absent default config is valid for offline authoring. An explicitly selected missing or
-malformed config is an error: silently falling back could modify the wrong project's choices.
+malformed config is an error: silently falling back could modify the wrong user's choices.
 """
 
 import os
@@ -40,7 +40,7 @@ class PluginWorkspace:
         data = ConfigFile.load(config) if config or Path(ConfigFile.resolve_path(None)).exists() else {}
         cwd = str(Path(project).expanduser().resolve())
         data_dir = str(Path(Config.data_dir_from(data)).expanduser().resolve())
-        return cls(cwd, data, data_dir, PluginCatalog.for_project(data_dir, cwd))
+        return cls(cwd, data, data_dir, PluginCatalog.for_user(data_dir))
 
     def installed(self, target: str) -> tuple[Installation | None, list[str]]:
         records, problems = self.catalog.read()

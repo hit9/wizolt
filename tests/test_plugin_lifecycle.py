@@ -277,7 +277,7 @@ def test_plugin_cli_defaults_to_the_calling_agents_config_and_project(tmp_path, 
     monkeypatch.setenv("WIZOLT_SESSION_CWD", str(project))
     assert main(["list"]) == 0
     listed = json.loads(capsys.readouterr().out)
-    assert listed["catalog_directory"] == str(PluginCatalog.for_project(str(tmp_path / "data"), str(project)).directory)
+    assert listed["catalog_directory"] == str(PluginCatalog.for_user(str(tmp_path / "data")).directory)
 
 
 async def test_errored_generation_inspection_includes_its_traceback(tmp_path):
@@ -328,3 +328,58 @@ def setup(p):
         assert loop.commands.get("/my-command") is None
     finally:
         await session.plugins.close()
+
+
+async def test_user_plugins_and_layout_follow_cwd_but_live_state_stays_isolated(tmp_path):
+    from wizolt.plugins.installation import PluginInstallations
+    from wizolt.plugins.workspace import PluginWorkspace
+
+    first = session_with_provider(tmp_path)
+    second = session_with_provider(tmp_path)
+    (tmp_path / "another-project").mkdir()
+    second.cwd = str(tmp_path / "another-project")
+    other = SessionPlugins(second)
+    source = tmp_path / "shared.py"
+    source.write_text('''from wizolt.sdk import Panel, Text
+SDK_VERSION = 1
+def setup(p):
+    p.field("cwd", lambda ctx: ctx.cwd)
+    p.component("above_input", lambda ctx: Panel((Text(ctx.cwd),)))
+''')
+    config = tmp_path / "user.toml"
+    config.write_text(f'[paths]\ndata_dir = "{first.config.data_dir}"\n')
+    workspace = PluginWorkspace.open(str(config), second.cwd)
+    try:
+        await first.plugins.manage("enable", str(source))
+        await first.plugins.call_host("ui.components.set_gap", {"component": "shared.above_input", "gap_before": 2})
+        listed = await PluginInstallations(workspace.catalog, workspace.cwd).manage("list")
+        assert next(item for item in listed["plugins"] if item["name"] == "shared")["enabled"]
+        assert workspace.catalog.directory == first.plugins.catalog.directory == other.catalog.directory
+        await other.load()
+        assert first.plugins.fields()["plugins.shared.cwd"] == first.cwd
+        assert other.fields()["plugins.shared.cwd"] == second.cwd
+        assert other.components()[0].gap_before == 2
+        assert first.plugins.entries["shared"].active.worker is not other.entries["shared"].active.worker
+        await other.manage("disable", "shared")
+        assert "shared" in first.plugins.entries  # Preferences never silently mutate another live agent.
+        await first.plugins.hot_reload()
+        assert "shared" not in first.plugins.entries
+    finally:
+        await first.plugins.close()
+        await other.close()
+        first.close()
+        second.close()
+
+
+def test_user_catalog_resolves_data_directory_symlinks_without_project_storage(tmp_path):
+    from wizolt.plugins.catalog import Installation, PluginCatalog
+
+    data = tmp_path / "profile"
+    data.mkdir()
+    link = tmp_path / "profile-link"
+    link.symlink_to(data, target_is_directory=True)
+    catalog = PluginCatalog.for_user(str(link))
+    catalog.save(Installation("example", str(tmp_path / "example.py")))
+    assert catalog.directory == data / "plugins" / ".state"
+    assert "example" in PluginCatalog.for_user(str(data)).read()[0]
+    assert not (data / "projects").exists()

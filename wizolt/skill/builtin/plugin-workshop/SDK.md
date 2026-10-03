@@ -22,7 +22,7 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.summarizer(callback)` | Async `(Context, str) -> str`; one summary strategy per agent |
 | `plugin.models.complete(prompt, *, system="", provider="", model="", effort="", api="")` | Async text request; returns `ModelReply` |
 | `plugin.ui.components.list()` | Async; returns `tuple[Component, ...]` in visual order |
-| `plugin.ui.components.move(component, *, before="", after="")` | Async; exactly one anchor, same slot; persists project order and returns the updated list |
+| `plugin.ui.components.move(component, *, before="", after="")` | Async; exactly one anchor, same slot; persists user order and returns the updated list |
 | `plugin.ui.components.set_gap(component, gap_before)` | Async; save a nonnegative integer gap, or `None` to restore the declared default; returns the updated list |
 | `plugin.ui.components.reset_order(slot="")` | Async; restore name order for one slot, or all; returns the updated list |
 | `handle.get()` | Async; returns the same acquired service object until the generation closes |
@@ -111,7 +111,7 @@ the scrollable `status` slot allows twelve per component.
 
 Slots stay in visual order: above_divider → above_input → below_input. Within each slot,
 components default to plugin-name order, regardless of activation order. Component IDs are
-`NAME.SLOT`. `plugin.ui.components` manages saved project preferences. Moves cannot cross slots; change the component registration for that.
+`NAME.SLOT`. `plugin.ui.components` manages saved user preferences. Moves cannot cross slots; change the component registration for that.
 Disabled components retain their position and spacing. Other live agents adopt changes on reload.
 Declare `gap_before` at registration or override it with `set_gap`. It separates visible
 components within a slot: the first visible component has no leading gap; empty or hidden
@@ -349,9 +349,13 @@ crashing Python cannot block the host event loop. Never create unmanaged backgro
 
 Open `/plugins` to manage existing installations. Creation, validation, and installation use
 `wizolt plugin` commands; `/plugins` has no add-file flow. The agent's one plugin tool, `Plugin`, reloads saved choices and uses registered tools.
-Keep personal source in `~/.wizolt/plugins/name.py`, or project-specific source in
-`<project>/.wizolt/plugins/name.py`. These directories are not scanned for automatic execution.
-Enabling persists the source path for future agents in this project. Existing agents keep their
+Keep user plugin source in `~/.wizolt/plugins/`, preferably one Git repository per plugin.
+There are only built-in and user plugins, never project-scoped installations. Source directories
+are not scanned for automatic execution.
+Installation, enable/disable, order and gaps are user-level, stored under
+`<data_dir>/plugins/.state/` (normally `~/.wizolt/plugins/.state/`). `--project` chooses
+execution context only; it never scopes installation. Enabling persists the source path
+for future agents in any directory. Existing agents keep their
 own instances. Reload/disable wait for active turns or invocations; the reload result reports pending.
 Set `WIZOLT_NO_PLUGINS=1` on startup to skip installed plugins and recover a broken installation.
 

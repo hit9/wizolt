@@ -93,7 +93,7 @@ class PluginManager:
         width = max(10, shutil.get_terminal_size((80, 24)).columns - 6)
         lines = [Text.clip_width(display_path(str(item["path"]))[::-1], width)[::-1]]
         if item.get("builtin"):
-            lines.insert(0, "Built in · enabled per project")
+            lines.insert(0, "Built in · enabled for your user")
         for key in ("fields", "commands", "tools", "slots", "themes"):
             if values := item.get(key):
                 lines.append(f"{key.capitalize()}: {', '.join(values)}")

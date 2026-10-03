@@ -12,7 +12,8 @@ references; host internals are not plugin APIs. `wizolt plugin paths` prints the
 
 Run the CLI as `"${WIZOLT_EXECUTABLE:-wizolt}" plugin ...`: that is this session's own wizolt,
 even when another is first on PATH. Its config and project default to this session's, even
-after `cd`. `/plugins` is the user's interactive manager. The bundled `pet` is installed but
+after `cd`. Installations, enable/disable and layout are user-level across directories;
+records live in `<data_dir>/plugins/.state/`. The project only sets execution context. `/plugins` is the user's interactive manager. The bundled `pet` is installed but
 disabled; enable it by name. The optional built-in `layout` plugin exposes list/move/gap/reset tools:
 enable and reload it to arrange components and spacing for the user. `/plugins` manages lifecycle only.
 
@@ -20,7 +21,6 @@ enable and reload it to arrange components and spacing for the user. `/plugins` 
 2. **Create:** strongly prefer one Git repository per user plugin, at `~/.wizolt/plugins/<name>/`.
    Put `<name>.py` inside for a single-file plugin, or use a `pyproject.toml` package (see SDK.md).
    Pass the `.py` file to CLI commands, or the repository directory for a package.
-   Keep project-specific plugins already tracked by the project in that repository; do not nest another Git repo.
    The installed NAME is the file stem, or the project name with `-`/`.` turned into `_`; it names
    the `[plugins.NAME]` config table and `{plugins.NAME.FIELD}` fields.
 3. **Check:** `plugin validate PATH`, then `plugin test PATH --theme forest --width 80`. Read the

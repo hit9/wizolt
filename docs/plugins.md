@@ -1,5 +1,8 @@
 # Plugins
 
+Plugins are either built in or installed by you. Install and enable once, then use them
+in any directory.
+
 Make wizolt yours: describe what you want, and let the agent build a plugin for you.
 You do not need to write Python or edit configuration files yourself.
 
@@ -82,7 +85,7 @@ The list shows its source (`builtin` or `user`), whether it is enabled, and its 
 
 | Action | What you get |
 | --- | --- |
-| Enable / Disable | Turn it on or off for this project |
+| Enable / Disable | Turn it on or off across projects |
 | Reload | Apply its latest code and settings |
 | Rollback | Restore the previous loaded version |
 

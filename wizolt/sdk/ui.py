@@ -41,7 +41,7 @@ class Components:
         return await self._request("list")
 
     async def move(self, component: str, *, before: str = "", after: str = "") -> tuple[Component, ...]:
-        """Move within one slot, specifying exactly one anchor. Save for this project."""
+        """Move within one slot, specifying exactly one anchor. Save for your user."""
         return await self._request("move", component=component, before=before, after=after)
 
     async def reset_order(self, slot: str = "") -> tuple[Component, ...]:

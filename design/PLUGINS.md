@@ -1,12 +1,17 @@
 # Plugin implementation boundaries
 
+Installations, enabled choices, dependency environments and layout live under
+`<data_dir>/plugins/.state/`, independent of cwd. Source files can live anywhere. Never use
+the session/project directory to scope user customization. Each agent still owns its live
+workers and adopts changed preferences on reload; `Context.cwd` remains agent-local.
+
 The three prompt-adjacent slots share one visual-order height budget. Never budget each slot
 independently: several individually valid plugins could otherwise squeeze out the input.
 The TUI snapshots all slot fragments once per render, and offline previews reuse that projection.
 Context-category estimation runs at admission/request boundaries, not in the 5 Hz sampler.
 Sampling observers may keep bounded histories; render callbacks consume them without IO.
 
-`LayoutPreferences` owns per-slot project preferences; `LayoutBudget` allocates once in visual order.
+`LayoutPreferences` owns per-slot user preferences; `LayoutBudget` allocates once in visual order.
 The runtime samples each generation once, fusing that with its first allocated component, and
 publishes one completed layout. Paint only reads that cache. A revision counter discards a
 pass invalidated by resize, movement or generation replacement. The TUI's final clip still
@@ -51,7 +56,7 @@ packaged reference define what this implementation currently exposes.
 ```text
 CLI manager / Plugin tool / agent lifecycle
                 ↓
-         SessionPlugins ── PluginCatalog (project startup preferences)
+         SessionPlugins ── PluginCatalog (user startup preferences)
                 ↓
          PluginRuntime ── PluginProcess ── worker / LoadedPlugin
                 ↓

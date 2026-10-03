@@ -1,4 +1,4 @@
-"""Assembly adapter: project-local installations and agent-local live plugin state."""
+"""Assembly adapter: user-level installations and agent-local live plugin state."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 class SessionPlugins(PluginRuntime):
     """Bind generic plugin execution to one session; persist installation choices separately.
 
-    A shared project catalog does not imply shared live state: existing agents keep their own
+    A shared user catalog does not imply shared live state: existing agents keep their own
     generations, while future agents read the latest installation choices. Session snapshots do
     not serialize Python callbacks or inherit a parent's mutable plugin state.
     """
@@ -34,7 +34,7 @@ class SessionPlugins(PluginRuntime):
         self.loaded = False
         self.problems: dict[str, str] = {}
         self._management_lock = asyncio.Lock()
-        self.catalog = PluginCatalog.for_project(session.config.data_dir, session.cwd)
+        self.catalog = PluginCatalog.for_user(session.config.data_dir)
         self.context_parts: tuple[tuple[str, int], ...] = ()
         self.read_context: Callable[[], list[tuple[str, int]]] | None = None
         super().__init__(self.snapshot, PluginSettings(session.config.plugins, session.config.path))
@@ -235,6 +235,6 @@ class SessionPlugins(PluginRuntime):
                 if not result["plugins"]:
                     raise PluginError(f"Unknown plugin: {target}")
             result["problems"] = [*(f"{name}: {error}" for name, error in self.problems.items()), *problems]
-            result["scope"] = "current agent; installation changes apply to future agents in this project"
+            result["scope"] = "current agent; installation changes apply to future agents in any directory"
             result["catalog_directory"] = str(self.catalog.directory)
         return result

@@ -40,7 +40,7 @@ def setup(plugin):
     )
     plugin.tool(
         "move_component",
-        "Move a component before or after another in the same slot. Saves the project's layout; specify exactly one anchor.",
+        "Move a component before or after another in the same slot. Saves the user's layout; specify exactly one anchor.",
         {
             "type": "object",
             "properties": {key: {"type": "string"} for key in ("component", "before", "after")},

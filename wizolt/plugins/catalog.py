@@ -1,4 +1,4 @@
-"""Durable project installations, separate from an agent's active plugin generations."""
+"""Durable user installations, separate from an agent's active plugin generations."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from wizolt.sdk import PluginError
 
 @dataclass(frozen=True)
 class Installation:
-    """A project startup preference, not evidence that any existing agent has activated it."""
+    """A user startup preference, not evidence that any existing agent has activated it."""
 
     name: str
     path: str
@@ -33,11 +33,10 @@ class PluginCatalog:
         self.defaults = {item.name: item for item in defaults}
 
     @classmethod
-    def for_project(cls, data_dir: str, cwd: str) -> PluginCatalog:
-        """The CLI and running agents must resolve the same project preference directory."""
-        from wizolt.session.store import SessionSnapshotStore
-
-        directory = Path(SessionSnapshotStore.project_dir(data_dir, cwd)) / "plugins"
+    def for_user(cls, data_dir: str) -> PluginCatalog:
+        """Installation and layout follow the user; cwd only supplies execution context."""
+        root = Path(data_dir).expanduser().resolve()
+        directory = root / "plugins" / ".state"
         bundled = Path(__file__).parent / "builtin"
         return cls(directory, tuple(Installation(path.stem, str(path), enabled=False) for path in sorted(bundled.glob("*.py"))))
 

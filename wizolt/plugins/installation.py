@@ -33,7 +33,7 @@ class PluginInstallations:
                 "plugins": [asdict(item) for name, item in records.items() if not target or name == target],
                 "problems": problems,
                 "catalog_directory": str(self.catalog.directory),
-                "scope": "saved project preferences; not live agent status",
+                "scope": "saved user preferences; not live agent status",
             }
         if action == "disable":
             if target not in records:
