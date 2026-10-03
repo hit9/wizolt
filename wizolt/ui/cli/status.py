@@ -158,7 +158,8 @@ def usage_rows(usage: ModelUsage) -> tuple[Row, ...]:
         return (Row("requests", "none yet"),)
 
     def ratio(part: int, whole: int) -> str:
-        return f"{part * 100 / whole:.1f}%" if whole else "n/a"
+        # Whole percents, like the statusbar's and the Overview's readings.
+        return f"{part * 100 / whole:.0f}%" if whole else "n/a"
 
     rows = [
         Row("requests", str(usage.calls)),
@@ -202,9 +203,10 @@ def activity_rows(loop: CommandLoop) -> tuple[Row, ...]:
 
 def configuration_rows(loop: CommandLoop) -> tuple[Row, ...]:
     session = loop.session
-    rows = [Row("workspace", session.cwd), Row("session", session.uid)]
+    # An id reads as its prefix, like a commit; `--resume` still matches the full one.
+    rows = [Row("workspace", session.cwd), Row("session", session.uid[:8])]
     if session.subagents is not None and (parent := session.subagents.entry(session.uid).parent):
-        rows.append(Row("parent", parent))
+        rows.append(Row("parent", parent[:8]))
     rows.append(Row("permissions", "yolo: no confirmations" if session.settings.yolo else "confirm risky actions"))
     rows.append(Row("limits", f"{session.settings.max_steps} steps · {session.settings.max_parallel_tools} parallel tools"))
     info = session.system_info
@@ -234,6 +236,12 @@ class StatusTabs:
 
     def __init__(self, snapshot: StatusSnapshot) -> None:
         self.snapshot = snapshot
+        # One label column for every tab, so the value column never jumps between tabs or between
+        # the sections of a printed report; the widest label anywhere sets it.
+        sections = [row.label for section in (*snapshot.usage, snapshot.activity, snapshot.configuration) for row in section.rows]
+        parts = [name for name, tokens in snapshot.context.parts if tokens]
+        fixed = ["agent", "model", "goal", "context", "usage", "agents", "used", "total", "over by", "compacts at", "window"]
+        self.column = label_column([*sections, *parts, *fixed])
 
     def rows(self, tab: str, width: int) -> TextRows:
         return {"Overview": self.overview, "Context": self.context, "Usage": self.usage, "Session": self.session}[tab](width)
@@ -265,8 +273,7 @@ class StatusTabs:
         reading = context.reading()
         # The meter draws the reading beside it, not the estimated parts the Context tab breaks
         # down: the two can differ. It takes what the reading leaves, and gives way when narrow.
-        labels = ("agent", "model", "goal", "context", "usage", "agents")
-        cells = min(OVERVIEW_METER, width - label_column(labels) - 1 - width_of(reading))
+        cells = min(OVERVIEW_METER, width - self.column - 1 - width_of(reading))
         filled = round(min(100, context.percent) * cells / 100)
         meter = [(Theme.fg(context.level), "█" * filled), (Theme.fg("subtle"), "░" * (cells - filled))]
         entries += [Entry("context", [*meter, ("", " "), *reading] if cells >= 6 else reading), Entry("usage", self.traffic())]
@@ -274,7 +281,7 @@ class StatusTabs:
             agents = [figure(str(group.total)), words(" · "), figure(str(group.running), "accent"), words(" running · ")]
             agents += [figure(str(group.waiting), "warning" if group.waiting else NUMBER_ROLE), words(" waiting")]
             entries.append(Entry("agents", agents))
-        return table([("", entries)], width, labels)
+        return table([("", entries)], width, self.column)
 
     def traffic(self) -> TextFragments:
         """The usage totals in one line: counts, then the share served from cache."""
@@ -300,8 +307,7 @@ class StatusTabs:
         counts = [Text.abbreviate_count(tokens) for _, tokens in parts]
         count_width = max(map(len, counts), default=0)
         over = estimated > context.threshold
-        labels = ("used", *(name for name, _ in parts), "total", *(("over by",) if over else ()), "compacts at", "window")
-        bar_width = max(1, width - label_column(labels))
+        bar_width = max(1, width - self.column)
         # A part too small for a cell is not in the bar; its square stays quiet to say so.
         colors = self.colors(bar_width)
         estimate = [
@@ -324,13 +330,13 @@ class StatusTabs:
             Entry("window", [figure(Text.abbreviate_count(context.window))]),
         ]
         used = [Entry("used", reading), Entry("", self.bar(bar_width))]
-        return table([("", used), ("Next request · estimated", estimate), ("Limits", limits)], width, labels)
+        return table([("", used), ("Next request · estimated", estimate), ("Limits", limits)], width, self.column)
 
     def usage(self, width: int) -> TextRows:
-        return table([section.entries() for section in (*self.snapshot.usage, self.snapshot.activity)], width)
+        return table([section.entries() for section in (*self.snapshot.usage, self.snapshot.activity)], width, self.column)
 
     def session(self, width: int) -> TextRows:
-        return table([self.snapshot.configuration.entries()], width)
+        return table([self.snapshot.configuration.entries()], width, self.column)
 
     def segments(self, width: int) -> list[tuple[str, int]]:
         """The parts drawn at `width`, with their cells. Each takes the cells its cumulative share
@@ -389,12 +395,12 @@ def label_column(labels: Sequence[str]) -> int:
     return max(map(get_cwidth, labels), default=0) + 2
 
 
-def table(groups: Sequence[Group], width: int, labels: Sequence[str] = ()) -> TextRows:
+def table(groups: Sequence[Group], width: int, column: int = 0) -> TextRows:
     """A tab's entries in one label column and one value column; numbers right-aligned to the
     widest of them, long values wrapped under their own column. A heading opens each named group.
-    `labels` sizes the label column when a tab measures it before building its entries."""
+    `column` fixes where values start for every tab alike; 0 sizes it to this table's labels."""
     entries = [entry for _, group in groups for entry in group]
-    column = label_column(labels or [entry.label for entry in entries])
+    column = column or label_column([entry.label for entry in entries])
     number = max((width_of(entry.value) for entry in entries if entry.numeric), default=0)
     rows: TextRows = []
     for heading, group in groups:
@@ -410,8 +416,9 @@ def table(groups: Sequence[Group], width: int, labels: Sequence[str] = ()) -> Te
 
 def frame(body: TextRows, width: int, *, footer: str = "") -> TextRows:
     """`body` inside the report's border, `width` columns in all; `footer` sits in the bottom edge."""
-    # The theme's second accent: as prominent as the tabs, without blending into them.
-    border = Theme.fg("accent_secondary")
+    # A structure line, not an accent: quiet like the keys in its own edge, so color stays on the
+    # tabs and the values.
+    border = Theme.fg("muted")
     inside = max(1, width - 4)
     rows: TextRows = [[(border, "╭" + "─" * (width - 2) + "╮")]]
     for row in body:

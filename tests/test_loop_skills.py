@@ -17,7 +17,7 @@ from wizolt.skill.library import SkillLibrary
 from wizolt.tools import SkillTool, Tool
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.commands import skills_command
-from wizolt.ui.cli.status import StatusReport, StatusTabs, StatusView
+from wizolt.ui.cli.status import TABS, StatusReport, StatusTabs, StatusView
 from wizolt.ui.render import StatusBar, Theme, WidthDependent
 from wizolt.ui.themes import contrast
 from wizolt.ui.tui import TUI_MODAL_PENDING
@@ -241,8 +241,8 @@ def test_status_usage_reports_cache_ratios_and_writes(tmp_path):
         "requests": "3",
         "input": "100.0K",
         "output": "0",
-        "cache read": "83.4%",
-        "last cache read": "99.9%",
+        "cache read": "83%",
+        "last cache read": "100%",
         "cache write": "4.5K",
     }
 
@@ -337,7 +337,7 @@ def test_status_values_wear_theme_roles_and_unavailable_ones_stay_quiet(tmp_path
     assert (role("Overview", "900"), role("Overview", "80%"), role("Overview", "cached")) == ("syntax_number", "status_cache", "muted")
     assert role("Overview", "50.0K") == "status_context"  # the reading comes first, in the context color
     assert role("Overview", "main") == "status_agent" and role("Overview", s.config.active_provider) == "status_provider"
-    assert (role("Usage", "50.0K"), role("Usage", "80.0%")) == ("syntax_number", "status_cache")
+    assert (role("Usage", "50.0K"), role("Usage", "80%")) == ("syntax_number", "status_cache")
     # The reading turns with the statusbar's pressure thresholds.
     s.usage.last_prompt_tokens = 95_000
     assert role("Overview", "95%") == "error"
@@ -368,7 +368,27 @@ def test_printed_status_frames_every_tab_at_any_width(tmp_path, width):
     order = [text.index(title) for title in ("agent ", "Context", "Next request", "Usage", "All requests", "Activity", "Session", "docs")]
     assert order == sorted(order)
     if width >= 80:  # narrower, the id wraps under its own column
-        assert text.count(loop.session.uid) == 1
+        assert text.count(loop.session.uid[:8]) == 1
+
+
+def test_status_shares_one_label_column_across_tabs(tmp_path):
+    loop = status_loop(tmp_path)
+    tabs = StatusTabs(StatusReport.of(loop).snapshot)
+
+    for tab in TABS:
+        for row in tabs.rows(tab, 80):
+            first = row[0][1] if row else ""
+            if first.endswith("  ") or first.isspace():
+                # A padded label or a wrapped line's indent: one column for every tab alike.
+                assert len(first) == tabs.column
+
+
+def test_status_frame_is_a_quiet_structure_line(tmp_path):
+    loop = status_loop(tmp_path)
+
+    styles = {style for style, text in StatusReport.of(loop).fragments(100) if "╭" in text or "╰" in text}
+
+    assert styles == {Theme.fg("muted")}
 
 
 def test_status_view_opens_on_a_concise_overview_and_switches_tabs(tmp_path):

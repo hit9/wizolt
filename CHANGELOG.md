@@ -8,12 +8,13 @@
   and one-line usage totals) first, then **Context**, **Usage** and **Session**. The Context tab
   breaks the next request's locally estimated tokens down by part (system, tool definitions, MCP
   tools, instructions, skills, messages) on a bar measured against the compaction threshold, and
-  keeps the estimate apart from the provider-reported reading. Each tab is one table: a single
-  label column, numbers right-aligned together, and a heading only where a tab holds several
-  groups. Values take the theme's roles (the statusbar's colors for model, context and cache,
-  number colors for counts) against muted labels, inside a frame in the theme's second accent.
-  Without an interactive terminal it prints every tab in the same frame, and that report reflows
-  when the pane resizes.
+  keeps the estimate apart from the provider-reported reading. Every tab is one table, and all of
+  them share one label column, so the value column never moves between tabs or report sections;
+  numbers right-align together, and a heading opens only where a tab holds several groups. Values
+  take the theme's roles (the statusbar's colors for model, context and cache, number colors for
+  counts) against muted labels inside a muted frame; session and parent ids show as their first
+  eight characters, which `--resume` still matches. Without an interactive terminal it prints
+  every tab in the same frame, and that report reflows when the pane resizes.
 - `/theme`'s StatusBar tab moves usage between **All left** and **Left / Right** with **p**, for
   the highlighted layout and any you choose next. The choice is saved only as
   `ui.statusbar.format`: the preset's name, or its full template for Left / Right. Powerline and
