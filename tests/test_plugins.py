@@ -248,16 +248,16 @@ async def test_management_tool_uses_existing_runner_approval_contract(tmp_path):
     from wizolt.agent.lifecycle import bootstrap_features
     from wizolt.agent.runner import ToolRunner
     from wizolt.plugins.installation import PluginInstallations
-    from wizolt.tools.plugin import PluginHotReload
+    from wizolt.tools.plugin import PluginTool
 
     session = session_with_provider(tmp_path)
     bootstrap_features(session)
-    assert PluginHotReload(session, [{}]).needs_confirmation()
+    assert PluginTool(session, [{"action": "reload"}]).needs_confirmation()
     await PluginInstallations(session.plugins.catalog, session.cwd).manage("enable", source(tmp_path / "local.py", 5))
     session.settings.yolo = True
     # Through the runner, not tool.call(): a mutating tool's async call must be awaited there.
     runner = ToolRunner(session, ContextManager(session), output_fn=lambda _: None)
-    [message] = await runner.run([call("PluginHotReload", [{"name": "local"}])])
+    [message] = await runner.run([call("Plugin", [{"action": "reload", "name": "local"}])])
     assert '"status": "active"' in str(message["content"])
     assert session.plugins.fields() == {"plugins.local.value": 5}
     await session.plugins.close()
@@ -280,8 +280,8 @@ async def test_model_uses_plugin_tools_by_progressive_disclosure(tmp_path):
         [message] = await runner.run([call("Plugin", [payload])])
         return str(message["content"])
 
-    def offered():
-        return "Plugin" in {schema["function"]["name"] for schema in Tool.resolved_schemas(session)}
+    def schemas():
+        return [schema for schema in Tool.resolved_schemas(session) if "Plugin" in schema["function"]["name"]]
 
     path = tmp_path / "notes.py"
     path.write_text("""SDK_VERSION = 1
@@ -291,18 +291,19 @@ def setup(p):
     p.tool("remember", "Save a note", {"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, remember)
 """)
     try:
-        assert not offered()  # No plugin tools, no schema: the tool block is unchanged.
+        before = schemas()
         await session.plugins.manage("enable", str(path))
-        assert offered()
+        # One fixed schema: enabling a plugin with tools must not reshape the cached tool block.
+        assert len(before) == 1 and schemas() == before
         listed = await run(action="list")
         assert '"tool": "remember"' in listed and "parameters" not in listed  # Details wait for describe.
-        assert '"required": ["body"]' in await run(action="describe", plugin="notes", tool="remember")
-        assert PluginTool(session, [{"action": "call", "plugin": "notes", "tool": "remember"}]).needs_confirmation()
+        assert '"required": ["body"]' in await run(action="describe", name="notes", tool="remember")
+        assert PluginTool(session, [{"action": "call", "name": "notes", "tool": "remember"}]).needs_confirmation()
         assert not PluginTool(session, [{"action": "list"}]).needs_confirmation()
         session.settings.yolo = True
-        assert "saved milk" in await run(action="call", plugin="notes", tool="remember", arguments={"body": "milk"})
-        assert "Invalid arguments" in await run(action="call", plugin="notes", tool="remember", arguments={"bdy": 1})
-        assert "use action=list" in await run(action="call", plugin="notes", tool="forget")
+        assert "saved milk" in await run(action="call", name="notes", tool="remember", arguments={"body": "milk"})
+        assert "Invalid arguments" in await run(action="call", name="notes", tool="remember", arguments={"bdy": 1})
+        assert "use action=list" in await run(action="call", name="notes", tool="forget")
     finally:
         await session.plugins.close()
 

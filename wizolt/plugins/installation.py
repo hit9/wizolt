@@ -61,4 +61,4 @@ class PluginInstallations:
         else:
             raise PluginError(f"Unknown installation action: {action}")
         self.catalog.save(item)
-        return {**asdict(item), "status": "saved", "note": "Use PluginHotReload in an existing agent; new agents read this preference on startup."}
+        return {**asdict(item), "status": "saved", "note": "Use Plugin(action=reload) in an existing agent; new agents read this preference on startup."}

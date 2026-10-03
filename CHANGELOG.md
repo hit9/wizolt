@@ -31,33 +31,33 @@
 - Add per-plugin `[plugins.NAME]` settings, immutable SDK configuration with schema validation
   and defaults, shared CLI/live validation, and source-plus-settings rollback.
 
-- Add isolated plugin trials with JSON feedback and PNG/SVG component previews via `wizolt plugin validate/test`.
-- Replace the broad Plugin tool with the small, permanent PluginHotReload tool; standalone plugin commands manage saved project choices.
-- Run plugin generations in managed processes, cache UI projections, and support worker dependency environments without restarting wizolt.
-- Register plugin slash commands in the same dispatch and completion catalog as built-ins, with conflict checks and turn admission.
-
-### Fixed
-
-- `PluginHotReload` crashed the turn with `'coroutine' object has no attribute 'encode'` and
-  never reloaded: the runner did not await an async mutating tool.
-- Cancelling a plugin command or summarizer (for example with Ctrl-C) no longer kills a plugin
-  whose callback stops when asked; only an unresponsive worker is terminated.
-- A `{join:…}` without its Powerline glyph now names U+E0B0 / U+E0B2 instead of reporting an
-  unknown field; the appearance references spell out the code points, which often render invisibly.
-- Plugin tools are now callable by the agent through a `Plugin` tool with `list`, `describe` and
-  `call` actions, so registering many tools does not grow the prompt. Calls need approval and
-  validate arguments; the tool is offered only while an active plugin provides one.
+- Give the agent one small, always-present `Plugin` tool: `reload` applies saved plugin choices,
+  and `list`/`describe`/`call` reach tools that plugins register, disclosed on request. Its
+  schema never changes, so enabling plugins does not break the prompt cache; calls need approval.
 - Agent shell commands receive `WIZOLT_EXECUTABLE`, `WIZOLT_CONFIG` and `WIZOLT_PROJECT_DIR`, and
   `wizolt plugin` defaults `--config`/`--project` to them, so an agent manages its own session's
   plugins even after `cd` or with several wizolt installations.
 - `wizolt plugin test` previews each statusbar/divider preset a plugin contributes, with its
   sampled fields and segment backgrounds, and fails when a preset cannot render those values.
+- Failed plugin reloads and inspection of a failed plugin include bounded `traceback` and `log`
+  tails, so the failing line is visible without rerunning an offline trial.
+- Add isolated plugin trials with JSON feedback and PNG/SVG component previews via `wizolt plugin validate/test`.
+- Standalone plugin commands manage saved project choices; the agent applies them with `Plugin`.
+- Run plugin generations in managed processes, cache UI projections, and support worker dependency environments without restarting wizolt.
+- Register plugin slash commands in the same dispatch and completion catalog as built-ins, with conflict checks and turn admission.
+
+### Fixed
+
+- Reloading plugins from the agent crashed the turn with `'coroutine' object has no attribute
+  'encode'` and never reloaded: the runner did not await an async mutating tool.
+- Cancelling a plugin command or summarizer (for example with Ctrl-C) no longer kills a plugin
+  whose callback stops when asked; only an unresponsive worker is terminated.
+- A `{join:…}` without its Powerline glyph now names U+E0B0 / U+E0B2 instead of reporting an
+  unknown field; the appearance references spell out the code points, which often render invisibly.
 - `wizolt plugin test --facts/--summarize` accept pipes and symlinks such as `<(...)`, and a
   rejected theme or preset reports stage `validate` instead of `load`.
 - Opening `/status` no longer lays out prompt-area plugin components for 80 columns until the
   next repaint.
-- Failed `PluginHotReload` results and inspection of a failed plugin include bounded `traceback`
-  and `log` tails, so the failing line is visible without rerunning an offline trial.
 - A plugin whose setup fails now reports its own traceback in trials and reloads, instead of a
   later "Plugin is not loaded" from teardown.
 - A saved plugin theme no longer prints an "unknown theme" warning at every startup before the
@@ -67,7 +67,7 @@
 ### Added
 
 - Experimental Python plugins with agent-local instances, safe-boundary reload, rollback,
-  project enable/disable preferences, a human `/plugins` manager, and `PluginHotReload`.
+  project enable/disable preferences, a human `/plugins` manager, and the agent's `Plugin` tool.
   Plugins can register commands, tools, bar fields, turn observers, and bounded theme-aware
   components above the input or in `/status`. Dependency installation prepares a separate
   worker environment without restarting the host.

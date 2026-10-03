@@ -26,7 +26,7 @@ packaged reference define what this implementation currently exposes.
 ## Ownership and dependency direction
 
 ```text
-CLI manager / PluginHotReload / agent lifecycle
+CLI manager / Plugin tool / agent lifecycle
                 ↓
          SessionPlugins ── PluginCatalog (project startup preferences)
                 ↓
@@ -73,12 +73,14 @@ provider credentials stay host-side. No history, tools, hooks or persistence lea
 Returned usage is independent of agent ctx/cache counters. Offline trials deliberately have no
 model-service binding, so validation cannot silently incur model costs.
 
-The model has two fixed gateways. PluginHotReload reconciles saved choices into the calling
-agent; standalone CLI commands perform authoring and save those choices. `Plugin` reaches tools
-that active plugins register by progressive disclosure: `list` returns names and descriptions,
-`describe` one tool's parameters, `call` runs it under the usual approval. Neither reshapes the
-tool block per plugin, so many plugin tools cost the prompt nothing until asked for; `Plugin`
-is offered only while some active plugin has a tool, like MCP. Resume reads saved preferences. Human plugin commands share the core command
+The model has one fixed, always-present gateway, `Plugin`. `reload` reconciles saved choices
+into the calling agent; standalone CLI commands perform authoring and save those choices. Tools
+that active plugins register are disclosed progressively: `list` returns names and descriptions,
+`describe` one tool's parameters, `call` runs it under the usual approval. The schema never
+changes as plugins come and go, so enabling one cannot invalidate the provider's prompt cache,
+and many plugin tools cost nothing until asked for. Merging reload into it costs about 27 more
+tokens per request than a reload-only tool, and saves about 116 once any plugin has a tool
+(schema JSON at four characters per token). Resume reads saved preferences. Human plugin commands share the core command
 catalog for completion, collision checks and turn admission. Offline handler trials are fresh
 instances with preview context, never a claim to inspect or mutate live plugin memory.
 

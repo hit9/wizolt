@@ -18,7 +18,7 @@ def main(argv: list[str]) -> int:
         from wizolt.ui.cli.plugin_testing import main as test_main
 
         return test_main(argv)
-    parser = argparse.ArgumentParser(prog="wizolt plugin", description="Manage saved plugin preferences. Live activation uses PluginHotReload.")
+    parser = argparse.ArgumentParser(prog="wizolt plugin", description="Manage saved plugin preferences. An agent applies them with Plugin(action=reload).")
     parser.add_argument("action", choices=("paths", "list", "inspect", "install", "enable", "disable", "test", "validate"))
     parser.add_argument("target", nargs="?", default="", help="Installed name, .py file, or package directory for install/enable")
     parser.add_argument("--config", default=PluginWorkspace.default_config(), help="Config file (default: the calling agent's, else the usual config)")

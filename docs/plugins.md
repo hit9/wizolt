@@ -63,7 +63,7 @@ model = "your-model"
 ```
 
 The plugin defines which settings it accepts. Run `wizolt plugin validate NAME --config PATH`
-to check them, then use `PluginHotReload` to apply them to the current agent. Invalid settings
+to check them, then ask the agent to reload plugins to apply them to the current agent. Invalid settings
 leave the previous instance running. Rollback restores its previous source and settings.
 Keep credentials in environment variables or your provider configuration.
 
@@ -121,7 +121,7 @@ Use `--width 30` to check a narrow terminal, or `--times 0 0.5 1` to sample anim
 the same text clipping and colors as the TUI. Use `--font` if the PNG font lacks your characters.
 
 `wizolt plugin list` and `inspect NAME` show saved project choices. `enable PATH` and `disable NAME`
-save changes for new agents. Ask the current agent to call **PluginHotReload** to apply them now;
+save changes for new agents. Ask the current agent to reload plugins to apply them now;
 it reloads one named plugin or all saved choices. A failed candidate keeps the old version.
 Use `--config PATH` and `--project DIR` when your running session uses different defaults.
 
@@ -132,7 +132,7 @@ an explicitly tested command or event can still modify files or access the netwo
 
 A plugin can declare `DEPENDENCIES = ["package>=1.0"]`. Ask the agent to install it through
 **plugin-workshop**, or run `wizolt plugin install PATH`. wizolt builds a separate worker
-environment. Apply it with **PluginHotReload**; no wizolt restart is needed.
+environment. Ask the agent to reload plugins to apply it; no wizolt restart is needed.
 
 That environment borrows your current wizolt installation; keep the installation available.
 Conflicting dependencies must be resolved before activation.

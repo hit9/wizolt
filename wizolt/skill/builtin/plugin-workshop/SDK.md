@@ -282,7 +282,7 @@ each generation has its own worker process, including imported third-party state
 crashing Python cannot block the host event loop. Never create unmanaged background tasks.
 
 Open `/plugins` to manage existing installations. Creation, validation, and installation use
-`wizolt plugin` commands; `/plugins` has no add-file flow. The agent's plugin tools are `PluginHotReload` (activation) and `Plugin` (registered tools).
+`wizolt plugin` commands; `/plugins` has no add-file flow. The agent's one plugin tool, `Plugin`, reloads saved choices and uses registered tools.
 Keep personal source in `~/.wizolt/plugins/name.py`, or project-specific source in
 `<project>/.wizolt/plugins/name.py`. These directories are not scanned for automatic execution.
 Enabling persists the source path for future agents in this project. Existing agents keep their
@@ -291,7 +291,7 @@ Set `WIZOLT_NO_PLUGINS=1` on startup to skip installed plugins and recover a bro
 
 Optional module metadata: `DEPENDENCIES = ["package>=1.0"]` (literal requirement strings).
 Use `wizolt plugin install PATH` to prepare a worker environment constrained by the host's installed
-versions, then call `PluginHotReload`. No host restart is needed. The environment borrows the host
+versions, then call `Plugin(action="reload")`. No host restart is needed. The environment borrows the host
 installation; it is not portable. No installation command replaces packages in the running process.
 
 ## Offline feedback
