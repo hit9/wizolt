@@ -1,6 +1,7 @@
 """loop skills (split from tests/test_loop_commands.py)."""
 
-from itertools import combinations
+import colorsys
+from itertools import pairwise
 
 import pytest
 from agent_harness import session
@@ -16,8 +17,9 @@ from wizolt.skill.library import SkillLibrary
 from wizolt.tools import SkillTool, Tool
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.commands import skills_command
-from wizolt.ui.cli.status import MESSAGES_ROLE, PART_CANDIDATES, StatusReport, StatusTabs, StatusView
+from wizolt.ui.cli.status import StatusReport, StatusTabs, StatusView
 from wizolt.ui.render import StatusBar, Theme, WidthDependent
+from wizolt.ui.themes import contrast
 from wizolt.ui.tui import TUI_MODAL_PENDING
 
 
@@ -285,14 +287,17 @@ def test_context_bar_parts_are_told_apart_without_losing_their_share(tmp_path):
 
 @pytest.mark.parametrize("theme", list(Theme.BUILTIN))
 def test_context_bar_colors_stay_apart_in_every_theme(theme, monkeypatch):
-    """Fixed roles read as one color in some themes (slate drew two blues side by side): the parts
-    take whichever of the theme's own roles sit farthest apart."""
+    """Theme roles read as one color in several themes (slate drew two blues side by side): the
+    parts take a generated series instead, apart in hue and readable on the background."""
     monkeypatch.setattr(Theme, "_mode", theme)
-    roles = Theme.distinct_roles(MESSAGES_ROLE, PART_CANDIDATES, 5, avoid=("subtle",))
-    colors = [Theme.measure(Theme.color(role)) for role in roles]
+    colors = Theme.series(6)
+    hues = [colorsys.rgb_to_hsv(*(channel / 255 for channel in Theme.rgb(color)))[0] * 360 for color in colors]
+    background = Theme.active().background or ("#ffffff" if Theme.appearance() == "light" else "#1e1e1e")
 
-    assert roles[0] == MESSAGES_ROLE and len(set(roles)) == 5 and "error" not in roles
-    assert min(Theme.distance(a, b) for a, b in combinations(colors, 2)) >= 70
+    assert len(set(colors)) == 6
+    # Neighbors in the bar sit far apart on the color wheel; every color stands off the background.
+    assert all(min(abs(a - b), 360 - abs(a - b)) >= 90 for a, b in pairwise(hues))
+    assert all(contrast(color, background) >= 3 for color in colors)
 
 
 def test_status_marks_an_estimate_over_the_compaction_threshold(tmp_path):

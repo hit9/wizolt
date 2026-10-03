@@ -819,11 +819,12 @@ through `BarLayout.configure`, the same path config loading uses, so a draft can
 a second, looser parser. Clipboard copies use a platform command so success is reported truthfully
 (an OSC 52 write has no acknowledgement).
 
-Colors that must be told apart, such as `/status`'s context parts, are chosen per theme by
-measurement, not assigned fixed roles: themes derive many roles from a few hues, and which pairs
-collide differs per theme (slate drew two blues, sand two ambers). `Theme.distinct_roles` picks,
-from the active palette's own roles, the ones farthest from each other and from the background.
-Prefer extending this rule to adding per-theme tables; custom themes then work without changes.
+Colors that must be told apart, such as `/status`'s context parts, come from a formula, not
+theme roles or per-theme tables: themes derive many roles from a few hues, and which pairs collide
+differs per theme (slate drew two blues, sand two ambers). Picking the most distinct roles was
+tried and still blended in several themes. `Theme.series` generates the colors instead: golden-angle
+hue steps at one OKLCH lightness and chroma per dark or light background. Custom themes work
+unchanged; theme roles stay for meaning (warning, context pressure), not for categories.
 
 Picker choices are a curated subset of the preset registry; older names remain valid configuration
 and appear as the current selection. Fills share the remaining terminal columns and repeat bounded

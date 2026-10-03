@@ -32,31 +32,6 @@ if TYPE_CHECKING:
 DOCS_URL = "https://wizolt.readthedocs.io"
 TABS = ("Overview", "Context", "Usage", "Session")
 KEYS = "h/l tabs · j/k scroll · Esc close"
-# Context part colors. Messages, the part that grows, keeps the statusbar's context color; the
-# other parts drawn take the theme's hue roles that sit farthest from it, from each other and from
-# the empty track (`Theme.distinct_roles`), so the choice adapts to each theme. The pool is wide on
-# purpose: some themes draw their UI roles from only a few hues, and their code colors or the
-# softened YOLO red are what sets a part apart. `error` stays out: a part is not an alarm.
-MESSAGES_ROLE = "status_context"
-PART_CANDIDATES = (
-    "info",
-    "warning",
-    "user",
-    "accent_secondary",
-    "accent",
-    "tool",
-    "syntax_number",
-    "syntax_string",
-    "syntax_builtin",
-    "syntax_assign",
-    "status_cache",
-    "status_reason",
-    "status_agent",
-    "status_model",
-    "status_provider",
-    "status_yolo",
-    "divider_glow",
-)
 # The statusbar's context pressure thresholds (`ui.bars.pressure`).
 WARNING_PERCENT, ERROR_PERCENT = 70, 90
 # Values wear existing theme roles: counts the color numbers have in tool arguments, cache and
@@ -328,12 +303,12 @@ class StatusTabs:
         labels = ("used", *(name for name, _ in parts), "total", *(("over by",) if over else ()), "compacts at", "window")
         bar_width = max(1, width - label_column(labels))
         # A part too small for a cell is not in the bar; its square stays quiet to say so.
-        roles = self.roles(bar_width)
+        colors = self.colors(bar_width)
         estimate = [
             Entry(
                 name,
                 [
-                    (Theme.fg(roles.get(name, "subtle")), "■ "),
+                    (colors.get(name, Theme.fg("subtle")), "■ "),
                     figure(f"{count:>{count_width}}"),
                     (muted, f"  {tokens * 100 / threshold:>3.0f}%" if tokens * 100 >= threshold else "   <1%"),
                 ],
@@ -371,16 +346,16 @@ class StatusTabs:
                 start = end
         return segments
 
-    def roles(self, width: int) -> dict[str, str]:
-        """Colors for the parts drawn at `width`, each as distinct as the active theme allows. A
-        part too small for a cell is not drawn, so it takes no color from the others."""
-        others = [name for name, _ in self.segments(width) if name != "messages"]
-        palette = Theme.distinct_roles(MESSAGES_ROLE, PART_CANDIDATES, len(others) + 1, avoid=("subtle",))
-        return {"messages": MESSAGES_ROLE, **dict(zip(others, palette[1:], strict=False))}
+    def colors(self, width: int) -> dict[str, str]:
+        """Styles for the parts drawn at `width`, from a generated series (`Theme.series`) in bar
+        order, so each part differs most from its neighbors. A part too small for a cell is not
+        drawn and takes no color."""
+        drawn = [name for name, _ in self.segments(width)]
+        return {name: "fg:" + color for name, color in zip(drawn, Theme.series(len(drawn)), strict=True)}
 
     def bar(self, width: int) -> TextFragments:
-        roles = self.roles(width)
-        fragments: TextFragments = [(Theme.fg(roles[name]), "█" * cells) for name, cells in self.segments(width)]
+        colors = self.colors(width)
+        fragments: TextFragments = [(colors[name], "█" * cells) for name, cells in self.segments(width)]
         used = sum(cells for _, cells in self.segments(width))
         if used < width:
             fragments.append((Theme.fg("subtle"), "░" * (width - used)))
