@@ -346,7 +346,7 @@ class Illustrations:
 
     def plugin_context(self, status: str = "completed") -> Context:
         """Fixed agent facts: what a plugin callback would receive mid-session."""
-        window = ContextWindow(74_000, 200_000, 160_000, (("system", 9_000), ("tools", 14_000), ("messages", 51_000)))
+        window = ContextWindow(74_000, 200_000, 160_000, (("system prompt", 9_000), ("system tools", 14_000), ("memory files", 3_000), ("messages", 48_000)))
         return Context("main", "main", self.session.cwd, status, 37, 12, "claude-sonnet", NOW, WIDTH - 4, Usage(6, 42_000, 3_100, 30_000, 42), window)
 
     def panel(self, plugin: Plugin, slot: str, context: Context) -> Text:

@@ -8,7 +8,7 @@ counts them too. Press **h**/**l** (or **1**–**4**) for the rest:
 
 | Tab | Shows |
 | --- | --- |
-| Context | What the next request holds, by part, and where compaction starts |
+| Context | What the next request holds (system prompt, system tools, MCP servers, memory files, skills, messages) and where compaction starts |
 | Usage | Tokens and cache hits across every request, compaction, and activity counts |
 | Session | Workspace, session ID, permissions, limits and instruction files |
 

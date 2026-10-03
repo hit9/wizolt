@@ -201,11 +201,13 @@ class ContextManager:
             return self.estimated_tokens([{"role": "user", "content": content}]) if content else 0
 
         conversation = [*self.session.messages, *self.session._active_turn_messages]
+        # Named for what a user configures: AGENTS.md files are "memory files", and what connected
+        # MCP servers add to the prefix (their tools and resources index) is "mcp servers".
         return [
-            ("system", self.estimated_tokens(self.model_header(base_system)[:2])),
-            ("tools", self.estimated_tokens(Tool.resolved_schemas(self.session))),
-            ("mcp tools", text(self.mcp_tools_context())),
-            ("instructions", text(self.instructions_context())),
+            ("system prompt", self.estimated_tokens(self.model_header(base_system)[:2])),
+            ("system tools", self.estimated_tokens(Tool.resolved_schemas(self.session))),
+            ("mcp servers", text(self.mcp_tools_context())),
+            ("memory files", text(self.instructions_context())),
             ("skills", text(self.skills_context())),
             ("messages", self.estimated_tokens(self.dedup_skill_loads(self.dedup_mcp_describes(conversation)))),
         ]

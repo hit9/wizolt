@@ -38,6 +38,9 @@
   `wizolt`, says to install before testing plugins with dependencies, explains installed names,
   and tells the agent to add abilities for itself as plugin tools. Appearance examples write the
   invisible Powerline join glyphs as ``/``.
+- The `/status` Context tab names its parts for what you configure: system prompt, system tools,
+  MCP servers, memory files (AGENTS.md), skills and messages. Plugins see the same names in
+  `context.window.parts`. Only the labels change; requests and their cached prefix do not.
 - Approving a plugin reload shows what changes, worked out without running plugin code: each
   plugin to enable or disable, or with changed code or settings, and which unchanged plugins
   restart and lose their in-memory state.

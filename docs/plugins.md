@@ -65,7 +65,7 @@ def setup(plugin):
     plugin.component("above_divider", draw)
 ```
 
-![The context meter: a colored bar split by system, tools and messages, with token counts below.](_static/plugins-meter.svg)
+![The context meter: a colored bar split by system prompt, system tools, memory files and messages, with token counts below.](_static/plugins-meter.svg)
 
 ### Session cost in the statusbar
 
