@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 
+from wizolt.agentsmd import display_path
 from wizolt.base import Text
 from wizolt.sdk import Line, Panel, PluginError
 from wizolt.ui.bars import Fragments, clean, clip
@@ -86,12 +87,17 @@ class PluginManager:
 
     def preview(self, name: str) -> str:
         item = self.records[name]
-        lines = [str(item["path"])]
+        # The file name is the useful end of a long path: clip from the left, behind the rail.
+        width = max(10, shutil.get_terminal_size((80, 24)).columns - 6)
+        lines = [Text.clip_width(display_path(str(item["path"]))[::-1], width)[::-1]]
         if item.get("builtin"):
             lines.insert(0, "Built in · enabled per project")
-        for key in ("fields", "commands", "tools", "slots", "themes", "presets"):
+        for key in ("fields", "commands", "tools", "slots", "themes"):
             if values := item.get(key):
                 lines.append(f"{key.capitalize()}: {', '.join(values)}")
+        # Presets arrive grouped by kind, and every kind is present even when it is empty.
+        if presets := [f"{kind} {', '.join(names)}" for kind, names in item.get("presets", {}).items() if names]:
+            lines.append(f"Presets: {'; '.join(presets)}")
         if item.get("summarizer"):
             lines.append("Compaction: supplies summary text")
         for key in ("error", "python"):

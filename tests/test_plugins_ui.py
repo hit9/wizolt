@@ -25,6 +25,25 @@ def test_plugin_columns_align_and_long_names_leave_space_for_states():
         assert "..." in labels[1]
 
 
+def test_manager_preview_names_presets_and_keeps_the_file_name_visible(monkeypatch):
+    import os
+
+    from wizolt.ui.cli.plugins import PluginManager
+
+    monkeypatch.setattr("shutil.get_terminal_size", lambda *_: os.terminal_size((40, 24)))
+    manager = PluginManager(None, None)
+    deep = "/very/long/directory/that/does/not/fit/in/a/narrow/terminal/gitline.py"
+    manager.records = {
+        "gitline": {"path": deep, "presets": {"statusbar": ["git"], "divider": []}},
+        "plain": {"path": "/p/plain.py", "presets": {"statusbar": [], "divider": []}},
+    }
+    lines = manager.preview("gitline").splitlines()
+    # The kinds dict is always complete; listing its keys named presets a plugin never registered.
+    assert "Presets: statusbar git" in lines and "divider" not in manager.preview("gitline")
+    assert "Presets" not in manager.preview("plain")
+    assert lines[0].endswith("gitline.py") and lines[0].startswith("...") and len(lines[0]) <= 34
+
+
 async def test_statusbar_plugin_count_tracks_only_this_agents_live_generations(tmp_path):
     from agent_harness import session_with_provider
 
