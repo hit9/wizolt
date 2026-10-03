@@ -203,10 +203,9 @@ def activity_rows(loop: CommandLoop) -> tuple[Row, ...]:
 
 def configuration_rows(loop: CommandLoop) -> tuple[Row, ...]:
     session = loop.session
-    # An id reads as its prefix, like a commit; `--resume` still matches the full one.
-    rows = [Row("workspace", session.cwd), Row("session", session.uid[:8])]
+    rows = [Row("workspace", session.cwd), Row("session", session.uid)]
     if session.subagents is not None and (parent := session.subagents.entry(session.uid).parent):
-        rows.append(Row("parent", parent[:8]))
+        rows.append(Row("parent", parent))
     rows.append(Row("permissions", "yolo: no confirmations" if session.settings.yolo else "confirm risky actions"))
     rows.append(Row("limits", f"{session.settings.max_steps} steps · {session.settings.max_parallel_tools} parallel tools"))
     info = session.system_info

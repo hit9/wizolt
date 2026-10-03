@@ -368,7 +368,7 @@ def test_printed_status_frames_every_tab_at_any_width(tmp_path, width):
     order = [text.index(title) for title in ("agent ", "Context", "Next request", "Usage", "All requests", "Activity", "Session", "docs")]
     assert order == sorted(order)
     if width >= 80:  # narrower, the id wraps under its own column
-        assert text.count(loop.session.uid[:8]) == 1
+        assert text.count(loop.session.uid) == 1
 
 
 def test_status_shares_one_label_column_across_tabs(tmp_path):

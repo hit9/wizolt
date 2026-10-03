@@ -12,8 +12,7 @@
   them share one label column, so the value column never moves between tabs or report sections;
   numbers right-align together, and a heading opens only where a tab holds several groups. Values
   take the theme's roles (the statusbar's colors for model, context and cache, number colors for
-  counts) against muted labels inside a muted frame; session and parent ids show as their first
-  eight characters, which `--resume` still matches. Without an interactive terminal it prints
+  counts) against muted labels inside a muted frame. Without an interactive terminal it prints
   every tab in the same frame, and that report reflows when the pane resizes.
 - `/theme`'s StatusBar tab moves usage between **All left** and **Left / Right** with **p**, for
   the highlighted layout and any you choose next. The choice is saved only as
