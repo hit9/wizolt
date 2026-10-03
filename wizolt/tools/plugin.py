@@ -3,7 +3,7 @@
 import json
 from typing import ClassVar
 
-from wizolt.base import Json, ToolError
+from wizolt.base import ApprovalView, Json, ToolError
 from wizolt.tools.base import Tool
 
 
@@ -38,6 +38,22 @@ class PluginTool(Tool):
 
     def needs_confirmation(self) -> bool:
         return self.payload().get("action") in ("reload", "call")
+
+    def approval_view(self) -> ApprovalView | None:
+        """For a reload, what each plugin would do, so approving it is an informed choice."""
+        payload = self.payload()
+        if payload.get("action") != "reload" or self.session.plugins is None:
+            return None
+        name = payload.get("name", "")
+        runtime = self.session.plugins
+        plan = runtime.reload_plan(name if isinstance(name, str) else "")
+        changed = [f"- {plugin}: {change}" for plugin, change in plan if change != runtime.UNCHANGED]
+        restarted = [plugin for plugin, change in plan if change == runtime.UNCHANGED]
+        lines = [*changed] or ["No changes."] if plan else ["Nothing to reload: no saved plugin choices match."]
+        if restarted:
+            lines.append(f"Restart without changes, resetting what they keep in memory: {', '.join(restarted)}")
+        text = "Run saved plugin code in this agent, with your permissions.\n\n" + "\n".join(lines)
+        return ApprovalView("plugin reload", text, rows=[("scope", name or "all saved plugins"), ("changes", f"{len(changed)} of {len(plan)}")])
 
     def short_args(self) -> list[str]:
         payload = self.payload()

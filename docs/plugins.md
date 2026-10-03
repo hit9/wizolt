@@ -28,7 +28,8 @@ Describe the plugin in plain words, for example:
 ![How the agent builds a plugin: write it, preview it, save it with your approval, and load it live.](_static/plugins-workflow.svg)
 
 The agent uses the built-in **plugin-workshop** skill. It checks the plugin's pictures before
-showing it to you, and asks before running plugin code in your session. Nothing restarts.
+showing it to you, and asks before running plugin code in your session. The request lists what
+changes: which plugins are enabled, disabled, or have new code or settings. Nothing restarts.
 
 ## Examples
 

@@ -38,6 +38,9 @@
   `wizolt`, says to install before testing plugins with dependencies, explains installed names,
   and tells the agent to add abilities for itself as plugin tools. Appearance examples write the
   invisible Powerline join glyphs as ``/``.
+- Approving a plugin reload shows what changes, worked out without running plugin code: each
+  plugin to enable or disable, or with changed code or settings, and which unchanged plugins
+  restart and lose their in-memory state.
 - Give the agent one small, always-present `Plugin` tool: `reload` applies saved plugin choices,
   and `list`/`describe`/`call` reach tools that plugins register, disclosed on request. Its
   schema never changes, so enabling plugins does not break the prompt cache; calls need approval.

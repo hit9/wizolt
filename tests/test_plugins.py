@@ -263,6 +263,48 @@ async def test_management_tool_uses_existing_runner_approval_contract(tmp_path):
     await session.plugins.close()
 
 
+async def test_reload_approval_shows_what_each_plugin_would_change(tmp_path):
+    from agent_harness import session_with_provider
+
+    from wizolt.agent.lifecycle import bootstrap_features
+    from wizolt.plugins.installation import PluginInstallations
+    from wizolt.tools.plugin import PluginTool
+
+    session = session_with_provider(tmp_path)
+    bootstrap_features(session)
+    plugins = session.plugins
+    choices = PluginInstallations(plugins.catalog, session.cwd)
+    marker = tmp_path / "setup-ran"
+
+    def write(name, value, *, touch=False):
+        effect = f"    open({str(marker)!r}, 'w').close()\n" if touch else ""
+        (tmp_path / f"{name}.py").write_text(f'SDK_VERSION = 1\ndef setup(p):\n{effect}    p.field("v", lambda ctx: {value})\n')
+        return str(tmp_path / f"{name}.py")
+
+    try:
+        for name in ("same", "edited", "tuned", "dropped"):
+            await choices.manage("enable", write(name, 1))
+        await plugins.load()
+        await choices.manage("enable", write("fresh", 1, touch=True))
+        marker.unlink()
+        write("edited", 2)
+        plugins.settings.values["tuned"] = {"speed": 2}
+        await choices.manage("disable", "dropped")
+        view = PluginTool(session, [{"action": "reload"}]).approval_view()
+        assert view is not None and not marker.exists(), "approval must not run plugin code"
+        lines = dict(line[2:].split(": ", 1) for line in view.text.splitlines() if line.startswith("- "))
+        assert lines == {"edited": "code changed", "tuned": "settings changed in [plugins.tuned]", "dropped": "disable", "fresh": "enable"}
+        # Unchanged plugins are one closing line, not noise among the changes; restarting resets state.
+        assert view.text.splitlines()[-1] == "Restart without changes, resetting what they keep in memory: same"
+        assert ("changes", "4 of 5") in view.rows
+        assert PluginTool(session, [{"action": "reload", "name": "edited"}]).approval_view().text.count("\n- ") == 1
+        (tmp_path / "edited.py").write_text("SDK_VERSION = 1\nnot python (")
+        assert "will fail" in plugins.reload_plan("edited")[0][1]
+        assert PluginTool(session, [{"action": "list"}]).approval_view() is None
+    finally:
+        await plugins.close()
+
+
 async def test_model_uses_plugin_tools_by_progressive_disclosure(tmp_path):
     from agent_harness import call, session_with_provider
 

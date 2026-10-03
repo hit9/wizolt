@@ -86,6 +86,43 @@ class SessionPlugins(PluginRuntime):
             except Exception as error:  # noqa: BLE001 - one bad plugin must not prevent startup.
                 self.problems[item.name] = str(error)
 
+    def reload_plan(self, name: str = "") -> list[tuple[str, str]]:
+        """What `hot_reload(name)` would change, as (plugin, change), without running plugin code.
+
+        Versions come from source digests and settings from the config table, both read without
+        executing setup; capabilities are only known once setup runs, so the reload result reports
+        them. An unchanged plugin still restarts, which resets whatever it keeps in memory.
+        """
+        records, _ = self.catalog.read()
+        plan = []
+        for key, item in records.items():
+            if name and key != name:
+                continue
+            entry = self.entries.get(key)
+            live = entry.active if entry is not None else self._pending_new.get(key)
+            if not item.enabled:
+                if live is not None:
+                    plan.append((key, "disable"))
+                continue
+            try:
+                source = PluginSource.read(item.path)
+                settings = self.settings.read(key)
+            except Exception as error:  # noqa: BLE001 - the reload itself reports the failure in full.
+                plan.append((key, f"will fail: {error}"))
+                continue
+            if live is None:
+                plan.append((key, "enable"))
+                continue
+            changes = []
+            if source.digest != live.source.digest:
+                changes.append("code changed")
+            if settings != live.settings:
+                changes.append(f"settings changed in [plugins.{key}]")
+            plan.append((key, ", ".join(changes) or self.UNCHANGED))
+        return plan
+
+    UNCHANGED = "restart"
+
     async def hot_reload(self, name: str = "") -> dict:
         """Reconcile saved choices into this agent only, with per-plugin failure isolation.
 
