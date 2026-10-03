@@ -68,7 +68,42 @@ errors omit values, but plugin-authored logs and callback output remain the plug
 Validate/test/install use the selected config. Live reload rereads only its `[plugins]` table,
 and fixes settings for the candidate's lifetime. Failed validation preserves the active instance;
 rollback restores both retained source and settings. Other running agents remain unchanged.
-Configuration is not provider access: model services and managed LSP connections are not SDK APIs yet.
+Configuration is not provider access: host model calls are not an SDK API yet.
+For long-lived connections such as LSP, use a managed service below.
+
+### Managed services
+
+`handle = plugin.service("name", factory)` registers an async context manager. An action calls
+`await handle.get()` to start it once and reuse it. Setup, validation and sampling cannot start
+it. Disable, reload and shutdown cancel actions before closing services in reverse order.
+Cleanup gets one second before the worker's process group is killed. Use library-provided async
+context managers for LSP/network clients, or write one with `contextlib.asynccontextmanager`:
+
+```python
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def connection():
+    client = await connect()  # Your library's connection API.
+    try:
+        yield client
+    finally:
+        await client.close()
+
+
+def setup(plugin):
+    service = plugin.service("client", connection)
+
+    async def inspect(context, arguments):
+        client = await service.get()
+        return await client.describe()
+
+    plugin.command("inspect-service", "Inspect my service", inspect)
+```
+
+Cancel and join any background tasks inside the manager's `finally`; do not detach subprocesses
+from the worker's process group. Connections are independent across agents and reloads.
 
 ## Callbacks
 

@@ -55,6 +55,14 @@ class Worker:
         if self.loaded is None:
             raise PluginError("Plugin is not loaded")
         plugin = self.loaded.plugin
+        if operation == "shutdown":
+            # Join callbacks before closing their resources. Never cancel this shutdown call.
+            tasks = [task for task in self.tasks.values() if task is not asyncio.current_task()]
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await plugin.services.close()
+            return None
         context = Context.decode(request["context"])
         if operation == "snapshot":
             for callback in plugin.observers.get("sample", ()):
@@ -85,7 +93,8 @@ class Worker:
                 from jsonschema import Draft202012Validator
 
                 Draft202012Validator(dict(registry[request["name"]].parameters)).validate(request["arguments"])
-            result = await registry[request["name"]].handler(context, request["arguments"])
+            with plugin.services.invocation():
+                result = await registry[request["name"]].handler(context, request["arguments"])
             if not isinstance(result, str):
                 raise PluginError("Plugin actions must return text")
             return result
@@ -118,6 +127,7 @@ class Worker:
                 task.cancel()
             await asyncio.gather(*tuple(self.tasks.values()), return_exceptions=True)
             if self.loaded is not None:
+                await self.loaded.plugin.services.close()
                 self.loaded.close()
 
 

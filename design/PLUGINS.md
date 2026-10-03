@@ -55,9 +55,12 @@ The turn guard remains held while completion observers run. Never clear the engi
 before awaiting observers: another turn could otherwise overlap the old generation. Cancellation
 must release invocation leases in `finally` and must not leave pending replacement stranded.
 
-Import and setup side effects cannot be rolled back. The current SDK prohibits unmanaged tasks;
-it does not yet provide persistent plugin data, managed background tasks, workflow interventions,
-or agent services. Those need explicit ownership and teardown contracts before extension.
+Import and setup side effects cannot be rolled back. `plugin.service` registers a lazy async
+context manager, acquired only by explicit actions. Samples and validation cannot acquire SDK
+services. One handle serializes acquisition; failed acquisition is retryable. Retirement cancels
+and joins callbacks, then closes resources in reverse acquisition order. The parent grants one
+second for cooperative teardown before killing the process group. Connections and their tasks
+belong inside this scope; detached processes and unmanaged threads remain unsupported.
 
 ## Execution and UI
 

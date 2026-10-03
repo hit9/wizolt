@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add lazy plugin services for reusable connections, with cancellation before teardown and
+  bounded cleanup on disable, reload and exit. Keep validation and sampling free of service startup.
+
 - Open bounded UI slots above the divider and below the input, multicolor rows, read-only usage
   and context facts, and sampling observers. Add context-bar/token-wave skill examples and
   configurable pet placement; keep live and offline previews under the same height budget.

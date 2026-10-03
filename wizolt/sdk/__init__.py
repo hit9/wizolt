@@ -10,7 +10,14 @@ import inspect
 import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeVar
+
+if TYPE_CHECKING:
+    from contextlib import AbstractAsyncContextManager
+
+    from wizolt.sdk.services import Service
+
+Resource = TypeVar("Resource")
 
 SDK_VERSION = 1
 Value = str | int | float | bool
@@ -137,6 +144,7 @@ class Plugin:
     COMMAND_NAME = r"[A-Za-z_][A-Za-z_0-9-]*"
 
     def __init__(self, name: str, config: Mapping[str, Any] | None = None):
+        from wizolt.sdk.services import Services
         from wizolt.sdk.settings import freeze
 
         self.name = name
@@ -149,6 +157,19 @@ class Plugin:
         self.observers: dict[str, list[Observer]] = {}
         self.themes: dict[str, dict[str, Any]] = {}
         self.presets: dict[str, dict[str, str]] = {"statusbar": {}, "divider": {}}
+        self.services = Services()
+        self._service_handles: dict[str, Service] = {}
+
+    def service(self, name: str, factory: Callable[[], AbstractAsyncContextManager[Resource]]) -> Service[Resource]:
+        """Register a lazy async context manager; disabling/reloading closes its resources.
+
+        Setup and validation do not enter the manager. The first explicit ``get()`` starts it.
+        Keep connection tasks inside the manager and cancel/join them in its finally block.
+        Teardown is bounded by the host; an unresponsive worker is killed with its process group.
+        """
+        handle = self.services.register(factory)
+        self._register(self._service_handles, name, handle)
+        return handle
 
     @property
     def config(self) -> Mapping[str, Any]:
@@ -214,7 +235,7 @@ class Plugin:
         self._register(self.commands, name, Action(description, handler, during_turn=during_turn), pattern=self.COMMAND_NAME)
 
     def tool(self, name: str, description: str, parameters: Mapping[str, Any], handler: Handler) -> None:
-        """Register a model-invoked operation behind the core tool approval boundary."""
+        """Register an explicit offline trial operation; this does not add an LLM tool."""
         from jsonschema import Draft202012Validator
         from jsonschema.exceptions import SchemaError
 

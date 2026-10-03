@@ -145,8 +145,22 @@ class PluginProcess:
             self.stderr = (self.stderr + chunk.decode(errors="replace"))[-8192:]
 
     async def close(self) -> None:
-        """Idempotently kill the generation's process group and drain both pipe consumers."""
+        """Offer bounded resource teardown, then kill the group and drain pipe consumers."""
         async with self._close_lock:
+            if not self.error and self.process.returncode is None:
+                # Do not use request(): its timeout calls close(), which would await this lock.
+                self.sequence += 1
+                identity = self.sequence
+                future = asyncio.get_running_loop().create_future()
+                self.pending[identity] = future
+                try:
+                    self._write({"id": identity, "operation": "shutdown"})
+                    async with asyncio.timeout(1):
+                        await future
+                except (PluginError, TimeoutError, BrokenPipeError, ConnectionResetError):
+                    pass
+                finally:
+                    self.pending.pop(identity, None)
             # The leader may have exited while its descendants still hold our pipe ends.
             with contextlib.suppress(ProcessLookupError):
                 os.killpg(self.process.pid, signal.SIGKILL)

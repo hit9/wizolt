@@ -1,5 +1,9 @@
 # Plugins
 
+Plugins can keep connections such as LSP clients open between commands. They start on first
+use and close when the plugin is disabled, reloaded, or wizolt exits. Ask `plugin-workshop` to
+use a managed service for a long-lived connection.
+
 Plugins can add colorschemes and statusbar/divider presets to `/theme`. Choices are named
 `plugins.NAME.CHOICE`; selecting one uses the same theme and format settings as built-ins.
 Reload updates the chosen preset. Disabling its plugin temporarily uses the default appearance;
