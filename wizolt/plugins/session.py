@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from collections.abc import Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -12,7 +13,7 @@ from wizolt.plugins.catalog import Installation, PluginCatalog
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.runtime import PluginRuntime
 from wizolt.plugins.settings import PluginSettings
-from wizolt.sdk import Context, PluginError
+from wizolt.sdk import Context, ContextWindow, PluginError, Usage
 
 if TYPE_CHECKING:
     from wizolt.session import Session
@@ -32,11 +33,23 @@ class SessionPlugins(PluginRuntime):
         self.problems: dict[str, str] = {}
         self._management_lock = asyncio.Lock()
         self.catalog = PluginCatalog.for_project(session.config.data_dir, session.cwd)
+        self.context_parts: tuple[tuple[str, int], ...] = ()
+        self.read_context: Callable[[], list[tuple[str, int]]] | None = None
         super().__init__(self.snapshot, PluginSettings(session.config.plugins, session.config.path))
+
+    async def prepare(self, path: str, source: PluginSource | None = None, settings: dict | None = None):
+        # Populate an idle/resumed agent's meter when enabling a plugin too. This is an
+        # admission boundary, not a render/sample callback; the engine supplies the estimator.
+        if self.read_context is not None:
+            self.context_parts = tuple(self.read_context())
+        return await super().prepare(path, source, settings)
 
     def snapshot(self) -> Context:
         session = self.session
         state = session.state
+        now = time.monotonic()
+        usage = session.usage
+        fill = session.context_fill()
         return Context(
             session.uid,
             session.agent_name,
@@ -45,7 +58,14 @@ class SessionPlugins(PluginRuntime):
             session.usage.context_percent(state.context_percent),
             state.elapsed,
             session.config.provider.model,
-            time.monotonic(),
+            now,
+            usage=Usage(usage.calls, usage.prompt_tokens, usage.completion_tokens, usage.cached_prompt_tokens, state.estimated_output_rate(now) or 0),
+            window=ContextWindow(
+                fill["used"],
+                session.config.provider.context_token_limit(session.settings.max_context_tokens),
+                session.request_token_budget(),
+                self.context_parts,
+            ),
         )
 
     async def load(self) -> None:

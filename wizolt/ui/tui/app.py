@@ -384,9 +384,9 @@ class TuiApp:
         self.activity_follows_transcript_fn: Callable[[], bool] = lambda: False
         self.activity_gap_rows = 0
         self.idle_divider_fragments_fn: Callable[[], StyleAndTextTuples] = list
-        self.above_input_fragments_fn: Callable[[int, int], StyleAndTextTuples] = lambda columns, rows: []
-        self._above_input_frame: tuple[int, int, int] | None = None
-        self._above_input_parts: StyleAndTextTuples = []
+        self.extension_fragments_fn: Callable[[int, int], dict[str, StyleAndTextTuples]] = lambda columns, rows: {}
+        self._extension_frame: tuple[int, int, int] | None = None
+        self._extension_parts: dict[str, StyleAndTextTuples] = {}
         self.input_hint_fn = input_hint_fn or (lambda: "")
         self.quick_hints_fn: Callable[[], tuple[str, ...]] = quick_hints_fn or (lambda: ())
         self.file_picker_available_fn = file_picker_available_fn or (lambda: False)
@@ -461,7 +461,7 @@ class TuiApp:
         self.exclusive_modal_window: Window | None = None
         self.status_window: Window | None = None
 
-    def above_input_fragments(self) -> StyleAndTextTuples:
+    def extension_fragments(self, slot: str) -> StyleAndTextTuples:
         """Project input additions once per frame for both visibility and window content.
 
         Layout can ask for fragments repeatedly. Re-running extension callbacks for each query
@@ -472,10 +472,17 @@ class TuiApp:
             return []
         size = self.app.output.get_size()
         frame = (self.app.render_counter, size.columns, size.rows)
-        if frame != self._above_input_frame:
-            self._above_input_frame = frame
-            self._above_input_parts = self.above_input_fragments_fn(size.columns, size.rows)
-        return self._above_input_parts
+        if frame != self._extension_frame:
+            self._extension_frame = frame
+            self._extension_parts = self.extension_fragments_fn(size.columns, size.rows)
+        return self._extension_parts.get(slot, [])
+
+    def extension_window(self, slot: str) -> ConditionalContainer:
+        """A named surface uses the same frame snapshot for height and drawing."""
+        return ConditionalContainer(
+            Window(FormattedTextControl(lambda: self.extension_fragments(slot)), dont_extend_height=True, wrap_lines=False),
+            filter=Condition(lambda: bool(self.extension_fragments(slot))),
+        )
 
     async def request_input(self, prompt: str) -> str | None:
         """Ask for a line of user input inline (an approval prompt, an Ask free-text page) and await it.
@@ -1632,13 +1639,11 @@ class TuiApp:
             HSplit(
                 [
                     running_gap_above,
+                    self.extension_window("above_divider"),
                     activity,
                     running_gap_below,
                     prompt_above,
-                    ConditionalContainer(
-                        Window(FormattedTextControl(self.above_input_fragments), dont_extend_height=True, wrap_lines=False),
-                        filter=Condition(lambda: bool(self.above_input_fragments())),
-                    ),
+                    self.extension_window("above_input"),
                     input_error,
                     approval_form,
                     ConditionalContainer(
@@ -1650,6 +1655,7 @@ class TuiApp:
                         filter=input_padding,
                     ),
                     self.input_window,
+                    self.extension_window("below_input"),
                     ConditionalContainer(
                         Window(height=Dimension(min=0, preferred=1, max=1), style=lambda: f"bg:{Theme.color('user_bg')}"),
                         filter=input_padding,

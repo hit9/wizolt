@@ -2365,13 +2365,8 @@ class StatusBar:
 
         Read off the in-flight worker when there is one, like every other value on this row.
         """
-        state = self.session.state
-        if not state.stream_started_at or not state.stream_chars:
-            return ""
-        elapsed = time.monotonic() - state.stream_started_at
-        if elapsed < 1.0:
-            return ""
-        return f"↓ {round(state.stream_chars / 4 / elapsed)} tok/s"
+        rate = self.session.state.estimated_output_rate(time.monotonic())
+        return "" if rate is None else f"↓ {round(rate)} tok/s"
 
     def model_attempt_status(self) -> str:
         attempt = self.session.state.current_model_attempt

@@ -75,14 +75,24 @@ Configuration is not provider access: model services and managed LSP connections
 The entry callable receives `plugin: wizolt.sdk.Plugin` and registers callbacks synchronously.
 Callbacks receive immutable `Context`: agent_id, agent_name, cwd, status, context_percent,
 elapsed seconds, model, monotonic now, and available columns.
+`context.usage` contains cumulative calls/input_tokens/output_tokens/cached_tokens and estimated
+live output_rate (tokens/s). `context.window` contains used/limit/budget and `(category, tokens)`
+parts. Parts are local estimates refreshed at activation/request boundaries; used may be a
+provider count. They need not sum to the same number. No message text or credentials are exposed.
+For offline fixtures, `test --facts facts.json` accepts Context overrides, for example
+`{"usage":{"output_rate":42},"window":{"used":200,"limit":1000,"parts":[["system",100],["messages",100]]}}`.
+`--width` and `--project` still own the viewport and worker directory; `--times` owns sample times.
 
 Registration methods:
 
 - `field(name, callback)`: sync callback `(Context) -> str | int | float | bool`.
   Use `{plugins.filename.name}` in statusbar/divider formats; absent fields read as zero.
-- `component(slot, callback)`: sync callback `(Context) -> Panel`. Slots: `above_input`, `status`.
+- `component(slot, callback)`: sync callback `(Context) -> Panel`. Slots: `above_divider`,
+  `above_input`, `below_input`, `status` (inside `/status`).
   Return `Panel((Text("content", "accent"), ...))`, at most 12 rows, 4096 characters per row.
-  Roles: text, muted, accent, success, warning, error. The host clips to available space.
+  Use `Line((Text(...), Text(...)))` for multiple colors on one row. All theme color roles work;
+  prefer text, muted, accent, success, warning, error. The host clips to available space.
+  Prompt slots share at most six rows in visual order, fewer in short panes; approval hides them.
 - `command(name, description, handler, during_turn=False)`: async `(Context, arguments) -> str`.
   Registers `/name`; trailing text is `arguments["input"]`. Set during_turn only for changes
   safe alongside a turn. Built-in and other plugins' command names cannot be replaced.
@@ -92,8 +102,9 @@ Registration methods:
   This runs a fresh instance with preview context, not the running agent's plugin state. It does
   not add a model tool. Use commands for operations on live UI state.
 - `on(event, observer)`: async `(Event) -> None`; Event has name and context.
-  Events: turn.started, turn.finished. Observer exceptions are reported by inspect; each observer
-  has a one-second deadline. Live tool/command handlers have a 60-second deadline.
+  Events: turn.started, turn.finished, sample. `sample` runs before fields/components are sampled
+  (normally 5 Hz); collect a bounded history here, then render it without side effects. Turn
+  observers have a one-second deadline, a complete sample two seconds, live actions 60 seconds.
 
 UI callbacks may run frequently. Read cached state only; use context.now for lightweight animation.
 No callback implicitly calls an LLM. Modules are independently executed for every agent and reload;
@@ -189,4 +200,73 @@ def setup(plugin: Plugin) -> None:
     plugin.field("weather", weather)
     plugin.component("above_input", draw)
     plugin.component("status", draw)
+```
+
+## Example: context_bar.py
+
+An estimated stacked context meter, toggled with `/context-bar`:
+
+```python
+from wizolt.sdk import Line, Panel, Text
+
+SDK_VERSION = 1
+
+
+class ContextBar:
+    COLORS = ("accent", "success", "warning", "status_model", "status_provider", "muted")
+
+    def __init__(self):
+        self.visible = True
+
+    async def toggle(self, context, arguments):
+        self.visible = not self.visible
+        return "Context bar on" if self.visible else "Context bar off"
+
+    def draw(self, context):
+        if not self.visible:
+            return Panel()
+        width, total, previous, spans = max(1, context.columns - 2), 0, 0, []
+        for index, (name, tokens) in enumerate(context.window.parts):
+            total += tokens
+            end = min(width, round(total * width / max(1, context.window.limit)))
+            spans.append(Text("█" * (end - previous), self.COLORS[index % len(self.COLORS)]))
+            previous = end
+        spans.append(Text("░" * (width - previous), "muted"))
+        return Panel((Text(f"context {context.window.used} / {context.window.limit}"), Line(tuple(spans))))
+
+
+def setup(plugin):
+    bar = ContextBar()
+    plugin.component("above_divider", bar.draw)
+    plugin.command("context-bar", "Toggle context meter", bar.toggle, during_turn=True)
+```
+
+## Example: token_wave.py
+
+A bounded history sampled outside rendering; speed is estimated, not provider-reported:
+
+```python
+from collections import deque
+from wizolt.sdk import Panel, Text
+
+SDK_VERSION = 1
+
+
+class TokenWave:
+    def __init__(self):
+        self.rates = deque(maxlen=40)
+
+    async def sample(self, event):
+        self.rates.append(event.context.usage.output_rate)
+
+    def draw(self, context):
+        scale = max(1, max(self.rates, default=0))
+        wave = "".join("▁▂▃▄▅▆▇█"[min(7, round(rate / scale * 7))] for rate in self.rates)
+        return Panel((Text(f"{wave}  ~{context.usage.output_rate:.0f} tok/s", "accent"),))
+
+
+def setup(plugin):
+    wave = TokenWave()
+    plugin.on("sample", wave.sample)
+    plugin.component("below_input", wave.draw)
 ```

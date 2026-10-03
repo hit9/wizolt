@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Open bounded UI slots above the divider and below the input, multicolor rows, read-only usage
+  and context facts, and sampling observers. Add context-bar/token-wave skill examples and
+  configurable pet placement; keep live and offline previews under the same height budget.
+
 - Allow plugins to register namespaced colorschemes and statusbar/divider format presets in
   `/theme`, with validation, live reload, agent-local catalogs and safe disabled fallbacks.
 

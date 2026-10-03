@@ -101,6 +101,15 @@ class AgentState:
     stream_started_at: float = 0.0
     stream_chars: int = 0
 
+    def estimated_output_rate(self, now: float) -> float | None:
+        """Shared live-speed estimate for native UI and plugins, absent before one second.
+
+        Providers report token totals at completion; the live approximation uses four streamed
+        characters per token. Keep the heuristic here so different projections cannot drift.
+        """
+        elapsed = now - self.stream_started_at if self.stream_started_at else 0
+        return self.stream_chars / 4 / elapsed if self.stream_chars and elapsed >= 1 else None
+
     @property
     def elapsed(self) -> float:
         return max(0.0, time.monotonic() - self.turn_started_at) if self.turn_started_at else self.turn_elapsed

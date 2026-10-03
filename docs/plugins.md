@@ -47,6 +47,17 @@ your theme. It is installed but **disabled by default** and makes no model calls
 
 Choose **disable** to hide it. Disabling keeps a plugin installed so you can enable it again.
 
+To move the pet above the divider, add this to `config.toml`, then reload it:
+
+```toml
+[plugins.pet]
+slot = "above_divider"
+```
+
+Plugins can draw above the divider, above or below the input, and inside `/status`. Prompt
+additions share at most six rows and shrink in short terminals. They can use multicolor rows,
+context categories and token-speed samples; ask plugin-workshop for a context bar or speed graph.
+
 ## Manage your plugins
 
 `/plugins` shows installed plugins, enablement, actual runtime status, and source paths.

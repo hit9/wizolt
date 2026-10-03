@@ -466,7 +466,7 @@ class TuiRuntime:
         if self.loop.session.plugins is not None:
             from wizolt.ui.cli.plugins import PluginView
 
-            tui.above_input_fragments_fn = PluginView(self.loop.session.plugins).above_input
+            tui.extension_fragments_fn = PluginView(self.loop.session.plugins).fragments
         tui.input_hint_fn = self.loop.view.tui_input_hint
         tui.quick_hints_fn = lambda: self.loop.session.quick_hints
         if self.loop.session.mentions:

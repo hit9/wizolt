@@ -7,11 +7,12 @@ plugin response. These are host budgets, not extension points or a security sand
 from dataclasses import dataclass
 from typing import Any
 
-from wizolt.sdk import Panel, PluginError, Text
+from wizolt.sdk import Line, Panel, PluginError, Text
 
 MAX_FRAME = 1024 * 1024
 MAX_PANEL_ROWS = 12
 MAX_ROW_CHARACTERS = 4096
+MAX_ROW_SPANS = 256
 
 
 @dataclass(frozen=True)
@@ -58,7 +59,10 @@ class Snapshot:
         """Decode only data. The parent never imports classes supplied by plugin Python."""
         try:
             fields = value["fields"]
-            panels = {slot: Panel(tuple(Text(**row) for row in panel["rows"])) for slot, panel in value["panels"].items()}
+            panels = {
+                slot: Panel(tuple(Line(tuple(Text(**span) for span in row["spans"])) if "spans" in row else Text(**row) for row in panel["rows"]))
+                for slot, panel in value["panels"].items()
+            }
             if not isinstance(fields, dict):
                 raise TypeError("fields must be an object")
             for panel in panels.values():
@@ -71,8 +75,11 @@ class Snapshot:
     def check_panel(panel: Panel) -> None:
         if not isinstance(panel, Panel) or len(panel.rows) > MAX_PANEL_ROWS:
             raise PluginError(f"Component must return Panel with at most {MAX_PANEL_ROWS} rows")
-        if any(
-            not isinstance(row, Text) or not isinstance(row.text, str) or not isinstance(row.role, str) or len(row.text) > MAX_ROW_CHARACTERS
-            for row in panel.rows
-        ):
-            raise PluginError(f"Panel rows must be Text with at most {MAX_ROW_CHARACTERS} characters")
+        for row in panel.rows:
+            spans = row.spans if isinstance(row, Line) else (row,)
+            if len(spans) > MAX_ROW_SPANS or any(
+                not isinstance(span, Text) or not isinstance(span.text, str) or not isinstance(span.role, str) for span in spans
+            ):
+                raise PluginError(f"Panel rows must contain at most {MAX_ROW_SPANS} Text spans")
+            if sum(len(span.text) for span in spans) > MAX_ROW_CHARACTERS:
+                raise PluginError(f"Panel rows must contain at most {MAX_ROW_CHARACTERS} characters")

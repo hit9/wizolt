@@ -1,7 +1,7 @@
 """A quiet desk companion, using only the same public SDK as user-authored plugins.
 
 Animation is a pure function of the host's monotonic clock. No timers, background jobs, random
-state or model calls are needed; hidden components do no work and agent switches show the new
+state or model calls are needed; disabled plugins do no work and agent switches show the new
 agent's state. Semantic roles deliberately leave every color choice to the active theme.
 """
 
@@ -35,4 +35,8 @@ def draw(context: Context) -> Panel:
 
 def setup(plugin: Plugin) -> None:
     """Default enablement belongs to the installation catalog, never to plugin source code."""
-    plugin.component("above_input", draw)
+    plugin.configure(
+        {"type": "object", "properties": {"slot": {"enum": ["above_divider", "above_input", "below_input"]}}, "additionalProperties": False},
+        defaults={"slot": "above_input"},
+    )
+    plugin.component(plugin.config["slot"], draw)

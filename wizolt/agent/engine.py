@@ -79,6 +79,8 @@ class Agent:
         self.session = session
         self.model = ModelClient(session)
         self.context = ContextManager(session, self.model)
+        if session.plugins is not None:
+            session.plugins.read_context = lambda: self.context.breakdown(self.session.system_prompt)
         self.vision_observe = VisionObserver(self.model).observe
         self.tools = ToolRunner(session, self.context, input_fn=input_fn, output_fn=output_fn)
         self.output_fn = output_fn
@@ -704,6 +706,9 @@ class Agent:
         self.session.state.turn_messages = len(request_turn)
         tools = Tool.resolved_schemas(self.session)
         messages = await self.context.prepare_messages(self.model, self.session.system_prompt, request_turn, tools)
+        if self.session.plugins is not None and self.session.plugins.entries:
+            # Token estimation belongs at request boundaries, never in the 5 Hz UI sampler.
+            self.session.plugins.context_parts = tuple(self.context.breakdown(self.session.system_prompt))
         return PreparedRequest(messages, tools, pending, request_turn, tuple(current_raw))
 
     async def _image_fallback_request(

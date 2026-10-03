@@ -21,6 +21,27 @@ class PluginError(ValueError):
 
 
 @dataclass(frozen=True)
+class Usage:
+    """Agent-local cumulative usage and estimated live speed (characters / four / seconds)."""
+
+    calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cached_tokens: int = 0
+    output_rate: float = 0
+
+
+@dataclass(frozen=True)
+class ContextWindow:
+    """Reported fill and separately estimated categories from the latest prepared request."""
+
+    used: int = 0
+    limit: int = 0
+    budget: int = 0
+    parts: tuple[tuple[str, int], ...] = ()
+
+
+@dataclass(frozen=True)
 class Context:
     """Read-only facts for one callback, not a handle into the live session.
 
@@ -38,6 +59,18 @@ class Context:
     model: str
     now: float
     columns: int = 80
+    usage: Usage = field(default_factory=Usage)
+    window: ContextWindow = field(default_factory=ContextWindow)
+
+    @classmethod
+    def decode(cls, value: dict) -> Context:
+        """Reconstitute immutable public values at the process boundary."""
+        window = value.get("window", {})
+        return cls(
+            **{key: item for key, item in value.items() if key not in ("usage", "window")},
+            usage=Usage(**value.get("usage", {})),
+            window=ContextWindow(**{**window, "parts": tuple(tuple(part) for part in window.get("parts", ()))}),
+        )
 
 
 @dataclass(frozen=True)
@@ -49,10 +82,21 @@ class Text:
 
 
 @dataclass(frozen=True)
+class Line:
+    """One row of differently styled text spans; clipping belongs to the host."""
+
+    spans: tuple[Text, ...] = ()
+
+    @property
+    def text(self) -> str:
+        return "".join(span.text for span in self.spans)
+
+
+@dataclass(frozen=True)
 class Panel:
     """A bounded stack of text rows. Empty rows are allowed; empty panels occupy no space."""
 
-    rows: tuple[Text, ...] = ()
+    rows: tuple[Text | Line, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -86,8 +130,8 @@ class Plugin:
     imported module state, but have the user's filesystem/network permissions: not a sandbox.
     """
 
-    EVENTS = frozenset(("turn.started", "turn.finished"))
-    SLOTS = frozenset(("above_input", "status"))
+    EVENTS = frozenset(("turn.started", "turn.finished", "sample"))
+    SLOTS = frozenset(("above_divider", "above_input", "below_input", "status"))
     MAX_REGISTRATIONS = 64
     IDENTIFIER = r"[A-Za-z_][A-Za-z_0-9]*"
     COMMAND_NAME = r"[A-Za-z_][A-Za-z_0-9-]*"

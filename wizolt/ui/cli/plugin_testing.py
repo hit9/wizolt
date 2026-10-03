@@ -11,6 +11,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from wizolt.config import Config
+from wizolt.plugins.files import read_regular
 from wizolt.plugins.protocol import Capabilities
 from wizolt.plugins.testing import PluginTrial, Stimulus
 from wizolt.plugins.workspace import PluginWorkspace
@@ -31,6 +32,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--theme", default="", help="Built-in or custom theme; defaults to the selected config theme")
     parser.add_argument("--status", default="idle", help="Agent state supplied to callbacks")
     parser.add_argument("--context-percent", type=float, default=21)
+    parser.add_argument("--facts", type=Path, help="JSON Context overrides for offline fixtures (usage, window, etc.)")
     parser.add_argument("--times", type=float, nargs="+", default=[0], help="Animation times in seconds; at most 12 frames")
     parser.add_argument("--timeout", type=float, default=5, help="Deadline for each worker call, in seconds (0–60)")
     parser.add_argument("--event", action="append", default=[], help="Explicit lifecycle event; repeat to send several")
@@ -76,10 +78,17 @@ def main(argv: list[str]) -> int:
         python = installed.python if installed else ""
         if installed:
             args.path = installed.path
+        context = Context("preview", "main", workspace.cwd, args.status, args.context_percent, 0, "preview-model", 0, args.width)
+        if args.facts:
+            facts = json.loads(read_regular(args.facts, 256 * 1024))
+            if not isinstance(facts, dict):
+                raise ValueError("facts must be a JSON object")
+            # A fixture supplies agent facts, not host IO settings. Viewport and working
+            # directory remain the explicit --width / --project values used by the preview.
+            context = Context.decode({**asdict(context), **facts, "cwd": workspace.cwd, "columns": args.width})
     except Exception as error:  # noqa: BLE001 - configuration failures are structured feedback too.
         print(json.dumps({"status": "failed", "stage": "configuration", "error": str(error)}, ensure_ascii=False))
         return 1
-    context = Context("preview", "main", workspace.cwd, args.status, args.context_percent, 0, "preview-model", 0, args.width)
     trial = PluginTrial(context, timeout=args.timeout, python=python, settings=workspace.settings)
     trial.validate = AppearanceContribution.validate
     report = asdict(

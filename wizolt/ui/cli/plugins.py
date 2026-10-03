@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, ClassVar
 
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 
-from wizolt.sdk import Panel, PluginError
-from wizolt.ui.bars import clean, clip
+from wizolt.sdk import Line, Panel, PluginError
+from wizolt.ui.bars import Fragments, clean, clip
 from wizolt.ui.cli.modals import choice_application, picker_height
 from wizolt.ui.render import Theme
 from wizolt.ui.tui import ChoiceViewState
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 class PluginView:
     """Compose all plugins in registration order under one height budget, without terminal IO."""
 
-    ROLES: ClassVar = frozenset(("text", "muted", "accent", "success", "warning", "error"))
+    INPUT_SLOTS: ClassVar = ("above_divider", "above_input", "below_input")
 
     def __init__(self, runtime: PluginRuntime):
         self.runtime = runtime
@@ -38,8 +38,9 @@ class PluginView:
                     return result
                 if result:
                     result.append(("", "\n"))
-                style = Theme.fg(row.role if row.role in cls.ROLES else "text")
-                result.extend(clip([(style, clean(row.text))], max(0, columns)))
+                spans = row.spans if isinstance(row, Line) else (row,)
+                fragments = [(Theme.fg(span.role if span.role in Theme.ROLES else "text"), clean(span.text)) for span in spans]
+                result.extend(clip(fragments, max(0, columns)))
                 remaining -= 1
         return result
 
@@ -48,12 +49,22 @@ class PluginView:
         """One height policy for live projection and offline component previews."""
         return min(6, max(0, rows // 4 - 2))
 
-    def above_input(self, columns: int, rows: int) -> StyleAndTextTuples:
-        """Use the host viewport; querying the shell's terminal can disagree after a resize."""
-        rows = self.input_rows(rows)
-        if not rows:
-            return []
-        return list(self.render(self.runtime.panels("above_input", columns), columns, rows))
+    @classmethod
+    def project(cls, panels: dict[str, list[Panel]], columns: int, rows: int) -> dict[str, Fragments]:
+        """All prompt-adjacent slots share one budget, in visual order, leaving input room."""
+        remaining = cls.input_rows(rows)
+        projected = {}
+        for slot in cls.INPUT_SLOTS:
+            fragments = cls.render(panels.get(slot, []), columns, remaining)
+            projected[slot] = fragments
+            if fragments:
+                remaining -= 1 + sum(text.count("\n") for _, text in fragments)
+        return projected
+
+    def fragments(self, columns: int, rows: int) -> dict[str, StyleAndTextTuples]:
+        return {
+            slot: list(parts) for slot, parts in self.project({slot: self.runtime.panels(slot, columns) for slot in self.INPUT_SLOTS}, columns, rows).items()
+        }
 
 
 class PluginManager:

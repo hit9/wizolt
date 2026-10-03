@@ -14,6 +14,7 @@ from rich.color import Color
 
 from wizolt.plugins.protocol import MAX_PANEL_ROWS, Snapshot
 from wizolt.sdk import Panel
+from wizolt.ui.bars import Fragments
 from wizolt.ui.cli.plugins import PluginView
 from wizolt.ui.render import Theme
 
@@ -45,12 +46,13 @@ class PreviewExporter:
     def export(self, frame: dict, index: int) -> list[dict]:
         snapshot = Snapshot.decode(frame)
         columns = frame["context"]["columns"]
-        return [self.panel(panel, slot, columns, index) for slot, panel in snapshot.panels.items()]
+        projected = PluginView.project({slot: [panel] for slot, panel in snapshot.panels.items()}, columns, self.height)
+        return [self.panel(panel, slot, columns, index, projected.get(slot)) for slot, panel in snapshot.panels.items()]
 
-    def panel(self, panel: Panel, slot: str, columns: int, index: int) -> dict:
+    def panel(self, panel: Panel, slot: str, columns: int, index: int, fragments: Fragments | None = None) -> dict:
         # Match the live input component's cap. The status tab uses the full bounded panel.
-        rows = PluginView.input_rows(self.height) if slot == "above_input" else MAX_PANEL_ROWS
-        fragments = PluginView.render([panel], columns, rows)
+        rows = PluginView.input_rows(self.height) if slot in PluginView.INPUT_SLOTS else MAX_PANEL_ROWS
+        fragments = PluginView.render([panel], columns, rows) if fragments is None else fragments
         text = "".join(value for _, value in fragments)
         lines = text.count("\n") + 1 if text else 0
         title = f"{slot} · {columns} columns · {Theme.name()}"
@@ -98,7 +100,7 @@ class PreviewExporter:
             "rows": lines,
             "text": text,
             "styles": fragments,
-            "clipped": len(panel.rows) > rows or any(get_cwidth(row.text) > columns for row in panel.rows),
+            "clipped": len(panel.rows) > lines or any(get_cwidth(row.text) > columns for row in panel.rows),
             "svg": str(svg_path),
             "png": str(png_path),
             "font": font,

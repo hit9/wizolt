@@ -44,9 +44,10 @@ def test_input_components_follow_actual_viewport_and_leave_input_usable(monkeypa
 
     def additions(columns, rows):
         calls.append((app.app.render_counter, columns, rows))
-        return [("", f"PLUGIN {columns}x{rows}")]
+        return {"above_divider": [("", "BEFORE DIVIDER")], "above_input": [("", f"PLUGIN {columns}x{rows}")], "below_input": [("", "AFTER INPUT")]}
 
-    app.above_input_fragments_fn = additions
+    app.extension_fragments_fn = additions
+    app.idle_divider_fragments_fn = lambda: [("", "DIVIDER ROW")]
 
     def after_render(application):
         frames.append(rendered_screen_text(application, output))
@@ -58,6 +59,9 @@ def test_input_components_follow_actual_viewport_and_leave_input_usable(monkeypa
         wait_until(lambda: any("PLUGIN 40x18" in frame for frame in frames))
         pipe.send_text("still editable")
         wait_until(lambda: app.input_buffer.text == "still editable")
+        wait_until(lambda: any("still editable" in frame for frame in frames))
+        frame = next(frame for frame in reversed(frames) if "still editable" in frame)
+        assert frame.index("BEFORE DIVIDER") < frame.index("DIVIDER ROW") < frame.index("PLUGIN") < frame.index("still editable") < frame.index("AFTER INPUT")
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive, output=output, after_render=after_render)

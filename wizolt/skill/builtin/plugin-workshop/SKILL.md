@@ -6,7 +6,7 @@ description: Create, edit, install, and manage wizolt Python plugins for persona
 # Plugin workshop
 
 Use configuration when a format string is enough. For Python, read [SDK.md](SDK.md), including
-the pet and tokenweather examples. `/plugins` is the user's interactive manager.
+the pet, tokenweather, context-bar and token-wave examples. `/plugins` is the user's interactive manager.
 For the bundled pet, simply enable `pet` by name; it is installed but disabled by default.
 
 1. **Inspect:** `wizolt plugin list`, then `wizolt plugin inspect NAME`. Edit the returned path.

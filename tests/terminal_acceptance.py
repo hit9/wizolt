@@ -50,6 +50,7 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
         f'[paths]\ndata_dir = "{pane.path}/data"\n'
         '[provider]\nactive = "test"\n[provider.test]\n'
         'url = "http://127.0.0.1:9/v1"\nkey = "test"\nmodel = "test-model"\n'
+        '[plugins.pet]\nslot = "above_divider"\n'
     )
     entry = pane.path / "plugins.py"
     entry.write_text(

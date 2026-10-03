@@ -55,8 +55,10 @@ class Worker:
         if self.loaded is None:
             raise PluginError("Plugin is not loaded")
         plugin = self.loaded.plugin
-        context = Context(**request["context"])
+        context = Context.decode(request["context"])
         if operation == "snapshot":
+            for callback in plugin.observers.get("sample", ()):
+                await callback(Event("sample", context))
             fields = {}
             for name, callback in plugin.fields.items():
                 value = callback(context)

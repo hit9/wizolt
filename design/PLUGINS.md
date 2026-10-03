@@ -1,5 +1,11 @@
 # Plugin implementation boundaries
 
+The three prompt-adjacent slots share one visual-order height budget. Never budget each slot
+independently: several individually valid plugins could otherwise squeeze out the input.
+The TUI snapshots all slot fragments once per render, and offline previews reuse that projection.
+Context-category estimation runs at admission/request boundaries, not in the 5 Hz sampler.
+Sampling observers may keep bounded histories; render callbacks consume them without IO.
+
 Appearance contributions are plain metadata. The CLI injects its validator before activation,
 using the same theme compiler and format parser as user configuration. Each layout owns its
 preset catalog; `Theme` projects only the focused agent's palettes. Never publish a background
