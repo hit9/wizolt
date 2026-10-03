@@ -53,6 +53,15 @@ class PreviewExporter:
         # Match the live input component's cap. The status tab uses the full bounded panel.
         rows = PluginView.input_rows(self.height) if slot in PluginView.INPUT_SLOTS else MAX_PANEL_ROWS
         fragments = PluginView.render([panel], columns, rows) if fragments is None else fragments
+        result = self.draw(fragments, slot, columns, index)
+        result["clipped"] = len(panel.rows) > result["rows"] or any(get_cwidth(row.text) > columns for row in panel.rows)
+        return result
+
+    def color_of(self, value: str) -> str:
+        return self.color(value if value in ("", "default") or value.startswith("ansi") else "#" + value)
+
+    def draw(self, fragments: Fragments, slot: str, columns: int, index: int) -> dict:
+        """Write SVG and PNG for already-projected rows: a component's or a bar preset's."""
         text = "".join(value for _, value in fragments)
         lines = text.count("\n") + 1 if text else 0
         title = f"{slot} · {columns} columns · {Theme.name()}"
@@ -74,16 +83,23 @@ class PreviewExporter:
             if value == "\n":
                 column, line = 0, line + 1
                 continue
-            resolved = Theme.transcript_style().get_attrs_for_style_str(style).color or ""
-            color = self.color(resolved if resolved in ("", "default") or resolved.startswith("ansi") else "#" + resolved)
+            attributes = Theme.transcript_style().get_attrs_for_style_str(style)
+            color = self.color_of(attributes.color or "")
+            # Bars are cut by background segments; a preview without them hides the layout.
+            fill = self.color_of(attributes.bgcolor) if attributes.bgcolor and attributes.bgcolor != "default" else ""
+            if attributes.reverse:
+                color, fill = fill or background, color
             cells = get_cwidth(value)
             x = self.PADDING + column * self.CELL_WIDTH
             y = self.PADDING + (line + 2) * self.CELL_HEIGHT
             if value:
+                if fill:
+                    top = y - self.FONT_SIZE - (self.CELL_HEIGHT - self.FONT_SIZE) // 2
+                    svg.append(f'<rect x="{x}" y="{top}" width="{cells * self.CELL_WIDTH}" height="{self.CELL_HEIGHT}" fill="{fill}"/>')
                 svg.append(
                     f'<text x="{x}" y="{y}" fill="{color}" textLength="{cells * self.CELL_WIDTH}" lengthAdjust="spacingAndGlyphs">{escape(value)}</text>'
                 )
-                runs.append((x, y - self.FONT_SIZE, value, color))
+                runs.append((x, y - self.FONT_SIZE, value, color, fill))
             column += cells
         svg.extend(("</g>", "</svg>"))
         # Slot names are not paths. The SDK currently restricts them, but exporters should not
@@ -100,7 +116,6 @@ class PreviewExporter:
             "rows": lines,
             "text": text,
             "styles": fragments,
-            "clipped": len(panel.rows) > lines or any(get_cwidth(row.text) > columns for row in panel.rows),
             "svg": str(svg_path),
             "png": str(png_path),
             "font": font,
@@ -126,7 +141,10 @@ class PreviewExporter:
         image = Image.new("RGB", (width, height), background)
         draw = ImageDraw.Draw(image)
         draw.text((self.PADDING, self.PADDING), title, font=font, fill=foreground)
-        for x, y, value, color in runs:
+        for x, y, value, color, fill in runs:
+            if fill:
+                top = y - (self.CELL_HEIGHT - self.FONT_SIZE) // 2
+                draw.rectangle((x, top, x + get_cwidth(value) * self.CELL_WIDTH - 1, top + self.CELL_HEIGHT - 1), fill=fill)
             # Place characters by terminal cells rather than proportional font advances.
             # Combining marks attach to the previous cell; they do not advance the grid.
             previous = x

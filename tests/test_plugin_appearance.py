@@ -103,6 +103,28 @@ def test_offline_validation_rejects_bad_appearance_and_accepts_plugin_theme(tmp_
     assert json.loads(capsys.readouterr().out)["status"] == "failed"
 
 
+def test_trial_previews_contributed_presets_with_sampled_fields(tmp_path, capsys):
+    from pathlib import Path
+
+    path = tmp_path / "branch.py"
+    path.write_text(
+        'SDK_VERSION = 1\ndef setup(p):\n    p.field("name", lambda ctx: "feature-x")\n'
+        '    p.preset("statusbar", "seg", "[status.model] {model} [/]{>}{plugins.branch.name}")\n'
+        '    p.preset("divider", "dots", "[divider_rule]{fill:·}[/]")\n'
+    )
+    assert main(["test", str(path), "--width", "50", "--project", str(tmp_path), "--output", str(tmp_path)]) == 0
+    previews = {item.get("preset"): item for item in json.loads(capsys.readouterr().out)["previews"]}
+    status = previews["plugins.branch.seg"]
+    assert status["text"].startswith(" preview-model ") and status["text"].endswith("feature-x") and len(status["text"]) == 50
+    assert Path(status["png"]).exists() and "<rect x=" in Path(status["svg"]).read_text()  # segment backgrounds
+    assert set(previews["plugins.branch.dots"]["text"]) == {"·"}
+    # A format that only fails with real values must fail the trial, not preview the default bar.
+    path.write_text(path.read_text().replace("{plugins.branch.name}", "{plugins.branch.name:.1f}"))
+    assert main(["test", str(path), "--project", str(tmp_path), "--output", str(tmp_path)]) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["stage"] == "export" and "statusbar" in report["error"]
+
+
 async def test_configured_plugin_theme_is_resolved_after_startup_load_without_warning(tmp_path):
     loop = make_loop(tmp_path)
     loop.session.settings.theme = "plugins.look.night"

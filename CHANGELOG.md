@@ -44,6 +44,8 @@
   whose callback stops when asked; only an unresponsive worker is terminated.
 - A `{join:…}` without its Powerline glyph now names U+E0B0 / U+E0B2 instead of reporting an
   unknown field; the appearance references spell out the code points, which often render invisibly.
+- `wizolt plugin test` previews each statusbar/divider preset a plugin contributes, with its
+  sampled fields and segment backgrounds, and fails when a preset cannot render those values.
 - `wizolt plugin test --facts/--summarize` accept pipes and symlinks such as `<(...)`, and a
   rejected theme or preset reports stage `validate` instead of `load`.
 - Opening `/status` no longer lays out prompt-area plugin components for 80 columns until the

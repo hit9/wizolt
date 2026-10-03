@@ -298,10 +298,12 @@ installation; it is not portable. No installation command replaces packages in t
 and components; `--event turn.finished` and `--call command:NAME --arguments '{...}'` explicitly
 exercise handlers. They have real effects; validation and trials are not a filesystem sandbox.
 
-`test` outputs JSON, PNG and SVG paths. Use `--width`, `--height`, `--theme`, `--status`,
+`test` outputs JSON, PNG and SVG paths for each component and each registered statusbar/divider
+preset; presets show your sampled fields beside representative host values (`preview-model`,
+the `--context-percent`, and "working" while `--status running`). Use `--width`, `--height`, `--theme`, `--status`,
 `--context-percent` and `--times` to vary inputs. Frames share live clipping and theme resolution.
 PNG glyph coverage depends on fonts; use `--font /path/to/font.ttf` when needed. SVG allows browser
-font fallback. These are component previews, not captures of the user's terminal. No installation
+font fallback. These are cell-layout previews, not captures of the user's terminal. No installation
 is modified, and the test process is always retired, including on timeout or cancellation.
 
 ## Safety and recovery

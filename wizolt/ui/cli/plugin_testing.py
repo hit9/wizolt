@@ -14,7 +14,8 @@ from wizolt.config import Config
 from wizolt.plugins.protocol import Capabilities
 from wizolt.plugins.testing import PluginTrial, Stimulus
 from wizolt.plugins.workspace import PluginWorkspace
-from wizolt.sdk import Context
+from wizolt.sdk import Context, Value
+from wizolt.ui.bars import FIELDS, BarLayout
 from wizolt.ui.cli.plugin_appearance import AppearanceContribution
 from wizolt.ui.cli.plugin_preview import PreviewExporter
 from wizolt.ui.render import Theme
@@ -28,6 +29,49 @@ def read_input(path: Path, limit: int) -> bytes:
     if len(data) > limit:
         raise ValueError(f"{path} exceeds {limit // 1024} KiB")
     return data
+
+
+def preset_previews(exporter: PreviewExporter, name: str, presets: dict[str, dict[str, str]], frame: dict, index: int) -> list[dict]:
+    """Render each contributed bar format with this frame's plugin fields.
+
+    Host fields take representative preview values; the plugin's own fields are the sampled
+    ones, so a format that reacts to them shows what the user will see.
+    """
+    context = frame["context"]
+    running = context["status"] == "running"
+    values: dict[str, Value] = dict.fromkeys(FIELDS, 0)
+    values.update(
+        {
+            "provider": "preview",
+            "model": context["model"],
+            "reasoning": "medium",
+            "agent.name": context["agent_name"],
+            "agent.id": context["agent_id"],
+            "agent.state": context["status"],
+            "agents.count": 1,
+            "context.percent": round(context["context_percent"]),
+            "mcp.label": "mcp 0",
+            "plugins.count": 1,
+            "running": running,
+            "elapsed": context["elapsed"],
+            "activity": "working" if running else "",
+            "spinner": "●" if running else "",
+            "label": "working" if running else "",
+            "rate": "",
+        }
+    )
+    values.update({f"plugins.{name}.{key}": value for key, value in frame["fields"].items()})
+    layout, previews = BarLayout(), []
+    for kind, choices in presets.items():
+        layout.presets[kind].update(choices)
+        for choice in choices:
+            problems = layout.configure({kind: "preset:" + choice}, Theme.bar_styles)
+            fragments = [] if problems else layout.render(kind, values, context["columns"], Theme.bar_styles)
+            # render() falls back to the default bar on a runtime error; a preview must not.
+            if problems or layout.errors:
+                raise ValueError("; ".join(problems or layout.errors))
+            previews.append({**exporter.draw(fragments, f"{kind} {choice}", context["columns"], index), "preset": choice})
+    return previews
 
 
 def main(argv: list[str]) -> int:
@@ -116,6 +160,7 @@ def main(argv: list[str]) -> int:
             )
         )
     )
+    contribution = AppearanceContribution({}, {})
     if report["status"] == "passed":
         contribution = AppearanceContribution.compile(Capabilities.decode(report["name"], report["capabilities"]))
         Theme.project_plugins(contribution.themes)
@@ -135,6 +180,7 @@ def main(argv: list[str]) -> int:
             exporter = PreviewExporter(directory, font=args.font, height=args.height)
             for index, frame in enumerate(report["frames"]):
                 report["previews"].extend(exporter.export(frame, index))
+                report["previews"].extend(preset_previews(exporter, report["name"], contribution.presets, frame, index))
             report["report"] = str(directory / "report.json")
             (directory / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         except (ValueError, OSError) as error:

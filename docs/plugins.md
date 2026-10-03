@@ -116,7 +116,7 @@ wizolt plugin validate ~/.wizolt/plugins/mood.py
 wizolt plugin test ~/.wizolt/plugins/mood.py --theme forest --width 80
 ```
 
-The test returns a JSON report with errors, captured logs, and PNG/SVG previews for UI components.
+The test returns a JSON report with errors, captured logs, and PNG/SVG previews for UI components and for each statusbar or divider preset the plugin adds.
 Use `--width 30` to check a narrow terminal, or `--times 0 0.5 1` to sample animation. Previews use
 the same text clipping and colors as the TUI. Use `--font` if the PNG font lacks your characters.
 
