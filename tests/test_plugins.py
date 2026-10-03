@@ -150,6 +150,16 @@ def setup(plugin):
     assert not reports
 
 
+async def test_status_reads_do_not_resize_prompt_components(runtime, tmp_path):
+    path = tmp_path / "wide.py"
+    path.write_text('from wizolt.sdk import Panel, Text\nSDK_VERSION = 1\ndef setup(p):\n    p.field("columns", lambda ctx: ctx.columns)\n')
+    await runtime.manage("enable", str(path))
+    runtime.panels("above_input", 160)  # The live prompt projection reports its width.
+    runtime.panels("status")  # /status reads its panel without one.
+    await runtime.refresh()
+    assert runtime.fields()["plugins.wide.columns"] == 160
+
+
 async def test_broken_component_is_reported_without_breaking_other_plugins(runtime, tmp_path):
     bad = tmp_path / "bad.py"
     bad.write_text('SDK_VERSION = 1\ndef setup(p):\n    p.component("above_input", lambda ctx: 1/0)\n')

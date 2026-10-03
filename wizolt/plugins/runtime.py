@@ -276,8 +276,11 @@ class PluginRuntime:
             for key, value in entry.active.snapshot.fields.items()
         }
 
-    def panels(self, slot: str, columns: int = 80) -> list[Panel]:
-        self._columns = columns
+    def panels(self, slot: str, columns: int | None = None) -> list[Panel]:
+        """Read cached panels. Only the live prompt projection passes its width: a reader without
+        one, such as /status, must not resize what the sampler lays out for the prompt slots."""
+        if columns is not None:
+            self._columns = columns
         return [entry.active.snapshot.panels[slot] for entry in self.entries.values() if not entry.active.error and slot in entry.active.snapshot.panels]
 
     async def invoke(self, name: str, kind: str, action: str, arguments: Mapping[str, Any]) -> str:
