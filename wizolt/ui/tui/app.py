@@ -1880,6 +1880,11 @@ class TuiApp:
         # to prevent, resurfacing precisely where the transcript matters most.
         bindings.add("c-l", eager=True)(lambda _: None)
 
+        # Ctrl-Space / Ctrl-@ may reach us when switching an input method. The default
+        # Emacs binding starts a selection, disabling typing and Backspace even when
+        # the selection is empty and invisible. This UI has no mark-selection mode.
+        bindings.add("c-@", eager=True)(lambda _: None)
+
         def ctrl_d(event):  # pragma: no cover — interactive path
             if self.input_mode == InputMode.APPROVAL and self._input_pending is not None:
                 # EOF on an empty approval line cancels rather than submitting "", which confirm()

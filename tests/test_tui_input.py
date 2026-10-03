@@ -36,6 +36,28 @@ from wizolt.ui.cli.appearance import theme_command
 from wizolt.ui.cli.update import UpdateChecker
 from wizolt.ui.render import InputStyle, Theme
 from wizolt.ui.tui import CallbackPlaceholder, TuiApp
+from wizolt.ui.tui.app import InputMode
+
+
+@pytest.mark.parametrize("mode", [InputMode.CHAT, InputMode.RUNNING, InputMode.APPROVAL])
+def test_ctrl_space_keeps_typing_and_backspace_available(monkeypatch, mode):
+    app = TuiApp()
+    app.input_mode = mode
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("只是觉得没有")
+        wait_until(lambda: app.input_buffer.text == "只是觉得没有")
+        # Terminals encode Ctrl-Space (also Ctrl-@) as NUL. It must not activate
+        # prompt-toolkit's invisible Emacs mark and disable subsequent edits.
+        pipe_input.send_text("\x00继续")
+        wait_until(lambda: app.input_buffer.text == "只是觉得没有继续")
+        pipe_input.send_text("\x7f")
+        wait_until(lambda: app.input_buffer.text == "只是觉得没有继")
+        assert app.input_buffer.selection_state is None
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
 
 
 def test_real_theme_keys_edit_and_save_a_custom_input_without_reopening_editor(tmp_path, monkeypatch):

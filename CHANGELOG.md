@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Keep typing and Backspace working after Ctrl-Space: ignore the inherited text-selection
+  shortcut that could silently lock input until Ctrl-C cleared the draft.
 - Run Job shell commands without rewriting their source, preserving trailing semicolons,
   comments and heredocs while capturing both output streams. Remove temporary logs when a
   job cannot start.
