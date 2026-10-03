@@ -396,12 +396,13 @@ def bash_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView | Non
         view = BashTool(loop.session, record.args).approval_view()
     except ToolError:
         view = None
-    if not streams and view is None:
+    code = tooloutput.bash_exit_code(record.output)
+    if not streams and view is None and code in {"", "0"}:
         # A command that printed nothing has nothing here the transcript does not already show. A
         # script is different: its source is worth reading whether or not it printed anything.
         return None
     rows = [("key", record.key), *(view.rows if view else [])]
-    if code := tooloutput.bash_exit_code(record.output):
+    if code:
         rows.append(("exit", code))
     if note:
         rows.append(("shown", note))
@@ -417,10 +418,8 @@ class OutputEntry:
     detail: str
     view: ApprovalView | Callable[[], ApprovalView]
     live: bool = False
-    # The row's verdict for the first column: "ok" for a stored record, which exists only for
-    # a call that completed, with "fail" for a Bash result whose exit code is nonzero; "" only
-    # for the live entries, whose calls have not finished. Computed once, at browse time, next
-    # to `record_view`.
+    # A stored result can describe an unsuccessful command or script; persistence alone
+    # is not a success verdict. Empty means the live call has not finished.
     status: str = ""
 
 
@@ -456,9 +455,8 @@ async def tool_output_viewer(loop: CommandLoop) -> None:
         view = (lambda record=record: job_view(loop, record)) if record.name == "Job" else record_view(loop, record)
         if view is not None:
             code = tooloutput.bash_exit_code(record.output) if record.name == "Bash" else ""
-            # A stored record exists only for a call that completed, so every stored row has a
-            # verdict; only a Bash result can still carry a nonzero exit code.
-            status = "fail" if code and code != "0" else "ok"
+            failed = (code and code != "0") or (record.name == "ToolScript" and record.output.startswith("ToolScript failed\n"))
+            status = "fail" if failed else "ok"
             entries.append(
                 OutputEntry(record.key, record.name, tooloutput.short_call(loop.session, ToolCall("", record.name, record.args)), view, status=status)
             )
@@ -525,7 +523,7 @@ def job_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView:
     fallback_rows = [("key", record.key)]
     if note:
         fallback_rows.append(("shown", note))
-    fallback = ApprovalView(f"job · {record.key}", result, "", fallback_rows, section="result")
+    fallback = ApprovalView(f"job · {record.key}", result, "text", fallback_rows, section="result")
     if action == "write" and (view := JobTool(loop.session, record.args).approval_view()) is not None:
         return ApprovalView(f"stdin · {record.key}", view.text, view.lexer, [*fallback_rows, *view.rows], result)
     if job is None:
@@ -548,7 +546,7 @@ def job_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView:
             rows.append(("shown", extra))
     if storage_bounded:
         rows.append(("shown", "job log was bounded"))
-    return ApprovalView(f"job · {record.key}", bounded, "bash", rows, result, section="log")
+    return ApprovalView(f"job · {record.key}", bounded, "text", rows, result, section="log")
 
 
 async def _tool_output_list(loop: CommandLoop, entries: list[OutputEntry], state: ChoiceViewState | None = None) -> tuple[ApprovalView | None, ChoiceViewState]:
@@ -560,9 +558,8 @@ async def _tool_output_list(loop: CommandLoop, entries: list[OutputEntry], state
 
     Rows are coloured the way the transcript colours the same call -- dim key, green tool name,
     plain arguments -- so a row is scannable by shape instead of read word by word. The first
-    column is the call's verdict: a green ✓ for every stored record, which exists only for a
-    call that completed, a red ✗ for a Bash result with a nonzero exit code, and a blank cell
-    for the live entries, whose calls are still running. The label is still the flat text,
+    column is the call's verdict: a green ✓ for success, a red ✗ for a nonzero Bash exit or a
+    failed script, and a blank cell for live entries. The label is still the flat text,
     which is what `/` searches over."""
     assert loop.presentation.tui is not None
     width = max(20, shutil.get_terminal_size((120, 20)).columns - 12)
@@ -815,7 +812,7 @@ def _approval_text_view(
         notice = " · read-only"
         # The modal window never wraps, so a long name is clipped here rather than pushing the
         # notice off its right edge.
-        room = max(0, width - get_cwidth(f"  {head}{notice}"))
+        room = max(0, width - get_cwidth(f"  {head} · {notice}"))
         title: StyleAndTextTuples = [("class:choice.title", f"  {head[:1].upper() + head[1:]}")]
         if named:
             title.append(("class:text", " · " + Text.clip_width(named, room)))

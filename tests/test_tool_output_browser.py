@@ -14,6 +14,7 @@ from tui_harness import loop, session
 import wizolt.ui.cli.modals as modals_mod
 from wizolt.agent.engine import Agent
 from wizolt.agent.lifecycle import load_session
+from wizolt.base import ToolCall
 from wizolt.session.jobs import BackgroundJob
 from wizolt.tools import BashTool, JobTool, Tool, tooloutput
 from wizolt.ui.cli import CommandLoop
@@ -21,6 +22,43 @@ from wizolt.ui.cli.modals import job_view, tool_output_viewer
 from wizolt.ui.cli.resume import ResumeRenderer
 from wizolt.ui.render import Theme
 from wizolt.ui.tui import TuiApp
+
+
+async def test_failed_script_is_not_marked_successful_in_browser(tmp_path, monkeypatch):
+    command_loop = loop(tmp_path)
+    command_loop.session.settings.yolo = True
+    await command_loop.agent.tools.run([ToolCall("script", "ToolScript", [{"code": "raise ValueError('boom')"}])])
+    command_loop.session.store_tool_result("Bash", ["echo ok"], Tool.process_result("BashToolResult", 0, "ok", ""))
+    modal = await _open_detail(command_loop, ["enter"], monkeypatch)
+    assert any(("class:choice.output.fail", "✗ ") in row for row in _display_rows(modal.frames))
+
+
+async def test_silent_failed_bash_is_available_for_inspection(tmp_path, monkeypatch):
+    command_loop = loop(tmp_path)
+    command_loop.session.store_tool_result("Bash", ["false"], Tool.process_result("BashToolResult", 1, "", ""))
+    modal = await _open_detail(command_loop, ["enter"], monkeypatch)
+    assert modal.frames
+    assert "false" in "".join(text for _, text in modal.frames[-1])
+    assert any("choice.output.fail" in style for style, _ in modal.frames[-1])
+
+
+async def test_job_fallback_preserves_literal_output(tmp_path, monkeypatch):
+    command_loop = loop(tmp_path)
+    command_loop.session.store_tool_result("Job", [{"action": "wait", "job": "job.9"}], "<build>\n# literal heading\n    indented\n</build>")
+    modal = await _open_detail(command_loop, ["enter"], monkeypatch, rows=40)
+    text = "".join(text for _, text in modal.frames[-1])
+    assert "<build>" in text and "</build>" in text
+    assert "# literal heading" in text and "    indented" in text
+
+
+async def test_detail_title_fits_a_narrow_terminal(tmp_path, monkeypatch):
+    command_loop = loop(tmp_path)
+    key = command_loop.session.store_tool_result("Edit", ["long.py"], "edited")
+    command_loop.session.store_turn_diff(key, 1, "目录/" * 30 + "long.py", "--- long.py\n+++ long.py\n@@ -1 +1 @@\n-a\n+b\n")
+    modal = await _open_detail(command_loop, ["enter"], monkeypatch, columns=30)
+    text = "".join(text for _, text in modal.frames[-1])
+    assert get_cwidth(text.splitlines()[0]) <= 30
+    assert "read-only" in text.splitlines()[0]
 
 
 @pytest.mark.parametrize("rows", [20, 26, 40])

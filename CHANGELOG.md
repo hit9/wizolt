@@ -36,6 +36,9 @@
 
 ### Fixed
 
+- Keep silent failed Bash calls available in Ctrl-O, preserve literal Job output instead of
+  interpreting it as Markdown or shell source, and fit long detail titles to narrow terminals.
+- Mark stored failed ToolScript executions as failures in Ctrl-O instead of showing a success check.
 - Keep typing and Backspace working after Ctrl-Space: ignore the inherited text-selection
   shortcut that could silently lock input until Ctrl-C cleared the draft.
 - Run Job shell commands without rewriting their source, preserving trailing semicolons,
