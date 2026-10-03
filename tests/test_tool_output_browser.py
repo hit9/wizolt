@@ -84,8 +84,7 @@ async def test_tool_output_viewer_browses_recent_calls_through_a_viewport_and_op
 
 async def test_tool_output_browser_marks_bash_results_ok_and_fail(tmp_path, monkeypatch):
     """A Bash row's first column carries its verdict: a green ✓ for exit 0, a red ✗ for any other
-    exit. The list is mostly bash, so the failures should be scannable by color; entries with no
-    exit code (a script, an order) keep the cell blank instead of guessing."""
+    exit. The list is mostly bash, so the failures should be scannable by color."""
     command_loop = loop(tmp_path)
     command_loop.session.store_tool_result("Bash", ["printf ok"], Tool.process_result("BashToolResult", 0, "ok output", ""))
     command_loop.session.store_tool_result("Bash", ["make check"], Tool.process_result("BashToolResult", 2, "", "target failed"))
@@ -101,6 +100,28 @@ async def test_tool_output_browser_marks_bash_results_ok_and_fail(tmp_path, monk
     pairs = [(style, value) for frame in modal.frames for style, value in frame]
     assert ("class:choice.output.ok", "✓ ") in pairs
     assert ("class:choice.output.fail", "✗ ") in pairs
+
+
+async def test_tool_output_browser_checks_every_stored_call(tmp_path, monkeypatch):
+    """A stored record exists only for a call that completed, so every row answers "did it do
+    what was asked": an Edit gets the same green check a successful Bash gets, and only a
+    nonzero Bash exit turns the check red. A call that failed has no record and no row -- it
+    stays a red block in the transcript."""
+    command_loop = loop(tmp_path)
+    command_loop.session.store_tool_result("Edit", [{"path": "src/app.py"}], "Edited src/app.py (12 lines)")
+    command_loop.session.store_tool_result("Bash", ["make check"], Tool.process_result("BashToolResult", 2, "", "target failed"))
+    modal = ModalHarness(["j", "q"])
+    command_loop.presentation.tui = modal
+
+    with monkeypatch.context() as patch:
+        patch.setattr(shutil, "get_terminal_size", lambda fallback=(80, 24): os.terminal_size((50, 26)))
+        await tool_output_viewer(command_loop)
+
+    rows = _display_rows(modal.frames)
+    # The selected row is reversed as a whole, which hides its mark's own color; the cursor visits
+    # both rows across the frames, so each mark shows up in its own color in one of them.
+    assert any(("class:choice.output.ok", "✓ ") in row and any("Edit" in value for _, value in row) for row in rows)
+    assert any(("class:choice.output.fail", "✗ ") in row and any("make check" in value for _, value in row) for row in rows)
 
 
 def _styled(frames) -> list[tuple[str, str]]:

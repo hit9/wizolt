@@ -417,9 +417,10 @@ class OutputEntry:
     detail: str
     view: ApprovalView | Callable[[], ApprovalView]
     live: bool = False
-    # The Bash result's verdict for the row's first column: "ok" (exit 0), "fail" (nonzero
-    # exit), or "" when the entry is not a Bash result (a script or an order has no exit code
-    # to promise). Computed once, at browse time, next to `record_view`.
+    # The row's verdict for the first column: "ok" for a stored record, which exists only for
+    # a call that completed, with "fail" for a Bash result whose exit code is nonzero; "" only
+    # for the live entries, whose calls have not finished. Computed once, at browse time, next
+    # to `record_view`.
     status: str = ""
 
 
@@ -454,10 +455,10 @@ async def tool_output_viewer(loop: CommandLoop) -> None:
     for record in reversed(loop.session.tool_records):
         view = (lambda record=record: job_view(loop, record)) if record.name == "Job" else record_view(loop, record)
         if view is not None:
-            status = ""
-            if record.name == "Bash":
-                code = tooloutput.bash_exit_code(record.output)
-                status = "ok" if code == "0" else ("fail" if code else "")
+            code = tooloutput.bash_exit_code(record.output) if record.name == "Bash" else ""
+            # A stored record exists only for a call that completed, so every stored row has a
+            # verdict; only a Bash result can still carry a nonzero exit code.
+            status = "fail" if code and code != "0" else "ok"
             entries.append(
                 OutputEntry(record.key, record.name, tooloutput.short_call(loop.session, ToolCall("", record.name, record.args)), view, status=status)
             )
@@ -559,9 +560,10 @@ async def _tool_output_list(loop: CommandLoop, entries: list[OutputEntry], state
 
     Rows are coloured the way the transcript colours the same call -- dim key, green tool name,
     plain arguments -- so a row is scannable by shape instead of read word by word. The first
-    column is the Bash verdict where one exists: a green ✓ for exit 0, a red ✗ for any other
-    exit, and a blank cell for entries that have no exit code (a script, an order, a running
-    batch). The label is still the flat text, which is what `/` searches over."""
+    column is the call's verdict: a green ✓ for every stored record, which exists only for a
+    call that completed, a red ✗ for a Bash result with a nonzero exit code, and a blank cell
+    for the live entries, whose calls are still running. The label is still the flat text,
+    which is what `/` searches over."""
     assert loop.presentation.tui is not None
     width = max(20, shutil.get_terminal_size((120, 20)).columns - 12)
     parts: dict[str, StyleAndTextTuples] = {}

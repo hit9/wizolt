@@ -11,6 +11,13 @@
   a command or skill, red once no spelling would accept it. A word that is still a prefix of
   one keeps the plain colour while the completion menu guides it.
 
+### Changed
+
+- The Ctrl-O list's verdict column answers for every stored call, not only Bash: each row
+  gets the green ✓ its completed call earned, and only a Bash result with a nonzero exit
+  turns red. A failed call never had a stored record, so it stays a red block in the
+  transcript rather than a row.
+
 ### Removed
 
 - Remove `/diff` and the net-diff view it fed. An edit record now describes only the edit that
