@@ -17,8 +17,10 @@ disabled; enable it by name. The optional built-in `layout` plugin exposes list/
 enable and reload it to arrange components for the user. `/plugins` also offers **layout**.
 
 1. **Inspect:** `plugin list`, then `plugin inspect NAME`. Edit the returned path.
-2. **Create:** default to `~/.wizolt/plugins/<name>.py`; use `<project>/.wizolt/plugins/<name>.py`
-   for project-specific code, or a directory with `pyproject.toml` for several files (see SDK.md).
+2. **Create:** strongly prefer one Git repository per user plugin, at `~/.wizolt/plugins/<name>/`.
+   Put `<name>.py` inside for a single-file plugin, or use a `pyproject.toml` package (see SDK.md).
+   Pass the `.py` file to CLI commands, or the repository directory for a package.
+   Keep project-specific plugins already tracked by the project in that repository; do not nest another Git repo.
    The installed NAME is the file stem, or the project name with `-`/`.` turned into `_`; it names
    the `[plugins.NAME]` config table and `{plugins.NAME.FIELD}` fields.
 3. **Check:** `plugin validate PATH`, then `plugin test PATH --theme forest --width 80`. Read the
@@ -36,6 +38,11 @@ enable and reload it to arrange components for the user. `/plugins` also offers 
 
 `plugin disable NAME`, then a reload, turns a plugin off without deleting it. `/plugins`
 also offers rollback. Files never load just because they exist.
+
+Keep source, tests and non-secret metadata in Git; exclude secrets, virtualenvs and trial output.
+Review the diff and checkpoint tested changes with commits under the user's Git instructions.
+Git preserves development history; hot-reload rollback only retains the previous live revision.
+A local repository is enough: sharing and remote hosting are optional.
 
 **What a plugin can add:** UI (fields, components, themes, presets), slash commands for the user,
 and tools for you. Register `plugin.tool` when the user wants *you* to gain an ability; after

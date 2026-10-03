@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Strongly recommend one local Git repository per user-authored plugin in the built-in workshop
+  skill, with single-file/package paths and an exception for plugins already tracked by their project.
+
 - Clarify that registered plugin operations use the fixed `Plugin` gateway, not standalone
   model/ToolScript tool names, and distinguish offline trials from live host-service validation
   in the built-in skill, SDK reference and docstring, and user guide.
