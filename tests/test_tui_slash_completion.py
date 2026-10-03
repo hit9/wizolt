@@ -719,3 +719,54 @@ def test_complete_slash_command_submits_on_the_first_enter(monkeypatch):
         app.app.loop.call_soon_threadsafe(app.app.exit)
 
     run_interactive_tui(monkeypatch, app, drive=drive)
+
+
+def test_command_state_of_a_typed_word():
+    completer = CommandCompleter(skill_commands=lambda: (("guide", "topic"),))
+    assert completer.command_state("/status") == "known"
+    assert completer.command_state("/guide") == "known"
+    assert completer.command_state("/st") == "partial"
+    assert completer.command_state("/statux") == ""
+
+
+def test_command_tint_only_answers_where_a_slash_line_is_a_command():
+    app = TuiApp(completer=CommandCompleter())
+    app.input_mode = InputMode.APPROVAL
+    assert app._command_tint("/statux") == "partial"
+    app.input_mode = InputMode.CHAT
+    assert app._command_tint("/statux") == ""
+    assert app._command_tint("/status") == "known"
+
+
+def test_typing_a_command_word_tints_it_by_what_it_is(monkeypatch):
+    """A `/` draft's first word says while it is typed whether it names a command: the accent
+    once it does, red once nothing would accept it, plain while a prefix of one -- the menu
+    guides that case."""
+    app = TuiApp(completer=CommandCompleter())
+    output = ResizableOutput(rows=20, columns=60)
+
+    def word_styles(word):
+        # The completion menu spells the same words; the input row is any row that is not the menu's.
+        screen = app.app.renderer.last_rendered_screen
+        if screen is None:
+            return set()
+        for index, line in enumerate(rendered_screen_text(app.app, output).splitlines()):
+            if word in line and "completion-menu" not in screen.data_buffer[index][line.index(word)].style:
+                start = line.index(word)
+                return {screen.data_buffer[index][column].style for column in range(start, start + len(word))}
+        return set()
+
+    def drive(pipe_input):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        pipe_input.send_text("/st")
+        wait_until(lambda: app.input_buffer.text == "/st" and word_styles("/st"))
+        assert not any("input.command" in style for style in word_styles("/st"))
+        pipe_input.send_text("atus")
+        wait_until(lambda: any("class:input.command" in style for style in word_styles("/status")))
+        assert not any("input.command.unknown" in style for style in word_styles("/status"))
+        pipe_input.send_text("x")
+        wait_until(lambda: any("class:input.command.unknown" in style for style in word_styles("/statusx")))
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive, output=output)
+

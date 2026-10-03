@@ -7,6 +7,9 @@
 - `Ctrl-O` opens an edit's recorded diff, whole and syntax-highlighted, in the same red/green
   bands the transcript uses. The transcript trims a long replay's diffs, so this is the way to
   read one after the fact or after a resume.
+- The command word of a `/` draft is tinted while it is typed: the theme's accent once it names
+  a command or skill, red once no spelling would accept it. A word that is still a prefix of
+  one keeps the plain colour while the completion menu guides it.
 
 ### Removed
 

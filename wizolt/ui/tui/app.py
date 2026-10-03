@@ -264,6 +264,45 @@ class AttachmentLabelProcessor(Processor):
         return Transformation(fragments, source_to_display=source_to_display, display_to_source=display_to_source)
 
 
+class CommandTintProcessor(Processor):
+    """Colour the command word of a `/` draft as it is typed: the accent once it names a command
+    or skill, red once no spelling would accept it. A word that is still a prefix of one keeps
+    the plain colour -- the completion menu is already guiding it."""
+
+    def __init__(self, state_fn: Callable[[str], str]):
+        self.state_fn = state_fn
+
+    def apply_transformation(self, transformation_input) -> Transformation:
+        ti = transformation_input
+        document = ti.document
+        # A multiline draft starting with "/" is a message, and a search keeps its own highlight.
+        if ti.lineno or len(document.lines) != 1 or is_searching():
+            return Transformation(ti.fragments)
+        text = document.text
+        if not text.startswith("/") or IMAGE_MARKER in text or PASTE_MARKER in text:
+            return Transformation(ti.fragments)
+        word, _, _ = text.partition(" ")
+        # A lone "/" is the menu opening, not a word to judge yet.
+        state = self.state_fn(word) if len(word) > 1 else "partial"
+        style = {"known": "class:input.command", "": "class:input.command.unknown"}.get(state)
+        if style is None:
+            return Transformation(ti.fragments)
+        fragments: StyleAndTextTuples = []
+        remaining = len(word)
+        for fragment in ti.fragments:
+            fragment_text = fragment[1]
+            if remaining <= 0:
+                fragments.append(fragment)
+            elif remaining >= len(fragment_text):
+                fragments.append((style, fragment_text))
+                remaining -= len(fragment_text)
+            else:
+                fragments.append((style, fragment_text[:remaining]))
+                fragments.append((fragment[0], fragment_text[remaining:]))
+                remaining = 0
+        return Transformation(fragments)
+
+
 class InputMode(StrEnum):
     """What the input widget is doing right now.
 
@@ -1490,10 +1529,19 @@ class TuiApp:
             dont_extend_height=dont_extend_height,
         )
 
+    def _command_tint(self, word: str) -> str:
+        """The tint state of a `/` draft's first word: asked of the completer that owns the command
+        vocabulary, and only on prompts where a "/" line is a command rather than prose."""
+        if self.input_mode not in {InputMode.CHAT, InputMode.RUNNING}:
+            return "partial"
+        decide = getattr(self.input_buffer.completer, "command_state", None)
+        return decide(word) if decide is not None else "partial"
+
     def build_layout(self) -> Layout:
         input_processors: list[Processor] = [
             HighlightIncrementalSearchProcessor(),
             AttachmentLabelProcessor(lambda: (self.input_images, self.input_pastes)),
+            CommandTintProcessor(self._command_tint),
             BeforeInput(self.status_fragments),
             CallbackPlaceholder(self.placeholder_text),
         ]

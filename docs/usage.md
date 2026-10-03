@@ -125,8 +125,9 @@ While completing a command or mention, Tab keeps its usual completion behavior.
 
 Type `/` commands at the prompt to inspect state, switch models, manage the
 session, or configure runtime behavior on the fly. As you type, the first match is highlighted,
-so `/st` and `Enter` runs `/status`. A command that needs an argument, such as `/set`, fills in
-instead and lists its arguments, down to the value. See the
+so `/st` and `Enter` runs `/status`. The command word is coloured as you type: the theme's
+accent once it names a command, red once nothing matches it. A command that needs an argument,
+such as `/set`, fills in instead and lists its arguments, down to the value. See the
 [command reference](commands.md) for the full list.
 
 ## Mentions

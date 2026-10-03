@@ -170,6 +170,15 @@ class CommandCompleter(Completer):
                     # A skill that takes arguments opens them on Enter, like `/set`.
                     yield Completion(command + " " if hint else command, start_position=-len(text), display=command, display_meta=hint or "skill")
 
+    def command_state(self, word: str) -> str:
+        """How a `/` draft's first word should be coloured while it is typed: "known" when a
+        command or skill would run it, "partial" while it is still a prefix of one, "" once no
+        spelling would accept it."""
+        spellings = COMMAND_NAMES + tuple("/" + name for name, _ in self.skill_commands())
+        if word in spellings:
+            return "known"
+        return "partial" if any(spelling.startswith(word) for spelling in spellings) else ""
+
     def leads_on(self, before: str, completion: Completion) -> bool:
         """Whether taking `completion`, offered for the input `before`, is a step toward a longer
         choice rather than a choice: Enter then fills it in and opens what comes next instead of
@@ -600,6 +609,10 @@ class View:
                 "quickhint.sep": role("muted"),
                 "image.attachment": role("accent", "bold"),
                 "input.error": role("error"),
+                # The command word of a `/` draft, tinted as it is typed: the accent once it names
+                # a command, red once no spelling would accept it.
+                "input.command": role("accent"),
+                "input.command.unknown": role("error"),
                 "divider.working": f"fg:{divider['divider_label']} bold",
                 "approval": role("warning"),
                 "approval.wait": role("accent_secondary"),
