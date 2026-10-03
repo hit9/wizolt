@@ -267,13 +267,15 @@ class StatusTabs:
         entries = [Entry("goal", text(snapshot.goal) if snapshot.goal else [words("none yet")])]
         if snapshot.plan:
             counts = {status: sum(step == status for step, _ in snapshot.plan) for status in STEP_MARKS}
-            cells = min(OVERVIEW_METER, len(snapshot.plan) * 4)
-            filled = round(counts["done"] * cells / len(snapshot.plan))
-            summary = [(Theme.fg("success"), "█" * filled), (Theme.fg("subtle"), "░" * (cells - filled)), ("", "  ")]
-            summary += [figure(str(counts["done"])), words(f" of {len(snapshot.plan)} done")]
+            summary = [figure(str(counts["done"])), words(f" of {len(snapshot.plan)} done")]
             for status in ("doing", "blocked"):
                 if counts[status]:
                     summary += [words(" · "), figure(str(counts[status]), STEP_MARKS[status][1]), words(f" {status}")]
+            # Like Overview's meter: it takes what the counts leave, and gives way when narrow.
+            cells = min(OVERVIEW_METER, len(snapshot.plan) * 4, width - self.column - 2 - width_of(summary))
+            if cells >= 6:
+                filled = round(counts["done"] * cells / len(snapshot.plan))
+                summary = [(Theme.fg("success"), "█" * filled), (Theme.fg("subtle"), "░" * (cells - filled)), ("", "  "), *summary]
             entries.append(Entry("progress", summary))
             for index, (status, step) in enumerate(snapshot.plan):
                 mark, role = STEP_MARKS.get(status, STEP_MARKS["todo"])

@@ -398,6 +398,10 @@ def test_progress_tab_shows_the_agents_note_with_step_states(tmp_path):
     # Each step wears its state's role: blocked reads as an error, the live step as the accent.
     styles = {text.strip(): style for row in tabs.rows("Progress", 76) for style, text in row}
     assert styles["✕"] == Theme.fg("error") and styles["●"] == Theme.fg("accent")
+    # The meter takes what the counts leave: it never breaks across rows, and gives way when narrow.
+    for width in (120, 60, 44, 30):
+        meter = [row for row in ("".join(text for _, text in row) for row in tabs.rows("Progress", width)) if "░" in row or "█" in row]
+        assert len(meter) <= 1 and all("of 4 done" in row for row in meter), (width, meter)
 
 
 def test_progress_tab_explains_an_empty_note(tmp_path):
