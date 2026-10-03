@@ -3,7 +3,7 @@
 import asyncio
 import json
 
-import httpx
+import httpx2
 import pytest
 from agent_harness import session_with_provider
 from openai import AsyncOpenAI
@@ -37,7 +37,7 @@ async def test_model_rpc_reuses_config_but_not_main_context_or_usage(tmp_path, m
     async def respond(request):
         received.append(json.loads(request.content))
         assert request.headers["authorization"] == "Bearer sk-test"
-        return httpx.Response(
+        return httpx2.Response(
             200,
             json={
                 "id": "completion",
@@ -50,7 +50,7 @@ async def test_model_rpc_reuses_config_but_not_main_context_or_usage(tmp_path, m
         )
 
     def client(self, provider=None):
-        result = AsyncOpenAI(api_key=provider.key, base_url=provider.url, http_client=httpx.AsyncClient(transport=httpx.MockTransport(respond)))
+        result = AsyncOpenAI(api_key=provider.key, base_url=provider.url, http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(respond)))
         clients.append(result)
         return result
 

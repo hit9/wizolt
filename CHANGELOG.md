@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix plugin model tests to use the declared `httpx2` dependency, allowing collection in clean environments without legacy `httpx`.
+
 ## 0.73.0a1 - 2026-10-03
 
 Alpha 1: experimental plugin support. The plugin SDK may change incompatibly before the stable release.
