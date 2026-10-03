@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Run Job shell commands without rewriting their source, preserving trailing semicolons,
+  comments and heredocs while capturing both output streams. Remove temporary logs when a
+  job cannot start.
 - A failed `latest` pointer update no longer fails an already-written session checkpoint or
   duplicates messages on retry. Continue-session discovery skips child snapshots even when
   the pointer is missing, stale, or names a child.

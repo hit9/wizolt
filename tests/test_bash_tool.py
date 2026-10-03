@@ -720,8 +720,7 @@ async def test_job_captures_large_output_via_log_file(tmp_path):
 
 
 async def test_job_start_captures_every_stage_of_a_compound_command(tmp_path):
-    """The whole command is grouped before redirection, so output from early stages (not just the
-    last) lands in the job log instead of leaking to the inherited stdout."""
+    """Output from every stage reaches the job log rather than the terminal."""
     s = session(tmp_path)
     await JobTool(s, [{"action": "start", "command": "printf first; printf second && printf third"}]).call()
     job = s.jobs["job.1"]
@@ -736,6 +735,32 @@ async def test_job_start_captures_every_stage_of_a_compound_command(tmp_path):
     assert job.status == "done"
     log = job.tail(1000)
     assert "first" in log and "second" in log and "third" in log
+
+@pytest.mark.parametrize("command", ["printf marker;", "printf marker # trailing comment", "cat <<'EOF'\nmarker\nEOF", "printf marker >&2;"])
+async def test_job_runs_valid_shell_source_without_rewriting_it(tmp_path, command):
+    s = session(tmp_path)
+    try:
+        await JobTool(s, [{"action": "start", "command": command}]).call()
+        result = await JobTool(s, [{"action": "wait", "job": "1", "timeout": 5}]).call()
+        assert "Exit code: 0" in result
+        assert s.jobs["job.1"].tail(100).strip() == "marker"
+    finally:
+        for job in s.jobs.values():
+            job.kill(grace=0.1)
+        s.close()
+
+async def test_job_spawn_failure_cleans_up_its_log(tmp_path, monkeypatch):
+    import tempfile
+
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    s = Session(cwd=str(tmp_path / "missing-directory"))
+    try:
+        with pytest.raises(FileNotFoundError):
+            await JobTool(s, [{"action": "start", "command": "printf marker"}]).call()
+        assert not s.jobs
+        assert not list(tmp_path.glob("nc-job.*.log"))
+    finally:
+        s.close()
 
 
 async def test_job_start_reclaims_finished_capacity(tmp_path, monkeypatch):

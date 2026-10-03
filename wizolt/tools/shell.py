@@ -566,23 +566,29 @@ class JobTool(Tool):
             raise ToolError(f"too many active jobs ({active}/{self.MAX_JOBS}); kill or wait for one first")
         self.session.job_counter += 1
         job_id = f"job.{self.session.job_counter}"
-        # Log to disk (stdout+stderr merged) so we don't need a threaded drainer to keep the
-        # subprocess's OS-level pipe buffers from filling. The command is wrapped in a `{ ...; }`
-        # group so the redirection captures every stage of a compound command, not just the last
-        # (`a; b && c` would otherwise leak its earlier stages to the inherited stdout).
+        # Redirect descriptors, not shell source: wrapping commands in `{ ...; }` breaks
+        # trailing comments, semicolons and heredoc terminators. Both streams from every
+        # stage still reach the log without a pipe that could fill while unattended.
         # `start_new_session` makes this shell its own process-group leader and the command inherits
         # that group, so killpg(pid) reaches the command and its children; running it directly (no
         # `exec`) keeps builtins like `cd` working.
         fd, log_path = tempfile.mkstemp(prefix=f"nc-{job_id}-", suffix=".log")
-        os.close(fd)
-        proc = subprocess.Popen(
-            ["bash", "-lc", f"{{ {command}; }} > {shlex.quote(log_path)} 2>&1"],
-            cwd=self.session.cwd,
-            # Default EOF keeps unattended readers from waiting forever for an answer.
-            stdin=subprocess.PIPE if payload.get("stdin") else subprocess.DEVNULL,
-            bufsize=0,
-            start_new_session=True,
-        )
+        try:
+            with os.fdopen(fd, "wb") as log:
+                proc = subprocess.Popen(
+                    ["bash", "-lc", command],
+                    cwd=self.session.cwd,
+                    # Default EOF keeps unattended readers from waiting forever for an answer.
+                    stdin=subprocess.PIPE if payload.get("stdin") else subprocess.DEVNULL,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    bufsize=0,
+                    start_new_session=True,
+                )
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(log_path)
+            raise
         if proc.stdin is not None:
             os.set_blocking(proc.stdin.fileno(), False)
         self.session.jobs[job_id] = BackgroundJob(id=job_id, command=command, process=proc, log_path=log_path, started_at=time.monotonic())
