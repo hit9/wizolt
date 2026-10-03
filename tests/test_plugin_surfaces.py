@@ -117,3 +117,38 @@ def test_offline_facts_drive_the_actual_context_bar_preview(tmp_path, capsys):
     preview = report["previews"][0]
     assert "context 200 / 1000" in preview["text"]
     assert "█" in preview["text"] and "░" in preview["text"]
+
+
+def test_trial_inputs_accept_pipes_and_symlinks(tmp_path, capsys):
+    import os
+
+    from test_plugins import example
+
+    from wizolt.ui.cli.plugin_testing import main
+
+    # What `--facts <(...)` hands the command: a /dev/fd path backed by a pipe.
+    read, write = os.pipe()
+    os.write(write, json.dumps({"window": {"used": 300, "limit": 1000}}).encode())
+    os.close(write)
+    try:
+        assert main(["test", example(tmp_path, "context_bar"), "--facts", f"/dev/fd/{read}", "--project", str(tmp_path)]) == 0
+    finally:
+        os.close(read)
+    assert "context 300 / 1000" in json.loads(capsys.readouterr().out)["previews"][0]["text"]
+    history = tmp_path / "history.txt"
+    history.write_text("Decided to ship.\n")
+    (tmp_path / "link.txt").symlink_to(history)
+    plugin = tmp_path / "digest.py"
+    plugin.write_text("SDK_VERSION = 1\ndef setup(p):\n    async def summarize(ctx, text):\n        return 'Digest: ' + text.strip()\n    p.summarizer(summarize)\n")
+    assert main(["test", str(plugin), "--summarize", str(tmp_path / "link.txt"), "--project", str(tmp_path)]) == 0
+    assert json.loads(capsys.readouterr().out)["results"] == ["Digest: Decided to ship."]
+
+
+def test_rejected_contribution_reports_the_validate_stage(tmp_path, capsys):
+    from wizolt.ui.cli.plugin_testing import main
+
+    plugin = tmp_path / "look.py"
+    plugin.write_text('SDK_VERSION = 1\ndef setup(p):\n    p.preset("statusbar", "bad", "{no_such_field}")\n')
+    assert main(["validate", str(plugin), "--project", str(tmp_path)]) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["stage"] == "validate" and "no_such_field" in report["error"]

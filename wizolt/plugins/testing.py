@@ -65,6 +65,8 @@ class PluginTrial:
                 source, timeout=self.timeout, python=self.python, cwd=self.context.cwd, config=self.settings.read(source.name)
             )
             if self.validate is not None:
+                # Setup succeeded; a failure from here is a contribution, such as a bad preset.
+                report.stage = "validate"
                 self.validate(Capabilities.decode(source.name, report.capabilities))
             if not validate:
                 for stimulus in stimuli:

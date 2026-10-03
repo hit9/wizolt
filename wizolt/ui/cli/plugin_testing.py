@@ -11,7 +11,6 @@ from dataclasses import asdict
 from pathlib import Path
 
 from wizolt.config import Config
-from wizolt.plugins.files import read_regular
 from wizolt.plugins.protocol import Capabilities
 from wizolt.plugins.testing import PluginTrial, Stimulus
 from wizolt.plugins.workspace import PluginWorkspace
@@ -19,6 +18,16 @@ from wizolt.sdk import Context
 from wizolt.ui.cli.plugin_appearance import AppearanceContribution
 from wizolt.ui.cli.plugin_preview import PreviewExporter
 from wizolt.ui.render import Theme
+
+
+def read_input(path: Path, limit: int) -> bytes:
+    """Read a trial fixture. Unlike plugin source admission, a pipe or symlink is fine here:
+    `--facts <(...)` and `/dev/stdin` are ordinary ways to hand a command a small input."""
+    with open(path, "rb") as stream:
+        data = stream.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError(f"{path} exceeds {limit // 1024} KiB")
+    return data
 
 
 def main(argv: list[str]) -> int:
@@ -64,7 +73,7 @@ def main(argv: list[str]) -> int:
         stimuli.append(Stimulus(kind, name, arguments))
     if args.summarize:
         try:
-            stimuli.append(Stimulus("summarizer", "", {"text": read_regular(args.summarize, 256 * 1024).decode("utf-8")}))
+            stimuli.append(Stimulus("summarizer", "", {"text": read_input(args.summarize, 256 * 1024).decode("utf-8")}))
         except (OSError, ValueError) as error:
             parser.error(str(error))
     if args.action == "validate" and stimuli:
@@ -86,7 +95,7 @@ def main(argv: list[str]) -> int:
             args.path = installed.path
         context = Context("preview", "main", workspace.cwd, args.status, args.context_percent, 0, "preview-model", 0, args.width)
         if args.facts:
-            facts = json.loads(read_regular(args.facts, 256 * 1024))
+            facts = json.loads(read_input(args.facts, 256 * 1024))
             if not isinstance(facts, dict):
                 raise ValueError("facts must be a JSON object")
             # A fixture supplies agent facts, not host IO settings. Viewport and working
