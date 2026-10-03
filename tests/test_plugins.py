@@ -201,9 +201,11 @@ async def test_safe_mode_skips_imports_and_installation_survives_new_agent(tmp_p
 
 
 async def test_management_tool_uses_existing_runner_approval_contract(tmp_path):
-    from agent_harness import session_with_provider
+    from agent_harness import call, session_with_provider
 
+    from wizolt.agent.context import ContextManager
     from wizolt.agent.lifecycle import bootstrap_features
+    from wizolt.agent.runner import ToolRunner
     from wizolt.plugins.installation import PluginInstallations
     from wizolt.tools.plugin import PluginHotReload
 
@@ -211,8 +213,12 @@ async def test_management_tool_uses_existing_runner_approval_contract(tmp_path):
     bootstrap_features(session)
     assert PluginHotReload(session, [{}]).needs_confirmation()
     await PluginInstallations(session.plugins.catalog, session.cwd).manage("enable", source(tmp_path / "local.py", 5))
-    tool = PluginHotReload(session, [{"name": "local"}])
-    assert '"status": "active"' in await tool.call()
+    session.settings.yolo = True
+    # Through the runner, not tool.call(): a mutating tool's async call must be awaited there.
+    runner = ToolRunner(session, ContextManager(session), output_fn=lambda _: None)
+    [message] = await runner.run([call("PluginHotReload", [{"name": "local"}])])
+    assert '"status": "active"' in str(message["content"])
+    assert session.plugins.fields() == {"plugins.local.value": 5}
     await session.plugins.close()
 
 

@@ -363,6 +363,8 @@ class ToolRunner:
             try:
                 if planned_edit and isinstance(tool, EditTool):
                     return await planned_edit.apply(tool)
+                if inspect.iscoroutinefunction(tool.call):
+                    return await tool.call()
                 return tool.call()
             finally:
                 self._raise_if_cancelled()

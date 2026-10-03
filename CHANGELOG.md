@@ -34,6 +34,8 @@
 
 ### Fixed
 
+- `PluginHotReload` crashed the turn with `'coroutine' object has no attribute 'encode'` and
+  never reloaded: the runner did not await an async mutating tool.
 - Updated benchmark and documentation render helpers for the current completed-message API.
 
 ### Added
