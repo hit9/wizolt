@@ -1,5 +1,88 @@
 # Experimental Python SDK 1
 
+## Public API index
+
+The host supplies `plugin: wizolt.sdk.Plugin` to your synchronous entry callable. All registration
+methods return `None` except `service`, which returns a handle. Register during setup, then keep
+mutable state in your own objects. `*` below means keyword-only arguments.
+
+| API | Contract |
+| --- | --- |
+| `plugin.name` | Installed name, used in config and field namespaces; do not change it |
+| `plugin.config` | Deeply read-only mapping; initially the user's table, then resolved settings after `configure` |
+| `plugin.configure(schema, *, defaults=None)` | Validate JSON Schema Draft 2020-12 and apply explicit defaults |
+| `plugin.field(name, callback)` | Sync `(Context) -> str \| int \| float \| bool`; floats must be finite |
+| `plugin.component(slot, callback)` | Sync `(Context) -> Panel` |
+| `plugin.command(name, description, handler, *, during_turn=False)` | Async `(Context, Mapping[str, Any]) -> str`; register `/name` |
+| `plugin.tool(name, description, parameters, handler)` | Same handler, JSON Schema object parameters; offline trial only |
+| `plugin.on(event, observer)` | Async `(Event) -> None`; observers do not control the agent's operation |
+| `plugin.theme(name, definition)` | Register theme metadata; see [APPEARANCE.md](APPEARANCE.md) |
+| `plugin.preset(kind, name, source)` | Register a `statusbar` or `divider` format string |
+| `plugin.service(name, factory)` | `factory() -> AsyncContextManager[T]`; returns `Service[T]` |
+| `plugin.summarizer(callback)` | Async `(Context, str) -> str`; one summary strategy per agent |
+| `plugin.models.complete(prompt, *, system="", provider="", model="", effort="", api="")` | Async text request; returns `ModelReply` |
+| `handle.get()` | Async; returns the same acquired service object until the generation closes |
+
+Only the interfaces documented here are author APIs. Registration dictionaries, `Action`,
+`summary_handler`, `plugin.services`, `Models.call`, `Context.decode`, SDK implementation helpers,
+and everything under `wizolt.plugins` are host plumbing, even where Python names lack `_`.
+Do not construct `Plugin`, `Models` or `Service` yourself, mutate registries or call lifecycle
+methods. SDK 1 is experimental; the bundled reference matches the installed wizolt version.
+
+## Public values and imports
+
+Import `Plugin`, `Context`, `Usage`, `ContextWindow`, `Text`, `Line`, `Panel`, `Event`,
+`PluginError` and `SDK_VERSION` from `wizolt.sdk`. For annotations, import `ModelReply` from
+`wizolt.sdk.models` and `Service` from `wizolt.sdk.services`. `PluginError` derives from
+`ValueError`; raising it gives a readable action error. Exceptions and cancellation still require
+your own resource cleanup in `finally`.
+
+All data values below are frozen dataclasses. Tuple fields must be tuples; do not mutate their
+contents. Host-supplied context is a snapshot, not a live handle. The listed constructors can
+also be used in plugin-owned tests.
+
+| Type | Fields / defaults |
+| --- | --- |
+| `Context` | Required: `agent_id: str`, `agent_name: str`, `cwd: str`, `status: str`, `context_percent: float`, `elapsed: float`, `model: str`, `now: float`; optional: `columns: int = 80`, `usage: Usage = Usage()`, `window: ContextWindow = ContextWindow()` |
+| `Usage` | `calls: int = 0`, `input_tokens: int = 0`, `output_tokens: int = 0`, `cached_tokens: int = 0`, `output_rate: float = 0` |
+| `ContextWindow` | `used: int = 0`, `limit: int = 0`, `budget: int = 0`, `parts: tuple[tuple[str, int], ...] = ()` |
+| `Text` | `text: str`, `role: str = "text"` |
+| `Line` | `spans: tuple[Text, ...] = ()`; read-only `.text` joins the spans |
+| `Panel` | `rows: tuple[Text \| Line, ...] = ()`; `Panel()` occupies no space |
+| `Event` | `name: str`, `context: Context` |
+| `ModelReply` | `text: str`, `model: str`, `usage: Usage` |
+
+Times are seconds; `now` is monotonic, not a date. `columns` is terminal cells, not characters.
+`status` is `idle`, `running`, `completed`, `interrupted`, `failed`, or `waiting` for user input;
+handle unfamiliar values gracefully. Context usage is cumulative for this agent; `ModelReply`
+usage describes that independent model call, with no live speed. `parts` are local token estimates,
+while `used` may be provider-reported; do not assume their sum equals `used`.
+
+## Names, limits and callback permissions
+
+Field, tool and service names match `[A-Za-z_][A-Za-z_0-9]*`. Command, theme and preset names
+also allow `-` after the first character. Names are case-sensitive. Duplicate names in one
+registry are rejected; commands also cannot collide with built-ins or other enabled plugins.
+There are at most 64 registrations per registry (presets: per kind), and 64 observers total.
+One component is allowed per slot; compose multiple rows inside that callback.
+
+| Callback | Async? | Models / service acquisition? | Deadline |
+| --- | --- | --- | --- |
+| Entry (`setup` or package entry) | No | No | Load: 5 seconds |
+| Field / component | No | No | Whole sample: 2 seconds |
+| `sample` observer | Yes | No | Shares the whole sample's 2 seconds |
+| `turn.started` / `turn.finished` observer | Yes | No | Event callbacks together: 1 second |
+| Command / tool handler | Yes | Yes; models unavailable offline | Live invocation: 60 seconds |
+| Summarizer | Yes | Yes; models unavailable offline | 60 seconds |
+
+Trial `--timeout` overrides each trial call's deadline (default 5, greater than 0 and at most 60
+seconds). Host model calls still have their independent 50-second/four-concurrent-call limit.
+Panels allow 12 rows, 256 spans per row and 4,096 total characters per row. Prompt slots share
+at most six visible rows. Single-file source is at most 256 KiB; package limits are below.
+Templates allow 8,192 characters. A timed-out worker can be killed; ordinary callback errors
+are reported. A failed render/observer/summary stays unhealthy until reload. Do not suppress
+`asyncio.CancelledError`; it must unwind resources and release the generation.
+
 ## Packages
 
 Single files declare `SDK_VERSION = 1`, optional `DEPENDENCIES`, and `setup(plugin)`.
@@ -34,12 +117,12 @@ Register colors and format presets during setup:
 
 ```python
 plugin.theme("night", {"base": "dark", "colors": {"accent": "#88aabb"}})
-plugin.preset("statusbar", "compact", "[status.agent] {agent} [/][status.model] {model} [/]")
+plugin.preset("statusbar", "compact", "[status.agent] {agent.name} [/][status.model] {model} [/]")
 plugin.preset("divider", "quiet", "[spinner]{spinner}[/] {label} [divider_rule]{fill:─}[/]")
 ```
 
 The picker and completion show `plugins.NAME.night` and `plugins.NAME.compact`. Themes use the
-existing `base`, `colors`, `diff`, `highlights`, and `pygments` schema; see the appearance docs for
+existing `base`, `colors`, `diff`, `highlights`, and `pygments` schema; see [APPEARANCE.md](APPEARANCE.md) for
 roles and format syntax. Presets are ordinary format strings, including conditions and plugin
 fields. Layout placement is encoded in the string; the built-in left/split toggle applies only
 to built-in layouts. Registration never selects a theme automatically. Validate checks both
@@ -68,12 +151,17 @@ errors omit values, but plugin-authored logs and callback output remain the plug
 Validate/test/install use the selected config. Live reload rereads only its `[plugins]` table,
 and fixes settings for the candidate's lifetime. Failed validation preserves the active instance;
 rollback restores both retained source and settings. Other running agents remain unchanged.
+
 ### Model requests
 
 Inside a command or summarizer, `await plugin.models.complete(prompt, system="", provider="", model="",
 effort="", api="")` makes one text-only request through a configured provider. Empty routing
 fields inherit the agent's configuration. It returns `.text`, `.model` and `.usage` (input,
 output and cached tokens). Put preferred routing names in your plugin's own configuration.
+`provider` names an existing provider entry; `model`, `effort` and `api` override that entry for
+this request only. `api` accepts `auto`, `chat`, `responses`, or `anthropic`. All parameters are
+strings and the prompt must be non-empty. URL/key overrides and conversation/tool calls are not
+supported. This API has no streaming interface. Failed calls raise `PluginError`.
 
 These are paid requests. State that in the command description. No agent history or tools are
 included; credentials stay in the host. Usage belongs to the returned result, not the main
@@ -350,3 +438,67 @@ def setup(plugin):
     plugin.on("sample", wave.sample)
     plugin.component("below_input", wave.draw)
 ```
+
+## Example: helper.py
+
+This example needs no third-party dependency. `/helper-test` and offline `tool:self_test` exercise
+a reusable service. `/helper-ask` makes a paid model request. Enabling this plugin also replaces
+compaction summaries with paid model requests; summary trials report unavailable host services.
+
+```python
+from contextlib import asynccontextmanager
+from io import StringIO
+
+SDK_VERSION = 1
+
+
+@asynccontextmanager
+async def notes():
+    with StringIO("Helper is ready") as stream:
+        yield stream
+
+
+def setup(plugin):
+    plugin.configure(
+        {"type": "object", "properties": {"provider": {"type": "string"}}, "additionalProperties": False},
+        defaults={"provider": ""},
+    )
+    service = plugin.service("notes", notes)
+
+    async def check(context, arguments):
+        stream = await service.get()
+        return stream.getvalue()
+
+    async def ask(context, arguments):
+        reply = await plugin.models.complete(arguments["input"], provider=plugin.config["provider"])
+        return f"{reply.text}\nTokens: {reply.usage.input_tokens} in / {reply.usage.output_tokens} out"
+
+    async def summarize(context, text):
+        reply = await plugin.models.complete(
+            text,
+            system="Summarize decisions, completed work and remaining tasks in concise plain text.",
+            provider=plugin.config["provider"],
+        )
+        return reply.text
+
+    plugin.command("helper-test", "Check the helper", check)
+    plugin.command("helper-ask", "Ask a model (uses tokens)", ask)
+    plugin.tool("self_test", "Check the helper offline", {"type": "object", "additionalProperties": False}, check)
+    plugin.summarizer(summarize)
+```
+
+## Source fallback
+
+Run `wizolt plugin paths`. Its JSON reports absolute paths for this executable's installation:
+
+| Key | What to read |
+| --- | --- |
+| `skill` | The workflow entry point |
+| `api_reference` | This complete API reference |
+| `appearance_reference` | Roles, fields and format grammar |
+| `sdk` | `__init__.py` (API), `models.py` (model types), `services.py` (handles), `settings.py` (validation) |
+| `source` | `plugins/worker.py` and `plugins/runtime.py` for execution and deadlines |
+
+This works without config or a running session and does not import user plugins. With multiple
+installations, use the exact wizolt executable used by the session. Read source to resolve an
+undocumented edge case, not to turn internal implementation details into plugin dependencies.

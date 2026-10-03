@@ -5,8 +5,13 @@ description: Create, edit, install, and manage wizolt Python plugins for persona
 
 # Plugin workshop
 
-Use configuration when a format string is enough. For Python, read [SDK.md](SDK.md), including
-the pet, tokenweather, context-bar and token-wave examples. `/plugins` is the user's interactive manager.
+Use configuration when a format string is enough. For Python, read [SDK.md](SDK.md): public API,
+types, limits and executable examples. For colors or bar formats, also read
+[APPEARANCE.md](APPEARANCE.md); it contains the complete role/field tables and grammar.
+Run `wizolt plugin paths` to get their absolute paths for the **wizolt command you are using**:
+`api_reference`, `appearance_reference`, and `skill`. Read `api_reference` before writing code.
+Start with these packaged references; do not use host internals as plugin APIs.
+`/plugins` is the user's interactive manager.
 For the bundled pet, simply enable `pet` by name; it is installed but disabled by default.
 
 1. **Inspect:** `wizolt plugin list`, then `wizolt plugin inspect NAME`. Edit the returned path.
@@ -35,3 +40,9 @@ requests, and `plugin.summarizer` for compaction. Explain extra model costs befo
 model-backed feature; offline trials never make host model calls.
 Do not mutate host internals, create unmanaged tasks, or install packages
 into the running interpreter. No desktop notifications. Use the manager, not direct registry edits.
+
+If the reference is unclear, use the same command's `sdk` directory: read `__init__.py`,
+`models.py`, `services.py`, or `settings.py`. Its `source` directory contains `plugins/worker.py`
+and `plugins/runtime.py` for execution behavior. Discovery does not need configuration or a
+running session. If several wizolt executables are installed, invoke the same absolute executable
+path as the user's session. Read source to verify behavior; keep plugins on the documented API.

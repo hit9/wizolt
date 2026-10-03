@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Make the built-in plugin skill self-contained with a public API/type index, limits, appearance
+  grammar, source-discovery guidance and executable reference tests. Add `wizolt plugin paths`
+  to locate the current executable's documentation and SDK source without loading configuration.
+
 - Align plugin-manager columns across resizing and long names. Show current-agent live plugin
   counts in statusbar presets and expose `{plugins.count}` to custom formats; hide zero by default.
 

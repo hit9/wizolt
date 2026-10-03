@@ -7,6 +7,7 @@ import asyncio
 import json
 from pathlib import Path
 
+import wizolt
 from wizolt.plugins.installation import PluginInstallations
 from wizolt.plugins.workspace import PluginWorkspace
 from wizolt.ui.cli.plugin_appearance import AppearanceContribution
@@ -18,11 +19,27 @@ def main(argv: list[str]) -> int:
 
         return test_main(argv)
     parser = argparse.ArgumentParser(prog="wizolt plugin", description="Manage saved plugin preferences. Live activation uses PluginHotReload.")
-    parser.add_argument("action", choices=("list", "inspect", "install", "enable", "disable", "test", "validate"))
+    parser.add_argument("action", choices=("paths", "list", "inspect", "install", "enable", "disable", "test", "validate"))
     parser.add_argument("target", nargs="?", default="", help="Installed name, .py file, or package directory for install/enable")
     parser.add_argument("--config", default=None, help="Use the same config file as the running wizolt")
     parser.add_argument("--project", default=str(Path.cwd()), help="Project directory (defaults to current directory)")
     args = parser.parse_args(argv)
+    if args.action == "paths":
+        if args.target:
+            parser.error("paths does not take a plugin name")
+        # Resolve this executable's package, not cwd, another Python interpreter, or a guessed
+        # checkout. Keep discovery available even when config is missing or broken.
+        package = Path(wizolt.__file__).resolve().parent
+        reference = package / "skill" / "builtin" / "plugin-workshop"
+        paths = {
+            "source": package,
+            "sdk": package / "sdk",
+            "skill": reference / "SKILL.md",
+            "api_reference": reference / "SDK.md",
+            "appearance_reference": reference / "APPEARANCE.md",
+        }
+        print(json.dumps({name: str(path) for name, path in paths.items()}, ensure_ascii=False, indent=2))
+        return 0
     if args.action != "list" and not args.target:
         parser.error("this action requires a plugin name or source path")
     try:

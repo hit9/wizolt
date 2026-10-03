@@ -5,6 +5,8 @@ fields, extra `/status` information, or your own commands.
 
 Ask the agent to use **plugin-workshop** to create or change a plugin. The skill is built in;
 it includes the matching SDK reference and runnable examples.
+Run `wizolt plugin paths` to locate that executable's skill, API reference, appearance reference,
+SDK directory and package source. It prints absolute paths as JSON and needs no configuration.
 
 ## Try the pet
 
