@@ -1,9 +1,7 @@
 """Modal / question UI flows as free functions taking the CommandLoop.
 
-These render blocking prompt_toolkit UIs (choice lists, free-text questions, the diff viewer,
-the bash output viewer, and the MCP manager). They return the selected value, or None when
-dismissed. Free functions so the command handlers in commands.py and the runtime can call them
-without a CommandLoop instance.
+These coordinate selectors, questions and tool-output browsing. Detail layout belongs to
+ui.tui.details; this layer turns session/tool state into presentation values.
 """
 
 from __future__ import annotations
@@ -13,15 +11,14 @@ import re
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol
 
-from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples, to_formatted_text
+from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.utils import get_cwidth
 
 from wizolt.base import DISMISSED, SELECTION_BACK, ApprovalView, Text, ToolCall, ToolError, TurnBox, oneline
 from wizolt.session import BackgroundJob, ToolResultRecord
 from wizolt.tools import AskSpec, BashTool, JobTool, ToolScript, tooloutput
-from wizolt.ui.render import UiPrinter
 from wizolt.ui.tui import (
     ASK_DONE,
     ASK_FREE_TEXT,
@@ -31,6 +28,7 @@ from wizolt.ui.tui import (
     SegmentLogViewState,
     TuiApp,
 )
+from wizolt.ui.tui.details import DETAIL_BACK, DIFF_LEXER, DetailSheet, Rows, wrapped_rows
 
 if TYPE_CHECKING:
     from wizolt.session import HistorySegment
@@ -45,18 +43,6 @@ class ChoiceHost(Protocol):
     interactive_input: bool
 
 
-# A detail opened from the Ctrl-O browser can say ``Esc`` to go back to the list instead of
-# closing the whole browser. ``show_modal`` closes on any non-pending return, so the viewer
-# hands this sentinel back and ``tool_output_viewer`` reopens the list around it.
-
-_TOOL_OUTPUT_BACK = object()
-
-# An ApprovalView whose text is a unified diff renders through the diff renderer rather than a
-# pygments lexer, so the viewer shows the same syntax highlighting and red/green bands the
-# transcript's edit previews do.
-DIFF_LEXER = "diff"
-
-
 def picker_height(*, exclusive: bool = False) -> int:
     """The rows a picker's whole sheet gets: the modal window's own bound, or for an exclusive
     one the screen above the status line. Unbounded, a long list (the models a provider
@@ -64,30 +50,6 @@ def picker_height(*, exclusive: bool = False) -> int:
     its own bottom rows, the key legend among them."""
     rows = shutil.get_terminal_size((80, 24)).lines
     return rows - 1 if exclusive else TuiApp.modal_rows(rows)
-
-
-def wrapped_rows(text: str, width: int, margin: str = "  ", style: str = "") -> list[StyleAndTextTuples]:
-    """Source text as display rows, one logical line at a time. Text.wrap_styled measures in
-    terminal cells, so CJK text (two cells per character) wraps where it actually reaches the right
-    edge instead of overflowing at twice the width, and each continuation row re-indents to its
-    source line's own indent so indented code keeps its shape.
-
-    This is the plain path on purpose: rendering conversation text as markdown would fold the
-    structural newlines and drop anything that looks like an HTML tag, and a viewer whose whole
-    job is showing what was evicted may not quietly edit it."""
-    rows: list[StyleAndTextTuples] = []
-    for raw in text.splitlines():
-        if not raw.strip():
-            rows.append([])
-            continue
-        indent = raw[: len(raw) - len(raw.lstrip())][: max(0, width // 4)]
-        rows.extend(
-            cast(
-                list[StyleAndTextTuples],
-                Text.wrap_styled([("", margin)], [("", margin + indent)], [(style, raw)], width),
-            )
-        )
-    return rows
 
 
 # The stored scope/trigger are internal words; these are what the reader sees. The list gets the
@@ -470,7 +432,7 @@ async def tool_output_viewer(loop: CommandLoop) -> None:
         if picked is None:
             return
         # Esc, q, or Ctrl-C in a detail goes back to the list; Ctrl-O closes the whole browser.
-        if await approval_text_viewer(loop, picked, back_on_escape=True) is not _TOOL_OUTPUT_BACK:
+        if await approval_text_viewer(loop, picked, back_on_escape=True) is not DETAIL_BACK:
             return
 
 
@@ -628,236 +590,11 @@ async def _tool_output_list(loop: CommandLoop, entries: list[OutputEntry], state
     return (picked if isinstance(picked, ApprovalView) else None), state
 
 
-def code_rows(text: str, lexer: str, width: int, margin: str = "  ") -> list[StyleAndTextTuples]:
-    """Source text as display rows: a dim line-number gutter, then the line highlighted by the same
-    whole-block lexer the transcript uses, so the viewer and the approval block agree on colors.
-
-    Numbering matters more here than anywhere else: a failed script reports its traceback as
-    `File "<toolscript>", line N`, and this is where the reader goes to find line N."""
-    lines = text.splitlines() or [""]
-    highlighted = UiPrinter.code_lines(text, lexer)
-    number_width = len(str(len(lines)))
-    rows: list[StyleAndTextTuples] = []
-    for number, line in enumerate(lines, 1):
-        rendered = highlighted[number - 1] if highlighted is not None and number - 1 <= len(highlighted) - 1 else [("class:text", line)]
-        prefix: list[tuple[str, str]] = [("", margin), ("class:subtle", f"{number:>{number_width}}  ")]
-        continuation: list[tuple[str, str]] = [("", margin + " " * (number_width + 2))]
-        rows.extend(cast(list[StyleAndTextTuples], Text.wrap_styled(prefix, continuation, rendered, width)))
-    return rows
-
-
-def diff_rows(ui: UiPrinter, text: str, width: int, margin: str = "  ") -> list[StyleAndTextTuples]:
-    """A unified diff as display rows: the same syntax highlighting and red/green bands the
-    transcript's edit previews use, with each changed row filled to the pane edge, which is how the
-    diff viewer framed them.
-
-    A diff's hunk headers carry both numbers, so the sheet numbers nothing itself; a wrapped line
-    indents by the gutter it did not get, which keeps every line of the diff in one body column.
-    A file header or hunk head has no line to place, so it opens the body at the margin instead
-    of floating past a gutter of blanks."""
-    body = margin + " " * ui.DIFF_GUTTER_WIDTH
-    rows: list[StyleAndTextTuples] = []
-    for source, line in zip(text.splitlines(), ui.segment_lines(ui.diff_segments(text))):
-        band = ui.diff_background(source)
-        rendered = ui.remove_line_ending(line)
-        lead = margin if source.startswith((*ui.DIFF_HEADER_PREFIXES, "@@ ")) else body
-        for row in cast(list[StyleAndTextTuples], Text.wrap_styled([("", margin)], [("", lead)], rendered, width)):
-            if band:
-                used = sum(get_cwidth(fragment[1]) for fragment in row)
-                row.append((band, " " * max(0, width - used)))
-            rows.append(row)
-    return rows
-
-
-def _approval_text_view(
-    loop: CommandLoop,
-    view: ApprovalView,
-    *,
-    back_on_escape: bool = False,
-) -> tuple[Callable[[], StyleAndTextTuples], Callable[[str, str], Any]] | None:
-    """Read-only viewer for the text behind a confirmation: header rows plus the complete text,
-    rendered as highlighted code when the view names a lexer and as markdown when it does not (an
-    order is prose; a script is not). Esc/q closes back to the approval prompt; nothing here edits
-    anything. The same viewer is what the Ctrl-O browser opens after the fact, which is how a
-    script is read under yolo, where no prompt ever stops to offer `v`.
-
-    With `back_on_escape`, Esc, q, or Ctrl-C returns `_TOOL_OUTPUT_BACK` instead of closing, so
-    the caller can reopen the list; Ctrl-O still closes."""
-    if loop.presentation.tui is None:
-        return
-    margin = "  "
-    wrapped: dict[int, list[StyleAndTextTuples]] = {}
-    header_rows = view.rows
-
-    def markdown_rows(text: str, width: int) -> list[StyleAndTextTuples]:
-        """Render `text` as markdown through the same Rich capture pipeline the scrollback
-        renderer uses, then split the styled ANSI into display rows. The console width is the
-        modal content width (terminal width minus the two-space margins); Rich measures wide
-        characters itself, so CJK orders wrap at the real right edge.
-
-        Every source line gets a hard line break first: an order's newlines are structural (file
-        lists, steps, plain-text instructions), and Markdown otherwise folds in-paragraph newlines
-        to spaces, running them together into one block the approver has to re-read."""
-        hard_breaks = "\n".join(line.rstrip() + "  " for line in text.split("\n"))
-        content_width = max(1, width - 4)
-        # Rich loads on first render, not at import: the prompt comes up before any markdown exists.
-        from wizolt.ui.markdown import WizoltMarkdown, markdown_console
-
-        console = markdown_console(content_width)
-        with console.capture() as capture:
-            console.print(WizoltMarkdown(hard_breaks))
-        cleaned = UiPrinter.strip_unknown_escapes(UiPrinter.strip_trailing_pad(capture.get()))
-        rows: list[StyleAndTextTuples] = [[]]
-        for style, fragment in cast(list[tuple[str, str]], list(to_formatted_text(ANSI(cleaned)))):
-            for index, part in enumerate(fragment.split("\n")):
-                if index:
-                    rows.append([])
-                if part:
-                    rows[-1].append((style, part))
-        return [[("", margin), *row] for row in rows]
-
-    def separator(width: int, label: str = "") -> StyleAndTextTuples:
-        """The rule between the viewer's sections, optionally naming the one it opens. Labeled or
-        not, it runs to the same right edge, so the sections read as one document. The label takes
-        the accent a heading takes; the dashes keep the dim tone every other rule in the app uses."""
-        dashes = max(0, width - 4)
-        if not label:
-            return [("class:rule", margin + "─" * dashes)]
-        # A label wider than the terminal would push the rule past its right edge, where the modal
-        # window (which never wraps) would simply cut it off.
-        label = Text.clip_width(label, max(4, dashes - 8))
-        lead = f"── {label} "
-        return [
-            ("class:rule", margin + "── "),
-            ("class:choice.title", label),
-            ("class:rule", " " + "─" * max(0, dashes - get_cwidth(lead))),
-        ]
-
-    def layout(width: int) -> list[StyleAndTextTuples]:
-        """Field header rows, a separator, the whole text, and -- when the call has already run --
-        what it returned below a second rule. Cached per width: the wrap has to be redone when the
-        terminal is resized, but not on every keypress."""
-        if width in wrapped:
-            return wrapped[width]
-        lines: list[StyleAndTextTuples] = []
-        label_width = max((get_cwidth(label) for label, _ in header_rows), default=0)
-        for label, value in header_rows:
-            padded = label + " " * max(0, label_width - get_cwidth(label))
-            # A dim label over a plain value, the pairing the transcript's own keys use; the two
-            # values that state an outcome take the colors the list's verdict column gives the
-            # same call.
-            style = "class:text"
-            if label == "exit":
-                style = "class:choice.output.ok" if value == "0" else "class:choice.output.fail"
-            elif label == "status" and value == "running":
-                style = "class:choice.live"
-            lines.extend(
-                cast(
-                    list[StyleAndTextTuples],
-                    Text.wrap_styled(
-                        [("", margin), ("class:choice.meta", padded), ("", "  ")],
-                        [("", margin + " " * (label_width + 2))],
-                        [(style, value)],
-                        width,
-                    ),
-                )
-            )
-        # Every rule is flanked by a blank row: a rule with text tight against it reads as a line
-        # struck through the page rather than a break in it, and a section rule with its body tight
-        # underneath reads as a heading with no white space around it.
-        body = view.text.rstrip()
-        if body:
-            lines.extend([[], separator(width, view.section or view.label.split(" · ")[0]), []])
-            if view.lexer == DIFF_LEXER:
-                lines.extend(diff_rows(loop.presentation.ui, body, width, margin))
-            elif view.lexer:
-                lines.extend(code_rows(body, view.lexer, width, margin))
-            else:
-                lines.extend(markdown_rows(body, width))
-        if view.result.strip():
-            # Plain, unlexed, and whole: this is the result exactly as the model received it, and a
-            # viewer opened to check what a script did may not quietly edit or clip it. Default
-            # foreground, not dimmed, so the answer reads as plainly as the text above it.
-            lines.extend([[], separator(width, "result"), []])
-            lines.extend(wrapped_rows(view.result.rstrip(), width, margin))
-        wrapped[width] = lines
-        return lines
-
-    scroll = 0
-
-    def size() -> tuple[int, int]:
-        columns, rows = shutil.get_terminal_size((120, 24))
-        # Four rows of chrome: the title line, the rule under it, the blank above the body, and the
-        # legend. The body gets what is left, less the status bar's row and one row of slack.
-        return max(20, columns), max(3, rows - 6)
-
-    def viewport() -> int:
-        return size()[1]
-
-    def fragments() -> StyleAndTextTuples:
-        nonlocal scroll
-        width, height = size()
-        lines = layout(width)
-        scroll = min(scroll, max(0, len(lines) - height))
-        # The full legend needs ~78 cells; drop to the key names alone rather than let it spill past
-        # the right edge on a narrow terminal, where the modal window would just cut it off.
-        legend = "  ↑/↓ scroll · Ctrl-D/U half-page · PgUp/PgDn page · g/G top/bottom · Esc/q close"
-        if back_on_escape:
-            legend = "  ↑/↓ scroll · Ctrl-D/U half-page · PgUp/PgDn page · g/G top/bottom · Esc/q back · Ctrl-O close"
-        if get_cwidth(legend) > width:
-            legend = "  ↑/↓ · Ctrl-D/U · g/G · Esc/q back · Ctrl-O close" if back_on_escape else "  ↑/↓ · Ctrl-D/U · g/G · Esc/q close"
-        # Three weights, not one: what the sheet is, in the title colour; what it names, in the
-        # body's; and the read-only notice, dim. A whole line of accent bold reads as a shout.
-        head, _, named = view.label.partition(" · ")
-        notice = " · read-only"
-        # The modal window never wraps, so a long name is clipped here rather than pushing the
-        # notice off its right edge.
-        room = max(0, width - get_cwidth(f"  {head} · {notice}"))
-        title: StyleAndTextTuples = [("class:choice.title", f"  {head[:1].upper() + head[1:]}")]
-        if named:
-            title.append(("class:text", " · " + Text.clip_width(named, room)))
-        title.append(("class:choice.meta", notice + "\n"))
-        parts: StyleAndTextTuples = [
-            *title,
-            # The rule under the title carries no label of its own -- the title is the label -- and at
-            # the app's dim weight that only works with a blank row below it.
-            ("class:rule", margin + "─" * max(0, width - 4) + "\n"),
-            ("", "\n"),
-        ]
-        for line in lines[scroll : scroll + height]:
-            parts.extend(line)
-            parts.append(("", "\n"))
-        parts.append(("class:choice.disabled", Text.clip_width(legend, width) + "\n"))
-        return parts
-
-    def handle_key(key: str, data: str) -> Any:
-        nonlocal scroll
-        if back_on_escape and key in {"q", "escape", "c-c"}:
-            return _TOOL_OUTPUT_BACK
-        if key in {"q", "c-o", "escape"}:
-            return None
-        height = viewport()
-        if key in {"down", "j", "c-n"}:
-            scroll += 1
-        elif key in {"up", "k", "c-p"}:
-            scroll -= 1
-        elif key in {"pagedown", "c-d"}:
-            scroll += height if key == "pagedown" else height // 2
-        elif key in {"pageup", "c-u"}:
-            scroll -= height if key == "pageup" else height // 2
-        elif key in {"g", "G"}:
-            scroll = 0 if key == "g" else 10**9
-        scroll = max(0, scroll)
-        return TUI_MODAL_PENDING
-
-    return fragments, handle_key
-
-
 async def approval_text_viewer(loop: CommandLoop, view: ApprovalView, *, back_on_escape: bool = False) -> object:
-    modal = _approval_text_view(loop, view, back_on_escape=back_on_escape)
-    if modal is None or loop.presentation.tui is None:
+    if loop.presentation.tui is None:
         return None
-    return await loop.presentation.tui.show_modal(*modal, exclusive=True)
+    sheet = DetailSheet(loop.presentation.ui, view, back_on_escape=back_on_escape)
+    return await loop.presentation.tui.show_modal(sheet.fragments, sheet.handle_key, exclusive=True)
 
 
 async def compaction_log_viewer(loop: CommandLoop) -> None:
@@ -872,7 +609,7 @@ async def compaction_log_viewer(loop: CommandLoop) -> None:
         return
     segments = list(reversed(loop.session.history))  # newest first, like the history.md index
     state = SegmentLogViewState()
-    detail: dict[tuple[str, int], list[StyleAndTextTuples]] = {}
+    detail: dict[tuple[str, int], Rows] = {}
 
     def size() -> tuple[int, int]:
         columns, rows = shutil.get_terminal_size((120, 24))
@@ -885,13 +622,13 @@ async def compaction_log_viewer(loop: CommandLoop) -> None:
         stored = f"{len(segments)} stored segment{'' if len(segments) == 1 else 's'}"
         return [("class:choice.disabled", f"  Compaction log · {count} compaction{'' if count == 1 else 's'} · {stored}\n\n")]
 
-    def list_rows(width: int) -> list[StyleAndTextTuples]:
+    def list_rows(width: int) -> Rows:
         columns = [segment_columns(segment) for segment in segments]
         key_width = max((get_cwidth(segment.key) for segment in segments), default=0)
         when_width = max((get_cwidth(when) for when, _, _ in columns), default=0)
         kind_width = max((get_cwidth(kind) for _, kind, _ in columns), default=0)
         messages_width = max((get_cwidth(messages) for _, _, messages in columns), default=0)
-        rows: list[StyleAndTextTuples] = []
+        rows: Rows = []
         for index, (segment, (when, kind, messages)) in enumerate(zip(segments, columns)):
             selected = index == state.selected
             style = "class:accent" if selected else "class:choice.disabled"
@@ -901,13 +638,13 @@ async def compaction_log_viewer(loop: CommandLoop) -> None:
             rows.append([(style, lead), ("class:text" if selected else "class:choice.disabled", title)])
         return rows
 
-    def detail_rows(segment: HistorySegment, width: int) -> list[StyleAndTextTuples]:
+    def detail_rows(segment: HistorySegment, width: int) -> Rows:
         """What the compaction was, then what it kept. The stored excerpt stays in the segment for
         the model's history.N.md export, but it is the raw conversation the summary already stands
         for — showing it here buried the one thing worth reading."""
         when, _, _ = segment_columns(segment)
         headline, caveat = segment_story(segment)
-        rows: list[StyleAndTextTuples] = [
+        rows: Rows = [
             [("class:accent", f"  {segment.key}"), ("class:choice.disabled", f"  {when}")],
             *wrapped_rows(segment.title, width),
             [],
@@ -919,7 +656,7 @@ async def compaction_log_viewer(loop: CommandLoop) -> None:
         rows.extend(wrapped_rows(segment.summary or missing_summary_note(segment), width))
         return rows
 
-    def body(width: int, height: int) -> list[StyleAndTextTuples]:
+    def body(width: int, height: int) -> Rows:
         if state.mode is SegmentLogViewState.Mode.LIST:
             return list_rows(width)
         segment = segments[state.selected]

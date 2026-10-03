@@ -29,7 +29,7 @@ from rich.terminal_theme import TerminalTheme
 from rich.text import Text
 
 from wizolt.agent.engine import Agent
-from wizolt.base import LogBlock, LogEdge, LogLine, LogRole
+from wizolt.base import ApprovalView, LogBlock, LogEdge, LogLine, LogRole
 from wizolt.config import Config
 from wizolt.session import QueuedInput, Session
 from wizolt.ui.bars import STATUS_PRESETS, BarLayout
@@ -37,6 +37,7 @@ from wizolt.ui.cli.appearance import DIFF_STYLE_SAMPLE, AppearancePicker
 from wizolt.ui.cli.loop import CommandLoop
 from wizolt.ui.render import MessageBlock, Theme, UiPrinter
 from wizolt.ui.tui import InputMode, TuiApp
+from wizolt.ui.tui.details import DetailSheet
 
 DOCS = ROOT / "docs"
 WIDTH = 76
@@ -142,7 +143,7 @@ class Illustrations:
         for row in rows:
             console.print(row, soft_wrap=True)
         # Stable identifiers make a second run byte-identical, rather than churning SVG ids.
-        options = {} if name in {"appearance-picker", "appearance-input", "appearance-input-editor"} else {"code_format": SAMPLE_SVG}
+        options = {} if name in {"appearance-picker", "appearance-input", "appearance-input-editor", "tool-detail-bash", "tool-detail-job"} else {"code_format": SAMPLE_SVG}
         svg = console.export_svg(title="wizolt", theme=TERMINAL_THEME, unique_id=name, **options)
         (self.output / f"{name}.svg").write_text(powerline_paths(svg), encoding="utf-8")
 
@@ -158,6 +159,23 @@ class Illustrations:
             self.save("appearance-input-editor", [self.styled(picker.fragments())])
         finally:
             picker.restore()
+
+    def tool_details(self) -> None:
+        examples = {
+            "tool-detail-bash": ApprovalView(
+                "output · tr.18", "uv run pytest -q\ngit diff --check", "bash",
+                [("key", "tr.18"), ("exit", "0")],
+                "stdout:\n  708 passed in 14.84s\n  All checks passed", section="command",
+            ),
+            "tool-detail-job": ApprovalView(
+                "job · tr.21", "Building documentation...\nReading sources... done\nBuild succeeded.", "text",
+                [("key", "tr.21"), ("job", "job.2"), ("status", "done"), ("exit", "0"), ("command", "make -C docs html")],
+                "Job: job.2\nStatus: done", section="log",
+            ),
+        }
+        for name, view in examples.items():
+            sheet = DetailSheet(self.printer, view, back_on_escape=True)
+            self.save(name, [self.styled(sheet.fragments())])
 
     def appearance_colors(self) -> None:
         rows = []
@@ -356,6 +374,8 @@ class Illustrations:
 
 
 RECIPES = {
+    "tool-detail-bash": "tool_details",
+    "tool-detail-job": "tool_details",
     "appearance-picker": "appearance_picker",
     "appearance-input": "appearance_picker",
     "appearance-input-editor": "appearance_picker",

@@ -17,6 +17,38 @@ MARKERS = 200
 DRIVER = Path(__file__).with_name("tmux_driver.py")
 
 
+def test_detail_sheets_stay_navigable_across_resize(pane):
+    log = pane.path / "details.log"
+    pane.send(f"{sys.executable} {DRIVER} 0 0 {log} details")
+
+    def visible_with(text):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            visible = pane.visible()
+            if text in visible:
+                return visible
+            time.sleep(0.05)
+        raise AssertionError(f"missing {text!r}: {visible}")
+
+    for title in ("Command", "Log"):
+        visible_with(title + " · read-only")
+        for index in range(15):
+            pane.resize(NARROW if index % 2 else WIDE, SHORT if index % 2 else TALL)
+            _settled_capture(pane)
+            pane.keys("G")
+            visible = visible_with("DETAIL-TAIL")
+            assert "Ctrl-O" in visible and "tmux-driver" in visible
+            pane.keys("g")
+            visible_with("BODY-000")
+        pane.keys("Escape")
+    deadline = time.monotonic() + 10
+    while "closed log" not in log.read_text():
+        assert time.monotonic() < deadline
+        time.sleep(0.05)
+    pane.keys("draft-still-editable")
+    visible_with("draft-still-editable")
+
+
 def test_fresh_window_output_uses_available_screen_before_scrolling(pane):
     # A fresh pane starts at the top, unlike a shell with a screenful of prior output.
     # Reaching native history alone is not enough: recent output must remain visible too.

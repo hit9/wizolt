@@ -70,14 +70,26 @@ Press **Ctrl-O** to browse results, newest first. Use `j`/`k` or the arrows to s
 | Bash | The command and its output |
 | Edit | The file's full diff, syntax-highlighted with the added and removed lines banded |
 | ToolScript | The complete script and its printed result; a running script appears first |
-| Job | Its live log, or the saved result after resuming a session |
+| Job | Its current log snapshot, or the saved result after resuming a session |
 | Subagents | Select `/agents` to preview a task and its recent answer |
 
 This viewer also works under `--yolo`, when there is no approval preview.
 Very large results show their beginning and end, with a notice when text was shortened.
 The stored tool result remains complete.
 
-<div class="term-shot" role="img" aria-label="A completed Bash command with its output tail under the call line, its stored key cited at the end of that row, then the Ctrl-O sheet of recent results: its title on a line of its own over a full-width rule, a blank row under it, the rows lined up in verdict, key, and tool-name columns with the selected row highlighted whole, and the key legend under the last row. Below it, the read-only viewer one of them opens, framed the same way: the title over a rule, then a labeled rule opening each section -- the fields, the command, and the result."><span class="fs-tool">  Bash  pytest -q</span><span class="fs-output">    └ 708 passed in 14.84s</span><span class="fs-dim"> · tr.18 [auto]</span><span> </span><span class="fs-title">  Tool output · latest 4</span><span class="fs-rule">  ────────────────────────────────────────────────────────────────────────</span><span> </span><span><span class="fs-i fs-dim">   1.   </span><span class="fs-i fs-working">running  </span><span class="fs-i fs-tool">ToolScript  </span><span class="fs-i">call 24 lines (938 chars)</span></span><span class="fs-selected">   2. ✓ tr.18    Bash        pytest -q                  </span><span><span class="fs-i fs-dim">   3. </span><span class="fs-i fs-ok">✓ </span><span class="fs-i fs-dim">tr.17    </span><span class="fs-i fs-tool">Bash        </span><span class="fs-i">git diff --check</span></span><span><span class="fs-i fs-dim">   4. </span><span class="fs-i fs-ok">✓ </span><span class="fs-i fs-dim">tr.16    </span><span class="fs-i fs-tool">Bash        </span><span class="fs-i">git status --short</span></span><span> </span><span class="fs-dim">  j/k/Tab move · Ctrl-D/U page · / search · Enter open · Esc/q close</span><span> </span><span class="fs-title">  Output</span><span> · tr.18</span><span class="fs-dim"> · read-only</span><span class="fs-rule">  ────────────────────────────────────────────────────────────────────────</span><span> </span><span class="fs-dim">  key   </span><span>tr.18</span><span class="fs-dim">  exit  </span><span class="fs-ok">0</span><span> </span><span><span class="fs-i fs-rule">  ── </span><span class="fs-i fs-title">command</span><span class="fs-i fs-rule"> ──────────────────────────────────────────────────────────────</span></span><span> </span><span>  1   pytest -q</span><span> </span><span><span class="fs-i fs-rule">  ── </span><span class="fs-i fs-title">result</span><span class="fs-i fs-rule"> ──────────────────────────────────────────────────────────────</span></span><span> </span><span class="fs-dim">  stdout:</span><span class="fs-output">    708 passed in 14.84s</span><span class="fs-dim">  ↑/↓ scroll · Ctrl-D/U half-page · PgUp/PgDn page · g/G top/bottom · Esc/q back · Ctrl-O close</span></div>
+```{figure} _static/tool-detail-bash.svg
+:alt: Bash detail with a highlighted command panel, exit status and separate output panel
+:width: 760px
+
+Inspect the exact command and its output.
+```
+
+```{figure} _static/tool-detail-job.svg
+:alt: Job detail showing process status and a literal log snapshot in a bordered panel
+:width: 760px
+
+Job logs are captured when you open the detail; reopen it for a newer snapshot.
+```
 
 ## Status bar
 

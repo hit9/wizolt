@@ -1,0 +1,52 @@
+"""Detail documents keep their content and geometry across resizing and navigation."""
+
+import os
+
+import pytest
+from prompt_toolkit.utils import get_cwidth
+
+from wizolt.base import ApprovalView
+from wizolt.ui.render import UiPrinter
+from wizolt.ui.tui.details import DETAIL_BACK, DetailSheet
+
+
+@pytest.mark.parametrize("lexer", ["bash", "text", "diff", ""])
+def test_detail_sheet_wraps_every_section_and_reaches_the_end(monkeypatch, lexer):
+    size = [80, 24]
+    monkeypatch.setattr("shutil.get_terminal_size", lambda fallback: os.terminal_size(size))
+    body = "\n".join(f"line {i} 中文 words" for i in range(40))
+    if lexer == "diff":
+        body = "--- x.py\n+++ x.py\n@@ -1 +1,40 @@\n-old\n" + "\n".join("+" + line for line in body.splitlines())
+    sheet = DetailSheet(
+        UiPrinter(),
+        ApprovalView("document · " + "长路径/" * 30, body, lexer, [("key", "tr.1"), ("workdir", "/" + "目录/" * 30)], "<literal>\nTAIL-MARKER"),
+        back_on_escape=True,
+    )
+    for width in (80, 30, 20, 120, 40):
+        size[0] = width
+        for key in ("g", "c-d", "G"):
+            sheet.handle_key(key, "")
+            text = "".join(fragment[1] for fragment in sheet.fragments())
+            assert all(get_cwidth(line) <= width for line in text.splitlines()), (width, text)
+        assert "TAIL-MARKER" in text
+        assert "<literal>" in text
+    assert sheet.handle_key("escape", "") is DETAIL_BACK
+    assert sheet.handle_key("c-o", "") is None
+
+
+def test_detail_sheet_code_surface_does_not_color_plain_output(monkeypatch):
+    monkeypatch.setattr("shutil.get_terminal_size", lambda fallback: os.terminal_size((80, 40)))
+    sheet = DetailSheet(UiPrinter(), ApprovalView("command", "echo hello", "bash", result="OUTPUT"))
+    fragments = sheet.fragments()
+    assert any("detail.source" in style and "echo" in text for style, text in fragments)
+    assert all("detail.source" not in style for style, text in fragments if "OUTPUT" in text)
+    assert sum("╭" in text for _, text in fragments) == 2
+
+
+@pytest.mark.parametrize("back", [True, False])
+def test_detail_sheet_legend_describes_its_navigation(monkeypatch, back):
+    monkeypatch.setattr("shutil.get_terminal_size", lambda fallback: os.terminal_size((120, 30)))
+    sheet = DetailSheet(UiPrinter(), ApprovalView("output", "text", "text"), back_on_escape=back)
+    footer = "".join(fragment[1] for fragment in sheet.fragments()).splitlines()[-1]
+    assert "Ctrl-D/U half-page" in footer
+    assert ("Esc/q back · Ctrl-O close" if back else "Esc/q close") in footer

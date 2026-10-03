@@ -76,7 +76,9 @@ def test_the_legend_scan_finds_every_kind_of_legend():
     """The scan below is only a guard if it sees the legends: picker, browser, Ask, viewers, and
     the completion menus' shared keys."""
     texts = [text for _, text in _key_legends()]
-    for fragment in ("j/k/Tab move", "Enter open · Esc/q close", "Tab page · n note", "Esc/q back · Ctrl-O close", "Ctrl-N/P or ↑/↓ move"):
+    # DetailSheet composes its legend from the navigation mode; its rendered legends
+    # are checked in test_detail_sheet rather than inferred from string constants.
+    for fragment in ("j/k/Tab move", "Enter open · Esc/q close", "Tab page · n note", "Ctrl-N/P or ↑/↓ move"):
         assert any(fragment in text for text in texts), fragment
 
 

@@ -95,11 +95,9 @@ OS filesystem lock nor an isolated worktree. Hard links with different realpaths
 outside the path-lock guarantee.
 
 Diffs are receipts of **this agent's Edit calls**, not a Git diff of the shared workspace.
-Continuous snapshots can be reduced to a net diff. If a peer/external edit breaks continuity,
-retain this agent's individual receipts rather than subtracting its first snapshot from a later
-shared file and attributing foreign changes to it. Snapshot-less tails derive from recorded
-hunks, never today's file. Legacy records without snapshots use conservative reconstruction or
-fall back to receipts. Rename inference requires an unambiguous continuous history.
+Each receipt belongs to its tool-result key. Ctrl-O shows that edit, and transcript replay uses
+its persisted preview. Neither path reads today's workspace to reconstruct earlier edits.
+There is no session-wide net diff, file-version chain or rename inference.
 
 Stopping a turn leaves its committed edits and background jobs available in the same session.
 Archiving is different: it joins a descendant branch, marks its root-manifest entries archived,

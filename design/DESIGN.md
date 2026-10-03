@@ -638,7 +638,7 @@ them to model messages, including compaction requests and checkpoints.
 
 - Completed user/assistant/tool output prints into native terminal or tmux scrollback.
 - Drafts, live previews, queue state, selectors, and status are one prompt-toolkit application on
-  the primary screen; exclusive viewers like `/diff` may use the alternate screen and restore on
+  the primary screen; exclusive tool-detail viewers may use the alternate screen and restore on
   exit.
 
 **The terminal is a projection, not the source of transcript truth.** `ui/tui/scrollback.py` owns

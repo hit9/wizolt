@@ -13,14 +13,13 @@
 
 ### Changed
 
-- The Ctrl-O list's verdict column answers for every stored call, not only Bash: each row
-  gets the green ✓ its completed call earned, and only a Bash result with a nonzero exit
-  turns red. A failed call never had a stored record, so it stays a red block in the
-  transcript rather than a row.
-- The Ctrl-O detail sheets read as set pages rather than debug output: the title reserves its
-  accent for what the sheet is and dims the read-only notice, field labels step back to dim
-  with plain values, the `exit` and running-`status` fields take the verdict colors, and each
-  section rule names what it opens (`command`, `log`) instead of borrowing the title's word.
+- The Ctrl-O list marks stored calls with a success or failure verdict, including failed
+  Bash and ToolScript executions.
+- Ctrl-O details use theme-colored title bands, compact metadata and bordered sections.
+  Commands have a subtle background; logs and results remain literal text. A shared
+  `DetailSheet` owns layout, scrolling and a single-width cache across tools and approvals.
+- Exercise detail navigation and resizing in real tmux and Zellij panes; update the user
+  guide with renderer-generated examples and remove obsolete net-diff design descriptions.
 - Diff file and hunk headers step out of the line-number gutter, both in the sheets and in the
   transcript's edit previews: the rail is for the lines the numbers place.
 - Diff chrome -- the gutter rail, the file and hunk heads, the +/- signs -- is no longer pinned

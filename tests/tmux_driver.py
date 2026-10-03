@@ -23,7 +23,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from wizolt.base import LogBlock, LogEdge, LogLine, LogRole
+from wizolt.base import ApprovalView, LogBlock, LogEdge, LogLine, LogRole
 from wizolt.ui.cli.modals import choice_application
 from wizolt.ui.render import UiPrinter
 from wizolt.ui.tui.app import TuiApp
@@ -38,6 +38,18 @@ async def main(log) -> None:
     # The same wiring `TuiRuntime.build_tui` does. Without it the printer takes the no-sink path
     # and this driver would quietly measure the old implementation instead of the new one.
     ui.transcript_sink = app.record_scrollback
+
+    async def detail_loop() -> None:
+        from wizolt.ui.tui.details import DetailSheet
+
+        ui.emit("DETAIL-TRANSCRIPT")
+        await asyncio.sleep(0.15)
+        for name, lexer in (("command", "bash"), ("log", "text")):
+            sheet = DetailSheet(ui, ApprovalView(name, "\n".join(f"BODY-{i:03}" for i in range(80)), lexer, result="DETAIL-TAIL"), back_on_escape=True)
+            await app.show_modal(sheet.fragments, sheet.handle_key, exclusive=True)
+            log.write(f"closed {name}\n")
+            log.flush()
+        await asyncio.Event().wait()
 
     async def bar_selector_loop() -> None:
         from wizolt.agent.engine import Agent
@@ -175,6 +187,9 @@ async def main(log) -> None:
         await asyncio.Event().wait()
 
     def start() -> None:
+        if len(sys.argv) > 4 and sys.argv[4] == "details":
+            app.app.create_background_task(detail_loop())
+            return
         if len(sys.argv) > 4 and sys.argv[4] in {"commands", "command-stream"}:
             app.app.create_background_task(command_preview_loop())
             return

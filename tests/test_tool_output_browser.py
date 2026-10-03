@@ -221,7 +221,8 @@ async def test_tool_output_browser_opens_an_edits_whole_recorded_diff(tmp_path, 
     assert any(removed_band in style for style, _ in removed_row)
     assert not any(added_band in style or removed_band in style for style, _ in context_row)
     changed = [row for row in _display_rows([bottom]) if any(part == "+" for _, part in row)]
-    assert changed and all(sum(get_cwidth(part) for _, part in row) == 60 for row in changed)
+    assert changed and all(sum(get_cwidth(part) for _, part in row) == 58 for row in changed)
+    assert all("".join(part for _, part in row).startswith("  │ ") and "".join(part for _, part in row).endswith(" │") for row in changed)
     assert all(any(added_band in style for style, _ in row) for row in changed)
 
 
@@ -525,7 +526,7 @@ async def test_tool_output_viewer_bounds_a_huge_result_and_says_so(tmp_path):
     # The newest entry is the one long line; the header says the clip happened rather than
     # presenting a truncated line as the whole of it.
     assert f"long lines clipped at {tooloutput.VIEWER_LINE_CHARS}" in viewer
-    rendered = [row for row in viewer.splitlines() if row.strip().startswith("x")]
+    rendered = [row for row in viewer.splitlines() if row.lstrip(" │").startswith("x")]
     assert rendered and all(len(row) <= tooloutput.VIEWER_LINE_CHARS + 10 for row in rendered)
 
 
