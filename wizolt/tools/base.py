@@ -71,6 +71,7 @@ class Tool:
             TOOL_REGISTRY,
             MCPTool,
             NextHintsTool,
+            PluginTool,
             SkillTool,
             SubagentTool,
         )
@@ -87,6 +88,7 @@ class Tool:
             if (not session.tool_names or tool.NAME in session.tool_names)
             and (tool is not SkillTool or has_skills)
             and (tool is not MCPTool or has_mcp)
+            and (tool is not PluginTool or PluginTool.available(session))
             and (tool is not NextHintsTool or session.next_hints_available)
         ]
 

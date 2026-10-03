@@ -14,7 +14,7 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.field(name, callback)` | Sync `(Context) -> str \| int \| float \| bool`; floats must be finite |
 | `plugin.component(slot, callback)` | Sync `(Context) -> Panel` |
 | `plugin.command(name, description, handler, *, during_turn=False)` | Async `(Context, Mapping[str, Any]) -> str`; register `/name` |
-| `plugin.tool(name, description, parameters, handler)` | Same handler, JSON Schema object parameters; offline trial only |
+| `plugin.tool(name, description, parameters, handler)` | Same handler, JSON Schema object parameters; the agent calls it through `Plugin` |
 | `plugin.on(event, observer)` | Async `(Event) -> None`; observers do not control the agent's operation |
 | `plugin.theme(name, definition)` | Register theme metadata; see [APPEARANCE.md](APPEARANCE.md) |
 | `plugin.preset(kind, name, source)` | Register a `statusbar` or `divider` format string |
@@ -266,9 +266,11 @@ Registration methods:
   safe alongside a turn. Built-in and other plugins' command names cannot be replaced.
   `/plugins run filename name '{"key": "value"}'` passes structured arguments instead.
 - `tool(name, description, parameters, handler)`: same async signature, with a JSON Schema object.
-  Explicit offline invocation: `wizolt plugin test NAME --call tool:OPERATION --arguments '{...}'`.
-  This runs a fresh instance with preview context, not the running agent's plugin state. It does
-  not add a model tool. Use commands for operations on live UI state.
+  This is how a plugin gives the agent a capability. The agent's `Plugin` tool lists tools by name
+  and description, describes one's parameters on request, then calls it with the user's approval
+  (yolo auto-approves); arguments are validated before your handler runs. Write the description
+  for a model: what it does and when to use it. Offline: `wizolt plugin test NAME --call
+  tool:OPERATION --arguments '{...}'` runs a fresh instance with preview context.
 - `on(event, observer)`: async `(Event) -> None`; Event has name and context.
   Events: turn.started, turn.finished, sample. `sample` runs before fields/components are sampled
   (normally 5 Hz); collect a bounded history here, then render it without side effects. Turn
@@ -280,7 +282,7 @@ each generation has its own worker process, including imported third-party state
 crashing Python cannot block the host event loop. Never create unmanaged background tasks.
 
 Open `/plugins` to manage existing installations. Creation, validation, and installation use
-`wizolt plugin` commands; `/plugins` has no add-file flow. `PluginHotReload` is the only model tool.
+`wizolt plugin` commands; `/plugins` has no add-file flow. The agent's plugin tools are `PluginHotReload` (activation) and `Plugin` (registered tools).
 Keep personal source in `~/.wizolt/plugins/name.py`, or project-specific source in
 `<project>/.wizolt/plugins/name.py`. These directories are not scanned for automatic execution.
 Enabling persists the source path for future agents in this project. Existing agents keep their

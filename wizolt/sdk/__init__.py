@@ -250,7 +250,11 @@ class Plugin:
         self._register(self.commands, name, Action(description, handler, during_turn=during_turn), pattern=self.COMMAND_NAME)
 
     def tool(self, name: str, description: str, parameters: Mapping[str, Any], handler: Handler) -> None:
-        """Register an explicit offline trial operation; this does not add an LLM tool."""
+        """Register an operation the agent can call through its ``Plugin`` tool, with approval.
+
+        The model sees ``description`` when listing and ``parameters`` when describing; both
+        should say what the tool does and when to use it. Trials can call it offline too.
+        """
         from jsonschema import Draft202012Validator
         from jsonschema.exceptions import SchemaError
 

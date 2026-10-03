@@ -44,6 +44,9 @@
   whose callback stops when asked; only an unresponsive worker is terminated.
 - A `{join:…}` without its Powerline glyph now names U+E0B0 / U+E0B2 instead of reporting an
   unknown field; the appearance references spell out the code points, which often render invisibly.
+- Plugin tools are now callable by the agent through a `Plugin` tool with `list`, `describe` and
+  `call` actions, so registering many tools does not grow the prompt. Calls need approval and
+  validate arguments; the tool is offered only while an active plugin provides one.
 - Agent shell commands receive `WIZOLT_EXECUTABLE`, `WIZOLT_CONFIG` and `WIZOLT_PROJECT_DIR`, and
   `wizolt plugin` defaults `--config`/`--project` to them, so an agent manages its own session's
   plugins even after `cd` or with several wizolt installations.

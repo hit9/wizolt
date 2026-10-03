@@ -263,6 +263,50 @@ async def test_management_tool_uses_existing_runner_approval_contract(tmp_path):
     await session.plugins.close()
 
 
+async def test_model_uses_plugin_tools_by_progressive_disclosure(tmp_path):
+    from agent_harness import call, session_with_provider
+
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.lifecycle import bootstrap_features
+    from wizolt.agent.runner import ToolRunner
+    from wizolt.tools import Tool
+    from wizolt.tools.plugin import PluginTool
+
+    session = session_with_provider(tmp_path)
+    bootstrap_features(session)
+    runner = ToolRunner(session, ContextManager(session), output_fn=lambda _: None)
+
+    async def run(**payload):
+        [message] = await runner.run([call("Plugin", [payload])])
+        return str(message["content"])
+
+    def offered():
+        return "Plugin" in {schema["function"]["name"] for schema in Tool.resolved_schemas(session)}
+
+    path = tmp_path / "notes.py"
+    path.write_text("""SDK_VERSION = 1
+def setup(p):
+    async def remember(ctx, args):
+        return "saved " + args["body"]
+    p.tool("remember", "Save a note", {"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, remember)
+""")
+    try:
+        assert not offered()  # No plugin tools, no schema: the tool block is unchanged.
+        await session.plugins.manage("enable", str(path))
+        assert offered()
+        listed = await run(action="list")
+        assert '"tool": "remember"' in listed and "parameters" not in listed  # Details wait for describe.
+        assert '"required": ["body"]' in await run(action="describe", plugin="notes", tool="remember")
+        assert PluginTool(session, [{"action": "call", "plugin": "notes", "tool": "remember"}]).needs_confirmation()
+        assert not PluginTool(session, [{"action": "list"}]).needs_confirmation()
+        session.settings.yolo = True
+        assert "saved milk" in await run(action="call", plugin="notes", tool="remember", arguments={"body": "milk"})
+        assert "Invalid arguments" in await run(action="call", plugin="notes", tool="remember", arguments={"bdy": 1})
+        assert "use action=list" in await run(action="call", plugin="notes", tool="forget")
+    finally:
+        await session.plugins.close()
+
+
 def test_builtin_skill_is_discoverable(tmp_path):
     from agent_harness import session_with_provider
 

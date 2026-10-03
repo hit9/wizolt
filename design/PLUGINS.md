@@ -73,10 +73,12 @@ provider credentials stay host-side. No history, tools, hooks or persistence lea
 Returned usage is independent of agent ctx/cache counters. Offline trials deliberately have no
 model-service binding, so validation cannot silently incur model costs.
 
-The only permanent model gateway is PluginHotReload. Standalone CLI commands perform authoring
-and save installation choices; the gateway reconciles those choices into the calling agent.
-This avoids dynamic tool-schema disclosure and local session IPC. Resume sees the same small
-tool schema and reads saved project preferences. Human plugin commands share the core command
+The model has two fixed gateways. PluginHotReload reconciles saved choices into the calling
+agent; standalone CLI commands perform authoring and save those choices. `Plugin` reaches tools
+that active plugins register by progressive disclosure: `list` returns names and descriptions,
+`describe` one tool's parameters, `call` runs it under the usual approval. Neither reshapes the
+tool block per plugin, so many plugin tools cost the prompt nothing until asked for; `Plugin`
+is offered only while some active plugin has a tool, like MCP. Resume reads saved preferences. Human plugin commands share the core command
 catalog for completion, collision checks and turn admission. Offline handler trials are fresh
 instances with preview context, never a claim to inspect or mutate live plugin memory.
 

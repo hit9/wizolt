@@ -8,7 +8,7 @@ from wizolt.tools.base import Tool
 from wizolt.tools.files import Edit, EditApplyResult, EditTool, ReadTool, ViewImageTool
 from wizolt.tools.mcp import MCPTool
 from wizolt.tools.memory import ContextTool, NextHintsTool, NoteTool
-from wizolt.tools.plugin import PluginHotReload
+from wizolt.tools.plugin import PluginHotReload, PluginTool
 from wizolt.tools.shell import BashTool, JobTool
 from wizolt.tools.skill import SkillTool
 from wizolt.tools.subagent import SubagentTool
@@ -29,6 +29,7 @@ TOOLS: tuple[type[Tool], ...] = (
     AskTool,
     SubagentTool,
     PluginHotReload,
+    PluginTool,
 )
 TOOL_REGISTRY: dict[str, type[Tool]] = {tool.NAME: tool for tool in TOOLS}
 
