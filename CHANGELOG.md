@@ -36,6 +36,8 @@
 
 - `PluginHotReload` crashed the turn with `'coroutine' object has no attribute 'encode'` and
   never reloaded: the runner did not await an async mutating tool.
+- Cancelling a plugin command or summarizer (for example with Ctrl-C) no longer kills a plugin
+  whose callback stops when asked; only an unresponsive worker is terminated.
 - Updated benchmark and documentation render helpers for the current completed-message API.
 
 ### Added

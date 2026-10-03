@@ -100,23 +100,27 @@ class PluginProcess:
         self.operations[identity] = operation
         try:
             self._write({"id": identity, "operation": operation, **parameters})
+            # wait(), not shield(): the future must outlive a cancel to receive the worker's
+            # answer, and a shield cancelled first logs that answer's error as unhandled.
             async with asyncio.timeout(timeout):
                 assert self.process.stdin is not None
                 await self.process.stdin.drain()
-                return await asyncio.shield(future)
+                await asyncio.wait((future,))
+            return future.result()
         except TimeoutError as error:
             self.error = f"Plugin {operation} timed out after {timeout:g}s"
             await self.close()
             raise PluginError(self.error) from error
         except asyncio.CancelledError:
             # Give cooperative callbacks a brief chance to unwind. If the loop is blocked,
-            # terminate the generation; cancellation must never strand the host's turn.
+            # terminate the generation; cancellation must never strand the host's turn. A
+            # worker that answers, even with the callback's CancelledError, stays usable.
             with contextlib.suppress(PluginError, BrokenPipeError, ConnectionResetError):
                 self._write({"operation": "cancel", "target": identity})
-            try:
+            with contextlib.suppress(TimeoutError):
                 async with asyncio.timeout(0.2):
-                    await asyncio.shield(future)
-            except (TimeoutError, PluginError):
+                    await asyncio.wait((future,))
+            if not future.done() or self.error:
                 await self.close()
             raise
         finally:

@@ -119,6 +119,37 @@ def setup(plugin):
     assert not runtime.entries and not runtime.busy
 
 
+async def test_cooperative_cancellation_keeps_the_generation_usable(runtime, tmp_path):
+    path = tmp_path / "polite.py"
+    path.write_text('''import asyncio
+from pathlib import Path
+SDK_VERSION = 1
+def setup(plugin):
+    async def wait(ctx, args):
+        Path(args["started"]).touch()
+        await asyncio.Event().wait()
+    plugin.command("wait", "Wait", wait)
+    plugin.field("value", lambda ctx: 7)
+''')
+    await runtime.manage("enable", str(path))
+    worker = runtime.entries["polite"].active.worker
+    reports = []
+    asyncio.get_running_loop().set_exception_handler(lambda _, context: reports.append(context["message"]))
+    started = tmp_path / "started"
+    task = asyncio.create_task(runtime.invoke("polite", "command", "wait", {"started": str(started)}))
+    async with asyncio.timeout(5):
+        while not started.exists():
+            await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    # The callback unwound when asked, so the worker survives; only a blocked loop is killed.
+    assert worker.process.returncode is None and not worker.error
+    await runtime.refresh()
+    assert runtime.fields() == {"plugins.polite.value": 7} and runtime.active_count == 1
+    assert not reports
+
+
 async def test_broken_component_is_reported_without_breaking_other_plugins(runtime, tmp_path):
     bad = tmp_path / "bad.py"
     bad.write_text('SDK_VERSION = 1\ndef setup(p):\n    p.component("above_input", lambda ctx: 1/0)\n')
