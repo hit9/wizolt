@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.71.1 - 2026-10-03
+
 ### Removed
 
 - Remove `/context`, including its manual `reset` subcommand. Use `/status` to check context
@@ -12,6 +14,8 @@
 - Size Ctrl-O details from the active terminal instead of stale `LINES`/`COLUMNS` variables,
   and keep `G` anchored to the end across resizes. Make the scrollback test wait for a completed
   render snapshot instead of reading it while the renderer is resetting it.
+- Rebuild the transcript when a redraw observes a resize before its notification arrives,
+  preventing live Job output from remaining between its command and final result.
 
 ## 0.71.0 - 2026-10-02
 
