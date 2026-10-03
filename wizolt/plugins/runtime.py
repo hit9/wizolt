@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from wizolt.plugins.activity import TurnActivity
-from wizolt.plugins.layout import SLOTS, LayoutBudget, LayoutOrder
+from wizolt.plugins.layout import SLOTS, LayoutBudget, LayoutPreferences
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.process import PluginProcess, WorkerError
 from wizolt.plugins.protocol import Capabilities, Snapshot
@@ -94,7 +94,7 @@ class PluginRuntime:
         self._lock = asyncio.Lock()
         self._closed = False
         self.viewport = Viewport()
-        self.order = LayoutOrder()
+        self.order = LayoutPreferences()
         self.activity = TurnActivity()
         self._layout_version = 0
         self._sampling = asyncio.Lock()
@@ -302,7 +302,8 @@ class PluginRuntime:
                     generation = candidates[identity]
                     if generation.error:
                         continue
-                    allocated = budget.context(context, slot)
+                    gap = self.order.gap(identity, slot, generation.plugin.components[slot])
+                    allocated = budget.context(context, slot, gap)
                     assert allocated.layout is not None
                     try:
                         panel = await generation.render(allocated, sample=generation.plugin.name not in sampled)
@@ -310,7 +311,8 @@ class PluginRuntime:
                     except Exception as error:  # noqa: BLE001 - broken components cannot fail the host.
                         generation.error = str(error)
                         continue
-                    clipped = budget.consume(slot, panel)
+                    clipped = budget.consume(allocated.layout, panel)
+                    rendered_gap = allocated.layout.gap_before if clipped.rows else 0
                     panels[generation.plugin.name][slot] = clipped
                     available = allocated.layout.rows
                     visibility = (
@@ -322,7 +324,9 @@ class PluginRuntime:
                         if panel.rows
                         else "empty"
                     )
-                    components[identity] = Component(identity, generation.plugin.name, slot, len(clipped.rows), available, visibility)
+                    components[identity] = Component(
+                        identity, generation.plugin.name, slot, len(clipped.rows) - rendered_gap, available, visibility, gap, rendered_gap
+                    )
             if version == self._layout_version:
                 for name, item in generations.items():
                     item.snapshot = Snapshot(item.snapshot.fields, panels[name])
@@ -342,20 +346,29 @@ class PluginRuntime:
         for slot in SLOTS:
             identities = {f"{name}.{slot}": name for name, entry in self.entries.items() if slot in entry.active.plugin.components}
             for identity in self.order.ordered(slot, identities):
-                result.append(self._components.get(identity, Component(identity, identities[identity], slot, 0, 0, "pending layout")))
+                name = identities[identity]
+                gap = self.order.gap(identity, slot, self.entries[name].active.plugin.components[slot])
+                item = self._components.get(identity, Component(identity, name, slot, 0, 0, "pending layout"))
+                result.append(replace(item, gap_before=gap))
         return tuple(result)
 
     async def call_host(self, service: str, arguments: dict) -> dict:
         """Route explicit host capabilities; model credentials stay in the assembly adapter."""
         if service.startswith("ui.components."):
             action = service.removeprefix("ui.components.")
-            expected = {"list": set(), "move": {"component", "before", "after"}, "reset_order": {"slot"}}
-            if action not in expected or set(arguments) != expected[action] or any(not isinstance(value, str) for value in arguments.values()):
+            expected = {"list": set(), "move": {"component", "before", "after"}, "reset_order": {"slot"}, "set_gap": {"component", "gap_before"}}
+            if (
+                action not in expected
+                or set(arguments) != expected[action]
+                or any(not isinstance(value, str) for key, value in arguments.items() if key != "gap_before")
+            ):
                 raise PluginError("Invalid component layout request")
             if action == "move":
                 self.order.move(arguments["component"], arguments["before"], arguments["after"], {item.id: item.slot for item in self.components()})
             elif action == "reset_order":
                 self.order.reset(arguments["slot"])
+            elif action == "set_gap":
+                self.order.set_gap(arguments["component"], arguments["gap_before"], {item.id: item.slot for item in self.components()})
             if action != "list":
                 self._layout_version += 1
             return {"components": [asdict(item) for item in self.components()]}

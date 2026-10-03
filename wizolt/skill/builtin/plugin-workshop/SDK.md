@@ -12,7 +12,7 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.config` | Deeply read-only mapping; initially the user's table, then resolved settings after `configure` |
 | `plugin.configure(schema, *, defaults=None)` | Validate JSON Schema Draft 2020-12 and apply explicit defaults |
 | `plugin.field(name, callback)` | Sync `(Context) -> str \| int \| float \| bool`; floats must be finite |
-| `plugin.component(slot, callback)` | Sync `(Context) -> Panel` |
+| `plugin.component(slot, callback, *, gap_before=0)` | Sync `(Context) -> Panel` |
 | `plugin.command(name, description, handler, *, during_turn=False)` | Async `(Context, Mapping[str, Any]) -> str`; register `/name` |
 | `plugin.tool(name, description, parameters, handler)` | Register a plugin operation, not a standalone model tool; same handler, JSON Schema object parameters; call only through `Plugin` list/describe/call |
 | `plugin.on(event, observer)` | Async `(Event) -> None`; observers do not control the agent's operation |
@@ -23,6 +23,7 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.models.complete(prompt, *, system="", provider="", model="", effort="", api="")` | Async text request; returns `ModelReply` |
 | `plugin.ui.components.list()` | Async; returns `tuple[Component, ...]` in visual order |
 | `plugin.ui.components.move(component, *, before="", after="")` | Async; exactly one anchor, same slot; persists project order and returns the updated list |
+| `plugin.ui.components.set_gap(component, gap_before)` | Async; save a nonnegative integer gap, or `None` to restore the declared default; returns the updated list |
 | `plugin.ui.components.reset_order(slot="")` | Async; restore name order for one slot, or all; returns the updated list |
 | `handle.get()` | Async; returns the same acquired service object until the generation closes |
 
@@ -56,11 +57,11 @@ also be used in plugin-owned tests.
 | --- | --- |
 | `Context` | Required: `agent_id: str`, `agent_name: str`, `cwd: str`, `status: str`, `context_percent: float`, `elapsed: float`, `model: str`, `now: float`; optional: `columns: int = 80`, `usage: Usage = Usage()`, `window: ContextWindow = ContextWindow()`, `viewport: Viewport = Viewport()`, `layout: Layout \| None = None`, `turn: Turn = Turn()` |
 | `Viewport` | `columns: int = 80`, `rows: int = 24` |
-| `Layout` | `slot: str`, `columns: int`, `rows: int` |
+| `Layout` | `slot: str`, `columns: int`, `rows: int`, `gap_before: int = 0` |
 | `Turn` | `tools: ToolCounts = ToolCounts()`, `active_tools: tuple[ToolActivity, ...] = ()` |
 | `ToolCounts` | `started: int = 0`, `completed: int = 0`, `failed: int = 0`, `cancelled: int = 0`, `running: int = 0` |
 | `ToolActivity` | `id: str`, `call_id: str`, `name: str`, `parent_id: str = ""`, `status: str = "running"`, `started_at: float = 0`, `elapsed: float = 0` |
-| `Component` | `id: str`, `plugin: str`, `slot: str`, `rows: int`, `available_rows: int`, `visibility: str` |
+| `Component` | `id: str`, `plugin: str`, `slot: str`, `rows: int`, `available_rows: int`, `visibility: str`, `gap_before: int = 0`, `rendered_gap: int = 0` |
 | `Usage` | `calls: int = 0`, `input_tokens: int = 0`, `output_tokens: int = 0`, `cached_tokens: int = 0`, `output_rate: float = 0` |
 | `ContextWindow` | `used: int = 0`, `limit: int = 0`, `budget: int = 0`, `parts: tuple[tuple[str, int], ...] = ()` |
 | `Text` | `text: str`, `role: str = "text"` |
@@ -110,9 +111,16 @@ the scrollable `status` slot allows twelve per component.
 
 Slots stay in visual order: above_divider → above_input → below_input. Within each slot,
 components default to plugin-name order, regardless of activation order. Component IDs are
-`NAME.SLOT`. `/plugins` → plugin → **layout** and `plugin.ui.components` share the same saved
-project preferences. Moves cannot cross slots; change the component registration for that.
-Disabled components retain their position. Other live agents adopt changes on reload.
+`NAME.SLOT`. `plugin.ui.components` manages saved project preferences. Moves cannot cross slots; change the component registration for that.
+Disabled components retain their position and spacing. Other live agents adopt changes on reload.
+Declare `gap_before` at registration or override it with `set_gap`. It separates visible
+components within a slot: the first visible component has no leading gap; empty or hidden
+components consume no gap. Gaps share the height budget and shrink to reserve one content row.
+`Layout.rows` is the content budget after spacing; `Layout.gap_before` is the allocated gap.
+`Component.rows` excludes spacing, `gap_before` is the configured request, and `rendered_gap`
+is the space actually used. Resetting order preserves gaps; `set_gap(id, None)` restores the
+plugin default without changing order. Do not add those empty rows yourself.
+
 Layout calls are available inside explicit command/tool handlers and summarizers (not renderers or observers),
 and unavailable in offline trials. `visibility` is `pending layout`, `empty`, `visible`,
 `clipped by height budget`, or `hidden by height budget`; allocation updates on the next sample.
@@ -310,7 +318,7 @@ Registration methods:
 
 - `field(name, callback)`: sync callback `(Context) -> str | int | float | bool`.
   Use `{plugins.filename.name}` in statusbar/divider formats; absent fields read as zero.
-- `component(slot, callback)`: sync callback `(Context) -> Panel`. Slots: `above_divider`,
+- `component(slot, callback, *, gap_before=0)`: sync callback `(Context) -> Panel`. Slots: `above_divider`,
   `above_input`, `below_input`, `status` (inside `/status`).
   Return `Panel((Text("content", "accent"), ...))`, at most 12 rows, 4096 characters per row.
   Use `Line((Text(...), Text(...)))` for multiple colors on one row. All theme color roles work;
@@ -579,3 +587,5 @@ Run `wizolt plugin paths`. Its JSON reports absolute paths for this executable's
 This works without config or a running session and does not import user plugins. With multiple
 installations, use the exact wizolt executable used by the session. Read source to resolve an
 undocumented edge case, not to turn internal implementation details into plugin dependencies.
+
+See [EXAMPLES.md](EXAMPLES.md) for complete small plugins.

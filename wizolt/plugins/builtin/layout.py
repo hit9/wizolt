@@ -17,6 +17,21 @@ def setup(plugin):
     async def reset(ctx, args):
         return json.dumps([asdict(item) for item in await plugin.ui.components.reset_order(args.get("slot", ""))])
 
+    async def spacing(ctx, args):
+        return json.dumps([asdict(item) for item in await plugin.ui.components.set_gap(args["component"], args["gap_before"])])
+
+    plugin.tool(
+        "set_gap",
+        "Save empty rows before a component in its slot. Use null to restore its default. First visible components have no leading gap; short terminals shrink gaps.",
+        {
+            "type": "object",
+            "properties": {"component": {"type": "string"}, "gap_before": {"type": ["integer", "null"], "minimum": 0}},
+            "required": ["component", "gap_before"],
+            "additionalProperties": False,
+        },
+        spacing,
+    )
+
     plugin.tool(
         "list_components",
         "List components in visual order, with their height allocation and visibility.",

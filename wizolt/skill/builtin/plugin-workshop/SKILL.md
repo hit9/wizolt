@@ -13,8 +13,8 @@ references; host internals are not plugin APIs. `wizolt plugin paths` prints the
 Run the CLI as `"${WIZOLT_EXECUTABLE:-wizolt}" plugin ...`: that is this session's own wizolt,
 even when another is first on PATH. Its config and project default to this session's, even
 after `cd`. `/plugins` is the user's interactive manager. The bundled `pet` is installed but
-disabled; enable it by name. The optional built-in `layout` plugin exposes list/move/reset tools:
-enable and reload it to arrange components for the user. `/plugins` also offers **layout**.
+disabled; enable it by name. The optional built-in `layout` plugin exposes list/move/gap/reset tools:
+enable and reload it to arrange components and spacing for the user. `/plugins` manages lifecycle only.
 
 1. **Inspect:** `plugin list`, then `plugin inspect NAME`. Edit the returned path.
 2. **Create:** strongly prefer one Git repository per user plugin, at `~/.wizolt/plugins/<name>/`.
@@ -64,3 +64,5 @@ desktop notifications.
 
 If the reference is unclear, read the `sdk` directory from `plugin paths`, then `source` for
 `plugins/worker.py` and `plugins/runtime.py`. Keep plugins on the documented API.
+
+Complete starting points: [EXAMPLES.md](${SKILL_DIR}/EXAMPLES.md).

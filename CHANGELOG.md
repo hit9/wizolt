@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add declared and persistent plugin component spacing, included in the shared height budget;
+  manage order and gaps through the layout plugin instead of the `/plugins` menu.
+- Rewrite the plugins guide around user wishes and iterative prompts; move executable examples
+  to the bundled workshop reference while retaining example validation and generated illustrations.
+
 - Strongly recommend one local Git repository per user-authored plugin in the built-in workshop
   skill, with single-file/package paths and an exception for plugins already tracked by their project.
 

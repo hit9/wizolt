@@ -9,7 +9,7 @@ from wizolt.plugins.session import SessionPlugins
 from wizolt.sdk import PluginError
 
 
-def component(tmp_path, name, slot="above_input", rows=1, responsive=False):
+def component(tmp_path, name, slot="above_input", rows=1, responsive=False, gap=0):
     path = tmp_path / (name + ".py")
     count = f"min({rows}, ctx.layout.rows)" if responsive else str(rows)
     path.write_text(f'''from wizolt.sdk import Panel, Text
@@ -17,7 +17,7 @@ SDK_VERSION = 1
 def draw(ctx):
     return Panel(tuple(Text(f"{name}:{{ctx.layout.columns}}:{{ctx.layout.rows}}:{{ctx.viewport.rows}}") for _ in range({count})))
 def setup(p):
-    p.component({slot!r}, draw)
+    p.component({slot!r}, draw, gap_before={gap!r})
 ''')
     return str(path)
 
@@ -110,28 +110,24 @@ def test_offline_preview_uses_the_requested_height(tmp_path, capsys):
     assert rows == [{"text": "preview:40:1:12", "role": "text"}]
 
 
-async def test_human_manager_moves_without_a_management_plugin(tmp_path):
+async def test_human_manager_only_offers_lifecycle_actions(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
     from wizolt.ui.cli.plugins import PluginManager
 
     runtime = session_with_provider(tmp_path).plugins
-    replies = iter(("move up", "reset slot order"))
+    choices_seen = []
 
-    class Terminal:
-        async def show_modal(self, *args, **kwargs):
-            return next(replies)
+    async def choose(loop, name, choices, *args):
+        choices_seen.append(choices)
 
-    loop = SimpleNamespace(presentation=SimpleNamespace(tui=Terminal()))
+    monkeypatch.setattr("wizolt.ui.cli.plugins.choice_application", choose)
     try:
-        for name in ("one", "two"):
-            await runtime.manage("enable", component(tmp_path, name))
-        manager = PluginManager(loop, runtime)
-        await manager.arrange("two")
-        assert [item.plugin for item in runtime.components()] == ["two", "one"]
-        assert "layout" not in runtime.entries
-        await manager.arrange("two")
-        assert [item.plugin for item in runtime.components()] == ["one", "two"]
+        await runtime.manage("enable", component(tmp_path, "one"))
+        manager = PluginManager(SimpleNamespace(), runtime)
+        manager.records = {"one": {"enabled": True}}
+        await manager.manage("one")
+        assert choices_seen == [("reload", "disable")]
     finally:
         await runtime.close()
 
@@ -183,3 +179,101 @@ def setup(p):
         assert [runtime.panels(slot)[0].rows[0].text for slot in ("above_input", "below_input", "status")] == ["4", "3", "12"]
     finally:
         await runtime.close()
+
+
+async def test_gaps_are_budgeted_and_empty_panels_do_not_leave_orphan_spacing(tmp_path):
+    runtime = session_with_provider(tmp_path).plugins
+    runtime.REFRESH_INTERVAL = 3600
+    try:
+        for name, rows, gap in (("alpha", 1, 4), ("empty", 0, 3), ("omega", 2, 1)):
+            await runtime.manage("enable", component(tmp_path, name, rows=rows, gap=gap, responsive=True))
+        runtime.resize(80, 24)  # Four rows: content + gap + two content rows.
+        await runtime.refresh()
+        first, empty, last = runtime.components()
+        assert (first.gap_before, first.rendered_gap, first.rows) == (4, 0, 1)
+        assert (empty.rows, empty.rendered_gap) == (0, 0)
+        assert (last.rows, last.available_rows, last.rendered_gap) == (2, 2, 1)
+        assert [row.text for row in runtime.panels("above_input")[-1].rows] == ["", "omega:80:2:24", "omega:80:2:24"]
+        runtime.resize(80, 16)  # Two rows: both visible components retain content, no gap.
+        await runtime.refresh()
+        assert [(item.rows, item.rendered_gap) for item in runtime.components()] == [(1, 0), (0, 0), (1, 0)]
+        runtime.resize(80, 12)
+        await runtime.refresh()
+        assert runtime.components()[-1].visibility == "hidden by height budget"
+        assert runtime.components()[-1].rendered_gap == 0
+    finally:
+        await runtime.close()
+
+
+async def test_layout_tool_persists_gap_independently_of_order_and_restores_default(tmp_path):
+    session = session_with_provider(tmp_path)
+    runtime, fresh = session.plugins, SessionPlugins(session)
+    runtime.REFRESH_INTERVAL = fresh.REFRESH_INTERVAL = 3600
+    try:
+        for name in ("alpha", "omega"):
+            await runtime.manage("enable", component(tmp_path, name, gap=1))
+        await runtime.manage("enable", "layout")
+        result = await runtime.invoke("layout", "tool", "set_gap", {"component": "omega.above_input", "gap_before": 2})
+        assert json.loads(result)[-1]["gap_before"] == 2
+        await runtime.call_host("ui.components.move", {"component": "omega.above_input", "before": "alpha.above_input", "after": ""})
+        await runtime.refresh()
+        assert (runtime.components()[0].gap_before, runtime.components()[0].rendered_gap) == (2, 0)
+        await runtime.call_host("ui.components.reset_order", {"slot": "above_input"})
+        await runtime.manage("disable", "omega")
+        await runtime.manage("enable", "omega")
+        await fresh.load()
+        await fresh.refresh()
+        assert fresh.components()[-1].gap_before == 2
+        await runtime.call_host("ui.components.set_gap", {"component": "omega.above_input", "gap_before": None})
+        assert runtime.components()[-1].gap_before == 1
+        assert fresh.components()[-1].gap_before == 2
+        await fresh.hot_reload()
+        assert fresh.components()[-1].gap_before == 1
+        assert [item.plugin for item in runtime.components()] == ["alpha", "omega"]
+    finally:
+        await runtime.close()
+        await fresh.close()
+
+
+async def test_invalid_spacing_does_not_mutate_live_or_saved_preferences(tmp_path):
+    runtime = session_with_provider(tmp_path).plugins
+    try:
+        await runtime.manage("enable", component(tmp_path, "one"))
+        for value in (-1, True, 1.5, "2", {}):
+            with pytest.raises(PluginError, match="nonnegative integer"):
+                await runtime.call_host("ui.components.set_gap", {"component": "one.above_input", "gap_before": value})
+        with pytest.raises(PluginError, match="Unknown active component"):
+            await runtime.call_host("ui.components.set_gap", {"component": "missing", "gap_before": 1})
+        assert not runtime.order.directory.exists()
+        assert runtime.components()[0].gap_before == 0
+    finally:
+        await runtime.close()
+
+
+def test_layout_preferences_load_legacy_order_and_preserve_state_on_failure(tmp_path, monkeypatch):
+    from wizolt.plugins.layout import LayoutPreferences
+
+    preferences = LayoutPreferences(tmp_path)
+    path = tmp_path / "above_input.json"
+    path.write_text('["zebra.above_input", "alpha.above_input"]')
+    preferences.load()
+    available = {name + ".above_input": "above_input" for name in ("alpha", "zebra")}
+    preferences.set_gap("zebra.above_input", 2, available)
+    saved = path.read_text()
+    reloaded = LayoutPreferences(tmp_path)
+    reloaded.load()
+    assert reloaded.ordered("above_input", available) == ["zebra.above_input", "alpha.above_input"]
+    assert reloaded.gap("zebra.above_input", "above_input", 0) == 2
+
+    def fail(*args):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("wizolt.plugins.layout.os.replace", fail)
+    with pytest.raises(OSError, match="disk full"):
+        preferences.set_gap("zebra.above_input", 3, available)
+    assert preferences.gap("zebra.above_input", "above_input", 0) == 2
+    assert path.read_text() == saved
+    path.write_text('{"gaps": {"zebra.above_input": true}}')
+    with pytest.raises(PluginError):
+        preferences.load()
+    assert preferences.gap("zebra.above_input", "above_input", 0) == 2

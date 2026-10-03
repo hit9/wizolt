@@ -63,7 +63,7 @@ class Worker:
             plugin.ui.components.call = self.call_host
             return {
                 "fields": list(plugin.fields),
-                "slots": list(plugin.components),
+                "slots": {slot: item.gap_before for slot, item in plugin.components.items()},
                 "events": list(plugin.observers),
                 "themes": plugin.themes,
                 "presets": plugin.presets,
@@ -114,20 +114,23 @@ class Worker:
                 budget = LayoutBudget(context.viewport)
                 for slot in SLOTS:
                     if slot in plugin.components:
-                        panel = plugin.components[slot](budget.context(context, slot))
+                        item = plugin.components[slot]
+                        allocated = budget.context(context, slot, item.gap_before)
+                        assert allocated.layout is not None
+                        panel = item.callback(allocated)
                         Snapshot.check_panel(panel)
-                        panels[slot] = asdict(budget.consume(slot, panel))
+                        panels[slot] = asdict(budget.consume(allocated.layout, panel))
             elif operation == "sample_render":
                 if context.layout is None:
                     raise PluginError("Component rendering requires a layout allocation")
-                panel = plugin.components[context.layout.slot](context)
+                panel = plugin.components[context.layout.slot].callback(context)
                 Snapshot.check_panel(panel)
                 panels[context.layout.slot] = asdict(panel)
             return {"fields": fields, "panels": panels}
         if operation == "render":
             if context.layout is None:
                 raise PluginError("Component rendering requires a layout allocation")
-            panel = plugin.components[context.layout.slot](context)
+            panel = plugin.components[context.layout.slot].callback(context)
             Snapshot.check_panel(panel)
             return asdict(panel)
         if operation == "event":

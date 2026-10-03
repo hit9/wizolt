@@ -83,7 +83,7 @@ def powerline_paths(svg: str) -> str:
 
 def plugin_example(name: str) -> Plugin:
     """Run a marked plugin example from the plugins guide, so its picture shows that exact code."""
-    source = (DOCS / "plugins.md").read_text(encoding="utf-8")
+    source = (ROOT / "wizolt/skill/builtin/plugin-workshop/EXAMPLES.md").read_text(encoding="utf-8")
     match = re.search(r"<!-- figure: plugins-" + re.escape(name) + r" -->\s*```python\n(.*?)\n```", source, re.DOTALL)
     if match is None:
         raise ValueError(f"Missing plugin example: {name}")
@@ -350,7 +350,7 @@ class Illustrations:
         return Context("main", "main", self.session.cwd, status, 37, 12, "claude-sonnet", NOW, WIDTH - 4, Usage(6, 42_000, 3_100, 30_000, 42), window)
 
     def panel(self, plugin: Plugin, slot: str, context: Context) -> Text:
-        return self.styled(PluginView.render([plugin.components[slot](context)], WIDTH - 4, 12))
+        return self.styled(PluginView.render([plugin.components[slot].callback(context)], WIDTH - 4, 12))
 
     def plugin_bar(self, plugin: Plugin, choice: str, context: Context) -> Text:
         """A contributed statusbar preset, with the plugin's fields sampled from `context`."""

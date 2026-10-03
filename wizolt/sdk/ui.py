@@ -14,12 +14,16 @@ from wizolt.sdk.models import HostCall
 
 @dataclass(frozen=True)
 class Component:
+    """Last allocation: rows exclude spacing; gap_before is requested, rendered_gap is used."""
+
     id: str
     plugin: str
     slot: str
     rows: int
     available_rows: int
     visibility: str
+    gap_before: int = 0
+    rendered_gap: int = 0
 
 
 class Components:
@@ -43,6 +47,14 @@ class Components:
     async def reset_order(self, slot: str = "") -> tuple[Component, ...]:
         """Restore name order for one slot, or all slots when omitted."""
         return await self._request("reset_order", slot=slot)
+
+    async def set_gap(self, component: str, gap_before: int | None) -> tuple[Component, ...]:
+        """Save empty rows before a component; None restores its declared default.
+
+        Gaps separate visible components in the same slot. The first has no leading gap;
+        limited height can shrink a gap to leave room for content.
+        """
+        return await self._request("set_gap", component=component, gap_before=gap_before)
 
 
 class UI:

@@ -6,13 +6,20 @@ The TUI snapshots all slot fragments once per render, and offline previews reuse
 Context-category estimation runs at admission/request boundaries, not in the 5 Hz sampler.
 Sampling observers may keep bounded histories; render callbacks consume them without IO.
 
-`LayoutOrder` owns per-slot project preferences; `LayoutBudget` allocates once in visual order.
+`LayoutPreferences` owns per-slot project preferences; `LayoutBudget` allocates once in visual order.
 The runtime samples each generation once, fusing that with its first allocated component, and
 publishes one completed layout. Paint only reads that cache. A revision counter discards a
 pass invalidated by resize, movement or generation replacement. The TUI's final clip still
-protects input while the next asynchronous sample catches up. Management UI and SDK use one
-host operation; the optional bundled layout plugin owns no policy or persistence. Never
+protects input while the next asynchronous sample catches up. SDK management uses explicit
+host operations; the optional bundled layout plugin owns no policy or persistence. Never
 derive display order from process admission or dictionary insertion order.
+
+Spacing belongs to the receiving component (`gap_before`), not a pair of neighbors. The host
+persists overrides separately from plugin settings and retains them while disabled. Order resets
+must preserve spacing; clearing a gap override restores the plugin declaration. Allocation
+subtracts the gap before invoking the renderer and only consumes it for nonempty content.
+The first visible component in each slot has no leading gap. `/plugins` manages lifecycle;
+layout operations are exposed through the SDK and optional layout plugin.
 
 The runner owns `TurnActivity`, via its agent-local plugin runtime even with no plugins enabled.
 Observe the admitted execution boundary shared by serial and parallel paths, not PreToolUse

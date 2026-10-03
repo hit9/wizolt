@@ -22,20 +22,20 @@ from wizolt.ui.render import Theme
 from wizolt.ui.themes import DIFF_KEYS
 
 REFERENCE = Path(__file__).parents[1] / "wizolt/skill/builtin/plugin-workshop"
-GUIDE = Path(__file__).parents[1] / "docs/plugins.md"
+EXAMPLES = REFERENCE / "EXAMPLES.md"
 
 
-def guide_examples() -> list[tuple[str, str]]:
-    """Every plugin in the user guide, named as its figure marker names it (cost, meter, ...)."""
+def authoring_examples() -> list[tuple[str, str]]:
+    """Every plugin in the authoring reference, named as its figure marker names it (cost, meter, ...)."""
     names = ("meter", "cost", "note", "recall")
-    blocks = re.findall(r"(?:<!-- figure: plugins-(\w+) -->\s*)?```python\n(.*?)```", GUIDE.read_text(), re.DOTALL)
+    blocks = re.findall(r"(?:<!-- figure: plugins-(\w+) -->\s*)?```python\n(.*?)```", EXAMPLES.read_text(), re.DOTALL)
     examples = [(marker or names[index], code) for index, (marker, code) in enumerate(blocks)]
-    assert [name for name, _ in examples] == list(names), "keep this list in the guide's order"
+    assert [name for name, _ in examples] == list(names), "keep this list in the reference order"
     return examples
 
 
-@pytest.mark.parametrize(("name", "code"), guide_examples())
-async def test_user_guide_examples_pass_the_authoring_checks(tmp_path, name, code):
+@pytest.mark.parametrize(("name", "code"), authoring_examples())
+async def test_user_authoring_examples_pass_the_authoring_checks(tmp_path, name, code):
     from wizolt.ui.cli.plugin_testing import main
 
     path = tmp_path / f"{name}.py"

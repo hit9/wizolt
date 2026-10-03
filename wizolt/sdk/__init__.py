@@ -63,6 +63,7 @@ class Layout:
     slot: str
     columns: int
     rows: int
+    gap_before: int = 0
 
 
 @dataclass(frozen=True)
@@ -176,6 +177,14 @@ Summarizer = Callable[[Context, str], Awaitable[str]]
 
 
 @dataclass(frozen=True)
+class ComponentRegistration:
+    """Internal registration couples a renderer with its declared layout defaults."""
+
+    callback: Component
+    gap_before: int = 0
+
+
+@dataclass(frozen=True)
 class Action:
     """Describe an explicit operation; rendering and observation never invoke it implicitly."""
 
@@ -210,7 +219,7 @@ class Plugin:
         self._settings = dict(config or {})
         self._config = freeze(self._settings)
         self.fields: dict[str, Field] = {}
-        self.components: dict[str, Component] = {}
+        self.components: dict[str, ComponentRegistration] = {}
         self.commands: dict[str, Action] = {}
         self.tools: dict[str, Action] = {}
         self.observers: dict[str, list[Observer]] = {}
@@ -291,12 +300,18 @@ class Plugin:
         self._callback(callback, asynchronous=False)
         self._register(self.fields, name, callback)
 
-    def component(self, slot: str, callback: Component) -> None:
-        """Register a pure projection; repeated paints must not advance application state."""
+    def component(self, slot: str, callback: Component, *, gap_before: int = 0) -> None:
+        """Register a pure projection; repeated paints must not advance application state.
+
+        gap_before declares inter-component spacing owned by the host, not panel content.
+        Users can override it without editing the plugin; zero preserves compact layouts.
+        """
         if slot not in self.SLOTS:
             raise PluginError(f"Unknown UI slot {slot!r}; choose {', '.join(sorted(self.SLOTS))}")
+        if type(gap_before) is not int or gap_before < 0:
+            raise PluginError("gap_before must be a nonnegative integer")
         self._callback(callback, asynchronous=False)
-        self._register(self.components, slot, callback)
+        self._register(self.components, slot, ComponentRegistration(callback, gap_before))
 
     def command(self, name: str, description: str, handler: Handler, *, during_turn: bool = False) -> None:
         """Register ``/name``; native invocations pass raw trailing text as arguments['input'].

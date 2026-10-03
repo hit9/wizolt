@@ -10,7 +10,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from wizolt.plugins.catalog import Installation, PluginCatalog
-from wizolt.plugins.layout import LayoutOrder
+from wizolt.plugins.layout import LayoutPreferences
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.process import WorkerError
 from wizolt.plugins.runtime import PluginRuntime
@@ -38,7 +38,7 @@ class SessionPlugins(PluginRuntime):
         self.context_parts: tuple[tuple[str, int], ...] = ()
         self.read_context: Callable[[], list[tuple[str, int]]] | None = None
         super().__init__(self.snapshot, PluginSettings(session.config.plugins, session.config.path))
-        self.order = LayoutOrder(self.catalog.directory / "layout")
+        self.order = LayoutPreferences(self.catalog.directory / "layout")
 
     def reload_layout(self) -> None:
         try:

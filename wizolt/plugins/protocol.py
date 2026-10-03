@@ -31,7 +31,7 @@ class Capabilities:
 
     name: str
     fields: tuple[str, ...]
-    components: tuple[str, ...]
+    components: dict[str, int]  # slot -> declared gap; callbacks never cross the process boundary.
     observers: tuple[str, ...]
     commands: dict[str, Operation]
     tools: dict[str, Operation]
@@ -44,7 +44,7 @@ class Capabilities:
         return cls(
             name,
             tuple(value["fields"]),
-            tuple(value["slots"]),
+            dict(value["slots"]),
             tuple(value["events"]),
             {key: Operation(**item) for key, item in value["commands"].items()},
             {key: Operation(**item) for key, item in value["tools"].items()},

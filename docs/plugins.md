@@ -1,201 +1,95 @@
 # Plugins
 
-Plugins add small things to wizolt: a meter above the divider, a statusbar field, a `/command`,
-or a new ability for the agent. You describe what you want; the agent writes the plugin.
+Make wizolt yours: describe what you want, and let the agent build a plugin for you.
+You do not need to write Python or edit configuration files yourself.
 
-![A wizolt prompt with plugins: a context meter above the divider, a pet above the input and a cost field in the statusbar.](_static/plugins-overview.svg)
+![A context meter above the divider, a pet above the input and a cost field in the statusbar.](_static/plugins-overview.svg)
 
-## Try the pet
+## Start with a wish
 
-Run `/plugins`, select **pet**, then choose **enable**. A small cat sits above your input and
-reacts to the agent. It is built in, disabled by default, and makes no model calls.
+Tell the agent what you want to see, where it belongs, and when it should appear:
 
-![The pet while the agent works, while it waits for you, and after it finishes.](_static/plugins-pet.svg)
+> Use plugin-workshop to add a context bar above my input. Give each category its own
+> color, match my theme, and hide the legend when the terminal is short.
+> Let me toggle it with /context-bar.
 
-To move it, add this to `~/.wizolt/config.toml` and ask the agent to reload plugins:
+The built-in **plugin-workshop** skill helps the agent build and preview it. Approve the
+reload to try it without restarting.
 
-```toml
-[plugins.pet]
-slot = "below_input"  # or "above_divider", "above_input"
-```
+![Write, preview, approve and load a plugin live.](_static/plugins-workflow.svg)
 
-## Ask the agent for one
+Keep refining it in plain language:
 
-Describe the plugin in plain words, for example:
+> Make the bar quieter. Show token counts beside the categories, and only show it while working.
 
-> Make a plugin that shows what this session has cost in the statusbar.
+Type `@plugin:` to name an installed plugin. Mentioning it does not enable or run it.
 
-![How the agent builds a plugin: write it, preview it, save it with your approval, and load it live.](_static/plugins-workflow.svg)
+## Things to ask for
 
-The agent uses the built-in **plugin-workshop** skill. It checks the plugin's pictures before
-showing it to you, and asks before running plugin code in your session. The request lists what
-changes: which plugins are enabled, disabled, or have new code or settings. Nothing restarts.
+### See your context
 
-Type `@plugin:` to select an installed plugin in your message, including disabled ones.
-This names the plugin; the agent queries its tools only when needed. A mention does not enable
-the plugin, run code, or attach its source and tool schemas to your conversation.
+> Show a stacked bar above the divider: one color for each part of my context window,
+> with a compact legend underneath.
 
-## Arrange your plugins
+![A context bar split by category, with token counts underneath.](_static/plugins-meter.svg)
 
-Open `/plugins`, select an enabled plugin, then **layout** to move its component up or down.
-The order is saved for this project and survives reloads and restarts. Without a saved order,
-components sort by plugin name. Moving within a region does not move it across the divider.
+### Track cost and activity
 
-Prefer to ask the agent? Enable the built-in **layout** plugin, then say “put my context meter
-before my pet.” This optional plugin uses the same saved order. Disabling it keeps your layout.
+> Add the session cost to my statusbar. Ask me for my provider's token prices first.
 
-Prompt components share at most six rows, fewer in short terminals. `/plugins` shows when a
-component is hidden or clipped by the height budget. Plugins can use their available rows to
-drop a legend or choose a compact view. Existing live agents adopt saved order changes on reload.
+![A statusbar with the model, context usage and session cost.](_static/plugins-cost.svg)
 
-Plugins can also show the current tool and actual tool counts for this agent's turn, including
-parallel and nested calls. They can observe session and tool start/finish events without model
-calls. Counts remain available when a plugin is enabled after the work has started.
+> Show a small token-speed wave below my input, plus the current tool and this turn's
+> tool-call count. Keep it to two lines.
 
-## Examples
+### Add your own commands and abilities
 
-Each example is a complete plugin. Ask the agent to install one, or save it under
-`~/.wizolt/plugins/` and say "enable and reload it".
+> Add /note to save project notes. Let the agent search those notes when they help with a task.
 
-### Context meter
+![The agent reads saved project notes through a plugin.](_static/plugins-tool.svg)
 
-Shows what fills the context window, above the divider.
+You can also ask for a new color theme, statusbar or divider style. Plugin styles appear in
+`/theme`. Panels can sit above the divider, above or below the input, or inside `/status`.
 
-<!-- figure: plugins-meter -->
-```python
-from wizolt.sdk import Line, Panel, Text
+## Try the built-in pet
 
-SDK_VERSION = 1
-COLORS = ("accent", "success", "warning", "info")
+Open `/plugins`, select **pet**, then **enable**. A small cat reacts to the agent above your
+input. It starts disabled and makes no model calls.
 
+![The pet working, waiting for input and resting.](_static/plugins-pet.svg)
 
-def draw(context):
-    window = context.window
-    width = context.columns - 2
-    spans, start = [], 0
-    for index, (_, tokens) in enumerate(window.parts):
-        end = start + round(tokens * width / max(1, window.limit))
-        spans.append(Text("█" * (end - start), COLORS[index % len(COLORS)]))
-        start = end
-    spans.append(Text("░" * max(0, width - start), "muted"))
-    names = " · ".join(f"{name} {tokens // 1000}k" for name, tokens in window.parts)
-    return Panel((Line(tuple(spans)), Text(names, "muted")))
+> Move @plugin:pet above the divider and reload it.
 
+## Arrange your space
 
-def setup(plugin):
-    plugin.component("above_divider", draw)
-```
+> Enable the built-in layout plugin. Put my context meter before my pet and leave one
+> empty line between them.
 
-![The context meter: a colored bar split by system prompt, system tools, memory files and messages, with token counts below.](_static/plugins-meter.svg)
+> Remove that empty line. Keep the current order.
 
-### Session cost in the statusbar
+Order and spacing survive restarts. Disabling **layout** keeps your choices.
+Without a saved order, plugins appear in name order.
 
-Adds a `cost` field and a statusbar layout that shows it. Prices come from your config.
+Panels share up to six lines, fewer in short terminals. Gaps shrink to fit.
+If `/plugins` shows a panel as hidden or clipped, ask for a more compact design.
 
-<!-- figure: plugins-cost -->
-```python
-SDK_VERSION = 1
+## Manage and recover
 
+Open **`/plugins`**, select a plugin and press **Enter**:
 
-def setup(plugin):
-    prices = {"input": 3.0, "cached": 0.3, "output": 15.0}  # dollars per million tokens
-    plugin.configure({"type": "object", "properties": {name: {"type": "number"} for name in prices}}, defaults=prices)
-
-    def cost(context):
-        usage, price = context.usage, plugin.config
-        # Input tokens include cache reads, which providers bill at their own, lower rate.
-        fresh = usage.input_tokens - usage.cached_tokens
-        return (fresh * price["input"] + usage.cached_tokens * price["cached"] + usage.output_tokens * price["output"]) / 1e6
-
-    plugin.field("dollars", cost)
-    plugin.preset("statusbar", "cost", "[status.model] {model} [/]{>}[status_context]ctx {context.percent}%[/] [warning]${plugins.cost.dollars:.2f}[/]")
-```
-
-![The cost statusbar: model on the left, context use and session cost on the right.](_static/plugins-cost.svg)
-
-Pick **plugins.cost.cost** in `/theme`, or use `{plugins.cost.dollars:.2f}` in your own
-[format](appearance.md). Set your prices:
-
-```toml
-[plugins.cost]
-input = 3.0    # per million new input tokens
-cached = 0.3   # per million tokens read from the provider's cache
-output = 15.0
-```
-
-### A command for you
-
-Adds `/note TEXT` to keep project notes in `.wizolt/notes.txt`.
-
-```python
-from pathlib import Path
-
-SDK_VERSION = 1
-
-
-def setup(plugin):
-    async def note(context, arguments):
-        path = Path(context.cwd) / ".wizolt" / "notes.txt"
-        path.parent.mkdir(exist_ok=True)
-        with path.open("a") as notes:
-            notes.write(arguments["input"] + "\n")
-        return "Noted."
-
-    plugin.command("note", "Save a project note", note)
-```
-
-### An ability for the agent
-
-Lets the agent read those notes when it decides they help. It asks you before each use.
-
-```python
-from pathlib import Path
-
-SDK_VERSION = 1
-
-
-def setup(plugin):
-    async def recall(context, arguments):
-        path = Path(context.cwd) / ".wizolt" / "notes.txt"
-        return path.read_text() if path.exists() else "No notes yet."
-
-    plugin.tool("recall", "Read the user's project notes", {"type": "object", "properties": {}}, recall)
-```
-
-![The agent calls the recall tool through Plugin and reads two notes back.](_static/plugins-tool.svg)
-
-The agent discovers and calls `recall` through **Plugin**, not as a standalone model tool or
-a bare ToolScript tool name. Details are loaded only when needed. Offline trials can test this
-file-reading example; plugins using live model or layout services need a reload and an in-session test.
-
-## Manage plugins
-
-Run **`/plugins`** to see each plugin, whether it is enabled, and whether it is running.
-Select one and press **Enter**:
-
-| Action | What it does |
+| Action | What you get |
 | --- | --- |
-| Enable / Disable | Turn it on or off; your choice is saved for this project |
-| Reload | Load its latest code and settings |
-| Rollback | Go back to the previous version |
-| Layout | Move a component up/down in its region, or restore default order |
+| Enable / Disable | Turn it on or off for this project |
+| Reload | Apply its latest code and settings |
+| Rollback | Restore the previous loaded version |
 
-A change made while the agent works shows **pending** and applies when the turn ends. A broken
-update keeps the old version running. The statusbar shows `plugins N` while any are running.
+Changes during a turn show **pending** until it ends. A broken update keeps the old version
+running. You can ask the agent to manage plugins and settings too:
 
-## Settings
+> Update @plugin:pet, preview the change, then reload it. Keep its source in its own Git
+> repository so I can undo changes later.
 
-A plugin reads its settings from `[plugins.NAME]` in your config, like the cost example above.
-After editing them, ask the agent to reload plugins. Invalid settings keep the old version.
-Keep secrets in environment variables, not in plugin settings.
+Only enable code you trust: plugins can access your files and network.
+Keep secrets out of plugin source; ask the agent to use environment variables.
 
-## Safety and recovery
-
-- Plugins are Python with your permissions. Only enable code you trust.
-- Each plugin runs in its own process, so a crash or a slow plugin cannot freeze wizolt.
-- Plugin tools ask before each use; commands run only when you type them.
-- If wizolt misbehaves after enabling one, start with `WIZOLT_NO_PLUGINS=1 wizolt`, then
-  disable it in `/plugins`.
-
-Plugin authors and the agent use the reference printed by `wizolt plugin paths`. SDK 1 is
-experimental and may change.
+If a plugin causes trouble, start with `WIZOLT_NO_PLUGINS=1 wizolt` and disable it in `/plugins`.
