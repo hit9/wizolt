@@ -136,7 +136,9 @@ class SnapshotWritePlan:
             file.write(("".join(self.blob_lines) + self.record_line).encode("utf-8"))
         meta_written = False
         if self.latest_dir:
-            with open(os.path.join(self.latest_dir, "latest"), "w", encoding="utf-8") as file:
+            # The log is committed. A discovery-cache failure must not make its append look
+            # uncommitted: retrying the same delta would duplicate conversation messages.
+            with contextlib.suppress(OSError), open(os.path.join(self.latest_dir, "latest"), "w", encoding="utf-8") as file:
                 file.write(self.uid)
         if self.meta_line:
             with contextlib.suppress(OSError):
@@ -495,7 +497,7 @@ class SessionSnapshotStore:
         resume can never cross into another project."""
         directory = cls.project_dir(data_dir, cwd)
         uid = cls.read_latest(directory)
-        if uid and os.path.isfile(os.path.join(directory, uid + ".jsonl")):
+        if uid and subagent_root_uid(uid) == uid and os.path.isfile(os.path.join(directory, uid + ".jsonl")):
             return uid
         return cls.newest_uid(directory)
 
@@ -503,7 +505,14 @@ class SessionSnapshotStore:
     def newest_uid(cls, directory: str) -> str:
         """Fallback for a missing or stale pointer: newest log in the project by mtime."""
         try:
-            entries = [entry for entry in os.scandir(directory) if entry.name.endswith(".jsonl") and entry.is_file() and not entry.name.endswith(".w.jsonl")]
+            entries = [
+                entry
+                for entry in os.scandir(directory)
+                if entry.name.endswith(".jsonl")
+                and entry.is_file()
+                and not entry.name.endswith(".w.jsonl")
+                and subagent_root_uid(entry.name[:-6]) == entry.name[:-6]
+            ]
         except OSError:
             return ""
         newest = max(entries, key=lambda entry: entry.stat().st_mtime, default=None)

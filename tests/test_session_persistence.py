@@ -1,5 +1,7 @@
 import asyncio
+import builtins
 import json
+import os
 import threading
 
 import pytest
@@ -62,6 +64,32 @@ def read_text(path) -> str:
     """Raw log text, for assertions about what is not on disk."""
     with open(path, encoding="utf-8") as file:
         return file.read()
+
+async def test_latest_pointer_failure_does_not_repeat_committed_messages(tmp_path, monkeypatch):
+    s = session_with_data_dir(tmp_path)
+    first = {"role": "user", "content": "first"}
+    second = {"role": "assistant", "content": "second"}
+    s.messages.append(first)
+    s.transcript_messages.append(first)
+    try:
+        await s.save_snapshot()
+        original_open = builtins.open
+
+        def fail_pointer(path, mode="r", *args, **kwargs):
+            if os.fspath(path) == os.path.join(project_dir(s), "latest") and mode == "w":
+                raise OSError("pointer write failed")
+            return original_open(path, mode, *args, **kwargs)
+
+        s.messages.append(second)
+        s.transcript_messages.append(second)
+        with monkeypatch.context() as patch:
+            patch.setattr(builtins, "open", fail_pointer)
+            await s.save_snapshot()
+        await s.save_snapshot()
+        merged, _, _ = SessionSnapshotStore.read_merged(log_path(s))
+        assert merged["messages"] == merged["transcript_messages"] == [first, second]
+    finally:
+        s.close()
 
 
 async def test_first_save_writes_init_line(tmp_path):

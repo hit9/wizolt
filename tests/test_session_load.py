@@ -3,6 +3,7 @@ import asyncio
 import json
 import os
 import time
+from pathlib import Path
 
 import pytest
 from test_session_persistence import log_path, project_dir, read_jsonl, read_lines, rewrite_log, session_with_data_dir, visible_contents, write_log
@@ -328,6 +329,30 @@ async def test_latest_falls_back_to_newest_log_when_pointer_is_missing(tmp_path)
     os.unlink(os.path.join(project_dir(s), "latest"))
 
     assert SessionSnapshotStore.latest_uid(str(tmp_path), str(tmp_path)) == s.uid
+
+@pytest.mark.parametrize("pointer", ["missing", "stale", "child"])
+async def test_latest_never_resolves_a_child_snapshot(tmp_path, pointer):
+    root = session_with_data_dir(tmp_path)
+    child = Session(uid=root.uid + ".a0123456789ab", cwd=root.cwd, config=root.config, agent_parent=root.uid, listed=False)
+    child.borrow_ownership(root)
+    try:
+        root.messages.append({"role": "user", "content": "parent request"})
+        child.messages.append({"role": "user", "content": "child task"})
+        await root.save_snapshot()
+        await child.save_snapshot()
+        os.utime(log_path(root), (100, 100))
+        os.utime(log_path(child), (200, 200))
+        latest = os.path.join(project_dir(root), "latest")
+        if pointer == "missing":
+            os.unlink(latest)
+        else:
+            await asyncio.to_thread(Path(latest).write_text, child.uid if pointer == "child" else "nonexistent")
+        assert SessionSnapshotStore.latest_uid(root.config.data_dir, root.cwd) == root.uid
+        os.unlink(log_path(root))
+        assert SessionSnapshotStore.latest_uid(root.config.data_dir, root.cwd) == ""
+    finally:
+        child.close()
+        root.close()
 
 async def test_header_line_precedes_the_snapshot(tmp_path):
     """Line 1 is a bounded header, so project queries never parse the conversation behind it."""

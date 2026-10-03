@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- A failed `latest` pointer update no longer fails an already-written session checkpoint or
+  duplicates messages on retry. Continue-session discovery skips child snapshots even when
+  the pointer is missing, stale, or names a child.
 - Keep live Bash/Job previews and `stored` result rows attached to their tool calls when
   terminal resizing overlaps tool output. Add continuous-output zoom coverage for tmux and Zellij.
 
