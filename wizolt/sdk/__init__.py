@@ -310,8 +310,13 @@ class Plugin:
     def tool(self, name: str, description: str, parameters: Mapping[str, Any], handler: Handler) -> None:
         """Register an operation the agent can call through its ``Plugin`` tool, with approval.
 
-        The model sees ``description`` when listing and ``parameters`` when describing; both
-        should say what the tool does and when to use it. Trials can call it offline too.
+        This does not add a standalone tool to the model's tool table or ToolScript. Discover
+        it with Plugin list, obtain parameters with describe, and execute with call. The name
+        alone is not callable. Description should explain what it does and when to use it.
+
+        Offline trials can exercise handlers that need no host RPC. models.complete and
+        ui.components require an active session: reload, then test through Plugin call.
+        Plugin-owned resources acquired with service() can still be used in offline trials.
         """
         from jsonschema import Draft202012Validator
         from jsonschema.exceptions import SchemaError

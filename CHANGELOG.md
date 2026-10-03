@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Clarify that registered plugin operations use the fixed `Plugin` gateway, not standalone
+  model/ToolScript tool names, and distinguish offline trials from live host-service validation
+  in the built-in skill, SDK reference and docstring, and user guide.
+
 - Add `@plugin:NAME` completion and lightweight references. Mentions do not load plugins or
   inline capabilities; `Plugin list` can filter by exact plugin name before on-demand `describe`.
 

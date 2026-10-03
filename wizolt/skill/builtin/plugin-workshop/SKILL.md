@@ -24,6 +24,9 @@ enable and reload it to arrange components for the user. `/plugins` also offers 
 3. **Check:** `plugin validate PATH`, then `plugin test PATH --theme forest --width 80`. Read the
    JSON report and view each PNG: components and contributed statusbar/divider presets. Test a
    narrow width too; `--times 0 0.5 1` samples animation. Trials run trusted Python for real.
+   Handlers calling `models.complete` or `ui.components.*` need a live session: validate offline,
+   then reload and test through `Plugin call`. “Host services unavailable in offline trials”
+   is that boundary, not evidence your handler is broken. Plugin-owned `service()` resources work offline.
    With `DEPENDENCIES`, run step 4's `install` first; then test by installed NAME.
 4. **Save:** `plugin enable PATH` (or `install PATH` for dependencies). This saves a preference;
    it does not activate anything.
@@ -37,6 +40,8 @@ also offers rollback. Files never load just because they exist.
 **What a plugin can add:** UI (fields, components, themes, presets), slash commands for the user,
 and tools for you. Register `plugin.tool` when the user wants *you* to gain an ability; after
 activation, use `Plugin` actions `list`, `describe`, then `call` (the user approves calls).
+`plugin.tool` does **not** add a standalone model tool. Do not call its bare name or look for it
+in ToolScript's tool table; its model-facing entry point is the existing `Plugin` gateway.
 `@plugin:NAME` is a reference only. Use `Plugin(action="list", name="NAME")` to discover its
 current tools, or CLI `plugin inspect NAME` for saved installation state; mentioning does not enable it.
 Commands are typed by the user; you cannot run them.

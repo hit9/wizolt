@@ -14,7 +14,7 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.field(name, callback)` | Sync `(Context) -> str \| int \| float \| bool`; floats must be finite |
 | `plugin.component(slot, callback)` | Sync `(Context) -> Panel` |
 | `plugin.command(name, description, handler, *, during_turn=False)` | Async `(Context, Mapping[str, Any]) -> str`; register `/name` |
-| `plugin.tool(name, description, parameters, handler)` | Same handler, JSON Schema object parameters; the agent calls it through `Plugin` |
+| `plugin.tool(name, description, parameters, handler)` | Register a plugin operation, not a standalone model tool; same handler, JSON Schema object parameters; call only through `Plugin` list/describe/call |
 | `plugin.on(event, observer)` | Async `(Event) -> None`; observers do not control the agent's operation |
 | `plugin.theme(name, definition)` | Register theme metadata; see [APPEARANCE.md](APPEARANCE.md) |
 | `plugin.preset(kind, name, source)` | Register a `statusbar` or `divider` format string |
@@ -31,6 +31,14 @@ Only the interfaces documented here are author APIs. Registration dictionaries, 
 and everything under `wizolt.plugins` are host plumbing, even where Python names lack `_`.
 Do not construct `Plugin`, `Models` or `Service` yourself, mutate registries or call lifecycle
 methods. SDK 1 is experimental; the bundled reference matches the installed wizolt version.
+
+**Plugin tools are not entries in the model's tool table.** `plugin.tool("remember", ...)`
+does not make `remember` or `my_plugin.remember` directly callable, including as a ToolScript
+tool name. The model uses `Plugin(action="list", name="my_plugin")`, then
+`Plugin(action="describe", name="my_plugin", tool="remember")`, then
+`Plugin(action="call", name="my_plugin", tool="remember", arguments={...})` with normal approval.
+Registration does not change the model's fixed tool schema; descriptions and parameters are
+disclosed on demand. The offline CLI is a testing entry point, not another model tool.
 
 ## Public values and imports
 
@@ -319,7 +327,8 @@ Registration methods:
   and description, describes one's parameters on request, then calls it with the user's approval
   (yolo auto-approves); arguments are validated before your handler runs. Write the description
   for a model: what it does and when to use it. Offline: `wizolt plugin test NAME --call
-  tool:OPERATION --arguments '{...}'` runs a fresh instance with preview context.
+  tool:OPERATION --arguments '{...}'` runs a fresh instance with preview context, provided the
+  handler does not need host RPC (see the trial boundaries below).
 - `on(event, observer)`: async `(Event) -> None`; Event has name and context.
   Events: session.started, session.finished, turn.started, turn.finished, tool.started, tool.finished, sample. `sample` runs before fields/components are sampled
   (normally 5 Hz); collect a bounded history here, then render it without side effects. Turn
@@ -348,6 +357,20 @@ installation; it is not portable. No installation command replaces packages in t
 `wizolt plugin validate PATH` executes setup and reports registrations. `test` also samples fields
 and components; `--event turn.finished` and `--call command:NAME --arguments '{...}'` explicitly
 exercise handlers. They have real effects; validation and trials are not a filesystem sandbox.
+
+| Check | What it verifies |
+| --- | --- |
+| `validate PATH` | Source loading, setup, configuration and registrations; does not execute handlers |
+| `test PATH` | Fields and components with preview context; handlers run only when explicitly requested |
+| `test PATH --call tool:NAME --arguments '{...}'` | Handler arguments and behavior without host RPC; plugin-owned `service()` resources are available |
+| Reload, then `Plugin describe/call` in the session | Handlers that call `plugin.models.complete` or `plugin.ui.components.*` |
+
+Offline trials have no live agent, provider service or component registry. For example,
+`wizolt plugin test layout --call tool:list_components` returns
+`Host services unavailable in offline trials`. This reports a missing live host, not an invalid
+tool registration. Validate such plugins offline, reload them, then test their host-dependent
+handlers through the session's `Plugin` gateway. A successful validation does not prove those
+handlers work. Plugin-owned resources may still use real files or networks during a trial.
 
 `test` outputs JSON, PNG and SVG paths for each component and each registered statusbar/divider
 preset; presets show your sampled fields beside representative host values (`preview-model`,

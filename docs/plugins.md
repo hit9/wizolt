@@ -164,6 +164,10 @@ def setup(plugin):
 
 ![The agent calls the recall tool through Plugin and reads two notes back.](_static/plugins-tool.svg)
 
+The agent discovers and calls `recall` through **Plugin**, not as a standalone model tool or
+a bare ToolScript tool name. Details are loaded only when needed. Offline trials can test this
+file-reading example; plugins using live model or layout services need a reload and an in-session test.
+
 ## Manage plugins
 
 Run **`/plugins`** to see each plugin, whether it is enabled, and whether it is running.
@@ -174,6 +178,7 @@ Select one and press **Enter**:
 | Enable / Disable | Turn it on or off; your choice is saved for this project |
 | Reload | Load its latest code and settings |
 | Rollback | Go back to the previous version |
+| Layout | Move a component up/down in its region, or restore default order |
 
 A change made while the agent works shows **pending** and applies when the turn ends. A broken
 update keeps the old version running. The statusbar shows `plugins N` while any are running.
