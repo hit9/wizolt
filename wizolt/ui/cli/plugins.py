@@ -43,16 +43,21 @@ class PluginView:
                 remaining -= 1
         return result
 
+    @staticmethod
+    def input_rows(rows: int) -> int:
+        """One height policy for live projection and offline component previews."""
+        return min(6, max(0, rows // 4 - 2))
+
     def above_input(self, columns: int, rows: int) -> StyleAndTextTuples:
         """Use the host viewport; querying the shell's terminal can disagree after a resize."""
-        rows = min(6, max(0, rows // 4 - 2))
+        rows = self.input_rows(rows)
         if not rows:
             return []
         return list(self.render(self.runtime.panels("above_input", columns), columns, rows))
 
 
 class PluginManager:
-    """Human management over the same lifecycle API used by the model's Plugin tool.
+    """Human management over the same lifecycle API used by live reload.
 
     Selectors close before an action starts. This keeps one modal owner,
     preserves cancellation, and avoids background mutations that outlive the manager. Rows show
@@ -74,7 +79,7 @@ class PluginManager:
         for key in ("fields", "commands", "tools", "slots"):
             if values := item.get(key):
                 lines.append(f"{key.capitalize()}: {', '.join(values)}")
-        for key in ("error", "launch"):
+        for key in ("error", "python"):
             if value := item.get(key):
                 lines.append(f"{key.capitalize()}: {value}")
         return "\n".join(lines)
@@ -127,8 +132,6 @@ class PluginManager:
             return
         result = await self.runtime.manage(action, name)
         self.notice = f"{result['name']}: {result['status']}"
-        if launch := result.get("launch"):
-            self.loop.presentation.emit(f"Restart command: {launch}")
 
 
 async def plugins_command(loop: CommandLoop, args: str) -> str:
@@ -152,7 +155,7 @@ async def plugins_command(loop: CommandLoop, args: str) -> str:
         if len(parts) > 2:
             raise PluginError("Usage: /plugins [list|inspect|enable|reload|disable|rollback] [NAME]")
         if action not in ("list", "inspect", "enable", "reload", "disable", "rollback"):
-            raise PluginError("Use Plugin via plugin-workshop to create, validate or install plugins")
+            raise PluginError("Use wizolt plugin via plugin-workshop to create, validate or install plugins")
         if action == "enable":
             if len(parts) != 2:
                 raise PluginError("Usage: /plugins enable NAME")

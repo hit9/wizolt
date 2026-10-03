@@ -1009,6 +1009,7 @@ class Command:
     # Does nothing without an argument (it would only print its usage). Picking it from the menu
     # fills it in and opens its arguments instead of running it bare.
     needs_argument: bool = False
+    description: str = ""
 
 
 # Dispatch, completion and queue admission share one registry.

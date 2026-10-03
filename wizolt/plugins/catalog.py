@@ -18,7 +18,7 @@ class Installation:
     name: str
     path: str
     enabled: bool = True
-    launch: str = ""
+    python: str = ""
 
 
 class PluginCatalog:
@@ -32,6 +32,15 @@ class PluginCatalog:
         self.directory = directory
         self.defaults = {item.name: item for item in defaults}
 
+    @classmethod
+    def for_project(cls, data_dir: str, cwd: str) -> PluginCatalog:
+        """The CLI and running agents must resolve the same project preference directory."""
+        from wizolt.session.store import SessionSnapshotStore
+
+        directory = Path(SessionSnapshotStore.project_dir(data_dir, cwd)) / "plugins"
+        bundled = Path(__file__).parent / "builtin"
+        return cls(directory, tuple(Installation(path.stem, str(path), enabled=False) for path in sorted(bundled.glob("*.py"))))
+
     def read(self) -> tuple[dict[str, Installation], list[str]]:
         """Report damaged records individually so one plugin cannot prevent project startup."""
         # Bundled sources are installation defaults, not a second execution path. A user's
@@ -42,7 +51,7 @@ class PluginCatalog:
             try:
                 data = json.loads(path.read_text())
                 item = Installation(**data)
-                if item.name != path.stem or not isinstance(item.path, str) or not isinstance(item.launch, str) or type(item.enabled) is not bool:
+                if item.name != path.stem or not isinstance(item.path, str) or not isinstance(item.python, str) or type(item.enabled) is not bool:
                     raise PluginError("invalid installation record")
                 if default := self.defaults.get(item.name):
                     # Upgrades can relocate package data. Preserve the saved preference, but

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add isolated plugin trials with JSON feedback and PNG/SVG component previews via `wizolt plugin validate/test`.
+- Replace the broad Plugin tool with the small, permanent PluginHotReload tool; standalone plugin commands manage saved project choices.
+- Run plugin generations in managed processes, cache UI projections, and support worker dependency environments without restarting wizolt.
+- Register plugin slash commands in the same dispatch and completion catalog as built-ins, with conflict checks and turn admission.
+
 ### Fixed
 
 - Updated benchmark and documentation render helpers for the current completed-message API.

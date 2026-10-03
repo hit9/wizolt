@@ -185,6 +185,11 @@ def startup_imports(session) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments[:1] == ["plugin"]:
+        from wizolt.ui.cli.plugin_commands import main as plugin_main
+
+        return plugin_main(arguments[1:])
     parser = argparse.ArgumentParser(prog="wizolt", epilog="Documentation: https://wizolt.readthedocs.io")
     parser.add_argument("--config", default=None, help="Path to config TOML")
     parser.add_argument("--init-config", action="store_true", help="Create a default config file")

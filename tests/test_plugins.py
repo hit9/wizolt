@@ -41,9 +41,11 @@ def example(tmp_path, name):
 
 
 async def test_validate_does_not_activate_and_bad_reload_preserves_version(runtime, tmp_path):
+    from wizolt.plugins.testing import PluginTrial
+
     path = tmp_path / "counter.py"
-    result = await runtime.manage("validate", source(path, 3))
-    assert result["status"] == "validated" and not runtime.fields()
+    result = await PluginTrial(runtime.context()).run(source(path, 3), validate=True)
+    assert result.status == "passed" and not runtime.fields()
     active = await runtime.manage("enable", str(path))
     path.write_text("syntax error !!!")
     with pytest.raises(SyntaxError):
@@ -96,17 +98,20 @@ def setup(plugin):
 async def test_invocation_pins_generation_and_cancellation_releases_it(runtime, tmp_path):
     path = tmp_path / "slow.py"
     path.write_text('''import asyncio
+from pathlib import Path
 SDK_VERSION = 1
 def setup(plugin):
     async def wait(ctx, args):
-        args["started"].set()
+        Path(args["started"]).touch()
         await asyncio.Event().wait()
     plugin.command("wait", "Wait", wait)
 ''')
     await runtime.manage("enable", str(path))
-    started = asyncio.Event()
-    task = asyncio.create_task(runtime.invoke("slow", "command", "wait", {"started": started}))
-    await started.wait()
+    started = tmp_path / "started"
+    task = asyncio.create_task(runtime.invoke("slow", "command", "wait", {"started": str(started)}))
+    async with asyncio.timeout(5):
+        while not started.exists():
+            await asyncio.sleep(.01)
     assert (await runtime.manage("disable", "slow"))["status"] == "pending"
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -117,8 +122,23 @@ def setup(plugin):
 async def test_broken_component_is_reported_without_breaking_other_plugins(runtime, tmp_path):
     bad = tmp_path / "bad.py"
     bad.write_text('SDK_VERSION = 1\ndef setup(p):\n    p.component("above_input", lambda ctx: 1/0)\n')
+    # Activation rejects a broken initial projection. Later failures remain isolated as well.
+    with pytest.raises(PluginError, match="division"):
+        await runtime.manage("enable", str(bad))
+    bad.write_text('''from wizolt.sdk import Panel
+from pathlib import Path
+SDK_VERSION = 1
+def draw(ctx):
+    if Path(__file__ + ".fail").exists():
+        return 1 / 0
+    return Panel()
+def setup(p):
+    p.component("above_input", draw)
+''')
     await runtime.manage("enable", str(bad))
     await runtime.manage("enable", example(tmp_path, "pet"))
+    Path(str(bad) + ".fail").touch()
+    await runtime.refresh()
     assert len(runtime.panels("above_input")) == 1
     assert "division" in (await runtime.manage("inspect", "bad"))["plugins"][0]["error"]
     calls = runtime.entries["bad"].active.calls
@@ -175,20 +195,25 @@ async def test_safe_mode_skips_imports_and_installation_survives_new_agent(tmp_p
     recovery = SessionPlugins(session)
     await recovery.load()
     assert not recovery.fields()
+    await plugins.close()
+    await second.close()
+    await recovery.close()
 
 
 async def test_management_tool_uses_existing_runner_approval_contract(tmp_path):
     from agent_harness import session_with_provider
 
     from wizolt.agent.lifecycle import bootstrap_features
-    from wizolt.tools.plugin import PluginTool
+    from wizolt.plugins.installation import PluginInstallations
+    from wizolt.tools.plugin import PluginHotReload
 
     session = session_with_provider(tmp_path)
     bootstrap_features(session)
-    assert not PluginTool(session, [{"action": "list"}]).needs_confirmation()
-    assert PluginTool(session, [{"action": "validate", "target": "test.py"}]).needs_confirmation()
-    tool = PluginTool(session, [{"action": "enable", "target": source(tmp_path / "local.py", 5)}])
+    assert PluginHotReload(session, [{}]).needs_confirmation()
+    await PluginInstallations(session.plugins.catalog, session.cwd).manage("enable", source(tmp_path / "local.py", 5))
+    tool = PluginHotReload(session, [{"name": "local"}])
     assert '"status": "active"' in await tool.call()
+    await session.plugins.close()
 
 
 def test_builtin_skill_is_discoverable(tmp_path):

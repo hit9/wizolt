@@ -1,8 +1,8 @@
 """Prepare dependency environments without changing the running interpreter.
 
-The host's installed versions are constraints, not upgrade candidates. A new environment can
-add packages while borrowing the current host installation through a .pth file. It is tied to
-that installation; the user launches it explicitly after saving the current session.
+The host's installed versions are constraints, not upgrade candidates. A new worker environment
+can add packages while borrowing the host installation through a .pth file. It remains tied to
+that installation; only the plugin worker changes interpreter, never the running wizolt process.
 """
 
 from __future__ import annotations
@@ -24,11 +24,8 @@ from wizolt.utils.process import ShellCommand
 
 
 class DependencyEnvironment:
-    """Build and validate a disposable candidate without changing the running host.
-
-    In-process plugins share Python's import cache, so independent per-plugin dependency versions
-    would promise isolation we cannot provide. Resolve the enabled set together instead; switching
-    interpreters is an explicit restart. This environment borrows the host and is not portable.
+    """Build a worker interpreter without changing the host. The environment borrows the host
+    SDK installation and is not portable; it becomes usable only after preparation succeeds.
     """
 
     def __init__(self, root: Path, sources: list[PluginSource], cwd: str):
@@ -43,7 +40,7 @@ class DependencyEnvironment:
         return result.stdout.strip()
 
     async def prepare(self) -> dict[str, str]:
-        """Return a launch command only after dependency and setup checks have succeeded.
+        """Return a worker interpreter only after dependency and setup checks have succeeded.
 
         Neither success nor failure activates code in this process. On failure or cancellation,
         remove the candidate directory; installation records are the caller's responsibility and
@@ -82,10 +79,10 @@ class DependencyEnvironment:
             (self.path / "requirements.lock").write_text(frozen + "\n")
             (self.path / "plugins.json").write_text(json.dumps({source.name: source.digest for source in self.sources}, indent=2))
             return {
-                "status": "restart_required",
+                "status": "prepared",
                 "environment": str(self.path),
-                "launch": shlex.join([python, "-m", "wizolt"]),
-                "note": "Save/exit before launching this command with your usual --config and --resume arguments. The current process is unchanged.",
+                "python": python,
+                "note": "Worker environment prepared. Reload the plugin to activate it in an existing agent.",
             }
         except BaseException:
             await run_blocking(partial(shutil.rmtree, self.path, ignore_errors=True))

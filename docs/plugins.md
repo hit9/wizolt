@@ -55,18 +55,37 @@ statusbar or divider [format](appearance.md). The same SDK supports theme-aware 
 above the input and on `/status`'s Session tab.
 
 For installed plugins: `/plugins enable mood`, `/plugins reload mood`, and
-`/plugins disable mood`. The agent uses the `Plugin` tool for these operations.
+`/plugins disable mood`. Plugins can also add their own `/commands`.
+
+## Try changes before enabling
+
+```sh
+wizolt plugin validate ~/.wizolt/plugins/mood.py
+wizolt plugin test ~/.wizolt/plugins/mood.py --theme forest --width 80
+```
+
+The test returns a JSON report with errors, captured logs, and PNG/SVG previews for UI components.
+Use `--width 30` to check a narrow terminal, or `--times 0 0.5 1` to sample animation. Previews use
+the same text clipping and colors as the TUI. Use `--font` if the PNG font lacks your characters.
+
+`wizolt plugin list` and `inspect NAME` show saved project choices. `enable PATH` and `disable NAME`
+save changes for new agents. Ask the current agent to call **PluginHotReload** to apply them now;
+it reloads one named plugin or all saved choices. A failed candidate keeps the old version.
+Use `--config PATH` and `--project DIR` when your running session uses different defaults.
+
+Trials never change installation choices. They run real plugin code with your permissions;
+an explicitly tested command or event can still modify files or access the network.
 
 ## Dependencies and recovery
 
 A plugin can declare `DEPENDENCIES = ["package>=1.0"]`. Ask the agent to install it through
-**plugin-workshop**. wizolt builds a separate
-environment and returns a restart command. Save your session, exit, then use that command with
-your usual `--config` and `--resume` arguments. Your running environment is unchanged.
+**plugin-workshop**, or run `wizolt plugin install PATH`. wizolt builds a separate worker
+environment. Apply it with **PluginHotReload**; no wizolt restart is needed.
 
 That environment borrows your current wizolt installation; keep the installation available.
 Conflicting dependencies must be resolved before activation.
 
-Plugins execute trusted Python with your permissions. Only enable code you trust. To start
+Each plugin runs in its own process. A crash or blocking callback is reported without freezing
+wizolt's input. Plugins still execute trusted Python with your permissions. To start
 without loading plugins, run `WIZOLT_NO_PLUGINS=1 wizolt`, then disable the problematic plugin
 in `/plugins`. SDK 1 is experimental.

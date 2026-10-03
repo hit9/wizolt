@@ -1,12 +1,13 @@
 """Public Python plugin contracts. No engine, session, or terminal objects cross this boundary.
 
-SDK 1 is experimental. Callbacks run on the owning agent's loop and must not block it.
+SDK 1 is experimental. Callbacks run in the plugin's managed worker process.
 UI callbacks return data; the host owns clipping, colors, scheduling, and terminal output.
 """
 
 from __future__ import annotations
 
 import inspect
+import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -73,6 +74,7 @@ class Action:
     description: str
     handler: Handler
     parameters: Mapping[str, Any] = field(default_factory=lambda: {"type": "object", "properties": {}, "additionalProperties": False})
+    during_turn: bool = False
 
 
 class Plugin:
@@ -80,13 +82,15 @@ class Plugin:
 
     Keep mutable state in this scope's callbacks, not shared imported modules. Construction only
     registers capabilities; external effects belong in explicitly invoked handlers. Names are
-    local to the plugin; the host supplies their namespace. These contracts are not a sandbox:
-    Python imports and third-party module globals remain process-wide.
+    local to the plugin; the host supplies their namespace. Worker processes isolate crashes and
+    imported module state, but have the user's filesystem/network permissions: not a sandbox.
     """
 
     EVENTS = frozenset(("turn.started", "turn.finished"))
     SLOTS = frozenset(("above_input", "status"))
     MAX_REGISTRATIONS = 64
+    IDENTIFIER = r"[A-Za-z_][A-Za-z_0-9]*"
+    COMMAND_NAME = r"[A-Za-z_][A-Za-z_0-9-]*"
 
     def __init__(self, name: str):
         self.name = name
@@ -97,8 +101,8 @@ class Plugin:
         self.observers: dict[str, list[Observer]] = {}
 
     @classmethod
-    def _register(cls, registry: dict, name: str, value: object) -> None:
-        if not name.isidentifier() or not name.isascii():
+    def _register(cls, registry: dict, name: str, value: object, *, pattern: str = IDENTIFIER) -> None:
+        if not re.fullmatch(pattern, name):
             raise PluginError(f"Invalid registration {name!r}: use an ASCII Python identifier")
         if name in registry:
             raise PluginError(f"Duplicate registration: {name}")
@@ -123,10 +127,14 @@ class Plugin:
         self._callback(callback, asynchronous=False)
         self._register(self.components, slot, callback)
 
-    def command(self, name: str, description: str, handler: Handler) -> None:
-        """Register a user-invoked operation, addressed through the host's plugin command."""
+    def command(self, name: str, description: str, handler: Handler, *, during_turn: bool = False) -> None:
+        """Register ``/name``; native invocations pass raw trailing text as arguments['input'].
+
+        Set during_turn only for operations safe alongside an active turn, such as changing
+        plugin-owned UI state. This grants no access to mutate the host's model context.
+        """
         self._callback(handler, asynchronous=True)
-        self._register(self.commands, name, Action(description, handler))
+        self._register(self.commands, name, Action(description, handler, during_turn=during_turn), pattern=self.COMMAND_NAME)
 
     def tool(self, name: str, description: str, parameters: Mapping[str, Any], handler: Handler) -> None:
         """Register a model-invoked operation behind the core tool approval boundary."""

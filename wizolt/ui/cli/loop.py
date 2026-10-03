@@ -27,9 +27,10 @@ from wizolt.base import (
 )
 from wizolt.image import UserInput
 from wizolt.session import QueuedInput, SessionLease, SessionSnapshotStore
-from wizolt.ui.cli.commands import COMMAND_LOOKUP, COMMAND_NAMES, QUEUED_SUBCOMMANDS
+from wizolt.ui.cli.commands import QUEUED_SUBCOMMANDS
 from wizolt.ui.cli.modals import approval_text_viewer, question_interaction
 from wizolt.ui.cli.presentation import Presentation
+from wizolt.ui.cli.registry import CommandCatalog
 from wizolt.ui.cli.resume import ResumeRenderer
 from wizolt.ui.cli.runtime import TuiRuntime
 from wizolt.ui.cli.update import UpdateChecker
@@ -102,7 +103,9 @@ class CommandLoop:
             self.input_history = FileHistory(history_path)
         else:
             self.input_history = None
+        self.commands = CommandCatalog(self.session.plugins)
         self.input_completer = CommandCompleter(
+            commands=self.commands,
             providers=lambda: tuple(sorted(self.session.config.providers)),
             models=lambda: self.session.config.provider.available_models,
             reasoning_choices=lambda: self.session.policy.reasoning_choices(self.session.config.provider),
@@ -212,12 +215,12 @@ class CommandLoop:
     def skill_command(self, text: str) -> bool:
         """True when `text` starts a skill with `/name` rather than naming a built-in command:
         built-ins win a name clash, and the skill stays reachable as `$name`."""
-        return text.partition(" ")[0].partition("\n")[0] not in COMMAND_NAMES and bool(self.session.skills and self.session.skills.command(text))
+        return text.partition(" ")[0].partition("\n")[0] not in self.commands.names() and bool(self.session.skills and self.session.skills.command(text))
 
     async def run_queued_command(self, text: str) -> None:
         """Dispatch a read-only slash command while an agent turn is running."""
         name = text.partition(" ")[0]
-        entry = COMMAND_LOOKUP.get(name)
+        entry = self.commands.get(name)
         if entry is None or not entry.queue_safe:
             self.presentation.emit_turn(f"{name} is unavailable while the agent is working; press Ctrl-C to run it.")
             return
@@ -610,7 +613,7 @@ class CommandLoop:
         if not text.startswith("/"):
             return False, False
         name, _, args = text.partition(" ")
-        entry = COMMAND_LOOKUP.get(name)
+        entry = self.commands.get(name)
         if self.skill_command(text):
             return False, False  # a turn, which loads the skill (see Agent.skill_command)
         output = entry.handler(self, args.strip()) if entry else f"Unknown command: {name}"

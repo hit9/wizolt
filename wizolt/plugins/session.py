@@ -6,7 +6,6 @@ import asyncio
 import os
 import time
 from dataclasses import replace
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from wizolt.plugins.catalog import Installation, PluginCatalog
@@ -27,16 +26,11 @@ class SessionPlugins(PluginRuntime):
     """
 
     def __init__(self, session: Session):
-        from wizolt.session.store import SessionSnapshotStore
-
         self.session = session
         self.loaded = False
         self.problems: dict[str, str] = {}
         self._management_lock = asyncio.Lock()
-        directory = Path(SessionSnapshotStore.project_dir(session.config.data_dir, session.cwd)) / "plugins"
-        bundled = Path(__file__).parent / "builtin"
-        defaults = tuple(Installation(path.stem, str(path), enabled=False) for path in sorted(bundled.glob("*.py")))
-        self.catalog = PluginCatalog(directory, defaults)
+        self.catalog = PluginCatalog.for_project(session.config.data_dir, session.cwd)
         super().__init__(self.snapshot)
 
     def snapshot(self) -> Context:
@@ -65,9 +59,42 @@ class SessionPlugins(PluginRuntime):
             if not item.enabled:
                 continue
             try:
+                self.interpreters[item.name] = item.python
                 await super().manage("enable", item.path)
             except Exception as error:  # noqa: BLE001 - one bad plugin must not prevent startup.
                 self.problems[item.name] = str(error)
+
+    async def hot_reload(self, name: str = "") -> dict:
+        """Reconcile saved choices into this agent only, with per-plugin failure isolation.
+
+        No preference writes occur here. A CLI can save choices while an agent holds a turn
+        lease; this method stages those choices and reports pending until publication is safe.
+        """
+        async with self._management_lock:
+            if self._closed:
+                raise PluginError("Plugin runtime is closed")
+            records, problems = self.catalog.read()
+            if name and name not in records:
+                raise PluginError(f"Unknown installed plugin: {name}")
+            self.loaded = True
+            results = []
+            for key, item in records.items():
+                if name and key != name:
+                    continue
+                try:
+                    self.interpreters[key] = item.python
+                    if item.enabled:
+                        result = await super().manage("enable", item.path)
+                    elif key in self.entries or key in self._pending_new:
+                        result = await super().manage("disable", key)
+                    else:
+                        result = {"name": key, "status": "disabled"}
+                    self.problems.pop(key, None)
+                    results.append(result)
+                except Exception as error:  # noqa: BLE001 - one candidate must not prevent other reloads.
+                    self.problems[key] = str(error)
+                    results.append({"name": key, "status": "failed", "error": str(error), "previous_retained": key in self.entries})
+            return {"plugins": results, "problems": problems, "scope": "current agent"}
 
     async def manage(self, action: str, target: str = "") -> dict:
         """Serialize preference writes with preparation, including long dependency installs.
@@ -84,20 +111,8 @@ class SessionPlugins(PluginRuntime):
             raise PluginError("Plugin runtime is closed")
         await self.load()
         records, problems = self.catalog.read()
-        if action == "install":
-            from wizolt.plugins.dependencies import DependencyEnvironment
-
-            candidate = PluginSource.read(target)
-            if candidate.name in records and records[candidate.name].path != candidate.path:
-                raise PluginError(f"Plugin name {candidate.name!r} is already installed from another path")
-            sources = [PluginSource.read(item.path) for item in records.values() if item.enabled and item.name != candidate.name]
-            sources.append(candidate)
-            if not candidate.dependencies:
-                return await self._manage("enable", candidate.path)
-            environment = DependencyEnvironment(self.catalog.directory / "environments", sources, self.session.cwd)
-            result = await environment.prepare()
-            self.catalog.save(Installation(candidate.name, candidate.path, launch=result["launch"]))
-            return {"name": candidate.name, **result}
+        for item in records.values():
+            self.interpreters[item.name] = item.python
         if action == "enable" and target in records:
             target = records[target].path
         if action == "enable":
@@ -116,11 +131,11 @@ class SessionPlugins(PluginRuntime):
             name = str(result["name"])
             item = records.get(name)
             path = str(result.get("path") or (item.path if item else ""))
-            self.catalog.save(Installation(name, path, action == "enable", item.launch if item else ""))
+            self.catalog.save(Installation(name, path, action == "enable", item.python if item else ""))
         if action in ("list", "inspect"):
             present = {item["name"] for item in result["plugins"]}
             result["plugins"].extend(
-                {"name": item.name, "path": item.path, "status": "not loaded" if item.enabled else "disabled", "launch": item.launch}
+                {"name": item.name, "path": item.path, "status": "not loaded" if item.enabled else "disabled", "python": item.python}
                 for item in records.values()
                 if item.name not in present
             )

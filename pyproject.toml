@@ -49,6 +49,8 @@ dependencies = [
     # Plugin tool schemas are checked at registration and invocation, not trusted to providers.
     "jsonschema>=4.20",
     "packaging>=23.0",
+    # Imported only by the offline plugin preview exporter, never on the live render path.
+    "pillow>=11.0",
     "openai>=3.0.0",
     # 3.0.53 fixed Application.invalidate() so it is safe to call from any thread; older versions
     # crash with "no running event loop" when the agent thread asks for a redraw.
@@ -85,9 +87,6 @@ dev = [
     # Tests only: the reference the built-in .gitignore reader (wizolt/utils/gitignore.py) must
     # agree with on every pattern shape the walk reads. wizolt never imports it.
     "pathspec>=1.0",
-    # Tests only: it writes the image fixtures, and it is the reference wizolt's own header reader
-    # (utils.image_header.ImageHeader) is checked against. wizolt never imports it.
-    "pillow>=11.0",
     "pyright>=1.1.411",
     "pytest>=8.0",
     "pytest-asyncio>=1.0",

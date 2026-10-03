@@ -1,74 +1,63 @@
-"""Agent-local plugin generations with staged reload and bounded callback execution.
+"""Agent-local plugin processes with atomic replacement and cached, nonblocking UI reads.
 
-Installation is explicit. Merely finding a Python file never executes it. Each agent gets
-fresh modules and registration scopes, so a child cannot inherit a parent's plugin state.
-Import-time side effects remain the responsibility of trusted Python plugin authors.
+The terminal never calls user Python. Worker deadlines bound setup and callbacks; synchronous
+rendering only reads completed snapshots. A worker is fault isolation, not a data sandbox.
 """
 
 from __future__ import annotations
 
 import asyncio
-import math
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
-from wizolt.plugins.loading import LoadedPlugin, PluginSource
-from wizolt.sdk import Context, Event, Panel, PluginError, Text, Value
+from wizolt.plugins.loading import PluginSource
+from wizolt.plugins.process import PluginProcess
+from wizolt.plugins.protocol import Capabilities, Snapshot
+from wizolt.sdk import Context, Panel, PluginError, Value
 
 
 @dataclass
-class Generation(LoadedPlugin):
+class Generation:
+    source: PluginSource
+    plugin: Capabilities
+    worker: PluginProcess
+    snapshot: Snapshot = field(default_factory=lambda: Snapshot({}, {}))
     error: str = ""
     calls: int = 0
-    seconds: float = 0.0
+    seconds: float = 0
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+    async def refresh(self, context: Context) -> None:
+        """Serialize samples, never enqueue a sample for every terminal layout query."""
+        async with self.lock:
+            if self.error:
+                return
+            started = time.monotonic()
+            try:
+                self.snapshot = Snapshot.decode(await self.worker.request("snapshot", context=asdict(context)))
+            except Exception as error:  # noqa: BLE001 - UI callback failures cannot fail turns.
+                self.error = str(error)
+            finally:
+                self.calls += 1
+                self.seconds += time.monotonic() - started
 
 
 @dataclass
 class Entry:
-    """A live generation plus at most one rollback revision and one staged replacement.
-
-    Staging never changes the callbacks seen by an in-flight turn. Superseding a candidate must
-    close it immediately, otherwise repeated edits leak module identities without activation.
-    """
+    """Rollback retains source, not a second idle worker or its mutable state."""
 
     active: Generation
-    previous: Generation | None = None
+    previous: PluginSource | None = None
     pending: Generation | None = None
     disabling: bool = False
 
-    def stage(self, candidate: Generation | None) -> None:
-        if self.pending is not None:
-            self.pending.close()
-        self.pending = candidate
-        self.disabling = candidate is None
-
-    def publish(self) -> None:
-        if self.pending is not None:
-            if self.previous is not None:
-                self.previous.close()
-            self.previous, self.active, self.pending = self.active, self.pending, None
-
-    def close(self) -> None:
-        for generation in (self.active, self.previous, self.pending):
-            if generation is not None:
-                generation.close()
-
 
 class PluginRuntime:
-    """One agent owns this runtime; no global registry is changed by loading a plugin.
-
-    Management is serialized and replacements wait for the turn lease. UI reads are synchronous,
-    bounded callbacks. Failed renderers are suppressed until reload, avoiding a redraw error loop.
-    """
-
-    # Host budgets, not plugin-specific branches. Async timeouts are cooperative; panel limits
-    # bound returned data before rendering and do not make arbitrary Python safe to execute.
     OBSERVER_TIMEOUT = 1.0
     ACTION_TIMEOUT = 60.0
-    PANEL_ROWS = 12
-    ROW_CHARACTERS = 4096
+    REFRESH_INTERVAL = 0.2
 
     def __init__(self, context: Callable[[], Context]):
         self.context = context
@@ -78,14 +67,39 @@ class PluginRuntime:
         self._invocations = 0
         self._lock = asyncio.Lock()
         self._closed = False
+        self._columns = 80
+        self._refresh_task: asyncio.Task | None = None
+        self._retiring: set[asyncio.Task] = set()
+        self.reserved_commands: frozenset[str] = frozenset()
+        self.interpreters: dict[str, str] = {}
 
-    @staticmethod
-    def prepare(path: str, source: str | None = None) -> Generation:
-        loaded = LoadedPlugin.load(PluginSource.read(path, source))
-        return Generation(loaded.source, loaded.plugin, loaded.module_name)
+    async def prepare(self, path: str, source: str | None = None) -> Generation:
+        revision = PluginSource.read(path, source)
+        worker, description = await PluginProcess.start(revision, python=self.interpreters.get(revision.name, ""), cwd=self.context().cwd)
+        try:
+            capabilities = Capabilities.decode(revision.name, description)
+            occupied = set(self.reserved_commands)
+            for name, entry in self.entries.items():
+                if name != revision.name:
+                    occupied.update(entry.active.plugin.commands)
+                    if entry.pending:
+                        occupied.update(entry.pending.plugin.commands)
+            for name, candidate in self._pending_new.items():
+                if name != revision.name:
+                    occupied.update(candidate.plugin.commands)
+            if collisions := occupied.intersection(capabilities.commands):
+                raise PluginError(f"Command names already registered: {', '.join(sorted(collisions))}")
+            candidate = Generation(revision, capabilities, worker)
+            await candidate.refresh(self.context())
+            if candidate.error:
+                raise PluginError(candidate.error)
+            return candidate
+        except BaseException:
+            await worker.close()
+            raise
 
     async def manage(self, action: str, target: str = "") -> dict[str, Any]:
-        """Prepare first, then stage: a bad candidate must leave live registrations untouched."""
+        """Prepare before publication; failed candidates leave active generations intact."""
         async with self._lock:
             if self._closed:
                 raise PluginError("Plugin runtime is closed")
@@ -95,54 +109,48 @@ class PluginRuntime:
                 if target and not items:
                     raise PluginError(f"Unknown plugin: {target}")
                 return {"plugins": items}
-            if action in ("validate", "enable"):
-                candidate = self.prepare(target)
+            if action == "enable":
+                candidate = await self.prepare(target)
                 name = candidate.plugin.name
-                if action == "validate":
-                    candidate.close()
-                    return {"name": name, "status": "validated", "version": candidate.source.digest}
                 entry = self.entries.get(name)
-                if entry and entry.active.source.path != candidate.source.path:
-                    candidate.close()
-                    raise PluginError(f"Plugin name {name!r} already belongs to {entry.active.source.path}")
+                existing = entry.active if entry else self._pending_new.get(name)
+                if existing and existing.source.path != candidate.source.path:
+                    await candidate.worker.close()
+                    raise PluginError(f"Plugin name {name!r} already belongs to {existing.source.path}")
                 if entry is None:
-                    pending = self._pending_new.get(name)
-                    if pending and pending.source.path != candidate.source.path:
-                        candidate.close()
-                        raise PluginError(f"Plugin name {name!r} already belongs to {pending.source.path}")
-                    if pending:
-                        pending.close()
-                    if self.busy:
-                        self._pending_new[name] = candidate
-                        return self.staged(candidate)
-                    self.entries[name] = Entry(candidate)
-                    return self.describe(name, self.entries[name])
+                    if pending := self._pending_new.pop(name, None):
+                        self._retire(pending)
+                    self._pending_new[name] = candidate
+                    self._publish()
+                    return self.describe(name, self.entries[name]) if name in self.entries else self.staged(candidate)
             else:
                 name = target
                 entry = self.entries.get(name)
                 if entry is None:
                     if action == "disable" and (pending := self._pending_new.pop(name, None)) is not None:
-                        pending.close()
+                        self._retire(pending)
                         return {"name": name, "status": "disabled"}
                     raise PluginError(f"Unknown plugin: {name}")
                 if action == "reload":
-                    candidate = self.prepare(entry.active.source.path)
+                    candidate = await self.prepare(entry.active.source.path)
                 elif action == "rollback":
                     if entry.previous is None:
                         raise PluginError(f"{name}: no previous version")
-                    candidate = self.prepare(entry.previous.source.path, entry.previous.source.text)
+                    candidate = await self.prepare(entry.previous.path, entry.previous.text)
                 elif action == "disable":
-                    entry.stage(None)
-                    if not self.busy:
-                        entry.close()
-                        del self.entries[name]
+                    if entry.pending:
+                        self._retire(entry.pending)
+                        entry.pending = None
+                    entry.disabling = True
+                    self._publish()
                     return {"name": name, "status": "pending" if self.busy else "disabled"}
                 else:
                     raise PluginError(f"Unknown plugin action: {action}")
             assert entry is not None
-            entry.stage(candidate)
-            if not self.busy:
-                self._publish()
+            if entry.pending:
+                self._retire(entry.pending)
+            entry.pending, entry.disabling = candidate, False
+            self._publish()
             return self.describe(name, entry)
 
     @staticmethod
@@ -164,37 +172,49 @@ class PluginRuntime:
             "pending_version": entry.pending.source.digest if entry.pending else "",
             "fields": list(item.plugin.fields),
             "commands": list(item.plugin.commands),
-            "tools": {key: {"description": action.description, "parameters": dict(action.parameters)} for key, action in item.plugin.tools.items()},
+            "tools": {key: {"description": action.description, "parameters": action.parameters} for key, action in item.plugin.tools.items()},
             "slots": list(item.plugin.components),
             "error": item.error,
             "calls": item.calls,
             "seconds": round(item.seconds, 6),
         }
 
-    def _publish(self) -> None:
-        """Swap generations only when both turn and explicit invocation leases have ended.
+    def _retire(self, generation: Generation) -> None:
+        task = asyncio.create_task(generation.worker.close())
+        self._retiring.add(task)
+        task.add_done_callback(self._retiring.discard)
 
-        No await belongs in this transition: readers on the owning event loop must observe the
-        complete old registry or the complete new one, never a partially published replacement.
-        """
+    def _publish(self) -> None:
+        """Atomic registry switch: no await, and no imported Python objects cross generations."""
         if self.busy or self._closed:
             return
-        for name, candidate in self._pending_new.items():
-            self.entries[name] = Entry(candidate)
+        self.entries.update((name, Entry(candidate)) for name, candidate in self._pending_new.items())
         self._pending_new.clear()
         for name, entry in tuple(self.entries.items()):
             if entry.disabling:
-                entry.close()
+                self._retire(entry.active)
                 del self.entries[name]
-            else:
-                entry.publish()
+            elif entry.pending:
+                self._retire(entry.active)
+                entry.previous, entry.active, entry.pending = entry.active.source, entry.pending, None
+        if self.entries and (self._refresh_task is None or self._refresh_task.done()):
+            self._refresh_task = asyncio.create_task(self._refresh_loop())
+
+    async def _refresh_loop(self) -> None:
+        while self.entries and not self._closed:
+            await asyncio.sleep(self.REFRESH_INTERVAL)
+            await self.refresh()
+
+    async def refresh(self) -> None:
+        """Sample immutable facts outside painting; one slow plugin cannot block the terminal."""
+        context = replace(self.context(), columns=self._columns)
+        await asyncio.gather(*(entry.active.refresh(context) for entry in tuple(self.entries.values())))
 
     async def start_turn(self) -> None:
         self.turn_active = True
         await self.emit("turn.started")
 
     async def finish_turn(self) -> None:
-        """Notify the old generation before releasing its lease, including on cancellation."""
         if not self.turn_active:
             return
         try:
@@ -204,74 +224,30 @@ class PluginRuntime:
             self._publish()
 
     async def emit(self, name: str) -> None:
-        event = Event(name, self.context())
         for entry in tuple(self.entries.values()):
             generation = entry.active
-            for observer in generation.plugin.observers.get(name, ()):
-                try:
-                    async with asyncio.timeout(self.OBSERVER_TIMEOUT):
-                        await observer(event)
-                except Exception as error:  # noqa: BLE001 - observer failures must not fail the agent turn.
-                    generation.error = f"{name}: {error}"
-
-    def _read(self, generation: Generation, callback: Callable, context: Context) -> Any:
-        """Measure synchronous reads; timing cannot preempt a blocking Python callback.
-
-        Keeping UI callbacks pure and cheap is an author contract. Moving them to a thread would
-        introduce concurrent access to agent-local state without making Python a safe sandbox.
-        """
-        started = time.monotonic()
-        try:
-            return callback(context)
-        finally:
-            generation.calls += 1
-            generation.seconds += time.monotonic() - started
-
-    def fields(self) -> dict[str, Value]:
-        values: dict[str, Value] = {}
-        context = self.context()
-        for name, entry in self.entries.items():
-            if entry.active.error:
-                continue
-            for key, callback in entry.active.plugin.fields.items():
-                try:
-                    value = self._read(entry.active, callback, context)
-                    if type(value) not in (str, int, float, bool):
-                        raise PluginError(f"Field {key} must return a scalar")
-                    if isinstance(value, float) and not math.isfinite(value):
-                        raise PluginError(f"Field {key} must return a finite number")
-                    values[f"plugins.{name}.{key}"] = value
-                except Exception as error:  # noqa: BLE001 - disable faulty callbacks instead of crashing rendering.
-                    entry.active.error = f"field {key}: {error}"
-        return values
-
-    def panels(self, slot: str, columns: int = 80) -> list[Panel]:
-        panels = []
-        context = replace(self.context(), columns=columns)
-        for entry in self.entries.values():
-            callback = entry.active.plugin.components.get(slot)
-            if callback is None or entry.active.error:
+            if name not in generation.plugin.observers or generation.error:
                 continue
             try:
-                panel = self._read(entry.active, callback, context)
-                if not isinstance(panel, Panel) or len(panel.rows) > self.PANEL_ROWS:
-                    raise PluginError(f"Component must return Panel with at most {self.PANEL_ROWS} rows")
-                if any(
-                    not isinstance(row, Text) or not isinstance(row.text, str) or not isinstance(row.role, str) or len(row.text) > self.ROW_CHARACTERS
-                    for row in panel.rows
-                ):
-                    raise PluginError(f"Panel rows must be Text with at most {self.ROW_CHARACTERS} characters")
-                panels.append(panel)
-            except Exception as error:  # noqa: BLE001 - plugin UI is an external error boundary.
-                entry.active.error = f"component {slot}: {error}"
-        return panels
+                await generation.worker.request("event", timeout=self.OBSERVER_TIMEOUT, name=name, context=asdict(self.context()))
+                await generation.refresh(self.context())
+            except Exception as error:  # noqa: BLE001 - observer failure cannot fail an agent turn.
+                generation.error = f"{name}: {error}"
+
+    def fields(self) -> dict[str, Value]:
+        return {
+            f"plugins.{name}.{key}": value
+            for name, entry in self.entries.items()
+            if not entry.active.error
+            for key, value in entry.active.snapshot.fields.items()
+        }
+
+    def panels(self, slot: str, columns: int = 80) -> list[Panel]:
+        self._columns = columns
+        return [entry.active.snapshot.panels[slot] for entry in self.entries.values() if not entry.active.error and slot in entry.active.snapshot.panels]
 
     async def invoke(self, name: str, kind: str, action: str, arguments: Mapping[str, Any]) -> str:
-        """Pin callbacks until completion; cancellation releases the same lease as success.
-
-        Authorization belongs to the caller (human command or core tool runner), not this
-        execution layer. Never route model invocations through the human command parser.
-        """
+        """Pin the worker until completion; authorization remains at the user/model boundary."""
         if self._closed:
             raise PluginError("Plugin runtime is closed")
         if kind not in ("command", "tool"):
@@ -279,34 +255,49 @@ class PluginRuntime:
         entry = self.entries.get(name)
         if entry is None:
             raise PluginError(f"Unknown plugin: {name}")
-        registry = entry.active.plugin.commands if kind == "command" else entry.active.plugin.tools
-        operation = registry.get(action)
+        generation = entry.active
+        operation = (generation.plugin.commands if kind == "command" else generation.plugin.tools).get(action)
         if operation is None:
             raise PluginError(f"Unknown {kind}: {name}.{action}")
         if kind == "tool":
             from jsonschema import Draft202012Validator
 
-            # Provider-side schema enforcement varies. Validate here before handing arguments
-            # to user code; the static gateway schema cannot describe every plugin operation.
-            error = next(Draft202012Validator(dict(operation.parameters)).iter_errors(arguments), None)
-            if error is not None:
+            error = next(Draft202012Validator(operation.parameters).iter_errors(arguments), None)
+            if error:
                 raise PluginError(f"Invalid arguments for {name}.{action}: {error.message}")
         self._invocations += 1
         try:
-            async with asyncio.timeout(self.ACTION_TIMEOUT):
-                result = await operation.handler(self.context(), arguments)
+            result = await generation.worker.request(
+                "invoke",
+                timeout=self.ACTION_TIMEOUT,
+                kind=kind,
+                name=action,
+                arguments=dict(arguments),
+                context=asdict(self.context()),
+            )
+            await generation.refresh(self.context())
+            return result
         finally:
             self._invocations -= 1
             self._publish()
-        if not isinstance(result, str):
-            raise PluginError("Plugin actions must return text")
-        return result
 
     async def close(self) -> None:
+        # Candidate preparation awaits a child process. Serialize teardown with that admission
+        # so a shutdown cannot leave a newly prepared worker outside the retirement set.
+        async with self._lock:
+            await self._close()
+
+    async def _close(self) -> None:
         self._closed = True
+        if self._refresh_task is not None:
+            self._refresh_task.cancel()
+            await asyncio.gather(self._refresh_task, return_exceptions=True)
         for entry in self.entries.values():
-            entry.close()
+            self._retire(entry.active)
+            if entry.pending:
+                self._retire(entry.pending)
         for candidate in self._pending_new.values():
-            candidate.close()
+            self._retire(candidate)
         self.entries.clear()
         self._pending_new.clear()
+        await asyncio.gather(*tuple(self._retiring), return_exceptions=True)

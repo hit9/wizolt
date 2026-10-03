@@ -27,9 +27,10 @@ from wizolt.providers.compat import bundled_policy
 from wizolt.session import QueuedInput, Session
 from wizolt.ui.bars import DIVIDER_PRESETS, PRESETS, STATUS_PRESETS
 from wizolt.ui.cli.appearance import KINDS
-from wizolt.ui.cli.commands import COMMAND_NAMES, NEEDS_ARGUMENT, SET_KEYS, SET_VALUES
+from wizolt.ui.cli.commands import NEEDS_ARGUMENT, SET_KEYS, SET_VALUES
 from wizolt.ui.cli.hints import Context as HintContext
 from wizolt.ui.cli.hints import HintPicker
+from wizolt.ui.cli.registry import CommandCatalog
 from wizolt.ui.cli.runtime import RESUME_STATUS_LABEL, STARTING_STATUS_LABEL
 from wizolt.ui.render import ActivityPulse, InputStyle, LiveSpark, Theme, UiPrinter
 from wizolt.ui.tui import InputMode
@@ -68,6 +69,7 @@ class CommandCompleter(Completer):
         files: Callable[[], tuple[tuple[str, str], ...]] = tuple,
         file_matches: Callable[[str], tuple[str, ...]] | None = None,
         agents_rows: Callable[[], list[MenuRow]] = list,
+        commands: CommandCatalog | None = None,
     ):
         self.providers = providers
         self.models = models
@@ -82,6 +84,7 @@ class CommandCompleter(Completer):
         self.files = files
         self.file_matches = file_matches
         self.agents_rows = agents_rows
+        self.commands = commands or CommandCatalog()
 
     def get_completions(self, document, complete_event):
         del complete_event
@@ -163,10 +166,21 @@ class CommandCompleter(Completer):
             return
 
         if text.startswith("/") and " " not in text:
-            yield from self.matches(COMMAND_NAMES, text, more=NEEDS_ARGUMENT)
+            names = self.commands.names()
+            entries = self.commands.entries()
+            for completion in self.matches(names, text, more=NEEDS_ARGUMENT):
+                entry = entries.get(str(completion.display_text))
+                if entry and entry.description:
+                    completion = Completion(
+                        completion.text,
+                        start_position=completion.start_position,
+                        display=completion.display,
+                        display_meta=entry.description,
+                    )
+                yield completion
             for name, hint in self.skill_commands():
                 command = "/" + name
-                if command.startswith(text) and command not in COMMAND_NAMES:
+                if command.startswith(text) and command not in names:
                     # A skill that takes arguments opens them on Enter, like `/set`.
                     yield Completion(command + " " if hint else command, start_position=-len(text), display=command, display_meta=hint or "skill")
 
@@ -174,7 +188,7 @@ class CommandCompleter(Completer):
         """How a `/` draft's first word should be coloured while it is typed: "known" when a
         command or skill would run it, "partial" while it is still a prefix of one, "" once no
         spelling would accept it."""
-        spellings = COMMAND_NAMES + tuple("/" + name for name, _ in self.skill_commands())
+        spellings = self.commands.names() + tuple("/" + name for name, _ in self.skill_commands())
         if word in spellings:
             return "known"
         return "partial" if any(spelling.startswith(word) for spelling in spellings) else ""

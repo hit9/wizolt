@@ -12,7 +12,6 @@ from pathlib import Path
 import pytest
 from agent_harness import call, queue, session
 
-import wizolt.ui.cli.loop as loop_module
 from wizolt.agent.context import ContextManager
 from wizolt.agent.engine import Agent
 from wizolt.agent.runner import ToolRunner
@@ -264,7 +263,7 @@ async def test_hints_command_is_removed(tmp_path):
         handled, _ = await loop.command(variant)
         assert handled is True
         assert out[-1].endswith("Unknown command: /hints")
-    assert "/hints" not in loop_module.COMMAND_LOOKUP
+    assert loop.commands.get("/hints") is None
     assert "/hints" not in COMMAND_NAMES
 
 

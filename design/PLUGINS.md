@@ -6,18 +6,18 @@ packaged reference define what this implementation currently exposes.
 ## Ownership and dependency direction
 
 ```text
-CLI manager / core Plugin tool / agent lifecycle
+CLI manager / PluginHotReload / agent lifecycle
                 ↓
          SessionPlugins ── PluginCatalog (project startup preferences)
                 ↓
-         PluginRuntime ── LoadedPlugin (one module per generation)
+         PluginRuntime ── PluginProcess ── worker / LoadedPlugin
                 ↓
          wizolt.sdk (values and registration contracts)
 ```
 
 - The SDK receives immutable facts, never `Session`, `Agent`, or terminal objects.
-- Every agent has its own runtime and source-module instances. Imported dependencies still
-  share Python's process-wide module cache. This is state scoping, not sandboxing.
+- Every agent has its own runtime. Each generation owns a process, including its imported
+  dependencies. This is fault isolation, not a filesystem/network sandbox.
 - Installation preferences are project-local, separately persisted from session snapshots.
   Existing agents are not silently reconfigured by another agent's changes.
 - Bundled plugins supply disabled installation defaults. They use the same loader, SDK, and
@@ -28,7 +28,8 @@ CLI manager / core Plugin tool / agent lifecycle
 Validation constructs an unpublished generation. A failed candidate leaves active code intact.
 An active turn or command/tool invocation holds a lease; replacement returns pending and publishes
 after both leases end. Publication has no awaits. Each entry retains at most one previous and one
-pending generation; superseded module identities are removed immediately.
+pending generation. The previous revision is source only, not a second worker; superseded
+workers are retired by owned tasks that shutdown joins.
 
 The turn guard remains held while completion observers run. Never clear the engine's active task
 before awaiting observers: another turn could otherwise overlap the old generation. Cancellation
@@ -40,13 +41,18 @@ or agent services. Those need explicit ownership and teardown contracts before e
 
 ## Execution and UI
 
-Commands and tools are explicit async invocations. The core Plugin tool owns model approval and
-uses the existing runner. A stable gateway avoids changing the tool schema on every reload.
-Validate individual operation schemas and arguments independently of provider enforcement.
+The only permanent model gateway is PluginHotReload. Standalone CLI commands perform authoring
+and save installation choices; the gateway reconciles those choices into the calling agent.
+This avoids dynamic tool-schema disclosure and local session IPC. Resume sees the same small
+tool schema and reads saved project preferences. Human plugin commands share the core command
+catalog for completion, collision checks and turn admission. Offline handler trials are fresh
+instances with preview context, never a claim to inspect or mutate live plugin memory.
 
-Observers are cooperative async callbacks. UI callbacks are synchronous pure projections: clocks
-can animate cached state, but rendering cannot initiate work. Python timeouts cannot preempt a
-blocking callback. Timing counters report actual callback work; they are not isolation guarantees.
+Observers and actions run in workers. Host-enforced deadlines can kill a blocked worker. A bounded
+JSON protocol carries immutable context and plain values; ordinary prints are drained into a
+bounded stderr tail. Cached UI snapshots refresh at 5 Hz outside terminal rendering. Width changes
+update the next sample; immediate host clipping keeps stale-width snapshots inside the viewport.
+Reported sample time includes IPC; it is not plugin CPU time. Never invoke user Python in paint.
 
 The host supplies viewport dimensions, theme roles and height budgets. Repeated layout queries
 reuse one projection per frame. Plugins return plain data, never ANSI or prompt-toolkit widgets.
@@ -54,11 +60,21 @@ Empty or clipped components must leave the input usable, including after multipl
 
 ## Dependency environments
 
-In-process plugins cannot isolate incompatible versions with separate search paths. Resolve the
-enabled set against host version constraints into a fresh environment; never pip-install into
-the running process. Validate there before returning an explicit launch command. Failure/cancel
-removes the candidate. The environment borrows the installed host, including editable-source
-paths, so it is not a portable bundle or a promise of survival after that host is removed.
+Prepare a fresh environment constrained by host versions and persist its interpreter with the
+installation. New candidate workers use that interpreter, without restarting the host. Never
+pip-install into the running environment. Failure/cancel removes a candidate under construction.
+The environment borrows the installed host, including editable-source paths: it is not a portable
+bundle or a promise of survival after the host is removed.
+
+## Offline feedback
+
+Trials use the same source loader, worker protocol and panel validation as live generations.
+Explicit events/actions execute before sampling; fixed context/time inputs make frames repeatable.
+The UI layer exports the real PluginView projection into text, SVG and PNG. Themes with transparent
+backgrounds need a documented preview canvas; PNG font coverage remains environment-dependent.
+Reports include exact fragments and image paths. No screenshot service, desktop capture or
+installation mutation belongs in this path. Each export gets a fresh directory, avoiding accidental
+replacement of an author's previous evidence.
 
 ## Verification
 

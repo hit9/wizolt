@@ -11,7 +11,7 @@ from prompt_toolkit.input.defaults import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 from tui_harness import loop, session, wait_until
 
-import wizolt.ui.cli.loop as loop_module
+import wizolt.ui.cli.commands as commands_module
 import wizolt.ui.render as render_module
 import wizolt.ui.tui.app as tui_module
 from wizolt.agent.engine import Agent
@@ -348,8 +348,8 @@ async def test_tui_commands_print_output_immediately(tmp_path, monkeypatch):
     command_loop.presentation.ui.color = True
     # Dispatch calls the registry's callable directly, so patch the registry entry (not the
     # instance method) to keep the /status handler deterministic.
-    status_entry = replace(loop_module.COMMAND_LOOKUP["/status"], handler=lambda _loop, _args: "status marker")
-    monkeypatch.setattr(loop_module, "COMMAND_LOOKUP", {**loop_module.COMMAND_LOOKUP, "/status": status_entry})
+    status_entry = replace(commands_module.COMMAND_LOOKUP["/status"], handler=lambda _loop, _args: "status marker")
+    monkeypatch.setitem(commands_module.COMMAND_LOOKUP, "/status", status_entry)
     printed = []
     # One entry per print, not per fragment: what this pins down is that each command's output
     # reaches the terminal at once. An answer is legitimately more than one fragment, because its

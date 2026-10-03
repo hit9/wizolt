@@ -5,6 +5,8 @@ from __future__ import annotations
 import ast
 import hashlib
 import inspect
+import os
+import stat
 import sys
 import types
 import uuid
@@ -37,9 +39,19 @@ class PluginSource:
         if location.suffix != ".py" or not location.stem.isidentifier() or not location.stem.isascii():
             raise PluginError("Use a .py filename that is an ASCII Python identifier")
         if text is None:
-            if location.stat().st_size > MAX_SOURCE_BYTES:
+            # A FIFO/device masquerading as a .py file must not block the host before the
+            # worker exists. Inspect the opened descriptor, not a racy path stat, and bound
+            # the read itself so concurrent file growth cannot bypass the source limit.
+            descriptor = os.open(location, os.O_RDONLY | os.O_NONBLOCK)
+            with os.fdopen(descriptor, "rb") as stream:
+                if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                    raise PluginError("Plugin source must be a regular file")
+                data = stream.read(MAX_SOURCE_BYTES + 1)
+            if len(data) > MAX_SOURCE_BYTES:
                 raise PluginError("Plugin source exceeds 256 KiB")
-            text = location.read_text(encoding="utf-8")
+            text = data.decode("utf-8")
+        elif len(text.encode("utf-8")) > MAX_SOURCE_BYTES:
+            raise PluginError("Plugin source exceeds 256 KiB")
         tree = ast.parse(text, filename=str(location))
         metadata = {}
         for node in tree.body:

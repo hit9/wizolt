@@ -146,10 +146,10 @@ agent; workspace-wide state requires an explicit scope. Persistent plugin data i
 separately from core session data, with plugin-owned schema versions. Core state changes go
 through services, never direct mutation of `Session` or `Agent`.
 
-First release: trusted local Python plugins run in process. This is not a security sandbox.
-Python imports and callbacks can affect the host; async timeouts cannot stop blocking Python.
-Support host-owned background tasks and bounded queues, and expose plugin errors and timing.
-UI callbacks must remain short. Blocking I/O and CPU-heavy work need appropriate workers.
+Trusted local Python plugins run in separate managed processes from the first release. Host
+deadlines can terminate blocking callbacks; imports and native crashes cannot take down the host.
+This is not a filesystem/network sandbox. UI callbacks remain short, pure projections sampled
+outside terminal painting. Managed background work needs an explicit ownership API.
 
 ### Runtime and call frequency
 
@@ -188,19 +188,16 @@ Support declared third-party Python dependencies through the plugin manager. Use
 dependency declaration in package metadata and resolve a reproducible environment; the plugin
 skill should use the manager rather than run arbitrary pip installs into wizolt's environment.
 
-For in-process plugins, dependency resolution must consider the enabled plugin set and the
-host's dependency constraints together. Separate target directories do not isolate Python
-imports. Reject incompatible requirements with a conflict report; never silently replace a
-host dependency. Build and validate a candidate managed runtime environment outside the running
-installation. Activate environment changes on restart, keeping the previous environment for
-rollback. Code-only reload remains available when the dependency environment is unchanged.
-The exact launcher/environment handoff needs an implementation design before this ships.
+Prepare and validate a fresh worker environment without changing the running host installation.
+The first implementation borrows the host SDK installation and constrains host package versions;
+conflicting requirements fail explicitly. Hot reload starts a candidate with the saved interpreter,
+then replaces the old worker at a safe boundary. No host restart is needed. Dependency installation
+can execute third-party build code and follows the same trust boundary as plugin activation.
 
-Independent plugin processes are the later route for incompatible dependency versions, using
-separate environments and the same public service concepts. Do not promise a separate virtualenv
-per plugin while executing all plugins in one interpreter. Dependency installation can execute
-third-party build code; it follows the same explicit trust boundary as plugin activation.
-Process isolation alone is not a filesystem or network sandbox.
+Authoring uses standalone `wizolt plugin` commands. The only permanent model tool is the small
+`PluginHotReload` gateway for applying saved choices to the current agent. This avoids progressive
+tool disclosure, resume-specific tool state, and a local socket protocol. Trial reports include
+errors, logs and component preview images before activation.
 
 ## Loading, reload, and recovery
 
