@@ -140,13 +140,14 @@ The rounded `capsule` layout and arrow-shaped `powerline` layout need a Nerd Fon
 ### View, copy and edit a format
 
 On the StatusBar or Divider tab, press **f** to see the format that will be saved and, for a
-preset, the full format it stands for. **c** copies the format and **t** copies it as a
-`[ui.statusbar]` or `[ui.divider]` block for your config file. Copying uses `pbcopy`,
+preset, the full format it stands for. On the Divider tab's **Sweep** rows, **f** opens the
+sweep's formula instead. **c** copies the value and **t** copies it as a `[ui.statusbar]` or
+`[ui.divider]` block for your config file. Copying uses `pbcopy`,
 `wl-copy`, `xclip`, `xsel` or `clip.exe`; without one, wizolt says so and leaves the text on
 screen to select.
 
-Press **e** to edit the format. The bar previews each valid change with your theme, and an
-invalid one shows its line and column without touching the preview. **Ctrl-S** keeps the edit
+Press **e** to edit. The bar previews each valid change with your theme (a sweep animates in
+the divider samples), and an invalid one shows the problem without touching the preview. **Ctrl-S** keeps the edit
 and **Esc** discards it; **Enter** in the picker then saves it like any other choice. The
 [template reference](appearance-reference.md#custom-templates) lists every field and style.
 

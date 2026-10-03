@@ -898,6 +898,51 @@ class Theme:
         value = color.rpartition(":")[2].lstrip("#")
         return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
 
+    # xterm's defaults: enough to tell how far apart two ANSI-named roles are drawn, though a
+    # terminal may tune its own.
+    ANSI_RGB: ClassVar[dict[str, tuple[int, int, int]]] = {
+        "ansiblack": (0, 0, 0), "ansired": (205, 0, 0), "ansigreen": (0, 205, 0), "ansiyellow": (205, 205, 0),
+        "ansiblue": (0, 0, 238), "ansimagenta": (205, 0, 205), "ansicyan": (0, 205, 205), "ansigray": (229, 229, 229),
+        "ansibrightblack": (127, 127, 127), "ansibrightred": (255, 0, 0), "ansibrightgreen": (0, 255, 0),
+        "ansibrightyellow": (255, 255, 0), "ansibrightblue": (92, 92, 255), "ansibrightmagenta": (255, 0, 255),
+        "ansibrightcyan": (0, 255, 255), "ansiwhite": (255, 255, 255),
+    }  # fmt: skip
+
+    @classmethod
+    def distinct_roles(cls, first: str, candidates: tuple[str, ...], count: int, *, avoid: tuple[str, ...] = ()) -> list[str]:
+        """`first`, then up to `count - 1` of `candidates` picked one by one from the active palette:
+        each the farthest from every color already chosen, from `avoid`, and from the background.
+
+        Themes derive many roles from a few hues, and which pairs collide differs per theme, so a
+        fixed choice of roles reads as one color in some of them. Picking from the colors the theme
+        actually draws keeps a categorical series apart in every theme, custom ones included."""
+        palette = cls.palette()
+        measured = {role: rgb for role in {first, *candidates, *avoid} if (rgb := cls.measure(palette.get(role, ""))) is not None}
+        background = cls.measure(cls.active().background) or terminal.background() or ((30, 30, 30) if cls.active().appearance == "dark" else (255, 255, 255))
+        taken = [background, *(measured[role] for role in (first, *avoid) if role in measured)]
+        chosen = [first]
+        options = [role for role in dict.fromkeys(candidates) if role in measured and role != first]
+        while options and len(chosen) < count:
+            best = max(options, key=lambda role: min(cls.distance(measured[role], other) for other in taken))
+            chosen.append(best)
+            taken.append(measured[best])
+            options.remove(best)
+        return chosen
+
+    @classmethod
+    def measure(cls, color: str) -> tuple[int, int, int] | None:
+        """A color's RGB, for a `#rrggbb` value or an ANSI name; None for `default` and the like."""
+        if color.startswith("#") and len(color) == 7:
+            return cls.rgb(color)
+        return cls.ANSI_RGB.get(color)
+
+    @staticmethod
+    def distance(first: tuple[int, int, int], second: tuple[int, int, int]) -> float:
+        """How different two colors look: the low-cost "redmean" weighting of RGB distance."""
+        red = (first[0] + second[0]) / 2
+        dr, dg, db = (a - b for a, b in zip(first, second, strict=True))
+        return math.sqrt((2 + red / 256) * dr * dr + 4 * dg * dg + (2 + (255 - red) / 256) * db * db)
+
     @classmethod
     def detect(cls) -> str:
         # The terminal's own answer first: most terminals report their background, while few

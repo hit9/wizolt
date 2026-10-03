@@ -21,7 +21,13 @@
 - **f** on the StatusBar or Divider tab shows the selected format and what a preset stands for,
   copies it or a TOML block through the system clipboard command (reporting when none worked), and
   edits it in a multiline draft previewed with the real renderer. Invalid drafts report a line and
-  column and never reach the config; **Ctrl-S** keeps a draft and **Esc** discards it.
+  column and never reach the config; **Ctrl-S** keeps a draft and **Esc** discards it. On the
+  Divider tab's Sweep rows, **f** opens `ui.divider.sweep`'s formula the same way.
+- The context bar's parts are colored per theme: messages keeps the context color, and each other
+  part drawn takes whichever of the theme's own roles sits farthest from the colors already used
+  and from the empty track (`Theme.distinct_roles`). Across the built-in themes the closest pair of
+  part colors is now at least about twice as far apart as with fixed roles. A part too small for
+  a cell shows a quiet legend square.
 
 ### Changed
 

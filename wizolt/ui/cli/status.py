@@ -32,16 +32,31 @@ if TYPE_CHECKING:
 DOCS_URL = "https://wizolt.readthedocs.io"
 TABS = ("Overview", "Context", "Usage", "Session")
 KEYS = "h/l tabs · j/k scroll · Esc close"
-# Legend and bar colors per context part. Status roles are the ones the statusbar already uses for
-# the same subjects, so a theme recolors both together.
-PART_ROLES = {
-    "system": "status_provider",
-    "tools": "status_cache",
-    "mcp tools": "status_reason",
-    "instructions": "status_agent",
-    "skills": "status_model",
-    "messages": "status_context",
-}
+# Context part colors. Messages, the part that grows, keeps the statusbar's context color; the
+# other parts drawn take the theme's hue roles that sit farthest from it, from each other and from
+# the empty track (`Theme.distinct_roles`), so the choice adapts to each theme. The pool is wide on
+# purpose: some themes draw their UI roles from only a few hues, and their code colors or the
+# softened YOLO red are what sets a part apart. `error` stays out: a part is not an alarm.
+MESSAGES_ROLE = "status_context"
+PART_CANDIDATES = (
+    "info",
+    "warning",
+    "user",
+    "accent_secondary",
+    "accent",
+    "tool",
+    "syntax_number",
+    "syntax_string",
+    "syntax_builtin",
+    "syntax_assign",
+    "status_cache",
+    "status_reason",
+    "status_agent",
+    "status_model",
+    "status_provider",
+    "status_yolo",
+    "divider_glow",
+)
 # The statusbar's context pressure thresholds (`ui.bars.pressure`).
 WARNING_PERCENT, ERROR_PERCENT = 70, 90
 # Values wear existing theme roles: counts the color numbers have in tool arguments, cache and
@@ -309,11 +324,16 @@ class StatusTabs:
         reading = [*context.reading(), (muted, f"  {source}")]
         counts = [Text.abbreviate_count(tokens) for _, tokens in parts]
         count_width = max(map(len, counts), default=0)
+        over = estimated > context.threshold
+        labels = ("used", *(name for name, _ in parts), "total", *(("over by",) if over else ()), "compacts at", "window")
+        bar_width = max(1, width - label_column(labels))
+        # A part too small for a cell is not in the bar; its square stays quiet to say so.
+        roles = self.roles(bar_width)
         estimate = [
             Entry(
                 name,
                 [
-                    (Theme.fg(PART_ROLES[name]), "■ "),
+                    (Theme.fg(roles.get(name, "subtle")), "■ "),
                     figure(f"{count:>{count_width}}"),
                     (muted, f"  {tokens * 100 / threshold:>3.0f}%" if tokens * 100 >= threshold else "   <1%"),
                 ],
@@ -321,16 +341,14 @@ class StatusTabs:
             for (name, tokens), count in zip(parts, counts, strict=True)
         ]
         estimate.append(Entry("total", [figure("~" + Text.abbreviate_count(estimated))]))
-        if estimated > context.threshold:
+        if over:
             estimate.append(Entry("over by", [(Theme.fg("error", "bold"), Text.abbreviate_count(estimated - context.threshold))]))
         # The threshold turns as the reading does: it is what that warning is about.
         limits = [
             Entry("compacts at", [figure(Text.abbreviate_count(context.threshold), context.level if context.percent >= WARNING_PERCENT else NUMBER_ROLE)]),
             Entry("window", [figure(Text.abbreviate_count(context.window))]),
         ]
-        labels = ("used", *(entry.label for entry in estimate + limits))
-        column = label_column(labels)
-        used = [Entry("used", reading), Entry("", self.bar(max(1, width - column)))]
+        used = [Entry("used", reading), Entry("", self.bar(bar_width))]
         return table([("", used), ("Next request · estimated", estimate), ("Limits", limits)], width, labels)
 
     def usage(self, width: int) -> TextRows:
@@ -339,21 +357,33 @@ class StatusTabs:
     def session(self, width: int) -> TextRows:
         return table([self.snapshot.configuration.entries()], width)
 
-    def bar(self, width: int) -> TextFragments:
-        """Each part takes the cells its cumulative share rounds to, so a part too small for a cell
-        gets none instead of distorting the others; free space fills the rest."""
-        context = self.snapshot.context
-        threshold = max(1, context.threshold)
-        fragments: TextFragments = []
+    def segments(self, width: int) -> list[tuple[str, int]]:
+        """The parts drawn at `width`, with their cells. Each takes the cells its cumulative share
+        rounds to, so a part too small for a cell gets none instead of distorting the others."""
+        threshold = max(1, self.snapshot.context.threshold)
+        segments: list[tuple[str, int]] = []
         start = total = 0
-        for name, tokens in context.parts:
+        for name, tokens in self.snapshot.context.parts:
             total += tokens
             end = min(width, round(total * width / threshold))
             if end > start:
-                fragments.append((Theme.fg(PART_ROLES[name]), "█" * (end - start)))
+                segments.append((name, end - start))
                 start = end
-        if start < width:
-            fragments.append((Theme.fg("subtle"), "░" * (width - start)))
+        return segments
+
+    def roles(self, width: int) -> dict[str, str]:
+        """Colors for the parts drawn at `width`, each as distinct as the active theme allows. A
+        part too small for a cell is not drawn, so it takes no color from the others."""
+        others = [name for name, _ in self.segments(width) if name != "messages"]
+        palette = Theme.distinct_roles(MESSAGES_ROLE, PART_CANDIDATES, len(others) + 1, avoid=("subtle",))
+        return {"messages": MESSAGES_ROLE, **dict(zip(others, palette[1:], strict=False))}
+
+    def bar(self, width: int) -> TextFragments:
+        roles = self.roles(width)
+        fragments: TextFragments = [(Theme.fg(roles[name]), "█" * cells) for name, cells in self.segments(width)]
+        used = sum(cells for _, cells in self.segments(width))
+        if used < width:
+            fragments.append((Theme.fg("subtle"), "░" * (width - used)))
         return fragments
 
 

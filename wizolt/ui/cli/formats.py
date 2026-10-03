@@ -1,8 +1,8 @@
-"""View, copy and edit one bar's `format` inside `/theme`.
+"""View, copy and edit a bar's format, or the divider's sweep formula, inside `/theme`.
 
-The statusbar and divider tabs share this panel. It knows a format's text, not what that text
+The statusbar and divider tabs share this panel. It knows the setting's text, not what that text
 draws: the picker hands it the configuration path that validates and previews a draft, and any
-rendered samples. Nothing here parses or renders templates.
+rendered samples. Nothing here parses or renders templates or formulas.
 """
 
 from __future__ import annotations
@@ -19,20 +19,24 @@ from wizolt.ui.bars import PRESETS, expand
 from wizolt.ui.render import Theme
 from wizolt.utils.clipboard import Clipboard
 
-VIEW_KEYS = "c copy format · t copy TOML · e edit · j/k scroll · Esc back"
+VIEW_KEYS = "c copy value · t copy TOML · e edit · j/k scroll · Esc back"
 EDIT_KEYS = "Ctrl-S apply · Esc discard · arrows move · Enter new line"
+# Each editable setting, by its preset registry (`ui.bars.PRESETS`), as a [ui.TABLE] KEY.
+CONFIG_KEYS = {"statusbar": ("statusbar", "format"), "divider": ("divider", "format"), "sweep": ("divider", "sweep")}
 
 
 def toml_snippet(kind: str, source: str) -> str:
     import tomlkit  # Loaded on use, like every other config write: startup does not pay for it.
 
-    return tomlkit.dumps({"ui": {kind: {"format": source}}})
+    table, key = CONFIG_KEYS[kind]
+    return tomlkit.dumps({"ui": {table: {key: source}}})
 
 
 class FormatPanel:
-    """One bar's format: viewed, copied, or edited as a draft.
+    """One setting -- a bar's format or the sweep formula -- viewed, copied, or edited as a draft.
 
-    `current` is the format the picker would save, `saved` the one in effect when it opened.
+    `kind` names its preset registry. `current` is the value the picker would save, `saved` the
+    one in effect when it opened.
     `apply` validates a draft through the bar's configuration path and previews it when valid,
     returning the problems otherwise; `accept` makes a valid draft the picker's selection. A
     discarded draft re-applies `current`, so the preview returns to it."""
@@ -57,7 +61,7 @@ class FormatPanel:
 
     @property
     def setting(self) -> str:
-        return f"ui.{self.kind}.format"
+        return "ui." + ".".join(CONFIG_KEYS[self.kind])
 
     def handle_key(self, key: str, data: str = "") -> bool:
         """Whether the panel stays open."""
@@ -68,14 +72,14 @@ class FormatPanel:
             return False
         source = self.current()
         if key in {"c", "t"}:
-            text, what = (source, "the format") if key == "c" else (toml_snippet(self.kind, source), "a TOML snippet")
+            text, what = (source, "the value") if key == "c" else (toml_snippet(self.kind, source), "a TOML snippet")
             error = Clipboard.copy(text)
             self.show_toml = key == "t" and error is not None
             self.notice = (
                 ("success", f"Copied {what} for {self.setting}.") if error is None else ("warning", f"Not copied: {error}. Select the text above instead.")
             )
         elif key == "e":
-            # A preset is edited as the template it stands for.
+            # A preset is edited as the template or formula it stands for.
             self.draft = Document(expand(source, PRESETS[self.kind]))
             self.problems, self.notice, self.top = [], ("", ""), 0
         elif key in {"j", "down"}:

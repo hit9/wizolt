@@ -1,5 +1,7 @@
 """loop skills (split from tests/test_loop_commands.py)."""
 
+from itertools import combinations
+
 import pytest
 from agent_harness import session
 from prompt_toolkit.utils import get_cwidth
@@ -14,8 +16,8 @@ from wizolt.skill.library import SkillLibrary
 from wizolt.tools import SkillTool, Tool
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.commands import skills_command
-from wizolt.ui.cli.status import StatusReport, StatusTabs, StatusView
-from wizolt.ui.render import StatusBar, WidthDependent
+from wizolt.ui.cli.status import MESSAGES_ROLE, PART_CANDIDATES, StatusReport, StatusTabs, StatusView
+from wizolt.ui.render import StatusBar, Theme, WidthDependent
 from wizolt.ui.tui import TUI_MODAL_PENDING
 
 
@@ -261,6 +263,36 @@ def test_status_breakdown_is_an_estimate_of_disjoint_parts(tmp_path):
     assert value(text, "total") == "~" + Text.abbreviate_count(sum(parts.values()))
     assert value(text, "compacts at") == Text.abbreviate_count(context.threshold)
     assert "Next request · estimated" in text
+
+
+def test_context_bar_parts_are_told_apart_without_losing_their_share(tmp_path):
+    (tmp_path / "AGENTS.md").write_text("# Rules\n" + "Keep it short.\n" * 400, encoding="utf-8")
+    s = session(tmp_path)  # instructions present, MCP tools absent: tools sat beside instructions
+    s.settings.max_context_tokens = 60_000
+    s.messages = [{"role": "user", "content": "x" * 60_000}]
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
+    tabs = StatusTabs(StatusReport.of(loop).snapshot)
+    parts = tabs.bar(60)
+    drawn = [style for style, text in parts if "█" in text]
+
+    # Every cell is accounted for, solid, so shares stay proportional and the bar unbroken.
+    assert sum(get_cwidth(text) for _, text in parts) == 60 and not any("▐" in text for _, text in parts)
+    assert len(drawn) >= 3
+    # The legend's squares wear the same colors as the bar.
+    squares = [style for row in tabs.context(76) for style, text in row if text == "■ "]
+    assert drawn == [square for square in squares if square in drawn]
+
+
+@pytest.mark.parametrize("theme", list(Theme.BUILTIN))
+def test_context_bar_colors_stay_apart_in_every_theme(theme, monkeypatch):
+    """Fixed roles read as one color in some themes (slate drew two blues side by side): the parts
+    take whichever of the theme's own roles sit farthest apart."""
+    monkeypatch.setattr(Theme, "_mode", theme)
+    roles = Theme.distinct_roles(MESSAGES_ROLE, PART_CANDIDATES, 5, avoid=("subtle",))
+    colors = [Theme.measure(Theme.color(role)) for role in roles]
+
+    assert roles[0] == MESSAGES_ROLE and len(set(roles)) == 5 and "error" not in roles
+    assert min(Theme.distance(a, b) for a, b in combinations(colors, 2)) >= 70
 
 
 def test_status_marks_an_estimate_over_the_compaction_threshold(tmp_path):

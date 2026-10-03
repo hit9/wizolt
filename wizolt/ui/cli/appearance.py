@@ -212,30 +212,33 @@ class AppearancePicker:
             chosen["placement"] = CUSTOM if name == CUSTOM else "left"
         return chosen
 
-    def accept_format(self, kind: str, source: str) -> None:
-        """Select an edited format: as the preset and placement it spells, if any, else as custom."""
-        if kind == "statusbar" and (placement := status_layout(source)) is not None:
+    def accept_format(self, setting: str, source: str) -> None:
+        """Select an edited setting: as the preset (and placement) it spells, if any, else custom."""
+        if setting == "statusbar" and (placement := status_layout(source)) is not None:
             self.selected.update(statusbar=placement[0], placement="split" if placement[1] else "left")
-        elif kind == "divider" and (name := next((name for name in self.presets(kind) if source in ("preset:" + name, PRESETS[kind][name])), None)):
-            self.selected[kind] = name
+        elif setting != "statusbar" and (name := next((name for name in self.presets(setting) if source in ("preset:" + name, PRESETS[setting][name])), None)):
+            self.selected[setting] = name
         else:
-            self.custom[kind] = source
-            self.selected[kind] = CUSTOM
-            if kind == "statusbar":
+            self.custom[setting] = source
+            self.selected[setting] = CUSTOM
+            if setting == "statusbar":
                 self.selected["placement"] = CUSTOM
-        self.bar_focus[kind] = kind + ":" + self.selected[kind]
-        self.layout.configure({kind: self.source(kind)}, Theme.bar_styles)
+        self.bar_focus[self.kind()] = setting + ":" + self.selected[setting]
+        self.layout.configure({setting: self.source(setting)}, Theme.bar_styles)
 
-    def open_format(self, kind: str) -> None:
-        """The format panel shows the selection, so the preview leaves any merely highlighted row."""
-        self.layout.configure({group: self.source(group) for group in self.groups(kind) if group in BAR_FORMATS}, Theme.bar_styles)
+    def open_format(self, setting: str) -> None:
+        """Open the panel on `setting`, a bar format or the sweep. It shows the selection, so the
+        preview leaves any merely highlighted row."""
+        tab = self.kind()
+        self.layout.configure({group: self.source(group) for group in self.groups(tab) if group in BAR_FORMATS}, Theme.bar_styles)
         self.format = FormatPanel(
-            kind,
-            lambda: self.source(kind),
-            self.layout_before.sources[kind],
-            apply=lambda source: self.layout.configure({kind: source}, Theme.bar_styles),
-            accept=lambda source: self.accept_format(kind, source),
-            preview=(lambda: bars.preview(self.loop, "divider", self.started)) if kind == "divider" else None,
+            setting,
+            lambda: self.source(setting),
+            self.layout_before.sources[setting],
+            apply=lambda source: self.layout.configure({setting: source}, Theme.bar_styles),
+            accept=lambda source: self.accept_format(setting, source),
+            # The divider's samples animate its sweep; the statusbar previews itself below.
+            preview=(lambda: bars.preview(self.loop, "divider", self.started)) if tab == "divider" else None,
         )
 
     def kind(self) -> str:
@@ -545,7 +548,8 @@ class AppearancePicker:
         state = self.current_list()
         kind, before = self.kind(), state.selected_choice()
         if kind in self.bar_focus and not state.searching and key == "f":
-            self.open_format(kind)
+            # The divider's Sweep rows open its formula; any other row, the bar's format.
+            self.open_format("sweep" if self.bar_focus[kind].startswith("sweep:") else kind)
             return TUI_MODAL_PENDING
         if kind == "statusbar" and not state.searching and key == "p" and self.selected["placement"] != CUSTOM:
             self.selected["placement"] = "left" if self.selected["placement"] == "split" else "split"

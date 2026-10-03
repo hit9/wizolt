@@ -9,7 +9,7 @@ from prompt_toolkit.document import Document
 from test_command_ui import ModalHarness
 from tui_harness import loop
 
-from wizolt.ui.bars import DIVIDER_PRESETS, STATUS_PRESETS, status_template
+from wizolt.ui.bars import DIVIDER_PRESETS, STATUS_PRESETS, SWEEPS, status_template
 from wizolt.ui.cli.appearance import AppearancePicker, theme_command
 from wizolt.ui.cli.commands import COMMAND_NAMES
 from wizolt.ui.cli.view import CommandCompleter
@@ -621,6 +621,21 @@ async def test_format_editor_keeps_its_draft_keys_and_preview_through_resizes(co
         assert picker.source("divider") == DIVIDER_PRESETS["comet"] + "Z"
     finally:
         picker.restore()
+
+
+async def test_sweep_rows_open_the_sweep_formula_in_the_format_panel(command_loop, monkeypatch):
+    copied = []
+    monkeypatch.setattr(Clipboard, "copy", staticmethod(copied.append))
+    # The Divider tab, then its Sweep group; f opens the formula, not the divider's format.
+    keys = ["h", "h", "tab", "f", "t", "e", "end", ")", "backspace", *" * 0.5", "c-s", "escape", "enter"]
+    modal = command_loop.presentation.tui = BarModal(keys)
+    assert "divider.sweep:" in await theme_command(command_loop, "")
+    frames = frames_text(modal)
+    assert any("ui.divider.sweep · selected, saved" in frame and "expands to" in frame for frame in frames)
+    # An unbalanced formula is reported against the sweep setting and never applied.
+    assert any("ui.divider.sweep: invalid expression" in frame for frame in frames)
+    assert tomllib.loads(copied[0]) == {"ui": {"divider": {"sweep": "preset:comet"}}}
+    assert saved(command_loop)["ui"] == {"divider": {"sweep": SWEEPS["comet"] + " * 0.5"}}
 
 
 async def test_placement_applies_to_the_highlighted_preset_and_stays_when_choosing(command_loop):
