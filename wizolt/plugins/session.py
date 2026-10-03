@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from wizolt.plugins.catalog import Installation, PluginCatalog
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.runtime import PluginRuntime
+from wizolt.plugins.settings import PluginSettings
 from wizolt.sdk import Context, PluginError
 
 if TYPE_CHECKING:
@@ -31,7 +32,7 @@ class SessionPlugins(PluginRuntime):
         self.problems: dict[str, str] = {}
         self._management_lock = asyncio.Lock()
         self.catalog = PluginCatalog.for_project(session.config.data_dir, session.cwd)
-        super().__init__(self.snapshot)
+        super().__init__(self.snapshot, PluginSettings(session.config.plugins, session.config.path))
 
     def snapshot(self) -> Context:
         session = self.session

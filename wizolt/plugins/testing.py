@@ -14,6 +14,7 @@ from typing import Any
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.process import PluginProcess, WorkerError
 from wizolt.plugins.protocol import Snapshot
+from wizolt.plugins.settings import PluginSettings
 from wizolt.sdk import Context
 
 
@@ -43,10 +44,11 @@ class TrialReport:
 class PluginTrial:
     """Own exactly one candidate process, and retire it on success, failure or cancellation."""
 
-    def __init__(self, context: Context, *, timeout: float = 5, python: str = ""):
+    def __init__(self, context: Context, *, timeout: float = 5, python: str = "", settings: PluginSettings | None = None):
         self.context = context
         self.timeout = timeout
         self.python = python
+        self.settings = settings or PluginSettings()
 
     async def run(self, path: str, *, validate: bool = False, times: tuple[float, ...] = (0,), stimuli: tuple[Stimulus, ...] = ()) -> TrialReport:
         report = TrialReport()
@@ -55,7 +57,9 @@ class PluginTrial:
         try:
             source = PluginSource.read(path)
             report.version = source.digest
-            worker, report.capabilities = await PluginProcess.start(source, timeout=self.timeout, python=self.python, cwd=self.context.cwd)
+            worker, report.capabilities = await PluginProcess.start(
+                source, timeout=self.timeout, python=self.python, cwd=self.context.cwd, config=self.settings.read(source.name)
+            )
             if not validate:
                 for stimulus in stimuli:
                     report.stage = f"{stimulus.kind}:{stimulus.name}"

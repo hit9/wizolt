@@ -19,6 +19,8 @@ from pathlib import Path
 
 from wizolt.base import run_blocking
 from wizolt.plugins.loading import PluginSource
+from wizolt.plugins.process import PluginProcess
+from wizolt.plugins.settings import PluginSettings
 from wizolt.sdk import PluginError
 from wizolt.utils.process import ShellCommand
 
@@ -28,10 +30,11 @@ class DependencyEnvironment:
     SDK installation and is not portable; it becomes usable only after preparation succeeds.
     """
 
-    def __init__(self, root: Path, sources: list[PluginSource], cwd: str):
+    def __init__(self, root: Path, sources: list[PluginSource], cwd: str, settings: PluginSettings | None = None):
         self.path = root / uuid.uuid4().hex
         self.sources = sources
         self.cwd = cwd
+        self.settings = settings or PluginSettings()
 
     async def command(self, arguments: list[str]) -> str:
         result = await ShellCommand(shlex.join(arguments), self.cwd, timeout=300).run()
@@ -70,11 +73,8 @@ class DependencyEnvironment:
             (site / "wizolt-host.pth").write_text("\n".join(dict.fromkeys(host_paths)) + "\n")
             await self.command([uv, "pip", "check", "--python", python])
             for source in self.sources:
-                script = (
-                    "from wizolt.plugins.loading import LoadedPlugin, PluginSource; "
-                    "import sys; p = LoadedPlugin.load(PluginSource.read(sys.argv[1])); p.close()"
-                )
-                await self.command([python, "-c", script, source.path])
+                worker, _ = await PluginProcess.start(source, python=python, cwd=self.cwd, config=self.settings.read(source.name))
+                await worker.close()
             frozen = await self.command([uv, "pip", "freeze", "--python", python])
             (self.path / "requirements.lock").write_text(frozen + "\n")
             (self.path / "plugins.json").write_text(json.dumps({source.name: source.digest for source in self.sources}, indent=2))

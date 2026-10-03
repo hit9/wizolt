@@ -64,6 +64,7 @@ def setup(p):
 async def test_dependency_install_uses_new_environment_and_preserves_host(tmp_path, monkeypatch):
     """A real offline wheel exercises uv, validation and hot reload without a network fixture."""
     from wizolt.plugins.installation import PluginInstallations
+    from wizolt.plugins.settings import PluginSettings
 
     monkeypatch.setenv("UV_OFFLINE", "1")
     wheel = tmp_path / "wizolt_plugin_testdep-1.0-py3-none-any.whl"
@@ -78,16 +79,18 @@ async def test_dependency_install_uses_new_environment_and_preserves_host(tmp_pa
 DEPENDENCIES = [{("wizolt-plugin-testdep @ " + wheel.as_uri())!r}]
 import wizolt_plugin_testdep
 def setup(p):
-    p.field("value", lambda ctx: wizolt_plugin_testdep.VALUE)
+    p.configure({{"type": "object", "required": ["offset"]}})
+    p.field("value", lambda ctx: wizolt_plugin_testdep.VALUE + p.config["offset"])
 """)
     runtime = SessionPlugins(session_with_provider(tmp_path))
+    runtime.session.config.plugins["dependent"] = {"offset": 1}
     old_path = list(sys.path)
-    result = await PluginInstallations(runtime.catalog, runtime.session.cwd).manage("install", str(path))
+    result = await PluginInstallations(runtime.catalog, runtime.session.cwd, PluginSettings(runtime.session.config.plugins)).manage("install", str(path))
     assert result["status"] == "saved" and result["python"]
     assert runtime.fields() == {} and sys.path == old_path
     assert "wizolt_plugin_testdep" not in sys.modules
     await runtime.hot_reload("dependent")
-    assert runtime.fields() == {"plugins.dependent.value": 42}
+    assert runtime.fields() == {"plugins.dependent.value": 43}
     await runtime.close()
 
 

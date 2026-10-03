@@ -38,7 +38,7 @@ class Worker:
         operation = request["operation"]
         if operation == "load":
             source = PluginSource.read(request["path"], request["source"])
-            self.loaded = LoadedPlugin.load(source)
+            self.loaded = LoadedPlugin.load(source, request.get("config"))
             plugin = self.loaded.plugin
             return {
                 "fields": list(plugin.fields),

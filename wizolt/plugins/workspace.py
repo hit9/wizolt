@@ -10,6 +10,7 @@ from pathlib import Path
 from wizolt.base import Json
 from wizolt.config import Config, ConfigFile
 from wizolt.plugins.catalog import Installation, PluginCatalog
+from wizolt.plugins.settings import PluginSettings
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,10 @@ class PluginWorkspace:
     data: Json
     data_dir: str
     catalog: PluginCatalog
+
+    @property
+    def settings(self) -> PluginSettings:
+        return PluginSettings(Config.table(self.data, "plugins"))
 
     @classmethod
     def open(cls, config: str | None, project: str) -> "PluginWorkspace":

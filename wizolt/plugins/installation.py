@@ -11,13 +11,15 @@ from dataclasses import asdict, replace
 from wizolt.plugins.catalog import Installation, PluginCatalog
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.process import PluginProcess
+from wizolt.plugins.settings import PluginSettings
 from wizolt.sdk import PluginError
 
 
 class PluginInstallations:
-    def __init__(self, catalog: PluginCatalog, cwd: str):
+    def __init__(self, catalog: PluginCatalog, cwd: str, settings: PluginSettings | None = None):
         self.catalog = catalog
         self.cwd = cwd
+        self.settings = settings or PluginSettings()
 
     async def manage(self, action: str, target: str = "") -> dict:
         records, problems = self.catalog.read()
@@ -44,9 +46,9 @@ class PluginInstallations:
             if action == "install" and source.dependencies:
                 from wizolt.plugins.dependencies import DependencyEnvironment
 
-                result = await DependencyEnvironment(self.catalog.directory / "environments", [source], self.cwd).prepare()
+                result = await DependencyEnvironment(self.catalog.directory / "environments", [source], self.cwd, self.settings).prepare()
                 python = result["python"]
-            worker, _ = await PluginProcess.start(source, python=python, cwd=self.cwd)
+            worker, _ = await PluginProcess.start(source, python=python, cwd=self.cwd, config=self.settings.read(source.name))
             await worker.close()
             item = Installation(source.name, source.path, python=python)
         else:

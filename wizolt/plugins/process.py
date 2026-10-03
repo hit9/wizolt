@@ -42,9 +42,12 @@ class PluginProcess:
         self._close_lock = asyncio.Lock()
 
     @classmethod
-    async def start(cls, source: PluginSource, *, timeout: float = 5, python: str = "", cwd: str | None = None) -> tuple[PluginProcess, dict]:
+    async def start(
+        cls, source: PluginSource, *, timeout: float = 5, python: str = "", cwd: str | None = None, config: dict | None = None
+    ) -> tuple[PluginProcess, dict]:
         process = await asyncio.create_subprocess_exec(
             python or sys.executable,
+            "-P",  # Workspace files must not shadow worker/validator dependencies.
             "-m",
             "wizolt.plugins.worker",
             stdin=asyncio.subprocess.PIPE,
@@ -56,7 +59,7 @@ class PluginProcess:
         )
         worker = cls(process)
         try:
-            description = await worker.request("load", timeout=timeout, path=source.path, source=source.text)
+            description = await worker.request("load", timeout=timeout, path=source.path, source=source.text, config=config or {})
             return worker, description
         except BaseException as error:
             await worker.close()

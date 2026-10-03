@@ -92,13 +92,28 @@ class Plugin:
     IDENTIFIER = r"[A-Za-z_][A-Za-z_0-9]*"
     COMMAND_NAME = r"[A-Za-z_][A-Za-z_0-9-]*"
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, config: Mapping[str, Any] | None = None):
+        from wizolt.sdk.settings import freeze
+
         self.name = name
+        self._settings = dict(config or {})
+        self._config = freeze(self._settings)
         self.fields: dict[str, Field] = {}
         self.components: dict[str, Component] = {}
         self.commands: dict[str, Action] = {}
         self.tools: dict[str, Action] = {}
         self.observers: dict[str, list[Observer]] = {}
+
+    @property
+    def config(self) -> Mapping[str, Any]:
+        """This generation's read-only user settings; nested tables/lists are immutable too."""
+        return self._config
+
+    def configure(self, schema: Mapping[str, Any], *, defaults: Mapping[str, Any] | None = None) -> None:
+        """Validate settings during setup, before callbacks capture configuration values."""
+        from wizolt.sdk.settings import resolve
+
+        self._config = resolve(self._settings, schema, defaults or {})
 
     @classmethod
     def _register(cls, registry: dict, name: str, value: object, *, pattern: str = IDENTIFIER) -> None:

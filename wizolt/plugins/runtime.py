@@ -15,6 +15,7 @@ from typing import Any
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.process import PluginProcess
 from wizolt.plugins.protocol import Capabilities, Snapshot
+from wizolt.plugins.settings import PluginSettings
 from wizolt.sdk import Context, Panel, PluginError, Value
 
 
@@ -23,6 +24,7 @@ class Generation:
     source: PluginSource
     plugin: Capabilities
     worker: PluginProcess
+    settings: dict = field(default_factory=dict)
     snapshot: Snapshot = field(default_factory=lambda: Snapshot({}, {}))
     error: str = ""
     calls: int = 0
@@ -50,6 +52,7 @@ class Entry:
 
     active: Generation
     previous: PluginSource | None = None
+    previous_settings: dict = field(default_factory=dict)
     pending: Generation | None = None
     disabling: bool = False
 
@@ -59,8 +62,9 @@ class PluginRuntime:
     ACTION_TIMEOUT = 60.0
     REFRESH_INTERVAL = 0.2
 
-    def __init__(self, context: Callable[[], Context]):
+    def __init__(self, context: Callable[[], Context], settings: PluginSettings | None = None):
         self.context = context
+        self.settings = settings or PluginSettings()
         self.entries: dict[str, Entry] = {}
         self._pending_new: dict[str, Generation] = {}
         self.turn_active = False
@@ -73,9 +77,10 @@ class PluginRuntime:
         self.reserved_commands: frozenset[str] = frozenset()
         self.interpreters: dict[str, str] = {}
 
-    async def prepare(self, path: str, source: str | None = None) -> Generation:
+    async def prepare(self, path: str, source: str | None = None, settings: dict | None = None) -> Generation:
         revision = PluginSource.read(path, source)
-        worker, description = await PluginProcess.start(revision, python=self.interpreters.get(revision.name, ""), cwd=self.context().cwd)
+        settings = self.settings.read(revision.name) if settings is None else settings
+        worker, description = await PluginProcess.start(revision, python=self.interpreters.get(revision.name, ""), cwd=self.context().cwd, config=settings)
         try:
             capabilities = Capabilities.decode(revision.name, description)
             occupied = set(self.reserved_commands)
@@ -89,7 +94,7 @@ class PluginRuntime:
                     occupied.update(candidate.plugin.commands)
             if collisions := occupied.intersection(capabilities.commands):
                 raise PluginError(f"Command names already registered: {', '.join(sorted(collisions))}")
-            candidate = Generation(revision, capabilities, worker)
+            candidate = Generation(revision, capabilities, worker, settings=settings)
             await candidate.refresh(self.context())
             if candidate.error:
                 raise PluginError(candidate.error)
@@ -136,7 +141,7 @@ class PluginRuntime:
                 elif action == "rollback":
                     if entry.previous is None:
                         raise PluginError(f"{name}: no previous version")
-                    candidate = await self.prepare(entry.previous.path, entry.previous.text)
+                    candidate = await self.prepare(entry.previous.path, entry.previous.text, entry.previous_settings)
                 elif action == "disable":
                     if entry.pending:
                         self._retire(entry.pending)
@@ -196,6 +201,7 @@ class PluginRuntime:
                 del self.entries[name]
             elif entry.pending:
                 self._retire(entry.active)
+                entry.previous_settings = entry.active.settings
                 entry.previous, entry.active, entry.pending = entry.active.source, entry.pending, None
         if self.entries and (self._refresh_task is None or self._refresh_task.done()):
             self._refresh_task = asyncio.create_task(self._refresh_loop())

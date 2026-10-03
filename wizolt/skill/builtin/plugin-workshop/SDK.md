@@ -1,5 +1,30 @@
 # Experimental Python SDK 1
 
+## Configuration
+
+User settings live in wizolt's `config.toml`, under `[plugins.NAME]`; NAME is the installed name.
+Declare a JSON Schema during setup, before capturing settings in callbacks:
+
+```python
+def setup(plugin):
+    plugin.configure(
+        {"type": "object", "properties": {"label": {"type": "string"}}, "additionalProperties": False},
+        defaults={"label": "hello"},
+    )
+    plugin.field("label", lambda ctx: plugin.config["label"])
+```
+
+Defaults fill missing top-level keys; nested user tables replace their entire default table.
+JSON Schema `default` annotations do not insert values. Local schema references work; remote
+references are rejected. Tables are read-only mappings and arrays become tuples after validation.
+Use environment variable names for secrets and never print resolved credentials. Validation
+errors omit values, but plugin-authored logs and callback output remain the plugin's responsibility.
+
+Validate/test/install use the selected config. Live reload rereads only its `[plugins]` table,
+and fixes settings for the candidate's lifetime. Failed validation preserves the active instance;
+rollback restores both retained source and settings. Other running agents remain unchanged.
+Configuration is not provider access: model services and managed LSP connections are not SDK APIs yet.
+
 Every plugin declares `SDK_VERSION = 1` and synchronous `setup(plugin: wizolt.sdk.Plugin)`.
 Callbacks receive immutable `Context`: agent_id, agent_name, cwd, status, context_percent,
 elapsed seconds, model, monotonic now, and available columns.

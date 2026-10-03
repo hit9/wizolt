@@ -26,5 +26,8 @@ without removing its source. `/plugins` also offers live controls and source rol
 auto-load merely because they exist. Saved choices apply to future agents in this project.
 
 Keep mutable state inside `setup`, use theme roles, and keep render callbacks cheap and pure.
+Put user settings in `[plugins.NAME]` in wizolt's `config.toml`. Declare validation and defaults
+with `plugin.configure(...)`, then read immutable `plugin.config` (see SDK.md). Validate using
+the same `--config` as the live agent, and hot reload after editing settings.
 Do not mutate host internals, create unmanaged tasks, or install packages
 into the running interpreter. No desktop notifications. Use the manager, not direct registry edits.

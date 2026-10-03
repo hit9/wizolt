@@ -1,5 +1,21 @@
 # Plugins
 
+## Plugin settings
+
+Put settings in your wizolt `config.toml`, under the installed plugin's name:
+
+```toml
+[plugins.context_helper]
+provider = "deepseek"
+model = "your-model"
+```
+
+The plugin defines which settings it accepts. Run `wizolt plugin validate NAME --config PATH`
+to check them, then use `PluginHotReload` to apply them to the current agent. Invalid settings
+leave the previous instance running. Rollback restores its previous source and settings.
+Keep credentials in environment variables or your provider configuration; a provider name here
+only has meaning if that plugin supports it.
+
 Make wizolt yours with small Python plugins: a companion above your input, custom statusbar
 fields, extra `/status` information, or your own commands and tools.
 

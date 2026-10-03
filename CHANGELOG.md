@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add per-plugin `[plugins.NAME]` settings, immutable SDK configuration with schema validation
+  and defaults, shared CLI/live validation, and source-plus-settings rollback.
+
 - Add isolated plugin trials with JSON feedback and PNG/SVG component previews via `wizolt plugin validate/test`.
 - Replace the broad Plugin tool with the small, permanent PluginHotReload tool; standalone plugin commands manage saved project choices.
 - Run plugin generations in managed processes, cache UI projections, and support worker dependency environments without restarting wizolt.

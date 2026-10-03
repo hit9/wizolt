@@ -75,7 +75,7 @@ def main(argv: list[str]) -> int:
     context = Context("preview", "main", workspace.cwd, args.status, args.context_percent, 0, "preview-model", 0, args.width)
     report = asdict(
         asyncio.run(
-            PluginTrial(context, timeout=args.timeout, python=python).run(
+            PluginTrial(context, timeout=args.timeout, python=python, settings=workspace.settings).run(
                 args.path,
                 validate=args.action == "validate",
                 times=tuple(args.times),

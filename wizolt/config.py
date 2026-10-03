@@ -386,6 +386,8 @@ class Config:
     mcp: Json = field(default_factory=dict)
     # The raw `[hooks]` table; wizolt.shellhooks validates it when a session is assembled.
     hooks: Json = field(default_factory=dict)
+    # Plugin-owned tables are validated by each candidate in its isolated worker.
+    plugins: Json = field(default_factory=dict)
     # UI owns parsing and validation; config only carries the raw tables.
     ui: Json = field(default_factory=dict)
     # The provider entry compaction summaries run on: compaction_provider names
@@ -477,6 +479,7 @@ class Config:
             data_dir=cls.str(paths, "data_dir", UserPaths.DEFAULT_DATA_DIR),
             mcp=cls.table(data, "mcp"),
             hooks=cls.table(data, "hooks"),
+            plugins=cls.table(data, "plugins"),
             ui=cls.table(data, "ui"),
             compaction_provider=compaction_provider,
             compaction_model=compaction_model,

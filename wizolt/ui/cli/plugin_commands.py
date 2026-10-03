@@ -26,7 +26,7 @@ def main(argv: list[str]) -> int:
         parser.error("this action requires a plugin name or source path")
     try:
         workspace = PluginWorkspace.open(args.config, args.project)
-        result = asyncio.run(PluginInstallations(workspace.catalog, workspace.cwd).manage(args.action, args.target))
+        result = asyncio.run(PluginInstallations(workspace.catalog, workspace.cwd, workspace.settings).manage(args.action, args.target))
     except Exception as error:  # noqa: BLE001 - commands return machine-readable errors, including bad configuration.
         print(json.dumps({"status": "failed", "error": str(error)}, ensure_ascii=False))
         return 1

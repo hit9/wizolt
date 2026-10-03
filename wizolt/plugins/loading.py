@@ -76,7 +76,7 @@ class LoadedPlugin:
     module_name: str
 
     @classmethod
-    def load(cls, source: PluginSource) -> LoadedPlugin:
+    def load(cls, source: PluginSource, config: dict | None = None) -> LoadedPlugin:
         """Execute trusted setup from exact source, bypassing timestamp-based bytecode caches."""
         if source.dependencies:
             from importlib.metadata import PackageNotFoundError, version
@@ -104,7 +104,7 @@ class LoadedPlugin:
             setup = module.__dict__.get("setup")
             if not callable(setup) or inspect.iscoroutinefunction(setup):
                 raise PluginError(f"{source.name}: provide synchronous setup(plugin)")
-            plugin = Plugin(source.name)
+            plugin = Plugin(source.name, config)
             setup(plugin)
             return cls(source, plugin, name)
         except BaseException as error:
