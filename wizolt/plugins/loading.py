@@ -21,10 +21,10 @@ MAX_SOURCE_BYTES = 256 * 1024
 
 @dataclass(frozen=True)
 class PluginSource:
-    """An immutable source revision, shared by validation, activation, and rollback.
+    """An immutable source revision, shared by validation and activation.
 
     Retaining the text matters: the file can change again after validation. Activation executes
-    this revision, and rollback uses retained text rather than trusting the current file.
+    exactly this revision rather than trusting the current file.
     """
 
     path: str

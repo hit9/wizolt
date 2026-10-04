@@ -46,8 +46,7 @@ the user's configured choice, so re-enabling can restore it.
 
 Package admission freezes regular files and resources before launching the worker. The parent
 owns the extracted directory, including cleanup after native exits; never let the worker own
-its only cleanup handle. Source rollback keeps the complete snapshot and settings, not just the
-entry module. A fresh worker provides module isolation for both single-file and package plugins.
+its only cleanup handle. A fresh worker provides module isolation for both single-file and package plugins.
 `pyproject.toml` is metadata only: admission must not invoke a build backend or install into the
 host interpreter. Descriptor-based bounded reads reject symlinks and special files before code
 execution.
@@ -92,12 +91,12 @@ Validation constructs an unpublished generation. A failed candidate leaves activ
 An active turn freezes the whole registry; command/tool and summarizer invocations pin only their
 own generation. An idle plugin can therefore publish while another plugin is awaiting input.
 Replacement reports `starting`, `reloading` or `stopping` until its applicable leases end;
-each live status word names one situation, and the saved enable choice is a separate field. Publication has no awaits. Each
-entry retains at most one previous and one pending generation. The previous revision retains
-one `Revision` containing source, settings and its interpreter path,
-not a second worker; superseded workers are retired by owned tasks that shutdown joins. Never
-resolve a rollback's interpreter from today's installation preferences: dependencies may have
-changed since that revision ran. Reload must also retain the installed identity, which owns
+each live status word names one situation, and the saved enable choice is a separate field.
+Publication has no awaits. Each entry holds one active and at most one pending generation;
+superseded workers are retired by owned tasks that shutdown joins. Wizolt keeps no previous
+versions: source history is the user's version control (Git), and undo is a checkout plus a
+reload. A failed reload keeping the running generation is atomic replacement, not rollback,
+and must stay. Reload must also retain the installed identity, which owns
 settings and tool namespaces, even if a package's manifest was renamed on disk.
 
 The turn guard remains held while completion observers run. Never clear the engine's active task

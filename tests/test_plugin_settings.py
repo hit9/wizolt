@@ -1,4 +1,4 @@
-"""Configuration travels through the real worker path, including failed reload and rollback."""
+"""Configuration travels through the real worker path, including failed reload."""
 
 import json
 
@@ -44,7 +44,7 @@ def test_config_validation_does_not_echo_values_or_fetch_remote_schemas():
         plugin.configure({"$ref": "https://example.invalid/schema"})
 
 
-async def test_reload_reads_config_atomically_and_rollback_restores_settings(tmp_path):
+async def test_reload_reads_config_atomically_and_failure_keeps_settings(tmp_path):
     source = tmp_path / "counter.py"
     source.write_text(SOURCE)
     config = tmp_path / "config.toml"
@@ -64,8 +64,6 @@ async def test_reload_reads_config_atomically_and_rollback_restores_settings(tmp
             await runtime.manage("reload", "counter")
         assert "private-token" not in str(raised.value)
         assert runtime.fields()["plugins.counter.count"] == 5
-        await runtime.manage("rollback", "counter")
-        assert runtime.fields()["plugins.counter.count"] == 3
         assert "settings" not in json.dumps(await runtime.manage("inspect", "counter"))
     finally:
         await runtime.close()

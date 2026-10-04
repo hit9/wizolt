@@ -116,7 +116,8 @@ The list shows its source (`builtin` or `user`), whether it is enabled, and its 
 | --- | --- |
 | Enable / Disable | Turn it on or off across projects |
 | Reload | Apply its latest code and settings |
-| Rollback | Restore the previous loaded version |
+
+To undo a change, restore the earlier source from Git and reload; wizolt keeps no old versions.
 
 The state is **running**, **failed** or **off**. During a turn, or while that plugin's command
 is running, a change waits and shows what it waits to do: **starting**, **reloading** or

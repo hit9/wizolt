@@ -182,8 +182,8 @@ another synchronous callable. The installed/configuration name is `my_helper` (h
 normalize to underscores). Package metadata replaces the single-file constants.
 
 Dependencies must be static; no build backend runs. `enable` prepares a dependency environment.
-Source and resources are frozen together, so reload/rollback includes helpers and assets, even
-after the original directory is deleted. Keep the import tree small: at most 4 MiB, 512 files,
+Source and resources are frozen together at load, so a running plugin keeps its helpers and
+assets even after the original directory is deleted. Keep the import tree small: at most 4 MiB, 512 files,
 1,024 directory entries and 32 directory levels; symlinks and special files are rejected.
 VCS, virtualenv, build and Python cache directories are excluded. Runtime writes belong outside
 the package snapshot, which is deleted when its worker closes.
@@ -236,8 +236,8 @@ original snapshot: apply the returned values yourself for immediate changes, or 
 There is no automatic config-file watching or reload. Other plugin tables cannot be targeted.
 
 Validate/test/enable use the selected config. Live reload rereads only its `[plugins]` table,
-and fixes settings for the candidate's lifetime. Failed validation preserves the active instance;
-rollback restores retained source, settings and the dependency environment. Keep the installed
+and fixes settings for the candidate's lifetime. Failed validation preserves the active instance.
+Previous versions are not kept; restore one from Git and reload. Keep the installed
 package name unchanged when editing its manifest. Other running agents remain unchanged.
 
 ### Model requests
@@ -446,8 +446,8 @@ or raster fonts. See [TESTING.md](TESTING.md) for interaction fixtures and repor
   `stopping` wait for turn/invocation completion. A failure includes `traceback` and `log` tails naming the failing line, as does
   `/plugins inspect NAME` for a generation that failed later. Existing agents do not inherit each other's plugin state. Resume reads saved choices;
   ordinary Python variables do not survive a worker replacement or session restart.
-- For recovery, disable through the CLI, then reload; `/plugins` can restore previous source with
-  rollback. `WIZOLT_NO_PLUGINS=1 wizolt` skips startup execution. Check config/project paths before
+- For recovery, disable through the CLI, then reload, or check out the last good commit and
+  reload. `WIZOLT_NO_PLUGINS=1 wizolt` skips startup execution. Check config/project paths before
   changing preferences. Saved choices live in the config printed by `wizolt plugin list`.
 
 ## Example: pet.py

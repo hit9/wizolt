@@ -28,10 +28,10 @@ from wizolt.sdk.ui import Component
 
 @dataclass(frozen=True)
 class Revision:
-    """Complete launch inputs, captured once; rollback never consults current preferences.
+    """Complete launch inputs, captured once before the candidate starts.
 
     Settings are an owned deep copy. Runtime services may persist new settings, but must not
-    mutate this snapshot or combine old source with a newly installed interpreter.
+    mutate this snapshot. Source history belongs to the user's version control, not here.
     """
 
     source: PluginSource
@@ -95,10 +95,9 @@ class Generation:
 
 @dataclass
 class Entry:
-    """Rollback retains launch inputs, not a second idle worker or its mutable state."""
+    """One live generation, and at most one validated replacement waiting to publish."""
 
     active: Generation
-    previous: Revision | None = None
     pending: Generation | None = None
     disabling: bool = False
 
@@ -237,10 +236,6 @@ class PluginRuntime:
                     raise PluginError(f"Unknown plugin: {name}")
                 if action == "reload":
                     candidate = await self.prepare(self.read_revision(entry.active.revision.source.path))
-                elif action == "rollback":
-                    if entry.previous is None:
-                        raise PluginError(f"{name}: no previous version")
-                    candidate = await self.prepare(entry.previous)
                 elif action == "disable":
                     if commit is not None:
                         commit(action, entry.active.revision.source)
@@ -326,7 +321,7 @@ class PluginRuntime:
                 del self.entries[name]
             elif entry.pending:
                 self._retire(entry.active)
-                entry.previous, entry.active, entry.pending = entry.active.revision, entry.pending, None
+                entry.active, entry.pending = entry.pending, None
         if self.entries and (self._refresh_task is None or self._refresh_task.done()):
             self._refresh_task = asyncio.create_task(self._refresh_loop())
         if self.on_change is not None:

@@ -173,8 +173,6 @@ class PluginManager:
         entry = self.runtime.entries.get(name)
         toggle = "disable" if self.records[name]["enabled"] else "enable"
         choices = ("reload", toggle) if entry else (toggle,)
-        if entry and entry.previous is not None:
-            choices += ("rollback",)
         # Unlike convenience selectors, an action menu must not auto-accept its only item.
         # Opening a disabled plugin shows Enable; it does not itself grant activation.
         action = await choice_application(self.loop, name, choices, {}, "", set())
@@ -203,8 +201,8 @@ async def plugins_command(loop: CommandLoop, args: str) -> str:
             await runtime.load()
             return await runtime.invoke(parts[1], "command", parts[2], arguments)
         if len(parts) > 2:
-            raise PluginError("Usage: /plugins [list|inspect|enable|reload|disable|rollback] [NAME]")
-        if action not in ("list", "inspect", "enable", "reload", "disable", "rollback"):
+            raise PluginError("Usage: /plugins [list|inspect|enable|reload|disable] [NAME]")
+        if action not in ("list", "inspect", "enable", "reload", "disable"):
             raise PluginError("Use wizolt plugin via plugin-workshop to create, validate or enable new plugins")
         if action == "enable":
             if len(parts) != 2:

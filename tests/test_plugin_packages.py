@@ -106,9 +106,9 @@ async def test_package_relative_imports_resources_reload_and_full_rollback(tmp_p
         with pytest.raises(PluginError, match="bad candidate"):
             await runtime.manage("reload", "sample_plugin")
         assert runtime.fields()["plugins.sample_plugin.value"] == 2
-        shutil.rmtree(root)
-        await runtime.manage("rollback", "sample_plugin")
-        assert runtime.fields() == {"plugins.sample_plugin.value": 1, "plugins.sample_plugin.text": "original"}
+        shutil.rmtree(root)  # The live generation runs from its frozen snapshot, not the tree.
+        await runtime.refresh()
+        assert runtime.fields() == {"plugins.sample_plugin.value": 2, "plugins.sample_plugin.text": "updated"}
     finally:
         await runtime.close()
 

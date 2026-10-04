@@ -45,12 +45,13 @@ It also supplies shortcut list/bind/unbind operations; configure keys for the us
    affects this agent only; `starting`/`reloading`/`stopping` wait for the current turn or this plugin's active call. A failure includes `traceback`
    and `log`; the previous version keeps running.
 
-`plugin disable NAME`, then a reload, turns a plugin off without deleting it. `/plugins`
-also offers rollback. Files never load just because they exist.
+`plugin disable NAME`, then a reload, turns a plugin off without deleting it. Files never load
+just because they exist.
 
 Keep source, tests and non-secret metadata in Git; exclude secrets, virtualenvs and trial output.
 Review the diff and checkpoint tested changes with commits under the user's Git instructions.
-Git preserves development history; hot-reload rollback only retains the previous live revision.
+Git is the only history: wizolt keeps no previous versions, so undo by checking out an earlier
+commit and reloading.
 A local repository is enough: sharing and remote hosting are optional.
 
 **What a plugin can add:** UI (fields, components, themes, presets), slash commands for the user,

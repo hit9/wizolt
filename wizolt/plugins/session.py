@@ -205,7 +205,7 @@ class SessionPlugins(PluginRuntime):
     async def _manage(self, action: str, target: str) -> dict:
         if self._closed:
             raise PluginError("Plugin runtime is closed")
-        if os.environ.get("WIZOLT_NO_PLUGINS") == "1" and action in {"enable", "reload", "rollback"}:
+        if os.environ.get("WIZOLT_NO_PLUGINS") == "1" and action in {"enable", "reload"}:
             raise PluginError("Plugins are disabled for this launch (--no-plugins); restart normally to enable")
         await self._load()
         records, problems = self.catalog.read()
@@ -223,7 +223,7 @@ class SessionPlugins(PluginRuntime):
             return {"name": target, "status": "off"}
         query = "list" if action == "inspect" else action
         result = await super().manage(query, "" if query == "list" else target, commit=self._save_choice if action in {"enable", "disable"} else None)
-        if action in ("enable", "reload", "rollback", "disable"):
+        if action in ("enable", "reload", "disable"):
             self.problems.pop(str(result["name"]), None)
         if action in ("list", "inspect"):
             present = {item["name"] for item in result["plugins"]}

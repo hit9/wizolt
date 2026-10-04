@@ -55,7 +55,7 @@ async def test_validate_does_not_activate_and_bad_reload_preserves_version(runti
     assert (await runtime.manage("inspect", "counter"))["plugins"][0]["version"] == active["version"]
 
 
-async def test_pending_enable_reload_disable_and_source_rollback(runtime, tmp_path):
+async def test_pending_enable_reload_and_disable(runtime, tmp_path):
     path = tmp_path / "counter.py"
     await runtime.start_turn()
     assert (await runtime.manage("enable", source(path, 1)))["status"] == "starting"
@@ -68,8 +68,8 @@ async def test_pending_enable_reload_disable_and_source_rollback(runtime, tmp_pa
     assert runtime.fields()["plugins.counter.value"] == 1
     await runtime.finish_turn()
     assert runtime.fields()["plugins.counter.value"] == 2
-    await runtime.manage("rollback", "counter")
-    assert runtime.fields()["plugins.counter.value"] == 1
+    with pytest.raises(PluginError, match="Unknown plugin action"):  # Source history is git's job.
+        await runtime.manage("rollback", "counter")
     await runtime.start_turn()
     assert (await runtime.manage("disable", "counter"))["status"] == "stopping"
     await runtime.finish_turn()

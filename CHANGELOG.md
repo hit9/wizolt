@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Remove plugin rollback (`/plugins rollback` and the manager's Rollback action). Source history
+  belongs to Git: to undo, check out the earlier source and reload. A failed reload still keeps
+  the running version.
+
 - Stop slow plugin fields from delaying turns and plugin commands. Turn start, turn end and
   every command awaited a full refresh of all plugins, behind any refresh already running: a
   field taking 0.5 s added about 1 s to each, and a field near its 2 s deadline about 4 s.

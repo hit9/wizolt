@@ -297,17 +297,12 @@ def setup(p):
     assert "wizolt_plugin_testdep" not in sys.modules
     await runtime.hot_reload("dependent")
     assert runtime.fields() == {"plugins.dependent.value": 43}
-    # A later installation can change interpreters. Rollback must retain the original
-    # dependency environment along with source/settings, not use the latest preference.
+    # A later installation can change interpreters; reload follows the saved preference.
     from wizolt.plugins.catalog import Installation
 
     path.write_text('SDK_VERSION = 1\ndef setup(p):\n    p.field("value", lambda ctx: 99)\n')
     runtime.catalog.save(Installation("dependent", str(path)))
     await runtime.hot_reload("dependent")
-    assert runtime.fields() == {"plugins.dependent.value": 99}
-    await runtime.manage("rollback", "dependent")
-    assert runtime.fields() == {"plugins.dependent.value": 43}
-    await runtime.manage("rollback", "dependent")
     assert runtime.fields() == {"plugins.dependent.value": 99}
     await runtime.close()
 
