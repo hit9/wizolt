@@ -120,11 +120,9 @@ async def test_overlapping_presenters_stay_builtin_until_the_user_picks_one(runt
     )
     view = ToolCard("call-1", "Bash")
     assert await runtime.presenters.render("tool.call", view) is None
-    assert runtime.presenters.conflicts["tool.call"] == ("alpha", "beta")
     runtime.presenters.choices.save({"tool.call": "beta"})
     panel = await runtime.presenters.render("tool.call", view)
     assert panel is not None and panel.rows[0].text == "beta card"
-    runtime.presenters.conflicts.clear()
 
 
 async def test_failed_presenter_falls_back_and_is_skipped_afterwards(runtime, tmp_path):
@@ -150,6 +148,21 @@ async def test_slow_presenter_falls_back_within_its_budget(runtime, tmp_path):
     )
     assert await runtime.presenters.render("tool.result", ToolSummary("call-1", "Bash"), timeout=0.05) is None
     assert "presenter:tool.result" in generation.failures
+
+
+async def test_oversized_host_views_stay_builtin_without_blaming_the_presenter(runtime, tmp_path):
+    generation = await enable(
+        runtime,
+        tmp_path,
+        "summaries",
+        'def setup(p):\n    async def summary(ctx, view):\n        return Panel((Text("summary", "meta"),))\n    p.presenter("tool.result", summary)\n',
+    )
+    huge = ToolSummary("call-1", "Bash", {}, "ok", "x" * (512 * 1024 + 1))
+    assert await runtime.presenters.render("tool.result", huge) is None
+    # The view broke the host's own boundary limit; the registration keeps rendering later calls.
+    assert "presenter:tool.result" not in generation.failures
+    panel = await runtime.presenters.render("tool.result", ToolSummary("call-2", "Bash"))
+    assert panel is not None and panel.rows[0].text == "summary"
 
 
 @pytest.fixture
@@ -224,6 +237,49 @@ async def test_failing_presenters_fall_back_to_the_builtin_block(session, tmp_pa
     assert "notes.txt" in "\n".join(printed)
 
 
+async def test_a_summary_presenter_keeps_the_builtin_call_line(session, tmp_path):
+    await enable_session(
+        session,
+        tmp_path,
+        "summaries",
+        'def setup(p):\n    async def summary(ctx, view):\n        return Panel((Text("summary:" + view.status, "success"),))\n    p.presenter("tool.result", summary)\n',
+    )
+    path = tmp_path / "notes.txt"
+    path.write_text("hello")
+    instance, printed = runner(session)
+    await instance.run([ModelClient.tool_call("r1", "Read", {"path": str(path)})])
+    text = "\n".join(printed)
+    assert "summary:ok" in text and "notes.txt" in text
+    assert text.count("tr.") == 1  # The citation moves to the summary row, never doubled.
+
+
+async def test_a_card_presenter_keeps_the_builtin_summary(session, tmp_path):
+    await enable_session(
+        session,
+        tmp_path,
+        "cards",
+        'def setup(p):\n    async def card(ctx, view):\n        return Panel((Text("card:" + view.tool, "tool"),))\n    p.presenter("tool.call", card)\n',
+    )
+    instance, printed = runner(session)
+    await instance.run([ModelClient.tool_call("b1", "Bash", {"command": "echo presented-output"})])
+    text = "\n".join(printed)
+    assert "card:Bash" in text and "presented-output" in text and "tr." in text
+
+
+async def test_an_empty_panel_keeps_the_builtin_block(session, tmp_path):
+    await enable_session(
+        session,
+        tmp_path,
+        "blank",
+        'def setup(p):\n    async def card(ctx, view):\n        return Panel(())\n    p.presenter("tool.call", card)\n',
+    )
+    path = tmp_path / "notes.txt"
+    path.write_text("hello")
+    instance, printed = runner(session)
+    await instance.run([ModelClient.tool_call("r1", "Read", {"path": str(path)})])
+    assert "notes.txt" in "\n".join(printed)
+
+
 ACTIVITY = """
 def setup(p):
     async def line(ctx, view):
@@ -244,6 +300,15 @@ async def test_activity_site_refreshes_the_cached_snapshot(runtime, tmp_path):
     runtime.activity.finish(runtime.activity.active["1"], "completed")
     await runtime.refresh()
     assert runtime.presenters.activity.rows[0].text == "status:idle"
+
+
+async def test_disabling_the_activity_presenter_drops_its_cached_panel(runtime, tmp_path):
+    await enable(runtime, tmp_path, "meter", ACTIVITY)
+    await runtime.refresh()
+    assert runtime.presenters.activity is not None
+    await runtime.manage("disable", "meter")
+    # The refresh loop stops with the last entry; paint must not keep the retired panel.
+    assert not runtime.entries and runtime.presenters.activity is None
 
 
 async def test_activity_panel_replaces_the_stream_region(session, tmp_path):

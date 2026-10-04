@@ -15,13 +15,16 @@
 - Present settled tool calls through the named sites: `runner.finish()` briefly awaits the
   `tool.call` and `tool.result` panels and emits them as one tree (`presented_display`); the
   stored-result citation and status tag stay host-owned on whatever the panels said. Approval
-  displays and pre-execution cards are never presented; an empty, failed or conflicted panel
-  falls back to the builtin block. Nonmatching work keeps the unchanged fast path.
+  displays and pre-execution cards are never presented. The sites are independent: a site with
+  no panel (empty, failed, conflicted or unmatched) keeps its builtin rows, so a lone
+  `tool.result` presenter keeps the builtin call line and a lone `tool.call` presenter the
+  builtin summary. Nonmatching work keeps the unchanged fast path.
 
 - Add host-side presenter selection (`wizolt/plugins/presenters.py`): one presenter per site,
   chosen by the user or by being the sole match. Overlapping matches keep the builtin rendering
-  and record the conflict until the user picks one; failed, slow or unmatched presentations fall
-  back to the builtin rendering without failing the turn.
+  until the user picks one; failed, slow or unmatched presentations fall back to the builtin
+  rendering without failing the turn. A host view over the boundary limits stays builtin without
+  blocking the registration, and disabling the activity presenter drops its cached panel.
 
 - Add the `plugin.presenter` registration and its worker `present` operation: named
   presentation sites (`tool.call`, `tool.result`, `activity`) receive immutable view models

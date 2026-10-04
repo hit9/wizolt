@@ -328,6 +328,7 @@ def finish_display(
 
 
 def presented_display(
+    builtin: LogBlock,
     card: Panel | None,
     summary: Panel | None,
     *,
@@ -338,15 +339,32 @@ def presented_display(
     """A presented tool block: plugin rows in the tree, the host citation kept on them.
 
     The ``tool.call`` panel's first row is the call line (all of its rows when the runner already
-    drew one above a live preview); the ``tool.result`` panel's rows are the summary. The
-    stored-result citation and status tag are host-owned facts, so they ride the block whatever
-    the panels said -- a presenter cannot forge or drop them.
+    drew one above a live preview); the ``tool.result`` panel's rows are the summary. A site with
+    no panel keeps its part of ``builtin``. The stored-result citation and status tag are
+    host-owned facts, so they ride the block whatever the panels said -- a presenter cannot forge
+    or drop them.
     """
+    builtin_root = next((item for item in builtin.items if isinstance(item, LogLine)), None)
+    builtin_children = [item for block in builtin.items if isinstance(block, LogBlock) for item in block.items if isinstance(item, LogLine)]
+    batch = ("  " + d.batch_suffix) if d.batch_suffix else ""
+    card_rows = list(card.rows) if card is not None else []
+    lead = None if d.nested_display or not card_rows else _presented_line(card_rows.pop(0))
+    extra = [_presented_line(row) for row in card_rows]
+    if summary is None:
+        # The builtin summary already carries the citation -- on its last row, or on the call
+        # line's meta, which the presented call line inherits.
+        root = builtin_root if lead is None else LogLine(lead.label, lead.text, lead.role, meta=builtin_root.meta if builtin_root else batch)
+        return LogBlock.hierarchy(root, [*extra, *builtin_children])
+    if lead is not None:
+        root = LogLine(lead.label, lead.text, lead.role, meta=batch)
+    elif builtin_root is not None:
+        # The builtin call line without the citation tail it may carry: the summary rows cite it.
+        root = LogLine(builtin_root.label, builtin_root.text, builtin_root.role, meta=batch, syntax=builtin_root.syntax)
+    else:
+        root = None
     tag = " [refused]" if status == "refused" else " [failed]" if status == "failed" else " [approved]" if d.approved else " [auto]" if d.auto else ""
     citation = (key + tag) if key else tag.strip()
-    card_rows = list(card.rows) if card is not None else []
-    root = None if d.nested_display or not card_rows else _presented_line(card_rows.pop(0))
-    children = [_presented_line(row) for row in [*card_rows, *(summary.rows if summary is not None else ())]]
+    children = [*extra, *(_presented_line(row) for row in summary.rows)]
     if root is not None and citation and not children:
         root = LogLine(root.label, root.text, root.role, meta=root.meta + citation, syntax=root.syntax)
     elif citation:

@@ -163,6 +163,10 @@ all fall back to the builtin rendering, and the host skips that registration unt
 or enable. A missed deadline also retires the worker, so keep the callback trivial and read only
 cached state.
 
+The two tool sites are independent: a `tool.call` panel replaces only the call line (its later
+rows go under it), a `tool.result` panel only the builtin summary below. A site with no
+presenter, or an empty panel, keeps its builtin rows.
+
 Presenters own rows, not facts. Approval displays and running cards are never presented, and the
 stored-result citation, the status tag, queued follow-ups, the live preview and the divider stay
 host-owned and ride along whatever your rows said. Tool rows are rendered as log rows, so the role

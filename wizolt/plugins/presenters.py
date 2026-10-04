@@ -65,8 +65,6 @@ class Presenters:
     def __init__(self, runtime: PluginRuntime):
         self.runtime = runtime
         self.choices = PresenterChoices()
-        # Sites whose registrations last matched more than one plugin: builtin until the user picks.
-        self.conflicts: dict[str, tuple[str, ...]] = {}
         # The activity site's cached snapshot: written by the runtime's refresh pass, read by paint.
         self.activity: Panel | None = None
 
@@ -86,10 +84,8 @@ class Presenters:
             return None
         if (chosen := self.choices.sites.get(site)) is not None:
             return next((link for link in matching if link.owner == chosen), None)
-        if len(matching) == 1:
-            return matching[0]
-        self.conflicts[site] = tuple(link.owner for link in matching)
-        return None
+        # Two matching presenters without a choice: builtin until the user picks one.
+        return matching[0] if len(matching) == 1 else None
 
     async def render(self, site: str, view: ToolCard | ToolSummary | ActivityStatus, *, context=None, timeout: float | None = None) -> Panel | None:
         """Present one view, or None when the builtin rendering applies. Never raises."""
@@ -97,8 +93,14 @@ class Presenters:
         if link is None or link.generation.failure(link.health):
             return None
         try:
+            data = presentation.encode(view)
+        except PluginError:
+            # A host view over the boundary limits (a huge stream or output) is not the
+            # presenter's fault: this view keeps the builtin rendering, the registration stays.
+            return None
+        try:
             raw = await link.generation.worker.request(
-                "present", timeout=timeout or self.SITE_SECONDS, site=site, view=presentation.encode(view), context=asdict(context or self.runtime.facts())
+                "present", timeout=timeout or self.SITE_SECONDS, site=site, view=data, context=asdict(context or self.runtime.facts())
             )
             panel = decode_panel(raw)
             Snapshot.check_panel(panel)

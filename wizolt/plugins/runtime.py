@@ -431,6 +431,10 @@ class PluginRuntime:
             elif entry.pending:
                 self._retire(entry.active)
                 entry.active, entry.pending = entry.pending, None
+        if not self.presenters.registered("activity"):
+            # The refresh loop stops with the last entry, so the switch drops a retired activity
+            # presenter's cached panel itself rather than painting it on.
+            self.presenters.activity = None
         if self.entries and (self._refresh_task is None or self._refresh_task.done()):
             self._refresh_task = asyncio.create_task(self._refresh_loop())
         if self.on_change is not None:
@@ -497,9 +501,9 @@ class PluginRuntime:
                 for name, item in generations.items():
                     item.snapshot = Snapshot(item.snapshot.fields, panels[name])
                 self._components = components
+            # The activity snapshot follows the sampling cadence; paint reads only this cache,
+            # so a slow presenter delays the next pass, never a frame.
             if self.presenters.registered("activity"):
-                # The activity snapshot follows the sampling cadence; paint reads only this cache,
-                # so a slow presenter delays the next pass, never a frame.
                 self.presenters.activity = await self.presenters.render("activity", self.activity_view(), timeout=0.25)
 
     def facts(self) -> Context:

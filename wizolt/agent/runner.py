@@ -1013,10 +1013,8 @@ class ToolRunner:
             # The presenter's status word: a refused call never ran, and the builtin rendering says
             # so with the same "user refused" marker finish_display clips into its tag.
             status = "refused" if failed and "user refused" in model_text else "failed" if failed else "ok"
-            self.emit(
-                (await self.presented_display(call, key, model_text, status=status, elapsed=elapsed, d=d))
-                or toolblocks.finish_display(self.session, call, key, model_text, failed=failed, elapsed=elapsed, d=d)
-            )
+            builtin = toolblocks.finish_display(self.session, call, key, model_text, failed=failed, elapsed=elapsed, d=d)
+            self.emit(await self.presented_display(builtin, call, key, model_text, status=status, elapsed=elapsed, d=d))
         if call.name == "Subagent" and not failed and self.context.bound_output(model_text, path=artifact_path).rstrip() == model_text.rstrip():
             # Keep proof of delivery with the matching message, never with rendered text or
             # the Session yet: cancellation can still discard this whole tool batch.
@@ -1025,6 +1023,7 @@ class ToolRunner:
 
     async def presented_display(
         self,
+        builtin: str | LogBlock,
         call: ToolCall,
         key: str,
         output: str,
@@ -1032,21 +1031,25 @@ class ToolRunner:
         status: str,
         elapsed: float | None,
         d: ToolDisplay,
-    ) -> LogBlock | None:
-        """The tool sites' panels, or None when the builtin rendering applies.
+    ) -> str | LogBlock:
+        """The block a settled call prints: ``builtin`` with the tool sites' panels in place.
 
         Approval displays and pre-execution cards are never presented: a presenter sees a call
-        only once it settles, and the citation the host appends stays host-owned.
+        only once it settles, and the citation the host appends stays host-owned. A plain-text
+        block (a successful Note prints the note itself) has no rows to replace.
         """
         plugins = self.session.plugins
-        if plugins is None or not (plugins.presenters.registered("tool.call") or plugins.presenters.registered("tool.result")):
-            return None
+        if plugins is None or isinstance(builtin, str) or not (plugins.presenters.registered("tool.call") or plugins.presenters.registered("tool.result")):
+            return builtin
         arguments = freeze(dict(call.payload) if isinstance(call.payload, dict) else {})
         card = await plugins.presenters.render("tool.call", presentation.ToolCard(call.id, call.name, arguments, status))
         summary = await plugins.presenters.render("tool.result", presentation.ToolSummary(call.id, call.name, arguments, status, output, elapsed, key))
+        # An empty panel keeps that site's builtin rows, like an unmatched or failed one.
+        card = card if card and card.rows else None
+        summary = summary if summary and summary.rows else None
         if card is None and summary is None:
-            return None
-        return toolblocks.presented_display(card if card and card.rows else None, summary if summary and summary.rows else None, key=key, status=status, d=d)
+            return builtin
+        return toolblocks.presented_display(builtin, card, summary, key=key, status=status, d=d)
 
     async def _source_output(self, call: ToolCall, tool_output: ToolOutput, *, retain: bool) -> tuple[str, str]:
         """Project source blocks, store the retained plain text, register views, and render.
