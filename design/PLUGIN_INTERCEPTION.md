@@ -440,6 +440,3 @@ Each item names what to produce and where it belongs.
   the interception and presenter changes (0.45.1, the CI pin, or a compatible later version).
   The activity site touches the running region, so this run is also the evidence for unchanged
   painting.
-- **User documentation.** `docs/plugins.md` still describes plugins without the interception or
-  presenter wishes. Add the examples from [Examples and acceptance](#examples-and-acceptance)
-  in user terms, and keep continuation internals in the packaged skill references.

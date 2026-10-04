@@ -81,6 +81,40 @@ viewer. Your input draft remains intact when you return.
 Ask the agent to manage shortcuts through the built-in **layout** plugin. Bindings survive
 restarts and become inactive when their plugin is disabled.
 
+### Change how a step works
+
+Plugins can step into what you send, the model requests, tool calls and summaries:
+
+> When my message starts with `fix:`, expand it into my usual bug-fix checklist. Keep what I
+> typed in my history.
+
+> Send image descriptions and summaries to my cheaper `[provider.fast]` model.
+
+> Before any Bash command that deletes files, show me the command and ask first.
+
+> Add my project's open decisions from `DECISIONS.md` to every request.
+
+> Summarize with my local model when the conversation is compacted.
+
+wizolt's own checks still apply: a rewritten tool call still asks for approval, and your history
+keeps what you typed. Adding text to every request costs tokens on each turn and can reduce
+provider cache reuse. A plugin that calls a model is billed like any other request.
+
+If such a plugin breaks, the step it wraps stops with an error naming it, rather than quietly
+skipping it. Disable or reload it in `/plugins` to continue. When two plugins wrap the same
+step, the first in `wizolt plugin order list` runs first; ask the agent to reorder them.
+
+### Redraw tool results and activity
+
+> Show Bash results as the command plus the first line of output, green when it passed.
+
+> Replace the running-reply preview with a one-line status: current tool and elapsed time.
+
+A plugin can redraw a finished tool call, its result summary, or the activity line while the
+agent works. Approvals and the stored-result key (`tr.N`) stay wizolt's. If two plugins want
+the same spot, wizolt keeps its own drawing until you pick one with
+`wizolt plugin presenter choose`. A slow or failing redraw falls back to wizolt's.
+
 ## Try the built-in pet
 
 Open `/plugins`, select **pet**, then **enable**. A small cat reacts to the agent above your

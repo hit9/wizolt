@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Document interception and presenter wishes for users in `docs/plugins.md`: what to ask for,
+  what stays wizolt's, what it costs in tokens and cache reuse, and how a broken step recovers.
+
 - Share the value-only interception rules (kept attachments, offered tool names, context block
   placement) between the live adapters and `--operations` trials in `wizolt/plugins/rules.py`,
   so a trial rejects what a session would. Model routing is still checked only in a session.
