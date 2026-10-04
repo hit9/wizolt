@@ -461,7 +461,7 @@ class Agent:
         while True:
             try:
                 self.raise_if_cancelled()
-                return await self.model.request(accepted.messages, accepted.tools)
+                return await self.model.request(accepted.messages, accepted.tools, reason="image_fallback")
             except ModelRequestRetry:
                 # The paid observation is already in `accepted`; resend that
                 # exact request instead of rebuilding it and observing again.
@@ -509,7 +509,7 @@ class Agent:
             correction_messages = [*base_messages, *corrections]
             while True:
                 try:
-                    assistant, tool_calls, content = await self.model.request(correction_messages, tools)
+                    assistant, tool_calls, content = await self.model.request(correction_messages, tools, reason="tool_correction")
                     self.record_sources(assistant)
                     break
                 except ModelRequestRetry:

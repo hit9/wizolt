@@ -12,6 +12,7 @@ from dataclasses import asdict, replace
 
 from wizolt.config import PROVIDER_API_CHOICES
 from wizolt.model import ModelClient
+from wizolt.model.interception import logical_request
 from wizolt.sdk import PluginError, Usage
 from wizolt.session import Session
 
@@ -55,14 +56,33 @@ class PluginModels:
         messages = [{"role": "user", "content": arguments["prompt"]}]
         if arguments["system"]:
             messages.insert(0, {"role": "system", "content": arguments["system"]})
+        used = {"model": provider.model}
+
+        async def send(route):
+            used["model"] = route.model
+            return await client.api_request(messages, None, allow_stream=False, provider=route, response_timeout=route.response_timeout)
+
         try:
-            _, calls, text = await client.api_request(messages, None, allow_stream=False, provider=provider, response_timeout=provider.response_timeout)
+            # An auxiliary request: it enters model.request interception in the main session's
+            # chain, and the host-owned scope of the calling handler skips that plugin's own
+            # registration, so a request interceptor cannot recurse into itself.
+            _, calls, text = await logical_request(
+                self.session.plugins,
+                config,
+                purpose="plugin",
+                messages=messages,
+                tools=None,
+                provider=provider,
+                entry=entry,
+                send=send,
+                record=self.session.record_operation,
+            )
             if calls:
                 raise PluginError("Plugin text request returned tool calls")
             usage = detached.usage
             return {
                 "text": text,
-                "model": provider.model,
+                "model": used["model"],
                 "usage": asdict(Usage(usage.calls, usage.prompt_tokens, usage.completion_tokens, usage.cached_prompt_tokens)),
             }
         finally:

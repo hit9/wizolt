@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from wizolt.agent.prompts import VISION_OBSERVE_DEFAULT_QUESTION, VISION_OBSERVE_PROMPT
 from wizolt.base import Billing, ModelError
 from wizolt.image import ImageRef
+from wizolt.model.interception import client_request
 
 if TYPE_CHECKING:
     from wizolt.model.client import ModelClient
@@ -50,7 +51,15 @@ class VisionObserver:
         ]
         # Billed as a vision observation: joins the session totals but must not overwrite the
         # last-request ctx/cache snapshot the status bar reads (see ModelClient._record_usage).
-        _, _, content = await self.model.api_request(
-            messages, tools=None, allow_stream=False, response_timeout=provider.response_timeout, provider=provider, billing=Billing.VISION
+        _, _, content = await client_request(
+            self.model,
+            "vision",
+            messages,
+            None,
+            provider=provider,
+            entry=entry_name,
+            send=lambda route: self.model.api_request(
+                messages, tools=None, allow_stream=False, response_timeout=route.response_timeout, provider=route, billing=Billing.VISION
+            ),
         )
         return content.strip()

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Route every model request through one logical `model.request` boundary above the wire
+  encoders: agent steps, image-fallback resends, textual-tool corrections, vision
+  observations, builtin compaction and `plugin.models.complete`. Interceptors may change the
+  provider entry, model or effort for one request, validated against credentials and the context
+  budget. Transport retries stay inside `next`; a manual retry links its new request with
+  `retry_of`. `response="preserve"` keeps push streaming without worker IPC; `"replace"`
+  suppresses the content preview for that request. A plugin's auxiliary requests skip its own
+  registration. Test fakes of `ModelClient.request` accept the new `reason` keyword.
+
 - Make submitted input interceptable (`prompt.submit`) for a turn's opening input, queued
   follow-ups and a parent model's messages to subagents. Interception runs once per item, after
   slash-command dispatch and before the `UserPromptSubmit` hook and mention expansion. The model

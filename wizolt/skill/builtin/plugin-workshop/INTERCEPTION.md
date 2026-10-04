@@ -60,6 +60,28 @@ model's message to this subagent; never a command).
   `attachments`, never add any.
 - A `Refusal` stops a turn's opening input; a refused follow-up is withheld once and reported.
 
+## `model.request`
+
+`ModelRequest(id, purpose, reason, provider, model, effort, tools, message_count, retry_of)` →
+`ModelResponse(text, tool_calls, provider, model)` or `Refusal`. Match on `purpose`
+(`turn`, `vision`, `compaction`, `plugin`) and `reason` (`normal`, `image_fallback`,
+`tool_correction`).
+
+- Only `provider` (a configured entry), `model` and `effort` may change, for this request only.
+  Changing just `provider` uses that entry's own model. Wizolt checks the route exists, has
+  credentials and fits the context; credentials never reach your plugin.
+- Instruction text is not editable here; use `context.compose`.
+- `response="preserve"` (default) routes and must return `next`'s response unchanged: the user
+  keeps live streaming and no token passes through your worker. `response="replace"` may return a
+  different or synthetic response; while it is in the chain the user sees progress, not a
+  streaming draft. Returned tool calls must name tools the request offers.
+- Transport retries happen inside `next` with your transformed request. A manual retry starts a
+  new request whose `retry_of` is the previous `id`: key side effects to these IDs or make them
+  idempotent, because your handler runs again.
+- `plugin.models.complete` from inside your handler is a `plugin`-purpose request that skips
+  your own registration; other plugins' interceptors still apply.
+- A `Refusal` fails the request before anything is sent.
+
 ## `tool.call`
 
 `ToolCall(id, tool, arguments)` → `ToolResult(content, status="ok"|"failed")` or `Refusal`.

@@ -20,7 +20,7 @@ async def test_agent_rejects_empty_final_response(tmp_path):
     agent = Agent(session(tmp_path), output_fn=lambda text: None)
 
     class EmptyModel:
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             return {"role": "assistant", "content": ""}, [], ""
 
     agent.model = EmptyModel()
@@ -37,7 +37,7 @@ async def test_agent_corrects_textual_tool_call_with_a_committed_message(tmp_pat
         def __init__(self):
             self.requests = []
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append((messages, tools))
             if len(self.requests) == 1:
                 return {"role": "assistant", "content": pseudo}, [], pseudo
@@ -72,7 +72,7 @@ async def test_agent_executes_native_call_after_textual_tool_correction_and_repl
         def __init__(self):
             self.requests = []
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append(messages)
             if len(self.requests) == 1:
                 return {}, [], pseudo
@@ -102,7 +102,7 @@ async def test_agent_recovers_after_five_textual_tool_corrections_that_stack_in_
         def __init__(self):
             self.requests = []
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append(messages)
             if len(self.requests) <= len(names):
                 name = names[len(self.requests) - 1]
@@ -140,7 +140,7 @@ async def test_agent_stops_after_sixth_textual_tool_call_without_persisting_resp
         def __init__(self):
             self.requests = []
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append(messages)
             return {}, [], pseudo
 
@@ -185,7 +185,7 @@ async def test_failed_first_request_leaves_a_marked_legal_history_and_the_next_t
         fail = True
         on_stream = None
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             if self.fail:
                 self.fail = False
                 raise ModelError("provider exploded")
@@ -239,7 +239,7 @@ async def test_agent_does_not_reclassify_content_when_native_tool_call_exists(tm
         def __init__(self):
             self.requests = []
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append(messages)
             if len(self.requests) == 1:
                 return {}, [call("Read", [{"path": "a.txt", "ranges": [[0, 1]]}])], pseudo

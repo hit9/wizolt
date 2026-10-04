@@ -30,6 +30,7 @@ from wizolt.agent.prompts import (
 from wizolt.base import SESSION_EVENT_KEY, Billing, Json, ModelError, ModelResponseTimeout, Text, WizoltError
 from wizolt.config import ProviderConfig, compaction_provider_config
 from wizolt.model import ModelClient
+from wizolt.model.interception import client_request
 from wizolt.shellhooks import POST_COMPACT, PRE_COMPACT, HookOutcome
 from wizolt.tools import Tool
 
@@ -184,7 +185,9 @@ class Compactor:
         # Named in every failure the compactor raises below: compaction can run on its own
         # `[compaction]` provider, so an error has to say which model served the request.
         entry_label = f"{entry_name}/{provider.model}"
-        data = await self.compact_attempts(messages, provider, response_timeout, entry_label, tools=tools if inline else None, echo_source=echo_source)
+        data = await self.compact_attempts(
+            messages, provider, response_timeout, entry_label, tools=tools if inline else None, echo_source=echo_source, entry=entry_name
+        )
         model.last_compaction_model = provider.model
         return data
 
@@ -201,6 +204,7 @@ class Compactor:
         entry_label: str,
         tools: list[Json] | None = None,
         echo_source: str = "",
+        entry: str = "",
     ) -> Json:
         """Ask for the summary, and ask once more if what came back was not a JSON object.
 
@@ -221,14 +225,19 @@ class Compactor:
                 # request exists to reuse -- it would spend the prize to buy the guarantee. The
                 # instruction not to call tools lives in the appended message instead, and a model
                 # that calls one anyway returns no text, which the retry below already handles.
-                _, _, content = await model.api_request(
-                    attempt_messages,
+                # The builtin strategy's model call is a `model.request` of purpose compaction;
+                # `context.compact` wraps the strategy around it. Intentional nesting, not twice.
+                sent = list(attempt_messages)
+                _, _, content = await client_request(
+                    model,
+                    "compaction",
+                    sent,
                     tools,
-                    allow_stream=False,
-                    response_timeout=response_timeout,
                     provider=provider,
-                    json_object=True,
-                    billing=Billing.COMPACTION,
+                    entry=entry or model.session.config.active_provider,
+                    send=lambda route, sent=sent: model.api_request(
+                        sent, tools, allow_stream=False, response_timeout=response_timeout, provider=route, json_object=True, billing=Billing.COMPACTION
+                    ),
                 )
             except ModelResponseTimeout:
                 raise ModelResponseTimeout(
