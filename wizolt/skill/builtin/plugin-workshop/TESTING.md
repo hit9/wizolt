@@ -25,7 +25,10 @@ Match exact title and kind (`selection`, `form`, `document`), not random runtime
 `selected` contains choice IDs, never labels; `values` maps field IDs to text. Convenience
 `ui.input` uses field `value`; `ui.confirm` uses selection IDs `yes` and `no`.
 `reply: null` cancels. Optional `action` chooses a declared action ID; omitted means the first
-declared action or `submit`. Forms reuse the live host's required/choice validation.
+declared action or `submit`. Omitted answers retain the current draft: a single-choice list
+starts at its first item unless given a default. Multi-selection results follow display order.
+Forms use the same required/choice/text validation as the live host; invalid replies fail
+without partially applying field changes.
 
 For `ui.open()` followed by updates, list expected revisions before answering:
 

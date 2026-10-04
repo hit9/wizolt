@@ -27,7 +27,8 @@ reload to try it without restarting.
 > Test choosing, cancelling and reopening before loading it.
 
 Plugins can save their own settings. The agent can test menus with scripted answers and show
-you previews; those tests use a temporary config, so your saved choices stay unchanged.
+you previews. Trials use the same menu defaults and form checks as the live interface, with a
+temporary config so your saved choices stay unchanged.
 
 ![Write, preview, approve and load a plugin live.](_static/plugins-workflow.svg)
 

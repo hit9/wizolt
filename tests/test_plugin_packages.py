@@ -95,13 +95,12 @@ async def test_package_relative_imports_resources_reload_and_full_rollback(tmp_p
     module = package(root, src=src)
     runtime = PluginRuntime(context)
     try:
-        await runtime.manage("enable", str(root))
-        original = runtime.entries["sample_plugin"].active.source.digest
+        original = (await runtime.manage("enable", str(root)))["version"]
         assert runtime.fields() == {"plugins.sample_plugin.value": 1, "plugins.sample_plugin.text": "original"}
         (module / "helper.py").write_text("VALUE = 2\n")
         (module / "label.txt").write_text("updated")
-        await runtime.manage("reload", "sample_plugin")
-        assert runtime.entries["sample_plugin"].active.source.digest != original
+        reloaded = await runtime.manage("reload", "sample_plugin")
+        assert reloaded["version"] != original
         assert runtime.fields() == {"plugins.sample_plugin.value": 2, "plugins.sample_plugin.text": "updated"}
         (module / "helper.py").write_text("raise RuntimeError('bad candidate')\n")
         with pytest.raises(PluginError, match="bad candidate"):

@@ -93,4 +93,3 @@ def test_invalid_environment_does_not_become_a_host_interpreter(tmp_path, enviro
     records, errors = catalog.read()
     assert "example" not in records
     assert errors == ["example: invalid dependency environment"]
-
