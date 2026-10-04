@@ -114,6 +114,9 @@ def setup(plugin):
         while not started.exists():
             await asyncio.sleep(.01)
     assert (await runtime.manage("disable", "slow"))["status"] == "stopping"
+    # A stopping plugin drains; new work would renew its lease and keep it alive.
+    with pytest.raises(PluginError, match="being disabled"):
+        await runtime.invoke("slow", "command", "wait", {"started": str(started)})
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task

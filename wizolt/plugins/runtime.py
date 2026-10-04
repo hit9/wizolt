@@ -494,6 +494,9 @@ class PluginRuntime:
         entry = self.entries.get(name)
         if entry is None:
             raise PluginError(f"Unknown plugin: {name}")
+        if entry.disabling:
+            # Draining admits no new work: overlapping calls would keep renewing the lease.
+            raise PluginError(f"{name} is being disabled")
         generation = entry.active
         operation = (generation.plugin.commands if kind == "command" else generation.plugin.tools).get(action)
         if operation is None:
@@ -519,7 +522,9 @@ class PluginRuntime:
     @property
     def _summary_generation(self) -> Generation | None:
         """Admission guarantees one strategy; failed generations fall back until reload."""
-        return next((entry.active for entry in self.entries.values() if entry.active.plugin.summarizer and not entry.active.error), None)
+        return next(
+            (entry.active for entry in self.entries.values() if entry.active.plugin.summarizer and not entry.active.error and not entry.disabling), None
+        )
 
     @property
     def has_summarizer(self) -> bool:

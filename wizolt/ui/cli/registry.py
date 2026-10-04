@@ -44,6 +44,8 @@ class CommandCatalog:
         if self.runtime is None:
             return result
         for owner, entry in self.runtime.entries.items():
+            if entry.disabling:
+                continue  # A stopping plugin admits no new commands.
             for name, action in entry.active.plugin.commands.items():
                 spelling = "/" + name
                 if spelling in COMMAND_NAMES:

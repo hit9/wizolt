@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Admit no new work into a plugin that is stopping: its commands, tools and summarizer are
+  refused and no longer listed or completed. Each new call used to renew the lease, so
+  overlapping calls could keep a disabled plugin running indefinitely.
+
 - Keep a plugin disabled from `/plugins` while startup is still loading plugins. Startup read
   the saved choices first and bypassed the management lock, so it went on to start the plugin:
   saved as disabled, yet running. A disable now waits for loading and then applies.

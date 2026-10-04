@@ -92,6 +92,7 @@ class PluginTool(Tool):
                     {"name": plugin, "tool": tool, "description": operation.description}
                     for plugin, entry in runtime.entries.items()
                     if (not name or plugin == name)
+                    and not entry.disabling
                     and not entry.active.error
                     and not entry.active.worker.error
                     and entry.active.worker.process.returncode is None
