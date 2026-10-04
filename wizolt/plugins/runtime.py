@@ -230,10 +230,6 @@ class PluginRuntime:
         return {"name": generation.plugin.name, "path": generation.source.path, "status": "pending", "version": "", "pending_version": generation.source.digest}
 
     @property
-    def busy(self) -> bool:
-        return self.turn_active or any(entry.active.invocations for entry in self.entries.values())
-
-    @property
     def active_count(self) -> int:
         """Count usable live generations, not saved preferences or unpublished candidates.
 

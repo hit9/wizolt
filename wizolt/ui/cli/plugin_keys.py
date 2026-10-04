@@ -112,11 +112,8 @@ class PluginKeys:
             saved.pop(key, None)
         if len(saved) > 64:
             raise PluginError("At most 64 global plugin shortcuts are supported")
-        self.save(saved)
+        # Publish only after the comment-preserving config write succeeds.
+        self.preferences.save("shortcuts", "bindings", saved)
         self.saved = saved
         self.publish()
         return self.listing()
-
-    def save(self, saved: dict[str, str]) -> None:
-        """Publish only after the comment-preserving config write succeeds."""
-        self.preferences.save("shortcuts", "bindings", saved)

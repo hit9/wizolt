@@ -190,11 +190,11 @@ class SessionPlugins(PluginRuntime):
             return {"plugins": results, "problems": problems, "scope": "current agent"}
 
     async def manage(self, action: str, target: str = "") -> dict:
-        """Serialize preference writes with preparation, including long dependency installs.
+        """Serialize preference writes with live generation preparation.
 
         The runtime's lock only protects generations. Holding this separate admission lock
-        prevents a late installation from silently undoing a disable accepted while it built.
-        Reads from rendering remain lock-free and never wait for package resolution.
+        prevents a late activation from silently undoing a disable accepted while it loaded.
+        Rendering reads remain lock-free. Dependency installation belongs to the standalone CLI.
         """
         async with self._management_lock:
             return await self._manage(action, target)

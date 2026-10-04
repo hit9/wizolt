@@ -78,7 +78,6 @@ async def test_retirement_dismisses_interaction_and_unpins_generation(tmp_path, 
         await runtime.manage(management, "interactive")
         assert await asyncio.wait_for(action, 3) == "cancelled"
         assert terminal.exited.is_set()
-        assert not runtime.busy
         assert not runtime.interactions.pending
         assert ("interactive" in runtime.entries) == (management == "reload")
     finally:

@@ -92,14 +92,12 @@ async def test_one_strategy_and_cancelled_manual_compaction_releases_reload(tmp_
             await session.plugins.manage("enable", source(tmp_path, name="other"))
         task = asyncio.create_task(session.plugins.summarize("source", lambda _: None))
         await asyncio.sleep(0)  # Begin the invocation before staging a replacement.
-        assert session.plugins.busy
         source(tmp_path)
         result = await session.plugins.manage("reload", "summaries")
         assert result["status"] == "pending"
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
-        assert not session.plugins.busy
         result = await session.plugins.summarize("source", lambda _: None)
         assert result == ("summaries", "Reviewed the implementation; one test remains.")
     finally:

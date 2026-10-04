@@ -116,7 +116,7 @@ def setup(plugin):
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    assert not runtime.entries and not runtime.busy
+    assert not runtime.entries
 
 
 @pytest.mark.parametrize("during_turn", [False, True])

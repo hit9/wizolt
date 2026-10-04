@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Remove obsolete aggregate plugin busy state and redundant shortcut persistence forwarding;
+  keep behavioral regression checks and clarify live activation versus dependency installation.
+
 - Prevent retiring plugin calls from reopening dismissed windows and keeping reload/disable
   pending. Reject arrays as installation records instead of accidentally enabling a builtin.
   Preserve other agents' saved layout changes when editing order or spacing.
