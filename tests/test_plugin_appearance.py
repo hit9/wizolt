@@ -116,7 +116,7 @@ def test_trial_previews_contributed_presets_with_sampled_fields(tmp_path, capsys
     previews = {item.get("preset"): item for item in json.loads(capsys.readouterr().out)["previews"]}
     status = previews["plugins.branch.seg"]
     assert status["text"].startswith(" preview-model ") and status["text"].endswith("feature-x") and len(status["text"]) == 50
-    assert Path(status["png"]).exists() and "<rect x=" in Path(status["svg"]).read_text()  # segment backgrounds
+    assert Path(status["png_path"]).exists() and "<rect x=" in Path(status["svg_path"]).read_text()  # segment backgrounds
     assert set(previews["plugins.branch.dots"]["text"]) == {"·"}
     # A format that only fails with real values must fail the trial, not preview the default bar.
     path.write_text(path.read_text().replace("{plugins.branch.name}", "{plugins.branch.name:.1f}"))

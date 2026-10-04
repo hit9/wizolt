@@ -6,6 +6,8 @@ outside the plugin worker: plugin code supplies semantic data, never SVG, fonts 
 
 from __future__ import annotations
 
+import hashlib
+import json
 from html import escape
 from pathlib import Path
 
@@ -62,6 +64,14 @@ class PreviewExporter:
 
     def draw(self, fragments: Fragments, slot: str, columns: int, index: int) -> dict:
         """Write SVG and PNG for already-projected rows: a component's or a bar preset's."""
+        normalized: Fragments = []
+        for style, value in fragments:
+            for index_in_run, part in enumerate(value.split("\n")):
+                if index_in_run:
+                    normalized.append(("", "\n"))
+                if part:
+                    normalized.append((style, part))
+        fragments = normalized
         text = "".join(value for _, value in fragments)
         lines = text.count("\n") + 1 if text else 0
         title = f"{slot} · {columns} columns · {Theme.name()}"
@@ -116,8 +126,11 @@ class PreviewExporter:
             "rows": lines,
             "text": text,
             "styles": fragments,
-            "svg": str(svg_path),
-            "png": str(png_path),
+            "svg_path": str(svg_path),
+            "png_path": str(png_path),
+            # Hash rendered cells/colors/geometry, never export paths or random view IDs.
+            # Raster font differences remain outside this cell-layout digest.
+            "render_sha256": hashlib.sha256(json.dumps([width, height, background, runs], ensure_ascii=True).encode()).hexdigest(),
             "font": font,
             "background": background,
         }

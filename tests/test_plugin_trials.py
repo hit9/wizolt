@@ -160,9 +160,9 @@ def setup(p):
         panel = Snapshot.decode(frame).panels["above_input"]
         assert exported["styles"] == PluginView.render([panel], 30, PluginView.input_rows(24))
         assert exported["clipped"] and "\x1b" not in exported["text"]
-        svg = ET.parse(exported["svg"])
+        svg = ET.parse(exported["svg_path"])
         assert svg.getroot().tag.endswith("svg")
-        with Image.open(exported["png"]) as image:
+        with Image.open(exported["png_path"]) as image:
             assert image.width == 30 * PreviewExporter.CELL_WIDTH + 2 * PreviewExporter.PADDING
             assert len(image.getcolors(image.width * image.height)) > 1
     finally:
@@ -188,7 +188,7 @@ async def test_cli_returns_json_and_preview_without_starting_agent(tmp_path):
     stdout, stderr = await process.communicate()
     assert process.returncode == 0, stderr.decode()
     report = json.loads(stdout)
-    assert report["status"] == "passed" and Path(report["previews"][0]["png"]).is_file()
+    assert report["status"] == "passed" and Path(report["previews"][0]["png_path"]).is_file()
     assert "starting" not in stdout.decode()
 
 

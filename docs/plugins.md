@@ -23,6 +23,12 @@ Tell the agent what you want to see, where it belongs, and when it should appear
 The built-in **plugin-workshop** skill helps the agent build and preview it. Approve the
 reload to try it without restarting.
 
+> Let me choose the pet's appearance from a menu and remember my choice for next time.
+> Test choosing, cancelling and reopening before loading it.
+
+Plugins can save their own settings. The agent can test menus with scripted answers and show
+you previews; those tests use a temporary config, so your saved choices stay unchanged.
+
 ![Write, preview, approve and load a plugin live.](_static/plugins-workflow.svg)
 
 Keep refining it in plain language:

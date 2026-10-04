@@ -7,16 +7,20 @@ The report contains semantic frames. UI exporters consume those frames in a high
 
 from __future__ import annotations
 
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, replace
+from pathlib import Path
 from typing import Any
 
+from wizolt.config import ConfigFile
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.process import PluginProcess, WorkerError
 from wizolt.plugins.protocol import Capabilities, Snapshot
 from wizolt.plugins.settings import PluginSettings
 from wizolt.sdk import Context
+from wizolt.sdk.models import HostCall
 
 
 @dataclass(frozen=True)
@@ -37,6 +41,7 @@ class TrialReport:
     capabilities: dict = field(default_factory=dict)
     frames: list[dict] = field(default_factory=list)
     results: list[str | None] = field(default_factory=list)
+    settings_changes: list[dict] = field(default_factory=list)
     error: str = ""
     traceback: str = ""
     log: str = ""
@@ -52,18 +57,23 @@ class PluginTrial:
         self.python = python
         self.settings = settings or PluginSettings()
         self.validate: Callable[[Capabilities], None] | None = None
+        self.host_service: HostCall | None = None
 
     async def run(self, path: str, *, validate: bool = False, times: tuple[float, ...] = (0,), stimuli: tuple[Stimulus, ...] = ()) -> TrialReport:
         report = TrialReport()
         worker = None
+        temporary = tempfile.TemporaryDirectory(prefix="wizolt-plugin-trial-")
         started = time.monotonic()
         try:
             source = PluginSource.read(path)
+            original = self.settings.read(source.name)
+            settings = PluginSettings(path=str(Path(temporary.name) / "config.toml"))
+            ConfigFile.patch_table(settings.path, ("plugins", source.name), original, [], expected={})
+            services = TrialServices(source.name, settings, report, self.host_service)
             report.name = source.name
             report.version = source.digest
-            worker, report.capabilities = await PluginProcess.start(
-                source, timeout=self.timeout, python=self.python, cwd=self.context.cwd, config=self.settings.read(source.name)
-            )
+            worker, report.capabilities = await PluginProcess.start(source, timeout=self.timeout, python=self.python, cwd=self.context.cwd, config=original)
+            worker.host_calls.handler = services.call
             if self.validate is not None:
                 # Setup succeeded; a failure from here is a contribution, such as a bad preset.
                 report.stage = "validate"
@@ -109,4 +119,28 @@ class PluginTrial:
                 await worker.close()
                 report.log, report.traceback = worker.stderr, worker.traceback
             report.seconds = round(time.monotonic() - started, 6)
+            temporary.cleanup()
         return report
+
+
+class TrialServices:
+    """A trial writes a disposable config, never the author's selected profile.
+
+    Only explicit host capabilities are provided; model/network services are not emulated.
+    This protects SDK writes, not arbitrary Python filesystem access by trusted plugins.
+    """
+
+    def __init__(self, name: str, settings: PluginSettings, report: TrialReport, handler: HostCall | None):
+        self.name, self.settings, self.report, self.handler = name, settings, report, handler
+
+    async def call(self, service: str, arguments: dict) -> dict:
+        if service.startswith("settings."):
+            result = await self.settings.call(self.name, service, arguments)
+            if service == "settings.update":
+                self.report.settings_changes.append({"values": arguments["values"], "reset": arguments["reset"]})
+            return result
+        if service.startswith("ui.") and self.handler is not None:
+            return await self.handler(service, arguments)
+        from wizolt.sdk import PluginError
+
+        raise PluginError("Host services unavailable in offline trials")

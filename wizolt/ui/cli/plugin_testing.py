@@ -18,6 +18,7 @@ from wizolt.sdk import Context, Value, Viewport
 from wizolt.ui.bars import FIELDS, BarLayout
 from wizolt.ui.cli.plugin_appearance import AppearanceContribution
 from wizolt.ui.cli.plugin_preview import PreviewExporter
+from wizolt.ui.cli.plugin_scenarios import ScriptedDialogs
 from wizolt.ui.render import Theme
 
 
@@ -91,6 +92,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--event", action="append", default=[], help="Explicit lifecycle event; repeat to send several")
     parser.add_argument("--call", default="", help="Explicit command:NAME or tool:NAME after events")
     parser.add_argument("--arguments", default="{}", help="JSON arguments for --call")
+    parser.add_argument("--interactions", type=Path, help="JSON scripted view expectations and replies; settings writes use a temporary config")
     parser.add_argument("--summarize", type=Path, help="Explicitly run the summarizer on this UTF-8 text file")
     parser.add_argument("--output", type=Path, help="Parent directory for a fresh preview bundle (default: system temporary directory)")
     parser.add_argument("--font", default="", help="PNG font file; choose one covering your plugin's characters")
@@ -120,10 +122,11 @@ def main(argv: list[str]) -> int:
             stimuli.append(Stimulus("summarizer", "", {"text": read_input(args.summarize, 256 * 1024).decode("utf-8")}))
         except (OSError, ValueError) as error:
             parser.error(str(error))
-    if args.action == "validate" and stimuli:
+    if args.action == "validate" and (stimuli or args.interactions):
         parser.error("use test to execute events or actions")
     try:
         workspace = PluginWorkspace.open(args.config, args.project)
+        dialogs = ScriptedDialogs(json.loads(read_input(args.interactions, 256 * 1024)) if args.interactions else [], args.width, args.height, args.timeout)
         Theme.project_plugins({})
         requested_theme = args.theme or Config.table(workspace.data, "runtime").get("theme", "dark")
         problems = Theme.configure(
@@ -154,6 +157,7 @@ def main(argv: list[str]) -> int:
         return 1
     trial = PluginTrial(context, timeout=args.timeout, python=python, settings=workspace.settings)
     trial.validate = AppearanceContribution.validate
+    trial.host_service = dialogs.call if args.interactions else None
     report = asdict(
         asyncio.run(
             trial.run(
@@ -164,6 +168,12 @@ def main(argv: list[str]) -> int:
             )
         )
     )
+    report["interactions"] = dialogs.trace
+    if report["status"] == "passed":
+        try:
+            dialogs.finish()
+        except ValueError as error:
+            report.update(status="failed", stage="interactions", error=str(error))
     contribution = AppearanceContribution({}, {})
     if report["status"] == "passed":
         contribution = AppearanceContribution.compile(Capabilities.decode(report["name"], report["capabilities"]))
@@ -176,12 +186,15 @@ def main(argv: list[str]) -> int:
     report["previews"] = []
     report["theme"] = Theme.name()
     report["warnings"] = [*problems, *catalog_problems]
-    if report["frames"]:
+    if report["frames"] or dialogs.trace:
         try:
             if args.output:
                 args.output.mkdir(parents=True, exist_ok=True)
             directory = Path(tempfile.mkdtemp(prefix="wizolt-plugin-", dir=args.output)).resolve()
             exporter = PreviewExporter(directory, font=args.font, height=args.height)
+            for index, item in enumerate(dialogs.trace):
+                if "fragments" in item:
+                    report["previews"].append(exporter.draw(item["fragments"], "interaction", args.width, index))
             for index, frame in enumerate(report["frames"]):
                 report["previews"].extend(exporter.export(frame, index))
                 report["previews"].extend(preset_previews(exporter, report["name"], contribution.presets, frame, index))

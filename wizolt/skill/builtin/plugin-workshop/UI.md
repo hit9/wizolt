@@ -77,9 +77,9 @@ split, arbitrary-coordinate drawing or access to host widgets.
   and its view. Do not suppress cancellation.
 - Keep update tasks scoped to the command/tool and join them before leaving `async with`.
   Closing a view before awaiting its result is supported; a completed/closed view cannot update.
-- Offline trials and non-TUI sessions cannot prompt the user. Validate/load the plugin offline,
-  test pure declaration builders, then reload and exercise commands in a live session. This is
-  not an automatic screenshot service. Existing panel/preset trial PNG/SVG output is unchanged.
+- Offline trials and non-TUI sessions cannot prompt the user. Use [scripted trials](TESTING.md)
+  for declaration/response flows and window previews, then exercise keys, focus and resizing
+  in a live session. Exports depict host cell layouts, not terminal screenshots.
 
 ## Example: prompt, choose, inspect
 

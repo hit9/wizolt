@@ -32,7 +32,10 @@ It also supplies shortcut list/bind/unbind operations; configure keys for the us
 3. **Check:** `plugin validate PATH`, then `plugin test PATH --theme forest --width 80`. Read the
    JSON report and view each PNG: components and contributed statusbar/divider presets. Test a
    narrow width too; `--times 0 0.5 1` samples animation. Trials run trusted Python for real.
-   Handlers calling `models.complete` or host UI services need a live session: validate offline,
+   Use `--call command:NAME --interactions answers.json` for scripted dialogs and temporary
+   settings writes; [TESTING.md](${SKILL_DIR}/TESTING.md) defines fixtures and report fields. Inspect
+   `svg_path`/`png_path` file contents, not just their paths.
+   Handlers calling `models.complete`, layout or shortcut services need a live session: validate offline,
    then reload and test through `Plugin call`. “Host services unavailable in offline trials”
    is that boundary, not evidence your handler is broken. Plugin-owned `service()` resources work offline.
    With `DEPENDENCIES`, run step 4's `install` first; then test by installed NAME.

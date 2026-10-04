@@ -11,6 +11,7 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.name` | Installed name, used in config and field namespaces; do not change it |
 | `plugin.config` | Deeply read-only mapping; initially the user's table, then resolved settings after `configure` |
 | `plugin.configure(schema, *, defaults=None)` | Validate JSON Schema Draft 2020-12 and apply explicit defaults |
+| `plugin.settings.update(values, *, reset=())` | Async; atomically save declared overrides, remove reset keys and return resolved immutable settings; current `config` is unchanged |
 | `plugin.field(name, callback)` | Sync `(Context) -> str \| int \| float \| bool`; floats must be finite |
 | `plugin.component(slot, callback, *, gap_before=0)` | Sync `(Context) -> Panel` |
 | `plugin.command(name, description, handler, *, during_turn=False)` | Async `(Context, Mapping[str, Any]) -> str`; register `/name` |
@@ -404,10 +405,12 @@ exercise handlers. They have real effects; validation and trials are not a files
 | --- | --- |
 | `validate PATH` | Source loading, setup, configuration and registrations; does not execute handlers |
 | `test PATH` | Fields and components with preview context; handlers run only when explicitly requested |
-| `test PATH --call tool:NAME --arguments '{...}'` | Handler arguments and behavior without host RPC; plugin-owned `service()` resources are available |
+| `test PATH --call tool:NAME --arguments '{...}'` | Handler behavior and temporary settings writes; plugin-owned `service()` resources are available |
+| `test PATH --call command:NAME --interactions answers.json` | Scripted input, selection, confirmation and window actions; see [TESTING.md](TESTING.md) |
 | Reload, then `Plugin describe/call` in the session | Handlers that call `plugin.models.complete` or `plugin.ui.components.*` |
 
-Offline trials have no live agent, provider service or component registry. For example,
+Offline trials have no live agent, provider service or component registry. Settings writes use
+a disposable config, and interaction scripts can supply answers. For example,
 `wizolt plugin test layout --call tool:list_components` returns
 `Host services unavailable in offline trials`. This reports a missing live host, not an invalid
 tool registration. Validate such plugins offline, reload them, then test their host-dependent
@@ -421,6 +424,8 @@ the `--context-percent`, and "working" while `--status running`). Use `--width`,
 PNG glyph coverage depends on fonts; use `--font /path/to/font.ttf` when needed. SVG allows browser
 font fallback. These are cell-layout previews, not captures of the user's terminal. No installation
 is modified, and the test process is always retired, including on timeout or cancellation.
+Exports use `svg_path` / `png_path`; `render_sha256` compares resolved cell content, not filenames
+or raster fonts. See [TESTING.md](TESTING.md) for interaction fixtures and report fields.
 
 ## Safety and recovery
 

@@ -58,6 +58,7 @@ def test_skill_links_reach_the_reference_and_installed_source():
     assert f"[SDK.md]({REFERENCE / 'SDK.md'})" in body
     assert f"[APPEARANCE.md]({REFERENCE / 'APPEARANCE.md'})" in body
     assert f"[UI.md]({REFERENCE / 'UI.md'})" in body
+    assert f"[TESTING.md]({REFERENCE / 'TESTING.md'})" in body
     assert "wizolt plugin paths" in body and '"${WIZOLT_EXECUTABLE:-wizolt}" plugin' in body
     for target in re.findall(r"\]\(([^)]+)\)", body):
         assert Path(target).is_absolute() and Path(target).is_file(), target

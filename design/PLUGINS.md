@@ -162,6 +162,18 @@ bundle or a promise of survival after the host is removed.
 
 ## Offline feedback
 
+SDK settings updates validate a complete candidate in the worker, then compare the raw read
+snapshot under the host config lease. The host derives the destination from the bound plugin
+owner, never an RPC argument. Patches preserve untouched keys/comments; reset removes overrides.
+No write mutates a generation's frozen settings or schedules reload. Only command/tool requests
+admit the service, not observers or automatic compaction. Trusted Python is not sandboxed.
+
+Trials bind the same settings writer to a disposable config and a scripted UI adapter to the
+real dialog states. Fixtures match ordered semantic declarations; generated IDs are only used
+internally for open/update/close routing. Missing answers fail, never wait for stdin. Rendering
+stays in the UI exporter; the plugin execution layer does not import dialog states. Cell hashes
+exclude export paths and runtime IDs and must not be advertised as raster equality.
+
 Trials use the same source loader, worker protocol and panel validation as live generations.
 Explicit events/actions execute before sampling; fixed context/time inputs make frames repeatable.
 The UI layer exports the real PluginView projection into text, SVG and PNG. Themes with transparent

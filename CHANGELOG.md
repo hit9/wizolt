@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add scripted offline plugin interactions with real dialog validation, bounded update waits,
+  interaction previews and disposable settings writes. Reports name image paths explicitly as
+  `svg_path`/`png_path` and include a stable cell-render digest. Document the complete authoring
+  workflow in the built-in skill; live terminal behavior still needs terminal acceptance tests.
+
 - Let plugin commands and tools atomically save their own declared settings, reset overrides
   to defaults and receive resolved values without replacing the live generation. Validate in
   the worker, retain config comments and reject concurrent changes instead of overwriting them.
