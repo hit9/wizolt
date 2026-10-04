@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add declarative plugin view contracts and request-owned interaction lifetimes. Human
+  interaction pauses execution deadlines; cancellation and replacement dismiss owned views.
+
 - Check child process state in one observation in shell cancellation tests, avoiding false
   failures when a killed process disappears between a PID probe and reading its state.
 

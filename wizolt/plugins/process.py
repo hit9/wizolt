@@ -15,7 +15,7 @@ import signal
 import sys
 from typing import Any
 
-from wizolt.plugins.hostcalls import HostCalls
+from wizolt.plugins.hostcalls import HostCalls, RequestDeadline
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.protocol import MAX_FRAME, MAX_REQUEST
 from wizolt.sdk import PluginError
@@ -41,6 +41,9 @@ class PluginProcess:
         self.pending: dict[int, asyncio.Future] = {}
         self.operations: dict[int, str] = {}
         self.host_calls = HostCalls(self._write, self.admits_host_call)
+        self.deadlines: dict[int, RequestDeadline] = {}
+        self.host_calls.suspend = lambda identity: self.deadlines[identity].pause()
+        self.host_calls.interactive = lambda identity: self.operations.get(identity) == "invoke"
         self.sequence = 0
         self.stderr = ""
         self.error = ""
@@ -103,11 +106,12 @@ class PluginProcess:
         future = asyncio.get_running_loop().create_future()
         self.pending[identity] = future
         self.operations[identity] = operation
+        deadline = self.deadlines[identity] = RequestDeadline(timeout)
         try:
             self._write({"id": identity, "operation": operation, **parameters})
             # wait(), not shield(): the future must outlive a cancel to receive the worker's
             # answer, and a shield cancelled first logs that answer's error as unhandled.
-            async with asyncio.timeout(timeout):
+            async with deadline:
                 assert self.process.stdin is not None
                 await self.process.stdin.drain()
                 await asyncio.wait((future,))
@@ -132,6 +136,7 @@ class PluginProcess:
             self.pending.pop(identity, None)
             self.operations.pop(identity, None)
             await self.host_calls.cancel(identity)
+            self.deadlines.pop(identity, None)
             if future.done() and not future.cancelled():
                 future.exception()
             elif not future.done():

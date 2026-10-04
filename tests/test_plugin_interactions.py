@@ -1,0 +1,131 @@
+"""Real worker RPC owns interactive waits; only terminal rendering is replaced here."""
+
+import asyncio
+from dataclasses import asdict
+
+import pytest
+
+from wizolt.plugins.runtime import PluginRuntime
+from wizolt.sdk import Context, PluginError
+from wizolt.sdk.views import Action, Choice, Document, Field, Form, Selection, View
+
+
+def interactive_plugin(tmp_path):
+    path = tmp_path / "interactive.py"
+    path.write_text('''SDK_VERSION = 1
+def setup(plugin):
+    async def ask(ctx, args):
+        answer = await plugin.ui.input("Name", default="review")
+        return "cancelled" if answer is None else answer
+    plugin.command("ask-name", "Ask a name", ask)
+''')
+    return str(path)
+
+
+def runtime_for(tmp_path):
+    return PluginRuntime(lambda: Context("s", "main", str(tmp_path), "idle", 0, 0, "test", 0))
+
+
+class Terminal:
+    """Stand in for a person who may take longer than a plugin's execution budget."""
+
+    def __init__(self):
+        self.entered = asyncio.Event()
+        self.exited = asyncio.Event()
+        self.answer = asyncio.Event()
+        self.owner = ""
+
+    async def call(self, owner, service, arguments):
+        if service != "ui.views.show":
+            return {}
+        View.decode(arguments["view"])
+        self.owner = owner
+        self.entered.set()
+        try:
+            await self.answer.wait()
+            return {"result": {"action": "submit", "values": {"value": "Alice"}}}
+        finally:
+            self.exited.set()
+
+
+async def test_human_wait_pauses_action_deadline(tmp_path):
+    runtime = runtime_for(tmp_path)
+    terminal = Terminal()
+    runtime.interactions.handler = terminal.call
+    try:
+        await runtime.manage("enable", interactive_plugin(tmp_path))
+        runtime.ACTION_TIMEOUT = 0.2
+        action = asyncio.create_task(runtime.invoke("interactive", "command", "ask-name", {}))
+        await asyncio.wait_for(terminal.entered.wait(), 3)
+        await asyncio.sleep(0.3)
+        assert not action.done()
+        terminal.answer.set()
+        assert await asyncio.wait_for(action, 3) == "Alice"
+        assert terminal.owner == "interactive"
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.parametrize("management", ["disable", "reload"])
+async def test_retirement_dismisses_interaction_and_unpins_generation(tmp_path, management):
+    runtime = runtime_for(tmp_path)
+    terminal = Terminal()
+    runtime.interactions.handler = terminal.call
+    try:
+        await runtime.manage("enable", interactive_plugin(tmp_path))
+        action = asyncio.create_task(runtime.invoke("interactive", "command", "ask-name", {}))
+        await asyncio.wait_for(terminal.entered.wait(), 3)
+        await runtime.manage(management, "interactive")
+        assert await asyncio.wait_for(action, 3) == "cancelled"
+        assert terminal.exited.is_set()
+        assert not runtime.busy
+        assert not runtime.interactions.pending
+        assert ("interactive" in runtime.entries) == (management == "reload")
+    finally:
+        await runtime.close()
+
+
+async def test_cancelled_action_closes_host_interaction(tmp_path):
+    runtime = runtime_for(tmp_path)
+    terminal = Terminal()
+    runtime.interactions.handler = terminal.call
+    try:
+        await runtime.manage("enable", interactive_plugin(tmp_path))
+        action = asyncio.create_task(runtime.invoke("interactive", "command", "ask-name", {}))
+        await asyncio.wait_for(terminal.entered.wait(), 3)
+        action.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(action, 3)
+        assert terminal.exited.is_set()
+        assert not runtime.interactions.pending
+    finally:
+        await runtime.close()
+
+
+async def test_headless_interaction_reports_unavailable(tmp_path):
+    runtime = runtime_for(tmp_path)
+    try:
+        await runtime.manage("enable", interactive_plugin(tmp_path))
+        with pytest.raises(PluginError, match="running TUI"):
+            await runtime.invoke("interactive", "command", "ask-name", {})
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.parametrize("body", [Document("hello", "markdown"), Selection((Choice("a", "First", "Preview"),)), Form((Field("name", "Name"),))])
+def test_view_wire_round_trip(body):
+    view = View("Title", body, (Action("open", "Open", "o"),), fullscreen=True)
+    assert View.decode(asdict(view)) == view
+
+
+@pytest.mark.parametrize("view", [
+    View("bad\x1b", Document("text")),
+    View("bad", Document("x" * 256_001)),
+    View("bad", Selection((Choice("same", "One"), Choice("same", "Two")))),
+    View("bad", Selection((Choice("one", "One"),), ("missing",))),
+    View("bad", Form(())),
+    View("bad", Document("text"), (Action("one", "One", "x"), Action("two", "Two", "x"))),
+])
+def test_invalid_view_is_rejected_before_rendering(view):
+    with pytest.raises(PluginError):
+        View.decode(asdict(view))

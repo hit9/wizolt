@@ -10,9 +10,11 @@ import asyncio
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field, replace
+from functools import partial
 from typing import Any
 
 from wizolt.plugins.activity import TurnActivity
+from wizolt.plugins.interactions import Interactions
 from wizolt.plugins.layout import SLOTS, LayoutBudget, LayoutPreferences
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.process import PluginProcess, WorkerError
@@ -106,6 +108,7 @@ class PluginRuntime:
         self.validate: Callable[[Capabilities], None] | None = None
         self.on_change: Callable[[], None] | None = None
         self.host_service: HostCall | None = None
+        self.interactions = Interactions()
 
     async def prepare(self, path: str, source: PluginSource | None = None, settings: dict | None = None, *, python: str | None = None) -> Generation:
         revision = source if source is not None else PluginSource.read(path)
@@ -118,7 +121,7 @@ class PluginRuntime:
         settings = self.settings.read(revision.name) if settings is None else settings
         python = self.interpreters.get(revision.name, "") if python is None else python
         worker, description = await PluginProcess.start(revision, python=python, cwd=self.context().cwd, config=settings)
-        worker.host_calls.handler = self.call_host
+        worker.host_calls.handler = partial(self.call_host, owner=revision.name)
         try:
             capabilities = Capabilities.decode(revision.name, description)
             if self.validate is not None:
@@ -191,6 +194,7 @@ class PluginRuntime:
                         self._retire(entry.pending)
                         entry.pending = None
                     entry.disabling = True
+                    self.interactions.dismiss(name)
                     self._publish()
                     return {"name": name, "status": "pending" if self.busy else "disabled"}
                 else:
@@ -199,6 +203,7 @@ class PluginRuntime:
             if entry.pending:
                 self._retire(entry.pending)
             entry.pending, entry.disabling = candidate, False
+            self.interactions.dismiss(name)
             self._publish()
             return self.describe(name, entry)
 
@@ -352,7 +357,7 @@ class PluginRuntime:
                 result.append(replace(item, gap_before=gap))
         return tuple(result)
 
-    async def call_host(self, service: str, arguments: dict) -> dict:
+    async def call_host(self, service: str, arguments: dict, *, owner: str = "") -> dict:
         """Route explicit host capabilities; model credentials stay in the assembly adapter."""
         if service.startswith("ui.components."):
             action = service.removeprefix("ui.components.")
@@ -372,6 +377,8 @@ class PluginRuntime:
             if action != "list":
                 self._layout_version += 1
             return {"components": [asdict(item) for item in self.components()]}
+        if service.startswith("ui."):
+            return await self.interactions.call(owner, service, arguments)
         if self.host_service is None:
             raise PluginError("Host services unavailable in offline trials")
         return await self.host_service(service, arguments)

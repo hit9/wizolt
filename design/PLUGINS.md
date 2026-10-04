@@ -66,7 +66,7 @@ CLI manager / Plugin tool / agent lifecycle
 - The SDK receives immutable facts, never `Session`, `Agent`, or terminal objects.
 - Every agent has its own runtime. Each generation owns a process, including its imported
   dependencies. This is fault isolation, not a filesystem/network sandbox.
-- Installation preferences are project-local, separately persisted from session snapshots.
+- Installation preferences are user-wide, separately persisted from session snapshots.
   Existing agents are not silently reconfigured by another agent's changes.
 - Bundled plugins supply disabled installation defaults. They use the same loader, SDK, and
   controls as user plugins; the terminal does not know which component is the pet.

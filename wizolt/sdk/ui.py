@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from wizolt.sdk import PluginError
 from wizolt.sdk.models import HostCall
+from wizolt.sdk.views import Choice, Field, Form, OpenView, Selection, View, ViewResult
 
 
 @dataclass(frozen=True)
@@ -60,3 +61,37 @@ class Components:
 class UI:
     def __init__(self):
         self.components = Components()
+        self.call: HostCall | None = None
+
+    def open(self, view: View) -> OpenView:
+        """Open a live action-owned view with ``async with``; never from an observer."""
+        if self.call is None:
+            raise PluginError("Interactive UI is unavailable")
+        return OpenView(self.call, view)
+
+    async def show(self, view: View) -> ViewResult | None:
+        """Await one action, or None on cancellation. Esc always belongs to the host."""
+        async with self.open(view) as opened:
+            return await opened.result()
+
+    async def input(self, title: str, *, default: str = "", multiline: bool = False, required: bool = False) -> str | None:
+        result = await self.show(View(title, Form((Field("value", title, default, required, multiline),))))
+        return result.values["value"] if result else None
+
+    async def confirm(self, title: str) -> bool:
+        """Default to cancellation. This business choice never grants tool approval."""
+        return await self.select(title, items=(Choice("no", "Cancel"), Choice("yes", "Confirm"))) == "yes"
+
+    async def select(self, title: str, *, items: tuple[Choice, ...], default: str = "") -> str | None:
+        result = await self.show(View(title, Selection(items, (default,) if default else ())))
+        return result.selected[0] if result and result.selected else None
+
+    async def select_many(self, title: str, *, items: tuple[Choice, ...], defaults: tuple[str, ...] = ()) -> tuple[str, ...] | None:
+        result = await self.show(View(title, Selection(items, defaults, multiple=True)))
+        return result.selected if result else None
+
+    async def notify(self, message: str, *, level: str = "info") -> None:
+        """Emit a themed session-local notice during an explicit action."""
+        if self.call is None:
+            raise PluginError("Interactive UI is unavailable")
+        await self.call("ui.notify", {"message": message, "level": level})
