@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Document the proposed plugin middleware and presentation architecture: typed semantic
+  operations, scoped cross-process continuations, deterministic ordering, execution receipts,
+  request purposes/retries, buffered-response preview rules and independent recovery paths.
+  No new runtime API is introduced by this proposal.
+
 - Start enabled plugins concurrently at startup. Each worker launch, nearly all of a plugin's
   startup cost, now runs in parallel; checking command and summarizer collisions and
   publishing stay serial, in saved order, so the outcome is unchanged. Loading three enabled

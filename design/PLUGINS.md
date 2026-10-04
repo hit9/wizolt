@@ -53,6 +53,8 @@ execution.
 
 Read this with [the proposal](PLUGINS_PROPOSAL.md). The proposal is direction; the SDK and its
 packaged reference define what this implementation currently exposes.
+For the proposed interception and deeper presentation contracts, see
+[Plugin operations and presentation](PLUGIN_INTERCEPTION.md); those APIs are not shipped yet.
 
 ## Ownership and dependency direction
 
@@ -218,6 +220,14 @@ flattened span and existing working state; this intentionally gives up main-pref
 Plugins return bounded text only. The core retains split/keep, protocol pairing, echo validation,
 checkpoint application and persistence. Both automatic and manual compaction pin the generation;
 cancellation propagates, while other failures mark it unhealthy and fall back to the builtin path.
+
+That fallback is the shipped summarizer contract. The proposed
+[interception contract](PLUGIN_INTERCEPTION.md#deadlines-and-failures) replaces it with explicit
+failure: automatic compaction failure can fail preparation of the user's turn, while leaving
+history/checkpoints intact. Implementing that proposal must update this paragraph, the SDK and
+tests together. It also replaces a blanket unhealthy/skip decision with per-registration rules:
+observation/presentation can skip; failed matching interception blocks until reload or disable.
+The core `/plugins` command and `--no-plugins` must remain independent recovery paths.
 
 `test_plugins.py` executes examples from the packaged SDK reference. Lifecycle tests exercise
 actual module loading and offline wheel installation; UI tests exercise the real selector and

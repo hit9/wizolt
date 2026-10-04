@@ -5,6 +5,8 @@ Status: proposal for review. The API names and paths below are illustrative, not
 The experimental DIY foundation is now implemented; see [implementation boundaries](PLUGINS.md)
 for the shipped subset and the packaged `plugin-workshop` SDK reference for actual API names.
 Interventions, managed background tasks, persistent plugin data and deeper UI sites remain future work.
+The [operations and presentation design](PLUGIN_INTERCEPTION.md) refines interventions and
+UI replacements; it takes precedence over illustrative APIs below for that future work.
 
 ## Goal
 
