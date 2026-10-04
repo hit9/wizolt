@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Unify keyboard and scripted plugin answers behind one validation boundary. Trials use the
+  same defaults, selection order and form rules as live dialogs without accessing widget
+  internals; invalid answers cannot partially change a draft.
+
 - Add scripted offline plugin interactions with real dialog validation, bounded update waits,
   interaction previews and disposable settings writes. Reports name image paths explicitly as
   `svg_path`/`png_path` and include a stable cell-render digest. Document the complete authoring

@@ -56,6 +56,12 @@ their default/result is a choice ID. `required` is checked before submission. Pe
 application-specific validation in your handler and reopen with the entered defaults if needed.
 Documents support scrolling, g/G, `/` search and n for the next match.
 
+Keyboard and scripted answers follow the same rules: omitted fields keep current drafts,
+an unselected single-choice list starts at its first item, and multi-selection returns IDs in
+display order. `ViewResult.resolve(view, reply)` validates a plain answer against declaration
+defaults without opening a UI; it raises `ResponseError` (`PluginError`) with an optional
+`field` ID. Use it for local checks, not to bypass host interaction.
+
 Views use the normal modal region unless `fullscreen=True`, which temporarily uses the
 alternate screen. Return to a parent list with an ordinary loop: await a selection, await its
 detail view, then show the list again with its previous selected ID. There is no persistent

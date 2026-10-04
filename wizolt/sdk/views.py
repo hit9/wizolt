@@ -178,6 +178,63 @@ class ViewResult:
     selected: tuple[str, ...] = ()
     values: dict[str, str] = field(default_factory=dict)
 
+    @classmethod
+    def resolve(cls, view: View, reply: dict) -> ViewResult:
+        """Resolve semantic input identically for keyboard and scripted answers.
+
+        Omitted values use declaration defaults. Adapters may supply current drafts instead;
+        field errors identify where a human editor should restore focus, without owning UI.
+        """
+        if not isinstance(reply, dict) or reply.keys() - {"action", "selected", "values"}:
+            raise ResponseError("Reply must be a view result")
+        action = reply.get("action", view.actions[0].id if view.actions else "submit")
+        if not isinstance(action, str) or action not in ({item.id for item in view.actions} if view.actions else {"submit"}):
+            raise ResponseError("Unknown view action")
+        selected, values = reply.get("selected", []), reply.get("values", {})
+        if not isinstance(selected, (list, tuple)) or any(not isinstance(item, str) for item in selected):
+            raise ResponseError("Selection IDs must be a list of strings")
+        if not isinstance(values, dict):
+            raise ResponseError("Form values must be an object")
+        body = view.body
+        if isinstance(body, Selection):
+            default = body.selected or (() if body.multiple else tuple(item.id for item in body.items[:1]))
+            selected = reply.get("selected", default)
+            identities = {item.id for item in body.items}
+            if len(selected) != len(set(selected)) or any(item not in identities for item in selected):
+                raise ResponseError("Unknown or duplicate selection IDs")
+            if not body.multiple and len(selected) != min(1, len(body.items)):
+                raise ResponseError("Select exactly one choice")
+            if values:
+                raise ResponseError("Selection replies cannot contain form values")
+            return cls(action, tuple(item.id for item in body.items if item.id in selected))
+        if isinstance(body, Form):
+            if selected or values.keys() - {item.id for item in body.fields}:
+                raise ResponseError("Unknown form fields")
+            resolved = {}
+            for item in body.fields:
+                value = values.get(item.id, item.default)
+                try:
+                    _text(value, 16_000)
+                    if not item.multiline and "\n" in value:
+                        raise ValueError("Expected single-line text")
+                    if (item.required and not value.strip()) or (item.choices and value not in {choice.id for choice in item.choices}):
+                        raise ValueError(f"Enter a value for {item.label}")
+                except ValueError as error:
+                    raise ResponseError(str(error), field=item.id) from error
+                resolved[item.id] = value
+            return cls(action, values=resolved)
+        if selected or values:
+            raise ResponseError("Document replies only support actions")
+        return cls(action)
+
+
+class ResponseError(PluginError):
+    """Invalid semantic input, optionally attached to a form field for focus recovery."""
+
+    def __init__(self, message: str, *, field: str = ""):
+        super().__init__(message)
+        self.field = field
+
 
 class OpenView:
     """An action-owned live view. Always use as an async context manager.

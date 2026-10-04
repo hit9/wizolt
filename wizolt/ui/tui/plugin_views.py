@@ -7,6 +7,7 @@ ownership and cancellation belong to the CLI adapter. Replacements preserve user
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import asdict
 from typing import Protocol
 
 from prompt_toolkit.buffer import Buffer
@@ -15,7 +16,7 @@ from prompt_toolkit.formatted_text import StyleAndTextTuples
 
 from wizolt.base import SELECTION_BACK, ApprovalView, Text
 from wizolt.sdk import PluginError
-from wizolt.sdk.views import Document, Form, Selection, View, ViewResult
+from wizolt.sdk.views import Document, Form, ResponseError, Selection, View, ViewResult
 from wizolt.ui.render import UiPrinter
 from wizolt.ui.tui.details import DetailSheet
 from wizolt.ui.tui.keys import normalized_key
@@ -31,7 +32,8 @@ class BodyState(Protocol):
     def editing(self) -> bool: ...
     def fragments(self) -> StyleAndTextTuples: ...
     def key(self, key: str, data: str) -> object: ...
-    def result(self, action: str) -> ViewResult | None: ...
+    def result(self, action: str) -> ViewResult: ...
+    def apply(self, result: ViewResult) -> None: ...
     def update(self, view: View) -> None: ...
 
 
@@ -82,6 +84,11 @@ class SelectionState:
         )
         return ViewResult(action, selected)
 
+    def apply(self, result: ViewResult) -> None:
+        self.checked = set(result.selected)
+        if result.selected:
+            self.state.selected = self.state.choices.index(result.selected[0])
+
 
 class DocumentState:
     def __init__(self, view: View, size: Size, ui: UiPrinter):
@@ -127,6 +134,9 @@ class DocumentState:
 
     def result(self, action: str) -> ViewResult:
         return ViewResult(action)
+
+    def apply(self, result: ViewResult) -> None:
+        pass  # Read-only content has no answer-dependent presentation.
 
 
 def _typed(key: str, data: str) -> str:
@@ -182,7 +192,7 @@ class FormState:
         if key in {"tab", "s-tab"}:
             self.selected = (self.selected + (1 if key == "tab" else -1)) % len(self.fields)
         elif key == "c-s" or (key == "enter" and not item.multiline):
-            return self.result("submit") or TUI_MODAL_PENDING
+            return self.result("submit")
         elif item.choices:
             if key in {"up", "down", "left", "right"}:
                 ids = [choice.id for choice in item.choices]
@@ -205,13 +215,14 @@ class FormState:
             buffer.insert_text(text[: max(0, 16_000 - len(buffer.text))])
         return TUI_MODAL_PENDING
 
-    def result(self, action: str) -> ViewResult | None:
-        values = {item.id: self.buffers[item.id].text for item in self.fields}
-        for index, item in enumerate(self.fields):
-            if (item.required and not values[item.id].strip()) or (item.choices and values[item.id] not in {choice.id for choice in item.choices}):
-                self.selected, self.error = index, f"Enter a value for {item.label}"
-                return None
-        return ViewResult(action, values=values)
+    def result(self, action: str) -> ViewResult:
+        return ViewResult(action, values={item.id: self.buffers[item.id].text for item in self.fields})
+
+    def apply(self, result: ViewResult) -> None:
+        self.error = ""
+        for key, value in result.values.items():
+            if self.buffers[key].text != value:
+                self.buffers[key].text = value
 
 
 class DialogState:
@@ -254,17 +265,42 @@ class DialogState:
         )
         return [*self.body.fragments(), ("class:muted", Text.clip_width("  " + (keys or "Enter select") + " · Esc back", width) + "\n")]
 
+    def answer(self, reply: dict) -> ViewResult:
+        """Validate and apply an answer without exposing widget internals to adapters.
+
+        Both input routes use the current draft as defaults, including after live updates.
+        Validation precedes mutation, so a rejected scripted answer cannot partially apply.
+        """
+        if not isinstance(reply, dict):
+            raise ResponseError("Reply must be a view result")
+        draft = asdict(self.body.result(self.view.actions[0].id if self.view.actions else "submit"))
+        if isinstance(reply.get("values"), dict):
+            reply = reply | {"values": draft["values"] | reply["values"]}
+        result = ViewResult.resolve(self.view, draft | reply)
+        self.body.apply(result)
+        return result
+
+    def submit(self, action: str) -> object:
+        """Keep a rejected human draft open and focus the field that needs correction."""
+        try:
+            return self.answer({"action": action})
+        except ResponseError as error:
+            if isinstance(self.body, FormState):
+                self.body.error = str(error)
+                self.body.selected = next((i for i, item in enumerate(self.body.fields) if item.id == error.field), self.body.selected)
+            return TUI_MODAL_PENDING
+
     def key(self, key: str, data: str = "") -> object:
         if key == "c-c":
             return None
         actual = data if key == "any" else key
         for action in self.view.actions:
             if action.key and actual == normalized_key(action.key) and not (self.body.editing and len(actual) == 1):
-                return self.body.result(action.id) or TUI_MODAL_PENDING
+                return self.submit(action.id)
         editing = self.body.editing
         result = self.body.key(key, data)
         if result is None or result is SELECTION_BACK or isinstance(result, KeyboardInterrupt):
             return None
-        if isinstance(result, (ViewResult, str)) or (key == "enter" and not editing and isinstance(self.view.body, Document)):
-            return self.body.result(self.view.actions[0].id if self.view.actions else "submit") or TUI_MODAL_PENDING
+        if isinstance(result, (ViewResult, str)) or (key == "enter" and not editing):
+            return self.submit(self.view.actions[0].id if self.view.actions else "submit")
         return result

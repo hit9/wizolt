@@ -174,6 +174,11 @@ internally for open/update/close routing. Missing answers fail, never wait for s
 stays in the UI exporter; the plugin execution layer does not import dialog states. Cell hashes
 exclude export paths and runtime IDs and must not be advertised as raster equality.
 
+`ViewResult.resolve` is the single semantic answer boundary. Widgets collect drafts, and
+`DialogState.answer` validates before applying them; scripted input never touches buffers or
+selection indexes. Both adapters use current drafts as defaults after live updates. Input
+source must not change required-field rules, selection order or the default action.
+
 Trials use the same source loader, worker protocol and panel validation as live generations.
 Explicit events/actions execute before sampling; fixed context/time inputs make frames repeatable.
 The UI layer exports the real PluginView projection into text, SVG and PNG. Themes with transparent

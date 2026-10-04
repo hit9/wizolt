@@ -6,11 +6,52 @@ from dataclasses import asdict
 import pytest
 from tui_harness import request_input_from_driver, run_interactive_tui, session, wait_until
 
-from wizolt.sdk.views import Action, Choice, Document, Field, Form, Selection, View
+from wizolt.sdk.views import Action, Choice, Document, Field, Form, ResponseError, Selection, View
 from wizolt.ui.cli.plugin_dialogs import PluginDialogs
 from wizolt.ui.cli.presentation import Presentation
+from wizolt.ui.render import UiPrinter
 from wizolt.ui.tui import TuiApp
 from wizolt.ui.tui.plugin_views import DialogState
+from wizolt.ui.tui.views import TUI_MODAL_PENDING
+
+
+@pytest.mark.parametrize("body,reply,keys", [
+    (Selection((Choice("a", "First"), Choice("b", "Second"))), {}, ("enter",)),
+    (Selection(()), {}, ("enter",)),
+    (Selection((Choice("a", "First"), Choice("b", "Second"))), {"selected": ["b"]}, ("j", "enter")),
+    (Selection((Choice("a", "First"), Choice("b", "Second")), multiple=True), {"selected": ["b", "a"]}, (" ", "j", " ", "enter")),
+    (Form((Field("name", "Name", required=True),)), {"values": {"name": "x"}}, ("x", "enter")),
+    (Document("hello"), {}, ("enter",)),
+])
+def test_scripted_and_keyboard_answers_share_defaults_and_semantics(body, reply, keys):
+    view = View("Example", body, (Action("save", "Save"),))
+    human = DialogState(view, lambda: (60, 20), UiPrinter())
+    scripted = DialogState(view, lambda: (60, 20), UiPrinter())
+    for key in keys:
+        result = human.key(key)
+    assert result == scripted.answer(reply)
+
+
+def test_rejected_answer_is_atomic_and_human_can_correct_it():
+    view = View("Example", Form((Field("first", "First", "kept"), Field("second", "Second", required=True))))
+    state = DialogState(view, lambda: (60, 20), UiPrinter())
+    before = state.fragments()
+    with pytest.raises(ResponseError):
+        state.answer({"values": {"first": "must not apply", "second": ""}})
+    assert state.fragments() == before
+    assert state.key("enter") is TUI_MODAL_PENDING
+    state.key("x")  # Required-field validation moves focus to second.
+    assert state.key("enter").values == {"first": "kept", "second": "x"}
+
+
+@pytest.mark.parametrize("reply", [
+    {"action": []}, {"selected": [{}]}, {"selected": ["a", "a"]}, {"selected": ["missing"]},
+    {"values": []}, {"values": {"unexpected": "x"}}, {"other": "x"},
+])
+def test_malformed_scripted_answer_is_a_domain_error(reply):
+    state = DialogState(View("Choose", Selection((Choice("a", "A"),))), lambda: (60, 20), UiPrinter())
+    with pytest.raises(ResponseError):
+        state.answer(reply)
 
 
 @pytest.mark.parametrize("view, keys, expected", [

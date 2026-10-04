@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass
 from wizolt.sdk import PluginError
 from wizolt.sdk.views import View
 from wizolt.ui.render import UiPrinter
-from wizolt.ui.tui.plugin_views import DialogState, FormState, SelectionState
+from wizolt.ui.tui.plugin_views import DialogState
 
 
 @dataclass
@@ -112,41 +112,6 @@ class ScriptedDialogs:
         if reply is None:
             item.future.set_result(None)
             return
-        if not isinstance(reply, dict) or reply.keys() - {"action", "selected", "values"}:
-            raise PluginError("Reply must be a view result or null")
-        action = reply.get("action", state.view.actions[0].id if state.view.actions else "submit")
-        if action not in ({item.id for item in state.view.actions} if state.view.actions else {"submit"}):
-            raise PluginError("Unknown view action")
-        if isinstance(state.body, SelectionState):
-            selected = reply.get("selected", list(state.body.body.selected))
-            choices = state.body.state.choices
-            if not isinstance(selected, list) or any(value not in choices for value in selected) or len(set(selected)) != len(selected):
-                raise PluginError("Unknown or duplicate selection IDs")
-            if not state.body.body.multiple and len(selected) != 1:
-                raise PluginError("Select exactly one choice")
-            if reply.get("values"):
-                raise PluginError("Selection replies cannot contain form values")
-            state.body.checked = set(selected)
-            if selected:
-                state.body.state.selected = choices.index(selected[0])
-        elif isinstance(state.body, FormState):
-            values = reply.get("values", {})
-            if not isinstance(values, dict) or values.keys() - state.body.buffers.keys() or reply.get("selected"):
-                raise PluginError("Unknown form fields")
-            for key, value in values.items():
-                field = next(field for field in state.body.fields if field.id == key)
-                if (
-                    not isinstance(value, str)
-                    or len(value) > 16_000
-                    or (not field.multiline and "\n" in value)
-                    or any(ord(character) < 32 and character not in "\n\t" for character in value)
-                ):
-                    raise PluginError("Form values must be bounded text")
-                state.body.buffers[key].text = value
-        elif reply.get("selected") or reply.get("values"):
-            raise PluginError("Document replies only support actions")
-        result = state.body.result(action)
+        result = state.answer(reply)
         self.capture(state)
-        if result is None:
-            raise PluginError("Invalid form response")
         item.future.set_result(asdict(result))
