@@ -407,8 +407,93 @@ async def test_cleanup_skips_a_live_family_and_deletes_it_after_release(tmp_path
     assert SessionSnapshotStore.clean_expired(parent.config.data_dir, current.uid, 1) == 2
     assert not os.path.exists(os.path.join(directory, parent.uid + ".jsonl"))
     assert not os.path.exists(os.path.join(directory, worker.uid + ".jsonl"))
-    # The lock file survives the session it named.
-    assert os.listdir(os.path.join(parent.config.data_dir, "session-locks"))
+    assert not os.listdir(os.path.join(parent.config.data_dir, "session-locks"))
+
+
+@pytest.mark.parametrize("replacement_owner", [False, True])
+def test_reclamation_overtakes_an_opener_without_granting_stale_ownership(tmp_path, replacement_owner):
+    """Pause at the OS open boundary, not flock: two real processes compete for the same name."""
+    path = str(tmp_path / "session.jsonl")
+    lease = SessionLease.acquire(str(tmp_path), path)
+    lease.close()
+    child = run_child(textwrap.dedent('''
+        import os, sys
+        from wizolt.session.ownership import SessionLease, SessionBusyError
+        data, path = sys.argv[1:]
+        original_open = os.open
+        def paused_open(*args, **kwargs):
+            fd = original_open(*args, **kwargs)
+            os.open = original_open
+            print("opened", flush=True)
+            sys.stdin.readline()
+            return fd
+        os.open = paused_open
+        try:
+            lease = SessionLease.acquire(data, path)
+        except SessionBusyError:
+            print("busy", flush=True)
+        else:
+            lease.assert_owned(path)
+            print("owned", flush=True)
+            lease.close()
+    '''), str(tmp_path), path)
+    replacement = None
+    try:
+        assert child.stdout.readline().strip() == "opened"
+        SessionLease.reclaim_unused(str(tmp_path))
+        assert not list((tmp_path / "session-locks").iterdir())
+        if replacement_owner:
+            replacement = SessionLease.acquire(str(tmp_path), path)
+        out, err = child.communicate("go\n", timeout=15)
+        assert child.returncode == 0, err
+        assert out.strip() == ("busy" if replacement_owner else "owned")
+        if replacement:
+            replacement.assert_owned(path)
+    finally:
+        if replacement:
+            replacement.close()
+        if child.poll() is None:
+            child.kill()
+            child.wait(timeout=10)
+
+
+@pytest.mark.parametrize("days", [0, 1])
+def test_retention_reclaims_orphans_but_preserves_unsaved_live_owners(tmp_path, days):
+    """An empty snapshot inventory cannot tell whether a session has a live owner."""
+    SessionLease.reclaim_unused(str(tmp_path))  # Missing directory stays missing.
+    assert not (tmp_path / "session-locks").exists()
+    path = str(tmp_path / "live.jsonl")
+    owner = SessionLease.acquire(str(tmp_path), path)
+    orphan = SessionLease.acquire(str(tmp_path), str(tmp_path / "orphan.jsonl"))
+    orphan.close()
+    directory = tmp_path / "session-locks"
+    unrelated = directory / "keep.txt"
+    unrelated.write_text("not a lock")
+    try:
+        assert SessionSnapshotStore.clean_expired(str(tmp_path), "", days) == 0
+        owner.assert_owned(path)
+        assert len(list(directory.glob("*.lock"))) == 1
+        assert unrelated.read_text() == "not a lock"
+    finally:
+        owner.close()
+    SessionLease.reclaim_unused(str(tmp_path))
+    SessionLease.reclaim_unused(str(tmp_path))
+    assert list(directory.iterdir()) == [unrelated]
+
+
+async def test_retention_reclaims_idle_lock_without_expiring_its_snapshot(tmp_path):
+    original = stored_session(tmp_path, "still resumable")
+    await original.save_snapshot()
+    original.close()
+    assert SessionSnapshotStore.clean_expired(original.config.data_dir, "", 1) == 0
+    assert not os.listdir(os.path.join(original.config.data_dir, "session-locks"))
+    resumed = load_session(original.uid, config=original.config, cwd=str(tmp_path))
+    try:
+        resumed.assert_ownership()
+        assert any(message.get("content") == "still resumable" for message in resumed.messages)
+        assert child_result(run_child(LOAD_CHILD, original.config.data_dir, original.uid, str(tmp_path)))["status"] == "busy"
+    finally:
+        resumed.close()
 
 
 async def test_cleanup_races_a_resume_without_deleting_under_it(tmp_path):

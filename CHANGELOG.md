@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Reclaim unused session lock files during retention cleanup, including leftovers from expired
+  sessions and crashes. Validate lock identity after acquisition so concurrent cleanup cannot
+  grant ownership of a deleted lock. Restart older Wizolt processes before using this version.
+  Cover the open/unlink race with synchronized multi-process tests.
+
 - Cache bounded plugin row projections by content, width and theme revision. In the
   [paired Linux ARM64 / Python 3.14.7 benchmark](https://github.com/hit9/wizolt/blob/master/benchmarks/README.md#cached-plugin-row-projection-dev27),
   1,000 unchanged ordinary/dense projections improve from 10.73/406.65 ms to 5.43/20.06 ms

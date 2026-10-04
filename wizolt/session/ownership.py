@@ -4,9 +4,9 @@ A session family -- a root snapshot and its `<uid>.a<id>` children -- has one wr
 a time. The lease is an open file descriptor locked with `fcntl.flock(fd, LOCK_EX | LOCK_NB)`; the
 descriptor, not a timestamp or a PID file, is the authority. The kernel releases it when the last
 descriptor closes, so a crash needs no stale-lock cleanup. Lock files live under
-`<data_dir>/session-locks/` so retention never deletes the lock a live session holds, and they are
-never unlinked: replacing one inode would let two processes lock different files for the same
-session.
+`<data_dir>/session-locks/`. Retention reclaims unused lock files under their own exclusive lock.
+Acquisition checks the inode after locking: an opener overtaken by reclamation must retry, never
+return ownership of an unlinked file. All participants must follow this protocol.
 
 This module is an OS-resource boundary. It imports the standard library and the base error type
 only -- never Session, the store, the CLI, the engine, or the TUI.
@@ -125,16 +125,9 @@ class SessionLease:
         except OSError as error:
             raise WizoltError(f"could not create the session lock directory {lock_dir}: {error}") from error
         lock_path = os.path.join(lock_dir, hashlib.sha256(identity.encode("utf-8")).hexdigest() + ".lock")
-        flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_CLOEXEC", 0)
         try:
-            fd = os.open(lock_path, flags, 0o600)
+            fd = cls._lock_file(lock_path, create=True)
         except OSError as error:
-            raise WizoltError(f"could not open the session lock file {lock_path}: {error}") from error
-        try:
-            os.set_inheritable(fd, False)
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError as error:
-            os.close(fd)
             # Only real contention means "another instance". A permission or filesystem failure is
             # reported as itself, never as a second owner.
             if error.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
@@ -143,6 +136,57 @@ class SessionLease:
         lease = cls(fd, identity, lock_path, os.getpid())
         _OPEN_LEASES.add(lease)
         return lease
+
+    @staticmethod
+    def _lock_file(path: str, *, create: bool) -> int:
+        """Lock the current inode, retrying if reclamation overtook open().
+
+        Validate only after flock succeeds. An opener may retain an old descriptor across unlink
+        and then successfully lock it; without this check two different inodes could have owners.
+        The caller owns the returned fd and must keep it locked through any unlink.
+        """
+        flags = os.O_RDWR | getattr(os, "O_CLOEXEC", 0) | (os.O_CREAT if create else 0)
+        while True:
+            fd = os.open(path, flags, 0o600)
+            try:
+                os.set_inheritable(fd, False)
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                held = os.fstat(fd)
+                try:
+                    current = os.stat(path)
+                except FileNotFoundError:
+                    current = None
+                if current is not None and (held.st_dev, held.st_ino) == (current.st_dev, current.st_ino):
+                    return fd
+            except BaseException:
+                os.close(fd)
+                raise
+            os.close(fd)
+
+    @classmethod
+    def reclaim_unused(cls, data_dir: str) -> None:
+        """Best-effort sweep of unowned locks, including leftovers from expired sessions/crashes.
+
+        Snapshot existence is irrelevant: a live owner may not have saved yet, and an idle
+        snapshot can recreate its lock on resume. Never create files while sweeping or remove the
+        directory. Busy locks and filesystem failures are left for a later retention pass.
+        """
+        directory = os.path.join(os.path.abspath(os.path.expanduser(data_dir)), LOCK_DIR_NAME)
+        try:
+            with os.scandir(directory) as entries:
+                paths = [entry.path for entry in entries if re.fullmatch(r"[0-9a-f]{64}\.lock", entry.name) and entry.is_file(follow_symlinks=False)]
+        except OSError:
+            return
+        for path in paths:
+            try:
+                fd = cls._lock_file(path, create=False)
+            except OSError:
+                continue
+            try:
+                with contextlib.suppress(OSError):
+                    os.unlink(path)
+            finally:
+                os.close(fd)
 
     def assert_owned(self, root_snapshot_path: str) -> None:
         """Verify the live resource, identity, and owning process; raise otherwise."""

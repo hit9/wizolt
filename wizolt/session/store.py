@@ -413,6 +413,7 @@ class SessionSnapshotStore:
     @classmethod
     def clean_expired(cls, data_dir: str, current_uid: str, days: int) -> int:
         if days <= 0:
+            SessionLease.reclaim_unused(data_dir)
             return 0
         cutoff = time.time() - days * 86400
         removed = 0
@@ -467,11 +468,12 @@ class SessionSnapshotStore:
                         except OSError:
                             continue
                 finally:
-                    # The lock file stays; only the lease is released.
+                    # Release before the sweep; it only reclaims locks without a live owner.
                     lease.close()
             if stale_latest:
                 cls.clear_latest_dir(directory)
             cls.prune_empty(directory)
+        SessionLease.reclaim_unused(data_dir)
         return removed
 
     @classmethod
