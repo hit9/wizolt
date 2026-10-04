@@ -479,6 +479,7 @@ class TuiRuntime:
             tui.extension_fragments_fn = PluginView(self.loop.session.plugins).fragments
             keys = PluginKeys(self.loop.session.plugins, tui, self.submit_shortcut)
             self.loop.session.plugins.reload_preferences = keys.load
+            self.loop.session.plugins.read_stream = lambda: (self.loop.presentation.model_stream_kind, self.loop.presentation.model_stream_text)
             self.loop.session.plugins.interactions.handler = PluginDialogs(tui, self.loop.presentation, keys).call
         tui.input_hint_fn = self.loop.view.tui_input_hint
         tui.quick_hints_fn = lambda: self.loop.session.quick_hints

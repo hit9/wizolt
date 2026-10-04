@@ -222,3 +222,41 @@ async def test_failing_presenters_fall_back_to_the_builtin_block(session, tmp_pa
     instance, printed = runner(session)
     await instance.run([ModelClient.tool_call("r1", "Read", {"path": str(path)})])
     assert "notes.txt" in "\n".join(printed)
+
+
+ACTIVITY = """
+def setup(p):
+    async def line(ctx, view):
+        tools = ", ".join(item.name for item in view.active_tools)
+        return Panel((Text("status:" + view.status + (":" + tools if tools else ""), "meta"),))
+    p.presenter("activity", line)
+"""
+
+
+async def test_activity_site_refreshes_the_cached_snapshot(runtime, tmp_path):
+    await enable(runtime, tmp_path, "meter", ACTIVITY)
+    runtime.read_stream = lambda: ("output", "answering")
+    runtime.activity.start("c1", "Bash")
+    await runtime.refresh()
+    panel = runtime.presenters.activity
+    assert panel is not None and panel.rows[0].text.startswith("status:idle:Bash")
+    # An empty or failed refresh keeps the last snapshot; a new pass replaces it.
+    runtime.activity.finish(runtime.activity.active["1"], "completed")
+    await runtime.refresh()
+    assert runtime.presenters.activity.rows[0].text == "status:idle"
+
+
+async def test_activity_panel_replaces_the_stream_region(session, tmp_path):
+    from wizolt.ui.cli.presentation import Presentation
+    from wizolt.ui.cli.view import View
+
+    await enable_session(session, tmp_path, "meter", ACTIVITY)
+    session.plugins.read_stream = lambda: ("output", "partial answer")
+    session.plugins.activity.start("c1", "Bash")
+    await session.plugins.refresh()
+    view = View(session, Presentation(session, output_fn=lambda _: None))
+    fragments = view.plugin_activity_fragments()
+    assert any("status:" in text for _, text in fragments)
+    # The builtin stream preview is the fallback, not an addition: without a cached panel it is
+    # what the region shows, and it stays host-owned.
+    assert "thinking" not in "".join(text for _, text in fragments)

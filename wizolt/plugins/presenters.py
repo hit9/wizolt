@@ -67,6 +67,8 @@ class Presenters:
         self.choices = PresenterChoices()
         # Sites whose registrations last matched more than one plugin: builtin until the user picks.
         self.conflicts: dict[str, tuple[str, ...]] = {}
+        # The activity site's cached snapshot: written by the runtime's refresh pass, read by paint.
+        self.activity: Panel | None = None
 
     def registered(self, site: str) -> bool:
         """Whether any live generation registers the site; callers use it for the fast path."""

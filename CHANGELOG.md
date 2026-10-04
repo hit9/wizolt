@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add the `activity` presentation site: the plugin runtime's refresh pass renders it into a
+  cached snapshot (status word, stream text, active tools and counts), and the TUI activity region
+  shows that panel instead of the builtin stream preview. Queued follow-ups, the live preview and
+  the divider stay host-owned; an empty, failed or conflicted snapshot falls back to the builtin.
+
 - Present settled tool calls through the named sites: `runner.finish()` briefly awaits the
   `tool.call` and `tool.result` panels and emits them as one tree (`presented_display`); the
   stored-result citation and status tag stay host-owned on whatever the panels said. Approval

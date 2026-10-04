@@ -497,7 +497,7 @@ class View:
     def tui_activity_fragments(self) -> StyleAndTextTuples:
         sent, waiting = self.followup_fragments()
         fragments = sent
-        stream = self.model_stream_fragments()
+        stream = self.plugin_activity_fragments() or self.model_stream_fragments()
         if fragments:
             fragments.append(("", "\n"))
             # A blank row lifts the echoed follow-up off whatever follows it: the streamed reply,
@@ -516,6 +516,26 @@ class View:
             if self.presentation.tui is not None:
                 fragments.append(("", "\n" * self.presentation.tui.activity_gap_rows))
         fragments.extend(waiting)
+        return fragments
+
+    def plugin_activity_fragments(self) -> StyleAndTextTuples:
+        """The activity site's cached panel, when a presenter owns that row region.
+
+        The panel is produced by the runtime's refresh pass, never by paint; an empty, failed or
+        conflicted snapshot falls back to the builtin stream preview. Queued follow-ups, the live
+        preview and the divider stay host-owned rows the site cannot replace.
+        """
+        plugins = self.session.plugins
+        panel = plugins.presenters.activity if plugins is not None else None
+        if panel is None or not panel.rows:
+            return []
+        from wizolt.ui.cli.plugins import PluginView
+
+        width = max(20, shutil.get_terminal_size((120, 20)).columns)
+        fragments: StyleAndTextTuples = []
+        for row in panel.rows:
+            fragments.extend(PluginView._row(row, width, Theme.key()))
+            fragments.append(("", "\n"))
         return fragments
 
     def model_stream_fragments(self) -> StyleAndTextTuples:

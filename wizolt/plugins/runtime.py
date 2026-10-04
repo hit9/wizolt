@@ -25,6 +25,7 @@ from wizolt.plugins.protocol import Capabilities, Snapshot
 from wizolt.plugins.settings import PluginSettings
 from wizolt.sdk import Context, Panel, PluginError, ToolActivity, Value, Viewport
 from wizolt.sdk.models import HostCall
+from wizolt.sdk.presentation import ActivityStatus
 from wizolt.sdk.ui import Component
 
 
@@ -161,6 +162,7 @@ class PluginRuntime:
         self.validate: Callable[[Capabilities], None] | None = None
         self.on_change: Callable[[], None] | None = None
         self.host_service: HostCall | None = None
+        self.read_stream: Callable[[], tuple[str, str]] | None = None
         self.interactions = Interactions()
         self.reload_preferences: Callable[[], None] | None = None
         self.interception_order = InterceptionOrder()
@@ -495,9 +497,19 @@ class PluginRuntime:
                 for name, item in generations.items():
                     item.snapshot = Snapshot(item.snapshot.fields, panels[name])
                 self._components = components
+            if self.presenters.registered("activity"):
+                # The activity snapshot follows the sampling cadence; paint reads only this cache,
+                # so a slow presenter delays the next pass, never a frame.
+                self.presenters.activity = await self.presenters.render("activity", self.activity_view(), timeout=0.25)
 
     def facts(self) -> Context:
         return replace(self.context(), columns=self.viewport.columns, viewport=self.viewport, layout=None, turn=self.activity.snapshot())
+
+    def activity_view(self) -> ActivityStatus:
+        """The activity site's view model: the live status word, stream and execution facts."""
+        kind, text = self.read_stream() if self.read_stream is not None else ("", "")
+        facts = self.facts()
+        return ActivityStatus(facts.status, facts.elapsed, kind, text, facts.turn.active_tools, facts.turn.tools)
 
     def resize(self, columns: int, rows: int) -> None:
         viewport = Viewport(max(0, columns), max(0, rows))
