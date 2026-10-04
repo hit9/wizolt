@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `Plugin(action="reload")` and its approval plan now retire a live plugin whose installation
+  record was deleted from the config; before, it kept running, invisible to reload. A config
+  with read problems retires nothing. A deleted source file with its record still present
+  remains a failed reload that keeps the running generation, as before.
+
 - Add two built-in plugins, both disabled by default and without model calls: `context_bar`
   (a stacked context-window bar with per-category theme colors, percentage and legend) and
   `guard` (a `tool.call` interceptor that confirms destructive Bash commands while yolo is on,

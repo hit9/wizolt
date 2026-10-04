@@ -140,8 +140,8 @@ class SessionPlugins(PluginRuntime):
         executing setup; capabilities are only known once setup runs, so the reload result reports
         them. An unchanged plugin still restarts, which resets whatever it keeps in memory.
         """
-        records, _ = self.catalog.read()
-        plan = []
+        records, problems = self.catalog.read()
+        plan = [(key, "remove: no longer installed") for key in self.removed(records, problems) if not name or key == name]
         for key, item in records.items():
             if name and key != name:
                 continue
@@ -170,6 +170,14 @@ class SessionPlugins(PluginRuntime):
 
     UNCHANGED = "restart"
 
+    def removed(self, records: dict, problems: list[str]) -> list[str]:
+        """Live plugins whose installation record is gone: deleted from the config by hand.
+
+        A config with read problems is no evidence of deletion -- a damaged record is dropped
+        from ``records`` too -- so then nothing counts as removed.
+        """
+        return [] if problems else sorted({*self.entries, *self._pending_new} - set(records))
+
     async def hot_reload(self, name: str = "") -> dict:
         """Reconcile saved choices into this agent only, with per-plugin failure isolation.
 
@@ -183,10 +191,17 @@ class SessionPlugins(PluginRuntime):
                 raise PluginError("Plugins are disabled for this launch (--no-plugins); restart normally to reload")
             records, problems = self.catalog.read()
             self.reload_layout()
-            if name and name not in records:
+            removed = [key for key in self.removed(records, problems) if not name or key == name]
+            if name and name not in records and not removed:
                 raise PluginError(f"Unknown installed plugin: {name}")
             self.loaded = True
             results = []
+            for key in removed:
+                try:
+                    results.append({**await super().manage("disable", key), "note": "no longer installed"})
+                    self.problems.pop(key, None)
+                except Exception as error:  # noqa: BLE001 - one retirement must not prevent other reloads.
+                    results.append({"name": key, "status": "failed", "error": str(error), "previous_retained": key in self.entries})
             for key, item in records.items():
                 if name and key != name:
                     continue

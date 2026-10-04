@@ -428,6 +428,36 @@ async def test_hot_reload_reconciles_saved_choices_only_in_calling_agent(tmp_pat
         await sibling.close()
 
 
+async def test_reload_retires_a_plugin_whose_record_was_deleted(tmp_path):
+    import re
+
+    from wizolt.plugins.installation import PluginInstallations
+
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    choices = PluginInstallations(runtime.catalog, runtime.session.cwd)
+    for name in ("counter", "keeper"):
+        (tmp_path / f"{name}.py").write_text(f'SDK_VERSION = 1\ndef setup(p):\n    p.field("n", lambda ctx: "{name}")\n')
+        await choices.manage("enable", str(tmp_path / f"{name}.py"))
+    await runtime.load()
+    config = runtime.catalog.preferences.path
+    original = config.read_text()
+    try:
+        # A damaged config is no evidence of deletion: nothing live is retired.
+        config.write_text(original + "\n[plugin_manager.installations.counter\n")
+        assert ("counter", "remove: no longer installed") not in runtime.reload_plan()
+        await runtime.hot_reload()
+        assert "plugins.counter.n" in runtime.fields()
+        # The user deletes the record by hand: reload sees it and stops the plugin.
+        config.write_text(re.sub(r"\[plugin_manager\.installations\.counter\][^\[]*", "", original))
+        assert ("counter", "remove: no longer installed") in runtime.reload_plan()
+        [removed] = [item for item in (await runtime.hot_reload())["plugins"] if item["name"] == "counter"]
+        assert removed["status"] == "off" and removed["note"] == "no longer installed"
+        assert "plugins.counter.n" not in runtime.fields() and runtime.fields()["plugins.keeper.n"] == "keeper"
+        assert runtime.reload_plan("counter") == []
+    finally:
+        await runtime.close()
+
+
 async def test_failed_live_reload_reports_where_the_plugin_failed(tmp_path):
     from wizolt.plugins.installation import PluginInstallations
 

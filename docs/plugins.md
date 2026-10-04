@@ -167,6 +167,8 @@ The list shows its source (`builtin` or `user`), whether it is enabled, and its 
 | Reload | Apply its latest code and settings |
 
 To undo a change, restore the earlier source from Git and reload; wizolt keeps no old versions.
+If you delete a plugin's `[plugin_manager.installations.NAME]` table from `config.toml`, the next
+reload stops it in running agents too.
 
 The state is **running**, **failed** or **off**. During a turn, or while that plugin's command
 is running, a change waits and shows what it waits to do: **starting**, **reloading** or
