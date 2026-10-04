@@ -162,7 +162,7 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     pane.keys("Enter")
     wait("1. enable")
     pane.keys("Enter")
-    wait("enabled   active")
+    wait("enabled   running")
     pane.keys("Escape")
     wait("on standby")
     pane.resize(160, 30)
