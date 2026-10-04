@@ -119,6 +119,9 @@ class Context:
     viewport: Viewport = field(default_factory=Viewport)
     layout: Layout | None = None
     turn: Turn = field(default_factory=Turn)
+    # Whether wizolt runs tools without asking (--yolo / runtime.yolo), so a plugin that asks
+    # before risky work can stay quiet while wizolt's own approval is asking anyway.
+    yolo: bool = False
 
     @classmethod
     def decode(cls, value: dict) -> Context:

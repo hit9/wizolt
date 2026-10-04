@@ -33,7 +33,7 @@ async def test_mention_and_completion_do_not_execute_even_broken_disabled_source
     agent = Agent(session, output_fn=lambda _: None)
     loop = CommandLoop(agent, input_fn=lambda _: "", output_fn=lambda _: None)
     choices = list(loop.input_completer.get_completions(Document("use @plugin:"), None))
-    assert {c.text for c in choices} == {"@plugin:danger", "@plugin:layout", "@plugin:pet"}
+    assert {c.text for c in choices} == {"@plugin:danger", "@plugin:context_bar", "@plugin:guard", "@plugin:layout", "@plugin:pet"}
     [block] = await agent.mention_messages("use @plugin:danger")
     assert block[SESSION_EVENT_KEY] == "plugin_mentions"
     assert "[danger]" in block["content"] and "DO-NOT-INLINE" not in block["content"]

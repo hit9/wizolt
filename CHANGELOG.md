@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add two built-in plugins, both disabled by default and without model calls: `context_bar`
+  (a stacked context-window bar with per-category theme colors, percentage and legend) and
+  `guard` (a `tool.call` interceptor that confirms destructive Bash commands while yolo is on,
+  configurable through `patterns`; headless runs refuse them). Plugins see the new read-only
+  `Context.yolo` fact, so a plugin that confirms risky work can stay quiet while wizolt's own
+  approval asks.
+
 - Restore plugin worker launch and CLI import speed. Workers loaded `packaging` even for plugins
   declaring no dependencies, plus the interception modules; the CLI loaded interception eagerly.
   Against master (Linux ARM64, CPython 3.14.7, nine samples, back to back): worker enable/close

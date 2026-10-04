@@ -124,6 +124,21 @@ input. It starts disabled and makes no model calls.
 
 > Move @plugin:pet above the divider and reload it.
 
+## Other built-in plugins
+
+Each starts disabled; enable it in `/plugins`. Neither makes model calls.
+
+**context_bar** draws what fills your context window above the input: one colored segment per
+category (system prompt, tools, memory files, skills, messages), the percentage used at the
+end, and a legend with token counts. In a short terminal only the bar remains.
+
+**guard** asks before destructive shell commands while yolo is on: `rm -rf`, force pushes,
+`git reset --hard`, `git clean -f` and similar. Declining tells the agent you said no. Without
+yolo, wizolt already asks before every command, so the guard stays out of the way. Change what
+counts as destructive with its `patterns` setting:
+
+> Make @plugin:guard also ask before `docker system prune`.
+
 ## Arrange your space
 
 > Enable the built-in layout plugin. Put my context meter before my pet and leave one

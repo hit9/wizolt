@@ -158,7 +158,8 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     wait("test-model")
     pane.send("/plugins")
     wait("disabled")
-    pane.keys("Down")  # layout and pet are both bundled, disabled installations.
+    for _ in range(3):  # context_bar, guard, layout and pet are bundled, disabled installations.
+        pane.keys("Down")
     pane.keys("Enter")
     wait("1. enable")
     pane.keys("Enter")
