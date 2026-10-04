@@ -90,11 +90,13 @@ def presenter_main(argv: list[str]) -> int:
         records, _ = workspace.catalog.read()
         # Saved records cannot say which sites a plugin renders; ask the plugin. ``list`` asks
         # every enabled one, ``choose`` only its candidate, and ``reset`` asks none.
-        registered = asyncio.run(_registrations(workspace, None if args.action == "list" else args.name or None)) if args.action != "reset" else {}
+        registered, errors = ({}, {}) if args.action == "reset" else asyncio.run(_registrations(workspace, args.name or None))
         if args.name and args.name not in records:
             raise PluginError(f"Unknown installed plugin: {args.name}")
         if args.name and not records[args.name].enabled:
             raise PluginError(f"{args.name} is disabled; enable it before choosing its presenter")
+        if args.name in errors:
+            raise PluginError(f"{args.name} failed to start: {errors[args.name]}")
         if args.action == "choose":
             if args.site not in registered or args.name not in registered[args.site]:
                 raise PluginError(f"{args.name} does not register the {args.site} presentation site")
@@ -111,32 +113,41 @@ def presenter_main(argv: list[str]) -> int:
     result = {
         "sites": {site: {"choice": choices.sites.get(site, ""), "registered": sorted(registered.get(site, ()))} for site in sorted(SITES)},
         "saved": dict(choices.sites),
+        "errors": errors,
         "note": "One presenter renders each site; overlapping matches keep the builtin rendering until you choose. Use Plugin(action=reload) to apply it in an existing agent.",
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
 
-async def _registrations(workspace: PluginWorkspace, only: str | None) -> dict[str, list[str]]:
-    """Launch each enabled installed plugin once and list the sites it registers."""
+async def _registrations(workspace: PluginWorkspace, only: str | None) -> tuple[dict[str, list[str]], dict[str, str]]:
+    """Launch each enabled installed plugin once and list the sites it registers.
+
+    A plugin that cannot start is reported beside the others, never fails the whole listing.
+    """
     from wizolt.plugins.loading import PluginSource
     from wizolt.plugins.process import PluginProcess
     from wizolt.plugins.protocol import Capabilities
 
     records, _ = workspace.catalog.read()
     registered: dict[str, list[str]] = {}
+    errors: dict[str, str] = {}
     for name, item in records.items():
         if not item.enabled or (only is not None and name != only):
             continue
-        source = PluginSource.read(item.path)
-        worker, description = await PluginProcess.start(source, python=item.python, cwd=workspace.cwd, config=workspace.settings.read(name))
         try:
-            capabilities = Capabilities.decode(name, description)
-        finally:
-            await worker.close()
+            source = PluginSource.read(item.path)
+            worker, description = await PluginProcess.start(source, python=item.python, cwd=workspace.cwd, config=workspace.settings.read(name))
+            try:
+                capabilities = Capabilities.decode(name, description)
+            finally:
+                await worker.close()
+        except Exception as error:  # noqa: BLE001 - one broken plugin cannot hide the others' sites.
+            errors[name] = str(error)
+            continue
         for site in capabilities.presenters:
             registered.setdefault(site, []).append(name)
-    return registered
+    return registered, errors
 
 
 def main(argv: list[str]) -> int:

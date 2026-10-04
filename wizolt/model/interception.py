@@ -154,6 +154,7 @@ async def logical_request(
     async def core(candidate: Value) -> Value:
         assert isinstance(candidate, ModelRequest)
         effective = route(candidate)
+        receipt.core = "started"  # A crash from here may have billed the request: resume says unknown.
         result = await send(effective)
         downstream["raw"] = result
         downstream["response"] = response = response_of(result, effective.model, candidate.provider or entry)
@@ -183,7 +184,8 @@ async def logical_request(
                 "model.request", value, core, transition=lambda _previous, candidate, _owner: route(candidate) and None, result_check=known_tools, trace=trace
             )
     except BaseException:
-        receipt.core = "failed" if "raw" not in downstream else "completed"
+        # A plugin failure before next() never reached the provider: core stays not_run.
+        receipt.core = "completed" if "raw" in downstream else "failed" if receipt.core == "started" else "not_run"
         raise
     finally:
         receipt.origin, receipt.shaped, receipt.delivered = trace.get("origin", "core"), tuple(trace.get("shaped", ())), True

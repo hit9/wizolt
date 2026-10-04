@@ -198,6 +198,7 @@ class Interception:
 
         token = uuid.uuid4().hex
         worker = link.generation.worker
+        raw, failure = None, None
         try:
             raw = await worker.request(
                 "intercept",
@@ -211,19 +212,19 @@ class Interception:
             )
         except asyncio.CancelledError:
             raise
-        except Exception as error:
-            if state["invalid"] is not None:
-                raise self.block(link, str(state["invalid"])) from None
-            if state["error"] is not None:
-                raise state["error"] from None  # Downstream failed; this handler only relayed it.
-            raise self.block(link, str(error)) from error
+        except Exception as error:  # noqa: BLE001 - resolved below, after what next() recorded.
+            failure = error
         finally:
             worker.continuations.tokens.pop(token, None)
+        # An invalid next() is the handler's fault whatever it did with the error. A downstream
+        # failure wins over the handler's outcome: relaying it is not this handler's failure, and
+        # catching it cannot turn a blocked inner policy into success.
         if state["invalid"] is not None:
             raise self.block(link, str(state["invalid"])) from None
         if state["error"] is not None:
-            # A handler cannot turn a downstream failure, such as a blocked inner policy, into success.
             raise state["error"]
+        if failure is not None:
+            raise self.block(link, str(failure)) from failure
         if state["used"] and not state["settled"]:
             raise self.block(link, "next() must be awaited inside the handler before it returns")
         try:

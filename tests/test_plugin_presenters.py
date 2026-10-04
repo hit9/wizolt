@@ -342,8 +342,10 @@ async def test_presenter_cli_saves_choices_that_reload_applies(tmp_path, capsys)
         '    async def card(ctx, view):\n        return Panel()\n    p.presenter("tool.result", card)\n'
     )
     (tmp_path / "plain.py").write_text("SDK_VERSION = 1\ndef setup(p):\n    pass\n")
+    (tmp_path / "broken.py").write_text("SDK_VERSION = 1\ndef setup(p):\n    raise RuntimeError('cannot start')\n")
     runtime.catalog.save(Installation("cards", str(tmp_path / "cards.py")))
     runtime.catalog.save(Installation("plain", str(tmp_path / "plain.py")))
+    runtime.catalog.save(Installation("broken", str(tmp_path / "broken.py")))
     config = str(runtime.catalog.preferences.path)
 
     async def presenter(*arguments):
@@ -354,7 +356,9 @@ async def test_presenter_cli_saves_choices_that_reload_applies(tmp_path, capsys)
         code = await _asyncio.to_thread(main, ["presenter", *arguments, "--config", config])
         return code, json.loads(capsys.readouterr().out)
 
-    listed = (await presenter("list"))[1]
+    code, listed = await presenter("list")
+    # A plugin that cannot start is reported, not allowed to hide the others' sites.
+    assert code == 0 and "cannot start" in listed["errors"]["broken"]
     assert listed["sites"]["tool.result"]["registered"] == ["cards"]
     assert listed["sites"]["activity"]["registered"] == []
     assert (await presenter("choose", "tool.result", "cards"))[1]["saved"] == {"tool.result": "cards"}
@@ -366,5 +370,7 @@ async def test_presenter_cli_saves_choices_that_reload_applies(tmp_path, capsys)
     assert code == 1 and "does not register" in failed["error"]
     code, failed = await presenter("choose", "tool.call", "missing")
     assert code == 1 and "Unknown installed plugin: missing" in failed["error"]
+    code, failed = await presenter("choose", "tool.call", "broken")
+    assert code == 1 and "broken failed to start" in failed["error"]
     assert (await presenter("reset", "tool.result"))[1]["saved"] == {}
     await runtime.close()

@@ -111,7 +111,7 @@ One component is allowed per slot; compose multiple rows inside that callback.
 | Lifecycle observer (session / turn / tool) | Yes | No | No | Each event's callbacks together: 1 second |
 | Presenter | Yes | No | No | Tool sites 0.5 seconds, activity 0.25 |
 | Command / tool handler | Yes | Yes; host services unavailable offline | Yes; views need a live TUI or trial fixtures | Live execution: 60 seconds, paused during host-owned human interaction |
-| Summarizer | Yes | Yes; models unavailable offline | No | 60 seconds |
+| Interceptor | Yes | Yes; host services unavailable offline | `prompt.submit` and `tool.call` only | 60 seconds of its own time; `next` and human waiting do not count |
 
 Trial `--timeout` overrides each trial call's deadline (default 5, greater than 0 and at most 60
 seconds). Host model calls still have their independent 50-second/four-concurrent-call limit.

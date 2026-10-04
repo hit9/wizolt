@@ -5,7 +5,8 @@
 - Add `wizolt plugin presenter list/choose/reset`: the choice persists as
   `[plugin_manager.presenters] choice` beside the interception order, an agent applies it with
   `Plugin(action=reload)`, and `choose` starts the candidate once to verify it registers the
-  site. `list` shows every enabled plugin's sites and the current choice.
+  site. `list` shows every enabled plugin's sites and the current choice; a plugin that cannot
+  start is listed under `errors` instead of failing the whole listing.
 
 - Add the `activity` presentation site: the plugin runtime's refresh pass renders it into a
   cached snapshot (status word, stream text, active tools and counts), and the TUI activity region
@@ -64,7 +65,9 @@
   budget. Transport retries stay inside `next`; a manual retry links its new request with
   `retry_of`. `response="preserve"` keeps push streaming without worker IPC; `"replace"`
   suppresses the content preview for that request. A plugin's auxiliary requests skip its own
-  registration. Test fakes of `ModelClient.request` accept the new `reason` keyword.
+  registration. Test fakes of `ModelClient.request` accept the new `reason` keyword. The
+  receipt marks the provider call `started` while it runs, so a crash mid-request resumes as
+  `unknown` and an interceptor failure before `next` reads `not_run`, not `failed`.
 
 - Make submitted input interceptable (`prompt.submit`) for a turn's opening input, queued
   follow-ups and a parent model's messages to subagents. Interception runs once per item, after

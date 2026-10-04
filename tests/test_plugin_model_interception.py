@@ -135,6 +135,29 @@ async def test_refusal_fails_the_request_before_anything_is_sent(session, tmp_pa
     assert sent == []
 
 
+async def test_receipts_tell_a_sent_request_from_one_that_never_left(session, tmp_path):
+    await enable(session, tmp_path, body="        raise RuntimeError('broken router')")
+    model, sent = ModelClient(session), []
+    fake_transport(model, sent)
+    with pytest.raises(Exception, match="broken router"):
+        await model.request([{"role": "user", "content": "hi"}], [])
+    assert sent == [] and session.operation_receipts[-1].core == "not_run"
+
+    await session.plugins.manage("disable", "router")
+    await enable(session, tmp_path)
+    seen = []
+
+    async def transport(messages, tools, provider):
+        # Mid-send the receipt says started, so a crash here resumes as unknown, never not_run.
+        seen.append(session.operation_receipts[-1].core)
+        raise ModelError("provider down")
+
+    model._transport_request = transport
+    with pytest.raises(ModelError, match="provider down"):
+        await model.request([{"role": "user", "content": "hi"}], [])
+    assert seen == ["started"] and session.operation_receipts[-1].core == "failed"
+
+
 async def test_every_purpose_reaches_the_one_boundary(session, tmp_path, monkeypatch):
     from wizolt.agent.compaction import Compactor
     from wizolt.agent.context import ContextManager
