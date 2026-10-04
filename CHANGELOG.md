@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Keep healthy plugins running when installation preferences are malformed; report incomplete
+  TOML during layout/shortcut refresh and recover after it is corrected. Reject dependency
+  strings that could be interpreted as installer options. Refresh action keys when a queued
+  plugin window changes before opening. Save enable/disable preferences before changing live
+  or pending generations, so a failed config write leaves the previous instance intact.
+
 - Keep plugin installations, enabled choices, layout and shortcuts in the user's config,
   separate from plugin-specific settings. Preserve existing alpha preferences and protect
   config writes against concurrent processes without blocking the UI.

@@ -54,7 +54,9 @@ class PluginCatalog:
             self.preferences.import_existing(self.directory)
             saved = self.preferences.read("installations")
         except (OSError, ValueError, ConfigError) as error:
-            return records, [str(error)]
+            # Failed reads are not evidence of a user's disable choice. In particular,
+            # bundled defaults must never retire a healthy live generation on reload.
+            return {}, [str(error)]
         for name, data in saved.items():
             try:
                 if name in self.defaults and isinstance(data, dict):
@@ -68,6 +70,7 @@ class PluginCatalog:
                     item = replace(item, path=default.path)
                 records[item.name] = item
             except (OSError, ValueError, TypeError) as error:
+                records.pop(name, None)
                 problems.append(f"{name}: {error}")
         return records, problems
 

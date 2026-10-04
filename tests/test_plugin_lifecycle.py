@@ -10,6 +10,99 @@ from wizolt.plugins.session import SessionPlugins
 from wizolt.sdk import PluginError
 
 
+@pytest.mark.parametrize("action", ["enable", "disable"])
+@pytest.mark.parametrize("busy", [False, True])
+async def test_failed_preference_write_preserves_active_and_pending_generations(tmp_path, monkeypatch, action, busy):
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    source = tmp_path / "stable.py"
+    source.write_text('SDK_VERSION = 1\ndef setup(p): p.field("value", lambda ctx: 1)\n')
+    try:
+        await runtime.manage("enable", str(source))
+        worker = runtime.entries["stable"].active.worker
+        if busy:
+            await runtime.start_turn()
+        source.write_text('SDK_VERSION = 1\ndef setup(p): p.field("value", lambda ctx: 2)\n')
+
+        def fail(_item):
+            raise OSError("read-only config")
+
+        monkeypatch.setattr(runtime.catalog, "save", fail)
+        with pytest.raises(OSError, match="read-only config"):
+            await runtime.manage(action, "stable")
+        if busy:
+            await runtime.finish_turn()
+        assert runtime.entries["stable"].active.worker is worker
+        assert runtime.entries["stable"].pending is None
+        assert not runtime.entries["stable"].disabling
+        assert runtime.fields()["plugins.stable.value"] == 1
+        assert worker.process.returncode is None
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.parametrize("action", ["enable", "disable"])
+async def test_failed_write_preserves_admission_of_new_plugins(tmp_path, monkeypatch, action):
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    source = tmp_path / "candidate.py"
+    source.write_text('SDK_VERSION = 1\ndef setup(p): p.field("value", lambda ctx: 1)\n')
+    try:
+        await runtime.start_turn()
+        if action == "disable":
+            await runtime.manage("enable", str(source))
+
+        def fail(_item):
+            raise OSError("read-only config")
+
+        monkeypatch.setattr(runtime.catalog, "save", fail)
+        with pytest.raises(OSError, match="read-only config"):
+            await runtime.manage(action, str(source) if action == "enable" else "candidate")
+        await runtime.finish_turn()
+        assert ("candidate" in runtime.entries) == (action == "disable")
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.parametrize("invalid", ["record", "table", "syntax"])
+async def test_invalid_builtin_preference_does_not_disable_live_generation(tmp_path, invalid):
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    try:
+        await runtime.manage("enable", "pet")
+        worker = runtime.entries["pet"].active.worker
+        preferences = runtime.catalog.preferences
+        if invalid == "record":
+            preferences.save("installations", "pet", {"enabled": "invalid"})
+        else:
+            preferences.path.write_text('[plugin_manager]\ninstallations = "invalid"\n' if invalid == "table" else "[broken")
+        report = await runtime.hot_reload()
+        assert report["problems"]
+        assert runtime.entries["pet"].active.worker is worker
+        assert worker.process.returncode is None
+        preferences.path.write_text("")
+        preferences.save("installations", "pet", {"enabled": True})
+        assert not (await runtime.hot_reload())["problems"]
+        assert runtime.entries["pet"].active.worker is not worker
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.parametrize("requirement", ["--python=/tmp/another-environment", "--target=/tmp/site-packages", "--requirements=/tmp/list.txt"])
+async def test_dependency_metadata_cannot_be_interpreted_as_installer_options(tmp_path, monkeypatch, requirement):
+    from wizolt.plugins.dependencies import DependencyEnvironment
+    from wizolt.plugins.loading import PluginSource
+
+    source = tmp_path / "dependency.py"
+    source.write_text(f"SDK_VERSION = 1\nDEPENDENCIES = [{requirement!r}]\ndef setup(p): pass\n")
+    environment = DependencyEnvironment(tmp_path / "environments", [PluginSource.read(str(source))], str(tmp_path))
+
+    async def command(_arguments):
+        pytest.fail("Invalid metadata reached the package installer")
+
+    monkeypatch.setattr(environment, "command", command)
+    with pytest.raises(PluginError, match="requirement"):
+        await environment.prepare()
+    assert not environment.path.exists()
+
+
 async def test_disable_pending_install_does_not_activate_at_turn_end(tmp_path):
     runtime = SessionPlugins(session_with_provider(tmp_path))
     path = tmp_path / "pending.py"

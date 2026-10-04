@@ -377,6 +377,8 @@ own instances. Reload/disable wait for active turns or invocations; the reload r
 Set `WIZOLT_NO_PLUGINS=1` on startup to skip installed plugins and recover a broken installation.
 
 Optional module metadata: `DEPENDENCIES = ["package>=1.0"]` (literal requirement strings).
+Use PEP 508 requirements, including named direct URLs or environment markers; installer
+options such as `--python`, `--target` and `--requirements` are not dependencies.
 Use `wizolt plugin install PATH` to prepare a worker environment constrained by the host's installed
 versions, then call `Plugin(action="reload")`. No host restart is needed. The environment borrows the host
 installation; it is not portable. No installation command replaces packages in the running process.

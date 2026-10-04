@@ -151,8 +151,12 @@ class PluginRuntime:
             await worker.close()
             raise
 
-    async def manage(self, action: str, target: str = "") -> dict[str, Any]:
-        """Prepare before publication; failed candidates leave active generations intact."""
+    async def manage(self, action: str, target: str = "", *, commit: Callable[[str, PluginSource], None] | None = None) -> dict[str, Any]:
+        """Prepare before publication; failed candidates leave active generations intact.
+
+        The optional synchronous commit saves a validated enable/disable choice before any
+        registry mutation. Persistence failures discard only the candidate, not live work.
+        """
         async with self._lock:
             if self._closed:
                 raise PluginError("Plugin runtime is closed")
@@ -170,6 +174,14 @@ class PluginRuntime:
                 if existing and existing.source.path != candidate.source.path:
                     await candidate.worker.close()
                     raise PluginError(f"Plugin name {name!r} already belongs to {existing.source.path}")
+                # Persistence belongs to the assembly layer, but must succeed before
+                # staging/retiring any generation. A failed write owns only this candidate.
+                try:
+                    if commit is not None:
+                        commit(action, candidate.source)
+                except BaseException:
+                    await candidate.worker.close()
+                    raise
                 if entry is None:
                     if pending := self._pending_new.pop(name, None):
                         self._retire(pending)
@@ -180,7 +192,10 @@ class PluginRuntime:
                 name = target
                 entry = self.entries.get(name)
                 if entry is None:
-                    if action == "disable" and (pending := self._pending_new.pop(name, None)) is not None:
+                    if action == "disable" and (pending := self._pending_new.get(name)) is not None:
+                        if commit is not None:
+                            commit(action, pending.source)
+                        self._pending_new.pop(name)
                         self._retire(pending)
                         return {"name": name, "status": "disabled"}
                     raise PluginError(f"Unknown plugin: {name}")
@@ -191,6 +206,8 @@ class PluginRuntime:
                         raise PluginError(f"{name}: no previous version")
                     candidate = await self.prepare(entry.previous.path, entry.previous, entry.previous_settings, python=entry.previous_python)
                 elif action == "disable":
+                    if commit is not None:
+                        commit(action, entry.active.source)
                     if entry.pending:
                         self._retire(entry.pending)
                         entry.pending = None

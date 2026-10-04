@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyBindings
 
+from wizolt.base import ConfigError
 from wizolt.sdk import PluginError
 from wizolt.ui.tui.app import InputMode
 from wizolt.ui.tui.keys import normalized_key
@@ -54,7 +55,7 @@ class PluginKeys:
                     raise PluginError("Invalid shortcut command")
             saved = {self.check(key): command for key, command in saved.items()}
             self.saved, self.error = saved, ""
-        except (OSError, ValueError, PluginError) as error:
+        except (OSError, ValueError, ConfigError) as error:
             self.saved, self.error = {}, str(error)
         self.publish()
 

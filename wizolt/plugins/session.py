@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from wizolt.base import ConfigError
 from wizolt.plugins.catalog import Installation, PluginCatalog
 from wizolt.plugins.layout import LayoutPreferences
 from wizolt.plugins.loading import PluginSource
@@ -47,7 +48,7 @@ class SessionPlugins(PluginRuntime):
             self.order.load()
             self._layout_version += 1
             self.problems.pop("layout", None)
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, ConfigError) as error:
             self.problems["layout"] = str(error)
 
     async def prepare(self, path: str, source: PluginSource | None = None, settings: dict | None = None, *, python: str | None = None):
@@ -214,14 +215,9 @@ class SessionPlugins(PluginRuntime):
             self.problems.pop(target, None)
             return {"name": target, "status": "disabled"}
         query = "list" if action == "inspect" else action
-        result = await super().manage(query, "" if query == "list" else target)
+        result = await super().manage(query, "" if query == "list" else target, commit=self._save_choice if action in {"enable", "disable"} else None)
         if action in ("enable", "reload", "rollback", "disable"):
             self.problems.pop(str(result["name"]), None)
-        if action in ("enable", "disable"):
-            name = str(result["name"])
-            item = records.get(name)
-            path = str(result.get("path") or (item.path if item else ""))
-            self.catalog.save(Installation(name, path, action == "enable", item.python if item else ""))
         if action in ("list", "inspect"):
             present = {item["name"] for item in result["plugins"]}
             result["plugins"].extend(
@@ -245,3 +241,7 @@ class SessionPlugins(PluginRuntime):
             result["runtime_directory"] = str(self.catalog.directory)
             result["config_path"] = str(self.catalog.preferences.path)
         return result
+
+    def _save_choice(self, action: str, source: PluginSource) -> None:
+        """Commit a validated preference before the runtime changes its live registry."""
+        self.catalog.save(Installation(source.name, source.path, action == "enable", self.interpreters.get(source.name, "")))

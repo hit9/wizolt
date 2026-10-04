@@ -111,13 +111,11 @@ The list shows its source (`builtin` or `user`), whether it is enabled, and its 
 | Reload | Apply its latest code and settings |
 | Rollback | Restore the previous loaded version |
 
-Changes during a turn show **pending** until it ends. A broken update keeps the old version
-running. You can ask the agent to manage plugins and settings too:
+Changes can show **pending** while a turn or plugin command is running. A failed update or
+settings save leaves the current plugin unchanged. You can ask the agent to manage it too:
 
 > Update @plugin:pet, preview the change, then reload it. Keep its source in its own Git
 > repository so I can undo changes later.
 
 Only enable code you trust: plugins can access your files and network.
 Keep secrets out of plugin source; ask the agent to use environment variables.
-
-If a plugin causes trouble, start with `WIZOLT_NO_PLUGINS=1 wizolt` and disable it in `/plugins`.

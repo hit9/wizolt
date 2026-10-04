@@ -55,6 +55,15 @@ class DependencyEnvironment:
         requirements = sorted({item for source in self.sources for item in source.dependencies})
         if not requirements:
             raise PluginError("No DEPENDENCIES declared; use enable instead")
+        from packaging.requirements import InvalidRequirement, Requirement
+
+        # Both single-file and package metadata arrive here before pip. A list of argv
+        # strings is shell-safe but would still let '--python/--target' become uv options.
+        for requirement in requirements:
+            try:
+                Requirement(requirement)
+            except InvalidRequirement as error:
+                raise PluginError(f"Invalid dependency requirement: {requirement!r}") from error
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
             await self.command([uv, "venv", "--python", sys.executable, str(self.path)])

@@ -38,6 +38,7 @@ class PluginDialogs:
         self.tui = tui
         self.presentation = presentation
         self.dialogs: dict[tuple[str, str], Dialog] = {}
+        self.presenting: Dialog | None = None
         self.lock = asyncio.Lock()
         self.keys = keys
 
@@ -49,11 +50,13 @@ class PluginDialogs:
 
     async def present(self, dialog: Dialog):
         async with self.lock:
+            self.presenting = dialog
             state = dialog.state
             self.bind_keys(state)
             try:
                 return await self.tui.show_modal(state.fragments, state.key, exclusive=state.view.fullscreen, wait_for_input=True)
             finally:
+                self.presenting = None
                 self.tui.view_bindings = KeyBindings()
 
     def bind_keys(self, state: DialogState) -> None:
@@ -107,7 +110,9 @@ class PluginDialogs:
             if key not in self.dialogs:
                 raise PluginError("View is no longer open")
             self.dialogs[key].state.update(view)
-            if self.tui.modal and self.tui.modal.key_fn == self.dialogs[key].state.key:
+            # The presentation may still be waiting behind an approval or agent switch.
+            # Its declaration and keys must advance together before the modal opens.
+            if self.presenting is self.dialogs[key]:
                 self.bind_keys(self.dialogs[key].state)
             self.tui.invalidate()
             return {}

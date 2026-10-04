@@ -17,6 +17,19 @@ from wizolt.ui.tui import TuiApp
 from wizolt.ui.tui.app import InputMode
 
 
+def test_malformed_config_reports_shortcut_error_and_can_recover(tmp_path):
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    keys = PluginKeys(runtime, TuiApp(), lambda _: None)
+    path = runtime.catalog.preferences.path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("[broken")
+    keys.load()
+    assert keys.error and not keys.saved
+    path.write_text('[plugin_manager.shortcuts.bindings]\nf6 = "sample.open"\n')
+    keys.load()
+    assert not keys.error and keys.saved == {"f6": "sample.open"}
+
+
 async def test_global_bindings_persist_conflicts_are_explicit_and_disable_is_dormant(tmp_path):
     session = session_with_provider(tmp_path)
     runtime = SessionPlugins(session)

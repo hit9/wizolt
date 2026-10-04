@@ -77,6 +77,29 @@ def test_short_terminal_keeps_form_cursor_and_actions_visible(tmp_path):
     assert "".join(text for _, text in fragments).count("\n") <= 8
 
 
+def test_queued_view_update_installs_current_action_keys_when_it_opens(tmp_path, monkeypatch):
+    app = TuiApp()
+    dialogs = PluginDialogs(app, Presentation(session(tmp_path)))
+
+    def drive(pipe):
+        wait_until(lambda: app.app is not None and app.app.is_running)
+        approval = request_input_from_driver(app)
+        wait_until(lambda: app.input_mode == "approval")
+        view = View("Waiting", Document("body"), (Action("old", "Old", "Ctrl-Y"),))
+        result = asyncio.run_coroutine_threadsafe(dialogs.call("one", "ui.views.show", {"id": "one", "view": asdict(view)}), app.app.loop)
+        wait_until(lambda: bool(app.view_bindings.bindings))
+        changed = View("Updated", Document("body"), (Action("new", "New", "Ctrl-X"),))
+        asyncio.run_coroutine_threadsafe(dialogs.call("one", "ui.views.update", {"id": "one", "view": asdict(changed)}), app.app.loop).result(timeout=5)
+        pipe.send_text("n\r")
+        assert approval.result(timeout=5) == "n"
+        wait_until(lambda: app.modal is not None)
+        pipe.send_text("\x18")
+        assert result.result(timeout=5)["result"]["action"] == "new"
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(monkeypatch, app, drive=drive)
+
+
 def test_plugin_view_waits_for_approval_and_cancelled_queue_never_opens(tmp_path, monkeypatch):
     app = TuiApp()
     dialogs = PluginDialogs(app, Presentation(session(tmp_path)))
