@@ -95,3 +95,54 @@ async def test_worker_rejects_oversized_presentations(runtime, tmp_path):
     )
     with pytest.raises(PluginError):
         await present(generation, "tool.call", ToolCard("call-1", "Bash"))
+
+
+async def test_sole_matching_presenter_renders_and_nonmatching_stays_builtin(runtime, tmp_path):
+    await enable(runtime, tmp_path, "cards", CARD)
+    panel = await runtime.presenters.render("tool.call", ToolCard("call-1", "Bash"))
+    assert panel is not None and panel.rows[0].text == "Bash ran"
+    # The prefilter runs host-side: a nonmatching view never reaches the worker.
+    assert await runtime.presenters.render("tool.call", ToolCard("call-1", "Read")) is None
+
+
+async def test_overlapping_presenters_stay_builtin_until_the_user_picks_one(runtime, tmp_path):
+    await enable(runtime, tmp_path, "alpha", CARD)
+    await enable(
+        runtime,
+        tmp_path,
+        "beta",
+        'def setup(p):\n    async def card(ctx, view):\n        return Panel((Text("beta card", "tool"),))\n    p.presenter("tool.call", card)\n',
+    )
+    view = ToolCard("call-1", "Bash")
+    assert await runtime.presenters.render("tool.call", view) is None
+    assert runtime.presenters.conflicts["tool.call"] == ("alpha", "beta")
+    runtime.presenters.choices.save({"tool.call": "beta"})
+    panel = await runtime.presenters.render("tool.call", view)
+    assert panel is not None and panel.rows[0].text == "beta card"
+    runtime.presenters.conflicts.clear()
+
+
+async def test_failed_presenter_falls_back_and_is_skipped_afterwards(runtime, tmp_path):
+    generation = await enable(
+        runtime,
+        tmp_path,
+        "broken",
+        'def setup(p):\n    async def card(ctx, view):\n        raise RuntimeError("no cards today")\n    p.presenter("tool.result", card)\n',
+    )
+    view = ToolSummary("call-1", "Bash", {"command": "ls"})
+    assert await runtime.presenters.render("tool.result", view) is None
+    assert "presenter:tool.result" in generation.failures
+    # A failed registration is skipped without another worker invocation.
+    assert await runtime.presenters.render("tool.result", view) is None
+
+
+async def test_slow_presenter_falls_back_within_its_budget(runtime, tmp_path):
+    generation = await enable(
+        runtime,
+        tmp_path,
+        "asleep",
+        "import asyncio\ndef setup(p):\n    async def card(ctx, view):\n        await asyncio.sleep(5)\n    p.presenter('tool.result', card)\n",
+    )
+    assert await runtime.presenters.render("tool.result", ToolSummary("call-1", "Bash"), timeout=0.05) is None
+    assert "presenter:tool.result" in generation.failures
+

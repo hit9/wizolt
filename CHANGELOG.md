@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add host-side presenter selection (`wizolt/plugins/presenters.py`): one presenter per site,
+  chosen by the user or by being the sole match. Overlapping matches keep the builtin rendering
+  and record the conflict until the user picks one; failed, slow or unmatched presentations fall
+  back to the builtin rendering without failing the turn.
+
 - Add the `plugin.presenter` registration and its worker `present` operation: named
   presentation sites (`tool.call`, `tool.result`, `activity`) receive immutable view models
   (`wizolt.sdk.presentation`) and return the same Panel declaration components use. Panels are

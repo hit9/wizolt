@@ -17,6 +17,7 @@ from typing import Any
 from wizolt.plugins.activity import TurnActivity
 from wizolt.plugins.interactions import Interactions
 from wizolt.plugins.interception import Interception, InterceptionOrder
+from wizolt.plugins.presenters import Presenters
 from wizolt.plugins.layout import SLOTS, LayoutBudget, LayoutPreferences
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.process import PluginProcess, WorkerError
@@ -164,6 +165,7 @@ class PluginRuntime:
         self.reload_preferences: Callable[[], None] | None = None
         self.interception_order = InterceptionOrder()
         self.interception = Interception(self)
+        self.presenters = Presenters(self)
 
     def read_revision(self, path: str) -> Revision:
         """Capture disk and preferences before starting any candidate worker."""

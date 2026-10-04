@@ -14,6 +14,7 @@ from wizolt.plugins.catalog import Installation, PluginCatalog
 from wizolt.plugins.interception import InterceptionOrder
 from wizolt.plugins.layout import LayoutPreferences
 from wizolt.plugins.loading import PluginSource
+from wizolt.plugins.presenters import PresenterChoices
 from wizolt.plugins.process import WorkerError
 from wizolt.plugins.runtime import PluginRuntime, Revision
 from wizolt.plugins.settings import PluginSettings
@@ -42,6 +43,7 @@ class SessionPlugins(PluginRuntime):
         super().__init__(self.snapshot, PluginSettings(session.config.plugins, session.config.path))
         self.order = LayoutPreferences(self.catalog.preferences)
         self.interception_order = InterceptionOrder(self.catalog.preferences)
+        self.presenters.choices = PresenterChoices(self.catalog.preferences)
 
     def reload_layout(self) -> None:
         if self.reload_preferences is not None:
@@ -57,6 +59,11 @@ class SessionPlugins(PluginRuntime):
             self.problems.pop("interception order", None)
         except (OSError, ValueError, ConfigError) as error:
             self.problems["interception order"] = str(error)
+        try:
+            self.presenters.choices.load()
+            self.problems.pop("presenters", None)
+        except (OSError, ValueError, ConfigError) as error:
+            self.problems["presenters"] = str(error)
 
     async def launch(self, revision: Revision):
         # Populate an idle/resumed agent's meter when enabling a plugin too. This is an
