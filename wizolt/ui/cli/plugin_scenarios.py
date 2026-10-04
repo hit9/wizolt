@@ -48,6 +48,12 @@ class ScriptedDialogs:
             raise PluginError(f"Unexpected view: {view.title!r} ({view.body.kind})")
 
     async def call(self, service: str, arguments: dict) -> dict:
+        if service == "ui.notify":
+            self.trace.append({"notice": arguments})
+            return {}
+        if service not in {"ui.views.show", "ui.views.update", "ui.views.close"}:
+            # Unavailable, as without fixtures; a plugin may handle that. Not a fixture mismatch.
+            raise PluginError(f"Host service unavailable in scripted trials: {service}")
         try:
             return await self._call(service, arguments)
         except Exception as error:
@@ -55,11 +61,6 @@ class ScriptedDialogs:
             raise
 
     async def _call(self, service: str, arguments: dict) -> dict:
-        if service == "ui.notify":
-            self.trace.append({"notice": arguments})
-            return {}
-        if service not in {"ui.views.show", "ui.views.update", "ui.views.close"}:
-            raise PluginError(f"Host service unavailable in scripted trials: {service}")
         identity = arguments["id"]
         if service == "ui.views.close":
             if (item := self.open.get(identity)) and not item.future.done():

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import os
 import sys
 import traceback
 from contextvars import ContextVar
@@ -24,7 +25,15 @@ from wizolt.sdk import Context, Event, PluginError, ToolActivity
 
 class Worker:
     def __init__(self):
-        self.output = sys.stdout
+        # Subprocesses inherit descriptors 0 and 1, not sys.stdin/sys.stdout. Move the protocol
+        # to private, non-inheritable duplicates: a plugin's `git status` must neither corrupt
+        # replies on the protocol stdout nor consume host requests from the protocol stdin.
+        self.input = os.fdopen(os.dup(0), "r", encoding="utf-8")
+        self.output = os.fdopen(os.dup(1), "w", encoding="utf-8")
+        devnull = os.open(os.devnull, os.O_RDONLY)
+        os.dup2(devnull, 0)
+        os.close(devnull)
+        os.dup2(2, 1)
         sys.stdout = sys.stderr
         self.loaded: LoadedPlugin | None = None
         self.tasks: dict[int, asyncio.Task] = {}
@@ -179,7 +188,7 @@ class Worker:
 
     async def run(self) -> None:
         try:
-            while line := await asyncio.to_thread(sys.stdin.readline, MAX_REQUEST + 1):
+            while line := await asyncio.to_thread(self.input.readline, MAX_REQUEST + 1):
                 if len(line) > MAX_REQUEST:
                     raise PluginError("Plugin request exceeds protocol frame limit")
                 request = json.loads(line)

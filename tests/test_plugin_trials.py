@@ -242,7 +242,13 @@ def test_source_rejects_fifo_and_bounds_in_memory_revisions(tmp_path):
 
 
 async def test_protocol_damage_and_oversized_component_do_not_hang(trial, tmp_path):
-    damaged = plugin(tmp_path, "import os\ndef setup(p):\n    os.write(1, b'not json\\n')\n")
+    # Descriptor 1 is no longer the protocol; damage the worker's private stream itself.
+    damaged = plugin(
+        tmp_path,
+        "import gc\ndef setup(p):\n"
+        "    worker = next(o for o in gc.get_objects() if type(o).__name__ == 'Worker')\n"
+        "    worker.output.write('not json\\n')\n    worker.output.flush()\n",
+    )
     async with asyncio.timeout(5):
         report = await trial.run(damaged)
     assert report.status == "failed" and "protocol" in report.error
@@ -255,6 +261,24 @@ def setup(p):
     )
     report = await trial.run(oversized)
     assert report.status == "failed" and "4096" in report.error
+
+
+async def test_plugin_subprocesses_cannot_read_or_write_the_protocol(trial, tmp_path):
+    source = plugin(
+        tmp_path,
+        """import os
+def setup(p):
+    async def shell(ctx, args):
+        os.write(1, b"raw descriptor\\n")
+        os.system("echo child stdout; head -c 1")  # head would otherwise eat a host request.
+        return "ok"
+    p.command("shell", "Shell", shell)
+""",
+    )
+    async with asyncio.timeout(10):
+        report = await trial.run(source, stimuli=(Stimulus("command", "shell"), Stimulus("command", "shell")))
+    assert report.status == "passed" and report.results == ["ok", "ok"]
+    assert "raw descriptor" in report.log and "child stdout" in report.log
 
 
 async def test_explicit_bad_config_fails_without_falling_back(tmp_path):

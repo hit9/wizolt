@@ -9,6 +9,17 @@
 - Fail a scripted plugin trial whose expected view updates never arrive, even when the plugin
   catches the resulting error. The timeout carried no message, so the trial reported success.
 
+- Let plugins run subprocesses such as `git status` without breaking their worker. Children
+  inherited the protocol's stdin and stdout: output corrupted replies and killed the plugin,
+  and a child reading stdin swallowed host requests until the call timed out. The worker now
+  speaks on private descriptors; stray output reaches the plugin's log.
+
+- Give each contributed preset preview its own image files when preset names differ only by
+  `-` and `_`; the second used to overwrite the first while the report listed both.
+
+- Report layout and shortcut services as unavailable in scripted plugin trials, as trials
+  without fixtures do, instead of failing the whole trial when the plugin handles that error.
+
 - Stabilize the real stdio MCP cleanup test under parallel CI load: allow cold process startup,
   explicitly trigger cancellation during close, and bound PID waits. Preserve timeout and
   process-reaping assertions without requiring discovery to finish within two seconds.
