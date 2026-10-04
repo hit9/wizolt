@@ -69,6 +69,9 @@ Interactive declarations (`View`, `Document`, `Selection`, `Form`, `Field`, `Cho
 `ViewResult`) are imported from `wizolt.sdk.views`; their complete tables and examples are in
 [UI.md](UI.md). Do not import the unrelated internal registration `Action` from `wizolt.sdk`.
 
+Presenter view models (`ToolCard`, `ToolSummary`, `ActivityStatus`) are imported from
+`wizolt.sdk.presentation`; their sites, fields and limits are in [UI.md](UI.md).
+
 | Type | Fields / defaults |
 | --- | --- |
 | `Context` | Required: `agent_id: str`, `agent_name: str`, `cwd: str`, `status: str`, `context_percent: float`, `elapsed: float`, `model: str`, `now: float`; optional: `columns: int = 80`, `usage: Usage = Usage()`, `window: ContextWindow = ContextWindow()`, `viewport: Viewport = Viewport()`, `layout: Layout \| None = None`, `turn: Turn = Turn()` |
@@ -106,6 +109,7 @@ One component is allowed per slot; compose multiple rows inside that callback.
 | Field / component | No | No | No | Whole refresh: 2 seconds |
 | `tick` observer | Yes | No | No | Shares the whole refresh's 2 seconds |
 | Lifecycle observer (session / turn / tool) | Yes | No | No | Each event's callbacks together: 1 second |
+| Presenter | Yes | No | No | Tool sites 0.5 seconds, activity 0.25 |
 | Command / tool handler | Yes | Yes; host services unavailable offline | Yes; views need a live TUI or trial fixtures | Live execution: 60 seconds, paused during host-owned human interaction |
 | Summarizer | Yes | Yes; models unavailable offline | No | 60 seconds |
 
@@ -115,7 +119,8 @@ Panels allow 12 rows, 256 spans per row and 4,096 total characters per row. Prom
 at most six visible rows. Single-file source is at most 256 KiB; package limits are below.
 Templates allow 8,192 characters. A timed-out worker can be killed; ordinary callback errors
 are reported. Health is per registration until reload: a failed observer or component is skipped
-(your commands and tools keep working); a failed interceptor blocks the operations it matches. Do not suppress
+(your commands and tools keep working); a failed interceptor blocks the operations it matches; a
+failed presenter falls back to the builtin rendering. Do not suppress
 `asyncio.CancelledError`; it must unwind resources and release the generation.
 
 ## Layout and execution facts

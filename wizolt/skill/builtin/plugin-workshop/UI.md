@@ -2,7 +2,8 @@
 
 Read this after [SDK.md](SDK.md). Use these APIs only inside a registered command or tool
 handler, or a `prompt.submit` / `tool.call` interceptor. No interaction from setup, ticks,
-rendering, observers or other interceptors. The host
+rendering, observers or other interceptors. Rendering callbacks are separate: a
+[presenter](#presenters) returns a panel and never interacts. The host
 owns input, theme, scrolling, focus, cancellation and terminal resizing.
 
 ## API
@@ -118,6 +119,65 @@ def setup(plugin):
 For a live log, use `async with plugin.ui.open(View(...)) as opened`, keep a bounded log,
 and call `await opened.update(View(...))` from an action-owned task while awaiting
 `opened.result()`. Cancel and join the updater in `finally`; retain the same view kind and mode.
+
+## Presenters
+
+A presenter replaces how the host draws one **presentation site**: a named piece of settled output.
+`render` is `async (Context, view) -> Panel`, and the view model comes from
+`wizolt.sdk.presentation`. Register at most one presenter per site.
+
+| Site | View | Fields |
+| --- | --- | --- |
+| `tool.call` | `ToolCard` | `id`, `tool`, `arguments`, `status`: `ok`, `failed` or `refused` |
+| `tool.result` | `ToolSummary` | `ToolCard` fields, plus `output` (the text the model received), `elapsed` and `key` (the stored result, `tr.N`) |
+| `activity` | `ActivityStatus` | `status`, `elapsed`, `stream_kind`, `stream_text`, `active_tools`, `counts` |
+
+`match` prefilters on those read-only fields before the call reaches your worker. The tool sites
+match on `tool`, as one name or a tuple of names; `activity` matches every registered view. A view
+your match rejects keeps the builtin rendering and never reaches the worker.
+
+```python
+from wizolt.sdk import Line, Panel, Text
+from wizolt.sdk.presentation import ToolSummary
+
+SDK_VERSION = 1
+
+
+def setup(plugin):
+    async def bash_result(context, view: ToolSummary):
+        command = str(view.arguments.get("command", ""))
+        first = view.output.strip().splitlines()[:1]
+        return Panel(
+            (
+                Line((Text("$ ", "muted"), Text(command, "tool"))),
+                Text(first[0] if first else "(no output)", "success" if view.status == "ok" else "error"),
+            )
+        )
+
+    plugin.presenter("tool.result", bash_result, match={"tool": "Bash"})
+```
+
+A panel has the component limits: at most 12 rows and 4,096 characters per row. An exception, a
+panel over those limits, a missed deadline (0.5 seconds, 0.25 for `activity`) or a rejected match
+all fall back to the builtin rendering, and the host skips that registration until the next reload
+or enable. A missed deadline also retires the worker, so keep the callback trivial and read only
+cached state.
+
+Presenters own rows, not facts. Approval displays and running cards are never presented, and the
+stored-result citation, the status tag, queued follow-ups, the live preview and the divider stay
+host-owned and ride along whatever your rows said. Tool rows are rendered as log rows, so the role
+of a row's first span sets its tone: use the log roles (`tool`, `meta`, `muted`, `success`,
+`warning`, `error`, `diff`, `field`, `code`); any other role reads as ordinary output. The
+`activity` panel comes from the host's refresh pass, not a repaint: an empty panel leaves the
+region to the builtin stream preview.
+
+Presenters are rendering, not interaction: like observers they receive no host services -- no
+models, no services, no settings writes and no UI. Return a panel; never wait for the user.
+
+One presenter renders each site. When two plugins register a site and both match, the builtin
+rendering stays until the user picks with `wizolt plugin presenter list|choose|reset`. The choice
+is saved in `[plugin_manager.presenters] choice`, and an agent adopts it with
+`Plugin(action="reload")`.
 
 ## Shortcuts: let the agent manage them
 
