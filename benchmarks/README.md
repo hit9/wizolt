@@ -11,6 +11,49 @@ remeasure the previous reference revision too so the comparison remains meaningf
 
 ## Plugin foundation
 
+### Interception and presenters (branch review)
+
+[Master](results/linux-arm64-py314-interception-master.json) and the
+[reviewed branch](results/linux-arm64-py314-interception-review.json) (working tree over
+`3effe92b`, exact source hash in the report) use Linux ARM64, CPython 3.14.7, identical
+dependencies and workloads, nine samples, run back to back without tests or builds in flight.
+The release reference is unchanged.
+
+The first comparison found two startup regressions, both fixed before this measurement:
+worker launch had grown by about 15 ms (`packaging` loaded even for plugins declaring no
+dependencies, plus eager operation/presentation modules), and CLI import by about 5 ms
+(interception modules loaded eagerly). Both now load only when used, guarded by import tests in
+`tests/test_startup.py`.
+
+| Workload | Master (ms) | Branch (ms) | Change |
+| --- | ---: | ---: | ---: |
+| First prompt frame | 148.595 | 154.117 | +3.7% |
+| CLI import | 194.203 | 193.947 | -0.1% |
+| Ten headless turns, no hooks | 26.717 | 28.252 | +5.8% |
+| Enable and close one plugin | 100.837 | 104.069 | +3.2% |
+| Plugin tool, 20 calls | 16.758 | 5.022 | -70.0% |
+| Cached projection, 1,000 reads | 5.427 | 5.836 | +7.5% |
+
+Replay and dense output hashes match. No workload rose more than 8%. The turn and projection
+paths gained interception fast-path checks and per-registration health; the retained cost is
+about 0.15 ms per turn and 0.4 microseconds per cached read.
+
+New long-term probes (`plugins.py`) track the chain itself. Cores are trivial, so these are
+pure host and IPC overhead:
+
+| Interception workload | Median (ms) |
+| --- | ---: |
+| Empty chain, 1,000 operations | 2.015 |
+| Non-matching chain, 1,000 operations | 2.715 |
+| Three no-op interceptors, 20 operations | 24.100 |
+| Buffered response transform, 20 requests | 8.316 |
+| Present one tool result, 20 times | 4.224 |
+| Refresh with an activity presenter, 20 passes | 11.055 |
+
+An operation no plugin intercepts costs about 2 microseconds; each matching interceptor about
+0.4 ms (the call and its `next` round trip). An activity presenter adds one round trip to each
+5 Hz refresh pass.
+
 ### Cached plugin row projection (dev27)
 
 [Before](results/dev27-plugin-hotspots-before.json) is `f0f4c8d8`; the

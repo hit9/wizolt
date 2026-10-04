@@ -35,8 +35,7 @@ from wizolt.base import (
     oneline,
 )
 from wizolt.model import ModelClient
-from wizolt.sdk import PluginError, operations, presentation
-from wizolt.sdk.operations import thaw
+from wizolt.sdk import PluginError
 from wizolt.sdk.settings import freeze
 from wizolt.session import Session, TurnDiff
 from wizolt.session.types import OperationReceipt
@@ -524,6 +523,9 @@ class ToolRunner:
         hooks. The receipt is checkpointed when core execution starts and when it completes,
         before wrappers resume. Hook feedback is host-owned and re-appended after wrappers.
         """
+        from wizolt.sdk import operations  # Only a matching registration needs operation values.
+        from wizolt.sdk.operations import thaw
+
         plugins = self.session.plugins
         assert plugins is not None
         arguments = freeze(dict(call.payload) if isinstance(call.payload, dict) else {})
@@ -1041,6 +1043,8 @@ class ToolRunner:
         plugins = self.session.plugins
         if plugins is None or isinstance(builtin, str) or not (plugins.presenters.registered("tool.call") or plugins.presenters.registered("tool.result")):
             return builtin
+        from wizolt.sdk import presentation
+
         arguments = freeze(dict(call.payload) if isinstance(call.payload, dict) else {})
         card = await plugins.presenters.render("tool.call", presentation.ToolCard(call.id, call.name, arguments, status))
         summary = await plugins.presenters.render("tool.result", presentation.ToolSummary(call.id, call.name, arguments, status, output, elapsed, key))

@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from wizolt.sdk import Line, Panel, PluginError, Text
-from wizolt.sdk.presentation import SITES
 
 MAX_FRAME = 1024 * 1024  # A worker's reply: plugin output, bounded before any renderer sees it.
 # A host request carries host data sized by the conversation: a compaction span can approach the
@@ -92,6 +91,8 @@ class PresenterSpec:
 
     @classmethod
     def decode(cls, site: str, value: dict) -> "PresenterSpec":
+        from wizolt.sdk.presentation import SITES
+
         allowed = SITES.get(site)
         match = value.get("match", {})
         if allowed is None or not isinstance(match, dict) or not set(match) <= allowed:

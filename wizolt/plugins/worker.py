@@ -15,13 +15,15 @@ import sys
 import traceback
 from contextvars import ContextVar
 from dataclasses import asdict, replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from wizolt.plugins.layout import SLOTS, LayoutBudget
 from wizolt.plugins.loading import LoadedPlugin, PluginSource
 from wizolt.plugins.protocol import MAX_FRAME, MAX_REQUEST, MAX_ROW_CHARACTERS, Snapshot
-from wizolt.sdk import Context, Event, PluginError, ToolActivity, operations, presentation
-from wizolt.sdk.operations import OPERATIONS, Operation, Value
+from wizolt.sdk import Context, Event, PluginError, ToolActivity
+
+if TYPE_CHECKING:
+    from wizolt.sdk.operations import Operation, Value
 
 
 class Continuation:
@@ -44,6 +46,8 @@ class Continuation:
         self.used = True
         if not isinstance(value, self.spec.input):
             raise PluginError(f"next() takes a {self.spec.input.__name__}")
+        from wizolt.sdk import operations  # Loaded by the intercept call that created this.
+
         future = asyncio.get_running_loop().create_future()
         self.worker.continuations[self.token] = future
         try:
@@ -185,7 +189,9 @@ class Worker:
                 await callback(Event(request["name"], context, tool, request.get("reason", "")))
             return None
         if operation == "intercept":
-            spec = OPERATIONS[request["name"]]
+            from wizolt.sdk import operations  # Imported on first use: most plugins never intercept.
+
+            spec = operations.OPERATIONS[request["name"]]
             item = plugin.interceptors.get(spec.name)
             if item is None:
                 raise PluginError(f"No interceptor registered for {spec.name}")
@@ -203,6 +209,8 @@ class Worker:
             item = plugin.presenters.get(request["site"])
             if item is None:
                 raise PluginError(f"No presenter registered for {request['site']}")
+            from wizolt.sdk import presentation
+
             view = presentation.decode(request["site"], request["view"])
             panel = await item.handler(context, view)
             Snapshot.check_panel(panel)

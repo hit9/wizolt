@@ -78,6 +78,8 @@ class PluginSource:
 
 def unmet_dependencies(declarations: tuple[str, ...]) -> list[str]:
     """Requirements this interpreter cannot satisfy, each with the reason; markers are honored."""
+    if not declarations:
+        return []  # Most plugins declare none; packaging costs every worker launch ~9 ms.
     from importlib.metadata import PackageNotFoundError, version
 
     from packaging.requirements import InvalidRequirement, Requirement

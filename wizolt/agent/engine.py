@@ -42,8 +42,6 @@ from wizolt.base import (
 )
 from wizolt.image import IMAGE_REFS_KEY, ImageInputs, UserInput
 from wizolt.model import ModelClient, PreparedRequest, resilience
-from wizolt.plugins.rules import adapter_rules
-from wizolt.sdk import operations
 from wizolt.session import QueuedInput, Session, SessionSnapshotCodec
 from wizolt.session.types import OperationReceipt
 from wizolt.shellhooks import SESSION_END, SESSION_START, STOP, STOP_FAILURE, SUBAGENT_START, SUBAGENT_STOP, USER_PROMPT_SUBMIT, HookOutcome, PromptBlocked
@@ -852,6 +850,10 @@ class Agent:
         plugins = self.session.plugins
         if plugins is None or not plugins.interception.would_match("prompt.submit", origin=origin):
             return message, text
+        # Imported once a registration matches: an agent without interceptors never pays for them.
+        from wizolt.plugins.rules import adapter_rules
+        from wizolt.sdk import operations
+
         refs = [ref for ref in message.get(IMAGE_REFS_KEY) or [] if isinstance(ref, dict)]
         value = operations.Prompt(text, text, tuple(str(ref.get("name") or "") for ref in refs), origin)
 

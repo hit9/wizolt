@@ -102,6 +102,97 @@ def setup(p):
         await self.measure("dense_projection_1000_times", dense_paint)
         rendered = json.dumps(PluginView.project(panels, 100, 32), ensure_ascii=True, sort_keys=True)
         self.results["dense_projection_1000_times"]["output_sha256"] = hashlib.sha256(rendered.encode()).hexdigest()
+        from importlib.util import find_spec
+
+        if find_spec("wizolt.plugins.presenters") is not None:  # Older revisions have no interception.
+            await self.interception(directory, context)
+
+    async def interception(self, directory, context):
+        """Chain overhead the host pays per operation: the fast paths every turn takes, and the
+        worker round trips a matching chain costs. Cores are trivial, so this is pure overhead."""
+        from types import MappingProxyType
+
+        from wizolt.plugins.runtime import PluginRuntime
+        from wizolt.sdk.operations import ModelRequest, ModelResponse, ToolCall, ToolResult
+
+        def plugin(name, body):
+            path = Path(directory) / f"{name}.py"
+            path.write_text("from wizolt.sdk import Panel, Text\nfrom wizolt.sdk.operations import *\nSDK_VERSION = 1\ndef setup(p):\n" + body)
+            return str(path)
+
+        relay = "    async def h(ctx, value, next):\n        return await next(value)\n    p.intercept('tool.call', h{})\n"
+        bash = ToolCall("c1", "Bash", MappingProxyType({"command": "ls"}))
+        read = ToolCall("c2", "Read", MappingProxyType({"path": "x"}))
+        result = ToolResult("ok")
+
+        async def core(_value):
+            return result
+
+        runtime = PluginRuntime(lambda: context)
+        runtime.REFRESH_INTERVAL = 3600
+        try:
+
+            async def empty():
+                for _ in range(1000):
+                    await runtime.interception.run("tool.call", bash, core)
+
+            await self.measure("chain_empty_1000_times", empty)
+            await runtime.manage("enable", plugin("bashonly", relay.format(", match={'tool': 'Bash'}")))
+
+            async def nonmatching():
+                for _ in range(1000):
+                    await runtime.interception.run("tool.call", read, core)
+
+            await self.measure("chain_nonmatching_1000_times", nonmatching)
+            for index in range(2):
+                await runtime.manage("enable", plugin(f"relay_{index}", relay.format("")))
+
+            async def noop_three():
+                for _ in range(20):
+                    assert await runtime.interception.run("tool.call", bash, core) == result
+
+            await self.measure("chain_three_noop_20_times", noop_three)
+        finally:
+            await runtime.close()
+
+        runtime = PluginRuntime(lambda: context)
+        runtime.REFRESH_INTERVAL = 3600
+        upper = "    async def h(ctx, request, next):\n        reply = await next(request)\n        return reply.replace(text=reply.text.upper())\n    p.intercept('model.request', h, response='replace')\n"
+        card = "    async def card(ctx, view):\n        return Panel((Text(view.tool + ' ' + view.status, 'success'),))\n    p.presenter('tool.result', card)\n"
+        request = ModelRequest("r1", "turn")
+        reply = ModelResponse("x" * 4000)
+
+        async def model_core(_value):
+            return reply
+
+        try:
+            await runtime.manage("enable", plugin("upper", upper))
+            await runtime.manage("enable", plugin("cards", card))
+
+            async def transform():
+                for _ in range(20):
+                    assert (await runtime.interception.run("model.request", request, model_core)).text == reply.text.upper()
+
+            async def present():
+                from wizolt.sdk.presentation import ToolSummary
+
+                for _ in range(20):
+                    assert await runtime.presenters.render("tool.result", ToolSummary("c1", "Bash", {}, "ok", "a\nb"))
+
+            await self.measure("buffered_response_transform_20_times", transform)
+            await self.measure("present_tool_result_20_times", present)
+            activity = "    async def line(ctx, view):\n        return Panel((Text(view.status, 'muted'),))\n    p.presenter('activity', line)\n"
+            await runtime.manage("enable", plugin("activity", activity))
+
+            async def refresh_activity():
+                # The 5 Hz pass with an activity presenter: one extra round trip per refresh.
+                for _ in range(20):
+                    await runtime.refresh()
+                assert runtime.presenters.activity is not None
+
+            await self.measure("refresh_with_activity_presenter_20_times", refresh_activity)
+        finally:
+            await runtime.close()
 
 
 def main():

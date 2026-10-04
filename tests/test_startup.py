@@ -91,6 +91,34 @@ def test_cli_import_chain_defers_markdown_rendering():
     subprocess.run([sys.executable, "-c", probe], check=True, capture_output=True)
 
 
+def test_cli_import_chain_defers_plugin_interception():
+    """Interception and presentation load once a registration matches, never at CLI import.
+
+    Without interceptors or presenters an agent never uses them; eagerly they added about 5 ms
+    to every launch."""
+    probe = (
+        "import sys;import wizolt.ui.cli;"
+        "eager = {'wizolt.sdk.operations', 'wizolt.sdk.presentation', 'wizolt.plugins.interception', 'wizolt.plugins.rules'} & set(sys.modules);"
+        "assert not eager, eager"
+    )
+    subprocess.run([sys.executable, "-c", probe], check=True, capture_output=True)
+
+
+def test_plugin_worker_launch_stays_light():
+    """A worker for a plain plugin skips dependency parsing and the interception machinery.
+
+    `packaging` alone cost about 9 ms of every worker launch when it loaded for plugins that
+    declare no dependencies."""
+    probe = (
+        "import sys;import wizolt.plugins.worker;"
+        "from wizolt.plugins.loading import unmet_dependencies;"
+        "assert unmet_dependencies(()) == [];"
+        "eager = {'packaging.requirements', 'wizolt.sdk.operations', 'wizolt.sdk.presentation'} & set(sys.modules);"
+        "assert not eager, eager"
+    )
+    subprocess.run([sys.executable, "-c", probe], check=True, capture_output=True)
+
+
 def test_cli_import_chain_defers_request_path_stacks():
     """The interactive CLI's import path carries no HTTP client or image decoder.
 

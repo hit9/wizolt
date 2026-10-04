@@ -20,11 +20,10 @@ from typing import TYPE_CHECKING, Any
 
 from wizolt.base import Json, ModelError, ToolCall
 from wizolt.sdk import PluginError
-from wizolt.sdk.operations import ModelRequest, ModelResponse, ModelToolCall, Refusal, Value, thaw
-from wizolt.sdk.settings import freeze
 
 if TYPE_CHECKING:
     from wizolt.config import Config, ProviderConfig
+    from wizolt.sdk.operations import ModelResponse, Value
     from wizolt.session.types import OperationReceipt
 
 Result = tuple[Json, list[ToolCall], str]
@@ -42,6 +41,9 @@ def tool_names(tools: list[Json] | None) -> tuple[str, ...]:
 
 
 def response_of(result: Result, model: str, entry: str) -> ModelResponse:
+    from wizolt.sdk.operations import ModelResponse, ModelToolCall
+    from wizolt.sdk.settings import freeze
+
     _, calls, content = result
     return ModelResponse(
         content,
@@ -54,6 +56,7 @@ def response_of(result: Result, model: str, entry: str) -> ModelResponse:
 def result_of(response: ModelResponse) -> Result:
     """A replacement response in the host's own shape; tool calls are parsed like the model's."""
     from wizolt.model.client import ModelClient
+    from wizolt.sdk.operations import thaw
 
     calls = [ModelClient.tool_call(call.id, call.name, thaw(call.arguments)) for call in response.tool_calls]
     assistant: Json = {"role": "assistant", "content": response.text}
@@ -124,7 +127,9 @@ async def logical_request(
     interception = getattr(plugins, "interception", None)
     if interception is None or not interception.would_match("model.request", purpose=purpose, reason=reason):
         return await send(provider)
+    # Imported once a registration matches: requests without interceptors never pay for them.
     from wizolt.plugins.rules import offered_tools
+    from wizolt.sdk.operations import ModelRequest, ModelResponse, Refusal
     from wizolt.session.types import OperationReceipt
 
     value = ModelRequest(uuid.uuid4().hex, purpose, reason, entry, provider.model, provider.reasoning or "", tool_names(tools), len(messages), retry_of)

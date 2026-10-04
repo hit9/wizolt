@@ -432,10 +432,9 @@ Implemented as designed unless named here. Known gaps carried from the implement
 The contracts above ship; the acceptance evidence this document requires does not yet exist.
 Each item names what to produce and where it belongs.
 
-- **Benchmarks.** Measure the empty chain, a non-matching chain, several no-op interceptors, a
-  buffered response transform, and unchanged UI painting. Keep branch comparisons under
-  `benchmarks/results/` without replacing the reference baseline, per
-  [the benchmark policy](../benchmarks/README.md#baseline-updates).
+- **Release baseline.** The branch comparison is recorded in
+  [the benchmark README](../benchmarks/README.md#interception-and-presenters-branch-review).
+  After merging, remeasure against the 0.73.0a2 reference before replacing it.
 - **Multiplexer acceptance.** Rerun `uv run pytest -m tmux` and `uv run pytest -m zellij` after
   the interception and presenter changes (0.45.1, the CI pin, or a compatible later version).
   The activity site touches the running region, so this run is also the evidence for unchanged

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Restore plugin worker launch and CLI import speed. Workers loaded `packaging` even for plugins
+  declaring no dependencies, plus the interception modules; the CLI loaded interception eagerly.
+  Against master (Linux ARM64, CPython 3.14.7, nine samples, back to back): worker enable/close
+  had grown about 15 ms and CLI import about 5 ms; after the fix they measure +3.2% and -0.1%.
+  Import tests guard both. Add interception probes to `benchmarks/plugins.py` (empty,
+  non-matching and no-op chains, a buffered transform, presenter rendering, an activity refresh);
+  results and retained costs are in `benchmarks/README.md`.
+
 - Document interception and presenter wishes for users in `docs/plugins.md`: what to ask for,
   what stays wizolt's, what it costs in tokens and cache reuse, and how a broken step recovers.
 
