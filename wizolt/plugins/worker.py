@@ -20,7 +20,7 @@ from typing import Any
 from wizolt.plugins.layout import SLOTS, LayoutBudget
 from wizolt.plugins.loading import LoadedPlugin, PluginSource
 from wizolt.plugins.protocol import MAX_FRAME, MAX_REQUEST, MAX_ROW_CHARACTERS, Snapshot
-from wizolt.sdk import Context, Event, PluginError, ToolActivity, operations
+from wizolt.sdk import Context, Event, PluginError, ToolActivity, operations, presentation
 from wizolt.sdk.operations import OPERATIONS, Operation, Value
 
 
@@ -123,6 +123,7 @@ class Worker:
                     name: {"match": {key: list(values) for key, values in item.match.items()}, "response": item.response}
                     for name, item in plugin.interceptors.items()
                 },
+                "presenters": {site: {"match": {key: list(values) for key, values in item.match.items()}} for site, item in plugin.presenters.items()},
             }
         if operation == "shutdown":
             # Join callbacks before closing their resources. Never cancel this shutdown call.
@@ -198,6 +199,14 @@ class Worker:
             if not isinstance(result, spec.results):
                 raise PluginError(f"{spec.name} handlers return {' or '.join(cls.__name__ for cls in spec.results)}")
             return operations.encode(result)
+        if operation == "present":
+            item = plugin.presenters.get(request["site"])
+            if item is None:
+                raise PluginError(f"No presenter registered for {request['site']}")
+            view = presentation.decode(request["site"], request["view"])
+            panel = await item.handler(context, view)
+            Snapshot.check_panel(panel)
+            return asdict(panel)
         if operation == "invoke":
             if request["kind"] not in ("command", "tool"):
                 raise PluginError("Invocation kind must be command or tool")

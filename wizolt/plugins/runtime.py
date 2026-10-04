@@ -389,6 +389,7 @@ class PluginRuntime:
                 operation: {"match": {key: sorted(values) for key, values in spec.match.items()}, **({"response": spec.response} if spec.response else {})}
                 for operation, spec in item.plugin.intercepts.items()
             },
+            "presenters": {site: {"match": {key: sorted(values) for key, values in spec.match.items()}} for site, spec in item.plugin.presenters.items()},
             "themes": list(item.plugin.themes),
             "presets": {kind: list(values) for kind, values in item.plugin.presets.items()},
             "error": item.error,

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add the `plugin.presenter` registration and its worker `present` operation: named
+  presentation sites (`tool.call`, `tool.result`, `activity`) receive immutable view models
+  (`wizolt.sdk.presentation`) and return the same Panel declaration components use. Panels are
+  bounded and validated at the process boundary; presenters get no host services.
+
 - Add `wizolt plugin test --operations FIXTURE.json`: each ordered entry runs an operation
   through the real handler and the live chain executor, with `next` answered from the fixture
   (a result or a failure). Missing or unused `next` results fail the trial, so no real tool,

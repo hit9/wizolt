@@ -187,6 +187,14 @@ class Interceptor:
 
 
 @dataclass(frozen=True)
+class PresenterRegistration:
+    """Internal registration: one renderer per presentation site and its prefilter."""
+
+    handler: Callable[[Context, Any], Awaitable[Panel]]
+    match: Mapping[str, tuple[str, ...]]
+
+
+@dataclass(frozen=True)
 class ComponentRegistration:
     """Internal registration couples a renderer with its declared layout defaults."""
 
@@ -241,6 +249,7 @@ class Plugin:
         self.ui = UI()
         self._service_handles: dict[str, Service] = {}
         self.interceptors: dict[str, Interceptor] = {}
+        self.presenters: dict[str, PresenterRegistration] = {}
 
     def service(self, name: str, factory: Callable[[], AbstractAsyncContextManager[Resource]]) -> Service[Resource]:
         """Register a lazy async context manager; disabling/reloading closes its resources.
@@ -357,6 +366,34 @@ class Plugin:
         if sum(map(len, self.observers.values())) >= self.MAX_REGISTRATIONS:
             raise PluginError(f"At most {self.MAX_REGISTRATIONS} observers are supported")
         self.observers.setdefault(event, []).append(observer)
+
+    def presenter(self, site: str, render: Callable[[Context, Any], Awaitable[Panel]], *, match: Mapping[str, str | tuple[str, ...]] | None = None) -> None:
+        """Render one named presentation site: ``async render(context, view) -> Panel``.
+
+        Sites are ``tool.call`` (how a settled invocation is identified), ``tool.result``
+        (its result summary) and ``activity`` (what the agent is doing). One registration
+        per site. The panel replaces only that site's rows: approvals, citations, tags
+        and queue facts stay host-owned. ``match`` prefilters on read-only view fields
+        (the tool sites match on ``tool``); nonmatching calls never reach this worker.
+        A failed, slow or conflicted presenter falls back to the builtin rendering.
+        """
+        from wizolt.sdk.presentation import SITES
+
+        allowed = SITES.get(site)
+        if allowed is None:
+            raise PluginError(f"Unknown presentation site {site!r}; choose {', '.join(sorted(SITES))}")
+        self._callback(render, asynchronous=True)
+        if site in self.presenters:
+            raise PluginError(f"Duplicate presenter for {site}; compose its cases in one handler")
+        normalized: dict[str, tuple[str, ...]] = {}
+        for key, value in (match or {}).items():
+            if key not in allowed:
+                raise PluginError(f"{site} matches only {', '.join(sorted(allowed)) or 'no fields'}")
+            values = (value,) if isinstance(value, str) else tuple(value)
+            if not values or any(not isinstance(item, str) or not item for item in values):
+                raise PluginError(f"match[{key!r}] must be a name or a list of names")
+            normalized[key] = values
+        self.presenters[site] = PresenterRegistration(render, normalized)
 
     def intercept(
         self, operation: str, handler: InterceptHandler, *, match: Mapping[str, str | tuple[str, ...]] | None = None, response: str | None = None
