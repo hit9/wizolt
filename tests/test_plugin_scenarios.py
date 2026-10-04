@@ -28,21 +28,27 @@ def setup(p):
             return result.action if result else "cancelled"
     async def form(ctx,args):
         return await p.ui.input("Name", required=True) or "cancelled"
+    async def guarded(ctx,args):
+        try:
+            return (await p.ui.show(View("Loading", Document("one")))).action
+        except Exception:
+            return "handled"
     p.command("pet","Choose",choose)
     p.command("live","Live",live)
     p.command("form","Form",form)
+    p.command("guarded","Guarded",guarded)
 """)
     config = tmp_path / "config.toml"
     config.write_text(f'[paths]\ndata_dir = "{tmp_path}/data"\n[plugins.pet]\npet = "cat" # keep\n')
     return path, config
 
 
-def run_scenario(scenario, tmp_path, capsys, steps, command="pet"):
+def run_scenario(scenario, tmp_path, capsys, steps, command="pet", *options):
     path, config = scenario
     fixture = tmp_path / "answers.json"
     fixture.write_text(json.dumps(steps))
     code = main(
-        ["test", str(path), "--config", str(config), "--call", "command:" + command, "--interactions", str(fixture), "--output", str(tmp_path / "output")]
+        ["test", str(path), "--config", str(config), "--call", "command:" + command, "--interactions", str(fixture), "--output", str(tmp_path / "output"), *options]
     )
     return code, json.loads(capsys.readouterr().out)
 
@@ -88,6 +94,14 @@ def test_live_update_and_action_result(scenario, tmp_path, capsys):
     )
     assert code == 0 and report["results"] == ["submit"]
     assert [item["view"]["title"] for item in report["interactions"] if "view" in item] == ["Loading", "Ready", "Ready"]
+
+
+def test_missing_expected_update_fails_even_when_the_plugin_handles_the_error(scenario, tmp_path, capsys):
+    steps = [{"expect": {"title": "Loading", "kind": "document"}, "updates": [{"title": "Ready", "kind": "document"}], "reply": {"action": "submit"}}]
+    code, report = run_scenario(scenario, tmp_path, capsys, steps, "guarded", "--timeout", "0.3")
+    assert report["results"] == ["handled"]
+    assert code == 1 and report["stage"] == "interactions"
+    assert "1 expected updates did not arrive" in report["error"]
 
 
 @pytest.mark.parametrize("reply,code", [({"values": {"value": "Alice"}}, 0), ({"values": {"value": ""}}, 1), (None, 0)])

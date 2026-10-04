@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Keep a plugin selection view's highlighted choice after a live update or scripted answer
+  while a search filter is active. Focus used an index into all items rather than the visible
+  rows, so Enter could submit a different choice than the one the user had highlighted.
+
+- Fail a scripted plugin trial whose expected view updates never arrive, even when the plugin
+  catches the resulting error. The timeout carried no message, so the trial reported success.
+
 - Stabilize the real stdio MCP cleanup test under parallel CI load: allow cold process startup,
   explicitly trigger cancellation during close, and bound PID waits. Preserve timeout and
   process-reaping assertions without requiring discovery to finish within two seconds.

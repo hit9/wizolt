@@ -96,7 +96,11 @@ class ScriptedDialogs:
             self.capture(state)
             self.answer(item)
             # Unlike a human view, a fixture may never exempt an action from its deadline.
-            result = await asyncio.wait_for(item.future, self.timeout)
+            try:
+                result = await asyncio.wait_for(item.future, self.timeout)
+            except TimeoutError:
+                # A bare TimeoutError has no text; finish() must still fail if the plugin catches it.
+                raise PluginError(f"{view.title!r}: {len(item.updates)} expected updates did not arrive within {self.timeout:g}s") from None
             self.trace.append({"result": result})
             return {"result": result}
         finally:

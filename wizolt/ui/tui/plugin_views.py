@@ -45,11 +45,21 @@ class SelectionState:
         self.checked = set(view.body.selected)
         self.update(view)
         if view.body.selected:
-            self.state.selected = self.state.choices.index(view.body.selected[0])
+            self.focus(view.body.selected[0])
 
     @property
     def editing(self) -> bool:
         return self.state.searching
+
+    def focus(self, choice: str | None) -> None:
+        """`selected` indexes the rows a search leaves visible, not the declared items."""
+        options = self.state.enabled()
+        if choice in options:
+            self.state.selected = options.index(choice)
+
+    def relabel(self) -> None:
+        # Search matches labels, so they must describe the current items before any lookup.
+        self.state.labels = {item.id: (("[x] " if item.id in self.checked else "[ ] ") if self.body.multiple else "") + item.label for item in self.body.items}
 
     def update(self, view: View) -> None:
         assert isinstance(view.body, Selection)
@@ -58,13 +68,13 @@ class SelectionState:
         selected = self.state.selected_choice()
         self.state.choices = tuple(item.id for item in self.body.items)
         self.checked.intersection_update(self.state.choices)
-        if selected in self.state.choices:
-            self.state.selected = self.state.choices.index(selected)
+        self.relabel()
+        self.focus(selected)
 
     def fragments(self) -> StyleAndTextTuples:
         _, height = self.size()
         self.state.height = height
-        self.state.labels = {item.id: (("[x] " if item.id in self.checked else "[ ] ") if self.body.multiple else "") + item.label for item in self.body.items}
+        self.relabel()
         previews = {item.id: item.preview for item in self.body.items}
         return self.state.fragments(
             self.view.title, lambda item: previews[item], keys="↑/↓ j/k move · / search" + (" · Space toggle" if self.body.multiple else "")
@@ -87,7 +97,7 @@ class SelectionState:
     def apply(self, result: ViewResult) -> None:
         self.checked = set(result.selected)
         if result.selected:
-            self.state.selected = self.state.choices.index(result.selected[0])
+            self.focus(result.selected[0])
 
 
 class DocumentState:
