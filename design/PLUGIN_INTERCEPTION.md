@@ -3,8 +3,9 @@
 Status: implemented through the shipped operations and presenter sites; view models are public
 in `wizolt.sdk.presentation`. [Implementation boundaries](PLUGINS.md) and the
 [packaged SDK reference](../wizolt/skill/builtin/plugin-workshop/SDK.md) describe shipped
-behavior; deviations from this document, where any remain, are listed in
-[Shipped deviations](#shipped-deviations) at the end.
+behavior. What is not implemented as written is listed under
+[Shipped deviations](#shipped-deviations), and the acceptance evidence this document requires
+but does not yet have is listed under [Remaining work](#remaining-work).
 
 ## Goal and decisions
 
@@ -426,3 +427,26 @@ Implemented as designed unless named here. Known gaps carried from the implement
   cache on. The activity site does use the cached-snapshot model described above.
 - `plugin.presenter` registrations live beside interceptors but get no host services, matching
   the failure rule for fields/components/presenters (skip and fall back), not interceptors.
+
+## Remaining work
+
+The contracts above ship; the acceptance evidence this document requires does not yet exist.
+Each item names what to produce and where it belongs.
+
+- **Benchmarks.** Measure the empty chain, a non-matching chain, several no-op interceptors, a
+  buffered response transform, and unchanged UI painting. Keep branch comparisons under
+  `benchmarks/results/` without replacing the reference baseline, per
+  [the benchmark policy](../benchmarks/README.md#baseline-updates).
+- **Multiplexer acceptance.** Rerun `uv run pytest -m tmux` and `uv run pytest -m zellij` after
+  the interception and presenter changes (0.45.1, the CI pin, or a compatible later version).
+  The activity site touches the running region, so this run is also the evidence for unchanged
+  painting.
+- **User documentation.** `docs/plugins.md` still describes plugins without the interception or
+  presenter wishes. Add the examples from [Examples and acceptance](#examples-and-acceptance)
+  in user terms, and keep continuation internals in the packaged skill references.
+- **Background-agent recovery.** `tests/test_plugin_recovery_interception.py` covers the
+  foreground agent only. A background agent must recover the same way: core `/plugins disable`
+  and reload stay outside every chain.
+- **Trial adapter checks.** `--operations` fixtures apply the shared chain rules but not the
+  adapter-specific ones. Cover attachment retention, offered tool names, and the placement of
+  plugin context blocks.
