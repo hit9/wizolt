@@ -1,8 +1,8 @@
 # Configuration
 
-wizolt reads a single TOML file, `~/.wizolt/config.toml` by default. Generate a
-commented starter with `wizolt --init-config`, or point at another file with
-`--config <path>`.
+wizolt reads `~/.wizolt/config.toml` by default, and your API keys from `secrets.toml` beside
+it. Generate a commented starter of both with `wizolt --init-config`, or point at another config
+with `--config <path>`.
 
 <span class="marker">Only the `[provider]` block is required.</span> Every other key falls back to
 a built-in default, so a minimal config is just a provider. Inspect the resolved configuration
@@ -29,15 +29,33 @@ active = "default"
 
 [provider.default]
 url = "https://api.deepseek.com"
-key = "sk-..."
 model = "deepseek-flash"
 ```
 
-These three fields are enough for most endpoints. Use `/config` to check the active settings.
+With the key from [API keys](#api-keys), these fields are enough for most endpoints. Use `/config` to check the active settings.
 If an endpoint needs an adjustment, set the relevant option below; your settings take precedence.
 
 Define additional blocks to use more providers. Switch between them with `/provider [NAME]`, and
 switch the active model with `/model [MODEL]`.
+
+### API keys
+
+Keys live in `secrets.toml`, next to the config, one line per provider entry:
+
+```toml
+default = "sk-..."
+deepseek = "sk-..."
+```
+
+`config.toml` then holds no secrets and can be shared or committed. `--init-config` creates
+`secrets.toml` readable only by you; keep it that way, and keep it out of version control. With
+`--config <path>`, wizolt reads the `secrets.toml` in that file's directory. A line naming an
+entry the config does not define is ignored.
+
+A `key` written in a `[provider.<name>]` block still works, and wins over `secrets.toml`. At
+startup wizolt offers to move such keys into `secrets.toml` (`[Y/n]`). If you answer `n`, it only
+prints a reminder until you add or change a key. `wizolt --migrate-secrets` moves them without
+asking.
 
 ### API protocol
 
@@ -84,12 +102,11 @@ them. `headers` sends whatever the provider documents alongside every request fr
 ```toml
 [provider.cmd]
 url = "https://api.commandcode.ai/provider/v1"
-key = "..."
 model = "deepseek/deepseek-flash"
 headers = { x-cmd-zdr = "1" }   # Command Code: route only to zero-retention upstreams
 ```
 
-Values are ASCII strings or plain integers. `key` still supplies authentication, so a header is
+Values are ASCII strings or plain integers. The entry's key still supplies authentication, so a header is
 only needed for what the provider documents separately — zero-retention routing, a gateway's
 tenant or routing key. The same headers are used when `/model` asks the endpoint for its model
 list. `/config` lists the headers in effect.
@@ -202,7 +219,6 @@ provider = "vision"
 
 [provider.vision]
 url = "https://api.deepseek.com"
-key = "sk-..."
 model = "deepseek-flash"
 ```
 
@@ -304,12 +320,10 @@ active = "anthropic"
 
 [provider.anthropic]
 url = "https://api.anthropic.com/v1"
-key = "sk-ant-..."
 model = "claude-..."
 
 [provider.deepseek]
 url = "https://api.deepseek.com/v1"
-key = "sk-..."
 model = "deepseek-..."
 
 [compaction]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import fcntl
 import fnmatch
+import hashlib
 import os
 import platform
 import re
@@ -22,6 +23,8 @@ from wizolt.providers.compat import bundled_policy
 from wizolt.utils.workspace import Workspace
 
 if TYPE_CHECKING:
+    from tomlkit import TOMLDocument
+
     from wizolt.agentsmd import AgentsFile
     from wizolt.providers.compat import ProviderPolicy
 
@@ -599,6 +602,36 @@ class Config:
         return float(value)
 
 
+@dataclass(frozen=True)
+class InlineKeys:
+    """Keys written in the config itself, and whether the user already chose to keep exactly these.
+
+    `record` holds SHA-256 fingerprints of the declined (entry, key) pairs, never a key, so a new or
+    changed key is asked about again while a kept one only draws a reminder.
+    """
+
+    config_path: str
+    keys: dict[str, str]
+    record: str
+
+    @property
+    def declined(self) -> bool:
+        try:
+            with open(self.record, encoding="utf-8") as file:
+                kept = set(file.read().split())
+        except FileNotFoundError:
+            kept = set()
+        return self.fingerprints() <= kept
+
+    def decline(self) -> None:
+        """Remember these keys as kept; replacing the record lets moved or changed keys drop out."""
+        os.makedirs(os.path.dirname(self.record), exist_ok=True)
+        ConfigFile.write_atomic(self.record, "".join(line + "\n" for line in sorted(self.fingerprints())))
+
+    def fingerprints(self) -> set[str]:
+        return {hashlib.sha256(f"{name}\0{key}".encode()).hexdigest() for name, key in self.keys.items()}
+
+
 class ConfigFile:
     # Only the provider block is required; every other key falls back to its built-in default, so the
     # commented lines below just document the common knobs and their defaults.
@@ -609,8 +642,8 @@ active = "default"
 
 [provider.default]
 url = ""
-key = ""
 model = ""
+# key: put it in secrets.toml beside this file (default = "sk-..."), so this file can be shared
 # api = "auto"                 # auto | chat | responses | anthropic
 # stream = true
 # reasoning = "medium"
@@ -625,7 +658,7 @@ model = ""
 # timeout = 120                # transport inactivity
 # response_timeout = 600       # total generation time; 0 disables
 # available_models = ["example-model", "example-model-mini"]
-# headers = { x-routing-mode = "private" }  # extra HTTP headers; the key above still sets auth
+# headers = { x-routing-mode = "private" }  # extra HTTP headers; the key still sets auth
 # omit_body = ["reasoning_effort"]   # request fields this endpoint rejects; extra_body is the
                                      # other half, for fields it needs added
 
@@ -679,9 +712,23 @@ model = ""
 # hooks = [{ type = "command", command = "~/bin/guard.sh" }]   # exit 2 blocks, stderr says why
 """
 
+    # Provider keys live here, `<provider entry> = "<key>"`, so the config itself can be shared. A key
+    # written in the config still works and wins; the startup migration moves it here.
+    SECRETS_NAME: ClassVar[str] = "secrets.toml"
+    SECRETS_HEADER: ClassVar[str] = """# wizolt API keys, one per provider entry in config.toml: <entry name> = "<key>".
+# Keep this file private; config.toml can then be shared without them.
+"""
+    SECRETS_TEXT: ClassVar[str] = SECRETS_HEADER + 'default = ""\n'
+
     @classmethod
     def resolve_path(cls, path: str | None) -> str:
         return UserPaths.resolve_config_path(path)
+
+    @classmethod
+    def secrets_path(cls, config_path: str) -> str:
+        """Beside the config path as given, not its symlink target, so a config linked from a
+        dotfiles checkout never pulls keys into that checkout."""
+        return os.path.join(os.path.dirname(config_path), cls.SECRETS_NAME)
 
     @classmethod
     def init(cls, path: str | None = None) -> tuple[str, bool]:
@@ -691,19 +738,105 @@ model = ""
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
         with open(config_path, "w", encoding="utf-8") as file:
             file.write(cls.DEFAULT_TEXT)
+        if not os.path.exists(secrets_path := cls.secrets_path(config_path)):
+            cls.write_atomic(secrets_path, cls.SECRETS_TEXT)
         return config_path, True
 
     @classmethod
     def load(cls, path: str | None = None) -> Json:
         config_path = cls.resolve_path(path)
         try:
-            with open(config_path, "rb") as file:
-                data = tomllib.load(file)
+            data = cls.read_toml(config_path)
         except FileNotFoundError as error:
             raise ConfigError(f"config not found: {config_path}; run --init-config") from error
+        # A secret for an entry this config lacks is ignored, not an error: one shared config may
+        # define fewer entries than a machine's secrets, and a misspelled name still surfaces as
+        # its entry's missing key.
+        entries = cls.provider_entries(data)
+        for name, key in cls.load_secrets(config_path).items():
+            if name in entries and not entries[name].get("key"):
+                entries[name]["key"] = key
+        return data
+
+    @classmethod
+    def load_secrets(cls, config_path: str) -> dict[str, str]:
+        """The non-empty keys in the secrets file beside `config_path`; none when it is absent."""
+        path = cls.secrets_path(config_path)
+        try:
+            data = cls.read_toml(path)
+        except FileNotFoundError:
+            return {}
+        for name, value in data.items():
+            if not isinstance(value, str):
+                raise ConfigError(f'{path}: `{name}` must be a string; this file holds only <provider entry> = "<key>" lines')
+        return {name: value for name, value in data.items() if value}
+
+    @classmethod
+    def inline_keys(cls, path: str | None = None) -> InlineKeys:
+        """The keys written in the config itself; none when there is no config yet."""
+        config_path = cls.resolve_path(path)
+        try:
+            data = cls.read_toml(config_path)
+        except FileNotFoundError:
+            data = {}
+        keys = {name: key for name, entry in cls.provider_entries(data).items() if isinstance(key := entry.get("key"), str) and key}
+        record = os.path.join(os.path.expanduser(Config.data_dir_from(data)), "kept-config-keys")
+        return InlineKeys(config_path, keys, record)
+
+    @classmethod
+    def migrate_keys(cls, path: str | None = None) -> list[str]:
+        """Move the keys written in the config into secrets.toml, replacing older values there, and
+        return the entries moved. Comments and layout of both files survive.
+
+        Secrets are saved before the config, so an interruption leaves a key in both files, never in
+        neither, and running it again finishes the move."""
+        import tomlkit
+
+        config_path = cls.resolve_path(path)
+        config_real = os.path.realpath(config_path)
+        document = cls.parse_document(config_real, "")
+        moved = {name: entry for name, entry in cls.provider_entries(document).items() if isinstance(entry.get("key"), str) and entry["key"]}
+        if not moved:
+            return []
+        secrets_real = os.path.realpath(cls.secrets_path(config_path))
+        secrets = cls.parse_document(secrets_real, cls.SECRETS_HEADER)
+        for name, entry in moved.items():
+            secrets[name] = str(entry.pop("key"))
+        cls.write_atomic(secrets_real, tomlkit.dumps(secrets))
+        cls.write_atomic(config_real, tomlkit.dumps(document))
+        return list(moved)
+
+    @staticmethod
+    def parse_document(path: str, missing: str) -> TOMLDocument:
+        """A comment-preserving document of `path`, or of `missing` when the file is absent."""
+        import tomlkit
+        from tomlkit.exceptions import ParseError
+
+        try:
+            with open(path, encoding="utf-8") as file:
+                return tomlkit.parse(file.read())
+        except FileNotFoundError:
+            return tomlkit.parse(missing)
+        except ParseError as error:
+            raise ConfigError(f"invalid config {path}: {error}") from error
+
+    @staticmethod
+    def read_toml(path: str) -> Json:
+        try:
+            with open(path, "rb") as file:
+                return tomllib.load(file)
         except tomllib.TOMLDecodeError as error:
-            raise ConfigError(f"invalid config {config_path}: {error}") from error
-        return data if isinstance(data, dict) else {}
+            raise ConfigError(f"invalid config {path}: {error}") from error
+
+    @staticmethod
+    def provider_entries(data: MutableMapping) -> dict[str, MutableMapping]:
+        """Provider entries by name, as Config.from_dict reads them: the named tables, or else the
+        flat `[provider]` block under its `active` name."""
+        root = data.get("provider")
+        if not isinstance(root, MutableMapping):
+            return {}
+        named = {name: value for name, value in root.items() if name != "active" and isinstance(value, MutableMapping)}
+        return named or {str(root.get("active", "default")): root}
 
     @staticmethod
     def set_runtime(path: str, key: str, value: str) -> None:
@@ -766,7 +899,7 @@ model = ""
                 table.pop(key, None)
             for key, value in values.items():
                 table[key] = value
-            ConfigFile._save_document(path, document)
+            ConfigFile.write_atomic(path, tomlkit.dumps(document))
 
     @staticmethod
     def _table(document, section: tuple[str, ...], path: str):
@@ -797,19 +930,18 @@ model = ""
         if expected is not None and table.get(key) != expected:
             return
         table[key] = value
-        ConfigFile._save_document(path, document)
+        ConfigFile.write_atomic(path, tomlkit.dumps(document))
 
     @staticmethod
-    def _save_document(path: str, document) -> None:
-        """Replace a document atomically while its caller holds the stable sidecar lease."""
-        import tomlkit
-
+    def write_atomic(path: str, text: str) -> None:
+        """Replace `path` with `text` in one rename, keeping an existing file's mode; a new file is
+        0600, since config and secrets files both may hold keys."""
         mode = stat.S_IMODE(os.stat(path).st_mode) if os.path.exists(path) else 0o600
         temporary = path + ".tmp"
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as file:
-                file.write(tomlkit.dumps(document))
+                file.write(text)
                 file.flush()
                 os.fsync(file.fileno())
             os.chmod(temporary, mode)

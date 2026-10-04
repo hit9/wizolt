@@ -39,8 +39,8 @@ when you need isolation. See [Safety](safety.md).
 
 ```sh
 uv tool install wizolt
-wizolt --init-config          # write ~/.wizolt/config.toml
-# add your provider's url, key, and model to that file
+wizolt --init-config          # write ~/.wizolt/config.toml and secrets.toml
+# add your provider's url and model to config.toml, its key to secrets.toml
 wizolt
 ```
 

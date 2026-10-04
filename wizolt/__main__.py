@@ -193,6 +193,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="wizolt", epilog="Documentation: https://wizolt.readthedocs.io")
     parser.add_argument("--config", default=None, help="Path to config TOML")
     parser.add_argument("--init-config", action="store_true", help="Create a default config file")
+    parser.add_argument("--migrate-secrets", action="store_true", help="Move API keys written in the config into secrets.toml beside it")
     parser.add_argument("--yolo", action="store_true", help="Skip confirmations for mutating tools")
     parser.add_argument("--no-plugins", action="store_true", help="Start without plugins; keep saved installation and enabled preferences")
     parser.add_argument("--theme", default="", help="Color theme: auto, dark, light, or a named theme (defaults to runtime.theme, then auto)")
@@ -226,6 +227,20 @@ def main(argv: list[str] | None = None) -> int:
         path, created = _cli.ConfigFile.init(args.config)
         print(("Created" if created else "Exists") + " config: " + path)
         return 0
+    if args.migrate_secrets:
+        path = _cli.ConfigFile.resolve_path(args.config)
+        try:
+            moved = _cli.ConfigFile.migrate_keys(path)
+        except _cli.ConfigError as error:
+            print("ConfigError: " + str(error), file=sys.stderr)
+            return 2
+        except OSError as error:
+            print("Error: " + str(error), file=sys.stderr)
+            return 1
+        print(f"Moved keys for {', '.join(moved)} to {_cli.ConfigFile.secrets_path(path)}" if moved else f"No keys to move in {path}")
+        return 0
+    # Asked before the banner: the TUI owns the terminal from then on.
+    offer_key_migration(args.config)
 
     # This line needs only the lightweight version module. Put it on screen before importing the
     # session and rendering stacks; the first CommandLoop consumes the handoff, while a session
@@ -320,6 +335,41 @@ def main(argv: list[str] | None = None) -> int:
         erase_starting_line()
         print("Error: " + str(error), file=sys.stderr)
         return 1
+
+
+def offer_key_migration(path: str | None) -> None:
+    """Offer to move keys written in the config into secrets.toml, once per new or changed key.
+
+    A declined move is remembered and afterwards only reminded about, as it is without a terminal
+    to ask on. Keys work from either file, so a failed move or record never stops the start.
+    """
+    try:
+        inline = _cli.ConfigFile.inline_keys(path)
+    except _cli.ConfigError:
+        return  # the session load reports a broken config, with its own exit code
+    if not inline.keys:
+        return
+    names, secrets = ", ".join(inline.keys), _cli.ConfigFile.secrets_path(inline.config_path)
+    if inline.declined or not (sys.stdin.isatty() and sys.stdout.isatty()):
+        print(f"Warning: {inline.config_path} holds API keys for {names}; run `wizolt --migrate-secrets` to move them to {secrets}", file=sys.stderr)
+        return
+    print(f"{inline.config_path} holds API keys for {names}; with them in {secrets}, the config can be shared.")
+    try:
+        answer = input(f"Move them to {secrets}? [Y/n] ").strip().lower()
+    except EOFError:
+        print()
+        return
+    except KeyboardInterrupt:
+        print()
+        raise SystemExit(130) from None
+    try:
+        if answer in ("", "y", "yes"):
+            _cli.ConfigFile.migrate_keys(path)
+            print(f"Moved keys for {names} to {secrets}")
+        else:
+            inline.decline()
+    except (OSError, _cli.ConfigError) as error:
+        print(f"Warning: {error}", file=sys.stderr)
 
 
 def erase_starting_line() -> None:

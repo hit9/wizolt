@@ -6,9 +6,8 @@ Find the symptom; the fix is beside it.
 
 | Symptom | Fix |
 |---|---|
-| `missing config: provider.url, ...` | The active provider entry is incomplete. Fill the three keys, or run `wizolt --init-config` for a fresh file |
-| Authentication errors | `url`, `key`, and `model` must come from the same provider |
-| Missing compaction provider | Set `[compaction] provider` to an existing `[provider.NAME]` entry with a URL, key and model. See [Compaction model](configuration.md#compaction-model) |
+| `missing config: provider.url, ...` | The active provider entry is incomplete. Fill `url` and `model`, put its key in [`secrets.toml`](configuration.md#api-keys), or run `wizolt --init-config` for fresh files |
+| Authentication errors | `url`, `model`, and the key must come from the same provider || Missing compaction provider | Set `[compaction] provider` to an existing `[provider.NAME]` entry with a URL, key and model. See [Compaction model](configuration.md#compaction-model) |
 
 ## Compatibility catalog
 

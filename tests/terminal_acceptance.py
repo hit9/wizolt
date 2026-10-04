@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 from prompt_toolkit.utils import get_cwidth
 
+from wizolt.config import ConfigFile
+
 WIDE, NARROW = 100, 62
 TALL, SHORT = 30, 18
 CYCLES = 30
@@ -18,10 +20,19 @@ MARKERS = 200
 DRIVER = Path(__file__).with_name("tmux_driver.py")
 
 
+def write_cli_config(path, text):
+    """Use the current secrets layout so unrelated TUI scenarios reach their first prompt.
+
+    Migration prompts have dedicated tests; these scenarios need an already configured CLI.
+    """
+    path.write_text(text)
+    ConfigFile.migrate_keys(str(path))
+
+
 def test_plugin_views_shortcuts_and_resize_restore_input(pane):
     """Real worker, host modal and alternate-screen viewer share the CLI's input owner."""
     config = pane.path / "views.toml"
-    config.write_text(f'[paths]\ndata_dir = "{pane.path}/data"\n[provider]\nactive = "test"\n[provider.test]\nurl = "http://127.0.0.1:9/v1"\nkey = "test"\nmodel = "test-model"\n')
+    write_cli_config(config, f'[paths]\ndata_dir = "{pane.path}/data"\n[provider]\nactive = "test"\n[provider.test]\nurl = "http://127.0.0.1:9/v1"\nkey = "test"\nmodel = "test-model"\n')
     plugin = pane.path / "demo.py"
     plugin.write_text('''from wizolt.sdk.views import Choice, Document, View
 SDK_VERSION = 1
@@ -117,7 +128,7 @@ def test_transcript_survives_resize_roundtrip_between_frames(pane):
 def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     """Manage a real packaged plugin while the input and renderer remain host-owned."""
     config = pane.path / "plugins.toml"
-    config.write_text(
+    write_cli_config(config,
         f'[paths]\ndata_dir = "{pane.path}/data"\n'
         '[provider]\nactive = "test"\n[provider.test]\n'
         'url = "http://127.0.0.1:9/v1"\nkey = "test"\nmodel = "test-model"\n'
@@ -177,7 +188,7 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
 
 def test_plugin_appearance_reload_preserves_input_and_updates_bars(pane):
     config = pane.path / "appearance-plugin.toml"
-    config.write_text(
+    write_cli_config(config,
         f'[paths]\ndata_dir = "{pane.path}/data"\n'
         '[provider]\nactive = "test"\n[provider.test]\n'
         'url = "http://127.0.0.1:9/v1"\nkey = "test"\nmodel = "test-model"\n'
@@ -334,7 +345,7 @@ def test_long_inline_selector_keeps_context_visible(pane, height):
 
 def test_cli_startup_banner_survives_growing_and_shrinking_pane(pane):
     config = pane.path / "config.toml"
-    config.write_text(
+    write_cli_config(config,
         f'[paths]\ndata_dir = "{pane.path}/data"\n'
         '[provider]\nactive = "test"\n[provider.test]\n'
         'url = "http://127.0.0.1:9/v1"\nkey = "test-only"\nmodel = "tmux-startup-model"\n'
@@ -389,7 +400,7 @@ def test_cli_startup_banner_survives_growing_and_shrinking_pane(pane):
 
 def test_cli_agents_switch_rebuilds_only_selected_transcript(pane):
     config = pane.path / "agents.toml"
-    config.write_text(
+    write_cli_config(config,
         f'[paths]\ndata_dir = "{pane.path}/data"\n'
         '[provider]\nactive = "test"\n[provider.test]\n'
         'url = "http://127.0.0.1:9/v1"\nkey = "test-only"\nmodel = "agents-model"\n'
@@ -457,7 +468,7 @@ def test_cli_agents_switch_rebuilds_only_selected_transcript(pane):
 
 def test_cli_subagent_approval_config_survives_resize_under_yolo(pane):
     config = pane.path / "approval.toml"
-    config.write_text(
+    write_cli_config(config,
         f'[paths]\ndata_dir = "{pane.path}/data"\n'
         '[provider]\nactive = "test"\n[provider.test]\n'
         'url = "http://127.0.0.1:9/v1"\nkey = "test-only"\nmodel = "gpt-4"\n'
@@ -562,7 +573,7 @@ def test_cli_subagent_approval_config_survives_resize_under_yolo(pane):
 
 def test_cli_agents_live_preview_and_stop_keys(pane):
     config = pane.path / "agent-controls.toml"
-    config.write_text(
+    write_cli_config(config,
         f'[paths]\ndata_dir = "{pane.path}/data"\n'
         '[provider]\nactive = "test"\n[provider.test]\n'
         'url = "http://127.0.0.1:9/v1"\nkey = "test-only"\nmodel = "test-model"\n'

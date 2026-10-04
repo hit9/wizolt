@@ -330,7 +330,7 @@ class Session:
         return [job for job in self.jobs.values() if job.status == "running"]
 
     def missing_config(self) -> list[str]:
-        return ["provider." + name for name in self.config.provider.missing_fields()]
+        return ["provider." + name + (" (set it in secrets.toml)" if name == "key" else "") for name in self.config.provider.missing_fields()]
 
     def store_tool_result(self, name: str, args: ToolArgs, output: str, note: str = "") -> str:
         """Allocate a session-scoped receipt; tr.1 in another agent is a different record.

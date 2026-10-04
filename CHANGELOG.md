@@ -63,6 +63,15 @@
 - Add declarative plugin view contracts and request-owned interaction lifetimes. Human
   interaction pauses execution deadlines; cancellation and replacement dismiss owned views.
 
+- Keep API keys in `secrets.toml` beside the config (`<entry name> = "<key>"`), so `config.toml`
+  can be shared. `--init-config` now writes a keyless config and a 0600 `secrets.toml`. A `key`
+  written in the config still works and wins; at startup wizolt offers `[Y/n]` to move it. A
+  declined move is remembered by fingerprint and only reminded about until a key is new or
+  changed. `--migrate-secrets` moves keys without asking.
+
+- Prepare real-terminal CLI fixtures with split secrets, keeping migration prompts out of
+  unrelated UI scenarios; verify explicit migration still works after a remembered refusal.
+
 - Check child process state in one observation in shell cancellation tests, avoiding false
   failures when a killed process disappears between a PID probe and reading its state.
 
