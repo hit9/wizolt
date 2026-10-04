@@ -21,6 +21,7 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.preset(kind, name, source)` | Register a `statusbar` or `divider` format string |
 | `plugin.service(name, factory)` | `factory() -> AsyncContextManager[T]`; returns `Service[T]` |
 | `plugin.summarizer(callback)` | Async `(Context, str) -> str`; one summary strategy per agent |
+| `plugin.intercept(operation, handler, *, match=None, response=None)` | Async `(Context, value, next) -> result`; wrap one operation; see [INTERCEPTION.md](INTERCEPTION.md) |
 | `plugin.models.complete(prompt, *, system="", provider="", model="", effort="", api="")` | Async text request; returns `ModelReply` |
 | `plugin.ui.components.list()` | Async; returns `tuple[Component, ...]` in visual order |
 | `plugin.ui.components.move(component, *, before="", after="")` | Async; exactly one anchor, same slot; persists user order and returns the updated list |

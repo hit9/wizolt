@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add the plugin interception core (design/PLUGIN_INTERCEPTION.md): typed operation values in
+  `wizolt.sdk.operations`, `plugin.intercept`, a single-use cross-process `next()` on its own
+  transport message class, ordered chain snapshots with leases, read-only field checks, typed
+  refusals and the block-until-reload failure policy. Interceptors get per-operation host
+  services; their deadline pauses while downstream work runs. Plugin health is now tracked per
+  registration: a failed observer or component no longer hides a plugin's fields, commands or
+  tools. No host operation is interceptable yet; adapters follow.
+
 - Document the proposed plugin middleware and presentation architecture: typed semantic
   operations, scoped cross-process continuations, deterministic ordering, execution receipts,
   request purposes/retries, buffered-response preview rules and independent recovery paths.

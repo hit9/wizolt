@@ -20,7 +20,41 @@ from typing import Any
 from wizolt.plugins.layout import SLOTS, LayoutBudget
 from wizolt.plugins.loading import LoadedPlugin, PluginSource
 from wizolt.plugins.protocol import MAX_FRAME, MAX_REQUEST, MAX_ROW_CHARACTERS, Snapshot
-from wizolt.sdk import Context, Event, PluginError, ToolActivity
+from wizolt.sdk import Context, Event, PluginError, ToolActivity, operations
+from wizolt.sdk.operations import OPERATIONS, Operation, Value
+
+
+class Continuation:
+    """The author-facing ``next``: single-use, bound to one handler call, awaited inside it.
+
+    The host enforces the same rules with its own token; this side only fails fast with a clear
+    message. Calling after the handler returned, twice, or concurrently is an error.
+    """
+
+    def __init__(self, worker: Worker, token: str, parent: int, spec: Operation):
+        self.worker, self.token, self.parent, self.spec = worker, token, parent, spec
+        self.used = False
+        self.closed = False
+
+    async def __call__(self, value: Value) -> Value:
+        if self.closed:
+            raise PluginError("next() belongs to its handler call and cannot be used after it returns")
+        if self.used:
+            raise PluginError("next() is single-use")
+        self.used = True
+        if not isinstance(value, self.spec.input):
+            raise PluginError(f"next() takes a {self.spec.input.__name__}")
+        future = asyncio.get_running_loop().create_future()
+        self.worker.continuations[self.token] = future
+        try:
+            self.worker.write({"continue": self.token, "parent": self.parent, "input": operations.encode(value)})
+            raw = await future
+        finally:
+            self.worker.continuations.pop(self.token, None)
+        return operations.decode(raw, self.spec.results)  # Downstream may refuse too.
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class Worker:
@@ -40,6 +74,7 @@ class Worker:
         self.current_request: ContextVar[int | None] = ContextVar("plugin_request", default=None)
         self.service_sequence = 0
         self.services: dict[int, asyncio.Future] = {}
+        self.continuations: dict[str, asyncio.Future] = {}
 
     async def call_host(self, service: str, arguments: dict) -> dict:
         parent = self.current_request.get()
@@ -85,6 +120,10 @@ class Worker:
                     for name, action in plugin.commands.items()
                 },
                 "tools": {name: {"description": action.description, "parameters": dict(action.parameters)} for name, action in plugin.tools.items()},
+                "intercepts": {
+                    name: {"match": {key: list(values) for key, values in item.match.items()}, "response": item.response}
+                    for name, item in plugin.interceptors.items()
+                },
             }
         if operation == "shutdown":
             # Join callbacks before closing their resources. Never cancel this shutdown call.
@@ -153,6 +192,21 @@ class Worker:
             for callback in plugin.observers.get(request["name"], ()):
                 await callback(Event(request["name"], context, tool, request.get("reason", "")))
             return None
+        if operation == "intercept":
+            spec = OPERATIONS[request["name"]]
+            item = plugin.interceptors.get(spec.name)
+            if item is None:
+                raise PluginError(f"No interceptor registered for {spec.name}")
+            value = operations.decode(request["input"], (spec.input,))
+            continuation = Continuation(self, request["token"], request["id"], spec)
+            with plugin.services.invocation():
+                try:
+                    result = await item.handler(context, value, continuation)
+                finally:
+                    continuation.close()
+            if not isinstance(result, spec.results):
+                raise PluginError(f"{spec.name} handlers return {' or '.join(cls.__name__ for cls in spec.results)}")
+            return operations.encode(result)
         if operation == "invoke":
             if request["kind"] not in ("command", "tool"):
                 raise PluginError("Invocation kind must be command or tool")
@@ -195,7 +249,14 @@ class Worker:
                 if len(line) > MAX_REQUEST:
                     raise PluginError("Plugin request exceeds protocol frame limit")
                 request = json.loads(line)
-                if "service_result" in request:
+                if "continue_result" in request:
+                    future = self.continuations.get(request["continue_result"])
+                    if future is not None and not future.done():
+                        if error := request.get("error"):
+                            future.set_exception(PluginError(error))
+                        else:
+                            future.set_result(request["value"])
+                elif "service_result" in request:
                     future = self.services.get(request["service_result"])
                     if future is not None and not future.done():
                         if error := request.get("error"):

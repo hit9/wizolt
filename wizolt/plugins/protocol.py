@@ -4,7 +4,7 @@ Bound the transport independently of UI clipping: a renderer must never receive 
 plugin response. These are host budgets, not extension points or a security sandbox.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from wizolt.sdk import Line, Panel, PluginError, Text
@@ -39,6 +39,7 @@ class Capabilities:
     themes: dict[str, dict[str, Any]]
     presets: dict[str, dict[str, str]]
     summarizer: bool = False
+    intercepts: dict[str, "InterceptSpec"] = field(default_factory=dict)
 
     @classmethod
     def decode(cls, name: str, value: dict) -> "Capabilities":
@@ -52,7 +53,34 @@ class Capabilities:
             value["themes"],
             value["presets"],
             value.get("summarizer", False),
+            {key: InterceptSpec.decode(key, item) for key, item in value.get("intercepts", {}).items()},
         )
+
+
+@dataclass(frozen=True)
+class InterceptSpec:
+    """A registration's host-side prefilter and response mode; never a plugin predicate."""
+
+    match: dict[str, frozenset[str]]
+    response: str = ""
+
+    @classmethod
+    def decode(cls, operation: str, value: dict) -> "InterceptSpec":
+        from wizolt.sdk.operations import OPERATIONS
+
+        spec = OPERATIONS.get(operation)
+        match = value.get("match", {})
+        if spec is None or not isinstance(match, dict) or not set(match) <= spec.match:
+            raise PluginError(f"Invalid interceptor registration for {operation}")
+        if any(not isinstance(items, list) or not items or any(not isinstance(item, str) for item in items) for items in match.values()):
+            raise PluginError(f"Invalid {operation} matcher")
+        response = value.get("response", "")
+        if response not in (("preserve", "replace") if spec.response_modes else ("",)):
+            raise PluginError(f"Invalid {operation} response mode")
+        return cls({key: frozenset(items) for key, items in match.items()}, response)
+
+    def matches(self, value: object) -> bool:
+        return all(getattr(value, key, None) in allowed for key, allowed in self.match.items())
 
 
 @dataclass(frozen=True)

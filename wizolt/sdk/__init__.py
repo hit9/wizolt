@@ -174,6 +174,17 @@ Component = Callable[[Context], Panel]
 Observer = Callable[[Event], Awaitable[None]]
 Handler = Callable[[Context, Mapping[str, Any]], Awaitable[str]]
 Summarizer = Callable[[Context, str], Awaitable[str]]
+# (context, operation value, next) -> result; next: async (value) -> downstream result.
+InterceptHandler = Callable[[Context, Any, Callable[[Any], Awaitable[Any]]], Awaitable[Any]]
+
+
+@dataclass(frozen=True)
+class Interceptor:
+    """Internal registration: one handler per operation, its prefilter and response mode."""
+
+    handler: InterceptHandler
+    match: Mapping[str, tuple[str, ...]]
+    response: str = ""
 
 
 @dataclass(frozen=True)
@@ -230,6 +241,7 @@ class Plugin:
         self.models = Models()
         self.ui = UI()
         self._service_handles: dict[str, Service] = {}
+        self.interceptors: dict[str, Interceptor] = {}
         self.summary_handler: Summarizer | None = None
 
     def summarizer(self, callback: Summarizer) -> None:
@@ -358,3 +370,39 @@ class Plugin:
         if sum(map(len, self.observers.values())) >= self.MAX_REGISTRATIONS:
             raise PluginError(f"At most {self.MAX_REGISTRATIONS} observers are supported")
         self.observers.setdefault(event, []).append(observer)
+
+    def intercept(
+        self, operation: str, handler: InterceptHandler, *, match: Mapping[str, str | tuple[str, ...]] | None = None, response: str | None = None
+    ) -> None:
+        """Wrap a semantic operation: ``async handler(context, value, next)``.
+
+        ``await next(value)`` runs the rest of the chain and then the host; call it at most once,
+        inside the handler. Return its result, a replacement result, or a typed ``Refusal``
+        before calling it. One registration per operation: compose cases in ordinary Python.
+        ``match`` is a host-side prefilter on read-only input fields; nonmatching operations
+        never reach this worker. ``model.request`` declares ``response="preserve"`` (default:
+        route and pass the response through, keeping live streaming) or ``"replace"``.
+        """
+        from wizolt.sdk.operations import OPERATIONS
+
+        spec = OPERATIONS.get(operation)
+        if spec is None:
+            raise PluginError(f"Unknown operation {operation!r}; choose {', '.join(sorted(OPERATIONS))}")
+        self._callback(handler, asynchronous=True)
+        if operation in self.interceptors:
+            raise PluginError(f"Duplicate interceptor for {operation}; compose its cases in one handler")
+        normalized: dict[str, tuple[str, ...]] = {}
+        for key, value in (match or {}).items():
+            if key not in spec.match:
+                raise PluginError(f"{operation} matches only {', '.join(sorted(spec.match))}")
+            values = (value,) if isinstance(value, str) else tuple(value)
+            if not values or any(not isinstance(item, str) or not item for item in values):
+                raise PluginError(f"match[{key!r}] must be a name or a list of names")
+            normalized[key] = values
+        if spec.response_modes:
+            response = response or "preserve"
+            if response not in ("preserve", "replace"):
+                raise PluginError('response must be "preserve" or "replace"')
+        elif response is not None:
+            raise PluginError("response applies only to model.request")
+        self.interceptors[operation] = Interceptor(handler, normalized, response or "")

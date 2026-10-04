@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from wizolt.base import ConfigError
 from wizolt.plugins.catalog import Installation, PluginCatalog
+from wizolt.plugins.interception import InterceptionOrder
 from wizolt.plugins.layout import LayoutPreferences
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.process import WorkerError
@@ -40,6 +41,7 @@ class SessionPlugins(PluginRuntime):
         self.read_context: Callable[[], list[tuple[str, int]]] | None = None
         super().__init__(self.snapshot, PluginSettings(session.config.plugins, session.config.path))
         self.order = LayoutPreferences(self.catalog.preferences)
+        self.interception_order = InterceptionOrder(self.catalog.preferences)
 
     def reload_layout(self) -> None:
         if self.reload_preferences is not None:
@@ -50,6 +52,11 @@ class SessionPlugins(PluginRuntime):
             self.problems.pop("layout", None)
         except (OSError, ValueError, ConfigError) as error:
             self.problems["layout"] = str(error)
+        try:
+            self.interception_order.load()
+            self.problems.pop("interception order", None)
+        except (OSError, ValueError, ConfigError) as error:
+            self.problems["interception order"] = str(error)
 
     async def launch(self, revision: Revision):
         # Populate an idle/resumed agent's meter when enabling a plugin too. This is an

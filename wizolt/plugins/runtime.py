@@ -16,6 +16,7 @@ from typing import Any
 
 from wizolt.plugins.activity import TurnActivity
 from wizolt.plugins.interactions import Interactions
+from wizolt.plugins.interception import Interception, InterceptionOrder
 from wizolt.plugins.layout import SLOTS, LayoutBudget, LayoutPreferences
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.process import PluginProcess, WorkerError
@@ -56,24 +57,39 @@ class Generation:
     plugin: Capabilities
     worker: PluginProcess
     snapshot: Snapshot = field(default_factory=lambda: Snapshot({}, {}))
-    error: str = ""
+    # Health per registration ("presentation", "observer:<event>", "intercept:<operation>"),
+    # never one generation-wide flag: a failed component skips presentation, a failed
+    # interceptor blocks its operations, and commands keep working while the worker lives.
+    failures: dict[str, str] = field(default_factory=dict)
     calls: int = 0
     seconds: float = 0
     invocations: int = 0  # Pin this worker, never unrelated plugin generations.
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     events: asyncio.Lock = field(default_factory=asyncio.Lock)
 
+    def fail(self, registration: str, reason: str) -> None:
+        self.failures.setdefault(registration, reason)
+
+    def failure(self, registration: str) -> str:
+        """Why a registration is unavailable: its own failure, or its worker's exit."""
+        return self.failures.get(registration) or self.worker.error
+
+    @property
+    def error(self) -> str:
+        """A summary for status and inspection only; decisions use ``failure(registration)``."""
+        return "; ".join(f"{key}: {reason}" for key, reason in self.failures.items()) or self.worker.error
+
     async def refresh(self, context: Context, *, components: bool = False) -> None:
         """Serialize samples, never enqueue a sample for every terminal layout query."""
         async with self.lock:
-            if self.error:
+            if self.failure("presentation"):
                 return
             started = time.monotonic()
             try:
                 sampled = Snapshot.decode(await self.worker.request("snapshot" if components else "sample", context=asdict(context)))
                 self.snapshot = sampled if components else Snapshot(sampled.fields, self.snapshot.panels)
             except Exception as error:  # noqa: BLE001 - UI callback failures cannot fail turns.
-                self.error = str(error)
+                self.fail("presentation", str(error))
             finally:
                 self.calls += 1
                 self.seconds += time.monotonic() - started
@@ -143,6 +159,8 @@ class PluginRuntime:
         self.host_service: HostCall | None = None
         self.interactions = Interactions()
         self.reload_preferences: Callable[[], None] | None = None
+        self.interception_order = InterceptionOrder()
+        self.interception = Interception(self)
 
     def read_revision(self, path: str) -> Revision:
         """Capture disk and preferences before starting any candidate worker."""
@@ -178,8 +196,8 @@ class PluginRuntime:
                 self.validate(capabilities)
             candidate = Generation(revision, capabilities, worker)
             await candidate.refresh(self.facts(), components=True)
-            if candidate.error:
-                raise WorkerError(candidate.error, log=worker.stderr, traceback=worker.traceback)
+            if reason := candidate.failure("presentation"):
+                raise WorkerError(reason, log=worker.stderr, traceback=worker.traceback)
             return candidate
         except BaseException:
             await worker.close()
@@ -365,6 +383,10 @@ class PluginRuntime:
             "tools": {key: {"description": action.description, "parameters": action.parameters} for key, action in item.plugin.tools.items()},
             "slots": list(item.plugin.components),
             "summarizer": item.plugin.summarizer,
+            "intercepts": {
+                operation: {"match": {key: sorted(values) for key, values in spec.match.items()}, **({"response": spec.response} if spec.response else {})}
+                for operation, spec in item.plugin.intercepts.items()
+            },
             "themes": list(item.plugin.themes),
             "presets": {kind: list(values) for kind, values in item.plugin.presets.items()},
             "error": item.error,
@@ -377,6 +399,10 @@ class PluginRuntime:
         task = asyncio.create_task(generation.worker.close())
         self._retiring.add(task)
         task.add_done_callback(self._retiring.discard)
+
+    def after_lease(self) -> None:
+        """An operation released the generations it pinned; publish what was waiting."""
+        self._publish()
 
     def _publish(self) -> None:
         """Atomic registry switch: no await, and no imported Python objects cross generations."""
@@ -437,10 +463,12 @@ class PluginRuntime:
             panels: dict[str, dict[str, Panel]] = {name: {} for name in generations}
             components = {}
             for slot in SLOTS:
-                candidates = {f"{name}.{slot}": item for name, item in generations.items() if slot in item.plugin.components and not item.error}
+                candidates = {
+                    f"{name}.{slot}": item for name, item in generations.items() if slot in item.plugin.components and not item.failure("presentation")
+                }
                 for identity in self.order.ordered(slot, candidates):
                     generation = candidates[identity]
-                    if generation.error:
+                    if generation.failure("presentation"):
                         continue
                     gap = self.order.gap(identity, slot, generation.plugin.components[slot])
                     allocated = budget.context(context, slot, gap)
@@ -449,7 +477,7 @@ class PluginRuntime:
                         panel = await generation.render(allocated, sample=generation.plugin.name not in sampled)
                         sampled.add(generation.plugin.name)
                     except Exception as error:  # noqa: BLE001 - broken components cannot fail the host.
-                        generation.error = str(error)
+                        generation.fail("presentation", str(error))
                         continue
                     clipped = budget.consume(allocated.layout, panel)
                     rendered_gap = allocated.layout.gap_before if clipped.rows else 0
@@ -534,7 +562,9 @@ class PluginRuntime:
             self._publish()
 
     async def emit(self, name: str, *, tool: ToolActivity | None = None, reason: str = "") -> None:
-        generations = [entry.active for entry in self.entries.values() if name in entry.active.plugin.observers and not entry.active.error]
+        generations = [
+            entry.active for entry in self.entries.values() if name in entry.active.plugin.observers and not entry.active.failure(f"observer:{name}")
+        ]
         if not generations:
             return
         context = self.facts()
@@ -544,20 +574,20 @@ class PluginRuntime:
         # Serialize each plugin's observers, not tool execution. Parallel plugins do not
         # multiply the deadline, and a failed observer leaves other generations usable.
         async with generation.events:
-            if generation.error:
+            if generation.failure(f"observer:{name}"):
                 return
             try:
                 await generation.worker.request(
                     "event", timeout=self.OBSERVER_TIMEOUT, name=name, context=asdict(context), tool=asdict(tool) if tool else None, reason=reason
                 )
             except Exception as error:  # noqa: BLE001 - observer failure cannot fail an agent turn.
-                generation.error = f"{name}: {error}"
+                generation.fail(f"observer:{name}", str(error))
 
     def fields(self) -> dict[str, Value]:
         return {
             f"plugins.{name}.{key}": value
             for name, entry in self.entries.items()
-            if not entry.active.error
+            if not entry.active.failure("presentation")
             for key, value in entry.active.snapshot.fields.items()
         }
 
@@ -566,7 +596,11 @@ class PluginRuntime:
         one, such as /status, must not resize what the sampler lays out for the prompt slots."""
         if columns is not None:
             self.resize(columns, self.viewport.rows)
-        identities = {f"{name}.{slot}": entry.active for name, entry in self.entries.items() if not entry.active.error and slot in entry.active.snapshot.panels}
+        identities = {
+            f"{name}.{slot}": entry.active
+            for name, entry in self.entries.items()
+            if not entry.active.failure("presentation") and slot in entry.active.snapshot.panels
+        }
         return [identities[identity].snapshot.panels[slot] for identity in self.order.ordered(slot, identities)]
 
     async def invoke(self, name: str, kind: str, action: str, arguments: Mapping[str, Any]) -> str:
@@ -607,7 +641,12 @@ class PluginRuntime:
     def _summary_generation(self) -> Generation | None:
         """Admission guarantees one strategy; failed generations fall back until reload."""
         return next(
-            (entry.active for entry in self.entries.values() if entry.active.plugin.summarizer and not entry.active.error and not entry.disabling), None
+            (
+                entry.active
+                for entry in self.entries.values()
+                if entry.active.plugin.summarizer and not entry.active.failure("summarizer") and not entry.disabling
+            ),
+            None,
         )
 
     @property
@@ -625,7 +664,7 @@ class PluginRuntime:
             validate(summary)
             return generation.plugin.name, summary
         except Exception as error:  # noqa: BLE001 - a broken strategy must not strand compaction.
-            generation.error = f"summarizer: {error}"
+            generation.fail("summarizer", str(error))
             return None
         finally:
             generation.invocations -= 1

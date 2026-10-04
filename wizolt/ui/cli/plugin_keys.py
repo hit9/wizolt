@@ -36,7 +36,9 @@ class PluginKeys:
     def target(self, command: str):
         owner, separator, name = command.partition(".")
         entry = self.runtime.entries.get(owner)
-        return entry.active.plugin.commands.get(name) if separator and entry and not entry.disabling and not entry.active.error else None
+        if not separator or entry is None or entry.disabling or entry.active.failure(f"command:{name}"):
+            return None
+        return entry.active.plugin.commands.get(name)
 
     def enabled(self, command: str) -> bool:
         action = self.target(command)

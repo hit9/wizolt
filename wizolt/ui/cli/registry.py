@@ -51,7 +51,7 @@ class CommandCatalog:
                 if spelling in COMMAND_NAMES:
                     # Embeddings may have loaded plugins before assembling their CLI. Keep the
                     # built-in reachable and report the conflict, as normal activation would.
-                    entry.active.error = str(PluginError(f"Reserved command: {spelling}"))
+                    entry.active.fail(f"command:{name}", str(PluginError(f"Reserved command: {spelling}")))
                     continue
                 result[spelling] = Command(
                     spelling,
