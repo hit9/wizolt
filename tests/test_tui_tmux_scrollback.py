@@ -34,6 +34,7 @@ import pytest
 import terminal_acceptance as acceptance
 
 test_builtin_plugin_can_be_enabled_resized_and_disabled = acceptance.test_builtin_plugin_can_be_enabled_resized_and_disabled
+test_plugin_views_shortcuts_and_resize_restore_input = acceptance.test_plugin_views_shortcuts_and_resize_restore_input
 test_plugin_appearance_reload_preserves_input_and_updates_bars = acceptance.test_plugin_appearance_reload_preserves_input_and_updates_bars
 from terminal_acceptance import (
     TALL,

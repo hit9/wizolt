@@ -25,9 +25,19 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.ui.components.move(component, *, before="", after="")` | Async; exactly one anchor, same slot; persists user order and returns the updated list |
 | `plugin.ui.components.set_gap(component, gap_before)` | Async; save a nonnegative integer gap, or `None` to restore the declared default; returns the updated list |
 | `plugin.ui.components.reset_order(slot="")` | Async; restore name order for one slot, or all; returns the updated list |
+| `plugin.ui.input(title, *, default="", multiline=False, required=False)` | Async; text or None on cancel; see [UI.md](UI.md) |
+| `plugin.ui.confirm(title)` | Async; bool, Cancel selected by default |
+| `plugin.ui.select(title, *, items, default="")` | Async; stable choice ID or None |
+| `plugin.ui.select_many(title, *, items, defaults=())` | Async; tuple of IDs or None |
+| `plugin.ui.show(view)` | Async; ViewResult or None |
+| `plugin.ui.open(view)` | Async context manager; `result()` and `update(view)` |
+| `plugin.ui.notify(message, *, level="info")` | Async; themed session-local notice |
+| `plugin.ui.shortcuts.list()` | Async; bindings, protected keys and preference error |
+| `plugin.ui.shortcuts.bind(key, command, *, replace=False)` | Async; save a global key for plugin.command |
+| `plugin.ui.shortcuts.unbind(key)` | Async; remove saved override |
 | `handle.get()` | Async; returns the same acquired service object until the generation closes |
 
-Only the interfaces documented here are author APIs. Registration dictionaries, `Action`,
+Only the interfaces documented here and in [UI.md](UI.md) are author APIs. Registration dictionaries, `wizolt.sdk.Action`,
 `summary_handler`, `plugin.services`, `Models.call`, `Context.decode`, SDK implementation helpers,
 and everything under `wizolt.plugins` are host plumbing, even where Python names lack `_`.
 Do not construct `Plugin`, `Models` or `Service` yourself, mutate registries or call lifecycle
@@ -52,6 +62,10 @@ your own resource cleanup in `finally`.
 All data values below are frozen dataclasses. Tuple fields must be tuples; do not mutate their
 contents. Host-supplied context is a snapshot, not a live handle. The listed constructors can
 also be used in plugin-owned tests.
+
+Interactive declarations (`View`, `Document`, `Selection`, `Form`, `Field`, `Choice`, `Action`,
+`ViewResult`) are imported from `wizolt.sdk.views`; their complete tables and examples are in
+[UI.md](UI.md). Do not import the unrelated internal registration `Action` from `wizolt.sdk`.
 
 | Type | Fields / defaults |
 | --- | --- |
@@ -90,7 +104,7 @@ One component is allowed per slot; compose multiple rows inside that callback.
 | Field / component | No | No | Whole sample: 2 seconds |
 | `sample` observer | Yes | No | Shares the whole sample's 2 seconds |
 | Lifecycle observer (session / turn / tool) | Yes | No | Each event's callbacks together: 1 second |
-| Command / tool handler | Yes | Yes; models unavailable offline | Live invocation: 60 seconds |
+| Command / tool handler | Yes | Yes; host services unavailable offline | Live execution: 60 seconds, paused during host-owned human interaction |
 | Summarizer | Yes | Yes; models unavailable offline | 60 seconds |
 
 Trial `--timeout` overrides each trial call's deadline (default 5, greater than 0 and at most 60

@@ -96,7 +96,9 @@ belong inside this scope; detached processes and unmanaged threads remain unsupp
 ## Execution and UI
 
 Host service RPC is bidirectional but request-scoped. Only an outstanding explicit invocation
-can admit a reverse call, with four concurrent calls and a 50-second deadline per generation.
+can admit a reverse call, with four concurrent calls and a 50-second service deadline.
+An interactive view is the sole deadline exception: human response time pauses the invocation's
+remaining execution budget. Closing the view resumes it; a blocked worker can then be killed.
 The pipe reader dispatches calls without awaiting them. Returning/cancelling the enclosing call,
 worker EOF, and retirement cancel and join its host work. No service may survive its request.
 `agent/plugin_models.py` assembles a detached request session using existing wire adapters;
@@ -126,6 +128,15 @@ Reported sample time includes IPC; it is not plugin CPU time. Never invoke user 
 The host supplies viewport dimensions, theme roles and height budgets. Repeated layout queries
 reuse one projection per frame. Plugins return plain data, never ANSI or prompt-toolkit widgets.
 Empty or clipped components must leave the input usable, including after multiplexer resizing.
+
+Interactive views follow the same data boundary (see [Plugin views](PLUGIN_VIEWS.md)). The host
+owns keys, validation, focus, queues and modal lifetime; no worker callback runs on the UI thread.
+Views belong to their invocation and agent. Background agents request attention instead of
+stealing focus. Cancellation, disable and successful replacement dismiss owned views. Saved
+shortcuts live separately from installation records and target named commands through normal
+command admission. `--no-plugins` bypasses startup loading without rewriting user preferences;
+enable and reload stay unavailable for that process so recovery cannot accidentally reload a
+broken plugin.
 
 ## Dependency environments
 

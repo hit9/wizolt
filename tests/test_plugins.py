@@ -236,6 +236,13 @@ async def test_safe_mode_skips_imports_and_installation_survives_new_agent(tmp_p
     recovery = SessionPlugins(session)
     await recovery.load()
     assert not recovery.fields()
+    with pytest.raises(PluginError, match="disabled for this launch"):
+        await recovery.hot_reload()
+    with pytest.raises(PluginError, match="disabled for this launch"):
+        await recovery.manage("enable", "local")
+    assert recovery.catalog.read()[0]["local"].enabled
+    await recovery.manage("disable", "local")
+    assert not recovery.catalog.read()[0]["local"].enabled
     await plugins.close()
     await second.close()
     await recovery.close()

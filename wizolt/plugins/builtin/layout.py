@@ -7,6 +7,39 @@ SDK_VERSION = 1
 
 
 def setup(plugin):
+    async def list_shortcuts(ctx, args):
+        return json.dumps(await plugin.ui.shortcuts.list())
+
+    async def bind_shortcut(ctx, args):
+        return json.dumps(await plugin.ui.shortcuts.bind(args["key"], args["command"], replace=args.get("replace", False)))
+
+    async def unbind_shortcut(ctx, args):
+        return json.dumps(await plugin.ui.shortcuts.unbind(args["key"]))
+
+    plugin.tool(
+        "list_shortcuts",
+        "List user shortcuts and protected keys. Plugin commands are targets; disabled plugins keep dormant bindings.",
+        {"type": "object", "additionalProperties": False},
+        list_shortcuts,
+    )
+    plugin.tool(
+        "bind_shortcut",
+        "Bind a key to plugin.command. Ask before replacing an occupied key; protected input keys cannot be replaced.",
+        {
+            "type": "object",
+            "properties": {"key": {"type": "string"}, "command": {"type": "string"}, "replace": {"type": "boolean"}},
+            "required": ["key", "command"],
+            "additionalProperties": False,
+        },
+        bind_shortcut,
+    )
+    plugin.tool(
+        "unbind_shortcut",
+        "Remove a saved key override, restoring the original host binding.",
+        {"type": "object", "properties": {"key": {"type": "string"}}, "required": ["key"], "additionalProperties": False},
+        unbind_shortcut,
+    )
+
     async def listing(ctx, args):
         return json.dumps([asdict(item) for item in await plugin.ui.components.list()])
 

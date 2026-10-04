@@ -24,7 +24,7 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition, has_completions, is_done, is_searching
 from prompt_toolkit.formatted_text import OneStyleAndTextTuple, StyleAndTextTuples
 from prompt_toolkit.history import History
-from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.key_binding import DynamicKeyBindings, KeyBindings, merge_key_bindings
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.layout import Layout
 from prompt_toolkit.layout.containers import ConditionalContainer, Float, FloatContainer, HSplit, Window
@@ -402,6 +402,8 @@ class TuiApp:
         # cleared, if any: Ctrl-J or Enter straight after it is the Esc+newline chord (see
         # `newline`), and puts that draft back under the new line.
         self._escape_at = 0.0
+        self.command_bindings = KeyBindings()
+        self.view_bindings = KeyBindings()
         self._escape_draft: tuple[UserInput, int] | None = None
         self._search_start_draft: str | UserInput = ""
         self.input_error = ""
@@ -443,6 +445,7 @@ class TuiApp:
         # Set while no modal is visible, so an approval prompt can wait for a selector to close
         # without polling. Created on the loop that first awaits it.
         self._modal_idle: asyncio.Event | None = None
+        self._input_idle: asyncio.Event | None = None
         # None is the cancellation signal, distinct from every string the user can submit (including
         # ""). See request_input: callers must not read a cancel as an answer.
         # (label, answer) actions of the current approval prompt, and which one is focused. See
@@ -500,11 +503,15 @@ class TuiApp:
             raise WizoltError("internal error: a TUI input request is already pending")
         # A tool approval must not replace an already-visible selector. Wait for that selector to
         # close, then reuse the shared input row.
-        await self._modal_idle_event().wait()
+        while self.modal is not None:
+            await self._modal_idle_event().wait()
+        if self._input_pending is not None:
+            raise WizoltError("internal error: a TUI input request is already pending")
         loop = asyncio.get_running_loop()
         pending: asyncio.Future[str | None] = loop.create_future()
         self._input_loop = loop
         self._input_pending = pending
+        self._input_idle_event().clear()
         previous_mode, previous_prompt = self.input_mode, self.full_input_prompt()
         previous_document: Document | None = None
         previous_images = self.input_images
@@ -525,6 +532,7 @@ class TuiApp:
             return await pending
         finally:
             self._input_pending = None
+            self._input_idle_event().set()
             self._input_loop = None
             self._approval_actions = []  # the form belongs to one prompt; the next one declares its own
             switch(previous_document or Document(""), previous_mode, previous_prompt)
@@ -561,6 +569,13 @@ class TuiApp:
             if self.modal is None:
                 self._modal_idle.set()
         return self._modal_idle
+
+    def _input_idle_event(self) -> asyncio.Event:
+        if self._input_idle is None:
+            self._input_idle = asyncio.Event()
+            if self._input_pending is None:
+                self._input_idle.set()
+        return self._input_idle
 
     def set_approval_form(self, actions: list[tuple[str, str]]) -> bool:
         """Give the *next* approval prompt a row of selectable actions, as (label, answer) pairs
@@ -1338,6 +1353,7 @@ class TuiApp:
         key_fn: Callable[[str, str], Any],
         *,
         exclusive: bool = False,
+        wait_for_input: bool = False,
     ) -> Any:
         """Show a modal inside this Application and await its result on the loop that runs it.
 
@@ -1350,7 +1366,11 @@ class TuiApp:
         app = self.app
         if app is None or not app.is_running or self.modal_window is None:
             return None
-        await self._modal_idle_event().wait()
+        # Recheck after every wake: multiple queued callers can observe the same idle
+        # event. Only the first may activate; the others wait for its actual release.
+        # Plugin dialogs also wait for approvals; built-in approval viewers may nest.
+        while self.modal is not None or (wait_for_input and self._input_pending is not None):
+            await (self._modal_idle_event() if self.modal is not None else self._input_idle_event()).wait()
         modal = TuiModal(fragments_fn, key_fn, exclusive=exclusive)
         modal.future = asyncio.get_running_loop().create_future()
         self._activate_modal(app, modal, exclusive=exclusive)
@@ -2393,7 +2413,9 @@ class TuiApp:
     def _build_application(self, style: BaseStyle | None = None) -> Application:  # pragma: no cover — interactive
         app = Application(
             layout=self.build_layout(),
-            key_bindings=self.make_bindings(),
+            key_bindings=merge_key_bindings(
+                [self.make_bindings(), DynamicKeyBindings(lambda: self.view_bindings), DynamicKeyBindings(lambda: self.command_bindings)]
+            ),
             full_screen=False,
             mouse_support=False,
             refresh_interval=self.IDLE_REFRESH_INTERVAL,

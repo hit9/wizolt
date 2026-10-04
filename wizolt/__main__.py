@@ -194,6 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", default=None, help="Path to config TOML")
     parser.add_argument("--init-config", action="store_true", help="Create a default config file")
     parser.add_argument("--yolo", action="store_true", help="Skip confirmations for mutating tools")
+    parser.add_argument("--no-plugins", action="store_true", help="Start without plugins; keep saved installation and enabled preferences")
     parser.add_argument("--theme", default="", help="Color theme: auto, dark, light, or a named theme (defaults to runtime.theme, then auto)")
     resume = parser.add_mutually_exclusive_group()
     resume.add_argument(
@@ -209,6 +210,8 @@ def main(argv: list[str] | None = None) -> int:
         "command", nargs="?", choices=["update", "upgrade"], default=None, help="Maintenance command: update/upgrade wizolt to the latest version"
     )
     args = parser.parse_args(argv)
+    if args.no_plugins:
+        os.environ["WIZOLT_NO_PLUGINS"] = "1"
     if sys.platform == "win32":
         print("Error: wizolt does not support native Windows; use WSL instead.", file=sys.stderr)
         return 1

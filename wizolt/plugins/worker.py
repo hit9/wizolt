@@ -62,6 +62,7 @@ class Worker:
             plugin.models.call = self.call_host
             plugin.ui.components.call = self.call_host
             plugin.ui.call = self.call_host
+            plugin.ui.shortcuts.call = self.call_host
             return {
                 "fields": list(plugin.fields),
                 "slots": {slot: item.gap_before for slot, item in plugin.components.items()},

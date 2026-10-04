@@ -55,6 +55,21 @@ Type `@plugin:` to name an installed plugin. Mentioning it does not enable or ru
 You can also ask for a new color theme, statusbar or divider style. Plugin styles appear in
 `/theme`. Panels can sit above the divider, above or below the input, or inside `/status`.
 
+### Give your plugin an interface
+
+> Add a searchable task list. Enter opens the selected task's full-screen log;
+> Esc takes me back. Ask for confirmation before stopping a task.
+
+![A task list opens a full-screen log; Escape returns to the list.](_static/plugins-views.svg)
+
+Plugins can ask for text, show forms and single/multiple-choice menus, and update a live
+viewer. Your input draft remains intact when you return.
+
+> Bind F6 to my task list. Check for conflicts first.
+
+Ask the agent to manage shortcuts through the built-in **layout** plugin. Bindings survive
+restarts and become inactive when their plugin is disabled.
+
 ## Try the built-in pet
 
 Open `/plugins`, select **pet**, then **enable**. A small cat reacts to the agent above your
@@ -78,6 +93,9 @@ Panels share up to six lines, fewer in short terminals. Gaps shrink to fit.
 If `/plugins` shows a panel as hidden or clipped, ask for a more compact design.
 
 ## Manage and recover
+
+If a plugin makes the session unusable, start **`wizolt --no-plugins`**. It skips plugin
+code without deleting anything. Disable the broken plugin in `/plugins`, then restart normally.
 
 Open **`/plugins`**, select a plugin and press **Enter**:
 

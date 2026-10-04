@@ -240,6 +240,14 @@ class TuiRuntime:
             self.spawn(self.loop.run_queued_command(text), name="queued-command")
         else:
             self.submit_accepted(_Submission(value))
+
+    def submit_shortcut(self, command: str) -> None:
+        """Use normal command admission without submitting or clearing the input draft."""
+        if self.turn_active:
+            self.submit_running(command)
+        else:
+            self.tui.set_dispatching()
+            self.submit_chat(UserInput(command))
         self.tui.invalidate()
 
     def submit_next_turn(self, value: str | UserInput) -> None:
@@ -464,9 +472,14 @@ class TuiRuntime:
         tui.activity_follows_transcript_fn = lambda: self.loop.presentation.live_preview.active
         tui.idle_divider_fragments_fn = self.loop.view.idle_divider_fragments
         if self.loop.session.plugins is not None:
+            from wizolt.ui.cli.plugin_dialogs import PluginDialogs
+            from wizolt.ui.cli.plugin_keys import PluginKeys
             from wizolt.ui.cli.plugins import PluginView
 
             tui.extension_fragments_fn = PluginView(self.loop.session.plugins).fragments
+            keys = PluginKeys(self.loop.session.plugins, tui, self.submit_shortcut)
+            self.loop.session.plugins.reload_preferences = keys.load
+            self.loop.session.plugins.interactions.handler = PluginDialogs(tui, self.loop.presentation, keys).call
         tui.input_hint_fn = self.loop.view.tui_input_hint
         tui.quick_hints_fn = lambda: self.loop.session.quick_hints
         if self.loop.session.mentions:

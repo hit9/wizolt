@@ -112,6 +112,35 @@ async def test_headless_interaction_reports_unavailable(tmp_path):
         await runtime.close()
 
 
+async def test_blocked_worker_loses_its_deadline_exemption_when_view_closes(tmp_path):
+    path = tmp_path / "blocked.py"
+    path.write_text('''import time
+from wizolt.sdk.views import Document, View
+SDK_VERSION = 1
+def setup(p):
+    async def block(ctx, args):
+        async with p.ui.open(View("Stuck plugin", Document("Esc still belongs to the host"))):
+            time.sleep(30)
+        return "unreachable"
+    p.command("block", "Block this worker", block)
+''')
+    runtime = runtime_for(tmp_path)
+    terminal = Terminal()
+    runtime.interactions.handler = terminal.call
+    try:
+        await runtime.manage("enable", str(path))
+        runtime.ACTION_TIMEOUT = .2
+        action = asyncio.create_task(runtime.invoke("blocked", "command", "block", {}))
+        await asyncio.wait_for(terminal.entered.wait(), 3)
+        terminal.answer.set()
+        with pytest.raises(PluginError, match="timed out"):
+            await asyncio.wait_for(action, 5)
+        assert terminal.exited.is_set()
+        assert not runtime.interactions.pending
+    finally:
+        await runtime.close()
+
+
 @pytest.mark.parametrize("body", [Document("hello", "markdown"), Selection((Choice("a", "First", "Preview"),)), Form((Field("name", "Name"),))])
 def test_view_wire_round_trip(body):
     view = View("Title", body, (Action("open", "Open", "o"),), fullscreen=True)

@@ -196,6 +196,7 @@ class ZellijPane:
             "C-c": b"\x03",
             "C-s": b"\x13",
             "C-u": b"\x15",
+            "F6": b"\x1b[17~",
             "Home": b"\x1b[H",
             "Enter": b"\r",
             "Escape": b"\x1b",

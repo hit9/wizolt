@@ -37,6 +37,7 @@ def main(argv: list[str]) -> int:
             "skill": reference / "SKILL.md",
             "api_reference": reference / "SDK.md",
             "appearance_reference": reference / "APPEARANCE.md",
+            "ui_reference": reference / "UI.md",
         }
         print(json.dumps({name: str(path) for name, path in paths.items()}, ensure_ascii=False, indent=2))
         return 0

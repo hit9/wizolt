@@ -18,6 +18,77 @@ MARKERS = 200
 DRIVER = Path(__file__).with_name("tmux_driver.py")
 
 
+def test_plugin_views_shortcuts_and_resize_restore_input(pane):
+    """Real worker, host modal and alternate-screen viewer share the CLI's input owner."""
+    config = pane.path / "views.toml"
+    config.write_text(f'[paths]\ndata_dir = "{pane.path}/data"\n[provider]\nactive = "test"\n[provider.test]\nurl = "http://127.0.0.1:9/v1"\nkey = "test"\nmodel = "test-model"\n')
+    plugin = pane.path / "demo.py"
+    plugin.write_text('''from wizolt.sdk.views import Choice, Document, View
+SDK_VERSION = 1
+def setup(p):
+    async def bind(ctx, args):
+        await p.ui.shortcuts.bind("f6", "demo.demo-view")
+        return "SAVED-SHORTCUT"
+    async def show(ctx, args):
+        name = await p.ui.input("Plugin name", required=True)
+        if name is None: return "PLUGIN-VIEW-CANCELLED"
+        while await p.ui.select("Plugin choices", items=(Choice("log", "Open log"),)):
+            await p.ui.show(View("Plugin log", Document("\\n".join(f"LINE-{i}" for i in range(80)) + "\\nVIEW-TAIL"), fullscreen=True))
+        return "PLUGIN-VIEW-DONE"
+    p.command("bind-demo", "Bind demo", bind)
+    p.command("demo-view", "View demo", show)
+''')
+    entry = pane.path / "entry.py"
+    entry.write_text(
+        "from wizolt.agent.engine import Agent\n"
+        "from wizolt.ui.cli.update import UpdateChecker\n"
+        "from wizolt.providers.sync import CatalogRuntime\n"
+        "from wizolt.__main__ import main\n"
+        "original = Agent.start_session\n"
+        "async def start(self):\n"
+        "    await original(self)\n"
+        f"    await self.session.plugins.manage('enable', {str(plugin)!r})\n"
+        "Agent.start_session = start\n"
+        "UpdateChecker.load_cached = lambda self: False\n"
+        "CatalogRuntime.refresh_due = lambda self: False\n"
+        "main()\n"
+    )
+    pane.send(f"{sys.executable} {entry} --config {config} --yolo")
+
+    def wait(text):
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            screen = pane.visible()
+            assert "Unhandled exception" not in screen, screen
+            if text in screen:
+                return screen
+            time.sleep(.05)
+        raise AssertionError(f"missing {text!r}: {screen}")
+
+    wait("test-model")
+    pane.send("/bind-demo")
+    wait("SAVED-SHORTCUT")
+    pane.literal("unsent draft")
+    pane.keys("F6")
+    wait("Plugin name")
+    pane.send("example")
+    wait("Plugin choices")
+    pane.keys("Enter")
+    wait("Plugin log")
+    for width, height in ((62, 18), (120, 36), (80, 24)):
+        pane.resize(width, height)
+        _settled_capture(pane)
+        pane.keys("G")
+        wait("VIEW-TAIL")
+    pane.keys("Escape")
+    wait("Plugin choices")
+    pane.keys("Escape")
+    wait("PLUGIN-VIEW-DONE")
+    wait("unsent draft")
+    pane.keys("C-c")
+    pane.send("/exit")
+
+
 def test_transcript_survives_resize_roundtrip_between_frames(pane):
     """SIGWINCH can coalesce while the app is descheduled; equal final sizes prove nothing."""
     log = pane.path / "roundtrip.log"

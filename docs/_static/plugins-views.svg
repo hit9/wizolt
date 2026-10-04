@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 245" role="img" aria-labelledby="title desc">
+  <title id="title">A plugin task list opens a log viewer and returns with Escape</title>
+  <desc id="desc">F6 opens a searchable list. Enter opens its full-screen log. Escape returns to the list, then to the input draft.</desc>
+  <rect width="860" height="245" rx="16" fill="#242730"/>
+  <g font-family="ui-monospace, monospace" font-size="15" fill="#e1e3e8">
+    <rect x="24" y="30" width="340" height="180" rx="8" fill="#2d323d" stroke="#657184"/>
+    <text x="44" y="60" fill="#9dbb9c">Tasks · / search</text>
+    <rect x="38" y="82" width="310" height="29" rx="3" fill="#526975"/>
+    <text x="48" y="102">❯ tests       running</text>
+    <text x="48" y="136">  review      completed</text>
+    <text x="44" y="184" fill="#adb5c4">Enter open · Esc back</text>
+    <text x="391" y="90" fill="#dbb68e">Enter →</text>
+    <text x="391" y="150" fill="#adb5c4">← Esc</text>
+    <rect x="492" y="30" width="344" height="180" rx="8" fill="#2d323d" stroke="#657184"/>
+    <text x="512" y="60" fill="#9dbb9c">Tests · full-screen log</text>
+    <text x="512" y="100">✓ test_input</text>
+    <text x="512" y="131">✓ test_cancel</text>
+    <text x="512" y="184" fill="#adb5c4">/ search · g/G · Esc back</text>
+  </g>
+</svg>

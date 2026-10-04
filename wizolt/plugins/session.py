@@ -41,6 +41,8 @@ class SessionPlugins(PluginRuntime):
         self.order = LayoutPreferences(self.catalog.directory / "layout")
 
     def reload_layout(self) -> None:
+        if self.reload_preferences is not None:
+            self.reload_preferences()
         try:
             self.order.load()
             self._layout_version += 1
@@ -148,6 +150,8 @@ class SessionPlugins(PluginRuntime):
         async with self._management_lock:
             if self._closed:
                 raise PluginError("Plugin runtime is closed")
+            if os.environ.get("WIZOLT_NO_PLUGINS") == "1":
+                raise PluginError("Plugins are disabled for this launch (--no-plugins); restart normally to reload")
             records, problems = self.catalog.read()
             self.reload_layout()
             if name and name not in records:
@@ -193,6 +197,8 @@ class SessionPlugins(PluginRuntime):
     async def _manage(self, action: str, target: str) -> dict:
         if self._closed:
             raise PluginError("Plugin runtime is closed")
+        if os.environ.get("WIZOLT_NO_PLUGINS") == "1" and action in {"enable", "reload", "rollback"}:
+            raise PluginError("Plugins are disabled for this launch (--no-plugins); restart normally to enable")
         await self.load()
         records, problems = self.catalog.read()
         for item in records.values():

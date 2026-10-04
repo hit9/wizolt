@@ -15,7 +15,8 @@ from wizolt import sdk
 from wizolt.plugins.runtime import PluginRuntime
 from wizolt.plugins.testing import PluginTrial, Stimulus
 from wizolt.sdk.models import ModelReply
-from wizolt.sdk.ui import Component
+from wizolt.sdk.ui import UI, Component, Shortcuts
+from wizolt.sdk.views import Action, Choice, Document, Field, Form, OpenView, Selection, View, ViewResult
 from wizolt.ui.bars import FIELDS, Template
 from wizolt.ui.cli.plugin_appearance import AppearanceContribution
 from wizolt.ui.render import Theme
@@ -56,6 +57,7 @@ def test_skill_links_reach_the_reference_and_installed_source():
     body = Invocation(SkillFile.parse(str(REFERENCE / "SKILL.md"), "plugin-workshop", "builtin")).prepared_body()
     assert f"[SDK.md]({REFERENCE / 'SDK.md'})" in body
     assert f"[APPEARANCE.md]({REFERENCE / 'APPEARANCE.md'})" in body
+    assert f"[UI.md]({REFERENCE / 'UI.md'})" in body
     assert "wizolt plugin paths" in body and '"${WIZOLT_EXECUTABLE:-wizolt}" plugin' in body
     for target in re.findall(r"\]\(([^)]+)\)", body):
         assert Path(target).is_absolute() and Path(target).is_file(), target
@@ -81,6 +83,7 @@ def test_paths_resolves_this_executable_independently_of_cwd_and_config(tmp_path
     assert paths["skill"] == REFERENCE / "SKILL.md"
     assert paths["api_reference"] == REFERENCE / "SDK.md"
     assert paths["appearance_reference"] == REFERENCE / "APPEARANCE.md"
+    assert paths["ui_reference"] == REFERENCE / "UI.md"
     assert all(path.is_absolute() and path.exists() for path in paths.values())
     assert set(tmp_path.iterdir()) == {broken}
 
@@ -101,6 +104,35 @@ def test_public_registration_methods_are_in_the_api_index():
     documented = set(re.findall(r"`plugin\.([a-z_]+)\(", index))
     assert documented == actual
     assert "plugin.models.complete(" in index and "handle.get()" in index
+
+
+@pytest.mark.parametrize("api,prefix", [(UI, "plugin.ui"), (Shortcuts, "plugin.ui.shortcuts"), (OpenView, "opened")])
+def test_interactive_reference_covers_every_public_method(api, prefix):
+    reference = (REFERENCE / "UI.md").read_text()
+    for name, value in vars(api).items():
+        if not name.startswith("_") and inspect.isfunction(value):
+            assert f"`{prefix}.{name}(" in reference
+
+
+@pytest.mark.parametrize("value", [Choice, Action, Field, Document, Selection, Form, View, ViewResult])
+def test_interactive_reference_covers_every_value_field(value):
+    reference = (REFERENCE / "UI.md").read_text()
+    row = next(line for line in reference.splitlines() if line.startswith(f"| `{value.__name__}` |"))
+    assert set(re.findall(r"`([a-z_]+):", row)) == {field.name for field in fields(value)}
+
+
+async def test_interactive_reference_example_loads_as_a_real_plugin(tmp_path):
+    code = re.search(r"```python\n(.*?)```", (REFERENCE / "UI.md").read_text(), re.DOTALL).group(1)
+    path = tmp_path / "notes.py"
+    path.write_text(code)
+    from wizolt.plugins.loading import PluginSource
+    from wizolt.plugins.process import PluginProcess
+
+    worker, capabilities = await PluginProcess.start(PluginSource.read(str(path)))
+    try:
+        assert "notes-view" in capabilities["commands"]
+    finally:
+        await worker.close()
 
 
 @pytest.mark.parametrize("value", [sdk.Context, sdk.Usage, sdk.ContextWindow, sdk.Viewport, sdk.Layout, sdk.Turn, sdk.ToolCounts, sdk.ToolActivity, Component, sdk.Text, sdk.Line, sdk.Panel, sdk.Event, ModelReply])

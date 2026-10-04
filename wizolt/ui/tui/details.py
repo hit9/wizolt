@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Callable
 from typing import cast
 
 from prompt_toolkit.application import get_app_or_none
@@ -35,13 +36,33 @@ class DetailSheet:
     share the same frame; the lexer selects code, literal text, diff or prose rendering.
     """
 
-    def __init__(self, ui: UiPrinter, view: ApprovalView, *, back_on_escape: bool = False):
+    def __init__(self, ui: UiPrinter, view: ApprovalView, *, back_on_escape: bool = False, size: Callable[[], tuple[int, int]] | None = None):
         self.ui = ui
         self.view = view
         self.back_on_escape = back_on_escape
         self.scroll: int | None = 0  # None anchors the viewport to the end across resizes.
         self._width = 0
         self._rows: Rows = []
+        self.size = size or self._size
+
+    def replace(self, view: ApprovalView) -> None:
+        """Invalidate document layout while retaining scroll or the follow-tail anchor."""
+        self.view = view
+        self._width, self._rows = 0, []
+
+    def find(self, query: str) -> bool:
+        """Find the next visible-text match, wrapping once through the document."""
+        if not query:
+            return False
+        width, _ = self.size()
+        rows = self._layout(width)
+        start = (self.scroll or 0) + 1
+        for offset in range(len(rows)):
+            index = (start + offset) % len(rows)
+            if query.casefold() in "".join(text for _, text in rows[index]).casefold():
+                self.scroll = index
+                return True
+        return False
 
     @staticmethod
     def _code_rows(text: str, lexer: str, width: int) -> Rows:
@@ -209,7 +230,7 @@ class DetailSheet:
         return [("class:choice.disabled", legend.ljust(available)), ("class:detail.field", position + "\n")]
 
     def fragments(self) -> StyleAndTextTuples:
-        width, height = self._size()
+        width, height = self.size()
         rows = self._layout(width)
         last = max(0, len(rows) - height)
         top = last if self.scroll is None else min(self.scroll, last)
@@ -233,7 +254,7 @@ class DetailSheet:
         navigation = {"down", "j", "c-n", "up", "k", "c-p", "pagedown", "c-d", "pageup", "c-u"}
         if key not in navigation:
             return TUI_MODAL_PENDING
-        width, height = self._size()
+        width, height = self.size()
         if self.scroll is None:
             self.scroll = max(0, len(self._layout(width)) - height)
         if key in {"down", "j", "c-n"}:

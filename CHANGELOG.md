@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Let plugins open host-owned input forms, searchable selectors, live modals and full-screen
+  viewers, with scoped action keys and themed session notices. The optional layout plugin can
+  manage saved global command shortcuts. Add `--no-plugins` recovery startup and a packaged
+  interactive UI reference reachable from the built-in skill and `wizolt plugin paths`.
+
 - Add declarative plugin view contracts and request-owned interaction lifetimes. Human
   interaction pauses execution deadlines; cancellation and replacement dismiss owned views.
 

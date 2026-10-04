@@ -18,6 +18,8 @@ from wizolt.sdk.models import HostCall
 
 @dataclass(frozen=True)
 class Choice:
+    """A stable value, visible label and optional literal preview for a selector."""
+
     id: str
     label: str
     preview: str = ""
@@ -25,6 +27,8 @@ class Choice:
 
 @dataclass(frozen=True)
 class Action:
+    """An action ID returned to the caller; key is optional and scoped to its view."""
+
     id: str
     label: str
     key: str = ""
@@ -32,6 +36,8 @@ class Action:
 
 @dataclass(frozen=True)
 class Field:
+    """An editable text value, or a choice ID when choices are supplied."""
+
     id: str
     label: str
     default: str = ""
@@ -42,6 +48,8 @@ class Field:
 
 @dataclass(frozen=True)
 class Document:
+    """Read-only text; lexer selects plain text, Markdown or syntax highlighting."""
+
     text: str
     lexer: str = "text"
     kind: Literal["document"] = field(default="document", init=False)
@@ -49,6 +57,8 @@ class Document:
 
 @dataclass(frozen=True)
 class Selection:
+    """Searchable choices; selected supplies initial IDs, multiple enables checkboxes."""
+
     items: tuple[Choice, ...]
     selected: tuple[str, ...] = ()
     multiple: bool = False
@@ -57,12 +67,16 @@ class Selection:
 
 @dataclass(frozen=True)
 class Form:
+    """Ordered fields submitted together; required fields are checked by the host."""
+
     fields: tuple[Field, ...]
     kind: Literal["form"] = field(default="form", init=False)
 
 
 @dataclass(frozen=True)
 class View:
+    """A transient view. Fullscreen uses the alternate screen and restores scrollback."""
+
     title: str
     body: Document | Selection | Form
     actions: tuple[Action, ...] = ()
@@ -83,8 +97,18 @@ class View:
                 body["items"] = _choices(body["items"])
                 body["selected"] = tuple(body.get("selected", ()))
                 content = Selection(**body)
-                if type(content.multiple) is not bool or any(item not in {c.id for c in content.items} for item in content.selected):
+                identities = {c.id for c in content.items}
+                # Keep validation linear even for malformed worker payloads: it runs on
+                # the host event loop before any cancellable interaction is opened.
+                if (
+                    type(content.multiple) is not bool
+                    or len(content.selected) > len(identities)
+                    or any(item not in identities for item in content.selected)
+                    or len(set(content.selected)) != len(content.selected)
+                ):
                     raise ValueError("Invalid selection")
+                if not content.multiple and len(content.selected) > 1:
+                    raise ValueError("Single selection accepts at most one default")
             elif kind == "form":
                 fields = tuple(Field(**(item | {"choices": _choices(item.get("choices", ()))})) for item in body["fields"])
                 _identities(fields, 32)
@@ -101,6 +125,8 @@ class View:
                 raise ValueError("Unknown view body")
             data["actions"] = tuple(Action(**item) for item in data.get("actions", ()))
             _identities(data["actions"], 16)
+            if any(not item.key for item in data["actions"][1:]):
+                raise ValueError("Actions after the default require a key")
             keys = [item.key for item in data["actions"] if item.key]
             if len(keys) != len(set(keys)):
                 raise ValueError("Duplicate action keys")
@@ -108,6 +134,8 @@ class View:
                 _text(key, 40)
             result = cls(body=content, **data)
             _text(result.title, 200)
+            if "\n" in result.title:
+                raise ValueError("Title must be single-line")
             if type(result.fullscreen) is not bool:
                 raise ValueError("fullscreen must be boolean")
             return result
@@ -116,7 +144,7 @@ class View:
 
 
 def _text(value: str, limit: int) -> None:
-    if not isinstance(value, str) or len(value) > limit or any(ord(c) < 32 and c not in "\n\t" for c in value):
+    if not isinstance(value, str) or len(value) > limit or any((ord(c) < 32 and c not in "\n\t") or 127 <= ord(c) < 160 for c in value):
         raise ValueError(f"Expected plain text of at most {limit} characters")
 
 
@@ -144,6 +172,8 @@ def _choices(values: Sequence[dict]) -> tuple[Choice, ...]:
 
 @dataclass(frozen=True)
 class ViewResult:
+    """Completed action with stable choice IDs and field values; cancellation is None."""
+
     action: str
     selected: tuple[str, ...] = ()
     values: dict[str, str] = field(default_factory=dict)

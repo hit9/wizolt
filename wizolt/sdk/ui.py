@@ -58,9 +58,34 @@ class Components:
         return await self._request("set_gap", component=component, gap_before=gap_before)
 
 
+class Shortcuts:
+    """User preferences for global keys targeting plugin.command, managed by explicit actions."""
+
+    def __init__(self):
+        self.call: HostCall | None = None
+
+    async def _request(self, action: str, **arguments) -> dict:
+        if self.call is None:
+            raise PluginError("Shortcut management requires a live TUI")
+        return await self.call("ui.shortcuts." + action, arguments)
+
+    async def list(self) -> dict:
+        """Return bindings (key, command, active), protected keys and any preference error."""
+        return await self._request("list")
+
+    async def bind(self, key: str, command: str, *, replace: bool = False) -> dict:
+        """Save a key for plugin.command. Explicit replacement never overrides protected keys."""
+        return await self._request("bind", key=key, command=command, replace=replace)
+
+    async def unbind(self, key: str) -> dict:
+        """Remove a saved override and restore the host's original binding; idempotent."""
+        return await self._request("unbind", key=key)
+
+
 class UI:
     def __init__(self):
         self.components = Components()
+        self.shortcuts = Shortcuts()
         self.call: HostCall | None = None
 
     def open(self, view: View) -> OpenView:

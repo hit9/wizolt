@@ -109,6 +109,7 @@ class PluginRuntime:
         self.on_change: Callable[[], None] | None = None
         self.host_service: HostCall | None = None
         self.interactions = Interactions()
+        self.reload_preferences: Callable[[], None] | None = None
 
     async def prepare(self, path: str, source: PluginSource | None = None, settings: dict | None = None, *, python: str | None = None) -> Generation:
         revision = source if source is not None else PluginSource.read(path)
