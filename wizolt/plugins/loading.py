@@ -76,6 +76,27 @@ class PluginSource:
         return cls(str(location), text, location.stem, hashlib.sha256(text.encode()).hexdigest()[:12], tuple(dependencies))
 
 
+def unmet_dependencies(declarations: tuple[str, ...]) -> list[str]:
+    """Requirements this interpreter cannot satisfy, each with the reason; markers are honored."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    from packaging.requirements import InvalidRequirement, Requirement
+
+    unmet = []
+    for declaration in declarations:
+        try:
+            requirement = Requirement(declaration)
+            if requirement.marker and not requirement.marker.evaluate():
+                continue
+            installed = version(requirement.name)
+        except (InvalidRequirement, PackageNotFoundError):
+            unmet.append(f"{declaration!r} is unavailable")
+            continue
+        if not requirement.specifier.contains(installed, prereleases=True):
+            unmet.append(f"{declaration} conflicts with installed {installed}")
+    return unmet
+
+
 @dataclass
 class LoadedPlugin:
     """Own one module identity; callers must retire it even when activation is deferred."""
@@ -87,21 +108,8 @@ class LoadedPlugin:
     @classmethod
     def load(cls, source: PluginSource, config: dict | None = None, directory: str = "") -> LoadedPlugin:
         """Execute trusted setup from exact source, bypassing timestamp-based bytecode caches."""
-        if source.dependencies:
-            from importlib.metadata import PackageNotFoundError, version
-
-            from packaging.requirements import InvalidRequirement, Requirement
-
-            for declaration in source.dependencies:
-                try:
-                    requirement = Requirement(declaration)
-                    if requirement.marker and not requirement.marker.evaluate():
-                        continue
-                    installed = version(requirement.name)
-                except (InvalidRequirement, PackageNotFoundError) as error:
-                    raise PluginError(f"{source.name}: dependency {declaration!r} is unavailable; use install") from error
-                if not requirement.specifier.contains(installed, prereleases=True):
-                    raise PluginError(f"{source.name}: {declaration} conflicts with installed {installed}; use install")
+        if unmet := unmet_dependencies(source.dependencies):
+            raise PluginError(f"{source.name}: dependency {unmet[0]}; run `wizolt plugin enable {source.name}` to prepare dependencies")
         if source.entry:
             # Each generation owns a fresh process. Normal package imports therefore support
             # relative imports/resources without retaining stale submodules across reloads.

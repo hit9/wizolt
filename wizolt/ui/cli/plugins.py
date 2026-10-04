@@ -205,7 +205,7 @@ async def plugins_command(loop: CommandLoop, args: str) -> str:
         if len(parts) > 2:
             raise PluginError("Usage: /plugins [list|inspect|enable|reload|disable|rollback] [NAME]")
         if action not in ("list", "inspect", "enable", "reload", "disable", "rollback"):
-            raise PluginError("Use wizolt plugin via plugin-workshop to create, validate or install plugins")
+            raise PluginError("Use wizolt plugin via plugin-workshop to create, validate or enable new plugins")
         if action == "enable":
             if len(parts) != 2:
                 raise PluginError("Usage: /plugins enable NAME")

@@ -181,7 +181,7 @@ Use `my_helper/__init__.py` or `src/my_helper/__init__.py`; ordinary relative im
 another synchronous callable. The installed/configuration name is `my_helper` (hyphens and dots
 normalize to underscores). Package metadata replaces the single-file constants.
 
-Dependencies must be static; no build backend runs. `install` prepares a dependency environment.
+Dependencies must be static; no build backend runs. `enable` prepares a dependency environment.
 Source and resources are frozen together, so reload/rollback includes helpers and assets, even
 after the original directory is deleted. Keep the import tree small: at most 4 MiB, 512 files,
 1,024 directory entries and 32 directory levels; symlinks and special files are rejected.
@@ -235,7 +235,7 @@ The returned settings are resolved and immutable. `plugin.config` remains this g
 original snapshot: apply the returned values yourself for immediate changes, or explicitly reload.
 There is no automatic config-file watching or reload. Other plugin tables cannot be targeted.
 
-Validate/test/install use the selected config. Live reload rereads only its `[plugins]` table,
+Validate/test/enable use the selected config. Live reload rereads only its `[plugins]` table,
 and fixes settings for the candidate's lifetime. Failed validation preserves the active instance;
 rollback restores retained source, settings and the dependency environment. Keep the installed
 package name unchanged when editing its manifest. Other running agents remain unchanged.
@@ -392,8 +392,9 @@ Set `WIZOLT_NO_PLUGINS=1` on startup to skip installed plugins and recover a bro
 Optional module metadata: `DEPENDENCIES = ["package>=1.0"]` (literal requirement strings).
 Use PEP 508 requirements, including named direct URLs or environment markers; installer
 options such as `--python`, `--target` and `--requirements` are not dependencies.
-Use `wizolt plugin install PATH` to prepare a worker environment constrained by the host's installed
-versions, then call `Plugin(action="reload")`. No host restart is needed. The environment borrows the host
+`wizolt plugin enable PATH` prepares a worker environment constrained by the host's installed
+versions when the host or the saved environment cannot satisfy the declarations; an unchanged
+list reuses the saved environment. Then call `Plugin(action="reload")`. No host restart is needed. The environment borrows the host
 installation; it is not portable. No installation command replaces packages in the running process.
 
 ## Offline feedback

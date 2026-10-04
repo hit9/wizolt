@@ -84,7 +84,7 @@ class PluginCatalog:
 
     _python_path = "Scripts/python.exe" if os.name == "nt" else "bin/python"
 
-    def _environment(self, python: str) -> str:
+    def environment(self, python: str) -> str:
         """Recognize host-built environments lexically: resolving Python follows venv symlinks."""
         path = Path(python)
         root = self.directory / "environments"
@@ -101,7 +101,7 @@ class PluginCatalog:
         data.pop("name")
         if item.name in self.defaults:
             data.pop("path")
-        if environment := self._environment(item.python):
+        if environment := self.environment(item.python):
             # The immutable environment directory is prepared before this single config
             # transaction. Failed saves cannot redirect an existing installation's worker.
             data["environment"] = environment

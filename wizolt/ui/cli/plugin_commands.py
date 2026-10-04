@@ -19,8 +19,8 @@ def main(argv: list[str]) -> int:
 
         return test_main(argv)
     parser = argparse.ArgumentParser(prog="wizolt plugin", description="Manage saved plugin preferences. An agent applies them with Plugin(action=reload).")
-    parser.add_argument("action", choices=("paths", "list", "inspect", "install", "enable", "disable", "test", "validate"))
-    parser.add_argument("target", nargs="?", default="", help="Installed name, .py file, or package directory for install/enable")
+    parser.add_argument("action", choices=("paths", "list", "inspect", "enable", "disable", "test", "validate"))
+    parser.add_argument("target", nargs="?", default="", help="Installed name, .py file, or package directory; enable prepares declared dependencies")
     parser.add_argument("--config", default=PluginWorkspace.default_config(), help="Config file (default: the calling agent's, else the usual config)")
     parser.add_argument("--project", default=PluginWorkspace.default_project(), help="Project (default: the calling agent's, else the current directory)")
     args = parser.parse_args(argv)

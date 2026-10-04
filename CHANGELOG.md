@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fold `wizolt plugin install` into `enable`: one verb saves a plugin and prepares a dependency
+  environment when the host, or the saved environment, cannot satisfy its `DEPENDENCIES`. An
+  unchanged list reuses the saved environment; a custom interpreter is left alone. `install`
+  is removed. Environments prepared before this change are rebuilt on their next enable.
+
 - Rename the plugin SDK's `sample` event to `tick`: it is the UI refresh (about 5 Hz), not a
   lifecycle transition. Plugins observing `sample` now fail setup with the list of valid
   events; replace the name. The SDK reference's callback table gains a column for views,

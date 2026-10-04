@@ -36,6 +36,23 @@ class DependencyEnvironment:
         self.cwd = cwd
         self.settings = settings or PluginSettings()
 
+    @staticmethod
+    def requirements(sources: list[PluginSource]) -> list[str]:
+        return sorted({item for source in sources for item in source.dependencies})
+
+    @classmethod
+    def built_for(cls, python: str, source: PluginSource) -> bool:
+        """Whether a host-built environment was prepared for exactly these declarations.
+
+        Declarations, not resolved versions: an unchanged list reuses the environment, a changed
+        one prepares a fresh environment. Unreadable metadata means it must be prepared again.
+        """
+        try:
+            metadata = json.loads((Path(python).parent.parent / "plugins.json").read_text())
+        except (OSError, ValueError):
+            return False
+        return isinstance(metadata, dict) and metadata.get("requirements") == cls.requirements([source])
+
     async def command(self, arguments: list[str]) -> str:
         result = await ShellCommand(shlex.join(arguments), self.cwd, timeout=300).run()
         if result.exit_code:
@@ -52,9 +69,9 @@ class DependencyEnvironment:
         uv = shutil.which("uv")
         if uv is None:
             raise PluginError("Dependency installation requires uv on PATH")
-        requirements = sorted({item for source in self.sources for item in source.dependencies})
+        requirements = self.requirements(self.sources)
         if not requirements:
-            raise PluginError("No DEPENDENCIES declared; use enable instead")
+            raise PluginError("No DEPENDENCIES declared; nothing to prepare")
         from packaging.requirements import InvalidRequirement, Requirement
 
         # Both single-file and package metadata arrive here before pip. A list of argv
@@ -86,7 +103,8 @@ class DependencyEnvironment:
                 await worker.close()
             frozen = await self.command([uv, "pip", "freeze", "--python", python])
             (self.path / "requirements.lock").write_text(frozen + "\n")
-            (self.path / "plugins.json").write_text(json.dumps({source.name: source.digest for source in self.sources}, indent=2))
+            metadata = {"requirements": requirements, "plugins": {source.name: source.digest for source in self.sources}}
+            (self.path / "plugins.json").write_text(json.dumps(metadata, indent=2))
             return {
                 "status": "prepared",
                 "environment": str(self.path),

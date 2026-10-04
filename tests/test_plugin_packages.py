@@ -34,7 +34,7 @@ def context():
     return Context("test", "main", "/tmp", "idle", 0, 0, "test", 0)
 
 
-@pytest.mark.parametrize("action", ["reload", "hot_reload", "load", "enable", "install"])
+@pytest.mark.parametrize("action", ["reload", "hot_reload", "load", "enable"])
 async def test_installed_package_cannot_change_identity_on_reload(tmp_path, action):
     from agent_harness import session_with_provider
 

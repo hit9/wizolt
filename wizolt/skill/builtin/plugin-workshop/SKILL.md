@@ -38,9 +38,9 @@ It also supplies shortcut list/bind/unbind operations; configure keys for the us
    Handlers calling `models.complete`, layout or shortcut services need a live session: validate offline,
    then reload and test through `Plugin call`. “Host services unavailable in offline trials”
    is that boundary, not evidence your handler is broken. Plugin-owned `service()` resources work offline.
-   With `DEPENDENCIES`, run step 4's `install` first; then test by installed NAME.
-4. **Save:** `plugin enable PATH` (or `install PATH` for dependencies). This saves a preference;
-   it does not activate anything.
+   With `DEPENDENCIES`, run step 4's `enable` first; then test by installed NAME.
+4. **Save:** `plugin enable PATH`. This saves a preference and prepares a worker environment
+   when declared dependencies need one; it does not activate anything.
 5. **Activate:** call `Plugin(action="reload", name="NAME")`; omit name to apply all saved choices. It
    affects this agent only; pending waits for the current turn or this plugin's active call. A failure includes `traceback`
    and `log`; the previous version keeps running.

@@ -160,7 +160,8 @@ broken plugin.
 ## Dependency environments
 
 Prepare a fresh environment constrained by host versions and persist its environment ID with the
-installation. New candidate workers use that interpreter, without restarting the host. Never
+installation. `enable` is the one saving verb: it prepares only when the host (or the saved
+environment's recorded declarations) cannot serve the plugin, and never touches a custom interpreter. New candidate workers use that interpreter, without restarting the host. Never
 pip-install into the running environment. Failure/cancel removes a candidate under construction.
 The environment borrows the installed host, including editable-source paths: it is not a portable
 bundle or a promise of survival after the host is removed.

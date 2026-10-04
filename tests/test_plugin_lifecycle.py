@@ -229,7 +229,22 @@ def setup(p):
     assert result.returncode == 0, result.stderr
 
 
-async def test_dependency_install_uses_new_environment_and_preserves_host(tmp_path, monkeypatch):
+def test_enable_prepares_again_only_for_changed_declarations(tmp_path):
+    from wizolt.plugins.dependencies import DependencyEnvironment
+    from wizolt.plugins.loading import PluginSource
+
+    python = tmp_path / "env" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    source = tmp_path / "dependent.py"
+    source.write_text('SDK_VERSION = 1\nDEPENDENCIES = ["b>=1", "a"]\ndef setup(p):\n    pass\n')
+    assert not DependencyEnvironment.built_for(str(python), PluginSource.read(str(source)))  # No metadata.
+    (tmp_path / "env" / "plugins.json").write_text('{"requirements": ["a", "b>=1"], "plugins": {}}')
+    assert DependencyEnvironment.built_for(str(python), PluginSource.read(str(source)))
+    source.write_text('SDK_VERSION = 1\nDEPENDENCIES = ["a", "b>=2"]\ndef setup(p):\n    pass\n')
+    assert not DependencyEnvironment.built_for(str(python), PluginSource.read(str(source)))
+
+
+async def test_dependency_enable_uses_new_environment_and_preserves_host(tmp_path, monkeypatch):
     """A real offline wheel exercises uv, validation and hot reload without a network fixture."""
     from wizolt.plugins.installation import PluginInstallations
     from wizolt.plugins.settings import PluginSettings
@@ -253,8 +268,11 @@ def setup(p):
     runtime = SessionPlugins(session_with_provider(tmp_path))
     runtime.session.config.plugins["dependent"] = {"offset": 1}
     old_path = list(sys.path)
-    result = await PluginInstallations(runtime.catalog, runtime.session.cwd, PluginSettings(runtime.session.config.plugins)).manage("install", str(path))
+    installations = PluginInstallations(runtime.catalog, runtime.session.cwd, PluginSettings(runtime.session.config.plugins))
+    result = await installations.manage("enable", str(path))  # The host lacks the dependency.
     assert result["status"] == "saved" and result["python"]
+    # The same declarations reuse that environment instead of preparing another one.
+    assert (await installations.manage("enable", "dependent"))["python"] == result["python"]
     assert runtime.fields() == {} and sys.path == old_path
     assert "wizolt_plugin_testdep" not in sys.modules
     await runtime.hot_reload("dependent")
