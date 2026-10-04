@@ -80,8 +80,11 @@ CLI manager / Plugin tool / agent lifecycle
   switch, so failed saves cannot change which interpreter an installation uses. Explicit custom
   interpreter paths remain the user's responsibility. A copied profile requires reinstalling
   dependencies; never silently fall back to host Python when an environment is absent.
-- Bundled plugins supply disabled installation defaults. They use the same loader, SDK, and
-  controls as user plugins; the terminal does not know which component is the pet.
+- Every bundled plugin is off by default; only the user's explicit enable turns one on. Wizolt
+  never adds features, plugins or functions the user has not explicitly asked for. Never ship a
+  bundled plugin enabled, enable one on upgrade, or make a host feature depend on one being
+  enabled. They use the same loader, SDK, and controls as user plugins; the terminal does
+  not know which component is the pet.
 
 ## Replacement and cancellation
 

@@ -17,8 +17,8 @@ even when another is first on PATH. Its config and project default to this sessi
 after `cd`. Installations, enable/disable and layout are user-level across directories;
 preferences live in `config.toml` under `[plugin_manager]` (installations, layout and shortcuts).
 Plugin-specific settings remain in `[plugins.NAME]`; never put host fields there. The project only
-sets execution context. `/plugins` is the user's interactive manager. The bundled `pet` is installed but
-disabled; enable it by name. The optional built-in `layout` plugin exposes list/move/gap/reset tools:
+sets execution context. `/plugins` is the user's interactive manager. Bundled plugins (`pet`,
+`layout`) are installed but always off until the user enables one by name. The optional built-in `layout` plugin exposes list/move/gap/reset tools:
 enable and reload it to arrange components and spacing for the user. `/plugins` manages lifecycle only.
 It also supplies shortcut list/bind/unbind operations; configure keys for the user through
 `Plugin`, checking conflicts and asking before replacing occupied keys.

@@ -134,6 +134,9 @@ is in parentheses.
 - **Replacing the scroll region/replay with erase-and-print, estimated row deletion, or resize
   CPR.** Those approaches already failed repeated real-tmux reflow (Terminal boundary).
 - **Mocking the behavior under test instead of the external boundary** (Test design).
+- **Shipping a bundled plugin enabled.** Every builtin plugin is off until the user enables it:
+  nothing the user has not explicitly asked for is switched on, and host features never depend
+  on a plugin (Plugin boundaries).
 
 ## Maintenance
 
