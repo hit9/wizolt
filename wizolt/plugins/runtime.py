@@ -212,8 +212,6 @@ class PluginRuntime:
         others += [entry.pending for key, entry in self.entries.items() if key != name and entry.pending]
         others += [pending for key, pending in self._pending_new.items() if key != name]
         for other in others:
-            if capabilities.summarizer and other.plugin.summarizer:
-                raise PluginError(f"Summarizer already supplied by {other.plugin.name}; disable it before enabling another")
             occupied.update(other.plugin.commands)
         if collisions := occupied.intersection(capabilities.commands):
             raise PluginError(f"Command names already registered: {', '.join(sorted(collisions))}")
@@ -298,7 +296,7 @@ class PluginRuntime:
         """Startup: launch every candidate concurrently, then admit them one by one in order.
 
         Launching is the slow part and is independent per plugin. Admission stays serial under
-        the registry lock, in the given order, so command and summarizer collisions resolve
+        the registry lock, in the given order, so command collisions resolve
         exactly as a sequential startup would. Returns each revision's failure, or None.
         """
         launches = [asyncio.create_task(self.launch(revision)) for revision in revisions]
@@ -382,7 +380,6 @@ class PluginRuntime:
             "commands": list(item.plugin.commands),
             "tools": {key: {"description": action.description, "parameters": action.parameters} for key, action in item.plugin.tools.items()},
             "slots": list(item.plugin.components),
-            "summarizer": item.plugin.summarizer,
             "intercepts": {
                 operation: {"match": {key: sorted(values) for key, values in spec.match.items()}, **({"response": spec.response} if spec.response else {})}
                 for operation, spec in item.plugin.intercepts.items()
@@ -633,39 +630,6 @@ class PluginRuntime:
             )
             self.refresh_soon()
             return result
-        finally:
-            generation.invocations -= 1
-            self._publish()
-
-    @property
-    def _summary_generation(self) -> Generation | None:
-        """Admission guarantees one strategy; failed generations fall back until reload."""
-        return next(
-            (
-                entry.active
-                for entry in self.entries.values()
-                if entry.active.plugin.summarizer and not entry.active.failure("summarizer") and not entry.disabling
-            ),
-            None,
-        )
-
-    @property
-    def has_summarizer(self) -> bool:
-        return self._summary_generation is not None
-
-    async def summarize(self, text: str, validate: Callable[[str], None]) -> tuple[str, str] | None:
-        """Lease the generation through manual compaction too; core validates semantics."""
-        generation = self._summary_generation
-        if generation is None or self._closed:
-            return None
-        generation.invocations += 1
-        try:
-            summary = await generation.worker.request("compact", timeout=self.ACTION_TIMEOUT, text=text, context=asdict(self.facts()))
-            validate(summary)
-            return generation.plugin.name, summary
-        except Exception as error:  # noqa: BLE001 - a broken strategy must not strand compaction.
-            generation.fail("summarizer", str(error))
-            return None
         finally:
             generation.invocations -= 1
             self._publish()

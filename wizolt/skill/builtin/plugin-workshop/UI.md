@@ -1,7 +1,8 @@
 # Interactive UI
 
 Read this after [SDK.md](SDK.md). Use these APIs only inside a registered command or tool
-handler. No interaction from setup, ticks, rendering, observers or summarizers. The host
+handler, or a `prompt.submit` / `tool.call` interceptor. No interaction from setup, ticks,
+rendering, observers or other interceptors. The host
 owns input, theme, scrolling, focus, cancellation and terminal resizing.
 
 ## API

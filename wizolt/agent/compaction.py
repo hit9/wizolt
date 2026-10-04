@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 from difflib import SequenceMatcher
-from functools import partial
 from typing import TYPE_CHECKING, ClassVar
 
 from wizolt.agent.prompts import (
@@ -31,6 +30,7 @@ from wizolt.base import SESSION_EVENT_KEY, Billing, Json, ModelError, ModelRespo
 from wizolt.config import ProviderConfig, compaction_provider_config
 from wizolt.model import ModelClient
 from wizolt.model.interception import client_request
+from wizolt.sdk import PluginError
 from wizolt.shellhooks import POST_COMPACT, PRE_COMPACT, HookOutcome
 from wizolt.tools import Tool
 
@@ -106,6 +106,11 @@ class Compactor:
                 error_detail = "cancelled by user"
                 cancelled = error
                 data = None
+            except PluginError as error:
+                # A failed plugin interceptor is explicit: never trim history around it. The turn
+                # fails when it cannot fit; disabling the plugin restores the builtin strategy.
+                error_detail = Text.clip_width(" ".join(str(error).split()), 220)
+                raise
             except Exception as error:  # noqa: BLE001 - compaction degrades to deterministic trimming on any model failure.
                 error_detail = Text.clip_width(" ".join(str(error).split()) or type(error).__name__, 220)
                 data = None
@@ -147,18 +152,56 @@ class Compactor:
         inline_messages: list[Json] | None = None,
         tools: list[Json] | None = None,
         echo_source: str = "",
+        trigger: str = "auto",
     ) -> Json:
+        """The summary for a core-selected span: ``context.compact`` wraps the builtin strategy.
+
+        Core keeps split/keep, pairing, checkpoint validation and persistence. A plugin may return
+        a summary without calling the builtin, or change the one it returns; either passes the
+        echo guard and the plugin summary bound. Interceptor failures propagate: there is no
+        implicit fallback, so callers never trim history around a failed plugin.
+        """
         model = self.model
         model.last_compaction_model = ""
         plugins = model.session.plugins
-        if plugins is not None:
-            result = await plugins.summarize(
-                context or self.ctx.messages_text(inline_messages or []), partial(self.validate_plugin_summary, echo_source=echo_source)
-            )
-            if result is not None:
-                name, summary = result
-                model.last_compaction_model = f"plugin:{name}"
-                return {"summary": summary}
+        interception = getattr(plugins, "interception", None)
+        if interception is None or not interception.would_match("context.compact", trigger=trigger):
+            return await self.builtin_compact(context, inline_messages, tools, echo_source)
+        from wizolt.sdk.operations import Compaction, Summary
+
+        builtin: dict = {}
+
+        async def core(_value: object) -> Summary:
+            builtin["data"] = data = await self.builtin_compact(context, inline_messages, tools, echo_source)
+            builtin["summary"] = summary = Summary(str(data.get("summary") or "").strip() or "(empty summary)")
+            return summary
+
+        def checked(_received: object, result: object, downstream: object, _owner: str) -> None:
+            if downstream is not None and result == downstream:
+                return
+            assert isinstance(result, Summary)
+            if len(result.text) > self.PLUGIN_SUMMARY_LIMIT:
+                raise PluginError(f"Plugin summaries are at most {self.PLUGIN_SUMMARY_LIMIT} characters")
+            try:
+                self.validate_plugin_summary(result.text, echo_source=echo_source)
+            except ModelError as error:
+                raise PluginError(str(error)) from None
+
+        trace: dict = {}
+        result = await interception.run(
+            "context.compact", Compaction(context or self.ctx.messages_text(inline_messages or []), trigger), core, result_check=checked, trace=trace
+        )
+        assert isinstance(result, Summary)
+        if result == builtin.get("summary"):
+            return builtin["data"]  # The builtin's own checkpoint, plan and known facts included.
+        if origin := trace.get("origin"):
+            model.last_compaction_model = f"plugin:{origin.partition('/')[0]}"
+        return {**builtin.get("data", {}), "summary": result.text.strip()}
+
+    PLUGIN_SUMMARY_LIMIT = 16000
+
+    async def builtin_compact(self, context: str, inline_messages: list[Json] | None, tools: list[Json] | None, echo_source: str) -> Json:
+        model = self.model
         # The summary request runs on the [compaction]-resolved provider entry (empty [compaction]
         # = the active provider), resolved per call so a runtime /provider switch applies next
         # time. The context budget is untouched: compaction still measures against the main
@@ -194,7 +237,7 @@ class Compactor:
     def validate_plugin_summary(self, summary: str, *, echo_source: str) -> None:
         """Apply the same echo guard before any plugin result reaches durable state."""
         if self.echoes_source(summary, echo_source):
-            raise ModelError("Plugin summarizer echoed the conversation")
+            raise ModelError("The plugin summary echoed the conversation")
 
     async def compact_attempts(
         self,
@@ -309,9 +352,9 @@ class Compactor:
         a rendering that drops tool calls -- but the reuse this method is named for does not apply
         there."""
         ctx = self.ctx
-        if ctx.session.plugins is not None and ctx.session.plugins.has_summarizer:
-            # A plugin consumes the flattened, selected span plus prior working state. It does
-            # not borrow the main provider's cached request or receive authority over the cut.
+        if ctx.session.plugins is not None and ctx.session.plugins.interception.active("context.compact"):
+            # An interceptor consumes the flattened, selected span plus prior working state. It
+            # does not borrow the main provider's cached request or receive authority over the cut.
             return None
         if ctx.session.config.compaction_provider or ctx.session.system_info is None:
             return None

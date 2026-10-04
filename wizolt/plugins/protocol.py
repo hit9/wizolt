@@ -38,7 +38,6 @@ class Capabilities:
     tools: dict[str, Operation]
     themes: dict[str, dict[str, Any]]
     presets: dict[str, dict[str, str]]
-    summarizer: bool = False
     intercepts: dict[str, "InterceptSpec"] = field(default_factory=dict)
 
     @classmethod
@@ -52,7 +51,6 @@ class Capabilities:
             {key: Operation(**item) for key, item in value["tools"].items()},
             value["themes"],
             value["presets"],
-            value.get("summarizer", False),
             {key: InterceptSpec.decode(key, item) for key, item in value.get("intercepts", {}).items()},
         )
 

@@ -173,7 +173,6 @@ Field = Callable[[Context], Value]
 Component = Callable[[Context], Panel]
 Observer = Callable[[Event], Awaitable[None]]
 Handler = Callable[[Context, Mapping[str, Any]], Awaitable[str]]
-Summarizer = Callable[[Context, str], Awaitable[str]]
 # (context, operation value, next) -> result; next: async (value) -> downstream result.
 InterceptHandler = Callable[[Context, Any, Callable[[Any], Awaitable[Any]]], Awaitable[Any]]
 
@@ -242,18 +241,6 @@ class Plugin:
         self.ui = UI()
         self._service_handles: dict[str, Service] = {}
         self.interceptors: dict[str, Interceptor] = {}
-        self.summary_handler: Summarizer | None = None
-
-    def summarizer(self, callback: Summarizer) -> None:
-        """Supply summary text for a core-selected span; never rewrite history or plans.
-
-        Only one enabled plugin may register a summarizer. Failure falls back to built-in
-        compaction. The callback may use models/services and has the normal action deadline.
-        """
-        self._callback(callback, asynchronous=True)
-        if self.summary_handler is not None:
-            raise PluginError("A summarizer is already registered")
-        self.summary_handler = callback
 
     def service(self, name: str, factory: Callable[[], AbstractAsyncContextManager[Resource]]) -> Service[Resource]:
         """Register a lazy async context manager; disabling/reloading closes its resources.

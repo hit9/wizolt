@@ -115,8 +115,8 @@ class PluginManager:
         # Presets arrive grouped by kind, and every kind is present even when it is empty.
         if presets := [f"{kind} {', '.join(names)}" for kind, names in item.get("presets", {}).items() if names]:
             lines.append(f"Presets: {'; '.join(presets)}")
-        if item.get("summarizer"):
-            lines.append("Compaction: supplies summary text")
+        if intercepts := item.get("intercepts"):
+            lines.append(f"Intercepts: {', '.join(intercepts)}")
         for key in ("error", "python"):
             if value := item.get(key):
                 lines.append(f"{key.capitalize()}: {value}")

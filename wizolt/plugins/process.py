@@ -62,7 +62,7 @@ class PluginProcess:
     def admits_host_call(self, identity: int) -> bool:
         future = self.pending.get(identity)
         operation = self.operations.get(identity, "")
-        return future is not None and not future.done() and (operation in ("invoke", "compact") or operation.startswith("intercept:"))
+        return future is not None and not future.done() and (operation == "invoke" or operation.startswith("intercept:"))
 
     # Views and notices: explicit actions, and the two interceptors that act for the user.
     INTERACTIVE = frozenset({"invoke", "intercept:prompt.submit", "intercept:tool.call"})

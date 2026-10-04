@@ -70,7 +70,8 @@ Settings go in `[plugins.NAME]` of wizolt's config; declare them with `plugin.co
 save interactive choices with `await plugin.settings.update(values, reset=[...])` (see SDK.md).
 Apply the returned settings yourself or reload; `plugin.config` stays frozen.
 Use `plugin.service` for connections, `plugin.models.complete` for model
-requests and `plugin.summarizer` for compaction; tell the user about model costs first. Do not
+requests and `plugin.intercept` (see INTERCEPTION.md) to change how wizolt submits prompts,
+composes context, sends model requests, runs tools or compacts; tell the user about model costs first. Do not
 mutate host internals, create unmanaged tasks, install into the running interpreter, or send
 desktop notifications.
 

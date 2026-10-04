@@ -92,8 +92,6 @@ class PluginTrial:
                             tool=stimulus.arguments.get("tool"),
                             reason=stimulus.arguments.get("reason", ""),
                         )
-                    elif stimulus.kind == "summarizer":
-                        result = await worker.request("compact", timeout=self.timeout, text=stimulus.arguments["text"], context=asdict(self.context))
                     else:
                         result = await worker.request(
                             "invoke",

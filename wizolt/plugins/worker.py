@@ -114,7 +114,6 @@ class Worker:
                 "events": list(plugin.observers),
                 "themes": plugin.themes,
                 "presets": plugin.presets,
-                "summarizer": plugin.summary_handler is not None,
                 "commands": {
                     name: {"description": action.description, "parameters": dict(action.parameters), "during_turn": action.during_turn}
                     for name, action in plugin.commands.items()
@@ -140,14 +139,6 @@ class Worker:
             raise PluginError("Plugin is not loaded")
         plugin = self.loaded.plugin
         context = Context.decode(request["context"])
-        if operation == "compact":
-            if plugin.summary_handler is None:
-                raise PluginError("Plugin has no summarizer")
-            with plugin.services.invocation():
-                summary = await plugin.summary_handler(context, request["text"])
-            if not isinstance(summary, str) or not summary.strip() or len(summary) > 16000:
-                raise PluginError("Summarizer must return non-empty text of at most 16000 characters")
-            return summary.strip()
         if operation in ("snapshot", "sample", "sample_render"):
             sampled = replace(context, layout=None)
             # The public name says what it is: the refresh tick, not a lifecycle transition.

@@ -20,7 +20,6 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.theme(name, definition)` | Register theme metadata; see [APPEARANCE.md](APPEARANCE.md) |
 | `plugin.preset(kind, name, source)` | Register a `statusbar` or `divider` format string |
 | `plugin.service(name, factory)` | `factory() -> AsyncContextManager[T]`; returns `Service[T]` |
-| `plugin.summarizer(callback)` | Async `(Context, str) -> str`; one summary strategy per agent |
 | `plugin.intercept(operation, handler, *, match=None, response=None)` | Async `(Context, value, next) -> result`; wrap one operation; see [INTERCEPTION.md](INTERCEPTION.md) |
 | `plugin.models.complete(prompt, *, system="", provider="", model="", effort="", api="")` | Async text request; returns `ModelReply` |
 | `plugin.ui.components.list()` | Async; returns `tuple[Component, ...]` in visual order |
@@ -40,7 +39,7 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `handle.get()` | Async; returns the same acquired service object until the generation closes |
 
 Only the interfaces documented here and in [UI.md](UI.md) are author APIs. Registration dictionaries, `wizolt.sdk.Action`,
-`summary_handler`, `plugin.services`, `Models.call`, `Context.decode`, SDK implementation helpers,
+`plugin.interceptors`, `plugin.services`, `Models.call`, `Context.decode`, SDK implementation helpers,
 and everything under `wizolt.plugins` are host plumbing, even where Python names lack `_`.
 Do not construct `Plugin`, `Models` or `Service` yourself, mutate registries or call lifecycle
 methods. SDK 1 is experimental; the bundled reference matches the installed wizolt version.
@@ -114,7 +113,8 @@ seconds). Host model calls still have their independent 50-second/four-concurren
 Panels allow 12 rows, 256 spans per row and 4,096 total characters per row. Prompt slots share
 at most six visible rows. Single-file source is at most 256 KiB; package limits are below.
 Templates allow 8,192 characters. A timed-out worker can be killed; ordinary callback errors
-are reported. A failed render/observer/summary stays unhealthy until reload. Do not suppress
+are reported. Health is per registration until reload: a failed observer or component is skipped
+(your commands and tools keep working); a failed interceptor blocks the operations it matches. Do not suppress
 `asyncio.CancelledError`; it must unwind resources and release the generation.
 
 ## Layout and execution facts
@@ -137,7 +137,7 @@ components consume no gap. Gaps share the height budget and shrink to reserve on
 is the space actually used. Resetting order preserves gaps; `set_gap(id, None)` restores the
 plugin default without changing order. Do not add those empty rows yourself.
 
-Layout calls are available inside explicit command/tool handlers and summarizers (not renderers or observers),
+Layout calls are available inside explicit command/tool handlers only (not interceptors, renderers or observers),
 and unavailable in offline trials. `visibility` is `pending layout`, `empty`, `visible`,
 `clipped by height budget`, or `hidden by height budget`; allocation updates on the next refresh.
 
@@ -243,7 +243,7 @@ package name unchanged when editing its manifest. Other running agents remain un
 
 ### Model requests
 
-Inside a command or summarizer, `await plugin.models.complete(prompt, system="", provider="", model="",
+Inside a command, tool or interceptor, `await plugin.models.complete(prompt, system="", provider="", model="",
 effort="", api="")` makes one text-only request through a configured provider. Empty routing
 fields inherit the agent's configuration. It returns `.text`, `.model` and `.usage` (input,
 output and cached tokens). Put preferred routing names in your plugin's own configuration.
@@ -269,29 +269,33 @@ plugin.command("ask-helper", "Ask my helper (uses model tokens)", ask)
 
 ### Compaction
 
-`plugin.summarizer(async_callback)` supplies summary text for the history span selected by wizolt.
-The callback receives `(context, text)`, including previous summary and working state. Return
-non-empty text up to 16,000 characters. It may call `plugin.models.complete` or managed services.
-Enable only one summarizer plugin at a time. Enabling it opts into automatic calls on compaction;
-explain any model cost before enabling. Core history boundaries, notes and persistence remain
-unchanged. An exception, timeout, empty answer or copied source marks the plugin failed and falls
-back to built-in compaction; fix it and reload to try again.
+Intercept `context.compact` to supply or shape the summary of the history span wizolt selected
+(see [INTERCEPTION.md](INTERCEPTION.md)). The span arrives as `Compaction(text, trigger)`,
+including previous summary and working state. Return `Summary(text)` (non-empty, up to 16,000
+characters) without calling `next` to replace the builtin strategy, or wrap what `next` returns.
+Enabling it opts into automatic calls on compaction; explain any model cost before enabling. Core
+history boundaries, notes and persistence remain unchanged. There is no fallback: an exception,
+timeout, empty answer or copied source fails that compaction and blocks the interceptor until
+reload or disable; disabling the plugin restores the builtin strategy.
 
 ```python
+from wizolt.sdk.operations import Summary
+
+
 def setup(plugin):
-    async def summarize(context, text):
+    async def summarize(context, span, next):
         reply = await plugin.models.complete(
-            text,
+            span.text,
             system="Summarize completed work, decisions and outstanding tasks. Return concise plain text.",
             provider=plugin.config.get("provider", ""),
         )
-        return reply.text
+        return Summary(reply.text)
 
-    plugin.summarizer(summarize)
+    plugin.intercept("context.compact", summarize)
 ```
 
-Use `wizolt plugin test PATH --summarize history.txt` for a local algorithm. Model-backed trials
-report unavailable host services; enable and run `/compact` to exercise the configured model.
+Model-backed trials report unavailable host services; enable and run `/compact` to exercise the
+configured model.
 
 ### Managed services
 
@@ -577,6 +581,8 @@ compaction summaries with paid model requests; summary trials report unavailable
 from contextlib import asynccontextmanager
 from io import StringIO
 
+from wizolt.sdk.operations import Summary
+
 SDK_VERSION = 1
 
 
@@ -601,18 +607,18 @@ def setup(plugin):
         reply = await plugin.models.complete(arguments["input"], provider=plugin.config["provider"])
         return f"{reply.text}\nTokens: {reply.usage.input_tokens} in / {reply.usage.output_tokens} out"
 
-    async def summarize(context, text):
+    async def summarize(context, span, next):
         reply = await plugin.models.complete(
-            text,
+            span.text,
             system="Summarize decisions, completed work and remaining tasks in concise plain text.",
             provider=plugin.config["provider"],
         )
-        return reply.text
+        return Summary(reply.text)
 
     plugin.command("helper-test", "Check the helper", check)
     plugin.command("helper-ask", "Ask a model (uses tokens)", ask)
     plugin.tool("self_test", "Check the helper offline", {"type": "object", "additionalProperties": False}, check)
-    plugin.summarizer(summarize)
+    plugin.intercept("context.compact", summarize)
 ```
 
 ## Source fallback

@@ -135,13 +135,6 @@ def test_trial_inputs_accept_pipes_and_symlinks(tmp_path, capsys):
     finally:
         os.close(read)
     assert "context 300 / 1000" in json.loads(capsys.readouterr().out)["previews"][0]["text"]
-    history = tmp_path / "history.txt"
-    history.write_text("Decided to ship.\n")
-    (tmp_path / "link.txt").symlink_to(history)
-    plugin = tmp_path / "digest.py"
-    plugin.write_text("SDK_VERSION = 1\ndef setup(p):\n    async def summarize(ctx, text):\n        return 'Digest: ' + text.strip()\n    p.summarizer(summarize)\n")
-    assert main(["test", str(plugin), "--summarize", str(tmp_path / "link.txt"), "--project", str(tmp_path)]) == 0
-    assert json.loads(capsys.readouterr().out)["results"] == ["Digest: Decided to ship."]
 
 
 def test_rejected_contribution_reports_the_validate_stage(tmp_path, capsys):

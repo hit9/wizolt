@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Replace `plugin.summarizer` with the `context.compact` operation. A plugin returns a
+  `Summary` instead of calling the builtin strategy, or shapes the summary the builtin returns
+  (its plan and known facts are kept). Plugin summaries pass the echo guard and the 16,000
+  character bound. Interceptor failures are explicit: automatic compaction fails the turn and
+  `/compact` applies no checkpoint, with no deterministic-trim fallback around a failed
+  plugin. Several compact interceptors now chain instead of excluding each other. The trial
+  `--summarize` flag is removed; `--operations` fixtures replace it.
+
 - Make request context composable (`context.compose`). The header is now built from named parts
   (system, environment, instructions, skills, MCP). Plugins may replace the system and
   instruction text (directives stay host-owned) and add their own `plugin:<name>:<id>` blocks,

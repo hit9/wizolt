@@ -694,6 +694,7 @@ async def compact(loop: CommandLoop, args: str) -> str | LogBlock | None:
     # Imported at use: /compact is the only entry to the manual compaction stack, and that stack
     # (the Compactor, its prompts, and wizolt.model through it) is not needed for the first frame.
     from wizolt.agent.compaction import Compactor
+    from wizolt.sdk import PluginError
 
     compactor = Compactor(loop.agent.context, loop.agent.model)
     compacted, keep = compactor.parts()
@@ -715,9 +716,12 @@ async def compact(loop: CommandLoop, args: str) -> str | LogBlock | None:
         # Same pairing as the automatic path: the echo guard checks what the model is handed, and
         # the inline slice carries one message more than `compacted` does.
         sent = request[0][:-1] if request else compacted
-        data = await compactor.compact(compactor.input(compacted), *(request or ()), echo_source=compactor.echo_source(sent))
+        data = await compactor.compact(compactor.input(compacted), *(request or ()), echo_source=compactor.echo_source(sent), trigger="manual")
     except (asyncio.CancelledError, KeyboardInterrupt):
         return "Cancelled"
+    except PluginError as error:
+        # A failed plugin interceptor applies no checkpoint and no trimming fallback.
+        return f"Compaction failed: {error}"
     except Exception as error:  # noqa: BLE001 - manual compaction uses the same deterministic fallback as automatic compaction.
         loop.agent.context.apply_compaction(None, keep, fallback_note=PREVIOUS_CONTEXT_TRIMMED, compacted=compacted, trigger="manual")
         fallback = True

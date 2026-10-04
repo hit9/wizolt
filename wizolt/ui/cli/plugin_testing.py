@@ -93,7 +93,6 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--call", default="", help="Explicit command:NAME or tool:NAME after events")
     parser.add_argument("--arguments", default="{}", help="JSON arguments for --call")
     parser.add_argument("--interactions", type=Path, help="JSON scripted view expectations and replies; settings writes use a temporary config")
-    parser.add_argument("--summarize", type=Path, help="Explicitly run the summarizer on this UTF-8 text file")
     parser.add_argument("--output", type=Path, help="Parent directory for a fresh preview bundle (default: system temporary directory)")
     parser.add_argument("--font", default="", help="PNG font file; choose one covering your plugin's characters")
     args = parser.parse_args(argv)
@@ -117,11 +116,6 @@ def main(argv: list[str]) -> int:
         if not separator or kind not in ("command", "tool") or not name:
             parser.error("call must be command:NAME or tool:NAME")
         stimuli.append(Stimulus(kind, name, arguments))
-    if args.summarize:
-        try:
-            stimuli.append(Stimulus("summarizer", "", {"text": read_input(args.summarize, 256 * 1024).decode("utf-8")}))
-        except (OSError, ValueError) as error:
-            parser.error(str(error))
     if args.action == "validate" and (stimuli or args.interactions):
         parser.error("use test to execute events or actions")
     try:

@@ -90,7 +90,7 @@ CLI manager / Plugin tool / agent lifecycle
 ## Replacement and cancellation
 
 Validation constructs an unpublished generation. A failed candidate leaves active code intact.
-An active turn freezes the whole registry; command/tool and summarizer invocations pin only their
+An active turn freezes the whole registry; command/tool invocations and interception chains pin only their
 own generation. An idle plugin can therefore publish while another plugin is awaiting input.
 Replacement reports `starting`, `reloading` or `stopping` until its applicable leases end;
 each live status word names one situation, and the saved enable choice is a separate field.
@@ -103,7 +103,7 @@ settings and tool namespaces, even if a package's manifest was renamed on disk.
 
 Bringing a candidate in has two halves. **Launch** (identity check, worker start, setup,
 capability decode, appearance validation, first snapshot) touches only that plugin's process
-and is nearly all the cost. **Admit** (command/summarizer collisions against the registry, then
+and is nearly all the cost. **Admit** (command collisions against the registry, then
 staging and publication) must see one consistent registry, so it runs under the runtime lock
 with no awaits between its check and its stage. Startup runs in this order:
 
@@ -214,20 +214,16 @@ replacement of an author's previous evidence.
 
 ## Verification
 
-A summarizer is a single-writer strategy, not a history transform. Admission rejects competing
-strategies before publication, including pending generations. The compactor supplies the selected
+Summaries are a `context.compact` interception, not a history transform. Several compact
+interceptors chain in interception order. With one active, the compactor supplies the selected
 flattened span and existing working state; this intentionally gives up main-prefix cache reuse.
 Plugins return bounded text only. The core retains split/keep, protocol pairing, echo validation,
-checkpoint application and persistence. Both automatic and manual compaction pin the generation;
-cancellation propagates, while other failures mark it unhealthy and fall back to the builtin path.
-
-That fallback is the shipped summarizer contract. The proposed
-[interception contract](PLUGIN_INTERCEPTION.md#deadlines-and-failures) replaces it with explicit
-failure: automatic compaction failure can fail preparation of the user's turn, while leaving
-history/checkpoints intact. Implementing that proposal must update this paragraph, the SDK and
-tests together. It also replaces a blanket unhealthy/skip decision with per-registration rules:
-observation/presentation can skip; failed matching interception blocks until reload or disable.
-The core `/plugins` command and `--no-plugins` must remain independent recovery paths.
+checkpoint application and persistence. Both automatic and manual compaction pin the chain;
+cancellation propagates. Failure is explicit, never a fallback: automatic compaction fails the
+user's turn while leaving history and checkpoints intact, and `/compact` applies no checkpoint.
+Health is per registration: observation and presentation skip a failed registration; a failed
+matching interceptor blocks its operations until reload or disable. The core `/plugins` command
+and `--no-plugins` remain independent recovery paths.
 
 `test_plugins.py` executes examples from the packaged SDK reference. Lifecycle tests exercise
 actual module loading and offline wheel installation; UI tests exercise the real selector and
