@@ -6,7 +6,7 @@ import os
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
-from wizolt.base import ConfigError, Json
+from wizolt.base import ConfigError
 from wizolt.plugins.preferences import PluginPreferences
 from wizolt.sdk import PluginError
 
@@ -84,21 +84,6 @@ class PluginCatalog:
 
     _python_path = "Scripts/python.exe" if os.name == "nt" else "bin/python"
 
-    def initialize(self) -> None:
-        """Import early-alpha preferences explicitly, never as a side effect of a query.
-
-        Startup and mutating installation commands own this boundary. Recovery startup and
-        offline inspection must remain usable without writing or repairing any preferences.
-        """
-        if os.environ.get("WIZOLT_NO_PLUGINS"):
-            return
-        self.preferences.import_existing(self.directory)
-        saved = self.preferences.read("installations")
-        records, _ = self.read()
-        for name, item in records.items():
-            if isinstance(saved.get(name), dict) and saved[name].get("python") and self._environment(item.python):
-                self.save(item, expected=saved[name])
-
     def _environment(self, python: str) -> str:
         """Recognize host-built environments lexically: resolving Python follows venv symlinks."""
         path = Path(python)
@@ -108,7 +93,7 @@ class PluginCatalog:
             return name
         return ""
 
-    def save(self, item: Installation, *, expected: Json | None = None) -> None:
+    def save(self, item: Installation) -> None:
         """Replace one installation table without rewriting unrelated profile choices."""
         if not item.name.isidentifier() or not item.name.isascii():
             raise PluginError("Invalid plugin name")
@@ -123,4 +108,4 @@ class PluginCatalog:
             data.pop("python")
         elif not item.python:
             data.pop("python")
-        self.preferences.save("installations", item.name, data, expected=expected)
+        self.preferences.save("installations", item.name, data)

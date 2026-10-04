@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Remove early-alpha plugin preference migration and its startup write path. `config.toml`
+  is the sole source of installed/enabled plugins, layout and shortcuts; runtime cache files
+  no longer import preferences implicitly.
+
 - Represent each plugin revision as one complete source/settings/interpreter snapshot. Live,
   pending and rollback workers share the same preparation path without parallel rollback fields.
 

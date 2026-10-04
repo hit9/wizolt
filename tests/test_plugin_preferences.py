@@ -1,7 +1,6 @@
 """Portable preferences and failure-safe config transactions, through their public boundary."""
 
 import fcntl
-import json
 import stat
 
 import pytest
@@ -44,23 +43,15 @@ def test_preferences_keep_config_comments_symlinks_and_plugin_settings(tmp_path)
     assert other.preferences.read("layout")["above_input"]["gaps"] == {"pet.above_input": 2}
 
 
-def test_existing_preferences_are_copied_once_without_removing_originals(tmp_path):
+def test_runtime_cache_never_supplies_preferences_or_creates_config(tmp_path):
     catalog = PluginCatalog.for_user(str(tmp_path))
     catalog.directory.mkdir(parents=True)
-    old = catalog.directory / "sample.json"
-    old.write_text(json.dumps({"name": "sample", "path": "/sample.py", "enabled": True}))
-    layout = catalog.directory / "layout"
-    layout.mkdir()
-    (layout / "above_input.json").write_text('["sample.above_input"]')
-    assert "sample" not in catalog.read()[0]
-    assert not catalog.preferences.path.exists()  # Queries never import or create files.
-    catalog.initialize()
+    (catalog.directory / "sample.json").write_text("invalid cache")
     records, errors = catalog.read()
-    assert not errors and records["sample"].enabled
-    assert old.exists()
-    assert catalog.preferences.read("layout")["above_input"]["order"] == ["sample.above_input"]
+    assert not errors and "sample" not in records
+    assert not catalog.preferences.path.exists()
     catalog.save(Installation("sample", "/sample.py", False))
-    assert not catalog.read()[0]["sample"].enabled  # Old enabled=true never reappears.
+    assert not catalog.read()[0]["sample"].enabled
 
 
 def test_busy_config_refuses_write_without_blocking_or_losing_other_preferences(tmp_path):
@@ -75,16 +66,6 @@ def test_busy_config_refuses_write_without_blocking_or_losing_other_preferences(
     assert path.read_bytes() == before
     preferences.save("layout", "above_input", {"order": []})
     assert preferences.read("shortcuts")["bindings"] == {"f6": "a.open"}
-
-
-def test_recovery_startup_does_not_import_old_preferences(tmp_path, monkeypatch):
-    catalog = PluginCatalog.for_user(str(tmp_path))
-    catalog.directory.mkdir(parents=True)
-    (catalog.directory / "broken.json").write_text("broken")
-    monkeypatch.setenv("WIZOLT_NO_PLUGINS", "1")
-    catalog.initialize()
-    catalog.read()
-    assert not catalog.preferences.path.exists()
 
 
 def test_generated_interpreters_are_local_but_environment_choices_are_atomic(tmp_path):
@@ -105,16 +86,6 @@ def test_generated_interpreters_are_local_but_environment_choices_are_atomic(tmp
     assert catalog.read()[0]["example"].python == python
 
 
-def test_initialization_rewrites_only_generated_interpreter_paths(tmp_path):
-    catalog = PluginCatalog.for_user(str(tmp_path))
-    python = str(catalog.directory / "environments" / "abc123" / "bin/python")
-    catalog.preferences.save("installations", "example", {"path": "/example.py", "python": python})
-    catalog.preferences.save("installations", "custom", {"path": "/custom.py", "python": "/opt/custom/python"})
-    catalog.initialize()
-    assert catalog.preferences.read("installations")["example"]["environment"] == "abc123"
-    assert catalog.read()[0]["custom"].python == "/opt/custom/python"
-
-
 @pytest.mark.parametrize("environment", [False, 0, "../outside", "/absolute"])
 def test_invalid_environment_does_not_become_a_host_interpreter(tmp_path, environment):
     catalog = PluginCatalog.for_user(str(tmp_path))
@@ -123,22 +94,3 @@ def test_invalid_environment_does_not_become_a_host_interpreter(tmp_path, enviro
     assert "example" not in records
     assert errors == ["example: invalid dependency environment"]
 
-
-def test_initialization_does_not_overwrite_a_concurrent_disable(tmp_path, monkeypatch):
-    catalog = PluginCatalog.for_user(str(tmp_path))
-    python = str(catalog.directory / "environments" / "abc123" / "bin/python")
-    original = {"path": "/example.py", "python": python, "enabled": True}
-    catalog.preferences.save("installations", "example", original)
-    save = catalog.save
-
-    def concurrent_change(item, **kwargs):
-        catalog.preferences.save("installations", "example", {**original, "enabled": False})
-        save(item, **kwargs)
-
-    monkeypatch.setattr(catalog, "save", concurrent_change)
-    catalog.initialize()
-    assert not catalog.read()[0]["example"].enabled
-    monkeypatch.setattr(catalog, "save", save)
-    catalog.initialize()
-    record = catalog.preferences.read("installations")["example"]
-    assert not record["enabled"] and record["environment"] == "abc123"

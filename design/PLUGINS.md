@@ -71,9 +71,8 @@ CLI manager / Plugin tool / agent lifecycle
   session snapshots. Config writes hold a nonblocking cross-process lease and preserve comments,
   mode and symlink targets; contention is an explicit retryable failure, never a UI wait.
   Existing agents are not silently reconfigured by another agent's changes.
-- Catalog reads never create files or import old preferences. Session startup and mutating
-  installation commands explicitly initialize early-alpha preferences before reading layout.
-  Recovery startup skips initialization. Generated interpreters stay under local runtime data;
+- Config is the sole preference source; startup and queries never migrate or rewrite it.
+  Runtime cache files carry no installation choices. Generated interpreters stay under local runtime data;
   config stores only their immutable environment IDs. Preparation precedes the atomic config
   switch, so failed saves cannot change which interpreter an installation uses. Explicit custom
   interpreter paths remain the user's responsibility. A copied profile requires reinstalling

@@ -25,8 +25,6 @@ class PluginInstallations:
         self.validate: Callable[[Capabilities], None] | None = None
 
     async def manage(self, action: str, target: str = "") -> dict:
-        if action in ("enable", "disable", "install"):
-            self.catalog.initialize()
         records, problems = self.catalog.read()
         if action in ("list", "inspect"):
             if target and target not in records:
