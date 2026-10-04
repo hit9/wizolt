@@ -366,8 +366,11 @@ Open `/plugins` to manage existing installations. Creation, validation, and inst
 Keep user plugin source in `~/.wizolt/plugins/`, preferably one Git repository per plugin.
 There are only built-in and user plugins, never project-scoped installations. Source directories
 are not scanned for automatic execution.
-Installation, enable/disable, order and gaps are user-level, stored under
-`<data_dir>/plugins/.state/` (normally `~/.wizolt/plugins/.state/`). `--project` chooses
+Installation, enable/disable, order, gaps and shortcuts are user-level, stored in the selected
+`config.toml` under `[plugin_manager]`. `wizolt plugin list` reports `config_path`.
+The `installations.NAME` tables hold source path and enabled choice; `layout.SLOT` holds
+`order` and `gaps`; `shortcuts.bindings` maps keys to `plugin.command`. Plugin-owned settings
+stay under `[plugins.NAME]`, so strict configure schemas never see host fields. `--project` chooses
 execution context only; it never scopes installation. Enabling persists the source path
 for future agents in any directory. Existing agents keep their
 own instances. Reload/disable wait for active turns or invocations; the reload result reports pending.
@@ -424,7 +427,7 @@ is modified, and the test process is always retired, including on timeout or can
   ordinary Python variables do not survive a worker replacement or session restart.
 - For recovery, disable through the CLI, then reload; `/plugins` can restore previous source with
   rollback. `WIZOLT_NO_PLUGINS=1 wizolt` skips startup execution. Check config/project paths before
-  changing preferences. Saved records live under the directory printed by `wizolt plugin list`.
+  changing preferences. Saved choices live in the config printed by `wizolt plugin list`.
 
 ## Example: pet.py
 

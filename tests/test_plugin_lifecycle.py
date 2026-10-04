@@ -277,7 +277,7 @@ def test_plugin_cli_defaults_to_the_calling_agents_config_and_project(tmp_path, 
     monkeypatch.setenv("WIZOLT_SESSION_CWD", str(project))
     assert main(["list"]) == 0
     listed = json.loads(capsys.readouterr().out)
-    assert listed["catalog_directory"] == str(PluginCatalog.for_user(str(tmp_path / "data")).directory)
+    assert listed["runtime_directory"] == str(PluginCatalog.for_user(str(tmp_path / "data")).directory)
 
 
 async def test_errored_generation_inspection_includes_its_traceback(tmp_path):
@@ -346,7 +346,8 @@ def setup(p):
     p.field("cwd", lambda ctx: ctx.cwd)
     p.component("above_input", lambda ctx: Panel((Text(ctx.cwd),)))
 ''')
-    config = tmp_path / "user.toml"
+    config = first.plugins.catalog.preferences.path
+    config.parent.mkdir(parents=True, exist_ok=True)
     config.write_text(f'[paths]\ndata_dir = "{first.config.data_dir}"\n')
     workspace = PluginWorkspace.open(str(config), second.cwd)
     try:

@@ -121,7 +121,7 @@ the user chooses replacement; protected input/cancellation keys never allow repl
 Bindings are active only at idle input, or mid-turn for commands declared `during_turn=True`.
 They never fire in a modal or approval, and do not consume the user's draft.
 
-Preferences live in `<data_dir>/plugins/.state/shortcuts/bindings.json`, not the plugin's configure
+Preferences live in `config.toml` under `[plugin_manager.shortcuts.bindings]`, not the plugin's configure
 schema. They survive disable/re-enable and are agent-local in memory. Other live agents adopt
 saved changes on reload. A report's `active` means the target is available, not that its key
 can fire in the current input mode.

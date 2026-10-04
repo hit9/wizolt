@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import fcntl
 import fnmatch
 import os
 import platform
@@ -718,8 +719,22 @@ model = ""
         ConfigFile.set_ui_value(path, ("runtime",), key, value)
 
     @staticmethod
-    def set_ui_value(path: str, section: tuple[str, ...], key: str, value: str | Json) -> None:
+    def set_ui_value(path: str, section: tuple[str, ...], key: str, value: str | Json, *, overwrite: bool = True) -> None:
         """Persist a UI selection using the same atomic, comment-preserving config writer."""
+        # Lock the stable sidecar, not the replaced inode. Separate processes must read
+        # the latest document inside the transaction or one preference can erase another.
+        path = os.path.realpath(path)
+        descriptor = os.open(path + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
+        with os.fdopen(descriptor, "a") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise ConfigError("Configuration is being updated by another process; retry shortly") from error
+            ConfigFile._write_value(path, section, key, value, overwrite=overwrite)
+
+    @staticmethod
+    def _write_value(path: str, section: tuple[str, ...], key: str, value: str | Json, *, overwrite: bool) -> None:
+        """Read and replace a complete document while the caller holds its write lease."""
         import tomlkit
 
         path = os.path.realpath(path)
@@ -734,6 +749,8 @@ model = ""
             elif not isinstance(child, MutableMapping):
                 raise ConfigError(f"{'.'.join(section)} in {path} must be a table")
             table = child
+        if not overwrite and key in table:
+            return
         table[key] = value
         mode = stat.S_IMODE(os.stat(path).st_mode)
         temporary = path + ".tmp"

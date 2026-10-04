@@ -1,19 +1,15 @@
 """Host-owned layout policy shared by live sampling, offline trials and management.
 
-Order changes affect presentation only, never callback/lifecycle admission. Each slot stores an
-atomic preference independently; agents keep their own loaded policy until an explicit reload.
+Order changes affect presentation only, never callback/lifecycle admission. Each slot updates
+its config table; agents keep their own loaded policy until an explicit reload.
 Unknown component IDs are retained so disabling a plugin does not forget its placement.
 """
 
 from __future__ import annotations
 
-import json
-import os
-import tempfile
 from dataclasses import replace
-from pathlib import Path
 
-from wizolt.plugins.files import read_regular
+from wizolt.plugins.preferences import PluginPreferences
 from wizolt.plugins.protocol import MAX_PANEL_ROWS
 from wizolt.sdk import Context, Layout, Panel, PluginError, Text, Viewport
 
@@ -54,31 +50,27 @@ class LayoutBudget:
 class LayoutPreferences:
     """Keep order and spacing orthogonal; publish a preference only after saving succeeds."""
 
-    def __init__(self, directory: Path | None = None):
-        self.directory = directory
+    def __init__(self, preferences: PluginPreferences | None = None):
+        self.preferences = preferences
         self.orders: dict[str, tuple[str, ...]] = {}
         self.gaps: dict[str, dict[str, int]] = {}
 
     def load(self) -> None:
-        if self.directory is None:
+        if self.preferences is None:
             return
         orders = {}
         gaps = {}
-        for slot in SLOTS:
-            path = self.directory / (slot + ".json")
-            if not path.exists():
-                continue
-            values = json.loads(read_regular(path, 64 * 1024))
-            # Preserve preferences written before spacing was supported.
-            data = {"order": values} if isinstance(values, list) else values
+        for slot, data in self.preferences.read("layout").items():
+            if slot not in SLOTS:
+                raise PluginError(f"Unknown layout slot: {slot}")
             if not isinstance(data, dict):
-                raise PluginError(f"Invalid layout preferences in {path}")
+                raise PluginError(f"Invalid layout preferences for {slot}")
             values = data.get("order", [])
             spacing = data.get("gaps", {})
             if not isinstance(values, list) or any(not isinstance(item, str) or not item.endswith("." + slot) for item in values):
-                raise PluginError(f"Invalid component order in {path}")
+                raise PluginError(f"Invalid component order for {slot}")
             if not isinstance(spacing, dict) or any(not key.endswith("." + slot) or type(value) is not int or value < 0 for key, value in spacing.items()):
-                raise PluginError(f"Invalid component gaps in {path}")
+                raise PluginError(f"Invalid component gaps for {slot}")
             orders[slot] = tuple(dict.fromkeys(values))
             gaps[slot] = spacing
         self.orders, self.gaps = orders, gaps
@@ -128,15 +120,7 @@ class LayoutPreferences:
 
     def _save(self, slot: str, order: tuple[str, ...], gaps: dict[str, int] | None = None) -> None:
         gaps = self.gaps.get(slot, {}) if gaps is None else gaps
-        if self.directory is not None:
-            self.directory.mkdir(parents=True, exist_ok=True)
-            descriptor, temporary = tempfile.mkstemp(dir=self.directory, prefix=".order-")
-            try:
-                with os.fdopen(descriptor, "w") as output:
-                    json.dump({"order": order, "gaps": gaps}, output)
-                os.replace(temporary, self.directory / (slot + ".json"))
-            finally:
-                if os.path.exists(temporary):
-                    os.unlink(temporary)
+        if self.preferences is not None:
+            self.preferences.save("layout", slot, {"order": list(order), "gaps": gaps})
         self.orders[slot] = order
         self.gaps[slot] = gaps

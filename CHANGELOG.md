@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Keep plugin installations, enabled choices, layout and shortcuts in the user's config,
+  separate from plugin-specific settings. Preserve existing alpha preferences and protect
+  config writes against concurrent processes without blocking the UI.
+
 - Let plugins open host-owned input forms, searchable selectors, live modals and full-screen
   viewers, with scoped action keys and themed session notices. The optional layout plugin can
   manage saved global command shortcuts. Add `--no-plugins` recovery startup and a packaged

@@ -34,11 +34,11 @@ class SessionPlugins(PluginRuntime):
         self.loaded = False
         self.problems: dict[str, str] = {}
         self._management_lock = asyncio.Lock()
-        self.catalog = PluginCatalog.for_user(session.config.data_dir)
+        self.catalog = PluginCatalog.for_user(session.config.data_dir, session.config.path)
         self.context_parts: tuple[tuple[str, int], ...] = ()
         self.read_context: Callable[[], list[tuple[str, int]]] | None = None
         super().__init__(self.snapshot, PluginSettings(session.config.plugins, session.config.path))
-        self.order = LayoutPreferences(self.catalog.directory / "layout")
+        self.order = LayoutPreferences(self.catalog.preferences)
 
     def reload_layout(self) -> None:
         if self.reload_preferences is not None:
@@ -242,5 +242,6 @@ class SessionPlugins(PluginRuntime):
                     raise PluginError(f"Unknown plugin: {target}")
             result["problems"] = [*(f"{name}: {error}" for name, error in self.problems.items()), *problems]
             result["scope"] = "current agent; installation changes apply to future agents in any directory"
-            result["catalog_directory"] = str(self.catalog.directory)
+            result["runtime_directory"] = str(self.catalog.directory)
+            result["config_path"] = str(self.catalog.preferences.path)
         return result

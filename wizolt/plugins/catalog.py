@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
-import os
-import tempfile
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
+from wizolt.base import ConfigError
+from wizolt.plugins.preferences import PluginPreferences
 from wizolt.sdk import PluginError
 
 
@@ -22,23 +21,28 @@ class Installation:
 
 
 class PluginCatalog:
-    """One atomic file per plugin avoids lost updates between independent session processes.
+    """User installation choices in the config, separate from live worker generations.
 
     Catalog writes describe future agent startup, not live activation. Same-plugin concurrent
-    writes use last-writer-wins; installing another plugin never replaces this plugin's record.
+    writes use the config transaction; installing another plugin retains unrelated settings.
     """
 
-    def __init__(self, directory: Path, defaults: tuple[Installation, ...] = ()):
+    def __init__(self, directory: Path, defaults: tuple[Installation, ...] = (), preferences: PluginPreferences | None = None):
         self.directory = directory
         self.defaults = {item.name: item for item in defaults}
+        self.preferences = preferences or PluginPreferences(directory.parent.parent / "config.toml")
 
     @classmethod
-    def for_user(cls, data_dir: str) -> PluginCatalog:
+    def for_user(cls, data_dir: str, config_path: str = "") -> PluginCatalog:
         """Installation and layout follow the user; cwd only supplies execution context."""
         root = Path(data_dir).expanduser().resolve()
         directory = root / "plugins" / ".state"
         bundled = Path(__file__).parent / "builtin"
-        return cls(directory, tuple(Installation(path.stem, str(path), enabled=False) for path in sorted(bundled.glob("*.py"))))
+        return cls(
+            directory,
+            tuple(Installation(path.stem, str(path), enabled=False) for path in sorted(bundled.glob("*.py"))),
+            PluginPreferences(Path(config_path).expanduser() if config_path else root / "config.toml"),
+        )
 
     def read(self) -> tuple[dict[str, Installation], list[str]]:
         """Report damaged records individually so one plugin cannot prevent project startup."""
@@ -46,11 +50,17 @@ class PluginCatalog:
         # saved enable/disable choice overlays them, including across application upgrades.
         records = dict(self.defaults)
         problems = []
-        for path in sorted(self.directory.glob("*.json")):
+        try:
+            self.preferences.import_existing(self.directory)
+            saved = self.preferences.read("installations")
+        except (OSError, ValueError, ConfigError) as error:
+            return records, [str(error)]
+        for name, data in saved.items():
             try:
-                data = json.loads(path.read_text())
-                item = Installation(**data)
-                if item.name != path.stem or not isinstance(item.path, str) or not isinstance(item.python, str) or type(item.enabled) is not bool:
+                if name in self.defaults and isinstance(data, dict):
+                    data = {"path": self.defaults[name].path, **data}
+                item = Installation(name=name, **data)
+                if not isinstance(item.path, str) or not isinstance(item.python, str) or type(item.enabled) is not bool:
                     raise PluginError("invalid installation record")
                 if default := self.defaults.get(item.name):
                     # Upgrades can relocate package data. Preserve the saved preference, but
@@ -58,19 +68,18 @@ class PluginCatalog:
                     item = replace(item, path=default.path)
                 records[item.name] = item
             except (OSError, ValueError, TypeError) as error:
-                problems.append(f"{path.name}: {error}")
+                problems.append(f"{name}: {error}")
         return records, problems
 
     def save(self, item: Installation) -> None:
-        """Replace one complete record; readers must never see a partially written JSON file."""
+        """Replace one installation table without rewriting unrelated profile choices."""
         if not item.name.isidentifier() or not item.name.isascii():
             raise PluginError("Invalid plugin name")
-        self.directory.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary = tempfile.mkstemp(dir=self.directory, prefix=".install-")
-        try:
-            with os.fdopen(descriptor, "w") as output:
-                json.dump(asdict(item), output, indent=2)
-            os.replace(temporary, self.directory / f"{item.name}.json")
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
+        self.preferences.import_existing(self.directory)
+        data = asdict(item)
+        data.pop("name")
+        if item.name in self.defaults:
+            data.pop("path")
+        if not item.python:
+            data.pop("python")
+        self.preferences.save("installations", item.name, data)

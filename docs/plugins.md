@@ -6,6 +6,10 @@ in any directory.
 Make wizolt yours: describe what you want, and let the agent build a plugin for you.
 You do not need to write Python or edit configuration files yourself.
 
+Your plugin settings, enabled choices, shortcuts and layout are saved in `config.toml`.
+Sync it to keep your preferences on another computer; copy or reinstall your plugin source
+and dependencies there too. Cached data does not need to travel with your configuration.
+
 ![A context meter above the divider, a pet above the input and token counts in the statusbar.](_static/plugins-overview.svg)
 
 ## Start with a wish

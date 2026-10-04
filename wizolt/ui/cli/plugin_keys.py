@@ -7,17 +7,12 @@ targets stay dormant while their plugin is disabled and reactivate on publicatio
 
 from __future__ import annotations
 
-import json
-import os
-import tempfile
 from collections.abc import Callable
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyBindings
 
-from wizolt.plugins.files import read_regular
 from wizolt.sdk import PluginError
 from wizolt.ui.tui.app import InputMode
 from wizolt.ui.tui.keys import normalized_key
@@ -32,9 +27,7 @@ class PluginKeys:
 
     def __init__(self, runtime: SessionPlugins, tui: TuiApp, invoke: Callable[[str], None]):
         self.runtime, self.tui, self.invoke = runtime, tui, invoke
-        # The catalog owns top-level JSON installation records; preferences must not
-        # be mistaken for installations when a new session discovers plugins.
-        self.path = runtime.catalog.directory / "shortcuts" / "bindings.json"
+        self.preferences = runtime.catalog.preferences
         self.saved: dict[str, str] = {}
         self.error = ""
         self.load()
@@ -52,13 +45,14 @@ class PluginKeys:
 
     def load(self) -> None:
         try:
-            saved = json.loads(read_regular(self.path, 64 * 1024)) if self.path.exists() else {}
+            saved = self.preferences.read("shortcuts").get("bindings", {})
             if not isinstance(saved, dict) or len(saved) > 64:
                 raise PluginError("Invalid shortcut preferences")
             for key, command in saved.items():
                 self.check(key)
                 if not isinstance(command, str) or len(command) > 200 or "." not in command:
                     raise PluginError("Invalid shortcut command")
+            saved = {self.check(key): command for key, command in saved.items()}
             self.saved, self.error = saved, ""
         except (OSError, ValueError, PluginError) as error:
             self.saved, self.error = {}, str(error)
@@ -123,12 +117,5 @@ class PluginKeys:
         return self.listing()
 
     def save(self, saved: dict[str, str]) -> None:
-        """Publish only after an atomic preference write; no plugin can own this file."""
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary = tempfile.mkstemp(dir=self.path.parent, prefix=".keys-")
-        try:
-            with os.fdopen(descriptor, "w") as output:
-                json.dump(saved, output)
-            os.replace(temporary, self.path)
-        finally:
-            Path(temporary).unlink(missing_ok=True)
+        """Publish only after the comment-preserving config write succeeds."""
+        self.preferences.save("shortcuts", "bindings", saved)

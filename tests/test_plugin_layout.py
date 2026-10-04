@@ -91,9 +91,8 @@ async def test_layout_rejections_do_not_change_preferences_and_bad_disk_keeps_li
         ):
             with pytest.raises(PluginError):
                 await runtime.call_host("ui.components.move", arguments)
-        assert not runtime.order.directory.exists()
-        runtime.order.directory.mkdir(parents=True)
-        (runtime.order.directory / "above_input.json").write_text("[broken")
+        assert not runtime.catalog.preferences.read("layout")
+        runtime.catalog.preferences.save("layout", "above_input", {"order": "broken"})
         runtime.reload_layout()
         assert runtime.order.orders == {} and runtime.problems
     finally:
@@ -145,7 +144,7 @@ def setup(p):
         await runtime.manage("enable", str(path))
         await runtime.start_turn()
         assert runtime.entries["intruder"].active.error
-        assert not runtime.order.directory.exists()
+        assert not runtime.catalog.preferences.read("layout")
     finally:
         await runtime.close()
 
@@ -244,23 +243,25 @@ async def test_invalid_spacing_does_not_mutate_live_or_saved_preferences(tmp_pat
                 await runtime.call_host("ui.components.set_gap", {"component": "one.above_input", "gap_before": value})
         with pytest.raises(PluginError, match="Unknown active component"):
             await runtime.call_host("ui.components.set_gap", {"component": "missing", "gap_before": 1})
-        assert not runtime.order.directory.exists()
+        assert not runtime.catalog.preferences.read("layout")
         assert runtime.components()[0].gap_before == 0
     finally:
         await runtime.close()
 
 
-def test_layout_preferences_load_legacy_order_and_preserve_state_on_failure(tmp_path, monkeypatch):
+def test_layout_preferences_preserve_state_on_failure(tmp_path, monkeypatch):
     from wizolt.plugins.layout import LayoutPreferences
+    from wizolt.plugins.preferences import PluginPreferences
 
-    preferences = LayoutPreferences(tmp_path)
-    path = tmp_path / "above_input.json"
-    path.write_text('["zebra.above_input", "alpha.above_input"]')
+    path = tmp_path / "config.toml"
+    store = PluginPreferences(path)
+    store.save("layout", "above_input", {"order": ["zebra.above_input", "alpha.above_input"]})
+    preferences = LayoutPreferences(store)
     preferences.load()
     available = {name + ".above_input": "above_input" for name in ("alpha", "zebra")}
     preferences.set_gap("zebra.above_input", 2, available)
     saved = path.read_text()
-    reloaded = LayoutPreferences(tmp_path)
+    reloaded = LayoutPreferences(store)
     reloaded.load()
     assert reloaded.ordered("above_input", available) == ["zebra.above_input", "alpha.above_input"]
     assert reloaded.gap("zebra.above_input", "above_input", 0) == 2
@@ -268,12 +269,12 @@ def test_layout_preferences_load_legacy_order_and_preserve_state_on_failure(tmp_
     def fail(*args):
         raise OSError("disk full")
 
-    monkeypatch.setattr("wizolt.plugins.layout.os.replace", fail)
+    monkeypatch.setattr("wizolt.config.os.replace", fail)
     with pytest.raises(OSError, match="disk full"):
         preferences.set_gap("zebra.above_input", 3, available)
     assert preferences.gap("zebra.above_input", "above_input", 0) == 2
     assert path.read_text() == saved
-    path.write_text('{"gaps": {"zebra.above_input": true}}')
+    path.write_text('[plugin_manager.layout.above_input.gaps]\n"zebra.above_input" = true\n')
     with pytest.raises(PluginError):
         preferences.load()
     assert preferences.gap("zebra.above_input", "above_input", 0) == 2

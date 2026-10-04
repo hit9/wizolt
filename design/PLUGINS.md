@@ -1,7 +1,8 @@
 # Plugin implementation boundaries
 
-Installations, enabled choices, dependency environments and layout live under
-`<data_dir>/plugins/.state/`, independent of cwd. Source files can live anywhere. Never use
+Installations, enabled choices, layout and shortcuts live in `config.toml` under
+`plugin_manager`, separate from plugin-owned `plugins.NAME` settings. Dependency environments
+remain under `<data_dir>/plugins/.state/`. Source files can live anywhere. Never use
 the session/project directory to scope user customization. Each agent still owns its live
 workers and adopts changed preferences on reload; `Context.cwd` remains agent-local.
 
@@ -66,7 +67,9 @@ CLI manager / Plugin tool / agent lifecycle
 - The SDK receives immutable facts, never `Session`, `Agent`, or terminal objects.
 - Every agent has its own runtime. Each generation owns a process, including its imported
   dependencies. This is fault isolation, not a filesystem/network sandbox.
-- Installation preferences are user-wide, separately persisted from session snapshots.
+- Installation preferences are user-profile-wide, persisted in the chosen config, never in
+  session snapshots. Config writes hold a nonblocking cross-process lease and preserve comments,
+  mode and symlink targets; contention is an explicit retryable failure, never a UI wait.
   Existing agents are not silently reconfigured by another agent's changes.
 - Bundled plugins supply disabled installation defaults. They use the same loader, SDK, and
   controls as user plugins; the terminal does not know which component is the pet.
