@@ -103,6 +103,25 @@ async def test_dependency_metadata_cannot_be_interpreted_as_installer_options(tm
     assert not environment.path.exists()
 
 
+async def test_disable_during_startup_loading_is_not_undone_by_it(tmp_path):
+    import asyncio
+
+    from wizolt.plugins.catalog import Installation
+
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    for name, setup in (("first", "    import time\n    time.sleep(0.5)\n"), ("second", "")):
+        path = tmp_path / f"{name}.py"
+        path.write_text(f'SDK_VERSION = 1\ndef setup(p):\n{setup}    p.field("value", lambda ctx: 1)\n')
+        runtime.catalog.save(Installation(name, str(path)))
+    startup = asyncio.create_task(runtime.load())  # As the engine starts a session.
+    await asyncio.sleep(0.1)  # Startup is now starting the slow first plugin.
+    await runtime.manage("disable", "second")
+    await startup
+    assert "second" not in runtime.entries and "first" in runtime.entries
+    assert not runtime.catalog.read()[0]["second"].enabled
+    await runtime.close()
+
+
 async def test_disable_pending_install_does_not_activate_at_turn_end(tmp_path):
     runtime = SessionPlugins(session_with_provider(tmp_path))
     path = tmp_path / "pending.py"

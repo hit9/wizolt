@@ -87,7 +87,15 @@ class SessionPlugins(PluginRuntime):
         )
 
     async def load(self) -> None:
-        """Attempt startup once per agent; safe mode skips imports while preserving recovery tools."""
+        """Attempt startup once per agent; safe mode skips imports while preserving recovery tools.
+
+        Startup holds the management lock too: a disable accepted while it loads must wait and
+        then apply, not be undone by an activation from the records read before it.
+        """
+        async with self._management_lock:
+            await self._load()
+
+    async def _load(self) -> None:
         if self.loaded:
             return
         self.loaded = True
@@ -199,7 +207,7 @@ class SessionPlugins(PluginRuntime):
             raise PluginError("Plugin runtime is closed")
         if os.environ.get("WIZOLT_NO_PLUGINS") == "1" and action in {"enable", "reload", "rollback"}:
             raise PluginError("Plugins are disabled for this launch (--no-plugins); restart normally to enable")
-        await self.load()
+        await self._load()
         records, problems = self.catalog.read()
         for item in records.values():
             self.interpreters[item.name] = item.python

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Keep a plugin disabled from `/plugins` while startup is still loading plugins. Startup read
+  the saved choices first and bypassed the management lock, so it went on to start the plugin:
+  saved as disabled, yet running. A disable now waits for loading and then applies.
+
 - Name each live plugin state once: `running`, `failed` or `off`, and while a change waits for
   a turn or that plugin's command, `starting`, `reloading` or `stopping`. `pending` used to
   cover all three waits, and `not loaded`/`disabled` duplicated the separate `enabled` choice.
