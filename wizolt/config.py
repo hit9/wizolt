@@ -22,6 +22,8 @@ from wizolt.providers.compat import bundled_policy
 from wizolt.utils.workspace import Workspace
 
 if TYPE_CHECKING:
+    from tomlkit import TOMLDocument
+
     from wizolt.agentsmd import AgentsFile
     from wizolt.providers.compat import ProviderPolicy
 
@@ -790,22 +792,31 @@ model = ""
 
         config_path = cls.resolve_path(path)
         config_real = os.path.realpath(config_path)
-        with open(config_real, encoding="utf-8") as file:
-            document = tomlkit.parse(file.read())
+        document = cls.parse_document(config_real, "")
         moved = {name: entry for name, entry in cls.provider_entries(document).items() if isinstance(entry.get("key"), str) and entry["key"]}
         if not moved:
             return []
         secrets_real = os.path.realpath(cls.secrets_path(config_path))
-        try:
-            with open(secrets_real, encoding="utf-8") as file:
-                secrets = tomlkit.parse(file.read())
-        except FileNotFoundError:
-            secrets = tomlkit.parse(cls.SECRETS_HEADER)
+        secrets = cls.parse_document(secrets_real, cls.SECRETS_HEADER)
         for name, entry in moved.items():
             secrets[name] = str(entry.pop("key"))
         cls.write_atomic(secrets_real, tomlkit.dumps(secrets))
         cls.write_atomic(config_real, tomlkit.dumps(document))
         return list(moved)
+
+    @staticmethod
+    def parse_document(path: str, missing: str) -> TOMLDocument:
+        """A comment-preserving document of `path`, or of `missing` when the file is absent."""
+        import tomlkit
+        from tomlkit.exceptions import ParseError
+
+        try:
+            with open(path, encoding="utf-8") as file:
+                return tomlkit.parse(file.read())
+        except FileNotFoundError:
+            return tomlkit.parse(missing)
+        except ParseError as error:
+            raise ConfigError(f"invalid config {path}: {error}") from error
 
     @staticmethod
     def read_toml(path: str) -> Json:

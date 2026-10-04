@@ -2,9 +2,12 @@
 
 import os
 import stat
+import sys
+from types import SimpleNamespace
 
 import pytest
 
+import wizolt.__main__ as cli
 from wizolt.base import ConfigError
 from wizolt.config import Config, ConfigFile
 
@@ -168,3 +171,98 @@ def test_a_declined_move_is_remembered_until_a_key_is_new_or_changed(tmp_path):
 
 def test_no_config_means_no_inline_keys(tmp_path):
     assert ConfigFile.inline_keys(str(tmp_path / "missing.toml")).keys == {}
+
+
+@pytest.fixture
+def inline_config(tmp_path):
+    return write(tmp_path / "config.toml", f'[paths]\ndata_dir = "{tmp_path / "data"}"\n' + ACTIVE_A + '[provider.a]\nkey = "sk-a"\n')
+
+
+@pytest.fixture
+def terminal(monkeypatch):
+    """A terminal answering the prompt with the given replies; returns the prompts it was shown."""
+    prompts = []
+
+    def answer(*replies):
+        monkeypatch.setattr(sys, "stdin", SimpleNamespace(isatty=lambda: True))
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+        queue = list(replies)
+        monkeypatch.setattr("builtins.input", lambda prompt: prompts.append(prompt) or queue.pop(0))
+        return prompts
+
+    return answer
+
+
+@pytest.mark.parametrize("reply", ["", "y", "YES"])
+def test_accepting_the_prompt_moves_the_keys_before_the_session_starts(inline_config, terminal, capsys, reply):
+    prompts = terminal(reply)
+
+    cli.offer_key_migration(str(inline_config))
+
+    assert prompts == [f"Move them to {inline_config.parent / 'secrets.toml'}? [Y/n] "]
+    assert ConfigFile.inline_keys(str(inline_config)).keys == {}
+    assert keys(inline_config) == {"a": "sk-a"}
+    assert "Moved keys for a" in capsys.readouterr().out
+
+
+def test_declining_is_asked_once_then_only_reminded_until_a_key_changes(inline_config, terminal, capsys):
+    prompts = terminal("n")
+    cli.offer_key_migration(str(inline_config))
+    assert len(prompts) == 1
+    assert ConfigFile.inline_keys(str(inline_config)).keys == {"a": "sk-a"}
+
+    cli.offer_key_migration(str(inline_config))
+    assert len(prompts) == 1
+    assert "run `wizolt --migrate-secrets`" in capsys.readouterr().err
+
+    write(inline_config, inline_config.read_text(encoding="utf-8").replace("sk-a", "sk-rotated"))
+    terminal("")
+    cli.offer_key_migration(str(inline_config))
+    assert len(prompts) == 2
+    assert keys(inline_config) == {"a": "sk-rotated"}
+
+
+def test_without_a_terminal_it_only_warns(inline_config, monkeypatch, capsys):
+    monkeypatch.setattr("builtins.input", lambda prompt: pytest.fail("prompted without a terminal"))
+
+    cli.offer_key_migration(str(inline_config))
+
+    assert "holds API keys for a" in capsys.readouterr().err
+    assert not ConfigFile.inline_keys(str(inline_config)).declined
+
+
+def test_end_of_input_neither_moves_nor_remembers(inline_config, terminal, monkeypatch):
+    terminal()
+    monkeypatch.setattr("builtins.input", lambda prompt: (_ for _ in ()).throw(EOFError))
+
+    cli.offer_key_migration(str(inline_config))
+
+    info = ConfigFile.inline_keys(str(inline_config))
+    assert info.keys == {"a": "sk-a"}
+    assert not info.declined
+
+
+@pytest.mark.parametrize("text", ["", "[provider.a]\nkey = \n"])
+def test_no_keys_or_a_broken_config_starts_without_asking(tmp_path, monkeypatch, capsys, text):
+    config = write(tmp_path / "config.toml", text)
+    monkeypatch.setattr("builtins.input", lambda prompt: pytest.fail("prompted"))
+
+    cli.offer_key_migration(str(config))
+
+    assert capsys.readouterr() == ("", "")
+
+
+def test_the_migrate_flag_moves_keys_without_asking(inline_config, capsys):
+    assert cli.main(["--migrate-secrets", "--config", str(inline_config)]) == 0
+    assert keys(inline_config) == {"a": "sk-a"}
+    assert ConfigFile.inline_keys(str(inline_config)).keys == {}
+
+    assert cli.main(["--migrate-secrets", "--config", str(inline_config)]) == 0
+    assert capsys.readouterr().out.splitlines() == [f"Moved keys for a to {inline_config.parent / 'secrets.toml'}", f"No keys to move in {inline_config}"]
+
+
+def test_the_migrate_flag_reports_a_broken_config(tmp_path, capsys):
+    config = write(tmp_path / "config.toml", "[provider.a]\nkey = \n")
+
+    assert cli.main(["--migrate-secrets", "--config", str(config)]) == 2
+    assert "ConfigError: invalid config" in capsys.readouterr().err
