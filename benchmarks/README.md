@@ -11,6 +11,32 @@ remeasure the previous reference revision too so the comparison remains meaningf
 
 ## Plugin foundation
 
+### Interactive views and portable preferences (dev27)
+
+[Before](results/dev27-ui-before.json) is `138b9823`; [after](results/dev27-ui-after.json)
+is `7c0a2914`. Both use Linux ARM64, CPython 3.14.7, identical dependencies/workloads and nine
+samples, run sequentially without concurrent tests or builds. This branch comparison does not
+replace the release reference.
+
+| Workload | Before (ms) | After (ms) |
+| --- | ---: | ---: |
+| First prompt frame | 143.483 | 142.414 |
+| Startup bootstrap, three skills | 91.407 | 95.389 |
+| Enable and close one plugin | 87.466 | 95.389 |
+| Three workers, 20 sample rounds | 11.913 | 11.982 |
+| Plugin tool, 20 calls | 15.727 | 15.730 |
+| Cached projection, 1,000 reads | 10.915 | 10.916 |
+| Ten headless turns, no hooks | 25.689 | 26.204 |
+| Twenty file reads, no hooks | 5.284 | 5.853 |
+| External discovery, 10,000 files | 21.087 | 23.670 |
+
+Replay hashes match. Continuous plugin sampling, calls and drawing remain close to the prior
+revision. Retained startup costs are roughly 4 ms for bootstrap and 8 ms for enabling a worker;
+the expanded SDK and interaction lifecycle add initialization work, not a per-frame callback.
+The file probes also rose (0.57 ms and 2.58 ms); their implementation is unchanged, so these
+measurements do not establish a regression in file discovery. Keep the raw observations rather
+than absorbing them into a new baseline. No broad performance improvement is claimed.
+
 ### Alpha 1 release reference
 
 The current reference is [0.73.0a1](baselines/linux-arm64-py314-0.73.0a1.json),

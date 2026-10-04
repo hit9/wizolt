@@ -5,6 +5,9 @@
 - Keep plugin installations, enabled choices, layout and shortcuts in the user's config,
   separate from plugin-specific settings. Preserve existing alpha preferences and protect
   config writes against concurrent processes without blocking the UI.
+- Record the [plugin UI performance comparison](https://github.com/hit9/wizolt/blob/master/benchmarks/README.md#interactive-views-and-portable-preferences-dev27):
+  continuous plugin workloads remain close to the previous revision; retain measured startup
+  costs of about 4 ms for bootstrap and 8 ms for worker activation. The release baseline is unchanged.
 
 - Let plugins open host-owned input forms, searchable selectors, live modals and full-screen
   viewers, with scoped action keys and themed session notices. The optional layout plugin can
