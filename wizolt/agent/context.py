@@ -127,55 +127,21 @@ class ContextManager:
         interception = getattr(plugins, "interception", None)
         if interception is None or not interception.would_match("context.compose", purpose="turn"):
             return messages
-        from wizolt.sdk import PluginError, operations
+        from wizolt.plugins.rules import adapter_rules
+        from wizolt.sdk import operations
         from wizolt.sdk.operations import Block, Blocks
 
         parts = self.header_parts(base_system)
         conversation = messages[len(parts) :]
-        core = [*(name for name, _ in parts), "conversation"]
         value = Blocks(
             (*(Block(name, text, name in self.EDITABLE_PARTS) for name, text in parts), Block("conversation", self.conversation_view(conversation))), "turn"
         )
 
-        def normalized(previous: operations.Value, candidate: operations.Value, owner: str) -> Blocks:
-            assert isinstance(previous, Blocks) and isinstance(candidate, Blocks)
-            before = {block.id: block for block in previous.blocks}
-            given = {block.id: block for block in candidate.blocks}
-            for name in core:
-                block = given.get(name)
-                if block is None or block.editable != before[name].editable:
-                    raise PluginError(f"Context block {name} must stay")
-                if not block.editable and block.text != before[name].text:
-                    raise PluginError(f"Context block {name} is read-only")
-            own = f"plugin:{owner}:"
-            for block_id, block in before.items():
-                if block_id.startswith("plugin:") and not block_id.startswith(own) and given.get(block_id) != block:
-                    raise PluginError(f"Only {block_id.split(':')[1]} may change or remove {block_id}")
-            plugin_blocks = []
-            for block in candidate.blocks:
-                if block.id in core:
-                    continue
-                if block.id not in before:
-                    if not block.id.isidentifier():
-                        raise PluginError("New context blocks need an identifier ID (Blocks.add)")
-                    block = Block(own + block.id, block.text, True)
-                plugin_blocks.append(block)
-            order = {name: rank for rank, name in enumerate(plugins.interception_order.ordered({block.id.split(":")[1] for block in plugin_blocks}))}  # type: ignore[attr-defined]
-            plugin_blocks.sort(key=lambda block: (order[block.id.split(":")[1]], block.id))
-            ordered = [given[name] for name in core[:-1]] + plugin_blocks + [given["conversation"]]
-            return Blocks(tuple(ordered), previous.purpose)
-
         async def accept(composed: operations.Value) -> operations.Value:
             return composed
 
-        result = await interception.run(  # type: ignore[attr-defined]
-            "context.compose",
-            value,
-            accept,
-            transition=normalized,
-            # Inner plugins' blocks arrive in the downstream result; check against that.
-            result_check=lambda received, composed, downstream, owner: normalized(downstream or received, composed, owner),
-        )
+        transition, result_check = adapter_rules(value, plugins.interception_order.ordered)  # type: ignore[attr-defined]
+        result = await interception.run("context.compose", value, accept, transition=transition, result_check=result_check)  # type: ignore[attr-defined]
         assert isinstance(result, Blocks)
         texts = {block.id: block.text for block in result.blocks}
         header = self.render_header([(name, texts[name]) for name, _ in parts])

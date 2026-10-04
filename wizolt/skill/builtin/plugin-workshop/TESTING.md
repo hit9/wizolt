@@ -78,9 +78,10 @@ handler calls `next`: a result's fields, or `{"error": "message"}` for a failure
 Omit `next` when your handler must answer by itself (a refusal, a cached result, a summary).
 A `next` your handler never calls, or a call to `next` the fixture does not answer, fails the
 trial: nothing reaches wizolt's real tools, models or compaction. The trial runs your real
-handler through wizolt's chain executor with the same read-only, refusal and `next` rules; views
-your handler opens use `--interactions`. Live placement rules (attachment, tool-name and context
-block checks) apply in a session.
+handler through wizolt's chain executor with the same rules a session applies: read-only fields,
+refusal and `next`, kept attachments, offered tool names, and context block placement (the
+`effective` blocks show where your blocks land). Model routes are checked only in a session,
+against your providers. Views your handler opens use `--interactions`.
 
 Read the JSON report:
 

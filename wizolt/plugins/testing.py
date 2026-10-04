@@ -176,9 +176,12 @@ class OperationChain:
             default = next(cls for cls in spec.results if cls is not operations.Refusal)
             return operations.decode({"type": default.TYPE, **dict(answer)} if isinstance(answer, dict) else answer, spec.results)
 
+        from wizolt.plugins.rules import adapter_rules
+
+        transition, result_check = adapter_rules(value, self.runtime.interception_order.ordered)
         trace: dict = {}
         try:
-            result = await self.runtime.interception.run(spec.name, value, scripted, trace=trace)
+            result = await self.runtime.interception.run(spec.name, value, scripted, transition=transition, result_check=result_check, trace=trace)
             outcome["result"] = operations.encode(result)
         except Exception as error:  # noqa: BLE001 - a trial reports every failure as feedback.
             outcome["error"] = f"{type(error).__name__}: {error}"

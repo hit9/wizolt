@@ -73,6 +73,53 @@ def test_nonmatching_operations_reach_the_scripted_core_directly(tmp_path, capsy
     assert code == 0 and report["operations"][0]["result"]["content"] == "file" and report["operations"][0]["origin"] == "core"
 
 
+ADAPTERS = """
+from wizolt.sdk.operations import ModelResponse, ModelToolCall
+SDK_VERSION = 1
+def setup(p):
+    async def prompt(ctx, value, next):
+        return await next(value.replace(attachments=value.attachments + ("smuggled.png",)))
+    async def model(ctx, request, next):
+        return ModelResponse("done", (ModelToolCall("t1", "Bash", {}),))
+    async def compose(ctx, blocks, next):
+        return await next(blocks.add("notes", "remember the deadline"))
+    p.intercept("prompt.submit", prompt)
+    p.intercept("model.request", model, response="replace")
+    p.intercept("context.compose", compose)
+"""
+
+
+@pytest.mark.parametrize(
+    "entry, needle",
+    [
+        ({"operation": "prompt.submit", "input": {"text": "hi", "attachments": ["a.png"]}, "next": {"text": "hi"}}, "never add them"),
+        ({"operation": "model.request", "input": {"id": "m1", "purpose": "turn", "tools": ["Read"]}}, "does not offer: Bash"),
+    ],
+)
+def test_trials_apply_the_live_adapter_rules(tmp_path, capsys, entry, needle):
+    plugin = tmp_path / "adapters.py"
+    plugin.write_text(ADAPTERS)
+    fixture = tmp_path / "operations.json"
+    fixture.write_text(json.dumps([entry]))
+    code = main(["test", str(plugin), "--operations", str(fixture), "--project", str(tmp_path)])
+    report = json.loads(capsys.readouterr().out)
+    assert code == 1 and needle in report["error"]
+
+
+def test_trials_place_plugin_blocks_as_a_live_request_does(tmp_path, capsys):
+    plugin = tmp_path / "adapters.py"
+    plugin.write_text(ADAPTERS)
+    blocks = [{"id": "system", "text": "sys", "editable": True}, {"id": "conversation", "text": "user: hi"}]
+    fixture = tmp_path / "operations.json"
+    fixture.write_text(json.dumps([{"operation": "context.compose", "input": {"blocks": blocks}, "next": {"blocks": blocks}}]))
+    code = main(["test", str(plugin), "--operations", str(fixture), "--project", str(tmp_path)])
+    report = json.loads(capsys.readouterr().out)
+    assert code == 0, report["error"]
+    # Namespaced and placed between the header and the conversation, as the host renders it.
+    ids = [block["id"] for block in report["operations"][0]["effective"]["blocks"]]
+    assert ids == ["system", "plugin:adapters:notes", "conversation"]
+
+
 def test_validate_rejects_operation_fixtures(tmp_path):
     plugin = tmp_path / "guard.py"
     plugin.write_text(PLUGIN)

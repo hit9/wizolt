@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Share the value-only interception rules (kept attachments, offered tool names, context block
+  placement) between the live adapters and `--operations` trials in `wizolt/plugins/rules.py`,
+  so a trial rejects what a session would. Model routing is still checked only in a session.
+  Add a background-agent recovery test: a child's broken interceptor stays the child's, and its
+  own core `/plugins disable` recovers it.
+
 - Add `wizolt plugin presenter list/choose/reset`: the choice persists as
   `[plugin_manager.presenters] choice` beside the interception order, an agent applies it with
   `Plugin(action=reload)`, and `choose` starts the candidate once to verify it registers the

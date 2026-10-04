@@ -42,8 +42,8 @@ from wizolt.base import (
 )
 from wizolt.image import IMAGE_REFS_KEY, ImageInputs, UserInput
 from wizolt.model import ModelClient, PreparedRequest, resilience
-from wizolt.sdk import PluginError, operations
-from wizolt.sdk.operations import check_read_only
+from wizolt.plugins.rules import adapter_rules
+from wizolt.sdk import operations
 from wizolt.session import QueuedInput, Session, SessionSnapshotCodec
 from wizolt.session.types import OperationReceipt
 from wizolt.shellhooks import SESSION_END, SESSION_START, STOP, STOP_FAILURE, SUBAGENT_START, SUBAGENT_STOP, USER_PROMPT_SUBMIT, HookOutcome, PromptBlocked
@@ -855,28 +855,14 @@ class Agent:
         refs = [ref for ref in message.get(IMAGE_REFS_KEY) or [] if isinstance(ref, dict)]
         value = operations.Prompt(text, text, tuple(str(ref.get("name") or "") for ref in refs), origin)
 
-        def attachments_kept(previous: operations.Value, candidate: operations.Value, _owner: str = "") -> None:
-            assert isinstance(previous, operations.Prompt) and isinstance(candidate, operations.Prompt)
-            check_read_only(previous, candidate)
-            if not set(candidate.attachments) <= set(previous.attachments):
-                raise PluginError("prompt.submit can omit attachments, never add them")
-
         async def accept(effective: operations.Value) -> operations.Value:
             return effective
 
         receipt = self.session.record_operation(OperationReceipt(uuid.uuid4().hex, "prompt.submit", origin, OperationReceipt.clip(text)))
+        transition, result_check = adapter_rules(value, plugins.interception_order.ordered)
         trace: dict = {}
         try:
-            result = await plugins.interception.run(
-                "prompt.submit",
-                value,
-                accept,
-                transition=attachments_kept,
-                result_check=lambda received, result, _downstream, _owner: (
-                    attachments_kept(received, result) if isinstance(result, operations.Prompt) else None
-                ),
-                trace=trace,
-            )
+            result = await plugins.interception.run("prompt.submit", value, accept, transition=transition, result_check=result_check, trace=trace)
         finally:
             receipt.origin, receipt.shaped, receipt.delivered = trace.get("origin", "core"), tuple(trace.get("shaped", ())), True
         if isinstance(result, operations.Refusal):

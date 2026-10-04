@@ -124,6 +124,7 @@ async def logical_request(
     interception = getattr(plugins, "interception", None)
     if interception is None or not interception.would_match("model.request", purpose=purpose, reason=reason):
         return await send(provider)
+    from wizolt.plugins.rules import offered_tools
     from wizolt.session.types import OperationReceipt
 
     value = ModelRequest(uuid.uuid4().hex, purpose, reason, entry, provider.model, provider.reasoning or "", tool_names(tools), len(messages), retry_of)
@@ -161,17 +162,6 @@ async def logical_request(
         receipt.effective = OperationReceipt.clip({"provider": candidate.provider or entry, "model": effective.model, "effort": effective.reasoning or ""})
         return response
 
-    def known_tools(_received: Value, result: Value, _downstream: Value | None, _owner: str) -> None:
-        if not isinstance(result, ModelResponse):
-            return
-        seen: set[str] = set()
-        for call in result.tool_calls:
-            if call.name not in value.tools:
-                raise PluginError(f"Response calls a tool this request does not offer: {call.name}")
-            if not call.id or call.id in seen:
-                raise PluginError("Response tool calls need unique, nonempty IDs")
-            seen.add(call.id)
-
     original = OperationReceipt.clip({"provider": entry, "model": provider.model, "effort": provider.reasoning or ""})
     receipt = OperationReceipt(value.id, "model.request", f"{purpose}/{reason}", original, retry_of=retry_of)
     if record is not None:
@@ -181,7 +171,12 @@ async def logical_request(
     try:
         with suppress_preview() if replaces and suppress_preview is not None else contextlib.nullcontext():
             result = await interception.run(
-                "model.request", value, core, transition=lambda _previous, candidate, _owner: route(candidate) and None, result_check=known_tools, trace=trace
+                "model.request",
+                value,
+                core,
+                transition=lambda _previous, candidate, _owner: route(candidate) and None,
+                result_check=offered_tools(value),
+                trace=trace,
             )
     except BaseException:
         # A plugin failure before next() never reached the provider: core stays not_run.

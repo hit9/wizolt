@@ -417,9 +417,8 @@ retaining wizolt's worker isolation and host-owned terminal model.
 
 Implemented as designed unless named here. Known gaps carried from the implementation:
 
-- Trials apply the shared chain rules, but not adapter-specific checks: attachment retention,
-  offered tool names, and context block placement are not covered by `--operations` fixtures.
-- Recovery tests cover the foreground agent only, not background agents.
+- Trials apply the value-only adapter rules (`wizolt/plugins/rules.py`, shared with the live
+  adapters) but not `model.request` routing, which needs the live provider configuration.
 - A crash between a tool's side effect and its checkpoint resumes as a model-visible notice
   (`unknown`); that turn's tool batch is lost, so history holds no settled tool call for it.
 - Presenter tool sites await their panel briefly (0.5s) inside the runner's finish path rather
@@ -444,9 +443,3 @@ Each item names what to produce and where it belongs.
 - **User documentation.** `docs/plugins.md` still describes plugins without the interception or
   presenter wishes. Add the examples from [Examples and acceptance](#examples-and-acceptance)
   in user terms, and keep continuation internals in the packaged skill references.
-- **Background-agent recovery.** `tests/test_plugin_recovery_interception.py` covers the
-  foreground agent only. A background agent must recover the same way: core `/plugins disable`
-  and reload stay outside every chain.
-- **Trial adapter checks.** `--operations` fixtures apply the shared chain rules but not the
-  adapter-specific ones. Cover attachment retention, offered tool names, and the placement of
-  plugin context blocks.

@@ -47,6 +47,36 @@ async def test_core_disable_recovers_from_a_broken_interceptor(agent, tmp_path, 
     assert await agent.run("third") == "ok"
 
 
+async def test_a_background_agent_recovers_through_its_own_core_disable(agent, tmp_path, monkeypatch):
+    from wizolt.model import ModelClient
+
+    async def request(client, messages, tools=None, *, reason="normal"):
+        return {"role": "assistant", "content": "ok"}, [], "ok"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    # The main agent's runtime is live before the child enables the plugin; it adopts saved
+    # changes only on reload, so the broken registration is the child's alone.
+    assert await agent.run("warm up") == "ok"
+    group = agent.session.subagents
+    entry = await group.spawn(agent.session, "worker", "warm up")
+    child = entry.agent
+    uid = child.session.uid
+    await group.wait([uid], 5)
+    path = tmp_path / "broken.py"
+    path.write_text("SDK_VERSION = 1\ndef setup(p):\n    async def h(ctx, value, next):\n        raise RuntimeError('broken interceptor')\n    p.intercept('context.compose', h)\n")
+    await child.session.plugins.manage("enable", str(path))
+
+    await group.send(uid, "first")
+    await group.wait([uid], 5)
+    assert child.session.state.last_turn_status == "failed" and "broken interceptor" in child.session.state.last_turn_error
+    # The child's runtime is its own: the main agent keeps working while the child is blocked.
+    assert await agent.run("main still works") == "ok"
+    assert '"status": "off"' in await plugins_command(loop_for(child), "disable broken")
+    await group.send(uid, "second")
+    await group.wait([uid], 5)
+    assert child.session.state.last_turn_status != "failed" and "broken" not in child.session.plugins.entries
+
+
 async def test_disable_cancels_a_hung_intercepted_operation(agent, tmp_path):
     await enable(agent, tmp_path, "prompt.submit", "await asyncio.Event().wait()")
     turn = asyncio.create_task(agent.run("stuck"))
