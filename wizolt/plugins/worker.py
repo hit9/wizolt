@@ -19,7 +19,7 @@ from typing import Any
 
 from wizolt.plugins.layout import SLOTS, LayoutBudget
 from wizolt.plugins.loading import LoadedPlugin, PluginSource
-from wizolt.plugins.protocol import MAX_FRAME, MAX_REQUEST, Snapshot
+from wizolt.plugins.protocol import MAX_FRAME, MAX_REQUEST, MAX_ROW_CHARACTERS, Snapshot
 from wizolt.sdk import Context, Event, PluginError, ToolActivity
 
 
@@ -121,6 +121,8 @@ class Worker:
                     raise PluginError(f"Field {name} must return a scalar")
                 if isinstance(value, float) and not math.isfinite(value):
                     raise PluginError(f"Field {name} must return a finite number")
+                if isinstance(value, str) and len(value) > MAX_ROW_CHARACTERS:
+                    raise PluginError(f"Field {name} must return at most {MAX_ROW_CHARACTERS} characters")
                 fields[name] = value
             panels = {}
             if operation == "snapshot":

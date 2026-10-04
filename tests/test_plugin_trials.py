@@ -263,6 +263,42 @@ def setup(p):
     assert report.status == "failed" and "4096" in report.error
 
 
+async def test_long_field_text_is_rejected_before_any_paint(trial, tmp_path):
+    from wizolt.plugins.protocol import Snapshot
+    from wizolt.sdk import PluginError
+
+    report = await trial.run(plugin(tmp_path, 'def setup(p):\n    p.field("long", lambda ctx: "x" * 5000)\n'), times=(0,))
+    assert report.status == "failed" and "at most 4096 characters" in report.error
+    with pytest.raises(PluginError, match="4096"):  # The host does not trust the worker's check.
+        Snapshot.decode({"fields": {"long": "x" * 5000}, "panels": {}})
+
+
+async def test_stderr_flood_costs_the_host_little_cpu(tmp_path):
+    import time
+
+    source = plugin(
+        tmp_path,
+        """import sys, time
+def setup(p):
+    async def flood(ctx, args):
+        end = time.monotonic() + 1
+        while time.monotonic() < end:
+            sys.stderr.write(("x" * 200 + "\\n") * 50)
+        return "done"
+    p.command("flood", "Flood", flood)
+""",
+    )
+    worker, _ = await PluginProcess.start(PluginSource.read(source))
+    try:
+        cpu = time.process_time()
+        context = asdict(Context("a", "main", "/tmp", "idle", 0, 0, "m", 0))
+        assert await worker.request("invoke", kind="command", name="flood", arguments={}, context=context, timeout=10) == "done"
+        assert time.process_time() - cpu < 0.5  # Draining at full speed took about a core.
+        assert "xxxx" in worker.stderr  # Its log tail is still kept.
+    finally:
+        await worker.close()
+
+
 async def test_plugin_subprocesses_cannot_read_or_write_the_protocol(trial, tmp_path):
     source = plugin(
         tmp_path,

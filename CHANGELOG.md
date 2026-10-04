@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Keep misbehaving plugins from slowing wizolt's own UI loop:
+  - Plugin fields are bounded like panel rows: at most 64, with text of at most 4,096
+    characters, checked in the worker and again by the host. A near-1 MB field string cost
+    36 ms of sanitizing on every statusbar paint.
+  - View text validation scans with a regex, with the same rules. A 1,000-choice, 0.94 MB
+    selection took 30.5 ms to validate on the UI loop and now takes 2.8 ms; an action
+    updating a view in a loop could repeat that for its whole deadline.
+  - Stderr is drained at a paced 8 MB/s. A plugin printing in a tight loop for 2 s cost the
+    host 1.98 s of CPU and now costs 0.06 s; beyond the pace, only the plugin's writes block.
+  Measured once each on Linux ARM64 / Python 3.14.7 with the scratch workloads described,
+  before and after this change on `bugfix/plugin-system-audit`; not part of the benchmark suite.
+
 - Admit no new work into a plugin that is stopping: its commands, tools and summarizer are
   refused and no longer listed or completed. Each new call used to renew the lease, so
   overlapping calls could keep a disabled plugin running indefinitely.

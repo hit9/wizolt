@@ -45,7 +45,7 @@ class PluginProcess:
         self.host_calls.suspend = lambda identity: self.deadlines[identity].pause()
         self.host_calls.interactive = lambda identity: self.operations.get(identity) == "invoke"
         self.sequence = 0
-        self.stderr = ""
+        self._stderr = b""
         self.error = ""
         self.traceback = ""
         self.reader = asyncio.create_task(self._read())
@@ -167,10 +167,24 @@ class PluginProcess:
                     future.set_exception(PluginError(self.error))
             await self.host_calls.cancel()
 
+    @property
+    def stderr(self) -> str:
+        return self._stderr.decode(errors="replace")
+
     async def _drain_errors(self) -> None:
+        """Keep a bounded tail, draining at a bounded rate.
+
+        Draining prevents print deadlocks, but a plugin printing in a tight loop made the host
+        spend a whole core copying its output. Pacing each read by its size caps the drain at
+        STDERR_RATE: beyond it the pipe fills and the flood blocks only the plugin's own writes.
+        A line of ordinary logging costs microseconds of pacing.
+        """
         assert self.process.stderr is not None
-        while chunk := await self.process.stderr.read(4096):
-            self.stderr = (self.stderr + chunk.decode(errors="replace"))[-8192:]
+        while chunk := await self.process.stderr.read(64 * 1024):
+            self._stderr = (self._stderr + chunk)[-8192:]
+            await asyncio.sleep(len(chunk) / self.STDERR_RATE)
+
+    STDERR_RATE = 8 * 1024 * 1024  # Bytes per second.
 
     async def close(self) -> None:
         """Offer bounded resource teardown, then kill the group and drain pipe consumers."""

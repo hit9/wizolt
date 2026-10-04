@@ -16,6 +16,7 @@ MAX_REQUEST = 64 * 1024 * 1024
 MAX_PANEL_ROWS = 12
 MAX_ROW_CHARACTERS = 4096
 MAX_ROW_SPANS = 256
+MAX_FIELDS = 64  # The SDK's per-registry limit.
 
 
 @dataclass(frozen=True)
@@ -68,8 +69,12 @@ class Snapshot:
                 slot: Panel(tuple(Line(tuple(Text(**span) for span in row["spans"])) if "spans" in row else Text(**row) for row in panel["rows"]))
                 for slot, panel in value["panels"].items()
             }
-            if not isinstance(fields, dict):
-                raise TypeError("fields must be an object")
+            # Bars sanitize field text on every paint: bound it here like a panel row, so a
+            # long string cannot make each frame of the host's UI slow.
+            if not isinstance(fields, dict) or len(fields) > MAX_FIELDS:
+                raise TypeError(f"fields must be an object with at most {MAX_FIELDS} entries")
+            if any(type(value) not in (str, int, float, bool) or (isinstance(value, str) and len(value) > MAX_ROW_CHARACTERS) for value in fields.values()):
+                raise TypeError(f"fields must be scalars; text at most {MAX_ROW_CHARACTERS} characters")
             for panel in panels.values():
                 cls.check_panel(panel)
             return cls(fields, panels)

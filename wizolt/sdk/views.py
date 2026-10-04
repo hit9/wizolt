@@ -7,6 +7,7 @@ IDs identify choices and actions; displayed labels are never interpreted as comm
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
@@ -143,8 +144,14 @@ class View:
             raise PluginError(f"Invalid view: {error}") from error
 
 
+# C0 controls except tab and newline, DEL and C1 controls. A regex scans at C speed: the host
+# validates every view and update on its UI loop, and a per-character loop over a full frame
+# took about 30 ms, which an action updating in a loop could repeat for its whole deadline.
+_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
 def _text(value: str, limit: int) -> None:
-    if not isinstance(value, str) or len(value) > limit or any((ord(c) < 32 and c not in "\n\t") or 127 <= ord(c) < 160 for c in value):
+    if not isinstance(value, str) or len(value) > limit or _CONTROL.search(value):
         raise ValueError(f"Expected plain text of at most {limit} characters")
 
 
