@@ -1,8 +1,10 @@
 # Plugin operations and presentation
 
-Status: proposed design, not an implemented SDK contract. This document refines the
-[original proposal](PLUGINS_PROPOSAL.md); [implementation boundaries](PLUGINS.md) and the
-[packaged SDK reference](../wizolt/skill/builtin/plugin-workshop/SDK.md) describe shipped behavior.
+Status: implemented through the shipped operations and presenter sites; view models are public
+in `wizolt.sdk.presentation`. [Implementation boundaries](PLUGINS.md) and the
+[packaged SDK reference](../wizolt/skill/builtin/plugin-workshop/SDK.md) describe shipped
+behavior; deviations from this document, where any remain, are listed in
+[Shipped deviations](#shipped-deviations) at the end.
 
 ## Goal and decisions
 
@@ -409,3 +411,18 @@ Required evidence before publishing these APIs:
 Reference: [Claude Code Mods](https://code.claude.com/docs/en/plugins/mods/reference#the-hook-function)
 uses a `next(event)` middleware contract. We borrow composable semantic operations, while
 retaining wizolt's worker isolation and host-owned terminal model.
+
+## Shipped deviations
+
+Implemented as designed unless named here. Known gaps carried from the implementation:
+
+- Trials apply the shared chain rules, but not adapter-specific checks: attachment retention,
+  offered tool names, and context block placement are not covered by `--operations` fixtures.
+- Recovery tests cover the foreground agent only, not background agents.
+- A crash between a tool's side effect and its checkpoint resumes as a model-visible notice
+  (`unknown`); that turn's tool batch is lost, so history holds no settled tool call for it.
+- Presenter tool sites await their panel briefly (0.5s) inside the runner's finish path rather
+  than computing purely from cached snapshots: a settled call has no earlier revision to key a
+  cache on. The activity site does use the cached-snapshot model described above.
+- `plugin.presenter` registrations live beside interceptors but get no host services, matching
+  the failure rule for fields/components/presenters (skip and fall back), not interceptors.

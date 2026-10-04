@@ -165,6 +165,16 @@ The host supplies viewport dimensions, theme roles and height budgets. Repeated 
 reuse one projection per frame. Plugins return plain data, never ANSI or prompt-toolkit widgets.
 Empty or clipped components must leave the input usable, including after multiplexer resizing.
 
+Beyond observing and registering, a plugin can wrap a semantic operation or render a named
+presentation site. Both are host-owned seams with public SDK contracts, per-registration health
+and a builtin path: `Interception` in `plugins/interception.py` runs ordered chains around
+`prompt.submit`, `context.compose`, `model.request`, `tool.call` and `context.compact`, and
+`Presenters` in `plugins/presenters.py` selects one renderer per site (`tool.call`,
+`tool.result`, `activity`), falling back to the builtin rendering on a conflict, a failure or a
+missed deadline. Final validation, approval, accounting and persistence stay with the adapters
+at each boundary; see [Plugin operations and presentation](PLUGIN_INTERCEPTION.md) for the
+contracts and the failing-registration rules.
+
 Interactive views follow the same data boundary (see [Plugin views](PLUGIN_VIEWS.md)). The host
 owns keys, validation, focus, queues and modal lifetime; no worker callback runs on the UI thread.
 Views belong to their invocation and agent. Background agents request attention instead of
