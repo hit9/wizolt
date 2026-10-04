@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
-from wizolt.base import ConfigError
+from wizolt.base import ConfigError, Json
 from wizolt.plugins.preferences import PluginPreferences
 from wizolt.sdk import PluginError
 
@@ -51,7 +52,6 @@ class PluginCatalog:
         records = dict(self.defaults)
         problems = []
         try:
-            self.preferences.import_existing(self.directory)
             saved = self.preferences.read("installations")
         except (OSError, ValueError, ConfigError) as error:
             # Failed reads are not evidence of a user's disable choice. In particular,
@@ -59,6 +59,12 @@ class PluginCatalog:
             return {}, [str(error)]
         for name, data in saved.items():
             try:
+                data = dict(data)
+                environment = data.pop("environment", "")
+                if not isinstance(environment, str) or (environment and (not environment.isascii() or not environment.isalnum())):
+                    raise PluginError("invalid dependency environment")
+                if environment:
+                    data["python"] = str(self.directory / "environments" / environment / self._python_path)
                 if name in self.defaults and isinstance(data, dict):
                     data = {"path": self.defaults[name].path, **data}
                 item = Installation(name=name, **data)
@@ -74,15 +80,45 @@ class PluginCatalog:
                 problems.append(f"{name}: {error}")
         return records, problems
 
-    def save(self, item: Installation) -> None:
+    _python_path = "Scripts/python.exe" if os.name == "nt" else "bin/python"
+
+    def initialize(self) -> None:
+        """Import early-alpha preferences explicitly, never as a side effect of a query.
+
+        Startup and mutating installation commands own this boundary. Recovery startup and
+        offline inspection must remain usable without writing or repairing any preferences.
+        """
+        if os.environ.get("WIZOLT_NO_PLUGINS"):
+            return
+        self.preferences.import_existing(self.directory)
+        saved = self.preferences.read("installations")
+        records, _ = self.read()
+        for name, item in records.items():
+            if isinstance(saved.get(name), dict) and saved[name].get("python") and self._environment(item.python):
+                self.save(item, expected=saved[name])
+
+    def _environment(self, python: str) -> str:
+        """Recognize host-built environments lexically: resolving Python follows venv symlinks."""
+        path = Path(python)
+        root = self.directory / "environments"
+        name = path.parent.parent.name
+        if path.parent.parent.parent == root and path.parts[-2:] == Path(self._python_path).parts and name.isascii() and name.isalnum():
+            return name
+        return ""
+
+    def save(self, item: Installation, *, expected: Json | None = None) -> None:
         """Replace one installation table without rewriting unrelated profile choices."""
         if not item.name.isidentifier() or not item.name.isascii():
             raise PluginError("Invalid plugin name")
-        self.preferences.import_existing(self.directory)
         data = asdict(item)
         data.pop("name")
         if item.name in self.defaults:
             data.pop("path")
-        if not item.python:
+        if environment := self._environment(item.python):
+            # The immutable environment directory is prepared before this single config
+            # transaction. Failed saves cannot redirect an existing installation's worker.
+            data["environment"] = environment
             data.pop("python")
-        self.preferences.save("installations", item.name, data)
+        elif not item.python:
+            data.pop("python")
+        self.preferences.save("installations", item.name, data, expected=expected)

@@ -71,15 +71,24 @@ CLI manager / Plugin tool / agent lifecycle
   session snapshots. Config writes hold a nonblocking cross-process lease and preserve comments,
   mode and symlink targets; contention is an explicit retryable failure, never a UI wait.
   Existing agents are not silently reconfigured by another agent's changes.
+- Catalog reads never create files or import old preferences. Session startup and mutating
+  installation commands explicitly initialize early-alpha preferences before reading layout.
+  Recovery startup skips initialization. Generated interpreters stay under local runtime data;
+  config stores only their immutable environment IDs. Preparation precedes the atomic config
+  switch, so failed saves cannot change which interpreter an installation uses. Explicit custom
+  interpreter paths remain the user's responsibility. A copied profile requires reinstalling
+  dependencies; never silently fall back to host Python when an environment is absent.
 - Bundled plugins supply disabled installation defaults. They use the same loader, SDK, and
   controls as user plugins; the terminal does not know which component is the pet.
 
 ## Replacement and cancellation
 
 Validation constructs an unpublished generation. A failed candidate leaves active code intact.
-An active turn or command/tool invocation holds a lease; replacement returns pending and publishes
-after both leases end. Publication has no awaits. Each entry retains at most one previous and one
-pending generation. The previous revision retains source, settings and its interpreter path,
+An active turn freezes the whole registry; command/tool and summarizer invocations pin only their
+own generation. An idle plugin can therefore publish while another plugin is awaiting input.
+Replacement returns pending until its applicable leases end. Publication has no awaits. Each
+entry retains at most one previous and one pending generation. The previous revision retains
+source, settings and its interpreter path,
 not a second worker; superseded workers are retired by owned tasks that shutdown joins. Never
 resolve a rollback's interpreter from today's installation preferences: dependencies may have
 changed since that revision ran. Reload must also retain the installed identity, which owns

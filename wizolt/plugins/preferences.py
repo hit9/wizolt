@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 
+from wizolt.base import Json
 from wizolt.config import ConfigFile
 from wizolt.plugins.files import read_regular
 from wizolt.sdk import PluginError
@@ -24,13 +25,13 @@ class PluginPreferences:
             raise PluginError(f"plugin_manager.{section} must be a table")
         return manager.get(section, {})
 
-    def save(self, section: str, key: str, value) -> None:
+    def save(self, section: str, key: str, value, *, expected: Json | None = None) -> None:
         # Offline installation may precede --init-config. Create only an empty file;
         # provider defaults must not overwrite the user's eventual profile.
         self.path.parent.mkdir(parents=True, exist_ok=True)
         descriptor = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         os.close(descriptor)
-        ConfigFile.set_ui_value(str(self.path), ("plugin_manager", section), key, value)
+        ConfigFile.set_ui_value(str(self.path), ("plugin_manager", section), key, value, expected=expected)
 
     def import_existing(self, directory: Path) -> None:
         """Copy early-alpha preferences once; leave originals intact for recovery.

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Keep plugin catalog queries read-only; import early-alpha preferences explicitly during
+  startup or installation changes. Store generated dependency environment IDs instead of
+  machine-specific interpreter paths in the config, preserving atomic installation switches.
+
 - Let idle plugins reload or disable while another plugin's command is running. Active model
   turns still freeze the complete plugin registry until the turn ends.
 

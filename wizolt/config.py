@@ -719,8 +719,12 @@ model = ""
         ConfigFile.set_ui_value(path, ("runtime",), key, value)
 
     @staticmethod
-    def set_ui_value(path: str, section: tuple[str, ...], key: str, value: str | Json, *, overwrite: bool = True) -> None:
-        """Persist a UI selection using the same atomic, comment-preserving config writer."""
+    def set_ui_value(path: str, section: tuple[str, ...], key: str, value: str | Json, *, overwrite: bool = True, expected: Json | None = None) -> None:
+        """Persist a selection; optional expected record prevents stale read/modify/write.
+
+        A changed record is left untouched when expected is supplied. This is for automatic
+        normalization; explicit user choices normally overwrite the selected value.
+        """
         # Lock the stable sidecar, not the replaced inode. Separate processes must read
         # the latest document inside the transaction or one preference can erase another.
         path = os.path.realpath(path)
@@ -730,10 +734,10 @@ model = ""
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as error:
                 raise ConfigError("Configuration is being updated by another process; retry shortly") from error
-            ConfigFile._write_value(path, section, key, value, overwrite=overwrite)
+            ConfigFile._write_value(path, section, key, value, overwrite=overwrite, expected=expected)
 
     @staticmethod
-    def _write_value(path: str, section: tuple[str, ...], key: str, value: str | Json, *, overwrite: bool) -> None:
+    def _write_value(path: str, section: tuple[str, ...], key: str, value: str | Json, *, overwrite: bool, expected: Json | None) -> None:
         """Read and replace a complete document while the caller holds its write lease."""
         import tomlkit
 
@@ -750,6 +754,8 @@ model = ""
                 raise ConfigError(f"{'.'.join(section)} in {path} must be a table")
             table = child
         if not overwrite and key in table:
+            return
+        if expected is not None and table.get(key) != expected:
             return
         table[key] = value
         mode = stat.S_IMODE(os.stat(path).st_mode)

@@ -92,6 +92,10 @@ class SessionPlugins(PluginRuntime):
         if self.loaded:
             return
         self.loaded = True
+        try:
+            self.catalog.initialize()
+        except (OSError, ValueError, ConfigError) as error:
+            self.problems["preferences"] = str(error)
         self.reload_layout()
         records, _ = self.catalog.read()
         if os.environ.get("WIZOLT_NO_PLUGINS") == "1":

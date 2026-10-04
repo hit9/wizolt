@@ -43,6 +43,9 @@ def test_existing_preferences_are_copied_once_without_removing_originals(tmp_pat
     layout = catalog.directory / "layout"
     layout.mkdir()
     (layout / "above_input.json").write_text('["sample.above_input"]')
+    assert "sample" not in catalog.read()[0]
+    assert not catalog.preferences.path.exists()  # Queries never import or create files.
+    catalog.initialize()
     records, errors = catalog.read()
     assert not errors and records["sample"].enabled
     assert old.exists()
@@ -70,5 +73,63 @@ def test_recovery_startup_does_not_import_old_preferences(tmp_path, monkeypatch)
     catalog.directory.mkdir(parents=True)
     (catalog.directory / "broken.json").write_text("broken")
     monkeypatch.setenv("WIZOLT_NO_PLUGINS", "1")
+    catalog.initialize()
     catalog.read()
     assert not catalog.preferences.path.exists()
+
+
+def test_generated_interpreters_are_local_but_environment_choices_are_atomic(tmp_path):
+    catalog = PluginCatalog.for_user(str(tmp_path / "machine"))
+    python = str(catalog.directory / "environments" / "abc123" / "bin/python")
+    catalog.save(Installation("example", "/example.py", python=python))
+    config = catalog.preferences.path
+    assert python not in config.read_text()
+    assert catalog.read()[0]["example"].python == python
+    # Copying a profile never launches the old computer's interpreter. Reinstall dependencies
+    # on the destination; a missing local environment must not fall back to the host Python.
+    other = PluginCatalog.for_user(str(tmp_path / "other"), str(config))
+    assert other.read()[0]["example"].python == str(other.directory / "environments" / "abc123" / "bin/python")
+    with open(str(config) + ".lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with pytest.raises(ConfigError):
+            catalog.save(Installation("example", "/example.py", python=python.replace("abc123", "def456")))
+    assert catalog.read()[0]["example"].python == python
+
+
+def test_initialization_rewrites_only_generated_interpreter_paths(tmp_path):
+    catalog = PluginCatalog.for_user(str(tmp_path))
+    python = str(catalog.directory / "environments" / "abc123" / "bin/python")
+    catalog.preferences.save("installations", "example", {"path": "/example.py", "python": python})
+    catalog.preferences.save("installations", "custom", {"path": "/custom.py", "python": "/opt/custom/python"})
+    catalog.initialize()
+    assert catalog.preferences.read("installations")["example"]["environment"] == "abc123"
+    assert catalog.read()[0]["custom"].python == "/opt/custom/python"
+
+
+@pytest.mark.parametrize("environment", [False, 0, "../outside", "/absolute"])
+def test_invalid_environment_does_not_become_a_host_interpreter(tmp_path, environment):
+    catalog = PluginCatalog.for_user(str(tmp_path))
+    catalog.preferences.save("installations", "example", {"path": "/example.py", "environment": environment})
+    records, errors = catalog.read()
+    assert "example" not in records
+    assert errors == ["example: invalid dependency environment"]
+
+
+def test_initialization_does_not_overwrite_a_concurrent_disable(tmp_path, monkeypatch):
+    catalog = PluginCatalog.for_user(str(tmp_path))
+    python = str(catalog.directory / "environments" / "abc123" / "bin/python")
+    original = {"path": "/example.py", "python": python, "enabled": True}
+    catalog.preferences.save("installations", "example", original)
+    save = catalog.save
+
+    def concurrent_change(item, **kwargs):
+        catalog.preferences.save("installations", "example", {**original, "enabled": False})
+        save(item, **kwargs)
+
+    monkeypatch.setattr(catalog, "save", concurrent_change)
+    catalog.initialize()
+    assert not catalog.read()[0]["example"].enabled
+    monkeypatch.setattr(catalog, "save", save)
+    catalog.initialize()
+    record = catalog.preferences.read("installations")["example"]
+    assert not record["enabled"] and record["environment"] == "abc123"
