@@ -51,7 +51,7 @@ class SessionPlugins(PluginRuntime):
         except (OSError, ValueError, ConfigError) as error:
             self.problems["layout"] = str(error)
 
-    async def prepare(self, revision: Revision):
+    async def launch(self, revision: Revision):
         # Populate an idle/resumed agent's meter when enabling a plugin too. This is an
         # admission boundary, not a render/sample callback; the engine supplies the estimator.
         if self.read_context is not None:
@@ -60,7 +60,7 @@ class SessionPlugins(PluginRuntime):
         for item in records.values():
             if item.path == revision.source.path:
                 revision.source.require_name(item.name)
-        return await super().prepare(revision)
+        return await super().launch(revision)
 
     def snapshot(self) -> Context:
         session = self.session
@@ -103,14 +103,20 @@ class SessionPlugins(PluginRuntime):
         records, _ = self.catalog.read()
         if os.environ.get("WIZOLT_NO_PLUGINS") == "1":
             return
+        names, revisions = [], []
         for item in records.values():
             if not item.enabled:
                 continue
+            self.interpreters[item.name] = item.python
             try:
-                self.interpreters[item.name] = item.python
-                await super().manage("enable", item.path)
+                revisions.append(self.read_revision(item.path))
+                names.append(item.name)
             except Exception as error:  # noqa: BLE001 - one bad plugin must not prevent startup.
                 self.problems[item.name] = str(error)
+        # Plugins start concurrently; admission keeps saved order (see enable_many).
+        for name, failure in zip(names, await self.enable_many(revisions), strict=True):
+            if failure is not None:
+                self.problems[name] = str(failure)
 
     def reload_plan(self, name: str = "") -> list[tuple[str, str]]:
         """What `hot_reload(name)` would change, as (plugin, change), without running plugin code.

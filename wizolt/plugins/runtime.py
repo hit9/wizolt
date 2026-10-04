@@ -135,6 +135,7 @@ class PluginRuntime:
         self._refresh_task: asyncio.Task | None = None
         self._wake = asyncio.Event()
         self._retiring: set[asyncio.Task] = set()
+        self._launching: set[asyncio.Task] = set()  # Startup candidates not yet admitted.
         self.reserved_commands: frozenset[str] = frozenset()
         self.interpreters: dict[str, str] = {}
         self.validate: Callable[[Capabilities], None] | None = None
@@ -149,7 +150,20 @@ class PluginRuntime:
         return Revision(source, self.settings.read(source.name), self.interpreters.get(source.name, ""))
 
     async def prepare(self, revision: Revision) -> Generation:
+        """Launch, then admit; the caller holds the registry lock."""
+        candidate = await self.launch(revision)
+        try:
+            self.admit(candidate)
+        except BaseException:
+            await candidate.worker.close()
+            raise
+        return candidate
+
+    async def launch(self, revision: Revision) -> Generation:
+        """Start and sample an unpublished candidate. This is nearly all of a plugin's startup
+        cost and touches only its own process, so candidates may launch concurrently."""
         source = revision.source
+        # An installed path owns its name: reject a renamed source before running any of it.
         for name, entry in self.entries.items():
             if entry.active.revision.source.path == source.path:
                 source.require_name(name)
@@ -162,21 +176,6 @@ class PluginRuntime:
             capabilities = Capabilities.decode(source.name, description)
             if self.validate is not None:
                 self.validate(capabilities)
-            occupied = set(self.reserved_commands)
-            for name, entry in self.entries.items():
-                if name != source.name:
-                    if capabilities.summarizer and (entry.active.plugin.summarizer or (entry.pending and entry.pending.plugin.summarizer)):
-                        raise PluginError(f"Summarizer already supplied by {name}; disable it before enabling another")
-                    occupied.update(entry.active.plugin.commands)
-                    if entry.pending:
-                        occupied.update(entry.pending.plugin.commands)
-            for name, candidate in self._pending_new.items():
-                if name != source.name:
-                    if capabilities.summarizer and candidate.plugin.summarizer:
-                        raise PluginError(f"Summarizer already supplied by {name}; disable it before enabling another")
-                    occupied.update(candidate.plugin.commands)
-            if collisions := occupied.intersection(capabilities.commands):
-                raise PluginError(f"Command names already registered: {', '.join(sorted(collisions))}")
             candidate = Generation(revision, capabilities, worker)
             await candidate.refresh(self.facts(), components=True)
             if candidate.error:
@@ -185,6 +184,21 @@ class PluginRuntime:
         except BaseException:
             await worker.close()
             raise
+
+    def admit(self, candidate: Generation) -> None:
+        """Check a launched candidate against the registry. No awaits: the caller holds the
+        lock, so the registry it checks is the one it stages into."""
+        name, capabilities = candidate.plugin.name, candidate.plugin
+        occupied = set(self.reserved_commands)
+        others = [entry.active for key, entry in self.entries.items() if key != name]
+        others += [entry.pending for key, entry in self.entries.items() if key != name and entry.pending]
+        others += [pending for key, pending in self._pending_new.items() if key != name]
+        for other in others:
+            if capabilities.summarizer and other.plugin.summarizer:
+                raise PluginError(f"Summarizer already supplied by {other.plugin.name}; disable it before enabling another")
+            occupied.update(other.plugin.commands)
+        if collisions := occupied.intersection(capabilities.commands):
+            raise PluginError(f"Command names already registered: {', '.join(sorted(collisions))}")
 
     async def manage(self, action: str, target: str = "", *, commit: Callable[[str, PluginSource], None] | None = None) -> dict[str, Any]:
         """Prepare before publication; failed candidates leave active generations intact.
@@ -202,27 +216,7 @@ class PluginRuntime:
                     raise PluginError(f"Unknown plugin: {target}")
                 return {"plugins": items}
             if action == "enable":
-                candidate = await self.prepare(self.read_revision(target))
-                name = candidate.plugin.name
-                entry = self.entries.get(name)
-                existing = entry.active if entry else self._pending_new.get(name)
-                if existing and existing.revision.source.path != candidate.revision.source.path:
-                    await candidate.worker.close()
-                    raise PluginError(f"Plugin name {name!r} already belongs to {existing.revision.source.path}")
-                # Persistence belongs to the assembly layer, but must succeed before
-                # staging/retiring any generation. A failed write owns only this candidate.
-                try:
-                    if commit is not None:
-                        commit(action, candidate.revision.source)
-                except BaseException:
-                    await candidate.worker.close()
-                    raise
-                if entry is None:
-                    if pending := self._pending_new.pop(name, None):
-                        self._retire(pending)
-                    self._pending_new[name] = candidate
-                    self._publish()
-                    return self.describe(name, self.entries[name]) if name in self.entries else self.staged(candidate)
+                return await self._enable(await self.prepare(self.read_revision(target)), commit)
             else:
                 name = target
                 entry = self.entries.get(name)
@@ -248,13 +242,95 @@ class PluginRuntime:
                     return {"name": name, "status": "stopping" if name in self.entries else "off"}
                 else:
                     raise PluginError(f"Unknown plugin action: {action}")
-            assert entry is not None
-            if entry.pending:
-                self._retire(entry.pending)
-            entry.pending, entry.disabling = candidate, False
-            self.interactions.dismiss(name)
-            self._publish()
-            return self.describe(name, entry)
+            return self._replace(entry, candidate)
+
+    async def _enable(self, candidate: Generation, commit: Callable[[str, PluginSource], None] | None) -> dict[str, Any]:
+        """Stage an admitted candidate; the caller holds the lock. It owns the candidate's worker."""
+        name = candidate.plugin.name
+        entry = self.entries.get(name)
+        existing = entry.active if entry else self._pending_new.get(name)
+        try:
+            if existing and existing.revision.source.path != candidate.revision.source.path:
+                raise PluginError(f"Plugin name {name!r} already belongs to {existing.revision.source.path}")
+            # Persistence belongs to the assembly layer, but must succeed before
+            # staging/retiring any generation. A failed write owns only this candidate.
+            if commit is not None:
+                commit("enable", candidate.revision.source)
+        except BaseException:
+            await candidate.worker.close()
+            raise
+        if entry is not None:
+            return self._replace(entry, candidate)
+        if pending := self._pending_new.pop(name, None):
+            self._retire(pending)
+        self._pending_new[name] = candidate
+        self._publish()
+        return self.describe(name, self.entries[name]) if name in self.entries else self.staged(candidate)
+
+    def _replace(self, entry: Entry, candidate: Generation) -> dict[str, Any]:
+        name = candidate.plugin.name
+        if entry.pending:
+            self._retire(entry.pending)
+        entry.pending, entry.disabling = candidate, False
+        self.interactions.dismiss(name)
+        self._publish()
+        return self.describe(name, entry)
+
+    async def enable_many(self, revisions: list[Revision]) -> list[BaseException | None]:
+        """Startup: launch every candidate concurrently, then admit them one by one in order.
+
+        Launching is the slow part and is independent per plugin. Admission stays serial under
+        the registry lock, in the given order, so command and summarizer collisions resolve
+        exactly as a sequential startup would. Returns each revision's failure, or None.
+        """
+        launches = [asyncio.create_task(self.launch(revision)) for revision in revisions]
+        self._launching.update(launches)
+        try:
+            if launches:
+                await asyncio.wait(launches)
+        except BaseException:
+            await self._discard(launches)
+            raise
+        finally:
+            self._launching.difference_update(launches)
+        failures: list[BaseException | None] = []
+        async with self._lock:
+            for index, task in enumerate(launches):
+                try:
+                    failures.append(await self._admit_launched(task))
+                except BaseException:
+                    await self._discard(launches[index + 1 :])
+                    raise
+        return failures
+
+    async def _admit_launched(self, task: asyncio.Task) -> BaseException | None:
+        """Admit and stage one finished launch; return its failure. One bad plugin must not
+        prevent the others from starting."""
+        if task.cancelled():
+            return PluginError("Plugin startup was cancelled")
+        if (error := task.exception()) is not None:
+            return error
+        candidate = task.result()
+        try:
+            if self._closed:
+                raise PluginError("Plugin runtime is closed")
+            self.admit(candidate)
+        except Exception as error:  # noqa: BLE001
+            await candidate.worker.close()
+            return error
+        try:
+            await self._enable(candidate, None)  # Closes the worker itself on failure.
+        except Exception as error:  # noqa: BLE001
+            return error
+        return None
+
+    @staticmethod
+    async def _discard(launches: list[asyncio.Task]) -> None:
+        """Cancel launches and close the workers of those that finished, unpublished."""
+        for task in launches:
+            task.cancel()
+        results = await asyncio.gather(*launches, return_exceptions=True)
+        await asyncio.gather(*(item.worker.close() for item in results if isinstance(item, Generation)), return_exceptions=True)
 
     # Live status words, each naming one situation: starting (a new plugin waits to publish),
     # running, reloading (a replacement waits), stopping (a disable waits), failed, and off.
@@ -566,6 +642,8 @@ class PluginRuntime:
         if self._refresh_task is not None:
             self._refresh_task.cancel()
             await asyncio.gather(self._refresh_task, return_exceptions=True)
+        # Startup launches run outside the lock; their workers must not outlive the runtime.
+        await self._discard(list(self._launching))
         for entry in self.entries.values():
             self._retire(entry.active)
             if entry.pending:

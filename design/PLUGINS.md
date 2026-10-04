@@ -99,6 +99,23 @@ reload. A failed reload keeping the running generation is atomic replacement, no
 and must stay. Reload must also retain the installed identity, which owns
 settings and tool namespaces, even if a package's manifest was renamed on disk.
 
+Bringing a candidate in has two halves. **Launch** (identity check, worker start, setup,
+capability decode, appearance validation, first snapshot) touches only that plugin's process
+and is nearly all the cost. **Admit** (command/summarizer collisions against the registry, then
+staging and publication) must see one consistent registry, so it runs under the runtime lock
+with no awaits between its check and its stage. Startup runs in this order:
+
+```text
+management lock held for the whole load (a /plugins disable waits, then applies)
+  read saved choices and revisions .............. serial, in saved order
+  launch every enabled candidate ................ parallel, outside the registry lock
+  admit and stage each candidate ................ serial, in saved order, under the registry lock
+```
+
+Saved order, not launch completion, decides collisions, so the result equals a sequential
+startup. Interactive enable and reload launch and admit one candidate under the lock. Shutdown
+cancels unadmitted launches and closes their workers; none outlives the runtime.
+
 The turn guard remains held while completion observers run. Never clear the engine's active task
 before awaiting observers: another turn could otherwise overlap the old generation. Cancellation
 must release invocation leases in `finally` and must not leave pending replacement stranded.

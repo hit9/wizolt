@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Start enabled plugins concurrently at startup. Each worker launch, nearly all of a plugin's
+  startup cost, now runs in parallel; checking command and summarizer collisions and
+  publishing stay serial, in saved order, so the outcome is unchanged. Loading three enabled
+  plugins (two user packages and the bundled layout plugin) went from 348–356 ms to 139–145 ms,
+  five runs each, Linux ARM64 / Python 3.14.7, before and after this change on
+  `bugfix/plugin-system-audit`; measured with a scratch script, not the benchmark suite.
+  Shutdown during startup closes workers that have launched but are not yet admitted.
+
 - Remove plugin rollback (`/plugins rollback` and the manager's Rollback action). Source history
   belongs to Git: to undo, check out the earlier source and reload. A failed reload still keeps
   the running version.

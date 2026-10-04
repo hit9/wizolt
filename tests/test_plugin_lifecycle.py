@@ -103,6 +103,63 @@ async def test_dependency_metadata_cannot_be_interpreted_as_installer_options(tm
     assert not environment.path.exists()
 
 
+def startup_plugins(runtime, tmp_path, specs):
+    """Save plugins in order; each (name, setup delay, command) records its worker's pid."""
+    from wizolt.plugins.catalog import Installation
+
+    for name, delay, command in specs:
+        path = tmp_path / f"{name}.py"
+        path.write_text(
+            f"import os, time\nSDK_VERSION = 1\ndef setup(p):\n"
+            f"    open({str(tmp_path / (name + '.pid'))!r}, 'w').write(str(os.getpid()))\n"
+            f"    time.sleep({delay})\n"
+            f"    async def run(ctx, args):\n        return {name!r}\n"
+            f"    p.command({command!r}, 'Run', run)\n"
+        )
+        runtime.catalog.save(Installation(name, str(path)))
+
+
+async def test_startup_launches_plugins_concurrently(tmp_path):
+    import time
+
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    startup_plugins(runtime, tmp_path, [(name, 0.5, name) for name in ("one", "two", "three")])
+    started = time.monotonic()
+    await runtime.load()
+    assert set(runtime.entries) == {"one", "two", "three"} and not runtime.problems
+    assert time.monotonic() - started < 1.2  # One after another took at least 1.5 s.
+    await runtime.close()
+
+
+async def test_startup_collisions_still_follow_saved_order(tmp_path):
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    # The first saved plugin launches last, yet still owns the shared command.
+    startup_plugins(runtime, tmp_path, [("first", 0.4, "go"), ("second", 0, "go")])
+    await runtime.load()
+    assert list(runtime.entries) == ["first"]
+    assert "Command names already registered: go" in runtime.problems["second"]
+    assert await runtime.invoke("first", "command", "go", {}) == "first"
+    await runtime.close()
+
+
+async def test_closing_during_startup_leaves_no_workers(tmp_path):
+    import asyncio
+    import os
+
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    startup_plugins(runtime, tmp_path, [("fast", 0, "fast"), ("slow", 3, "slow")])
+    startup = asyncio.create_task(runtime.load())
+    while not (tmp_path / "slow.pid").exists() or not (tmp_path / "fast.pid").exists():
+        await asyncio.sleep(0.02)
+    await asyncio.sleep(0.3)  # The fast plugin has finished launching; the slow one has not.
+    await runtime.close()
+    await asyncio.gather(startup, return_exceptions=True)
+    assert not runtime.entries
+    for name in ("fast", "slow"):
+        with pytest.raises(ProcessLookupError):
+            os.kill(int((tmp_path / f"{name}.pid").read_text()), 0)
+
+
 async def test_disable_during_startup_loading_is_not_undone_by_it(tmp_path):
     import asyncio
 
