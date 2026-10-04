@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.73.0a2 - 2026-10-03
+
+- Update the post-merge performance reference with paired nine-sample Linux ARM64 / Python
+  3.14.7 measurements against alpha 1. Repeated plugin row projection improves by 52–95%;
+  retain the independently confirmed roughly 10 ms startup cost of the pre-TUI key migration
+  check. See the [release measurements](https://github.com/hit9/wizolt/blob/master/benchmarks/README.md#alpha-2-release-reference)
+  for workloads, source revisions, output checks and trade-offs.
+
 - Reclaim unused session lock files during retention cleanup, including leftovers from expired
   sessions and crashes. Validate lock identity after acquisition so concurrent cleanup cannot
   grant ownership of a deleted lock. Restart older Wizolt processes before using this version.

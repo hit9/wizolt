@@ -1,0 +1,246 @@
+{
+  "environment": {
+    "system": "Linux",
+    "release": "6.8.0-111-generic",
+    "machine": "aarch64",
+    "processor": "aarch64",
+    "python": "3.14.7",
+    "implementation": "CPython",
+    "cpu_count": 8,
+    "cpu_affinity_count": 8,
+    "cpu_quota": "max 100000",
+    "packages": {
+      "Authlib": "1.7.2",
+      "Jinja2": "3.1.6",
+      "MarkupSafe": "3.0.3",
+      "PyJWT": "2.13.0",
+      "PyYAML": "6.0.3",
+      "Pygments": "2.21.0",
+      "SecretStorage": "3.5.0",
+      "Sphinx": "9.1.0",
+      "aiofile": "3.12.3",
+      "alabaster": "1.0.0",
+      "annotated-types": "0.8.0",
+      "anthropic": "1.0.0",
+      "anyio": "4.14.2",
+      "attrs": "26.1.0",
+      "babel": "2.18.0",
+      "beartype": "0.22.9",
+      "cachetools": "7.1.7",
+      "caio": "0.12.2",
+      "certifi": "2026.7.22",
+      "cffi": "2.1.1",
+      "charset-normalizer": "3.5.1",
+      "click": "8.4.2",
+      "code-symbol-index": "0.6.0",
+      "cryptography": "50.0.0",
+      "dnspython": "2.8.0",
+      "docstring_parser": "0.18.0",
+      "docutils": "0.22.4",
+      "email-validator": "2.3.0",
+      "exceptiongroup": "1.3.1",
+      "execnet": "2.1.2",
+      "fastmcp-slim": "3.4.7",
+      "h11": "0.16.0",
+      "httpcore": "1.0.9",
+      "httpcore2": "2.12.0",
+      "httpx": "0.28.1",
+      "httpx-sse": "0.4.3",
+      "httpx2": "2.12.0",
+      "idna": "3.19",
+      "imagesize": "2.0.1",
+      "iniconfig": "2.3.0",
+      "jaraco.classes": "3.4.0",
+      "jaraco.context": "6.1.2",
+      "jaraco.functools": "4.6.0",
+      "jeepney": "0.9.0",
+      "jiter": "0.16.0",
+      "joserfc": "1.7.4",
+      "json_repair": "0.63.3",
+      "jsonschema": "4.26.0",
+      "jsonschema-specifications": "2025.9.1",
+      "keyring": "25.7.0",
+      "linkify-it-py": "2.2.0",
+      "markdown-it-py": "4.2.0",
+      "mcp": "2.2.0",
+      "mcp-types": "2.2.0",
+      "mdit-py-plugins": "0.6.1",
+      "mdurl": "0.1.2",
+      "more-itertools": "11.1.0",
+      "myst-parser": "5.1.0",
+      "nodeenv": "1.10.0",
+      "openai": "3.3.1",
+      "opentelemetry-api": "1.44.0",
+      "packaging": "26.3",
+      "pathspec": "1.1.1",
+      "pillow": "12.3.0",
+      "platformdirs": "4.11.3",
+      "pluggy": "1.6.0",
+      "prompt_toolkit": "3.0.53",
+      "py-key-value-aio": "0.4.5",
+      "pycparser": "3.0",
+      "pydantic": "2.13.4",
+      "pydantic-settings": "2.15.0",
+      "pydantic_core": "2.46.4",
+      "pyright": "1.1.414",
+      "pytest": "9.1.1",
+      "pytest-asyncio": "1.4.0",
+      "pytest-xdist": "3.8.0",
+      "python-dotenv": "1.2.3",
+      "python-multipart": "0.0.32",
+      "referencing": "0.37.0",
+      "requests": "2.34.2",
+      "rich": "15.0.0",
+      "roman-numerals": "4.1.0",
+      "rpds-py": "2026.6.3",
+      "ruff": "0.16.0",
+      "sniffio": "1.3.1",
+      "snowballstemmer": "3.1.1",
+      "socksio": "1.0.0",
+      "sphinx-better-theme": "0.1.5",
+      "sphinx-copybutton": "0.5.2",
+      "sphinx_rtd_theme": "3.1.0",
+      "sphinxcontrib-applehelp": "2.0.0",
+      "sphinxcontrib-devhelp": "2.0.0",
+      "sphinxcontrib-htmlhelp": "2.1.0",
+      "sphinxcontrib-jquery": "4.1",
+      "sphinxcontrib-jsmath": "1.0.1",
+      "sphinxcontrib-qthelp": "2.0.0",
+      "sphinxcontrib-serializinghtml": "2.0.0",
+      "sse-starlette": "3.4.8",
+      "starlette": "1.6.0",
+      "tomlkit": "0.15.1",
+      "tree-sitter": "0.26.0",
+      "tree-sitter-language-pack": "1.14.3",
+      "truststore": "0.10.4",
+      "typing-inspection": "0.4.4",
+      "typing_extensions": "4.16.0",
+      "urllib3": "2.7.0",
+      "uvicorn": "0.52.4",
+      "wcwidth": "0.8.2",
+      "websockets": "17.0.1"
+    }
+  },
+  "sources": {
+    "before": {
+      "revision": "1f1ce541092ce6a816e80e51bb83ef65f0763777",
+      "working_tree": false,
+      "sha256": "5ec6de01c27fdc1dcc01d5ec0c2aefff6856f944f86382c5d234861ea38b7ca4"
+    },
+    "after": {
+      "revision": "eae455beccb856722a45656b682a72018f3801aa",
+      "working_tree": true,
+      "sha256": "e8d5210d6ee74878af11b4ded2b0a506d600b0b0de534ffb6b62e1f6a37e4bf2"
+    }
+  },
+  "repeat": 9,
+  "order": "alternating before/after, reversed each round",
+  "samples": {
+    "before": [
+      {
+        "banner_ms": 41.12424998311326,
+        "frame_ms": 172.15649998979643,
+        "banner_to_prompt_ms": 131.03225000668317
+      },
+      {
+        "banner_ms": 50.36616697907448,
+        "frame_ms": 145.6197919906117,
+        "banner_to_prompt_ms": 95.25362501153722
+      },
+      {
+        "banner_ms": 47.91724996175617,
+        "frame_ms": 141.24641695525497,
+        "banner_to_prompt_ms": 93.3291669934988
+      },
+      {
+        "banner_ms": 44.447500025853515,
+        "frame_ms": 136.05429203016683,
+        "banner_to_prompt_ms": 91.60679200431332
+      },
+      {
+        "banner_ms": 49.00800000177696,
+        "frame_ms": 142.34154199948534,
+        "banner_to_prompt_ms": 93.33354199770838
+      },
+      {
+        "banner_ms": 51.012041978538036,
+        "frame_ms": 145.96875000279397,
+        "banner_to_prompt_ms": 94.95670802425593
+      },
+      {
+        "banner_ms": 48.74279099749401,
+        "frame_ms": 143.4324579895474,
+        "banner_to_prompt_ms": 94.68966699205339
+      },
+      {
+        "banner_ms": 43.28304098453373,
+        "frame_ms": 126.65187503444031,
+        "banner_to_prompt_ms": 83.36883404990658
+      },
+      {
+        "banner_ms": 49.189459008630365,
+        "frame_ms": 140.90041699819267,
+        "banner_to_prompt_ms": 91.7109579895623
+      }
+    ],
+    "after": [
+      {
+        "banner_ms": 76.80216699372977,
+        "frame_ms": 209.12587497150525,
+        "banner_to_prompt_ms": 132.32370797777548
+      },
+      {
+        "banner_ms": 55.464957957156,
+        "frame_ms": 144.54312494490296,
+        "banner_to_prompt_ms": 89.07816698774695
+      },
+      {
+        "banner_ms": 59.563875023741275,
+        "frame_ms": 152.27750001940876,
+        "banner_to_prompt_ms": 92.71362499566749
+      },
+      {
+        "banner_ms": 59.44604199612513,
+        "frame_ms": 151.81224996922538,
+        "banner_to_prompt_ms": 92.36620797310024
+      },
+      {
+        "banner_ms": 62.76566698215902,
+        "frame_ms": 155.59812495484948,
+        "banner_to_prompt_ms": 92.83245797269046
+      },
+      {
+        "banner_ms": 56.09845800790936,
+        "frame_ms": 148.8832079921849,
+        "banner_to_prompt_ms": 92.78474998427555
+      },
+      {
+        "banner_ms": 55.66033296054229,
+        "frame_ms": 148.68795895017684,
+        "banner_to_prompt_ms": 93.02762598963454
+      },
+      {
+        "banner_ms": 59.62712503969669,
+        "frame_ms": 152.51691703451797,
+        "banner_to_prompt_ms": 92.88979199482128
+      },
+      {
+        "banner_ms": 62.80783301917836,
+        "frame_ms": 160.74708302039653,
+        "banner_to_prompt_ms": 97.93925000121817
+      }
+    ]
+  },
+  "medians": {
+    "before": {
+      "banner_ms": 48.74279099749401,
+      "frame_ms": 142.34154199948534,
+      "banner_to_prompt_ms": 93.33354199770838
+    },
+    "after": {
+      "banner_ms": 59.563875023741275,
+      "frame_ms": 152.27750001940876,
+      "banner_to_prompt_ms": 92.83245797269046
+    }
+  }
+}

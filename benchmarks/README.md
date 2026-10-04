@@ -67,9 +67,34 @@ The file probes also rose (0.57 ms and 2.58 ms); their implementation is unchang
 measurements do not establish a regression in file discovery. Keep the raw observations rather
 than absorbing them into a new baseline. No broad performance improvement is claimed.
 
+### Alpha 2 release reference
+
+The current reference is [0.73.0a2](baselines/linux-arm64-py314-0.73.0a2.json), measured
+after merging `dev27` into `master` (`eae455be`, with release changes; exact source hash in
+the report). [Alpha 1 was remeasured](results/linux-arm64-py314-before-0.73.0a2.json) with
+the same current workloads, dependencies and environment: Linux ARM64, CPython 3.14.7,
+nine samples, sequential runs without concurrent tests or builds.
+
+| Workload | Alpha 1 (ms) | Alpha 2 (ms) |
+| --- | ---: | ---: |
+| First prompt frame | 141.790 | 153.361 |
+| Startup bootstrap, three user skills | 93.522 | 97.105 |
+| CLI import | 183.614 | 181.805 |
+| Ten headless turns, no hooks | 25.782 | 25.988 |
+| Cached plugin projection, 1,000 reads | 10.739 | 5.134 |
+| Dense plugin projection, 1,000 reads | 375.924 | 20.007 |
+
+Replay and dense plugin output hashes match. No measured timing increased by more than 15%
+except the banner (47.004 → 60.306 ms). An
+[alternating first-frame check](results/linux-arm64-py314-0.73.0a2-frame.json) confirms the
+startup cost: banner 48.743 → 59.564 ms, first prompt 142.342 → 152.278 ms. The new key
+migration check reads configuration before the banner so it can ask before the TUI takes over.
+Retain and record this roughly 10 ms startup cost; do not treat it as noise or a per-turn cost.
+Plugin row caching improves repeated painting; cold or changing rows still do the full work.
+
 ### Alpha 1 release reference
 
-The current reference is [0.73.0a1](baselines/linux-arm64-py314-0.73.0a1.json),
+The previous reference is [0.73.0a1](baselines/linux-arm64-py314-0.73.0a1.json),
 measured after merging `dev26` into `master` (`6697f998`, with release changes;
 the report records the exact source hash). The previous published release, `2110ac18`,
 was [remeasured](results/linux-arm64-py314-before-0.73.0a1.json) with identical workloads,
