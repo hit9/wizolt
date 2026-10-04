@@ -435,7 +435,7 @@ Each item names what to produce and where it belongs.
 - **Release baseline.** The branch comparison is recorded in
   [the benchmark README](../benchmarks/README.md#interception-and-presenters-branch-review).
   After merging, remeasure against the 0.73.0a2 reference before replacing it.
-- **Multiplexer acceptance.** Rerun `uv run pytest -m tmux` and `uv run pytest -m zellij` after
-  the interception and presenter changes (0.45.1, the CI pin, or a compatible later version).
-  The activity site touches the running region, so this run is also the evidence for unchanged
-  painting.
+- **Zellij acceptance.** `uv run pytest -m tmux` passes after the interception and presenter
+  changes (55 tests); `uv run pytest -m zellij` (0.45.1, the CI pin, or a compatible later
+  version) still has to run. The activity site touches the running region, so this run is also
+  the evidence for unchanged painting under Zellij.
