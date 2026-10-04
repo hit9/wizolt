@@ -111,8 +111,9 @@ class Worker:
             return summary.strip()
         if operation in ("snapshot", "sample", "sample_render"):
             sampled = replace(context, layout=None)
-            for callback in plugin.observers.get("sample", ()):
-                await callback(Event("sample", sampled))
+            # The public name says what it is: the refresh tick, not a lifecycle transition.
+            for callback in plugin.observers.get("tick", ()):
+                await callback(Event("tick", sampled))
             fields = {}
             for name, callback in plugin.fields.items():
                 value = callback(sampled)

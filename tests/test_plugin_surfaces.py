@@ -58,7 +58,7 @@ def setup(p):
     rates = []
     async def sample(event):
         rates.append(event.context.usage.output_rate)
-    p.on("sample", sample)
+    p.on("tick", sample)
     p.component("above_divider", lambda ctx: Panel((Line((Text(str(len(rates)), "success"), Text(str(ctx.window.parts[0]), "warning"))),)))
 ''')
     report = await PluginTrial(context()).run(str(source), times=(0, 1, 2))

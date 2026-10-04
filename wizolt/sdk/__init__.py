@@ -203,7 +203,7 @@ class Plugin:
     imported module state, but have the user's filesystem/network permissions: not a sandbox.
     """
 
-    EVENTS = frozenset(("session.started", "session.finished", "turn.started", "turn.finished", "tool.started", "tool.finished", "sample"))
+    EVENTS = frozenset(("session.started", "session.finished", "turn.started", "turn.finished", "tool.started", "tool.finished", "tick"))
     SLOTS = frozenset(("above_divider", "above_input", "below_input", "status"))
     MAX_REGISTRATIONS = 64
     IDENTIFIER = r"[A-Za-z_][A-Za-z_0-9]*"

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Rename the plugin SDK's `sample` event to `tick`: it is the UI refresh (about 5 Hz), not a
+  lifecycle transition. Plugins observing `sample` now fail setup with the list of valid
+  events; replace the name. The SDK reference's callback table gains a column for views,
+  notices and settings writes, so one table answers what each callback may call.
+
 - Polish the bundled pet: its mood colors only the outline, the face keeps the theme's text
   contrast and the caption is muted. It gains a cat's `ω` mouth, blinks now and then while
   working and wags its tail. It still takes two rows and only theme colors. Redraw the

@@ -99,14 +99,14 @@ registry are rejected; commands also cannot collide with built-ins or other enab
 There are at most 64 registrations per registry (presets: per kind), and 64 observers total.
 One component is allowed per slot; compose multiple rows inside that callback.
 
-| Callback | Async? | Models / service acquisition? | Deadline |
-| --- | --- | --- | --- |
-| Entry (`setup` or package entry) | No | No | Load: 5 seconds |
-| Field / component | No | No | Whole sample: 2 seconds |
-| `sample` observer | Yes | No | Shares the whole sample's 2 seconds |
-| Lifecycle observer (session / turn / tool) | Yes | No | Each event's callbacks together: 1 second |
-| Command / tool handler | Yes | Yes; host services unavailable offline | Live execution: 60 seconds, paused during host-owned human interaction |
-| Summarizer | Yes | Yes; models unavailable offline | 60 seconds |
+| Callback | Async? | Models / service acquisition? | UI views, notices, settings writes? | Deadline |
+| --- | --- | --- | --- | --- |
+| Entry (`setup` or package entry) | No | No | No | Load: 5 seconds |
+| Field / component | No | No | No | Whole refresh: 2 seconds |
+| `tick` observer | Yes | No | No | Shares the whole refresh's 2 seconds |
+| Lifecycle observer (session / turn / tool) | Yes | No | No | Each event's callbacks together: 1 second |
+| Command / tool handler | Yes | Yes; host services unavailable offline | Yes; views need a live TUI or trial fixtures | Live execution: 60 seconds, paused during host-owned human interaction |
+| Summarizer | Yes | Yes; models unavailable offline | No | 60 seconds |
 
 Trial `--timeout` overrides each trial call's deadline (default 5, greater than 0 and at most 60
 seconds). Host model calls still have their independent 50-second/four-concurrent-call limit.
@@ -138,7 +138,7 @@ plugin default without changing order. Do not add those empty rows yourself.
 
 Layout calls are available inside explicit command/tool handlers and summarizers (not renderers or observers),
 and unavailable in offline trials. `visibility` is `pending layout`, `empty`, `visible`,
-`clipped by height budget`, or `hidden by height budget`; allocation updates on the next sample.
+`clipped by height budget`, or `hidden by height budget`; allocation updates on the next refresh.
 
 `context.turn.tools` counts admitted executions in this agent's current/latest turn, even
 before a plugin is enabled. It resets at the next turn; it is not saved across resume.
@@ -363,9 +363,10 @@ Registration methods:
   tool:OPERATION --arguments '{...}'` runs a fresh instance with preview context, provided the
   handler does not need host RPC (see the trial boundaries below).
 - `on(event, observer)`: async `(Event) -> None`; Event has name and context.
-  Events: session.started, session.finished, turn.started, turn.finished, tool.started, tool.finished, sample. `sample` runs before fields/components are sampled
-  (normally 5 Hz); collect a bounded history here, then render it without side effects. Turn
-  observers have a one-second deadline, a complete sample two seconds, live actions 60 seconds.
+  Events: session.started, session.finished, turn.started, turn.finished, tool.started, tool.finished, tick. `tick` is the UI refresh
+  (normally 5 Hz), not a lifecycle transition: it runs just before fields/components are read;
+  collect a bounded history here, then render it without side effects. Turn
+  observers have a one-second deadline, a complete refresh two seconds, live actions 60 seconds.
 
 UI callbacks may run frequently. Read cached state only; use context.now for lightweight animation.
 No callback implicitly calls an LLM. Modules are independently executed for every agent and reload;
@@ -548,7 +549,7 @@ class TokenWave:
     def __init__(self):
         self.rates = deque(maxlen=40)
 
-    async def sample(self, event):
+    async def tick(self, event):
         self.rates.append(event.context.usage.output_rate)
 
     def draw(self, context):
@@ -559,7 +560,7 @@ class TokenWave:
 
 def setup(plugin):
     wave = TokenWave()
-    plugin.on("sample", wave.sample)
+    plugin.on("tick", wave.tick)
     plugin.component("below_input", wave.draw)
 ```
 

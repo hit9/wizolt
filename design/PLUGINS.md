@@ -13,7 +13,7 @@ Pure row projection has a bounded cache keyed by immutable row content, terminal
 `Theme.key()`. Never key it only by plugin name or row position: sampling and focused-agent
 theme changes must be visible immediately. Cached fragments are immutable; callers own copies.
 Context-category estimation runs at admission/request boundaries, not in the 5 Hz sampler.
-Sampling observers may keep bounded histories; render callbacks consume them without IO.
+`tick` observers may keep bounded histories; render callbacks consume them without IO.
 
 `LayoutPreferences` owns per-slot user preferences; `LayoutBudget` allocates once in visual order.
 The runtime samples each generation once, fusing that with its first allocated component, and

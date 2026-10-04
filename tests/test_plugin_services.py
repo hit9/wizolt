@@ -109,7 +109,7 @@ async def test_reload_uses_new_service_scope_and_retires_old_connection(tmp_path
 async def test_samples_cannot_start_service(tmp_path):
     revision, log = source(tmp_path)
     text = revision.text.replace(
-        'p.command("connect", "Use connection", use)', 'async def sample(event):\n        await service.get()\n    p.on("sample", sample)'
+        'p.command("connect", "Use connection", use)', 'async def sample(event):\n        await service.get()\n    p.on("tick", sample)'
     )
     worker, _ = await PluginProcess.start(PluginSource.read(revision.path, text))
     try:
