@@ -290,3 +290,23 @@ def test_the_migrate_flag_reports_an_unwritable_directory(inline_config, capsys)
         inline_config.parent.chmod(0o700)
     assert capsys.readouterr().err.startswith("Error: ")
     assert ConfigFile.inline_keys(str(inline_config)).keys == {"a": "sk-a"}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        ACTIVE_A + '[provider.a]\nurl = "u"\nkey = "sk-a"\n\n[runtime]\nyolo = false\n\n[provider.b]\nkey = "sk-b"\n',
+        ACTIVE_A + 'a = { url = "u", key = "sk-a" }\nb = { key = "sk-b" }\n',
+    ],
+    ids=["tables-split-by-another-section", "inline-tables"],
+)
+def test_migration_reaches_every_way_toml_can_spell_an_entry(tmp_path, text):
+    config = write(tmp_path / "config.toml", text)
+    others = ConfigFile.read_toml(str(config))
+
+    assert ConfigFile.migrate_keys(str(config)) == ["a", "b"]
+    assert "sk-" not in config.read_text(encoding="utf-8")
+    for entry in ConfigFile.provider_entries(others).values():
+        del entry["key"]
+    assert ConfigFile.read_toml(str(config)) == others
+    assert keys(config) == {"a": "sk-a", "b": "sk-b"}
