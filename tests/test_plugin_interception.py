@@ -296,3 +296,34 @@ async def test_failed_observer_skips_only_itself(runtime, tmp_path):
     await runtime.emit("turn.started")
     assert "observer:turn.started" in generation.failures
     assert runtime.fields() == {"plugins.mixed.value": 1}  # Presentation keeps working.
+
+
+async def test_order_cli_saves_one_list_that_reload_applies(tmp_path, capsys):
+    import json
+
+    from agent_harness import session_with_provider
+
+    from wizolt.plugins.catalog import Installation
+    from wizolt.plugins.session import SessionPlugins
+    from wizolt.ui.cli.plugin_commands import main
+
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    for name in ("alpha", "beta", "gamma"):
+        (tmp_path / f"{name}.py").write_text("SDK_VERSION = 1\ndef setup(p):\n    pass\n")
+        runtime.catalog.save(Installation(name, str(tmp_path / f"{name}.py")))
+    config = str(runtime.catalog.preferences.path)
+
+    def order(*arguments):
+        code = main(["order", *arguments, "--config", config])
+        return code, json.loads(capsys.readouterr().out)
+
+    # Saved names first; the rest, including bundled plugins, by name.
+    assert order("move", "gamma", "--before", "alpha")[1]["order"] == ["gamma", "alpha", "beta", "layout", "pet"]
+    assert "[plugin_manager.interception]" in runtime.catalog.preferences.path.read_text()
+    assert runtime.interception_order.names == ()  # A live agent changes only on reload.
+    runtime.reload_layout()
+    assert runtime.interception_order.ordered({"alpha", "beta", "gamma"}) == ["gamma", "alpha", "beta"]
+    code, failed = order("move", "missing", "--after", "alpha")
+    assert code == 1 and "Unknown installed plugin: missing" in failed["error"]
+    assert order("reset")[1]["saved"] == []
+    await runtime.close()

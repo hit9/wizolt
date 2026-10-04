@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add `wizolt plugin order list|move|reset` for the user-level interceptor order, saved as
+  `[plugin_manager.interception] order` and applied by the next reload in each agent. The fixed
+  `Plugin` gateway gains no actions; the agent runs the command through Bash.
+
 - Add the plugin interception core (design/PLUGIN_INTERCEPTION.md): typed operation values in
   `wizolt.sdk.operations`, `plugin.intercept`, a single-use cross-process `next()` on its own
   transport message class, ordered chain snapshots with leases, read-only field checks, typed

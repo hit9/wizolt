@@ -33,8 +33,11 @@ def setup(plugin):
 - Read-only fields (identities, purposes, origins) cannot change; wizolt checks every step.
 - One registration per operation and plugin. Put several cases in one handler.
 - `match` is a prefilter on read-only fields. Values that don't match never reach your worker.
-- Several plugins form one chain in the user's order, the first outermost. The user can change
-  it with `wizolt plugin order`.
+- Several plugins form one chain in one user-level order, the first outermost; unlisted plugins
+  follow by name. Manage it for the user with `wizolt plugin order list`,
+  `wizolt plugin order move NAME --before OTHER` (or `--after`) and `wizolt plugin order reset`,
+  then apply it with `Plugin(action="reload")`. It is saved as
+  `[plugin_manager.interception] order`, separate from settings and component layout.
 - Each handler has 60 seconds of its own time; waiting for `next` or for the user does not count.
 - Handlers run concurrently and can re-enter your plugin (for example, a nested tool call made
   by wizolt). Never hold your own lock across `await next(...)`.
