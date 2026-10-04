@@ -93,6 +93,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--call", default="", help="Explicit command:NAME or tool:NAME after events")
     parser.add_argument("--arguments", default="{}", help="JSON arguments for --call")
     parser.add_argument("--interactions", type=Path, help="JSON scripted view expectations and replies; settings writes use a temporary config")
+    parser.add_argument("--operations", type=Path, help="JSON list of intercepted operations: operation, input and the scripted next result")
     parser.add_argument("--output", type=Path, help="Parent directory for a fresh preview bundle (default: system temporary directory)")
     parser.add_argument("--font", default="", help="PNG font file; choose one covering your plugin's characters")
     args = parser.parse_args(argv)
@@ -116,11 +117,14 @@ def main(argv: list[str]) -> int:
         if not separator or kind not in ("command", "tool") or not name:
             parser.error("call must be command:NAME or tool:NAME")
         stimuli.append(Stimulus(kind, name, arguments))
-    if args.action == "validate" and (stimuli or args.interactions):
-        parser.error("use test to execute events or actions")
+    if args.action == "validate" and (stimuli or args.interactions or args.operations):
+        parser.error("use test to execute events, actions or operations")
     try:
         workspace = PluginWorkspace.open(args.config, args.project)
         dialogs = ScriptedDialogs(json.loads(read_input(args.interactions, 256 * 1024)) if args.interactions else [], args.width, args.height, args.timeout)
+        operations = json.loads(read_input(args.operations, 256 * 1024)) if args.operations else []
+        if not isinstance(operations, list) or len(operations) > 64:
+            raise ValueError("operations must be a JSON list of at most 64 entries")
         Theme.project_plugins({})
         requested_theme = args.theme or Config.table(workspace.data, "runtime").get("theme", "dark")
         problems = Theme.configure(
@@ -159,6 +163,7 @@ def main(argv: list[str]) -> int:
                 validate=args.action == "validate",
                 times=tuple(args.times),
                 stimuli=tuple(stimuli),
+                operations=tuple(operations),
             )
         )
     )

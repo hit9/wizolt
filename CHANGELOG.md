@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add `wizolt plugin test --operations FIXTURE.json`: each ordered entry runs an operation
+  through the real handler and the live chain executor, with `next` answered from the fixture
+  (a result or a failure). Missing or unused `next` results fail the trial, so no real tool,
+  model or compaction runs. Reports record effective inputs, delivered results and provenance;
+  views compose with `--interactions`.
+
 - Make disabling a plugin cancel the operations it is intercepting, so recovery never waits
   for a hung interceptor's full deadline. Core `/plugins disable` stays outside every chain:
   a broken `prompt.submit` or `context.compose` interceptor can always be turned off, and the

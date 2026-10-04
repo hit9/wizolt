@@ -1,4 +1,6 @@
-# Scripted interaction trials
+# Trials
+
+## Scripted interaction trials
 
 Run a command or tool with answers, without a live TUI:
 
@@ -52,8 +54,38 @@ Every trial copies the plugin's starting settings to a disposable configuration.
 unchanged. This is not a filesystem sandbox: ordinary plugin Python can still write files or
 use the network. Do not use production resources in trial handlers.
 
+## Interception trials
+
+Run your interceptors against scripted operations, without a live agent:
+
+```sh
+wizolt plugin test PATH --operations operations.json [--interactions answers.json]
+```
+
+`operations.json` is an ordered array, at most 64 entries. Each names an operation, its input
+(the value's fields; `type` may be omitted) and `next`, what wizolt would return when your
+handler calls `next`: a result's fields, or `{"error": "message"}` for a failure.
+
+```json
+[
+  {"operation": "tool.call", "input": {"id": "c1", "tool": "Bash", "arguments": {"command": "ls"}},
+   "next": {"content": "a.txt b.txt", "status": "ok"}},
+  {"operation": "tool.call", "input": {"id": "c2", "tool": "Bash", "arguments": {"command": "rm -rf build"}}},
+  {"operation": "context.compact", "input": {"text": "user: ship it", "trigger": "manual"}}
+]
+```
+
+Omit `next` when your handler must answer by itself (a refusal, a cached result, a summary).
+A `next` your handler never calls, or a call to `next` the fixture does not answer, fails the
+trial: nothing reaches wizolt's real tools, models or compaction. The trial runs your real
+handler through wizolt's chain executor with the same read-only, refusal and `next` rules; views
+your handler opens use `--interactions`. Live placement rules (attachment, tool-name and context
+block checks) apply in a session.
+
 Read the JSON report:
 
+- `operations`: per entry, `effective` (the value that reached `next`, or null), `result` (what
+  was delivered), `origin` (which registration produced it, or `core`) and `shaped`.
 - `results`: handler return values.
 - `interactions`: view declarations, projected fragments, answers and notices.
 - `settings_changes`: successful temporary writes (`values` and `reset`); existing unrelated
