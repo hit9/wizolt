@@ -98,7 +98,8 @@
   refusals and the block-until-reload failure policy. Interceptors get per-operation host
   services; their deadline pauses while downstream work runs. Plugin health is now tracked per
   registration: a failed observer or component no longer hides a plugin's fields, commands or
-  tools. No host operation is interceptable yet; adapters follow.
+  tools. A host value outside the operation bounds (such as a model's `NaN` tool argument)
+  fails that operation without blocking the interceptor.
 
 - Document the proposed plugin middleware and presentation architecture: typed semantic
   operations, scoped cross-process continuations, deterministic ordering, execution receipts,
@@ -106,7 +107,7 @@
   No new runtime API is introduced by this proposal.
 
 - Start enabled plugins concurrently at startup. Each worker launch, nearly all of a plugin's
-  startup cost, now runs in parallel; checking command and summarizer collisions and
+  startup cost, now runs in parallel; checking command collisions and
   publishing stay serial, in saved order, so the outcome is unchanged. Loading three enabled
   plugins (two user packages and the bundled layout plugin) went from 348–356 ms to 139–145 ms,
   five runs each, Linux ARM64 / Python 3.14.7, before and after this change on

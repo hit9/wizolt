@@ -148,6 +148,16 @@ def setup(p):
     assert "intercept:tool.call" in runtime.entries["zinner"].active.failures
 
 
+async def test_an_out_of_bounds_host_value_fails_the_operation_without_blocking_the_plugin(runtime, tmp_path):
+    # Python's JSON parser accepts NaN, so a model's tool arguments can carry one.
+    generation = await enable(runtime, tmp_path, "relay", "def setup(p):\n    async def h(ctx, value, next):\n        return await next(value)\n    p.intercept('tool.call', h)\n")
+    with pytest.raises(PluginError, match="Invalid ToolCall"):
+        await runtime.interception.run("tool.call", call(command="x" * 10, nested=float("nan")), Core())
+    # The host built a value outside the bounds; the plugin never saw it and keeps working.
+    assert not generation.failures
+    assert await runtime.interception.run("tool.call", call(), Core()) == ToolResult("core ran")
+
+
 async def test_matcher_prefilters_without_invoking_the_worker(runtime, tmp_path):
     generation = await enable(runtime, tmp_path, "bashonly", "def setup(p):\n    async def h(ctx, value, next):\n        return ToolResult('bash')\n    p.intercept('tool.call', h, match={'tool': 'Bash'})\n")
     calls = generation.calls

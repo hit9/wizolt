@@ -198,6 +198,7 @@ class Interception:
 
         token = uuid.uuid4().hex
         worker = link.generation.worker
+        data = operations.encode(value)  # A host value over the bounds fails the operation, never blocks this plugin.
         raw, failure = None, None
         try:
             raw = await worker.request(
@@ -207,7 +208,7 @@ class Interception:
                 on_start=lambda identity: worker.continuations.register(token, identity, resume),
                 name=link.operation,
                 token=token,
-                input=operations.encode(value),
+                input=data,
                 context=asdict(self.runtime.facts()),
             )
         except asyncio.CancelledError:
