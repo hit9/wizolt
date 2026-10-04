@@ -25,13 +25,24 @@ from wizolt.sdk.models import HostCall
 from wizolt.sdk.ui import Component
 
 
+@dataclass(frozen=True)
+class Revision:
+    """Complete launch inputs, captured once; rollback never consults current preferences.
+
+    Settings are an owned deep copy. Runtime services may persist new settings, but must not
+    mutate this snapshot or combine old source with a newly installed interpreter.
+    """
+
+    source: PluginSource
+    settings: dict
+    python: str
+
+
 @dataclass
 class Generation:
-    source: PluginSource
+    revision: Revision
     plugin: Capabilities
     worker: PluginProcess
-    settings: dict = field(default_factory=dict)
-    python: str = ""
     snapshot: Snapshot = field(default_factory=lambda: Snapshot({}, {}))
     error: str = ""
     calls: int = 0
@@ -75,9 +86,7 @@ class Entry:
     """Rollback retains launch inputs, not a second idle worker or its mutable state."""
 
     active: Generation
-    previous: PluginSource | None = None
-    previous_settings: dict = field(default_factory=dict)
-    previous_python: str = ""
+    previous: Revision | None = None
     pending: Generation | None = None
     disabling: bool = False
 
@@ -111,38 +120,41 @@ class PluginRuntime:
         self.interactions = Interactions()
         self.reload_preferences: Callable[[], None] | None = None
 
-    async def prepare(self, path: str, source: PluginSource | None = None, settings: dict | None = None, *, python: str | None = None) -> Generation:
-        revision = source if source is not None else PluginSource.read(path)
+    def read_revision(self, path: str) -> Revision:
+        """Capture disk and preferences before starting any candidate worker."""
+        source = PluginSource.read(path)
+        return Revision(source, self.settings.read(source.name), self.interpreters.get(source.name, ""))
+
+    async def prepare(self, revision: Revision) -> Generation:
+        source = revision.source
         for name, entry in self.entries.items():
-            if entry.active.source.path == revision.path:
-                revision.require_name(name)
+            if entry.active.revision.source.path == source.path:
+                source.require_name(name)
         for name, pending in self._pending_new.items():
-            if pending.source.path == revision.path:
-                revision.require_name(name)
-        settings = self.settings.read(revision.name) if settings is None else settings
-        python = self.interpreters.get(revision.name, "") if python is None else python
-        worker, description = await PluginProcess.start(revision, python=python, cwd=self.context().cwd, config=settings)
-        worker.host_calls.handler = partial(self.call_host, owner=revision.name)
+            if pending.revision.source.path == source.path:
+                source.require_name(name)
+        worker, description = await PluginProcess.start(source, python=revision.python, cwd=self.context().cwd, config=revision.settings)
+        worker.host_calls.handler = partial(self.call_host, owner=source.name)
         try:
-            capabilities = Capabilities.decode(revision.name, description)
+            capabilities = Capabilities.decode(source.name, description)
             if self.validate is not None:
                 self.validate(capabilities)
             occupied = set(self.reserved_commands)
             for name, entry in self.entries.items():
-                if name != revision.name:
+                if name != source.name:
                     if capabilities.summarizer and (entry.active.plugin.summarizer or (entry.pending and entry.pending.plugin.summarizer)):
                         raise PluginError(f"Summarizer already supplied by {name}; disable it before enabling another")
                     occupied.update(entry.active.plugin.commands)
                     if entry.pending:
                         occupied.update(entry.pending.plugin.commands)
             for name, candidate in self._pending_new.items():
-                if name != revision.name:
+                if name != source.name:
                     if capabilities.summarizer and candidate.plugin.summarizer:
                         raise PluginError(f"Summarizer already supplied by {name}; disable it before enabling another")
                     occupied.update(candidate.plugin.commands)
             if collisions := occupied.intersection(capabilities.commands):
                 raise PluginError(f"Command names already registered: {', '.join(sorted(collisions))}")
-            candidate = Generation(revision, capabilities, worker, settings=settings, python=python)
+            candidate = Generation(revision, capabilities, worker)
             await candidate.refresh(self.facts(), components=True)
             if candidate.error:
                 raise WorkerError(candidate.error, log=worker.stderr, traceback=worker.traceback)
@@ -167,18 +179,18 @@ class PluginRuntime:
                     raise PluginError(f"Unknown plugin: {target}")
                 return {"plugins": items}
             if action == "enable":
-                candidate = await self.prepare(target)
+                candidate = await self.prepare(self.read_revision(target))
                 name = candidate.plugin.name
                 entry = self.entries.get(name)
                 existing = entry.active if entry else self._pending_new.get(name)
-                if existing and existing.source.path != candidate.source.path:
+                if existing and existing.revision.source.path != candidate.revision.source.path:
                     await candidate.worker.close()
-                    raise PluginError(f"Plugin name {name!r} already belongs to {existing.source.path}")
+                    raise PluginError(f"Plugin name {name!r} already belongs to {existing.revision.source.path}")
                 # Persistence belongs to the assembly layer, but must succeed before
                 # staging/retiring any generation. A failed write owns only this candidate.
                 try:
                     if commit is not None:
-                        commit(action, candidate.source)
+                        commit(action, candidate.revision.source)
                 except BaseException:
                     await candidate.worker.close()
                     raise
@@ -194,20 +206,20 @@ class PluginRuntime:
                 if entry is None:
                     if action == "disable" and (pending := self._pending_new.get(name)) is not None:
                         if commit is not None:
-                            commit(action, pending.source)
+                            commit(action, pending.revision.source)
                         self._pending_new.pop(name)
                         self._retire(pending)
                         return {"name": name, "status": "disabled"}
                     raise PluginError(f"Unknown plugin: {name}")
                 if action == "reload":
-                    candidate = await self.prepare(entry.active.source.path)
+                    candidate = await self.prepare(self.read_revision(entry.active.revision.source.path))
                 elif action == "rollback":
                     if entry.previous is None:
                         raise PluginError(f"{name}: no previous version")
-                    candidate = await self.prepare(entry.previous.path, entry.previous, entry.previous_settings, python=entry.previous_python)
+                    candidate = await self.prepare(entry.previous)
                 elif action == "disable":
                     if commit is not None:
-                        commit(action, entry.active.source)
+                        commit(action, entry.active.revision.source)
                     if entry.pending:
                         self._retire(entry.pending)
                         entry.pending = None
@@ -227,7 +239,8 @@ class PluginRuntime:
 
     @staticmethod
     def staged(generation: Generation) -> dict[str, Any]:
-        return {"name": generation.plugin.name, "path": generation.source.path, "status": "pending", "version": "", "pending_version": generation.source.digest}
+        source = generation.revision.source
+        return {"name": generation.plugin.name, "path": source.path, "status": "pending", "version": "", "pending_version": source.digest}
 
     @property
     def active_count(self) -> int:
@@ -245,10 +258,10 @@ class PluginRuntime:
         item = entry.active
         return {
             "name": name,
-            "path": item.source.path,
+            "path": item.revision.source.path,
             "status": "pending" if entry.pending or entry.disabling else "error" if item.error else "active",
-            "version": item.source.digest,
-            "pending_version": entry.pending.source.digest if entry.pending else "",
+            "version": item.revision.source.digest,
+            "pending_version": entry.pending.revision.source.digest if entry.pending else "",
             "fields": list(item.plugin.fields),
             "commands": list(item.plugin.commands),
             "tools": {key: {"description": action.description, "parameters": action.parameters} for key, action in item.plugin.tools.items()},
@@ -286,11 +299,7 @@ class PluginRuntime:
                 del self.entries[name]
             elif entry.pending:
                 self._retire(entry.active)
-                entry.previous_settings = entry.active.settings
-                # The installation may already point at a newer dependency environment.
-                # Rollback needs the interpreter that actually ran this source revision.
-                entry.previous_python = entry.active.python
-                entry.previous, entry.active, entry.pending = entry.active.source, entry.pending, None
+                entry.previous, entry.active, entry.pending = entry.active.revision, entry.pending, None
         if self.entries and (self._refresh_task is None or self._refresh_task.done()):
             self._refresh_task = asyncio.create_task(self._refresh_loop())
         if self.on_change is not None:

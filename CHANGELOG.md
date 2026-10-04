@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Represent each plugin revision as one complete source/settings/interpreter snapshot. Live,
+  pending and rollback workers share the same preparation path without parallel rollback fields.
+
 - Unify keyboard and scripted plugin answers behind one validation boundary. Trials use the
   same defaults, selection order and form rules as live dialogs without accessing widget
   internals; invalid answers cannot partially change a draft.

@@ -88,7 +88,7 @@ An active turn freezes the whole registry; command/tool and summarizer invocatio
 own generation. An idle plugin can therefore publish while another plugin is awaiting input.
 Replacement returns pending until its applicable leases end. Publication has no awaits. Each
 entry retains at most one previous and one pending generation. The previous revision retains
-source, settings and its interpreter path,
+one `Revision` containing source, settings and its interpreter path,
 not a second worker; superseded workers are retired by owned tasks that shutdown joins. Never
 resolve a rollback's interpreter from today's installation preferences: dependencies may have
 changed since that revision ran. Reload must also retain the installed identity, which owns

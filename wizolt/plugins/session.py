@@ -14,7 +14,7 @@ from wizolt.plugins.catalog import Installation, PluginCatalog
 from wizolt.plugins.layout import LayoutPreferences
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.process import WorkerError
-from wizolt.plugins.runtime import PluginRuntime
+from wizolt.plugins.runtime import PluginRuntime, Revision
 from wizolt.plugins.settings import PluginSettings
 from wizolt.sdk import Context, ContextWindow, PluginError, Usage
 
@@ -51,17 +51,16 @@ class SessionPlugins(PluginRuntime):
         except (OSError, ValueError, ConfigError) as error:
             self.problems["layout"] = str(error)
 
-    async def prepare(self, path: str, source: PluginSource | None = None, settings: dict | None = None, *, python: str | None = None):
+    async def prepare(self, revision: Revision):
         # Populate an idle/resumed agent's meter when enabling a plugin too. This is an
         # admission boundary, not a render/sample callback; the engine supplies the estimator.
         if self.read_context is not None:
             self.context_parts = tuple(self.read_context())
-        source = source if source is not None else PluginSource.read(path)
         records, _ = self.catalog.read()
         for item in records.values():
-            if item.path == source.path:
-                source.require_name(item.name)
-        return await super().prepare(path, source, settings, python=python)
+            if item.path == revision.source.path:
+                revision.source.require_name(item.name)
+        return await super().prepare(revision)
 
     def snapshot(self) -> Context:
         session = self.session
@@ -137,9 +136,9 @@ class SessionPlugins(PluginRuntime):
                 plan.append((key, "enable"))
                 continue
             changes = []
-            if source.digest != live.source.digest:
+            if source.digest != live.revision.source.digest:
                 changes.append("code changed")
-            if settings != live.settings:
+            if settings != live.revision.settings:
                 changes.append(f"settings changed in [plugins.{key}]")
             plan.append((key, ", ".join(changes) or self.UNCHANGED))
         return plan
