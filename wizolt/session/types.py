@@ -6,6 +6,7 @@ projects is one import away from the behavior that mutates it.
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from collections.abc import Iterable
@@ -170,6 +171,37 @@ class ToolErrorRecord:
     name: str
     args: ToolArgs
     error: str
+
+
+@dataclass
+class OperationReceipt:
+    """What an intercepted operation actually did, kept apart from what was delivered.
+
+    Bounded and durable: inputs are clipped JSON text and the actual result is a reference to the
+    existing tool record (``tr.N``), never a second copy of the payload. ``core`` is ``not_run``,
+    ``started``, ``completed``, ``failed``, ``interrupted`` or ``unknown`` (it may have run before
+    a crash; resume never retries it). ``origin`` is ``core`` or the plugin registration that
+    produced the result; ``shaped`` names registrations that changed the delivered result.
+    """
+
+    TEXT_LIMIT: ClassVar[int] = 2000
+
+    id: str
+    operation: str
+    target: str
+    original: str = ""
+    effective: str = ""
+    origin: str = "core"
+    core: str = "not_run"
+    actual: str = ""
+    shaped: tuple[str, ...] = ()
+    wrapper_failure: str = ""
+    retry_of: str = ""
+
+    @classmethod
+    def clip(cls, value: object) -> str:
+        text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+        return text if len(text) <= cls.TEXT_LIMIT else text[: cls.TEXT_LIMIT] + "…"
 
 
 @dataclass

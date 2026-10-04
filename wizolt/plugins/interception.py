@@ -101,6 +101,12 @@ class Interception:
     def active(self, operation: str) -> bool:
         return any(operation in entry.active.plugin.intercepts and not entry.disabling for entry in self.runtime.entries.values())
 
+    def would_match(self, operation: str, **fields: str) -> bool:
+        """Whether any registration's prefilter accepts these read-only fields, before building
+        a value. Adapters use it to keep nonmatching work on the unchanged fast path."""
+        probe = type("Probe", (), fields)()
+        return any(link.spec.matches(probe) for link in self.chain(operation))
+
     def replaces(self, operation: str, value: Value) -> bool:
         """Whether a response-replacing registration could see this value. Match keys are
         read-only, so a later rewrite cannot change the answer."""
@@ -115,7 +121,11 @@ class Interception:
         transition: Transition | None = None,
         result_check: ResultCheck | None = None,
         scope: InvocationScope | None = None,
+        trace: dict | None = None,
     ) -> Value:
+        """Run the chain around ``core``. ``trace`` (optional) receives provenance for receipts:
+        ``chain`` (registrations invoked), ``origin`` (the one that produced the result without
+        calling next, if any) and ``shaped`` (those that changed the downstream result)."""
         links = self.chain(operation)
         parent = scope or CURRENT.get() or InvocationScope(agent=self.runtime.context().agent_id)
         skip = parent.active if parent.auxiliary else frozenset()
@@ -124,6 +134,8 @@ class Interception:
         if parent.depth >= MAX_DEPTH:
             raise PluginError(f"Plugin operations nest deeper than {MAX_DEPTH} levels")
         own = parent.child(uuid.uuid4().hex)
+        trace = {} if trace is None else trace
+        trace.setdefault("chain", [])
         for link in links:
             link.generation.invocations += 1  # Pin participants for this operation's lifetime.
         try:
@@ -135,7 +147,8 @@ class Interception:
                         continue
                     if reason := link.generation.failure(link.health):
                         raise PluginError(f"{link.owner}'s {operation} interceptor is blocked until it is reloaded or disabled: {reason}")
-                    return await self.call(link, position, current, step, own, transition, result_check)
+                    trace["chain"].append(link.id)
+                    return await self.call(link, position, current, step, own, transition, result_check, trace)
                 restore = CURRENT.set(own)  # Core descendants enter their own full chains.
                 try:
                     return await core(current)
@@ -157,6 +170,7 @@ class Interception:
         scope: InvocationScope,
         transition: Transition | None,
         result_check: ResultCheck | None,
+        trace: dict,
     ) -> Value:
         spec = OPERATIONS[link.operation]
         state: dict = {"used": False, "settled": False, "result": None, "error": None}
@@ -215,6 +229,10 @@ class Interception:
                 result_check(value, result, state["used"])
         except PluginError as error:
             raise self.block(link, str(error)) from error
+        if not state["used"]:
+            trace.setdefault("origin", link.id)  # The innermost producer returns first.
+        elif result != state["result"]:
+            trace.setdefault("shaped", []).append(link.id)
         return result
 
     @staticmethod

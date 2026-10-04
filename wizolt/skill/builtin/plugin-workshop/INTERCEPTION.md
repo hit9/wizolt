@@ -46,3 +46,20 @@ def setup(plugin):
   handler and skips your own interceptor, so it cannot recurse into itself.
 
 Operation types live in `wizolt.sdk.operations`.
+
+## `tool.call`
+
+`ToolCall(id, tool, arguments)` → `ToolResult(content, status="ok"|"failed")` or `Refusal`.
+Match on `tool`. Only `arguments` may change; `id` and `tool` are fixed.
+
+- The call you pass to `next` is the one wizolt validates, shows for approval, gives to
+  `PreToolUse` hooks and runs. A rewritten `ls` that became `rm` is approved as `rm`.
+- `ToolResult.content` from `next` is the tool message the model would see. You may rewrite it.
+  Shell-hook feedback stays attached by wizolt; you cannot remove it.
+- Returning a `ToolResult` without calling `next` answers from your plugin: wizolt shows it as
+  `[plugin <name>]`, does not count it as an executed tool, and fires no `tool.started`.
+- A `Refusal` answers that one call; the rest of the model's batch still runs.
+- ToolScript's nested calls reach the same interceptor.
+- If your handler fails after the tool ran, the tool's actual output is kept and your failure is
+  named beside it. Wizolt records each intercepted call's actual outcome separately from what was
+  delivered.

@@ -41,7 +41,17 @@ from wizolt.session.store import (
     SessionSnapshotStore,
     local_timestamp,
 )
-from wizolt.session.types import AgentState, HistorySegment, PlanItem, QueuedInput, SubagentRecord, ToolErrorRecord, ToolResultRecord, TurnDiff
+from wizolt.session.types import (
+    AgentState,
+    HistorySegment,
+    OperationReceipt,
+    PlanItem,
+    QueuedInput,
+    SubagentRecord,
+    ToolErrorRecord,
+    ToolResultRecord,
+    TurnDiff,
+)
 from wizolt.source import SourceView, SourceViewDraft
 
 __all__ = [
@@ -105,6 +115,8 @@ class Session:
     tool_results: dict[str, str] = field(default_factory=dict)
     tool_records: list[ToolResultRecord] = field(default_factory=list)
     tool_errors: list[ToolErrorRecord] = field(default_factory=list)
+    # Receipts for intercepted operations: actual outcome apart from what was delivered.
+    operation_receipts: list[OperationReceipt] = field(default_factory=list)
     # Compact command receipts survive pruning of the much larger tool results. They describe
     # completed foreground commands, never inferred test success or Git state.
     recent_commands: list[Json] = field(default_factory=list)
@@ -517,6 +529,15 @@ class Session:
         usage.last_cached_prompt_tokens = 0
         usage.last_cache_write_prompt_tokens = 0
         return True
+
+    MAX_OPERATION_RECEIPTS = 200
+
+    def record_operation(self, receipt: OperationReceipt) -> OperationReceipt:
+        """Keep one receipt per operation (updated in place as it progresses), newest last."""
+        if not any(item is receipt for item in self.operation_receipts):
+            self.operation_receipts.append(receipt)
+            del self.operation_receipts[: -self.MAX_OPERATION_RECEIPTS]
+        return receipt
 
     def record_tool_error(self, key: str, name: str, args: ToolArgs, error: str) -> None:
         self.tool_errors.append(ToolErrorRecord(key, name, Text.value(list(args)), " ".join(Text.clean(error).split())))

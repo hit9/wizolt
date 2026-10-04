@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Make tool calls interceptable (`tool.call`). The adapter sits in the runner path shared with
+  ToolScript's nested calls. A matching call runs singly, and its rewritten arguments go through
+  the ordinary validation, `PreToolUse`, approval, observers and post-tool hooks; non-matching
+  calls keep the batch fast path. Plugin-produced results and refusals are marked as such and
+  emit no execution events. Hook feedback survives wrappers. Each intercepted call gets an
+  operation receipt, checkpointed at core start and completion.
+
 - Add `wizolt plugin order list|move|reset` for the user-level interceptor order, saved as
   `[plugin_manager.interception] order` and applied by the next reload in each agent. The fixed
   `Plugin` gateway gains no actions; the agent runs the command through Bash.

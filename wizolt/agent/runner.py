@@ -8,8 +8,10 @@ import contextlib
 import contextvars
 import inspect
 import json
+import re
 import threading
 import time
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from typing import Any, Literal, TypeVar
@@ -33,7 +35,11 @@ from wizolt.base import (
     oneline,
 )
 from wizolt.model import ModelClient
+from wizolt.sdk import PluginError, operations
+from wizolt.sdk.operations import thaw
+from wizolt.sdk.settings import freeze
 from wizolt.session import Session, TurnDiff
+from wizolt.session.types import OperationReceipt
 from wizolt.shellhooks import PERMISSION_REQUEST, POST_TOOL_USE, POST_TOOL_USE_FAILURE, PRE_TOOL_USE, HookOutcome
 from wizolt.source import SourceBlock, TextBlock, ToolOutput
 from wizolt.tools import (
@@ -488,13 +494,89 @@ class ToolRunner:
         return outcomes
 
     async def _run_nested_one(self, call: ToolCall) -> tuple[str, str, Json | None]:
-        """One nested call. An Edit goes through a single-element plan so it behaves exactly like a
+        """One nested call, through the same tool interception as a top-level call."""
+        if self.intercepted(call):
+            return await self.run_intercepted(call)
+        return await self._run_single(call)
+
+    async def _run_single(self, call: ToolCall, batch_suffix: str = "", detached: dict | None = None) -> tuple[str, str, Json | None]:
+        """One call on its own. An Edit goes through a single-element plan so it behaves exactly like a
         top-level single Edit -- source-view planning, stale checks, write-time verification."""
 
         if call.name == "Edit":
             plan = await EditBatchPlan(self.session).build([call])
-            return await self.run_one(call, planned_edit=plan.planned.get(call.id), plan_error=plan.errors.get(call.id, ""))
-        return await self.run_one(call)
+            return await self.run_one(
+                call, batch_suffix=batch_suffix, planned_edit=plan.planned.get(call.id), plan_error=plan.errors.get(call.id, ""), detached=detached
+            )
+        return await self.run_one(call, batch_suffix=batch_suffix, detached=detached)
+
+    def intercepted(self, call: ToolCall) -> bool:
+        """Whether a ``tool.call`` interceptor matches. Matching calls leave batch segmentation and
+        run singly, so plans and approval are built from the final, rewritten call."""
+        plugins = self.session.plugins
+        return plugins is not None and plugins.interception.would_match("tool.call", tool=call.name)
+
+    async def run_intercepted(self, call: ToolCall, batch_suffix: str = "") -> tuple[str, str, Json | None]:
+        """The ``tool.call`` adapter, shared by ordinary and ToolScript nested calls.
+
+        Identity is fixed; only arguments may change, and the rewritten call takes the ordinary
+        path from validation through PreToolUse, approval, execution observers and post-tool
+        hooks. The receipt is checkpointed when core execution starts and when it completes,
+        before wrappers resume. Hook feedback is host-owned and re-appended after wrappers.
+        """
+        plugins = self.session.plugins
+        assert plugins is not None
+        arguments = freeze(dict(call.payload) if isinstance(call.payload, dict) else {})
+        original = operations.ToolCall(call.id, call.name, arguments)
+        receipt = self.session.record_operation(OperationReceipt(uuid.uuid4().hex, "tool.call", call.id, OperationReceipt.clip(thaw(arguments))))
+        core_outcome: dict = {}
+
+        async def core(value: operations.Value) -> operations.Value:
+            assert isinstance(value, operations.ToolCall)
+            final = call if value.arguments == arguments else ModelClient.tool_call(call.id, call.name, thaw(value.arguments))
+            receipt.effective = OperationReceipt.clip(thaw(value.arguments))
+            receipt.core = "started"
+            await self.session.save_snapshot()
+            detached: dict = {}
+            try:
+                status, message, observation = await self._run_single(final, batch_suffix, detached)
+            except BaseException:
+                receipt.core = "interrupted" if detached.get("executed") else "not_run"
+                raise
+            receipt.core = ("completed" if status == "ok" else "failed") if detached.get("executed") else "not_run"
+            receipt.actual = key.group(1) if (key := re.match(r"tool (tr\.\d+)\b", message)) else ""
+            core_outcome.update(status=status, message=message, observation=observation, feedback="".join(detached.get("feedback", [])))
+            await self.session.save_snapshot()  # The actual outcome is durable before wrappers resume.
+            return operations.ToolResult(message, "ok" if status == "ok" else "failed")
+
+        trace: dict = {}
+        try:
+            result = await plugins.interception.run("tool.call", original, core, trace=trace)
+        except PluginError as error:
+            receipt.wrapper_failure = OperationReceipt.clip(str(error))
+            self.emit(LogBlock.hierarchy(None, [LogLine("plugin", oneline(str(error), 220), LogRole.ERROR, LogEdge.END)]))
+            if not core_outcome:
+                return "failed", self.reject(call, f"ToolError: {error}", d=ToolDisplay(batch_suffix=batch_suffix)), None
+            # The tool ran: its actual outcome stands, and the failed wrapper is named beside it.
+            delivered = f"{core_outcome['message']}\nplugin interceptor failed after the tool ran: {error}{core_outcome['feedback']}"
+            return "failed", delivered, core_outcome["observation"]
+        finally:
+            receipt.origin = trace.get("origin", "core")
+            receipt.shaped = tuple(trace.get("shaped", ()))
+            await self.session.save_snapshot()
+        owner = receipt.origin.partition("/")[0]
+        if isinstance(result, operations.Refusal):
+            return "failed", self.reject(call, f"Refused by plugin {owner}: {result.reason}", d=ToolDisplay(batch_suffix=batch_suffix)), None
+        assert isinstance(result, operations.ToolResult)
+        status = "ok" if result.status == "ok" else "failed"
+        if not core_outcome:
+            # Produced by a plugin: recorded as such, never as if the tool had run.
+            display = f"{tooloutput.short_call(self.session, call)} [plugin {owner}]"
+            self.emit(LogBlock([LogLine(display, oneline(result.content, 120), LogRole.TOOL if status == "ok" else LogRole.ERROR, LogEdge.BRANCH)]))
+            return status, self.tool_message(call, "", result.content, status=status, display=display), None
+        if core_outcome["status"] == "refused":
+            status = "refused"  # The user's refusal still stops the rest of the batch.
+        return status, result.content + core_outcome["feedback"], core_outcome["observation"]
 
     async def _run_script(self, tool: ToolScript) -> str | ToolOutput:
         """Run a ToolScript on a worker of its own, with its nested calls served from this loop.
@@ -569,13 +651,17 @@ class ToolRunner:
 
     async def run_serial(self, segment: list[ToolCall], batch_suffix: str, state: dict[str, bool], observations: list[Json]) -> list[Json]:
         messages: list[Json] = []
-        plan = await EditBatchPlan(self.session).build(segment) if any(call.name == "Edit" for call in segment) else EditBatchPlan(self.session)
+        planned = [call for call in segment if call.name == "Edit" and not self.intercepted(call)]
+        plan = await EditBatchPlan(self.session).build(planned) if planned else EditBatchPlan(self.session)
         for call in segment:
             suffix = batch_suffix if state["first"] else ""
             state["first"] = False
-            status, content, observation = await self.run_one(
-                call, batch_suffix=suffix, planned_edit=plan.planned.get(call.id), plan_error=plan.errors.get(call.id, "")
-            )
+            if self.intercepted(call):
+                status, content, observation = await self.run_intercepted(call, batch_suffix=suffix)
+            else:
+                status, content, observation = await self.run_one(
+                    call, batch_suffix=suffix, planned_edit=plan.planned.get(call.id), plan_error=plan.errors.get(call.id, "")
+                )
             messages.append({"role": "tool", "tool_call_id": call.id, "content": content})
             if receipts := self._result_receipts.pop(call.id, None):
                 messages[-1][SUBAGENT_RECEIPTS_KEY] = receipts
@@ -632,8 +718,10 @@ class ToolRunner:
         # A call may run concurrently only if it neither mutates state nor blocks on interactive
         # input: read-only, auto-approved, non-interactive tools (Read/ViewImage, read-only MCP).
         # Edit is coordinated serially by EditBatchPlan; Bash streams live output and mutates; Ask
-        # blocks on the user.
+        # blocks on the user. An intercepted call runs singly through its chain.
         tool_class = TOOL_REGISTRY.get(call.name)
+        if self.intercepted(call):
+            return False
         if (
             (self.session.tool_names and call.name not in self.session.tool_names)
             or tool_class is None
@@ -691,6 +779,8 @@ class ToolRunner:
         return end
 
     def edit_barrier(self, call: ToolCall) -> bool:
+        if self.intercepted(call):
+            return True  # Its plan is built after rewriting, never from the original arguments.
         tool_class = TOOL_REGISTRY.get(call.name)
         return call.name != "Edit" and (tool_class is None or tool_class.MUTATES or tool_class.PRODUCES_MODEL_OBSERVATION)
 
@@ -700,8 +790,13 @@ class ToolRunner:
         batch_suffix: str = "",
         planned_edit: EditBatchPlan.PlannedEdit | None = None,
         plan_error: str | tuple[str, object | None] = "",
+        detached: dict | None = None,
     ) -> tuple[str, str, Json | None]:
         """Run one tool call, returning (status, tool message, optional observation).
+
+        With ``detached`` (an intercepted call's core), hook feedback goes to
+        ``detached["feedback"]`` instead of the message, and ``detached["executed"]`` records
+        whether core execution began.
 
         Every exit produces a message — unknown tool, malformed arguments, refusal, exception — because
         the batch owes the model one result per emitted call. The status is what the caller acts on:
@@ -721,6 +816,7 @@ class ToolRunner:
         tool = tool_class(self.session, call.args)
         if isinstance(tool, (BashTool, JobTool)):
             tool.live_output = self.hooks.live_output
+        feedback: list[str] | None = None if detached is None else detached.setdefault("feedback", [])
         started = time.monotonic()
         d = ToolDisplay(batch_suffix=batch_suffix)
         if isinstance(tool, AskTool):
@@ -760,7 +856,7 @@ class ToolRunner:
                 if not confirmed:
                     output = "Cancelled: user refused tool call" + ((": " + reason) if reason else "")
                     message = await self.finish(call, output, failed=True, elapsed=time.monotonic() - started, d=d)
-                    return "refused", self.with_hook_feedback(message, pre, PRE_TOOL_USE), None
+                    return "refused", self.with_hook_feedback(message, pre, PRE_TOOL_USE, into=feedback), None
                 d.approved = True
             if isinstance(tool, BashTool) and self.hooks.live_start is not None:
                 if not d.nested_display:
@@ -795,6 +891,8 @@ class ToolRunner:
                 )
                 d.nested_display = True
             executing = True
+            if detached is not None:
+                detached["executed"] = True
             async with self.execution(call, tool):
                 output = await self.call_tool(tool, planned_edit)
             if isinstance(tool, ViewImageTool) and tool.vision_entry_label:
@@ -813,14 +911,14 @@ class ToolRunner:
             message = await self.finish(call, output, elapsed=time.monotonic() - started, turn_diff=tool.turn_diff(), d=d)
             if isinstance(tool, BashTool) and tool.exit_code is not None:
                 self.session.record_command_result(tool.command(), tool.exit_code, workdir=tool.execution_workdir)
-        message = self.with_hook_feedback(message, pre, PRE_TOOL_USE)
+        message = self.with_hook_feedback(message, pre, PRE_TOOL_USE, into=feedback)
         if executing:
             failed = status == "failed" or (isinstance(tool, BashTool) and tool.exit_code not in (None, 0))
             event = POST_TOOL_USE_FAILURE if failed else POST_TOOL_USE
             text = ToolOutput.of(output).retained_text
             fields = {"error": text, "is_interrupt": False} if failed else {"tool_response": text}
             post = await self.tool_hooks(event, call, fields)
-            message = self.with_hook_feedback(message, post, event)
+            message = self.with_hook_feedback(message, post, event, into=feedback)
         return status, message, observation
 
     async def tool_hooks(self, event: str, call: ToolCall, fields: Json | None = None) -> HookOutcome:
@@ -834,13 +932,20 @@ class ToolRunner:
             self.emit(LogBlock.hierarchy(None, [LogLine("hook", oneline(failure, 220), LogRole.ERROR, LogEdge.END)]))
         return outcome
 
-    def with_hook_feedback(self, message: str, outcome: HookOutcome, event: str = POST_TOOL_USE) -> str:
-        """Keep hook context with its matching result, including failed and refused calls."""
+    def with_hook_feedback(self, message: str, outcome: HookOutcome, event: str = POST_TOOL_USE, into: list[str] | None = None) -> str:
+        """Keep hook context with its matching result, including failed and refused calls.
+
+        With ``into``, the feedback is collected separately: an intercepted call re-appends it
+        after its wrappers, so host-owned hook records cannot be removed by a plugin."""
         lines = ([outcome.reason] if outcome.blocked else []) + list(outcome.context)
         if not lines:
             return message
         self.emit(LogBlock.hierarchy(None, [LogLine("hook", oneline(line, 220), LogRole.META, LogEdge.END) for line in lines]))
-        return message + f"\n{event} hook feedback:\n" + "\n".join(lines)
+        suffix = f"\n{event} hook feedback:\n" + "\n".join(lines)
+        if into is not None:
+            into.append(suffix)
+            return message
+        return message + suffix
 
     def reject(
         self,
