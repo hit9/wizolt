@@ -91,7 +91,8 @@ CLI manager / Plugin tool / agent lifecycle
 Validation constructs an unpublished generation. A failed candidate leaves active code intact.
 An active turn freezes the whole registry; command/tool and summarizer invocations pin only their
 own generation. An idle plugin can therefore publish while another plugin is awaiting input.
-Replacement returns pending until its applicable leases end. Publication has no awaits. Each
+Replacement reports `starting`, `reloading` or `stopping` until its applicable leases end;
+each live status word names one situation, and the saved enable choice is a separate field. Publication has no awaits. Each
 entry retains at most one previous and one pending generation. The previous revision retains
 one `Revision` containing source, settings and its interpreter path,
 not a second worker; superseded workers are retired by owned tasks that shutdown joins. Never

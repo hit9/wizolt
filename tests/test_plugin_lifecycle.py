@@ -112,7 +112,8 @@ async def test_disable_pending_install_does_not_activate_at_turn_end(tmp_path):
     await runtime.manage("disable", "pending")
     await runtime.finish_turn()
     assert runtime.fields() == {}
-    assert (await runtime.manage("inspect", "pending"))["plugins"][0]["status"] == "disabled"
+    listed = (await runtime.manage("inspect", "pending"))["plugins"][0]
+    assert listed["status"] == "off" and not listed["enabled"]
     await runtime.close()
 
 
@@ -339,7 +340,7 @@ async def test_hot_reload_reconciles_saved_choices_only_in_calling_agent(tmp_pat
         await runtime.start_turn()
         path.write_text('SDK_VERSION = 1\ndef setup(p):\n    p.field("count", lambda ctx: 2)\n')
         result = await runtime.hot_reload("counter")
-        assert result["plugins"][0]["status"] == "pending"
+        assert result["plugins"][0]["status"] == "reloading"
         assert runtime.fields()["plugins.counter.count"] == 1
         await runtime.finish_turn()
         assert runtime.fields()["plugins.counter.count"] == 2

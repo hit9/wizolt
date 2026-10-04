@@ -58,20 +58,20 @@ async def test_validate_does_not_activate_and_bad_reload_preserves_version(runti
 async def test_pending_enable_reload_disable_and_source_rollback(runtime, tmp_path):
     path = tmp_path / "counter.py"
     await runtime.start_turn()
-    assert (await runtime.manage("enable", source(path, 1)))["status"] == "pending"
+    assert (await runtime.manage("enable", source(path, 1)))["status"] == "starting"
     assert not runtime.fields()
     await runtime.finish_turn()
     assert runtime.fields()["plugins.counter.value"] == 1
     await runtime.start_turn()
     source(path, 2)
-    assert (await runtime.manage("reload", "counter"))["status"] == "pending"
+    assert (await runtime.manage("reload", "counter"))["status"] == "reloading"
     assert runtime.fields()["plugins.counter.value"] == 1
     await runtime.finish_turn()
     assert runtime.fields()["plugins.counter.value"] == 2
     await runtime.manage("rollback", "counter")
     assert runtime.fields()["plugins.counter.value"] == 1
     await runtime.start_turn()
-    assert (await runtime.manage("disable", "counter"))["status"] == "pending"
+    assert (await runtime.manage("disable", "counter"))["status"] == "stopping"
     await runtime.finish_turn()
     assert not runtime.fields()
 
@@ -113,7 +113,7 @@ def setup(plugin):
     async with asyncio.timeout(5):
         while not started.exists():
             await asyncio.sleep(.01)
-    assert (await runtime.manage("disable", "slow"))["status"] == "pending"
+    assert (await runtime.manage("disable", "slow"))["status"] == "stopping"
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
@@ -145,14 +145,14 @@ def setup(plugin):
             await runtime.start_turn()
         source(other, 2)
         result = await runtime.manage("reload", "other")
-        assert result["status"] == ("pending" if during_turn else "active")
+        assert result["status"] == ("reloading" if during_turn else "running")
         if during_turn:
             assert runtime.fields()["plugins.other.value"] == 1
             await runtime.finish_turn()
         assert runtime.fields()["plugins.other.value"] == 2
         assert not task.done()
-        assert (await runtime.manage("disable", "other"))["status"] == "disabled"
-        assert (await runtime.manage("reload", "slow"))["status"] == "pending"
+        assert (await runtime.manage("disable", "other"))["status"] == "off"
+        assert (await runtime.manage("reload", "slow"))["status"] == "reloading"
     finally:
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -328,7 +328,7 @@ async def test_management_tool_uses_existing_runner_approval_contract(tmp_path):
     # Through the runner, not tool.call(): a mutating tool's async call must be awaited there.
     runner = ToolRunner(session, ContextManager(session), output_fn=lambda _: None)
     [message] = await runner.run([call("Plugin", [{"action": "reload", "name": "local"}])])
-    assert '"status": "active"' in str(message["content"])
+    assert '"status": "running"' in str(message["content"])
     assert session.plugins.fields() == {"plugins.local.value": 5}
     await session.plugins.close()
 

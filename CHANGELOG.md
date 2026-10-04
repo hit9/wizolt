@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Name each live plugin state once: `running`, `failed` or `off`, and while a change waits for
+  a turn or that plugin's command, `starting`, `reloading` or `stopping`. `pending` used to
+  cover all three waits, and `not loaded`/`disabled` duplicated the separate `enabled` choice.
+  Flatten the status and component-visibility chains in the runtime into early returns.
+
 - Fold `wizolt plugin install` into `enable`: one verb saves a plugin and prepares a dependency
   environment when the host, or the saved environment, cannot satisfy its `DEPENDENCIES`. An
   unchanged list reuses the saved environment; a custom interpreter is left alone. `install`

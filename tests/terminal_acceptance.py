@@ -222,7 +222,7 @@ def test_plugin_appearance_reload_preserves_input_and_updates_bars(pane):
     wait("h/l tab")
     pane.keys("Escape")
     pane.send("/plugins disable look")
-    wait('"disabled"')
+    wait('"off"')
     pane.send("/plugins enable look")
     wait("RELOADED-LOOK test-model")
     pane.keys("C-d")

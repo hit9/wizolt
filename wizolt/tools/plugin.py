@@ -49,7 +49,12 @@ class PluginTool(Tool):
         plan = runtime.reload_plan(name if isinstance(name, str) else "")
         changed = [f"- {plugin}: {change}" for plugin, change in plan if change != runtime.UNCHANGED]
         restarted = [plugin for plugin, change in plan if change == runtime.UNCHANGED]
-        lines = [*changed] or ["No changes."] if plan else ["Nothing to reload: no saved plugin choices match."]
+        if not plan:
+            lines = ["Nothing to reload: no saved plugin choices match."]
+        elif changed:
+            lines = list(changed)
+        else:
+            lines = ["No changes."]
         if restarted:
             lines.append(f"Restart without changes, resetting what they keep in memory: {', '.join(restarted)}")
         text = "Run saved plugin code in this agent, with your permissions.\n\n" + "\n".join(lines)

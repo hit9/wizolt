@@ -168,7 +168,7 @@ class SessionPlugins(PluginRuntime):
                     elif key in self.entries or key in self._pending_new:
                         result = await super().manage("disable", key)
                     else:
-                        result = {"name": key, "status": "disabled"}
+                        result = {"name": key, "status": "off"}
                     self.problems.pop(key, None)
                     results.append(result)
                 except Exception as error:  # noqa: BLE001 - one candidate must not prevent other reloads.
@@ -212,7 +212,7 @@ class SessionPlugins(PluginRuntime):
         if action == "disable" and target not in self.entries and target not in self._pending_new and target in records:
             self.catalog.save(replace(records[target], enabled=False))
             self.problems.pop(target, None)
-            return {"name": target, "status": "disabled"}
+            return {"name": target, "status": "off"}
         query = "list" if action == "inspect" else action
         result = await super().manage(query, "" if query == "list" else target, commit=self._save_choice if action in {"enable", "disable"} else None)
         if action in ("enable", "reload", "rollback", "disable"):
@@ -220,9 +220,7 @@ class SessionPlugins(PluginRuntime):
         if action in ("list", "inspect"):
             present = {item["name"] for item in result["plugins"]}
             result["plugins"].extend(
-                {"name": item.name, "path": item.path, "status": "not loaded" if item.enabled else "disabled", "python": item.python}
-                for item in records.values()
-                if item.name not in present
+                {"name": item.name, "path": item.path, "status": "off", "python": item.python} for item in records.values() if item.name not in present
             )
             # Preference and activation answer different questions. For example, disabling
             # during a turn persists immediately while its live generation remains pinned.

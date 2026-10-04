@@ -118,8 +118,9 @@ The list shows its source (`builtin` or `user`), whether it is enabled, and its 
 | Reload | Apply its latest code and settings |
 | Rollback | Restore the previous loaded version |
 
-Changes can show **pending** during a turn or while that plugin's command is running.
-Commands in other plugins do not hold up the update. A failed update or
+The state is **running**, **failed** or **off**. During a turn, or while that plugin's command
+is running, a change waits and shows what it waits to do: **starting**, **reloading** or
+**stopping**. Commands in other plugins do not hold up the update. A failed update or
 settings save leaves the current plugin unchanged. You can ask the agent to manage it too:
 
 > Update @plugin:pet, preview the change, then reload it. Keep its source in its own Git

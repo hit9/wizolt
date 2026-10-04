@@ -14,14 +14,14 @@ def test_plugin_columns_align_and_long_names_leave_space_for_states():
 
     manager = PluginManager(None, None)
     manager.records = {
-        "pet": {"builtin": True, "enabled": False, "status": "disabled"},
-        "very_long_plugin_name_that_would_push_states_off_screen": {"builtin": False, "enabled": True, "status": "active"},
+        "pet": {"builtin": True, "enabled": False, "status": "off"},
+        "very_long_plugin_name_that_would_push_states_off_screen": {"builtin": False, "enabled": True, "status": "running"},
     }
     for width in (35, 50, 80):
         labels = list(manager.labels(width).values())
         assert labels[0].index("builtin") == labels[1].index("user")
         assert labels[0].index("disabled") == labels[1].index("enabled")
-        assert labels[0].rindex("disabled") == labels[1].index("active")
+        assert labels[0].index("off") == labels[1].index("running")
         assert all(len(label) <= width for label in labels)
         assert "..." in labels[1]
 
@@ -96,10 +96,10 @@ async def test_manager_keeps_disabled_plugins_and_can_reenable(tmp_path):
 
     loop = SimpleNamespace(session=session, interactive_input=True, presentation=SimpleNamespace(tui=Terminal()))
     assert await plugins_command(loop, "") == ""
-    assert "enabled" in frames[0] and "active" in frames[0]
+    assert "enabled" in frames[0] and "running" in frames[0]
     assert "builtin" in frames[0] and "user" in frames[0]
     assert "disabled" in frames[2] and "sample" in frames[2]
-    assert "enabled" in frames[4] and "active" in frames[4]
+    assert "enabled" in frames[4] and "running" in frames[4]
     assert path.exists()
     await session.plugins.close()
 

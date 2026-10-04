@@ -386,7 +386,8 @@ stay under `[plugins.NAME]`, so strict configure schemas never see host fields. 
 execution context only; it never scopes installation. Enabling persists the source path
 for future agents in any directory. Existing agents keep their
 own instances. Reload/disable wait for active turns or that plugin's invocations; unrelated
-plugin invocations do not delay publication. The reload result reports pending.
+plugin invocations do not delay publication. Live `status` is `running`, `failed` or `off`;
+a waiting change reports `starting`, `reloading` or `stopping`. `enabled` is the saved choice.
 Set `WIZOLT_NO_PLUGINS=1` on startup to skip installed plugins and recover a broken installation.
 
 Optional module metadata: `DEPENDENCIES = ["package>=1.0"]` (literal requirement strings).
@@ -441,8 +442,8 @@ or raster fonts. See [TESTING.md](TESTING.md) for interaction fixtures and repor
   All above-input components share a height budget. Empty panels hide a component.
 - Do not create detached processes, unmanaged threads/tasks, or access host internals. On timeout
   the host may kill the whole worker process group. That cannot undo completed external effects.
-- Check reload results: failed candidates retain the old version; pending waits for turn/invocation
-  completion. A failure includes `traceback` and `log` tails naming the failing line, as does
+- Check reload results: failed candidates retain the old version; `starting`, `reloading` and
+  `stopping` wait for turn/invocation completion. A failure includes `traceback` and `log` tails naming the failing line, as does
   `/plugins inspect NAME` for a generation that failed later. Existing agents do not inherit each other's plugin state. Resume reads saved choices;
   ordinary Python variables do not survive a worker replacement or session restart.
 - For recovery, disable through the CLI, then reload; `/plugins` can restore previous source with

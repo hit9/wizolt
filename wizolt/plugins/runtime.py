@@ -38,6 +38,17 @@ class Revision:
     python: str
 
 
+def visibility(panel: Panel, available: int) -> str:
+    """How a component fared in its allocation, as the layout service reports it."""
+    if available == 0:
+        return "hidden by height budget"
+    if len(panel.rows) > available:
+        return "clipped by height budget"
+    if panel.rows:
+        return "visible"
+    return "empty"
+
+
 @dataclass
 class Generation:
     revision: Revision
@@ -89,6 +100,17 @@ class Entry:
     previous: Revision | None = None
     pending: Generation | None = None
     disabling: bool = False
+
+    @property
+    def status(self) -> str:
+        """The live word; a waiting disable or replacement outranks the failure it would clear."""
+        if self.disabling:
+            return "stopping"
+        if self.pending:
+            return "reloading"
+        if self.active.error:
+            return "failed"
+        return "running"
 
 
 class PluginRuntime:
@@ -209,7 +231,7 @@ class PluginRuntime:
                             commit(action, pending.revision.source)
                         self._pending_new.pop(name)
                         self._retire(pending)
-                        return {"name": name, "status": "disabled"}
+                        return {"name": name, "status": "off"}
                     raise PluginError(f"Unknown plugin: {name}")
                 if action == "reload":
                     candidate = await self.prepare(self.read_revision(entry.active.revision.source.path))
@@ -226,7 +248,7 @@ class PluginRuntime:
                     entry.disabling = True
                     self.interactions.dismiss(name)
                     self._publish()
-                    return {"name": name, "status": "pending" if name in self.entries else "disabled"}
+                    return {"name": name, "status": "stopping" if name in self.entries else "off"}
                 else:
                     raise PluginError(f"Unknown plugin action: {action}")
             assert entry is not None
@@ -237,10 +259,13 @@ class PluginRuntime:
             self._publish()
             return self.describe(name, entry)
 
+    # Live status words, each naming one situation: starting (a new plugin waits to publish),
+    # running, reloading (a replacement waits), stopping (a disable waits), failed, and off.
+    # The saved enable choice is reported separately; "pending" meant too many of these at once.
     @staticmethod
     def staged(generation: Generation) -> dict[str, Any]:
         source = generation.revision.source
-        return {"name": generation.plugin.name, "path": source.path, "status": "pending", "version": "", "pending_version": source.digest}
+        return {"name": generation.plugin.name, "path": source.path, "status": "starting", "version": "", "pending_version": source.digest}
 
     @property
     def active_count(self) -> int:
@@ -259,7 +284,7 @@ class PluginRuntime:
         return {
             "name": name,
             "path": item.revision.source.path,
-            "status": "pending" if entry.pending or entry.disabling else "error" if item.error else "active",
+            "status": entry.status,
             "version": item.revision.source.digest,
             "pending_version": entry.pending.revision.source.digest if entry.pending else "",
             "fields": list(item.plugin.fields),
@@ -346,17 +371,8 @@ class PluginRuntime:
                     rendered_gap = allocated.layout.gap_before if clipped.rows else 0
                     panels[generation.plugin.name][slot] = clipped
                     available = allocated.layout.rows
-                    visibility = (
-                        "hidden by height budget"
-                        if available == 0
-                        else "clipped by height budget"
-                        if len(panel.rows) > available
-                        else "visible"
-                        if panel.rows
-                        else "empty"
-                    )
                     components[identity] = Component(
-                        identity, generation.plugin.name, slot, len(clipped.rows) - rendered_gap, available, visibility, gap, rendered_gap
+                        identity, generation.plugin.name, slot, len(clipped.rows) - rendered_gap, available, visibility(panel, available), gap, rendered_gap
                     )
             if version == self._layout_version:
                 for name, item in generations.items():

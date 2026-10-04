@@ -123,7 +123,7 @@ def setup(plugin):
             await asyncio.wait_for(action, 3)
         assert not runtime.interactions.pending
         result = (await runtime.manage("list"))["plugins"]
-        assert [item["status"] for item in result] == (["active"] if management == "reload" else [])
+        assert [item["status"] for item in result] == (["running"] if management == "reload" else [])
         if management == "reload":
             terminal.answer.set()
             assert await runtime.invoke("interactive", "command", "ask", {}) == "Alice"
