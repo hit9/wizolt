@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Persist operation receipts in session snapshots. Each checkpoint writes only the receipts
+  that changed. On resume, an operation a crash interrupted after core execution began is
+  marked `unknown` and reported once to the model; it is never retried. Replay shows plugin
+  answers, changed results and wrapper failures from the receipts, without running plugins.
+
 - Make tool calls interceptable (`tool.call`). The adapter sits in the runner path shared with
   ToolScript's nested calls. A matching call runs singly, and its rewritten arguments go through
   the ordinary validation, `PreToolUse`, approval, observers and post-tool hooks; non-matching

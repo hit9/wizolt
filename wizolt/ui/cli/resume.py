@@ -23,9 +23,11 @@ from wizolt.base import (
     ToolCall,
     ToolError,
     TurnBox,
+    oneline,
 )
 from wizolt.image import ImageInputs
 from wizolt.session import Session, SessionSnapshotCodec, ToolResultRecord
+from wizolt.session.types import OperationReceipt
 from wizolt.tools import TOOL_REGISTRY, tool_payload, toolblocks, tooloutput
 from wizolt.tools.toolblocks import ToolDisplay
 from wizolt.ui.render import UiPrinter
@@ -180,6 +182,7 @@ class ResumeRenderer:
         raw_calls = message.get("tool_calls") or []
         if not isinstance(raw_calls, list):
             return tool_record_index
+        receipts = {receipt.target: receipt for receipt in self.session.operation_receipts if receipt.operation == "tool.call"}
         for raw in raw_calls:
             call = self.transcript_tool_call(raw)
             if call is None:
@@ -194,11 +197,29 @@ class ResumeRenderer:
                         status=str(result.get("status") or "failed"),
                         reason=str(result.get("reason") or ""),
                     )
+                    self.emit_receipt(receipts.get(call.id))
                 continue
             record, tool_record_index = self.transcript_tool_record(call, tool_record_index)
             if not dry_run:
                 self.emit_transcript_tool(call, record.key if record else "", diffs)
+                self.emit_receipt(receipts.get(call.id))
         return tool_record_index
+
+    def emit_receipt(self, receipt: OperationReceipt | None) -> None:
+        """Replay what a plugin did to this call from its recorded receipt; no plugin runs."""
+        if receipt is None:
+            return
+        notes: list[tuple[str, LogRole]] = []
+        if receipt.origin != "core":
+            notes.append((f"answered by plugin {receipt.origin.partition('/')[0]}; the tool did not run", LogRole.META))
+        if receipt.core == "unknown":
+            notes.append(("wizolt stopped while it ran; outcome unknown", LogRole.WARNING))
+        if receipt.shaped:
+            notes.append((f"result changed by {', '.join(name.partition('/')[0] for name in receipt.shaped)}", LogRole.META))
+        if receipt.wrapper_failure:
+            notes.append((oneline(receipt.wrapper_failure, 200), LogRole.ERROR))
+        if notes:
+            self.presentation.tool_output(LogBlock.hierarchy(None, [LogLine("plugin", text, role, LogEdge.END) for text, role in notes]))
 
     def render_remaining_tool_records(self, tool_record_index: int, diffs: dict[str, str]) -> None:
         records = self.session.transcript_tool_records or self.session.tool_records

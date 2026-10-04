@@ -530,13 +530,11 @@ class Session:
         usage.last_cache_write_prompt_tokens = 0
         return True
 
-    MAX_OPERATION_RECEIPTS = 200
-
     def record_operation(self, receipt: OperationReceipt) -> OperationReceipt:
         """Keep one receipt per operation (updated in place as it progresses), newest last."""
         if not any(item is receipt for item in self.operation_receipts):
             self.operation_receipts.append(receipt)
-            del self.operation_receipts[: -self.MAX_OPERATION_RECEIPTS]
+            del self.operation_receipts[: -OperationReceipt.LIMIT]
         return receipt
 
     def record_tool_error(self, key: str, name: str, args: ToolArgs, error: str) -> None:

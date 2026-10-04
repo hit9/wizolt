@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from wizolt.session import (
         TurnDiff as TurnDiffT,
     )
-    from wizolt.session.types import SubagentRecord
+    from wizolt.session.types import OperationReceipt, SubagentRecord
     from wizolt.source import SourceView
 
 
@@ -65,6 +65,7 @@ class SessionSnapshotCodec:
         active_transcript_messages = cls.active_transcript_messages(session)
         records = [cls.tool_record(record) for record in session.tool_records]
         errors = [cls.tool_error(error) for error in session.tool_errors]
+        receipts = {receipt.id: cls.digest(cls.operation_receipt(receipt)) for receipt in session.operation_receipts}
         turn_diff_keys = [diff.key for diff in session.turn_diffs]
         transcript_diff_len = len(session.transcript_turn_diffs)
         transcript_diff_tail = cls.transcript_turn_diff(session.transcript_turn_diffs[-1]) if session.transcript_turn_diffs else None
@@ -76,6 +77,7 @@ class SessionSnapshotCodec:
             "pending_user_inputs_digest": cls.digest([item.to_json() for item in session.pending_user_inputs]),
             "tool_records_len": len(records), "tool_records_digest": cls.digest(records),
             "tool_errors_len": len(errors), "tool_errors_digest": cls.digest(errors),
+            "operation_receipts_digests": receipts,
             "recent_commands_len": len(session.recent_commands), "recent_commands_digest": cls.digest(session.recent_commands),
             "turn_diffs_len": len(turn_diff_keys), "turn_diffs_keys_digest": cls.digest(turn_diff_keys),
             "transcript_turn_diffs_len": transcript_diff_len, "transcript_turn_diffs_tail_digest": cls.digest(transcript_diff_tail),
@@ -171,6 +173,7 @@ class SessionSnapshotCodec:
                 session.context_reset_requested,
                 bool(session.tool_records),
                 bool(session.tool_errors),
+                bool(session.operation_receipts),
                 bool(session.recent_commands),
                 bool(session.turn_diffs),
                 bool(session.history),
@@ -358,6 +361,7 @@ class SessionSnapshotCodec:
             "source_view_counter": session.source_view_counter,
             "compaction_usage": cls.usage(session.compaction_usage),
             "tool_records": [cls.tool_record(record) for record in session.tool_records], "tool_errors": [cls.tool_error(error) for error in session.tool_errors],
+            "operation_receipts": [cls.operation_receipt(receipt) for receipt in session.operation_receipts],
             "recent_commands": list(session.recent_commands),
             "turn_diffs": [cls.turn_diff(diff) for diff in session.turn_diffs],
             "transcript_turn_diffs": [cls.transcript_turn_diff(diff) for diff in session.transcript_turn_diffs],
@@ -412,6 +416,13 @@ class SessionSnapshotCodec:
             "tool_errors_digest",
             current["tool_errors_digest"],
         )
+        # Receipts change state in place (started, completed, delivered): write only those that
+        # changed since the last checkpoint, never the whole bounded list again.
+        saved_receipts = saved.get("operation_receipts_digests", {})
+        if changed := [
+            cls.operation_receipt(item) for item in session.operation_receipts if current["operation_receipts_digests"][item.id] != saved_receipts.get(item.id)
+        ]:
+            delta["operation_receipts_upsert"] = changed
         cls.add_sequence_delta(
             delta, "recent_commands", session.recent_commands, saved, "recent_commands_len", "recent_commands_digest", current["recent_commands_digest"]
         )
@@ -617,7 +628,14 @@ class SessionSnapshotCodec:
     @classmethod
     def merge(cls, data: Json, delta: Json) -> None:
         for key, value in delta.items():
-            if key in cls.REPLACED_FIELDS:
+            if key == "operation_receipts_upsert":
+                from wizolt.session.types import OperationReceipt
+
+                # Last state per receipt ID, in first-seen order, within the session's bound.
+                receipts = {item.get("id"): item for item in data.get("operation_receipts", []) if isinstance(item, dict)}
+                receipts.update((item.get("id"), item) for item in value if isinstance(item, dict))
+                data["operation_receipts"] = list(receipts.values())[-OperationReceipt.LIMIT :]
+            elif key in cls.REPLACED_FIELDS:
                 data[key] = value
             elif key in cls.SEQUENCE_FIELDS:
                 if key + "_replace" not in delta:
@@ -650,6 +668,26 @@ class SessionSnapshotCodec:
         # fmt: off
         return [ToolResultRecord(key=rec["key"], name=rec["name"], args=rec.get("args", []), output=rec.get("output", ""), note=rec.get("note", "")) for rec in data]
         # fmt: on
+
+    @staticmethod
+    def operation_receipt(receipt: OperationReceipt) -> Json:
+        return {**asdict(receipt), "shaped": list(receipt.shaped)}
+
+    @staticmethod
+    def operation_receipts(data: list[Json]) -> list[OperationReceipt]:
+        """Decode tolerantly: a malformed receipt is dropped, never allowed to block resume."""
+        from wizolt.session.types import OperationReceipt
+
+        names = {item.name for item in fields(OperationReceipt)}
+        receipts = []
+        for item in data if isinstance(data, list) else []:
+            try:
+                values = {key: value for key, value in item.items() if key in names}
+                values["shaped"] = tuple(values.get("shaped", ()))
+                receipts.append(OperationReceipt(**values))
+            except (AttributeError, TypeError):
+                continue
+        return receipts[-OperationReceipt.LIMIT :]
 
     @staticmethod
     def tool_errors(data: list[Json]) -> list[ToolErrorRecord]:

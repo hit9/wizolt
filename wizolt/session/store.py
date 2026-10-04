@@ -526,6 +526,34 @@ class SessionSnapshotStore:
             os.unlink(os.path.join(directory, "latest"))
 
     @classmethod
+    def settle_interrupted_operations(cls, session: Session) -> str:
+        """Settle receipts a crash left undelivered, and tell the model once; never retry them.
+
+        A started core may or may not have run before the process died: it becomes ``unknown``.
+        Its result never reached the model, because the crash also lost that turn's tool batch.
+        """
+        rows = []
+        for receipt in session.operation_receipts:
+            if receipt.delivered:
+                continue
+            if receipt.core == "started":
+                receipt.core = "unknown"
+            receipt.delivered = True
+            result = f", result {receipt.actual}" if receipt.actual else ""
+            rows.append(f"- {receipt.operation} {receipt.target} {receipt.effective or receipt.original}: outcome {receipt.core}{result}")
+        if not rows:
+            return ""
+        return "\n".join(
+            [
+                '<session_event type="interrupted_operations">',
+                "wizolt stopped while these plugin-intercepted operations were in progress. They are not retried;",
+                "check their effects before repeating any of them.",
+                *rows,
+                "</session_event>",
+            ]
+        )
+
+    @classmethod
     def load(cls, uid: str, config: Config, settings: RuntimeSettings, cwd: str = "") -> Session:
         """Decode an inspection snapshot. Writable callers must already own the family lease
         and attach it before execution; acquiring after this read would permit stale saves.
@@ -588,6 +616,7 @@ class SessionSnapshotStore:
             tool_records=tool_records,
             transcript_tool_records=transcript_tool_records,
             tool_errors=SessionSnapshotCodec.tool_errors(data.get("tool_errors", [])),
+            operation_receipts=SessionSnapshotCodec.operation_receipts(data.get("operation_receipts", [])),
             recent_commands=data.get("recent_commands", [])[-10:],
             context_reset_requested=bool(data.get("context_reset_requested", False)),
             turn_diffs=turn_diffs,
@@ -632,6 +661,8 @@ class SessionSnapshotStore:
             session.context_layout_version = CONTEXT_LAYOUT_VERSION
         # Loaded active-turn messages are settled history; honor a reset promised before a crash.
         session.apply_context_reset()
+        if notice := cls.settle_interrupted_operations(session):
+            session.messages.append({"role": "user", "content": notice, SESSION_EVENT_KEY: "interrupted_operations"})
         resumed_at = local_timestamp()
         session.messages.append(
             {

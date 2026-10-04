@@ -563,6 +563,7 @@ class ToolRunner:
         finally:
             receipt.origin = trace.get("origin", "core")
             receipt.shaped = tuple(trace.get("shaped", ()))
+            receipt.delivered = True  # Interrupts settle the call too; only a crash skips this.
             await self.session.save_snapshot()
         owner = receipt.origin.partition("/")[0]
         if isinstance(result, operations.Refusal):

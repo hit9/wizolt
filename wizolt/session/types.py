@@ -185,6 +185,7 @@ class OperationReceipt:
     """
 
     TEXT_LIMIT: ClassVar[int] = 2000
+    LIMIT: ClassVar[int] = 200  # Receipts kept per session, newest last.
 
     id: str
     operation: str
@@ -197,6 +198,8 @@ class OperationReceipt:
     shaped: tuple[str, ...] = ()
     wrapper_failure: str = ""
     retry_of: str = ""
+    # Settled: the turn holds a result or settlement for it. Only a crash leaves this unset.
+    delivered: bool = False
 
     @classmethod
     def clip(cls, value: object) -> str:
