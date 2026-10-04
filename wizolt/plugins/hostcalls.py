@@ -72,8 +72,8 @@ class HostCalls:
             raise PluginError("Invalid plugin host call identity")
         if not self.admitted(parent):
             self.send({"service_result": identity, "error": "Host services require an active explicit action"})
-        elif message["service"].startswith("ui.") and not self.interactive(parent):
-            self.send({"service_result": identity, "error": "Interactive UI requires a command or tool action"})
+        elif message["service"].startswith(("ui.", "settings.")) and not self.interactive(parent):
+            self.send({"service_result": identity, "error": "UI and settings require a command or tool action"})
         elif self.handler is None:
             self.send({"service_result": identity, "error": "Host services unavailable in offline trials"})
         elif len(self.pending) >= self.MAX_CONCURRENT:

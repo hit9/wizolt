@@ -376,6 +376,8 @@ class PluginRuntime:
 
     async def call_host(self, service: str, arguments: dict, *, owner: str = "") -> dict:
         """Route explicit host capabilities; model credentials stay in the assembly adapter."""
+        if service.startswith("settings."):
+            return await self.settings.call(owner, service, arguments)
         if service.startswith("ui.components."):
             action = service.removeprefix("ui.components.")
             expected = {"list": set(), "move": {"component", "before", "after"}, "reset_order": {"slot"}, "set_gap": {"component", "gap_before"}}

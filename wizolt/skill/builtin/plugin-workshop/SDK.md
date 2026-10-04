@@ -224,6 +224,16 @@ references are rejected. Tables are read-only mappings and arrays become tuples 
 Use environment variable names for secrets and never print resolved credentials. Validation
 errors omit values, but plugin-authored logs and callback output remain the plugin's responsibility.
 
+Commands/tools can persist their own choices with
+`saved = await plugin.settings.update({"label": "hello"}, reset=["color"])`.
+Only top-level keys declared in `configure()` properties can be edited; `reset` removes a user
+override and restores its default. Values can be nested finite JSON, excluding null (TOML has
+no null). The complete candidate is validated in the worker before an atomic, comment-preserving
+write to `[plugins.NAME]`. Concurrent edits fail explicitly; reread/retry instead of overwriting.
+The returned settings are resolved and immutable. `plugin.config` remains this generation's
+original snapshot: apply the returned values yourself for immediate changes, or explicitly reload.
+There is no automatic config-file watching or reload. Other plugin tables cannot be targeted.
+
 Validate/test/install use the selected config. Live reload rereads only its `[plugins]` table,
 and fixes settings for the candidate's lifetime. Failed validation preserves the active instance;
 rollback restores retained source, settings and the dependency environment. Keep the installed

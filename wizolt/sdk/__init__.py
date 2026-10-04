@@ -212,12 +212,13 @@ class Plugin:
     def __init__(self, name: str, config: Mapping[str, Any] | None = None):
         from wizolt.sdk.models import Models
         from wizolt.sdk.services import Services
-        from wizolt.sdk.settings import freeze
+        from wizolt.sdk.settings import Settings, freeze
         from wizolt.sdk.ui import UI
 
         self.name = name
         self._settings = dict(config or {})
         self._config = freeze(self._settings)
+        self.settings = Settings()
         self.fields: dict[str, Field] = {}
         self.components: dict[str, ComponentRegistration] = {}
         self.commands: dict[str, Action] = {}
@@ -263,6 +264,10 @@ class Plugin:
         from wizolt.sdk.settings import resolve
 
         self._config = resolve(self._settings, schema, defaults or {})
+        from copy import deepcopy
+
+        self.settings.schema = deepcopy(dict(schema))
+        self.settings.defaults = deepcopy(dict(defaults or {}))
 
     def theme(self, name: str, definition: Mapping[str, Any]) -> None:
         """Contribute a theme using the same base/colors/diff/highlights data as theme TOML.

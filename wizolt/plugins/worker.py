@@ -60,6 +60,7 @@ class Worker:
             self.loaded = LoadedPlugin.load(source, request.get("config"), request.get("directory", ""))
             plugin = self.loaded.plugin
             plugin.models.call = self.call_host
+            plugin.settings.call = self.call_host
             plugin.ui.components.call = self.call_host
             plugin.ui.call = self.call_host
             plugin.ui.shortcuts.call = self.call_host

@@ -727,6 +727,12 @@ model = ""
         """
         # Lock the stable sidecar, not the replaced inode. Separate processes must read
         # the latest document inside the transaction or one preference can erase another.
+        with ConfigFile._write_lease(path):
+            ConfigFile._write_value(path, section, key, value, overwrite=overwrite, expected=expected)
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _write_lease(path: str):
         path = os.path.realpath(path)
         descriptor = os.open(path + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
         with os.fdopen(descriptor, "a") as lock:
@@ -734,16 +740,38 @@ model = ""
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as error:
                 raise ConfigError("Configuration is being updated by another process; retry shortly") from error
-            ConfigFile._write_value(path, section, key, value, overwrite=overwrite, expected=expected)
+            yield
 
     @staticmethod
-    def _write_value(path: str, section: tuple[str, ...], key: str, value: str | Json, *, overwrite: bool, expected: Json | None) -> None:
-        """Read and replace a complete document while the caller holds its write lease."""
+    def patch_table(path: str, section: tuple[str, ...], values: Json, reset: list[str], *, expected: Json) -> None:
+        """Commit a validated table edit only if its read snapshot still matches.
+
+        Validation happens outside the lease (potentially in a worker). Compare inside the
+        lease and fail explicitly on conflict. Updating individual keys preserves comments.
+        """
         import tomlkit
 
         path = os.path.realpath(path)
-        with open(path, encoding="utf-8") as file:
-            document = tomlkit.parse(file.read())
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with ConfigFile._write_lease(path):
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as file:
+                    document = tomlkit.parse(file.read())
+            else:
+                document = tomlkit.document()
+            table = ConfigFile._table(document, section, path)
+            if dict(table) != expected:
+                raise ConfigError("Plugin settings changed concurrently; retry the update")
+            for key in reset:
+                table.pop(key, None)
+            for key, value in values.items():
+                table[key] = value
+            ConfigFile._save_document(path, document)
+
+    @staticmethod
+    def _table(document, section: tuple[str, ...], path: str):
+        import tomlkit
+
         table = document
         for name in section:
             child = table.get(name)
@@ -753,12 +781,30 @@ model = ""
             elif not isinstance(child, MutableMapping):
                 raise ConfigError(f"{'.'.join(section)} in {path} must be a table")
             table = child
+        return table
+
+    @staticmethod
+    def _write_value(path: str, section: tuple[str, ...], key: str, value: str | Json, *, overwrite: bool, expected: Json | None) -> None:
+        """Read and replace a complete document while the caller holds its write lease."""
+        import tomlkit
+
+        path = os.path.realpath(path)
+        with open(path, encoding="utf-8") as file:
+            document = tomlkit.parse(file.read())
+        table = ConfigFile._table(document, section, path)
         if not overwrite and key in table:
             return
         if expected is not None and table.get(key) != expected:
             return
         table[key] = value
-        mode = stat.S_IMODE(os.stat(path).st_mode)
+        ConfigFile._save_document(path, document)
+
+    @staticmethod
+    def _save_document(path: str, document) -> None:
+        """Replace a document atomically while its caller holds the stable sidecar lease."""
+        import tomlkit
+
+        mode = stat.S_IMODE(os.stat(path).st_mode) if os.path.exists(path) else 0o600
         temporary = path + ".tmp"
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         try:

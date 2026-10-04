@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Let plugin commands and tools atomically save their own declared settings, reset overrides
+  to defaults and receive resolved values without replacing the live generation. Validate in
+  the worker, retain config comments and reject concurrent changes instead of overwriting them.
+
 - Remove obsolete aggregate plugin busy state and redundant shortcut persistence forwarding;
   keep behavioral regression checks and clarify live activation versus dependency installation.
 

@@ -63,7 +63,9 @@ Keep mutable state inside `setup`, use theme roles, and keep render callbacks ch
 Use `context.layout.rows` to fit the remaining height, and `context.turn.tools` / `active_tools`
 for real execution counts and activity. Session/tool lifecycle events are read-only; see SDK.md.
 Settings go in `[plugins.NAME]` of wizolt's config; declare them with `plugin.configure(...)` and
-reload after editing. Use `plugin.service` for connections, `plugin.models.complete` for model
+save interactive choices with `await plugin.settings.update(values, reset=[...])` (see SDK.md).
+Apply the returned settings yourself or reload; `plugin.config` stays frozen.
+Use `plugin.service` for connections, `plugin.models.complete` for model
 requests and `plugin.summarizer` for compaction; tell the user about model costs first. Do not
 mutate host internals, create unmanaged tasks, install into the running interpreter, or send
 desktop notifications.
