@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add `wizolt plugin presenter list/choose/reset`: the choice persists as
+  `[plugin_manager.presenters] choice` beside the interception order, an agent applies it with
+  `Plugin(action=reload)`, and `choose` starts the candidate once to verify it registers the
+  site. `list` shows every enabled plugin's sites and the current choice.
+
 - Add the `activity` presentation site: the plugin runtime's refresh pass renders it into a
   cached snapshot (status word, stream text, active tools and counts), and the TUI activity region
   shows that panel instead of the builtin stream preview. Queued follow-ups, the live preview and

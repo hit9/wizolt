@@ -260,3 +260,46 @@ async def test_activity_panel_replaces_the_stream_region(session, tmp_path):
     # The builtin stream preview is the fallback, not an addition: without a cached panel it is
     # what the region shows, and it stays host-owned.
     assert "thinking" not in "".join(text for _, text in fragments)
+
+
+async def test_presenter_cli_saves_choices_that_reload_applies(tmp_path, capsys):
+    import json
+
+    from agent_harness import session_with_provider
+
+    from wizolt.plugins.catalog import Installation
+    from wizolt.plugins.session import SessionPlugins
+    from wizolt.ui.cli.plugin_commands import main
+
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    (tmp_path / "cards.py").write_text(
+        "SDK_VERSION = 1\nfrom wizolt.sdk import Panel, Text\ndef setup(p):\n"
+        '    async def card(ctx, view):\n        return Panel()\n    p.presenter("tool.result", card)\n'
+    )
+    (tmp_path / "plain.py").write_text("SDK_VERSION = 1\ndef setup(p):\n    pass\n")
+    runtime.catalog.save(Installation("cards", str(tmp_path / "cards.py")))
+    runtime.catalog.save(Installation("plain", str(tmp_path / "plain.py")))
+    config = str(runtime.catalog.preferences.path)
+
+    async def presenter(*arguments):
+        # The shell command runs as its own process; a thread gives it the same isolation
+        # from this test's event loop that asyncio.run requires.
+        import asyncio as _asyncio
+
+        code = await _asyncio.to_thread(main, ["presenter", *arguments, "--config", config])
+        return code, json.loads(capsys.readouterr().out)
+
+    listed = (await presenter("list"))[1]
+    assert listed["sites"]["tool.result"]["registered"] == ["cards"]
+    assert listed["sites"]["activity"]["registered"] == []
+    assert (await presenter("choose", "tool.result", "cards"))[1]["saved"] == {"tool.result": "cards"}
+    assert "[plugin_manager.presenters.choice]" in runtime.catalog.preferences.path.read_text()
+    assert runtime.presenters.choices.sites == {}  # A live agent changes only on reload.
+    runtime.reload_layout()
+    assert runtime.presenters.choices.sites == {"tool.result": "cards"}
+    code, failed = await presenter("choose", "tool.result", "plain")
+    assert code == 1 and "does not register" in failed["error"]
+    code, failed = await presenter("choose", "tool.call", "missing")
+    assert code == 1 and "Unknown installed plugin: missing" in failed["error"]
+    assert (await presenter("reset", "tool.result"))[1]["saved"] == {}
+    await runtime.close()
