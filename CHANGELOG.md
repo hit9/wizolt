@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Make request context composable (`context.compose`). The header is now built from named parts
+  (system, environment, instructions, skills, MCP). Plugins may replace the system and
+  instruction text (directives stay host-owned) and add their own `plugin:<name>:<id>` blocks,
+  placed after the header in plugin order; the conversation is a bounded read-only view and
+  durable history never changes. The composed request must fit the context budget. A receipt
+  records changed blocks and the token estimate.
+
 - Route every model request through one logical `model.request` boundary above the wire
   encoders: agent steps, image-fallback resends, textual-tool corrections, vision
   observations, builtin compaction and `plugin.models.complete`. Interceptors may change the

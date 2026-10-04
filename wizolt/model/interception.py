@@ -160,7 +160,7 @@ async def logical_request(
         receipt.effective = OperationReceipt.clip({"provider": candidate.provider or entry, "model": effective.model, "effort": effective.reasoning or ""})
         return response
 
-    def known_tools(_received: Value, result: Value, _called: bool) -> None:
+    def known_tools(_received: Value, result: Value, _downstream: Value | None, _owner: str) -> None:
         if not isinstance(result, ModelResponse):
             return
         seen: set[str] = set()
@@ -180,7 +180,7 @@ async def logical_request(
     try:
         with suppress_preview() if replaces and suppress_preview is not None else contextlib.nullcontext():
             result = await interception.run(
-                "model.request", value, core, transition=lambda _previous, candidate: route(candidate) and None, result_check=known_tools, trace=trace
+                "model.request", value, core, transition=lambda _previous, candidate, _owner: route(candidate) and None, result_check=known_tools, trace=trace
             )
     except BaseException:
         receipt.core = "failed" if "raw" not in downstream else "completed"

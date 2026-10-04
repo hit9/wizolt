@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import uuid
 from collections.abc import Callable, Hashable
 from typing import TYPE_CHECKING, ClassVar, TypeVar
 
@@ -26,6 +27,7 @@ from wizolt.base import (
     SESSION_EVENT_KEY,
     TOOL_OUTPUT_ASSET_SUFFIX,
     Json,
+    ModelError,
     Text,
     run_blocking,
 )
@@ -89,7 +91,124 @@ class ContextManager:
 
         Factored out because it is exactly the span a provider caches, and the compaction request
         reuses it verbatim so its summary rides the same prefix the turn just paid for."""
-        content = base_system.strip()
+        return self.render_header(self.header_parts(base_system))
+
+    # The header's named parts, in request order: the producers, not a parse of rendered text.
+    HEADER_PARTS: ClassVar[tuple[str, ...]] = ("system", "environment", "instructions", "skills", "mcp")
+
+    def header_parts(self, base_system: str) -> list[tuple[str, str]]:
+        """(name, text) for each present part. ``system`` excludes the host-owned directives."""
+        parts = [("system", base_system.strip()), ("environment", "--- Environment ---\n" + (self.environment() or "(empty)"))]
+        for name, context in (("instructions", self.instructions_context()), ("skills", self.skills_context()), ("mcp", self.mcp_tools_context())):
+            if context:
+                parts.append((name, context))
+        return parts
+
+    EDITABLE_PARTS: ClassVar[frozenset[str]] = frozenset({"system", "instructions"})
+    CONVERSATION_VIEW: ClassVar[tuple[int, int]] = (40, 2000)  # Messages shown, characters each.
+
+    def conversation_view(self, conversation: list[Json]) -> str:
+        """A bounded, read-only view for composing plugins. It is a view: nothing here is sent."""
+        limit, width = self.CONVERSATION_VIEW
+        rows = [f"({len(conversation) - limit} earlier messages are not shown in this view)"] if len(conversation) > limit else []
+        for message in conversation[-limit:]:
+            text = ImageInputs.label_text(message)
+            rows.append(f"{message.get('role')}: {text if len(text) <= width else text[:width] + '…'}")
+        return "\n".join(rows)
+
+    async def compose(self, plugins: object, base_system: str, messages: list[Json], tools: list[Json] | None) -> list[Json]:
+        """``context.compose`` over one prepared turn request. Durable messages never change.
+
+        Editable: the system instructions (the language and attribution directives stay
+        host-owned) and the project/user instructions. Environment, skills, MCP and the
+        conversation are read-only. Plugins add their own ``plugin:<name>:<id>`` blocks, which
+        the host places after the header, before the conversation, in interception order.
+        """
+        interception = getattr(plugins, "interception", None)
+        if interception is None or not interception.would_match("context.compose", purpose="turn"):
+            return messages
+        from wizolt.sdk import PluginError, operations
+        from wizolt.sdk.operations import Block, Blocks
+
+        parts = self.header_parts(base_system)
+        conversation = messages[len(parts) :]
+        core = [*(name for name, _ in parts), "conversation"]
+        value = Blocks(
+            (*(Block(name, text, name in self.EDITABLE_PARTS) for name, text in parts), Block("conversation", self.conversation_view(conversation))), "turn"
+        )
+
+        def normalized(previous: operations.Value, candidate: operations.Value, owner: str) -> Blocks:
+            assert isinstance(previous, Blocks) and isinstance(candidate, Blocks)
+            before = {block.id: block for block in previous.blocks}
+            given = {block.id: block for block in candidate.blocks}
+            for name in core:
+                block = given.get(name)
+                if block is None or block.editable != before[name].editable:
+                    raise PluginError(f"Context block {name} must stay")
+                if not block.editable and block.text != before[name].text:
+                    raise PluginError(f"Context block {name} is read-only")
+            own = f"plugin:{owner}:"
+            for block_id, block in before.items():
+                if block_id.startswith("plugin:") and not block_id.startswith(own) and given.get(block_id) != block:
+                    raise PluginError(f"Only {block_id.split(':')[1]} may change or remove {block_id}")
+            plugin_blocks = []
+            for block in candidate.blocks:
+                if block.id in core:
+                    continue
+                if block.id not in before:
+                    if not block.id.isidentifier():
+                        raise PluginError("New context blocks need an identifier ID (Blocks.add)")
+                    block = Block(own + block.id, block.text, True)
+                plugin_blocks.append(block)
+            order = {name: rank for rank, name in enumerate(plugins.interception_order.ordered({block.id.split(":")[1] for block in plugin_blocks}))}  # type: ignore[attr-defined]
+            plugin_blocks.sort(key=lambda block: (order[block.id.split(":")[1]], block.id))
+            ordered = [given[name] for name in core[:-1]] + plugin_blocks + [given["conversation"]]
+            return Blocks(tuple(ordered), previous.purpose)
+
+        async def accept(composed: operations.Value) -> operations.Value:
+            return composed
+
+        result = await interception.run(  # type: ignore[attr-defined]
+            "context.compose",
+            value,
+            accept,
+            transition=normalized,
+            # Inner plugins' blocks arrive in the downstream result; check against that.
+            result_check=lambda received, composed, downstream, owner: normalized(downstream or received, composed, owner),
+        )
+        assert isinstance(result, Blocks)
+        texts = {block.id: block.text for block in result.blocks}
+        header = self.render_header([(name, texts[name]) for name, _ in parts])
+        added = [{"role": "user", "content": block.text} for block in result.blocks if block.id.startswith("plugin:") and block.text]
+        composed = Text.value([*header, *added, *conversation])
+        tokens = self.request_tokens(composed, tools)
+        # Request diagnostics: which blocks changed and what the prefix now costs. A changed
+        # prefix genuinely costs provider cache reuse; this is where a user can see why.
+        from wizolt.session.types import OperationReceipt
+
+        original = dict(parts)
+        changes = {
+            "changed": [name for name, _ in parts if texts[name] != original[name]],
+            "added": [block.id for block in result.blocks if block.id.startswith("plugin:")],
+            "tokens": tokens,
+        }
+        self.session.record_operation(
+            OperationReceipt(
+                uuid.uuid4().hex,
+                "context.compose",
+                "turn",
+                OperationReceipt.clip({"tokens": self.request_tokens(messages, tools)}),
+                OperationReceipt.clip(changes),
+                core="completed",
+                delivered=True,
+            )
+        )
+        if tokens >= self.request_token_budget():
+            raise ModelError("Plugin context composition does not fit the context budget")
+        return composed
+
+    def render_header(self, parts: list[tuple[str, str]]) -> list[Json]:
+        content = parts[0][1]
         # Each setting that appends one fixed block to the system tail: stable text that depends only
         # on the value, so the cacheable system prefix is unchanged.
         for directive in (
@@ -98,14 +217,7 @@ class ContextManager:
         ):
             if directive:
                 content += "\n\n" + directive
-        messages: list[Json] = [
-            {"role": "system", "content": content},
-            {"role": "user", "content": "--- Environment ---\n" + (self.environment() or "(empty)")},
-        ]
-        for context in (self.instructions_context(), self.skills_context(), self.mcp_tools_context()):
-            if context:
-                messages.append({"role": "user", "content": context})
-        return messages
+        return [{"role": "system", "content": content}, *({"role": "user", "content": text} for _, text in parts[1:])]
 
     def model_messages(self, base_system: str, turn_messages: list[Json] | None = None) -> list[Json]:
         messages = self.model_header(base_system)

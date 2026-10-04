@@ -60,6 +60,26 @@ model's message to this subagent; never a command).
   `attachments`, never add any.
 - A `Refusal` stops a turn's opening input; a refused follow-up is withheld once and reported.
 
+## `context.compose`
+
+`Blocks(blocks, purpose)` → `Blocks`. Match on `purpose` (`turn`). Runs for each agent-step
+request, after compaction, before `model.request`.
+
+| Block | You may |
+| --- | --- |
+| `system` | Replace the instruction text (language and attribution directives stay wizolt's) |
+| `environment`, `skills`, `mcp` | Read |
+| `instructions` | Replace the project/user instructions for this request |
+| `conversation` | Read a bounded view (recent messages, clipped); history itself is never edited |
+
+- `blocks.with_text(id, text)` edits an editable block; `blocks.add(id, text)` adds your own
+  block, which wizolt names `plugin:<your name>:<id>` and places after the header, before the
+  conversation, in plugin order. You cannot change or remove another plugin's blocks.
+- Changing the prefix costs provider cache reuse on every request where it differs. Keep your
+  text deterministic: no timestamps or random values unless you mean to pay that.
+- If the composed request no longer fits the context budget, the request fails rather than
+  being silently truncated.
+
 ## `model.request`
 
 `ModelRequest(id, purpose, reason, provider, model, effort, tools, message_count, retry_of)` →

@@ -722,6 +722,8 @@ class Agent:
         self.session.state.turn_messages = len(request_turn)
         tools = Tool.resolved_schemas(self.session)
         messages = await self.context.prepare_messages(self.model, self.session.system_prompt, request_turn, tools)
+        # After compaction, so a recomposed projection passes the same budget check.
+        messages = await self.context.compose(self.session.plugins, self.session.system_prompt, messages, tools)
         if self.session.plugins is not None and self.session.plugins.entries:
             # Token estimation belongs at request boundaries, never in the 5 Hz UI sampler.
             self.session.plugins.context_parts = tuple(self.context.breakdown(self.session.system_prompt))
@@ -752,6 +754,7 @@ class Agent:
         self._emit_image_route_notice(ImageRouteNotice("main model rejected image input (400)", described_by=self._vision_entry_label(), images=names))
         tools = Tool.resolved_schemas(self.session)
         messages = await self.context.prepare_messages(self.model, self.session.system_prompt, converted, tools)
+        messages = await self.context.compose(self.session.plugins, self.session.system_prompt, messages, tools)
         self.context.update_percent(messages, tools)
         retry = PreparedRequest(messages, tools, request.pending, converted)
         self.session.state.turn_messages = len(converted)
@@ -852,7 +855,7 @@ class Agent:
         refs = [ref for ref in message.get(IMAGE_REFS_KEY) or [] if isinstance(ref, dict)]
         value = operations.Prompt(text, text, tuple(str(ref.get("name") or "") for ref in refs), origin)
 
-        def attachments_kept(previous: operations.Value, candidate: operations.Value) -> None:
+        def attachments_kept(previous: operations.Value, candidate: operations.Value, _owner: str = "") -> None:
             assert isinstance(previous, operations.Prompt) and isinstance(candidate, operations.Prompt)
             check_read_only(previous, candidate)
             if not set(candidate.attachments) <= set(previous.attachments):
@@ -869,7 +872,9 @@ class Agent:
                 value,
                 accept,
                 transition=attachments_kept,
-                result_check=lambda received, result, _called: attachments_kept(received, result) if isinstance(result, operations.Prompt) else None,
+                result_check=lambda received, result, _downstream, _owner: (
+                    attachments_kept(received, result) if isinstance(result, operations.Prompt) else None
+                ),
                 trace=trace,
             )
         finally:

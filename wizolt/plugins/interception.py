@@ -24,10 +24,12 @@ if TYPE_CHECKING:
     from wizolt.plugins.runtime import Generation, PluginRuntime
 
 Core = Callable[[Value], Awaitable[Value]]
-# (value received, candidate passed to next) -> None, raising PluginError for an invalid change.
-Transition = Callable[[Value, Value], None]
-# (input, result, called_next) -> None, raising PluginError for an invalid result.
-ResultCheck = Callable[[Value, Value, bool], None]
+# (value received, candidate passed to next, acting plugin) -> a normalized candidate, or None to
+# keep it; raises PluginError for an invalid change. The plugin name lets adapters namespace.
+Transition = Callable[[Value, Value, str], Value | None]
+# (input, result, downstream result or None if next was not called, acting plugin) -> a normalized
+# result, or None; raises when invalid. Downstream lets adapters accept what inner steps added.
+ResultCheck = Callable[[Value, Value, Value | None, str], Value | None]
 
 
 @dataclass(frozen=True)
@@ -166,16 +168,20 @@ class Interception:
         trace: dict,
     ) -> Value:
         spec = OPERATIONS[link.operation]
-        state: dict = {"used": False, "settled": False, "result": None, "error": None}
+        state: dict = {"used": False, "settled": False, "result": None, "error": None, "invalid": None}
 
         async def resume(raw: object) -> dict:
             if state["used"]:
                 raise PluginError("next() is single-use")
             state["used"] = True
-            candidate = operations.decode(raw, (spec.input,))
-            check_read_only(value, candidate)
-            if transition is not None:
-                transition(value, candidate)
+            try:
+                candidate = operations.decode(raw, (spec.input,))
+                check_read_only(value, candidate)
+                if transition is not None:
+                    candidate = transition(value, candidate, link.owner) or candidate
+            except PluginError as error:
+                state["invalid"] = error  # The handler's fault, whatever it does with the error.
+                raise
             try:
                 result = await step(position + 1, candidate)
             except asyncio.CancelledError:
@@ -202,11 +208,15 @@ class Interception:
         except asyncio.CancelledError:
             raise
         except Exception as error:
+            if state["invalid"] is not None:
+                raise self.block(link, str(state["invalid"])) from None
             if state["error"] is not None:
                 raise state["error"] from None  # Downstream failed; this handler only relayed it.
             raise self.block(link, str(error)) from error
         finally:
             worker.continuations.tokens.pop(token, None)
+        if state["invalid"] is not None:
+            raise self.block(link, str(state["invalid"])) from None
         if state["error"] is not None:
             # A handler cannot turn a downstream failure, such as a blocked inner policy, into success.
             raise state["error"]
@@ -219,7 +229,7 @@ class Interception:
             if link.spec.response == "preserve" and not isinstance(result, Refusal) and result != state["result"]:
                 raise PluginError('response="preserve" handlers must return the downstream response unchanged; declare "replace"')
             if result_check is not None:
-                result_check(value, result, state["used"])
+                result = result_check(value, result, state["result"] if state["used"] else None, link.owner) or result
         except PluginError as error:
             raise self.block(link, str(error)) from error
         if not state["used"]:
