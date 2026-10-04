@@ -64,6 +64,9 @@ class Generation:
     calls: int = 0
     seconds: float = 0
     invocations: int = 0  # Pin this worker, never unrelated plugin generations.
+    # Tasks running an operation whose chain includes this generation. Disable cancels them:
+    # recovery must not wait for a poisoned turn to finish.
+    operations: set[asyncio.Task] = field(default_factory=set)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     events: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -254,6 +257,8 @@ class PluginRuntime:
                         entry.pending = None
                     entry.disabling = True
                     self.interactions.dismiss(name)
+                    for task in tuple(entry.active.operations):
+                        task.cancel()  # An operation this plugin intercepts must not outlast the disable.
                     self._publish()
                     return {"name": name, "status": "stopping" if name in self.entries else "off"}
                 else:

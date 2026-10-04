@@ -131,8 +131,11 @@ class Interception:
         own = parent.child(uuid.uuid4().hex)
         trace = {} if trace is None else trace
         trace.setdefault("chain", [])
+        task = asyncio.current_task()
         for link in links:
             link.generation.invocations += 1  # Pin participants for this operation's lifetime.
+            if task is not None:
+                link.generation.operations.add(task)
         try:
 
             async def step(index: int, current: Value) -> Value:
@@ -154,6 +157,7 @@ class Interception:
         finally:
             for link in links:
                 link.generation.invocations -= 1
+                link.generation.operations.discard(task)  # type: ignore[arg-type]
             self.runtime.after_lease()
 
     async def call(

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Make disabling a plugin cancel the operations it is intercepting, so recovery never waits
+  for a hung interceptor's full deadline. Core `/plugins disable` stays outside every chain:
+  a broken `prompt.submit` or `context.compose` interceptor can always be turned off, and the
+  next turn runs normally.
+
 - Replace `plugin.summarizer` with the `context.compact` operation. A plugin returns a
   `Summary` instead of calling the builtin strategy, or shapes the summary the builtin returns
   (its plan and known facts are kept). Plugin summaries pass the echo guard and the 16,000
