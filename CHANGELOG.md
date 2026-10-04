@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Stabilize the real stdio MCP cleanup test under parallel CI load: allow cold process startup,
+  explicitly trigger cancellation during close, and bound PID waits. Preserve timeout and
+  process-reaping assertions without requiring discovery to finish within two seconds.
+
 ## 0.73.0a2 - 2026-10-03
 
 - Update the post-merge performance reference with paired nine-sample Linux ARM64 / Python

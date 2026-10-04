@@ -276,7 +276,9 @@ async def test_a_timed_out_or_closed_stdio_call_reaps_the_server_process(tmp_pat
     )
     pids = tmp_path / "pids"
     s = session(tmp_path, {"slow": {"command": sys.executable, "args": [str(script), str(pids)]}})
-    s.settings.shell_timeout = 2
+    # Discovery and each tool call start a fresh interpreter, including a cold SDK import.
+    # This is a cleanup test, not a two-second startup SLA under parallel CI load.
+    s.settings.shell_timeout = 30
     assert (await s.mcp.connect_server("slow")).startswith("MCP server connected")
 
     def alive(pid: int) -> bool:
@@ -286,22 +288,33 @@ async def test_a_timed_out_or_closed_stdio_call_reaps_the_server_process(tmp_pat
             return False
         return True
 
-    with pytest.raises(ToolError, match="timed out after 2s"):
+    with pytest.raises(ToolError, match="timed out after 30s"):
         await s.mcp.call_tool("slow", "hang", {})
     first = int(pids.read_text().split()[0])
     assert not alive(first)
 
-    # close() lands mid-call, and the call's own 2s deadline lands during the teardown it starts:
-    # the second cancellation must not stop the kill, or close() waits out the tool's 60s.
+    # Explicitly deliver a second cancellation after close() starts unwinding. Depending on a
+    # short call deadline to land during teardown also accidentally times out cold startup.
     call = asyncio.create_task(s.mcp.call_tool("slow", "hang", {}))
-    while len(pids.read_text().split()) < 2:
-        await asyncio.sleep(0.05)
-    started = time.monotonic()
-    await s.mcp.close()
-    assert time.monotonic() - started < 10
-    with pytest.raises((asyncio.CancelledError, ToolError)):
-        await call
-    assert not alive(int(pids.read_text().split()[1]))
+    closing = None
+    try:
+        async with asyncio.timeout(45):
+            while len(pids.read_text().split()) < 2:
+                if call.done():
+                    await call  # Surface startup failure instead of polling forever.
+                    pytest.fail("hang returned without recording its PID")
+                await asyncio.sleep(0.05)
+            closing = asyncio.create_task(s.mcp.close())
+            await asyncio.sleep(0)  # close marks the manager closed before its first await.
+            call.cancel()
+            await closing
+            with pytest.raises((asyncio.CancelledError, ToolError)):
+                await call
+        assert not alive(int(pids.read_text().split()[1]))
+    finally:
+        call.cancel()
+        await s.mcp.close()
+        await asyncio.gather(call, *([closing] if closing else []), return_exceptions=True)
 
 
 async def test_a_stdio_command_that_does_not_exist_is_a_server_error(tmp_path):
@@ -885,4 +898,3 @@ async def test_a_call_during_a_login_is_refused_with_the_connect_hint(tmp_path, 
         proceed.set()
         assert await login == CONNECTED
         assert "echo: hi" in await s.mcp.call_tool("fixture", "echo", {"text": "hi"})
-
