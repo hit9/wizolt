@@ -608,8 +608,8 @@ active = "default"
 
 [provider.default]
 url = ""
-key = ""
 model = ""
+# key: put it in secrets.toml beside this file (default = "sk-..."), so this file can be shared
 # api = "auto"                 # auto | chat | responses | anthropic
 # stream = true
 # reasoning = "medium"
@@ -624,7 +624,7 @@ model = ""
 # timeout = 120                # transport inactivity
 # response_timeout = 600       # total generation time; 0 disables
 # available_models = ["example-model", "example-model-mini"]
-# headers = { x-routing-mode = "private" }  # extra HTTP headers; the key above still sets auth
+# headers = { x-routing-mode = "private" }  # extra HTTP headers; the key still sets auth
 # omit_body = ["reasoning_effort"]   # request fields this endpoint rejects; extra_body is the
                                      # other half, for fields it needs added
 
@@ -678,9 +678,23 @@ model = ""
 # hooks = [{ type = "command", command = "~/bin/guard.sh" }]   # exit 2 blocks, stderr says why
 """
 
+    # Provider keys live here, `<provider entry> = "<key>"`, so the config itself can be shared. A key
+    # written in the config still works and wins; the startup migration moves it here.
+    SECRETS_NAME: ClassVar[str] = "secrets.toml"
+    SECRETS_TEXT: ClassVar[str] = """# wizolt API keys, one per provider entry in config.toml: <entry name> = "<key>".
+# Keep this file private; config.toml can then be shared without them.
+default = ""
+"""
+
     @classmethod
     def resolve_path(cls, path: str | None) -> str:
         return UserPaths.resolve_config_path(path)
+
+    @classmethod
+    def secrets_path(cls, config_path: str) -> str:
+        """Beside the config path as given, not its symlink target, so a config linked from a
+        dotfiles checkout never pulls keys into that checkout."""
+        return os.path.join(os.path.dirname(config_path), cls.SECRETS_NAME)
 
     @classmethod
     def init(cls, path: str | None = None) -> tuple[str, bool]:
@@ -690,19 +704,55 @@ model = ""
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
         with open(config_path, "w", encoding="utf-8") as file:
             file.write(cls.DEFAULT_TEXT)
+        if not os.path.exists(secrets_path := cls.secrets_path(config_path)):
+            cls.write_atomic(secrets_path, cls.SECRETS_TEXT)
         return config_path, True
 
     @classmethod
     def load(cls, path: str | None = None) -> Json:
         config_path = cls.resolve_path(path)
         try:
-            with open(config_path, "rb") as file:
-                data = tomllib.load(file)
+            data = cls.read_toml(config_path)
         except FileNotFoundError as error:
             raise ConfigError(f"config not found: {config_path}; run --init-config") from error
+        entries = cls.provider_entries(data)
+        for name, key in cls.load_secrets(config_path).items():
+            if name not in entries:
+                raise ConfigError(f"{cls.secrets_path(config_path)}: `{name}` is not a provider entry in {config_path}")
+            if not entries[name].get("key"):
+                entries[name]["key"] = key
+        return data
+
+    @classmethod
+    def load_secrets(cls, config_path: str) -> dict[str, str]:
+        """The non-empty keys in the secrets file beside `config_path`; none when it is absent."""
+        path = cls.secrets_path(config_path)
+        try:
+            data = cls.read_toml(path)
+        except FileNotFoundError:
+            return {}
+        for name, value in data.items():
+            if not isinstance(value, str):
+                raise ConfigError(f'{path}: `{name}` must be a string; this file holds only <provider entry> = "<key>" lines')
+        return {name: value for name, value in data.items() if value}
+
+    @staticmethod
+    def read_toml(path: str) -> Json:
+        try:
+            with open(path, "rb") as file:
+                return tomllib.load(file)
         except tomllib.TOMLDecodeError as error:
-            raise ConfigError(f"invalid config {config_path}: {error}") from error
-        return data if isinstance(data, dict) else {}
+            raise ConfigError(f"invalid config {path}: {error}") from error
+
+    @staticmethod
+    def provider_entries(data: MutableMapping) -> dict[str, MutableMapping]:
+        """Provider entries by name, as Config.from_dict reads them: the named tables, or else the
+        flat `[provider]` block under its `active` name."""
+        root = data.get("provider")
+        if not isinstance(root, MutableMapping):
+            return {}
+        named = {name: value for name, value in root.items() if name != "active" and isinstance(value, MutableMapping)}
+        return named or {str(root.get("active", "default")): root}
 
     @staticmethod
     def set_runtime(path: str, key: str, value: str) -> None:
@@ -735,12 +785,18 @@ model = ""
                 raise ConfigError(f"{'.'.join(section)} in {path} must be a table")
             table = child
         table[key] = value
-        mode = stat.S_IMODE(os.stat(path).st_mode)
+        ConfigFile.write_atomic(path, tomlkit.dumps(document))
+
+    @staticmethod
+    def write_atomic(path: str, text: str) -> None:
+        """Replace `path` with `text` in one rename, keeping an existing file's mode; a new file is
+        0600, since config and secrets files both may hold keys."""
+        mode = stat.S_IMODE(os.stat(path).st_mode) if os.path.exists(path) else 0o600
         temporary = path + ".tmp"
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as file:
-                file.write(tomlkit.dumps(document))
+                file.write(text)
                 file.flush()
                 os.fsync(file.fileno())
             os.chmod(temporary, mode)
