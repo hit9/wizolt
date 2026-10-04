@@ -28,8 +28,9 @@ starter config:
 wizolt --init-config
 ```
 
-This writes `~/.wizolt/config.toml`. Only the `[provider]` block is required; every other
-setting has a built-in default, and the file lists the common ones as comments.
+This writes `~/.wizolt/config.toml`, plus `~/.wizolt/secrets.toml` for your API keys. Only
+the `[provider]` block is required; every other setting has a built-in default, and the file
+lists the common ones as comments.
 
 ### Point it at a provider
 
@@ -42,15 +43,21 @@ active = "default"
 
 [provider.default]
 url = "https://api.deepseek.com"
-key = "sk-..."
 model = "deepseek-flash"
 ```
 
 | Key | Meaning |
 |---|---|
 | `url` | Base URL of the API |
-| `key` | Your API key |
 | `model` | Model name to use |
+
+Then put your API key in `secrets.toml`, under the same entry name:
+
+```toml
+default = "sk-..."
+```
+
+Keeping keys out of `config.toml` means you can share or commit the config.
 
 You can define several `[provider.<name>]` blocks and switch between them with `active` (or
 `/provider` inside a session). See [Configuration](configuration.md#providers) for optional
@@ -101,5 +108,6 @@ work is saved as you go — close the terminal and `wizolt -c` picks the session
 | `--theme NAME` | Override the configured color theme: `auto`, `light`, `dark`, or a [named theme](appearance.md#color-themes) |
 | `--config <path>` | Use a specific config file instead of `~/.wizolt/config.toml` |
 | `--init-config` | Write a starter config file and exit |
+| `--migrate-secrets` | Move API keys written in the config into `secrets.toml` and exit |
 | `-h`, `--help` | Show command-line help and exit |
 | `-v`, `--version` | Print the version and exit |
