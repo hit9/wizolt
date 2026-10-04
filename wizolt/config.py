@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import fnmatch
+import hashlib
 import os
 import platform
 import re
@@ -598,6 +599,36 @@ class Config:
         return float(value)
 
 
+@dataclass(frozen=True)
+class InlineKeys:
+    """Keys written in the config itself, and whether the user already chose to keep exactly these.
+
+    `record` holds SHA-256 fingerprints of the declined (entry, key) pairs, never a key, so a new or
+    changed key is asked about again while a kept one only draws a reminder.
+    """
+
+    config_path: str
+    keys: dict[str, str]
+    record: str
+
+    @property
+    def declined(self) -> bool:
+        try:
+            with open(self.record, encoding="utf-8") as file:
+                kept = set(file.read().split())
+        except FileNotFoundError:
+            kept = set()
+        return self.fingerprints() <= kept
+
+    def decline(self) -> None:
+        """Remember these keys as kept; replacing the record lets moved or changed keys drop out."""
+        os.makedirs(os.path.dirname(self.record), exist_ok=True)
+        ConfigFile.write_atomic(self.record, "".join(line + "\n" for line in sorted(self.fingerprints())))
+
+    def fingerprints(self) -> set[str]:
+        return {hashlib.sha256(f"{name}\0{key}".encode()).hexdigest() for name, key in self.keys.items()}
+
+
 class ConfigFile:
     # Only the provider block is required; every other key falls back to its built-in default, so the
     # commented lines below just document the common knobs and their defaults.
@@ -681,10 +712,10 @@ model = ""
     # Provider keys live here, `<provider entry> = "<key>"`, so the config itself can be shared. A key
     # written in the config still works and wins; the startup migration moves it here.
     SECRETS_NAME: ClassVar[str] = "secrets.toml"
-    SECRETS_TEXT: ClassVar[str] = """# wizolt API keys, one per provider entry in config.toml: <entry name> = "<key>".
+    SECRETS_HEADER: ClassVar[str] = """# wizolt API keys, one per provider entry in config.toml: <entry name> = "<key>".
 # Keep this file private; config.toml can then be shared without them.
-default = ""
 """
+    SECRETS_TEXT: ClassVar[str] = SECRETS_HEADER + 'default = ""\n'
 
     @classmethod
     def resolve_path(cls, path: str | None) -> str:
@@ -735,6 +766,46 @@ default = ""
             if not isinstance(value, str):
                 raise ConfigError(f'{path}: `{name}` must be a string; this file holds only <provider entry> = "<key>" lines')
         return {name: value for name, value in data.items() if value}
+
+    @classmethod
+    def inline_keys(cls, path: str | None = None) -> InlineKeys:
+        """The keys written in the config itself; none when there is no config yet."""
+        config_path = cls.resolve_path(path)
+        try:
+            data = cls.read_toml(config_path)
+        except FileNotFoundError:
+            data = {}
+        keys = {name: key for name, entry in cls.provider_entries(data).items() if isinstance(key := entry.get("key"), str) and key}
+        record = os.path.join(os.path.expanduser(Config.data_dir_from(data)), "kept-config-keys")
+        return InlineKeys(config_path, keys, record)
+
+    @classmethod
+    def migrate_keys(cls, path: str | None = None) -> list[str]:
+        """Move the keys written in the config into secrets.toml, replacing older values there, and
+        return the entries moved. Comments and layout of both files survive.
+
+        Secrets are saved before the config, so an interruption leaves a key in both files, never in
+        neither, and running it again finishes the move."""
+        import tomlkit
+
+        config_path = cls.resolve_path(path)
+        config_real = os.path.realpath(config_path)
+        with open(config_real, encoding="utf-8") as file:
+            document = tomlkit.parse(file.read())
+        moved = {name: entry for name, entry in cls.provider_entries(document).items() if isinstance(entry.get("key"), str) and entry["key"]}
+        if not moved:
+            return []
+        secrets_real = os.path.realpath(cls.secrets_path(config_path))
+        try:
+            with open(secrets_real, encoding="utf-8") as file:
+                secrets = tomlkit.parse(file.read())
+        except FileNotFoundError:
+            secrets = tomlkit.parse(cls.SECRETS_HEADER)
+        for name, entry in moved.items():
+            secrets[name] = str(entry.pop("key"))
+        cls.write_atomic(secrets_real, tomlkit.dumps(secrets))
+        cls.write_atomic(config_real, tomlkit.dumps(document))
+        return list(moved)
 
     @staticmethod
     def read_toml(path: str) -> Json:
