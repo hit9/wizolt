@@ -9,6 +9,9 @@ workers and adopts changed preferences on reload; `Context.cwd` remains agent-lo
 The three prompt-adjacent slots share one visual-order height budget. Never budget each slot
 independently: several individually valid plugins could otherwise squeeze out the input.
 The TUI snapshots all slot fragments once per render, and offline previews reuse that projection.
+Pure row projection has a bounded cache keyed by immutable row content, terminal width and
+`Theme.key()`. Never key it only by plugin name or row position: sampling and focused-agent
+theme changes must be visible immediately. Cached fragments are immutable; callers own copies.
 Context-category estimation runs at admission/request boundaries, not in the 5 Hz sampler.
 Sampling observers may keep bounded histories; render callbacks consume them without IO.
 

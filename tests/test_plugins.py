@@ -8,9 +8,10 @@ from pathlib import Path
 import pytest
 
 from wizolt.plugins.runtime import PluginRuntime
-from wizolt.sdk import Context, Panel, Plugin, PluginError, Text
+from wizolt.sdk import Context, Line, Panel, Plugin, PluginError, Text
 from wizolt.ui.bars import Template
 from wizolt.ui.cli.plugins import PluginView
+from wizolt.ui.render import Theme
 
 
 @pytest.fixture
@@ -246,6 +247,29 @@ def test_panel_projection_clips_cells_rows_and_control_characters(width):
     assert len(lines) <= 2
     assert all(get_cwidth(line) <= width for line in lines)
     assert "\x1b" not in "".join(lines) and "hidden" not in "".join(lines)
+
+
+def test_repeated_panel_projection_tracks_width_content_theme_and_caller_mutation():
+    original_theme = Theme.name()
+    panel = Panel((Line((Text("猫e\u0301", "accent"), Text("\x1b!", "muted"))), Text("second")))
+    try:
+        Theme.set_mode("dark")
+        first = PluginView.render([panel], 80, 2)
+        assert "".join(text for _, text in first) == "猫e\u0301 !\nsecond"
+        damaged = PluginView.render([panel], 80, 2)
+        damaged.clear()
+        assert PluginView.render([panel], 80, 2) == first
+        narrow = PluginView.render([panel], 3, 1)
+        assert "".join(text for _, text in narrow) == "猫e\u0301"
+        Theme.set_mode("forest")
+        recolored = PluginView.render([panel], 80, 2)
+        assert recolored != first
+        assert [text for _, text in recolored] == [text for _, text in first]
+        assert recolored[0][0] == Theme.fg("accent")
+        changed = PluginView.render([Panel((Text("updated", "accent"),))], 80, 2)
+        assert changed == [(Theme.fg("accent"), "updated")]
+    finally:
+        Theme.set_mode(original_theme)
 
 
 def test_registration_rejects_invalid_names_duplicates_and_unknown_events():

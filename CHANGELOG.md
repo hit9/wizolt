@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Cache bounded plugin row projections by content, width and theme revision. In the
+  [paired Linux ARM64 / Python 3.14.7 benchmark](https://github.com/hit9/wizolt/blob/master/benchmarks/README.md#cached-plugin-row-projection-dev27),
+  1,000 unchanged ordinary/dense projections improve from 10.73/406.65 ms to 5.43/20.06 ms
+  with identical output. Retain at most 128 rows; cold projections still do the full work.
+  Add a multi-span benchmark and resize/recolor/content-isolation regression coverage.
+
 - Remove early-alpha plugin preference migration and its startup write path. `config.toml`
   is the sole source of installed/enabled plugins, layout and shortcuts; runtime cache files
   no longer import preferences implicitly.

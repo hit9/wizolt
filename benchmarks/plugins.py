@@ -8,6 +8,7 @@ Timing is observational; no wall-clock threshold belongs in the test suite.
 import argparse
 import asyncio
 import gc
+import hashlib
 import json
 import os
 import statistics
@@ -87,6 +88,20 @@ def setup(p):
             await self.measure("cached_projection_1000_times", paint)
         finally:
             await runtime.close()
+
+        # Dense, themed rows exercise what short scalar meters miss: repeated clipping of
+        # unchanged multi-span snapshots while the input redraws faster than the sampler.
+        from wizolt.sdk import Line, Panel, Text
+
+        panels = {"above_input": [Panel(tuple(Line(tuple(Text("温度·" + str(index), "accent" if index % 2 else "muted") for index in range(64))) for _ in range(6)))]}
+
+        async def dense_paint():
+            for _ in range(1000):
+                PluginView.project(panels, 100, 32)
+
+        await self.measure("dense_projection_1000_times", dense_paint)
+        rendered = json.dumps(PluginView.project(panels, 100, 32), ensure_ascii=True, sort_keys=True)
+        self.results["dense_projection_1000_times"]["output_sha256"] = hashlib.sha256(rendered.encode()).hexdigest()
 
 
 def main():

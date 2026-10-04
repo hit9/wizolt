@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shlex
 import shutil
+from functools import lru_cache
 from typing import TYPE_CHECKING, ClassVar
 
 from prompt_toolkit.formatted_text import StyleAndTextTuples
@@ -13,6 +14,7 @@ from wizolt.agentsmd import display_path
 from wizolt.base import Text
 from wizolt.plugins.layout import INPUT_SLOTS, LayoutBudget
 from wizolt.sdk import Line, Panel, PluginError
+from wizolt.sdk import Text as PluginText
 from wizolt.ui.bars import Fragments, clean, clip
 from wizolt.ui.cli.modals import choice_application, picker_height
 from wizolt.ui.render import Theme
@@ -32,19 +34,32 @@ class PluginView:
     def __init__(self, runtime: PluginRuntime):
         self.runtime = runtime
 
+    @staticmethod
+    @lru_cache(maxsize=128)
+    def _row(row: Line | PluginText, columns: int, theme: tuple[str, int]) -> tuple[tuple[str, str], ...]:
+        """Memoize pure projection, not live plugin state.
+
+        Rows decoded from workers are immutable and bounded. Include width and the existing
+        theme revision so resize/recolor needs no invalidation callbacks. Keep only 128 rows
+        (at most 512 Ki characters of source text), including animated/retired generations;
+        return immutable fragments so callers cannot corrupt another frame's cache entry.
+        """
+        spans = row.spans if isinstance(row, Line) else (row,)
+        fragments = [(Theme.fg(span.role if span.role in Theme.ROLES else "text"), clean(span.text)) for span in spans]
+        return tuple(clip(fragments, columns))
+
     @classmethod
     def render(cls, panels: list[Panel], columns: int, rows: int) -> list[tuple[str, str]]:
         result = []
         remaining = rows
+        theme = Theme.key()
         for panel in panels:
             for row in panel.rows:
                 if remaining <= 0:
                     return result
                 if result:
                     result.append(("", "\n"))
-                spans = row.spans if isinstance(row, Line) else (row,)
-                fragments = [(Theme.fg(span.role if span.role in Theme.ROLES else "text"), clean(span.text)) for span in spans]
-                result.extend(clip(fragments, max(0, columns)))
+                result.extend(cls._row(row, max(0, columns), theme))
                 remaining -= 1
         return result
 

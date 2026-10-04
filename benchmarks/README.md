@@ -11,6 +11,36 @@ remeasure the previous reference revision too so the comparison remains meaningf
 
 ## Plugin foundation
 
+### Cached plugin row projection (dev27)
+
+[Before](results/dev27-plugin-hotspots-before.json) is `f0f4c8d8`; the
+[after report](results/dev27-plugin-hotspots-after.json) records the optimized working-tree
+source hash. Both use Linux ARM64, CPython 3.14.7, the same dependencies and workloads, and nine
+samples. Measurements ran sequentially without tests or builds. The release reference is unchanged.
+
+Profiling found repeated control-character cleaning, cell-width calculation and clipping in
+the host paint path, even when worker snapshots were unchanged. A bounded row cache now keys
+projection by immutable content, width and the existing theme revision. It retains up to 128
+rows; changing content, terminal width or colors recomputes the projection. Worker scheduling,
+RPC and validation are unchanged.
+
+| Workload | Before (ms) | After (ms) | Change |
+| --- | ---: | ---: | ---: |
+| Enable and close one plugin | 97.607 | 93.795 | -3.9% |
+| Three workers, 20 sample rounds | 11.731 | 11.927 | +1.7% |
+| Plugin tool, 20 calls | 15.672 | 16.681 | +6.4% |
+| Cached projection, 1,000 reads | 10.733 | 5.428 | -49.4% |
+| Dense projection, 1,000 reads | 406.648 | 20.059 | -95.1% |
+
+The new dense workload renders six unchanged rows of 64 alternating-color CJK/text spans at
+100 columns. It guards repeated painting between samples, not continuously changing content:
+cold rows still pay cleaning/clipping plus cache bookkeeping. Both dense output and terminal
+replay hashes match. The smaller IPC/startup movements are observations, not claimed speedups
+or regressions. No measured workload regressed by more than 15% in this comparison.
+
+Reproduce with `benchmarks/run.py --revision f0f4c8d8 --repeat 9`, then run the current tree
+with `--repeat 9 --baseline BEFORE.json`; supply `--output` for each report.
+
 ### Interactive views and portable preferences (dev27)
 
 [Before](results/dev27-ui-before.json) is `138b9823`; [after](results/dev27-ui-after.json)
