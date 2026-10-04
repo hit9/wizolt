@@ -47,6 +47,19 @@ def setup(plugin):
 
 Operation types live in `wizolt.sdk.operations`.
 
+## `prompt.submit`
+
+`Prompt(text, original, attachments, origin)` → `Prompt` or `Refusal`. Match on `origin`:
+`user` (a turn's opening input), `followup` (typed while the agent works) or `child` (a parent
+model's message to this subagent; never a command).
+
+- Runs once per submitted item, after slash commands (which never reach you) and before the
+  `UserPromptSubmit` shell hook, skills and `@` mentions, which all see your effective text.
+- The model gets your text; the user's history keeps `original`.
+- Image labels such as `[Image #1 · a.png]` appear in `text`. You may drop names from
+  `attachments`, never add any.
+- A `Refusal` stops a turn's opening input; a refused follow-up is withheld once and reported.
+
 ## `tool.call`
 
 `ToolCall(id, tool, arguments)` → `ToolResult(content, status="ok"|"failed")` or `Refusal`.

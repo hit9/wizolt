@@ -8,6 +8,7 @@ import inspect
 import json
 import re
 import time
+import uuid
 from collections.abc import Callable
 
 from wizolt.agent.context import ContextManager
@@ -39,9 +40,12 @@ from wizolt.base import (
     oneline,
     run_blocking,
 )
-from wizolt.image import ImageInputs, UserInput
+from wizolt.image import IMAGE_REFS_KEY, ImageInputs, UserInput
 from wizolt.model import ModelClient, PreparedRequest, resilience
+from wizolt.sdk import PluginError, operations
+from wizolt.sdk.operations import check_read_only
 from wizolt.session import QueuedInput, Session, SessionSnapshotCodec
+from wizolt.session.types import OperationReceipt
 from wizolt.shellhooks import SESSION_END, SESSION_START, STOP, STOP_FAILURE, SUBAGENT_START, SUBAGENT_STOP, USER_PROMPT_SUBMIT, HookOutcome, PromptBlocked
 from wizolt.skill.listing import SkillListing
 from wizolt.tools import (
@@ -260,6 +264,7 @@ class Agent:
         # images; the TUI already admitted its own submissions, so this is an idempotent re-check.
         # Stored before the opening message exists, so a checkpoint can never capture a reference
         # to an asset the write did not finish.
+        origin = user_input.origin if isinstance(user_input, UserInput) else "user" if self.session.listed else "child"
         if isinstance(user_input, UserInput) and user_input.images:
             user_input = await self.session.images.admit(user_input)
         self.turn_sources = []
@@ -268,13 +273,15 @@ class Agent:
         malformed_tool_names: list[str] = []
         self._current_image_messages = []
         user_message = self._initial_user_message(user_input)
-        if ImageInputs.input_refs(user_message):
-            # The opening attachment is a current image occurrence for the first request of the turn.
-            self._current_image_messages.append(user_message)
         # Mentions belong to the user's typed input, never to projected image content.
         user_text = user_input.display_text() if isinstance(user_input, UserInput) else self.session.images.label_text(user_message)
-        # Before anything is committed: a prompt a UserPromptSubmit hook refuses never becomes a turn.
-        turn_messages = [user_message, *await self.admit_input(user_text), *await self.skill_announcement()]
+        # Before anything is committed: a prompt a plugin or UserPromptSubmit hook refuses never
+        # becomes a turn. The model gets the effective input; user history keeps the original.
+        model_message, admitted_text = await self.intercept_prompt(user_message, user_text, origin)
+        if ImageInputs.input_refs(model_message):
+            # The opening attachment is a current image occurrence for the first request of the turn.
+            self._current_image_messages.append(model_message)
+        turn_messages = [model_message, *await self.admit_input(admitted_text), *await self.skill_announcement()]
         self.session.clear_quick_hints()  # an admitted turn invalidates the previous turn's offers
         self.session.state.round_count += 1
         self.session.state.turn_step = 0
@@ -680,16 +687,17 @@ class Agent:
         if pending:
             request_turn = [*turn_messages]
             for item in pending:
-                try:
-                    mentions = await self.admit_input(item.text)
-                except PromptBlocked as blocked:
+                admission = item.admission if item.admission is not None else await self.admit_followup(item)
+                if "refused" in admission:
                     # Withheld from the model, not from the turn: the request still goes out, and
                     # the input is acknowledged with the rest so it is never retried.
-                    self.output_fn(f"Follow-up withheld by a UserPromptSubmit hook: {blocked}")
+                    if not admission.get("reported"):
+                        self.output_fn(f"Follow-up withheld{admission['refused']}")
+                        admission["reported"] = True
                     continue
-                pending_message = item.message(LIVE_FOLLOWUP_PREFIX)
+                pending_message = admission["message"]
                 request_turn.append(pending_message)
-                request_turn.extend(mentions)
+                request_turn.extend(admission["mentions"])
                 if ImageInputs.input_refs(pending_message):
                     # A claimed queued attachment is a current image occurrence.
                     current.append(pending_message)
@@ -809,6 +817,75 @@ class Agent:
                 # boundary on the raw message that caused them, including queued follow-ups.
                 blocks.append({"role": "user", "content": content, SESSION_EVENT_KEY: event})
         return blocks
+
+    async def admit_followup(self, item: QueuedInput) -> Json:
+        """Admit a claimed follow-up once and record its receipt on the queue entry.
+
+        A user's follow-up is origin ``followup``; a parent model's message to this subagent keeps
+        origin ``child`` and never becomes a command. Plugins see the text without the host's
+        follow-up prefix.
+        """
+        origin = "child" if item.origin == "child" else "followup"
+        try:
+            message, text = await self.intercept_prompt(item.message(), item.text, origin)
+        except PromptBlocked as blocked:
+            item.admission = {"refused": f": {blocked}"}
+            return item.admission
+        try:
+            mentions = await self.admit_input(text)
+        except PromptBlocked as blocked:
+            item.admission = {"refused": f" by a UserPromptSubmit hook: {blocked}"}
+            return item.admission
+        item.admission = {"message": {**message, "content": LIVE_FOLLOWUP_PREFIX + str(message.get("content") or "")}, "mentions": mentions}
+        return item.admission
+
+    async def intercept_prompt(self, message: Json, text: str, origin: str) -> tuple[Json, str]:
+        """``prompt.submit``: the effective model message and the text admission continues with.
+
+        Runs once per submitted item, before the UserPromptSubmit hook and expansion. A plugin
+        may rewrite text and omit attachments, never add them; a refusal raises PromptBlocked.
+        No matching registration means the message passes through untouched.
+        """
+        plugins = self.session.plugins
+        if plugins is None or not plugins.interception.would_match("prompt.submit", origin=origin):
+            return message, text
+        refs = [ref for ref in message.get(IMAGE_REFS_KEY) or [] if isinstance(ref, dict)]
+        value = operations.Prompt(text, text, tuple(str(ref.get("name") or "") for ref in refs), origin)
+
+        def attachments_kept(previous: operations.Value, candidate: operations.Value) -> None:
+            assert isinstance(previous, operations.Prompt) and isinstance(candidate, operations.Prompt)
+            check_read_only(previous, candidate)
+            if not set(candidate.attachments) <= set(previous.attachments):
+                raise PluginError("prompt.submit can omit attachments, never add them")
+
+        async def accept(effective: operations.Value) -> operations.Value:
+            return effective
+
+        receipt = self.session.record_operation(OperationReceipt(uuid.uuid4().hex, "prompt.submit", origin, OperationReceipt.clip(text)))
+        trace: dict = {}
+        try:
+            result = await plugins.interception.run(
+                "prompt.submit",
+                value,
+                accept,
+                transition=attachments_kept,
+                result_check=lambda received, result, _called: attachments_kept(received, result) if isinstance(result, operations.Prompt) else None,
+                trace=trace,
+            )
+        finally:
+            receipt.origin, receipt.shaped, receipt.delivered = trace.get("origin", "core"), tuple(trace.get("shaped", ())), True
+        if isinstance(result, operations.Refusal):
+            receipt.core = "not_run"
+            raise PromptBlocked(f"refused by plugin {receipt.origin.partition('/')[0]}: {result.reason}")
+        assert isinstance(result, operations.Prompt)
+        receipt.core, receipt.effective = "completed", OperationReceipt.clip(result.text)
+        if result.text == text and result.attachments == value.attachments:
+            return message, text
+        kept = [ref for ref in refs if str(ref.get("name") or "") in result.attachments]
+        effective = {key: item for key, item in message.items() if key != IMAGE_REFS_KEY} | {"content": result.text}
+        if kept:
+            effective[IMAGE_REFS_KEY] = kept
+        return effective, result.text
 
     async def admit_input(self, text: str) -> list[Json]:
         """The session-event messages one user input brings: what UserPromptSubmit hooks add, then

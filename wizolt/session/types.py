@@ -278,9 +278,16 @@ class QueuedInput:
     # stays a label everywhere the text is still the user's own. Never serialized -- a snapshot
     # cannot carry the references, and the flattened `draft` is what a resumed entry reads.
     source: UserInput | None = None
+    # The admission receipt once claimed: the effective model message and expansion records, or
+    # a refusal. Reused across request rebuilds, release/reclaim and resume, so plugins, hooks
+    # and mention discovery run once per submitted item.
+    admission: Json | None = None
+    # Who authored it: "user" (a frontend submission) or "child" (a parent model's message to
+    # a subagent). Interceptors see it as the prompt origin; it never makes input a command.
+    origin: str = "user"
 
     def to_json(self) -> str | Json:
-        if not self.images and not self.next_turn and not self.commands:
+        if not self.images and not self.next_turn and not self.commands and self.admission is None and self.origin == "user":
             return self.text
         data: Json = {"text": self.text, "draft": self.draft}
         if self.images:
@@ -289,6 +296,10 @@ class QueuedInput:
             data["next_turn"] = True
         if self.commands:
             data["commands"] = True
+        if self.admission is not None:
+            data["admission"] = self.admission
+        if self.origin != "user":
+            data["origin"] = self.origin
         return data
 
     @classmethod
@@ -303,14 +314,18 @@ class QueuedInput:
         draft = str(value.get("draft") or text)
         next_turn = value.get("next_turn") is True  # absent in snapshots written before the flag
         commands = value.get("commands") is True
+        admission = value.get("admission") if isinstance(value.get("admission"), dict) else None
+        origin = "child" if value.get("origin") == "child" else "user"
         if not text.strip():
             return None
         if draft.count("\ufffc") != len(images):
-            return cls(text, next_turn=next_turn, commands=commands)
-        return cls(text, images, draft, next_turn=next_turn, commands=commands)
+            return cls(text, next_turn=next_turn, commands=commands, admission=admission, origin=origin)
+        return cls(text, images, draft, next_turn=next_turn, commands=commands, admission=admission, origin=origin)
 
     def user_input(self) -> UserInput:
-        return self.source if self.source is not None else UserInput(self.draft or self.text, self.images)
+        value = self.source if self.source is not None else UserInput(self.draft or self.text, self.images)
+        value.origin = self.origin
+        return value
 
     def message(self, prefix: str = "") -> Json:
         message: Json = {"role": "user", "content": prefix + self.text}

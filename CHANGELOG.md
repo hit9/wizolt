@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Make submitted input interceptable (`prompt.submit`) for a turn's opening input, queued
+  follow-ups and a parent model's messages to subagents. Interception runs once per item, after
+  slash-command dispatch and before the `UserPromptSubmit` hook and mention expansion. The model
+  gets the effective text while user history keeps the original. Attachments can be omitted,
+  never added. Follow-ups keep an admission receipt, so request retries, release/reclaim and
+  resume never repeat hooks, plugins or mention discovery. Queued input records its origin.
+
 - Persist operation receipts in session snapshots. Each checkpoint writes only the receipts
   that changed. On resume, an operation a crash interrupted after core execution began is
   marked `unknown` and reported once to the model; it is never retried. Replay shows plugin

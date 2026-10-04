@@ -240,7 +240,7 @@ class Subagents:
             session.provider_overrides = session.frozen_provider_overrides()
             entry = await self._attach(session, parent.uid, message)
             # Save the child before publishing its reference, so resume never points at a missing log.
-            session.enqueue_user_input(message)
+            session.enqueue_user_input(message, origin="child")  # The parent model's task.
             await session.save_snapshot()
             self.root.session.subagent_entries.append({"uid": session.uid, "parent": parent.uid, "instruction": message})
             await self.root.session.save_snapshot()
@@ -256,7 +256,8 @@ class Subagents:
                 raise ToolError("Agent group is closed")
             if not str(message).strip():
                 raise ToolError("send requires message")
-            entry.agent.session.enqueue_user_input(message, commands=commands)
+            # Commands come only from the user's frontend; everything else is the parent model's.
+            entry.agent.session.enqueue_user_input(message, commands=commands, origin="user" if commands else "child")
             await entry.agent.session.save_snapshot()
             if start:
                 self._start(entry)

@@ -332,6 +332,13 @@ OPERATIONS: dict[str, Operation] = {
 TYPES: dict[str, type[Value]] = {cls.TYPE: cls for cls in (Refusal, Prompt, Blocks, ModelRequest, ModelResponse, ToolCall, ToolResult, Compaction, Summary)}
 
 
+def check_read_only(previous: Value, candidate: Value) -> None:
+    """Host-owned fields never change between steps, whatever ``replace`` was bypassed with."""
+    for name in type(previous).READ_ONLY:
+        if getattr(previous, name) != getattr(candidate, name):
+            raise PluginError(f"{type(previous).__name__}.{name} is read-only")
+
+
 def encode(value: Value) -> dict:
     """Checked JSON data. Field bounds apply here; the transport's frame limit applies to the whole."""
     try:

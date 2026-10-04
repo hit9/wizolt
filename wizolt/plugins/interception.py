@@ -18,7 +18,7 @@ from wizolt.plugins.preferences import PluginPreferences
 from wizolt.plugins.protocol import InterceptSpec
 from wizolt.plugins.scope import CURRENT, MAX_DEPTH, InvocationScope
 from wizolt.sdk import PluginError, operations
-from wizolt.sdk.operations import OPERATIONS, Refusal, Value
+from wizolt.sdk.operations import OPERATIONS, Refusal, Value, check_read_only
 
 if TYPE_CHECKING:
     from wizolt.plugins.runtime import Generation, PluginRuntime
@@ -74,13 +74,6 @@ class InterceptionOrder:
         if self.preferences is not None:
             self.preferences.save("interception", "order", list(names))
         self.names = tuple(names)
-
-
-def check_read_only(previous: Value, candidate: Value) -> None:
-    """Host-owned fields never change between steps, whatever ``replace`` was bypassed with."""
-    for name in type(previous).READ_ONLY:
-        if getattr(previous, name) != getattr(candidate, name):
-            raise PluginError(f"{type(previous).__name__}.{name} is read-only")
 
 
 class Interception:
