@@ -37,8 +37,13 @@ active = "default"
 
 [provider.default]
 url = "https://api.deepseek.com"
-key = "sk-..."
 model = "deepseek-flash"
+```
+
+and its key to `~/.wizolt/secrets.toml`, so the config stays shareable:
+
+```toml
+default = "sk-..."
 ```
 
 Start in your project directory:
