@@ -35,7 +35,7 @@ from wizolt.base import (
     oneline,
 )
 from wizolt.model import ModelClient
-from wizolt.sdk import PluginError, operations
+from wizolt.sdk import PluginError, operations, presentation
 from wizolt.sdk.operations import thaw
 from wizolt.sdk.settings import freeze
 from wizolt.session import Session, TurnDiff
@@ -1010,12 +1010,43 @@ class ToolRunner:
         elif key and turn_diff and turn_diff.path and turn_diff.diff:
             self.session.store_turn_diff(key, self.session.state.turn_step, turn_diff.path, turn_diff.diff, round=self.session.state.round_count)
         if not (tool_class is not None and tool_class.SILENT) or failed:
-            self.emit(toolblocks.finish_display(self.session, call, key, model_text, failed=failed, elapsed=elapsed, d=d))
+            # The presenter's status word: a refused call never ran, and the builtin rendering says
+            # so with the same "user refused" marker finish_display clips into its tag.
+            status = "refused" if failed and "user refused" in model_text else "failed" if failed else "ok"
+            self.emit(
+                (await self.presented_display(call, key, model_text, status=status, elapsed=elapsed, d=d))
+                or toolblocks.finish_display(self.session, call, key, model_text, failed=failed, elapsed=elapsed, d=d)
+            )
         if call.name == "Subagent" and not failed and self.context.bound_output(model_text, path=artifact_path).rstrip() == model_text.rstrip():
             # Keep proof of delivery with the matching message, never with rendered text or
             # the Session yet: cancellation can still discard this whole tool batch.
             self._result_receipts[call.id] = result_receipts(model_text)
         return self.tool_message(call, key, model_text, status="failed" if failed else "ok", display=d.display, bound=bound, artifact_path=artifact_path)
+
+    async def presented_display(
+        self,
+        call: ToolCall,
+        key: str,
+        output: str,
+        *,
+        status: str,
+        elapsed: float | None,
+        d: ToolDisplay,
+    ) -> LogBlock | None:
+        """The tool sites' panels, or None when the builtin rendering applies.
+
+        Approval displays and pre-execution cards are never presented: a presenter sees a call
+        only once it settles, and the citation the host appends stays host-owned.
+        """
+        plugins = self.session.plugins
+        if plugins is None or not (plugins.presenters.registered("tool.call") or plugins.presenters.registered("tool.result")):
+            return None
+        arguments = freeze(dict(call.payload) if isinstance(call.payload, dict) else {})
+        card = await plugins.presenters.render("tool.call", presentation.ToolCard(call.id, call.name, arguments, status))
+        summary = await plugins.presenters.render("tool.result", presentation.ToolSummary(call.id, call.name, arguments, status, output, elapsed, key))
+        if card is None and summary is None:
+            return None
+        return toolblocks.presented_display(card if card and card.rows else None, summary if summary and summary.rows else None, key=key, status=status, d=d)
 
     async def _source_output(self, call: ToolCall, tool_output: ToolOutput, *, retain: bool) -> tuple[str, str]:
         """Project source blocks, store the retained plain text, register views, and render.

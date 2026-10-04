@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from prompt_toolkit.utils import get_cwidth
 
 from wizolt.base import ApprovalView, LogBlock, LogEdge, LogLine, LogRole, ToolCall, oneline
+from wizolt.sdk import Line, Panel
+from wizolt.sdk import Text as PluginText
 from wizolt.session import Session
 from wizolt.tools import tooloutput
 from wizolt.tools.base import Tool
@@ -323,6 +325,58 @@ def finish_display(
         tail = ((" → " + key) if key else "") + tag
         root = LogLine(root.label, root.text, root.role, meta=root.meta + tail, syntax=root.syntax)
     return LogBlock.hierarchy(None if d.nested_display else root, children)
+
+
+def presented_display(
+    card: Panel | None,
+    summary: Panel | None,
+    *,
+    key: str,
+    status: str,
+    d: ToolDisplay,
+) -> LogBlock:
+    """A presented tool block: plugin rows in the tree, the host citation kept on them.
+
+    The ``tool.call`` panel's first row is the call line (all of its rows when the runner already
+    drew one above a live preview); the ``tool.result`` panel's rows are the summary. The
+    stored-result citation and status tag are host-owned facts, so they ride the block whatever
+    the panels said -- a presenter cannot forge or drop them.
+    """
+    tag = " [refused]" if status == "refused" else " [failed]" if status == "failed" else " [approved]" if d.approved else " [auto]" if d.auto else ""
+    citation = (key + tag) if key else tag.strip()
+    card_rows = list(card.rows) if card is not None else []
+    root = None if d.nested_display or not card_rows else _presented_line(card_rows.pop(0))
+    children = [_presented_line(row) for row in [*card_rows, *(summary.rows if summary is not None else ())]]
+    if root is not None and citation and not children:
+        root = LogLine(root.label, root.text, root.role, meta=root.meta + citation, syntax=root.syntax)
+    elif citation:
+        # The citation cites the block's last row, exactly as the builtin rendering does for a
+        # body of its own; with no rows to cite it names the stored result on the block's only row.
+        if children:
+            children[-1] = cited(children[-1], citation)
+        else:
+            children.append(LogLine("stored" if key else "done", citation, LogRole.META, LogEdge.END))
+    return LogBlock.hierarchy(root, children)
+
+
+def _presented_line(row: PluginText | Line) -> LogLine:
+    """One plugin panel row as a log line: the first span is the row's label, the role its tone."""
+    spans = row.spans if isinstance(row, Line) else (row,)
+    first = spans[0] if spans else PluginText("", "")
+    return LogLine(first.text, "".join(span.text for span in spans[1:]), PRESENTED_ROLES.get(first.role, LogRole.OUTPUT))
+
+
+PRESENTED_ROLES = {
+    "tool": LogRole.TOOL,
+    "meta": LogRole.META,
+    "muted": LogRole.MUTED,
+    "error": LogRole.ERROR,
+    "warning": LogRole.WARNING,
+    "success": LogRole.SUCCESS,
+    "diff": LogRole.DIFF,
+    "field": LogRole.FIELD,
+    "code": LogRole.CODE,
+}
 
 
 def full_text_block(view: ApprovalView) -> LogBlock:

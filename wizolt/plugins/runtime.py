@@ -17,9 +17,9 @@ from typing import Any
 from wizolt.plugins.activity import TurnActivity
 from wizolt.plugins.interactions import Interactions
 from wizolt.plugins.interception import Interception, InterceptionOrder
-from wizolt.plugins.presenters import Presenters
 from wizolt.plugins.layout import SLOTS, LayoutBudget, LayoutPreferences
 from wizolt.plugins.loading import PluginSource
+from wizolt.plugins.presenters import Presenters
 from wizolt.plugins.process import PluginProcess, WorkerError
 from wizolt.plugins.protocol import Capabilities, Snapshot
 from wizolt.plugins.settings import PluginSettings

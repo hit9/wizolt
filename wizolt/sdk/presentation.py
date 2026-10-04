@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Any
 
 from wizolt.sdk import PluginError, ToolActivity, ToolCounts
+from wizolt.sdk.operations import thaw
 
 MAX_TEXT = 512 * 1024  # Matches operation values; the worker frame bound still applies.
 
@@ -128,7 +129,8 @@ VIEWS: dict[str, type] = {"tool.call": ToolCard, "tool.result": ToolSummary, "ac
 def encode(view: ToolCard | ToolSummary | ActivityStatus) -> dict:
     """Checked JSON data for the worker boundary."""
     view.check()
-    return asdict(view)
+    # thaw, not asdict: frozen mappings (arguments) are not copyable or JSON-serializable.
+    return thaw(view)
 
 
 def decode(site: str, data: object) -> object:

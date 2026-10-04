@@ -68,6 +68,10 @@ class Presenters:
         # Sites whose registrations last matched more than one plugin: builtin until the user picks.
         self.conflicts: dict[str, tuple[str, ...]] = {}
 
+    def registered(self, site: str) -> bool:
+        """Whether any live generation registers the site; callers use it for the fast path."""
+        return any(site in entry.active.plugin.presenters and not entry.disabling for entry in self.runtime.entries.values())
+
     def chain(self, site: str) -> list[Link]:
         """Live registrations for one site in name order; presenters do not compose."""
         entries = {name: entry for name, entry in self.runtime.entries.items() if site in entry.active.plugin.presenters and not entry.disabling}

@@ -1,9 +1,14 @@
-"""Named presentation sites: registration contracts and the worker ``present`` operation."""
+"""Named presentation sites: registration, the worker operation, and the runner's tool sites."""
 
 from dataclasses import asdict
 
 import pytest
+from agent_harness import session_with_provider
 
+from wizolt.agent.context import ContextManager
+from wizolt.agent.lifecycle import bootstrap_features
+from wizolt.agent.runner import ToolRunner
+from wizolt.model import ModelClient
 from wizolt.plugins.protocol import PresenterSpec, Snapshot, decode_panel
 from wizolt.plugins.runtime import PluginRuntime
 from wizolt.sdk import Context, Panel, Plugin, PluginError, ToolCounts
@@ -146,3 +151,74 @@ async def test_slow_presenter_falls_back_within_its_budget(runtime, tmp_path):
     assert await runtime.presenters.render("tool.result", ToolSummary("call-1", "Bash"), timeout=0.05) is None
     assert "presenter:tool.result" in generation.failures
 
+
+@pytest.fixture
+async def session(tmp_path):
+    instance = session_with_provider(tmp_path)
+    bootstrap_features(instance)
+    instance.settings.yolo = True
+    yield instance
+    await instance.plugins.close()
+
+
+async def enable_session(session, tmp_path, name, body):
+    path = tmp_path / f"{name}.py"
+    path.write_text("from wizolt.sdk import Panel, Text\nSDK_VERSION = 1\n" + body)
+    await session.plugins.manage("enable", str(path))
+
+
+def runner(session, answers=None):
+    printed = []
+    replies = iter(answers or ())
+    instance = ToolRunner(session, ContextManager(session), input_fn=lambda prompt: next(replies), output_fn=lambda text: printed.append(str(text)))
+    return instance, printed
+
+
+BOTH = """
+def setup(p):
+    async def card(ctx, view):
+        return Panel((Text("card:" + view.tool, "tool"),))
+    async def summary(ctx, view):
+        return Panel((Text("summary:" + view.status, "success"),))
+    p.presenter("tool.call", card)
+    p.presenter("tool.result", summary)
+"""
+
+
+async def test_tool_sites_present_through_the_runner(session, tmp_path):
+    await enable_session(session, tmp_path, "cards", BOTH)
+    path = tmp_path / "notes.txt"
+    path.write_text("hello")
+    instance, printed = runner(session)
+    await instance.run([ModelClient.tool_call("r1", "Read", {"path": str(path)})])
+    text = "\n".join(printed)
+    assert "card:Read" in text and "summary:ok" in text
+    assert "tr." in text  # The stored-result citation stays host-owned and rides the block.
+
+
+async def test_unpresented_calls_keep_the_builtin_block(session, tmp_path):
+    body = BOTH.replace('p.presenter("tool.call", card)', 'p.presenter("tool.call", card, match={"tool": "Bash"})').replace(
+        'p.presenter("tool.result", summary)', 'p.presenter("tool.result", summary, match={"tool": "Bash"})'
+    )
+    await enable_session(session, tmp_path, "bashonly", body)
+    path = tmp_path / "notes.txt"
+    path.write_text("hello")
+    instance, printed = runner(session)
+    await instance.run([ModelClient.tool_call("r1", "Read", {"path": str(path)})])
+    text = "\n".join(printed)
+    assert "card:Read" not in text and "summary:ok" not in text
+    assert "notes.txt" in text  # The builtin call line still names the invocation.
+
+
+async def test_failing_presenters_fall_back_to_the_builtin_block(session, tmp_path):
+    await enable_session(
+        session,
+        tmp_path,
+        "broken",
+        'def setup(p):\n    async def summary(ctx, view):\n        raise RuntimeError("no summaries")\n    p.presenter("tool.result", summary)\n',
+    )
+    path = tmp_path / "notes.txt"
+    path.write_text("hello")
+    instance, printed = runner(session)
+    await instance.run([ModelClient.tool_call("r1", "Read", {"path": str(path)})])
+    assert "notes.txt" in "\n".join(printed)
