@@ -39,7 +39,7 @@ It also supplies shortcut list/bind/unbind operations; configure keys for the us
 4. **Save:** `plugin enable PATH` (or `install PATH` for dependencies). This saves a preference;
    it does not activate anything.
 5. **Activate:** call `Plugin(action="reload", name="NAME")`; omit name to apply all saved choices. It
-   affects this agent only; pending waits for the current turn. A failure includes `traceback`
+   affects this agent only; pending waits for the current turn or this plugin's active call. A failure includes `traceback`
    and `log`; the previous version keeps running.
 
 `plugin disable NAME`, then a reload, turns a plugin off without deleting it. `/plugins`

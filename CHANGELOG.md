@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Let idle plugins reload or disable while another plugin's command is running. Active model
+  turns still freeze the complete plugin registry until the turn ends.
+
 - Keep healthy plugins running when installation preferences are malformed; report incomplete
   TOML during layout/shortcut refresh and recover after it is corrected. Reject dependency
   strings that could be interpreted as installer options. Refresh action keys when a queued

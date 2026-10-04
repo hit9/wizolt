@@ -373,7 +373,8 @@ The `installations.NAME` tables hold source path and enabled choice; `layout.SLO
 stay under `[plugins.NAME]`, so strict configure schemas never see host fields. `--project` chooses
 execution context only; it never scopes installation. Enabling persists the source path
 for future agents in any directory. Existing agents keep their
-own instances. Reload/disable wait for active turns or invocations; the reload result reports pending.
+own instances. Reload/disable wait for active turns or that plugin's invocations; unrelated
+plugin invocations do not delay publication. The reload result reports pending.
 Set `WIZOLT_NO_PLUGINS=1` on startup to skip installed plugins and recover a broken installation.
 
 Optional module metadata: `DEPENDENCIES = ["package>=1.0"]` (literal requirement strings).

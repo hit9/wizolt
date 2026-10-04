@@ -119,6 +119,45 @@ def setup(plugin):
     assert not runtime.entries and not runtime.busy
 
 
+@pytest.mark.parametrize("during_turn", [False, True])
+async def test_busy_plugin_does_not_pin_unrelated_generations(runtime, tmp_path, during_turn):
+    slow = tmp_path / "slow.py"
+    slow.write_text('''import asyncio
+from pathlib import Path
+SDK_VERSION = 1
+def setup(plugin):
+    async def wait(ctx, args):
+        Path(args["started"]).touch()
+        await asyncio.Event().wait()
+    plugin.command("wait", "Wait", wait)
+''')
+    other = tmp_path / "other.py"
+    await runtime.manage("enable", str(slow))
+    await runtime.manage("enable", source(other, 1))
+    marker = tmp_path / "started"
+    task = asyncio.create_task(runtime.invoke("slow", "command", "wait", {"started": str(marker)}))
+    try:
+        async with asyncio.timeout(5):
+            while not marker.exists():
+                await asyncio.sleep(.01)
+        if during_turn:
+            await runtime.start_turn()
+        source(other, 2)
+        result = await runtime.manage("reload", "other")
+        assert result["status"] == ("pending" if during_turn else "active")
+        if during_turn:
+            assert runtime.fields()["plugins.other.value"] == 1
+            await runtime.finish_turn()
+        assert runtime.fields()["plugins.other.value"] == 2
+        assert not task.done()
+        assert (await runtime.manage("disable", "other"))["status"] == "disabled"
+        assert (await runtime.manage("reload", "slow"))["status"] == "pending"
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+
 async def test_cooperative_cancellation_keeps_the_generation_usable(runtime, tmp_path):
     path = tmp_path / "polite.py"
     path.write_text('''import asyncio

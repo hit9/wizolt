@@ -36,6 +36,7 @@ class Generation:
     error: str = ""
     calls: int = 0
     seconds: float = 0
+    invocations: int = 0  # Pin this worker, never unrelated plugin generations.
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     events: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -92,7 +93,6 @@ class PluginRuntime:
         self.entries: dict[str, Entry] = {}
         self._pending_new: dict[str, Generation] = {}
         self.turn_active = False
-        self._invocations = 0
         self._lock = asyncio.Lock()
         self._closed = False
         self.viewport = Viewport()
@@ -214,7 +214,7 @@ class PluginRuntime:
                     entry.disabling = True
                     self.interactions.dismiss(name)
                     self._publish()
-                    return {"name": name, "status": "pending" if self.busy else "disabled"}
+                    return {"name": name, "status": "pending" if name in self.entries else "disabled"}
                 else:
                     raise PluginError(f"Unknown plugin action: {action}")
             assert entry is not None
@@ -231,7 +231,7 @@ class PluginRuntime:
 
     @property
     def busy(self) -> bool:
-        return self.turn_active or self._invocations > 0
+        return self.turn_active or any(entry.active.invocations for entry in self.entries.values())
 
     @property
     def active_count(self) -> int:
@@ -273,15 +273,18 @@ class PluginRuntime:
 
     def _publish(self) -> None:
         """Atomic registry switch: no await, and no imported Python objects cross generations."""
-        if self.busy or self._closed:
+        # Turns freeze the complete registry; explicit actions pin only their worker.
+        # A window in A must not prevent idle B from publishing a validated replacement.
+        if self.turn_active or self._closed:
             return
-        if not self._pending_new and not any(entry.disabling or entry.pending for entry in self.entries.values()):
+        eligible = {name: entry for name, entry in self.entries.items() if not entry.active.invocations and (entry.disabling or entry.pending)}
+        if not self._pending_new and not eligible:
             return
         self._layout_version += 1
         self._components.clear()
         self.entries.update((name, Entry(candidate)) for name, candidate in self._pending_new.items())
         self._pending_new.clear()
-        for name, entry in tuple(self.entries.items()):
+        for name, entry in eligible.items():
             if entry.disabling:
                 self._retire(entry.active)
                 del self.entries[name]
@@ -468,7 +471,7 @@ class PluginRuntime:
             raise PluginError(f"Unknown {kind}: {name}.{action}")
         # Schema evaluation can itself block (for example, a pathological regex). The
         # worker validates before calling the handler, under the same action deadline.
-        self._invocations += 1
+        generation.invocations += 1
         try:
             result = await generation.worker.request(
                 "invoke",
@@ -481,7 +484,7 @@ class PluginRuntime:
             await self.refresh()
             return result
         finally:
-            self._invocations -= 1
+            generation.invocations -= 1
             self._publish()
 
     @property
@@ -498,7 +501,7 @@ class PluginRuntime:
         generation = self._summary_generation
         if generation is None or self._closed:
             return None
-        self._invocations += 1
+        generation.invocations += 1
         try:
             summary = await generation.worker.request("compact", timeout=self.ACTION_TIMEOUT, text=text, context=asdict(self.facts()))
             validate(summary)
@@ -507,7 +510,7 @@ class PluginRuntime:
             generation.error = f"summarizer: {error}"
             return None
         finally:
-            self._invocations -= 1
+            generation.invocations -= 1
             self._publish()
 
     async def close(self) -> None:
