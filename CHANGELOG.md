@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Stop slow plugin fields from delaying turns and plugin commands. Turn start, turn end and
+  every command awaited a full refresh of all plugins, behind any refresh already running: a
+  field taking 0.5 s added about 1 s to each, and a field near its 2 s deadline about 4 s.
+  They now ask for an immediate refresh without waiting; the UI catches up in that pass.
+
 - Keep misbehaving plugins from slowing wizolt's own UI loop:
   - Plugin fields are bounded like panel rows: at most 64, with text of at most 4,096
     characters, checked in the worker and again by the host. A near-1 MB field string cost

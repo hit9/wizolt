@@ -7,6 +7,7 @@ rendering only reads completed snapshots. A worker is fault isolation, not a dat
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field, replace
@@ -133,6 +134,7 @@ class PluginRuntime:
         self._sampling = asyncio.Lock()
         self._components: dict[str, Component] = {}
         self._refresh_task: asyncio.Task | None = None
+        self._wake = asyncio.Event()
         self._retiring: set[asyncio.Task] = set()
         self.reserved_commands: frozenset[str] = frozenset()
         self.interpreters: dict[str, str] = {}
@@ -332,8 +334,19 @@ class PluginRuntime:
 
     async def _refresh_loop(self) -> None:
         while self.entries and not self._closed:
-            await asyncio.sleep(self.REFRESH_INTERVAL)
+            with contextlib.suppress(TimeoutError):
+                async with asyncio.timeout(self.REFRESH_INTERVAL):
+                    await self._wake.wait()
+            self._wake.clear()
             await self.refresh()
+
+    def refresh_soon(self) -> None:
+        """Ask for the next pass now without waiting for it.
+
+        Refreshing is presentation. Turns and actions must not wait for every plugin's sample:
+        one slow field would otherwise add up to two sample deadlines to each of them.
+        """
+        self._wake.set()
 
     async def refresh(self) -> None:
         """Allocate in visual order outside painting, then publish one coherent layout.
@@ -437,14 +450,14 @@ class PluginRuntime:
         self.activity.reset()
         self.turn_active = True
         await self.emit("turn.started")
-        await self.refresh()
+        self.refresh_soon()
 
     async def finish_turn(self) -> None:
         if not self.turn_active:
             return
         try:
             await self.emit("turn.finished")
-            await self.refresh()
+            self.refresh_soon()
         finally:
             self.turn_active = False
             self._publish()
@@ -513,7 +526,7 @@ class PluginRuntime:
                 arguments=dict(arguments),
                 context=asdict(self.facts()),
             )
-            await self.refresh()
+            self.refresh_soon()
             return result
         finally:
             generation.invocations -= 1

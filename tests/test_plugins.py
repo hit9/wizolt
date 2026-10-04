@@ -91,9 +91,35 @@ def setup(plugin):
     await child.manage("enable", str(path))
     await runtime.start_turn()
     await runtime.finish_turn()
+    await runtime.refresh()  # Turns only request presentation; take that pass here.
+    await child.refresh()
     assert runtime.fields()["plugins.counter.value"] == 1
     assert child.fields()["plugins.counter.value"] == 0
     await child.close()
+
+
+async def test_slow_fields_do_not_delay_turns_or_commands(runtime, tmp_path):
+    import time
+
+    path = tmp_path / "slow_field.py"
+    path.write_text('''import time
+SDK_VERSION = 1
+def setup(plugin):
+    def slow(ctx):
+        time.sleep(0.6)
+        return 1
+    async def ping(ctx, args):
+        return "pong"
+    plugin.field("slow", slow)
+    plugin.command("ping", "Ping", ping)
+''')
+    await runtime.manage("enable", str(path))
+    started = time.monotonic()
+    await runtime.start_turn()
+    await runtime.finish_turn()
+    assert await runtime.invoke("slow_field", "command", "ping", {}) == "pong"
+    # Each used to wait for a layout pass, and for the one in flight: about 1.2 s apiece.
+    assert time.monotonic() - started < 0.9
 
 
 async def test_invocation_pins_generation_and_cancellation_releases_it(runtime, tmp_path):
