@@ -12,6 +12,15 @@ from wizolt.plugins.catalog import Installation, PluginCatalog
 from wizolt.plugins.preferences import PluginPreferences
 
 
+@pytest.mark.parametrize("record", [[], [["enabled", True]]])
+def test_array_is_not_an_installation_record(tmp_path, record):
+    catalog = PluginCatalog.for_user(str(tmp_path))
+    catalog.preferences.save("installations", "pet", record)
+    records, errors = catalog.read()
+    assert "pet" not in records
+    assert errors == ["pet: installation must be a table"]
+
+
 def test_preferences_keep_config_comments_symlinks_and_plugin_settings(tmp_path):
     source = tmp_path / "dotfiles.toml"
     source.write_text('# My profile\n[plugins.pet]\nstyle = "quiet" # keep this\n')

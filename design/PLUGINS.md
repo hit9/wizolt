@@ -144,7 +144,9 @@ Empty or clipped components must leave the input usable, including after multipl
 Interactive views follow the same data boundary (see [Plugin views](PLUGIN_VIEWS.md)). The host
 owns keys, validation, focus, queues and modal lifetime; no worker callback runs on the UI thread.
 Views belong to their invocation and agent. Background agents request attention instead of
-stealing focus. Cancellation, disable and successful replacement dismiss owned views. Saved
+stealing focus. Cancellation, disable and successful replacement dismiss owned views. Retiring
+generations cannot open new views: a callback handling dismissal must not indefinitely renew
+its human-wait lease and prevent replacement. Saved
 shortcuts live separately from installation records and target named commands through normal
 command admission. `--no-plugins` bypasses startup loading without rewriting user preferences;
 enable and reload stay unavailable for that process so recovery cannot accidentally reload a
@@ -152,7 +154,7 @@ broken plugin.
 
 ## Dependency environments
 
-Prepare a fresh environment constrained by host versions and persist its interpreter with the
+Prepare a fresh environment constrained by host versions and persist its environment ID with the
 installation. New candidate workers use that interpreter, without restarting the host. Never
 pip-install into the running environment. Failure/cancel removes a candidate under construction.
 The environment borrows the installed host, including editable-source paths: it is not a portable

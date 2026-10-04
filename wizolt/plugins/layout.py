@@ -48,7 +48,11 @@ class LayoutBudget:
 
 
 class LayoutPreferences:
-    """Keep order and spacing orthogonal; publish a preference only after saving succeeds."""
+    """Keep order and spacing orthogonal; publish a preference only after saving succeeds.
+
+    Explicit edits start from saved preferences, not an agent's older presentation snapshot.
+    Otherwise moving a component in one agent silently undoes another agent's gap edits.
+    """
 
     def __init__(self, preferences: PluginPreferences | None = None):
         self.preferences = preferences
@@ -83,6 +87,7 @@ class LayoutPreferences:
             raise PluginError("Unknown active component; list components first")
         if gap_before is not None and (type(gap_before) is not int or gap_before < 0):
             raise PluginError("gap_before must be a nonnegative integer or null to restore the default")
+        self.load()
         slot = available[component]
         gaps = dict(self.gaps.get(slot, {}))
         if gap_before is None:
@@ -106,6 +111,7 @@ class LayoutPreferences:
             raise PluginError("Components can only move within the same slot")
         if component == anchor:
             return
+        self.load()
         identities = set(self.orders.get(slot, ())) | {key for key, value in available.items() if value == slot}
         order = self.ordered(slot, identities)
         order.remove(component)
@@ -115,6 +121,7 @@ class LayoutPreferences:
     def reset(self, slot: str = "") -> None:
         if slot and slot not in SLOTS:
             raise PluginError(f"Unknown slot: {slot}")
+        self.load()
         for key in (slot,) if slot else SLOTS:
             self._save(key, ())
 

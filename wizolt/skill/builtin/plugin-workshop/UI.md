@@ -73,7 +73,8 @@ split, arbitrary-coordinate drawing or access to host widgets.
 - Human waiting pauses the action's execution deadline. Updates and other host services keep
   their ordinary deadlines. Esc remains host-owned even if your worker is busy.
 - Cancellation, worker failure, disable and successful replacement dismiss owned views.
-  A failed reload preserves the previous generation and its view. Do not suppress cancellation.
+  A retiring call cannot open another view. A failed reload preserves the previous generation
+  and its view. Do not suppress cancellation.
 - Keep update tasks scoped to the command/tool and join them before leaving `async with`.
   Closing a view before awaiting its result is supported; a completed/closed view cannot update.
 - Offline trials and non-TUI sessions cannot prompt the user. Validate/load the plugin offline,

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Prevent retiring plugin calls from reopening dismissed windows and keeping reload/disable
+  pending. Reject arrays as installation records instead of accidentally enabling a builtin.
+  Preserve other agents' saved layout changes when editing order or spacing.
+
 - Keep plugin catalog queries read-only; import early-alpha preferences explicitly during
   startup or installation changes. Store generated dependency environment IDs instead of
   machine-specific interpreter paths in the config, preserving atomic installation switches.

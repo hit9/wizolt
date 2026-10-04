@@ -102,6 +102,36 @@ async def test_cancelled_action_closes_host_interaction(tmp_path):
         await runtime.close()
 
 
+@pytest.mark.parametrize("management", ["disable", "reload"])
+async def test_retiring_call_cannot_reopen_a_dismissed_view(tmp_path, management):
+    path = tmp_path / "interactive.py"
+    path.write_text('''SDK_VERSION = 1
+def setup(plugin):
+    async def ask(ctx, args):
+        await plugin.ui.input("First")
+        return await plugin.ui.input("Second")
+    plugin.command("ask", "Ask twice", ask)
+''')
+    runtime = runtime_for(tmp_path)
+    terminal = Terminal()
+    runtime.interactions.handler = terminal.call
+    try:
+        await runtime.manage("enable", str(path))
+        action = asyncio.create_task(runtime.invoke("interactive", "command", "ask", {}))
+        await asyncio.wait_for(terminal.entered.wait(), 3)
+        await runtime.manage(management, "interactive")
+        with pytest.raises(PluginError, match="being replaced or disabled"):
+            await asyncio.wait_for(action, 3)
+        assert not runtime.interactions.pending
+        result = (await runtime.manage("list"))["plugins"]
+        assert [item["status"] for item in result] == (["active"] if management == "reload" else [])
+        if management == "reload":
+            terminal.answer.set()
+            assert await runtime.invoke("interactive", "command", "ask", {}) == "Alice"
+    finally:
+        await runtime.close()
+
+
 async def test_headless_interaction_reports_unavailable(tmp_path):
     runtime = runtime_for(tmp_path)
     try:

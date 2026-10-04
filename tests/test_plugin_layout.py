@@ -278,3 +278,23 @@ def test_layout_preferences_preserve_state_on_failure(tmp_path, monkeypatch):
     with pytest.raises(PluginError):
         preferences.load()
     assert preferences.gap("zebra.above_input", "above_input", 0) == 2
+
+
+def test_layout_edits_preserve_other_sessions_changes(tmp_path):
+    from wizolt.plugins.layout import LayoutPreferences
+    from wizolt.plugins.preferences import PluginPreferences
+
+    store = PluginPreferences(tmp_path / "config.toml")
+    first, second = LayoutPreferences(store), LayoutPreferences(store)
+    available = {name + ".above_input": "above_input" for name in ("alpha", "zebra")}
+    first.load()
+    second.load()
+    first.set_gap("zebra.above_input", 2, available)
+    second.move("zebra.above_input", "alpha.above_input", "", available)
+    first.set_gap("alpha.above_input", 1, available)
+    assert first.ordered("above_input", available) == ["zebra.above_input", "alpha.above_input"]
+    second.reset("above_input")
+    first.load()
+    assert first.ordered("above_input", available) == list(available)
+    assert first.gap("zebra.above_input", "above_input", 0) == 2
+    assert first.gap("alpha.above_input", "above_input", 0) == 1

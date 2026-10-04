@@ -59,13 +59,15 @@ class PluginCatalog:
             return {}, [str(error)]
         for name, data in saved.items():
             try:
+                if not isinstance(data, dict):
+                    raise PluginError("installation must be a table")
                 data = dict(data)
                 environment = data.pop("environment", "")
                 if not isinstance(environment, str) or (environment and (not environment.isascii() or not environment.isalnum())):
                     raise PluginError("invalid dependency environment")
                 if environment:
                     data["python"] = str(self.directory / "environments" / environment / self._python_path)
-                if name in self.defaults and isinstance(data, dict):
+                if name in self.defaults:
                     data = {"path": self.defaults[name].path, **data}
                 item = Installation(name=name, **data)
                 if not isinstance(item.path, str) or not isinstance(item.python, str) or type(item.enabled) is not bool:

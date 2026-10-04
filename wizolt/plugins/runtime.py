@@ -399,6 +399,12 @@ class PluginRuntime:
                 self._layout_version += 1
             return {"components": [asdict(item) for item in self.components()]}
         if service.startswith("ui."):
+            if service == "ui.views.show":
+                entry = self.entries.get(owner)
+                # Dismissing existing windows is only half of retirement. An action may
+                # handle cancellation by opening another one, indefinitely pinning its worker.
+                if entry is None or entry.disabling or entry.pending is not None:
+                    raise PluginError("Plugin is being replaced or disabled; cannot open another view")
             return await self.interactions.call(owner, service, arguments)
         if self.host_service is None:
             raise PluginError("Host services unavailable in offline trials")
