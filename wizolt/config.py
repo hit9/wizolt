@@ -748,11 +748,12 @@ model = ""
             data = cls.read_toml(config_path)
         except FileNotFoundError as error:
             raise ConfigError(f"config not found: {config_path}; run --init-config") from error
+        # A secret for an entry this config lacks is ignored, not an error: one shared config may
+        # define fewer entries than a machine's secrets, and a misspelled name still surfaces as
+        # its entry's missing key.
         entries = cls.provider_entries(data)
         for name, key in cls.load_secrets(config_path).items():
-            if name not in entries:
-                raise ConfigError(f"{cls.secrets_path(config_path)}: `{name}` is not a provider entry in {config_path}")
-            if not entries[name].get("key"):
+            if name in entries and not entries[name].get("key"):
                 entries[name]["key"] = key
         return data
 

@@ -231,6 +231,9 @@ def main(argv: list[str] | None = None) -> int:
         except _cli.ConfigError as error:
             print("ConfigError: " + str(error), file=sys.stderr)
             return 2
+        except OSError as error:
+            print("Error: " + str(error), file=sys.stderr)
+            return 1
         print(f"Moved keys for {', '.join(moved)} to {_cli.ConfigFile.secrets_path(path)}" if moved else f"No keys to move in {path}")
         return 0
     # Asked before the banner: the TUI owns the terminal from then on.
@@ -353,6 +356,9 @@ def offer_key_migration(path: str | None) -> None:
     except EOFError:
         print()
         return
+    except KeyboardInterrupt:
+        print()
+        raise SystemExit(130) from None
     try:
         if answer in ("", "y", "yes"):
             _cli.ConfigFile.migrate_keys(path)

@@ -49,7 +49,8 @@ deepseek = "sk-..."
 
 `config.toml` then holds no secrets and can be shared or committed. `--init-config` creates
 `secrets.toml` readable only by you; keep it that way, and keep it out of version control. With
-`--config <path>`, wizolt reads the `secrets.toml` in that file's directory.
+`--config <path>`, wizolt reads the `secrets.toml` in that file's directory. A line naming an
+entry the config does not define is ignored.
 
 A `key` written in a `[provider.<name>]` block still works, and wins over `secrets.toml`. At
 startup wizolt offers to move such keys into `secrets.toml` (`[Y/n]`). If you answer `n`, it only

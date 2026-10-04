@@ -55,13 +55,12 @@ def test_without_a_secrets_file_the_config_loads_as_before(tmp_path):
 @pytest.mark.parametrize(
     ("secrets", "message"),
     [
-        ('ghost = "sk"\n', "`ghost` is not a provider entry"),
         ("[a]\nkey = 'sk'\n", "`a` must be a string"),
         ("a = 1\n", "`a` must be a string"),
         ("a = \n", "invalid config"),
     ],
 )
-def test_the_secrets_file_holds_only_keys_of_configured_entries(tmp_path, secrets, message):
+def test_the_secrets_file_holds_only_key_strings(tmp_path, secrets, message):
     config = write(tmp_path / "config.toml", "[provider.a]\n")
     write(tmp_path / "secrets.toml", secrets)
 
@@ -69,11 +68,12 @@ def test_the_secrets_file_holds_only_keys_of_configured_entries(tmp_path, secret
         ConfigFile.load(str(config))
 
 
-def test_an_empty_placeholder_for_an_unknown_entry_is_not_an_error(tmp_path):
+def test_secrets_for_entries_the_config_lacks_are_ignored(tmp_path):
+    """One shared config can define fewer entries than a machine's secrets file."""
     config = write(tmp_path / "config.toml", ACTIVE_A + "[provider.a]\n")
-    write(tmp_path / "secrets.toml", 'default = ""\n')
+    write(tmp_path / "secrets.toml", 'a = "sk-a"\nremoved = "sk-old"\ndefault = ""\n')
 
-    assert keys(config) == {"a": ""}
+    assert keys(config) == {"a": "sk-a"}
 
 
 def test_init_writes_a_keyless_config_and_a_private_secrets_file(tmp_path):
@@ -266,3 +266,27 @@ def test_the_migrate_flag_reports_a_broken_config(tmp_path, capsys):
 
     assert cli.main(["--migrate-secrets", "--config", str(config)]) == 2
     assert "ConfigError: invalid config" in capsys.readouterr().err
+
+
+def test_interrupting_the_prompt_exits_without_moving_or_remembering(inline_config, terminal, monkeypatch):
+    terminal()
+    monkeypatch.setattr("builtins.input", lambda prompt: (_ for _ in ()).throw(KeyboardInterrupt))
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.offer_key_migration(str(inline_config))
+
+    assert exit_info.value.code == 130
+    inline = ConfigFile.inline_keys(str(inline_config))
+    assert inline.keys == {"a": "sk-a"}
+    assert not inline.declined
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes through directory permissions")
+def test_the_migrate_flag_reports_an_unwritable_directory(inline_config, capsys):
+    inline_config.parent.chmod(0o500)
+    try:
+        assert cli.main(["--migrate-secrets", "--config", str(inline_config)]) == 1
+    finally:
+        inline_config.parent.chmod(0o700)
+    assert capsys.readouterr().err.startswith("Error: ")
+    assert ConfigFile.inline_keys(str(inline_config)).keys == {"a": "sk-a"}
