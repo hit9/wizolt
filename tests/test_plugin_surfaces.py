@@ -152,3 +152,19 @@ def test_rejected_contribution_reports_the_validate_stage(tmp_path, capsys):
     assert main(["validate", str(plugin), "--project", str(tmp_path)]) == 1
     report = json.loads(capsys.readouterr().out)
     assert report["stage"] == "validate" and "no_such_field" in report["error"]
+
+
+def test_bundled_pet_keeps_its_shape_and_theme_roles_in_every_mood():
+    from prompt_toolkit.utils import get_cwidth
+
+    from wizolt.plugins.builtin.pet import draw
+
+    shapes = set()
+    for status in ("", "running", "waiting", "failed", "completed", "interrupted"):
+        for now in (0, 0.5, 1, 3.5):
+            panel = draw(Context("a", "main", "/", status, 0, 0, "m", now))
+            rows = [row.spans if isinstance(row, Line) else (row,) for row in panel.rows]
+            assert all(span.role in Theme.ROLES for spans in rows for span in spans)
+            face = "".join(span.text for span in rows[1])
+            shapes.add((len(rows), get_cwidth(rows[0][0].text), get_cwidth(face.partition("  ")[0])))
+    assert shapes == {(2, 6, 8)}  # Animation and mood never move the outline or the caption.

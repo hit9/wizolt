@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Polish the bundled pet: its mood colors only the outline, the face keeps the theme's text
+  contrast and the caption is muted. It gains a cat's `ω` mouth, blinks now and then while
+  working and wags its tail. It still takes two rows and only theme colors. Redraw the
+  plugin overview and pet figures.
+
+- Record that every bundled plugin is off by default: wizolt never switches on what the user
+  has not explicitly asked for. Guard it with a test.
+
 - Keep a plugin selection view's highlighted choice after a live update or scripted answer
   while a search filter is active. Focus used an index into all items rather than the visible
   rows, so Enter could submit a different choice than the one the user had highlighted.
