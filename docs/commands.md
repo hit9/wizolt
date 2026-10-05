@@ -112,7 +112,8 @@ layouts and custom templates.
 ## While a turn runs
 
 Commands that only read the session answer without interrupting it: `/status`, `/ps`,
-`/skills`, `/config`, `/catalog`, `/agents`, and `/mcp`'s tool list, along with the `/yolo` toggle.
+`/skills`, `/config`, `/catalog`, `/agents`, `/mcp`'s tool list, and `/plugins` for browsing
+(enabling, disabling and reloading wait for the turn to end), along with the `/yolo` toggle.
 Any other one waits for the turn to end.
 
 A request that fails transiently — transport, timeout, a 5xx — is retried on its own, up to five

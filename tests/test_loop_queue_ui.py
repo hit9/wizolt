@@ -212,6 +212,41 @@ async def test_queue_command_runs_readonly(tmp_path):
     assert out and not any("unavailable" in t for t in out)
 
 
+async def test_plugins_reads_but_never_changes_while_the_agent_works(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from wizolt.ui.cli.plugins import PluginManager
+
+    s = session(tmp_path)
+    out = []
+    agent = Agent(s, output_fn=lambda text: None)
+    loop = CommandLoop(agent, input_fn=lambda *a, **k: "", output_fn=out.append)
+    await loop.run_queued_command("/plugins list")
+    assert '"plugins"' in "\n".join(str(item) for item in out)  # Read-only forms run at once.
+    for text in ("/plugins enable pet", "/plugins disable pet", "/plugins reload pet", "/plugins run pet pet"):
+        out.clear()
+        await loop.run_queued_command(text)
+        assert any("Only read-only /plugins (list, inspect)" in str(item) for item in out), text
+    # The manager browses mid-turn, but Enter opens no actions until the turn ends.
+    monkeypatch.setattr(type(agent), "turn_active", property(lambda self: True))
+    asked = []
+
+    async def choose(*args, **kwargs):
+        asked.append(args)
+
+    monkeypatch.setattr("wizolt.ui.cli.plugins.choice_application", choose)
+    picks = iter(["pet", None])
+    loop.presentation.tui = SimpleNamespace(show_modal=lambda *args, **kwargs: _resolved(next(picks)))
+    manager = PluginManager(loop, s.plugins)
+    await manager.run()
+    assert asked == [] and "changes wait until the agent finishes" in manager.notice
+    await s.plugins.close()
+
+
+async def _resolved(value):
+    return value
+
+
 @pytest.mark.parametrize("text", ["/config", "/catalog", "/catalog status"])
 async def test_queue_command_runs_the_other_read_only_reports(tmp_path, text):
     """Reading how the session is set up costs the running turn nothing, so it needs no interrupt."""

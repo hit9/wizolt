@@ -159,7 +159,14 @@ class PluginManager:
         title = "Plugins · current agent"
         if self.notice:
             title += " · " + clean(self.notice)
-        return self.state.fragments(title, self.preview, keys="↑/↓ j/k move · Enter manage · / search · Esc back")
+        # Read-only while a turn runs: browsing is safe, changes wait until the agent is idle.
+        manage = "read-only while the agent works" if self.busy else "Enter manage"
+        return self.state.fragments(title, self.preview, keys=f"↑/↓ j/k move · {manage} · / search · Esc back")
+
+    @property
+    def busy(self) -> bool:
+        agent = getattr(self.loop, "agent", None)
+        return bool(agent is not None and agent.turn_active)
 
     def labels(self, columns: int) -> dict[str, str]:
         """Reserve origin and state columns before clipping names on terminal resizing."""
@@ -192,6 +199,9 @@ class PluginManager:
             if not isinstance(chosen, str):
                 return
             current = chosen
+            if self.busy:
+                self.notice = "changes wait until the agent finishes; press Ctrl-C to stop it"
+                continue
             try:
                 await self.manage(chosen)
             except Exception as error:  # noqa: BLE001 - keep a failed plugin recoverable in its manager.

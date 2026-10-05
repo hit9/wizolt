@@ -1021,7 +1021,7 @@ class Command:
 # Dispatch, completion and queue admission share one registry.
 # fmt: off
 COMMANDS: tuple[Command, ...] = (
-    Command("/plugins", plugins_command),
+    Command("/plugins", plugins_command, queue_safe=True),
     Command("/agents", agents_command, queue_safe=True),
     Command("/status", status, queue_safe=True),
     Command("/catalog", catalog_command, queue_safe=True, render="answer"),
@@ -1055,6 +1055,8 @@ QUEUE_SAFE_COMMANDS = frozenset(command.name for command in COMMANDS if command.
 QUEUED_SUBCOMMANDS: dict[str, tuple[frozenset[str], str]] = {
     "/catalog": (frozenset({"status"}), "Only /catalog (status) is available while the agent is working."),
     "/mcp": (frozenset({"tools", "status"}), "Only read-only /mcp (status, tools) is available while the agent is working."),
+    # Bare /plugins opens the manager, which is read-only while a turn runs.
+    "/plugins": (frozenset({"list", "inspect"}), "Only read-only /plugins (list, inspect) is available while the agent is working."),
     # Trusting changes which skills the running turn can load under it.
     "/skills": (frozenset({"list"}), "Only /skills (list) is available while the agent is working."),
 }
