@@ -113,6 +113,7 @@ async def client_request(
         check_route=route_check(session, client, messages, tools),
         suppress_preview=getattr(client, "suppressed_preview", None),
         record=session.record_operation,
+        checkpoint=session.save_snapshot,
         on_request=on_request,
     )
 
@@ -132,6 +133,7 @@ async def logical_request(
     check_route: Callable[[ProviderConfig, str], None] | None = None,
     suppress_preview: Callable[[], AbstractContextManager] | None = None,
     record: Callable[[OperationReceipt], OperationReceipt] | None = None,
+    checkpoint: Callable[[], Awaitable[object]] | None = None,
     on_request: Callable[[str], None] | None = None,
 ) -> Result:
     interception = getattr(plugins, "interception", None)
@@ -170,7 +172,9 @@ async def logical_request(
     async def core(candidate: Value) -> Value:
         assert isinstance(candidate, ModelRequest)
         effective = route(candidate)
-        receipt.core = "started"  # A crash from here may have billed the request: resume says unknown.
+        receipt.core = "started"
+        if checkpoint is not None:
+            await checkpoint()  # Durable before sending: a crash from here resumes as unknown, never not_run.
         result = await send(effective)
         downstream["raw"] = result
         downstream["response"] = response = response_of(result, effective.model, candidate.provider or entry)

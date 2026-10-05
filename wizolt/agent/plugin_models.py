@@ -77,6 +77,7 @@ class PluginModels:
                 send=send,
                 check_route=route_check(detached, client, messages, None),
                 record=self.session.record_operation,
+                checkpoint=self.session.save_snapshot,
             )
             if calls:
                 raise PluginError("Plugin text request returned tool calls")

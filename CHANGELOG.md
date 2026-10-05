@@ -152,8 +152,8 @@
   `retry_of`. `response="preserve"` keeps push streaming without worker IPC; `"replace"`
   suppresses the content preview for that request. A plugin's auxiliary requests skip its own
   registration. Test fakes of `ModelClient.request` accept the new `reason` keyword. The
-  receipt marks the provider call `started` while it runs, so a crash mid-request resumes as
-  `unknown` and an interceptor failure before `next` reads `not_run`, not `failed`.
+  receipt is checkpointed as `started` before the provider call, so a crash mid-request resumes
+  as `unknown`, and an interceptor failure before `next` reads `not_run`, not `failed`.
 
 - Make submitted input interceptable (`prompt.submit`) for a turn's opening input, queued
   follow-ups and a parent model's messages to subagents. Interception runs once per item, after

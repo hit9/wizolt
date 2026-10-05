@@ -90,6 +90,33 @@ async def test_replay_never_pins_a_receipt_on_a_reused_call_id(tmp_path):
     restored.close()
 
 
+async def test_a_crash_during_an_intercepted_model_request_resumes_as_unknown(tmp_path):
+    from wizolt.config import ProviderConfig
+
+    s = session_with_data_dir(tmp_path)
+    s.config.providers = {"default": ProviderConfig(model="test-model", url="http://test", key="sk-test")}
+    bootstrap_features(s)
+    plugin = tmp_path / "router.py"
+    plugin.write_text("SDK_VERSION = 1\ndef setup(p):\n    async def h(ctx, request, next):\n        return await next(request)\n    p.intercept('model.request', h)\n")
+    await s.plugins.manage("enable", str(plugin))
+    model = ModelClient(s)
+    on_disk = []
+
+    async def transport(messages, tools, provider):
+        crashed = load(s)  # The on-disk state while the request is out, as a crash would leave it.
+        on_disk.extend((receipt.operation, receipt.core) for receipt in crashed.operation_receipts)
+        crashed.close()
+        return {"role": "assistant", "content": "ok"}, [], "ok"
+
+    model._transport_request = transport
+    try:
+        await model.request([{"role": "user", "content": "hi"}], [])
+    finally:
+        await s.plugins.close()
+    # Settled as unknown on resume: the request may have been sent and billed.
+    assert on_disk == [("model.request", "unknown")]
+
+
 async def test_crash_at_the_execution_checkpoint_resumes_as_unknown(tmp_path):
     s = session_with_data_dir(tmp_path)
     bootstrap_features(s)
