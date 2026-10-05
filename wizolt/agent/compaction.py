@@ -13,6 +13,7 @@ need the model; `run` drives both.
 from __future__ import annotations
 
 import asyncio
+import uuid
 from difflib import SequenceMatcher
 from typing import TYPE_CHECKING, ClassVar
 
@@ -168,11 +169,24 @@ class Compactor:
         if interception is None or not interception.would_match("context.compact", trigger=trigger):
             return await self.builtin_compact(context, inline_messages, tools, echo_source)
         from wizolt.sdk.operations import Compaction, Summary
+        from wizolt.session.types import OperationReceipt
 
         builtin: dict = {}
+        source = context or self.ctx.messages_text(inline_messages or [])
+        # What actually happened, apart from what was delivered: whether the builtin summary ran,
+        # and which plugin produced or changed the result. Compaction has no outside effects, so
+        # the receipt is for diagnosis; it never drives a retry.
+        original = OperationReceipt.clip(f"{len(source)} characters")
+        receipt = model.session.record_operation(OperationReceipt(uuid.uuid4().hex, "context.compact", trigger, original))
 
         async def core(_value: object) -> Summary:
-            builtin["data"] = data = await self.builtin_compact(context, inline_messages, tools, echo_source)
+            receipt.core = "started"
+            try:
+                builtin["data"] = data = await self.builtin_compact(context, inline_messages, tools, echo_source)
+            except BaseException:
+                receipt.core = "failed"
+                raise
+            receipt.core = "completed"
             builtin["summary"] = summary = Summary(str(data.get("summary") or "").strip() or "(empty summary)")
             return summary
 
@@ -188,10 +202,15 @@ class Compactor:
                 raise PluginError(str(error)) from None
 
         trace: dict = {}
-        result = await interception.run(
-            "context.compact", Compaction(context or self.ctx.messages_text(inline_messages or []), trigger), core, result_check=checked, trace=trace
-        )
+        try:
+            result = await interception.run("context.compact", Compaction(source, trigger), core, result_check=checked, trace=trace)
+        except PluginError as error:
+            receipt.wrapper_failure = OperationReceipt.clip(str(error))
+            raise
+        finally:
+            receipt.origin, receipt.shaped, receipt.delivered = trace.get("origin", "core"), tuple(trace.get("shaped", ())), True
         assert isinstance(result, Summary)
+        receipt.effective = OperationReceipt.clip(f"{len(result.text)}-character summary")
         if result == builtin.get("summary"):
             return builtin["data"]  # The builtin's own checkpoint, plan and known facts included.
         if origin := trace.get("origin"):

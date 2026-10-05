@@ -82,6 +82,20 @@ async def test_a_failed_interceptor_fails_compaction_without_any_fallback(agent,
     assert "intercept:context.compact" in session.plugins.entries["summaries"].active.failures
 
 
+async def test_compaction_records_what_actually_ran(agent, tmp_path):
+    receipts = agent.session.operation_receipts
+    await agent.session.plugins.manage("enable", source(tmp_path))  # Answers without the builtin.
+    await Compactor(agent.context, agent.model).compact("source")
+    assert (receipts[-1].operation, receipts[-1].core, receipts[-1].origin) == ("context.compact", "not_run", "summaries/context.compact")
+    await agent.session.plugins.manage("disable", "summaries")
+    body = "await next(span)\n        raise RuntimeError('lost the summary')"
+    await agent.session.plugins.manage("enable", source(tmp_path, body, name="late"))
+    with pytest.raises(PluginError):
+        await Compactor(agent.context, agent.model).compact("source")
+    # The builtin summary had run when the plugin failed; the receipt says so, and why it failed.
+    assert receipts[-1].core == "completed" and "lost the summary" in receipts[-1].wrapper_failure and receipts[-1].delivered
+
+
 async def test_trigger_matcher_and_manual_compaction(agent, tmp_path):
     await agent.session.plugins.manage("enable", source(tmp_path, match=", match={'trigger': 'manual'}"))
     compactor = Compactor(agent.context, agent.model)
