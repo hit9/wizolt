@@ -1636,9 +1636,9 @@ class UiPrinter:
                 # row below would print its neighbour's text. Only the pair opening the block counts: a
                 # removed body line can render as `--- x` on its own, its content having begun with `-- `.
                 old_marker, new_marker = self.DIFF_HEADER_PREFIXES
-                header = 2 if len(diff_lines) > 1 and diff_lines[0].text.startswith(old_marker) and diff_lines[1].text.startswith(new_marker) else 0
+                header_rows = 2 if len(diff_lines) > 1 and diff_lines[0].text.startswith(old_marker) and diff_lines[1].text.startswith(new_marker) else 0
                 highlighted = self.segment_lines(self.diff_segments(diff_text))
-                for item, rendered in zip(diff_lines[header:], highlighted[header:]):
+                for item, rendered in zip(diff_lines[header_rows:], highlighted[header_rows:]):
                     prefix = [*margin, *self.edge_segments(item.edge)]
                     rendered = self.remove_line_ending(rendered)
                     for row in Text.wrap_styled(prefix, prefix, rendered, width):
@@ -1863,7 +1863,8 @@ class UiPrinter:
     # git and difflib write `--- <path>`, and `--- ` even when the path is empty). Matching the
     # marker alone drew a removed markdown rule (`---`, so the diff line is `----`) as a dim
     # header: no red band, and the row it then never counted shifted every old line number
-    # under it in that hunk.
+    # under it in that hunk. The pair is ordered -- the old side's marker, then the new side's --
+    # which is the order `log_segments` drops a block's header rows in.
     DIFF_HEADER_PREFIXES: ClassVar[tuple[str, ...]] = ("--- ", "+++ ")
     # Width of the line-number gutter `diff_segments` writes (`NNNN NNNN │ `). A caller wrapping a
     # diff row indents its continuation by this much, so the wrapped text stays in the body column

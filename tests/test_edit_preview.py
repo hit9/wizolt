@@ -45,7 +45,7 @@ def test_a_diff_does_not_draw_the_file_header_rows_it_was_named_by():
     assert any("return" in text and style.endswith("bg:#003b00") and style != "bg:#003b00" for style, text in segments)
 
 
-def test_a_diff_row_that_opens_like_a_header_is_kept_off_the_block_head():
+def test_a_header_shaped_body_row_off_the_block_head_is_still_drawn():
     """A removed line whose content began with `-- ` renders as `--- x`, and the `++ y` added beside
     it as `+++ y`: body rows, drawn like any other. Only the pair opening the block is a header."""
     preview = "@@ -1,2 +1,2 @@\n--- x\n+++ y"
