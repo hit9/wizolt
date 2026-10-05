@@ -71,6 +71,25 @@ async def test_replay_shows_what_plugins_did_without_running_them(tmp_path):
     restored.close()
 
 
+async def test_replay_never_pins_a_receipt_on_a_reused_call_id(tmp_path):
+    from wizolt.agent.engine import Agent
+    from wizolt.ui.cli import CommandLoop
+
+    s = session_with_data_dir(tmp_path)
+    call = [{"id": "call_0", "type": "function", "function": {"name": "Bash", "arguments": '{"command": "ls"}'}}]
+    for turn in ("first", "second"):  # Some providers number calls per turn: both are call_0.
+        s.messages += [{"role": "user", "content": turn}, {"role": "assistant", "content": "Running.", "tool_calls": call}]
+    s.record_operation(OperationReceipt("op1", "tool.call", "call_0", origin="cache/tool.call", delivered=True))
+    await s.save_snapshot()
+    s.close()
+    restored = load_session(s.uid, config=s.config, cwd=str(tmp_path))
+    output = []
+    CommandLoop(Agent(restored, output_fn=output.append), output_fn=output.append).resume.render_resumed_session()
+    # Which call_0 the plugin answered cannot be told apart, so neither shows a note it may not own.
+    assert "answered by plugin cache" not in "\n".join(str(item) for item in output)
+    restored.close()
+
+
 async def test_crash_at_the_execution_checkpoint_resumes_as_unknown(tmp_path):
     s = session_with_data_dir(tmp_path)
     bootstrap_features(s)

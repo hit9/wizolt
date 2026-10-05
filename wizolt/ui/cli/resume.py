@@ -10,6 +10,7 @@ the live path and the replay path can be kept in agreement deliberately, not by 
 from __future__ import annotations
 
 import json
+from collections import Counter
 from collections.abc import Callable
 from typing import ClassVar, Protocol
 
@@ -65,6 +66,8 @@ class ResumeRenderer:
         self.session = session
         self.presentation = presentation
         self.refresh_context = refresh_context
+        self.receipts_by_key: dict[str, OperationReceipt] = {}
+        self.receipts_by_id: dict[str, OperationReceipt] = {}
 
     def render_resumed_session(self) -> None:
         # Transcript reconstruction owns historical call/result matching and ordering invariants.
@@ -91,6 +94,12 @@ class ResumeRenderer:
                     tool_results[str(message["tool_call_id"])] = {**result, "status": "rejected", "reason": reason}
         semantic_tool_results = any("status" in message for message in tool_results.values())
         messages = [message for message in transcript if not SessionSnapshotCodec.is_internal_message(message) and message.get("role") != "tool"]
+        # Providers may reuse call IDs across turns, so a receipt is tied to its call by the stored
+        # result key it names, or by an ID that occurs once; an ambiguous one shows no note at all.
+        calls = Counter(raw.get("id") for message in messages for raw in message.get("tool_calls") or [] if isinstance(raw, dict))
+        receipts = [receipt for receipt in self.session.operation_receipts if receipt.operation == "tool.call"]
+        self.receipts_by_key = {receipt.actual: receipt for receipt in receipts if receipt.actual}
+        self.receipts_by_id = {receipt.target: receipt for receipt in receipts if not receipt.actual and calls[receipt.target] == 1}
         # The replay is a burst of independent emits; batch them into a single print_formatted_text
         # call so the whole session restores in one flush (and one TUI coordination) instead of one
         # per line.
@@ -182,7 +191,6 @@ class ResumeRenderer:
         raw_calls = message.get("tool_calls") or []
         if not isinstance(raw_calls, list):
             return tool_record_index
-        receipts = {receipt.target: receipt for receipt in self.session.operation_receipts if receipt.operation == "tool.call"}
         for raw in raw_calls:
             call = self.transcript_tool_call(raw)
             if call is None:
@@ -197,13 +205,16 @@ class ResumeRenderer:
                         status=str(result.get("status") or "failed"),
                         reason=str(result.get("reason") or ""),
                     )
-                    self.emit_receipt(receipts.get(call.id))
+                    self.emit_receipt(self.receipt_for(call, str(result.get("result_key") or "")))
                 continue
             record, tool_record_index = self.transcript_tool_record(call, tool_record_index)
             if not dry_run:
                 self.emit_transcript_tool(call, record.key if record else "", diffs)
-                self.emit_receipt(receipts.get(call.id))
+                self.emit_receipt(self.receipt_for(call, record.key if record else ""))
         return tool_record_index
+
+    def receipt_for(self, call: ToolCall, key: str) -> OperationReceipt | None:
+        return self.receipts_by_key.get(key) if key and key in self.receipts_by_key else self.receipts_by_id.get(call.id)
 
     def emit_receipt(self, receipt: OperationReceipt | None) -> None:
         """Replay what a plugin did to this call from its recorded receipt; no plugin runs."""

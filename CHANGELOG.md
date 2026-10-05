@@ -23,6 +23,9 @@
   - A rewritten `Subagent` result still carried the original's proof of delivery, so child
     results the model never saw were not announced again.
   - A manual retry of a request no interceptor saw linked to an older, unrelated request ID.
+  - Resume replay matched receipts by provider call ID, which some providers reuse every turn,
+    so an older call could show what a plugin did to a later one. A receipt now attaches by its
+    stored result key or a call ID that occurs once; an ambiguous one shows no note.
 
 - `Plugin(action="reload")` and its approval plan now retire a live plugin whose installation
   record was deleted from the config; before, it kept running, invisible to reload. A damaged
