@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Skills no longer occupy the `/` command namespace (matching how other agents, such as Codex,
+  treat them): a skill is loaded by the agent — on demand, or after you point at it with `$name`
+  — and never started by a `/name` command. Typing a skill's old `/name` now reports an unknown
+  command, and the `/` menu lists built-ins alone. `disable-model-invocation: true` still keeps
+  a skill out of the agent's list, but naming it in a message opens it to the agent;
+  Claude Code's `user-invocable` field is no longer supported and warns in `/skills`.
+
 - Fix plugin interception and presenter failures blamed on the wrong party:
   - An outer interceptor that relayed an inner plugin's refusal was blocked as if it had
     refused after `next` (reachable with the bundled `guard`). Relaying is allowed; changing a

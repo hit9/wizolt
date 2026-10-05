@@ -6,7 +6,7 @@
 <text x="58" y="68" class="detail">Put instructions in .wizolt/skills/release-notes/SKILL.md</text>
 <path d="M24 54 v53 m-4 -4 l4 4 4 -4" fill="none" stroke="#59616c" stroke-width="1"/>
 <text x="16" y="139" class="number">02</text>
-<text x="58" y="140" class="heading">Invoke /release-notes</text>
+<text x="58" y="140" class="heading">Point at $release-notes</text>
 <text x="58" y="170" class="detail">Or let the agent load it when it fits the task.</text>
 <path d="M24 156 v53 m-4 -4 l4 4 4 -4" fill="none" stroke="#59616c" stroke-width="1"/>
 <text x="16" y="241" class="number">03</text>

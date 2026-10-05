@@ -6,6 +6,7 @@ from agent_harness import session
 from wizolt.agent.context import ContextManager
 from wizolt.base import ToolError
 from wizolt.skill.library import SkillLibrary
+from wizolt.skill.listing import SkillListing
 from wizolt.tools import SkillTool, Tool
 
 
@@ -28,17 +29,19 @@ def test_rows_carry_source_and_argument_hint(tmp_path, isolate_home):
     assert "- pdf [user]: Read PDFs." in index
 
 
-async def test_user_only_skill_is_out_of_the_index_and_refused_to_the_model(tmp_path):
+async def test_user_only_skill_is_out_of_the_index_until_the_user_names_it(tmp_path):
     _skill(tmp_path / ".wizolt" / "skills", "deploy", "description: Ship it.\ndisable-model-invocation: true\n")
     _skill(tmp_path / ".wizolt" / "skills", "guide", "description: Conventions.\n")
     s = session(tmp_path)
 
     assert "deploy" not in s.skills.index()
     assert "- guide [project]: Conventions." in s.skills.index()
-    with pytest.raises(ToolError, match="only be started by the user, with /deploy"):
+    with pytest.raises(ToolError, match="held back from the model"):
         await SkillTool(s, ["deploy"]).call()
-    # A mention of it tells the model why, instead of inviting a refused call.
-    assert "(only the user can start this one, with /deploy)" in s.skills.resolve_mentions("run $deploy")
+    # Naming it opens it: the model sees a row it may load, and Skill can start it.
+    listing = SkillListing.of(s, s.skills)
+    assert "- deploy [project]: Ship it." in listing.resolve_mentions(s.skills, "run $deploy")
+    assert "body" in await SkillTool(s, ["deploy"]).call()
 
 
 def test_only_user_only_skills_offer_no_skill_tool(tmp_path, without_builtin_skills):

@@ -14,6 +14,7 @@ from wizolt.agent.lifecycle import create_session
 from wizolt.agent.prompts import SYSTEM_PROMPT
 from wizolt.base import Text, ToolError
 from wizolt.skill.library import SkillLibrary
+from wizolt.skill.listing import SkillListing
 from wizolt.tools import SkillTool, Tool
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.commands import skills_command
@@ -89,14 +90,15 @@ async def test_skill_tool_unknown_lists_available(tmp_path):
 def test_skill_mentions_name_the_skill_without_inlining_body(tmp_path):
     _write_skill(tmp_path, "triage", "triage a bug", "Reproduce first.")
     s = session(tmp_path)
+    listing = SkillListing.of(s, s.skills)
 
-    resolved = s.skills.resolve_mentions("please $triage this")
+    resolved = listing.resolve_mentions(s.skills, "please $triage this")
     assert "--- SKILL MENTIONS ---" in resolved
     assert "- triage [project]: triage a bug" in resolved
     assert "Reproduce first." not in resolved
     # a bare word without $ is not a mention; an unknown $token is ignored
-    assert s.skills.resolve_mentions("triage this") == ""
-    assert s.skills.resolve_mentions("$unknown") == ""
+    assert listing.resolve_mentions(s.skills, "triage this") == ""
+    assert listing.resolve_mentions(s.skills, "$unknown") == ""
 
 
 def test_skill_tool_absent_only_when_no_skills(tmp_path):

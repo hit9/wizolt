@@ -80,13 +80,14 @@ async def test_a_loaded_skill_deleted_from_disk_enforces_nothing(tmp_path, isola
     assert "blocked" not in message["content"]
 
 
-async def test_slash_name_activates_the_skill_too(tmp_path, isolate_home):
+async def test_a_mention_names_the_skill_without_activating_it(tmp_path, isolate_home):
     _user_skill(isolate_home, "deploy", GUARD)
     s = session(tmp_path)
 
-    await Agent(s, output_fn=lambda _text: None).mention_messages("/deploy")
+    [block] = await Agent(s, output_fn=lambda _text: None).mention_messages("$deploy")
 
-    assert s.active_skills == ["deploy"]
+    assert s.active_skills == []  # activation follows the model's load, not the naming
+    assert "- deploy [user]: deploy" in block["content"]
 
 
 async def test_allowed_tools_skip_the_prompt_for_what_they_cover(tmp_path, isolate_home):

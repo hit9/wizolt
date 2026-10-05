@@ -11,7 +11,7 @@ from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.update import UpdateChecker
 
 
-@pytest.mark.parametrize('entered', ['/guide', 'Please use $guide'])
+@pytest.mark.parametrize('entered', ['Please use $guide'])
 @pytest.mark.parametrize('inspect_first', [False, True])
 async def test_headless_first_input_sees_skills_even_after_status(tmp_path, monkeypatch, entered, inspect_first):
     folder = tmp_path / '.wizolt' / 'skills' / 'guide'
@@ -41,10 +41,7 @@ async def test_headless_first_input_sees_skills_even_after_status(tmp_path, monk
         assert 'Unknown command: /guide' not in '\n'.join(output)
         assert len(requests) == 1
         messages, tools = requests[0]
-        if entered.startswith('/'):
-            assert 'STARTUP_SKILL_BODY' in str(messages)
-        else:
-            assert any(message.get('_session_event') == 'skill_mentions' and 'guide [project]' in message['content'] for message in messages)
+        assert any(message.get('_session_event') == 'skill_mentions' and 'guide [project]' in message['content'] for message in messages)
         assert '--- SKILLS ---' in str(messages)
         assert any(tool['function']['name'] == 'Skill' for tool in tools)
     finally:

@@ -12,6 +12,7 @@ from agent_harness import session
 from prompt_toolkit.document import Document
 
 from wizolt.mentions import FileMentions, FzfPicker, active_mention, encode_file_mention, scan_mentions
+from wizolt.skill.listing import SkillListing
 from wizolt.ui.cli import TuiRuntime
 from wizolt.ui.cli.view import CommandCompleter
 
@@ -51,7 +52,7 @@ def test_mcp_and_skill_forms_parse(tmp_path):
         ("file", "a.py"),
         ("skill", "release"),
     ]
-    assert s.skills.resolve_mentions("price $30") == ""  # a price is not a skill mention
+    assert SkillListing.of(s, s.skills).resolve_mentions(s.skills, "price $30") == ""  # a price is not a skill mention
     assert not [span for span in scan_mentions("mail hit9@icloud.com") if span.kind == "bare"]
 
 

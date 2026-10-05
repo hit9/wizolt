@@ -29,8 +29,6 @@ lets this repository's skills that run commands or carry hooks be used, and `unt
 that back ([Trusting a repository](skills.md#trusting-a-repository)). While the agent works,
 only the list is available.
 
-**`/name [arguments]`** — Starts the [skill](skills.md#using-skills) of that name.
-
 **`/config`** — Shows the active configuration: provider blocks, runtime settings,
 and their resolved values.
 

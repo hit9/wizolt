@@ -57,7 +57,7 @@ HINTS: tuple[Hint, ...] = (
     Hint("Tab completes commands and @mentions"),
     Hint("↑ or Ctrl-P recalls earlier prompts"),
     Hint("Ctrl-R searches prompt history"),
-    Hint("$skill loads a skill inline", when=_when_skills),
+    Hint("$skill points the agent at a skill", when=_when_skills),
     Hint("@server.tool mentions an MCP tool", when=_when_mcp),
     Hint("@file:src/a.py points the agent at a file"),
     Hint("Ctrl-X Ctrl-E opens $EDITOR"),

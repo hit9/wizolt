@@ -795,9 +795,8 @@ class Agent:
 
         blocks: list[Json] = []
         for event, resolver in (
-            ("skill_command", self.skill_command if self.session.skills is not None else None),
             ("mcp_mentions", self.session.mcp.resolve_mentions if self.session.mcp is not None else None),
-            ("skill_mentions", self.session.skills.resolve_mentions if self.session.skills is not None else None),
+            ("skill_mentions", self.skill_mentions if self.session.skills is not None else None),
             ("agents_mentions", self.session.agents.resolve_mentions if self.session.agents is not None else None),
             ("file_mentions", self.session.mentions.resolve_mentions if self.session.mentions is not None else None),
             ("plugin_mentions", plugin_mentions if self.session.plugins is not None else None),
@@ -934,15 +933,20 @@ class Agent:
         text = SkillListing.of(self.session, library).announcement(library)
         return [{"role": "user", "content": text, SESSION_EVENT_KEY: "new_skills"}] if text else []
 
-    async def skill_command(self, text: str) -> str:
-        """The skill a `/name args` message starts, loaded now: the user asked for it by name, so
-        the model receives the instructions instead of a pointer to them."""
-        command = self.session.skills.command(text) if self.session.skills is not None else None
-        if command is None:
+    def skill_mentions(self, text: str) -> str:
+        """The SKILL MENTIONS block for one user message, and the record that opens what it names: a
+        disable-model-invocation skill is loadable from the moment its user names it.
+
+        A mention that arrives before anything froze the listing creates an unfrozen one (epoch
+        -1): the turn's rescan and the first request still freeze it (see skill_announcement),
+        rather than freezing an empty index in the mention's place."""
+        library = self.session.skills
+        if library is None:
             return ""
-        if command.skill.fork and not self.session.agent_parent:
-            return command.fork_notice()  # the worker is sent from the Skill tool
-        return await command.load(self.session, invoked_by="user")
+        listing = self.session.skill_listing
+        if listing is None:
+            listing = self.session.skill_listing = SkillListing()
+        return listing.resolve_mentions(library, text)
 
     @classmethod
     def textual_tool_call(cls, content: str, tools: list[Json]) -> str | None:

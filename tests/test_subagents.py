@@ -1511,8 +1511,7 @@ async def test_forked_skills_respect_retained_limit_without_falling_back_inline(
     monkeypatch.setattr(ModelClient, "request", request)
     if limit:
         assert await SkillTool(root, ["inspect"]).call() == "done"
-    # User slash invocation and model invocation both preserve the fork boundary.
-    assert await group.root.skill_command("/inspect")
+    # Model invocation preserves the fork boundary: it never falls back to running inline.
     with pytest.raises(ToolError, match="Subagent limit reached"):
         await SkillTool(root, ["inspect"]).call()
     assert len(group.entries) == limit + 1

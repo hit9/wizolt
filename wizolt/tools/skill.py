@@ -25,7 +25,7 @@ class SkillTool(Tool):
         return cls.object_schema(
             {
                 "name": {"type": "string", "description": "Skill name from the SKILLS section"},
-                "arguments": {"type": "string", "description": "Arguments for a skill that lists args, as you would type them after /name"},
+                "arguments": {"type": "string", "description": "Arguments for a skill that lists args, matching its argument-hint"},
             },
             ["name"],
         )
@@ -47,7 +47,9 @@ class SkillTool(Tool):
             available = ", ".join(item.name for item in library.all()) if library else ""
             return ToolError(f"unknown skill {name!r}" + (f"; available: {available}" if available else "; no skills are installed"))
         if not skill.model_invocable:
-            return ToolError(f"skill {skill.name!r} can only be started by the user, with /{skill.name}")
+            listing = self.session.skill_listing
+            if listing is None or skill.name not in listing.authorized:
+                return ToolError(f"skill {skill.name!r} is held back from the model; the user can name it with ${skill.name} to open it")
         return Invocation(skill, Arguments(rest[0].strip() if rest else ""))
 
     def invocation(self) -> Invocation:

@@ -251,7 +251,7 @@ def skills_command(loop: CommandLoop, args: str) -> str:
             "No skills installed. Add `<name>/SKILL.md` under `.wizolt/skills/`, `.agents/skills/` or `.claude/skills/` (project), "
             "or the same folders in your home directory (user)."
         )
-    parts = [f"### Skills · {len(skills)}", "", "Start one with `/name`, or point the agent at one with `$name`."]
+    parts = [f"### Skills · {len(skills)}", "", "Point the agent at one with `$name`, and it loads what the request needs."]
     if skills:
         table = markdown_table(
             ["skill", "source", "from", "description"],

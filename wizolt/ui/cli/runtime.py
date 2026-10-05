@@ -235,8 +235,8 @@ class TuiRuntime:
         text = str(value).strip()
         if not text:
             return
-        # A skill's `/name` is a message for the turn, like any follow-up; other `/` text is a command.
-        if not value.images and "\n" not in text and text.startswith("/") and not self.loop.skill_command(text):
+        # Any other `/` text is a command, queued to run between turns.
+        if not value.images and "\n" not in text and text.startswith("/"):
             self.spawn(self.loop.run_queued_command(text), name="queued-command")
         else:
             self.submit_accepted(_Submission(value))
@@ -809,7 +809,7 @@ class TuiRuntime:
                 self.spawn(self._finish_starting(scan, skills), name="startup-settle")
                 self.submit_next(self.loop.take_pending_inputs())
                 # Input admission may proceed, but commands such as /status freeze the model's
-                # skill listing and /name needs discovery. Neither may race the initial scan.
+                # skill listing and mentions need discovery. Neither may race the initial scan.
                 if skills is not None:
                     await self._until_shutdown(skills)
                 if not self.shutdown.is_set():

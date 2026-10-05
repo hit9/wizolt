@@ -8,6 +8,7 @@ from wizolt.agent.engine import Agent
 from wizolt.agent.prompts import SYSTEM_PROMPT
 from wizolt.agent.runner import ToolRunner
 from wizolt.base import SESSION_EVENT_KEY, ToolCall
+from wizolt.skill.listing import SkillListing
 from wizolt.tools import Tool
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.commands import skills_command
@@ -70,7 +71,7 @@ async def test_session_without_skill_tool_does_not_grow_one(tmp_path, without_bu
 
     assert await agent.skill_announcement() == []  # nothing the model could load it with
     assert "Skill" not in _tools(s)
-    assert s.skills.command("/late") is not None  # the user can still start it
+    assert SkillListing.of(s, s.skills).resolve_mentions(s.skills, "$late") != ""  # a mention still points the agent at it
 
 
 async def test_opening_a_file_in_a_package_brings_its_skills(tmp_path):

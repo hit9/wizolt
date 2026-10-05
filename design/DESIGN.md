@@ -257,7 +257,7 @@ Cancellation joins the assembly worker before the entry point releases its sessi
 Assembly only attaches skill sources. During `starting…`, the runtime scans them off the event
 loop, alongside MCP discovery and mention refresh. Input stays editable and submissions enter
 their FIFO, but command/turn dispatch waits for that initial skill scan: `/status` can freeze the
-model's skill listing just as a request can, and `/name` and skill mentions require discovery.
+model's skill listing just as a request can, and skill mentions require discovery.
 Dispatch does not wait for MCP discovery or SDK warm-up. The starting indicator clears after the
 skill scan, SDK warm-up and initial mention refresh finish. The non-TTY frontend also scans skills
 before reading its first command. Scan workers settle on cancellation before resource shutdown.
@@ -479,7 +479,11 @@ and `Note` updates and resume events are conversation, not context inserted ahea
   opens). `skill/listing.py` freezes the SKILLS index and the Skill tool's presence at the first
   request; later skills arrive as one appended `NEW SKILLS` message, and the index is rebuilt only
   when `Session.context_epoch` moves (compaction, context reset). The Skill tool never appears
-  mid-session: a session that started without it only gains `/name` starts. Startup attaches the
+  mid-session: a session that started without it only gains `$name` mentions. A mention that
+  arrives before the first request creates an unfrozen listing (epoch -1); the first freeze still
+  sees the scanned library, and what the mention authorized survives it. Naming a skill is what
+  opens a `disable-model-invocation` one to the model; a context rebuild clears the
+  authorization with the mentions that carried it. Startup attaches the
   library without reading disk (`bootstrap_features` -> `SkillLibrary.attach`) and the interactive
   runtime runs the first scan off the loop during the "starting" settle, the way MCP connects its
   servers in the background; a resumed session scans before `load_session` returns, because its
