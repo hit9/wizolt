@@ -365,7 +365,12 @@ class Compactor:
         # carries it, and its reasoning boundary is read off the whole projection below even when
         # only the stored half is being sliced.
         live = ctx.model_messages(base_system, turn_messages if turn_messages is not None else live_turn)
-        header = len(ctx.model_header(base_system))
+        plain = len(ctx.model_header(base_system))
+        # A composing plugin changed what the turn sent ahead of the conversation; ride those exact
+        # bytes, or this request misses the cache it exists to reuse.
+        sent = ctx.sent_header(live[:plain])
+        live = [*sent, *live[plain:]]
+        header = len(sent)
         # A turn-scope span sits after the stored conversation rather than at the head of it, so
         # its slice starts there. Both scopes are ordinary prefixes of the same projection; only
         # the offset differs.

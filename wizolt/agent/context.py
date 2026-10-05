@@ -77,6 +77,8 @@ class ContextManager:
     def __init__(self, session: Session, model: ModelClient | None = None):
         self.session = session
         self.model = model
+        # (plain header, composed prefix) of the last composed turn request; see sent_header.
+        self.composed_header: tuple[list[Json], list[Json]] | None = None
         # Automatic compaction runs inside request projection, below the UI layer. The on_compaction
         # field of this manager's hooks lets orchestration expose that real phase without making
         # context depend on a renderer. False is emitted in a finally block, including model
@@ -126,6 +128,7 @@ class ContextManager:
         """
         interception = getattr(plugins, "interception", None)
         if interception is None or not interception.would_match("context.compose", purpose="turn"):
+            self.composed_header = None  # This request sends the plain header.
             return messages
         from wizolt.plugins.rules import adapter_rules
         from wizolt.sdk import operations
@@ -172,7 +175,17 @@ class ContextManager:
         if tokens >= self.request_token_budget():
             raise ModelError("Plugin context composition does not fit the context budget")
         self.update_percent(composed, tools, tokens=tokens)  # The status bar shows what is sent.
+        # What this request sent ahead of the conversation, keyed by the plain header it replaced:
+        # an inline compaction request re-sends exactly these bytes, so it still hits the cache.
+        self.composed_header = (Text.value(messages[: len(parts)]), composed[: len(composed) - len(conversation)])
         return composed
+
+    def sent_header(self, header: list[Json]) -> list[Json]:
+        """The prefix the last turn request sent for this plain header: composed when a plugin
+        composed it, else the header itself. A changed header means a different request."""
+        if self.composed_header is not None and self.composed_header[0] == header:
+            return self.composed_header[1]
+        return header
 
     def render_header(self, parts: list[tuple[str, str]]) -> list[Json]:
         content = parts[0][1]

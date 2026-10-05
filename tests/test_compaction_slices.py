@@ -60,6 +60,33 @@ async def test_pruned_history_survives_a_snapshot_round_trip(tmp_path):
     assert [segment.text for segment in restored.history] == [segment.text for segment in s.history]
 
 
+async def test_compaction_rides_the_composed_prefix_the_turn_actually_sent(tmp_path):
+    """A context.compose plugin changes what the turn sends ahead of the conversation; the inline
+    compaction request has to re-send those exact bytes, or it misses the cache it exists for."""
+    live = session(tmp_path)
+    live.messages = [{"role": "user", "content": f"step {index}"} if index % 2 == 0 else {"role": "assistant", "content": "ok"} for index in range(20)]
+    plugin = tmp_path / "notes.py"
+    plugin.write_text(
+        "SDK_VERSION = 1\ndef setup(p):\n    async def h(ctx, blocks, next):\n"
+        "        return await next(blocks.add('notes', 'Release freeze is on.'))\n    p.intercept('context.compose', h)\n"
+    )
+    await live.plugins.manage("enable", str(plugin))
+    context = ContextManager(live)
+    try:
+        sent = await context.compose(live.plugins, live.system_prompt, context.model_messages(live.system_prompt), [])
+        assert "Release freeze is on." in [message["content"] for message in sent]
+        compacted, _keep = compaction.Compactor(context, _StubModel()).parts()
+        messages, _tools = compaction.Compactor(context, _StubModel()).request(compacted)
+        assert messages[:-1] == sent[: len(messages) - 1]  # Byte-identical to the composed request.
+        # The plugin is gone: the next turn sends the plain header, and so does compaction.
+        await live.plugins.manage("disable", "notes")
+        plain = await context.compose(live.plugins, live.system_prompt, context.model_messages(live.system_prompt), [])
+        messages, _tools = compaction.Compactor(context, _StubModel()).request(compacted)
+        assert messages[:-1] == plain[: len(messages) - 1]
+    finally:
+        await live.plugins.close()
+
+
 def test_compaction_reuses_the_agent_prefix_and_keeps_real_messages(tmp_path):
     """The summary request is the agent's own request truncated, with an instruction appended, so
     the provider cache already covers it -- and the compactor sees tool calls, which the flattened
