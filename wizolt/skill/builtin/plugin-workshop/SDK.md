@@ -74,7 +74,7 @@ Presenter view models (`ToolCard`, `ToolSummary`, `ActivityStatus`) are imported
 
 | Type | Fields / defaults |
 | --- | --- |
-| `Context` | Required: `agent_id: str`, `agent_name: str`, `cwd: str`, `status: str`, `context_percent: float`, `elapsed: float`, `model: str`, `now: float`; optional: `columns: int = 80`, `usage: Usage = Usage()`, `window: ContextWindow = ContextWindow()`, `viewport: Viewport = Viewport()`, `layout: Layout \| None = None`, `turn: Turn = Turn()`, `yolo: bool = False` |
+| `Context` | Required: `agent_id: str`, `agent_name: str`, `cwd: str`, `status: str`, `context_percent: float`, `elapsed: float`, `model: str`, `now: float`; optional: `columns: int = 80`, `usage: Usage = Usage()`, `window: ContextWindow = ContextWindow()`, `viewport: Viewport = Viewport()`, `layout: Layout \| None = None`, `turn: Turn = Turn()` |
 | `Viewport` | `columns: int = 80`, `rows: int = 24` |
 | `Layout` | `slot: str`, `columns: int`, `rows: int`, `gap_before: int = 0` |
 | `Turn` | `tools: ToolCounts = ToolCounts()`, `active_tools: tuple[ToolActivity, ...] = ()` |
@@ -349,9 +349,7 @@ elapsed seconds, model, monotonic now, and available columns.
 `context.usage` contains cumulative calls/input_tokens/output_tokens/cached_tokens and estimated
 live output_rate (tokens/s). `context.window` contains used/limit/budget and `(category, tokens)`
 parts. Parts are local estimates refreshed at activation/request boundaries; used may be a
-provider count. They need not sum to the same number. `context.yolo` is true while wizolt runs
-tools without asking; a plugin that confirms risky work itself can skip asking when it is false,
-because wizolt's own approval asks then. No message text or credentials are exposed.
+provider count. They need not sum to the same number. No message text or credentials are exposed.
 For offline fixtures, `test --facts facts.json` accepts Context overrides, for example
 `{"usage":{"output_rate":42},"window":{"used":200,"limit":1000,"parts":[["system",100],["messages",100]]}}`.
 `--width` and `--project` still own the viewport and worker directory; `--times` owns sample times.

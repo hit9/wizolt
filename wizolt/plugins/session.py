@@ -98,7 +98,6 @@ class SessionPlugins(PluginRuntime):
                 session.request_token_budget(),
                 self.context_parts,
             ),
-            yolo=session.settings.yolo,
         )
 
     async def load(self) -> None:

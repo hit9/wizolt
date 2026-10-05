@@ -117,27 +117,20 @@ the same spot, wizolt keeps its own drawing until you pick one with
 
 ## Try the built-in pet
 
-Open `/plugins`, select **pet**, then **enable**. A small cat reacts to the agent above your
-input. It starts disabled and makes no model calls.
+Open `/plugins`, select **pet**, then **enable**. A rainbow pet strolls along your prompt line
+while the agent works and rests when it stops. Type `/pet` to choose a cat, dog, rabbit, frog,
+dragon or robot; your choice is saved. It starts disabled and makes no model calls.
 
-![The pet working, waiting for input and resting.](_static/plugins-pet.svg)
+![The pet working, waiting for input and finishing.](_static/plugins-pet.svg)
 
 > Move @plugin:pet above the divider and reload it.
 
-## Other built-in plugins
+## The built-in context bar
 
-Each starts disabled; enable it in `/plugins`. Neither makes model calls.
-
-**context_bar** draws what fills your context window above the input: one colored segment per
-category (system prompt, tools, memory files, skills, messages), the percentage used at the
-end, and a legend with token counts. In a short terminal only the bar remains.
-
-**guard** asks before destructive shell commands while yolo is on: `rm -rf`, force pushes,
-`git reset --hard`, `git clean -f` and similar. Declining tells the agent you said no. Without
-yolo, wizolt already asks before every command, so the guard stays out of the way. Change what
-counts as destructive with its `patterns` setting:
-
-> Make @plugin:guard also ask before `docker system prune`.
+Enable **context_bar** in `/plugins` to see what fills your context window above the input: one
+colored segment per category (system prompt, tools, memory files, skills, messages), the
+percentage used at the end, and a legend with token counts. In a short terminal only the bar
+remains. It makes no model calls.
 
 ## Arrange your space
 

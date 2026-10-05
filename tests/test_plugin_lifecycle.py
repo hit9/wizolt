@@ -377,16 +377,15 @@ async def test_builtin_pet_is_disabled_persists_choice_and_uses_semantic_colors(
     await runtime.refresh()
     panels = runtime.panels("above_input")
 
-    def outline(panel):  # The mood colors the ears and the body's first span.
-        ears, body = panel.rows
-        return {ears.role, body.spans[0].role}
+    def caption(panel):  # The mood colors the caption; the body is the theme's rainbow.
+        return {(span.text, span.role) for span in panel.rows[0].spans if span.text.strip().isalpha() or " " in span.text.strip()}
 
-    assert panels and outline(panels[0]) == {"accent"}
+    assert panels and ("on it", "accent") in caption(panels[0])
     rendered = PluginView.render(panels, 80, 6)
     assert any(style == Theme.fg("accent") for style, text in rendered if text.strip())
     runtime.session.state.awaiting_input = True
     await runtime.refresh()
-    assert outline(runtime.panels("above_input")[0]) == {"warning"}
+    assert ("your move", "warning") in caption(runtime.panels("above_input")[0])
     await runtime.manage("disable", "pet")
     await runtime.close()
     fresh = SessionPlugins(session_with_provider(tmp_path))

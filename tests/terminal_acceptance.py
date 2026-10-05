@@ -159,19 +159,19 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     wait("test-model")
     pane.send("/plugins")
     wait("disabled")
-    for _ in range(3):  # context_bar, guard, layout and pet are bundled, disabled installations.
+    for _ in range(2):  # context_bar, layout and pet are bundled, disabled installations.
         pane.keys("Down")
     pane.keys("Enter")
     wait("1. enable")
     pane.keys("Enter")
     wait("enabled   running")
     pane.keys("Escape")
-    wait("on standby")
+    wait("strolling")  # The idle pet's caption.
     pane.resize(160, 30)
     wait("plugins 1")
     for width, height in ((40, 18), (100, 30), (60, 20)):
         pane.resize(width, height)
-        wait("on standby")
+        wait("strolling")
     pane.send("/plugins")
     wait("Plugins")
     pane.keys("Enter")
@@ -184,7 +184,7 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     pane.keys("Escape")
     pane.send("/plugins")
     visible = wait("Plugins")
-    assert "on standby" not in visible
+    assert "strolling" not in visible
     pane.keys("Escape", "C-d")
 
 

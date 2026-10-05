@@ -16,7 +16,7 @@
 
 - Fix plugin interception and presenter failures blamed on the wrong party:
   - An outer interceptor that relayed an inner plugin's refusal was blocked as if it had
-    refused after `next` (reachable with the bundled `guard`). Relaying is allowed; changing a
+    refused after `next`. Relaying is allowed; changing a
     downstream result into a refusal still is not.
   - A slow presenter retired its whole worker, taking the plugin's commands, tools and
     interceptors with it. The site deadline now cancels only the callback; a worker whose
@@ -25,8 +25,6 @@
     operation, like an out-of-bounds value.
   - An effort override is now checked against the model's offered efforts instead of being
     silently mapped to the nearest one, for plugins' own `model.complete` requests too.
-  - The bundled `guard` caught `rm -rf` only with the flag first; `rm -v -rf` slipped past.
-    A command with control characters was refused as "no one can confirm" instead of asked.
   - The status bar's context figure now includes blocks that `context.compose` adds.
   - The tmux acceptance test no longer depends on the bundled names' column width.
   - Disabling a plugin cancelled any in-flight operation of a kind it registered for, even one
@@ -45,12 +43,10 @@
   source file with its record still present
   remains a failed reload that keeps the running generation, as before.
 
-- Add two built-in plugins, both disabled by default and without model calls: `context_bar`
-  (a stacked context-window bar with per-category theme colors, percentage and legend) and
-  `guard` (a `tool.call` interceptor that confirms destructive Bash commands while yolo is on,
-  configurable through `patterns`; headless runs refuse them). Plugins see the new read-only
-  `Context.yolo` fact, so a plugin that confirms risky work can stay quiet while wizolt's own
-  approval asks.
+- Add the built-in `context_bar` plugin, disabled by default and without model calls: a
+  stacked context-window bar with per-category theme colors, percentage and legend.
+- Replace the built-in pet with a rainbow pet that strolls the prompt line while the agent works.
+  `/pet` picks a cat, dog, rabbit, frog, dragon or robot and saves it as `[plugins.pet] pet`.
 
 - Restore plugin worker launch and CLI import speed. Workers loaded `packaging` even for plugins
   declaring no dependencies, plus the interception modules; the CLI loaded interception eagerly.

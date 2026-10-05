@@ -1,14 +1,12 @@
-"""The bundled context bar and guard through real workers: what a user sees and what the agent may run."""
+"""The bundled context bar and pet through real workers: what a user sees and chooses."""
 
 from pathlib import Path
-from types import MappingProxyType
 
 import pytest
 
 from wizolt.plugins.catalog import PluginCatalog
 from wizolt.plugins.runtime import PluginRuntime
 from wizolt.sdk import Context, ContextWindow, Line, Text
-from wizolt.sdk.operations import Refusal, ToolCall, ToolResult
 
 BUILTIN = Path(__file__).parents[1] / "wizolt/plugins/builtin"
 
@@ -43,10 +41,10 @@ async def test_every_builtin_introduces_itself_in_the_plugin_list(tmp_path):
     try:
         # /plugins lists disabled plugins too: their introduction is read from source, not run.
         listing = {item["name"]: item for item in (await plugins.manage("list"))["plugins"]}
-        assert listing["guard"]["status"] == "off" and listing["guard"]["description"].startswith("Asks before destructive")
+        assert listing["context_bar"]["status"] == "off" and listing["context_bar"]["description"].startswith("A bar above your input")
         await plugins.manage("enable", "pet")
         listing = {item["name"]: item for item in (await plugins.manage("list"))["plugins"]}
-        assert listing["pet"]["description"].startswith("A small cat")  # Live plugins too.
+        assert listing["pet"]["description"].startswith("A rainbow pet")  # Live plugins too.
         from types import SimpleNamespace
 
         from wizolt.ui.cli.plugins import PluginManager
@@ -54,14 +52,14 @@ async def test_every_builtin_introduces_itself_in_the_plugin_list(tmp_path):
         manager = PluginManager(SimpleNamespace(), plugins)  # type: ignore[arg-type]
         manager.records = listing
         # The preview opens with what the plugin is, before where it lives.
-        assert manager.preview("guard").startswith("Asks before destructive shell commands")
+        assert manager.preview("context_bar").startswith("A bar above your input")
     finally:
         await plugins.close()
 
 
-def test_new_builtins_ship_disabled(tmp_path):
+def test_builtins_ship_disabled(tmp_path):
     records, _ = PluginCatalog.for_user(str(tmp_path)).read()
-    assert not records["context_bar"].enabled and not records["guard"].enabled
+    assert set(records) == {"context_bar", "layout", "pet"} and not any(item.enabled for item in records.values())
 
 
 async def bar_panel(runtime, window, columns=60):
@@ -103,71 +101,35 @@ async def test_context_bar_warns_near_the_limit_and_hides_without_a_window(runti
     assert bar.spans[-1] == Text(" 95%", "warning")
 
 
-def bash(command):
-    return ToolCall("c1", "Bash", MappingProxyType({"command": command}))
+async def pet_rows(runtime):
+    await runtime.refresh()
+    [panel] = runtime.panels("above_input")
+    return [text(row) for row in panel.rows]
 
 
-class Core:
-    def __init__(self):
-        self.ran = []
-
-    async def __call__(self, value):
-        self.ran.append(value.arguments["command"])
-        return ToolResult("ran")
-
-
-def answering(choice, asked):
-    async def handler(owner, service, arguments):
-        asked.append(arguments["view"]["title"])
-        return {"result": {"action": "submit", "selected": [choice]}}
-
-    return handler
+async def test_the_pet_walks_only_while_the_agent_works(runtime):
+    await runtime.manage("enable", str(BUILTIN / "pet.py"))
+    crown, body = await pet_rows(runtime)
+    assert "/\\_/\\" in crown and "(" in body  # The cat by default.
+    resting = body.index("(")
+    for now in (1, 2, 3):  # Idle time is never credited to the walk.
+        runtime.state["context"] = facts(now=now)
+        assert (await pet_rows(runtime))[1].index("(") == resting
+    for now in (4, 4.5, 5):
+        runtime.state["context"] = facts(status="running", now=now)
+        await runtime.refresh()
+    assert (await pet_rows(runtime))[1].index("(") != resting
 
 
-async def test_plugins_see_the_sessions_yolo_setting(tmp_path):
-    from agent_harness import session_with_provider
+async def test_pet_picks_another_pet_in_place(runtime):
+    await runtime.manage("enable", str(BUILTIN / "pet.py"))
+    offered = []
 
-    session = session_with_provider(tmp_path)
-    from wizolt.plugins.session import SessionPlugins
+    async def answer(owner, service, arguments):
+        offered.append([item["id"] for item in arguments["view"]["body"]["items"]])
+        return {"result": {"action": "submit", "selected": ["dragon"]}}
 
-    plugins = SessionPlugins(session)
-    session.settings.yolo = False
-    assert plugins.context().yolo is False
-    session.settings.yolo = True  # /yolo toggles mid-session; the next callback sees it.
-    assert plugins.context().yolo is True
-    await plugins.close()
-
-
-async def test_guard_stays_quiet_without_yolo(runtime):
-    await runtime.manage("enable", str(BUILTIN / "guard.py"))
-    asked, core = [], Core()
-    runtime.interactions.handler = answering("no", asked)
-    # wizolt's own approval asks without yolo; the guard must not ask a second time.
-    assert await runtime.interception.run("tool.call", bash("rm -rf build"), core) == ToolResult("ran")
-    assert asked == [] and core.ran == ["rm -rf build"]
-
-
-@pytest.mark.parametrize(
-    "command", ["rm -rf build", "rm -v -rf build", "rm -fv build", "git push --force origin main", "git reset --hard HEAD~3", "git clean -fdx", "rm -rf \x1b[2Jbuild"]
-)
-async def test_guard_asks_before_destructive_commands_under_yolo(runtime, command):
-    runtime.state["context"] = facts(yolo=True)
-    await runtime.manage("enable", str(BUILTIN / "guard.py"))
-    asked, core = [], Core()
-    runtime.interactions.handler = answering("no", asked)
-    result = await runtime.interception.run("tool.call", bash(command), core)
-    assert isinstance(result, Refusal) and "declined" in result.reason and core.ran == []
-    assert "".join(char for char in command if char.isprintable()) in asked[0]  # Shown, never as escapes.
-    runtime.interactions.handler = answering("yes", asked)
-    assert await runtime.interception.run("tool.call", bash(command), core) == ToolResult("ran")
-
-
-async def test_guard_passes_ordinary_commands_and_refuses_when_no_one_can_confirm(runtime):
-    runtime.state["context"] = facts(yolo=True)
-    await runtime.manage("enable", str(BUILTIN / "guard.py"))
-    core = Core()
-    assert await runtime.interception.run("tool.call", bash("rm notes.txt && ls"), core) == ToolResult("ran")
-    # Headless: no TUI to ask. Refuse with a reason, and keep the registration healthy.
-    result = await runtime.interception.run("tool.call", bash("rm -rf /tmp/x"), core)
-    assert isinstance(result, Refusal) and "no one can confirm" in result.reason
-    assert not runtime.entries["guard"].active.failures and core.ran == ["rm notes.txt && ls"]
+    runtime.interactions.handler = answer
+    result = await runtime.invoke("pet", "command", "pet", {})
+    assert offered == [["cat", "dog", "rabbit", "frog", "dragon", "robot"]] and "dragon" in result
+    assert "^   ^" in (await pet_rows(runtime))[0]  # No reload: the pick applies at once.
