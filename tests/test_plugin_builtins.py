@@ -51,12 +51,11 @@ async def test_every_builtin_introduces_itself_in_the_plugin_list(tmp_path):
 
         manager = PluginManager(SimpleNamespace(), plugins)  # type: ignore[arg-type]
         manager.records = listing
-        # The preview opens with what the plugin is, before where it lives.
-        assert manager.preview("context_bar").startswith("A bar above your input")
-        # About: the author's documentation for an off plugin, plus a live demo once it runs.
-        assert "## Use" in manager.about("context_bar") and "What it shows now" not in manager.about("context_bar")
-        await plugins.refresh()
-        assert "## What it shows now" in manager.about("pet") and "/\\_/\\" in manager.about("pet").partition("What it shows now")[2]
+        # The preview is the plugin's About page, rendered, before the facts about where it lives.
+        preview = "".join(text for _, text in manager.preview("context_bar"))
+        assert preview.lstrip(" │").startswith("A bar above your input") and "│ Use\n" in preview and "## Use" not in preview
+        assert preview.index("│ Use\n") < preview.index("Built in")
+        assert manager.preview("context_bar") and manager.pages  # Rendered once, then reused.
     finally:
         await plugins.close()
 

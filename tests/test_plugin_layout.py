@@ -126,7 +126,7 @@ async def test_human_manager_only_offers_lifecycle_actions(tmp_path, monkeypatch
         manager = PluginManager(SimpleNamespace(), runtime)
         manager.records = {"one": {"enabled": True}}
         await manager.manage("one")
-        assert choices_seen == [("about", "reload", "disable")]
+        assert choices_seen == [("reload", "disable")]
     finally:
         await runtime.close()
 

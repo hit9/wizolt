@@ -38,11 +38,14 @@ def test_manager_preview_names_presets_and_keeps_the_file_name_visible(monkeypat
         "gitline": {"path": deep, "presets": {"statusbar": ["git"], "divider": []}},
         "plain": {"path": "/p/plain.py", "presets": {"statusbar": [], "divider": []}},
     }
-    lines = manager.preview("gitline").splitlines()
+    lines = manager.facts("gitline", 34)
     # The kinds dict is always complete; listing its keys named presets a plugin never registered.
-    assert "Presets: statusbar git" in lines and "divider" not in manager.preview("gitline")
-    assert "Presets" not in manager.preview("plain")
+    assert "Presets: statusbar git" in lines and not any("divider" in line for line in lines)
+    assert not any("Presets" in line for line in manager.facts("plain", 34))
     assert lines[0].endswith("gitline.py") and lines[0].startswith("...") and len(lines[0]) <= 34
+    # An unreadable source still gets a page that says why, above the same facts.
+    preview = "".join(text for _, text in manager.preview("gitline"))
+    assert "Could not read this plugin's" in preview and "Presets: statusbar git" in preview
 
 
 async def test_statusbar_plugin_count_tracks_only_this_agents_live_generations(tmp_path):

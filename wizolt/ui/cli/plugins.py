@@ -6,20 +6,19 @@ import json
 import re
 import shlex
 import shutil
-import textwrap
 from functools import lru_cache
 from typing import TYPE_CHECKING, ClassVar
 
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 
 from wizolt.agentsmd import display_path
-from wizolt.base import ApprovalView, Text
+from wizolt.base import Text
 from wizolt.plugins.layout import INPUT_SLOTS, LayoutBudget
 from wizolt.plugins.loading import PluginSource
 from wizolt.sdk import Line, Panel, PluginError
 from wizolt.sdk import Text as PluginText
 from wizolt.ui.bars import Fragments, clean, clip
-from wizolt.ui.cli.modals import approval_text_viewer, choice_application, picker_height
+from wizolt.ui.cli.modals import choice_application, picker_height
 from wizolt.ui.render import Theme
 from wizolt.ui.tui import ChoiceViewState
 
@@ -102,18 +101,42 @@ class PluginManager:
         self.loop = loop
         self.runtime = runtime
         self.records: dict[str, dict] = {}
+        self.pages: dict[tuple[str, int], list] = {}  # Rendered About pages by (plugin, width).
         self.notice = ""
         self.state = ChoiceViewState((), {}, set())
 
-    def preview(self, name: str) -> str:
+    def preview(self, name: str) -> StyleAndTextTuples:
+        """The plugin's About page, rendered, then the facts the host knows about it."""
+        columns, rows = shutil.get_terminal_size((80, 24))
+        width = max(10, columns - 6)
+        fragments: StyleAndTextTuples = []
+        page = self.page(name, width)
+        limit = max(6, rows - 8)  # The list above adapts to the preview; leave it a few rows.
+        for row in page[:limit]:
+            fragments.extend((("class:choice.preview", "  │ "), *row, ("", "\n")))
+        if len(page) > limit:
+            fragments.append(("class:choice.preview", f"  │ … {len(page) - limit} more lines in this plugin's docstring\n"))
+        fragments.append(("class:choice.preview", "  │\n"))
+        fragments.extend(("class:choice.preview", "  │ " + line + "\n") for line in self.facts(name, width))
+        return fragments
+
+    def page(self, name: str, width: int) -> list:
+        """Rendered once per plugin and width: the preview repaints on every key press."""
+        key = (name, width)
+        if key not in self.pages:
+            from wizolt.ui.tui.details import DetailSheet
+
+            self.pages[key] = DetailSheet._markdown_rows(self.about(name), width)
+            while self.pages[key] and not self.pages[key][-1]:
+                self.pages[key].pop()
+        return self.pages[key]
+
+    def facts(self, name: str, width: int) -> list[str]:
         item = self.records[name]
         # The file name is the useful end of a long path: clip from the left, behind the rail.
-        width = max(10, shutil.get_terminal_size((80, 24)).columns - 6)
         lines = [Text.clip_width(display_path(str(item["path"]))[::-1], width)[::-1]]
         if item.get("builtin"):
             lines.insert(0, "Built in · enabled for your user")
-        if description := item.get("description"):
-            lines[:0] = [*textwrap.wrap(clean(description), width), ""]  # What it is, before where it lives.
         for key in ("fields", "commands", "tools", "slots", "themes"):
             if values := item.get(key):
                 lines.append(f"{key.capitalize()}: {', '.join(values)}")
@@ -128,7 +151,7 @@ class PluginManager:
         for component in self.runtime.components():
             if component.plugin == name:
                 lines.append(f"{component.slot}: {component.visibility} · {component.rows}/{component.available_rows} rows")
-        return "\n".join(lines)
+        return lines
 
     def fragments(self) -> StyleAndTextTuples:
         self.state.height = picker_height()
@@ -155,6 +178,7 @@ class PluginManager:
         while True:
             listing = await self.runtime.manage("list")
             self.records = {item["name"]: item for item in listing["plugins"]}
+            self.pages.clear()  # A reload may have changed a plugin's documentation.
             names = tuple(self.records)
             if not names:
                 self.loop.presentation.emit("No installed plugins. Ask the agent to create or install one with plugin-workshop.")
@@ -177,32 +201,22 @@ class PluginManager:
         """Collect user intent first, then invoke the lifecycle once with that exact action."""
         entry = self.runtime.entries.get(name)
         toggle = "disable" if self.records[name]["enabled"] else "enable"
-        choices = ("about", "reload", toggle) if entry else ("about", toggle)
+        choices = ("reload", toggle) if entry else (toggle,)
         # Unlike convenience selectors, an action menu must not auto-accept its only item.
         # Opening a disabled plugin shows Enable; it does not itself grant activation.
         action = await choice_application(self.loop, name, choices, {}, "", set())
         if not isinstance(action, str):
             return
-        if action == "about":
-            await approval_text_viewer(self.loop, ApprovalView(f"about {name}", self.about(name)), back_on_escape=True)
-            return
         result = await self.runtime.manage(action, name)
         self.notice = f"{result['name']}: {result['status']}"
 
     def about(self, name: str) -> str:
-        """The plugin's own documentation, read from source without running it, and what it draws
-        right now when it runs: usage from the author, a demo from the live plugin."""
+        """The plugin's own documentation in Markdown, read from source without running it."""
         try:
             text = PluginSource.read(str(self.records[name]["path"])).about.strip()
-        except Exception as error:  # noqa: BLE001 - an unreadable source still opens a page that says why.
+        except Exception as error:  # noqa: BLE001 - an unreadable source still shows why.
             text = f"Could not read this plugin's source: {error}"
-        text = unwrap(text) or "This plugin has no documentation: its source starts with no docstring."
-        entry = self.runtime.entries.get(name)
-        panels = entry.active.snapshot.panels if entry is not None else {}
-        rows = ["".join(span.text for span in row.spans) if isinstance(row, Line) else row.text for panel in panels.values() for row in panel.rows]
-        if rows:
-            text += "\n\n## What it shows now\n\n```text\n" + "\n".join(rows) + "\n```"
-        return text
+        return unwrap(text) or "This plugin has no documentation: its source starts with no docstring."
 
 
 BLOCK_START = re.compile(r"\s*([-*+>#|]|\d+[.)])\s")
