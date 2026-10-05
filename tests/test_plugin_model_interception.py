@@ -92,6 +92,25 @@ async def test_manual_retry_starts_a_new_request_linked_to_the_old_one(session, 
     assert second["retry_of"] == first["id"] and first["retry_of"] == ""
 
 
+async def test_a_retry_never_resent_does_not_link_the_next_turn(session, tmp_path):
+    log = await enable(session, tmp_path)
+    agent = Agent(session, output_fn=lambda _text: None)
+    attempts = []
+
+    async def transport(messages, tools, provider):
+        attempts.append(provider)
+        if len(attempts) == 1:
+            raise ModelRequestRetry()  # Claimed, but its turn ends before the rebuilt request.
+        return {"role": "assistant", "content": "ok"}, [], "ok"
+
+    agent.model._transport_request = transport
+    with pytest.raises(ModelRequestRetry):
+        await agent.model.request([{"role": "user", "content": "hi"}], [])
+    await agent.run("a fresh turn")
+    abandoned, fresh = entries(log)
+    assert fresh["retry_of"] == "" and abandoned["id"]  # The new turn replaces nothing.
+
+
 async def test_a_retry_links_only_to_a_request_interception_saw(session, tmp_path):
     log = await enable(session, tmp_path)
     model, attempts = ModelClient(session), []

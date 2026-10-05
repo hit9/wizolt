@@ -163,7 +163,7 @@ class ModelClient:
         # model.request bookkeeping: the last logical request's ID, the one a manual retry replaces,
         # and whether a response-replacing plugin currently owns what the user sees.
         self._last_request = ""
-        self._retry_of = ""
+        self._retry_of = (0, "")  # (turn it was claimed in, request it replaces)
         self.preview_suppressed = False
         self._wires: dict[str, WireProtocol] = {
             "chat": ChatWire(self),
@@ -349,7 +349,10 @@ class ModelClient:
             raise ModelError("missing config: " + ", ".join(missing))
         tools = tools if tools is not None else Tool.resolved_schemas(self.session)
         config = self.session.config
-        retry_of, self._retry_of = self._retry_of, ""
+        # A retry links only within the turn that claimed it: one whose turn ended before the
+        # rebuilt request went out replaces nothing in a later turn.
+        (claimed_in, retry_of), self._retry_of = self._retry_of, (0, "")
+        retry_of = retry_of if claimed_in == self.session.state.round_count else ""
         self._last_request = ""  # Set only when interception sees this request; never a stale one.
         try:
             return await self.logical(
@@ -363,7 +366,7 @@ class ModelClient:
                 retry_of=retry_of,
             )
         except ModelRequestRetry:
-            self._retry_of = self._last_request  # The rebuilt request names the one it replaces.
+            self._retry_of = (self.session.state.round_count, self._last_request)  # The rebuilt request names it.
             raise
 
     async def logical(
