@@ -447,8 +447,13 @@ async def test_reload_retires_a_plugin_whose_record_was_deleted(tmp_path):
         assert ("counter", "remove: no longer installed") not in runtime.reload_plan()
         await runtime.hot_reload()
         assert "plugins.counter.n" in runtime.fields()
-        # The user deletes the record by hand: reload sees it and stops the plugin.
-        config.write_text(re.sub(r"\[plugin_manager\.installations\.counter\][^\[]*", "", original))
+        # A damaged record protects only its own plugin.
+        config.write_text(re.sub(r"(\[plugin_manager\.installations\.keeper\])[^\[]*", '\\1\npath = 3\nenabled = "yes"\n\n', original))
+        assert "keeper" not in runtime.catalog.read()[0] and runtime.catalog.read()[0]  # Damaged alone.
+        assert ("keeper", "remove: no longer installed") not in runtime.reload_plan()
+        # The user deletes the record by hand: reload sees it and stops the plugin, even beside
+        # an unrelated stale record.
+        config.write_text(re.sub(r"\[plugin_manager\.installations\.counter\][^\[]*", "", original) + "\n[plugin_manager.installations.ghost]\nenabled = true\n")
         assert ("counter", "remove: no longer installed") in runtime.reload_plan()
         [removed] = [item for item in (await runtime.hot_reload())["plugins"] if item["name"] == "counter"]
         assert removed["status"] == "off" and removed["note"] == "no longer installed"

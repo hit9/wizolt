@@ -119,7 +119,9 @@ async def test_guard_stays_quiet_without_yolo(runtime):
     assert asked == [] and core.ran == ["rm -rf build"]
 
 
-@pytest.mark.parametrize("command", ["rm -rf build", "git push --force origin main", "git reset --hard HEAD~3", "git clean -fdx"])
+@pytest.mark.parametrize(
+    "command", ["rm -rf build", "rm -v -rf build", "rm -fv build", "git push --force origin main", "git reset --hard HEAD~3", "git clean -fdx", "rm -rf \x1b[2Jbuild"]
+)
 async def test_guard_asks_before_destructive_commands_under_yolo(runtime, command):
     runtime.state["context"] = facts(yolo=True)
     await runtime.manage("enable", str(BUILTIN / "guard.py"))
@@ -127,7 +129,7 @@ async def test_guard_asks_before_destructive_commands_under_yolo(runtime, comman
     runtime.interactions.handler = answering("no", asked)
     result = await runtime.interception.run("tool.call", bash(command), core)
     assert isinstance(result, Refusal) and "declined" in result.reason and core.ran == []
-    assert command in asked[0]
+    assert "".join(char for char in command if char.isprintable()) in asked[0]  # Shown, never as escapes.
     runtime.interactions.handler = answering("yes", asked)
     assert await runtime.interception.run("tool.call", bash(command), core) == ToolResult("ran")
 

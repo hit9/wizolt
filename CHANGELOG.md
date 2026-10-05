@@ -12,13 +12,16 @@
   - A request frame the host could not send blocked the interceptor. It now fails that one
     operation, like an out-of-bounds value.
   - An effort override is now checked against the model's offered efforts instead of being
-    silently mapped to the nearest one.
+    silently mapped to the nearest one, for plugins' own `model.complete` requests too.
+  - The bundled `guard` caught `rm -rf` only with the flag first; `rm -v -rf` slipped past.
+    A command with control characters was refused as "no one can confirm" instead of asked.
   - The status bar's context figure now includes blocks that `context.compose` adds.
   - The tmux acceptance test no longer depends on the bundled names' column width.
 
 - `Plugin(action="reload")` and its approval plan now retire a live plugin whose installation
-  record was deleted from the config; before, it kept running, invisible to reload. A config
-  with read problems retires nothing. A deleted source file with its record still present
+  record was deleted from the config; before, it kept running, invisible to reload. A damaged
+  record protects only its own plugin, and an unreadable config retires nothing. A deleted
+  source file with its record still present
   remains a failed reload that keeps the running generation, as before.
 
 - Add two built-in plugins, both disabled by default and without model calls: `context_bar`

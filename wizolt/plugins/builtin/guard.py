@@ -14,7 +14,7 @@ from wizolt.sdk.operations import Refusal
 SDK_VERSION = 1
 
 PATTERNS = (
-    r"\brm\s+(-\w*[rRf]|--recursive|--force)",
+    r"\brm\s+(-\S*\s+)*(-\w*[rRf]\w*|--recursive|--force)",  # Any flag position: rm -v -fr.
     r"\bgit\s+push\b.*\s(--force\b|--force-with-lease\b|-f\b|\+\S)",
     r"\bgit\s+reset\s+.*--hard\b",
     r"\bgit\s+clean\s+-\w*f",
@@ -40,7 +40,9 @@ def setup(plugin: Plugin) -> None:
         command = call.arguments.get("command")
         if not context.yolo or not isinstance(command, str) or not any(pattern.search(command) for pattern in patterns):
             return await next(call)
-        shown = " ".join(command.split())
+        # One printable line: a view title refuses control characters, and that refusal must not
+        # read as "no one can confirm".
+        shown = "".join(char for char in " ".join(command.split()) if char.isprintable())
         try:
             confirmed = await plugin.ui.confirm("Run this destructive command? " + (shown if len(shown) <= 150 else shown[:149] + "…"))
         except PluginError:

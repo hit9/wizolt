@@ -179,6 +179,21 @@ async def test_every_purpose_reaches_the_one_boundary(session, tmp_path, monkeyp
     assert [(item["purpose"], item["reason"]) for item in entries(log)] == [("turn", "normal"), ("turn", "tool_correction"), ("compaction", "normal"), ("plugin", "normal")]
 
 
+async def test_plugin_requests_get_the_same_route_checks(session, tmp_path, monkeypatch):
+    await enable(session, tmp_path, body="        return await next(request.replace(effort='ludicrous'))", options=", match={'purpose': 'plugin'}")
+    Agent(session, output_fn=lambda _text: None)  # Wires plugin host services, as the CLI does.
+    sent = []
+
+    async def api_request(self, messages, tools, **kwargs):
+        sent.append(kwargs.get("provider"))
+        return {"role": "assistant", "content": "fine"}, [], "fine"
+
+    monkeypatch.setattr(ModelClient, "api_request", api_request)
+    with pytest.raises(Exception, match="does not accept effort 'ludicrous'"):
+        await session.plugins.host_service("model.complete", {"prompt": "aux", "system": "", "provider": "", "model": "", "effort": "", "api": ""})
+    assert sent == []
+
+
 async def test_a_handler_auxiliary_request_skips_its_own_registration(session, tmp_path, monkeypatch):
     body = (
         "        if request.purpose == 'turn':\n"

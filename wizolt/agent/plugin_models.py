@@ -12,7 +12,7 @@ from dataclasses import asdict, replace
 
 from wizolt.config import PROVIDER_API_CHOICES
 from wizolt.model import ModelClient
-from wizolt.model.interception import logical_request
+from wizolt.model.interception import logical_request, route_check
 from wizolt.sdk import PluginError, Usage
 from wizolt.session import Session
 
@@ -75,6 +75,7 @@ class PluginModels:
                 provider=provider,
                 entry=entry,
                 send=send,
+                check_route=route_check(detached, client, messages, None),
                 record=self.session.record_operation,
             )
             if calls:

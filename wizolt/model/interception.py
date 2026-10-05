@@ -68,6 +68,22 @@ def result_of(response: ModelResponse) -> Result:
     return assistant, calls, response.text
 
 
+def route_check(session: Any, client: Any, messages: list[Json], tools: list[Json] | None) -> Callable[[ProviderConfig, str], None]:
+    """A rerouted request's model limits; credentials are checked where the route is built.
+
+    Only an effort the handler chose is checked: a stored one keeps its usual nearest-level mapping.
+    """
+
+    def check(effective: ProviderConfig, chosen_effort: str) -> None:
+        if chosen_effort and chosen_effort not in (choices := session.policy.reasoning_choices(effective)):
+            raise PluginError(f"{effective.model} does not accept effort {chosen_effort!r}; choose {', '.join(choices)}")
+        limit = effective.context_token_limit(session.settings.max_context_tokens)
+        if limit and client.estimated_request_tokens(messages, tools) > limit:
+            raise PluginError(f"The request does not fit {effective.model}'s {limit}-token context")
+
+    return check
+
+
 async def client_request(
     client: Any,
     purpose: str,
@@ -83,16 +99,6 @@ async def client_request(
 ) -> Result:
     """A session-bound client's logical request: its plugins, budget check, preview and receipts."""
     session = client.session
-
-    def check_route(effective: ProviderConfig, chosen_effort: str) -> None:
-        """Credentials are checked by the caller; here the model's own limits. Only an effort the
-        handler chose is checked: a stored one keeps its usual nearest-level mapping."""
-        if chosen_effort and chosen_effort not in (choices := session.policy.reasoning_choices(effective)):
-            raise PluginError(f"{effective.model} does not accept effort {chosen_effort!r}; choose {', '.join(choices)}")
-        limit = effective.context_token_limit(session.settings.max_context_tokens)
-        if limit and client.estimated_request_tokens(messages, tools) > limit:
-            raise PluginError(f"The request does not fit {effective.model}'s {limit}-token context")
-
     return await logical_request(
         session.plugins,
         session.config,
@@ -104,7 +110,7 @@ async def client_request(
         send=send,
         reason=reason,
         retry_of=retry_of,
-        check_route=check_route,
+        check_route=route_check(session, client, messages, tools),
         suppress_preview=getattr(client, "suppressed_preview", None),
         record=session.record_operation,
         on_request=on_request,

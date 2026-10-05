@@ -173,10 +173,14 @@ class SessionPlugins(PluginRuntime):
     def removed(self, records: dict, problems: list[str]) -> list[str]:
         """Live plugins whose installation record is gone: deleted from the config by hand.
 
-        A config with read problems is no evidence of deletion -- a damaged record is dropped
-        from ``records`` too -- so then nothing counts as removed.
+        A damaged record is dropped from ``records`` too, so it is no evidence of deletion: its
+        name (the catalog reports ``name: error``) stays. A failed read returns no records at all,
+        not even the bundled defaults, and then nothing counts as removed.
         """
-        return [] if problems else sorted({*self.entries, *self._pending_new} - set(records))
+        if not records:
+            return []
+        damaged = {problem.split(":", 1)[0] for problem in problems}
+        return sorted({*self.entries, *self._pending_new} - set(records) - damaged)
 
     async def hot_reload(self, name: str = "") -> dict:
         """Reconcile saved choices into this agent only, with per-plugin failure isolation.
