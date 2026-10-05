@@ -31,6 +31,7 @@ class SubagentTool(Tool):
         "wait returns all currently settled targets when any completes, fails or is interrupted, "
         "after any immediately resumed queued work also settles, "
         "or [] on timeout. Other agents keep running. Remove returned IDs before waiting again; already settled targets return immediately. "
+        'mode="all" instead returns once every target has settled; on timeout it returns every target, running ones marked running. '
         "A wait timeout does not stop the child; wait again or continue other work. "
         "Your direct children's latest settled results are reported automatically before your next model request; "
         "this does not start a new turn. list/wait retrieves longer answer excerpts while the agent is not archived. "
@@ -97,6 +98,11 @@ class SubagentTool(Tool):
                     "description": "Optional for wait: select targets explicitly; omit to wait for currently running direct children",
                 },
                 "start": {"type": "boolean", "description": "Wake an idle agent on send (default true)"},
+                "mode": {
+                    "type": "string",
+                    "enum": ["any", "all"],
+                    "description": "For wait: any (default) returns when one target settles; all returns when every target has settled",
+                },
                 "timeout": {
                     "type": "integer",
                     "minimum": 0,
@@ -149,7 +155,7 @@ class SubagentTool(Tool):
                     return "[]"
             if isinstance(uids, list) and self.session.uid in uids:
                 raise ToolError("Cannot wait for the calling agent")
-            entries = await group.wait(uids, timeout)
+            entries = await group.wait(uids, timeout, mode=payload.get("mode", "any"))
         elif action == "stop":
             if uid == self.session.uid:
                 raise ToolError("Cannot stop the calling agent")
@@ -192,10 +198,13 @@ class SubagentTool(Tool):
 
     def short_args(self) -> list[str]:
         payload = self.single_dict_arg("Subagent requires named fields")
-        target = payload.get("agent_ids") if payload.get("action") == "wait" else payload.get("name") or payload.get("agent_id")
+        action = payload.get("action")
+        target = payload.get("agent_ids") if action == "wait" else payload.get("name") or payload.get("agent_id")
         if isinstance(target, list):
             target = ", ".join(str(uid) for uid in target)
-        return [str(value) for value in (payload.get("action"), target) if value]
+        if action == "wait":
+            action = f"wait {payload.get('mode', 'any')}"  # The transcript says which wait it was.
+        return [str(value) for value in (action, target) if value]
 
     def always_confirms(self) -> bool:
         return self.single_dict_arg("Subagent requires named fields").get("action") in {"spawn", "send", "archive"}

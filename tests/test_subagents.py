@@ -1006,6 +1006,47 @@ async def test_wait_any_returns_first_settled_target_and_keeps_others_running(gr
     assert settled == [second, first]
 
 
+async def test_wait_all_returns_once_every_target_settles(group, monkeypatch):
+    release = {name: asyncio.Event() for name in ("first", "second")}
+
+    async def request(client, messages, tools=None):
+        await release[client.session.agent_name].wait()
+        return {"role": "assistant", "content": client.session.agent_name}, [], client.session.agent_name
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    first, second = [await group.spawn(group.root.session, name, "task") for name in release]
+    ids = [first.agent.session.uid, second.agent.session.uid]
+    tool = SubagentTool(group.root.session, [{"action": "wait", "agent_ids": ids, "mode": "all"}])
+    assert tool.short_args()[0] == "wait all"  # The transcript names the mode.
+    waiter = asyncio.create_task(tool.call())
+    release["second"].set()
+    await finished(group, second)
+    await asyncio.sleep(0.05)
+    assert not waiter.done()  # One settled is not all.
+    release["first"].set()
+    rows = json.loads(await asyncio.wait_for(waiter, 3))
+    assert sorted((row["agent_id"], row["status"]) for row in rows) == sorted([(ids[0], "completed"), (ids[1], "completed")])
+
+
+async def test_wait_all_timeout_reports_every_target_with_its_state(group, monkeypatch):
+    release = asyncio.Event()
+
+    async def request(client, messages, tools=None):
+        if client.session.agent_name == "slow":
+            await release.wait()
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    quick, slow = [await group.spawn(group.root.session, name, "task") for name in ("quick", "slow")]
+    await finished(group, quick)
+    rows = json.loads(await SubagentTool(group.root.session, [{"action": "wait", "mode": "all", "agent_ids": [quick.agent.session.uid, slow.agent.session.uid], "timeout": 0}]).call())
+    assert {row["agent_id"]: row["status"] for row in rows} == {quick.agent.session.uid: "completed", slow.agent.session.uid: "running"}
+    with pytest.raises(ToolError, match='mode must be "any" or "all"'):
+        await group.wait([quick.agent.session.uid], 0, mode="some")
+    release.set()
+    await finished(group, slow)
+
+
 async def test_cancel_wait_does_not_cancel_children(group, monkeypatch):
     async def request(client, messages, tools=None):
         await asyncio.Event().wait()

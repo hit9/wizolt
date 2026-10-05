@@ -106,6 +106,10 @@ Other agents keep working. An already settled target returns
 immediately; remove returned IDs before waiting again. A timeout returns `[]`.
 For one agent, use a one-item `agent_ids` list. Waiting requires no approval.
 
+Add `"mode": "all"` to wait until **every** target has settled instead, for example after
+starting several reviewers. On timeout it returns every target, still-running ones marked
+`running`. The transcript shows which kind of wait it was (`wait any` or `wait all`).
+
 The parent receives each direct child's latest completed, failed or interrupted result before
 its next model request, even while doing other work. Notifications include up to **1000 characters**;
 `list` or `wait` retrieves more while the child is not archived. Results already returned by those

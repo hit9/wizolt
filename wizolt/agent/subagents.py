@@ -335,12 +335,18 @@ class Subagents:
             else:
                 self.changed(entry)
 
-    async def wait(self, uids: list[str], timeout: float = DEFAULT_WAIT_TIMEOUT) -> list[AgentEntry]:
-        """Observe any selected inbox settling without cancelling its work.
+    async def wait(self, uids: list[str], timeout: float = DEFAULT_WAIT_TIMEOUT, mode: str = "any") -> list[AgentEntry]:
+        """Observe selected inboxes settling without cancelling their work.
+
+        ``any`` returns the settled targets once one settles, or [] on timeout. ``all`` returns
+        once every target has settled; on timeout it returns every target, running ones
+        included, so the caller sees what finished and what did not.
 
         A consumer can hand off queued input to a replacement task during cleanup.
         Recheck the entries after wakeup so that handoff is not reported as completion.
         """
+        if mode not in ("any", "all"):
+            raise ToolError('wait mode must be "any" or "all"')
         if not isinstance(uids, list) or not uids or any(not isinstance(uid, str) or not uid for uid in uids):
             raise ToolError("wait requires a non-empty agent_ids list")
         entries = [self.entry(uid) for uid in dict.fromkeys(uids)]
@@ -351,12 +357,12 @@ class Subagents:
         deadline = loop.time() + remaining
         while True:
             settled = [entry for entry in entries if entry.task is None or entry.task.done()]
-            if settled:
+            if settled and (mode == "any" or len(settled) == len(entries)):
                 return settled
-            tasks = {entry.task for entry in entries if entry.task is not None}
-            done, _ = await asyncio.wait(tasks, timeout=remaining, return_when=asyncio.FIRST_COMPLETED)
+            pending = {entry.task for entry in entries if entry.task is not None and not entry.task.done()}
+            done, _ = await asyncio.wait(pending, timeout=remaining, return_when=asyncio.FIRST_COMPLETED)
             if not done:
-                return []
+                return entries if mode == "all" else []
             remaining = max(0, deadline - loop.time())
 
     def stop(self, uid: str) -> None:
