@@ -1,6 +1,6 @@
-"""A quiet desk companion, using only the same public SDK as user-authored plugins.
+"""A small cat above your input that reacts to what the agent is doing.
 
-Animation is a pure function of the host's monotonic clock. No timers, background jobs, random
+A quiet desk companion, using only the same public SDK as user-authored plugins. Animation is a pure function of the host's monotonic clock. No timers, background jobs, random
 state or model calls are needed; disabled plugins do no work and agent switches show the new
 agent's state. Semantic roles deliberately leave every color choice to the active theme.
 """

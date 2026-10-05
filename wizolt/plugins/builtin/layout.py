@@ -1,4 +1,7 @@
-"""Optional layout manager: ordinary SDK tools, with policy and persistence owned by the host."""
+"""Lets the agent arrange plugin panels and bind keyboard shortcuts for you when you ask.
+
+An optional layout manager: ordinary SDK tools, with policy and persistence owned by the host.
+"""
 
 import json
 from dataclasses import asdict

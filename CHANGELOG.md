@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `/plugins` now introduces each plugin in its preview: the first paragraph of a single-file
+  plugin's docstring, or a package's `[project] description` (falling back to its entry
+  module's docstring), read without running the plugin, so disabled plugins show one too.
+  Every built-in opens with a user-facing introduction, and a test keeps new ones honest.
+
 - Skills no longer occupy the `/` command namespace (matching how other agents, such as Codex,
   treat them): a skill is loaded by the agent — on demand, or after you point at it with `$name`
   — and never started by a `/name` command. Typing a skill's old `/name` now reports an unknown

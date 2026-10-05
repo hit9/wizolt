@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from wizolt.plugins.files import read_regular
-from wizolt.plugins.package import PackageSnapshot
+from wizolt.plugins.package import PackageSnapshot, summary
 from wizolt.sdk import SDK_VERSION, Plugin, PluginError
 
 MAX_SOURCE_BYTES = 256 * 1024
@@ -34,6 +34,9 @@ class PluginSource:
     dependencies: tuple[str, ...]
     entry: str = ""
     package: PackageSnapshot | None = None
+    # What the plugin is for, read without running it: the module docstring's first paragraph,
+    # or a package's [project] description. Shown in /plugins; never sent to the worker.
+    description: str = ""
 
     def require_name(self, expected: str) -> None:
         """An installed name owns settings, tools and preferences; reload cannot rename it."""
@@ -50,7 +53,7 @@ class PluginSource:
         location = Path(path).expanduser().resolve()
         if location.is_dir():
             package = PackageSnapshot.read(location)
-            return cls(str(location), package.manifest, package.name, package.digest, package.dependencies, package.entry, package)
+            return cls(str(location), package.manifest, package.name, package.digest, package.dependencies, package.entry, package, package.description)
         if location.suffix != ".py" or not location.stem.isidentifier() or not location.stem.isascii():
             raise PluginError("Use a .py filename that is an ASCII Python identifier")
         if text is None:
@@ -73,7 +76,8 @@ class PluginSource:
         dependencies = metadata.get("DEPENDENCIES", ())
         if not isinstance(dependencies, (tuple, list)) or any(not isinstance(item, str) or not item.strip() for item in dependencies):
             raise PluginError("DEPENDENCIES must be a literal list or tuple of requirement strings")
-        return cls(str(location), text, location.stem, hashlib.sha256(text.encode()).hexdigest()[:12], tuple(dependencies))
+        digest = hashlib.sha256(text.encode()).hexdigest()[:12]
+        return cls(str(location), text, location.stem, digest, tuple(dependencies), description=summary(ast.get_docstring(tree)))
 
 
 def unmet_dependencies(declarations: tuple[str, ...]) -> list[str]:

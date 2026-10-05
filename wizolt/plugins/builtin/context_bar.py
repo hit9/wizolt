@@ -1,6 +1,6 @@
-"""What fills the context window: one stacked bar and a legend, using only the public SDK.
+"""A bar above your input showing what fills the context window, by category, with a legend.
 
-``window.parts`` are the host's local per-category estimates in request order; the bar measures
+Uses only the public SDK. ``window.parts`` are the host's local per-category estimates in request order; the bar measures
 them against the context limit, so the empty tail is what the next request can still spend.
 When the reported fill exceeds the estimates, the difference is drawn as ``other``. The used
 percentage rides on the bar so it survives a one-row allocation; the legend adds per-category

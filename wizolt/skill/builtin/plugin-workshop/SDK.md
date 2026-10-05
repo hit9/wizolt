@@ -169,13 +169,17 @@ the agent's operation.
 
 ## Packages
 
-Single files declare `SDK_VERSION = 1`, optional `DEPENDENCIES`, and `setup(plugin)`.
-For multiple files, pass a directory containing `pyproject.toml` to the same CLI commands:
+Single files declare `SDK_VERSION = 1`, optional `DEPENDENCIES`, and `setup(plugin)`. Open with
+a module docstring whose first paragraph tells the user what the plugin does: `/plugins` shows it
+without running your code. Put notes for authors in later paragraphs.
+For multiple files, pass a directory containing `pyproject.toml` to the same CLI commands; its
+`description` plays that role (the entry module's docstring is the fallback):
 
 ```toml
 [project]
 name = "my-helper"
 version = "0.1.0"
+description = "Shows the current branch's open review comments above the input."
 dependencies = []
 
 [tool.wizolt.plugin]

@@ -170,6 +170,14 @@ class SessionPlugins(PluginRuntime):
 
     UNCHANGED = "restart"
 
+    @staticmethod
+    def description(path: str) -> str:
+        """An off plugin's introduction, parsed from its source without running it."""
+        try:
+            return PluginSource.read(path).description
+        except Exception:  # noqa: BLE001 - a broken or missing source simply has no introduction.
+            return ""
+
     def removed(self, records: dict, problems: list[str]) -> list[str]:
         """Live plugins whose installation record is gone: deleted from the config by hand.
 
@@ -268,7 +276,9 @@ class SessionPlugins(PluginRuntime):
         if action in ("list", "inspect"):
             present = {item["name"] for item in result["plugins"]}
             result["plugins"].extend(
-                {"name": item.name, "path": item.path, "status": "off", "python": item.python} for item in records.values() if item.name not in present
+                {"name": item.name, "path": item.path, "description": self.description(item.path), "status": "off", "python": item.python}
+                for item in records.values()
+                if item.name not in present
             )
             # Preference and activation answer different questions. For example, disabling
             # during a turn persists immediately while its live generation remains pinned.

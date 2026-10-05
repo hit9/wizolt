@@ -1,6 +1,6 @@
-"""Ask before destructive shell commands while yolo is on, using only the public SDK.
+"""Asks before destructive shell commands, such as rm -rf or a force push, while yolo is on.
 
-Without yolo wizolt's own approval already asks before every such command, so the guard stays
+Uses only the public SDK. Without yolo wizolt's own approval already asks before every such command, so the guard stays
 quiet rather than asking twice. With yolo on, a command matching a pattern pauses for a
 confirmation; declining, or having no one to ask (headless runs), refuses it with a reason the
 model can read. No model calls; other commands pass through unchanged.

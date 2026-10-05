@@ -363,7 +363,14 @@ class PluginRuntime:
     @staticmethod
     def staged(generation: Generation) -> dict[str, Any]:
         source = generation.revision.source
-        return {"name": generation.plugin.name, "path": source.path, "status": "starting", "version": "", "pending_version": source.digest}
+        return {
+            "name": generation.plugin.name,
+            "path": source.path,
+            "description": source.description,
+            "status": "starting",
+            "version": "",
+            "pending_version": source.digest,
+        }
 
     @property
     def active_count(self) -> int:
@@ -382,6 +389,7 @@ class PluginRuntime:
         return {
             "name": name,
             "path": item.revision.source.path,
+            "description": item.revision.source.description,
             "status": entry.status,
             "version": item.revision.source.digest,
             "pending_version": entry.pending.revision.source.digest if entry.pending else "",

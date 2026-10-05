@@ -31,6 +31,34 @@ def text(row):
     return "".join(span.text for span in row.spans) if isinstance(row, Line) else row.text
 
 
+async def test_every_builtin_introduces_itself_in_the_plugin_list(tmp_path):
+    from agent_harness import session_with_provider
+
+    from wizolt.plugins.loading import PluginSource
+    from wizolt.plugins.session import SessionPlugins
+
+    for path in BUILTIN.glob("*.py"):
+        assert PluginSource.read(str(path)).description, f"{path.stem} needs a docstring whose first paragraph introduces it"
+    plugins = SessionPlugins(session_with_provider(tmp_path))
+    try:
+        # /plugins lists disabled plugins too: their introduction is read from source, not run.
+        listing = {item["name"]: item for item in (await plugins.manage("list"))["plugins"]}
+        assert listing["guard"]["status"] == "off" and listing["guard"]["description"].startswith("Asks before destructive")
+        await plugins.manage("enable", "pet")
+        listing = {item["name"]: item for item in (await plugins.manage("list"))["plugins"]}
+        assert listing["pet"]["description"].startswith("A small cat")  # Live plugins too.
+        from types import SimpleNamespace
+
+        from wizolt.ui.cli.plugins import PluginManager
+
+        manager = PluginManager(SimpleNamespace(), plugins)  # type: ignore[arg-type]
+        manager.records = listing
+        # The preview opens with what the plugin is, before where it lives.
+        assert manager.preview("guard").startswith("Asks before destructive shell commands")
+    finally:
+        await plugins.close()
+
+
 def test_new_builtins_ship_disabled(tmp_path):
     records, _ = PluginCatalog.for_user(str(tmp_path)).read()
     assert not records["context_bar"].enabled and not records["guard"].enabled

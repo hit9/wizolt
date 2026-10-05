@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shlex
 import shutil
+import textwrap
 from functools import lru_cache
 from typing import TYPE_CHECKING, ClassVar
 
@@ -109,6 +110,8 @@ class PluginManager:
         lines = [Text.clip_width(display_path(str(item["path"]))[::-1], width)[::-1]]
         if item.get("builtin"):
             lines.insert(0, "Built in · enabled for your user")
+        if description := item.get("description"):
+            lines[:0] = [*textwrap.wrap(clean(description), width), ""]  # What it is, before where it lives.
         for key in ("fields", "commands", "tools", "slots", "themes"):
             if values := item.get(key):
                 lines.append(f"{key.capitalize()}: {', '.join(values)}")

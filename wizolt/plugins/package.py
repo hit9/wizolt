@@ -7,6 +7,7 @@ refuses symlinks without a check/open race that could copy files outside the sel
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import os
 import re
@@ -83,6 +84,7 @@ class PackageSnapshot:
     dependencies: tuple[str, ...]
     files: tuple[tuple[str, bytes], ...]
     digest: str
+    description: str = ""
 
     @classmethod
     def read(cls, root: Path) -> PackageSnapshot:
@@ -126,7 +128,18 @@ class PackageSnapshot:
         digest = hashlib.sha256(manifest.encode())
         for path, content in files:
             digest.update(path.encode() + b"\0" + len(content).to_bytes(8, "big") + content)
-        return cls(name, entry, manifest, tuple(dependencies), files, digest.hexdigest()[:12])
+        description = project.get("description")
+        if not isinstance(description, str) or not description.strip():
+            description = cls.docstring(members.get(module + ".py") or members.get(module + "/__init__.py") or b"")
+        return cls(name, entry, manifest, tuple(dependencies), files, digest.hexdigest()[:12], " ".join(description.split())[:300])
+
+    @staticmethod
+    def docstring(content: bytes) -> str:
+        """The entry module's introduction, parsed, never executed; unreadable source has none."""
+        try:
+            return summary(ast.get_docstring(ast.parse(content.decode("utf-8"))))
+        except (SyntaxError, UnicodeDecodeError, ValueError):
+            return ""
 
     def stage(self) -> tempfile.TemporaryDirectory:
         """Materialize exactly the approved revision, never re-read the user's source tree."""
@@ -140,3 +153,9 @@ class PackageSnapshot:
         except BaseException:
             temporary.cleanup()
             raise
+
+
+def summary(docstring: str | None) -> str:
+    """A docstring's first paragraph as one line: the plugin's own introduction."""
+    paragraph = (docstring or "").strip().split("\n\n", 1)[0]
+    return " ".join(paragraph.split())[:300]
