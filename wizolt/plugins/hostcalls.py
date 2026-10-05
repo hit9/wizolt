@@ -166,9 +166,6 @@ class Continuations:
         finally:
             self.running.pop(token, None)
 
-    def in_flight(self, parent: int) -> bool:
-        return any(owner == parent for owner, _ in self.running.values())
-
     async def cancel(self, parent: int | None = None) -> None:
         """Revoke a request's tokens and cancel/join its downstream work."""
         for token in [token for token, (owner, _) in self.tokens.items() if parent is None or owner == parent]:

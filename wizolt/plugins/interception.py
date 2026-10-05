@@ -15,6 +15,7 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
 from wizolt.plugins.preferences import PluginPreferences
+from wizolt.plugins.process import FrameLimitError
 from wizolt.plugins.protocol import InterceptSpec
 from wizolt.plugins.scope import CURRENT, MAX_DEPTH, InvocationScope
 from wizolt.sdk import PluginError, operations
@@ -211,8 +212,8 @@ class Interception:
                 input=data,
                 context=asdict(self.runtime.facts()),
             )
-        except asyncio.CancelledError:
-            raise
+        except (asyncio.CancelledError, FrameLimitError):
+            raise  # A frame the host cannot send fails the operation, never blocks this plugin.
         except Exception as error:  # noqa: BLE001 - resolved below, after what next() recorded.
             failure = error
         finally:
@@ -230,7 +231,8 @@ class Interception:
             raise self.block(link, "next() must be awaited inside the handler before it returns")
         try:
             result = operations.decode(raw, spec.results)
-            if isinstance(result, Refusal) and state["used"]:
+            # Relaying an inner refusal that next() returned is not denying execution retroactively.
+            if isinstance(result, Refusal) and state["used"] and result != state["result"]:
                 raise PluginError("A refusal must come before next(): execution cannot be denied retroactively")
             if link.spec.response == "preserve" and not isinstance(result, Refusal) and result != state["result"]:
                 raise PluginError('response="preserve" handlers must return the downstream response unchanged; declare "replace"')

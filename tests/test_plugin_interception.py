@@ -158,6 +158,24 @@ async def test_an_out_of_bounds_host_value_fails_the_operation_without_blocking_
     assert await runtime.interception.run("tool.call", call(), Core()) == ToolResult("core ran")
 
 
+async def test_a_frame_the_host_cannot_send_fails_the_operation_without_blocking_the_plugin(runtime, tmp_path, monkeypatch):
+    generation = await enable(runtime, tmp_path, "relay", "def setup(p):\n    async def h(ctx, value, next):\n        return await next(value)\n    p.intercept('tool.call', h)\n")
+    monkeypatch.setattr("wizolt.plugins.process.MAX_REQUEST", 4096)  # Non-ASCII escapes 6x on the wire.
+    with pytest.raises(PluginError, match="frame limit"):
+        await runtime.interception.run("tool.call", call(command="猫" * 1000), Core())
+    assert not generation.failures and not generation.worker.error
+    assert await runtime.interception.run("tool.call", call(), Core()) == ToolResult("core ran")
+
+
+async def test_an_outer_passthrough_relays_an_inner_refusal_without_being_blamed(runtime, tmp_path):
+    outer = await enable(runtime, tmp_path, "aaa_outer", "def setup(p):\n    async def h(ctx, value, next):\n        return await next(value)\n    p.intercept('tool.call', h)\n")
+    await enable(runtime, tmp_path, "zzz_inner", "def setup(p):\n    async def h(ctx, value, next):\n        return Refusal('not here')\n    p.intercept('tool.call', h)\n")
+    core = Core()
+    for _ in range(2):  # Still healthy the second time: nothing was blocked.
+        assert await runtime.interception.run("tool.call", call(), core) == Refusal("not here")
+    assert not outer.failures and not core.seen
+
+
 async def test_matcher_prefilters_without_invoking_the_worker(runtime, tmp_path):
     generation = await enable(runtime, tmp_path, "bashonly", "def setup(p):\n    async def h(ctx, value, next):\n        return ToolResult('bash')\n    p.intercept('tool.call', h, match={'tool': 'Bash'})\n")
     calls = generation.calls

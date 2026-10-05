@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Fix plugin interception and presenter failures blamed on the wrong party:
+  - An outer interceptor that relayed an inner plugin's refusal was blocked as if it had
+    refused after `next` (reachable with the bundled `guard`). Relaying is allowed; changing a
+    downstream result into a refusal still is not.
+  - A slow presenter retired its whole worker, taking the plugin's commands, tools and
+    interceptors with it. The site deadline now cancels only the callback; a worker whose
+    event loop is blocked is still retired.
+  - A request frame the host could not send blocked the interceptor. It now fails that one
+    operation, like an out-of-bounds value.
+  - An effort override is now checked against the model's offered efforts instead of being
+    silently mapped to the nearest one.
+  - The status bar's context figure now includes blocks that `context.compose` adds.
+  - The tmux acceptance test no longer depends on the bundled names' column width.
+
 - `Plugin(action="reload")` and its approval plan now retire a live plugin whose installation
   record was deleted from the config; before, it kept running, invisible to reload. A config
   with read problems retires nothing. A deleted source file with its record still present

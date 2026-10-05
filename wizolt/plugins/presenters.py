@@ -8,10 +8,12 @@ presentation is never worth a turn.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
 from wizolt.plugins.preferences import PluginPreferences
+from wizolt.plugins.process import FrameLimitError
 from wizolt.plugins.protocol import PresenterSpec, Snapshot, decode_panel
 from wizolt.sdk import Panel, PluginError, presentation
 from wizolt.sdk.presentation import ActivityStatus, ToolCard, ToolSummary
@@ -98,13 +100,23 @@ class Presenters:
             # A host view over the boundary limits (a huge stream or output) is not the
             # presenter's fault: this view keeps the builtin rendering, the registration stays.
             return None
+        deadline = timeout or self.SITE_SECONDS
         try:
-            raw = await link.generation.worker.request(
-                "present", timeout=timeout or self.SITE_SECONDS, site=site, view=data, context=asdict(context or self.runtime.facts())
-            )
+            # A request's own deadline retires the whole worker. The site's deadline cancels only
+            # this callback instead: a responsive worker keeps serving its commands, tools and
+            # interceptors, and only one whose loop is blocked is retired by cancellation.
+            async with asyncio.timeout(deadline):
+                raw = await link.generation.worker.request(
+                    "present", timeout=self.runtime.ACTION_TIMEOUT, site=site, view=data, context=asdict(context or self.runtime.facts())
+                )
             panel = decode_panel(raw)
             Snapshot.check_panel(panel)
             return panel
+        except FrameLimitError:
+            return None  # The host could not send this view; the presenter never saw it.
+        except TimeoutError:
+            link.generation.fail(link.health, f"present missed its {deadline:g}s deadline")
+            return None
         except Exception as error:  # noqa: BLE001 - presentation failures fall back to builtin.
             link.generation.fail(link.health, str(error))
             return None

@@ -84,7 +84,11 @@ async def client_request(
     """A session-bound client's logical request: its plugins, budget check, preview and receipts."""
     session = client.session
 
-    def check_route(effective: ProviderConfig) -> None:
+    def check_route(effective: ProviderConfig, chosen_effort: str) -> None:
+        """Credentials are checked by the caller; here the model's own limits. Only an effort the
+        handler chose is checked: a stored one keeps its usual nearest-level mapping."""
+        if chosen_effort and chosen_effort not in (choices := session.policy.reasoning_choices(effective)):
+            raise PluginError(f"{effective.model} does not accept effort {chosen_effort!r}; choose {', '.join(choices)}")
         limit = effective.context_token_limit(session.settings.max_context_tokens)
         if limit and client.estimated_request_tokens(messages, tools) > limit:
             raise PluginError(f"The request does not fit {effective.model}'s {limit}-token context")
@@ -119,7 +123,7 @@ async def logical_request(
     send: Send,
     reason: str = "normal",
     retry_of: str = "",
-    check_route: Callable[[ProviderConfig], None] | None = None,
+    check_route: Callable[[ProviderConfig, str], None] | None = None,
     suppress_preview: Callable[[], AbstractContextManager] | None = None,
     record: Callable[[OperationReceipt], OperationReceipt] | None = None,
     on_request: Callable[[str], None] | None = None,
@@ -147,12 +151,12 @@ async def logical_request(
             raise PluginError(f"Unknown provider entry: {name}")
         # Only fields the handler changed override; switching entry alone uses that entry's model.
         model = candidate.model if candidate.model and candidate.model != value.model else base.model
-        effort = candidate.effort if candidate.effort and candidate.effort != value.effort else base.reasoning
-        effective = replace(base, model=model, reasoning=effort)
+        chosen = candidate.effort if candidate.effort and candidate.effort != value.effort else ""
+        effective = replace(base, model=model, reasoning=chosen or base.reasoning)
         if missing := effective.missing_fields():
             raise PluginError(f"Provider {name} is missing {', '.join(missing)}")
         if check_route is not None:
-            check_route(effective)
+            check_route(effective, chosen)
         return effective
 
     downstream: dict = {}

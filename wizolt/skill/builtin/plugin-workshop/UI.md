@@ -160,8 +160,9 @@ def setup(plugin):
 A panel has the component limits: at most 12 rows and 4,096 characters per row. An exception, a
 panel over those limits, a missed deadline (0.5 seconds, 0.25 for `activity`) or a rejected match
 all fall back to the builtin rendering, and the host skips that registration until the next reload
-or enable. A missed deadline also retires the worker, so keep the callback trivial and read only
-cached state.
+or enable. A missed deadline cancels the callback; your commands, tools and interceptors keep
+working. A callback that blocks the event loop (synchronous sleep or I/O) cannot be cancelled, so
+the worker is retired. Keep the callback trivial and read only cached state.
 
 The two tool sites are independent: a `tool.call` panel replaces only the call line (its later
 rows go under it), a `tool.result` panel only the builtin summary below. A site with no

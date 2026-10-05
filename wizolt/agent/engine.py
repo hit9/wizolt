@@ -753,7 +753,6 @@ class Agent:
         tools = Tool.resolved_schemas(self.session)
         messages = await self.context.prepare_messages(self.model, self.session.system_prompt, converted, tools)
         messages = await self.context.compose(self.session.plugins, self.session.system_prompt, messages, tools)
-        self.context.update_percent(messages, tools)
         retry = PreparedRequest(messages, tools, request.pending, converted)
         self.session.state.turn_messages = len(converted)
         return retry, replacements

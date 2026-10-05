@@ -43,7 +43,8 @@ def setup(plugin):
   by wizolt). Never hold your own lock across `await next(...)`.
 - Views (`plugin.ui`) are available to `prompt.submit` and `tool.call` handlers only. Settings
   writes and layout changes stay with commands and tools. `plugin.models.complete` works in any
-  handler and skips your own interceptor, so it cannot recurse into itself.
+  interceptor handler and skips your own interceptor there, so it cannot recurse into itself.
+  Called from your command or tool, it is an ordinary request that your interceptor does see.
 
 Operation types live in `wizolt.sdk.operations`.
 

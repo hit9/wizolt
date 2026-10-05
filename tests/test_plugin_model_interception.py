@@ -112,6 +112,7 @@ async def test_preserve_streams_while_replace_shows_only_the_final_response(sess
     "body, reason",
     [
         ("        return await next(request.replace(provider='missing'))", "Unknown provider entry: missing"),
+        ("        return await next(request.replace(effort='ludicrous'))", "does not accept effort 'ludicrous'"),
         ("        return ModelResponse('x', (ModelToolCall('1', 'Nope', {}),))", "does not offer: Nope"),
     ],
 )

@@ -48,6 +48,15 @@ async def test_edits_and_plugin_blocks_reach_the_request_not_the_history(agent, 
     assert receipt.operation == "context.compose" and '"system"' in receipt.effective and "plugin:notes:today" in receipt.effective
 
 
+async def test_the_status_bar_counts_what_composition_sends(agent, tmp_path):
+    await agent.run("hello")
+    baseline = agent.session.state.context_tokens
+    await enable(agent, tmp_path, "wide", "        return await next(blocks.add('notes', 'decision ' * 4000))")
+    await agent.run("hello")
+    # The added block is sent on this request, so the reported context includes it.
+    assert agent.session.state.context_tokens - baseline >= 3000
+
+
 @pytest.mark.parametrize(
     "body, reason",
     [

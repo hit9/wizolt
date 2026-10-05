@@ -171,6 +171,7 @@ class ContextManager:
         )
         if tokens >= self.request_token_budget():
             raise ModelError("Plugin context composition does not fit the context budget")
+        self.update_percent(composed, tools, tokens=tokens)  # The status bar shows what is sent.
         return composed
 
     def render_header(self, parts: list[tuple[str, str]]) -> list[Json]:

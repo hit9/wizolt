@@ -146,11 +146,12 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     pane.send(f"{sys.executable} {entry} --config {config} --yolo")
 
     def wait(text):
+        """Text, or a pattern where column padding depends on the bundled names."""
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             visible = pane.visible()
             assert "Unhandled exception" not in visible, visible
-            if text in visible:
+            if text.search(visible) if isinstance(text, re.Pattern) else text in visible:
                 return visible
             time.sleep(.05)
         raise AssertionError(f"missing {text!r}: {visible}")
@@ -178,7 +179,7 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     pane.keys("Down")
     wait("2. disable")
     pane.keys("Enter")
-    visible = wait("pet     builtin  disabled")
+    visible = wait(re.compile(r"pet +builtin +disabled"))
     assert "plugins 1" not in visible
     pane.keys("Escape")
     pane.send("/plugins")

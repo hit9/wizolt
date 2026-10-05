@@ -37,6 +37,10 @@ class WorkerError(PluginError):
         return {key: value[-limit:] for key, value, limit in (("traceback", traceback, 4000), ("log", log, 2000)) if value.strip()}
 
 
+class FrameLimitError(PluginError):
+    """The host could not send a request: the plugin never saw it, so it is not the plugin's fault."""
+
+
 class PluginProcess:
     def __init__(self, process: asyncio.subprocess.Process):
         self.process = process
@@ -116,7 +120,7 @@ class PluginProcess:
             raise PluginError(self.error or "Plugin process is closed")
         frame = json.dumps(value, ensure_ascii=True, allow_nan=False).encode() + b"\n"
         if len(frame) > MAX_REQUEST:
-            raise PluginError("Plugin request exceeds protocol frame limit")
+            raise FrameLimitError("Plugin request exceeds protocol frame limit")
         self.process.stdin.write(frame)
 
     async def request(

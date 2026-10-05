@@ -150,6 +150,27 @@ async def test_slow_presenter_falls_back_within_its_budget(runtime, tmp_path):
     assert "presenter:tool.result" in generation.failures
 
 
+async def test_a_slow_presenter_costs_its_panel_not_the_plugin(runtime, tmp_path):
+    body = (
+        "import asyncio\ndef setup(p):\n"
+        "    async def card(ctx, view):\n        await asyncio.sleep(5)\n"
+        "    async def ping(ctx, args):\n        return 'pong'\n"
+        "    p.presenter('tool.result', card)\n    p.command('ping', 'Ping', ping)\n"
+    )
+    generation = await enable(runtime, tmp_path, "asleep", body)
+    assert await runtime.presenters.render("tool.result", ToolSummary("call-1", "Bash"), timeout=0.05) is None
+    # The callback was cancelled, the worker kept: its command still answers.
+    assert not generation.worker.error and await runtime.invoke("asleep", "command", "ping", {}) == "pong"
+
+
+async def test_a_presenter_blocking_its_loop_retires_the_worker(runtime, tmp_path):
+    generation = await enable(
+        runtime, tmp_path, "blocked", "import time\ndef setup(p):\n    async def card(ctx, view):\n        time.sleep(5)\n    p.presenter('tool.result', card)\n"
+    )
+    assert await runtime.presenters.render("tool.result", ToolSummary("call-1", "Bash"), timeout=0.05) is None
+    assert generation.worker.error  # A blocked loop cannot be cancelled; only retiring it frees the host.
+
+
 async def test_oversized_host_views_stay_builtin_without_blaming_the_presenter(runtime, tmp_path):
     generation = await enable(
         runtime,
