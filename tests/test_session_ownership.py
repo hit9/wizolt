@@ -252,6 +252,9 @@ async def test_a_killed_owner_leaves_a_reusable_lock_file(tmp_path):
             process.wait(timeout=10)
 
 
+# Forking is the point of this test. The worker has threads by now, but the child takes no lock:
+# the after-fork hook only closes descriptors, then the child writes a pipe, sleeps and _exits.
+@pytest.mark.filterwarnings("ignore:This process .* is multi-threaded, use of fork\\(\\) may lead to deadlocks:DeprecationWarning")
 def test_a_forked_child_does_not_retain_the_lease(tmp_path):
     """A fork child inherits the descriptor; the after-fork hook closes its copy without LOCK_UN."""
 
