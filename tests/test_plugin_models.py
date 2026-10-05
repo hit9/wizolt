@@ -139,3 +139,24 @@ async def test_host_call_admission_and_concurrency_are_bounded():
     assert "Too many" in responses[-1]["error"]
     await calls.cancel(1)
     assert not calls.pending
+
+
+async def test_continuation_cancel_clears_a_task_never_started():
+    """A task cancelled before its first step never enters run()'s finally block.
+
+    Cancel() must sweep it from `running` itself; the token is already consumed, so nothing
+    else ever would, and every later cancel would re-cancel the dead task."""
+    from wizolt.plugins.hostcalls import Continuations
+
+    continuations = Continuations(lambda message: None, lambda parent: True)
+
+    async def resume(value):
+        return value
+
+    continuations.register("t", 7, resume)
+    continuations.dispatch({"continue": "t", "parent": 7, "input": {}})
+    assert list(continuations.running) == ["t"]
+    await continuations.cancel(7)
+    assert not continuations.running and not continuations.tokens
+    await continuations.cancel()  # A second sweep re-cancels nothing.
+    assert not continuations.running

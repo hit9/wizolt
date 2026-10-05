@@ -174,3 +174,7 @@ class Continuations:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        # A task cancelled before its first step never enters run()'s finally block, and its
+        # token is long gone: nothing else would ever clear it.
+        for token in [token for token, (owner, _) in self.running.items() if parent is None or owner == parent]:
+            self.running.pop(token, None)
