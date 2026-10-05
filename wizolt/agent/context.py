@@ -343,10 +343,11 @@ class ContextManager:
         # over budget. Reporting per pass would fire on every ordinary turn, where the history pass
         # does the work and the short current turn has nothing to give. `attempted` keeps it to one
         # report -- once both scopes are marked, later requests skip the passes and stay quiet.
-        if attempted and not compacted_any:
-            # A pass awaited a summary request and freed nothing. The header may have changed
-            # meanwhile (an MCP server connecting), so rebuild: callers such as compose split the
-            # header from the conversation by the header's current parts.
+        if attempted:
+            # Every pass awaited a summary request, so the request built before the last one may
+            # predate a header change (an MCP server connecting, a skills scan finishing). Rebuild
+            # once at the end: callers such as compose split the header from the conversation by
+            # the header's current parts, so a stale projection drops its first message.
             messages = self.model_messages(base_system, turn_messages)
             raw = self.request_tokens(messages, tools)
         if attempted and not compacted_any and raw >= budget:

@@ -39,6 +39,9 @@ def setup(plugin):
   then apply it with `Plugin(action="reload")`. It is saved as
   `[plugin_manager.interception] order`, separate from settings and component layout.
 - Each handler has 60 seconds of its own time; waiting for `next` or for the user does not count.
+- A result the host cannot deliver fails that `next()` (and the matching host service) at once, with
+  the reason, instead of leaving your handler to its deadline: keep results well inside the 1 MiB
+  worker-frame limit and JSON-encodable.
 - Handlers run concurrently and can re-enter your plugin (for example, a nested tool call made
   by wizolt). Never hold your own lock across `await next(...)`.
 - Views (`plugin.ui`) are available to `prompt.submit` and `tool.call` handlers only. Settings

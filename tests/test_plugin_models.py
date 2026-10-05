@@ -184,4 +184,49 @@ async def test_a_result_too_big_to_send_fails_next_at_once():
     continuations.register("t", 7, resume)
     continuations.dispatch({"continue": "t", "parent": 7, "input": {}})
     await asyncio.sleep(0)
-    assert sent == [{"continue_result": "t", "error": "Plugin request exceeds protocol frame limit"}]
+    assert sent == [{"continue_result": "t", "error": "FrameLimitError: Plugin request exceeds protocol frame limit"}]
+
+
+async def test_a_result_the_host_cannot_encode_fails_next_at_once():
+    """The rule is the frame, not the failure's class: a result the host cannot encode settles the
+    same way, instead of being swallowed while the worker waits out its own deadline."""
+    from wizolt.plugins.hostcalls import Continuations
+
+    def send(message: dict) -> None:
+        if "error" not in message:
+            raise TypeError("Object of type set is not JSON serializable")
+        sent.append(message)
+
+    sent: list[dict] = []
+    continuations = Continuations(send, lambda parent: True)
+
+    async def resume(value):
+        return {"unserializable": True}
+
+    continuations.register("t", 7, resume)
+    continuations.dispatch({"continue": "t", "parent": 7, "input": {}})
+    await asyncio.sleep(0)
+    assert sent == [{"continue_result": "t", "error": "TypeError: Object of type set is not JSON serializable"}]
+
+
+async def test_a_service_result_the_host_cannot_send_is_reported():
+    """Both reverse paths settle their call: a service result the host cannot send is an error frame
+    the caller can raise, never an exception nobody sees."""
+    from wizolt.plugins.hostcalls import HostCalls
+
+    def send(message: dict) -> None:
+        if "error" not in message:
+            raise TypeError("Object of type set is not JSON serializable")
+        sent.append(message)
+
+    sent: list[dict] = []
+    calls = HostCalls(send, lambda parent: True)
+
+    async def handler(operation, arguments):
+        return {"ok": True}
+
+    calls.handler = handler
+    calls.dispatch({"service_id": 1, "parent": 1, "service": "model.complete", "arguments": {}})
+    await asyncio.sleep(0)
+    assert sent == [{"service_result": 1, "error": "TypeError: Object of type set is not JSON serializable"}]
+    await calls.cancel()

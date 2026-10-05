@@ -10,6 +10,26 @@
   no longer counts as the model having received a child's result: listing agents silently
   swallowed the completion notice.
 
+- Fix request-projection defects that only appear while compacting with plugins: the projection is
+  now rebuilt after every compaction attempt, not only when no pass compacted, so a header block
+  that appears while a summary request runs can no longer displace the turn's first message in a
+  `context.compose` request; and inline compaction re-sends the composed prefix the turn sent, so
+  a composing plugin no longer costs a full cache miss on every compaction.
+
+- Wait for a whole batch of subagents with `wait`'s new `mode: "all"`: it returns once every
+  target has settled, and on timeout reports every target with its state instead of `[]`. `any`
+  stays the default, and the transcript line says which kind of wait it was.
+
+- Report what an intercepted `context.compact` actually did -- whether the builtin summary ran,
+  which plugin produced or changed the result, and why a wrapper failed -- in its operation
+  receipt, like other intercepted operations. `wizolt plugin test --timeout N` now bounds an
+  interceptor's own handler time too, not only its host calls.
+
+- Settle a host result the worker cannot receive instead of leaving the call to its deadline: a
+  frame that is too large to send, or that cannot be encoded at all, fails `next()` and the
+  matching host service at once, on both reverse paths. Cancelling a request also clears
+  continuations whose task never started.
+
 - Fix a `prompt.submit` rewrite silently discarding a folded paste's body: the initial turn's
   input reached interceptors as the folded chip (`[Pasted text #1 · 41 lines, 680 B]`), so any
   plugin that rewrote the text froze that label into the conversation in place of the body.

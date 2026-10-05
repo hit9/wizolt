@@ -24,6 +24,20 @@ class PendingCall:
     task: asyncio.Task
 
 
+def send_result(send: Callable[[dict], None], key: str, identity: int | str, result: dict) -> None:
+    """Deliver one reserved reverse frame; a frame the host cannot send becomes a small error one.
+
+    Both reverse paths -- a host service's result and an interceptor's ``next()`` -- settle a call
+    whose outcome *is* that frame. So an encode or size failure has to be reported to the worker
+    instead of leaving it to its own deadline; a worker that has already departed cannot be told.
+    """
+    try:
+        send({key: identity, **result})
+    except Exception as error:  # noqa: BLE001 - any failure to encode or send is the waiting call's outcome.
+        with contextlib.suppress(PluginError, BrokenPipeError, ConnectionResetError):
+            send({key: identity, "error": f"{type(error).__name__}: {error}"[:8192]})
+
+
 class RequestDeadline:
     """Execution time excludes host-owned human interaction, not arbitrary worker waits."""
 
@@ -100,10 +114,7 @@ class HostCalls:
             except Exception as error:  # noqa: BLE001 - plugin services are an error boundary.
                 result = {"error": f"{type(error).__name__}: {error}"[:8192]}
             if self.admitted(parent):
-                try:
-                    self.send({"service_result": identity, **result})
-                except PluginError as error:
-                    self.send({"service_result": identity, "error": str(error)[:8192]})
+                send_result(self.send, "service_result", identity, result)
         except (PluginError, BrokenPipeError, ConnectionResetError):
             pass  # A departing worker cannot receive a service result.
         finally:
@@ -161,14 +172,9 @@ class Continuations:
             except Exception as error:  # noqa: BLE001 - downstream failure is reported to the handler.
                 result = {"error": f"{type(error).__name__}: {error}"[:8192]}
             if self.admitted(parent):
-                self.send({"continue_result": token, **result})
-        except Exception as error:  # noqa: BLE001 - a departing worker cannot receive its continuation's result.
-            from wizolt.plugins.process import FrameLimitError
-
-            if self.admitted(parent) and isinstance(error, FrameLimitError):
-                # The result exists but the host cannot send it: next() fails at once, not at its deadline.
-                with contextlib.suppress(PluginError, BrokenPipeError, ConnectionResetError):
-                    self.send({"continue_result": token, "error": str(error)[:8192]})
+                send_result(self.send, "continue_result", token, result)
+        except (PluginError, BrokenPipeError, ConnectionResetError):
+            pass  # A departing worker cannot receive its continuation's result.
         finally:
             self.running.pop(token, None)
 
