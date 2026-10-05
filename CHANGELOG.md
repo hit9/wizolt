@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Fix a `prompt.submit` rewrite silently discarding a folded paste's body: the initial turn's
+  input reached interceptors as the folded chip (`[Pasted text #1 · 41 lines, 680 B]`), so any
+  plugin that rewrote the text froze that label into the conversation in place of the body.
+  The interceptor now sees the model's own projection, with pastes open, exactly like queued
+  follow-ups; the `text reaches the model` contract holds again.
+
 - Speed up the test suite from about 77 s to 32 s (8 workers, Linux ARM64). pytest now runs
   with `--dist worksteal`: under the default chunked scheduling, the worker that drew slow
   subprocess tests kept the run going long after the others were idle (57 s -> 32 s). The MCP

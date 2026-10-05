@@ -6,6 +6,8 @@ from test_session_persistence import session_with_data_dir
 from wizolt.agent.engine import Agent
 from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.base import ModelRequestRetry
+from wizolt.image import UserInput
+from wizolt.paste import PASTE_MARKER, PasteRef
 from wizolt.shellhooks import HookCommand, PromptBlocked, ShellHooks
 
 SHORTHAND = """
@@ -124,3 +126,24 @@ async def test_attachments_can_be_omitted_but_not_invented(agent, tmp_path):
     await agent.session.plugins.manage("enable", str(path))
     with pytest.raises(Exception, match="never add them"):
         await agent.run("look")
+
+
+async def test_a_rewrite_keeps_the_pasted_body(agent, tmp_path):
+    log = tmp_path / "pasted.log"
+    path = tmp_path / "reviewer.py"
+    path.write_text(
+        f"LOG = {str(log)!r}\n"
+        "SDK_VERSION = 1\ndef setup(p):\n"
+        "    async def review(ctx, prompt, next):\n"
+        "        with open(LOG, 'a') as file:\n            file.write(prompt.text + '\\n')\n"
+        "        return await next(prompt.replace(text=prompt.text + ' (reviewed)'))\n"
+        "    p.intercept('prompt.submit', review)\n"
+    )
+    await agent.session.plugins.manage("enable", str(path))
+    body = "\n".join(f"PASTED LINE {index}" for index in range(30))
+    await agent.run(UserInput("do the thing " + PASTE_MARKER, (), (PasteRef(body, 30, len(body)),)))
+    # The interceptor saw the paste's full body, and the rewrite carried it into the request:
+    # the folded chip must never replace the body the model was promised.
+    assert "PASTED LINE 29" in log.read_text()
+    content = next(str(message.get("content")) for message in agent.requests[0] if "do the thing" in str(message.get("content") or ""))
+    assert "PASTED LINE 29" in content and content.endswith("(reviewed)") and "Pasted text #" not in content

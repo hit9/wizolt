@@ -271,8 +271,10 @@ class Agent:
         malformed_tool_names: list[str] = []
         self._current_image_messages = []
         user_message = self._initial_user_message(user_input)
-        # Mentions belong to the user's typed input, never to projected image content.
-        user_text = user_input.display_text() if isinstance(user_input, UserInput) else self.session.images.label_text(user_message)
+        # The interceptor and hooks see the model's own projection: pastes open into their full
+        # text, so a rewritten prompt keeps the body instead of the folded chip a rewrite would
+        # otherwise freeze into history. Queued follow-ups already pass this same text.
+        user_text = str(user_message.get("content") or "")
         # Before anything is committed: a prompt a plugin or UserPromptSubmit hook refuses never
         # becomes a turn. The model gets the effective input; user history keeps the original.
         model_message, admitted_text = await self.intercept_prompt(user_message, user_text, origin)
