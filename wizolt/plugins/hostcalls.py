@@ -162,15 +162,13 @@ class Continuations:
                 result = {"error": f"{type(error).__name__}: {error}"[:8192]}
             if self.admitted(parent):
                 self.send({"continue_result": token, **result})
-        except Exception as error:  # noqa: BLE001 - degrade to a small error frame instead of hanging the handler.
+        except Exception as error:  # noqa: BLE001 - a departing worker cannot receive its continuation's result.
             from wizolt.plugins.process import FrameLimitError
 
             if self.admitted(parent) and isinstance(error, FrameLimitError):
                 # The result exists but the host cannot send it: next() fails at once, not at its deadline.
                 with contextlib.suppress(PluginError, BrokenPipeError, ConnectionResetError):
                     self.send({"continue_result": token, "error": str(error)[:8192]})
-        except (PluginError, BrokenPipeError, ConnectionResetError):
-            pass  # A departing worker cannot receive its continuation's result.
         finally:
             self.running.pop(token, None)
 
