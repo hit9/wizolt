@@ -100,8 +100,23 @@ async def test_context_bar_keeps_small_categories_and_fits_narrow_terminals(runt
     assert len(text(bar)) == 40 and bar.spans[0] == Text("█", "status_provider")  # Tiny, still drawn.
     assert "…" in text(legend) and len(text(legend)) == 40 and text(legend).endswith("100k/200k")
     # Too narrow for the percentage beside the bar: the legend's totals carry it instead.
-    bar, legend = (await bar_panel(runtime, window, columns=12)).rows
+    bar, legend = (await bar_panel(runtime, window, columns=13)).rows
     assert "%" not in text(bar) and text(legend).strip() == "100k/200k 50%"
+    # Narrower still: the totals no longer fit either, and the percentage is what stays.
+    bar, legend = (await bar_panel(runtime, window, columns=12)).rows
+    assert len(text(legend)) == 12 and text(legend).strip() == "50%"
+
+
+async def test_context_bar_never_draws_wider_than_the_panel(runtime):
+    window = ContextWindow(100_000, 200_000, 0, (("system prompt", 100), ("messages", 99_900)))
+    runtime.state["context"] = facts(window=window)
+    await runtime.manage("enable", str(BUILTIN / "context_bar.py"))
+    for columns in range(4, 40):
+        runtime.resize(columns, 24)
+        await runtime.refresh()
+        [panel] = runtime.panels("above_input")
+        for row in panel.rows:
+            assert len(text(row)) <= columns, (columns, text(row))
 
 
 async def test_context_bar_warns_near_the_limit_and_hides_without_a_window(runtime):
@@ -153,3 +168,25 @@ def test_every_pet_has_its_own_silhouette():
     crowns = [pet.crown for pet in PETS.values()]
     assert len(set(crowns)) == len(PETS) and len({(crown, body) for crown, body in zip(crowns, bodies, strict=True)}) == len(PETS)
     assert len({pet.wrap for pet in PETS.values()}) >= 4
+
+
+def test_the_pet_never_draws_wider_than_the_panel():
+    from wizolt.plugins.builtin.pet import PETS, _caption_left, _draw
+
+    # A terminal narrower than the caption has nowhere to put it: the pet draws without one
+    # rather than a line that spills past the panel.
+    for caption in ("on it", "your move", "nailed it", "taking five", "strolling", "hello"):
+        for columns in range(2, 40):
+            for walked in (0.0, 3.7, 21.0):
+                assert _caption_left(columns, 1, 1, 8, caption) is None or _caption_left(columns, 1, 1, 8, caption) + len(caption) <= columns
+    for columns in range(2, 40):
+        for walked in (0.0, 3.7, 21.0):
+            panel = _draw(_pet_context(columns), PETS["cat"], walked, True)
+            for row in panel.rows:
+                assert sum(len(span.text) for span in row.spans) <= columns, (columns, walked)
+
+
+def _pet_context(columns):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(columns=columns, layout=None, now=0.0, status="idle", window=SimpleNamespace(parts=[], limit=0, budget=0, used=0.0))

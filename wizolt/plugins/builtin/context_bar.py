@@ -83,7 +83,10 @@ def legend(parts: list[tuple[str, int]], totals: str, columns: int) -> Line:
     """Name the drawn categories in bar order, cut with an ellipsis, totals right-aligned."""
     room = columns - len(totals) - 1
     if room < 16:  # Too little legend to be worth it: keep only the totals.
-        return Line((Text(totals.rjust(columns), "muted"),))
+        # The narrowest terminals cannot even fit the totals: the percentage alone is the one
+        # number that still fits, so it is what stays.
+        shown = totals if len(totals) <= columns else totals.rsplit(" ", 1)[-1]
+        return Line((Text(shown[:columns].rjust(columns), "muted"),))
     spans: list[Text] = []
     width = 0
     for index, (name, tokens) in enumerate(parts):

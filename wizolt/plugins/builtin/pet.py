@@ -134,7 +134,7 @@ def _placement(context: Context, walked: float, sprite: int) -> tuple[int, int, 
     return int(2 * span - phase), -1, int(walked)
 
 
-def _caption_left(columns: int, left: int, facing: int, sprite: int, caption: str) -> int:
+def _caption_left(columns: int, left: int, facing: int, sprite: int, caption: str) -> int | None:
     """Keep the caption one cell off the tail, crossing to the front only to stay on screen."""
     width = len(caption)
     behind = left - width - 1 if facing > 0 else left + sprite + 1
@@ -143,7 +143,10 @@ def _caption_left(columns: int, left: int, facing: int, sprite: int, caption: st
     front = left + sprite + 1 if facing > 0 else left - width - 1
     if 0 <= front and front + width <= columns:
         return front
-    return min(max(behind, 0), max(0, columns - width))
+    fallback = min(max(behind, 0), max(0, columns - width))
+    # A terminal narrower than the caption has nowhere to put it: draw the pet without one
+    # rather than a line that spills past the panel.
+    return fallback if fallback + width <= columns else None
 
 
 def _spans(cells: Sequence[str], roles: Sequence[str]) -> tuple[Text, ...]:
@@ -189,8 +192,8 @@ def _draw(context: Context, pet: Pet, walked: float, captioned: bool) -> Panel:
     left, facing, band = _placement(context, walked, pet.width)
     top, body = _pose(pet, eye, tail, puff, facing)
     placements: list[tuple[int, str, str | None]] = [(left, top, None)]
-    if captioned:
-        placements.append((_caption_left(context.columns, left, facing, pet.width, caption), caption, caption_role))
+    if captioned and (caption_at := _caption_left(context.columns, left, facing, pet.width, caption)) is not None:
+        placements.append((caption_at, caption, caption_role))
     return Panel((_row(placements, band), _row(((left, body, None),), band)))
 
 
