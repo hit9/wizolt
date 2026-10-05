@@ -1629,8 +1629,16 @@ class UiPrinter:
                     end += 1
                 diff_lines = [entry[0] for entry in entries[index:end]]
                 diff_text = "\n".join(item.text for item in diff_lines)
+                # The pair of file-header rows is read but not drawn: the call line above the block
+                # already names the file, and repeating it costs two rows for every edited file. Read,
+                # because `diff_segments` takes the lexer for the whole body from the `+++` path, and
+                # dropped from its rendered rows and the row list both -- one list left longer and every
+                # row below would print its neighbour's text. Only the pair opening the block counts: a
+                # removed body line can render as `--- x` on its own, its content having begun with `-- `.
+                old_marker, new_marker = self.DIFF_HEADER_PREFIXES
+                header = 2 if len(diff_lines) > 1 and diff_lines[0].text.startswith(old_marker) and diff_lines[1].text.startswith(new_marker) else 0
                 highlighted = self.segment_lines(self.diff_segments(diff_text))
-                for item, rendered in zip(diff_lines, highlighted):
+                for item, rendered in zip(diff_lines[header:], highlighted[header:]):
                     prefix = [*margin, *self.edge_segments(item.edge)]
                     rendered = self.remove_line_ending(rendered)
                     for row in Text.wrap_styled(prefix, prefix, rendered, width):

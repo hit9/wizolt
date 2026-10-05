@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Stop printing a diff's two file-header rows (`--- path` / `+++ path`) in the transcript: the call
+  line above the block already names the file, and every edit repeated it twice more. The `+++`
+  path is still read for syntax highlighting, so the body keeps its colors.
+
 - Read a subagent's answer in full with the new `Subagent` **report** action: one child's latest
   answer as plain text, live or archived, with a long one written to a file like any other cut
   tool result. **wait** rows now carry the answer's first 4,000 characters plus a `truncated`

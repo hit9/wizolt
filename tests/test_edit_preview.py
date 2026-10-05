@@ -27,6 +27,37 @@ def test_approval_segments_highlight_inline_edit_preview():
     assert "\n\n" not in rendered
 
 
+def test_a_diff_does_not_draw_the_file_header_rows_it_was_named_by():
+    """The call line above the block already names the file, so a unified diff's `---`/`+++` pair is
+    read but not drawn -- read, because the `+++` path is what picks the lexer for the body."""
+    preview = "--- foo.py\n+++ foo.py\n@@ -1,2 +1,2 @@\n def hello():\n-    pass\n+    return 42"
+    block = LogBlock.hierarchy(
+        LogLine("Edit", "foo.py", LogRole.TOOL),
+        [*(LogLine("", line, LogRole.DIFF, LogEdge.CONTINUE) for line in preview.splitlines())],
+    )
+    segments = UiPrinter().log_segments(block)
+    rendered = "".join(text for _, text in segments)
+
+    assert "--- foo.py" not in rendered and "+++ foo.py" not in rendered
+    assert "@@ -1,2 +1,2 @@" in rendered and "return 42" in rendered
+    # Still read before being dropped: the body keeps the Python lexer's color, which only the
+    # `+++` path named.
+    assert any("return" in text and style.endswith("bg:#003b00") and style != "bg:#003b00" for style, text in segments)
+
+
+def test_a_diff_row_that_opens_like_a_header_is_kept_off_the_block_head():
+    """A removed line whose content began with `-- ` renders as `--- x`, and the `++ y` added beside
+    it as `+++ y`: body rows, drawn like any other. Only the pair opening the block is a header."""
+    preview = "@@ -1,2 +1,2 @@\n--- x\n+++ y"
+    block = LogBlock.hierarchy(
+        LogLine("Edit", "notes.md", LogRole.TOOL),
+        [*(LogLine("", line, LogRole.DIFF, LogEdge.CONTINUE) for line in preview.splitlines())],
+    )
+    rendered = "".join(text for _, text in UiPrinter().log_segments(block))
+
+    assert "--- x" in rendered and "+++ y" in rendered
+
+
 def test_diff_marks_the_words_a_modified_line_changed():
     """A removed line and the added line replacing it put the heavier band under the words that
     differ, and only there; the rest of each line keeps its ordinary band."""
