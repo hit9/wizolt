@@ -1,6 +1,7 @@
 """--operations: real handlers, the live chain executor and a scripted core; nothing real runs."""
 
 import json
+import time
 
 import pytest
 
@@ -125,3 +126,23 @@ def test_validate_rejects_operation_fixtures(tmp_path):
     plugin.write_text(PLUGIN)
     with pytest.raises(SystemExit):
         main(["validate", str(plugin), "--operations", str(plugin)])
+
+
+def test_timeout_bounds_intercept_handlers(tmp_path, capsys):
+    """--timeout is the deadline for each worker call, intercept handlers included: a handler
+    that never returns fails the trial at the deadline instead of hanging to the class default."""
+    plugin = tmp_path / "slow.py"
+    plugin.write_text(
+        "import asyncio\n"
+        "SDK_VERSION = 1\n"
+        "def setup(p):\n"
+        "    async def slow(ctx, call, next):\n"
+        "        await asyncio.sleep(30)\n"
+        "    p.intercept('tool.call', slow)\n"
+    )
+    fixture = tmp_path / "operations.json"
+    fixture.write_text(json.dumps([{"operation": "tool.call", "input": bash("ls"), "next": {"content": "a"}}]))
+    started = time.monotonic()
+    code = main(["test", str(plugin), "--operations", str(fixture), "--project", str(tmp_path), "--timeout", "0.5"])
+    report = json.loads(capsys.readouterr().out)
+    assert code == 1 and "timed out" in report["error"] and time.monotonic() - started < 10

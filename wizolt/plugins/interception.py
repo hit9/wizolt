@@ -118,10 +118,13 @@ class Interception:
         result_check: ResultCheck | None = None,
         scope: InvocationScope | None = None,
         trace: dict | None = None,
+        handler_seconds: float | None = None,
     ) -> Value:
         """Run the chain around ``core``. ``trace`` (optional) receives provenance for receipts:
         ``chain`` (registrations invoked), ``origin`` (the one that produced the result without
-        calling next, if any) and ``shaped`` (those that changed the downstream result)."""
+        calling next, if any) and ``shaped`` (those that changed the downstream result).
+        ``handler_seconds`` bounds each handler's own execution; the class default applies
+        when a caller has no tighter deadline of its own."""
         parent = scope or CURRENT.get() or InvocationScope(agent=self.runtime.context().agent_id)
         skip = parent.active if parent.auxiliary else frozenset()
         # Match keys are read-only, so the registrations this value matches are the whole chain:
@@ -147,7 +150,7 @@ class Interception:
                     if reason := link.generation.failure(link.health):
                         raise PluginError(f"{link.owner}'s {operation} interceptor is blocked until it is reloaded or disabled: {reason}")
                     trace["chain"].append(link.id)
-                    return await self.call(link, index, current, step, own, transition, result_check, trace)
+                    return await self.call(link, index, current, step, own, transition, result_check, trace, handler_seconds)
                 restore = CURRENT.set(own)  # Core descendants enter their own full chains.
                 try:
                     return await core(current)
@@ -171,6 +174,7 @@ class Interception:
         transition: Transition | None,
         result_check: ResultCheck | None,
         trace: dict,
+        handler_seconds: float | None = None,
     ) -> Value:
         spec = OPERATIONS[link.operation]
         state: dict = {"used": False, "settled": False, "result": None, "error": None, "invalid": None}
@@ -204,7 +208,7 @@ class Interception:
         try:
             raw = await worker.request(
                 "intercept",
-                timeout=self.HANDLER_SECONDS,
+                timeout=handler_seconds or self.HANDLER_SECONDS,
                 scope=scope.entering(link.id, auxiliary=True),
                 on_start=lambda identity: worker.continuations.register(token, identity, resume),
                 name=link.operation,

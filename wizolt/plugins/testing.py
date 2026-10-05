@@ -109,6 +109,7 @@ class PluginTrial:
                     report.results.append(result)
                 if operations:
                     chain = OperationChain(self.context, source, original, self.python, worker, report.capabilities)
+                    chain.timeout = self.timeout  # --timeout bounds every worker call, intercept handlers included.
                     for index, entry in enumerate(operations):
                         report.stage = f"operation {index + 1}"
                         outcome = await chain.run(entry)
@@ -150,6 +151,7 @@ class OperationChain:
         self.runtime = PluginRuntime(lambda: context)
         generation = Generation(Revision(source, settings, python), Capabilities.decode(source.name, description), worker)
         self.runtime.entries[source.name] = Entry(generation)
+        self.timeout: float | None = None  # The trial's per-call deadline, when it runs operations.
 
     async def run(self, entry: object) -> dict:
         from wizolt.sdk import operations
@@ -181,7 +183,9 @@ class OperationChain:
         transition, result_check = adapter_rules(value, self.runtime.interception_order.ordered)
         trace: dict = {}
         try:
-            result = await self.runtime.interception.run(spec.name, value, scripted, transition=transition, result_check=result_check, trace=trace)
+            result = await self.runtime.interception.run(
+                spec.name, value, scripted, transition=transition, result_check=result_check, trace=trace, handler_seconds=self.timeout
+            )
             outcome["result"] = operations.encode(result)
         except Exception as error:  # noqa: BLE001 - a trial reports every failure as feedback.
             outcome["error"] = f"{type(error).__name__}: {error}"
