@@ -122,10 +122,12 @@ class Interception:
         """Run the chain around ``core``. ``trace`` (optional) receives provenance for receipts:
         ``chain`` (registrations invoked), ``origin`` (the one that produced the result without
         calling next, if any) and ``shaped`` (those that changed the downstream result)."""
-        links = self.chain(operation)
         parent = scope or CURRENT.get() or InvocationScope(agent=self.runtime.context().agent_id)
         skip = parent.active if parent.auxiliary else frozenset()
-        if not any(link.spec.matches(value) and link.id not in skip for link in links):
+        # Match keys are read-only, so the registrations this value matches are the whole chain:
+        # only they are pinned, and disabling any other plugin leaves this operation alone.
+        links = [link for link in self.chain(operation) if link.id not in skip and link.spec.matches(value)]
+        if not links:
             return await core(value)
         if parent.depth >= MAX_DEPTH:
             raise PluginError(f"Plugin operations nest deeper than {MAX_DEPTH} levels")
@@ -140,14 +142,12 @@ class Interception:
         try:
 
             async def step(index: int, current: Value) -> Value:
-                for position in range(index, len(links)):
-                    link = links[position]
-                    if link.id in skip or not link.spec.matches(current):
-                        continue
+                if index < len(links):
+                    link = links[index]
                     if reason := link.generation.failure(link.health):
                         raise PluginError(f"{link.owner}'s {operation} interceptor is blocked until it is reloaded or disabled: {reason}")
                     trace["chain"].append(link.id)
-                    return await self.call(link, position, current, step, own, transition, result_check, trace)
+                    return await self.call(link, index, current, step, own, transition, result_check, trace)
                 restore = CURRENT.set(own)  # Core descendants enter their own full chains.
                 try:
                     return await core(current)

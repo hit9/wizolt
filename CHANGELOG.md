@@ -17,6 +17,12 @@
     A command with control characters was refused as "no one can confirm" instead of asked.
   - The status bar's context figure now includes blocks that `context.compose` adds.
   - The tmux acceptance test no longer depends on the bundled names' column width.
+  - Disabling a plugin cancelled any in-flight operation of a kind it registered for, even one
+    its match rejected (a Bash-only interceptor's disable cancelled a long `Read`). Only
+    registrations that match the operation are pinned and cancelled.
+  - A rewritten `Subagent` result still carried the original's proof of delivery, so child
+    results the model never saw were not announced again.
+  - A manual retry of a request no interceptor saw linked to an older, unrelated request ID.
 
 - `Plugin(action="reload")` and its approval plan now retire a live plugin whose installation
   record was deleted from the config; before, it kept running, invisible to reload. A damaged

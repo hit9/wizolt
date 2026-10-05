@@ -66,7 +66,7 @@ class Generation:
     calls: int = 0
     seconds: float = 0
     invocations: int = 0  # Pin this worker, never unrelated plugin generations.
-    # Tasks running an operation whose chain includes this generation. Disable cancels them:
+    # Tasks running an operation this generation's registration matched. Disable cancels them:
     # recovery must not wait for a poisoned turn to finish.
     operations: set[asyncio.Task] = field(default_factory=set)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)

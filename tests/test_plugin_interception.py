@@ -176,6 +176,20 @@ async def test_an_outer_passthrough_relays_an_inner_refusal_without_being_blamed
     assert not outer.failures and not core.seen
 
 
+async def test_disabling_an_unmatched_plugin_leaves_the_operation_running(runtime, tmp_path):
+    relay = "def setup(p):\n    async def h(ctx, value, next):\n        return await next(value)\n    p.intercept('tool.call', h{})\n"
+    await enable(runtime, tmp_path, "bashonly", relay.format(", match={'tool': 'Bash'}"))
+    await enable(runtime, tmp_path, "everything", relay.format(""))
+    core = Core(wait=asyncio.Event())
+    operation = asyncio.create_task(runtime.interception.run("tool.call", call(tool="Read", path="x"), core))
+    await asyncio.wait_for(core.started.wait(), 5)
+    # bashonly never matched this Read: it is not pinned, and its disable cancels nothing.
+    await runtime.manage("disable", "bashonly")
+    assert "bashonly" not in runtime.entries and not operation.done()
+    core.wait.set()
+    assert await asyncio.wait_for(operation, 5) == ToolResult("core ran")
+
+
 async def test_matcher_prefilters_without_invoking_the_worker(runtime, tmp_path):
     generation = await enable(runtime, tmp_path, "bashonly", "def setup(p):\n    async def h(ctx, value, next):\n        return ToolResult('bash')\n    p.intercept('tool.call', h, match={'tool': 'Bash'})\n")
     calls = generation.calls

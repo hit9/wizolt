@@ -577,6 +577,10 @@ class ToolRunner:
             display = f"{tooloutput.short_call(self.session, call)} [plugin {owner}]"
             self.emit(LogBlock([LogLine(display, oneline(result.content, 120), LogRole.TOOL if status == "ok" else LogRole.ERROR, LogEdge.BRANCH)]))
             return status, self.tool_message(call, "", result.content, status=status, display=display), None
+        if result.content != core_outcome["message"]:
+            # Subagent proof of delivery describes the output the tool produced; a rewritten
+            # result may not carry those child results to the model, so claim nothing.
+            self._result_receipts.pop(call.id, None)
         if core_outcome["status"] == "refused":
             status = "refused"  # The user's refusal still stops the rest of the batch.
         return status, result.content + core_outcome["feedback"], core_outcome["observation"]

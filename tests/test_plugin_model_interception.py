@@ -92,6 +92,27 @@ async def test_manual_retry_starts_a_new_request_linked_to_the_old_one(session, 
     assert second["retry_of"] == first["id"] and first["retry_of"] == ""
 
 
+async def test_a_retry_links_only_to_a_request_interception_saw(session, tmp_path):
+    log = await enable(session, tmp_path)
+    model, attempts = ModelClient(session), []
+
+    async def transport(messages, tools, provider):
+        attempts.append(provider)
+        if len(attempts) == 2:
+            raise ModelRequestRetry()
+        return {"role": "assistant", "content": "ok"}, [], "ok"
+
+    model._transport_request = transport
+    await model.request([{"role": "user", "content": "hi"}], [])  # Seen: it has an ID.
+    await session.plugins.manage("disable", "router")
+    with pytest.raises(ModelRequestRetry):
+        await model.request([{"role": "user", "content": "hi"}], [])  # Unseen: no ID to link.
+    await enable(session, tmp_path)
+    await model.request([{"role": "user", "content": "hi"}], [])
+    first, retried = entries(log)
+    assert retried["retry_of"] == "" and retried["id"] != first["id"]
+
+
 async def test_preserve_streams_while_replace_shows_only_the_final_response(session, tmp_path):
     streamed = []
     model, sent = ModelClient(session), []

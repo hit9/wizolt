@@ -350,6 +350,7 @@ class ModelClient:
         tools = tools if tools is not None else Tool.resolved_schemas(self.session)
         config = self.session.config
         retry_of, self._retry_of = self._retry_of, ""
+        self._last_request = ""  # Set only when interception sees this request; never a stale one.
         try:
             return await self.logical(
                 "turn",
