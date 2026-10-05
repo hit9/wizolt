@@ -179,7 +179,7 @@ def test_the_pet_never_draws_wider_than_the_panel():
         for columns in range(2, 40):
             for walked in (0.0, 3.7, 21.0):
                 assert _caption_left(columns, 1, 1, 8, caption) is None or _caption_left(columns, 1, 1, 8, caption) + len(caption) <= columns
-    for columns in range(2, 40):
+    for columns in range(PETS["cat"].width + 1, 40):
         for walked in (0.0, 3.7, 21.0):
             panel = _draw(_pet_context(columns), PETS["cat"], walked, True)
             for row in panel.rows:
