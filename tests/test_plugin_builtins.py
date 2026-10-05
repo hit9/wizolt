@@ -61,6 +61,13 @@ async def test_every_builtin_introduces_itself_in_the_plugin_list(tmp_path):
         await plugins.close()
 
 
+def test_about_pages_reflow_prose_but_keep_code_and_lists():
+    from wizolt.ui.cli.plugins import unwrap
+
+    source = "A wrapped\nsentence.\n\n```text\nart  line\nkept\n```\n\n## Use\n\n- one item\n  continued\n- two"
+    assert unwrap(source) == "A wrapped sentence.\n\n```text\nart  line\nkept\n```\n\n## Use\n\n- one item continued\n- two"
+
+
 def test_builtins_ship_disabled(tmp_path):
     records, _ = PluginCatalog.for_user(str(tmp_path)).read()
     assert set(records) == {"context_bar", "layout", "pet"} and not any(item.enabled for item in records.values())

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import shutil
 import textwrap
@@ -195,13 +196,38 @@ class PluginManager:
             text = PluginSource.read(str(self.records[name]["path"])).about.strip()
         except Exception as error:  # noqa: BLE001 - an unreadable source still opens a page that says why.
             text = f"Could not read this plugin's source: {error}"
-        text = text or "This plugin has no documentation: its source starts with no docstring."
+        text = unwrap(text) or "This plugin has no documentation: its source starts with no docstring."
         entry = self.runtime.entries.get(name)
         panels = entry.active.snapshot.panels if entry is not None else {}
         rows = ["".join(span.text for span in row.spans) if isinstance(row, Line) else row.text for panel in panels.values() for row in panel.rows]
         if rows:
             text += "\n\n## What it shows now\n\n```text\n" + "\n".join(rows) + "\n```"
         return text
+
+
+BLOCK_START = re.compile(r"\s*([-*+>#|]|\d+[.)])\s")
+
+
+def unwrap(markdown: str) -> str:
+    """Join a docstring's hard-wrapped prose lines, so paragraphs reflow to the viewer's width.
+
+    The renderer keeps line breaks, which suits chat answers but leaves a source file's 100-column
+    wrapping as ragged lines. Code blocks, list items, headings, quotes and tables keep theirs.
+    """
+    lines: list[str] = []
+    fenced = False
+    for line in markdown.splitlines():
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            lines.append(line)
+            continue
+        previous = lines[-1] if lines else ""
+        continuation = line.strip() and previous.strip() and not BLOCK_START.match(line) and not previous.lstrip().startswith(("#", "```", "|"))
+        if not fenced and continuation:
+            lines[-1] = previous.rstrip() + " " + line.strip()
+        else:
+            lines.append(line)
+    return "\n".join(lines)
 
 
 async def plugins_command(loop: CommandLoop, args: str) -> str:
