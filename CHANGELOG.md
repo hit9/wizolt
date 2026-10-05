@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Speed up the test suite from about 77 s to 32 s (8 workers, Linux ARM64). pytest now runs
+  with `--dist worksteal`: under the default chunked scheduling, the worker that drew slow
+  subprocess tests kept the run going long after the others were idle (57 s -> 32 s). The MCP
+  reaping test fires its timeout as soon as the server hangs instead of waiting 30 real seconds
+  (35 s -> 5.6 s), and the lease test's child exits when released instead of sleeping 5 s.
+
 - Add `runtime.bash_output_tokens` (default 6000, 1000–6000, also `/set`): how much of a Bash
   result the model sees inline; the rest stays in the file the cut points to. Results stay in
   the conversation and are re-sent by every later request; across 30 recent sessions (Linux

@@ -288,8 +288,32 @@ async def test_a_timed_out_or_closed_stdio_call_reaps_the_server_process(tmp_pat
             return False
         return True
 
-    with pytest.raises(ToolError, match="timed out after 30s"):
-        await s.mcp.call_tool("slow", "hang", {})
+    import types
+
+    import wizolt.mcp.manager as manager_module
+
+    real_wait = asyncio.wait
+    fired = []
+
+    async def expire_once_hanging(tasks, timeout=None, **kwargs):
+        # The manager's own deadline fires the moment the tool hangs, rather than after 30 real
+        # seconds: the same timeout and reaping path, while startup keeps its whole budget. Only
+        # the call's deadline: the teardown that follows waits for real.
+        if fired or timeout != 30:
+            return await real_wait(tasks, timeout=timeout, **kwargs)
+        fired.append(True)
+        deadline = asyncio.get_running_loop().time() + timeout
+        while not (pids.exists() and pids.read_text().split()):
+            remaining = deadline - asyncio.get_running_loop().time()
+            done, pending = await real_wait(tasks, timeout=max(0, min(0.05, remaining)), **kwargs)
+            if done or remaining <= 0:
+                return done, pending
+        return set(), set(tasks)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(manager_module, "asyncio", types.SimpleNamespace(**{**vars(asyncio), "wait": expire_once_hanging}))
+        with pytest.raises(ToolError, match="timed out after 30s"):
+            await s.mcp.call_tool("slow", "hang", {})
     first = int(pids.read_text().split()[0])
     assert not alive(first)
 

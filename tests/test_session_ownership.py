@@ -288,7 +288,7 @@ async def test_a_surviving_subprocess_does_not_retain_the_lease(tmp_path):
 
     owner = stored_session(tmp_path, "spawn")
     await owner.save_snapshot()
-    child = run_child("import sys, time; sys.stdin.readline(); time.sleep(5)")
+    child = run_child("import sys; sys.stdin.readline()")  # Alive until released below, then done.
     try:
         owner.close()
         # The child is alive and owns a pipe, but not the lease descriptor.
