@@ -8,6 +8,7 @@ retirement cancel/join them; a late response cannot revive a finished action.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import Awaitable, Callable
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
@@ -161,6 +162,13 @@ class Continuations:
                 result = {"error": f"{type(error).__name__}: {error}"[:8192]}
             if self.admitted(parent):
                 self.send({"continue_result": token, **result})
+        except Exception as error:  # noqa: BLE001 - degrade to a small error frame instead of hanging the handler.
+            from wizolt.plugins.process import FrameLimitError
+
+            if self.admitted(parent) and isinstance(error, FrameLimitError):
+                # The result exists but the host cannot send it: next() fails at once, not at its deadline.
+                with contextlib.suppress(PluginError, BrokenPipeError, ConnectionResetError):
+                    self.send({"continue_result": token, "error": str(error)[:8192]})
         except (PluginError, BrokenPipeError, ConnectionResetError):
             pass  # A departing worker cannot receive its continuation's result.
         finally:

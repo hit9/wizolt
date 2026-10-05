@@ -160,3 +160,28 @@ async def test_continuation_cancel_clears_a_task_never_started():
     assert not continuations.running and not continuations.tokens
     await continuations.cancel()  # A second sweep re-cancels nothing.
     assert not continuations.running
+
+
+async def test_a_result_too_big_to_send_fails_next_at_once():
+    """A frame the host cannot send degrades to a small error frame, as host services do.
+
+    Otherwise the worker's next() future never resolves and the handler hangs to its own
+    deadline with no reason."""
+    from wizolt.plugins.hostcalls import Continuations
+    from wizolt.plugins.process import FrameLimitError
+
+    def send(message: dict) -> None:
+        if "error" not in message:
+            raise FrameLimitError("Plugin request exceeds protocol frame limit")
+        sent.append(message)
+
+    sent: list[dict] = []
+    continuations = Continuations(send, lambda parent: True)
+
+    async def resume(value):
+        return {"huge": True}
+
+    continuations.register("t", 7, resume)
+    continuations.dispatch({"continue": "t", "parent": 7, "input": {}})
+    await asyncio.sleep(0)
+    assert sent == [{"continue_result": "t", "error": "Plugin request exceeds protocol frame limit"}]
