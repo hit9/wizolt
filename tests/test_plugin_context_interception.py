@@ -103,6 +103,31 @@ async def test_composition_over_budget_fails_explicitly(agent, tmp_path):
     assert agent.requests == []
 
 
+async def test_a_header_part_appearing_during_a_fruitless_compaction_keeps_the_conversation(agent, tmp_path, monkeypatch):
+    from wizolt.agent import compaction
+    from wizolt.agent.context import ContextManager
+
+    await enable(agent, tmp_path, "relay", "        return await next(blocks)")
+    connected = {"skills": ""}
+    monkeypatch.setattr(ContextManager, "skills_context", lambda self: connected["skills"])
+
+    async def fruitless(self, *args, **kwargs):
+        connected["skills"] = "--- Skills ---\nreview"  # Arrives while the summary request is out.
+        return False  # And the pass frees nothing.
+
+    monkeypatch.setattr(compaction.Compactor, "run", fruitless)
+    monkeypatch.setattr(ContextManager, "request_token_budget", lambda self: 1)  # Force an attempt.
+    monkeypatch.setattr(ContextManager, "update_percent", lambda self, *args, **kwargs: 0)
+    context = agent.context
+    turn = [{"role": "user", "content": "OPENING-MESSAGE"}]
+    messages = await context.prepare_messages(agent.model, agent.session.system_prompt, turn, [])
+    monkeypatch.setattr(ContextManager, "request_token_budget", lambda self: 10**9)
+    composed = await context.compose(agent.session.plugins, agent.session.system_prompt, messages, [])
+    contents = [message["content"] for message in composed]
+    # The opening message stays the conversation's first; no header block is resent as history.
+    assert "OPENING-MESSAGE" in contents and contents.count("--- Skills ---\nreview") == 1
+
+
 async def test_conversation_is_a_read_only_view(agent, tmp_path):
     seen = tmp_path / "seen.txt"
     await enable(agent, tmp_path, "reader", f"        open({str(seen)!r}, 'w').write(blocks.get('conversation').text)\n        return await next(blocks)")
