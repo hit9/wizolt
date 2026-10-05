@@ -12,12 +12,13 @@ from typing import TYPE_CHECKING, ClassVar
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 
 from wizolt.agentsmd import display_path
-from wizolt.base import Text
+from wizolt.base import ApprovalView, Text
 from wizolt.plugins.layout import INPUT_SLOTS, LayoutBudget
+from wizolt.plugins.loading import PluginSource
 from wizolt.sdk import Line, Panel, PluginError
 from wizolt.sdk import Text as PluginText
 from wizolt.ui.bars import Fragments, clean, clip
-from wizolt.ui.cli.modals import choice_application, picker_height
+from wizolt.ui.cli.modals import approval_text_viewer, choice_application, picker_height
 from wizolt.ui.render import Theme
 from wizolt.ui.tui import ChoiceViewState
 
@@ -175,14 +176,32 @@ class PluginManager:
         """Collect user intent first, then invoke the lifecycle once with that exact action."""
         entry = self.runtime.entries.get(name)
         toggle = "disable" if self.records[name]["enabled"] else "enable"
-        choices = ("reload", toggle) if entry else (toggle,)
+        choices = ("about", "reload", toggle) if entry else ("about", toggle)
         # Unlike convenience selectors, an action menu must not auto-accept its only item.
         # Opening a disabled plugin shows Enable; it does not itself grant activation.
         action = await choice_application(self.loop, name, choices, {}, "", set())
         if not isinstance(action, str):
             return
+        if action == "about":
+            await approval_text_viewer(self.loop, ApprovalView(f"about {name}", self.about(name)), back_on_escape=True)
+            return
         result = await self.runtime.manage(action, name)
         self.notice = f"{result['name']}: {result['status']}"
+
+    def about(self, name: str) -> str:
+        """The plugin's own documentation, read from source without running it, and what it draws
+        right now when it runs: usage from the author, a demo from the live plugin."""
+        try:
+            text = PluginSource.read(str(self.records[name]["path"])).about.strip()
+        except Exception as error:  # noqa: BLE001 - an unreadable source still opens a page that says why.
+            text = f"Could not read this plugin's source: {error}"
+        text = text or "This plugin has no documentation: its source starts with no docstring."
+        entry = self.runtime.entries.get(name)
+        panels = entry.active.snapshot.panels if entry is not None else {}
+        rows = ["".join(span.text for span in row.spans) if isinstance(row, Line) else row.text for panel in panels.values() for row in panel.rows]
+        if rows:
+            text += "\n\n## What it shows now\n\n```text\n" + "\n".join(rows) + "\n```"
+        return text
 
 
 async def plugins_command(loop: CommandLoop, args: str) -> str:

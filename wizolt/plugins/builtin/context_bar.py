@@ -1,12 +1,31 @@
 """A bar above your input showing what fills the context window, by category, with a legend.
 
-Uses only the public SDK. ``window.parts`` are the host's local per-category estimates in request order; the bar measures
-them against the context limit, so the empty tail is what the next request can still spend.
-When the reported fill exceeds the estimates, the difference is drawn as ``other``. The used
-percentage rides on the bar so it survives a one-row allocation; the legend adds per-category
-tokens and the totals. Colors are semantic theme roles, so the active theme owns every choice.
-Drawing is pure: no model calls, timers or state between repaints.
+```text
+████████████████▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 37%
+system prompt 9.0k · system tools 14k · …               74k/200k
+```
+
+(In the terminal each category has its own theme color.)
+
+Each colored segment is one part of what the next request sends: the system prompt, tool
+definitions, MCP servers, memory files (AGENTS.md), skills and the conversation. The empty
+tail is what is still free. The percentage turns to the warning color from 80%. In a short
+terminal only the bar remains.
+
+## Use
+
+- Enable **context_bar** in `/plugins`. It makes no model calls.
+- Move it: set `[plugins.context_bar] slot` to `above_divider`, `above_input` (default) or
+  `below_input`, then reload it in `/plugins`.
+- Compact (`/compact`) or start a new session when the bar is nearly full.
 """
+
+# Uses only the public SDK. `window.parts` are the host's local per-category estimates in request
+# order; the bar measures them against the context limit, so the empty tail is what the next
+# request can still spend. When the reported fill exceeds the estimates, the difference is drawn
+# as `other`. The percentage rides on the bar so it survives a one-row allocation. Colors are
+# semantic theme roles, so the active theme owns every choice. Drawing is pure: no model calls,
+# timers or state between repaints.
 
 import zlib
 

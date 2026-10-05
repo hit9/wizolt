@@ -85,6 +85,7 @@ class PackageSnapshot:
     files: tuple[tuple[str, bytes], ...]
     digest: str
     description: str = ""
+    about: str = ""
 
     @classmethod
     def read(cls, root: Path) -> PackageSnapshot:
@@ -128,16 +129,22 @@ class PackageSnapshot:
         digest = hashlib.sha256(manifest.encode())
         for path, content in files:
             digest.update(path.encode() + b"\0" + len(content).to_bytes(8, "big") + content)
+        docstring = cls.docstring(members.get(module + ".py") or members.get(module + "/__init__.py") or b"")
         description = project.get("description")
         if not isinstance(description, str) or not description.strip():
-            description = cls.docstring(members.get(module + ".py") or members.get(module + "/__init__.py") or b"")
-        return cls(name, entry, manifest, tuple(dependencies), files, digest.hexdigest()[:12], " ".join(description.split())[:300])
+            description = summary(docstring)
+        # The README is a package's user documentation; it is read, never part of the snapshot.
+        try:
+            about = read_regular(root / "README.md", 64 * 1024).decode("utf-8")
+        except (OSError, UnicodeDecodeError, PluginError):
+            about = docstring
+        return cls(name, entry, manifest, tuple(dependencies), files, digest.hexdigest()[:12], " ".join(description.split())[:300], about)
 
     @staticmethod
     def docstring(content: bytes) -> str:
-        """The entry module's introduction, parsed, never executed; unreadable source has none."""
+        """The entry module's docstring, parsed, never executed; unreadable source has none."""
         try:
-            return summary(ast.get_docstring(ast.parse(content.decode("utf-8"))))
+            return ast.get_docstring(ast.parse(content.decode("utf-8"))) or ""
         except (SyntaxError, UnicodeDecodeError, ValueError):
             return ""
 

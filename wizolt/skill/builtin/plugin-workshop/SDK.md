@@ -170,10 +170,13 @@ the agent's operation.
 ## Packages
 
 Single files declare `SDK_VERSION = 1`, optional `DEPENDENCIES`, and `setup(plugin)`. Open with
-a module docstring whose first paragraph tells the user what the plugin does: `/plugins` shows it
-without running your code. Put notes for authors in later paragraphs.
+a module docstring written for the user, in Markdown: its first paragraph is the one-line
+introduction in `/plugins`, and the whole docstring is the plugin's About page there, so add a
+`## Use` section and a small `text` block showing what it draws. `/plugins` reads it without
+running your code. Keep notes for authors in comments, not the docstring.
 For multiple files, pass a directory containing `pyproject.toml` to the same CLI commands; its
-`description` plays that role (the entry module's docstring is the fallback):
+`description` is the introduction and `README.md` the About page (the entry module's docstring
+is the fallback for both):
 
 ```toml
 [project]

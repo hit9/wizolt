@@ -118,8 +118,8 @@ the same spot, wizolt keeps its own drawing until you pick one with
 ## Try the built-in pet
 
 Open `/plugins`, select **pet**, then **enable**. A rainbow pet strolls along your prompt line
-while the agent works and rests when it stops. Type `/pet` to choose a cat, dog, rabbit, frog,
-dragon or robot; your choice is saved. It starts disabled and makes no model calls.
+while the agent works and rests when it stops. Type `/pet` to choose a cat, bear, owl, bunny,
+fish or robot; your choice is saved. It starts disabled and makes no model calls.
 
 ![The pet working, waiting for input and finishing.](_static/plugins-pet.svg)
 

@@ -162,7 +162,8 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     for _ in range(2):  # context_bar, layout and pet are bundled, disabled installations.
         pane.keys("Down")
     pane.keys("Enter")
-    wait("1. enable")
+    wait("2. enable")  # After "1. about".
+    pane.keys("Down")
     pane.keys("Enter")
     wait("enabled   running")
     pane.keys("Escape")
@@ -175,9 +176,10 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     pane.send("/plugins")
     wait("Plugins")
     pane.keys("Enter")
-    wait("1. reload")
+    wait("2. reload")
     pane.keys("Down")
-    wait("2. disable")
+    pane.keys("Down")
+    wait("3. disable")
     pane.keys("Enter")
     visible = wait(re.compile(r"pet +builtin +disabled"))
     assert "plugins 1" not in visible

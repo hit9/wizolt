@@ -46,7 +46,10 @@
 - Add the built-in `context_bar` plugin, disabled by default and without model calls: a
   stacked context-window bar with per-category theme colors, percentage and legend.
 - Replace the built-in pet with a rainbow pet that strolls the prompt line while the agent works.
-  `/pet` picks a cat, dog, rabbit, frog, dragon or robot and saves it as `[plugins.pet] pet`.
+  `/pet` picks a cat, bear, owl, bunny, fish or robot, each its own silhouette, and saves it as
+  `[plugins.pet] pet`. `/plugins` gains an About page per plugin: its documentation rendered as
+  Markdown (a single file's docstring, or a package's README.md), read without running it,
+  plus what the plugin draws right now when it runs.
 
 - Restore plugin worker launch and CLI import speed. Workers loaded `packaging` even for plugins
   declaring no dependencies, plus the interception modules; the CLI loaded interception eagerly.

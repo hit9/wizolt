@@ -37,6 +37,8 @@ class PluginSource:
     # What the plugin is for, read without running it: the module docstring's first paragraph,
     # or a package's [project] description. Shown in /plugins; never sent to the worker.
     description: str = ""
+    # Its user documentation in Markdown: the whole docstring, or a package's README.md.
+    about: str = ""
 
     def require_name(self, expected: str) -> None:
         """An installed name owns settings, tools and preferences; reload cannot rename it."""
@@ -53,7 +55,9 @@ class PluginSource:
         location = Path(path).expanduser().resolve()
         if location.is_dir():
             package = PackageSnapshot.read(location)
-            return cls(str(location), package.manifest, package.name, package.digest, package.dependencies, package.entry, package, package.description)
+            return cls(
+                str(location), package.manifest, package.name, package.digest, package.dependencies, package.entry, package, package.description, package.about
+            )
         if location.suffix != ".py" or not location.stem.isidentifier() or not location.stem.isascii():
             raise PluginError("Use a .py filename that is an ASCII Python identifier")
         if text is None:
@@ -77,7 +81,8 @@ class PluginSource:
         if not isinstance(dependencies, (tuple, list)) or any(not isinstance(item, str) or not item.strip() for item in dependencies):
             raise PluginError("DEPENDENCIES must be a literal list or tuple of requirement strings")
         digest = hashlib.sha256(text.encode()).hexdigest()[:12]
-        return cls(str(location), text, location.stem, digest, tuple(dependencies), description=summary(ast.get_docstring(tree)))
+        docstring = ast.get_docstring(tree) or ""
+        return cls(str(location), text, location.stem, digest, tuple(dependencies), description=summary(docstring), about=docstring)
 
 
 def unmet_dependencies(declarations: tuple[str, ...]) -> list[str]:

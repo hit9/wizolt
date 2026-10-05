@@ -1,15 +1,29 @@
-"""A rainbow pet that strolls along your prompt line while the agent works. Pick cat, dog, rabbit, frog, dragon or robot with /pet.
+"""A rainbow pet that strolls along your prompt line while the agent works. Pick a cat, bear, owl, bunny, fish or robot with /pet.
 
-The pose is a pure function of the host's monotonic clock, so there are no timers, background
-tasks or randomness. Only the walked distance is state: it credits monotonic time while the
-agent's status is `running`, which parks the pet exactly where it stopped instead of teleporting
-it to wherever a status-dependent `now * speed` would land. Hues come from the active theme's
-semantic roles, so the rainbow follows the user's theme instead of hard-coded ANSI colors.
+```text
+   /\\_/\\ on it              /\\_/\\ your move          /\\_/\\ nailed it
+·~ (o.o)                  ∿ (O.O)                  ∿ (^.^)
+```
 
-Which pet walks is `[plugins.pet] pet`; `/pet` opens the host's own picker, previews what each
-one looks like and saves the pick. A pet is data, not a code path: one `PETS` entry shares the
-moods, the walk and the rainbow with every other pet. Uses only the public SDK; no model calls.
+It walks while the agent works and rests where it stopped. Its face and caption follow the
+agent: working, waiting for you, finished, failed or interrupted. The rainbow uses your theme's
+colors. It makes no model calls.
+
+## Use
+
+- Enable **pet** in `/plugins`.
+- Type `/pet` to choose a pet; the picker previews each one and your choice is saved.
+- Hide the caption with `[plugins.pet] caption = false`, or move it with `[plugins.pet] slot`
+  (`above_divider`, `above_input` or `below_input`), then reload it in `/plugins`.
 """
+
+# The pose is a pure function of the host's monotonic clock, so there are no timers, background
+# tasks or randomness. Only the walked distance is state: it credits monotonic time while the
+# agent's status is `running`, which parks the pet exactly where it stopped instead of teleporting
+# it to wherever a status-dependent `now * speed` would land. Hues come from the active theme's
+# semantic roles, so the rainbow follows the user's theme instead of hard-coded ANSI colors.
+# A pet is data, not a code path: one `PETS` entry shares the moods, the walk and the rainbow
+# with every other pet. Uses only the public SDK.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -69,11 +83,11 @@ class Pet:
 # One crown per pet, every crown as wide as the face below it.
 PETS: dict[str, Pet] = {
     "cat": Pet("/\\_/\\", ("(", ")")),
-    "dog": Pet("u   u", ("(", ")")),
-    "rabbit": Pet(" /\\/\\", ("(", ")")),
-    "frog": Pet("O   O", ("(", ")")),
-    "dragon": Pet("^   ^", ("(", ")")),
-    "robot": Pet("|___|", ("[", "]")),
+    "bear": Pet(" n_n ", ("ʕ", "ʔ")),
+    "owl": Pet(" ,_, ", ("{", "}")),
+    "bunny": Pet("(\\ /)", ("(", ")")),
+    "fish": Pet("  ___  ", ("<", ")))")),
+    "robot": Pet(" _T_ ", ("[", "]")),
 }
 DEFAULT_PET = "cat"
 

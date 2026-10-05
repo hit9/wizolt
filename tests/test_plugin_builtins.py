@@ -53,6 +53,10 @@ async def test_every_builtin_introduces_itself_in_the_plugin_list(tmp_path):
         manager.records = listing
         # The preview opens with what the plugin is, before where it lives.
         assert manager.preview("context_bar").startswith("A bar above your input")
+        # About: the author's documentation for an off plugin, plus a live demo once it runs.
+        assert "## Use" in manager.about("context_bar") and "What it shows now" not in manager.about("context_bar")
+        await plugins.refresh()
+        assert "## What it shows now" in manager.about("pet") and "/\\_/\\" in manager.about("pet").partition("What it shows now")[2]
     finally:
         await plugins.close()
 
@@ -127,9 +131,19 @@ async def test_pet_picks_another_pet_in_place(runtime):
 
     async def answer(owner, service, arguments):
         offered.append([item["id"] for item in arguments["view"]["body"]["items"]])
-        return {"result": {"action": "submit", "selected": ["dragon"]}}
+        return {"result": {"action": "submit", "selected": ["bear"]}}
 
     runtime.interactions.handler = answer
     result = await runtime.invoke("pet", "command", "pet", {})
-    assert offered == [["cat", "dog", "rabbit", "frog", "dragon", "robot"]] and "dragon" in result
-    assert "^   ^" in (await pet_rows(runtime))[0]  # No reload: the pick applies at once.
+    assert offered == [["cat", "bear", "owl", "bunny", "fish", "robot"]] and "bear" in result
+    assert "ʕ" in (await pet_rows(runtime))[1]  # No reload: the pick applies at once.
+
+
+def test_every_pet_has_its_own_silhouette():
+    from wizolt.plugins.builtin.pet import PETS, _preview
+
+    # Distinct animals, not one face under different hats: no two pets draw the same body row.
+    bodies = [_preview(pet).splitlines()[1] for pet in PETS.values()]
+    crowns = [pet.crown for pet in PETS.values()]
+    assert len(set(crowns)) == len(PETS) and len({(crown, body) for crown, body in zip(crowns, bodies, strict=True)}) == len(PETS)
+    assert len({pet.wrap for pet in PETS.values()}) >= 4
