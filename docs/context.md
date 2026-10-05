@@ -9,6 +9,12 @@ Each request includes your instructions, the conversation so far and the tools c
 available. Disconnected MCP servers add nothing. Large tool results are shortened; the agent
 can read the full output when it needs it.
 
+Every result stays in the conversation, so each later request sends it again. To spend fewer
+tokens on long command output, lower the inline share of Bash results, for example
+`/set runtime.bash_output_tokens 2000` (default `6000`, minimum `1000`). In recent sessions, 2000
+cut prompt tokens by about 5%. The cost: the agent occasionally opens the full output instead of
+seeing it inline. Only new results change, so provider prompt caching is unaffected.
+
 Provider-side search is billed separately by most providers, and its pages are not included
 in the context meter.
 

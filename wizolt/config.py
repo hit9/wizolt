@@ -18,7 +18,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, ClassVar
 
-from wizolt.base import ConfigError, Json, builtin_function_names
+from wizolt.base import MAX_TOOL_OUTPUT_TOKENS, ConfigError, Json, builtin_function_names
 from wizolt.providers.compat import bundled_policy
 from wizolt.utils.workspace import Workspace
 
@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
 DEFAULT_MAX_CONTEXT_TOKENS = 256 * 1024
 MAX_SUBAGENTS = 32
+MIN_BASH_OUTPUT_TOKENS = 1_000  # Below this, error tails start to lose the line that matters.
 PROVIDER_API_CHOICES = ("auto", "chat", "responses", "anthropic")
 REASONING_HISTORY_CHOICES = ("auto", "all", "current_turn", "tool_calls")
 
@@ -331,6 +332,10 @@ class RuntimeSettings:
     # Max read-only tool calls from one model batch to execute concurrently; 1 disables parallelism.
     max_parallel_tools: int = 4
     max_subagents: int = 3
+    # Tokens of a Bash result the model receives inline. Every later request re-sends it, so a
+    # lower cap saves tokens on each of them; the full output stays in a file the cut points to.
+    # Applies to new results only, so already-sent requests and the prompt cache never change.
+    bash_output_tokens: int = MAX_TOOL_OUTPUT_TOKENS
     yolo: bool = False
     theme: str = "auto"
     language: str = "auto"  # forced reply language; "auto" injects nothing (see /language)
@@ -347,6 +352,7 @@ class RuntimeSettings:
             max_context_tokens=max(1, Config.int(runtime, "max_context_tokens", DEFAULT_MAX_CONTEXT_TOKENS)),
             max_parallel_tools=max(1, Config.int(runtime, "max_parallel_tools", 4)),
             max_subagents=cls.clean_max_subagents(Config.int(runtime, "max_subagents", 3)),
+            bash_output_tokens=cls.clean_bash_output_tokens(Config.int(runtime, "bash_output_tokens", MAX_TOOL_OUTPUT_TOKENS)),
             session_retention_days=max(0, Config.int(runtime, "session_retention_days", 7)),
             yolo=yolo or Config.bool(runtime, "yolo", False),
             theme=theme or Config.str(runtime, "theme", "auto"),
@@ -359,6 +365,12 @@ class RuntimeSettings:
     def clean_max_subagents(value: int) -> int:
         if isinstance(value, bool) or not 0 <= value <= MAX_SUBAGENTS:
             raise ConfigError(f"max_subagents must be between 0 and {MAX_SUBAGENTS}")
+        return value
+
+    @staticmethod
+    def clean_bash_output_tokens(value: int) -> int:
+        if isinstance(value, bool) or not MIN_BASH_OUTPUT_TOKENS <= value <= MAX_TOOL_OUTPUT_TOKENS:
+            raise ConfigError(f"bash_output_tokens must be between {MIN_BASH_OUTPUT_TOKENS} and {MAX_TOOL_OUTPUT_TOKENS}")
         return value
 
     @staticmethod
@@ -674,6 +686,8 @@ model = ""
                                # Raise it for a 1M-window model; lower it for a smaller one.
 # max_agent_steps = 400
 # max_subagents = 3            # retained children across the whole group; 0 disables spawn, maximum 32
+# bash_output_tokens = 6000    # Bash output the model sees inline (1000-6000); later requests re-send it,
+                               # so 2000 saves tokens on each; the full output stays in a file
 # shell_timeout = 60
                                # (flipping it changes the tool block and thus the prompt-cache scope)
 # language = "auto"           # auto follows your messages and injects nothing; set a language

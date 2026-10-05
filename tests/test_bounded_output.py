@@ -107,6 +107,39 @@ async def test_bounded_output_names_the_file_holding_the_omitted_middle(tmp_path
     assert 'file="' not in fileless
     assert "<bounded_output" in fileless
 
+async def test_bash_output_follows_its_own_inline_cap_and_keeps_the_rest_in_a_file(tmp_path):
+    from wizolt.model import ModelClient
+
+    s = session(tmp_path)
+    s.settings.yolo = True
+    runner = ToolRunner(s, ContextManager(s), output_fn=lambda _text: None)
+    script = tmp_path / "noisy.py"
+    script.write_text("for index in range(500):\n    print(f'line {index} of a noisy command output')\n")  # About 4k tokens.
+    command = f"python3 {script}"
+
+    [whole] = await runner.run([ModelClient.tool_call("b1", "Bash", {"command": command})])
+    assert "<bounded_output" not in whole["content"] and "line 499 of" in whole["content"]  # Default cap: whole.
+
+    s.settings.bash_output_tokens = 1000
+    [capped] = await runner.run([ModelClient.tool_call("b2", "Bash", {"command": command})])
+    content = capped["content"]
+    assert "<bounded_output" in content and "line 0 of" in content and "line 499 of" in content  # Head and tail.
+    assert len(content) // 4 <= 1100
+    match = re.search(r'file="([^"]+)"', content)
+    assert match is not None and "line 250 of a noisy" in Path(match[1]).read_text(encoding="utf-8")  # The rest is one Read away.
+
+
+def test_bash_output_cap_is_validated():
+    import pytest
+
+    from wizolt.config import ConfigError, RuntimeSettings
+
+    assert RuntimeSettings.from_dict({"runtime": {"bash_output_tokens": 2000}}).bash_output_tokens == 2000
+    for value in (999, 6001):
+        with pytest.raises(ConfigError, match="between 1000 and 6000"):
+            RuntimeSettings.from_dict({"runtime": {"bash_output_tokens": value}})
+
+
 def test_bounded_output_small_or_fileless_never_names_a_file(tmp_path):
     s = session(tmp_path)
     context = ContextManager(s)

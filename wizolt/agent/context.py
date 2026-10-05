@@ -624,24 +624,26 @@ class ContextManager:
     def is_compaction_summary(self, message: Json) -> bool:
         return message.get("role") == "user" and str(message.get("content") or "").startswith(COMPACTION_SUMMARY_TITLE)
 
-    def requires_artifact(self, text: str) -> bool:
+    def requires_artifact(self, text: str, budget: int | None = None) -> bool:
         """True when bounding `text` would omit a middle, so a retained key deserves an artifact."""
 
-        return self.estimated_text_tokens(text) > MAX_TOOL_OUTPUT_TOKENS
+        return self.estimated_text_tokens(text) > (budget or MAX_TOOL_OUTPUT_TOKENS)
 
-    def bound_output(self, text: str, *, path: str = "") -> str:
+    def bound_output(self, text: str, *, path: str = "", budget: int | None = None) -> str:
         """The model-facing form of a long tool result: a head, a tail, and the omission marker
-        between them, which names `path` when the full text was written there."""
+        between them, which names `path` when the full text was written there. `budget` is the
+        inline token share, a tool's own when it has one; by default the shared cap."""
+        budget = budget or MAX_TOOL_OUTPUT_TOKENS
         estimated = self.estimated_text_tokens(text)
-        if estimated <= MAX_TOOL_OUTPUT_TOKENS:
+        if estimated <= budget:
             return text
-        limit = MAX_TOOL_OUTPUT_TOKENS * 4
+        limit = budget * 4
         head_limit = max(1, limit * 2 // 5)
         tail_limit = max(1, limit - head_limit)
         head = self.head_excerpt(text, head_limit)
         tail = self.tail_excerpt(text, tail_limit)
         omitted_tokens = max(0, estimated - self.estimated_text_tokens(head) - self.estimated_text_tokens(tail))
-        return TextBlock(head, tail, estimated, omitted_tokens, MAX_TOOL_OUTPUT_TOKENS, path).render()
+        return TextBlock(head, tail, estimated, omitted_tokens, budget, path).render()
 
     async def materialize_output(self, key: str, text: str) -> str:
         """Write the full tool output next to the truncated marker as a navigable artifact.

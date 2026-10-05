@@ -87,6 +87,7 @@ SET_HANDLERS: dict[str, SetHandler] = {
     "runtime.max_subagents": ("settings", "max_subagents", lambda v: RuntimeSettings.clean_max_subagents(int(v))),
     "runtime.shell_timeout": ("settings", "shell_timeout", lambda v: max(1, int(v))),
     "runtime.bash_wait_timeout": ("settings", "bash_wait_timeout", lambda v: max(0, int(v))),
+    "runtime.bash_output_tokens": ("settings", "bash_output_tokens", lambda v: RuntimeSettings.clean_bash_output_tokens(int(v))),
     "runtime.attribution": ("settings", "attribution", lambda v: v == "on"),
 }
 SET_KEYS = tuple(SET_HANDLERS)
@@ -364,6 +365,7 @@ def config(loop: CommandLoop, args: str) -> str:
             f"provider.response_timeout: {provider.response_timeout or '(off)'}",
             f"paths.data_dir: {loop.session.data_path()}",
             f"runtime.shell_timeout: {loop.session.settings.shell_timeout}",
+            f"runtime.bash_output_tokens: {loop.session.settings.bash_output_tokens}",
             f"runtime.max_agent_steps: {loop.session.settings.max_steps}",
             f"runtime.max_context_tokens: {loop.session.settings.max_context_tokens}",
             f"runtime.max_parallel_tools: {loop.session.settings.max_parallel_tools}",

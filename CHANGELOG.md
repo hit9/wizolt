@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add `runtime.bash_output_tokens` (default 6000, 1000–6000, also `/set`): how much of a Bash
+  result the model sees inline; the rest stays in the file the cut points to. Results stay in
+  the conversation and are re-sent by every later request; across 30 recent sessions (Linux
+  ARM64 author workload), 2000 would have cut prompt tokens by about 5%, while the agent opened
+  a cut result's full output for 7 of 78 truncations. Only new results are shaped, so already
+  sent requests and prompt caching never change. Measured and rejected: cleaning output (~1%),
+  pointers for repeated identical results (0.01%); batching guidance already exists.
+
 - `/plugins` now introduces each plugin in its preview: the first paragraph of a single-file
   plugin's docstring, or a package's `[project] description` (falling back to its entry
   module's docstring), read without running the plugin, so disabled plugins show one too.

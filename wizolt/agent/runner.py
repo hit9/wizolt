@@ -1003,7 +1003,7 @@ class ToolRunner:
         else:
             model_text = tool_output.retained_text
             key = self.session.store_tool_result(call.name, call.args, model_text) if retain else ""
-            if key and self.context.requires_artifact(model_text):
+            if key and self.context.requires_artifact(model_text, self.output_budget(call)):
                 # The bounded marker may name a file, so the write must finish before the marker
                 # is rendered; the worker write lands first, and an empty path on failure leaves the
                 # marker without a file= attribute rather than naming one still in flight.
@@ -1021,7 +1021,11 @@ class ToolRunner:
             status = "refused" if failed and "user refused" in model_text else "failed" if failed else "ok"
             builtin = toolblocks.finish_display(self.session, call, key, model_text, failed=failed, elapsed=elapsed, d=d)
             self.emit(await self.presented_display(builtin, call, key, model_text, status=status, elapsed=elapsed, d=d))
-        if call.name == "Subagent" and not failed and self.context.bound_output(model_text, path=artifact_path).rstrip() == model_text.rstrip():
+        if (
+            call.name == "Subagent"
+            and not failed
+            and self.context.bound_output(model_text, path=artifact_path, budget=self.output_budget(call)).rstrip() == model_text.rstrip()
+        ):
             # Keep proof of delivery with the matching message, never with rendered text or
             # the Session yet: cancellation can still discard this whole tool batch.
             self._result_receipts[call.id] = result_receipts(model_text)
@@ -1119,9 +1123,18 @@ class ToolRunner:
         rows = [head]
         if status != "ok":
             rows.append(f"status: {status}")
-        body = self.context.bound_output(output, path=artifact_path).rstrip() if bound else output.rstrip()
+        body = self.context.bound_output(output, path=artifact_path, budget=self.output_budget(call)).rstrip() if bound else output.rstrip()
         rows.extend(["output:", body])
         return "\n".join(rows).strip()
+
+    def output_budget(self, call: ToolCall) -> int | None:
+        """Inline tokens for this call's result: Bash below the shared cap follows
+        `runtime.bash_output_tokens`; None leaves the shared cap.
+
+        Fixed when the result enters history and never revisited, so no earlier request changes.
+        """
+        budget = self.session.settings.bash_output_tokens
+        return budget if call.name == "Bash" and budget < MAX_TOOL_OUTPUT_TOKENS else None
 
     async def confirm(
         self, call: ToolCall, tool: Tool, batch_suffix: str = "", planned_edit: EditBatchPlan.PlannedEdit | None = None, *, force_prompt: bool = False

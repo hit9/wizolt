@@ -253,6 +253,7 @@ Optional; the defaults shown are used when omitted.
 | `max_agent_steps` | `400` | Maximum tool steps in one turn |
 | `shell_timeout` | `60` | Maximum shell-command lifetime, in seconds |
 | `bash_wait_timeout` | `10` | Foreground wait before a running command becomes a background job; `0` disables promotion |
+| `bash_output_tokens` | `6000` | Bash output the agent sees inline, `1000`–`6000`; the rest stays in a file it can open. Lower saves tokens on every later request ([context](context.md)) |
 | `max_parallel_tools` | `4` | Maximum read-only tool calls executed concurrently; `1` disables parallelism |
 | `max_subagents` | `3` | Retained children across the whole agent group, excluding main; `0` disables creation, maximum `32`. Change it from main with `/set runtime.max_subagents NUMBER` |
 | `session_retention_days` | `7` | Delete saved sessions untouched for this many days, swept in the background at startup; `0` keeps them indefinitely |
