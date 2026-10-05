@@ -21,6 +21,7 @@ from wizolt.base import Json, ToolError, oneline, run_blocking
 from wizolt.image import UserInput
 from wizolt.session import QueuedInput, Session, SessionSnapshotStore
 from wizolt.session.ownership import subagent_root_uid
+from wizolt.session.types import SubagentRecord
 
 if TYPE_CHECKING:
     from wizolt.agent.engine import Agent
@@ -36,6 +37,30 @@ Report the files changed and verification performed. Do not create specialized a
 def unavailable_input(_prompt: str) -> str:
     """A background engine never owns process stdin; its frontend must provide approvals."""
     raise ToolError("Subagent approval requires an interactive frontend; no input was read")
+
+
+def latest_answer(session: Session) -> str:
+    """Latest textual answer; a tool-call-only assistant message may have null content.
+
+    Interruption can leave such a message as the history tail. It is valid conversation state,
+    not a damaged agent, and must not break list/stop/report or turn into literal 'None'.
+    """
+    return next(
+        (text for message in reversed(session.messages) if message.get("role") == "assistant" and isinstance(text := message.get("content"), str) and text),
+        "",
+    )
+
+
+def report_text(session: Session, *, status: str) -> str:
+    """`report`'s payload: the answer as written, or why there is none to show.
+
+    A child that never produced text -- a failure before its first reply -- would otherwise
+    report an empty result, which reads as a truncated one. State the status instead.
+    """
+    if answer := latest_answer(session):
+        return answer
+    error = session.state.last_turn_error
+    return f"{session.agent_name}: no answer text (status: {status})" + (f"; last error: {error}" if error else "")
 
 
 @dataclass
@@ -55,19 +80,8 @@ class AgentEntry:
 
     @property
     def answer(self) -> str:
-        """Latest textual answer; a tool-call-only assistant message may have null content.
-
-        Interruption can leave such a message as the history tail. It is valid conversation
-        state, not a damaged agent, and must not break list/stop or turn into literal 'None'.
-        """
-        return next(
-            (
-                text
-                for message in reversed(self.agent.session.messages)
-                if message.get("role") == "assistant" and isinstance(text := message.get("content"), str) and text
-            ),
-            "",
-        )
+        """Latest textual answer; `report` reads a retained snapshot with the same rule."""
+        return latest_answer(self.agent.session)
 
     @property
     def status(self) -> str:
@@ -380,15 +394,36 @@ class Subagents:
             result.update(children)
         return result
 
-    async def inspect(self, uid: str) -> Json:
-        if uid in self.entries:
-            entry = self.entries[uid]
-            return inspect_session(entry.agent.session, status=entry.status, instruction=entry.instruction, calls=entry.agent.tools.active_calls)
+    async def _retained(self, uid: str) -> tuple[Session, SubagentRecord]:
+        """Open an archived child's snapshot for reading; the caller closes it."""
         item = next((item for item in self.root.session.subagent_entries if item.get("uid") == uid and item.get("archived")), None)
         if item is None:
             raise ToolError(f"Unknown agent: {uid}")
         root = self.root.session
         session = await run_blocking(lambda: SessionSnapshotStore.load(uid, config=deepcopy(root.config), settings=replace(root.settings), cwd=root.cwd))
+        return session, item
+
+    async def report(self, uid: str) -> str:
+        """One child's latest answer whole, live or archived.
+
+        `inspect` and `wait` are bounded by design; this is where the text is read as written.
+        An archived child is read from its snapshot, so a finished review stays readable after
+        its slots are freed.
+        """
+        entry = self.entries.get(uid)
+        if entry is not None:
+            return report_text(entry.agent.session, status=entry.status)
+        session, _item = await self._retained(uid)
+        try:
+            return report_text(session, status="archived")
+        finally:
+            session.close()
+
+    async def inspect(self, uid: str) -> Json:
+        if uid in self.entries:
+            entry = self.entries[uid]
+            return inspect_session(entry.agent.session, status=entry.status, instruction=entry.instruction, calls=entry.agent.tools.active_calls)
+        session, item = await self._retained(uid)
         try:
             return inspect_session(session, status="archived", instruction=item.get("instruction", ""))
         finally:

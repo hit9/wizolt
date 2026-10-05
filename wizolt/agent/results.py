@@ -18,8 +18,15 @@ RESULT_EVENT = "subagent_result"
 
 
 def result_receipts(output: str) -> dict[str, str]:
-    """Read the Subagent tool's JSON contract before presentation framing or hook feedback."""
-    rows = json.loads(output)
+    """Read the Subagent tool's JSON contract before presentation framing or hook feedback.
+
+    A `report` answers with the child's text alone, not with rows: it carries no result envelope,
+    so it claims nothing and that result is still announced to the parent.
+    """
+    try:
+        rows = json.loads(output)
+    except ValueError:
+        return {}
     if isinstance(rows, dict):
         rows = [rows.get("result", {})]  # inspect carries its result beside the snapshot.
     if not isinstance(rows, list):

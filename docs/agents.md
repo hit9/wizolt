@@ -92,7 +92,7 @@ Change the limit from main with `/set runtime.max_subagents NUMBER`; check it wi
 
 ## Model tools
 
-The model uses one `Subagent` tool with **spawn**, **send**, **list**, **inspect**, **wait**, **stop** and **archive** actions. Creating agents
+The model uses one `Subagent` tool with **spawn**, **send**, **list**, **inspect**, **report**, **wait**, **stop** and **archive** actions. Creating agents
 returns immediately. Waiting defaults to **3 minutes**, up to **10 minutes** per call
 (`timeout=600`); `timeout=0` checks immediately. A timeout does not stop the child.
 
@@ -111,14 +111,17 @@ starting several reviewers. On timeout it returns every target, still-running on
 `running`. The transcript shows which kind of wait it was (`wait any` or `wait all`).
 
 The parent receives each direct child's latest completed, failed or interrupted result before
-its next model request, even while doing other work. Notifications include up to **1000 characters**;
-`list` or `wait` retrieves more while the child is not archived. Results already returned by those
-tools or `inspect` are not announced again. This does not start a new parent turn or add user input to history.
+its next model request, even while doing other work. Notifications include up to **1000 characters**.
+`wait` returns each answer's first **4,000 characters** and marks the rest `truncated`; **report**
+returns one child's answer in full, live or archived. Results already returned by `wait` or `inspect`
+are not announced again. This does not start a new parent turn or add user input to history.
 
 **inspect** reads an active or archived agent without approval: its task, plan, model settings,
 duration, eight recent messages, four recent tool results and current tool batch. Long text is
-clipped; partial streaming text is not included. **list** also includes archived agents so the
-model can find their IDs. Neither action starts work or changes the selected conversation.
+clipped, and a clipped result says to read the answer with **report**; partial streaming text is
+not included. **list** is a status overview — state, context use and errors, no answer text — and
+also includes archived agents so the model can find their IDs. None of these actions starts work
+or changes the selected conversation.
 
 Main can request **archive**. Approval lists the target, its descendants, their status and the
 slots freed. Archiving stops their work and discards queued inputs while retaining history and
@@ -126,7 +129,7 @@ file changes. If the branch changes during approval, main must request approval 
 
 | Action | Human approval |
 |---|---|
-| list, inspect, wait | Not required by default |
+| list, inspect, report, wait | Not required by default |
 | spawn, send | Required, including with `--yolo` |
 | archive | Main only; required, including with `--yolo` |
 | stop | Required normally; `--yolo` can skip it |

@@ -30,6 +30,10 @@ def inspect_session(session: Session, *, status: str, instruction: str, calls: S
 
     messages = [message for message in [*session.messages, *session._active_turn_messages] if not SessionSnapshotCodec.is_internal_message(message)]
     provider = session.config.provider
+    result = dict(session.state.turn_result)
+    if result.get("truncated"):
+        # This snapshot is bounded on purpose; the answer itself is read whole with `report`.
+        result["hint"] = "Use Subagent(action='report') for the full answer"
     return {
         "agent_id": session.uid,
         "name": session.agent_name,
@@ -49,6 +53,6 @@ def inspect_session(session: Session, *, status: str, instruction: str, calls: S
         "current_tool_batch": [{"name": call.name, "arguments": json.dumps(call.args, ensure_ascii=False)[:400]} for call in calls[:4]],
         "recent_tools": [{"name": record.name, "output": record.output[:1000]} for record in session.tool_records[-4:]],
         "recent_errors": [{"name": record.name, "error": record.error[:500]} for record in session.tool_errors[-4:]],
-        "result": dict(session.state.turn_result),
+        "result": result,
         "error": session.state.last_turn_error[:1000],
     }

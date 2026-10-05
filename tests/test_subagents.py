@@ -183,6 +183,90 @@ async def test_inspect_result_suppresses_duplicate_completion_notification(group
     assert group.root.session.state.child_results_seen[entry.agent.session.uid] == entry.result["result_id"]
 
 
+@pytest.mark.parametrize("archived", [False, True])
+async def test_report_returns_the_whole_answer_for_live_and_archived_children(group, monkeypatch, archived):
+    answer = "SUMMARY\n" + "detail line\n" * 700 + "END"
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": answer}, [], answer
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    entry = await finished(group, await group.spawn(root, "review", "work"))
+    uid = entry.agent.session.uid
+    if archived:
+        await group.archive(uid)
+        assert uid not in group.entries
+    tool = SubagentTool(root, [{"action": "report", "agent_id": uid}])
+    assert tool.needs_confirmation() is False
+    assert await tool.call() == answer
+    assert await group.report(uid) == answer  # The snapshot's answer follows the live rule.
+
+
+async def test_report_keeps_its_plain_text_through_the_runner_and_claims_no_delivery(group, monkeypatch):
+    from wizolt.agent.results import receive_results
+    from wizolt.base import SUBAGENT_RECEIPTS_KEY
+
+    answer = "The whole answer, verbatim: 100% " + "x" * 200
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": answer}, [], answer
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    entry = await finished(group, await group.spawn(root, "review", "work"))
+    turn = await group.root.tools.run([call("Subagent", [{"action": "report", "agent_id": entry.agent.session.uid}])])
+    assert answer in turn[0]["content"]
+    assert SUBAGENT_RECEIPTS_KEY not in turn[0]
+    # Reading the text by hand is not the result envelope; the child is still announced once.
+    receive_results(root, turn, group.results_for(root.uid))
+    assert len(turn) == 2
+
+
+async def test_report_states_status_and_error_when_the_child_produced_no_text(group, monkeypatch):
+    async def request(client, messages, tools=None):
+        raise ModelError("quota exhausted")
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await finished(group, await group.spawn(group.root.session, "review", "work"))
+    text = await SubagentTool(group.root.session, [{"action": "report", "agent_id": entry.agent.session.uid}]).call()
+    assert "no answer text" in text and "failed" in text and "quota exhausted" in text
+
+
+async def test_list_is_a_status_overview_that_does_not_claim_a_result(group, monkeypatch):
+    from wizolt.agent.results import receive_results
+    from wizolt.base import SUBAGENT_RECEIPTS_KEY
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    await finished(group, await group.spawn(root, "review", "work"))
+    turn = await group.root.tools.run([call("Subagent", [{"action": "list"}])])
+    rows = json.loads(root.tool_records[-1].output)
+    assert [row["status"] for row in rows] == ["idle", "completed"]
+    assert all("answer" not in row and "result_id" not in row for row in rows)
+    assert SUBAGENT_RECEIPTS_KEY not in turn[0]
+    # Nothing was shown, so the child's result still has to be announced to the parent.
+    receive_results(root, turn, group.results_for(root.uid))
+    assert len(turn) == 2
+
+
+@pytest.mark.parametrize("long", [False, True])
+async def test_inspect_points_at_report_only_when_the_result_was_clipped(group, monkeypatch, long):
+    answer = "summary " * (400 if long else 4)
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": answer}, [], answer
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await finished(group, await group.spawn(group.root.session, "review", "work"))
+    inspected = await group.inspect(entry.agent.session.uid)
+    assert inspected["result"]["truncated"] is long
+    assert ("report" in inspected["result"].get("hint", "")) is long
+
+
 async def test_turn_clock_is_live_then_frozen_and_restored(group, monkeypatch):
     from wizolt.session import types
 
@@ -205,7 +289,7 @@ async def test_turn_clock_is_live_then_frozen_and_restored(group, monkeypatch):
     assert loaded.state.elapsed == 192
 
 
-@pytest.mark.parametrize("action", ["inspect", "list", "wait"])
+@pytest.mark.parametrize("action", ["inspect", "wait"])
 @pytest.mark.parametrize("truncated", [False, True])
 async def test_result_receipts_are_independent_of_tool_framing_and_survive_snapshot(group, monkeypatch, action, truncated):
     from wizolt.agent.results import receive_results
@@ -1047,6 +1131,21 @@ async def test_wait_all_timeout_reports_every_target_with_its_state(group, monke
     await finished(group, slow)
 
 
+@pytest.mark.parametrize("length", [60, 5_000])
+async def test_wait_rows_show_the_answer_head_and_flag_the_cut(group, monkeypatch, length):
+    answer = "HEAD " + "x" * (length - 5)
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": answer}, [], answer
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await finished(group, await group.spawn(group.root.session, "review", "work"))
+    row = json.loads(await SubagentTool(group.root.session, [{"action": "wait", "timeout": 0, "agent_ids": [entry.agent.session.uid]}]).call())[0]
+    assert row["truncated"] is (length > 4_000)
+    assert row["answer"] == answer[:4_000]
+    assert (row["answer"] == answer) is (length <= 4_000)  # The head, never the tail.
+
+
 async def test_cancel_wait_does_not_cancel_children(group, monkeypatch):
     async def request(client, messages, tools=None):
         await asyncio.Event().wait()
@@ -1196,7 +1295,8 @@ async def test_stop_and_list_survive_interrupted_tool_call_only_history(group, m
     )
     assert json.loads(await stop.call())[0]["status"] == "interrupted"  # repeated stops are safe.
     listing = json.loads(await SubagentTool(root, [{"action": "list"}]).call())
-    assert len(listing) == 3 and listing[0]["answer"] == ""
+    assert [row["status"] for row in listing] == ["idle", "interrupted", "running"]
+    assert all("answer" not in row for row in listing)
     release.set()
     await finished(group, two)
 

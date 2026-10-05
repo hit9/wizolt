@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Read a subagent's answer in full with the new `Subagent` **report** action: one child's latest
+  answer as plain text, live or archived, with a long one written to a file like any other cut
+  tool result. **wait** rows now carry the answer's first 4,000 characters plus a `truncated`
+  flag, instead of its last 12,000 (a long report's summary is at the front), and `inspect`'s
+  clipped result says to use `report`. **list** is now a status overview without answer text, and
+  no longer counts as the model having received a child's result: listing agents silently
+  swallowed the completion notice.
+
 - Fix a `prompt.submit` rewrite silently discarding a folded paste's body: the initial turn's
   input reached interceptors as the folded chip (`[Pasted text #1 · 41 lines, 680 B]`), so any
   plugin that rewrote the text froze that label into the conversation in place of the body.

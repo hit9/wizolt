@@ -163,13 +163,13 @@ async def test_a_rewritten_subagent_result_claims_no_delivery(session, tmp_path,
     group = session.subagents
     entry = await group.spawn(session, "worker", "do it")
     await group.wait([entry.agent.session.uid], 5)
-    listing = ModelClient.tool_call("s1", "Subagent", {"action": "list"})
+    waiting = ModelClient.tool_call("s1", "Subagent", {"action": "wait", "timeout": 0, "agent_ids": [entry.agent.session.uid]})
     instance, _ = runner(session)
-    [message] = await instance.run([listing])
+    [message] = await instance.run([waiting])
     assert message.get(SUBAGENT_RECEIPTS_KEY)  # The unchanged result proves delivery.
     body = "def setup(p):\n    async def h(ctx, call, next):\n        result = await next(call)\n        return result.replace(content='summarized away')\n    p.intercept('tool.call', h, match={'tool': 'Subagent'})\n"
     await enable(session, tmp_path, "summarizer", body)
-    [message] = await instance.run([listing])
+    [message] = await instance.run([waiting])
     # The model never saw the child's result, so it must still be announced later.
     assert message["content"] == "summarized away" and SUBAGENT_RECEIPTS_KEY not in message
     await group.close()

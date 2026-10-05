@@ -8,6 +8,11 @@ from wizolt.base import ApprovalView, Json, ToolError
 from wizolt.session import Session
 from wizolt.tools.base import Tool
 
+# How much of an answer a settled result row carries: the head, where a child's summary is. The
+# whole text is `report`'s job, and a `list` of many children would otherwise spend context the
+# model did not ask to read.
+ANSWER_HEAD = 4_000
+
 
 class SubagentTool(Tool):
     NAME = "Subagent"
@@ -23,8 +28,10 @@ class SubagentTool(Tool):
         "The creating agent must supply a short, unique, task-based name, e.g. api-review, ui-review, or test-check; main is reserved. "
         "send steers a running agent or starts another turn in its existing context. "
         "Archived agents cannot receive input; spawn a new agent for fresh work. "
-        "Use start=false to queue without waking an idle agent. list shows state; wait returns the latest answer. "
-        "inspect reads a bounded snapshot of an active or archived agent: task, plan, recent messages, tool activity, settings and result; no approval is needed. "
+        "Use start=false to queue without waking an idle agent. list shows each agent's state only. "
+        "report returns one child's latest answer whole, as plain text, live or archived; "
+        "wait rows carry each settled target's answer head (4000 characters) and a truncated flag. "
+        "inspect reads a bounded snapshot of an active or archived agent: task, plan, recent messages, tool activity, settings and result; a clipped result names report for the full text. No approval is needed. "
         "wait defaults to 180 seconds (3 minutes); choose timeout up to 600 seconds (10 minutes) for longer tasks. "
         "Omit agent_ids to wait for any of your currently running direct children; if none are running, return [] immediately. "
         "Or pass a non-empty agent_ids list to select targets, including already settled agents. "
@@ -34,8 +41,8 @@ class SubagentTool(Tool):
         'mode="all" instead returns once every target has settled; on timeout it returns every target, running ones marked running. '
         "A wait timeout does not stop the child; wait again or continue other work. "
         "Your direct children's latest settled results are reported automatically before your next model request; "
-        "this does not start a new turn. list/wait retrieves longer answer excerpts while the agent is not archived. "
-        "Do not overwrite or revert other agents' edits. Inspect the actual changes before accepting a report."
+        "this does not start a new turn. "
+        "Do not overwrite or revert other agents' edits; verify their claims against the files."
     )
 
     @classmethod
@@ -87,10 +94,10 @@ class SubagentTool(Tool):
 
         return cls.object_schema(
             {
-                "action": {"type": "string", "enum": ["spawn", "send", "list", "inspect", "wait", "stop", "archive"]},
+                "action": {"type": "string", "enum": ["spawn", "send", "list", "inspect", "report", "wait", "stop", "archive"]},
                 "name": {"type": "string", "description": "Required for spawn: unique task-based name, e.g. api-review, ui-review, test-check. Never main."},
                 "message": {"type": "string", "description": "Standalone task or additional steering input"},
-                "agent_id": {"type": "string", "description": "Target for send, inspect, stop or archive"},
+                "agent_id": {"type": "string", "description": "Target for send, inspect, report, stop or archive"},
                 "agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
@@ -125,6 +132,8 @@ class SubagentTool(Tool):
         uid = payload.get("agent_id", "")
         if action == "inspect":
             return json.dumps(await group.inspect(uid), ensure_ascii=False)
+        if action == "report":
+            return await group.report(uid)
         if action == "archive":
             scope = self._archive_scope
             targets = [{"agent_id": key, "name": entry.agent.session.agent_name, "status": "archived"} for key, entry in group.entries.items() if key in scope]
@@ -172,19 +181,24 @@ class SubagentTool(Tool):
             raise ToolError(f"Unknown Subagent action: {action}")
         if action != "wait":
             entries = list(group.entries.values()) if action == "list" else [group.entry(uid)]
-        rows = [
-            {
+        rows = []
+        for entry in entries:
+            row: Json = {
                 "agent_id": entry.agent.session.uid,
                 "name": entry.agent.session.agent_name,
                 "parent": entry.parent,
                 "status": entry.status,
-                "result_id": entry.result.get("result_id", "") if entry.status in {"completed", "failed", "interrupted"} else "",
                 "context_percent": entry.agent.session.usage.context_percent(entry.agent.session.state.context_percent),
                 "error": entry.error,
-                "answer": entry.answer[-12000:],
             }
-            for entry in entries
-        ]
+            if action != "list":
+                # A row carries the answer -- and proof of delivery -- only when the model asked
+                # to read it; a status overview must not acknowledge a result it never showed.
+                row["result_id"] = entry.result.get("result_id", "") if entry.status in {"completed", "failed", "interrupted"} else ""
+                answer = entry.answer
+                row["answer"] = answer[:ANSWER_HEAD]
+                row["truncated"] = len(answer) > ANSWER_HEAD
+            rows.append(row)
         if action == "list":
             rows.extend(
                 {"agent_id": item["uid"], "name": item.get("name", ""), "parent": item.get("parent", ""), "status": "archived"}
