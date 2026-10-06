@@ -16,6 +16,7 @@ All calls below are async except `open`, which returns an async context manager.
 | `plugin.ui.confirm(title)` | `bool`; Cancel is selected initially; Esc returns `False` |
 | `plugin.ui.select(title, *, items, default="")` | Choice ID or `None` |
 | `plugin.ui.select_many(title, *, items, defaults=())` | Tuple of choice IDs, possibly empty; `None` on cancel |
+| `plugin.ui.edit(text)` | The user's editor (`$VISUAL`, `$EDITOR`) on `text`, as Ctrl-G edits the input: the saved text, or `None` when it did not save; writes no file. Not while your own view is open. Trials script it as `{"expect": {"kind": "edit"}, "reply": TEXT or null}` |
 | `plugin.ui.show(view)` | `ViewResult` or `None` on cancel |
 | `plugin.ui.open(view)` | `OpenView`; use `async with`, await `result()` and optionally `update(view)` |
 | `opened.result()` | `ViewResult` or `None`; awaiting it does not block terminal input |

@@ -107,7 +107,7 @@ class HostCalls:
         try:
             assert self.handler is not None
             try:
-                interactive = message["service"] == "ui.views.show"
+                interactive = message["service"] in ("ui.views.show", "ui.edit")  # A person's wait.
                 with self.suspend(parent) if interactive else nullcontext():
                     async with asyncio.timeout(None if interactive else self.TIMEOUT):
                         result = {"value": await self.handler(message["service"], message["arguments"])}

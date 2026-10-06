@@ -7,14 +7,19 @@
   plugin's tool directly as `plugin-tool` instead of only through `Plugin`. It runs once per
   turn and every request of the turn offers the same set, so a changed choice costs one provider
   cache miss and the tools stay byte-identical after it. Receipts in `/status` name what was
-  added and removed. `design/TOOLS_AND_PROMPTS.md` now targets these plugin abilities rather
-  than bundled policy plugins.
+  added and removed.
 
-- Plugins can declare files the user writes for them, such as a prompt to substitute, with
-  `plugin.user_file(name, description, template)` and find the one in effect with
-  `plugin.user_file_path(context, name)`: the project's `.wizolt/plugins/NAME/` copy over the
-  user's own under the data directory. Declaring, enabling and reloading never create the file.
-  `Context` gains `data_dir`.
+- Plugins can find files the user writes for them with `plugin.user_file_paths(context, name)`
+  (the project's `.wizolt/plugins/NAME/` copy over the user's own under the data directory; it
+  reads and creates nothing), and hand the user their editor with `plugin.ui.edit(text)`, as
+  Ctrl-G does for the input. `Context` gains `data_dir`; trials script the editor as an
+  `edit` interaction.
+
+- Two new bundled plugins, off until you enable them in `/plugins`, built only on those
+  abilities: **tool_visibility** adds `/tools` to choose which tools the model is offered (hide
+  built-in ones, offer a plugin's tool directly), and **system_prompt** adds `/prompt` to replace
+  wizolt's system prompt with your own file, written only when you save a change. Each change
+  costs the provider cache once; requests are byte-identical again after it.
 
 - Fix `[transcript] format` templates: `|tail:N` on an output longer than 64 lines showed lines
   near 64 instead of the real tail (and `{elided}` undercounted); `{endif}`/`{endfor}` written as

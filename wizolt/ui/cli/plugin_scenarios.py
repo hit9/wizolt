@@ -51,6 +51,12 @@ class ScriptedDialogs:
         if service == "ui.notify":
             self.trace.append({"notice": arguments})
             return {}
+        if service == "ui.edit":
+            try:
+                return self.edit(arguments)
+            except Exception as error:
+                self.error = str(error)
+                raise
         if service not in {"ui.views.show", "ui.views.update", "ui.views.close"}:
             # Unavailable, as without fixtures; a plugin may handle that. Not a fixture mismatch.
             raise PluginError(f"Host service unavailable in scripted trials: {service}")
@@ -59,6 +65,21 @@ class ScriptedDialogs:
         except Exception as error:
             self.error = str(error)
             raise
+
+    def edit(self, arguments: dict) -> dict:
+        """An editor step, ``{"expect": {"kind": "edit"}, "reply": TEXT or null}``: the text the
+        user saves, or null for an editor that exits without saving."""
+        if self.open:
+            raise PluginError("Close the plugin's open view before opening the editor")
+        if self.position >= len(self.steps):
+            raise PluginError("Missing interaction answer for the editor")
+        step = self.steps[self.position]
+        self.position += 1
+        reply = step.get("reply")
+        if step.keys() != {"expect", "reply"} or step["expect"] != {"kind": "edit"} or not (reply is None or isinstance(reply, str)):
+            raise PluginError('An editor step is {"expect": {"kind": "edit"}, "reply": text or null}')
+        self.trace.append({"edit": arguments.get("text", ""), "result": reply})
+        return {"text": reply}
 
     async def _call(self, service: str, arguments: dict) -> dict:
         identity = arguments["id"]

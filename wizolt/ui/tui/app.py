@@ -2166,6 +2166,12 @@ class TuiApp:
         if self.app is not None:
             self.app.create_background_task(self._run_input_editor())
 
+    async def edit_text(self, text: str) -> str | None:
+        """Hand the terminal to the user's editor on `text`; the saved text, or None when the
+        editor could not start or exited non-zero. Used by commands that edit a file's text."""
+        async with in_terminal():
+            return await self._edit_text_in_editor(text)
+
     async def animate(self) -> None:
         """Invalidate at the animation frame rate while the running region is on screen.
 

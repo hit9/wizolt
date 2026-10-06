@@ -35,6 +35,8 @@ def setup(p):
 @pytest.fixture
 async def agent(tmp_path):
     session = session_with_data_dir(tmp_path)
+    session.config.path = str(tmp_path / "config.toml")  # Where plugin settings are saved.
+    (tmp_path / "config.toml").write_text("")
     bootstrap_features(session)
     session.settings.yolo = True  # Plugin calls confirm like any mutating tool.
     instance = Agent(session, output_fn=lambda _text: None)
@@ -169,3 +171,75 @@ async def test_a_plugin_tool_not_offered_directly_is_not_callable_by_its_wire_na
     await enable(agent, tmp_path, "notes", NOTES)
     result = await run_turn_with_a_tool_call(agent, ModelClient.tool_call("n1", "notes-search", {"query": "freeze"}))
     assert "unknown tool notes-search" in result
+
+
+# --- the bundled tool_visibility plugin: /tools built on tools.offer ------------------------------
+
+
+class Person:
+    """Answers the plugin's picker with a fixed selection, and records what it was shown."""
+
+    def __init__(self, selected=None):
+        self.selected = selected
+        self.shown = []
+
+    async def call(self, owner, service, arguments):
+        if service != "ui.views.show":
+            return {}
+        self.shown.append(arguments["view"])
+        return {"result": None if self.selected is None else {"action": "submit", "selected": list(self.selected)}}
+
+
+async def tools_command(agent, person):
+    agent.session.plugins.interactions.handler = person.call
+    return await agent.session.plugins.invoke("tool_visibility", "command", "tools", {})
+
+
+async def test_the_bundled_plugin_ships_off_and_changes_nothing_until_enabled(agent):
+    await agent.run("hello")
+    assert "tool_visibility" not in agent.session.plugins.entries
+    assert agent.session.offered_tools is None
+
+
+async def test_tools_lists_the_offer_and_saves_a_choice_that_costs_the_cache_once(agent, tmp_path):
+    await agent.session.plugins.manage("enable", "tool_visibility")
+    await enable(agent, tmp_path, "notes", NOTES)
+    await run_turn_with_a_tool_call(agent, read_call(tmp_path, "r1"))  # The plugin learns the offer.
+    builtin = names(agent.sent[0])
+    person = Person(selected=[name for name in builtin if name != "Subagent"] + ["notes.search"])
+
+    reply = await tools_command(agent, person)
+
+    [view] = person.shown
+    assert [item["id"] for item in view["body"]["items"]] == [*builtin, "notes.search"]
+    assert view["body"]["selected"] == builtin  # Everything built-in is offered until the user says otherwise.
+    assert "1 hidden, 1 offered directly" in reply
+    for index in range(2, 5):
+        await run_turn_with_a_tool_call(agent, read_call(tmp_path, f"r{index}"))
+    before, after = agent.sent[:2], agent.sent[2:]
+    assert len(set(before)) == 1 and len(set(after)) == 1 and before[0] != after[0]
+    assert "Subagent" not in names(after[0]) and "notes-search" in names(after[0])
+
+
+async def test_the_choice_is_saved_for_the_next_session(agent, tmp_path):
+    await agent.session.plugins.manage("enable", "tool_visibility")
+    await agent.run("hello")
+    builtin = names(agent.sent[0])
+    await tools_command(agent, Person(selected=[name for name in builtin if name != "Bash"]))
+    await agent.session.plugins.manage("reload", "tool_visibility")  # A new generation reads the saved choice.
+    await agent.run("again")
+    assert "Bash" not in names(agent.sent[-1])
+
+
+async def test_cancelling_or_choosing_the_same_set_changes_nothing(agent):
+    await agent.session.plugins.manage("enable", "tool_visibility")
+    await agent.run("hello")
+    assert await tools_command(agent, Person(selected=None)) == "Tools unchanged"
+    assert await tools_command(agent, Person(selected=names(agent.sent[0]))) == "Tools unchanged"
+    await agent.run("again")
+    assert agent.sent[0] == agent.sent[1]
+
+
+async def test_tools_before_the_first_turn_says_so(agent):
+    await agent.session.plugins.manage("enable", "tool_visibility")
+    assert "Send a message first" in await tools_command(agent, Person())

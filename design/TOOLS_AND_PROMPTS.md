@@ -1,12 +1,12 @@
 # Tool offers and prompt files
 
-Status: revised 2026-10-06, not implemented. The goal is that a **plugin can** narrow or extend the
+Status: implemented (revised 2026-10-06). The goal is that a **plugin can** narrow or extend the
 tools a request offers and replace instruction text from a file the user edits. The host ships
-those abilities, not a policy built on them: no bundled tool-visibility or system-prompt plugin
-and no `/tools` panel are part of this work. A user writes such a policy as an ordinary plugin
-(the acceptance examples below are two of them). It follows the interception contract in
-[Plugin operations](PLUGIN_INTERCEPTION.md); the [implementation boundaries](PLUGINS.md) still
-apply, including "every bundled plugin is off by default".
+those abilities and nothing more; the features are two bundled plugins, `tool_visibility`
+(`/tools`) and `system_prompt` (`/prompt`), built only on the public SDK and, like every bundled
+plugin, off until the user enables them. They are the proof that the abilities suffice. It follows
+the interception contract in [Plugin operations](PLUGIN_INTERCEPTION.md); the
+[implementation boundaries](PLUGINS.md) still apply.
 
 ## The two gaps this closes
 
@@ -51,34 +51,33 @@ Not done: a mutable `tools` field on `model.request`. Routing and response repla
 live at that boundary, and the wire schemas there are host-owned JSON; two sources of truth for
 what the model can call would need reconciling at every caller.
 
-## Prompt files: declared by a plugin, written only by the user
+## Abilities: files the user writes, and their editor
 
-- A plugin declares a user-editable file: `plugin.user_file(name, description, template="")`.
-  Declaring writes nothing. Install, enable, reload and first use never create the file.
-- Location: `<project>/.wizolt/plugins/<plugin>/<name>` overrides
+- `plugin.user_file_paths(context, name)` gives where a file the user writes for the plugin
+  lives, in precedence order: `<project>/.wizolt/plugins/<plugin>/<name>`, then
   `<data_dir>/plugins/<plugin>/<name>` (the AGENTS.md layering). `Context` gains the `data_dir`
-  fact, and one SDK helper resolves the effective path, used by plugins and host alike, so
-  nobody reimplements the lookup. Reading the file is the plugin's own ordinary file read.
-- `/prompt edit [plugin.name]` (host convenience, any declared file) suspends the TUI and opens
-  `$VISUAL`/`$EDITOR` on the effective file, or on the template when no file exists yet. Only a
-  save that changes the text writes: to the effective file, else to the `data_dir` location.
-  Quitting without changes leaves the disk untouched. `/prompt` without arguments lists declared
-  files and whether each exists.
-- A plugin reads the file when it composes, so an edit takes effect on the next request without
-  a restart. Unchanged file, byte-identical text, cache holds; a save invalidates once.
+  fact for it. It reads and creates nothing; the plugin reads the first that exists and writes a
+  new one to the last, with ordinary file IO. The host keeps no list of such files.
+- `plugin.ui.edit(text)` hands the terminal to `$VISUAL`/`$EDITOR` on the text, as Ctrl-G does for
+  the input, and returns the saved text or `None`. It writes no file. Like other views it is for
+  commands, tools and the two user-facing interceptors; the wait is a person's, so it pauses the
+  action's deadline. Trials script it as `{"expect": {"kind": "edit"}, "reply": TEXT or null}`.
 
-## Acceptance examples (written as trial fixtures, not shipped)
+Not done: a host `/prompt` command or file declarations in the manifest. Editing a file is the
+feature, so it belongs in the plugin that owns the file.
 
-| Wish | Plugin built on |
-| --- | --- |
-| Hide `Subagent` and `ToolScript` from every turn | `tools.offer` removing two names |
-| Offer my `notes.search` tool directly instead of through `Plugin` | `tools.offer` adding `notes.search` |
-| Replace the system prompt with my own file | `user_file("system.md")` + `context.compose` editing `system` |
+## The bundled plugins
 
-## Order of work
+Both ship disabled and use only the public SDK; enabling one changes nothing until the user acts.
 
-1. `tools.offer`: SDK value and rules, the per-turn engine adapter, resident wire names and their
-   dispatch, the refusal of unoffered calls, receipts.
-2. `user_file` declarations, the `data_dir` fact and the path helper.
-3. `/prompt edit` and `/prompt` listing.
-4. Trials and tests for the three examples, the bundled authoring skill, CHANGELOG.
+| Plugin | What the user does | Built on |
+| --- | --- | --- |
+| `tool_visibility` | `/tools`: a multi-select of the offered built-in tools and running plugins' tools; the choice is saved as `[plugins.tool_visibility] hidden` / `resident` | `tools.offer`, `ui.select_many`, `settings.update` |
+| `system_prompt` | `/prompt`: the editor on their file, or on the prompt the last request carried; a changed save writes the file, and from the next request it replaces the `system` block verbatim | `user_file_paths`, `ui.edit`, `context.compose` |
+
+`/tools` learns the tool names from the turn's offer, so it asks for one message first. A
+`system_prompt` file that is unreadable, not UTF-8, empty or over 256 KiB leaves wizolt's prompt
+in place rather than failing requests. Nothing is written by enabling either plugin.
+
+Both are tested for the cache contract: a changed choice or saved file changes the request once,
+and every later request is byte-identical again.

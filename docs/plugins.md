@@ -132,6 +132,21 @@ colored segment per category (system prompt, tools, memory files, skills, messag
 percentage used at the end, and a legend with token counts. In a short terminal only the bar
 remains. It makes no model calls.
 
+## Choose the model's tools
+
+Enable **tool_visibility** in `/plugins`, send a message, then type `/tools`. Uncheck the built-in
+tools you never want the model to use, and check a plugin's tool to offer it to the model directly
+instead of only through `Plugin`. Your choice is saved and applies from the next turn. A change
+costs the provider cache once; after that each request offers the same tools again.
+
+## Write your own system prompt
+
+Enable **system_prompt** in `/plugins` and type `/prompt`: your editor opens on wizolt's current
+prompt. Save a change and it replaces wizolt's instructions from the next request; the language
+and attribution lines stay. Nothing is written until you save. Your file is
+`~/.wizolt/plugins/system_prompt/system.md`; a copy in a project's
+`.wizolt/plugins/system_prompt/` applies there instead. Delete it to return to wizolt's prompt.
+
 ## Arrange your space
 
 > Enable the built-in layout plugin. Put my context meter before my pet and leave one

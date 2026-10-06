@@ -69,7 +69,7 @@ def test_about_pages_reflow_prose_but_keep_code_and_lists():
 
 def test_builtins_ship_disabled(tmp_path):
     records, _ = PluginCatalog.for_user(str(tmp_path)).read()
-    assert set(records) == {"context_bar", "layout", "pet"} and not any(item.enabled for item in records.values())
+    assert set(records) == {"context_bar", "layout", "pet", "system_prompt", "tool_visibility"} and not any(item.enabled for item in records.values())
 
 
 async def bar_panel(runtime, window, columns=60):

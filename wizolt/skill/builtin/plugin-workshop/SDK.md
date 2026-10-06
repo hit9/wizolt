@@ -20,8 +20,7 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.theme(name, definition)` | Register theme metadata; see [APPEARANCE.md](APPEARANCE.md) |
 | `plugin.preset(kind, name, source)` | Register a `statusbar` or `divider` format string |
 | `plugin.service(name, factory)` | `factory() -> AsyncContextManager[T]`; returns `Service[T]` |
-| `plugin.user_file(name, description, template="")` | Declare a file the user writes for you (one plain file name); declaring, enabling and reloading never create it, `/prompt edit` starts from `template`; templates total at most 256 KiB |
-| `plugin.user_file_path(context, name)` | The declared file in effect, `Path` or `None`: `<project>/.wizolt/plugins/NAME/<file>` over `<data_dir>/plugins/NAME/<file>`; read it when you need it, so an edit applies without a reload |
+| `plugin.user_file_paths(context, name)` | Where a file the user writes for you lives, in precedence order: `<project>/.wizolt/plugins/NAME/<name>`, then `<data_dir>/plugins/NAME/<name>`; read the first that exists, write a new one to the last; reads and creates nothing. Read it when you need it, so an edit applies without a reload |
 | `plugin.intercept(operation, handler, *, match=None, response=None)` | Async `(Context, value, next) -> result`; wrap one operation; see [INTERCEPTION.md](INTERCEPTION.md) |
 | `plugin.presenter(site, render, *, match=None)` | Async `(Context, view) -> Panel`; render one presentation site; see [UI.md](UI.md) |
 | `plugin.models.complete(prompt, *, system="", provider="", model="", effort="", api="")` | Async text request; returns `ModelReply` |

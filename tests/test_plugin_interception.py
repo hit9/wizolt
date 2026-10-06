@@ -360,7 +360,7 @@ async def test_order_cli_saves_one_list_that_reload_applies(tmp_path, capsys):
         return code, json.loads(capsys.readouterr().out)
 
     # Saved names first; the rest, including bundled plugins, by name.
-    assert order("move", "gamma", "--before", "alpha")[1]["order"] == ["gamma", "alpha", "beta", "context_bar", "layout", "pet"]
+    assert order("move", "gamma", "--before", "alpha")[1]["order"] == ["gamma", "alpha", "beta", "context_bar", "layout", "pet", "system_prompt", "tool_visibility"]
     assert "[plugin_manager.interception]" in runtime.catalog.preferences.path.read_text()
     assert runtime.interception_order.names == ()  # A live agent changes only on reload.
     runtime.reload_layout()

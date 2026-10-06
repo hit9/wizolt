@@ -15,6 +15,7 @@ from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyBindings
 
 from wizolt.sdk import PluginError
+from wizolt.sdk.operations import MAX_TEXT
 from wizolt.sdk.views import View
 from wizolt.ui.bars import clean
 from wizolt.ui.tui.app import TuiApp
@@ -70,6 +71,19 @@ class PluginDialogs:
             bindings.add(key, filter=active, eager=True)(lambda event, key=key: self.tui.dispatch_modal_key(key, event.data))
         self.tui.view_bindings = bindings
 
+    async def edit(self, owner: str, arguments: dict) -> str | None:
+        """``ui.edit``: the user's editor on the plugin's text, as Ctrl-G edits the input. A plugin
+        owning an open view cannot also take the terminal from under it."""
+        text = arguments.get("text")
+        if set(arguments) != {"text"} or not isinstance(text, str) or len(text) > MAX_TEXT:
+            raise PluginError(f"The editor takes text of at most {MAX_TEXT // 1024} KiB")
+        if any(name == owner for name, _ in self.dialogs):
+            raise PluginError("Close the plugin's open view before opening the editor")
+        if not self.tui.managed and (self.tui.app is None or not self.tui.app.is_running):
+            raise PluginError("The editor requires a running TUI session")
+        async with self.lock:  # Waits behind another plugin's view, like a second view would.
+            return await self.tui.edit_text(text)
+
     async def call(self, owner: str, service: str, arguments: dict) -> dict:
         if service.startswith("ui.shortcuts."):
             if self.keys is None:
@@ -91,6 +105,8 @@ class PluginDialogs:
             roles = {"info": LogRole.MUTED, "success": LogRole.SUCCESS, "warning": LogRole.WARNING, "error": LogRole.ERROR}
             self.presentation.emit(LogBlock([LogLine(f"plugin [{owner}]", clean(message), roles[level])]))
             return {}
+        if service == "ui.edit":
+            return {"text": await self.edit(owner, arguments)}
         if service not in {"ui.views.show", "ui.views.update", "ui.views.close"}:
             raise PluginError(f"Unknown UI operation: {service}")
         identity = arguments.get("id")

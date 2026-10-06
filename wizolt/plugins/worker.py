@@ -128,7 +128,6 @@ class Worker:
                     for name, item in plugin.interceptors.items()
                 },
                 "presenters": {site: {"match": {key: list(values) for key, values in item.match.items()}} for site, item in plugin.presenters.items()},
-                "user_files": {name: {"description": item.description, "template": item.template} for name, item in plugin.user_files.items()},
             }
         if operation == "shutdown":
             # Join callbacks before closing their resources. Never cancel this shutdown call.

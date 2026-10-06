@@ -103,6 +103,16 @@ class UI:
         result = await self.show(View(title, Form((Field("value", title, default, required, multiline),))))
         return result.values["value"] if result else None
 
+    async def edit(self, text: str) -> str | None:
+        """Hand the terminal to the user's editor (``$VISUAL``, ``$EDITOR``) on ``text``; the saved
+        text, or None when the editor could not start or exited without success. Writes nothing
+        anywhere: what to do with the result is yours."""
+        if self.call is None:
+            raise PluginError("Interactive UI is unavailable")
+        if not isinstance(text, str):
+            raise PluginError("The editor takes text")
+        return (await self.call("ui.edit", {"text": text}))["text"]
+
     async def confirm(self, title: str) -> bool:
         """Default to cancellation. This business choice never grants tool approval."""
         return await self.select(title, items=(Choice("no", "Cancel"), Choice("yes", "Confirm"))) == "yes"

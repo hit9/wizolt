@@ -7,7 +7,7 @@ plugin response. These are host budgets, not extension points or a security sand
 from dataclasses import dataclass, field
 from typing import Any
 
-from wizolt.sdk import Line, Panel, PluginError, Text, UserFile
+from wizolt.sdk import Line, Panel, PluginError, Text
 
 MAX_FRAME = 1024 * 1024  # A worker's reply: plugin output, bounded before any renderer sees it.
 # A host request carries host data sized by the conversation: a compaction span can approach the
@@ -40,7 +40,6 @@ class Capabilities:
     presets: dict[str, dict[str, str]]
     intercepts: dict[str, "InterceptSpec"] = field(default_factory=dict)
     presenters: dict[str, "PresenterSpec"] = field(default_factory=dict)
-    user_files: dict[str, UserFile] = field(default_factory=dict)
 
     @classmethod
     def decode(cls, name: str, value: dict) -> "Capabilities":
@@ -55,7 +54,6 @@ class Capabilities:
             value["presets"],
             {key: InterceptSpec.decode(key, item) for key, item in value.get("intercepts", {}).items()},
             {key: PresenterSpec.decode(key, item) for key, item in value.get("presenters", {}).items()},
-            {key: UserFile(**item) for key, item in value.get("user_files", {}).items()},
         )
 
 
