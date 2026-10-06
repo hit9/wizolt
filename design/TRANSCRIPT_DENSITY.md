@@ -63,6 +63,32 @@ minimal
 At `minimal` the checklist row is all that is written for both the call and the result; a failed
 call still surfaces its row with a failure marker and the error's first line.
 
+## The status marker
+
+The leading marker is the row's execution state; its meaning is fixed and not configurable,
+because at `minimal` it is the only channel left:
+
+| Shape | Meaning |
+| --- | --- |
+| `○` hollow | running |
+| `●` filled | completed successfully |
+| `●` in the failure color, with the error's first line | failed |
+
+Color is not a separate setting: the marker uses the theme's existing success/danger roles, so
+a theme change recolors it automatically and no orphan color can appear. Whether it is shown at
+all is a setting, default on:
+
+```toml
+[transcript]
+marker = "state"   # default: ○ running / ● done
+# marker = "none"  # plain rows, no marker
+```
+
+At `compact` and `full` the marker is a visual anchor only (elapsed time, exit codes and output
+are already shown), so turning it off costs nothing. At `minimal` with `marker = "none"` the
+user opts into plain text deliberately — failure still surfaces its error line, because failure
+visibility belongs to the density level, not to this switch.
+
 Why host and not plugin:
 
 - Density changes how much information a user sees by default. That is core experience, not an
