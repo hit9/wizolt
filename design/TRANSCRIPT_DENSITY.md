@@ -23,6 +23,46 @@ Three levels, applied to the builtin rendering:
 | `compact` | One-line call | Tail-truncated summary (the shape resume previews already use) |
 | `minimal` | Status marker + one line (a checklist row) | Not shown; failures still surface |
 
+The same turn at each level (illustrative, not pixel-exact):
+
+```text
+full
+
+  ● Bash  rg -n export_rows src
+    command: rg -n export_rows src
+    cwd: /srv/app
+  ─────────────────────────────────────────────
+  src/jobs/export.rs:42:  export_rows(&pool, &cfg);
+  src/db/rows.rs:118:     fn export_rows(
+  ─────────────────────────────────────────────
+  exit 0 · 0.4s
+
+  ● Read  src/db/rows.rs
+    1  fn export_rows(pool: &Pool, cfg: &Cfg) -> Result<Vec<Row>> {
+    2      let mut rows = Vec::new();
+    3      for chunk in pool.fetch_chunks(cfg.query())? {
+    ...
+
+compact
+
+  ● Bash  rg -n export_rows src
+    src/jobs/export.rs:42:  export_rows(&pool, &cfg);
+    ... 2 more matches · exit 0 · 0.4s
+  ● Read  src/db/rows.rs
+    fn export_rows(pool: &Pool, cfg: &Cfg) -> Result<Vec<Row>> {
+    ... · 312 lines
+
+minimal
+
+  ● bash rg -n export_rows src
+  ● read src/db/rows.rs
+  ● bash cargo bench export
+  ● edit src/db/rows.rs
+```
+
+At `minimal` the checklist row is all that is written for both the call and the result; a failed
+call still surfaces its row with a failure marker and the error's first line.
+
 Why host and not plugin:
 
 - Density changes how much information a user sees by default. That is core experience, not an
