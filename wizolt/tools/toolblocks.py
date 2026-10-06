@@ -230,38 +230,70 @@ def _result_tag(output: str, *, failed: bool, d: ToolDisplay) -> str:
     return " [refused]" if failed and "user refused" in output else " [failed]" if failed else " [approved]" if d.approved else " [auto]" if d.auto else ""
 
 
+def _record_format(session: Session, call: ToolCall, source: str | None = None) -> transcript.RecordTemplate | None:
+    """The record format in effect for this call (`source`, else the config's), or None for the
+    builtin assembly -- unset, standard, or broken: config validation already reported that."""
+    try:
+        return transcript.parsed(transcript.effective_format(session.config, call.name) if source is None else source)
+    except ValueError:
+        return None
+
+
+def _record_args(session: Session, call: ToolCall, d: ToolDisplay) -> str:
+    """`{args}`: the call display's first line. A record row is one line, so a multi-line command
+    or edit is marked with `…` rather than joined into one garbled line; Ctrl-O shows it whole."""
+    first, newline, _ = (d.display or tooloutput.short_call(session, call)).partition(" ")[2].partition("\n")
+    return first + (" …" if newline else "")
+
+
+def _call_lexer(call: ToolCall) -> str:
+    from wizolt.tools import TOOL_REGISTRY  # local import: the registry is built on top of every tool
+
+    tool_class = TOOL_REGISTRY.get(call.name)
+    return tool_class.log_lexer(call.args) if tool_class is not None else ""
+
+
+def running_line(session: Session, call: ToolCall, d: ToolDisplay, batch_suffix: str = "") -> LogBlock:
+    """The call line drawn before a call runs (above a live preview, or while it blocks), in the
+    record format in effect: the format's call row, so the settled record -- which then leaves its
+    own call row out -- reads as one record, not a builtin line over a formatted one."""
+    template = _record_format(session, call)
+    if template is not None:
+        values = transcript.record_values(tool=call.name, args=_record_args(session, call, d), output="", elapsed=None, citation="", failed=False)
+        if rendered := transcript.render_record(template, values, []):
+            name, args = transcript.call_label(rendered[0], call.name)
+            meta = ("  " + batch_suffix) if batch_suffix else ""
+            return LogBlock.hierarchy(LogLine(name, args, LogRole.TOOL, meta=meta, syntax=_call_lexer(call)), [])
+    return LogBlock.hierarchy(log_root(d.display or tooloutput.short_call(session, call), batch_suffix=batch_suffix, call=call), [])
+
+
 def _format_display(
     session: Session,
     call: ToolCall,
     key: str,
     output: str,
-    source: str,
+    template: transcript.RecordTemplate,
     *,
     failed: bool,
     elapsed: float | None,
     d: ToolDisplay,
 ) -> LogBlock | None:
-    """The `[transcript] format` path for one record: None keeps the builtin assembly, so an
-    unset, standard, broken or unrenderable format never changes the default transcript.
+    """The `[transcript] format` path for one record: None keeps the builtin assembly, so a
+    format that cannot render this call's facts never loses the record.
 
     The format owns the record's own rows -- the call line, the output preview, a closing row.
-    Engine-owned structure (`_engine_rows`) is attached as the builtin path attaches it.
+    Engine-owned structure is attached as the builtin path attaches it: `_engine_rows` for the
+    tools that have them (they are those tools' output, so the format's output rows stay empty),
+    and the error row for a failed call (the failure is not output to show twice).
     """
-    try:
-        template = transcript.parsed(source)
-    except ValueError:
-        return None  # Config validation already reported this; the record still prints.
-    if template is None:
-        return None
     tag = _result_tag(output, failed=failed, d=d)
     citation = (key + tag).strip() if key else tag.strip()
-    display = d.display or tooloutput.short_call(session, call)
     # A Bash record's output is the bounded stream preview, not the stored XML envelope: the
     # envelope's tags are not output, exactly as the builtin Bash branch treats them. `hidden`
     # is what that bound dropped, so `{elided}` counts everything the reader cannot see.
     hidden = 0
     lines: list[str] = []
-    if template.reads_output:  # Only a format that shows output pays for splitting it.
+    if template.reads_output and not failed and call.name not in ENGINE_ROW_TOOLS:
         text = output
         if call.name == "Bash":
             rows, hidden = tooloutput.bash_tail_preview(output, transcript.MAX_OUTPUT_LINES)
@@ -269,7 +301,7 @@ def _format_display(
         lines = transcript.output_lines(text)
     values = transcript.record_values(
         tool=call.name,
-        args=clip_call_lines(display.partition(" ")[2]),
+        args=_record_args(session, call, d),
         output=output,
         elapsed=elapsed,
         citation=citation,
@@ -280,10 +312,7 @@ def _format_display(
     rendered = transcript.render_record(template, values, lines)
     if rendered is None:
         return None
-    from wizolt.tools import TOOL_REGISTRY  # local import: the registry is built on top of every tool
-
-    tool_class = TOOL_REGISTRY.get(call.name)
-    lexer = tool_class.log_lexer(call.args) if tool_class is not None else ""
+    lexer = _call_lexer(call)
     return transcript.template_block(
         rendered,
         citation=citation,
@@ -353,9 +382,8 @@ def finish_display(
     d = d or ToolDisplay()
     if call.name == "Note" and not failed and d.display:
         return tooloutput.with_batch_suffix(d.display.removeprefix("Note ").strip(), d.batch_suffix)
-    if source is None:
-        source = transcript.effective_format(session.config, call.name)
-    if source and (block := _format_display(session, call, key, output, source, failed=failed, elapsed=elapsed, d=d)):
+    template = _record_format(session, call, source)
+    if template is not None and (block := _format_display(session, call, key, output, template, failed=failed, elapsed=elapsed, d=d)):
         return block
     tag = _result_tag(output, failed=failed, d=d)
     tree = d.nested_display or call.name == "Bash" or bool(d.vision_entry)

@@ -883,11 +883,7 @@ class ToolRunner:
                 d.approved = True
             if isinstance(tool, BashTool) and self.hooks.live_start is not None:
                 if not d.nested_display:
-                    self.emit(
-                        LogBlock.hierarchy(
-                            toolblocks.log_root(d.display or tooloutput.short_call(self.session, call), batch_suffix=batch_suffix, call=call), []
-                        )
-                    )
+                    self.emit(toolblocks.running_line(self.session, call, d, batch_suffix))
                     d.nested_display = True
                 self.hooks.live_start()
             elif isinstance(tool, JobTool) and tool.blocks_agent() and self.hooks.live_start is not None:
@@ -895,11 +891,7 @@ class ToolRunner:
                 # it draws the root line up front and hands the preview the wait budget for the
                 # countdown, exactly like Bash's pre-block.
                 if not d.nested_display:
-                    self.emit(
-                        LogBlock.hierarchy(
-                            toolblocks.log_root(d.display or tooloutput.short_call(self.session, call), batch_suffix=batch_suffix, call=call), []
-                        )
-                    )
+                    self.emit(toolblocks.running_line(self.session, call, d, batch_suffix))
                     d.nested_display = True
                 self.hooks.live_start(tool.wait_budget(tool.payload()))
             elif tool.blocks_agent() and not d.nested_display:
@@ -909,9 +901,7 @@ class ToolRunner:
                 # blank screen until the result lands. Skipped when something already drew a root
                 # (an approval block, an auto preview); a second copy of the same line is noise,
                 # not reassurance.
-                self.emit(
-                    LogBlock.hierarchy(toolblocks.log_root(d.display or tooloutput.short_call(self.session, call), batch_suffix=batch_suffix, call=call), [])
-                )
+                self.emit(toolblocks.running_line(self.session, call, d, batch_suffix))
                 d.nested_display = True
             executing = True
             if detached is not None:

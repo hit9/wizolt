@@ -56,7 +56,11 @@
   line is one row in the status bar's format language, with fields such as `{tool}`, `{args}`,
   `{duration}` and `{citation}` and `{% if %}` blocks; a line of just `{output|tail:3}` shows the
   last three output lines, and a row that renders empty is left out. The tool's name in a call
-  row takes the tool color even after a marker, as in `preset:minimal`'s `● bash`. `preset:standard` (the
+  row takes the tool color even after a marker, as in `preset:minimal`'s `● bash`. A call drawn
+  before it runs (Bash above its live preview) uses the format's call row too, and its settled
+  record does not print the call again; a failure, an Ask answer or a ToolScript result is never
+  repeated as output rows, `{args}` is the call's first line (`…` marks more), and `{failed}`
+  prints no text. `preset:standard` (the
   default) is the built-in rendering; `preset:minimal` is a one-line checklist row per call.
   `[transcript.tool.NAME]` overrides one tool. The new `/theme` **Transcript** tab previews each
   format on a sample call exactly as the transcript prints it, **f** edits it as a draft and

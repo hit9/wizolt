@@ -72,6 +72,8 @@ def test_the_failure_facts_describe_the_failure():
     assert text("{error}", output="ToolError: no such file\nmore", failed=True) == "ToolError: no such file"
     assert text("{% if failed %}failed: {error}{% endif %}", output="boom", failed=True) == "failed: boom"
     assert text("{% if failed %}failed{% endif %}") == ""
+    # The flag is a condition, not text: printed bare it renders nothing either way.
+    assert text("{tool} {failed}") == text("{tool} {failed}", failed=True) == "Bash"
 
 
 def test_an_unknown_time_prints_nothing_rather_than_zero():
@@ -175,15 +177,35 @@ def test_a_preset_renders_as_its_rows():
     assert render("preset:minimal") == render(transcript.PRESETS["minimal"]) == ["● bash rg -n export_rows src"]
 
 
-def test_a_format_is_parsed_once_however_many_records_use_it():
+def test_a_format_is_parsed_once_however_many_records_use_it(monkeypatch):
     """The hot path: every settled call looks its format up; parsing it each time would cost
     every record. A broken format is remembered as broken too."""
     assert transcript.parsed("{tool} {name}") is transcript.parsed("{tool} {name}")
-    with pytest.raises(ValueError) as first:
-        transcript.parsed("{nope} once")
-    with pytest.raises(ValueError) as second:
-        transcript.parsed("{nope} once")
-    assert first.value is second.value
+    built = []
+
+    def broken(self, source):
+        built.append(source)
+        raise ValueError("broken")
+
+    monkeypatch.setattr(transcript.RecordTemplate, "__init__", broken)
+    for _ in range(3):
+        with pytest.raises(ValueError, match="broken"):
+            transcript.parsed("{nope} parsed once")
+    assert built == ["{nope} parsed once"]
+
+
+def test_a_broken_format_does_not_grow_its_error_record_after_record():
+    """Each failure raises a fresh error: re-raising one cached exception would extend its
+    traceback on every settled call, keeping each record's frames alive for the session."""
+    import traceback
+
+    depths = []
+    for _ in range(50):
+        try:
+            transcript.parsed("{nope} leak")
+        except ValueError as error:
+            depths.append(len(traceback.extract_tb(error.__traceback__)))
+    assert depths[0] == depths[-1]
 
 
 # --- end to end: what a settled call prints -----------------------------------------------
@@ -220,6 +242,60 @@ def test_the_tool_name_in_a_call_row_is_drawn_as_the_tool(tmp_path, source, labe
     root = block.items[0]
     assert isinstance(root, LogLine) and (root.label, root.text) == (label, args)
     assert root.role is LogRole.TOOL
+
+
+LIVE = ToolCall("bash-1", "Bash", ["uv run ruff check wizolt tests"])
+
+
+@pytest.mark.parametrize("source", ["preset:minimal", "{marker} {tool} {args}\n{output|tail:2}"])
+def test_a_live_preview_call_reads_as_one_record_under_a_format(tmp_path, source):
+    """A Bash call draws its call line before it runs, then settles under it. Under a format the
+    early line is the format's call row, and the settled record does not print it again (it once
+    printed `● bash in "…" uv run ruff check wizolt teststr.1 [auto]` under a builtin line)."""
+    s = session(tmp_path)
+    s.config.transcript = {"format": source}
+
+    before = str(toolblocks.running_line(s, LIVE, ToolDisplay()))
+    after = str(toolblocks.finish_display(s, LIVE, "tr.1", bash_output("All checks passed!"), failed=False, d=ToolDisplay(nested_display=True, auto=True)))
+
+    call_row = str(toolblocks.finish_display(s, LIVE, "", bash_output("x"), failed=False)).splitlines()[0]
+    assert before == call_row  # the line drawn early is the format's own call row
+    assert "uv run ruff check" not in after  # and the settled record does not repeat it
+    if "{output" in source:
+        assert after == "    └ All checks passed! · tr.1 [auto]"  # the citation set apart, as `cited` sets it
+    else:
+        assert after == ""  # minimal shows no output, so nothing hangs under the live line
+
+
+def test_without_a_format_the_live_call_line_is_the_builtin_one(tmp_path):
+    s = session(tmp_path)
+    assert str(toolblocks.running_line(s, LIVE, ToolDisplay(), "(1/2)")) == "  Bash  uv run ruff check wizolt tests  (1/2)"
+
+
+@pytest.mark.parametrize(
+    ("call", "output", "failed", "absent"),
+    [
+        (ToolCall("r", "Read", [{"path": "no.py"}]), "ToolError: no such file\nsecond line", True, "│ second line"),
+        (ToolCall("a", "Ask", [{"questions": [{"question": "Q?"}]}]), "yes please", False, "│ yes please"),
+        (ToolCall("t", "ToolScript", [{"code": "print(1)"}]), '{"calls": 2, "stdout": "one", "error": ""}', False, '{"calls"'),
+    ],
+)
+def test_output_rows_never_repeat_what_the_host_already_draws(tmp_path, call, output, failed, absent):
+    """A failure's text is the error row, an Ask's answer is its answer row, a ToolScript's stored
+    envelope is not output at all: a format's output rows show none of them a second time."""
+    s = session(tmp_path)
+    s.config.transcript = {"format": "{tool} {args}\n{output}"}
+    text = str(toolblocks.finish_display(s, call, "tr.1", output, failed=failed))
+    assert absent not in text
+
+
+def test_a_multi_line_call_is_one_row_marked_as_continuing(tmp_path):
+    """A row is one line: a heredoc command is not joined into one garbled line."""
+    s = session(tmp_path)
+    s.config.transcript = {"format": "preset:minimal"}
+    call = ToolCall("b", "Bash", ["cat <<EOF\nx\nEOF"])
+    assert str(toolblocks.finish_display(s, call, "tr.1", bash_output(""), failed=False)) == "  ● bash  cat <<EOF … → tr.1"
+    assert str(toolblocks.running_line(s, call, ToolDisplay())) == "  ● bash  cat <<EOF …"
 
 
 def test_a_custom_format_renders_its_own_call_line_and_output_rows(tmp_path):

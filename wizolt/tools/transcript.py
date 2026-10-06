@@ -105,6 +105,8 @@ def _row_text(nodes, values: dict[str, Any]) -> str:
         elif node.kind == "field":
             name, _, spec = node.text.partition(":")
             value = values.get(name, "")
+            if isinstance(value, bool):
+                continue  # A condition (`failed`) is read by `{% if %}`; it prints no `True`/`False`.
             parts.append(clean(f"{int(float(value))}s" if spec == "duration" else format(value, spec))[:4096])
         elif node.kind == "if":
             parts.append(_row_text(node.children if node.expression.evaluate(values) else node.alternate, values))
@@ -116,12 +118,14 @@ def _width_driven(nodes) -> bool:
 
 
 @lru_cache(maxsize=64)
-def _parse(source: str) -> RecordTemplate | ValueError:
-    """Cached by source, failures included: the hot path parses each distinct format once."""
+def _parse(source: str) -> RecordTemplate | str:
+    """Cached by source, failures included (as their message): the hot path parses each distinct
+    format once. The message, not the exception: raising one cached exception object again on
+    every record would grow its traceback, and the frames it holds, without bound."""
     try:
         return RecordTemplate(source)
     except ValueError as error:
-        return error
+        return str(error)
 
 
 def parsed(source: str) -> RecordTemplate | None:
@@ -136,9 +140,9 @@ def parsed(source: str) -> RecordTemplate | None:
     if not source:
         return None
     result = _parse(source)
-    if isinstance(result, ValueError):
-        raise result
-    return result
+    if isinstance(result, RecordTemplate):
+        return result
+    raise ValueError(result)  # A fresh error per call; see `_parse`.
 
 
 def render_record(template: RecordTemplate, values: dict[str, Any], output: list[str]) -> list[str] | None:
@@ -209,10 +213,10 @@ def template_block(
     lexer: str = "",
     tool: str = "",
 ) -> LogBlock:
-    """Place a rendered record in the block tree. The first line is the call line (a plain
-    child instead when the runner already drew one above a live preview); the rest are output
-    rows; `extras` are engine-owned structure rows (an MCP summary, a ToolScript envelope, an
-    Ask answer, a vision trace) that the record's shape never owns.
+    """Place a rendered record in the block tree. The first line is the call line (left out when
+    the runner already drew one above a live preview); the rest are output rows; `extras` are
+    engine-owned structure rows (an MCP summary, a ToolScript envelope, an Ask answer, a vision
+    trace) that the record's shape never owns.
 
     The two red lines are enforced here, whatever the format said: a failed call keeps an
     error row, and a block that shows output keeps its citation.
@@ -222,7 +226,10 @@ def template_block(
         name, args = call_label(lines[0] if lines else "", tool)
         meta = (("  " + batch_suffix) if batch_suffix else "") + ((" → " + citation) if citation else "")
         root = LogLine(name, args, LogRole.ERROR if failed else LogRole.TOOL, meta=meta, syntax="" if failed else lexer)
-    children = [LogLine("", line, LogRole.OUTPUT, LogEdge.CONTINUE) for line in (lines if nested else lines[1:])]
+    # The first row is the call row. Nested, the runner already drew the call line above the live
+    # preview -- in its own words, before the call ran -- so the format's call row would print the
+    # call twice; only the rows after it belong under the preview.
+    children = [LogLine("", line, LogRole.OUTPUT, LogEdge.CONTINUE) for line in lines[1:]]
     children.extend(extras or [])
     if failed:
         # Labelled as the builtin assembly labels it: a refusal is not an error.
@@ -231,11 +238,9 @@ def template_block(
     else:
         carries = citation and citation not in (root.meta if root else "") and not any(citation in child.meta or citation in child.text for child in children)
         if children and carries:
+            # The citation rides the last row, apart from its text, as the builtin `cited` places it.
             last = children[-1]
-            meta = (last.meta + " · " if last.meta else "") + citation
-            children[-1] = LogLine(last.label, last.text, last.role, LogEdge.END, meta=meta, syntax=last.syntax)
-        elif not children and citation and root is None:
-            children.append(LogLine("stored" if citation.startswith("tr.") else "done", citation, LogRole.META, LogEdge.END))
+            children[-1] = LogLine(last.label, last.text, last.role, LogEdge.END, meta=last.meta + " · " + citation, syntax=last.syntax)
         elif children:
             # The block's own last row closes it, exactly as the builtin assembly does.
             last = children[-1]
