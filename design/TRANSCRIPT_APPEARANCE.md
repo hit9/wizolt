@@ -16,53 +16,59 @@ compose: one renderer per site), crowding out any other customization. Every oth
 the elapsed time, drop the exit code) has no lever at all: it needs a host switch per knob, and
 the knobs multiply.
 
-## Decision: format strings for rows, a fixed engine for structure
+## Decision: one template per record, a fixed engine for structure
 
 Split what a transcript is into two layers and configure only one of them:
 
-- **Row layer (configurable)** — how each line's facts are joined. Format strings over the
-  facts a row already has: `{marker}`, `{tool}`, `{args}`, `{output}`, `{elapsed}`, `{exit}`,
-  `{citation}`, `{elided}`. Same template language as `[statusbar] format`/`[divider] format`
-  (`ui.bars.expand`: presets, `{% optional %}`, filters, `[role]` styling fragments), same
-  validator, same preview.
-- **Structure layer (host-owned, never configurable)** — which rows exist, their tree nesting,
-  the `├ │ └` edges and rails, role-based coloring, diff/code width-dependent rendering, and the
-  stored-result (Ctrl-O) views. A template renders one line of text; where that line sits in the
-  block tree is the engine's business.
+- **Record layer (configurable, completely)** — how one settled tool call is drawn. One
+  template per record owns the whole static shape: how many lines it takes, which fields appear
+  and where, branching and loops. Same template language as `[statusbar] format`/
+  `[divider] format` (`ui.bars.expand`: presets, `{% if %}`, `{% for %}`, `{% optional %}`,
+  filters, `[role]` styling fragments), same validator, same preview. Fields are the facts a
+  record already has; filters bound them:
 
-Three sites get format strings:
+  | Field | Filters |
+  | --- | --- |
+  | `{marker}`, `{tool}`, `{citation}`, `{error}` | `firstline` (error), `lower` |
+  | `{args}` | `firstline`, clipping is the preset's business |
+  | `{output}` | `tail:N`, `head:N` — this is how truncation is controlled |
+  | `{elapsed}` | `duration` (`0.4s`) or raw seconds |
+  | `{exit}`, `{elided}` | — |
 
-```toml
-[transcript]
-call_format    = "preset:standard"      # or an explicit template
-closing_format = "… +{elided} more lines · {citation}"
-# result rows (output, answer, summary) render the value itself; their
-# frame is the closing row, so one format covers both
-```
+  The template renders any number of lines:
 
-`preset:standard` is today's rendering, byte-for-byte: the current per-line assembly in
-`toolblocks.py` is plain string joining, so collecting those joins into templates makes the
-defaults the fixed form of the status quo, not an approximation of it. That is the completeness
-requirement — the default must reproduce the current transcript exactly.
+  ```toml
+  [transcript]
+  format = """
+  {marker} {tool} {args}
+  {% if failed %}error: {error|firstline}{% endif %}
+  {% for line in output|tail:3 %}{line}{% endfor %}
+  {% if elided %}… +{elided} more lines · {citation}{% endif %}
+  """
+  ```
 
-`preset:minimal` is the checklist:
+  One template per record, not one per row: `preset:minimal` is simply the template
+  `"{marker} {tool|lower} {args}"` (a record is one line; a failed call still emits its error
+  first line), and `preset:standard` is today's multi-line rendering expressed as a template.
+  "Levels" stop being an enumeration — a user writes the shape they want.
+- **Structure layer (host-owned, never configurable)** — which records exist, their tree
+  nesting, the `├ │ └` edges and rails, role-based coloring, diff/code width-dependent
+  rendering, and the stored-result (Ctrl-O) views. Templates produce the record's lines; where
+  those lines sit in the block tree is the engine's business.
 
-```toml
-[transcript]
-call_format = "{marker} {tool|lower} {args}"
-```
+The completeness requirement: `preset:standard` must reproduce today's rendering byte-for-byte.
+The current per-line assembly in `toolblocks.py` is plain string joining over the same facts, so
+collecting it into a template makes the default the fixed form of the status quo, not an
+approximation — guarded by golden tests against the current transcript output.
 
 ```text
+preset:minimal, the checklist
+
   ● bash rg -n export_rows src
   ● read src/db/rows.rs
   ● bash cargo bench export
   ● edit src/db/rows.rs
 ```
-
-A result row at `preset:minimal` is nothing (the call row is all that is written; a failed call
-still surfaces its error first line). With formats, "levels" stop being an enumeration: a user
-moves `{elapsed}` to the end, deletes `{exit}`, or writes a narrower row — without a host switch
-per wish. The old two-level design (standard/minimal) is exactly the two presets above.
 
 ## The status marker
 
@@ -101,7 +107,7 @@ formats through the same draft/validate/preview flow the status bar's FormatPane
 The `/theme` panel owns this configuration. Its Transcript tab shows, with live previews built
 from the same sample turn:
 
-- **Row formats** — the three sites above, as presets (`standard`, `minimal`) or edited
+- **Record format** — the one template above, as presets (`standard`, `minimal`) or edited
   templates, using the existing format editor (validate on draft, preview, Ctrl-S apply).
 - **Thinking display** — model reasoning as collapsed first line, expanded, or hidden.
 - **Divider style** — how a run of tool calls is closed before the next model text.
@@ -126,7 +132,7 @@ inherit the global format; no defaults are written to disk:
 
 ```toml
 [transcript.tool.Bash]   # exception: bash rows as a checklist
-call_format = "preset:minimal"
+format = "preset:minimal"
 ```
 
 - A new builtin tool in a release is unset for every existing user and inherits the global
@@ -152,7 +158,7 @@ The presenter seam is unchanged and stays the deeper layer:
 
 1. Extract the per-row string assembly in `toolblocks.py` into format templates whose defaults
    reproduce today's rendering exactly (golden tests against the current transcript output).
-2. `[transcript]` configuration: the three sites, presets, per-tool sparse overrides.
+2. `[transcript]` configuration: the one format key, presets, per-tool sparse overrides.
 3. Transcript tab in the `/theme` panel: preset picker with live previews, format editing via
    the existing FormatPanel flow.
 4. Expose the effective formats in presenter view models.
