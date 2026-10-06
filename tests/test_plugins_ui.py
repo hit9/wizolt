@@ -26,6 +26,22 @@ def test_plugin_columns_align_and_long_names_leave_space_for_states():
         assert "..." in labels[1]
 
 
+def test_a_bundled_plugins_page_states_whether_it_is_enabled():
+    """Bundled plugins ship off: the page once said "enabled for your user" for every one of them,
+    beside a list row that said `disabled`."""
+    from wizolt.ui.cli.plugins import PluginManager
+
+    manager = PluginManager(None, SimpleNamespace(components=lambda: ()))
+    manager.records = {
+        "pet": {"path": "/b/pet.py", "builtin": True, "enabled": False},
+        "layout": {"path": "/b/layout.py", "builtin": True, "enabled": True},
+        "mine": {"path": "/u/mine.py", "builtin": False, "enabled": True},
+    }
+    assert manager.facts("pet", 60)[0] == "Built in · off until you enable it"
+    assert manager.facts("layout", 60)[0] == "Built in · enabled for your user"
+    assert not any("Built in" in line for line in manager.facts("mine", 60))
+
+
 def test_manager_preview_names_presets_and_keeps_the_file_name_visible(monkeypatch):
     import os
 

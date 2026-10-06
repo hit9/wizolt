@@ -136,7 +136,8 @@ class PluginManager:
         # The file name is the useful end of a long path: clip from the left, behind the rail.
         lines = [Text.clip_width(display_path(str(item["path"]))[::-1], width)[::-1]]
         if item.get("builtin"):
-            lines.insert(0, "Built in · enabled for your user")
+            # Bundled plugins ship off: say which state this one is in, never assume it.
+            lines.insert(0, "Built in · enabled for your user" if item.get("enabled") else "Built in · off until you enable it")
         for key in ("fields", "commands", "tools", "slots", "themes"):
             if values := item.get(key):
                 lines.append(f"{key.capitalize()}: {', '.join(values)}")

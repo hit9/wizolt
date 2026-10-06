@@ -22,6 +22,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from wizolt.sdk import Context, Plugin, PluginError
+from wizolt.sdk.agent import ToolInfo
 from wizolt.sdk.operations import ToolOffer
 from wizolt.sdk.views import Choice
 
@@ -34,6 +35,15 @@ class Choices:
 
     hidden: tuple[str, ...]
     resident: tuple[str, ...]
+
+
+LABEL_LIMIT = 300  # A view's text limit: some tools' descriptions run longer on their first line.
+
+
+def _label(tool: ToolInfo) -> str:
+    head = tool.name if tool.kind == "builtin" else f"{tool.name} (plugin, offered directly)"
+    label = f"{head} · {tool.description}" if tool.description else head
+    return label if len(label) <= LABEL_LIMIT else label[: LABEL_LIMIT - 1] + "…"
 
 
 def setup(plugin: Plugin) -> None:
@@ -54,10 +64,7 @@ def setup(plugin: Plugin) -> None:
         known = await plugin.agent.tools()
         builtin = tuple(tool.name for tool in known if tool.kind == "builtin")
         available = tuple(tool.name for tool in known if tool.kind == "plugin")
-        items = tuple(
-            Choice(tool.name, f"{tool.name} · {tool.description}" if tool.kind == "builtin" else f"{tool.name} (plugin, offered directly) · {tool.description}")
-            for tool in known
-        )
+        items = tuple(Choice(tool.name, _label(tool)) for tool in known)
         offered = (*(name for name in builtin if name not in choices.hidden), *(name for name in choices.resident if name in available))
         picked = await plugin.ui.select_many("Tools offered to the model", items=items, defaults=offered)
         if picked is None:

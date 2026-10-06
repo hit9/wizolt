@@ -12,6 +12,7 @@ from test_session_persistence import session_with_data_dir
 from wizolt.agent.engine import Agent
 from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.model import ModelClient
+from wizolt.sdk.views import View
 from wizolt.tools import Tool
 
 # A user's own policy plugin: it reads the choice the user saved and narrows every turn to it.
@@ -210,6 +211,7 @@ class Person:
     async def call(self, owner, service, arguments):
         if service != "ui.views.show":
             return {}
+        View.decode(arguments["view"])  # The host's own validation: a view it would refuse fails here too.
         self.shown.append(arguments["view"])
         return {"result": None if self.selected is None else {"action": "submit", "selected": list(self.selected)}}
 
@@ -275,6 +277,22 @@ async def test_tools_works_before_the_first_turn_and_says_what_each_tool_does(ag
     labels = {item["id"]: item["label"] for item in view["body"]["items"]}
     assert labels["notes.search"] == "notes.search (plugin, offered directly) · Search my notes"
     assert labels["Read"].startswith("Read · ") and len(labels["Read"]) > len("Read · ")
+
+
+@pytest.mark.parametrize("length", [299, 300, 301, 700])
+async def test_tools_keeps_long_plugin_descriptions_within_the_view_label_limit(agent, tmp_path, length):
+    await agent.session.plugins.manage("enable", "tool_visibility")
+    head = "notes.search (plugin, offered directly) · "
+    description = "文" * (length - len(head))
+    await enable(agent, tmp_path, "notes", NOTES.replace("Search my notes", description))
+    person = Person(selected=None)
+
+    assert await tools_command(agent, person) == "Tools unchanged"
+
+    [view] = person.shown
+    label = next(item["label"] for item in view["body"]["items"] if item["id"] == "notes.search")
+    full = head + description
+    assert label == (full if length <= 300 else full[:299] + "…")
 
 
 # --- what a plugin can read about the agent, and what a turn records ------------------------------

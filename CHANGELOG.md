@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fix `/tools` refusing to open when a tool description exceeds the selector's 300-character
+  label limit; long labels now end with an ellipsis. The `/plugins` detail page now reports
+  whether a bundled plugin is enabled instead of always claiming it is.
+  The selection-color regression test now isolates inherited terminal color settings.
+
 - Fix `tools.offer` gaps: two calls to a removed read-only tool in one batch ran in parallel
   instead of being refused; a failing or interrupted offer chain left its turn unsettled (no
   failure marker, input not released); and a plugin tool whose `plugin-tool` name exceeds the

@@ -104,6 +104,8 @@ def test_theme_does_not_restyle_frozen_interaction_regions(tmp_path, monkeypatch
     """Theme work must not repaint input hints, thinking, or the divider, and every cursor in the
     UI must stay the one selection band -- the same pair in both appearances, never `reverse`,
     which would take its color from whatever the row underneath is drawn in."""
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.delenv("PROMPT_TOOLKIT_COLOR_DEPTH", raising=False)
     monkeypatch.setattr(Theme, "_mode", mode)
     style = loop(tmp_path).view.style()
 
