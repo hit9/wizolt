@@ -84,6 +84,31 @@ request, after compaction, before `model.request`.
 - If the composed request no longer fits the context budget, the request fails rather than
   being silently truncated.
 
+## `tools.offer`
+
+`ToolOffer(tools, available)` → `ToolOffer`. No match keys. Runs once per turn, before the
+turn's first request; every request of that turn offers the set you settle on.
+
+- `tools` names the built-in tools the turn would offer. `offer.without("Subagent")` removes one;
+  a call the model makes to a removed tool anyway is refused without running.
+- `available` (read-only) names running plugins' tools as `plugin.tool`. `offer.adding("notes.search")`
+  offers one directly: the model sees it as `notes-search` with your registered description and
+  parameters, and a call runs exactly like `Plugin(action="call")`, with the same approval and
+  `tool.call` chain (`tool` is `Plugin`). Adding anything else fails.
+- Wizolt keeps its own order, so reordering changes nothing.
+- A different set from the previous turn costs one provider cache miss; answering the same way
+  every turn keeps the tools byte-identical. Decide from saved choices, not from the conversation.
+- MCP servers and skills stay behind their `MCP` and `Skill` tools: remove the gateway to remove
+  the family.
+
+```python
+def setup(plugin):
+    async def offer(context, tools, next):
+        return await next(tools.without(*plugin.config.get("hidden", ())).adding("notes.search"))
+
+    plugin.intercept("tools.offer", offer)
+```
+
 ## `model.request`
 
 `ModelRequest(id, purpose, reason, provider, model, effort, tools, message_count, retry_of)` →

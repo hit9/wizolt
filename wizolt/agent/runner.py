@@ -49,6 +49,7 @@ from wizolt.tools import (
     JobTool,
     MCPTool,
     NextHintsTool,
+    PluginTool,
     SkillTool,
     SubagentTool,
     Tool,
@@ -422,6 +423,8 @@ class ToolRunner:
         # Per invocation, never per runner: these are loop-bound, and this runner outlives loops.
         self._capacity = asyncio.Semaphore(max(1, self.session.settings.max_parallel_tools))
         self._gateway = _NestedGateway(self, loop)
+        # A plugin tool the turn offers directly runs as the gateway call it stands for.
+        calls = [PluginTool.resident_call(self.session, call) for call in calls]
         self.active_calls = tuple(calls)
         self._result_receipts.clear()
         try:
@@ -508,6 +511,15 @@ class ToolRunner:
                 call, batch_suffix=batch_suffix, planned_edit=plan.planned.get(call.id), plan_error=plan.errors.get(call.id, ""), detached=detached
             )
         return await self.run_one(call, batch_suffix=batch_suffix, detached=detached)
+
+    def offered(self, call: ToolCall) -> bool:
+        """Whether this turn's `tools.offer` settled on the call's tool. A gateway call to a plugin
+        tool offered directly counts as that tool, even when `Plugin` itself was removed."""
+        offered = self.session.offered_tools
+        if offered is None or call.name in offered:
+            return True
+        payload = call.payload if call.name == PluginTool.NAME and isinstance(call.payload, dict) else {}
+        return payload.get("action") == "call" and f"{payload.get('name')}.{payload.get('tool')}" in offered
 
     def intercepted(self, call: ToolCall) -> bool:
         """Whether a ``tool.call`` interceptor matches. Matching calls leave batch segmentation and
@@ -818,6 +830,8 @@ class ToolRunner:
             return "failed", self.reject(call, f"ToolError: unknown tool {call.name}", d=ToolDisplay(batch_suffix=batch_suffix)), None
         if self.session.tool_names and call.name not in self.session.tool_names:
             return "failed", self.reject(call, f"ToolError: {call.name} is not available in this session", d=ToolDisplay(batch_suffix=batch_suffix)), None
+        if not self.offered(call):
+            return "failed", self.reject(call, f"ToolError: {call.name} is not offered in this turn", d=ToolDisplay(batch_suffix=batch_suffix)), None
         if call.error:
             return "failed", self.reject(call, f"ToolError: {call.error}", d=ToolDisplay(batch_suffix=batch_suffix)), None
         tool = tool_class(self.session, call.args)

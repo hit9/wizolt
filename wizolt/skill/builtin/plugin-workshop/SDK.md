@@ -51,7 +51,9 @@ tool name. The model uses `Plugin(action="list", name="my_plugin")`, then
 `Plugin(action="describe", name="my_plugin", tool="remember")`, then
 `Plugin(action="call", name="my_plugin", tool="remember", arguments={...})` with normal approval.
 Registration does not change the model's fixed tool schema; descriptions and parameters are
-disclosed on demand. The offline CLI is a testing entry point, not another model tool.
+disclosed on demand. A `tools.offer` interceptor may offer one directly instead, as
+`my_plugin-remember` (see `tools.offer` in [INTERCEPTION.md](INTERCEPTION.md)). The offline CLI is a
+testing entry point, not another model tool.
 
 ## Public values and imports
 

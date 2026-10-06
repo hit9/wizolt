@@ -131,6 +131,9 @@ class Session:
     # Runtime projection settings; assembly restores them without persisting executable handles.
     system_prompt: str = SYSTEM_PROMPT
     tool_names: tuple[str, ...] = ()  # empty tuple = no filtering
+    # Runtime: the names this turn's `tools.offer` chain settled on (`plugin.tool` for a plugin
+    # tool offered directly), held for every request of the turn; None = no chain, offer them all.
+    offered_tools: tuple[str, ...] | None = field(default=None, repr=False, compare=False)
     listed: bool = True  # False -> no latest pointer, hidden from /sessions
     agent_name: str = "main"
     agent_parent: str = ""

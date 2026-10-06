@@ -294,6 +294,7 @@ class Agent:
         transcript_messages: list[Json] = [self.transcript_message(user_message)]
         await self.checkpoint_turn(turn_messages, transcript_messages)
         self._session_hook_context = ()
+        await self.offer_tools()
         try:
             for step in range(self.session.settings.max_steps):
                 self.session.state.turn_step = step + 1
@@ -674,6 +675,46 @@ class Agent:
         if projected is None:
             raise ValueError("internal messages cannot be added to the visible transcript")
         return projected
+
+    async def offer_tools(self) -> None:
+        """``tools.offer``, once per turn: the set every request of this turn offers.
+
+        Held in ``session.offered_tools`` for the turn, so the steps, a fallback or correction
+        resend and an inline compaction request all send the same tools and keep the provider
+        cache. Without a matching registration nothing is copied and every tool is offered."""
+        plugins = self.session.plugins
+        self.session.offered_tools = None
+        if plugins is None or not plugins.interception.would_match("tools.offer"):
+            return
+        from wizolt.plugins.rules import adapter_rules
+        from wizolt.sdk.operations import ToolOffer, Value
+        from wizolt.tools.plugin import PluginTool
+
+        builtin = tuple(schema["function"]["name"] for schema in Tool.builtin_schemas(self.session))
+        value = ToolOffer(builtin, tuple(f"{plugin}.{tool}" for plugin, tool, _ in PluginTool.usable(plugins)))
+
+        async def accept(offer: Value) -> Value:
+            return offer
+
+        transition, result_check = adapter_rules(value, plugins.interception_order.ordered)
+        trace: dict = {}
+        result = await plugins.interception.run("tools.offer", value, accept, transition=transition, result_check=result_check, trace=trace)
+        assert isinstance(result, ToolOffer)
+        self.session.offered_tools = result.tools
+        changes = {"removed": [name for name in builtin if name not in result.tools], "added": [name for name in result.tools if name not in builtin]}
+        self.session.record_operation(
+            OperationReceipt(
+                uuid.uuid4().hex,
+                "tools.offer",
+                "turn",
+                OperationReceipt.clip(list(builtin)),
+                OperationReceipt.clip(changes),
+                origin=trace.get("origin", "core"),
+                core="completed",
+                shaped=tuple(trace.get("shaped", ())),
+                delivered=True,
+            )
+        )
 
     async def prepare_request(self, turn_messages: list[Json]) -> PreparedRequest:
         if self.session.subagents is not None:

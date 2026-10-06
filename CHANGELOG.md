@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Plugins can choose the tools a turn offers the model with the new `tools.offer` operation:
+  remove built-in tools (a call to a removed one is refused without running), or offer a running
+  plugin's tool directly as `plugin-tool` instead of only through `Plugin`. It runs once per
+  turn and every request of the turn offers the same set, so a changed choice costs one provider
+  cache miss and the tools stay byte-identical after it. Receipts in `/status` name what was
+  added and removed. `design/TOOLS_AND_PROMPTS.md` now targets these plugin abilities rather
+  than bundled policy plugins.
+
 - Fix `[transcript] format` templates: `|tail:N` on an output longer than 64 lines showed lines
   near 64 instead of the real tail (and `{elided}` undercounted); `{endif}`/`{endfor}` written as
   fields were taken for block ends; `|tail:0`/`|head:0` showed every line; `{output|tail:N}`

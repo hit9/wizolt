@@ -309,6 +309,36 @@ class Summary(Value):
 
 
 @dataclass(frozen=True)
+class ToolOffer(Value):
+    """The tools one turn offers the model, by name; schemas stay host-owned.
+
+    ``tools`` are the offered names: built-in tool names, and ``plugin.tool`` for a plugin tool
+    offered directly. ``available`` (read-only) lists the enabled plugins' tools that may be
+    added. A handler may remove any name and add only an available one; the host keeps its own
+    order, so reordering changes nothing.
+    """
+
+    TYPE: ClassVar[str] = "tool_offer"
+    READ_ONLY: ClassVar[tuple[str, ...]] = ("available",)
+    tools: tuple[str, ...]
+    available: tuple[str, ...] = ()
+
+    def without(self, *names: str) -> ToolOffer:
+        return dataclasses.replace(self, tools=tuple(name for name in self.tools if name not in names))
+
+    def adding(self, *names: str) -> ToolOffer:
+        return dataclasses.replace(self, tools=(*self.tools, *(name for name in names if name not in self.tools)))
+
+    def check(self) -> None:
+        _names(self.tools, "tools")
+        _names(self.available, "available")
+
+    @classmethod
+    def decode(cls, data: dict) -> ToolOffer:
+        return cls(tuple(data["tools"]), tuple(data.get("available", ())))
+
+
+@dataclass(frozen=True)
 class Operation:
     """One interceptable boundary: its input, allowed results and match keys."""
 
@@ -327,9 +357,12 @@ OPERATIONS: dict[str, Operation] = {
         Operation("model.request", ModelRequest, (ModelResponse, Refusal), frozenset({"purpose", "reason"}), response_modes=True),
         Operation("tool.call", ToolCall, (ToolResult, Refusal), frozenset({"tool"})),
         Operation("context.compact", Compaction, (Summary,), frozenset({"trigger"})),
+        Operation("tools.offer", ToolOffer, (ToolOffer,), frozenset()),
     )
 }
-TYPES: dict[str, type[Value]] = {cls.TYPE: cls for cls in (Refusal, Prompt, Blocks, ModelRequest, ModelResponse, ToolCall, ToolResult, Compaction, Summary)}
+TYPES: dict[str, type[Value]] = {
+    cls.TYPE: cls for cls in (Refusal, Prompt, Blocks, ModelRequest, ModelResponse, ToolCall, ToolResult, Compaction, Summary, ToolOffer)
+}
 
 
 def check_read_only(previous: Value, candidate: Value) -> None:

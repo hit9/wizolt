@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable
 
 from wizolt.plugins.interception import ResultCheck, Transition
 from wizolt.sdk import PluginError
-from wizolt.sdk.operations import Block, Blocks, ModelRequest, ModelResponse, Prompt, Value, check_read_only
+from wizolt.sdk.operations import Block, Blocks, ModelRequest, ModelResponse, Prompt, ToolOffer, Value, check_read_only
 
 
 def attachments_kept(previous: Value, candidate: Value, _owner: str = "") -> None:
@@ -81,8 +81,24 @@ def composed(order: Callable[[Iterable[str]], list[str]]) -> Transition:
     return normalized
 
 
+def offer_kept(previous: Value, candidate: Value, _owner: str = "") -> ToolOffer:
+    """``tools.offer``: remove any name, add only an available one, in the host's order.
+
+    The order is the received names first, then added ones in ``available`` order, so a handler
+    that only reorders leaves the request's bytes, and its cache, unchanged."""
+    assert isinstance(previous, ToolOffer) and isinstance(candidate, ToolOffer)
+    check_read_only(previous, candidate)  # A returned result skips the executor's next() check.
+    chosen = set(candidate.tools)
+    if unknown := sorted(chosen - set(previous.tools) - set(previous.available)):
+        raise PluginError(f"tools.offer can add only available plugin tools, not: {', '.join(unknown)}")
+    added = tuple(name for name in previous.available if name in chosen and name not in previous.tools)
+    return ToolOffer((*(name for name in previous.tools if name in chosen), *added), previous.available)
+
+
 def adapter_rules(value: Value, order: Callable[[Iterable[str]], list[str]]) -> tuple[Transition | None, ResultCheck | None]:
     """The value-only rules for the operation ``value`` starts, as the live adapter applies them."""
+    if isinstance(value, ToolOffer):
+        return offer_kept, lambda received, result, _downstream, _owner: offer_kept(received, result)
     if isinstance(value, Prompt):
         return attachments_kept, lambda received, result, _downstream, _owner: attachments_kept(received, result)
     if isinstance(value, ModelRequest):

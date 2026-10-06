@@ -57,15 +57,41 @@ class Tool:
     @classmethod
     def schema(cls, strict: bool = False) -> Json:
         description = "\n".join([cls.DESCRIPTION, *(("- " + item) for item in cls.EXAMPLE if item)])
-        function: Json = {"name": cls.NAME, "description": description, "parameters": cls.params_schema()}
-        if strict and cls._strictifiable(function["parameters"]):
-            function["parameters"] = cls._strict_schema(function["parameters"])
+        return Tool.function_schema(cls.NAME, description, cls.params_schema(), strict)
+
+    @staticmethod
+    def function_schema(name: str, description: str, parameters: Json, strict: bool = False) -> Json:
+        function: Json = {"name": name, "description": description, "parameters": parameters}
+        if strict and Tool._strictifiable(parameters):
+            function["parameters"] = Tool._strict_schema(parameters)
             function["strict"] = True
         return {"type": "function", "function": function}
 
     @staticmethod
     def resolved_schemas(session: Session) -> list[Json]:
-        """Return the tool schemas available for this session and provider."""
+        """The tool schemas this session's requests offer: the built-in set, narrowed or extended
+        by this turn's `tools.offer` chain when one ran (`session.offered_tools`)."""
+        schemas = Tool.builtin_schemas(session)
+        offered = session.offered_tools
+        if offered is None:
+            return schemas
+        from wizolt.tools.plugin import PluginTool  # local import: the registry is built on top of every tool
+
+        by_name = {schema["function"]["name"]: schema for schema in schemas}
+        plugins = {f"{plugin}.{tool}": operation for plugin, tool, operation in PluginTool.usable(session.plugins)} if session.plugins else {}
+        strict = session.policy.resolve(session.config.provider).strict_tools_active
+        resolved = []
+        for name in offered:
+            if name in by_name:
+                resolved.append(by_name[name])
+            elif (operation := plugins.get(name)) is not None:  # A plugin stopped mid-turn is no longer offered.
+                resolved.append(Tool.function_schema(PluginTool.wire_name(name), operation.description, dict(operation.parameters), strict))
+        return resolved
+
+    @staticmethod
+    def builtin_schemas(session: Session) -> list[Json]:
+        """The built-in tool schemas available for this session and provider: what `tools.offer`
+        starts from."""
 
         from wizolt.tools import (  # local import: the registry is built on top of every tool
             TOOL_REGISTRY,
