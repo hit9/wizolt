@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 from agent_harness import session
 
-from wizolt.base import ToolCall
+from wizolt.base import LogLine, LogRole, ToolCall
 from wizolt.tools import Tool, toolblocks, transcript
 from wizolt.tools.toolblocks import ToolDisplay
 
@@ -198,8 +198,28 @@ def test_minimal_preset_renders_a_one_line_checklist(tmp_path):
     block = toolblocks.finish_display(s, ToolCall("bash-1", "Bash", ["rg -n export_rows src"]), "tr.1", bash_output("hit"), failed=False, elapsed=0.4)
     read = toolblocks.finish_display(s, ToolCall("read-1", "Read", [{"path": "src/db/rows.rs"}]), "tr.2", "body", failed=False, elapsed=0.05)
 
-    assert str(block) == "  ●  bash rg -n export_rows src → tr.1"
-    assert str(read) == "  ●  read src/db/rows.rs → tr.2"
+    assert str(block) == "  ● bash  rg -n export_rows src → tr.1"
+    assert str(read) == "  ● read  src/db/rows.rs → tr.2"
+
+
+@pytest.mark.parametrize(
+    ("source", "label", "args"),
+    [
+        ("preset:minimal", "● bash", "rg -n export_rows src"),  # the marker, then the name
+        ("{tool} {args}", "Bash", "rg -n export_rows src"),
+        ("{marker} {tool} · {args}", "● Bash", "· rg -n export_rows src"),
+        ("run: {args}", "run:", "rg -n export_rows src"),  # no name early: the first word, as before
+    ],
+)
+def test_the_tool_name_in_a_call_row_is_drawn_as_the_tool(tmp_path, source, label, args):
+    """The call row's label takes the tool's color: a format that leads with a marker must not
+    leave the tool's own name in plain argument text (`/theme` showed `bash` uncolored)."""
+    s = session(tmp_path)
+    block = toolblocks.finish_display(s, ToolCall("bash-1", "Bash", ["rg -n export_rows src"]), "tr.1", bash_output("hit"), failed=False, source=source)
+    assert not isinstance(block, str)
+    root = block.items[0]
+    assert isinstance(root, LogLine) and (root.label, root.text) == (label, args)
+    assert root.role is LogRole.TOOL
 
 
 def test_a_custom_format_renders_its_own_call_line_and_output_rows(tmp_path):
@@ -280,7 +300,7 @@ def test_a_per_tool_override_beats_the_global_format(tmp_path):
     read = str(toolblocks.finish_display(s, ToolCall("read-1", "Read", [{"path": "src/db/rows.rs"}]), "tr.2", "body", failed=False, elapsed=0.05))
 
     assert bash == "  Bash  rg -n export_rows src → tr.1"
-    assert read == "  ●  read src/db/rows.rs → tr.2"  # unset tools inherit the global format
+    assert read == "  ● read  src/db/rows.rs → tr.2"  # unset tools inherit the global format
 
 
 def test_engine_owned_rows_are_the_same_under_any_format(tmp_path):
@@ -340,7 +360,7 @@ def test_an_explicit_source_renders_without_touching_the_config(tmp_path):
     s = session(tmp_path)
     call = ToolCall("read-1", "Read", [{"path": "a.rs"}])
 
-    assert str(toolblocks.finish_display(s, call, "tr.1", "body", failed=False, source="preset:minimal")) == "  ●  read a.rs → tr.1"
+    assert str(toolblocks.finish_display(s, call, "tr.1", "body", failed=False, source="preset:minimal")) == "  ● read  a.rs → tr.1"
     assert s.config.transcript == {}
 
 

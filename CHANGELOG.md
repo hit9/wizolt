@@ -55,7 +55,8 @@
 - Change how a finished tool call is written to the transcript with `[transcript] format`: each
   line is one row in the status bar's format language, with fields such as `{tool}`, `{args}`,
   `{duration}` and `{citation}` and `{% if %}` blocks; a line of just `{output|tail:3}` shows the
-  last three output lines, and a row that renders empty is left out. `preset:standard` (the
+  last three output lines, and a row that renders empty is left out. The tool's name in a call
+  row takes the tool color even after a marker, as in `preset:minimal`'s `● bash`. `preset:standard` (the
   default) is the built-in rendering; `preset:minimal` is a one-line checklist row per call.
   `[transcript.tool.NAME]` overrides one tool. The new `/theme` **Transcript** tab previews each
   format on a sample call exactly as the transcript prints it, **f** edits it as a draft and

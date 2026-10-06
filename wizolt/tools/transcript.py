@@ -187,6 +187,16 @@ def record_values(
     }
 
 
+def call_label(line: str, tool: str) -> tuple[str, str]:
+    """A call row as (label, arguments): the label takes the tool's color, the rest is argument
+    text. The label runs through the tool's own name when the row names it early -- as `{tool}`
+    or `{name}`, after a marker such as `●` -- so the name is drawn as a tool in any format;
+    otherwise it is the row's first word, like the builtin `Bash  args`."""
+    words = line.split(" ")
+    cut = next((index + 1 for index, word in enumerate(words[:3]) if tool and word.lower() == tool.lower()), 1)
+    return " ".join(words[:cut]), " ".join(words[cut:])
+
+
 def template_block(
     lines: list[str],
     *,
@@ -197,6 +207,7 @@ def template_block(
     extras: list[LogLine] | None = None,
     batch_suffix: str = "",
     lexer: str = "",
+    tool: str = "",
 ) -> LogBlock:
     """Place a rendered record in the block tree. The first line is the call line (a plain
     child instead when the runner already drew one above a live preview); the rest are output
@@ -208,7 +219,7 @@ def template_block(
     """
     root: LogLine | None = None
     if not nested:
-        name, _, args = (lines[0] if lines else "").partition(" ")
+        name, args = call_label(lines[0] if lines else "", tool)
         meta = (("  " + batch_suffix) if batch_suffix else "") + ((" → " + citation) if citation else "")
         root = LogLine(name, args, LogRole.ERROR if failed else LogRole.TOOL, meta=meta, syntax="" if failed else lexer)
     children = [LogLine("", line, LogRole.OUTPUT, LogEdge.CONTINUE) for line in (lines if nested else lines[1:])]

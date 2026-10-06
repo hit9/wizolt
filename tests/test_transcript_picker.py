@@ -115,7 +115,7 @@ async def test_the_sample_renders_the_record_for_the_highlighted_row(command_loo
     assert "├ src/db/rows.rs:140:     rows.push(row);" in standard
     assert "└ … +2 more lines · Ctrl-O for more" in standard
     # The checklist preset is the whole record on its call line.
-    assert "●  bash rg -n export_rows src → tr.12 [auto]" in minimal
+    assert "● bash  rg -n export_rows src → tr.12 [auto]" in minimal
     assert "rows.push(row);" not in minimal
 
 

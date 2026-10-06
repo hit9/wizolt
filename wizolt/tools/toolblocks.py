@@ -293,6 +293,7 @@ def _format_display(
         extras=[] if failed else _engine_rows(call, output, elapsed, vision_entry=d.vision_entry),
         batch_suffix=d.batch_suffix,
         lexer=lexer,
+        tool=call.name,
     )
 
 
