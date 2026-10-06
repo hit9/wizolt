@@ -16,39 +16,25 @@ control at all.
 
 ## Decision: density is a host setting, not a plugin and not a theme
 
-Three levels, applied to the builtin rendering:
+Two levels, applied to the builtin rendering. There is no `full` level: the current builtin
+rendering already bounds every result to a tail preview with a citation (`tr.N`, Ctrl-O for
+more), and that on-demand expansion is the "full" view — done better than an inline dump ever
+would, because it costs a keypress instead of the screen. `standard` is that current rendering,
+unchanged and the default; the only new level is `minimal`:
 
 | Density | `tool.call` | `tool.result` |
 | --- | --- | --- |
-| `full` | Complete card: parameters, edited paths, diffs | Full output |
-| `compact` | One-line call | Tail-truncated summary (the shape resume previews already use) |
+| `standard` (default, today's rendering) | Call line (arguments clipped) | Tail preview + citation, Ctrl-O expands |
 | `minimal` | Status marker + one line (a checklist row) | Not shown; failures still surface |
 
 The same turn at each level (illustrative, not pixel-exact):
 
 ```text
-full
-
-  ● Bash  rg -n export_rows src
-    command: rg -n export_rows src
-    cwd: /srv/app
-  ─────────────────────────────────────────────
-  src/jobs/export.rs:42:  export_rows(&pool, &cfg);
-  src/db/rows.rs:118:     fn export_rows(
-  ─────────────────────────────────────────────
-  exit 0 · 0.4s
-
-  ● Read  src/db/rows.rs
-    1  fn export_rows(pool: &Pool, cfg: &Cfg) -> Result<Vec<Row>> {
-    2      let mut rows = Vec::new();
-    3      for chunk in pool.fetch_chunks(cfg.query())? {
-    ...
-
-compact
+standard
 
   ● Bash  rg -n export_rows src
     src/jobs/export.rs:42:  export_rows(&pool, &cfg);
-    ... 2 more matches · exit 0 · 0.4s
+    ... 2 more matches · exit 0 · 0.4s · Ctrl-O for more
   ● Read  src/db/rows.rs
     fn export_rows(pool: &Pool, cfg: &Cfg) -> Result<Vec<Row>> {
     ... · 312 lines
@@ -85,7 +71,7 @@ marker = "state"   # default: ○ running / ● done
 # marker = "none"  # plain rows, no marker
 ```
 
-At `compact` and `full` the marker is a visual anchor only (elapsed time, exit codes and output
+At `standard` the marker is a visual anchor only (elapsed time, exit codes and output
 are already shown), so turning it off costs nothing. At `minimal` with `marker = "none"` the
 user opts into plain text deliberately — failure still surfaces its error line, because failure
 visibility belongs to the density level, not to this switch.
@@ -112,7 +98,7 @@ table, which stays a config-file escape hatch.
 The `/theme` panel owns this configuration. Its Transcript tab covers the whole transcript's
 presentation, each option shown with a live preview built from the same sample turn:
 
-- **Density** — the three levels above: how much of a tool call and its result is shown.
+- **Density** — the two levels above: how much of a tool call and its result is shown.
 - **Status marker** — `state` (○ running / ● done / failure color) or `none`.
 - **Timestamps** — show per-row elapsed time (`0.4s`) on call rows, or omit it.
 - **Result truncation width** — how many lines a tool result may occupy before the tail
@@ -132,8 +118,8 @@ panel already writes, with live preview on readback. Per-tool density overrides 
 config file, and unset tools inherit the global level; no defaults are written to disk:
 
 ```toml
-[transcript.tool.Bash]   # exception: bash output in full
-density = "full"
+[transcript.tool.Bash]   # exception: bash results as checklist rows
+density = "minimal"
 ```
 
 - A new builtin tool in a release is unset for every existing user and inherits the global
@@ -163,5 +149,5 @@ The presenter seam is unchanged and stays the deeper layer:
 3. Transcript tab in the `/theme` panel: one live preview per level, selection persists and
    applies immediately.
 4. Expose the effective level in presenter view models.
-5. Tests for the three levels (including failure surfacing at `minimal`), persistence, and the
+5. Tests for both levels (including failure surfacing at `minimal`), persistence, and the
    presenter-priority rule; quality gates; CHANGELOG; docs (`docs/usage.md`, `docs/commands.md`).
