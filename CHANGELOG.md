@@ -7,7 +7,8 @@
   failure marker, input not released); and a plugin tool whose `plugin-tool` name exceeds the
   providers' 64-character limit could be offered, failing every request of the turn. Such tools
   are no longer available to add. The `/theme` sample for `thinking = "hidden"` no longer shows
-  a `✻ thinking` row the live view never draws.
+  a `✻ thinking` row the live view never draws. `/prompt` refuses to save a prompt over 256 KiB
+  instead of writing one the plugin would then skip.
 
 - Plugins can choose the tools a turn offers the model with the new `tools.offer` operation:
   remove built-in tools (a call to a removed one is refused without running), or offer a running
