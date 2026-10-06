@@ -128,6 +128,31 @@ async def test_waiting_on_the_editor_does_not_count_against_the_commands_deadlin
     assert "nothing was written" in await asyncio.wait_for(action, 3)
 
 
+@pytest.mark.parametrize("management", ["disable", "reload"])
+async def test_retiring_the_prompt_plugin_dismisses_its_editor_without_saving(agent, tmp_path, management):
+    await agent.session.plugins.manage("enable", "system_prompt")
+    opened, closed = asyncio.Event(), asyncio.Event()
+
+    async def editor(owner, service, arguments):
+        assert service == "ui.edit"
+        opened.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            closed.set()
+
+    agent.session.plugins.interactions.handler = editor
+    action = asyncio.create_task(agent.session.plugins.invoke("system_prompt", "command", "prompt", {}))
+    await asyncio.wait_for(opened.wait(), 3)
+
+    await agent.session.plugins.manage(management, "system_prompt")
+
+    assert await asyncio.wait_for(action, 3) == "The editor did not save; nothing was written."
+    assert closed.is_set()
+    assert not agent.session.plugins.interactions.pending
+    assert plugin_files(tmp_path) == []
+
+
 # --- the bundled system_prompt plugin -------------------------------------------------------------
 
 

@@ -52,7 +52,8 @@ class OutputRows:
 
     def pick(self, lines: list[str]) -> list[str]:
         if self.take == "tail":
-            lines = lines[-self.count :] if self.count else []
+            count = min(self.count, MAX_OUTPUT_LINES)
+            return lines[-count:] if count else []
         elif self.take == "head":
             lines = lines[: self.count]
         return lines[:MAX_OUTPUT_LINES]

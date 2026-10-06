@@ -124,6 +124,12 @@ def test_output_rows_take_the_real_tail_and_are_bounded():
     assert len(render("{output}", long)) == transcript.MAX_OUTPUT_LINES
 
 
+@pytest.mark.parametrize("count", [64, 65, 100, 1000])
+def test_an_oversized_tail_still_ends_with_the_last_output_line(count):
+    lines = [f"l{number}" for number in range(1, 101)]
+    assert render(f"{{output|tail:{count}}}", "\n".join(lines)) == lines[-64:]
+
+
 def test_elided_counts_what_the_output_rows_hide():
     assert template("{output|tail:2}").shown(5) == 2
     assert template("{output|tail:2}\n{output|head:4}").shown(5) == 4  # the widest row decides

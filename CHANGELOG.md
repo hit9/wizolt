@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fix transcript `{output|tail:N}` losing the last output lines when `N` exceeds the 64-line
+  preview limit. Dismissing `/prompt` by disabling or reloading its plugin now closes the editor
+  without saving instead of reporting a missing `text` field. Plugin editors request attention
+  and wait for their agent's frontend, existing modals and approvals before taking the terminal.
+
 - Fix `/tools` refusing to open when a tool description exceeds the selector's 300-character
   label limit; long labels now end with an ellipsis. The `/plugins` detail page now reports
   whether a bundled plugin is enabled instead of always claiming it is.

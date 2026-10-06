@@ -2169,6 +2169,12 @@ class TuiApp:
     async def edit_text(self, text: str) -> str | None:
         """Hand the terminal to the user's editor on `text`; the saved text, or None when the
         editor could not start or exited non-zero. Used by commands that edit a file's text."""
+        if self.managed:
+            self.on_attention()
+            await self.view_ready.wait()
+        # Like a plugin view, the editor waits for existing modals and approvals to release input.
+        while self.modal is not None or self._input_pending is not None:
+            await (self._modal_idle_event() if self.modal is not None else self._input_idle_event()).wait()
         async with in_terminal():
             return await self._edit_text_in_editor(text)
 
