@@ -20,6 +20,8 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.theme(name, definition)` | Register theme metadata; see [APPEARANCE.md](APPEARANCE.md) |
 | `plugin.preset(kind, name, source)` | Register a `statusbar` or `divider` format string |
 | `plugin.service(name, factory)` | `factory() -> AsyncContextManager[T]`; returns `Service[T]` |
+| `plugin.user_file(name, description, template="")` | Declare a file the user writes for you (one plain file name); declaring, enabling and reloading never create it, `/prompt edit` starts from `template`; templates total at most 256 KiB |
+| `plugin.user_file_path(context, name)` | The declared file in effect, `Path` or `None`: `<project>/.wizolt/plugins/NAME/<file>` over `<data_dir>/plugins/NAME/<file>`; read it when you need it, so an edit applies without a reload |
 | `plugin.intercept(operation, handler, *, match=None, response=None)` | Async `(Context, value, next) -> result`; wrap one operation; see [INTERCEPTION.md](INTERCEPTION.md) |
 | `plugin.presenter(site, render, *, match=None)` | Async `(Context, view) -> Panel`; render one presentation site; see [UI.md](UI.md) |
 | `plugin.models.complete(prompt, *, system="", provider="", model="", effort="", api="")` | Async text request; returns `ModelReply` |
@@ -76,7 +78,7 @@ Presenter view models (`ToolCard`, `ToolSummary`, `ActivityStatus`) are imported
 
 | Type | Fields / defaults |
 | --- | --- |
-| `Context` | Required: `agent_id: str`, `agent_name: str`, `cwd: str`, `status: str`, `context_percent: float`, `elapsed: float`, `model: str`, `now: float`; optional: `columns: int = 80`, `usage: Usage = Usage()`, `window: ContextWindow = ContextWindow()`, `viewport: Viewport = Viewport()`, `layout: Layout \| None = None`, `turn: Turn = Turn()` |
+| `Context` | Required: `agent_id: str`, `agent_name: str`, `cwd: str`, `status: str`, `context_percent: float`, `elapsed: float`, `model: str`, `now: float`; optional: `columns: int = 80`, `usage: Usage = Usage()`, `window: ContextWindow = ContextWindow()`, `viewport: Viewport = Viewport()`, `layout: Layout \| None = None`, `turn: Turn = Turn()`, `data_dir: str = ""` |
 | `Viewport` | `columns: int = 80`, `rows: int = 24` |
 | `Layout` | `slot: str`, `columns: int`, `rows: int`, `gap_before: int = 0` |
 | `Turn` | `tools: ToolCounts = ToolCounts()`, `active_tools: tuple[ToolActivity, ...] = ()` |
@@ -350,7 +352,7 @@ from the worker's process group. Connections are independent across agents and r
 
 The entry callable receives `plugin: wizolt.sdk.Plugin` and registers callbacks synchronously.
 Callbacks receive immutable `Context`: agent_id, agent_name, cwd, status, context_percent,
-elapsed seconds, model, monotonic now, and available columns.
+elapsed seconds, model, monotonic now, available columns, and wizolt's data_dir.
 `context.usage` contains cumulative calls/input_tokens/output_tokens/cached_tokens and estimated
 live output_rate (tokens/s). `context.window` contains used/limit/budget and `(category, tokens)`
 parts. Parts are local estimates refreshed at activation/request boundaries; used may be a

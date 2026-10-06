@@ -10,6 +10,7 @@ import inspect
 import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
@@ -21,10 +22,27 @@ Resource = TypeVar("Resource")
 
 SDK_VERSION = 1
 Value = str | int | float | bool
+MAX_USER_FILE = 256 * 1024  # A declared file's template, and what an editor save may write.
 
 
 class PluginError(ValueError):
     """An actionable plugin registration, invocation, or lifecycle error."""
+
+
+@dataclass(frozen=True)
+class UserFile:
+    """A file a plugin declares for the user to write; see ``Plugin.user_file``."""
+
+    description: str
+    template: str = ""
+
+
+def user_file_locations(cwd: str, data_dir: str, plugin: str, name: str) -> tuple[Path, ...]:
+    """Where a declared file may live, in precedence order: the project's ``.wizolt`` copy, then
+    the user's own under the data directory -- the AGENTS.md layering. The one lookup plugins and
+    the host share; it reads nothing."""
+    relative = Path("plugins", plugin, name)
+    return tuple(base / relative for base in (Path(cwd, ".wizolt") if cwd else None, Path(data_dir).expanduser() if data_dir else None) if base is not None)
 
 
 @dataclass(frozen=True)
@@ -119,6 +137,7 @@ class Context:
     viewport: Viewport = field(default_factory=Viewport)
     layout: Layout | None = None
     turn: Turn = field(default_factory=Turn)
+    data_dir: str = ""  # wizolt's data directory; user files live under it (`user_file_locations`).
 
     @classmethod
     def decode(cls, value: dict) -> Context:
@@ -226,6 +245,7 @@ class Plugin:
     MAX_REGISTRATIONS = 64
     IDENTIFIER = r"[A-Za-z_][A-Za-z_0-9]*"
     COMMAND_NAME = r"[A-Za-z_][A-Za-z_0-9-]*"
+    FILE_NAME = r"[A-Za-z_0-9][A-Za-z_0-9.-]{0,63}"  # One file name: no directories, no leading dot.
 
     def __init__(self, name: str, config: Mapping[str, Any] | None = None):
         from wizolt.sdk.models import Models
@@ -250,6 +270,7 @@ class Plugin:
         self._service_handles: dict[str, Service] = {}
         self.interceptors: dict[str, Interceptor] = {}
         self.presenters: dict[str, PresenterRegistration] = {}
+        self.user_files: dict[str, UserFile] = {}
 
     def service(self, name: str, factory: Callable[[], AbstractAsyncContextManager[Resource]]) -> Service[Resource]:
         """Register a lazy async context manager; disabling/reloading closes its resources.
@@ -284,6 +305,26 @@ class Plugin:
         it automatically or overwrites a user's existing theme choice.
         """
         self._register(self.themes, name, dict(definition), pattern=self.COMMAND_NAME)
+
+    def user_file(self, name: str, description: str, template: str = "") -> None:
+        """Declare a file the user writes for this plugin, such as a prompt to substitute.
+
+        Declaring writes nothing, and neither does enabling or reloading: the file exists only once
+        the user saves an edit (``/prompt edit``), which starts from ``template``. Read it with
+        ``user_file_path`` when you need it, so an edit applies without a reload.
+        """
+        if not isinstance(description, str) or not description.strip() or len(description) > 300:
+            raise PluginError("A user file needs a description of at most 300 characters")
+        # The templates travel in the plugin's manifest, so the bound is on all of them together.
+        if not isinstance(template, str) or len(template) + sum(len(item.template) for item in self.user_files.values()) > MAX_USER_FILE:
+            raise PluginError(f"A plugin's user file templates are text of at most {MAX_USER_FILE // 1024} KiB together")
+        self._register(self.user_files, name, UserFile(description, template), pattern=self.FILE_NAME)
+
+    def user_file_path(self, context: Context, name: str) -> Path | None:
+        """The declared file in effect: the project's copy, else the user's own, else None."""
+        if name not in self.user_files:
+            raise PluginError(f"Undeclared user file: {name}")
+        return next((path for path in user_file_locations(context.cwd, context.data_dir, self.name, name) if path.is_file()), None)
 
     def preset(self, kind: str, name: str, source: str) -> None:
         """Contribute a statusbar/divider format string to the existing appearance picker."""

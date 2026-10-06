@@ -10,6 +10,12 @@
   added and removed. `design/TOOLS_AND_PROMPTS.md` now targets these plugin abilities rather
   than bundled policy plugins.
 
+- Plugins can declare files the user writes for them, such as a prompt to substitute, with
+  `plugin.user_file(name, description, template)` and find the one in effect with
+  `plugin.user_file_path(context, name)`: the project's `.wizolt/plugins/NAME/` copy over the
+  user's own under the data directory. Declaring, enabling and reloading never create the file.
+  `Context` gains `data_dir`.
+
 - Fix `[transcript] format` templates: `|tail:N` on an output longer than 64 lines showed lines
   near 64 instead of the real tail (and `{elided}` undercounted); `{endif}`/`{endfor}` written as
   fields were taken for block ends; `|tail:0`/`|head:0` showed every line; `{output|tail:N}`

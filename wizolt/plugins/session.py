@@ -98,6 +98,7 @@ class SessionPlugins(PluginRuntime):
                 session.request_token_budget(),
                 self.context_parts,
             ),
+            data_dir=os.path.expanduser(session.config.data_dir),
         )
 
     async def load(self) -> None:
