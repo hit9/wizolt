@@ -30,8 +30,11 @@ One intercepted operation per turn, between tool-schema resolution and the turn'
   handler cannot change the bytes by reordering.
 - An added plugin tool is offered under the wire name `<plugin>-<tool>` (both are identifiers, so
   the hyphen is unambiguous) with the schema the plugin registered. A call to it runs exactly as
-  `Plugin(action="call")` does: same approval, same `tool.call` chain (`tool` is `Plugin`), same
-  result and transcript row. It still runs when the handler removed `Plugin` itself.
+  `Plugin(action="call")` does: same approval, same `tool.call` chain, same result and transcript
+  row. It still runs when the handler removed `Plugin` itself. The price of one approval path: a
+  `tool.call` interceptor sees it as `tool="Plugin"` with the plugin and tool in its arguments,
+  never by its wire name; the authoring reference says so where both operations are described.
+  A tool whose wire name exceeds the providers' 64 characters is never available to add.
 - Applied once per turn and held for the turn: every request in it — steps, the image-fallback
   resend, the tool-correction resend, an inline compaction request — offers the same set, so the
   provider cache survives a multi-request turn. Vision and `plugin.models.complete` requests send
@@ -43,7 +46,11 @@ One intercepted operation per turn, between tool-schema resolution and the turn'
   `offered_tools` check already refuses a routed response that calls a removed tool.
 - Failure policy follows `context.compose`: a failing chain fails the turn; with no matching
   registration the fast path applies and nothing is copied. A receipt records the added and
-  removed names, shown in `/status`.
+  removed names, shown in `/status`, for a turn whose set differs from the last turn's only:
+  receipts are capped, and an unchanged policy would otherwise push every other one out.
+- A policy decided outside a turn reads its inputs from `plugin.agent.tools()`: the built-in tools
+  an offer starts from and the plugin tools it may add, each with the first line of its
+  description and whether the last turn offered it. It works before any turn.
 - MCP and skills stay behind their own gateway tools (`MCP`, `Skill`): removing the gateway
   removes the family. Narrowing inside a family is not part of this operation.
 
@@ -53,6 +60,8 @@ what the model can call would need reconciling at every caller.
 
 ## Abilities: files the user writes, and their editor
 
+- `plugin.agent.system_prompt()` returns the text a `context.compose` handler receives as the
+  `system` block, before any plugin changes it, so an editor can start from the real prompt.
 - `plugin.user_file_paths(context, name)` gives where a file the user writes for the plugin
   lives, in precedence order: `<project>/.wizolt/plugins/<plugin>/<name>`, then
   `<data_dir>/plugins/<plugin>/<name>` (the AGENTS.md layering). `Context` gains the `data_dir`
@@ -72,12 +81,16 @@ Both ship disabled and use only the public SDK; enabling one changes nothing unt
 
 | Plugin | What the user does | Built on |
 | --- | --- | --- |
-| `tool_visibility` | `/tools`: a multi-select of the offered built-in tools and running plugins' tools; the choice is saved as `[plugins.tool_visibility] hidden` / `resident` | `tools.offer`, `ui.select_many`, `settings.update` |
-| `system_prompt` | `/prompt`: the editor on their file, or on the prompt the last request carried; a changed save writes the file, and from the next request it replaces the `system` block verbatim | `user_file_paths`, `ui.edit`, `context.compose` |
+| `tool_visibility` | `/tools`: a multi-select of the built-in tools and running plugins' tools, each with its description; the choice is saved as `[plugins.tool_visibility] hidden` / `resident` | `tools.offer`, `agent.tools`, `ui.select_many`, `settings.update` |
+| `system_prompt` | `/prompt`: the editor on their file, or on wizolt's own prompt; a changed save writes the file, and from the next request it replaces the `system` block verbatim | `user_file_paths`, `agent.system_prompt`, `ui.edit`, `context.compose` |
 
-`/tools` learns the tool names from the turn's offer, so it asks for one message first. A
-`system_prompt` file that is unreadable, not UTF-8, empty or over 256 KiB leaves wizolt's prompt
-in place rather than failing requests. Nothing is written by enabling either plugin.
+A `system_prompt` file that is unreadable, not UTF-8, empty or over 256 KiB leaves wizolt's prompt
+in place rather than failing requests, and `/prompt` refuses to save one over 256 KiB. Nothing is
+written by enabling either plugin.
+
+Not done: narrowing inside the MCP or skills family (single MCP tools, single skills). Their
+indexes are context blocks the model reads, so hiding one changes the request's header, not just
+its tool list; that needs its own design for the model's view and the cache, not a flag here.
 
 Both are tested for the cache contract: a changed choice or saved file changes the request once,
 and every later request is byte-identical again.

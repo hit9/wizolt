@@ -24,6 +24,8 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.intercept(operation, handler, *, match=None, response=None)` | Async `(Context, value, next) -> result`; wrap one operation; see [INTERCEPTION.md](INTERCEPTION.md) |
 | `plugin.presenter(site, render, *, match=None)` | Async `(Context, view) -> Panel`; render one presentation site; see [UI.md](UI.md) |
 | `plugin.models.complete(prompt, *, system="", provider="", model="", effort="", api="")` | Async text request; returns `ModelReply` |
+| `plugin.agent.tools()` | Async; `tuple[ToolInfo, ...]`: the built-in tools a turn's `tools.offer` starts from and the plugin tools it may add (`plugin.tool`), each with `name`, `description` (first line), `kind` (`builtin`/`plugin`) and `offered` (by the last turn); works before any turn |
+| `plugin.agent.system_prompt()` | Async; the text a `context.compose` handler receives as its `system` block, before any plugin changes it |
 | `plugin.ui.components.list()` | Async; returns `tuple[Component, ...]` in visual order |
 | `plugin.ui.components.move(component, *, before="", after="")` | Async; exactly one anchor, same slot; persists user order and returns the updated list |
 | `plugin.ui.components.set_gap(component, gap_before)` | Async; save a nonnegative integer gap, or `None` to restore the declared default; returns the updated list |
@@ -60,7 +62,7 @@ testing entry point, not another model tool.
 
 Import `Plugin`, `Context`, `Usage`, `ContextWindow`, `Text`, `Line`, `Panel`, `Event`,
 `Viewport`, `Layout`, `Turn`, `ToolCounts`, `ToolActivity`, `PluginError` and `SDK_VERSION` from `wizolt.sdk`. For annotations, import `Component` from `wizolt.sdk.ui`, `ModelReply` from
-`wizolt.sdk.models` and `Service` from `wizolt.sdk.services`. `PluginError` derives from
+`wizolt.sdk.models`, `ToolInfo` from `wizolt.sdk.agent` and `Service` from `wizolt.sdk.services`. `PluginError` derives from
 `ValueError`; raising it gives a readable action error. Exceptions and cancellation still require
 your own resource cleanup in `finally`.
 
@@ -91,6 +93,7 @@ Presenter view models (`ToolCard`, `ToolSummary`, `ActivityStatus`) are imported
 | `Panel` | `rows: tuple[Text \| Line, ...] = ()`; `Panel()` occupies no space |
 | `Event` | `name: str`, `context: Context`, `tool: ToolActivity \| None = None`, `reason: str = ""` |
 | `ModelReply` | `text: str`, `model: str`, `usage: Usage` |
+| `ToolInfo` | `name: str`, `description: str`, `kind: str` (`builtin` or `plugin`), `offered: bool` |
 
 Times are seconds; `now` is monotonic, not a date. `columns` is terminal cells, not characters.
 `status` is `idle`, `running`, `completed`, `interrupted`, `failed`, or `waiting` for user input;

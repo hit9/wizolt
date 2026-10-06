@@ -134,9 +134,9 @@ remains. It makes no model calls.
 
 ## Choose the model's tools
 
-Enable **tool_visibility** in `/plugins`, send a message, then type `/tools`. Uncheck the built-in
-tools you never want the model to use, and check a plugin's tool to offer it to the model directly
-instead of only through `Plugin`. Your choice is saved and applies from the next turn. A change
+Enable **tool_visibility** in `/plugins`, then type `/tools`: each tool is listed with what it
+does. Uncheck the built-in tools you never want the model to use, and check a plugin's tool to
+offer it to the model directly instead of only through `Plugin`. Your choice is saved and applies from the next turn. A change
 costs the provider cache once; after that each request offers the same tools again.
 
 ## Write your own system prompt

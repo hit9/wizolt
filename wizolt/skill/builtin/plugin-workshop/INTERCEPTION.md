@@ -93,8 +93,14 @@ turn's first request; every request of that turn offers the set you settle on.
   a call the model makes to a removed tool anyway is refused without running.
 - `available` (read-only) names running plugins' tools as `plugin.tool`. `offer.adding("notes.search")`
   offers one directly: the model sees it as `notes-search` with your registered description and
-  parameters, and a call runs exactly like `Plugin(action="call")`, with the same approval and
-  `tool.call` chain (`tool` is `Plugin`). Adding anything else fails.
+  parameters, and a call runs exactly like `Plugin(action="call")`, with the same approval. Adding
+  anything else fails.
+- **A directly offered tool reaches `tool.call` as `Plugin`, not by its own name.** An
+  interceptor registered with `match={"tool": "notes-search"}` never fires. Match `"Plugin"` and
+  read `call.arguments["name"]` and `call.arguments["tool"]` (`notes`, `search`); the same holds
+  for calls the model makes through the gateway itself.
+- In a command, `await plugin.agent.tools()` lists what an offer starts from and may add, with
+  each tool's description, before any turn has run.
 - Wizolt keeps its own order, so reordering changes nothing.
 - A different set from the previous turn costs one provider cache miss; answering the same way
   every turn keeps the tools byte-identical. Decide from saved choices, not from the conversation.
@@ -134,7 +140,9 @@ def setup(plugin):
 ## `tool.call`
 
 `ToolCall(id, tool, arguments)` → `ToolResult(content, status="ok"|"failed")` or `Refusal`.
-Match on `tool`. Only `arguments` may change; `id` and `tool` are fixed.
+Match on `tool`. Only `arguments` may change; `id` and `tool` are fixed. A plugin tool, whether
+called through the gateway or offered directly by `tools.offer`, arrives as `tool="Plugin"` with
+its plugin and tool names in `arguments`.
 
 - The call you pass to `next` is the one wizolt validates, shows for approval, gives to
   `PreToolUse` hooks and runs. A rewritten `ls` that became `rm` is approved as `rm`.

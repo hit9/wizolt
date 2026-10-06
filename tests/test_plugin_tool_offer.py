@@ -264,6 +264,74 @@ async def test_cancelling_or_choosing_the_same_set_changes_nothing(agent):
     assert agent.sent[0] == agent.sent[1]
 
 
-async def test_tools_before_the_first_turn_says_so(agent):
+async def test_tools_works_before_the_first_turn_and_says_what_each_tool_does(agent, tmp_path):
     await agent.session.plugins.manage("enable", "tool_visibility")
-    assert "Send a message first" in await tools_command(agent, Person())
+    await enable(agent, tmp_path, "notes", NOTES)
+    person = Person(selected=None)
+
+    await tools_command(agent, person)
+
+    [view] = person.shown
+    labels = {item["id"]: item["label"] for item in view["body"]["items"]}
+    assert labels["notes.search"] == "notes.search (plugin, offered directly) · Search my notes"
+    assert labels["Read"].startswith("Read · ") and len(labels["Read"]) > len("Read · ")
+
+
+# --- what a plugin can read about the agent, and what a turn records ------------------------------
+
+FACTS = """
+import json
+def setup(p):
+    async def facts(ctx, args):
+        tools = await p.agent.tools()
+        return json.dumps({"tools": [[t.name, t.kind, t.offered] for t in tools], "system": await p.agent.system_prompt()})
+    p.command("facts", "Agent facts", facts)
+"""
+
+
+async def facts(agent):
+    return json.loads(await agent.session.plugins.invoke("facts", "command", "facts", {}))
+
+
+async def test_a_plugin_reads_the_tools_and_the_system_prompt_before_any_turn(agent, tmp_path):
+    agent.session.system_prompt = "  You are wizolt.\n"
+    await enable(agent, tmp_path, "notes", NOTES)
+    await enable(agent, tmp_path, "facts", FACTS)
+
+    seen = await facts(agent)
+
+    builtin = [schema["function"]["name"] for schema in Tool.builtin_schemas(agent.session)]
+    assert [name for name, kind, _ in seen["tools"] if kind == "builtin"] == builtin
+    assert ["notes.search", "plugin", False] in seen["tools"]  # Not offered directly until a policy adds it.
+    assert all(offered for _, kind, offered in seen["tools"] if kind == "builtin")  # No policy: all offered.
+    assert seen["system"] == "You are wizolt."  # The `system` block exactly as compose receives it.
+
+
+async def test_the_offered_flags_follow_the_last_turn(agent, tmp_path):
+    choice = tmp_path / "hidden.json"
+    choice.write_text('["Bash"]')
+    await enable(agent, tmp_path, "policy", POLICY.format(choice=str(choice)))
+    await enable(agent, tmp_path, "facts", FACTS)
+    await agent.run("hello")
+
+    offered = {name: flag for name, _, flag in (await facts(agent))["tools"]}
+
+    assert offered["Bash"] is False and offered["Read"] is True
+
+
+async def test_a_turn_records_its_offer_only_when_the_set_changes(agent, tmp_path):
+    """Receipts are capped; an unchanged policy would otherwise push every other receipt out."""
+    choice = tmp_path / "hidden.json"
+    choice.write_text('["Subagent"]')
+    await enable(agent, tmp_path, "policy", POLICY.format(choice=str(choice)))
+
+    def offers():
+        return [receipt for receipt in agent.session.operation_receipts if receipt.operation == "tools.offer"]
+
+    for text in ("one", "two", "three"):
+        await agent.run(text)
+    assert len(offers()) == 1
+    choice.write_text('["Bash"]')
+    await agent.run("four")
+    await agent.run("five")
+    assert len(offers()) == 2 and json.loads(offers()[-1].effective)["removed"] == ["Bash"]

@@ -231,6 +231,7 @@ class Plugin:
     FILE_NAME = r"[A-Za-z_0-9][A-Za-z_0-9.-]{0,63}"  # One file name: no directories, no leading dot.
 
     def __init__(self, name: str, config: Mapping[str, Any] | None = None):
+        from wizolt.sdk.agent import AgentFacts
         from wizolt.sdk.models import Models
         from wizolt.sdk.services import Services
         from wizolt.sdk.settings import Settings, freeze
@@ -249,6 +250,7 @@ class Plugin:
         self.presets: dict[str, dict[str, str]] = {"statusbar": {}, "divider": {}}
         self.services = Services()
         self.models = Models()
+        self.agent = AgentFacts()
         self.ui = UI()
         self._service_handles: dict[str, Service] = {}
         self.interceptors: dict[str, Interceptor] = {}

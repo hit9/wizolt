@@ -8,7 +8,7 @@ each saved change costs the provider cache once. It makes no model calls.
 ## Use
 
 - Enable **system_prompt** in `/plugins`.
-- Type `/prompt`: your editor (`$VISUAL` or `$EDITOR`) opens on your file, or on wizolt's current
+- Type `/prompt`: your editor (`$VISUAL` or `$EDITOR`) opens on your file, or on wizolt's own
   prompt when you have none yet. Saving a change writes `<data dir>/plugins/system_prompt/system.md`.
 - For one project only, put a copy in `.wizolt/plugins/system_prompt/system.md` there.
 - Delete the file to return to wizolt's own prompt.
@@ -20,7 +20,6 @@ each saved change costs the provider cache once. It makes no model calls.
 
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass
 from pathlib import Path
 
 from wizolt.sdk import Context, Plugin
@@ -30,14 +29,6 @@ SDK_VERSION = 1
 
 FILE = "system.md"
 MAX_BYTES = 256 * 1024  # Larger than any prompt worth sending; a runaway file is not read whole.
-
-
-@dataclass
-class Seen:
-    """The system text the last request carried before substitution: what `/prompt` starts from
-    when the user has no file yet."""
-
-    system: str = ""
 
 
 def read(path: Path) -> str | None:
@@ -62,27 +53,22 @@ def write(path: Path, text: str) -> None:
 
 def setup(plugin: Plugin) -> None:
     """Default enablement belongs to the installation catalog, never to plugin source code."""
-    seen = Seen()
 
     def effective(context: Context) -> Path | None:
         return next((path for path in plugin.user_file_paths(context, FILE) if path.is_file()), None)
 
     async def compose(context: Context, blocks: Blocks, next):
-        system = blocks.get("system")
-        if system is not None:
-            seen.system = system.text
-            path = effective(context)
-            text = read(path) if path is not None else None
-            if text is not None:
-                blocks = blocks.with_text("system", text)
+        path = effective(context)
+        text = read(path) if path is not None else None
+        if text is not None and blocks.get("system") is not None:
+            blocks = blocks.with_text("system", text)
         return await next(blocks)
 
     async def edit(context: Context, arguments: Mapping[str, object]) -> str:
         paths = plugin.user_file_paths(context, FILE)
         path = effective(context)
-        original = (read(path) if path is not None else None) or seen.system
-        if not original:
-            original = "Send a message first to start from wizolt's prompt, or write your own here.\n"
+        # Your file when you have one, else wizolt's own prompt: the text this plugin would replace.
+        original = (read(path) if path is not None else None) or await plugin.agent.system_prompt()
         edited = await plugin.ui.edit(original)
         if edited is None:
             return "The editor did not save; nothing was written."

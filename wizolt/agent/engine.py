@@ -82,10 +82,10 @@ class Agent:
         self.model = ModelClient(session)
         self.context = ContextManager(session, self.model)
         if session.plugins is not None:
-            from wizolt.agent.plugin_models import PluginModels
+            from wizolt.agent.plugin_services import PluginServices
 
             session.plugins.read_context = lambda: self.context.breakdown(self.session.system_prompt)
-            session.plugins.host_service = PluginModels(session).call
+            session.plugins.host_service = PluginServices(session).call
         self.vision_observe = VisionObserver(self.model).observe
         self.tools = ToolRunner(session, self.context, input_fn=input_fn, output_fn=output_fn)
         self.output_fn = output_fn
@@ -685,7 +685,7 @@ class Agent:
         resend and an inline compaction request all send the same tools and keep the provider
         cache. Without a matching registration nothing is copied and every tool is offered."""
         plugins = self.session.plugins
-        self.session.offered_tools = None
+        previous, self.session.offered_tools = self.session.offered_tools, None
         if plugins is None or not plugins.interception.would_match("tools.offer"):
             return
         from wizolt.plugins.rules import adapter_rules
@@ -703,6 +703,8 @@ class Agent:
         result = await plugins.interception.run("tools.offer", value, accept, transition=transition, result_check=result_check, trace=trace)
         assert isinstance(result, ToolOffer)
         self.session.offered_tools = result.tools
+        if result.tools == previous:
+            return  # The same set as the last turn: nothing to report, and receipts are capped.
         changes = {"removed": [name for name in builtin if name not in result.tools], "added": [name for name in result.tools if name not in builtin]}
         self.session.record_operation(
             OperationReceipt(

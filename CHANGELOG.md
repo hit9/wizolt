@@ -15,7 +15,10 @@
   plugin's tool directly as `plugin-tool` instead of only through `Plugin`. It runs once per
   turn and every request of the turn offers the same set, so a changed choice costs one provider
   cache miss and the tools stay byte-identical after it. Receipts in `/status` name what was
-  added and removed.
+  added and removed, for turns whose set changed. A plugin tool offered directly reaches
+  `tool.call` interceptors as `Plugin`, like a gateway call. `plugin.agent.tools()` lists the
+  tools an offer starts from and may add, with descriptions, and `plugin.agent.system_prompt()`
+  returns the `system` text compose handlers see; both work before any turn.
 
 - Plugins can find files the user writes for them with `plugin.user_file_paths(context, name)`
   (the project's `.wizolt/plugins/NAME/` copy over the user's own under the data directory; it

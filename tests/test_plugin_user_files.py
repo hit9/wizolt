@@ -141,14 +141,16 @@ async def test_the_bundled_plugin_ships_off_and_enabling_it_writes_nothing(agent
 
 async def test_prompt_opens_the_current_prompt_and_a_saved_edit_replaces_it_costing_the_cache_once(agent, tmp_path):
     await agent.session.plugins.manage("enable", "system_prompt")
-    await agent.run("one")
     editor = Editor("You are terse.\n")
 
-    reply = await prompt_command(agent, editor)
+    reply = await prompt_command(agent, editor)  # Before any request: wizolt's own prompt, not a placeholder.
 
-    assert editor.opened == ["You are wizolt."]  # Starts from the prompt the last request carried.
+    assert editor.opened == ["You are wizolt."]
     assert plugin_files(tmp_path) == [tmp_path.joinpath("data", *PLUGIN_FILE)]
     assert "applies from the next request" in reply
+    await agent.session.plugins.manage("disable", "system_prompt")
+    await agent.run("one")  # The prompt before the edit took effect, for the cache comparison.
+    await agent.session.plugins.manage("enable", "system_prompt")
     for text in ("two", "three", "four"):
         await agent.run(text)
     systems = [system(messages) for messages in agent.sent]
