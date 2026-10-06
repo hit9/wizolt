@@ -1,8 +1,9 @@
-# Transcript density
+# Transcript appearance
 
-Status: design agreed with the user; not implemented. Host-owned display density for the
-conversation transcript, with the existing presenter seam unchanged above it. Storage follows
-the same sparse-exceptions principle as [tools and prompts](TOOLS_AND_PROMPTS.md).
+Status: design agreed with the user; not implemented. Host-owned display settings for the whole
+conversation transcript (density, status marker, and the other knobs below), with the existing
+presenter seam unchanged above it. Storage follows the same sparse-exceptions principle as
+[tools and prompts](TOOLS_AND_PROMPTS.md).
 
 ## The problem
 
@@ -99,21 +100,38 @@ Why host and not plugin:
 - Nothing in density is conversation-dependent: the set of visible information changes only
   through explicit user action, so it costs nothing at the model-request boundary (display only).
 
-Why not a whole `/theme` identity: density changes information content, not styling. Colors,
-borders and bar formats can change without touching what is shown; "should tool output be
-visible" must survive a theme switch. So the setting is separate from theme data — but its
-picker is visual and preview-driven, which is exactly what the `/theme` panel already is; the
-selection UI therefore joins that panel as a Transcript tab (see Interaction below).
+`/theme` placement: density changes information content, not styling — but its whole
+interaction is visual (pick a level by looking, recolor with the theme, toggle a marker), which
+is exactly what the `/theme` panel already is. It is therefore a first-class **Transcript tab**
+in `/theme`: one surface with a live preview per option, persisting and applying immediately,
+next to the theme's other tabs. The only part kept out of the panel is the per-tool override
+table, which stays a config-file escape hatch.
+
+## Interaction: a Transcript tab in the `/theme` panel
+
+The `/theme` panel owns this configuration. Its Transcript tab covers the whole transcript's
+presentation, each option shown with a live preview built from the same sample turn:
+
+- **Density** — the three levels above: how much of a tool call and its result is shown.
+- **Status marker** — `state` (○ running / ● done / failure color) or `none`.
+- **Timestamps** — show per-row elapsed time (`0.4s`) on call rows, or omit it.
+- **Result truncation width** — how many lines a tool result may occupy before the tail
+  summary (a number, previewed at the chosen value).
+- **Thinking display** — model reasoning as collapsed first line, expanded, or hidden.
+- **Divider style** — how a run of tool calls is closed before the next model text.
+
+Choosing an option persists immediately and applies to the next rendered line — no restart, no
+config editing. This follows the panel's existing pattern (tabs such as StatusBar): a visual,
+preview-driven selector is the right surface for visual settings, and the panel is already
+where users look for how wizolt appears.
 
 ## Storage: sparse exceptions, same as tool visibility
 
-A global level plus per-tool overrides; unset tools inherit the global level. No defaults are
-written to disk:
+The tab's global choices (density, marker) persist through the same preferences the `/theme`
+panel already writes, with live preview on readback. Per-tool density overrides stay in the
+config file, and unset tools inherit the global level; no defaults are written to disk:
 
 ```toml
-[transcript]
-density = "compact"
-
 [transcript.tool.Bash]   # exception: bash output in full
 density = "full"
 ```
@@ -123,22 +141,8 @@ density = "full"
 - Removing an override means deleting the table; the tool returns to the global level with no
   residue.
 - Keys are tool names as the model sees them (`Bash`, `Read`, MCP wire names).
-
-## Interaction
-
-Selection lives as a **Transcript tab in the `/theme` panel**, with a live preview: each level
-is shown by rendering the same sample tool-call card and result at that density, so the user
-picks by looking, not by imagining what `compact` means. Choosing persists immediately. This
-follows the existing pattern — the panel is already a tabbed appearance selector (StatusBar tab).
-
-The concept stays separate from themes even though the picker is shared: density is stored as
-`[transcript]`, not as theme data. Switching a theme never changes what information the
-transcript shows; changing density never touches colors or borders. The picker is visual and
-preview-driven like a theme — that is why it lives in that panel — but the setting itself is
-information content.
-
-A per-tool override is edited in the config file (the full-capability fallback, as with every
-sparse setting). The panel is the discoverable surface, the file is the escape hatch.
+- The panel is the discoverable surface for the global choices; the file is the escape hatch for
+  per-tool exceptions.
 
 ## Relationship with presenters
 

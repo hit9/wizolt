@@ -9,5 +9,6 @@ These documents describe implementation decisions and invariants. User documenta
 - [Dependency review](DEPENDENCY_REVIEW.md): production dependency costs and alternatives.
 - [Tools and prompts](TOOLS_AND_PROMPTS.md): user-owned tool residency/visibility and plugin
   prompt-file convention (design; not implemented).
-- [Transcript density](TRANSCRIPT_DENSITY.md): host-owned display density levels with sparse
-  per-tool overrides; presenters unchanged above (design; not implemented).
+- [Transcript appearance](TRANSCRIPT_APPEARANCE.md): a `/theme` Transcript tab owning the whole
+  transcript's display settings — density, status marker, timestamps, truncation, thinking,
+  dividers — with sparse per-tool overrides; presenters unchanged above (design; not implemented).
