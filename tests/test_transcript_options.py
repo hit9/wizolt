@@ -133,7 +133,7 @@ async def test_the_sample_follows_the_highlighted_thinking_row(command_loop):
     assert not any(transcripts.SAMPLE_REASONING[1] in row for row in collapsed)
 
     hidden = await preview_at(command_loop, "thinking:hidden")
-    assert "✻ thinking" in hidden  # the phase still arrives; only its trace is gone
+    assert "✻ thinking" not in "\n".join(hidden)  # as live: no spark, no trace at all
     assert any("only the divider below names the phase" in row for row in hidden)
     assert not any(line in row for row in hidden for line in transcripts.SAMPLE_REASONING)
 
@@ -190,6 +190,7 @@ def test_the_reasoning_preview_keeps_the_rows_the_mode_asks_for(command_loop, mo
     assert rows("expanded") == [RAIL + f"reasoning line {index}" for index in range(2, 8)]  # the newest six
     assert rows("collapsed") == [RAIL + "reasoning line 0"]  # the opening line, not the newest one
     assert rows("hidden") == []
+    assert command_loop.view.model_stream_fragments() == []  # Not even the spark row: the divider names the phase.
 
 
 def test_a_collapsed_trace_skips_a_blank_opening_line(command_loop, monkeypatch):

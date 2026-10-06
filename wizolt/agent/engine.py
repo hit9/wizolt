@@ -294,8 +294,10 @@ class Agent:
         transcript_messages: list[Json] = [self.transcript_message(user_message)]
         await self.checkpoint_turn(turn_messages, transcript_messages)
         self._session_hook_context = ()
-        await self.offer_tools()
         try:
+            # Inside the turn's settlement: the opening message is already checkpointed, so a
+            # failing or interrupted offer chain must end the turn like any other failure.
+            await self.offer_tools()
             for step in range(self.session.settings.max_steps):
                 self.session.state.turn_step = step + 1
                 self.session.clear_quick_hints()  # a later step supersedes hints from a non-terminal batch; only the terminal batch keeps its hints
@@ -691,7 +693,7 @@ class Agent:
         from wizolt.tools.plugin import PluginTool
 
         builtin = tuple(schema["function"]["name"] for schema in Tool.builtin_schemas(self.session))
-        value = ToolOffer(builtin, tuple(f"{plugin}.{tool}" for plugin, tool, _ in PluginTool.usable(plugins)))
+        value = ToolOffer(builtin, PluginTool.offerable(plugins))
 
         async def accept(offer: Value) -> Value:
             return offer

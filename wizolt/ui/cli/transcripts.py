@@ -114,9 +114,10 @@ def thinking_preview(mode: str, columns: int) -> StyleAndTextTuples:
     """What the reasoning trace looks like while it arrives, at the same rail the live preview
     draws: `expanded` keeps the newest lines, `collapsed` the opening one, `hidden` none."""
     rail = LogBlock.prefix(TurnBox.CONTENT_LEVEL + 1, LogEdge.CONTINUE)
-    head: StyleAndTextTuples = [(Theme.fg("muted"), "✻ thinking\n")]
     if mode == "hidden":
-        return [*head, (Theme.fg("muted"), "  only the divider below names the phase\n")]
+        # The live region draws nothing at all, spark included; the sample must not promise one.
+        return [(Theme.fg("muted"), "  nothing while it thinks; only the divider below names the phase\n")]
+    head: StyleAndTextTuples = [(Theme.fg("muted"), "✻ thinking\n")]
     shown = SAMPLE_REASONING[:1] if mode == "collapsed" else SAMPLE_REASONING
     rows: StyleAndTextTuples = list(head)
     for line in shown:

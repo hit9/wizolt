@@ -742,7 +742,9 @@ class ToolRunner:
         if self.intercepted(call):
             return False
         if (
+            # An unavailable call takes the single-call path, which is where it is refused.
             (self.session.tool_names and call.name not in self.session.tool_names)
+            or not self.offered(call)
             or tool_class is None
             or call.name in ("Subagent", "Edit", "NextHints")
             or tool_class in (BashTool, JobTool, AskTool, ToolScript)

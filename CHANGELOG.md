@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Fix `tools.offer` gaps: two calls to a removed read-only tool in one batch ran in parallel
+  instead of being refused; a failing or interrupted offer chain left its turn unsettled (no
+  failure marker, input not released); and a plugin tool whose `plugin-tool` name exceeds the
+  providers' 64-character limit could be offered, failing every request of the turn. Such tools
+  are no longer available to add. The `/theme` sample for `thinking = "hidden"` no longer shows
+  a `✻ thinking` row the live view never draws.
+
 - Plugins can choose the tools a turn offers the model with the new `tools.offer` operation:
   remove built-in tools (a call to a removed one is refused without running), or offer a running
   plugin's tool directly as `plugin-tool` instead of only through `Plugin`. It runs once per

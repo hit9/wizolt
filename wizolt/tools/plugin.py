@@ -71,6 +71,14 @@ class PluginTool(Tool):
             for tool, operation in entry.active.plugin.tools.items()
         ]
 
+    MAX_WIRE_NAME: ClassVar[int] = 64  # Providers reject longer function names.
+
+    @classmethod
+    def offerable(cls, runtime) -> tuple[str, ...]:
+        """``plugin.tool`` for every running plugin tool that can be offered directly: one whose
+        wire name a provider accepts, so adding it can never make the turn's requests fail."""
+        return tuple(f"{plugin}.{tool}" for plugin, tool, _ in cls.usable(runtime) if len(plugin) + 1 + len(tool) <= cls.MAX_WIRE_NAME)
+
     @staticmethod
     def wire_name(qualified: str) -> str:
         """The request's name for a plugin tool offered directly: ``notes.search`` -> ``notes-search``.

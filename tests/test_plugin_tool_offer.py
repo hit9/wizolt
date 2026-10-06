@@ -41,12 +41,13 @@ async def agent(tmp_path):
     session.settings.yolo = True  # Plugin calls confirm like any mutating tool.
     instance = Agent(session, output_fn=lambda _text: None)
     instance.sent = []  # The tools each request carried, as the wire JSON.
-    instance.script = []  # Tool calls to answer with, one step at a time; then a final answer.
+    instance.script = []  # A tool call (or a list: one batch) per step; then a final answer.
 
     async def request(messages, tools, *, reason="normal"):
         instance.sent.append(json.dumps(tools, sort_keys=True))
         if instance.script:
-            return {"role": "assistant", "content": ""}, [instance.script.pop(0)], ""
+            calls = instance.script.pop(0)
+            return {"role": "assistant", "content": ""}, calls if isinstance(calls, list) else [calls], ""
         return {"role": "assistant", "content": "ok"}, [], "ok"
 
     instance.model.request = request
@@ -137,6 +138,18 @@ async def test_a_handler_cannot_invent_a_tool(agent, tmp_path):
     with pytest.raises(Exception, match="can add only available plugin tools, not: Invented"):
         await agent.run("hello")
     assert agent.sent == []  # The turn failed before any request went out.
+    # And it failed like any turn: settled with its marker, so the session goes on.
+    assert agent.session.messages[-1]["content"].startswith("[This turn ended early:")
+    await agent.session.plugins.manage("disable", "forger")
+    assert await agent.run("again") == "ok"
+
+
+async def test_a_plugin_tool_whose_wire_name_a_provider_would_reject_is_not_available(agent, tmp_path):
+    tool = "t" * 60  # `notes-` plus this is longer than the 64 characters providers accept.
+    await enable(agent, tmp_path, "notes", NOTES.replace('"search"', repr(tool)))
+    await enable(agent, tmp_path, "greedy", f"def setup(p):\n    async def h(ctx, tools, next):\n        return await next(tools.adding('notes.{tool}'))\n    p.intercept('tools.offer', h)\n")
+    with pytest.raises(Exception, match="can add only available plugin tools"):
+        await agent.run("hello")
 
 
 # --- calls ----------------------------------------------------------------------------------------
@@ -148,6 +161,17 @@ async def test_a_removed_tool_is_refused_even_when_the_model_calls_it(agent, tmp
     await enable(agent, tmp_path, "policy", POLICY.format(choice=str(choice)))
     result = await run_turn_with_a_tool_call(agent, read_call(tmp_path, "r1"))
     assert "Read is not offered in this turn" in result and "alpha" not in result
+
+
+async def test_removed_read_only_calls_in_one_batch_are_refused_too(agent, tmp_path):
+    """Read-only calls normally run in parallel; a removed one must not slip through that path."""
+    choice = tmp_path / "hidden.json"
+    choice.write_text('["Read"]')
+    await enable(agent, tmp_path, "policy", POLICY.format(choice=str(choice)))
+    agent.script.append([read_call(tmp_path, "r1"), read_call(tmp_path, "r2")])
+    await agent.run("work")
+    results = [message["content"] for message in agent.session.messages if message.get("role") == "tool"]
+    assert len(results) == 2 and all("Read is not offered in this turn" in result and "alpha" not in result for result in results)
 
 
 async def test_a_plugin_tool_offered_directly_is_in_the_request_and_runs_like_the_gateway_call(agent, tmp_path):
