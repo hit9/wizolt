@@ -36,6 +36,11 @@ class TranscriptModal(ModalHarness):
 
 @pytest.fixture
 def command_loop(tmp_path, monkeypatch):
+    return transcript_loop(tmp_path, monkeypatch)
+
+
+def transcript_loop(tmp_path, monkeypatch):
+    """A command loop with a config file on disk, at a fixed terminal size and colour mode."""
     monkeypatch.delenv("NO_COLOR", raising=False)
     monkeypatch.setattr(Theme, "_mode", "dark")
     monkeypatch.setattr(Theme, "_diff_style", "auto")
@@ -80,7 +85,6 @@ def clear_and_type(template):
 async def test_the_tab_lists_the_engine_presets_with_the_selected_one_marked(command_loop):
     modal = command_loop.presentation.tui = TranscriptModal(["h"])
     await theme_command(command_loop, "")
-    assert transcripts.names() == tuple(transcript.PRESETS) == ("standard", "minimal")
     text = frames(modal)[-1]
     assert "1. * standard" in text and "2.   minimal" in text
     assert "{tool} {args}" in text  # each row shows the body it stands for
@@ -237,6 +241,25 @@ def test_a_draft_accepted_in_the_panel_keeps_its_custom_row(command_loop):
         assert state.selected_choice() == "format:custom"
         assert picker.selected["transcript"] == CUSTOM
         assert picker.transcript_source(CUSTOM) == CUSTOM_TEMPLATE
+    finally:
+        picker.restore()
+
+
+def test_a_custom_format_edited_to_a_preset_body_is_that_preset(command_loop):
+    """Starting from the custom row does not make a preset's own shape custom: saved as the
+    template text, `standard` would leave the builtin assembly for the template engine."""
+    from prompt_toolkit.document import Document
+
+    configure_transcript(command_loop, CUSTOM_TEMPLATE)
+    picker = appearance.AppearancePicker(command_loop, 0)
+    try:
+        for key in ("h", "f", "e"):
+            picker.handle_key(key, key)
+        assert picker.format is not None and picker.format.draft is not None
+        picker.format.draft = Document(transcript.PRESETS["standard"])
+        picker.handle_key("c-s", "")
+        assert picker.selected["transcript"] == "standard"
+        assert picker.transcript_source(picker.selected["transcript"]) == "preset:standard"
     finally:
         picker.restore()
 

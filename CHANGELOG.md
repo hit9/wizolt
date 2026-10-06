@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Fix `[transcript] format` templates: `|tail:N` on an output longer than 64 lines showed lines
+  near 64 instead of the real tail (and `{elided}` undercounted); `{endif}`/`{endfor}` written as
+  fields were taken for block ends; `|tail:0`/`|head:0` showed every line; `{output|tail:N}`
+  ignored a following text filter and did not count toward `{elided}`; a refused call's row said
+  `error` instead of `refused`. In `/theme`, editing a custom format back to the `standard` body
+  now selects `preset:standard` (the builtin rendering) instead of saving the template text. The
+  transcript tests now assert through rendered records and drawn seams rather than private
+  counters, and share the picker fixture.
+
 - Choose how the model's reasoning reads while it arrives and what closes a long run of tool calls
   with `[transcript] thinking` (`expanded`, `collapsed`, `hidden`) and `[transcript] close`
   (`rule`, `blank`, `none`); both are on the `/theme` Transcript tab beside the record format,

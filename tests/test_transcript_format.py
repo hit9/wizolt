@@ -21,22 +21,19 @@ from wizolt.tools.toolblocks import ToolDisplay
 OUTPUT = "l1\nl2\nl3\nl4\nl5"
 
 
-def facts(**overrides):
-    """The facts one settled call hands the engine."""
+def facts(*, failed=False, elapsed=0.42, **overrides):
+    """The facts one settled call hands the engine, derived by the host's own `record_values`;
+    `overrides` replace a derived fact outright."""
     base = transcript.record_values(
         tool="Bash",
         args="rg -n export_rows src",
         output=OUTPUT,
-        elapsed=0.42,
+        elapsed=elapsed,
         citation="tr.3",
-        elided=0,
-        failed=False,
+        failed=failed,
         exit_code="0",
     )
-    base.update(overrides)
-    # `error` is the failed call's result text, the way `record_values` derives it.
-    base["error"] = OUTPUT if base["failed"] else ""
-    return base
+    return {**base, **overrides}
 
 
 def template(source: str) -> transcript.RecordTemplate:
@@ -104,6 +101,8 @@ def test_an_absent_elapsed_prints_nothing_rather_than_zero():
         ("{error|firstline}", "l1"),
         ("{elapsed|duration}", "0.4s"),
         ("{tool|lower|upper}", "BASH"),  # filters apply left to right
+        ("{output|tail:2|upper}", "L4\nL5"),  # line filters pick the lines, text filters then apply
+        ("{output|head:0}", ""),  # a zero count is no lines, not every line
     ],
 )
 def test_filters_bound_a_field(source, expected):
@@ -119,6 +118,7 @@ def test_filters_bound_a_field(source, expected):
         ("{% for line in output|tail:2 %}{line}\n{% endfor %}", "l4\nl5"),
         ("{% for line in output|tail:1 %}[{line|upper}]{% endfor %}", "[L5]"),
         ("{% for line in output|tail:99 %}{line}|{% endfor %}", "l1|l2|l3|l4|l5|"),
+        ("{% for line in output|tail:0 %}{line}|{% endfor %}", ""),
     ],
 )
 def test_a_loop_over_output_is_bounded_by_its_filters(source, expected):
@@ -130,6 +130,10 @@ def test_a_multi_line_field_is_one_value_and_the_loop_is_how_you_split_it():
     row per output line loops over it instead."""
     assert render("{output}") == [OUTPUT]
     assert render("{% for line in output %}{line}\n{% endfor %}") == ["l1", "l2", "l3", "l4", "l5"]
+
+
+def test_the_render_cap_bounds_an_unfiltered_output():
+    assert len(text("{output}", output=[f"l{n}" for n in range(100)]).splitlines()) == transcript.MAX_OUTPUT_LINES
 
 
 @pytest.mark.parametrize(
@@ -171,6 +175,9 @@ def test_a_template_renders_any_number_of_lines():
         "{% endfor %}",
         "{% for line in args %}{line}{% endfor %}",  # only `var in output` is supported
         "{% for tool in output %}{tool}{% endfor %}",  # the loop variable cannot shadow a field
+        "{% if failed %}x{endif}",  # a field spelled like a terminator does not close the block
+        "{% for line in output %}{line}{endfor}",
+        "{else}",
     ],
 )
 def test_a_broken_template_is_a_parse_error(source):
@@ -190,8 +197,8 @@ def test_the_builtin_assembly_is_not_a_template(source):
     assert transcript.builtin_or_template(source) is None
 
 
-def test_a_preset_other_than_standard_expands_to_its_template():
-    assert template("preset:minimal").source == transcript.PRESETS["minimal"]
+def test_a_preset_other_than_standard_renders_as_its_template():
+    assert render("preset:minimal") == render(transcript.PRESETS["minimal"]) == ["● bash rg -n export_rows src"]
 
 
 def test_render_record_keeps_the_builtin_path_when_there_is_no_template():
@@ -207,7 +214,6 @@ def test_a_record_that_cannot_render_its_facts_falls_back_to_builtin():
 def test_an_unknown_duration_is_rendered_as_nothing_not_as_an_error():
     """`|duration` on a fact the host has no value for says nothing, like the fact itself."""
     assert transcript.render_record(template("{elapsed|duration}"), {"elapsed": "not a number"}) == []
-    assert text("{elapsed|duration}", elapsed=None) == ""
 
 
 # --- `{elided}` counts what the template itself hid ---------------------------------------
@@ -219,24 +225,26 @@ def test_an_unknown_duration_is_rendered_as_nothing_not_as_an_error():
         ("{% for line in output|tail:2 %}{line}{% endfor %}", 3),
         ("{% for line in output|head:1 %}{line}{% endfor %}", 4),
         ("{% for line in output %}{line}{% endfor %}", 0),
-        ("{output}", 0),  # no loop shows the whole body, so nothing was dropped
+        ("{output}", 0),  # the whole body fits the render cap, so nothing was dropped
+        ("{output|tail:2}", 3),  # a field drops lines exactly as a loop does
         ("{tool} {args}", 0),
         ("{% for line in output|tail:2 %}{line}{% endfor %}{% for line in output|head:1 %}{line}{% endfor %}", 3),
     ],
 )
-def test_elided_counts_the_lines_the_templates_loops_dropped(source, expected):
+def test_elided_counts_the_lines_the_template_dropped(source, expected):
     assert transcript.elided_count(template(source), facts()) == expected
 
 
-def test_the_trailer_reports_what_the_record_really_hid(tmp_path):
-    """`{elided}` is computed from the template's own loops, so the count it prints is the count
-    the record dropped -- not the caller's guess."""
+def test_tail_reads_the_real_end_of_an_output_longer_than_the_render_cap(tmp_path):
+    """The cap bounds what renders, not which lines a filter chooses from: `tail` on a long
+    output is its last lines, and the trailer counts everything before them."""
     s = session(tmp_path)
-    s.config.transcript = {"format": "{tool} {args}\n{% for line in output|tail:2 %}{line}\n{% endfor %}{% if elided %}… +{elided} more lines{% endif %}"}
+    s.config.transcript = {"format": "{tool}\n{% for line in output|tail:2 %}{line}\n{% endfor %}… +{elided}"}
+    long = "\n".join(f"l{n}" for n in range(1, 101))
 
-    block = toolblocks.finish_display(s, ToolCall("read-1", "Read", [{"path": "src/db/rows.rs"}]), "tr.2", OUTPUT, failed=False, elapsed=0.05)
+    block = toolblocks.finish_display(s, ToolCall("read-1", "Read", [{"path": "a.rs"}]), "tr.1", long, failed=False)
 
-    assert str(block).splitlines()[-1] == "    └ … +3 more lines"
+    assert [row.split()[-1] for row in str(block).splitlines()[1:]] == ["l99", "l100", "+98"]
 
 
 # --- end to end: what a settled call prints -----------------------------------------------
@@ -256,6 +264,8 @@ def test_minimal_preset_renders_a_one_line_checklist(tmp_path):
 
 
 def test_a_custom_template_renders_its_own_call_line_and_output_rows(tmp_path):
+    """Its trailer reports what the record itself hid: `{elided}` comes from the template's own
+    loops, not from the caller's guess."""
     s = session(tmp_path)
     s.config.transcript = {"format": "{tool} {args}\n{% for line in output|tail:2 %}{line}\n{% endfor %}{% if elided %}… +{elided} more lines{% endif %}"}
 
@@ -276,6 +286,17 @@ def test_a_failed_call_keeps_an_error_row_whatever_the_template_said(tmp_path, s
     rows = str(block).splitlines()
     assert rows[-1] == "    └ error ToolError: no such file"
     assert rows[0].endswith("[failed]")
+
+
+def test_a_refused_call_under_a_template_is_labelled_refused_like_the_builtin(tmp_path):
+    s = session(tmp_path)
+    s.config.transcript = {"format": "preset:minimal"}
+
+    block = toolblocks.finish_display(s, ToolCall("read-1", "Read", [{"path": "a.rs"}]), "", "user refused this call", failed=True)
+
+    rows = str(block).splitlines()
+    assert rows[-1] == "    └ refused user refused this call"
+    assert rows[0].endswith("[refused]")
 
 
 def test_a_record_that_shows_output_keeps_its_citation(tmp_path):

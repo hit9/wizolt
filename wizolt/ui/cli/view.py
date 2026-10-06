@@ -537,7 +537,6 @@ class View:
         mode = transcript.thinking(self.session.config) if kind == "reasoning" else transcript.THINKING[0]
         if not text or mode == "hidden":
             return []
-        visible = 1 if mode == "collapsed" else 6
         width = max(20, shutil.get_terminal_size((120, 20)).columns)
         # Drawn with LogBlock's own rail so it cannot drift from the tree every tool call draws.
         # The rows carry CONTINUE (`│`) and nothing carries BRANCH: `├` is a T-junction, and there
@@ -549,7 +548,7 @@ class View:
         # is not steady. Blank openings are skipped: a stream that starts with a bare newline would
         # otherwise draw an empty row for the whole answer, since only the first line is ever shown.
         lines = text.replace("\r", "\n").splitlines()
-        shown = [line for line in lines if line.strip()][:1] if mode == "collapsed" else lines[-visible:]
+        shown = [line for line in lines if line.strip()][:1] if mode == "collapsed" else lines[-6:]
         rows = [Text.clip_width(line.expandtabs(4), max(1, width - len(rail) - 1)) for line in shown]
         # The spark's row is the region's own, never the text's: a gray word beside the spark names
         # the phase (the same wording the divider below uses), and the first streamed line can arrive

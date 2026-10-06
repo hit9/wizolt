@@ -258,11 +258,12 @@ class AppearancePicker:
         hand -- the one accepted in the panel, else the one the config holds."""
         return "preset:" + name if name != CUSTOM else self.custom.get("transcript") or transcripts.saved(self.loop)
 
-    def accept_transcript_format(self, value: str, source: str) -> None:
-        """Select an edited record format. Edited back to the preset it came from it is that preset
-        again; otherwise it is the custom format, which the tab then lists under its own row. The
-        panel keeps showing the accepted text, so its value is what Enter will save."""
-        accepted = value if source == transcripts.body("preset:" + value) else transcripts.name(source, CUSTOM)
+    def accept_transcript_format(self, source: str) -> None:
+        """Select an edited record format. Edited to a preset's own shape it is that preset again --
+        whichever row the edit started from, `custom` included; otherwise it is the custom format,
+        which the tab then lists under its own row. The panel keeps showing the accepted text, so
+        its value is what Enter will save."""
+        accepted = transcripts.name(source, CUSTOM)
         if accepted == CUSTOM:
             self.custom["transcript"] = source
         self.selected["transcript"] = accepted
@@ -280,7 +281,7 @@ class AppearancePicker:
             lambda: self.transcript_source(self.transcript_edit),
             transcripts.saved(self.loop),
             apply=transcripts.problems,
-            accept=lambda source: self.accept_transcript_format(value, source),
+            accept=self.accept_transcript_format,
             presets=transcript.PRESETS,
             preview=lambda: transcripts.preview(self.transcript_source(self.transcript_edit), self.width),
         )

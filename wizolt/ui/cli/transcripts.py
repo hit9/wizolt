@@ -59,11 +59,6 @@ def choices(group: str) -> tuple[str, ...]:
     return transcript.THINKING if group == "thinking" else transcript.CLOSE
 
 
-def names() -> tuple[str, ...]:
-    """The format presets the tab offers, in the engine's own order."""
-    return tuple(transcript.PRESETS)
-
-
 def body(source: str) -> str:
     """The template a format stands for, with every preset spelled out: editing `standard`
     starts from the record shape it names, rather than from the builtin assembly it selects. A
@@ -151,7 +146,6 @@ def preview(source: str, columns: int) -> StyleAndTextTuples:
         output="\n".join(SAMPLE_OUTPUT),
         elapsed=0.4,
         citation=SAMPLE_CITATION,
-        elided=0,
         failed=False,
         exit_code="0",
     )

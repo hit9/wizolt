@@ -225,6 +225,11 @@ def reject_display(session: Session, call: ToolCall, output: str, *, d: ToolDisp
     return LogBlock.hierarchy(log_root(display + " · rejected: " + reason, LogRole.MUTED, d.batch_suffix, call), [])
 
 
+def _result_tag(output: str, *, failed: bool, d: ToolDisplay) -> str:
+    """The status tag after a settled call's key: how it ended, or how it was allowed to run."""
+    return " [refused]" if failed and "user refused" in output else " [failed]" if failed else " [approved]" if d.approved else " [auto]" if d.auto else ""
+
+
 def _template_display(
     session: Session,
     call: ToolCall,
@@ -251,7 +256,7 @@ def _template_display(
         return None  # Config validation already reported this; the record still prints.
     if template is None:
         return None
-    tag = " [refused]" if failed and "user refused" in output else " [failed]" if failed else " [approved]" if d.approved else " [auto]" if d.auto else ""
+    tag = _result_tag(output, failed=failed, d=d)
     citation = (key + tag).strip() if key else tag.strip()
     display = d.display or tooloutput.short_call(session, call)
     # A Bash record's `{output}` is the bounded stream preview, not the stored XML envelope: the
@@ -268,7 +273,6 @@ def _template_display(
         output=text,
         elapsed=elapsed,
         citation=citation,
-        elided=0,
         failed=failed,
         exit_code=tooloutput.bash_exit_code(output),
     )
@@ -334,7 +338,7 @@ def finish_display(
         return tooloutput.with_batch_suffix(d.display.removeprefix("Note ").strip(), d.batch_suffix)
     if block := _template_display(session, call, key, output, failed=failed, elapsed=elapsed, d=d):
         return block
-    tag = " [refused]" if failed and "user refused" in output else " [failed]" if failed else " [approved]" if d.approved else " [auto]" if d.auto else ""
+    tag = _result_tag(output, failed=failed, d=d)
     tree = d.nested_display or call.name == "Bash" or bool(d.vision_entry)
     # A failed call explains itself in the error child below, so its root only has to identify
     # the call -- collapsed to one line, or a multi-line display (Note keeps the whole rendered

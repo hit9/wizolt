@@ -117,11 +117,10 @@ def _parse_filters(spec: str) -> tuple[tuple[str, str], ...]:
 
 def _render_filters(items: list[str], filters: tuple[tuple[str, str], ...]) -> list[str]:
     for name, argument in filters:
-        count = int(argument) if argument else 0
-        if name == "tail" and count:
-            items = items[-count:]
-        elif name == "head" and count:
-            items = items[:count]
+        if name == "tail":
+            items = items[-int(argument) :] if int(argument) else []
+        elif name == "head":
+            items = items[: int(argument)]
     return items[:MAX_OUTPUT_LINES]
 
 
@@ -143,8 +142,8 @@ class RecordTemplate:
                 nodes.append(Text(body))
                 tokens = tokens[1:]
                 continue
-            keyword = body.split(" ", 1)[0]
-            if keyword in ("endif", "else", "endfor"):
+            # Only a directive terminates: `{endif}` is a field spelling, not `{% endif %}`.
+            if kind == "directive" and body.split(" ", 1)[0] in ("endif", "else", "endfor"):
                 return tuple(nodes), tokens
             node, tokens = self._node(kind, body, tokens[1:], loop)
             nodes.append(node)
@@ -223,8 +222,8 @@ class RecordTemplate:
     def _field(self, node: Field, values: dict[str, Any]) -> str:
         value: Any = values.get(node.name, "")
         if isinstance(value, list):
+            # Line filters pick the lines; the text filters then apply to what they picked.
             value = "\n".join(str(item) for item in _render_filters(list(value), node.filters))
-            return str(value)
         for name, _argument in node.filters:
             value = _apply(name, value)
         # A boolean is a condition, not copy: `{failed}` prints nothing and `{% if failed %}` reads
@@ -270,21 +269,24 @@ def render_record(template: RecordTemplate | None, values: dict[str, Any]) -> li
 
 
 def elided_count(template: RecordTemplate, values: dict[str, Any]) -> int:
-    """How many output lines the template's own loops drop: the honest value for `{elided}`,
-    so the trailer a template prints matches what it actually hid."""
+    """How many output lines the template's own loops and `{output}` fields drop: the honest
+    value for `{elided}`, so the trailer a template prints matches what it actually hid."""
     items = list(values.get("output", []))
-    shown = [len(_render_filters(items, node.filters)) for node in _loops(template.nodes)]
+    shown = [len(_render_filters(items, node.filters)) for node in _output_readers(template.nodes)]
     return max(0, len(items) - max(shown, default=len(items)))
 
 
-def _loops(nodes: tuple[Any, ...]) -> Iterator[Any]:
+def _output_readers(nodes: tuple[Node, ...]) -> Iterator[For | Field]:
+    """Every node that draws output lines: a loop over it, or an `{output}` field."""
     for node in nodes:
         if isinstance(node, For):
             yield node
-            yield from _loops(node.children)
+            yield from _output_readers(node.children)
+        elif isinstance(node, Field) and node.name == "output":
+            yield node
         elif isinstance(node, If):
-            yield from _loops(node.children)
-            yield from _loops(node.alternate)
+            yield from _output_readers(node.children)
+            yield from _output_readers(node.alternate)
 
 
 def record_values(
@@ -294,16 +296,19 @@ def record_values(
     output: str,
     elapsed: float | None,
     citation: str,
-    elided: int,
     failed: bool,
+    elided: int = 0,
     exit_code: str = "",
 ) -> dict[str, Any]:
     """The facts one settled call offers a template. `output` arrives bounded by the caller.
 
+    Every output line is kept: `|tail:N` must see the real tail, and the render applies the
+    `MAX_OUTPUT_LINES` cap after the filters chose their lines.
+
     An unknown fact is empty text, never a zero: `{elapsed}` prints nothing when the call has no
     measured time, and `{exit}` nothing when the tool reports no code. A condition field
     (`{failed}`) is a fact for `{% if %}`, so it renders no text either way."""
-    lines = [line for line in output.splitlines() if line.strip()][:MAX_OUTPUT_LINES]
+    lines = [line for line in output.splitlines() if line.strip()]
     return {
         "marker": "●",
         "tool": tool,
@@ -345,7 +350,9 @@ def template_block(
     children = [LogLine("", line, LogRole.OUTPUT, LogEdge.CONTINUE) for line in (lines if nested else lines[1:])]
     children.extend(extras or [])
     if failed:
-        children.append(LogLine("error", oneline(output, 220), LogRole.ERROR, LogEdge.END))
+        # Labelled as the builtin assembly labels it: a refusal is not an error.
+        label = "refused" if "user refused" in output else "error"
+        children.append(LogLine(label, oneline(output, 220), LogRole.ERROR, LogEdge.END))
     else:
         carries = citation and citation not in (root.meta if root else "") and not any(citation in child.meta or citation in child.text for child in children)
         if children and carries:
@@ -369,11 +376,11 @@ def validate(raw: Json) -> list[str]:
     problems: list[str] = []
     if unknown := set(raw) - {"format", "tool", "thinking", "close"}:
         problems.append(f"transcript: unknown settings: {', '.join(sorted(unknown))}")
-    for label, source in [("transcript.format", raw.get("format", ""))]:
-        if not isinstance(source, str):
-            problems.append(f"{label} must be a string")
-        else:
-            problems.extend(_problems(label, source))
+    source = raw.get("format", "")
+    if not isinstance(source, str):
+        problems.append("transcript.format must be a string")
+    else:
+        problems.extend(_problems("transcript.format", source))
     for key, choices in (("thinking", THINKING), ("close", CLOSE)):
         value = raw.get(key, choices[0])
         if value not in choices:
@@ -399,25 +406,27 @@ def _problems(label: str, source: str) -> list[str]:
     return []
 
 
+def _table(config: Any) -> dict[str, Any]:
+    """The raw `[transcript]` table, or an empty one when the config holds anything else."""
+    raw = getattr(config, "transcript", None)
+    return raw if isinstance(raw, dict) else {}
+
+
 def thinking(config: Any) -> str:
     """How reasoning appears while it arrives: every line, its first line, or nothing."""
-    raw = getattr(config, "transcript", None)
-    value = raw.get("thinking") if isinstance(raw, dict) else None
+    value = _table(config).get("thinking")
     return value if value in THINKING else THINKING[0]
 
 
 def close(config: Any) -> str:
     """How a long run of silent tool calls is closed before the next model text."""
-    raw = getattr(config, "transcript", None)
-    value = raw.get("close") if isinstance(raw, dict) else None
+    value = _table(config).get("close")
     return value if value in CLOSE else CLOSE[0]
 
 
 def effective_format(config: Any, tool: str) -> str:
     """The record format for one tool: its sparse override, else the global key. Empty = builtin."""
-    raw = getattr(config, "transcript", None)
-    if not isinstance(raw, dict):
-        return ""
+    raw = _table(config)
     override = raw.get("tool", {})
     if isinstance(override, dict):
         per_tool = override.get(tool)

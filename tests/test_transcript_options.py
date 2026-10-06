@@ -8,20 +8,17 @@ boundaries the product uses -- a config table in, a config file out.
 
 import os
 import shutil
-import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from test_command_ui import ModalHarness
-from tui_harness import loop
+from test_transcript_picker import TranscriptModal, frames, saved, transcript_loop
 
 from wizolt.base import LogBlock, LogEdge, TurnBox
 from wizolt.config import Config
 from wizolt.tools import transcript
-from wizolt.ui.cli import appearance, transcripts
+from wizolt.ui.cli import transcripts
 from wizolt.ui.cli.appearance import theme_command
-from wizolt.ui.render import Theme
 
 # The rail every streamed preview row hangs on, so a preview row can be told from the spark's.
 RAIL = LogBlock.prefix(TurnBox.CONTENT_LEVEL + 1, LogEdge.CONTINUE)
@@ -30,42 +27,9 @@ BOX_ROW = "  │ "
 BOX_EDGE = " │"
 
 
-class TranscriptModal(ModalHarness):
-    def invalidate(self):
-        pass
-
-    def recolor(self):
-        pass
-
-    def set_input_style(self, style):
-        self.input_style = style
-
-
 @pytest.fixture
 def command_loop(tmp_path, monkeypatch):
-    monkeypatch.delenv("NO_COLOR", raising=False)
-    monkeypatch.setattr(Theme, "_mode", "dark")
-    monkeypatch.setattr(Theme, "_diff_style", "auto")
-    monkeypatch.setattr(Theme, "_custom", {})
-    monkeypatch.setattr(Theme, "_bar_themes", {"statusbar": "inherit", "divider": "inherit"})
-    # The picker's geometry decides whether the sample is framed and how wide its rows are, so a
-    # developer's own terminal must not change what these tests read.
-    monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=None: os.terminal_size((80, 30)))
-    monkeypatch.setattr(appearance, "picker_height", lambda: 24)
-    command_loop = loop(tmp_path)
-    path = tmp_path / "config.toml"
-    path.write_text('# keep comment\n[runtime]\ntheme = "auto"\n')
-    command_loop.session.config.path = str(path)
-    command_loop.interactive_input = True
-    return command_loop
-
-
-def saved(command_loop):
-    return tomllib.loads(Path(command_loop.session.config.path).read_text())
-
-
-def frames(modal):
-    return ["".join(fragment[1] for fragment in frame) for frame in modal.frames]
+    return transcript_loop(tmp_path, monkeypatch)
 
 
 def box_rows(frame):
@@ -200,10 +164,8 @@ class RecordingUi:
     def __init__(self, due=True):
         self.seams = []
         self.due = due
-        self.asked = None
 
     def rule_due(self, min_rows):
-        self.asked = min_rows
         return self.due
 
     def emit_phase_rule(self):
@@ -256,31 +218,56 @@ def test_the_answer_preview_ignores_the_thinking_mode(command_loop, monkeypatch)
     assert stream_rows(command_loop) == [RAIL + f"answer line {index}" for index in range(2, 8)]
 
 
-@pytest.mark.parametrize(("style", "seams"), [("rule", ["rule"]), ("blank", ["blank"]), ("none", [])])
-async def test_close_chooses_the_seam_a_silent_run_ends_with(command_loop, monkeypatch, style, seams):
-    """A long silent run closes with the seam the table asks for, and the count restarts either
-    way: `none` draws nothing at all, which is a real choice rather than a missing seam."""
-    ui = RecordingUi()
-    command_loop.presentation.ui = ui
+def silent_batches(presentation, count):
+    for _ in range(count):
+        presentation.count_silent_batch()
+
+
+@pytest.mark.parametrize(("style", "seam"), [("rule", "rule"), ("blank", "blank")])
+def test_close_chooses_the_seam_a_silent_run_ends_with(command_loop, monkeypatch, style, seam):
+    """A long silent run closes with the seam the table asks for, and the next seam is a full run
+    away: one batch short of it draws nothing more."""
+    presentation = command_loop.presentation
+    presentation.ui = ui = RecordingUi()
     monkeypatch.setattr(command_loop.session.config, "transcript", {"close": style})
-    command_loop.presentation._silent_batches = command_loop.presentation.TOOL_RUN_RULE_BATCHES - 1
+    run = presentation.TOOL_RUN_RULE_BATCHES
 
-    command_loop.presentation.count_silent_batch()
+    silent_batches(presentation, run - 1)
+    assert ui.seams == []
+    silent_batches(presentation, 1)
+    assert ui.seams == [seam]
+    silent_batches(presentation, run - 1)
+    assert ui.seams == [seam]
+    silent_batches(presentation, 1)
+    assert ui.seams == [seam, seam]
 
-    assert ui.seams == seams
-    assert ui.asked == command_loop.presentation.MIN_ROWS_BETWEEN_RULES
-    assert command_loop.presentation._silent_batches == 0
+
+def test_close_none_draws_no_seam_and_still_restarts_the_run(command_loop, monkeypatch):
+    """`none` is a real choice, not a missing seam: switched back mid-session, the next seam waits
+    a full run after the one `none` swallowed."""
+    presentation = command_loop.presentation
+    presentation.ui = ui = RecordingUi()
+    monkeypatch.setattr(command_loop.session.config, "transcript", {"close": "none"})
+    run = presentation.TOOL_RUN_RULE_BATCHES
+
+    silent_batches(presentation, run)
+    assert ui.seams == []
+    monkeypatch.setattr(command_loop.session.config, "transcript", {"close": "rule"})
+    silent_batches(presentation, run - 1)
+    assert ui.seams == []
+    silent_batches(presentation, 1)
+    assert ui.seams == ["rule"]
 
 
-async def test_a_run_too_close_to_the_rule_above_draws_no_seam_whatever_close_says(command_loop, monkeypatch):
+def test_a_run_too_close_to_the_rule_above_draws_no_seam_whatever_close_says(command_loop, monkeypatch):
     """The distance holds the seam back for every style, and the count keeps running, so the seam
     lands on the batch that finally clears it."""
-    ui = RecordingUi(due=False)
-    command_loop.presentation.ui = ui
+    presentation = command_loop.presentation
+    presentation.ui = ui = RecordingUi(due=False)
     monkeypatch.setattr(command_loop.session.config, "transcript", {"close": "blank"})
-    command_loop.presentation._silent_batches = command_loop.presentation.TOOL_RUN_RULE_BATCHES - 1
 
-    command_loop.presentation.count_silent_batch()
-
+    silent_batches(presentation, presentation.TOOL_RUN_RULE_BATCHES)
     assert ui.seams == []
-    assert command_loop.presentation._silent_batches == command_loop.presentation.TOOL_RUN_RULE_BATCHES
+    ui.due = True
+    silent_batches(presentation, 1)
+    assert ui.seams == ["blank"]
