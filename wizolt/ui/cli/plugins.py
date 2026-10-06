@@ -13,11 +13,11 @@ from prompt_toolkit.formatted_text import StyleAndTextTuples
 
 from wizolt.agentsmd import display_path
 from wizolt.base import Text
+from wizolt.formats import Fragments, clean, clip
 from wizolt.plugins.layout import INPUT_SLOTS, LayoutBudget
 from wizolt.plugins.loading import PluginSource
 from wizolt.sdk import Line, Panel, PluginError
 from wizolt.sdk import Text as PluginText
-from wizolt.ui.bars import Fragments, clean, clip
 from wizolt.ui.cli.modals import choice_application, picker_height
 from wizolt.ui.render import Theme
 from wizolt.ui.tui import ChoiceViewState

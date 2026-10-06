@@ -14,10 +14,10 @@ from typing import TYPE_CHECKING
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyBindings
 
+from wizolt.formats import clean
 from wizolt.sdk import PluginError
 from wizolt.sdk.operations import MAX_TEXT
 from wizolt.sdk.views import View
-from wizolt.ui.bars import clean
 from wizolt.ui.tui.app import TuiApp
 from wizolt.ui.tui.keys import normalized_key
 from wizolt.ui.tui.plugin_views import DialogState

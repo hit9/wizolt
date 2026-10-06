@@ -1,9 +1,9 @@
-"""`[transcript] format`: one template per settled tool call.
+"""`[transcript] format`: one format string per row of a settled tool call's record.
 
 The engine is pure -- a source string and the facts a record already computed go in, lines come
 out -- so most of it is pinned without a session. The end-to-end half goes through
 `toolblocks.finish_display`, which is where only the host can guarantee anything: the two red
-lines hold whatever the template said (a failed call keeps its error row, a record that shows
+lines hold whatever the format said (a failed call keeps its error row, a record that shows
 output keeps its citation), an unset key stays the builtin assembly byte for byte, and a
 per-tool override beats the global format.
 """
@@ -17,44 +17,36 @@ from wizolt.base import ToolCall
 from wizolt.tools import Tool, toolblocks, transcript
 from wizolt.tools.toolblocks import ToolDisplay
 
-# Five lines, so a `|tail:2` loop has something to hide and `{elided}` has a value.
+# Five lines, so a `|tail:2` row has something to hide and `{elided}` has a value.
 OUTPUT = "l1\nl2\nl3\nl4\nl5"
 
 
-def facts(*, failed=False, elapsed=0.42, **overrides):
+def facts(*, output: str = OUTPUT, failed: bool = False, elapsed: float | None = 0.42, **overrides):
     """The facts one settled call hands the engine, derived by the host's own `record_values`;
     `overrides` replace a derived fact outright."""
-    base = transcript.record_values(
-        tool="Bash",
-        args="rg -n export_rows src",
-        output=OUTPUT,
-        elapsed=elapsed,
-        citation="tr.3",
-        failed=failed,
-        exit_code="0",
-    )
+    base = transcript.record_values(tool="Bash", args="rg -n export_rows src", output=output, elapsed=elapsed, citation="tr.3", failed=failed, exit_code="0")
     return {**base, **overrides}
 
 
 def template(source: str) -> transcript.RecordTemplate:
-    parsed = transcript.builtin_or_template(source)
+    parsed = transcript.parsed(source)
     assert parsed is not None, f"{source!r} must not be a builtin passthrough"
     return parsed
 
 
-def render(source: str, **overrides) -> list[str]:
-    return template(source).render(facts(**overrides))
+def render(source: str, output: str = OUTPUT, **overrides) -> list[str]:
+    return template(source).render(facts(output=output, **overrides), transcript.output_lines(output))
 
 
-def text(source: str, **overrides) -> str:
-    return "\n".join(render(source, **overrides))
+def text(source: str, output: str = OUTPUT, **overrides) -> str:
+    return "\n".join(render(source, output, **overrides))
 
 
 def bash_output(stdout: str = "", stderr: str = "", code: int = 0) -> str:
     return Tool.process_result("BashToolResult", code, stdout, stderr)
 
 
-# --- the engine: fields, filters, blocks -------------------------------------------------
+# --- the engine: fields and conditions, one row per line ------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -62,14 +54,13 @@ def bash_output(stdout: str = "", stderr: str = "", code: int = 0) -> str:
     [
         ("{marker}", "●"),
         ("{tool}", "Bash"),
+        ("{name}", "bash"),  # the tool's name in lowercase, for a quieter row
         ("{args}", "rg -n export_rows src"),
-        ("{output}", OUTPUT),
-        ("{elapsed}", "0.42"),
-        ("{elapsed|duration}", "0.4s"),
+        ("{elapsed:.2f}", "0.42"),
+        ("{duration}", "0.4s"),
         ("{exit}", "0"),
         ("{citation}", "tr.3"),
         ("{elided}", "0"),
-        ("{error}", ""),  # a successful call has no error text to print
         ("{tool} {args}", "Bash rg -n export_rows src"),
     ],
 )
@@ -78,62 +69,15 @@ def test_a_field_renders_the_fact_it_names(source, expected):
 
 
 def test_the_failure_facts_describe_the_failure():
-    assert text("{error}", failed=True) == OUTPUT  # the whole result is the error text
-    assert text("{error|firstline}", failed=True) == "l1"
-    # The flag itself is a condition, not prose: printed bare it renders no text, and the
-    # condition form is what reads it.
-    assert text("{failed}", failed=True) == ""
-    assert text("{failed}") == ""
-    assert text("{failed}{% if failed %} failed{% endif %}", failed=True) == " failed"
+    assert text("{error}", output="ToolError: no such file\nmore", failed=True) == "ToolError: no such file"
+    assert text("{% if failed %}failed: {error}{% endif %}", output="boom", failed=True) == "failed: boom"
+    assert text("{% if failed %}failed{% endif %}") == ""
 
 
-def test_an_absent_elapsed_prints_nothing_rather_than_zero():
-    assert text("{elapsed}") == "0.42"  # a measured time is printed as raw seconds
-    assert text("{elapsed}", elapsed=None) == ""
-    assert text("{elapsed|duration}", elapsed=None) == ""
-
-
-@pytest.mark.parametrize(
-    ("source", "expected"),
-    [
-        ("{tool|lower}", "bash"),
-        ("{tool|upper}", "BASH"),
-        ("{error|firstline}", "l1"),
-        ("{elapsed|duration}", "0.4s"),
-        ("{tool|lower|upper}", "BASH"),  # filters apply left to right
-        ("{output|tail:2|upper}", "L4\nL5"),  # line filters pick the lines, text filters then apply
-        ("{output|head:0}", ""),  # a zero count is no lines, not every line
-    ],
-)
-def test_filters_bound_a_field(source, expected):
-    assert text(source, failed=True) == expected
-
-
-@pytest.mark.parametrize(
-    ("source", "expected"),
-    [
-        ("{% for line in output %}{line}|{% endfor %}", "l1|l2|l3|l4|l5|"),
-        ("{% for line in output|tail:2 %}{line}|{% endfor %}", "l4|l5|"),
-        ("{% for line in output|head:2 %}{line}|{% endfor %}", "l1|l2|"),
-        ("{% for line in output|tail:2 %}{line}\n{% endfor %}", "l4\nl5"),
-        ("{% for line in output|tail:1 %}[{line|upper}]{% endfor %}", "[L5]"),
-        ("{% for line in output|tail:99 %}{line}|{% endfor %}", "l1|l2|l3|l4|l5|"),
-        ("{% for line in output|tail:0 %}{line}|{% endfor %}", ""),
-    ],
-)
-def test_a_loop_over_output_is_bounded_by_its_filters(source, expected):
-    assert text(source) == expected
-
-
-def test_a_multi_line_field_is_one_value_and_the_loop_is_how_you_split_it():
-    """`{output}` outside a loop is the whole body as one element, so a template that wants one
-    row per output line loops over it instead."""
-    assert render("{output}") == [OUTPUT]
-    assert render("{% for line in output %}{line}\n{% endfor %}") == ["l1", "l2", "l3", "l4", "l5"]
-
-
-def test_the_render_cap_bounds_an_unfiltered_output():
-    assert len(text("{output}", output=[f"l{n}" for n in range(100)]).splitlines()) == transcript.MAX_OUTPUT_LINES
+def test_an_unknown_time_prints_nothing_rather_than_zero():
+    assert text("{duration}", elapsed=None) == "" and text("{elapsed}", elapsed=None) == ""
+    # A format spec cannot format a time nobody measured: the record keeps the builtin assembly.
+    assert transcript.render_record(template("{elapsed:.1f}s"), facts(elapsed=None), []) is None
 
 
 @pytest.mark.parametrize(
@@ -141,110 +85,105 @@ def test_the_render_cap_bounds_an_unfiltered_output():
     [
         ("{% if failed %}err{% else %}ok{% endif %}", {}, "ok"),
         ("{% if failed %}err{% else %}ok{% endif %}", {"failed": True}, "err"),
-        ("{% if not failed %}ok{% endif %}", {}, "ok"),
         ("{% if not failed %}ok{% endif %}", {"failed": True}, ""),
-        ("{% if elided %}… +{elided} more lines{% endif %}", {"elided": 3}, "… +3 more lines"),
-        ("{% if elided %}more{% endif %}", {}, ""),
-        ("{% if exit %}ran{% endif %}", {"exit": ""}, ""),
+        ("{% if elided > 2 %}many{% else %}few{% endif %}", {"elided": 3}, "many"),
+        ("{% if exit != '0' %}exit {exit}{% endif %}", {"exit": "2"}, "exit 2"),
     ],
 )
-def test_if_else_and_not_pick_one_branch(source, overrides, expected):
+def test_conditions_are_expressions_over_the_facts(source, overrides, expected):
     assert text(source, **overrides) == expected
 
 
-def test_a_template_renders_any_number_of_lines():
-    assert render("{tool} {args}\n{% for line in output|tail:2 %}{line}\n{% endfor %}") == ["Bash rg -n export_rows src", "l4", "l5"]
-
-
-# --- the engine: refusals ----------------------------------------------------------------
+def test_each_line_is_a_row_and_a_row_that_renders_nothing_disappears():
+    """A conditional row needs no syntax of its own: when it renders empty it is left out, rather
+    than drawn as a blank row."""
+    source = "{tool} {args}\n{% if failed %}failed{% endif %}\n{citation}"
+    assert render(source) == ["Bash rg -n export_rows src", "tr.3"]
+    assert render(source, failed=True) == ["Bash rg -n export_rows src", "failed", "tr.3"]
 
 
 @pytest.mark.parametrize(
-    "source",
+    ("row", "expected"),
     [
-        "{nope}",  # unknown field
-        "{tool|nope}",  # unknown filter
-        "{output|tail:x}",  # a count filter needs a count
-        "{% nope %}",  # unknown directive
-        "{% if nope %}x{% endif %}",  # unknown condition
-        "{% if failed %}x",  # unclosed if
-        "{% if failed %}x{% else %}y",  # unclosed else branch
-        "{% for line in output %}x",  # unclosed for
-        "{% else %}",  # else outside an if
-        "{% endif %}",
-        "{% endfor %}",
-        "{% for line in args %}{line}{% endfor %}",  # only `var in output` is supported
-        "{% for tool in output %}{tool}{% endfor %}",  # the loop variable cannot shadow a field
-        "{% if failed %}x{endif}",  # a field spelled like a terminator does not close the block
-        "{% for line in output %}{line}{endfor}",
-        "{else}",
+        ("{output}", ["l1", "l2", "l3", "l4", "l5"]),
+        ("{output|tail:2}", ["l4", "l5"]),
+        ("{output|head:2}", ["l1", "l2"]),
+        ("{output|tail:0}", []),  # a zero count is no lines, not every line
+        ("  {output|tail:1}  ", ["l5"]),  # the reserved row is the whole line, spaces aside
     ],
 )
-def test_a_broken_template_is_a_parse_error(source):
-    with pytest.raises(ValueError):
-        transcript.builtin_or_template(source)
+def test_the_output_row_picks_the_calls_output_lines(row, expected):
+    assert render(row) == expected
 
 
-def test_an_unknown_preset_is_a_parse_error():
-    with pytest.raises(ValueError, match="unknown preset"):
-        transcript.builtin_or_template("preset:compact")
+def test_output_rows_take_the_real_tail_and_are_bounded():
+    long = "\n".join(f"l{n}" for n in range(1, 101))
+    assert render("{output|tail:2}", long) == ["l99", "l100"]
+    assert len(render("{output}", long)) == transcript.MAX_OUTPUT_LINES
 
 
-@pytest.mark.parametrize("source", ["", "preset:standard"])
-def test_the_builtin_assembly_is_not_a_template(source):
-    """Unset, empty, and `preset:standard` all name the builtin rendering; only a real template
-    goes through the engine."""
-    assert transcript.builtin_or_template(source) is None
+def test_elided_counts_what_the_output_rows_hide():
+    assert template("{output|tail:2}").shown(5) == 2
+    assert template("{output|tail:2}\n{output|head:4}").shown(5) == 4  # the widest row decides
+    assert template("{tool} {args}").shown(5) == 5  # showing no output hides nothing to count
 
 
-def test_a_preset_other_than_standard_renders_as_its_template():
+# --- the engine: refusals ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("source", "reason"),
+    [
+        ("{nope}", "unknown field"),
+        ("{tool:x}", "unknown field or format"),
+        ("{% nope %}", "unexpected directive"),
+        ("{% if nope %}x{% endif %}", "unknown field 'nope'"),
+        ("{% if failed %}x", "unclosed template block"),
+        ("{% else %}", "unexpected directive"),
+        ("{output|tail:x}", "unknown field or format"),  # not the reserved row: a broken field
+        ("{output} and more", "unknown field or format"),  # output is a whole row, never inline
+        ("[error]{tool}[/]", "plain text"),  # a record's colors are host-owned roles
+        ("{tool}{>}{args}", "plain text"),  # rows are not width-driven
+        ("{% optional priority=1 %}{tool}{% endoptional %}", "plain text"),
+        ("x [y]", "plain text"),
+        ("x {", "unmatched delimiter"),
+    ],
+)
+def test_a_broken_format_is_refused_with_its_row(source, reason):
+    with pytest.raises(ValueError, match=reason) as raised:
+        transcript.parsed(source)
+    assert str(raised.value).startswith("row 1")
+
+
+def test_a_problem_names_its_row_and_column():
+    with pytest.raises(ValueError, match=r"^row 2: line 1, column 5: unknown field or format 'nope'"):
+        transcript.parsed("{tool}\nok: {nope}")
+
+
+def test_an_unknown_preset_is_refused():
+    with pytest.raises(ValueError, match="unknown preset 'compact'"):
+        transcript.parsed("preset:compact")
+
+
+@pytest.mark.parametrize("source", ["", "  ", "preset:standard"])
+def test_the_builtin_assembly_is_not_a_format(source):
+    """Unset, empty, and `preset:standard` all name the builtin rendering."""
+    assert transcript.parsed(source) is None
+
+
+def test_a_preset_renders_as_its_rows():
     assert render("preset:minimal") == render(transcript.PRESETS["minimal"]) == ["● bash rg -n export_rows src"]
 
 
-def test_render_record_keeps_the_builtin_path_when_there_is_no_template():
-    assert transcript.render_record(None, facts()) is None
-    assert transcript.render_record(template("{tool}"), facts()) == ["Bash"]
-
-
-def test_a_record_that_cannot_render_its_facts_falls_back_to_builtin():
-    """A bad fact never loses a record: the failure is reported as None, not raised."""
-    assert transcript.render_record(template("{% for line in output|tail:2 %}{line}{% endfor %}"), {"output": None}) is None
-
-
-def test_an_unknown_duration_is_rendered_as_nothing_not_as_an_error():
-    """`|duration` on a fact the host has no value for says nothing, like the fact itself."""
-    assert transcript.render_record(template("{elapsed|duration}"), {"elapsed": "not a number"}) == []
-
-
-# --- `{elided}` counts what the template itself hid ---------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("source", "expected"),
-    [
-        ("{% for line in output|tail:2 %}{line}{% endfor %}", 3),
-        ("{% for line in output|head:1 %}{line}{% endfor %}", 4),
-        ("{% for line in output %}{line}{% endfor %}", 0),
-        ("{output}", 0),  # the whole body fits the render cap, so nothing was dropped
-        ("{output|tail:2}", 3),  # a field drops lines exactly as a loop does
-        ("{tool} {args}", 0),
-        ("{% for line in output|tail:2 %}{line}{% endfor %}{% for line in output|head:1 %}{line}{% endfor %}", 3),
-    ],
-)
-def test_elided_counts_the_lines_the_template_dropped(source, expected):
-    assert transcript.elided_count(template(source), facts()) == expected
-
-
-def test_tail_reads_the_real_end_of_an_output_longer_than_the_render_cap(tmp_path):
-    """The cap bounds what renders, not which lines a filter chooses from: `tail` on a long
-    output is its last lines, and the trailer counts everything before them."""
-    s = session(tmp_path)
-    s.config.transcript = {"format": "{tool}\n{% for line in output|tail:2 %}{line}\n{% endfor %}… +{elided}"}
-    long = "\n".join(f"l{n}" for n in range(1, 101))
-
-    block = toolblocks.finish_display(s, ToolCall("read-1", "Read", [{"path": "a.rs"}]), "tr.1", long, failed=False)
-
-    assert [row.split()[-1] for row in str(block).splitlines()[1:]] == ["l99", "l100", "+98"]
+def test_a_format_is_parsed_once_however_many_records_use_it():
+    """The hot path: every settled call looks its format up; parsing it each time would cost
+    every record. A broken format is remembered as broken too."""
+    assert transcript.parsed("{tool} {name}") is transcript.parsed("{tool} {name}")
+    with pytest.raises(ValueError) as first:
+        transcript.parsed("{nope} once")
+    with pytest.raises(ValueError) as second:
+        transcript.parsed("{nope} once")
+    assert first.value is second.value
 
 
 # --- end to end: what a settled call prints -----------------------------------------------
@@ -263,21 +202,40 @@ def test_minimal_preset_renders_a_one_line_checklist(tmp_path):
     assert str(read) == "  ●  read src/db/rows.rs → tr.2"
 
 
-def test_a_custom_template_renders_its_own_call_line_and_output_rows(tmp_path):
-    """Its trailer reports what the record itself hid: `{elided}` comes from the template's own
-    loops, not from the caller's guess."""
+def test_a_custom_format_renders_its_own_call_line_and_output_rows(tmp_path):
+    """Its closing row reports what the record itself hid: `{elided}` comes from the format's own
+    output rows, not from the caller's guess."""
     s = session(tmp_path)
-    s.config.transcript = {"format": "{tool} {args}\n{% for line in output|tail:2 %}{line}\n{% endfor %}{% if elided %}… +{elided} more lines{% endif %}"}
+    s.config.transcript = {"format": "{tool} {args}\n{output|tail:2}\n{% if elided %}… +{elided} more lines{% endif %}"}
 
     block = toolblocks.finish_display(s, ToolCall("read-1", "Read", [{"path": "src/db/rows.rs"}]), "tr.2", OUTPUT, failed=False, elapsed=0.05)
 
     assert str(block) == ("  Read  src/db/rows.rs → tr.2\n    │ l4\n    │ l5\n    └ … +3 more lines")
 
 
+def test_a_long_output_shows_its_real_tail_and_counts_everything_before_it(tmp_path):
+    s = session(tmp_path)
+    s.config.transcript = {"format": "{tool}\n{output|tail:2}\n… +{elided}"}
+    long = "\n".join(f"l{n}" for n in range(1, 101))
+
+    block = toolblocks.finish_display(s, ToolCall("read-1", "Read", [{"path": "a.rs"}]), "tr.1", long, failed=False)
+
+    assert [row.split()[-1] for row in str(block).splitlines()[1:]] == ["l99", "l100", "+98"]
+
+
+def test_a_bash_record_shows_its_streams_not_the_stored_envelope(tmp_path):
+    s = session(tmp_path)
+    s.config.transcript = {"format": "{tool} exit {exit}\n{output}"}
+
+    block = toolblocks.finish_display(s, ToolCall("bash-1", "Bash", ["make"]), "tr.1", bash_output("built", code=0), failed=False)
+
+    assert str(block) == "  Bash  exit 0 → tr.1\n    └ built"
+
+
 @pytest.mark.parametrize("source", ["preset:minimal", "{tool} {citation}", "{elided}"])
-def test_a_failed_call_keeps_an_error_row_whatever_the_template_said(tmp_path, source):
-    """The narrowest template still cannot hide why a call failed: the error's first line is a
-    host-owned row, appended after whatever the template rendered."""
+def test_a_failed_call_keeps_an_error_row_whatever_the_format_said(tmp_path, source):
+    """The narrowest format still cannot hide why a call failed: the error's first line is a
+    host-owned row, appended after whatever the format rendered."""
     s = session(tmp_path)
     s.config.transcript = {"format": source}
 
@@ -288,7 +246,7 @@ def test_a_failed_call_keeps_an_error_row_whatever_the_template_said(tmp_path, s
     assert rows[0].endswith("[failed]")
 
 
-def test_a_refused_call_under_a_template_is_labelled_refused_like_the_builtin(tmp_path):
+def test_a_refused_call_under_a_format_is_labelled_refused_like_the_builtin(tmp_path):
     s = session(tmp_path)
     s.config.transcript = {"format": "preset:minimal"}
 
@@ -300,27 +258,18 @@ def test_a_refused_call_under_a_template_is_labelled_refused_like_the_builtin(tm
 
 
 def test_a_record_that_shows_output_keeps_its_citation(tmp_path):
-    """A template that drops `{citation}` cannot make a stored result unreachable."""
+    """A format that drops `{citation}` cannot make a stored result unreachable."""
     s = session(tmp_path)
-    s.config.transcript = {"format": "{tool} {args}\n{% for line in output|tail:1 %}{line}{% endfor %}"}
+    s.config.transcript = {"format": "{tool} {args}\n{output|tail:1}"}
+    call = ToolCall("read-1", "Read", [{"path": "src/db/rows.rs"}])
 
-    plain = str(toolblocks.finish_display(s, ToolCall("read-1", "Read", [{"path": "src/db/rows.rs"}]), "tr.2", "line one\nline two", failed=False))
-    nested = str(
-        toolblocks.finish_display(
-            s,
-            ToolCall("read-1", "Read", [{"path": "src/db/rows.rs"}]),
-            "tr.2",
-            "line one\nline two",
-            failed=False,
-            d=ToolDisplay(nested_display=True),
-        )
-    )
+    plain = str(toolblocks.finish_display(s, call, "tr.2", "line one\nline two", failed=False))
+    nested = str(toolblocks.finish_display(s, call, "tr.2", "line one\nline two", failed=False, d=ToolDisplay(nested_display=True)))
 
     assert plain.splitlines()[0] == "  Read  src/db/rows.rs → tr.2"
     # Nested, the runner already drew the call line, so the record's own last row has to carry it.
     rows = nested.splitlines()
-    assert rows[-1].startswith("    └ line two")
-    assert rows[-1].endswith("tr.2")
+    assert rows[-1].startswith("    └ line two") and rows[-1].endswith("tr.2")
 
 
 def test_a_per_tool_override_beats_the_global_format(tmp_path):
@@ -334,17 +283,22 @@ def test_a_per_tool_override_beats_the_global_format(tmp_path):
     assert read == "  ●  read src/db/rows.rs → tr.2"  # unset tools inherit the global format
 
 
-def test_engine_owned_rows_survive_a_custom_template(tmp_path):
-    """A record's shape never owns the host's structure: under the narrowest template an Ask call
-    still shows the answer the builtin assembly draws."""
+def test_engine_owned_rows_are_the_same_under_any_format(tmp_path):
+    """A record's shape never owns the host's structure: under the narrowest format an Ask call
+    and a ToolScript draw exactly the rows the builtin assembly draws for them."""
     s = session(tmp_path)
+    ask = (ToolCall("ask-1", "Ask", [{"questions": [{"question": "Which?"}]}]), "typed answer")
+    script = (ToolCall("ts-1", "ToolScript", [{"code": "print(1)"}]), '{"calls": 2, "stdout": "one\\ntwo", "error": ""}')
+
+    def body(call, output):
+        rows = str(toolblocks.finish_display(s, call, "tr.4", output, failed=False, elapsed=1.0)).splitlines()
+        return rows[1:]
+
+    builtin = [body(*ask), body(*script)]
     s.config.transcript = {"format": "preset:minimal"}
+    formatted = [body(*ask), body(*script)]
 
-    block = toolblocks.finish_display(s, ToolCall("ask-1", "Ask", [{"questions": [{"question": "Which?"}]}]), "tr.4", "typed answer", failed=False)
-
-    rows = str(block).splitlines()
-    assert rows[0].startswith("  ●  ask")
-    assert rows[1] == "    └ answer typed answer"
+    assert formatted == builtin and builtin[0] == ["    └ answer typed answer"]
 
 
 def test_an_unparseable_format_never_costs_a_record(tmp_path):
@@ -358,8 +312,8 @@ def test_an_unparseable_format_never_costs_a_record(tmp_path):
 
 
 def test_an_unset_format_is_the_builtin_assembly_byte_for_byte(tmp_path):
-    """The golden-equivalence requirement: unset, empty, and `preset:standard` all render exactly
-    as the builtin assembly does -- `preset:standard` must not go near the engine."""
+    """Unset, empty, and `preset:standard` all render exactly as the builtin assembly does --
+    `preset:standard` must not go near the engine."""
     s = session(tmp_path)
     records = [
         (ToolCall("bash-1", "Bash", ["rg -n export_rows src"]), bash_output("src/db/rows.rs:12: export_rows"), False, False),
@@ -381,6 +335,15 @@ def test_an_unset_format_is_the_builtin_assembly_byte_for_byte(tmp_path):
     assert rendered["unset"][2] == "  Read  missing.rs → tr.3 [failed]\n    └ error ToolError: no such file"
 
 
+def test_an_explicit_source_renders_without_touching_the_config(tmp_path):
+    """The `/theme` sample settles its call through this same path with a draft format."""
+    s = session(tmp_path)
+    call = ToolCall("read-1", "Read", [{"path": "a.rs"}])
+
+    assert str(toolblocks.finish_display(s, call, "tr.1", "body", failed=False, source="preset:minimal")) == "  ●  read a.rs → tr.1"
+    assert s.config.transcript == {}
+
+
 # --- the config table ---------------------------------------------------------------------
 
 
@@ -390,7 +353,7 @@ def test_an_unset_format_is_the_builtin_assembly_byte_for_byte(tmp_path):
         {},
         {"format": "preset:standard"},
         {"format": "preset:minimal"},
-        {"format": "{tool} {args}\n{% if failed %}{error|firstline}{% endif %}"},
+        {"format": "{tool} {args}\n{% if failed %}{error}{% endif %}\n{output|tail:3}"},
         {"tool": {"Bash": {"format": "{tool} {args}"}, "Read": {"format": "preset:standard"}}},
         {"format": "preset:minimal", "tool": {"Bash": {"format": "{tool} {args}"}}},
     ],
@@ -409,10 +372,10 @@ def test_a_good_transcript_table_validates_clean(raw):
         ({"tool": {"Bash": "preset:minimal"}}, "transcript.tool.Bash must be a table with a string format"),
         ({"tool": {"Bash": {"format": 3}}}, "transcript.tool.Bash must be a table with a string format"),
         ({"tool": {"Bash": {"density": "minimal"}}}, "transcript.tool.Bash must be a table with a string format"),
-        ({"format": "{% if failed %}x"}, "missing endif"),
+        ({"format": "{% if failed %}x"}, "transcript.format: row 1: unclosed template block"),
         ({"format": "{nope}"}, "unknown field"),
         ({"format": "preset:compact"}, "unknown preset"),
-        ({"tool": {"Bash": {"format": "{nope}"}}}, "transcript.tool.Bash"),
+        ({"tool": {"Bash": {"format": "{nope}"}}}, "transcript.tool.Bash: row 1"),
     ],
 )
 def test_a_broken_transcript_table_reports_the_problem(raw, message):
@@ -428,22 +391,9 @@ def test_effective_format_resolves_the_override_then_the_global_key():
     assert transcript.effective_format(config, "Read") == "preset:minimal"
 
 
-@pytest.mark.parametrize(
-    "table",
-    [
-        {},
-        {"tool": {"Bash": {}}},
-        {"tool": {"Bash": {"format": 3}}},
-        {"format": 3},
-        "not a table",
-        None,
-    ],
-)
+@pytest.mark.parametrize("table", [{}, {"tool": {"Bash": {}}}, {"tool": {"Bash": {"format": 3}}}, {"format": 3}, "not a table", None])
 def test_effective_format_is_empty_when_nothing_usable_is_set(table):
     """An empty result is the builtin assembly, so a malformed table degrades to today's
     transcript instead of an empty one."""
     assert transcript.effective_format(SimpleNamespace(transcript=table), "Bash") == ""
-
-
-def test_effective_format_tolerates_a_config_without_the_table():
     assert transcript.effective_format(SimpleNamespace(), "Bash") == ""

@@ -1,10 +1,10 @@
 """Transcript record previews and config saves for the appearance picker.
 
 The `/theme` Transcript tab: it shows what a `[transcript] format` does to a sample record and
-writes the choice to `[transcript] format`. The preview renders through the same engine the
-transcript uses (`wizolt.tools.transcript`), so what the tab shows is what the record prints --
-including the two rows the engine always adds, a failed call's error and the stored-result
-citation.
+writes the choice to `[transcript] format`. The preview settles a sample call through the
+transcript's own path (`toolblocks.finish_display`), so what the tab shows is what the record
+prints -- the builtin assembly for `standard`, the format's rows otherwise, and the rows the host
+always adds.
 """
 
 from __future__ import annotations
@@ -13,16 +13,20 @@ from typing import TYPE_CHECKING
 
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 
-from wizolt.base import ConfigError, LogBlock, LogEdge, Text, TurnBox
+from wizolt.base import ConfigError, LogBlock, LogEdge, Text, ToolCall, TurnBox
 from wizolt.config import ConfigFile
-from wizolt.tools import transcript
+from wizolt.tools import Tool, toolblocks, transcript
+from wizolt.tools.toolblocks import ToolDisplay
 from wizolt.ui.render import Theme, UiPrinter
 
 if TYPE_CHECKING:
+    from wizolt.session import Session
     from wizolt.ui.cli.loop import CommandLoop
 
-# The sample record the tab previews: a settled call and the facts a template sees. Plain lines,
-# not a tool's stored envelope -- the preview is about the record's shape, not one tool's parsing.
+# The sample call the tab previews: a search whose output runs past the preview, so a format's
+# output rows and its closing row both have something to show.
+SAMPLE_CALL = ToolCall("sample", "Bash", ["rg -n export_rows src"])
+SAMPLE_KEY = "tr.12"
 SAMPLE_OUTPUT = (
     "src/jobs/export.rs:42:  export_rows(&pool, &cfg);",
     "src/db/rows.rs:118:     fn export_rows(",
@@ -30,7 +34,6 @@ SAMPLE_OUTPUT = (
     "src/db/rows.rs:201:     };",
     "src/db/rows.rs:204: }",
 )
-SAMPLE_CITATION = "tr.12 [auto]"
 SAMPLE_REASONING = (
     "I should inspect the existing implementation first.",
     "The request path retries with a closed client.",
@@ -60,12 +63,10 @@ def choices(group: str) -> tuple[str, ...]:
 
 
 def body(source: str) -> str:
-    """The template a format stands for, with every preset spelled out: editing `standard`
-    starts from the record shape it names, rather than from the builtin assembly it selects. A
-    preset name the engine does not know previews the builtin assembly, which is what the
-    transcript itself falls back to."""
+    """The rows a format stands for, with a preset spelled out. `standard` is the builtin
+    assembly, which has no rows to show or edit, so it stands for nothing."""
     if source.startswith("preset:"):
-        return transcript.PRESETS.get(source[7:], transcript.PRESETS["standard"])
+        return transcript.PRESETS.get(source[7:], source)
     return source
 
 
@@ -86,11 +87,11 @@ def saved(loop: CommandLoop) -> str:
 
 
 def problems(source: str) -> list[str]:
-    """A draft's problems, for the format panel's inline feedback."""
+    """A draft's problems, for the format panel's inline feedback: the config check's own."""
     try:
-        transcript.RecordTemplate(body(source))
+        transcript.parsed(source)
     except ValueError as error:
-        return [str(error).removeprefix("transcript.format: ")]
+        return [str(error)]
     return []
 
 
@@ -98,7 +99,8 @@ def format_label(selection: str) -> str:
     """One format row: the preset and the shape it names, or the user's own format."""
     if selection == "custom":
         return "custom (f to edit)"
-    return f"{selection}   {body('preset:' + selection).splitlines()[0][:48]}"
+    rows = body("preset:" + selection)
+    return f"{selection}   {rows.splitlines()[0][:48] if rows else 'the built-in rendering'}"
 
 
 def current(loop: CommandLoop, group: str) -> str:
@@ -135,30 +137,15 @@ def close_preview(style: str, columns: int) -> StyleAndTextTuples:
     return [*call, (Theme.fg("rule"), "─" * max(1, columns) + "\n")]
 
 
-def preview(source: str, columns: int) -> StyleAndTextTuples:
-    """The sample record at `source`, drawn with the transcript's own roles and edges."""
-    try:
-        template = transcript.RecordTemplate(body(source))
-    except ValueError as error:
-        return [(Theme.fg("error"), f"  {str(error).removeprefix('transcript.format: ')}\n")]
-    values = transcript.record_values(
-        tool="Bash",
-        args="rg -n export_rows src",
-        output="\n".join(SAMPLE_OUTPUT),
-        elapsed=0.4,
-        citation=SAMPLE_CITATION,
-        failed=False,
-        exit_code="0",
-    )
-    values["elided"] = transcript.elided_count(template, values)
-    block = transcript.template_block(
-        template.render(values),
-        citation=SAMPLE_CITATION,
-        failed=False,
-        output="\n".join(SAMPLE_OUTPUT),
-        nested=False,
-        lexer="",
-    )
+def preview(session: Session, source: str, columns: int) -> StyleAndTextTuples:
+    """The sample call settled at `source` by the transcript's own path (`finish_display`), so the
+    tab shows exactly what a record prints: `standard` is the builtin assembly itself."""
+    if issues := problems(source):
+        return [(Theme.fg("error"), f"  {issues[0]}\n")]
+    output = Tool.process_result("BashToolResult", 0, "\n".join(SAMPLE_OUTPUT), "")
+    block = toolblocks.finish_display(session, SAMPLE_CALL, SAMPLE_KEY, output, failed=False, elapsed=0.4, d=ToolDisplay(auto=True), source=source)
+    if isinstance(block, str):
+        return [("", block + "\n")]
     return [(style, text) for style, text in UiPrinter().log_segments(block, columns)]
 
 

@@ -29,35 +29,35 @@
   wizolt's system prompt with your own file, written only when you save a change. Each change
   costs the provider cache once; requests are byte-identical again after it.
 
-- Fix `[transcript] format` templates: `|tail:N` on an output longer than 64 lines showed lines
-  near 64 instead of the real tail (and `{elided}` undercounted); `{endif}`/`{endfor}` written as
-  fields were taken for block ends; `|tail:0`/`|head:0` showed every line; `{output|tail:N}`
-  ignored a following text filter and did not count toward `{elided}`; a refused call's row said
-  `error` instead of `refused`. In `/theme`, editing a custom format back to the `standard` body
-  now selects `preset:standard` (the builtin rendering) instead of saving the template text. The
-  transcript tests now assert through rendered records and drawn seams rather than private
-  counters, and share the picker fixture. The tmux appearance acceptance test now walks past the
-  new Transcript tab, which had broken its tab navigation.
+- Render transcript records faster: settling 300 tool calls takes 22% less time at the default
+  rendering (15.8 to 12.4 ms), 29% less with `preset:minimal` and 36% less with a custom format
+  (27.7 to 17.8 ms), with identical output; Linux ARM64, CPython 3.14.7, recorded in
+  `benchmarks/README.md`. A printable single-line row now lays out without per-character
+  measuring, record formats are parsed once, and a format that shows no output no longer splits
+  it. `benchmarks/transcript.py` tracks this path. Internal: the format language moved from
+  `ui.bars` to `wizolt/formats.py`, shared by bars and records, and the rows MCP, ToolScript, Ask
+  and ViewImage calls carry are computed once for every record shape.
+
+- Maintenance: a refused call under a record format is labelled `refused`, and in `/theme` a
+  custom format edited back to a preset's own rows selects that preset. The transcript tests
+  assert through rendered records and drawn seams rather than private counters, and the tmux
+  appearance acceptance test walks past the new Transcript tab, which had broken its navigation.
 
 - Choose how the model's reasoning reads while it arrives and what closes a long run of tool calls
   with `[transcript] thinking` (`expanded`, `collapsed`, `hidden`) and `[transcript] close`
   (`rule`, `blank`, `none`); both are on the `/theme` Transcript tab beside the record format,
   which now lists its three settings as one grouped list (**Space** chooses, **Tab** jumps
-  groups, **f** edits the format row). An unknown fact in a record template now renders as nothing
-  rather than as a zero, and `{failed}` prints no text at all (it is a condition).
+  groups, **f** edits the format row).
 
-- A presenter now sees the record format in effect for the tool it draws: `ToolCard.format` and
-  `ToolSummary.format` carry the user's `[transcript]` choice, including a tool's own override. A
-  panel may follow it; the builtin rendering applies it when no panel wins.
-
-- Change how a finished tool call is written to the transcript with `[transcript] format`: one
-  template owns the record's own rows (call line, output preview, closing row), with fields such as
-  `{tool}`, `{args}`, `{output}`, `{elapsed}` and `{citation}`, filters such as `|tail:3`, and
-  `{% if %}`/`{% for %}` blocks. `preset:standard` (the default) is today's rendering unchanged;
-  `preset:minimal` is a one-line checklist row per call. `[transcript.tool.NAME]` overrides one
-  tool. The new `/theme` **Transcript** tab previews each format on a sample call, **f** edits it as
-  a draft and **c**/**t** copy it; a diff, an approval card, a failed call's error row and the
-  stored-result reference are always drawn, whatever a template says.
+- Change how a finished tool call is written to the transcript with `[transcript] format`: each
+  line is one row in the status bar's format language, with fields such as `{tool}`, `{args}`,
+  `{duration}` and `{citation}` and `{% if %}` blocks; a line of just `{output|tail:3}` shows the
+  last three output lines, and a row that renders empty is left out. `preset:standard` (the
+  default) is the built-in rendering; `preset:minimal` is a one-line checklist row per call.
+  `[transcript.tool.NAME]` overrides one tool. The new `/theme` **Transcript** tab previews each
+  format on a sample call exactly as the transcript prints it, **f** edits it as a draft and
+  **c**/**t** copy it; a diff, an approval card, a failed call's error row and the stored-result
+  reference are always drawn, whatever a format says.
 
 - Stop printing a diff's two file-header rows (`--- path` / `+++ path`) in the transcript: the call
   line above the block already names the file, and every edit repeated it twice more. The `+++`

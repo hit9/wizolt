@@ -283,7 +283,7 @@ class AppearancePicker:
             apply=transcripts.problems,
             accept=self.accept_transcript_format,
             presets=transcript.PRESETS,
-            preview=lambda: transcripts.preview(self.transcript_source(self.transcript_edit), self.width),
+            preview=lambda: transcripts.preview(self.loop.session, self.transcript_source(self.transcript_edit), self.width),
         )
 
     def open_format(self, setting: str) -> None:
@@ -409,7 +409,7 @@ class AppearancePicker:
                     if group == "thinking"
                     else transcripts.close_preview(value, self.width)
                     if group == "close"
-                    else transcripts.preview(self.transcript_source(value), self.width)
+                    else transcripts.preview(self.loop.session, self.transcript_source(value), self.width)
                 )
             else:
                 fragments = (

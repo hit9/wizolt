@@ -20,7 +20,7 @@ from wizolt.ui.cli.appearance import CUSTOM, theme_command
 from wizolt.ui.render import Theme
 
 # A template no preset names, as the format panel's draft becomes one.
-CUSTOM_TEMPLATE = "{tool|upper} {args} ({elapsed|duration})"
+CUSTOM_TEMPLATE = "{name} {args} ({duration})"
 
 
 class TranscriptModal(ModalHarness):
@@ -86,8 +86,8 @@ async def test_the_tab_lists_the_engine_presets_with_the_selected_one_marked(com
     modal = command_loop.presentation.tui = TranscriptModal(["h"])
     await theme_command(command_loop, "")
     text = frames(modal)[-1]
-    assert "1. * standard" in text and "2.   minimal" in text
-    assert "{tool} {args}" in text  # each row shows the body it stands for
+    assert "1. * standard   the built-in rendering" in text  # standard has no rows of its own
+    assert "2.   minimal   {marker} {name} {args}" in text  # a preset row shows the rows it stands for
     assert "custom (f to edit)" not in text
 
 
@@ -109,9 +109,10 @@ async def test_the_sample_renders_the_record_for_the_highlighted_row(command_loo
     modal = command_loop.presentation.tui = TranscriptModal(["h", "j"])
     await theme_command(command_loop, "")
     standard, minimal = frames(modal)[1], frames(modal)[2]
-    # `standard` is its template body here, so the call line, three output rows and the trailer.
+    # `standard` is the builtin assembly itself: the call line, the stream's tail and its trailer,
+    # exactly as a settled Bash call prints.
     assert "Bash  rg -n export_rows src → tr.12 [auto]" in standard
-    assert "│ src/db/rows.rs:140:     rows.push(row);" in standard
+    assert "├ src/db/rows.rs:140:     rows.push(row);" in standard
     assert "└ … +2 more lines · Ctrl-O for more" in standard
     # The checklist preset is the whole record on its call line.
     assert "●  bash rg -n export_rows src → tr.12 [auto]" in minimal
@@ -150,11 +151,18 @@ async def test_f_opens_the_format_panel_on_the_transcript_setting(command_loop):
     view, draft = frames(modal)[-2], frames(modal)[-1]
     assert "transcript.format · selected, saved" in view
     assert "c copy value · t copy TOML · e edit" in view
-    assert "value" in view and "preset:standard" in view and "expands to" in view
-    # `e` edits the preset as the body it stands for, and previews the draft beside it.
+    # `standard` is the builtin assembly: there are no rows to show it expanding to.
+    assert "value" in view and "preset:standard" in view and "expands to" not in view
     assert "transcript.format · draft" in draft and "Ctrl-S apply · Esc discard" in draft
-    assert "{tool} {args}" in draft and "{% for line in output|tail:3 %}{line}" in draft
-    assert "└ … +2 more lines · Ctrl-O for more" in draft
+    assert "└ … +2 more lines · Ctrl-O for more" in draft  # the sample beside it is the selection's
+
+
+async def test_f_on_a_preset_edits_the_rows_it_stands_for(command_loop):
+    modal = command_loop.presentation.tui = TranscriptModal(["h", "j", "f", "e"])
+    assert await theme_command(command_loop, "") is None
+    view, draft = frames(modal)[-2], frames(modal)[-1]
+    assert "expands to" in view and transcript.PRESETS["minimal"] in view
+    assert transcript.PRESETS["minimal"] in draft
 
 
 async def test_ctrl_s_accepts_a_custom_template_and_enter_saves_it(command_loop):
@@ -187,7 +195,7 @@ async def test_a_malformed_draft_is_reported_and_never_applied(command_loop):
     modal = command_loop.presentation.tui = TranscriptModal(keys)
     assert await theme_command(command_loop, "") is None
     text = frames(modal)
-    assert any("unknown field 'nope'" in frame for frame in text)
+    assert any("unknown field or format 'nope'" in frame for frame in text)
     assert any("Fix the errors above before applying." in frame for frame in text)
     assert any("Draft discarded." in frame for frame in text)
     assert "1. * standard" in text[-2]  # the panel closed onto the tab it was opened from
@@ -272,7 +280,7 @@ def test_escape_from_the_format_panel_closes_it_without_applying(command_loop):
         panel = picker.format
         assert panel is not None and panel.setting == "transcript.format"
         panel.handle_key("e", "e")
-        assert panel.draft is not None and panel.draft.text == transcript.PRESETS["standard"]  # the preset's own body
+        assert panel.draft is not None and panel.draft.text == ""  # standard has no rows: one starts from nothing
         panel.handle_key("escape", "escape")  # the draft goes, the panel stays
         assert panel.draft is None and picker.format is panel
         picker.handle_key("escape", "escape")  # through the picker: the panel is what closes
@@ -287,19 +295,15 @@ def test_escape_from_the_format_panel_closes_it_without_applying(command_loop):
 
 
 def test_a_malformed_format_previews_a_problem_line_instead_of_raising(command_loop):
-    text = "".join(fragment[1] for fragment in transcripts.preview("{nope}", 60))
-    assert (
-        text.strip()
-        == transcripts.problems("{nope}")[0]
-        == "unknown field 'nope'; choose from args, citation, elapsed, elided, error, exit, failed, marker, output, tool"
-    )
+    text = "".join(fragment[1] for fragment in transcripts.preview(command_loop.session, "{nope}", 60))
+    assert text.strip() == transcripts.problems("{nope}")[0] == "row 1: line 1, column 1: unknown field or format 'nope'"
 
 
 async def test_a_malformed_format_in_the_config_shows_its_problem_in_the_sample(command_loop):
     configure_transcript(command_loop, "{nope}")
     modal = command_loop.presentation.tui = TranscriptModal(["h"])
     assert await theme_command(command_loop, "") is None
-    assert "unknown field 'nope'" in frames(modal)[-1]
+    assert "unknown field or format 'nope'" in frames(modal)[-1]
 
 
 # --- the helpers the tab leans on --------------------------------------------------------------
@@ -310,7 +314,7 @@ def test_a_preset_body_counts_as_its_preset_name():
     assert transcripts.body("{tool} {args}") == "{tool} {args}"
     assert transcripts.name("preset:minimal", CUSTOM) == "minimal"
     assert transcripts.name(transcript.PRESETS["minimal"], CUSTOM) == "minimal"
-    assert transcripts.name("{marker} {tool|lower} {args} ", CUSTOM) == CUSTOM
+    assert transcripts.name("{marker} {name} {args} ", CUSTOM) == CUSTOM
     assert transcripts.name("{tool} {args}", CUSTOM) == CUSTOM
 
 
@@ -321,15 +325,13 @@ def test_an_unset_or_blank_format_is_the_standard_preset(command_loop):
         assert transcripts.saved(command_loop) == "preset:standard"
 
 
-def test_an_unknown_preset_reads_as_a_custom_row_and_previews_safely(command_loop):
+def test_an_unknown_preset_reads_as_a_custom_row_and_its_sample_names_the_problem(command_loop):
     """A config naming a preset this build does not have keeps its own value, and the tab reads it
-    as a custom row rather than a preset one. Its preview is the standard record, which is what the
-    transcript itself falls back to, so the sample never disagrees with the printed record."""
+    as a custom row. Its sample says what is wrong, as the config check does, instead of drawing a
+    record the user did not ask for."""
     configure_transcript(command_loop, "preset:compact")
     assert transcripts.saved(command_loop) == "preset:compact"
     assert transcripts.name(transcripts.saved(command_loop), CUSTOM) == CUSTOM
-    assert transcripts.body("preset:compact") == transcript.PRESETS["standard"]
-    assert transcripts.problems("preset:compact") == []
-    sample = "".join(fragment[1] for fragment in transcripts.preview("preset:compact", 60))
-    assert sample == "".join(fragment[1] for fragment in transcripts.preview("preset:standard", 60))
-    assert "Bash" in sample
+    assert transcripts.body("preset:compact") == "preset:compact"
+    sample = "".join(fragment[1] for fragment in transcripts.preview(command_loop.session, "preset:compact", 60))
+    assert "unknown preset 'compact'" in sample

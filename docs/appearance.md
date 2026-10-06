@@ -223,12 +223,13 @@ nothing -- the divider below still says `thinking`.
 **Tool-run divider** decides what closes a long run of tool calls the agent never talks over: a
 full-width line (the default), a blank line, or nothing.
 
-Press **f** on a record format to see what it stands for and **e** to write your own. A format is one
-template for the whole record: fields like `{tool}`, `{args}`, `{output}`, `{elapsed}`,
-`{citation}` and `{elided}`, filters like `|tail:3` and `|firstline`, and `{% if %}` / `{% for %}`
-blocks. Rows the engine owns -- a diff, an approval card, a failed call's error line, the stored
-result's reference -- are always drawn, whatever the template says. **c** copies the template and
-**t** copies it as a `[transcript]` block for your config file.
+Press **f** on a record format to see what it stands for and **e** to write your own. Each line of a
+format is one row, written like a status bar format: fields such as `{tool}`, `{args}`,
+`{duration}`, `{citation}` and `{elided}`, and `{% if %}` blocks. A line that is just
+`{output|tail:3}` shows the call's last three output lines; a row that comes out empty is left out.
+Rows wizolt owns -- a diff, an approval card, a failed call's error line, the stored result's
+reference -- are always drawn, whatever the format says. **c** copies the format and **t** copies
+it as a `[transcript]` block for your config file.
 
 ```toml
 [transcript]
@@ -238,8 +239,7 @@ close = "blank"
 
 [transcript.tool.Bash]
 format = """{tool} {args}
-{% for line in output|tail:5 %}{line}
-{% endfor %}"""
+{output|tail:5}"""
 ```
 
 An unset key keeps the standard rendering, and an unset tool keeps the table's format, so a

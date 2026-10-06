@@ -168,18 +168,30 @@ The presenter seam is unchanged and stays the deeper layer:
 
 ## As implemented
 
-All five steps are in. Three details differ from the text above, each for a reason:
+All five steps are in, except that presenters do not receive the effective format (step 4 was
+built, then removed: no presenter read it, and it tied the presenter API to a config string).
+Where the text above differs from what shipped:
 
-- **The language is `{% if %}`/`{% for %}` and fields, without `{% optional %}` or `[role]`
-  fragments.** `{% optional %}` drops a bar segment when the row is narrow; a record's rows are
-  not width-driven, and its truncation is `|tail:N`/`|head:N` on the field. `[role]` fragments
-  would let a template set colors, but a record's colors are host-owned role assignments (the
-  marker's success/danger role, the tool role, the muted output role), so the template composes
-  text and the theme composes color. `wizolt/tools/transcript.py` records this in its docstring.
+- **One format string per row, in the bar language itself.** Each line of the format is one row,
+  parsed by the shared language in `wizolt/formats.py` (moved below `ui.bars`, which binds it to
+  the status facts) over the record's fields. Conditions are its expressions. A row that renders
+  empty is left out, and one reserved row form -- a line of just `{output}`, `{output|tail:N}` or
+  `{output|head:N}` -- stands for the output lines, so there are no loops or filters: an earlier
+  dedicated record parser with both was replaced after it produced most of this feature's bugs.
+  Rows refuse `[role]` styles, fills, joins and optional spans: a record's colors are host-owned
+  roles, and its rows are not width-driven.
+- **`preset:standard` is the builtin assembly, not a format.** The completeness requirement above
+  is met by construction rather than by a golden-equal template: standard never reaches the
+  engine, has no rows to show or edit, and the `/theme` sample settles its call through
+  `finish_display` itself, so every preset previews exactly what the transcript prints.
+- **Engine rows are computed once.** The rows a call carries under any shape (MCP summary,
+  ToolScript envelope, Ask answer, vision trace) come from one function used by the builtin path
+  and the format path alike.
 - **`thinking` and `close` are keys of the same table** rather than separate settings, and the tab
   lists all three of its settings as one grouped list (`Space` chooses, `Tab` jumps groups, `f`
-  edits the format row): the two look choices change what the same stream prints, so they belong
-  beside the format rather than in a tab of their own.
-- **An unknown fact renders as nothing, not as a zero.** `{elapsed}` with no measured time prints
-  empty rather than `0.0`, `{exit}` empty rather than a code, and `{failed}` prints no text at all
-  (it is a condition, read by `{% if failed %}`).
+  edits the format row): the two look choices change what the same stream prints.
+- **An unknown fact renders as nothing, not as a zero**, and a format spec on one falls back to
+  the standard rendering for that record.
+- **Performance.** The record path is per tool call: formats are parsed once per source (failures
+  included), output is split only for a format that shows it, and rows skip the bar layout. See
+  [the benchmark README](../benchmarks/README.md#transcript-records-branch-review).

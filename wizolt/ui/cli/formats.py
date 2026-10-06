@@ -181,7 +181,9 @@ class FormatPanel:
             rows += [[], *self.block("TOML", toml_snippet(self.kind, source).rstrip("\n"), width)]
         if source.startswith("preset:"):
             expansion = expanded(source, self.presets)
-            if expansion != source:  # a name this build does not know expands to itself
+            # A name this build does not know expands to itself; one that stands for the builtin
+            # rendering (the transcript's `standard`) expands to nothing to show.
+            if expansion and expansion != source:
                 rows += [[], *self.block("expands to", expansion, width)]
         return rows
 

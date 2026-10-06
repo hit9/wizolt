@@ -343,6 +343,21 @@ class Text:
         content: TextFragments,
         width: int | None = None,
     ) -> TextRows:
+        # The common transcript row -- printable ASCII on one line that fits -- needs no cells:
+        # every character is one column, so its width is its length. The same fragments the
+        # general path builds, merged by style the way `_styled_row` merges them.
+        if all(text.isascii() and text.isprintable() for _, text in content):
+            prefix_width = sum(_cwidth(text) for _, text in prefix)
+            if not width or sum(len(text) for _, text in content) <= max(1, width - prefix_width):
+                row = list(prefix)
+                for style, text in content:
+                    if not text:
+                        continue
+                    if row and row[-1][0] == style:
+                        row[-1] = (style, row[-1][1] + text)
+                    else:
+                        row.append((style, text))
+                return [row]
         logical_lines: list[list[_TextCell]] = [[]]
         for style, text in content:
             for char in text:

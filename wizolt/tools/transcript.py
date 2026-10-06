@@ -1,11 +1,12 @@
-"""The ``[transcript] format``: one template controlling a settled tool call's own rows.
+"""The ``[transcript] format``: one format string per row of a settled tool call's record.
 
-The record layer of `design/TRANSCRIPT_APPEARANCE.md`. A template composes the static shape
-of a tool record -- the call line, its output preview rows, the closing row -- from facts the
-host already computed: fields (``{tool}``, ``{args}``, ``{output}`` ...) and filters
-(``|tail:N``, ``|firstline``, ``|duration``, ``|lower``). The syntax follows the bar-format
-family (``{% if %}`` blocks, ``[role]``-free plain text); its parser is dedicated because a
-record is multi-line and has no width-driven fills or joins.
+The record layer of `design/TRANSCRIPT_APPEARANCE.md`. Each line of the format is one row, written
+in the bar-format language (`wizolt.formats.Template`: fields with format specs, ``{% if %}`` blocks with
+expressions) over the facts the host already computed for the call. A row that renders empty
+disappears, so a conditional row needs no syntax of its own. One row form is reserved: a line
+that is exactly ``{output}``, ``{output|tail:N}`` or ``{output|head:N}`` stands for the call's
+output rows, which only the host may split. Rows are plain text: ``[styles]``, fills, joins and
+optional spans are bar concerns, and a record's colors are host-owned roles.
 
 The table's other two keys, `thinking` and `close`, are look-level choices over the same record
 stream: how reasoning appears while it arrives, and how a long run of silent tool calls is closed.
@@ -14,279 +15,144 @@ Structure stays host-owned: which children exist (diffs, approval cards, the Too
 envelope), tree edges, roles and the stored-result citation. Two red lines are enforced in code,
 not by trust: a rendered block that shows output keeps its citation, and a failed call keeps an
 error row. ``preset:standard`` (and an unset key) is the builtin assembly itself, so the default
-reproduces today's transcript by construction; only ``preset:minimal`` and custom templates go
-through this engine.
+is today's transcript by construction and never reaches this module's engine.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 from wizolt.base import Json, LogBlock, LogEdge, LogLine, LogRole, oneline
+from wizolt.formats import Template, clean
 
-# A template never sees unbounded output: the loop cap bounds the render even when the user
-# asks for a large tail, exactly as the builtin preview is bounded.
+# The output rows a record may show, whatever a row asks for: the same bound the builtin preview has.
 MAX_OUTPUT_LINES = 64
 
-PRESETS: dict[str, str] = {
-    # `standard` never reaches the engine: it names the builtin assembly (see module docstring).
-    # The string below is only what the /theme panel shows and copies as a starting point.
-    "standard": "{tool} {args}\n{% for line in output|tail:3 %}{line}\n{% endfor %}{% if elided %}… +{elided} more lines · Ctrl-O for more{% endif %}",
-    "minimal": "{marker} {tool|lower} {args}",
-}
+# `standard` names the builtin assembly and has no rows to show or edit; `minimal` is a format.
+PRESETS: dict[str, str] = {"standard": "", "minimal": "{marker} {name} {args}"}
 
-FIELDS = frozenset({"marker", "tool", "args", "output", "elapsed", "exit", "citation", "elided", "error", "failed"})
+FIELDS = frozenset({"marker", "tool", "name", "args", "duration", "elapsed", "exit", "citation", "elided", "error", "failed"})
+OUTPUT_ROW = re.compile(r"\{output(?:\|(tail|head):(\d+))?\}")
 
 # How the model's reasoning appears while it arrives, and how a long run of silent tool calls is
 # closed before the next model text. Both are the transcript's own look, so both live here.
 THINKING = ("expanded", "collapsed", "hidden")
 CLOSE = ("rule", "blank", "none")
-FILTERS = frozenset({"lower", "upper", "firstline", "duration", "tail", "head"})
-
-
-def _expand(source: str) -> str:
-    """Resolve `preset:NAME` to its template body. `preset:standard` names the builtin assembly
-    and expands to nothing; `builtin_or_template` is the single place that decides."""
-    if not source.startswith("preset:"):
-        return source
-    name = source[7:]
-    if name not in PRESETS:
-        raise ValueError(f"unknown preset {name!r}; choose from {', '.join(PRESETS)}")
-    return "" if name == "standard" else PRESETS[name]
 
 
 @dataclass(frozen=True)
-class Text:
-    text: str
+class OutputRows:
+    """The reserved row: the call's output lines, all of them or a head/tail of `count`."""
 
+    take: str = ""
+    count: int = 0
 
-@dataclass(frozen=True)
-class Field:
-    name: str
-    filters: tuple[tuple[str, str], ...]
-
-
-@dataclass(frozen=True)
-class If:
-    condition: str
-    negated: bool
-    children: tuple[Node, ...]
-    alternate: tuple[Node, ...]
-
-
-@dataclass(frozen=True)
-class For:
-    variable: str
-    filters: tuple[tuple[str, str], ...]
-    children: tuple[Node, ...]
-
-
-Node = Text | Field | If | For
-
-_TOKEN = re.compile(r"\{%\s*(.*?)\s*%\}|\{([^{}]+)\}")
-
-
-def _lex(source: str) -> list[tuple[str, str]]:
-    """The source as (kind, body) tokens; kind is `text`, `directive` or `field`."""
-    tokens: list[tuple[str, str]] = []
-    position = 0
-    for match in _TOKEN.finditer(source):
-        if text := source[position : match.start()]:
-            tokens.append(("text", text))
-        statement, field = match.groups()
-        tokens.append(("directive", statement) if statement is not None else ("field", field.strip()))
-        position = match.end()
-    if text := source[position:]:
-        tokens.append(("text", text))
-    return tokens
-
-
-def _parse_filters(spec: str) -> tuple[tuple[str, str], ...]:
-    """The filters in a field or loop spec: `|lower|tail:3` -> (("lower", ""), ("tail", "3"))."""
-    parsed: list[tuple[str, str]] = []
-    for part in spec.split("|")[1:]:
-        name, _, argument = part.strip().partition(":")
-        if name not in FILTERS or (name in ("tail", "head") and not argument.isdigit()):
-            raise ValueError(f"unknown filter {part.strip()!r}")
-        parsed.append((name, argument))
-    return tuple(parsed)
-
-
-def _render_filters(items: list[str], filters: tuple[tuple[str, str], ...]) -> list[str]:
-    for name, argument in filters:
-        if name == "tail":
-            items = items[-int(argument) :] if int(argument) else []
-        elif name == "head":
-            items = items[: int(argument)]
-    return items[:MAX_OUTPUT_LINES]
+    def pick(self, lines: list[str]) -> list[str]:
+        if self.take == "tail":
+            lines = lines[-self.count :] if self.count else []
+        elif self.take == "head":
+            lines = lines[: self.count]
+        return lines[:MAX_OUTPUT_LINES]
 
 
 class RecordTemplate:
-    """One parsed record template. `render` is a pure function of its values."""
+    """One parsed record format: a row per line. Parsing happens once per source (`parsed`)."""
 
     def __init__(self, source: str):
         self.source = source
-        self.nodes, rest = self._block(_lex(source), ())
-        if rest:
-            raise ValueError(f"transcript.format: unexpected {rest[0][1].strip()!r}")
-
-    def _block(self, tokens: list[tuple[str, str]], loop: tuple[str, ...]) -> tuple[tuple[Node, ...], list[tuple[str, str]]]:
-        """Nodes until a terminator directive (endif/else/endfor); a terminator is left in place."""
-        nodes: list[Node] = []
-        while tokens:
-            kind, body = tokens[0]
-            if kind == "text":
-                nodes.append(Text(body))
-                tokens = tokens[1:]
+        rows: list[OutputRows | Template] = []
+        for number, line in enumerate(source.split("\n"), 1):
+            if match := OUTPUT_ROW.fullmatch(line.strip()):
+                rows.append(OutputRows(match.group(1) or "", int(match.group(2) or 0)))
                 continue
-            # Only a directive terminates: `{endif}` is a field spelling, not `{% endif %}`.
-            if kind == "directive" and body.split(" ", 1)[0] in ("endif", "else", "endfor"):
-                return tuple(nodes), tokens
-            node, tokens = self._node(kind, body, tokens[1:], loop)
-            nodes.append(node)
-        return tuple(nodes), []
+            try:
+                row = Template(line, fields=FIELDS)
+            except ValueError as error:
+                raise ValueError(f"row {number}: {error}") from None
+            if row.styles or _width_driven(row.nodes):
+                raise ValueError(f"row {number}: a record row is plain text: no [styles], fills, joins or optional spans")
+            rows.append(row)
+        self.rows = tuple(rows)
+        # A format without output rows never needs the call's output split or previewed.
+        self.reads_output = any(isinstance(row, OutputRows) for row in rows)
 
-    def _node(self, kind: str, body: str, tokens: list[tuple[str, str]], loop: tuple[str, ...]) -> tuple[Node, list[tuple[str, str]]]:
-        if kind == "field":
-            name = body.split("|", 1)[0].strip()
-            if name not in FIELDS and name not in loop:
-                raise ValueError(f"transcript.format: unknown field {body!r}; choose from {', '.join(sorted(FIELDS))}")
-            return Field(name, _parse_filters(body)), tokens
-        keyword, _, statement = body.partition(" ")
-        if keyword == "if":
-            return self._if(statement, tokens, loop)
-        if keyword == "for":
-            return self._for(statement, tokens, loop)
-        raise ValueError(f"transcript.format: unknown directive {body!r}")
+    def shown(self, total: int) -> int:
+        """How many of `total` output lines the record shows: the most any output row picks."""
+        lines = [""] * total
+        return max((len(row.pick(lines)) for row in self.rows if isinstance(row, OutputRows)), default=total)
 
-    def _if(self, statement: str, tokens: list[tuple[str, str]], loop: tuple[str, ...]) -> tuple[If, list[tuple[str, str]]]:
-        condition = statement.strip()
-        negated = condition.startswith("not ")
-        if negated:
-            condition = condition[4:]
-        if condition not in FIELDS:
-            raise ValueError(f"transcript.format: unknown condition {statement!r}")
-        children, rest = self._block(tokens, loop)
-        alternate: tuple[Node, ...] = ()
-        if rest and rest[0][1].strip() == "else":
-            alternate, rest = self._block(rest[1:], loop)
-        if not rest or rest[0][1].strip() != "endif":
-            raise ValueError("transcript.format: missing endif")
-        return If(condition, negated, children, alternate), rest[1:]
-
-    def _for(self, statement: str, tokens: list[tuple[str, str]], loop: tuple[str, ...]) -> tuple[For, list[tuple[str, str]]]:
-        matched = re.fullmatch(r"(\w+)\s+in\s+output((?:\|\w+(?::\d+)?)*)", statement.strip())
-        if matched is None or matched.group(1) in FIELDS or matched.group(1) in loop:
-            raise ValueError(f"transcript.format: invalid for {statement!r}: only `var in output` is supported")
-        children, rest = self._block(tokens, (*loop, matched.group(1)))
-        if not rest or rest[0][1].strip() != "endfor":
-            raise ValueError("transcript.format: missing endfor")
-        return For(matched.group(1), _parse_filters("output" + matched.group(2)), children), rest[1:]
-
-    def render(self, values: dict[str, Any]) -> list[str]:
-        """The template's lines: plain text. Structure and roles are the caller's business."""
-        lines = self._evaluate(self.nodes, values)
-        # Outer blank lines are layout noise; inner blanks are the author's choice.
-        while lines and not lines[0].strip():
-            lines.pop(0)
-        while lines and not lines[-1].strip():
-            lines.pop()
+    def render(self, values: dict[str, Any], output: list[str]) -> list[str]:
+        lines: list[str] = []
+        for row in self.rows:
+            if isinstance(row, OutputRows):
+                lines.extend(row.pick(output))
+            elif text := _row_text(row.nodes, values).rstrip():
+                lines.append(text)  # A row that renders nothing is left out, not drawn blank.
         return lines
 
-    def _evaluate(self, nodes: tuple[Node, ...], values: dict[str, Any]) -> list[str]:
-        lines = [""]
 
-        def splice(addition: list[str]) -> None:
-            lines[-1] += addition[0]
-            lines.extend(addition[1:])
-
-        for node in nodes:
-            if isinstance(node, Text):
-                parts = node.text.split("\n")
-                lines[-1] += parts[0]
-                lines.extend(parts[1:])
-            elif isinstance(node, Field):
-                lines[-1] += self._field(node, values)
-            elif isinstance(node, If):
-                truth = bool(values.get(node.condition)) != node.negated
-                splice(self._evaluate(node.children if truth else node.alternate, values))
-            else:
-                items = _render_filters(list(values.get("output", [])), node.filters)
-                for item in items:
-                    splice(self._evaluate(node.children, {**values, node.variable: item}))
-        return lines
-
-    def _field(self, node: Field, values: dict[str, Any]) -> str:
-        value: Any = values.get(node.name, "")
-        if isinstance(value, list):
-            # Line filters pick the lines; the text filters then apply to what they picked.
-            value = "\n".join(str(item) for item in _render_filters(list(value), node.filters))
-        for name, _argument in node.filters:
-            value = _apply(name, value)
-        # A boolean is a condition, not copy: `{failed}` prints nothing and `{% if failed %}` reads
-        # it. Anything else renders as its text, with an unknown fact rendering as nothing.
-        if isinstance(value, bool) or value is None:
-            return ""
-        return value if isinstance(value, str) else str(value)
+def _row_text(nodes, values: dict[str, Any]) -> str:
+    """One row's text: its selected literals and fields, joined. Rows carry no styles, fills,
+    joins or optional spans (checked at parse time), so the width layout a bar needs -- cells,
+    measuring and clipping every character -- is skipped: this runs for every settled call."""
+    parts: list[str] = []
+    for node in nodes:
+        if node.kind == "text":
+            parts.append(clean(node.text))
+        elif node.kind == "field":
+            name, _, spec = node.text.partition(":")
+            value = values.get(name, "")
+            parts.append(clean(f"{int(float(value))}s" if spec == "duration" else format(value, spec))[:4096])
+        elif node.kind == "if":
+            parts.append(_row_text(node.children if node.expression.evaluate(values) else node.alternate, values))
+    return "".join(parts)
 
 
-def _apply(name: str, value: Any) -> Any:
-    if name == "lower":
-        return str(value).lower()
-    if name == "upper":
-        return str(value).upper()
-    if name == "firstline":
-        text = str(value).strip()
-        return text.splitlines()[0] if text else ""
-    if name == "duration":
-        try:
-            return f"{float(value):.1f}s" if value else ""
-        except (TypeError, ValueError):  # an unknown elapsed is not a number to render
-            return ""
-    return value
+def _width_driven(nodes) -> bool:
+    return any(node.kind in ("fill", "join", "optional") or _width_driven(node.children) or _width_driven(node.alternate) for node in nodes)
 
 
-def builtin_or_template(source: str) -> RecordTemplate | None:
-    """None when the record keeps the builtin assembly (unset, or `preset:standard`); a parsed
-    template otherwise. Parse problems raise ValueError for the config validator."""
-    if not source.strip() or source.strip() == "preset:standard":
-        return None
-    return RecordTemplate(_expand(source))
-
-
-def render_record(template: RecordTemplate | None, values: dict[str, Any]) -> list[str] | None:
-    """One record's lines, or None to keep the builtin assembly: the one decision the renderer
-    consults, so a failed template can never lose a record."""
-    if template is None:
-        return None
+@lru_cache(maxsize=64)
+def _parse(source: str) -> RecordTemplate | ValueError:
+    """Cached by source, failures included: the hot path parses each distinct format once."""
     try:
-        return template.render(values)
+        return RecordTemplate(source)
+    except ValueError as error:
+        return error
+
+
+def parsed(source: str) -> RecordTemplate | None:
+    """None when the record keeps the builtin assembly (unset, or `preset:standard`); the parsed
+    format otherwise. Raises ValueError for an unknown preset or a broken format."""
+    source = source.strip()
+    if source.startswith("preset:"):
+        name = source[7:]
+        if name not in PRESETS:
+            raise ValueError(f"unknown preset {name!r}; choose from {', '.join(PRESETS)}")
+        source = PRESETS[name]
+    if not source:
+        return None
+    result = _parse(source)
+    if isinstance(result, ValueError):
+        raise result
+    return result
+
+
+def render_record(template: RecordTemplate, values: dict[str, Any], output: list[str]) -> list[str] | None:
+    """One record's lines, or None to keep the builtin assembly: a format that cannot render this
+    call's facts (a format spec on an unknown time, say) never loses the record."""
+    try:
+        return template.render(values, output)
     except (ValueError, TypeError, ArithmeticError):
         return None
 
 
-def elided_count(template: RecordTemplate, values: dict[str, Any]) -> int:
-    """How many output lines the template's own loops and `{output}` fields drop: the honest
-    value for `{elided}`, so the trailer a template prints matches what it actually hid."""
-    items = list(values.get("output", []))
-    shown = [len(_render_filters(items, node.filters)) for node in _output_readers(template.nodes)]
-    return max(0, len(items) - max(shown, default=len(items)))
-
-
-def _output_readers(nodes: tuple[Node, ...]) -> Iterator[For | Field]:
-    """Every node that draws output lines: a loop over it, or an `{output}` field."""
-    for node in nodes:
-        if isinstance(node, For):
-            yield node
-            yield from _output_readers(node.children)
-        elif isinstance(node, Field) and node.name == "output":
-            yield node
-        elif isinstance(node, If):
-            yield from _output_readers(node.children)
-            yield from _output_readers(node.alternate)
+def output_lines(output: str) -> list[str]:
+    """The output rows a format may show: the nonblank lines, in order."""
+    return [line for line in output.splitlines() if line.strip()]
 
 
 def record_values(
@@ -300,25 +166,23 @@ def record_values(
     elided: int = 0,
     exit_code: str = "",
 ) -> dict[str, Any]:
-    """The facts one settled call offers a template. `output` arrives bounded by the caller.
+    """The facts one settled call offers its rows.
 
-    Every output line is kept: `|tail:N` must see the real tail, and the render applies the
-    `MAX_OUTPUT_LINES` cap after the filters chose their lines.
-
-    An unknown fact is empty text, never a zero: `{elapsed}` prints nothing when the call has no
-    measured time, and `{exit}` nothing when the tool reports no code. A condition field
-    (`{failed}`) is a fact for `{% if %}`, so it renders no text either way."""
-    lines = [line for line in output.splitlines() if line.strip()]
+    An unknown fact is empty text, never a zero: `{elapsed}` and `{duration}` print nothing when
+    the call has no measured time, and `{exit}` nothing when the tool reports no code. `{failed}`
+    is a condition for `{% if failed %}`; `{error}` is the failure's first line."""
+    first = next((line.strip() for line in output.splitlines() if line.strip()), "") if failed else ""
     return {
         "marker": "●",
         "tool": tool,
+        "name": tool.lower(),
         "args": args,
-        "output": lines,
         "elapsed": elapsed if elapsed is not None else "",
+        "duration": f"{elapsed:.1f}s" if elapsed is not None else "",
         "exit": exit_code,
         "citation": citation,
         "elided": elided,
-        "error": output if failed else "",
+        "error": first,
         "failed": failed,
     }
 
@@ -339,7 +203,7 @@ def template_block(
     rows; `extras` are engine-owned structure rows (an MCP summary, a ToolScript envelope, an
     Ask answer, a vision trace) that the record's shape never owns.
 
-    The two red lines are enforced here, whatever the template said: a failed call keeps an
+    The two red lines are enforced here, whatever the format said: a failed call keeps an
     error row, and a block that shows output keeps its citation.
     """
     root: LogLine | None = None
@@ -399,10 +263,9 @@ def validate(raw: Json) -> list[str]:
 
 def _problems(label: str, source: str) -> list[str]:
     try:
-        builtin_or_template(source)
+        parsed(source)
     except ValueError as error:
-        message = str(error).removeprefix("transcript.format: ")
-        return [f"{label}: {message}"]
+        return [f"{label}: {error}"]
     return []
 
 

@@ -1070,13 +1070,8 @@ class ToolRunner:
         from wizolt.sdk import presentation
 
         arguments = freeze(dict(call.payload) if isinstance(call.payload, dict) else {})
-        # The record format in effect for this tool: a panel may follow the user's chosen shape,
-        # and the builtin rendering applies it when no panel wins.
-        from wizolt.tools import transcript
-
-        record = transcript.effective_format(self.session.config, call.name)
-        card = await plugins.presenters.render("tool.call", presentation.ToolCard(call.id, call.name, arguments, status, record))
-        summary = await plugins.presenters.render("tool.result", presentation.ToolSummary(call.id, call.name, arguments, status, output, elapsed, key, record))
+        card = await plugins.presenters.render("tool.call", presentation.ToolCard(call.id, call.name, arguments, status))
+        summary = await plugins.presenters.render("tool.result", presentation.ToolSummary(call.id, call.name, arguments, status, output, elapsed, key))
         # An empty panel keeps that site's builtin rows, like an unmatched or failed one.
         card = card if card and card.rows else None
         summary = summary if summary and summary.rows else None

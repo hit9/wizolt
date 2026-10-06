@@ -20,8 +20,8 @@ from prompt_toolkit.utils import get_cwidth
 
 from wizolt.base import LogBlock, ModelUsage, Text, TextFragments, TextRows, TurnBox
 from wizolt.config import compaction_provider_config
+from wizolt.formats import clip
 from wizolt.sdk import Panel
-from wizolt.ui.bars import clip
 from wizolt.ui.cli.modals import picker_height
 from wizolt.ui.cli.update import UpdateChecker
 from wizolt.ui.render import Theme, UiPrinter, WidthDependent

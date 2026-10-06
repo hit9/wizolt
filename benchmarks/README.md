@@ -9,6 +9,30 @@ document any retained cost. Update `baselines/` and this README's reference befo
 never accept a regression merely by replacing the baseline. If the environment or workload changed,
 remeasure the previous reference revision too so the comparison remains meaningful.
 
+## Transcript records (branch review)
+
+[Before](results/linux-arm64-py314-transcript-rows-before.json) is `4c3d0727`; the
+[after report](results/linux-arm64-py314-transcript-rows-after.json) is the working tree over it,
+where `[transcript] format` rows render through the shared format language (`wizolt.formats`)
+and `Text.wrap_styled` lays out a fitting printable-ASCII row without per-character cells. Linux
+ARM64, CPython 3.14.7, nine samples, two rounds run back to back; the better round is compared.
+The release reference is unchanged.
+
+The new `transcript.py` suite settles 300 tool calls (Bash with a 50-line stream, Read with
+200 lines, a failure) through `finish_display` and lays every block out at 100 columns:
+
+| Workload | Before (ms) | After (ms) | Change |
+| --- | ---: | ---: | ---: |
+| 300 records, default (builtin) rendering | 15.794 | 12.361 | -21.7% |
+| 300 records, `preset:minimal` | 16.160 | 11.489 | -28.9% |
+| 300 records, custom tail-3 format | 27.693 | 17.831 | -35.6% |
+
+Output digests match before and after for all three and for every `replay.py` probe, so the
+same bytes are drawn. Replay is otherwise unchanged within noise: recolor measured 107-111 ms
+on both sides over three further rounds, first projection 97-101 ms. The custom format no
+longer parses per record (formats are cached by source) and skips splitting output it does
+not show; the remaining cost is laying out its extra rows, shared with the builtin path.
+
 ## Plugin foundation
 
 ### Interception and presenters (branch review)

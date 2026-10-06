@@ -313,40 +313,45 @@ while they are empty. Field contents never become template instructions.
 
 ### Transcript records
 
-`[transcript] format` is one template for a whole tool call: its call line, its output rows and its
-closing row. `preset:standard` keeps the built-in rendering; `preset:minimal` writes one checklist
-row per call.
+`[transcript] format` describes a tool call's record one row per line: its call line, its output
+rows and any closing row. Each line is written in the status bar's format language -- fields with
+optional format specs and `{% if %}` blocks -- without `[styles]`, fills or joins, since a
+record's colors follow the theme. `preset:standard` keeps the built-in rendering;
+`preset:minimal` writes one checklist row per call.
 
 ```toml
 [transcript]
 format = """{marker} {tool} {args}
-{% for line in output|tail:5 %}{line}
-{% endfor %}{% if elided %}… +{elided} more lines · {citation}{% endif %}"""
+{output|tail:5}
+{% if elided %}… +{elided} more lines · {citation}{% endif %}"""
 
 [transcript.tool.Bash]
-format = "{marker} {tool} {args} · {elapsed|duration}"
+format = "{marker} {tool} {args} · {duration}{% if exit != '0' %} · exit {exit}{% endif %}"
 ```
 
 | Field | Meaning |
 | --- | --- |
 | `tool`, `args` | The tool's name and the arguments the call line shows |
-| `marker` | `●` for a finished call, `○` for one still running |
-| `output` | The result's lines, one per row; loop over it with `{% for line in output|tail:3 %}` |
-| `elapsed` | Seconds the call took; `{elapsed|duration}` renders `0.4s` |
+| `name` | The tool's name in lowercase |
+| `marker` | `●` |
+| `duration` | How long the call took, as `0.4s` |
+| `elapsed` | The same in seconds, for a spec such as `{elapsed:.2f}` |
 | `exit` | A command's exit code, when the tool reports one |
 | `citation` | The stored result's `tr.N` reference with its status tag |
-| `elided` | How many output lines the template's own loops left out |
-| `error` | The failure's text, when the call failed; `{error|firstline}` is its first line |
+| `elided` | How many output lines the record left out |
+| `error` | The failure's first line, when the call failed |
 | `failed` | Whether the call failed, for `{% if failed %}` |
 
-Filters: `|tail:N`, `|head:N`, `|firstline`, `|duration`, `|lower`, `|upper`. Blocks:
-`{% if FIELD %}`, `{% if not FIELD %}`, `{% else %}`, `{% for LINE in output|tail:N %}`. Unknown
-fields, filters or unbalanced blocks are reported when the config is read and the record falls
-back to the standard rendering.
+A line that is exactly `{output}`, `{output|tail:N}` or `{output|head:N}` stands for the call's
+output lines (at most 64). A row that renders empty is left out, so `{% if %}` can drop a whole
+row. Conditions are expressions over the fields: `{% if elided > 0 %}`, `{% if not failed %}`.
+Problems are reported with their row when the config is read, and the record falls back to the
+standard rendering.
 
 A failed call always keeps an error row, and a record that shows output always keeps its `tr.N`
-reference, whatever the template says. A fact the host has no value for renders as nothing rather
-than as a zero, and a condition such as `{failed}` prints no text at all: use `{% if failed %}`.
+reference, whatever the format says. A fact wizolt has no value for renders as nothing rather than
+as a zero; a format spec on it (`{elapsed:.1f}` for a call with no measured time) prints that
+record in the standard rendering.
 Diffs, approval cards and a script's call trace are drawn by wizolt and do not appear in the
 template.
 
