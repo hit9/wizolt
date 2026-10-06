@@ -163,6 +163,7 @@ async def test_prompt_opens_the_current_prompt_and_a_saved_edit_replaces_it_cost
         ("You are wizolt.", "No changes; nothing was written."),
         ("You are wizolt.\n", "No changes; nothing was written."),  # The editor's own final newline.
         ("   ", "Not saved: an empty prompt. Delete the file to return to wizolt's own."),
+        ("x" * (256 * 1024 + 1), "Not saved: a prompt is limited to 256 KiB."),  # It would never be read.
     ],
 )
 async def test_quitting_unchanged_or_empty_writes_nothing(agent, tmp_path, reply, said):

@@ -91,6 +91,8 @@ def setup(plugin: Plugin) -> None:
             return "No changes; nothing was written."
         if not edited.strip():
             return "Not saved: an empty prompt. Delete the file to return to wizolt's own."
+        if len(edited.encode("utf-8")) > MAX_BYTES:  # Saved, it would be skipped on every request.
+            return f"Not saved: a prompt is limited to {MAX_BYTES // 1024} KiB."
         target = path if path is not None else paths[-1]
         try:
             write(target, edited)
