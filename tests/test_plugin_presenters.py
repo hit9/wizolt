@@ -230,6 +230,33 @@ async def test_tool_sites_present_through_the_runner(session, tmp_path):
     assert "tr." in text  # The stored-result citation stays host-owned and rides the block.
 
 
+async def test_presenters_receive_the_record_format_in_effect(session, tmp_path):
+    """A panel can follow the user's chosen record shape: the view carries the format that applies
+    to this tool, its own override included."""
+    body = """
+def setup(p):
+    async def card(ctx, view):
+        return Panel((Text("card:" + (view.format or "unset"), "tool"),))
+    async def summary(ctx, view):
+        return Panel((Text("summary:" + (view.format or "unset"), "success"),))
+    p.presenter("tool.call", card)
+    p.presenter("tool.result", summary)
+"""
+    await enable_session(session, tmp_path, "formats", body)
+    path = tmp_path / "notes.txt"
+    path.write_text("hello")
+    session.config.transcript = {"format": "preset:minimal", "tool": {"Read": {"format": "{tool} {citation}"}}}
+    instance, printed = runner(session)
+    await instance.run([ModelClient.tool_call("r1", "Read", {"path": str(path)})])
+    text = "\n".join(printed)
+    assert "card:{tool} {citation}" in text and "summary:{tool} {citation}" in text
+    # With the override gone, the same tool follows the table's global key.
+    session.config.transcript = {"format": "preset:minimal"}
+    instance, printed = runner(session)
+    await instance.run([ModelClient.tool_call("r2", "Read", {"path": str(path)})])
+    assert "card:preset:minimal" in "\n".join(printed)
+
+
 async def test_unpresented_calls_keep_the_builtin_block(session, tmp_path):
     body = BOTH.replace('p.presenter("tool.call", card)', 'p.presenter("tool.call", card, match={"tool": "Bash"})').replace(
         'p.presenter("tool.result", summary)', 'p.presenter("tool.result", summary, match={"tool": "Bash"})'

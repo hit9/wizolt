@@ -193,3 +193,43 @@ For your own colors, statusbar backgrounds, layouts or animations, see
 
 If colors look wrong and wizolt warns about true color, add `export COLORTERM=truecolor`
 to your shell profile. `NO_COLOR=1` turns colors off.
+
+## Transcript
+
+The **Transcript** tab changes how a finished tool call is written to the transcript. Choose
+`standard` (the default) for a call line, a short preview of its output and a `tr.N` reference
+that **Ctrl-O** expands, or `minimal` for a one-line checklist row per call.
+
+```text
+standard
+
+  ● Bash  rg -n export_rows src
+    src/jobs/export.rs:42:  export_rows(&pool, &cfg);
+    … +2 more lines · Ctrl-O for more
+
+minimal
+
+  ● bash rg -n export_rows src
+  ● read src/db/rows.rs
+```
+
+Press **f** to see the format behind the choice and **e** to write your own. A format is one
+template for the whole record: fields like `{tool}`, `{args}`, `{output}`, `{elapsed}`,
+`{citation}` and `{elided}`, filters like `|tail:3` and `|firstline`, and `{% if %}` / `{% for %}`
+blocks. Rows the engine owns -- a diff, an approval card, a failed call's error line, the stored
+result's reference -- are always drawn, whatever the template says. **c** copies the template and
+**t** copies it as a `[transcript]` block for your config file.
+
+```toml
+[transcript]
+format = "preset:minimal"
+
+[transcript.tool.Bash]
+format = """{tool} {args}
+{% for line in output|tail:5 %}{line}
+{% endfor %}"""
+```
+
+An unset key keeps the standard rendering, and an unset tool keeps the table's format, so a
+per-tool line is only needed for the tools you want different. The
+[template reference](appearance-reference.md#custom-templates) lists every field.

@@ -81,7 +81,7 @@ def test_real_theme_keys_edit_and_save_a_custom_input_without_reopening_editor(t
 
     def drive(pipe_input):
         wait_until(lambda: app.modal is not None)
-        pipe_input.send_text("he\x15hello ❯ \t\x15→ \r\r")
+        pipe_input.send_text("hhe\x15hello ❯ \t\x15→ \r\r")
 
     run_interactive_tui(monkeypatch, app, drive=drive)
     assert "saved as ui.input" in results[0]

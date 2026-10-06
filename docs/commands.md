@@ -94,8 +94,8 @@ and, where the values are a fixed set, the values. Example: `/set provider.respo
 | `/yolo` | Toggle confirmation prompts — read [Safety](safety.md) before leaving them off |
 | `/strict` | Toggle strict tool-call schemas (OpenAI / DeepSeek) |
 
-**`/theme [NAME]`** — Open one appearance picker with Colorscheme, Diff, StatusBar, Divider and Input
-tabs. Use `h`/`l` or the left/right arrows to switch tabs, `j`/`k` or up/down to move, and `/`
+**`/theme [NAME]`** — Open one appearance picker with Colorscheme, Diff, StatusBar, Divider, Input
+and Transcript tabs. Use `h`/`l` or the left/right arrows to switch tabs, `j`/`k` or up/down to move, and `/`
 to search the current list. Moving previews each choice; Enter saves the changes across all
 tabs, and Esc cancels them. While searching, Esc leaves search first and then clears the filter.
 The StatusBar tab previews in the bottom row; Divider includes both layouts and sweeps, with
@@ -103,7 +103,8 @@ idle, running and queued examples. In Divider, Space chooses a layout or sweep a
 between the two groups. Changing colors redraws the output already on screen.
 Input offers five prompt symbols; `e` edits the ordinary and running prefixes. Enter in the
 editor applies the edit and returns to the list; Enter in the list saves.
-Choices are saved in your config file.
+Transcript chooses how a finished tool call is written; `f` opens its format, which is the same
+editor. Choices are saved in your config file.
 
 Choose directly with `/theme NAME`, `/theme diff NAME`, `/theme statusbar NAME`,
 `/theme divider NAME`, `/theme sweep NAME` or `/theme input NAME`. See [Appearance](appearance.md) for colors,

@@ -225,6 +225,99 @@ def reject_display(session: Session, call: ToolCall, output: str, *, d: ToolDisp
     return LogBlock.hierarchy(log_root(display + " · rejected: " + reason, LogRole.MUTED, d.batch_suffix, call), [])
 
 
+def _template_display(
+    session: Session,
+    call: ToolCall,
+    key: str,
+    output: str,
+    *,
+    failed: bool,
+    elapsed: float | None,
+    d: ToolDisplay,
+) -> LogBlock | None:
+    """The `[transcript] format` path: None keeps the builtin assembly, so an unset, standard,
+    or failing template can never change the default transcript (see `tools/transcript.py`).
+
+    The template owns the record's own rows -- the call line, the output preview, the closing
+    trailer. Engine-owned structure is computed here and attached as extras: an MCP summary, a
+    ToolScript envelope, an Ask answer, a vision trace. These mirror the builtin branches in
+    `finish_display` but stay separate so the builtin path is byte-identical to before.
+    """
+    from wizolt.tools import transcript
+
+    try:
+        template = transcript.builtin_or_template(transcript.effective_format(session.config, call.name))
+    except ValueError:
+        return None  # Config validation already reported this; the record still prints.
+    if template is None:
+        return None
+    tag = " [refused]" if failed and "user refused" in output else " [failed]" if failed else " [approved]" if d.approved else " [auto]" if d.auto else ""
+    citation = (key + tag).strip() if key else tag.strip()
+    display = d.display or tooloutput.short_call(session, call)
+    # A Bash record's `{output}` is the bounded stream preview, not the stored XML envelope: the
+    # envelope's tags are not output, exactly as the builtin Bash branch treats them. `hidden`
+    # is what that bound dropped, so `{elided}` counts everything the reader cannot see.
+    hidden = 0
+    text = output
+    if call.name == "Bash":
+        rows, hidden = tooloutput.bash_tail_preview(output, transcript.MAX_OUTPUT_LINES)
+        text = "\n".join(rows)
+    values = transcript.record_values(
+        tool=call.name,
+        args=clip_call_lines(display.partition(" ")[2]),
+        output=text,
+        elapsed=elapsed,
+        citation=citation,
+        elided=0,
+        failed=failed,
+        exit_code=tooloutput.bash_exit_code(output),
+    )
+    values["elided"] = transcript.elided_count(template, values) + hidden
+    lines = transcript.render_record(template, values)
+    if lines is None:
+        return None
+    from wizolt.tools import TOOL_REGISTRY  # local import: the registry is built on top of every tool
+
+    tool_class = TOOL_REGISTRY.get(call.name)
+    lexer = tool_class.log_lexer(call.args) if tool_class is not None else ""
+    return transcript.template_block(
+        lines,
+        citation=citation,
+        failed=failed,
+        output=output,
+        nested=d.nested_display,
+        extras=_engine_extras(call, output, elapsed, vision_entry=d.vision_entry),
+        batch_suffix=d.batch_suffix,
+        lexer=lexer,
+    )
+
+
+def _engine_extras(call: ToolCall, output: str, elapsed: float | None, *, vision_entry: str) -> list[LogLine]:
+    """The structure rows a record's shape never owns; the builtin path draws the same facts
+    inline in `finish_display`. A failed call's error row is not here: it is a red line the
+    template block always enforces."""
+    if call.name == "MCP":
+        summary = tooloutput.mcp_result_summary(call, output, elapsed)
+        return [LogLine("", summary, LogRole.META, LogEdge.END)] if summary else []
+    if call.name == "ToolScript" and (fields := tooloutput.toolscript_result_fields(output)):
+        counted, stdout, error = fields
+        duration = f" · {elapsed:.1f}s" if elapsed is not None else ""
+        head = ("failed · " if error else "") + f"calls {counted}" + duration
+        body = error or stdout
+        return [
+            LogLine(head, "Ctrl-O for more", LogRole.ERROR if error else LogRole.META, LogEdge.BRANCH),
+            *(
+                LogLine("", line, LogRole.ERROR if error else LogRole.OUTPUT, LogEdge.CONTINUE)
+                for line in tooloutput.preview_lines(body, tooloutput.BASH_TRANSCRIPT_PREVIEW_LINES)
+            ),
+        ]
+    if call.name == "Ask" and output:
+        return [LogLine("answer", oneline(output, 220), LogRole.META, LogEdge.END)]
+    if call.name == "ViewImage" and vision_entry:
+        return [LogLine("described by", vision_entry, LogRole.TOOL, LogEdge.BRANCH)]
+    return []
+
+
 def finish_display(
     session: Session,
     call: ToolCall,
@@ -239,6 +332,8 @@ def finish_display(
     d = d or ToolDisplay()
     if call.name == "Note" and not failed and d.display:
         return tooloutput.with_batch_suffix(d.display.removeprefix("Note ").strip(), d.batch_suffix)
+    if block := _template_display(session, call, key, output, failed=failed, elapsed=elapsed, d=d):
+        return block
     tag = " [refused]" if failed and "user refused" in output else " [failed]" if failed else " [approved]" if d.approved else " [auto]" if d.auto else ""
     tree = d.nested_display or call.name == "Bash" or bool(d.vision_entry)
     # A failed call explains itself in the error child below, so its root only has to identify

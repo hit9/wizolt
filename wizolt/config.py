@@ -406,6 +406,8 @@ class Config:
     plugins: Json = field(default_factory=dict)
     # UI owns parsing and validation; config only carries the raw tables.
     ui: Json = field(default_factory=dict)
+    # The raw `[transcript]` table (record format); `wizolt.tools.transcript` validates it.
+    transcript: Json = field(default_factory=dict)
     # The provider entry compaction summaries run on: compaction_provider names
     # a base provider entry (empty = the active provider), and compaction_model/reasoning/api
     # override that entry per field (empty = inherit the entry's value). Resolved per call by
@@ -497,6 +499,7 @@ class Config:
             hooks=cls.table(data, "hooks"),
             plugins=cls.table(data, "plugins"),
             ui=cls.table(data, "ui"),
+            transcript=cls.table(data, "transcript"),
             compaction_provider=compaction_provider,
             compaction_model=compaction_model,
             compaction_reasoning=compaction_reasoning,
@@ -708,6 +711,13 @@ model = ""
 # theme = "inherit"           # own colors: an existing theme name, or auto for terminal light/dark
 # [ui.divider]
 # theme = "inherit"           # line, glow and labels; /theme divider theme forest
+
+# [transcript]                # how one settled tool call prints; /theme transcript previews it
+# format = "preset:standard"  # or a template: fields {tool} {args} {marker} {output} {elapsed}
+                               # {exit} {citation} {elided} {error}; filters |tail:N |head:N
+                               # |firstline |duration |lower; blocks {% if %} {% for %}
+# [transcript.tool.Bash]      # sparse per-tool override; unset tools inherit format above
+# format = "preset:minimal"
 
 # [subagent]                   # defaults for new children; approval can override each field
 # provider = "default"         # name of a configured provider entry; omitted = inherit parent

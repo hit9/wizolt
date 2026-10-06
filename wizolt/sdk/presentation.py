@@ -51,17 +51,23 @@ class ToolCard:
 
     The running card above a live preview and every approval display stay host-owned.
     ``status`` is ``ok``, ``failed`` or ``refused``; a refused call never ran.
+
+    ``format`` is the record format in effect for this tool (`[transcript] format`, or the
+    tool's override). A panel may follow it -- the user's chosen shape is the one they asked
+    for -- but nothing enforces that; the builtin rendering applies it when no panel wins.
     """
 
     id: str
     tool: str
     arguments: Mapping[str, Any] = field(default_factory=dict)
     status: str = "ok"
+    format: str = ""
 
     def check(self) -> None:
         _text(self.id, "id")
         _text(self.tool, "tool")
         _arguments(self.arguments)
+        _text(self.format, "format")
         if self.status not in ("ok", "failed", "refused"):
             raise PluginError("Unknown tool card status")
 
@@ -72,6 +78,7 @@ class ToolSummary:
 
     ``output`` is the retained text the model received. ``key`` names the stored result
     (``tr.N``); the citation itself stays host-owned, so a panel cannot forge or drop it.
+    ``format`` is the record format in effect for this tool, as on ``ToolCard``.
     """
 
     id: str
@@ -81,11 +88,13 @@ class ToolSummary:
     output: str = ""
     elapsed: float | None = None
     key: str = ""
+    format: str = ""
 
     def check(self) -> None:
         _text(self.id, "id")
         _text(self.tool, "tool")
         _arguments(self.arguments)
+        _text(self.format, "format")
         if self.status not in ("ok", "failed", "refused"):
             raise PluginError("Unknown tool summary status")
         _text(self.output, "output", MAX_TEXT)

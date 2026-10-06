@@ -27,6 +27,7 @@ from wizolt.base import (
 )
 from wizolt.image import UserInput
 from wizolt.session import QueuedInput, SessionLease, SessionSnapshotStore
+from wizolt.tools import transcript
 from wizolt.ui.cli.commands import QUEUED_SUBCOMMANDS
 from wizolt.ui.cli.modals import approval_text_viewer, question_interaction
 from wizolt.ui.cli.presentation import Presentation
@@ -402,6 +403,7 @@ class CommandLoop:
         self.theme_problems.extend(self.presentation.status_bar.layout.load(self.session.config.ui, Theme.bar_styles))
         self.presentation.input_style, problems = InputStyle.load(self.session.config.ui)
         self.theme_problems.extend(problems)
+        self.theme_problems.extend(transcript.validate(self.session.config.transcript))
 
     def start_session(self, *, show_banner: bool = True) -> None:
         """Initialize output and background services shared by both command-loop frontends."""

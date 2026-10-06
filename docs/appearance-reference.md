@@ -311,6 +311,43 @@ The full `label`, `spinner` and queue counts are populated only in the divider; 
 supplies empty strings or zero for those fields. Put fields such as `rate` inside conditions when you want to omit their surrounding text
 while they are empty. Field contents never become template instructions.
 
+### Transcript records
+
+`[transcript] format` is one template for a whole tool call: its call line, its output rows and its
+closing row. `preset:standard` keeps the built-in rendering; `preset:minimal` writes one checklist
+row per call.
+
+```toml
+[transcript]
+format = """{marker} {tool} {args}
+{% for line in output|tail:5 %}{line}
+{% endfor %}{% if elided %}… +{elided} more lines · {citation}{% endif %}"""
+
+[transcript.tool.Bash]
+format = "{marker} {tool} {args} · {elapsed|duration}"
+```
+
+| Field | Meaning |
+| --- | --- |
+| `tool`, `args` | The tool's name and the arguments the call line shows |
+| `marker` | `●` for a finished call, `○` for one still running |
+| `output` | The result's lines, one per row; loop over it with `{% for line in output|tail:3 %}` |
+| `elapsed` | Seconds the call took; `{elapsed|duration}` renders `0.4s` |
+| `exit` | A command's exit code, when the tool reports one |
+| `citation` | The stored result's `tr.N` reference with its status tag |
+| `elided` | How many output lines the template's own loops left out |
+| `error` | The failure's text, when the call failed; `{error|firstline}` is its first line |
+| `failed` | Whether the call failed, for `{% if failed %}` |
+
+Filters: `|tail:N`, `|head:N`, `|firstline`, `|duration`, `|lower`, `|upper`. Blocks:
+`{% if FIELD %}`, `{% if not FIELD %}`, `{% else %}`, `{% for LINE in output|tail:N %}`. Unknown
+fields, filters or unbalanced blocks are reported when the config is read and the record falls
+back to the standard rendering.
+
+A failed call always keeps an error row, and a record that shows output always keeps its `tr.N`
+reference, whatever the template says. Diffs, approval cards and a script's call trace are drawn
+by wizolt and do not appear in the template.
+
 ### Powerline colors
 
 Built-in Powerline templates use the highlight groups `status.provider`, `status.model`, `status.detail`, `status.context`,

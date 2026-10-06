@@ -128,8 +128,8 @@ A presenter replaces how the host draws one **presentation site**: a named piece
 
 | Site | View | Fields |
 | --- | --- | --- |
-| `tool.call` | `ToolCard` | `id`, `tool`, `arguments`, `status`: `ok`, `failed` or `refused` |
-| `tool.result` | `ToolSummary` | `ToolCard` fields, plus `output` (the text the model received), `elapsed` and `key` (the stored result, `tr.N`) |
+| `tool.call` | `ToolCard` | `id`, `tool`, `arguments`, `status`: `ok`, `failed` or `refused`, `format` (the record format the user chose for this tool) |
+| `tool.result` | `ToolSummary` | `ToolCard` fields, plus `output` (the text the model received), `elapsed`, `key` (the stored result, `tr.N`) and `format` |
 | `activity` | `ActivityStatus` | `status`, `elapsed`, `stream_kind`, `stream_text`, `active_tools`, `counts` |
 
 `match` prefilters on those read-only fields before the call reaches your worker. The tool sites

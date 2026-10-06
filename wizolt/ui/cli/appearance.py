@@ -25,8 +25,9 @@ from prompt_toolkit.utils import get_cwidth
 from wizolt.agentsmd import display_path
 from wizolt.base import SELECTION_BACK, ConfigError, Text
 from wizolt.config import ConfigFile
+from wizolt.tools import transcript
 from wizolt.ui.bars import PRESETS, status_layout, status_source
-from wizolt.ui.cli import bars
+from wizolt.ui.cli import bars, transcripts
 from wizolt.ui.cli.formats import FormatPanel
 from wizolt.ui.cli.modals import picker_height
 from wizolt.ui.render import InputStyle, StatusBar, Theme, UiPrinter
@@ -38,8 +39,8 @@ if TYPE_CHECKING:
 
 # Picker settings; the first six also name direct `/theme KIND NAME` commands.
 KINDS = ("theme", "diff", "statusbar", "divider", "sweep", "input", "statusbar_theme", "divider_theme")
-TAB_KINDS = ("theme", "diff", "statusbar", "divider", "input")
-TITLES = ("Colorscheme", "Diff", "StatusBar", "Divider", "Input")
+TAB_KINDS = ("theme", "diff", "statusbar", "divider", "input", "transcript")
+TITLES = ("Colorscheme", "Diff", "StatusBar", "Divider", "Input", "Transcript")
 LEGEND = ("j/k move", "h/l tab", "/ search")
 CLOSING_KEYS = ("Enter save", "Esc cancel")
 
@@ -181,11 +182,14 @@ class AppearancePicker:
             **{kind: self.preset(kind) for kind in BAR_FORMATS},
             "placement": CUSTOM if placement is None else "split" if placement[1] else "left",
             "input": input_name,
+            "transcript": transcripts.name(transcripts.saved(loop), CUSTOM),
             **{kind + "_theme": Theme.selected_bar_theme(kind) for kind in ("statusbar", "divider")},
         }
         self.selected = dict(self.original)
         # The formats behind `custom` rows: what was saved, or a draft accepted in the format panel.
         self.custom = {kind: self.layout_before.sources[kind] for kind in BAR_FORMATS if self.original[kind] == CUSTOM}
+        if self.original["transcript"] == CUSTOM:
+            self.custom["transcript"] = transcripts.saved(loop)
         self.format: FormatPanel | None = None
         self.tabs = TabbedViewState(TITLES)
         self.height = picker_height()
@@ -242,6 +246,28 @@ class AppearancePicker:
         self.bar_focus[self.kind()] = setting + ":" + self.selected[setting]
         self.layout.configure({setting: self.source(setting)}, Theme.bar_styles)
 
+    def transcript_source(self, name: str) -> str:
+        """The format a transcript selection stands for."""
+        return self.custom["transcript"] if name == CUSTOM else "preset:" + name
+
+    def accept_transcript_format(self, source: str) -> None:
+        """Select an edited record format: as the preset it spells, else custom."""
+        self.selected["transcript"] = transcripts.name(source, CUSTOM)
+        if self.selected["transcript"] == CUSTOM:
+            self.custom["transcript"] = source
+
+    def open_transcript_format(self) -> None:
+        """Edit the record format as a draft, previewed by the same engine the transcript uses."""
+        self.format = FormatPanel(
+            "transcript",
+            lambda: self.transcript_source(self.selected["transcript"]),
+            transcripts.saved(self.loop),
+            apply=transcripts.problems,
+            accept=self.accept_transcript_format,
+            presets=transcript.PRESETS,
+            preview=lambda: transcripts.preview(self.transcript_source(self.selected["transcript"]), self.width),
+        )
+
     def open_format(self, setting: str) -> None:
         """Open the panel on `setting`, a bar format or the sweep. It shows the selection, so the
         preview leaves any merely highlighted row."""
@@ -275,6 +301,16 @@ class AppearancePicker:
                 Theme.AUTO: f"auto (this theme pairs with {Theme.active().diff_style})",
                 **{name: f"{name} · {style.note}" for name, style in DIFF_STYLES.items()},
             }
+        elif kind == "transcript":
+            # The custom row stays while any edited format is in hand, not only while the saved one
+            # is: a draft accepted in the panel has to be visible to be chosen again.
+            state.choices = (*transcripts.names(), *((CUSTOM,) if "transcript" in self.custom else ()))
+            state.labels = {
+                name: ("* " if name == self.selected[kind] else "  ")
+                + ("custom (f to edit)" if name == CUSTOM else f"{name}   {transcripts.body('preset:' + name).splitlines()[0][:48]}")
+                for name in state.choices
+            }
+            state.disabled = set()
         elif kind == "input":
             state.choices = (*InputStyle.PRESETS, CUSTOM)
             state.labels = {
@@ -340,6 +376,8 @@ class AppearancePicker:
             elif kind == "input":
                 # Inside a frame the sample must fit the box, or clipping its padding draws "…".
                 fragments = self.input_preview(self.input_style(name), self.box_width() - 4 if framed else self.width)
+            elif kind == "transcript":
+                fragments = transcripts.preview(self.transcript_source(name), self.width)
             else:
                 fragments = (
                     theme_preview(name) if kind == "theme" else diff_style_preview(name) if kind == "diff" else bars.preview(self.loop, kind, self.started)
@@ -406,9 +444,9 @@ class AppearancePicker:
         state = self.current_list()
         framed = self.height >= 20 and self.width >= 52
         state.height = self.height - (self.kind() in self.bar_focus) - (2 if framed else 0)
-        titles = TITLES if self.width >= 60 else ("Colors", "Diff", "Status", "Divider", "Input")
+        titles = TITLES if self.width >= 60 else ("Colors", "Diff", "Status", "Divider", "Input", "Record")
         if self.width < 52:
-            titles = ("Color", "Diff", "Bar", "Line", "Input")
+            titles = ("Color", "Diff", "Bar", "Line", "Input", "Rec")
         tabs: StyleAndTextTuples = [("", "  "), *UiPrinter.tab_segments(titles, self.tabs.tab), ("", "\n")]
         if self.format is not None:
             # The panel keeps its keys first and its draft at the cursor at any height.
@@ -473,6 +511,7 @@ class AppearancePicker:
             "statusbar": "Status bar · live preview below",
             "divider": "Divider · idle, running and queued",
             "input": "Input symbols · chat and follow-up",
+            "transcript": "Transcript · a sample call at this format",
         }[self.kind()]
         fragments = state.fragments(
             "",
@@ -483,6 +522,8 @@ class AppearancePicker:
                 if self.kind() in self.bar_focus
                 else ("j/k move", "h/l tab", "e edit")
                 if self.kind() == "input"
+                else ("j/k move", "h/l tab", "f format")
+                if self.kind() == "transcript"
                 else LEGEND,
                 self.width - 2,
             ),
@@ -537,7 +578,10 @@ class AppearancePicker:
         if self.format is not None:
             if not self.format.handle_key(key, data):
                 self.format = None
-                self.preview_bar(self.kind(), self.bar_focus[self.kind()])
+                # A bar's preview is restored by re-applying its selection; the record tab has no
+                # live preview to undo, only the selected format the sample draws from.
+                if self.kind() in self.bar_focus:
+                    self.preview_bar(self.kind(), self.bar_focus[self.kind()])
             return TUI_MODAL_PENDING
         if self.input_edit is not None:
             if key == "escape":
@@ -570,6 +614,9 @@ class AppearancePicker:
         if kind in self.bar_focus and not state.searching and key == "f":
             # The divider's Sweep rows open its formula; any other row, the bar's format.
             self.open_format("sweep" if self.bar_focus[kind].startswith("sweep:") else kind)
+            return TUI_MODAL_PENDING
+        if kind == "transcript" and not state.searching and key == "f":
+            self.open_transcript_format()
             return TUI_MODAL_PENDING
         if kind == "statusbar" and not state.searching and key == "p" and self.selected["placement"] != CUSTOM:
             self.selected["placement"] = "left" if self.selected["placement"] == "split" else "split"
@@ -630,7 +677,7 @@ class AppearancePicker:
     def save(self) -> list[str]:
         """Persist every setting a tab changed; the lines say what was saved where."""
         lines: list[str] = []
-        for kind in ("theme", "diff", "statusbar_theme", "divider_theme", *KINDS[2:6]):
+        for kind in ("theme", "diff", "statusbar_theme", "divider_theme", "transcript", *KINDS[2:6]):
             name = self.selected[kind]
             if kind in BAR_FORMATS:
                 # A bar is saved when its format text changes. One the picker merely recognizes,
@@ -640,6 +687,11 @@ class AppearancePicker:
                     lines.append(bars.select_layout(self.loop, kind, source))
                 continue
             if name == self.original[kind] and (kind != "input" or self.input_style(name) == self.input_before):
+                continue
+            if kind == "transcript":
+                source = self.transcript_source(name)
+                if source != transcripts.saved(self.loop):
+                    lines.append(transcripts.select(self.loop, source))
                 continue
             if kind == "theme":
                 lines.append(save_theme(self.loop, name))

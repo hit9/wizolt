@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- A presenter now sees the record format in effect for the tool it draws: `ToolCard.format` and
+  `ToolSummary.format` carry the user's `[transcript]` choice, including a tool's own override. A
+  panel may follow it; the builtin rendering applies it when no panel wins.
+
+- Change how a finished tool call is written to the transcript with `[transcript] format`: one
+  template owns the record's own rows (call line, output preview, closing row), with fields such as
+  `{tool}`, `{args}`, `{output}`, `{elapsed}` and `{citation}`, filters such as `|tail:3`, and
+  `{% if %}`/`{% for %}` blocks. `preset:standard` (the default) is today's rendering unchanged;
+  `preset:minimal` is a one-line checklist row per call. `[transcript.tool.NAME]` overrides one
+  tool. The new `/theme` **Transcript** tab previews each format on a sample call, **f** edits it as
+  a draft and **c**/**t** copy it; a diff, an approval card, a failed call's error row and the
+  stored-result reference are always drawn, whatever a template says.
+
 - Stop printing a diff's two file-header rows (`--- path` / `+++ path`) in the transcript: the call
   line above the block already names the file, and every edit repeated it twice more. The `+++`
   path is still read for syntax highlighting, so the body keeps its colors.
