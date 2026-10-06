@@ -112,6 +112,12 @@ part of the standard preset's frame, not a separate setting.)
 
 Choosing persists immediately and applies to the next rendered line.
 
+Formats are copyable like every bar format: the panel's existing `c` (copy the format string)
+and `t` (copy a paste-ready `[transcript]` TOML snippet, serialized with tomlkit) apply to the
+transcript sites unchanged. A chosen preset copies out as its one-line TOML entry, so sharing a
+look means pasting one snippet into another machine's config — the same flow bar formats have
+today (`ui.cli.formats`).
+
 ## Storage: sparse exceptions, same as tool visibility
 
 Global formats persist through the same preferences the `/theme` panel already writes, with
