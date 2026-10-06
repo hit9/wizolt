@@ -961,7 +961,7 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
     for cycle in range(3):
         log.with_suffix(f".open-{cycle}").touch()
         visible_containing("Colorscheme")
-        pane.keys("h", "h")
+        pane.keys("h", "h", "h")  # Wraps back past Transcript and Input to Divider.
         visible_containing("Running (preview)")
         chosen = ("capsule", "frame", "rail")[cycle]
         pane.keys(str(cycle + 2))
@@ -1024,7 +1024,7 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
         time.sleep(0.03)
     log.with_suffix(".open-4").touch()
     visible_containing("Colorscheme")
-    pane.keys("h", "j")
+    pane.keys("h", "h", "j")  # Wraps back past Transcript to Input.
     visible_containing("❯ Explain this function")
     for width, height in ((60, 18), (100, 30), (80, 24)):
         pane.resize(width, height)

@@ -28,7 +28,8 @@
   `error` instead of `refused`. In `/theme`, editing a custom format back to the `standard` body
   now selects `preset:standard` (the builtin rendering) instead of saving the template text. The
   transcript tests now assert through rendered records and drawn seams rather than private
-  counters, and share the picker fixture.
+  counters, and share the picker fixture. The tmux appearance acceptance test now walks past the
+  new Transcript tab, which had broken its tab navigation.
 
 - Choose how the model's reasoning reads while it arrives and what closes a long run of tool calls
   with `[transcript] thinking` (`expanded`, `collapsed`, `hidden`) and `[transcript] close`
