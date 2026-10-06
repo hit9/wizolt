@@ -1,6 +1,6 @@
 # Transcript appearance
 
-Status: design agreed with the user; not implemented. Transcript rows are expressed as format
+Status: implemented. Transcript rows are expressed as format
 strings — the same template language the status bar and divider already use — over a host-owned
 block structure. Density levels become presets of that one mechanism, and the existing presenter
 seam stays unchanged above it. Storage follows the same sparse-exceptions principle as
@@ -165,3 +165,21 @@ The presenter seam is unchanged and stays the deeper layer:
 5. Tests: default-equals-today golden files, boundary rules (citation, failure line, multi-line
    `{output}`), per-tool inheritance, persistence; quality gates; CHANGELOG; docs
    (`docs/appearance.md`, `docs/usage.md`).
+
+## As implemented
+
+All five steps are in. Three details differ from the text above, each for a reason:
+
+- **The language is `{% if %}`/`{% for %}` and fields, without `{% optional %}` or `[role]`
+  fragments.** `{% optional %}` drops a bar segment when the row is narrow; a record's rows are
+  not width-driven, and its truncation is `|tail:N`/`|head:N` on the field. `[role]` fragments
+  would let a template set colors, but a record's colors are host-owned role assignments (the
+  marker's success/danger role, the tool role, the muted output role), so the template composes
+  text and the theme composes color. `wizolt/tools/transcript.py` records this in its docstring.
+- **`thinking` and `close` are keys of the same table** rather than separate settings, and the tab
+  lists all three of its settings as one grouped list (`Space` chooses, `Tab` jumps groups, `f`
+  edits the format row): the two look choices change what the same stream prints, so they belong
+  beside the format rather than in a tab of their own.
+- **An unknown fact renders as nothing, not as a zero.** `{elapsed}` with no measured time prints
+  empty rather than `0.0`, `{exit}` empty rather than a code, and `{failed}` prints no text at all
+  (it is a condition, read by `{% if failed %}`).

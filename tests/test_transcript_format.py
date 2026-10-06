@@ -83,12 +83,16 @@ def test_a_field_renders_the_fact_it_names(source, expected):
 def test_the_failure_facts_describe_the_failure():
     assert text("{error}", failed=True) == OUTPUT  # the whole result is the error text
     assert text("{error|firstline}", failed=True) == "l1"
-    # The flag itself is a condition, not prose; printed bare it is the stringized bool.
-    assert text("{failed}", failed=True) == "True"
-    assert text("{failed}") == "False"
+    # The flag itself is a condition, not prose: printed bare it renders no text, and the
+    # condition form is what reads it.
+    assert text("{failed}", failed=True) == ""
+    assert text("{failed}") == ""
+    assert text("{failed}{% if failed %} failed{% endif %}", failed=True) == " failed"
 
 
 def test_an_absent_elapsed_prints_nothing_rather_than_zero():
+    assert text("{elapsed}") == "0.42"  # a measured time is printed as raw seconds
+    assert text("{elapsed}", elapsed=None) == ""
     assert text("{elapsed|duration}", elapsed=None) == ""
 
 
@@ -197,7 +201,13 @@ def test_render_record_keeps_the_builtin_path_when_there_is_no_template():
 
 def test_a_record_that_cannot_render_its_facts_falls_back_to_builtin():
     """A bad fact never loses a record: the failure is reported as None, not raised."""
-    assert transcript.render_record(template("{elapsed|duration}"), {"elapsed": "not a number"}) is None
+    assert transcript.render_record(template("{% for line in output|tail:2 %}{line}{% endfor %}"), {"output": None}) is None
+
+
+def test_an_unknown_duration_is_rendered_as_nothing_not_as_an_error():
+    """`|duration` on a fact the host has no value for says nothing, like the fact itself."""
+    assert transcript.render_record(template("{elapsed|duration}"), {"elapsed": "not a number"}) == []
+    assert text("{elapsed|duration}", elapsed=None) == ""
 
 
 # --- `{elided}` counts what the template itself hid ---------------------------------------

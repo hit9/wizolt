@@ -118,7 +118,7 @@ async def test_the_sample_renders_the_record_for_the_highlighted_row(command_loo
 
 
 async def test_enter_saves_the_global_format_and_keeps_the_rest_of_the_file(command_loop):
-    modal = command_loop.presentation.tui = TranscriptModal(["h", "j", "enter"])
+    modal = command_loop.presentation.tui = TranscriptModal(["h", "j", " ", "enter"])
     result = await theme_command(command_loop, "")
     assert result is not None and "transcript.format: preset:minimal (saved)" in result
     assert any("2. * minimal" in frame for frame in frames(modal))
@@ -129,9 +129,9 @@ async def test_enter_saves_the_global_format_and_keeps_the_rest_of_the_file(comm
 
 
 async def test_escape_discards_the_selected_format(command_loop):
-    modal = command_loop.presentation.tui = TranscriptModal(["h", "j", "escape"])
+    modal = command_loop.presentation.tui = TranscriptModal(["h", "j", " ", "escape"])
     assert await theme_command(command_loop, "") is None
-    assert any("2. * minimal" in frame for frame in frames(modal))
+    assert any("1. * standard" in frame for frame in frames(modal))
     assert saved(command_loop) == {"runtime": {"theme": "auto"}}
     assert command_loop.session.config.transcript == {}
     assert transcript.effective_format(command_loop.session.config, "Bash") == ""
@@ -154,7 +154,7 @@ async def test_f_opens_the_format_panel_on_the_transcript_setting(command_loop):
 
 
 async def test_ctrl_s_accepts_a_custom_template_and_enter_saves_it(command_loop):
-    keys = ["h", "j", "f", "e", *clear_and_type(CUSTOM_TEMPLATE), "c-s", "escape", "enter"]
+    keys = ["h", " ", "j", " ", "f", "e", *clear_and_type(CUSTOM_TEMPLATE), "c-s", "escape", "enter"]
     modal = command_loop.presentation.tui = TranscriptModal(keys)
     result = await theme_command(command_loop, "")
     assert result is not None and f"transcript.format: {CUSTOM_TEMPLATE} (saved)" in result
@@ -168,7 +168,7 @@ async def test_ctrl_s_accepts_a_custom_template_and_enter_saves_it(command_loop)
 def test_ctrl_s_makes_an_edited_template_the_selection(command_loop):
     picker = appearance.AppearancePicker(command_loop, 0)
     try:
-        for key in ("h", "j", "f", "e", *clear_and_type(CUSTOM_TEMPLATE), "c-s"):
+        for key in ("h", "j", " ", "f", "e", *clear_and_type(CUSTOM_TEMPLATE), "c-s"):
             picker.handle_key(key, key if len(key) == 1 else "")
         assert picker.format is not None and picker.format.draft is None
         assert picker.selected["transcript"] == CUSTOM
@@ -186,7 +186,7 @@ async def test_a_malformed_draft_is_reported_and_never_applied(command_loop):
     assert any("unknown field 'nope'" in frame for frame in text)
     assert any("Fix the errors above before applying." in frame for frame in text)
     assert any("Draft discarded." in frame for frame in text)
-    assert "2. * minimal" in text[-2]  # the panel closed onto the tab it was opened from
+    assert "1. * standard" in text[-2]  # the panel closed onto the tab it was opened from
     assert saved(command_loop) == {"runtime": {"theme": "auto"}}
     assert command_loop.session.config.transcript == {}
 
@@ -216,12 +216,25 @@ def test_a_draft_accepted_in_the_panel_keeps_its_custom_row(command_loop):
     -- otherwise the list would star a preset while Enter saved something else."""
     picker = appearance.AppearancePicker(command_loop, 0)
     try:
-        for key in ("h", "j", "f", "e", *clear_and_type(CUSTOM_TEMPLATE), "c-s"):
+        for key in ("h", "j", " ", "f", "e", *clear_and_type(CUSTOM_TEMPLATE), "c-s"):
             picker.handle_key(key, key if len(key) == 1 else "")
         picker.handle_key("escape", "escape")
         state = picker.current_list()
-        assert state.choices == (*transcripts.names(), CUSTOM)
-        assert state.selected_choice() == CUSTOM
+        assert state.choices == (
+            "format",
+            "format:standard",
+            "format:minimal",
+            "format:custom",
+            "thinking",
+            "thinking:expanded",
+            "thinking:collapsed",
+            "thinking:hidden",
+            "close",
+            "close:rule",
+            "close:blank",
+            "close:none",
+        )
+        assert state.selected_choice() == "format:custom"
         assert picker.selected["transcript"] == CUSTOM
         assert picker.transcript_source(CUSTOM) == CUSTOM_TEMPLATE
     finally:

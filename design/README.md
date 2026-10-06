@@ -11,4 +11,4 @@ These documents describe implementation decisions and invariants. User documenta
   prompt-file convention (design; not implemented).
 - [Transcript appearance](TRANSCRIPT_APPEARANCE.md): transcript rows as format strings over a
   host-owned block structure, in a `/theme` Transcript tab; density levels become presets,
-  per-tool overrides stay sparse; presenters unchanged above (design; not implemented).
+  per-tool overrides stay sparse; presenters unchanged above.

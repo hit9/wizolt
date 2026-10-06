@@ -196,9 +196,12 @@ to your shell profile. `NO_COLOR=1` turns colors off.
 
 ## Transcript
 
-The **Transcript** tab changes how a finished tool call is written to the transcript. Choose
-`standard` (the default) for a call line, a short preview of its output and a `tr.N` reference
-that **Ctrl-O** expands, or `minimal` for a one-line checklist row per call.
+Three settings share the **Transcript** tab. **Space** chooses the highlighted value, **Tab**
+jumps between settings, and **Enter** saves; each choice is previewed as you move.
+
+**Record format** decides how a finished tool call is written. Choose `standard` (the default)
+for a call line, a short preview of its output and a `tr.N` reference that **Ctrl-O** expands, or
+`minimal` for a one-line checklist row per call.
 
 ```text
 standard
@@ -213,7 +216,14 @@ minimal
   ● read src/db/rows.rs
 ```
 
-Press **f** to see the format behind the choice and **e** to write your own. A format is one
+**Thinking display** decides how the model's reasoning reads while it arrives: `expanded` keeps
+the newest lines (the default), `collapsed` keeps its opening line only, and `hidden` shows
+nothing -- the divider below still says `thinking`.
+
+**Tool-run divider** decides what closes a long run of tool calls the agent never talks over: a
+full-width line (the default), a blank line, or nothing.
+
+Press **f** on a record format to see what it stands for and **e** to write your own. A format is one
 template for the whole record: fields like `{tool}`, `{args}`, `{output}`, `{elapsed}`,
 `{citation}` and `{elided}`, filters like `|tail:3` and `|firstline`, and `{% if %}` / `{% for %}`
 blocks. Rows the engine owns -- a diff, an approval card, a failed call's error line, the stored
@@ -223,6 +233,8 @@ result's reference -- are always drawn, whatever the template says. **c** copies
 ```toml
 [transcript]
 format = "preset:minimal"
+thinking = "collapsed"
+close = "blank"
 
 [transcript.tool.Bash]
 format = """{tool} {args}

@@ -103,8 +103,9 @@ idle, running and queued examples. In Divider, Space chooses a layout or sweep a
 between the two groups. Changing colors redraws the output already on screen.
 Input offers five prompt symbols; `e` edits the ordinary and running prefixes. Enter in the
 editor applies the edit and returns to the list; Enter in the list saves.
-Transcript chooses how a finished tool call is written; `f` opens its format, which is the same
-editor. Choices are saved in your config file.
+Transcript holds three settings: how a finished tool call is written, how the model's reasoning
+reads while it arrives, and what closes a long run of tool calls. Space chooses, Tab jumps between
+the three, and `f` opens the record format in the same editor. Choices are saved in your config file.
 
 Choose directly with `/theme NAME`, `/theme diff NAME`, `/theme statusbar NAME`,
 `/theme divider NAME`, `/theme sweep NAME` or `/theme input NAME`. See [Appearance](appearance.md) for colors,

@@ -345,8 +345,17 @@ fields, filters or unbalanced blocks are reported when the config is read and th
 back to the standard rendering.
 
 A failed call always keeps an error row, and a record that shows output always keeps its `tr.N`
-reference, whatever the template says. Diffs, approval cards and a script's call trace are drawn
-by wizolt and do not appear in the template.
+reference, whatever the template says. A fact the host has no value for renders as nothing rather
+than as a zero, and a condition such as `{failed}` prints no text at all: use `{% if failed %}`.
+Diffs, approval cards and a script's call trace are drawn by wizolt and do not appear in the
+template.
+
+The same table holds two more keys:
+
+| Key | Values | Meaning |
+| --- | --- | --- |
+| `thinking` | `expanded`, `collapsed`, `hidden` | The reasoning shown while it arrives: the newest lines, its opening line, or none |
+| `close` | `rule`, `blank`, `none` | What closes a long run of tool calls the agent never talks over |
 
 ### Powerline colors
 

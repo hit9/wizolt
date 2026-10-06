@@ -7,6 +7,9 @@ host already computed: fields (``{tool}``, ``{args}``, ``{output}`` ...) and fil
 family (``{% if %}`` blocks, ``[role]``-free plain text); its parser is dedicated because a
 record is multi-line and has no width-driven fills or joins.
 
+The table's other two keys, `thinking` and `close`, are look-level choices over the same record
+stream: how reasoning appears while it arrives, and how a long run of silent tool calls is closed.
+
 Structure stays host-owned: which children exist (diffs, approval cards, the ToolScript
 envelope), tree edges, roles and the stored-result citation. Two red lines are enforced in code,
 not by trust: a rendered block that shows output keeps its citation, and a failed call keeps an
@@ -36,6 +39,11 @@ PRESETS: dict[str, str] = {
 }
 
 FIELDS = frozenset({"marker", "tool", "args", "output", "elapsed", "exit", "citation", "elided", "error", "failed"})
+
+# How the model's reasoning appears while it arrives, and how a long run of silent tool calls is
+# closed before the next model text. Both are the transcript's own look, so both live here.
+THINKING = ("expanded", "collapsed", "hidden")
+CLOSE = ("rule", "blank", "none")
 FILTERS = frozenset({"lower", "upper", "firstline", "duration", "tail", "head"})
 
 
@@ -219,6 +227,10 @@ class RecordTemplate:
             return str(value)
         for name, _argument in node.filters:
             value = _apply(name, value)
+        # A boolean is a condition, not copy: `{failed}` prints nothing and `{% if failed %}` reads
+        # it. Anything else renders as its text, with an unknown fact rendering as nothing.
+        if isinstance(value, bool) or value is None:
+            return ""
         return value if isinstance(value, str) else str(value)
 
 
@@ -231,7 +243,10 @@ def _apply(name: str, value: Any) -> Any:
         text = str(value).strip()
         return text.splitlines()[0] if text else ""
     if name == "duration":
-        return f"{float(value):.1f}s" if value else ""
+        try:
+            return f"{float(value):.1f}s" if value else ""
+        except (TypeError, ValueError):  # an unknown elapsed is not a number to render
+            return ""
     return value
 
 
@@ -283,14 +298,18 @@ def record_values(
     failed: bool,
     exit_code: str = "",
 ) -> dict[str, Any]:
-    """The facts one settled call offers a template. `output` arrives bounded by the caller."""
+    """The facts one settled call offers a template. `output` arrives bounded by the caller.
+
+    An unknown fact is empty text, never a zero: `{elapsed}` prints nothing when the call has no
+    measured time, and `{exit}` nothing when the tool reports no code. A condition field
+    (`{failed}`) is a fact for `{% if %}`, so it renders no text either way."""
     lines = [line for line in output.splitlines() if line.strip()][:MAX_OUTPUT_LINES]
     return {
         "marker": "●",
         "tool": tool,
         "args": args,
         "output": lines,
-        "elapsed": elapsed if elapsed is not None else 0.0,
+        "elapsed": elapsed if elapsed is not None else "",
         "exit": exit_code,
         "citation": citation,
         "elided": elided,
@@ -348,13 +367,17 @@ def validate(raw: Json) -> list[str]:
     if not isinstance(raw, dict):
         return ["transcript must be a table"]
     problems: list[str] = []
-    if unknown := set(raw) - {"format", "tool"}:
+    if unknown := set(raw) - {"format", "tool", "thinking", "close"}:
         problems.append(f"transcript: unknown settings: {', '.join(sorted(unknown))}")
     for label, source in [("transcript.format", raw.get("format", ""))]:
         if not isinstance(source, str):
             problems.append(f"{label} must be a string")
         else:
             problems.extend(_problems(label, source))
+    for key, choices in (("thinking", THINKING), ("close", CLOSE)):
+        value = raw.get(key, choices[0])
+        if value not in choices:
+            problems.append(f"transcript.{key}: unknown value {value!r}; choose from {', '.join(choices)}")
     table = raw.get("tool", {})
     if not isinstance(table, dict):
         return [*problems, "transcript.tool must be a table"]
@@ -374,6 +397,20 @@ def _problems(label: str, source: str) -> list[str]:
         message = str(error).removeprefix("transcript.format: ")
         return [f"{label}: {message}"]
     return []
+
+
+def thinking(config: Any) -> str:
+    """How reasoning appears while it arrives: every line, its first line, or nothing."""
+    raw = getattr(config, "transcript", None)
+    value = raw.get("thinking") if isinstance(raw, dict) else None
+    return value if value in THINKING else THINKING[0]
+
+
+def close(config: Any) -> str:
+    """How a long run of silent tool calls is closed before the next model text."""
+    raw = getattr(config, "transcript", None)
+    value = raw.get("close") if isinstance(raw, dict) else None
+    return value if value in CLOSE else CLOSE[0]
 
 
 def effective_format(config: Any, tool: str) -> str:

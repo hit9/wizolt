@@ -712,10 +712,12 @@ model = ""
 # [ui.divider]
 # theme = "inherit"           # line, glow and labels; /theme divider theme forest
 
-# [transcript]                # how one settled tool call prints; /theme transcript previews it
+# [transcript]                # how one settled tool call prints; /theme Transcript previews it
 # format = "preset:standard"  # or a template: fields {tool} {args} {marker} {output} {elapsed}
                                # {exit} {citation} {elided} {error}; filters |tail:N |head:N
                                # |firstline |duration |lower; blocks {% if %} {% for %}
+# thinking = "expanded"       # reasoning while it arrives: expanded, collapsed (first line), hidden
+# close = "rule"              # a long run of silent calls: rule, blank, none
 # [transcript.tool.Bash]      # sparse per-tool override; unset tools inherit format above
 # format = "preset:minimal"
 

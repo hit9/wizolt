@@ -25,6 +25,7 @@ from wizolt.config import PROVIDER_API_CHOICES
 from wizolt.mentions import MentionSpan, active_mention, encode_file_mention, mention_spellings
 from wizolt.providers.compat import bundled_policy
 from wizolt.session import QueuedInput, Session
+from wizolt.tools import transcript
 from wizolt.ui.bars import PRESETS, BarLayout
 from wizolt.ui.cli.appearance import KINDS
 from wizolt.ui.cli.commands import NEEDS_ARGUMENT, SET_KEYS, SET_VALUES
@@ -533,15 +534,23 @@ class View:
     def model_stream_fragments(self) -> StyleAndTextTuples:
         text = self.presentation.model_stream_text
         kind = self.presentation.model_stream_kind
-        if not text:
+        mode = transcript.thinking(self.session.config) if kind == "reasoning" else transcript.THINKING[0]
+        if not text or mode == "hidden":
             return []
+        visible = 1 if mode == "collapsed" else 6
         width = max(20, shutil.get_terminal_size((120, 20)).columns)
         # Drawn with LogBlock's own rail so it cannot drift from the tree every tool call draws.
         # The rows carry CONTINUE (`│`) and nothing carries BRANCH: `├` is a T-junction, and there
         # is no line above the block for one to join. Nor does a `└` close it - the stream is still
         # arriving, and an end cap would say it had finished.
         rail = LogBlock.prefix(TurnBox.CONTENT_LEVEL + 1, LogEdge.CONTINUE)
-        rows = [Text.clip_width(line.expandtabs(4), max(1, width - len(rail) - 1)) for line in text.replace("\r", "\n").splitlines()[-6:]]
+        # `collapsed` keeps the reasoning's own opening line rather than its newest one: the point
+        # of the mode is a steady one-line trace, and a line that keeps being replaced by the next
+        # is not steady. Blank openings are skipped: a stream that starts with a bare newline would
+        # otherwise draw an empty row for the whole answer, since only the first line is ever shown.
+        lines = text.replace("\r", "\n").splitlines()
+        shown = [line for line in lines if line.strip()][:1] if mode == "collapsed" else lines[-visible:]
+        rows = [Text.clip_width(line.expandtabs(4), max(1, width - len(rail) - 1)) for line in shown]
         # The spark's row is the region's own, never the text's: a gray word beside the spark names
         # the phase (the same wording the divider below uses), and the first streamed line can arrive
         # on the next row down instead of racing for whatever room the spark leaves. The rows are

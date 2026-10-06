@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Choose how the model's reasoning reads while it arrives and what closes a long run of tool calls
+  with `[transcript] thinking` (`expanded`, `collapsed`, `hidden`) and `[transcript] close`
+  (`rule`, `blank`, `none`); both are on the `/theme` Transcript tab beside the record format,
+  which now lists its three settings as one grouped list (**Space** chooses, **Tab** jumps
+  groups, **f** edits the format row). An unknown fact in a record template now renders as nothing
+  rather than as a zero, and `{failed}` prints no text at all (it is a condition).
+
 - A presenter now sees the record format in effect for the tool it draws: `ToolCard.format` and
   `ToolSummary.format` carry the user's `[transcript]` choice, including a tool's own override. A
   panel may follow it; the builtin rendering applies it when no panel wins.

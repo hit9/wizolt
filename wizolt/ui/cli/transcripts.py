@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 
-from wizolt.base import ConfigError
+from wizolt.base import ConfigError, LogBlock, LogEdge, Text, TurnBox
 from wizolt.config import ConfigFile
 from wizolt.tools import transcript
 from wizolt.ui.render import Theme, UiPrinter
@@ -31,6 +31,32 @@ SAMPLE_OUTPUT = (
     "src/db/rows.rs:204: }",
 )
 SAMPLE_CITATION = "tr.12 [auto]"
+SAMPLE_REASONING = (
+    "I should inspect the existing implementation first.",
+    "The request path retries with a closed client.",
+    "Reconnecting per attempt fixes it.",
+)
+
+# The tab's three settings, in the order it lists them. Each is a key of the `[transcript]` table,
+# and the picker stores their selections under these names.
+GROUPS = ("format", "thinking", "close")
+SETTINGS = {"format": "transcript", "thinking": "transcript_thinking", "close": "transcript_close"}
+TITLES = {"format": "Record format", "thinking": "Thinking display", "close": "Tool-run divider"}
+LABELS = {
+    "expanded": "every line",
+    "collapsed": "first line only",
+    "hidden": "hidden",
+    "rule": "a full-width line",
+    "blank": "a blank line",
+    "none": "nothing",
+}
+
+
+def choices(group: str) -> tuple[str, ...]:
+    """The values one group offers, in the order the tab lists them."""
+    if group == "format":
+        return tuple(transcript.PRESETS)
+    return transcript.THINKING if group == "thinking" else transcript.CLOSE
 
 
 def names() -> tuple[str, ...]:
@@ -73,6 +99,46 @@ def problems(source: str) -> list[str]:
     return []
 
 
+def format_label(selection: str) -> str:
+    """One format row: the preset and the shape it names, or the user's own format."""
+    if selection == "custom":
+        return "custom (f to edit)"
+    return f"{selection}   {body('preset:' + selection).splitlines()[0][:48]}"
+
+
+def current(loop: CommandLoop, group: str) -> str:
+    """The value in effect for one group: the format as the picker names it, else the raw value."""
+    if group == "format":
+        return name(saved(loop), "custom")
+    if group == "thinking":
+        return transcript.thinking(loop.session.config)
+    return transcript.close(loop.session.config)
+
+
+def thinking_preview(mode: str, columns: int) -> StyleAndTextTuples:
+    """What the reasoning trace looks like while it arrives, at the same rail the live preview
+    draws: `expanded` keeps the newest lines, `collapsed` the opening one, `hidden` none."""
+    rail = LogBlock.prefix(TurnBox.CONTENT_LEVEL + 1, LogEdge.CONTINUE)
+    head: StyleAndTextTuples = [(Theme.fg("muted"), "✻ thinking\n")]
+    if mode == "hidden":
+        return [*head, (Theme.fg("muted"), "  only the divider below names the phase\n")]
+    shown = SAMPLE_REASONING[:1] if mode == "collapsed" else SAMPLE_REASONING
+    rows: StyleAndTextTuples = list(head)
+    for line in shown:
+        rows.extend([(Theme.fg("muted"), rail), (Theme.fg("muted"), " " + Text.clip_width(line, max(1, columns - len(rail) - 2)) + "\n")])
+    return rows
+
+
+def close_preview(style: str, columns: int) -> StyleAndTextTuples:
+    """What a long run of silent tool calls leaves behind, drawn the way the transcript draws it."""
+    call = [(Theme.fg("tool"), "  ● bash "), (Theme.fg("text"), "cargo bench export\n")]
+    if style == "none":
+        return [*call, (Theme.fg("muted"), "  the next call follows straight on\n")]
+    if style == "blank":
+        return [*call, ("", "\n"), (Theme.fg("muted"), "  (one blank row)\n")]
+    return [*call, (Theme.fg("rule"), "─" * max(1, columns) + "\n")]
+
+
 def preview(source: str, columns: int) -> StyleAndTextTuples:
     """The sample record at `source`, drawn with the transcript's own roles and edges."""
     try:
@@ -101,16 +167,19 @@ def preview(source: str, columns: int) -> StyleAndTextTuples:
     return [(style, text) for style, text in UiPrinter().log_segments(block, columns)]
 
 
-def select(loop: CommandLoop, source: str) -> str:
-    """Apply `source` as the global record format and persist it, like a bar's format."""
+def select(loop: CommandLoop, group: str, value: str) -> str:
+    """Apply and persist one group's choice, like a bar's format. `value` is what the table stores:
+    the format itself for the format group, the choice for the two look settings."""
     raw = loop.session.config.transcript
-    loop.session.config.transcript = {**(raw if isinstance(raw, dict) else {}), "format": source}
+    table = dict(raw) if isinstance(raw, dict) else {}
+    table[group] = value
+    loop.session.config.transcript = table
     if loop.presentation.tui is not None:
         loop.presentation.tui.invalidate()
-    result = f"transcript.format: {source}"
+    result = f"transcript.{group}: {value}"
     if loop.session.config.path:
         try:
-            ConfigFile.set_ui_value(loop.session.config.path, ("transcript",), "format", source)
+            ConfigFile.set_ui_value(loop.session.config.path, ("transcript",), group, value)
         except (OSError, ValueError, ConfigError) as error:
             result += f"\nApplied for this session; not saved: {error}"
         else:

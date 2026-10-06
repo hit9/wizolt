@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from wizolt.base import ImageRouteNotice, LogBlock, LogEdge, LogLine, LogRole, Text, TurnBox
 from wizolt.session import Session
+from wizolt.tools import transcript
 from wizolt.ui.cli.update import UpdateStatus
 from wizolt.ui.render import BashLivePreview, InputStyle, StatusBar, UiPrinter
 
@@ -311,7 +312,14 @@ class Presentation:
         the resumed transcript cannot drift into drawing the seam by different rules."""
         self._silent_batches += 1
         if self._silent_batches >= self.TOOL_RUN_RULE_BATCHES and self.ui.rule_due(self.MIN_ROWS_BETWEEN_RULES):
-            self.ui.emit_phase_rule()
+            # The run has earned a seam; `[transcript] close` says what that seam is. `none` closes
+            # it with nothing at all, which is a real choice for a reader who wants the calls to run
+            # together, so the count resets either way: the next seam is a full run away.
+            style = transcript.close(self.session.config)
+            if style == "rule":
+                self.ui.emit_phase_rule()
+            elif style == "blank":
+                self.ui.separate()
             self._silent_batches = 0
 
     def tool_batch_output(self, silent: bool) -> None:
