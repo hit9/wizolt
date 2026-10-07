@@ -9,6 +9,23 @@ document any retained cost. Update `baselines/` and this README's reference befo
 never accept a regression merely by replacing the baseline. If the environment or workload changed,
 remeasure the previous reference revision too so the comparison remains meaningful.
 
+## Compaction payload trim (branch review)
+
+[Results](results/linux-arm64-py314-compaction-flat-trim.json): `Compactor.input()`, the
+flattened compaction payload, over the stored messages of eight real local sessions, before
+(`8a32f222`, tool results carried whole) and after (results over 2,000 characters cut to head
+and tail). Linux ARM64, CPython 3.14.7; sizes are wizolt's own token estimate.
+
+| Workload | Before (tokens) | After (tokens) | Change |
+| --- | ---: | ---: | ---: |
+| 8 sessions, 2,554 messages, 534 of 1,289 tool results trimmed | 952,860 | 488,737 | -48.7% |
+
+Per session the cut ranges from -28% to -66%. Only the flattened payload is affected: it is
+used when `[compaction]` names another provider, a `context.compact` plugin is active, or the
+inline request cannot be built. The inline request is unchanged byte for byte. The trade-off is
+that the summarizer no longer sees the middle of a long result; its `tr.N` key stays in the
+head, and the full text remains readable under it.
+
 ## Transcript records (branch review)
 
 [Before](results/linux-arm64-py314-transcript-rows-before.json) is `4c3d0727`; the

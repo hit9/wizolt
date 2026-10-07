@@ -181,6 +181,49 @@ def test_compaction_falls_back_to_the_flat_payload_on_a_separate_provider(tmp_pa
     assert compaction.Compactor(ContextManager(live), _StubModel()).request(list(live.messages)) is None
 
 
+def _long_tool_exchange() -> list:
+    """A request, then a Bash call whose result is a long log ending in the error that matters."""
+    body = "\n".join(f"collecting module_{index}.py" for index in range(400))
+    result = f"tool tr.1 Bash pytest -q\noutput:\n{body}\nFAILED tests/test_api.py::test_login - AssertionError: 401 != 200"
+    return [
+        {"role": "user", "content": "fix the login test"},
+        {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "Bash", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": result},
+        {"role": "tool", "tool_call_id": "c2", "content": "tool tr.2 Read a.py\noutput:\nshort"},
+        *({"role": "assistant", "content": f"step {index}"} for index in range(10)),
+    ]
+
+
+def test_the_flat_payload_carries_a_tool_results_head_and_tail_not_its_body(tmp_path):
+    """The summarizer keeps a result's conclusion, not its log: the key that reaches the full text
+    and the error at the end survive, the middle does not, and the stored message is untouched."""
+    live = session(tmp_path)
+    messages = _long_tool_exchange()
+    stored = json.dumps(messages)
+
+    payload = compaction.Compactor(ContextManager(live), _StubModel()).input(messages)
+
+    assert "tool tr.1 Bash pytest -q" in payload
+    assert "FAILED tests/test_api.py::test_login - AssertionError: 401 != 200" in payload
+    assert "collecting module_200.py" not in payload
+    assert "characters omitted" in payload
+    assert "tool tr.2 Read a.py\noutput:\nshort" in payload  # a short result is carried whole
+    assert json.dumps(messages) == stored
+    assert len(payload) < len(json.dumps(messages)) // 2
+
+
+def test_the_inline_request_carries_tool_results_byte_for_byte(tmp_path):
+    """The inline request rides the turn's cached prefix: trimming a result there would miss the
+    cache for the whole conversation, the very thing it exists to reuse."""
+    live = session(tmp_path)
+    live.messages = _long_tool_exchange()
+
+    built = compaction.Compactor(ContextManager(live), _StubModel()).request(list(live.messages))
+
+    assert built is not None
+    assert live.messages[2] in built[0]
+
+
 def test_compaction_leaves_tool_choice_exactly_as_an_ordinary_request_sets_it(tmp_path):
     """Forcing tool_choice would look safer and cost the prize: it invalidates the messages cache,
     which is the whole conversation this request exists to reuse. Every wire is treated alike."""

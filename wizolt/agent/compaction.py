@@ -418,9 +418,28 @@ class Compactor:
         return format_compaction_input(
             state="\n\n".join(filter(None, (self.ctx.session.state.format(), self.ctx.session.recent_activity()))),
             previous_summary=self.ctx.session.state.summary,
-            older_messages=self.ctx.messages_text(older),
-            recent_messages=self.ctx.messages_text(recent),
+            older_messages=self.ctx.messages_text([self.trimmed(message) for message in older]),
+            recent_messages=self.ctx.messages_text([self.trimmed(message) for message in recent]),
         )
+
+    # How much of one tool result the flattened payload carries. A summary keeps a result's
+    # conclusion, not its body, and the full text stays readable under its `tr.N` key, which the
+    # head keeps. Only the flattened payload is trimmed: the inline request must stay
+    # byte-identical to the turn it reuses the cache of.
+    SUMMARY_TOOL_RESULT_CHARS: ClassVar[int] = 2000
+
+    @classmethod
+    def trimmed(cls, message: Json) -> Json:
+        """A tool result cut to its head and tail for the summarizer: the call line and the first
+        rows, then where it ended -- the exit status, the error, the last lines -- on both sides of
+        a marker counting what was left out."""
+        content = message.get("content")
+        if message.get("role") != "tool" or not isinstance(content, str) or len(content) <= cls.SUMMARY_TOOL_RESULT_CHARS:
+            return message
+        head = content[: cls.SUMMARY_TOOL_RESULT_CHARS * 2 // 5]
+        tail = content[-(cls.SUMMARY_TOOL_RESULT_CHARS - len(head)) :]
+        omitted = len(content) - len(head) - len(tail)
+        return {**message, "content": f"{head}\n[... {omitted} characters omitted ...]\n{tail}"}
 
     def prefix_count(self, turn_messages: list[Json] | None = None, recent: int | None = None) -> int:
         """How many messages of the scope's own list the summary request carries.
