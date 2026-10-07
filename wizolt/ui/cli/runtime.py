@@ -18,6 +18,7 @@ from prompt_toolkit.styles import DynamicStyle
 from wizolt.agent.lifecycle import close_agent_resources
 from wizolt.base import MalformedToolCallError, TurnBox, WizoltError, run_blocking
 from wizolt.image import UserInput
+from wizolt.sdk import PluginError
 from wizolt.ui.cli.modals import tool_output_viewer
 from wizolt.ui.render import Theme, search_sources_footer
 from wizolt.ui.tui import TuiApp
@@ -606,6 +607,12 @@ class TuiRuntime:
             answer = str(error)
             malformed_tool_call = True
         except WizoltError as error:
+            turn_error = error
+            answer = f"Error: {error}"
+        except PluginError as error:
+            # A failed interceptor chain (prompt.submit, model.request, context.compact) is a
+            # turn failure, not an app failure: the input loop must stay usable so the plugin
+            # can be disabled or reloaded from /plugins (design/PLUGIN_INTERCEPTION.md).
             turn_error = error
             answer = f"Error: {error}"
         finally:

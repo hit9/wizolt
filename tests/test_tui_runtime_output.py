@@ -15,6 +15,7 @@ from wizolt.base import (
     TurnBox,
 )
 from wizolt.config import ProviderConfig
+from wizolt.sdk import PluginError
 from wizolt.ui.cli import CommandLoop, TuiRuntime
 from wizolt.ui.tui import TuiApp
 
@@ -104,6 +105,24 @@ async def test_tui_runtime_emits_answer_when_not_stream_promoted(tmp_path, monke
     await runtime.run_agent_turn("do it")
 
     assert emitted == []  # the engine printed the answer; the runtime does not repeat it
+
+
+async def test_a_plugin_interceptor_failure_ends_the_turn_not_the_session(tmp_path):
+    """A failed interceptor chain (`prompt.submit`, `model.request`, `context.compact`) raises
+    PluginError, which is a ValueError, not a WizoltError. The turn layer must still catch it:
+    otherwise the owned turn task re-raises into `_task_done` and shuts the whole app down,
+    leaving the user unable to reach /plugins to disable the broken plugin."""
+    command_loop = loop(tmp_path)
+    command_loop.presentation.tui = TuiApp()
+    command_loop.presentation.tui.set_running = lambda label: None
+    command_loop.agent.run = _raising(PluginError("broken's prompt.submit interceptor failed"))
+    emitted: list[str] = []
+    command_loop.presentation.ui.emit_answer = lambda text, **kwargs: emitted.append(text)
+
+    runtime = TuiRuntime(command_loop)
+    await runtime.run_agent_turn("do it")  # must not raise: the session stays usable
+
+    assert any("interceptor failed" in text for text in emitted)
 
 
 async def test_tab_submission_reaches_the_queue_flagged_for_the_next_turn(tmp_path):

@@ -26,6 +26,7 @@ from wizolt.base import (
     run_blocking,
 )
 from wizolt.image import UserInput
+from wizolt.sdk import PluginError
 from wizolt.session import QueuedInput, SessionLease, SessionSnapshotStore
 from wizolt.tools import transcript
 from wizolt.ui.cli.commands import QUEUED_SUBCOMMANDS
@@ -353,6 +354,10 @@ class CommandLoop:
                     answer = str(error)
                     malformed_tool_call = True
                 except WizoltError as error:
+                    answer = f"Error: {error}"
+                except PluginError as error:
+                    # A failed interceptor chain is a turn failure, not an app failure: the loop
+                    # must stay usable so the plugin can be disabled or reloaded from /plugins.
                     answer = f"Error: {error}"
             finally:
                 self.presentation.status_bar.stop()
