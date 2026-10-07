@@ -282,6 +282,12 @@ class ContextManager:
         tokens = self.request_tokens(messages, tools)
         self.session.state.context_tokens = tokens
         self.session.state.context_percent = min(100, tokens * 100 // self.request_token_budget())
+        # The context changed outside a request -- `/compact`, a resume -- so the parts plugins read
+        # (`Context.window.parts`) change with it here, not only at the next request; otherwise a
+        # meter shows the evicted conversation beside the new total until the user sends again.
+        plugins = self.session.plugins
+        if plugins is not None and plugins.entries:
+            plugins.context_parts = tuple(self.breakdown(base_system))
         return tokens
 
     def breakdown(self, base_system: str) -> list[tuple[str, int]]:

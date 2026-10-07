@@ -38,6 +38,34 @@ async def agent(tmp_path, monkeypatch):
     session.close()
 
 
+async def test_a_manual_compact_refreshes_the_window_parts_plugins_read(agent, tmp_path):
+    """`/compact` changes the context without a request: a meter reading `Context.window` must see
+    the shrunk conversation at once, not the evicted one beside the new total until the next send."""
+    from wizolt.ui.cli import CommandLoop
+
+    session = agent.session
+    session.messages = [
+        *({"role": role, "content": f"{role} {index} " + "detail " * 400} for index in range(12) for role in ("user", "assistant")),
+        {"role": "user", "content": "now"},
+    ]
+    session.transcript_messages = list(session.messages)
+    await session.plugins.manage("enable", source(tmp_path))
+    output = []
+    loop = CommandLoop(agent, output_fn=output.append)
+
+    def messages_part() -> int:
+        return dict(session.plugins.snapshot().window.parts)["messages"]
+
+    before = messages_part()
+    assert before > 20_000 // 4  # the plugin launch read the long conversation
+
+    assert await loop.command("/compact") == (True, False)
+    assert any("Compacted context" in str(line) for line in output)
+
+    assert messages_part() < before // 2
+    assert messages_part() == dict(agent.context.breakdown(session.system_prompt))["messages"]
+
+
 async def test_a_window_sized_non_english_span_reaches_the_plugin(agent, tmp_path):
     await agent.session.plugins.manage("enable", source(tmp_path, "return Summary(f'digest of {len(span.text)} characters')"))
     # About 200k characters of Chinese fits a 200k-token window, yet escapes past 1 MiB of JSON.

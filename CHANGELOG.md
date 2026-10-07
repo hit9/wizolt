@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fix the `context_bar` plugin (and any plugin reading `Context.window.parts`) showing the
+  pre-compaction conversation after `/compact` until the next message was sent: the per-category
+  estimates are now refreshed whenever the host re-measures the context outside a request
+  (`/compact`, resume, `/status`), not only at request time.
+
 - Fix `/theme` > Transcript > Tool-run divider only reaching runs printed afterwards: the dividers
   already on screen, a resumed session's replayed history included, are redrawn in the saved
   style. Switching to or from `none` can leave one blank row more or fewer than a fresh print.
