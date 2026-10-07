@@ -57,7 +57,11 @@ class RequestDeadline:
 
     @contextmanager
     def pause(self):
-        if not self.pauses:
+        # An expired (or expiring) timer can no longer be rescheduled: `reschedule` raises, and
+        # the deadline it was holding has already fired anyway. Leave it alone; the request
+        # fails on its own deadline rather than on an opaque internal error.
+        pausable = not self.pauses and not self.timer.expired()
+        if pausable:
             when = self.timer.when()
             self.remaining = max(0, when - asyncio.get_running_loop().time()) if when is not None else self.remaining
             self.timer.reschedule(None)
@@ -66,7 +70,7 @@ class RequestDeadline:
             yield
         finally:
             self.pauses -= 1
-            if not self.pauses and not self.closed and not self.timer.expired():
+            if pausable and not self.pauses and not self.closed and not self.timer.expired():
                 self.timer.reschedule(asyncio.get_running_loop().time() + self.remaining)
 
 

@@ -5,7 +5,7 @@ from types import MappingProxyType
 
 import pytest
 
-from wizolt.plugins.hostcalls import Continuations
+from wizolt.plugins.hostcalls import Continuations, RequestDeadline
 from wizolt.plugins.runtime import PluginRuntime
 from wizolt.plugins.scope import InvocationScope
 from wizolt.sdk import Context, Plugin, PluginError
@@ -273,6 +273,21 @@ async def test_auxiliary_requests_skip_active_registrations_but_core_descendants
 
     assert (await runtime.interception.run("tool.call", call(), nesting)).content == "outer core<tagger"
     assert seen[0].content == "core ran<tagger"
+
+
+async def test_a_request_deadline_that_already_fired_is_not_rescheduled():
+    """A pause taken once the deadline has fired must not reschedule: `asyncio.Timeout.reschedule`
+    raises unless the timer is ENTERED, and the request's expiry cancels the task while the frame
+    that would pause it is still being dispatched. The plugin would otherwise see an opaque
+    RuntimeError where the request's own timeout was the real outcome."""
+    deadline = RequestDeadline(0.01)
+
+    with pytest.raises(TimeoutError):
+        async with deadline:
+            await asyncio.sleep(0.05)  # Let the deadline fire.
+    # The timer is now EXPIRED (and, mid-flight, EXPIRING); both are what `expired()` reports.
+    with deadline.pause():  # Must not raise: there is no deadline left to suspend.
+        pass
 
 
 async def test_continuation_tokens_are_single_use_and_bound_to_their_request():
