@@ -139,6 +139,22 @@ async def test_compacted_reads_reach_every_later_checkpoint_verbatim(tmp_path):
     assert ContextManager.files_read([_calls(*(("Read", {"path": f"f{index}.py"}) for index in range(30)))]) == [f"f{index}.py" for index in range(10, 30)]
 
 
+def test_long_read_paths_never_clip_away_command_results_or_failures(tmp_path):
+    """The activity block is clipped from its end; consulted paths are the least of it, so twenty
+    long ones are what the clip takes, never an exit code or a failure."""
+    s = session(tmp_path)
+    for index in range(10):
+        s.record_command_result(f"pytest -q tests/{'long_' * 30}{index}.py", index)
+    s.record_tool_error("tr.9", "Edit", ["a.py"], "ToolError: old text not found")
+    long_reads = [_calls(*(("Read", {"path": f"src/{'deep/' * 50}file{index}.py"}) for index in range(20)))]
+    ContextManager(s).apply_compaction({"summary": "s"}, [], compacted=[{"role": "user", "content": "go"}, *long_reads])
+
+    activity = s.recent_activity()
+    assert "[activity clipped]" in activity
+    assert f"tests/{'long_' * 30}9.py" in activity and "exit code 9" in activity
+    assert "old text not found" in activity
+
+
 def test_activity_is_bounded_and_compactor_receives_it_even_for_fallback(tmp_path):
     s = session(tmp_path)
     for i in range(30):

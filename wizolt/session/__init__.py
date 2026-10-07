@@ -566,11 +566,6 @@ class Session:
         paths = list(dict.fromkeys(diff.path for diff in reversed(self.turn_diffs)))[:10]
         if paths:
             rows.extend(["Files previously modified:", *("- " + json.dumps(path[:240], ensure_ascii=False) for path in reversed(paths))])
-        # What compacted spans read, newest span first: the summary may drop a file it consulted,
-        # and the path is the one thing a later read needs. Modified files are listed above.
-        read = [path for path in dict.fromkeys(path for segment in reversed(self.history) for path in reversed(segment.files_read)) if path not in paths][:20]
-        if read:
-            rows.extend(["Files read in compacted history:", *("- " + json.dumps(path[:240], ensure_ascii=False) for path in reversed(read))])
         if self.recent_commands:
             rows.append("Recent command results (oldest to newest):")
             for item in self.recent_commands[-10:]:
@@ -585,6 +580,12 @@ class Session:
         )
         if errors:
             rows.extend(["Previous tool failures:", *(f"- {name}: {json.dumps(error, ensure_ascii=False)}" for name, error in reversed(errors))])
+        # What compacted spans read, newest span first: the summary may drop a file it consulted,
+        # and the path is the one thing a later read needs. Last, because the clip below cuts from
+        # the end: a consulted path is worth less than a command's exit code or a failure.
+        read = [path for path in dict.fromkeys(path for segment in reversed(self.history) for path in reversed(segment.files_read)) if path not in paths][:20]
+        if read:
+            rows.extend(["Files read in compacted history:", *("- " + json.dumps(path[:240], ensure_ascii=False) for path in reversed(read))])
         if not rows:
             return ""
         body = "\n".join(rows)
