@@ -121,6 +121,22 @@ def test_trials_place_plugin_blocks_as_a_live_request_does(tmp_path, capsys):
     assert ids == ["system", "plugin:adapters:notes", "conversation"]
 
 
+def test_compose_over_blocks_with_no_host_part_reports_a_plugin_error(tmp_path, capsys):
+    """A fixture whose received blocks are all `plugin:*` leaves `core` empty. That must surface
+    as a PluginError the trial reports as feedback, not an IndexError from `core[-1]` escaping the
+    per-step validation. Live requests always carry host blocks, so the fixture path is the reach."""
+    plugin = tmp_path / "adapters.py"
+    plugin.write_text(ADAPTERS)
+    blocks = [{"id": "plugin:other:own", "text": "theirs", "editable": True}]
+    fixture = tmp_path / "operations.json"
+    fixture.write_text(json.dumps([{"operation": "context.compose", "input": {"blocks": blocks}, "next": {"blocks": blocks}}]))
+
+    code = main(["test", str(plugin), "--operations", str(fixture), "--project", str(tmp_path)])
+    report = json.loads(capsys.readouterr().out)
+
+    assert code == 1 and "PluginError" in report["error"] and "IndexError" not in report["error"]
+
+
 def test_validate_rejects_operation_fixtures(tmp_path):
     plugin = tmp_path / "guard.py"
     plugin.write_text(PLUGIN)

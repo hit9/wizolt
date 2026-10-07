@@ -55,6 +55,8 @@ def composed(order: Callable[[Iterable[str]], list[str]]) -> Transition:
         before = {block.id: block for block in previous.blocks}
         given = {block.id: block for block in candidate.blocks}
         core = [block.id for block in previous.blocks if not block.id.startswith("plugin:")]
+        if not core:
+            raise PluginError("context.compose needs at least one host block ahead of the plugin blocks")
         for name in core:
             block = given.get(name)
             if block is None or block.editable != before[name].editable:
