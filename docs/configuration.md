@@ -106,10 +106,13 @@ model = "deepseek/deepseek-flash"
 headers = { x-cmd-zdr = "1" }   # Command Code: route only to zero-retention upstreams
 ```
 
-Values are ASCII strings or plain integers. The entry's key still supplies authentication, so a header is
-only needed for what the provider documents separately — zero-retention routing, a gateway's
-tenant or routing key. The same headers are used when `/model` asks the endpoint for its model
-list. `/config` lists the headers in effect.
+Values are ASCII strings or plain integers. `{session_id}` in a value becomes the conversation's
+id (each subagent sends its own), for a provider that routes by session:
+`headers = { x-session = "{session_id}" }`. Known providers that need one, such as OpenCode Go,
+get it without configuration; a header you set of the same name wins. The entry's key still
+supplies authentication, so a header is only needed for what the provider documents separately —
+zero-retention routing, a gateway's tenant or routing key. The same headers are used when `/model`
+asks the endpoint for its model list. `/config` lists the headers you configured.
 
 ### Fields an endpoint rejects
 

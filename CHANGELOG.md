@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- OpenCode Go works again: it began answering `400 MissingSessionID` to requests without an
+  `x-opencode-session` header. Provider `headers` values may now use `{session_id}`, the
+  conversation's id (each subagent its own; an unknown `{name}` is a config error). Catalog
+  entries gain the same `headers` policy, minus credential, identity and framing headers, below a
+  configured header of the same name; the OpenCode entry sends `x-opencode-session`.
+
 - `/prompt` (the bundled `system_prompt` plugin) now shows the system prompt exactly as it is
   sent, the lines settings add included, each under a gray rule naming its setting
   (`runtime.reactions`, ...); press `e` to edit the instructions in your editor as before. Built on

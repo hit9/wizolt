@@ -134,6 +134,30 @@ def test_codec_rejects_an_output_cap_that_is_not_a_sane_token_count(value):
         CatalogCodec().decode(catalog_payload(data), "cached")
 
 
+@pytest.mark.parametrize(
+    "headers",
+    (
+        {},
+        {"X-OpenCode-Session": "{session_id}"},
+        {"x session": "{session_id}"},
+        {"authorization": "Bearer {session_id}"},
+        {"user-agent": "other/1"},
+        {"x-opencode-session": "{session}"},
+        {"x-opencode-session": "a\r\nb"},
+        {"x-opencode-session": 1},
+    ),
+)
+def test_codec_rejects_headers_a_fetched_catalog_must_not_send(headers):
+    """Names go on the wire as written (an uppercase one would sit beside the user's same-named
+    header instead of yielding to it), credentials and identity stay the user's, and a misspelled
+    variable is a catalog error rather than literal braces on the wire."""
+    data = catalog_data()
+    next(entry for entry in data["providers"] if entry["id"] == "provider.opencode")["defaults"]["headers"] = headers
+
+    with pytest.raises(CatalogFormatError, match="headers"):
+        CatalogCodec().decode(catalog_payload(data), "cached")
+
+
 def test_codec_rejects_policy_references_to_unknown_reasoning_dialects():
     data = catalog_data()
     rule = next(rule for rule in data["model_rules"] if "reasoning.dialect" in rule["set"])

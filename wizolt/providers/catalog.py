@@ -43,6 +43,7 @@ from wizolt.providers.schema import (
     Selector,
     VersionSelector,
 )
+from wizolt.utils.headers import HEADER_VARIABLES, unknown_header_variables
 
 # Safety bounds (spec 5.3 / 8): regex length, prose sizes, and the safe integer window
 # for the document version.
@@ -84,6 +85,7 @@ POLICY_PATHS = frozenset(
         "output.max_tokens",
         "responses.reasoning_models",
         "cache.prompt_key",
+        "headers",
         "json.response_format",
         "strict.tools",
         "strict.beta",
@@ -99,6 +101,12 @@ RULE_MODES = frozenset({"inherit", "ignore"})
 RECIPE_CONTEXT_KEYS = frozenset({"wire", "reasoning_enabled", "resolved_effort", "off_value", "max_tokens", "reasoning_mandatory", "temperature", "model"})
 
 _EFFORT_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
+# Lowercase, as wizolt sends every configured header name, so a configured `headers` entry of the
+# same name replaces the catalog's instead of being sent beside it.
+_HEADER_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+# A fetched catalog must not be able to touch credentials, identity, or framing; the user's own
+# `headers` config still may.
+RESERVED_HEADERS = frozenset({"authorization", "proxy-authorization", "x-api-key", "api-key", "cookie", "user-agent", "content-type", "content-length", "host"})
 
 
 def _freeze(value: object) -> object:
@@ -367,6 +375,16 @@ class CatalogCodec:
         elif path in ("reasoning.mandatory", "cache.prompt_key", "json.response_format", "strict.tools", "strict.beta", "temperature.suppress"):
             if not isinstance(value, bool):
                 raise CatalogFormatError(f"{where}.{path} must be a boolean")
+        elif path == "headers":
+            if not isinstance(value, dict) or not value:
+                raise CatalogFormatError(f"{where}.{path} must be a non-empty object of header templates")
+            for name, template in value.items():
+                if _HEADER_RE.fullmatch(name) is None or name in RESERVED_HEADERS:
+                    raise CatalogFormatError(f"{where}.{path} has invalid or reserved header name {name!r}")
+                if not isinstance(template, str) or not template or not template.isascii() or any(ord(char) < 32 or ord(char) == 127 for char in template):
+                    raise CatalogFormatError(f"{where}.{path}.{name} must be a non-empty single-line ASCII value")
+                if unknown := unknown_header_variables(template):
+                    raise CatalogFormatError(f"{where}.{path}.{name} uses unknown variable {unknown[0]!r}; known: {sorted(HEADER_VARIABLES)}")
         elif path == "output.max_tokens":
             if isinstance(value, bool) or not isinstance(value, int) or not 0 < value <= MAX_OUTPUT_TOKENS:
                 raise CatalogFormatError(f"{where}.{path} must be an integer between 1 and {MAX_OUTPUT_TOKENS}")

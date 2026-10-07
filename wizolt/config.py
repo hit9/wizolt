@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from wizolt.base import MAX_TOOL_OUTPUT_TOKENS, ConfigError, Json, builtin_function_names
 from wizolt.providers.compat import bundled_policy
+from wizolt.utils.headers import HEADER_VARIABLES, unknown_header_variables
 from wizolt.utils.workspace import Workspace
 
 if TYPE_CHECKING:
@@ -566,6 +567,8 @@ class Config:
             normalized = name.lower()
             if HTTP_HEADER_NAME.fullmatch(name) is None or not text.isascii() or any(ord(char) < 32 or ord(char) == 127 for char in text):
                 raise ConfigError(f"config value `{key}.{name}` must be an ASCII HTTP header name and single-line value")
+            if unknown := unknown_header_variables(text):
+                raise ConfigError(f"config value `{key}.{name}` uses unknown variable `{{{unknown[0]}}}`; known: {', '.join(sorted(HEADER_VARIABLES))}")
             if normalized in headers:
                 raise ConfigError(f"config value `{key}` contains the duplicate header `{name}`")
             headers[normalized] = text

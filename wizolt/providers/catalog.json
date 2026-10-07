@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "version": 2026100601,
-  "updated_at": "2026-10-06",
+  "version": 2026100701,
+  "updated_at": "2026-10-07",
   "maintenance_scope": "well_known_and_necessary_specializations_only",
   "defaults": {
     "effort_order": [
@@ -1879,7 +1879,11 @@
       "hosts": [
         "opencode.ai"
       ],
-      "defaults": {},
+      "defaults": {
+        "headers": {
+          "x-opencode-session": "{session_id}"
+        }
+      },
       "model_rules": [
         {
           "id": "provider-rule.api-0.qwen3-8-max",
@@ -1931,9 +1935,10 @@
         }
       ],
       "builtin_tools_by_wire": {},
-      "why": "One OpenCode base URL multiplexes wire protocols by model, so api=auto cannot infer the protocol from the URL",
+      "why": "One OpenCode base URL multiplexes wire protocols by model, so api=auto cannot infer the protocol from the URL, and OpenCode Go rejects a request without a per-conversation x-opencode-session header",
       "evidence": [
-        "https://opencode.ai/docs/zen"
+        "https://opencode.ai/docs/zen",
+        "https://opencode.ai/docs/go/#where-can-i-use-it"
       ],
       "notes": [
         "Zen documents its websearch and webfetch features as client tools, not API server tools; builtin_tools_by_wire therefore remains empty.",

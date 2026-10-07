@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
+from types import MappingProxyType
 from typing import Literal, Protocol, cast
 from urllib.parse import urlparse
 
@@ -104,6 +105,9 @@ class ResolvedProvider:
     reasoning_recipe: str = "off"
     reasoning_mandatory: bool = False
     output_max_tokens: int = 0
+    # Header templates the host needs (OpenCode routes each conversation by `{session_id}`); the
+    # client expands them, and the entry's own configured `headers` win over them.
+    headers: Mapping[str, str] = MappingProxyType({})
 
 
 @dataclass(frozen=True)
@@ -649,6 +653,7 @@ class ProviderPolicy:
             reasoning_recipe=reasoning_recipe,
             reasoning_mandatory=self.reasoning_mandatory(config, model),
             output_max_tokens=output_max_tokens,
+            headers=cast(Mapping[str, str], self._resolver.field_value(provider, model, "headers") or MappingProxyType({})),
         )
 
     # -- request recipes ----------------------------------------------------

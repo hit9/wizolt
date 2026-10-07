@@ -858,12 +858,13 @@ async def remote_models(loop: ModelSettingsHost, provider: ProviderConfig) -> tu
 
         from wizolt.model import ModelClient
 
+        resolved = loop.session.policy.resolve(provider)
         client = AsyncOpenAI(
             api_key=provider.key,
-            base_url=loop.session.policy.resolve(provider).base_url,
+            base_url=resolved.base_url,
             timeout=min(provider.timeout, 10),
             max_retries=0,
-            default_headers=ModelClient.request_headers(provider),
+            default_headers=ModelClient.request_headers(provider, resolved.headers, loop.session.uid),
         )
         try:
             page = await client.models.list()

@@ -10,7 +10,7 @@ import json
 import re
 import threading
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
@@ -49,6 +49,7 @@ from wizolt.providers.compat import (
     ResolvedProvider,
     builtin_tools_issue,
 )
+from wizolt.utils.headers import render_header
 from wizolt.utils.json_repair import JsonRepair
 
 if TYPE_CHECKING:
@@ -636,17 +637,19 @@ class ModelClient:
         return (match.group(1) if match else text).strip()
 
     @staticmethod
-    def request_headers(provider: ProviderConfig) -> dict[str, str]:
-        """Default headers for one entry: wizolt's own, then the entry's `headers` over them.
+    def request_headers(provider: ProviderConfig, catalog_headers: Mapping[str, str], session_id: str) -> dict[str, str]:
+        """Default headers for one entry: wizolt's own, the catalog's, then the entry's `headers`.
 
         Both wires share this so a header configured for an entry follows it across a `/provider`
-        switch and into the worker and compaction entries, which are copies of it."""
+        switch and into the worker and compaction entries, which are copies of it. Templates expand
+        per session: a subagent sends its own `{session_id}`, keeping its cached prefix apart."""
+        variables = {"session_id": session_id}
         headers = {"User-Agent": HTTP_USER_AGENT}
-        for name, value in provider.headers.items():
+        for name, value in [*catalog_headers.items(), *provider.headers.items()]:
             # httpx treats header names case-insensitively, but the OpenAI SDK starts with its own
             # exact-cased User-Agent. Keep that spelling so a configured override replaces it
             # instead of coexisting with it under a differently cased key.
-            headers["User-Agent" if name.lower() == "user-agent" else name.lower()] = value
+            headers["User-Agent" if name.lower() == "user-agent" else name.lower()] = render_header(value, variables)
         return headers
 
     def client(self, provider: ProviderConfig | None = None) -> AsyncOpenAI:
@@ -656,19 +659,21 @@ class ModelClient:
         # lazy import: keeps the ~0.8s provider SDK import off the startup path (see the TYPE_CHECKING block above)
         from openai import AsyncOpenAI
 
+        resolved = self.resolved(provider)
         return AsyncOpenAI(
             api_key=provider.key,
-            base_url=self.resolved(provider).base_url,
+            base_url=resolved.base_url,
             timeout=provider.timeout,
             max_retries=0,
-            default_headers=self.request_headers(provider),
+            default_headers=self.request_headers(provider, resolved.headers, self.session.uid),
         )
 
     def anthropic_client(self, provider: ProviderConfig | None = None) -> AsyncAnthropic:
         provider = provider if provider is not None else self.session.config.provider
         if missing := self.session.missing_config():
             raise ModelError("missing config: " + ", ".join(missing))
-        url = self.resolved(provider).base_url.rstrip("/")
+        resolved = self.resolved(provider)
+        url = resolved.base_url.rstrip("/")
         # lazy import: keeps the ~0.8s provider SDK import off the startup path (see the TYPE_CHECKING block above)
         from anthropic import AsyncAnthropic
 
@@ -677,7 +682,7 @@ class ModelClient:
             base_url=url.removesuffix("/v1"),
             timeout=provider.timeout,
             max_retries=0,
-            default_headers=self.request_headers(provider),
+            default_headers=self.request_headers(provider, resolved.headers, self.session.uid),
         )
 
     def report_builtin_call(self, name: str, detail: object) -> None:
