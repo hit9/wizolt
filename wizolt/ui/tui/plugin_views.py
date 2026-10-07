@@ -114,7 +114,8 @@ class DocumentState:
 
     def update(self, view: View) -> None:
         assert isinstance(view.body, Document)
-        self.sheet.replace(ApprovalView(view.title, view.body.text, lexer="" if view.body.lexer == "markdown" else view.body.lexer))
+        parts = tuple((section.label, section.text) for section in view.body.sections)
+        self.sheet.replace(ApprovalView(view.title, view.body.text, lexer="" if view.body.lexer == "markdown" else view.body.lexer, parts=parts))
 
     def fragments(self) -> StyleAndTextTuples:
         return [

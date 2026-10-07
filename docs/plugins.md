@@ -142,9 +142,11 @@ costs the provider cache once; after that each request offers the same tools aga
 
 ## Write your own system prompt
 
-Enable **system_prompt** in `/plugins` and type `/prompt`: your editor opens on wizolt's current
-prompt. Save a change and it replaces wizolt's instructions from the next request; the language,
-attribution and reactions lines stay, each controlled by its own setting. Nothing is written until you save. Your file is
+Enable **system_prompt** in `/plugins` and type `/prompt` to read the system prompt exactly as it
+is sent: the instructions, then each line a setting adds (language, attribution, reactions) under
+a gray rule naming that setting. Press `e` to edit the instructions in your editor. Save a change
+and it replaces them from the next request; the settings' lines stay, and only their settings
+turn them off. Nothing is written until you save. Your file is
 `~/.wizolt/plugins/system_prompt/system.md`; a copy in a project's
 `.wizolt/plugins/system_prompt/` applies there instead. Delete it to return to wizolt's prompt.
 

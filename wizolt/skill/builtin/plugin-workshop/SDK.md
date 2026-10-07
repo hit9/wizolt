@@ -26,6 +26,7 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.models.complete(prompt, *, system="", provider="", model="", effort="", api="")` | Async text request; returns `ModelReply` |
 | `plugin.agent.tools()` | Async; `tuple[ToolInfo, ...]`: the built-in tools a turn's `tools.offer` starts from and the plugin tools it may add (`plugin.tool`), each with `name`, `description` (first line), `kind` (`builtin`/`plugin`) and `offered` (by the last turn); works before any turn |
 | `plugin.agent.system_prompt()` | Async; the text a `context.compose` handler receives as its `system` block, before any plugin changes it |
+| `plugin.agent.system_directives()` | Async; `tuple[Directive, ...]`: the fixed blocks wizolt's settings append after the `system` block in every request, in sent order, whatever replaced it; each has `setting` (`runtime.reactions`) and `text` |
 | `plugin.ui.components.list()` | Async; returns `tuple[Component, ...]` in visual order |
 | `plugin.ui.components.move(component, *, before="", after="")` | Async; exactly one anchor, same slot; persists user order and returns the updated list |
 | `plugin.ui.components.set_gap(component, gap_before)` | Async; save a nonnegative integer gap, or `None` to restore the declared default; returns the updated list |
@@ -62,7 +63,7 @@ testing entry point, not another model tool.
 
 Import `Plugin`, `Context`, `Usage`, `ContextWindow`, `Text`, `Line`, `Panel`, `Event`,
 `Viewport`, `Layout`, `Turn`, `ToolCounts`, `ToolActivity`, `PluginError` and `SDK_VERSION` from `wizolt.sdk`. For annotations, import `Component` from `wizolt.sdk.ui`, `ModelReply` from
-`wizolt.sdk.models`, `ToolInfo` from `wizolt.sdk.agent` and `Service` from `wizolt.sdk.services`. `PluginError` derives from
+`wizolt.sdk.models`, `ToolInfo` and `Directive` from `wizolt.sdk.agent` and `Service` from `wizolt.sdk.services`. `PluginError` derives from
 `ValueError`; raising it gives a readable action error. Exceptions and cancellation still require
 your own resource cleanup in `finally`.
 
@@ -70,7 +71,7 @@ All data values below are frozen dataclasses. Tuple fields must be tuples; do no
 contents. Host-supplied context is a snapshot, not a live handle. The listed constructors can
 also be used in plugin-owned tests.
 
-Interactive declarations (`View`, `Document`, `Selection`, `Form`, `Field`, `Choice`, `Action`,
+Interactive declarations (`View`, `Document`, `Section`, `Selection`, `Form`, `Field`, `Choice`, `Action`,
 `ViewResult`) are imported from `wizolt.sdk.views`; their complete tables and examples are in
 [UI.md](UI.md). Do not import the unrelated internal registration `Action` from `wizolt.sdk`.
 
@@ -94,6 +95,7 @@ Presenter view models (`ToolCard`, `ToolSummary`, `ActivityStatus`) are imported
 | `Event` | `name: str`, `context: Context`, `tool: ToolActivity \| None = None`, `reason: str = ""` |
 | `ModelReply` | `text: str`, `model: str`, `usage: Usage` |
 | `ToolInfo` | `name: str`, `description: str`, `kind: str` (`builtin` or `plugin`), `offered: bool` |
+| `Directive` | `setting: str`, `text: str` |
 
 Times are seconds; `now` is monotonic, not a date. `columns` is terminal cells, not characters.
 `status` is `idle`, `running`, `completed`, `interrupted`, `failed`, or `waiting` for user input;

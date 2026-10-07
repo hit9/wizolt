@@ -39,7 +39,8 @@ construct tuple fields as tuples. `kind` is generated, not a constructor argumen
 | `Choice` | `id: str`, `label: str`, `preview: str = ""` |
 | `Action` | `id: str`, `label: str`, `key: str = ""` |
 | `Field` | `id: str`, `label: str`, `default: str = ""`, `required: bool = False`, `multiline: bool = False`, `choices: tuple[Choice, ...] = ()` |
-| `Document` | `text: str`, `lexer: str = "text"`, generated `kind: str = "document"`; use `markdown`, `diff` or a Pygments lexer name |
+| `Document` | `text: str`, `lexer: str = "text"`, `sections: tuple[Section, ...] = ()`, generated `kind: str = "document"`; use `markdown`, `diff` or a Pygments lexer name |
+| `Section` | `label: str`, `text: str`; continues its document in the same frame and lexer, under a gray rule carrying the single-line label |
 | `Selection` | `items: tuple[Choice, ...]`, `selected: tuple[str, ...] = ()`, `multiple: bool = False`, generated `kind: str = "selection"` |
 | `Form` | `fields: tuple[Field, ...]`, generated `kind: str = "form"` |
 | `View` | `title: str`, `body: Document \| Selection \| Form`, `actions: tuple[Action, ...] = ()`, `fullscreen: bool = False` |
@@ -74,7 +75,7 @@ split, arbitrary-coordinate drawing or access to host widgets.
 
 - Titles: 200 characters, single-line. IDs: 100 characters, unique and nonempty within their
   collection. Labels: 300 characters, single-line. Terminal control sequences are refused.
-- Documents: 256,000 characters. Lists: 1,000 choices, previews 16,000 characters each.
+- Documents: 256,000 characters, sections included; 32 sections. Lists: 1,000 choices, previews 16,000 characters each.
   Forms: 1–32 fields with values up to 16,000 characters. Actions: 16. The shared 1 MiB
   worker-frame limit also applies to the whole request, so several large previews must be reduced.
 - One open view per plugin per agent. Requests from different plugins queue. Host approvals

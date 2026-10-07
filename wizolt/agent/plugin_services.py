@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from wizolt.agent.context import setting_directives
 from wizolt.agent.plugin_models import PluginModels
 from wizolt.sdk import PluginError
 
@@ -29,7 +30,10 @@ class PluginServices:
         if operation == "agent.tools":
             return {"tools": self.tools()}
         if operation == "agent.system_prompt":
-            return {"text": self.session.system_prompt.strip()}  # The `system` block, as composed.
+            # `text` is the `system` block before any plugin changes it; the directives follow it in
+            # every request, whatever replaced it.
+            directives = [{"setting": setting, "text": text} for setting, text in setting_directives(self.session)]
+            return {"text": self.session.system_prompt.strip(), "directives": directives}
         raise PluginError(f"Unknown host service: {operation}")
 
     def tools(self) -> list[dict]:

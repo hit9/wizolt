@@ -154,6 +154,16 @@ class DetailSheet:
             rows.append([("", "  "), *fields])
         return rows
 
+    def _content_rows(self, text: str, width: int) -> Rows:
+        lexer = self.view.lexer
+        if lexer == DIFF_LEXER:
+            return self._diff_rows(text, width)
+        if lexer == "text":
+            return wrapped_rows(text, width, "")
+        if lexer:
+            return self._code_rows(text, lexer, width)
+        return self._markdown_rows(text, width)
+
     def _layout(self, width: int) -> Rows:
         if width == self._width:
             return self._rows
@@ -161,15 +171,14 @@ class DetailSheet:
         rows = self._metadata(width)
         inner = max(1, width - 8)
         body = view.text.rstrip()
-        if body:
-            if view.lexer == DIFF_LEXER:
-                content = self._diff_rows(body, inner)
-            elif view.lexer == "text":
-                content = wrapped_rows(body, inner, "")
-            elif view.lexer:
-                content = self._code_rows(body, view.lexer, inner)
-            else:
-                content = self._markdown_rows(body, inner)
+        if body or view.parts:
+            content = self._content_rows(body, inner) if body else []
+            for label, text in view.parts:
+                label = Text.clip_width(label, max(0, inner - 4))
+                # The frame's own gray, so the rule reads as structure, never as part of the text; a
+                # blank row on each side keeps it off the text it divides.
+                content.extend([[], [("class:detail.border", "── " + label + " " + "─" * max(0, inner - get_cwidth(label) - 4))], []])
+                content.extend(self._content_rows(text.rstrip(), inner))
             rows.append([])
             rows.extend(
                 self._panel(

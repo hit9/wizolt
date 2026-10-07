@@ -44,6 +44,21 @@ def system(messages):
     return messages[0]["content"]
 
 
+def pressing_e_once(editor):
+    """The user in `/prompt`'s view: presses `e` the first time it opens, Esc after that. Every
+    view shown is recorded on the handler; the editor itself is `editor`."""
+    views = []
+
+    async def call(owner, service, arguments):
+        if service == "ui.views.show":
+            views.append(arguments["view"])
+            return {"result": {"action": "edit"} if len(views) == 1 else None}
+        return await editor(owner, service, arguments)
+
+    call.views = views
+    return call
+
+
 class Editor:
     """The user at their editor: saves `reply` (None = quits without saving), records what opened."""
 
@@ -58,7 +73,7 @@ class Editor:
 
 
 async def prompt_command(agent, editor):
-    agent.session.plugins.interactions.handler = editor.call
+    agent.session.plugins.interactions.handler = pressing_e_once(editor.call)
     return await agent.session.plugins.invoke("system_prompt", "command", "prompt", {})
 
 
@@ -120,7 +135,7 @@ async def test_waiting_on_the_editor_does_not_count_against_the_commands_deadlin
         await release.wait()
         return {"text": None}
 
-    agent.session.plugins.interactions.handler = slow
+    agent.session.plugins.interactions.handler = pressing_e_once(slow)
     action = asyncio.create_task(agent.session.plugins.invoke("system_prompt", "command", "prompt", {}))
     await asyncio.sleep(0.4)
     assert not action.done()
@@ -141,7 +156,7 @@ async def test_retiring_the_prompt_plugin_dismisses_its_editor_without_saving(ag
         finally:
             closed.set()
 
-    agent.session.plugins.interactions.handler = editor
+    agent.session.plugins.interactions.handler = pressing_e_once(editor)
     action = asyncio.create_task(agent.session.plugins.invoke("system_prompt", "command", "prompt", {}))
     await asyncio.wait_for(opened.wait(), 3)
 
@@ -181,6 +196,46 @@ async def test_prompt_opens_the_current_prompt_and_a_saved_edit_replaces_it_cost
     systems = [system(messages) for messages in agent.sent]
     assert systems[1].startswith("You are terse.") and len(set(systems[1:])) == 1  # One change, then stable.
     assert systems[0] != systems[1]
+
+
+async def test_prompt_shows_the_system_prompt_exactly_as_sent_and_closing_it_writes_nothing(agent, tmp_path):
+    await agent.session.plugins.manage("enable", "system_prompt")
+    agent.session.settings.language = "French"
+    handler = pressing_e_once(Editor(None).call)
+    handler.views.append("taken")  # The view is already past its first opening: this time, Esc.
+    agent.session.plugins.interactions.handler = handler
+
+    reply = await agent.session.plugins.invoke("system_prompt", "command", "prompt", {})
+
+    view = handler.views[-1]
+    assert reply == "System prompt unchanged" and plugin_files(tmp_path) == []
+    assert view["title"] == "System prompt · wizolt's own" and view["fullscreen"]
+    assert [action["key"] for action in view["actions"]] == ["e"]
+    body = view["body"]
+    labels = [section["label"] for section in body["sections"]]
+    assert labels == ["added by runtime.language", "added by runtime.attribution", "added by runtime.reactions"]
+    # Every block, in order: what the next request sends, byte for byte.
+    await agent.run("hello")
+    assert system(agent.sent[0]) == "\n\n".join([body["text"], *(section["text"] for section in body["sections"])])
+
+
+async def test_prompt_shows_your_file_with_the_settings_blocks_still_after_it(agent, tmp_path):
+    own = tmp_path.joinpath("data", *PLUGIN_FILE)
+    own.parent.mkdir(parents=True)
+    own.write_text("You are terse.")
+    await agent.session.plugins.manage("enable", "system_prompt")
+    agent.session.settings.reactions = False
+    handler = pressing_e_once(Editor(None).call)
+    handler.views.append("taken")
+    agent.session.plugins.interactions.handler = handler
+
+    await agent.session.plugins.invoke("system_prompt", "command", "prompt", {})
+
+    view = handler.views[-1]
+    assert view["title"] == "System prompt · your file" and view["body"]["text"] == "You are terse."
+    assert [section["label"] for section in view["body"]["sections"]] == ["added by runtime.attribution"]  # Off: not sent, not shown.
+    await agent.run("hello")
+    assert system(agent.sent[0]) == "You are terse.\n\n" + view["body"]["sections"][0]["text"]
 
 
 @pytest.mark.parametrize(

@@ -45,6 +45,20 @@ if TYPE_CHECKING:
 _IdentityT = TypeVar("_IdentityT", bound=Hashable)
 
 
+def setting_directives(session: Session) -> list[tuple[str, str]]:
+    """The fixed blocks settings append to the system text, in sent order, each with the setting
+    that controls it. Stable text that depends only on the value, so the cacheable system prefix
+    is unchanged; host-owned, so a plugin replacing the system text never drops one."""
+    settings = session.settings
+    directives = (
+        ("runtime.language", language_directive(settings.language)),
+        ("runtime.attribution", git_attribution_directive(settings.attribution)),
+        # Only the main agent talks to the user; a subagent's messages come from its parent.
+        ("runtime.reactions", reactions_directive(settings.reactions and not session.agent_parent)),
+    )
+    return [(setting, text) for setting, text in directives if text]
+
+
 class ContextManager:
     """Project session state into one request's messages and compact it to fit the budget.
 
@@ -191,16 +205,8 @@ class ContextManager:
 
     def render_header(self, parts: list[tuple[str, str]]) -> list[Json]:
         content = parts[0][1]
-        # Each setting that appends one fixed block to the system tail: stable text that depends only
-        # on the value, so the cacheable system prefix is unchanged.
-        for directive in (
-            language_directive(self.session.settings.language),
-            git_attribution_directive(self.session.settings.attribution),
-            # Only the main agent talks to the user; a subagent's messages come from its parent.
-            reactions_directive(self.session.settings.reactions and not self.session.agent_parent),
-        ):
-            if directive:
-                content += "\n\n" + directive
+        for _, directive in setting_directives(self.session):
+            content += "\n\n" + directive
         return [{"role": "system", "content": content}, *({"role": "user", "content": text} for _, text in parts[1:])]
 
     def model_messages(self, base_system: str, turn_messages: list[Json] | None = None) -> list[Json]:

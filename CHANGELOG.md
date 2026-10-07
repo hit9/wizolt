@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `/prompt` (the bundled `system_prompt` plugin) now shows the system prompt exactly as it is
+  sent, the lines settings add included, each under a gray rule naming its setting
+  (`runtime.reactions`, ...); press `e` to edit the instructions in your editor as before. Built on
+  two new SDK abilities: `plugin.agent.system_directives()` lists those blocks, and a `Document`
+  view takes `sections`, drawn after its text under labelled rules in the frame's theme gray.
+
 - The model can react to your message with an emoji (👍 🎉 😄 🙏 👀 🤔 🔥 💯), drawn muted after
   it as `← 👍`. It opens its reply with a `[react:👍]` marker that the screen hides and history
   keeps, so a reaction needs no tool and no extra request; the system prompt gains one fixed

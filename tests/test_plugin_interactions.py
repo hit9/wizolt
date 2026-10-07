@@ -7,7 +7,7 @@ import pytest
 
 from wizolt.plugins.runtime import PluginRuntime
 from wizolt.sdk import Context, PluginError
-from wizolt.sdk.views import Action, Choice, Document, Field, Form, Selection, View
+from wizolt.sdk.views import Action, Choice, Document, Field, Form, Section, Selection, View
 
 
 def interactive_plugin(tmp_path):
@@ -170,7 +170,7 @@ def setup(p):
         await runtime.close()
 
 
-@pytest.mark.parametrize("body", [Document("hello", "markdown"), Selection((Choice("a", "First", "Preview"),)), Form((Field("name", "Name"),))])
+@pytest.mark.parametrize("body", [Document("hello", "markdown"), Document("hello", sections=(Section("added by x", "more"),)), Selection((Choice("a", "First", "Preview"),)), Form((Field("name", "Name"),))])
 def test_view_wire_round_trip(body):
     view = View("Title", body, (Action("open", "Open", "o"),), fullscreen=True)
     assert View.decode(asdict(view)) == view
@@ -179,6 +179,8 @@ def test_view_wire_round_trip(body):
 @pytest.mark.parametrize("view", [
     View("bad\x1b", Document("text")),
     View("bad", Document("x" * 256_001)),
+    View("bad", Document("x" * 200_000, sections=(Section("more", "x" * 100_000),))),  # The limit counts sections.
+    View("bad", Document("text", sections=(Section("two\nlines", "more"),))),
     View("bad", Selection((Choice("same", "One"), Choice("same", "Two")))),
     View("bad", Selection((Choice("one", "One"),), ("missing",))),
     View("bad", Form(())),

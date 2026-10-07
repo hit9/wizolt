@@ -530,7 +530,8 @@ class ApprovalView:
     the transcript's syntax highlighting and red/green bands. `rows` are the
     header fields shown above the text. `result` is what the call returned, shown below the text
     when the view is opened after the fact; it is empty at a confirmation prompt, where the call
-    has not run yet.
+    has not run yet. `parts` continue the text in the same frame and lexer, each `(label, text)`
+    under a gray rule carrying its label.
     """
 
     label: str
@@ -539,6 +540,7 @@ class ApprovalView:
     rows: list[tuple[str, str]] = field(default_factory=list)
     result: str = ""
     section: str = ""
+    parts: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)

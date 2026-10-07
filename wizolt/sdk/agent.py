@@ -19,6 +19,14 @@ class ToolInfo:
     offered: bool
 
 
+@dataclass(frozen=True)
+class Directive:
+    """One block a setting appends to the system text: ``setting`` names it (``runtime.reactions``)."""
+
+    setting: str
+    text: str
+
+
 class AgentFacts:
     """The worker binds transport; nothing here changes the agent."""
 
@@ -35,6 +43,11 @@ class AgentFacts:
         """The system text a `context.compose` handler receives as the ``system`` block, before
         any plugin changes it."""
         return (await self._request("agent.system_prompt"))["text"]
+
+    async def system_directives(self) -> tuple[Directive, ...]:
+        """The fixed blocks wizolt's settings append after the ``system`` block in every request,
+        in sent order, whatever text replaced it. Turned on and off by their settings only."""
+        return tuple(Directive(**item) for item in (await self._request("agent.system_prompt"))["directives"])
 
     async def _request(self, operation: str) -> dict:
         if self.call is None:
