@@ -189,6 +189,28 @@ class CallGap(WidthDependent):
 
 
 @dataclass(frozen=True)
+class RunSeam(WidthDependent):
+    """What closes a long run of silent tool calls, in the `[transcript] close` style in effect at
+    each replay: a full-width rule, a blank row, or nothing. `style` reads the setting, so a saved
+    `/theme` switch redraws the seams already on screen, resumed history included.
+
+    Whether a gap opens above it was settled when it printed. The rows below were laid out for the
+    style it printed in, so a switch to or from `none` can leave one blank row more or fewer than a
+    fresh print would."""
+
+    rule_style: str
+    style: Callable[[], str]
+    gap_above: bool
+
+    def fragments(self, width: int) -> StyleAndTextTuples:
+        style = self.style()
+        if style == "none":
+            return []
+        above: StyleAndTextTuples = [("", "\n")] if self.gap_above else []
+        return [*above, *HorizontalRule(self.rule_style, blank_after=True).fragments(width)] if style == "rule" else above
+
+
+@dataclass(frozen=True)
 class HorizontalRule(WidthDependent):
     """A completed rule keeps its label and colors, but takes its width from the projection."""
 
@@ -1518,6 +1540,24 @@ class UiPrinter:
         self.track_layout("─\n\n")
         # Distance to the next rule is measured from here, so the rule's own rows do not count.
         self.rows_since_rule = 0
+
+    def emit_run_seam(self, style: Callable[[], str]) -> None:
+        """Close a run of silent tool calls with a `RunSeam`, laid out now in the style `style()`
+        names: the same rows `emit_phase_rule` or `separate` draw, or none at all."""
+        if not self.color:
+            return
+        seam = RunSeam(Theme.fg("rule"), style, gap_above=self.trailing_blanks < 1)
+        text = "".join(fragment[1] for fragment in seam.fragments(1))
+        if self._batch_parts is not None:
+            self._batch_parts.append(seam)
+        else:
+            self._scrollback_print(seam)
+        if text:
+            # A seam that draws nothing leaves the layout as it was: a run of one-line calls on
+            # either side of it still packs into one list.
+            self.track_layout(text)
+        if style() == "rule":
+            self.rows_since_rule = 0
 
     def rule_due(self, min_rows: int) -> bool:
         """Whether a phase rule would land at least `min_rows` rendered rows below the last one

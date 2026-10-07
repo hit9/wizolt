@@ -414,13 +414,13 @@ async def test_tool_batch_closes_a_long_silent_run_with_a_phase_rule(tmp_path):
     the batch's output is out so a batch is never cut in half."""
     loop = _colored_loop(tmp_path)
     rules = []
-    loop.presentation.ui.emit_phase_rule = lambda: rules.append(1)
+    loop.presentation.ui.emit_run_seam = lambda style: rules.append(style())
     loop.presentation._silent_batches = loop.presentation.TOOL_RUN_RULE_BATCHES - 1
     loop.presentation.ui.rows_since_rule = loop.presentation.MIN_ROWS_BETWEEN_RULES
 
     loop.presentation.tool_batch_output(True)
 
-    assert rules == [1]
+    assert rules == ["rule"]
 
 
 async def test_a_silent_run_too_close_to_the_rule_above_draws_no_seam(tmp_path):
@@ -428,7 +428,7 @@ async def test_a_silent_run_too_close_to_the_rule_above_draws_no_seam(tmp_path):
     would part nothing. The count keeps running, so the seam lands once the rows are there."""
     loop = _colored_loop(tmp_path)
     rules = []
-    loop.presentation.ui.emit_phase_rule = lambda: rules.append(1)
+    loop.presentation.ui.emit_run_seam = lambda style: rules.append(style())
     loop.presentation._silent_batches = loop.presentation.TOOL_RUN_RULE_BATCHES - 1
     loop.presentation.ui.rows_since_rule = loop.presentation.MIN_ROWS_BETWEEN_RULES - 2
 
@@ -437,13 +437,13 @@ async def test_a_silent_run_too_close_to_the_rule_above_draws_no_seam(tmp_path):
 
     loop.presentation.ui.rows_since_rule = loop.presentation.MIN_ROWS_BETWEEN_RULES
     loop.presentation.tool_batch_output(True)
-    assert rules == [1]
+    assert rules == ["rule"]
 
 
 async def test_tool_batch_keeps_a_short_silent_run_together(tmp_path):
     loop = _colored_loop(tmp_path)
     rules = []
-    loop.presentation.ui.emit_phase_rule = lambda: rules.append(1)
+    loop.presentation.ui.emit_run_seam = lambda style: rules.append(style())
     loop.presentation._silent_batches = loop.presentation.TOOL_RUN_RULE_BATCHES - 2
 
     loop.presentation.tool_batch_output(True)
@@ -456,7 +456,7 @@ async def test_a_voiced_batch_is_not_silent(tmp_path):
     toward the silent run: the agent said something, so the seam is not needed yet."""
     loop = _colored_loop(tmp_path)
     rules = []
-    loop.presentation.ui.emit_phase_rule = lambda: rules.append(1)
+    loop.presentation.ui.emit_run_seam = lambda style: rules.append(style())
     loop.presentation._silent_batches = loop.presentation.TOOL_RUN_RULE_BATCHES - 1
 
     loop.presentation.tool_batch_output(False)
@@ -539,6 +539,14 @@ async def test_full_turn_parts_at_user_rule_narration_and_silent_batches(tmp_pat
         loop.presentation.ui.rows_since_rule = 0
 
     loop.presentation.ui.emit_phase_rule = emit_rule
+    real_seam = loop.presentation.ui.emit_run_seam
+
+    def emit_seam(style):
+        if style() == "rule":
+            rules.append(loop.presentation.ui.rows_since_rule)
+        real_seam(style)
+
+    loop.presentation.ui.emit_run_seam = emit_seam
     silences = []
     on_batch = loop.agent.hooks.on_tool_batch
     loop.agent.hooks.on_tool_batch = lambda silent: (on_batch(silent), silences.append(silent))
@@ -589,6 +597,8 @@ async def test_resumed_session_draws_user_narration_and_silent_batch_rules(tmp_p
         rules = []
         real_rule = loop.presentation.ui.emit_phase_rule
         loop.presentation.ui.emit_phase_rule = lambda: (rules.append(loop.presentation.ui.rows_since_rule), real_rule())
+        real_seam = loop.presentation.ui.emit_run_seam
+        loop.presentation.ui.emit_run_seam = lambda style: (style() == "rule" and rules.append(loop.presentation.ui.rows_since_rule), real_seam(style))
         loop.resume.render_resumed_session()
         return rules
 

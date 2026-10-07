@@ -136,12 +136,21 @@ async def test_enter_saves_the_global_format_and_keeps_the_rest_of_the_file(comm
     assert modal.recolored == 1, "the records already on screen are redrawn in the saved format"
 
 
-async def test_saving_only_a_look_setting_leaves_the_printed_records_alone(command_loop):
-    """Thinking and the tool-run divider shape what is printed next; nothing on screen changes."""
+async def test_saving_only_thinking_leaves_the_printed_transcript_alone(command_loop):
+    """Thinking shapes the live reasoning preview, which nothing printed carries."""
     modal = command_loop.presentation.tui = TranscriptModal(["h", "j", "j", "j", " ", "enter"])
     result = await theme_command(command_loop, "")
     assert result is not None and "transcript.thinking: collapsed (saved)" in result
     assert modal.recolored == 0
+
+
+async def test_saving_the_tool_run_divider_redraws_the_printed_transcript(command_loop):
+    """Run seams already printed -- resumed history included -- read the divider at each redraw,
+    so saving one asks for the redraw that reaches them."""
+    modal = command_loop.presentation.tui = TranscriptModal(["h", *(["j"] * 6), " ", "enter"])
+    result = await theme_command(command_loop, "")
+    assert result is not None and "transcript.close: blank (saved)" in result
+    assert modal.recolored == 1
 
 
 async def test_escape_discards_the_selected_format(command_loop):

@@ -157,9 +157,10 @@ def select(loop: CommandLoop, group: str, value: str) -> str:
     table[group] = value
     loop.session.config.transcript = table
     if loop.presentation.tui is not None:
-        # The records already printed follow a new format: they are redrawn the way a theme
-        # switch redraws the transcript. The look settings only shape what is printed next.
-        if group == "format":
+        # The records and run seams already printed, resumed history included, follow a new
+        # format or close style: they are redrawn the way a theme switch redraws the transcript.
+        # Thinking only shapes the live reasoning preview, which nothing printed carries.
+        if group in ("format", "close"):
             loop.presentation.tui.recolor()
         else:
             loop.presentation.tui.invalidate()

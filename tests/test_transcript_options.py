@@ -159,7 +159,8 @@ async def test_the_sample_follows_the_highlighted_close_row(command_loop):
 
 
 class RecordingUi:
-    """The two seams `close` chooses between, recorded instead of drawn."""
+    """The seams `close` chooses between, recorded in the style they print in instead of drawn;
+    `none` prints nothing."""
 
     def __init__(self, due=True):
         self.seams = []
@@ -168,11 +169,9 @@ class RecordingUi:
     def rule_due(self, min_rows):
         return self.due
 
-    def emit_phase_rule(self):
-        self.seams.append("rule")
-
-    def separate(self):
-        self.seams.append("blank")
+    def emit_run_seam(self, style):
+        if style() != "none":
+            self.seams.append(style())
 
 
 def stream_rows(loop):

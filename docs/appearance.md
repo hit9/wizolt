@@ -222,7 +222,8 @@ the newest lines (the default), `collapsed` keeps its opening line only, and `hi
 nothing -- the divider below still says `thinking`.
 
 **Tool-run divider** decides what closes a long run of tool calls the agent never talks over: a
-full-width line (the default), a blank line, or nothing.
+full-width line (the default), a blank line, or nothing. Saving it redraws the dividers already on
+screen, in a resumed session too.
 
 Press **f** on a record format to see what it stands for and **e** to write your own. Each line of a
 format is one row, written like a status bar format: fields such as `{tool}`, `{args}`,

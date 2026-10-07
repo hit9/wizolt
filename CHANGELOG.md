@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fix `/theme` > Transcript > Tool-run divider only reaching runs printed afterwards: the dividers
+  already on screen, a resumed session's replayed history included, are redrawn in the saved
+  style. Switching to or from `none` can leave one blank row more or fewer than a fresh print.
+
 - Compaction no longer re-summarizes the previous summary on every pass. Each compaction
   summarizes only the messages it evicts and adds that summary, labelled with its `seg.N` span,
   beside the earlier ones, which are kept as written. Once the kept summaries pass 16,000
