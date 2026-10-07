@@ -225,8 +225,7 @@ def reactions_directive(enabled: bool) -> str:
     return (
         "REACTIONS:\n"
         f"- You may react to the user's message by opening your first response of the turn with `{REACTION_MARK}<emoji>]`, "
-        f"one of {' '.join(REACTIONS)}. The terminal shows it beside their message and hides the marker. React rarely, "
-        "only when the message clearly invites it (thanks, good news, a sharp idea); most messages get none. Never mention it."
+        f"one of {' '.join(REACTIONS)}. The terminal shows it beside their message and hides the marker."
     )
 
 

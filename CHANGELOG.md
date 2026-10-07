@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The `REACTIONS` block now says only how to react and what you see; whether to react is the
+  model's call, so how often a reply reacts depends on the model.
+
 - The context bar's percentage is the status bar's `ctx` again: it measured the fill against the
   whole window (237k/262k = 90%) while `ctx` measures it against the input budget, the window
   less the room kept for the answer (97%). Plugins now get `ContextWindow.budget` as the budget
