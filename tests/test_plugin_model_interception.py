@@ -9,6 +9,7 @@ from model_harness import _MockClientFactory, _session, record_backoff
 from wizolt.agent.engine import Agent
 from wizolt.base import ModelError, ModelRequestRetry
 from wizolt.model import ModelClient
+from wizolt.sdk import PluginError
 
 LOGGER = """
 import json
@@ -61,6 +62,20 @@ async def test_router_changes_the_route_for_this_request_only(session, tmp_path)
     assert session.config.active_provider == "default"  # No session-default mutation.
     receipt = session.operation_receipts[-1]
     assert receipt.operation == "model.request" and '"default"' in receipt.original and '"alt"' in receipt.effective
+
+
+async def test_a_failing_model_interceptor_records_why_on_the_receipt(session, tmp_path):
+    """A plugin that fails before next() never reaches the provider. The receipt must say so, and
+    name the wrapper failure, or resume/replay shows the failed request with no reason while a
+    failed tool call shows one (the receipt contract in design/PLUGIN_INTERCEPTION.md)."""
+    await enable(session, tmp_path, body="        raise RuntimeError('bad route')")
+    model = ModelClient(session)
+
+    with pytest.raises(PluginError, match="bad route"):
+        await model.request([{"role": "user", "content": "hi"}], [])
+
+    receipt = session.operation_receipts[-1]
+    assert receipt.core == "not_run" and "bad route" in receipt.wrapper_failure
 
 
 async def test_transport_retries_reuse_the_request_without_rerunning_handlers(session, tmp_path, monkeypatch):

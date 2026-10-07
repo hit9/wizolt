@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import sys
 import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager
@@ -200,6 +201,9 @@ async def logical_request(
     except BaseException:
         # A plugin failure before next() never reached the provider: core stays not_run.
         receipt.core = "completed" if "raw" in downstream else "failed" if receipt.core == "started" else "not_run"
+        if isinstance(sys.exc_info()[1], PluginError):
+            # The wrapper failed, not the provider: resume/replay shows why (the receipt contract).
+            receipt.wrapper_failure = OperationReceipt.clip(str(sys.exc_info()[1]))
         raise
     finally:
         receipt.origin, receipt.shaped, receipt.delivered = trace.get("origin", "core"), tuple(trace.get("shaped", ())), True
