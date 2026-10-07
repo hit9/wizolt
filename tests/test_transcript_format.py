@@ -374,6 +374,32 @@ def test_a_record_that_shows_output_keeps_its_citation(tmp_path):
     assert rows[-1].startswith("    └ line two") and rows[-1].endswith("tr.2")
 
 
+def test_a_citation_matching_an_output_line_is_still_stamped(tmp_path):
+    """A bound result keeps its citation even when the output text itself contains the key: a
+    bounded record's asset path is `<assets>/tr.N.txt`, the citation's own spelling, so scanning
+    rendered text for the key would drop the reference exactly when it matters most."""
+    s = session(tmp_path)
+    s.config.transcript = {"format": "{tool} {args}\n{output}"}
+    call = ToolCall("read-1", "Read", [{"path": "src/db/rows.rs"}])
+    output = "too long; saved to /tmp/assets/tr.2.txt"
+
+    nested = str(toolblocks.finish_display(s, call, "tr.2", output, failed=False, d=ToolDisplay(nested_display=True)))
+
+    rows = nested.splitlines()
+    assert "tr.2.txt" in rows[-1] and rows[-1].endswith("· tr.2")
+
+
+def test_a_format_that_prints_the_citation_does_not_get_a_second_copy(tmp_path):
+    """The host stamps the reference only when the format did not print it itself."""
+    s = session(tmp_path)
+    s.config.transcript = {"format": "{tool} {args}\n{output}\n{citation}"}
+    call = ToolCall("read-1", "Read", [{"path": "src/db/rows.rs"}])
+
+    nested = str(toolblocks.finish_display(s, call, "tr.2", "body", failed=False, d=ToolDisplay(nested_display=True)))
+
+    assert nested.count("tr.2") == 1
+
+
 def test_a_per_tool_override_beats_the_global_format(tmp_path):
     s = session(tmp_path)
     s.config.transcript = {"format": "preset:minimal", "tool": {"Bash": {"format": "{tool} {args}"}}}

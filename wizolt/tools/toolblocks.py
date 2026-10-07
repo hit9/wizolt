@@ -323,6 +323,7 @@ def _format_display(
         batch_suffix=d.batch_suffix,
         lexer=lexer,
         tool=call.name,
+        format_cites=template.uses_citation,
     )
 
 

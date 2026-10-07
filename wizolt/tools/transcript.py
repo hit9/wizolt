@@ -79,6 +79,10 @@ class RecordTemplate:
         self.rows = tuple(rows)
         # A format without output rows never needs the call's output split or previewed.
         self.reads_output = any(isinstance(row, OutputRows) for row in rows)
+        # Whether any row prints the citation itself: the record must not also stamp it on a row,
+        # and the host must not drop it just because an output line happens to contain the text
+        # (a bound result's asset path is `.../tr.N.txt`, the citation's own spelling).
+        self.uses_citation = any(isinstance(row, Template) and _names_field(row.nodes, "citation") for row in rows)
 
     def shown(self, total: int) -> int:
         """How many of `total` output lines the record shows: the most any output row picks."""
@@ -93,6 +97,16 @@ class RecordTemplate:
             elif text := _row_text(row.nodes, values).rstrip():
                 lines.append(text)  # A row that renders nothing is left out, not drawn blank.
         return lines
+
+
+def _names_field(nodes, name: str) -> bool:
+    """Whether a row's tree prints the field `name`, at any conditional depth."""
+    for node in nodes:
+        if node.kind == "field" and node.text.partition(":")[0] == name:
+            return True
+        if _names_field(node.children, name) or _names_field(node.alternate, name):
+            return True
+    return False
 
 
 def _row_text(nodes, values: dict[str, Any]) -> str:
@@ -213,6 +227,7 @@ def template_block(
     batch_suffix: str = "",
     lexer: str = "",
     tool: str = "",
+    format_cites: bool = False,
 ) -> LogBlock:
     """Place a rendered record in the block tree. The first line is the call line (left out when
     the runner already drew one above a live preview); the rest are output rows; `extras` are
@@ -237,7 +252,10 @@ def template_block(
         label = "refused" if "user refused" in output else "error"
         children.append(LogLine(label, oneline(output, 220), LogRole.ERROR, LogEdge.END))
     else:
-        carries = citation and citation not in (root.meta if root else "") and not any(citation in child.meta or citation in child.text for child in children)
+        # The citation is duplicated only when the format itself prints it (`{citation}`), a
+        # structural fact -- not when an output row happens to contain its text, which a bound
+        # result's asset path always does.
+        carries = bool(citation) and not format_cites and not (root and citation in root.meta)
         if children and carries:
             # The citation rides the last row, apart from its text, as the builtin `cited` places it.
             last = children[-1]
