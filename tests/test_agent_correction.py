@@ -260,6 +260,13 @@ def test_system_prompt_requires_native_tool_calls():
     assert "Use native tool calls; never print tool XML or tool-call JSON." in SYSTEM_PROMPT
 
 
+def test_system_prompt_forbids_testing_with_the_users_keys():
+    """An agent once read the user's provider key and spent their quota probing an endpoint."""
+    safety = SYSTEM_PROMPT.partition("SAFETY:")[2].partition("REVIEW:")[0]
+    assert "Never read, print, or copy secrets, API keys," in safety
+    assert "Never send a request with the user's API keys or credentials to test, probe, or verify anything" in safety
+
+
 def test_system_prompt_asks_for_plain_markdown_without_prescribing_a_template():
     """The renderer owns spacing, color, and rules; the prompt owns only what the model writes.
 

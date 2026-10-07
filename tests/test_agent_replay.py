@@ -53,7 +53,8 @@ async def test_agent_tool_error_feedback_is_visible_on_next_model_request(tmp_pa
 
 
 def test_provider_compatibility_and_prompt_cache_key(tmp_path):
-    opencode_claude = ProviderConfig(url="https://opencode.ai/zen/go/v1", key="k", model="claude-sonnet", api="auto")
+    # Claude is a Zen model; Go serves no Claude and has its own catalog entry.
+    opencode_claude = ProviderConfig(url="https://opencode.ai/zen/v1", key="k", model="claude-sonnet", api="auto")
     assert resolve(opencode_claude).api == "anthropic"
 
     opencode_qwen = ProviderConfig(url="https://opencode.ai/zen/go/v1", key="k", model="qwen3.7-max", api="auto")

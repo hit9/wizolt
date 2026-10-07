@@ -158,6 +158,15 @@ def test_codec_rejects_headers_a_fetched_catalog_must_not_send(headers):
         CatalogCodec().decode(catalog_payload(data), "cached")
 
 
+@pytest.mark.parametrize("host", ("https://opencode.ai", "OpenCode.ai", "opencode.ai/zen/go/", "opencode.ai//go", "localhost", "opencode.ai/Zen"))
+def test_codec_rejects_a_host_that_is_not_a_domain_with_path_segments(host):
+    data = catalog_data()
+    next(entry for entry in data["providers"] if entry["id"] == "provider.opencode-go")["hosts"] = [host]
+
+    with pytest.raises(CatalogFormatError, match="hosts entry"):
+        CatalogCodec().decode(catalog_payload(data), "cached")
+
+
 def test_codec_rejects_policy_references_to_unknown_reasoning_dialects():
     data = catalog_data()
     rule = next(rule for rule in data["model_rules"] if "reasoning.dialect" in rule["set"])

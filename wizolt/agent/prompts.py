@@ -10,7 +10,8 @@ LANGUAGE_RULES = """\
 """
 
 SECRET_RULES = """\
-- Never read, print, or copy secrets, `.env`, credentials, private keys, certificates, or keystores.
+- Never read, print, or copy secrets, API keys, `.env`, credentials, private keys, certificates, or keystores.
+- Never send a request with the user's API keys or credentials to test, probe, or verify anything, however small; give the user the command to run instead.
 - In a secret-bearing file, touch only requested non-secret lines without exposing surrounding secrets. Request user input if a secret itself must be inspected.
 """
 

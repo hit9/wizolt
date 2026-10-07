@@ -107,6 +107,48 @@ def test_opencode_routes_qwen_max_through_chat_and_the_rest_through_messages():
     assert resolve(ProviderConfig(url="https://opencode.ai/zen/v1", model="qwen3.7-plus")).api == "anthropic"
 
 
+GO = "https://opencode.ai/zen/go/v1"
+
+
+@pytest.mark.parametrize("url", ("https://opencode.ai/zen/v1", "https://opencode.ai/zen/gopher/v1"))
+def test_opencode_go_facts_stay_off_zen(url):
+    """Go and Zen share a domain but not a model table: only the /zen/go path is Go."""
+    assert resolve(ProviderConfig(url=url, model="minimax-m2.7")).api == "chat"
+    assert resolve(ProviderConfig(url=url, model="glm-5.3-flash", reasoning="high")).chat_reasoning == "thinking_effort"
+
+
+def test_opencode_go_sends_minimax_m27_through_messages():
+    """Go answers minimax-m2.7 on Chat with ModelProtocolUnsupported."""
+    assert resolve(ProviderConfig(url=GO, model="minimax-m2.7")).api == "anthropic"
+    assert resolve(ProviderConfig(url=GO, model="minimax-m3")).api == "chat"
+    assert resolve(ProviderConfig(url=GO, model="qwen3.8-max")).api == "chat"
+    assert resolve(ProviderConfig(url=GO, model="qwen3.8-flash")).api == "anthropic"
+    assert resolve(ProviderConfig(url=GO, model="gpt-6-luna")).api == "responses"
+
+
+@pytest.mark.parametrize(("model", "levels"), (("glm-5.3", ("low", "high", "max")), ("glm-5.3-flash", ("low", "high", "max")), ("glm-5.2", ("high", "max"))))
+def test_opencode_go_glm_takes_reasoning_effort_alone_and_never_stops_thinking(model, levels, tmp_path):
+    """Go's glm-5.3-flash upstream rejects a `thinking` field, and its GLM models refuse to stop
+    thinking, so off is not offered and an off carried over still sends a level."""
+    client = ModelClient(session(tmp_path))
+    assert reasoning_choices(ProviderConfig(url=GO, model=model)) == levels
+    for reasoning in (*levels, "off"):
+        params = {}
+        client.apply_provider_params(params, ProviderConfig(url=GO, model=model, reasoning=reasoning))
+        assert params == {"reasoning_effort": reasoning if reasoning != "off" else levels[0]}
+
+
+@pytest.mark.parametrize("url", ("https://api.deepseek.com", GO))
+def test_deepseek_v41_flash_alias_takes_deepseek_thinking_controls(url, tmp_path):
+    client = ModelClient(session(tmp_path))
+    params = {}
+    client.apply_provider_params(params, ProviderConfig(url=url, model="deepseek-v4.1-flash", reasoning="max"))
+    assert params == {"extra_body": {"thinking": {"type": "enabled"}}, "reasoning_effort": "max"}
+    params = {}
+    client.apply_provider_params(params, ProviderConfig(url=url, model="deepseek-v4.1-flash", reasoning="off"))
+    assert params == {"extra_body": {"thinking": {"type": "disabled"}}}
+
+
 def test_opencode_routes_muse_spark_through_responses():
     provider = ProviderConfig(url="https://opencode.ai/zen/v1", model="muse-spark-1.3")
 

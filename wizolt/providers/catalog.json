@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 2026100701,
+  "version": 2026100702,
   "updated_at": "2026-10-07",
   "maintenance_scope": "well_known_and_necessary_specializations_only",
   "defaults": {
@@ -935,7 +935,8 @@
       "match": {
         "prefixes": [
           "deepseek-flash",
-          "deepseek-v4-"
+          "deepseek-v4-",
+          "deepseek-v4.1-"
         ]
       },
       "set": {
@@ -955,7 +956,8 @@
         "https://api-docs.deepseek.com/updates/"
       ],
       "notes": [
-        "deepseek-flash is the V4.1 Flash id; deepseek-v4-flash and deepseek-v4-flash-vision-exp are compatibility aliases routed to it."
+        "deepseek-flash is the V4.1 Flash id; deepseek-v4-flash and deepseek-v4-flash-vision-exp are compatibility aliases routed to it.",
+        "Gateways such as OpenCode Go name V4.1 Flash deepseek-v4.1-flash; it takes the same thinking and reasoning_effort fields."
       ]
     },
     {
@@ -1943,6 +1945,146 @@
       "notes": [
         "Zen documents its websearch and webfetch features as client tools, not API server tools; builtin_tools_by_wire therefore remains empty.",
         "Zen serves Gemini models through a Google-specific endpoint wizolt has no wire for, so no rule routes them."
+      ]
+    },
+    {
+      "id": "provider.opencode-go",
+      "hosts": [
+        "opencode.ai/zen/go"
+      ],
+      "defaults": {
+        "headers": {
+          "x-opencode-session": "{session_id}"
+        }
+      },
+      "model_rules": [
+        {
+          "id": "go-rule.api-0.minimax-m2-7",
+          "match": {
+            "prefixes": [
+              "minimax-m2.7"
+            ]
+          },
+          "set": {
+            "api": "anthropic"
+          },
+          "why": "Go serves minimax-m2.7 only through Messages and answers Chat with ModelProtocolUnsupported, unlike Zen",
+          "evidence": [
+            "https://opencode.ai/docs/go/"
+          ]
+        },
+        {
+          "id": "go-rule.api-1.qwen3-8-max",
+          "match": {
+            "prefixes": [
+              "qwen3.8-max"
+            ]
+          },
+          "set": {
+            "api": "chat"
+          },
+          "why": "Go lists qwen3.8-max on Messages but also serves it on Chat Completions, the wire that carries its reasoning_effort and that Zen documents",
+          "evidence": [
+            "https://opencode.ai/docs/go/",
+            "https://opencode.ai/docs/zen"
+          ]
+        },
+        {
+          "id": "go-rule.api-2.qwen",
+          "match": {
+            "prefixes": [
+              "qwen"
+            ]
+          },
+          "set": {
+            "api": "anthropic"
+          },
+          "why": "Go routes Qwen model IDs through Messages",
+          "evidence": [
+            "https://opencode.ai/docs/go/"
+          ]
+        },
+        {
+          "id": "go-rule.api-3.gpt--grok--muse",
+          "match": {
+            "prefixes": [
+              "gpt-",
+              "grok-",
+              "muse-spark-"
+            ]
+          },
+          "set": {
+            "api": "responses"
+          },
+          "why": "Go routes GPT, Grok, and Muse Spark model IDs through Responses",
+          "evidence": [
+            "https://opencode.ai/docs/go/"
+          ]
+        },
+        {
+          "id": "go-rule.reasoning-0.glm-5-3",
+          "match": {
+            "prefixes": [
+              "glm-5.3"
+            ]
+          },
+          "set": {
+            "reasoning.recipe": "reasoning.effort",
+            "reasoning.dialect": "reasoning_effort",
+            "reasoning.levels": [
+              "low",
+              "high",
+              "max"
+            ],
+            "reasoning.off": "low",
+            "reasoning.mandatory": true
+          },
+          "why": "GLM-5.3 on Go has only low, high, and max, and cannot stop thinking",
+          "evidence": [
+            "https://opencode.ai/docs/go/",
+            "https://docs.z.ai/guides/overview/migrate-to-glm-new"
+          ],
+          "notes": [
+            "Go's glm-5.3-flash upstream rejects the thinking field, so both models send reasoning_effort alone."
+          ]
+        },
+        {
+          "id": "go-rule.reasoning-1.glm-5-2",
+          "match": {
+            "prefixes": [
+              "glm-5.2"
+            ]
+          },
+          "set": {
+            "reasoning.recipe": "reasoning.effort",
+            "reasoning.dialect": "reasoning_effort",
+            "reasoning.levels": [
+              "high",
+              "max"
+            ],
+            "reasoning.off": "high",
+            "reasoning.mandatory": true
+          },
+          "why": "Go serves glm-5.2 with thinking-only GLM-5.3, so it cannot stop thinking",
+          "evidence": [
+            "https://opencode.ai/docs/go/",
+            "https://docs.z.ai/guides/capabilities/thinking-mode"
+          ],
+          "notes": [
+            "Go's GLM-5.3 upstream refuses thinking disabled and takes reasoning_effort alone."
+          ]
+        }
+      ],
+      "builtin_tools_by_wire": {},
+      "why": "OpenCode Go shares Zen's domain but serves its own model table, so its wire and reasoning facts differ from Zen's for the same model IDs",
+      "evidence": [
+        "https://opencode.ai/docs/go/",
+        "https://opencode.ai/docs/go/#where-can-i-use-it"
+      ],
+      "notes": [
+        "Matched by the /zen/go path on opencode.ai; every other opencode.ai URL is Zen.",
+        "minimax-m3 stays on Chat: Go also lists it on Messages, where MiniMax defaults thinking off, and Zen serves it on Chat only.",
+        "Wire and reasoning facts here were checked against the live Go endpoint on 2026-10-07; the published docs list wires only."
       ]
     },
     {

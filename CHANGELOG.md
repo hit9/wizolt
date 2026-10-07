@@ -8,6 +8,19 @@
   entries gain the same `headers` policy, minus credential, identity and framing headers, below a
   configured header of the same name; the OpenCode entry sends `x-opencode-session`.
 
+- OpenCode Go gets its own catalog entry: a catalog host may now carry a path prefix
+  (`opencode.ai/zen/go`), the longer match winning, so Go no longer inherits Zen's model table.
+  `minimax-m2.7` goes over Messages (Go refuses it on Chat); `glm-5.3`, `glm-5.3-flash` and
+  `glm-5.2` send `reasoning_effort` alone (Go's `glm-5.3-flash` rejected the `thinking` field
+  on every request) and no longer offer off, which Go refuses. Zen is unchanged. Checked against
+  the Go docs, the gateway source, and the live endpoint.
+
+- `deepseek-v4.1-flash`, the gateway name for DeepSeek V4.1 Flash, now gets DeepSeek's thinking
+  controls: before, off did not stop thinking and no level was sent.
+
+- The system prompt's SAFETY rules now forbid sending requests with the user's API keys or
+  credentials to test, probe or verify anything; the agent gives the user the command instead.
+
 - `/prompt` (the bundled `system_prompt` plugin) now shows the system prompt exactly as it is
   sent, the lines settings add included, each under a gray rule naming its setting
   (`runtime.reactions`, ...); press `e` to edit the instructions in your editor as before. Built on

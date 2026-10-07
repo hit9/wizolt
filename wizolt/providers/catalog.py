@@ -104,6 +104,9 @@ _EFFORT_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 # Lowercase, as wizolt sends every configured header name, so a configured `headers` entry of the
 # same name replaces the catalog's instead of being sent beside it.
 _HEADER_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+# A provider host: a domain, optionally narrowed to a path prefix where one domain serves two
+# products (`opencode.ai/zen/go`). Matching respects label and segment boundaries.
+_HOST_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(/[a-z0-9._~-]+)*$")
 # A fetched catalog must not be able to touch credentials, identity, or framing; the user's own
 # `headers` config still may.
 RESERVED_HEADERS = frozenset({"authorization", "proxy-authorization", "x-api-key", "api-key", "cookie", "user-agent", "content-type", "content-length", "host"})
@@ -250,6 +253,8 @@ class CatalogCodec:
             if not isinstance(hosts, list) or not hosts or not all(isinstance(h, str) and h for h in hosts):
                 raise CatalogFormatError(f"{pid}.hosts must be a non-empty list of strings")
             for host in hosts:
+                if _HOST_RE.fullmatch(host) is None:
+                    raise CatalogFormatError(f"{pid}.hosts entry {host!r} must be a lowercase domain, optionally followed by /path segments")
                 if host in seen_hosts:
                     raise CatalogFormatError(f"duplicate provider host {host!r}")
                 seen_hosts.add(host)
