@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Fix a failed plugin interceptor (`prompt.submit`, `model.request`, `context.compact`) ending
+  the whole session instead of the turn: `PluginError` is not a `WizoltError`, so the turn
+  layer let it escape and the TUI shut down, leaving no way to reach `/plugins` to disable the
+  plugin. Also fix three smaller defects found in review: a record whose output text contains
+  its own `tr.N` key (a bounded result's asset path) lost the citation that makes the result
+  reachable; a plugin request's deadline that had already fired was rescheduled, surfacing an
+  internal `RuntimeError` as the plugin's error; `context.compose` over blocks with no host
+  part raised `IndexError` instead of a reported plugin error; and a failed `model.request`
+  wrapper recorded no reason while the tool and compaction sites did.
+
 - Compatibility catalog: recognize Command Code (`api.commandcode.ai/provider/v1`) — its one
   base URL serves Claude models on the Anthropic wire and everything else on OpenAI-compatible
   endpoints, so `api=auto` now routes by model, and no cache-key hint is sent because the
