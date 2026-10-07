@@ -100,9 +100,9 @@ async def runtime(tmp_path):
         await instance.close()
 
 
-def context(root: Path) -> Context:
-    """Only ``data_dir`` decides which config.toml the command opens."""
-    return Context(agent_id="root", agent_name="main", cwd=str(root), status="idle", context_percent=0, elapsed=0, model="m", now=0, data_dir=str(root))
+def context(root: Path, config_path: str = "") -> Context:
+    """Only ``data_dir`` and ``config_path`` decide which config.toml the command opens."""
+    return Context(agent_id="root", agent_name="main", cwd=str(root), status="idle", context_percent=0, elapsed=0, model="m", now=0, data_dir=str(root), config_path=config_path)
 
 
 def configured(root: Path, config: str, secrets: str = "") -> Context:
@@ -298,14 +298,15 @@ async def test_a_subscription_without_usage_windows_says_so(wires, tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("url", "asked", "retried"),
-    [(KIMI, KIMI_BALANCE, KIMI_BALANCE_AI), ("https://api.moonshot.ai/v1", KIMI_BALANCE_AI, KIMI_BALANCE)],
+    ("url", "asked", "retried", "symbol"),
+    [(KIMI, KIMI_BALANCE, KIMI_BALANCE_AI, "$"), ("https://api.moonshot.ai/v1", KIMI_BALANCE_AI, KIMI_BALANCE, "¥")],
 )
-async def test_a_rejected_kimi_key_retries_the_other_moonshot_host(wires, tmp_path, url, asked, retried):
+async def test_a_rejected_kimi_key_retries_the_other_host_and_its_currency(wires, tmp_path, url, asked, retried, symbol):
+    # The international host balances in USD, the national one in CNY; whichever answered decides.
     wires.answers[asked] = usage_plugin.HttpError(401)
     wires.answers[retried] = {"data": {"available_balance": "300", "cash_balance": "0", "voucher_balance": "0"}}
     config = provider_config(("kimi", url, "k"))
-    assert await usage_plugin.usage(configured(tmp_path, config), {}) == "Kimi\n  balance  ¥300.00  (cash ¥0.00 + voucher ¥0.00)  ok"
+    assert await usage_plugin.usage(configured(tmp_path, config), {}) == f"Kimi\n  balance  {symbol}300.00  (cash {symbol}0.00 + voucher {symbol}0.00)  ok"
     assert wires.calls == [(asked, "k"), (retried, "k")]  # The same key, once per host.
 
 
@@ -323,11 +324,19 @@ async def test_a_kimi_failure_other_than_a_rejection_is_not_retried(wires, tmp_p
     assert wires.calls == [(KIMI_BALANCE, "k")]
 
 
-async def test_a_failed_plan_lookup_still_reports_the_quotas(wires, tmp_path):
+@pytest.mark.parametrize("failure", [usage_plugin.HttpError(403), TimeoutError(), json.JSONDecodeError("Expecting value", "", 0)])
+async def test_a_failed_plan_lookup_of_any_kind_still_reports_the_quotas(wires, tmp_path, failure):
     wires.answers[ZAI_QUOTA] = {"data": {"limits": [{"type": "TOKENS_LIMIT", "unit": 6, "number": 7, "percentage": 40}]}}
-    wires.answers[ZAI_PLAN] = usage_plugin.HttpError(403)
+    wires.answers[ZAI_PLAN] = failure
     config = provider_config(("z", ZAI, "k"))
     assert await usage_plugin.usage(configured(tmp_path, config), {}) == "Z.ai\n  weekly    40%  [████░░░░░░]"
+
+
+async def test_a_plan_name_with_line_breaks_stays_on_one_line(wires, tmp_path):
+    wires.answers[ZAI_QUOTA] = {"data": {"limits": [{"type": "TOKENS_LIMIT", "unit": 6, "number": 7, "percentage": 40}]}}
+    wires.answers[ZAI_PLAN] = {"data": [{"productName": "GLM\nCoding\tPlan"}]}
+    config = provider_config(("z", ZAI, "k"))
+    assert await usage_plugin.usage(configured(tmp_path, config), {}) == "Z.ai GLM Coding Plan\n  weekly    40%  [████░░░░░░]"
 
 
 async def test_commandcode_computes_the_percent_and_prints_the_nonzero_credit_parts(wires, tmp_path):
@@ -380,6 +389,65 @@ async def test_commandcode_without_windows_or_credits_says_so(wires, tmp_path):
     wires.answers[COMMANDCODE_CREDITS] = {"windowLimits": {"fiveHour": {"used": 0, "cap": 0}}}
     config = provider_config(("cc", COMMANDCODE, "k"))
     assert await usage_plugin.usage(configured(tmp_path, config), {}) == "Command Code\n  error: no usage windows or credits"
+
+
+async def test_a_lookalike_host_or_a_pasted_path_is_not_the_provider(wires, tmp_path):
+    # `deepseek.com.evil.tld` merely contains the domain, `notz.ai` merely ends with it,
+    # `evil.tld/opencode.ai/zen/go` merely carries Go's path: no key is asked from anyone.
+    config = provider_config(
+        ("lookalike", "https://api.deepseek.com.evil.tld/v1", "k"),
+        ("pasted", "https://evil.tld/opencode.ai/zen/go/v1", "k"),
+        ("moonshotish", "https://api.moonshot.evil.tld/v1", "k"),
+        ("plain", "https://notz.ai/v1", "k"),
+    )
+    assert await usage_plugin.usage(configured(tmp_path, config), {}) == UNMATCHED
+    assert wires.calls == []
+
+
+async def test_a_null_resetsAt_falls_back_to_the_seconds_left(wires, tmp_path):
+    wires.answers[GO_USAGE] = {"usage": {"rolling": {"percent": 12, "resetsAt": None, "resetInSec": 5000}}}
+    config = provider_config(("go", GO, "k"))
+    assert await usage_plugin.usage(configured(tmp_path, config), {}) == "OpenCode Go\n  rolling   12%  [█░░░░░░░░░]  resets in 1h23m"
+
+
+async def test_a_string_zero_cap_keeps_the_window_and_the_report_alive(wires, tmp_path):
+    # `"max": "0"` is truthy as given; the parsed zero ends the window, not the whole report.
+    wires.answers[SYNTHETIC_QUOTAS] = {"rollingFiveHourLimit": {"max": "0", "remaining": "0"}, "weeklyTokenLimit": {"percentRemaining": 10}}
+    config = provider_config(("synth", SYNTHETIC, "k"))
+    assert await usage_plugin.usage(configured(tmp_path, config), {}) == "Synthetic\n  ! weekly    90%  [█████████░]"
+
+
+async def test_an_unusable_amount_never_prints_the_response_it_came_from(wires, tmp_path):
+    wires.answers[DEEPSEEK_BALANCE] = {"balance_infos": [{"currency": "CNY", "total_balance": "n/a"}]}
+    config = provider_config(("deep", DEEPSEEK, "k"))
+    assert await usage_plugin.usage(configured(tmp_path, config), {}) == "DeepSeek API\n  error: unparsable response"
+
+
+async def test_an_all_zero_commandcode_balance_prints_no_empty_parts(wires, tmp_path):
+    wires.answers[COMMANDCODE_WHOAMI] = {"user": {"login": "me"}}
+    wires.answers[COMMANDCODE_CREDITS] = {"credits": {"monthlyCredits": 0, "purchasedCredits": 0, "freeCredits": 0}}
+    config = provider_config(("cc", COMMANDCODE, "k"))
+    assert await usage_plugin.usage(configured(tmp_path, config), {}) == "Command Code\n  ! balance  $0.00  ok"
+
+
+async def test_commandcode_used_over_the_cap_clamps_and_a_small_reset_counts_from_now(wires, tmp_path):
+    wires.answers[COMMANDCODE_WHOAMI] = {"user": {"login": "me"}}
+    wires.answers[COMMANDCODE_CREDITS] = {"windowLimits": {"weekly": {"used": 45, "cap": 35, "resetAt": 3600}}}
+    config = provider_config(("cc", COMMANDCODE, "k"))
+    assert await usage_plugin.usage(configured(tmp_path, config), {}) == "Command Code\n  ! weekly   100%  [██████████]  resets in 1h"
+
+
+async def test_a_config_beside_a_moved_data_directory_is_still_read(wires, tmp_path):
+    # `--config` or a relocated `[paths] data_dir`: the config is not under data_dir. The command
+    # follows the host's config_path, and the secrets are read beside the config.
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    wires.answers[DEEPSEEK_BALANCE] = deepseek("110", "10", "100")
+    (elsewhere / "config.toml").write_text(provider_config(("deep", DEEPSEEK, None)))
+    (elsewhere / "secrets.toml").write_text('deep = "from-secrets"\n')
+    result = await usage_plugin.usage(context(tmp_path, str(elsewhere / "config.toml")), {})
+    assert result == "DeepSeek API\n  balance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok"
+    assert wires.calls == [(DEEPSEEK_BALANCE, "from-secrets")]
 
 
 async def test_a_missing_or_broken_config_says_what_to_do(wires, tmp_path):
@@ -482,6 +550,7 @@ def test_get_json_against_a_real_server_sends_the_key_in_one_header():
     assert path == "/v1/users/me/balance"
     assert headers["authorization"] == "Bearer fake-key"
     assert headers["accept"] == "application/json"
+    assert headers["user-agent"] == "wizolt"  # The client's own name, not the HTTP library's.
     assert [name for name, value in headers.items() if "fake-key" in value] == ["authorization"]
 
 
@@ -502,5 +571,5 @@ def test_the_body_a_real_server_returns_renders_as_the_balance_line():
     it and the shared renderer prints the line a user sees."""
     with mock_provider({"/v1/users/me/balance": (200, KIMI_BODY)}) as (base, _received):
         body = usage_plugin.get_json(f"{base}/v1/users/me/balance", "fake-key")
-    rows = usage_plugin.KimiBalance().rows(body, NOW)
+    rows = usage_plugin.KimiBalance().rows({"answer": body, "currency": "CNY"}, NOW)
     assert usage_plugin.section("Kimi", usage_plugin.Report("Kimi", rows=rows)) == "Kimi\n  balance  ¥49.58  (cash ¥3.00 + voucher ¥46.58)  ok"

@@ -19,6 +19,31 @@ from wizolt.sdk import SDK_VERSION, Plugin, PluginError
 MAX_SOURCE_BYTES = 256 * 1024
 
 
+def sdk_boundary_violations(tree: ast.Module) -> list[str]:
+    """Imports that reach past the public SDK into wizolt's own modules, by name.
+
+    Admission reads them without executing the source, so validate, test and activation all
+    enforce the same boundary. Packages load through an entry module instead, so their own
+    imports are not walked here.
+    """
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            violations.extend(alias.name for alias in node.names if _past_sdk(alias.name))
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            if _past_sdk(node.module):
+                violations.append(node.module)
+            elif node.module == "wizolt":
+                violations.extend(f"wizolt.{alias.name}" for alias in node.names if alias.name != "sdk" and not alias.name.startswith("sdk."))
+    return violations
+
+
+def _past_sdk(module: str) -> bool:
+    if module == "wizolt" or module == "wizolt.sdk" or module.startswith("wizolt.sdk."):
+        return False
+    return module.split(".")[0] == "wizolt"
+
+
 @dataclass(frozen=True)
 class PluginSource:
     """An immutable source revision, shared by validation and activation.
@@ -80,6 +105,8 @@ class PluginSource:
         dependencies = metadata.get("DEPENDENCIES", ())
         if not isinstance(dependencies, (tuple, list)) or any(not isinstance(item, str) or not item.strip() for item in dependencies):
             raise PluginError("DEPENDENCIES must be a literal list or tuple of requirement strings")
+        if violations := sdk_boundary_violations(tree):
+            raise PluginError(f"{location.stem}: imports {violations[0]}; plugins may import only the public SDK (wizolt.sdk)")
         digest = hashlib.sha256(text.encode()).hexdigest()[:12]
         docstring = ast.get_docstring(tree) or ""
         return cls(str(location), text, location.stem, digest, tuple(dependencies), description=summary(docstring), about=docstring)

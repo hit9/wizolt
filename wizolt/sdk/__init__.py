@@ -121,6 +121,7 @@ class Context:
     layout: Layout | None = None
     turn: Turn = field(default_factory=Turn)
     data_dir: str = ""  # wizolt's data directory; a user's own plugin files live under it (`user_file_paths`).
+    config_path: str = ""  # the config file this session reads; "" when the host did not say.
 
     @classmethod
     def decode(cls, value: dict) -> Context:

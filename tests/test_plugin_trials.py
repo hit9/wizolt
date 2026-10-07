@@ -241,6 +241,30 @@ def test_source_rejects_fifo_and_bounds_in_memory_revisions(tmp_path):
         PluginSource.read(str(tmp_path / "huge.py"), "x" * (MAX_SOURCE_BYTES + 1))
 
 
+def test_source_admits_only_public_sdk_imports(tmp_path):
+    from wizolt.sdk import SDK_VERSION, PluginError
+
+    body = f'''"""A doc."""
+SDK_VERSION = {SDK_VERSION}
+import json
+import wizolt
+from wizolt import sdk
+from wizolt.sdk import Plugin
+
+
+def setup(plugin):
+    plugin.command("sample", "does nothing", lambda context, arguments: "ok")
+'''
+    path = tmp_path / "boundary.py"
+    path.write_text(body)
+    assert PluginSource.read(str(path)).name == "boundary"  # The allowed set passes.
+    for bad in ("import wizolt.plugins.session", "from wizolt.config import Config", "from wizolt import plugins"):
+        path.write_text(f"{body}\n{bad}\n")
+        with pytest.raises(PluginError) as error:
+            PluginSource.read(str(path))
+        assert "plugins may import only the public SDK (wizolt.sdk)" in str(error.value)
+
+
 async def test_protocol_damage_and_oversized_component_do_not_hang(trial, tmp_path):
     # Descriptor 1 is no longer the protocol; damage the worker's private stream itself.
     damaged = plugin(

@@ -47,7 +47,9 @@ Only the interfaces documented here and in [UI.md](UI.md) are author APIs. Regis
 `plugin.interceptors`, `plugin.services`, `Models.call`, `Context.decode`, SDK implementation helpers,
 and everything under `wizolt.plugins` are host plumbing, even where Python names lack `_`.
 Do not construct `Plugin`, `Models` or `Service` yourself, mutate registries or call lifecycle
-methods. SDK 1 is experimental; the bundled reference matches the installed wizolt version.
+methods. Admission rejects a plugin source that imports any `wizolt.*` module besides
+`wizolt.sdk` (and the stdlib); `plugin validate` names the offending import. SDK 1 is
+experimental; the bundled reference matches the installed wizolt version.
 
 **Plugin tools are not entries in the model's tool table.** `plugin.tool("remember", ...)`
 does not make `remember` or `my_plugin.remember` directly callable, including as a ToolScript
@@ -80,7 +82,7 @@ Presenter view models (`ToolCard`, `ToolSummary`, `ActivityStatus`) are imported
 
 | Type | Fields / defaults |
 | --- | --- |
-| `Context` | Required: `agent_id: str`, `agent_name: str`, `cwd: str`, `status: str`, `context_percent: float`, `elapsed: float`, `model: str`, `now: float`; optional: `columns: int = 80`, `usage: Usage = Usage()`, `window: ContextWindow = ContextWindow()`, `viewport: Viewport = Viewport()`, `layout: Layout \| None = None`, `turn: Turn = Turn()`, `data_dir: str = ""` |
+| `Context` | Required: `agent_id: str`, `agent_name: str`, `cwd: str`, `status: str`, `context_percent: float`, `elapsed: float`, `model: str`, `now: float`; optional: `columns: int = 80`, `usage: Usage = Usage()`, `window: ContextWindow = ContextWindow()`, `viewport: Viewport = Viewport()`, `layout: Layout \| None = None`, `turn: Turn = Turn()`, `data_dir: str = ""`, `config_path: str = ""` |
 | `Viewport` | `columns: int = 80`, `rows: int = 24` |
 | `Layout` | `slot: str`, `columns: int`, `rows: int`, `gap_before: int = 0` |
 | `Turn` | `tools: ToolCounts = ToolCounts()`, `active_tools: tuple[ToolActivity, ...] = ()` |

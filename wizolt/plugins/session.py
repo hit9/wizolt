@@ -99,6 +99,7 @@ class SessionPlugins(PluginRuntime):
                 self.context_parts,
             ),
             data_dir=os.path.expanduser(session.config.data_dir),
+            config_path=session.config.path,  # The config's own path; data_dir is state, not always its directory.
         )
 
     async def load(self) -> None:

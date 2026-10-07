@@ -17,8 +17,8 @@ DeepSeek API
 
 ## Use
 
-- Enable **usage** in `/plugins`, then type `/usage`. It makes one request per supported
-  provider, with that provider's configured key, and sends nothing else.
+- Enable **usage** in `/plugins`, then type `/usage`. It makes one or two requests per
+  supported provider, with that provider's configured key, and sends nothing else.
 - A `!` marks a window at 80% or more, or a balance of 10 or less.
 """
 
@@ -96,8 +96,13 @@ class Unreachable(Exception):
     """The provider could not be reached; the reason is a socket message, never a key."""
 
 
+class BadResponse(ValueError):
+    """A source's own verdict on a payload it cannot use; its message is safe to print."""
+
+
 def get_json(url: str, key: str) -> object:
-    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {key}", "Accept": "application/json"})
+    # Providers ask for the client's own name, not an HTTP library's (Go's docs say so).
+    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {key}", "Accept": "application/json", "User-Agent": "wizolt"})
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             return json.loads(response.read())
@@ -130,6 +135,12 @@ def timestamp(value: object, now: float) -> float:
         return 0.0
 
 
+def hosted_by(url: str, domain: str) -> bool:
+    """The url's host is the domain or one of its subdomains, never a lookalike or a path."""
+    host = urllib.parse.urlsplit(url).netloc.lower()
+    return host == domain or host.endswith("." + domain)
+
+
 class Source:
     """The only place that knows one provider's endpoint and response shape."""
 
@@ -152,7 +163,7 @@ class GoUsage(Source):
     title = "OpenCode Go"
 
     def matches(self, url: str) -> bool:
-        return "opencode.ai/zen/go" in url.lower()
+        return hosted_by(url, "opencode.ai") and urllib.parse.urlsplit(url).path.lower().startswith("/zen/go")
 
     def fetch(self, key: str, url: str) -> object:
         return get_json("https://opencode.ai/zen/go/v1/usage", key)
@@ -163,9 +174,9 @@ class GoUsage(Source):
         for label in ("rolling", "weekly", "monthly"):
             meter = mapping(usage.get(label))
             if "percent" in meter:
-                rows.append(Window(label, clamp(meter["percent"]), timestamp(meter.get("resetsAt", meter.get("resetInSec")), now)))
+                rows.append(Window(label, clamp(meter["percent"]), timestamp(meter.get("resetsAt") or meter.get("resetInSec"), now)))
         if not rows:
-            raise ValueError("no subscription or no usage windows")
+            raise BadResponse("no subscription or no usage windows")
         return tuple(rows)
 
 
@@ -173,7 +184,7 @@ class DeepSeekBalance(Source):
     title = "DeepSeek API"
 
     def matches(self, url: str) -> bool:
-        return "deepseek.com" in urllib.parse.urlsplit(url).netloc.lower()
+        return hosted_by(url, "deepseek.com")
 
     def fetch(self, key: str, url: str) -> object:
         return get_json("https://api.deepseek.com/user/balance", key)
@@ -186,41 +197,45 @@ class DeepSeekBalance(Source):
             available = bool(mapping(data).get("is_available", True))
             rows.append(Balance(str(info.get("currency", "?")), float(info.get("total_balance") or 0.0), parts, available))
         if not rows:
-            raise ValueError("no balance data")
+            raise BadResponse("no balance data")
         return tuple(rows)
 
 
 class KimiBalance(Source):
     title = "Kimi"
     PATH = "/v1/users/me/balance"
+    NATIONAL, INTERNATIONAL = "https://api.moonshot.cn", "https://api.moonshot.ai"
 
     def matches(self, url: str) -> bool:
-        return "moonshot" in urllib.parse.urlsplit(url).netloc.lower()
+        return hosted_by(url, "moonshot.cn") or hosted_by(url, "moonshot.ai")
 
     def _origin(self, url: str) -> str:
         parts = urllib.parse.urlsplit(url if "//" in url else f"https://{url}")
-        if "moonshot" in parts.netloc.lower() and parts.scheme in ("http", "https"):
-            return f"{parts.scheme}://{parts.netloc}"
-        return "https://api.moonshot.cn"
+        base = f"{parts.scheme}://{parts.netloc}"
+        if parts.scheme in ("http", "https") and (hosted_by(base, "moonshot.cn") or hosted_by(base, "moonshot.ai")):
+            return base
+        return self.NATIONAL
 
     def fetch(self, key: str, url: str) -> object:
         base = self._origin(url)
         try:
-            return get_json(base + self.PATH, key)
+            answer = get_json(base + self.PATH, key)
         except HttpError as error:
             # National and international keys are separate; a rejected key gets one try on the
             # other host before the report calls it an error.
             if error.code not in (401, 403):
                 raise
-            other = "https://api.moonshot.ai" if base.endswith(".cn") else "https://api.moonshot.cn"
-            return get_json(other + self.PATH, key)
+            base = self.INTERNATIONAL if base == self.NATIONAL else self.NATIONAL
+            answer = get_json(base + self.PATH, key)
+        # The national host balances in CNY, the international one in USD (its balance docs).
+        return {"answer": answer, "currency": "USD" if base == self.INTERNATIONAL else "CNY"}
 
     def rows(self, data: object, now: float) -> tuple[Window | Balance, ...]:
-        payload = mapping(mapping(data).get("data"))
+        payload = mapping(mapping(mapping(data).get("answer")).get("data"))
         if "available_balance" not in payload:
-            raise ValueError("no balance data")
+            raise BadResponse("no balance data")
         parts = tuple((name, float(payload.get(field) or 0.0)) for name, field in (("cash", "cash_balance"), ("voucher", "voucher_balance")))
-        return (Balance("CNY", float(payload["available_balance"]), parts),)
+        return (Balance(str(mapping(data).get("currency") or "CNY"), float(payload["available_balance"]), parts),)
 
 
 class ZaiQuota(Source):
@@ -230,19 +245,19 @@ class ZaiQuota(Source):
     WINDOW_LABELS: ClassVar[dict[tuple[object, object], str]] = {(3, 5): "session", (6, 7): "weekly"}  # The plan's own unit/number periods.
 
     def matches(self, url: str) -> bool:
-        return urllib.parse.urlsplit(url).netloc.lower().endswith("z.ai")
+        return hosted_by(url, "z.ai")
 
     def fetch(self, key: str, url: str) -> object:
         data = {"quota": get_json(self.QUOTA_URL, key)}
         try:
             data["plans"] = get_json(self.PLAN_URL, key)
-        except (HttpError, Unreachable):
+        except (HttpError, Unreachable, TimeoutError, json.JSONDecodeError):
             data["plans"] = {}  # The plan name is a bonus; quotas alone still report.
         return data
 
     def report_title(self, data: object) -> str:
         plans = mapping(mapping(data).get("plans")).get("data") or []
-        name = next((str(item["productName"]) for item in plans if mapping(item).get("productName")), "")
+        name = next((" ".join(str(item["productName"]).split()) for item in plans if mapping(item).get("productName")), "")
         return f"{self.title} {name}" if name else self.title
 
     def rows(self, data: object, now: float) -> tuple[Window | Balance, ...]:
@@ -256,7 +271,7 @@ class ZaiQuota(Source):
             elif item.get("type") == "TIME_LIMIT":
                 rows.append(Window("searches", self._percent(item), 0.0))
         if not rows:
-            raise ValueError("no quota data")
+            raise BadResponse("no quota data")
         return tuple(rows)
 
     @staticmethod
@@ -271,7 +286,7 @@ class SyntheticQuotas(Source):
     title = "Synthetic"
 
     def matches(self, url: str) -> bool:
-        return "synthetic.new" in urllib.parse.urlsplit(url).netloc.lower()
+        return hosted_by(url, "synthetic.new")
 
     def fetch(self, key: str, url: str) -> object:
         return get_json("https://api.synthetic.new/v2/quotas", key)
@@ -279,9 +294,10 @@ class SyntheticQuotas(Source):
     def rows(self, data: object, now: float) -> tuple[Window | Balance, ...]:
         rows = []
         rolling = mapping(mapping(data).get("rollingFiveHourLimit"))
-        if rolling.get("max"):
-            used = max(0.0, float(rolling["max"]) - float(rolling.get("remaining") or 0.0))
-            rows.append(Window("5h rate", clamp(100.0 * used / float(rolling["max"])), 0.0))
+        limit = float(rolling.get("max") or 0.0)
+        if limit:
+            used = max(0.0, limit - float(rolling.get("remaining") or 0.0))
+            rows.append(Window("5h rate", clamp(100.0 * used / limit), 0.0))
         weekly = mapping(mapping(data).get("weeklyTokenLimit"))
         if weekly.get("percentRemaining") is not None:
             rows.append(Window("weekly", clamp(100.0 - float(weekly["percentRemaining"])), timestamp(weekly.get("nextRegenAt"), now)))
@@ -291,7 +307,7 @@ class SyntheticQuotas(Source):
                 percent = 100.0 * float(subscription.get("requests") or 0.0) / float(subscription["limit"])
                 rows.append(Window("subscription", clamp(percent), timestamp(subscription.get("renewsAt"), now)))
         if not rows:
-            raise ValueError("no quota data")
+            raise BadResponse("no quota data")
         return tuple(rows)
 
 
@@ -303,7 +319,7 @@ class CommandCodeQuota(Source):
     CREDITS_URL = "https://api.commandcode.ai/alpha/billing/credits"
 
     def matches(self, url: str) -> bool:
-        return urllib.parse.urlsplit(url).netloc.lower().endswith("commandcode.ai")
+        return hosted_by(url, "commandcode.ai")
 
     def fetch(self, key: str, url: str) -> object:
         whoami = get_json(self.WHOAMI_URL, key)
@@ -327,7 +343,7 @@ class CommandCodeQuota(Source):
             parts = tuple((name, value) for name, value in values.items() if value)
             rows.append(Balance("USD", sum(values.values()), parts))
         if not rows:
-            raise ValueError("no usage windows or credits")
+            raise BadResponse("no usage windows or credits")
         return tuple(rows)
 
 
@@ -374,10 +390,10 @@ async def fetch_report(name: str, entry: dict, source: Source, secrets: dict[str
         return Report(source.title, note=f"error: network ({error})")
     except TimeoutError:
         return Report(source.title, note="error: timeout")
-    except (json.JSONDecodeError, TypeError, KeyError, IndexError, AttributeError, UnicodeDecodeError):
-        return Report(source.title, note="error: unparsable response")
-    except ValueError as error:
+    except BadResponse as error:
         return Report(source.title, note=f"error: {error or 'unparsable response'}")
+    except (ValueError, TypeError, KeyError, IndexError, AttributeError, UnicodeDecodeError):
+        return Report(source.title, note="error: unparsable response")
     except Exception:  # noqa: BLE001 - one provider's unexpected failure stays inside its own section.
         return Report(source.title, note="error: failed")
 
@@ -409,9 +425,10 @@ def balance_line(row: Balance) -> str:
     symbol = SYMBOLS.get(row.currency, f"{row.currency} ")
     total = round(row.total, 2)
     parts = " + ".join(f"{name} {symbol}{amount:.2f}" for name, amount in row.parts)
+    detail = f"  ({parts})" if parts else ""
     state = "ok" if row.available else "insufficient"
     mark = "! " if (not row.available or total <= WARN_AMOUNT) else ""
-    return f"{mark}balance  {symbol}{total:.2f}  ({parts})  {state}"
+    return f"{mark}balance  {symbol}{total:.2f}{detail}  {state}"
 
 
 def section(title: str, report: Report) -> str:
@@ -423,14 +440,15 @@ def section(title: str, report: Report) -> str:
 
 async def usage(context: Context, arguments: Mapping[str, Any]) -> str:
     root = Path(context.data_dir or "~/.wizolt").expanduser()
+    config_path = Path(context.config_path) if context.config_path else root / "config.toml"
     try:
-        with (root / "config.toml").open("rb") as file:
+        with config_path.open("rb") as file:
             config = tomllib.load(file)
     except FileNotFoundError:
         return "No config.toml yet: nothing configured."
     except (OSError, tomllib.TOMLDecodeError):
         return "config.toml is unreadable; fix it and try again."
-    secrets = load_secrets(root / "secrets.toml")
+    secrets = load_secrets(config_path.parent / "secrets.toml")  # Beside the config, as wizolt resolves them.
     entries = provider_entries(config)
     plans = []
     for source in SOURCES:
@@ -458,6 +476,6 @@ def setup(plugin: Plugin) -> None:
     """Default enablement belongs to the installation catalog, never to plugin source code."""
     plugin.command(
         "usage",
-        "Show usage and balance for configured providers (OpenCode Go, DeepSeek, Kimi, z.ai, Synthetic, Command Code); one API request each",
+        "Show usage and balance for configured providers (OpenCode Go, DeepSeek, Kimi, z.ai, Synthetic, Command Code); one or two API requests each",
         usage,
     )

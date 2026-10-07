@@ -39,6 +39,18 @@ def text(row):
     return "".join(span.text for span in row.spans) if isinstance(row, Line) else row.text
 
 
+def test_every_builtin_imports_only_the_public_sdk():
+    import ast
+
+    from wizolt.plugins.loading import sdk_boundary_violations
+
+    # Admission rejects a source that imports past wizolt.sdk; holding every builtin to the same
+    # walk keeps the bundled set on the documented contract, not on review vigilance.
+    for path in BUILTIN.glob("*.py"):
+        violations = sdk_boundary_violations(ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
+        assert not violations, f"{path.stem} imports {violations[0]}"
+
+
 async def test_every_builtin_introduces_itself_in_the_plugin_list(tmp_path):
     from agent_harness import session_with_provider
 
