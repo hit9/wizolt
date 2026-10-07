@@ -364,7 +364,7 @@ async def test_full_flow_compacts_before_answering(tmp_path, monkeypatch):
     assert "OLD_BODY_SENTINEL" not in "\n".join(contents)
     assert agent_request["tools"]
 
-    assert session.state.summary == "Archived work was completed."
+    assert session.state.summaries[-1].endswith("]\nArchived work was completed.")
     assert session.state.compaction_count == 1
     assert [segment.key for segment in session.history] == ["seg.1"]
     assert "OLD_BODY_SENTINEL" in session.history[0].text

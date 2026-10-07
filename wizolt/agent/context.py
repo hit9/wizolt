@@ -594,18 +594,25 @@ class ContextManager:
             if compacted
             else None
         )
-        if data is not None:
-            self.session.state.apply_summary(data)
-        if fallback_note:
-            self.session.state.summary = (self.session.state.summary + "\n" + fallback_note).strip()
         if segment is not None:
-            # After apply(): the summary worth keeping is the one this compaction just produced,
-            # not the one it replaced. The compactor's own name for the span replaces the
-            # deterministic one, which was only ever the first user message of the window and says
-            # little once a span starts mid-work. The compactor computes the name (flattened and
-            # bounded) and passes it in; empty falls back to the deterministic name.
-            segment.summary = self.session.state.summary
+            # The compactor's own name for the span replaces the deterministic one, which was only
+            # ever the first user message of the window and says little once a span starts
+            # mid-work. The compactor computes the name (flattened and bounded) and passes it in;
+            # empty falls back to the deterministic name.
             segment.title = title or segment.title
+        state = self.session.state
+        if data is not None:
+            # Labelled with the span it covers, so the checkpoint maps each kept summary to the
+            # `history.N.md` that holds the span word for word.
+            state.apply_summary(data, label=f"{segment.key}: {segment.title}" if segment is not None else "")
+        if fallback_note:
+            # A trim the summarizer never saw is its own entry, so no kept summary is rewritten.
+            state.summaries = [*state.summaries, fallback_note]
+        if segment is not None:
+            # This span's own summary, as written -- not every kept summary again, which the
+            # checkpoint already carries.
+            text = str(data.get("summary") or "").strip() if data is not None else ""
+            segment.summary = "\n".join(filter(None, (text, fallback_note)))
         # Exported after the summary request returned and before the checkpoint is built: nothing
         # here can touch the cached prefix of that request, and the checkpoint below names the
         # index only once it exists on disk.

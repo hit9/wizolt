@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Compaction no longer re-summarizes the previous summary on every pass. Each compaction
+  summarizes only the messages it evicts and adds that summary, labelled with its `seg.N` span,
+  beside the earlier ones, which are kept as written. Once the kept summaries pass 16,000
+  characters (four or five, at the 3,500-4,100 characters measured on real sessions), the next
+  compaction folds them into its own: about one paraphrase per five compactions instead of one
+  per compaction, with no extra model call. `/compact log` and the history
+  index now show each span's own summary instead of the running one. Sessions saved before this
+  load their single summary as the oldest kept one. The checkpoint is rebuilt only at compaction,
+  so the cached prefix is untouched between compactions.
+
 - Compaction records which files the summarized messages read (Read calls, minus files the same
   span edited) on its history segment, and every later checkpoint lists the last 20 of them as
   written, beside the modified files, commands and failures it already carried. The summarizer

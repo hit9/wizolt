@@ -69,7 +69,10 @@ class AgentState:
     plan: list[PlanItem | Json | str] = field(default_factory=list)
     known: list[str] = field(default_factory=list)
     check: str = ""
-    summary: str = ""
+    # One summary per compaction, oldest first, each kept as written: a later compaction summarizes
+    # only what it evicts, so an earlier summary is not paraphrased again on every pass. Folded into
+    # one only once together they pass SUMMARY_FOLD_CHARS (`apply_summary`).
+    summaries: list[str] = field(default_factory=list)
     # How this session is labelled when listed, and where that label came from. `apply` never sets
     # either: the name follows the user and the goal, not whatever a tool call happens to write.
     name: str = ""
@@ -127,8 +130,29 @@ class AgentState:
         rows = [item.row(status=status, style=style) for item in cls.plan_items(items)]
         return rows or ["- (empty)"]
 
-    def apply_summary(self, data: Json) -> None:
-        """Take the one field a compaction reply owns.
+    # About four summaries as compactors write them (3.5-4k characters each, measured on real
+    # sessions); the plugin summary bound is the same size.
+    SUMMARY_FOLD_CHARS: ClassVar[int] = 16_000
+
+    @property
+    def summary(self) -> str:
+        """Every kept summary, oldest first: what a checkpoint carries."""
+        return "\n\n".join(self.summaries)
+
+    @summary.setter
+    def summary(self, text: str) -> None:
+        self.summaries = [text] if text else []
+
+    def fold_due(self) -> bool:
+        """Whether the next compaction folds the kept summaries into its own instead of adding one.
+
+        One rule, read both when the request is written and when its reply is applied, so the
+        compactor is told exactly what will happen to the summaries it was shown."""
+        return len(self.summary) > self.SUMMARY_FOLD_CHARS
+
+    def apply_summary(self, data: Json, *, label: str = "") -> None:
+        """Take the one field a compaction reply owns: added as the newest summary, or replacing
+        them all when a fold was due. `label` names the span it covers.
 
         `goal`, `plan`, `known` and `check` are `Note`'s, and a compaction used to overwrite all
         four from the same JSON. They did not need rescuing: they live here and survive eviction
@@ -138,8 +162,10 @@ class AgentState:
         thing it must produce. Anything it learned that belongs in `known` reaches the model
         through the summary, which can then call `Note` like any other writer.
         """
-        if isinstance(data.get("summary"), str):
-            self.summary = str(data["summary"]).strip()
+        if not isinstance(data.get("summary"), str) or not (text := str(data["summary"]).strip()):
+            return
+        block = f"[{label}]\n{text}" if label else text
+        self.summaries = [block] if self.fold_due() else [*self.summaries, block]
 
     def format(self, *, include_summary: bool = False) -> str:
         known = ["- " + item for item in self.known] or ["- (empty)"]
@@ -235,9 +261,8 @@ class HistorySegment:
 
     The fields after `text` describe the compaction that produced the segment, for `/compact log`
     and for the export's index entry; they are what makes an eviction reviewable afterwards.
-    `summary` is the checkpoint summary as it stood at this compaction -- the live checkpoint
-    carries only the newest one, so without this copy every earlier summary would be unreachable
-    once the next compaction replaced it."""
+    `summary` is this span's own summary as the compactor wrote it. The checkpoint keeps it too
+    until a fold replaces the kept summaries, so this copy is what keeps it reachable afterwards."""
 
     key: str
     title: str

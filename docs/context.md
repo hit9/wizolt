@@ -24,9 +24,10 @@ in the context meter.
 
 As context fills up, wizolt summarizes older conversation and keeps **about eight recent
 messages**. The task continues. Summaries can lose detail, so restate an important constraint
-if the agent seems to have forgotten it. Some things are carried exactly as written: the last
-10 files changed, the last **20** files read in summarized conversation, and recent commands
-and tool failures.
+if the agent seems to have forgotten it. Each compaction adds its own summary and keeps the
+earlier ones as written; about every fifth compaction merges them into one. Some things are
+carried exactly as written: the last 10 files changed, the last **20** files read in summarized
+conversation, and recent commands and tool failures.
 
 ```{figure} _static/context-compaction.svg
 :class: concept-diagram

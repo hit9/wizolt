@@ -873,11 +873,16 @@ completed transcript or its tool/diff replay metadata, even when the active turn
   runtime generates itself — a mention expansion, a protocol correction — is marked as a session
   event and does not become the boundary; otherwise it inherits the protection and the request it
   was appended to is summarized away mid-turn.
-- Feed the previous summary and structured goal/plan/known/checks to the compactor explicitly; an
-  old summary is not ordinary conversation to summarize again; each evicted span is captured once.
+- Keep three layers apart: stable state (goal/plan/known/check, owned by `Note`, plus host-built
+  activity — modified and read files, commands, failures), one summary per compaction, and the
+  recent raw tail. Each compaction summarizes only what it evicts; earlier summaries are shown to
+  it and kept as written, so a compacted fact is worded once. Only when the kept summaries pass
+  `AgentState.SUMMARY_FOLD_CHARS` does the next compaction fold them into its own — one
+  paraphrase per budget's worth instead of per pass, and no extra model call. The compactor is
+  told which of the two happens, by the same rule that applies its reply (`fold_due`).
 - Store a bounded verbatim excerpt as a `seg.N` segment; replace the evicted prefix with one
-  checkpoint (summary + working state + segment pointer); prune `tr.N` records by the surviving
-  reachability set.
+  checkpoint (kept summaries + working state + activity + segment pointer); prune `tr.N` records
+  by the surviving reachability set.
 - On model compaction failure, fall back to deterministic trimming with an explicit marker that
   never enters the live answer preview.
 - Compaction cannot fit an oversized fixed prefix, latest user boundary, tool schema set, or single

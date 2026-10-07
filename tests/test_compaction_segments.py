@@ -288,7 +288,7 @@ async def test_manual_compact_inserts_summary_before_latest_user(tmp_path):
     assert s.messages[0]["content"].startswith(COMPACTION_SUMMARY_TITLE)  # the checkpoint leads
     assert s.messages[-2]["content"] == "latest"  # and sits before the latest request, not after
     assert s.messages[-1]["content"] == "tool kept"
-    assert s.state.summary == "summary"
+    assert s.state.summaries[-1].endswith("]\nsummary")
     assert transitions == ["compacting context", "dispatch"]
     assert "messages 12 -> " in result
     assert "prior summary inserted" in result

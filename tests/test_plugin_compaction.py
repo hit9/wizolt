@@ -58,7 +58,7 @@ async def test_core_applies_a_plugin_summary_and_keeps_tail_and_notes(agent, tmp
     compactor = Compactor(agent.context, agent.model)
     assert compactor.request(old) is None  # An interceptor gets the flattened span, not the cache slice.
     assert await compactor.run(old, keep, "fallback")
-    assert session.state.summary == "Reviewed the implementation; one test remains."
+    assert session.state.summaries[-1].endswith("]\nReviewed the implementation; one test remains.")
     assert session.state.goal == "Keep this goal" and session.messages[-1] == keep[0]
     assert session.transcript_messages == old + keep
     assert session.history[-1].model == "plugin:summaries"
@@ -133,4 +133,5 @@ async def test_a_summary_can_use_host_models_with_working_state(agent, tmp_path)
     await session.plugins.manage("enable", source(tmp_path, "return Summary((await p.models.complete(span.text)).text)"))
     assert await Compactor(agent.context, agent.model).run([{"role": "user", "content": "Review the code"}], [], "fallback")
     assert "Preserve this goal" in captured[0] and "Earlier finding" in captured[0]
-    assert session.state.summary == "One check remains"
+    # A plugin summary is kept beside the earlier one, as the builtin's is; neither is rewritten.
+    assert session.state.summaries == ["Earlier finding", "[seg.1: Review the code]\nOne check remains"]

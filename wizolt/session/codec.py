@@ -283,7 +283,7 @@ class SessionSnapshotCodec:
             "plan": [asdict(item) if isinstance(item, PlanItem) else deepcopy(item) for item in state.plan],
             "known": list(state.known),
             "check": state.check,
-            "summary": state.summary,
+            "summaries": list(state.summaries),
             "name": state.name,
             "name_source": state.name_source,
             "compaction_count": state.compaction_count,
@@ -336,6 +336,11 @@ class SessionSnapshotCodec:
         data = value if isinstance(value, dict) else {}
         known = {item.name for item in fields(AgentState)}
         state = AgentState(**{key: item for key, item in data.items() if key in known})
+        state.summaries = [item for item in state.summaries if isinstance(item, str) and item] if isinstance(state.summaries, list) else []
+        if not state.summaries and isinstance(legacy := data.get("summary"), str) and legacy:
+            # A snapshot from before summaries were kept one per compaction: its single rolling
+            # summary is the oldest kept one.
+            state.summaries = [legacy]
         if state.last_turn_status == "running":
             state.last_turn_status = "interrupted"
             # Restore publishes an interruption for this unfinished turn, not the previous

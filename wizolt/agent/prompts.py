@@ -130,10 +130,21 @@ COMPACTION_RETRY = 'That was not the required JSON object. Do not restate the co
 COMPACTION_REQUEST_EVENT = "compaction_request"
 
 
-def compaction_tail(*, state: str, previous_summary: str, recent_count: int) -> str:
+def earlier_summaries(previous_summary: str, *, fold: bool) -> str:
+    """The summaries earlier compactions kept, and what this one does with them. Kept, they are
+    carried as written beside the new summary, so restating them only paraphrases them again;
+    folded, the new summary replaces them and has to carry forward what still matters."""
+    if not previous_summary:
+        return "Earlier Summaries:\n(empty)"
+    if fold:
+        return "Earlier Summaries (your summary replaces these: carry forward what still matters, compressed hard):\n" + previous_summary
+    return "Earlier Summaries (kept as written: summarize only the conversation after them; do not restate them):\n" + previous_summary
+
+
+def compaction_tail(*, state: str, previous_summary: str, recent_count: int, fold: bool = False) -> str:
     """The one message appended after the live conversation when compaction reuses the agent's own
     prefix. Everything the flattened payload carried that the conversation itself does not: the
-    working state, the previous summary, which messages count as recent, and the contract."""
+    working state, the earlier summaries, which messages count as recent, and the contract."""
     recent = (
         f"The last {recent_count} messages are the recent ones: rewrite those briefly inside summary, and compress everything before them hard."
         if recent_count > 0
@@ -142,7 +153,7 @@ def compaction_tail(*, state: str, previous_summary: str, recent_count: int) -> 
     return "\n\n".join(
         [
             "State:\n" + state,
-            "Previous Summary:\n" + (previous_summary or "(empty)"),
+            earlier_summaries(previous_summary, fold=fold),
             recent,
             COMPACTION_PROMPT,
             COMPACTION_REMINDER,
@@ -150,11 +161,11 @@ def compaction_tail(*, state: str, previous_summary: str, recent_count: int) -> 
     )
 
 
-def compaction_input(*, state: str, previous_summary: str, older_messages: str, recent_messages: str) -> str:
+def compaction_input(*, state: str, previous_summary: str, older_messages: str, recent_messages: str, fold: bool = False) -> str:
     return "\n\n".join(
         [
             "State:\n" + state,
-            "Previous Summary:\n" + (previous_summary or "(empty)"),
+            earlier_summaries(previous_summary, fold=fold),
             "Older Messages:\n" + older_messages,
             "Recent Messages (rewrite briefly inside summary):\n" + recent_messages,
             COMPACTION_REMINDER,

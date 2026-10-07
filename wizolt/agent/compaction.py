@@ -400,6 +400,7 @@ class Compactor:
             state="\n\n".join(filter(None, (ctx.session.state.format(), ctx.session.recent_activity()))),
             previous_summary=ctx.session.state.summary,
             recent_count=min(self.COMPACT_RECENT_MESSAGES, len(compacted)),
+            fold=ctx.session.state.fold_due(),
         )
         # Where the appended instruction sits relative to the reasoning boundary decides whether
         # this request replays the same reasoning the live one did, and the answer differs by shape.
@@ -420,6 +421,7 @@ class Compactor:
             previous_summary=self.ctx.session.state.summary,
             older_messages=self.ctx.messages_text([self.trimmed(message) for message in older]),
             recent_messages=self.ctx.messages_text([self.trimmed(message) for message in recent]),
+            fold=self.ctx.session.state.fold_due(),
         )
 
     # How much of one tool result the flattened payload carries. A summary keeps a result's

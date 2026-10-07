@@ -224,6 +224,67 @@ def test_the_inline_request_carries_tool_results_byte_for_byte(tmp_path):
     assert live.messages[2] in built[0]
 
 
+def _compact(context: ContextManager, summary: str, note: str) -> str:
+    """One compaction of a one-message span, as `Compactor.run` applies it; returns the request's
+    flattened payload, which says what the compactor was told about the earlier summaries."""
+    span = [{"role": "user", "content": note}]
+    payload = compaction.Compactor(context, _StubModel()).input(span)
+    context.apply_compaction({"summary": summary}, [], compacted=span, title=note)
+    return payload
+
+
+def test_an_earlier_summary_survives_later_compactions_as_written(tmp_path):
+    """Re-summarizing the previous summary at every compaction paraphrases old facts again each
+    time; kept as written, a compacted fact is worded once."""
+    live = session(tmp_path)
+    context = ContextManager(live)
+    _compact(context, "Directives: keep `parse_rows` signature\nOpen: tests/test_rows.py::test_empty fails", "parser bug")
+    payload = _compact(context, "Done: fixed the empty case", "verify")
+
+    assert "Earlier Summaries (kept as written: summarize only the conversation after them; do not restate them)" in payload
+    assert live.state.summaries == [
+        "[seg.1: parser bug]\nDirectives: keep `parse_rows` signature\nOpen: tests/test_rows.py::test_empty fails",
+        "[seg.2: verify]\nDone: fixed the empty case",
+    ]
+    checkpoint = live.messages[0]["content"]
+    assert "Directives: keep `parse_rows` signature\nOpen: tests/test_rows.py::test_empty fails" in checkpoint
+    assert [segment.summary for segment in live.history] == [
+        "Directives: keep `parse_rows` signature\nOpen: tests/test_rows.py::test_empty fails",
+        "Done: fixed the empty case",
+    ]
+
+
+def test_summaries_past_the_budget_are_folded_once_into_the_next(tmp_path):
+    """Kept summaries are bounded: once together they pass the budget, the next compaction is told
+    its summary replaces them, and it does -- one paraphrase per budget's worth, not per pass."""
+    live = session(tmp_path)
+    context = ContextManager(live)
+    live.state.summaries = ["x" * (AgentState.SUMMARY_FOLD_CHARS // 2), "y" * (AgentState.SUMMARY_FOLD_CHARS // 2 + 1)]
+
+    payload = _compact(context, "Done: everything so far, compressed", "fold")
+
+    assert "Earlier Summaries (your summary replaces these: carry forward what still matters, compressed hard)" in payload
+    assert live.state.summaries == ["[seg.1: fold]\nDone: everything so far, compressed"]
+    assert not live.state.fold_due()
+
+
+async def test_kept_summaries_survive_a_snapshot_and_a_legacy_summary_is_the_oldest(tmp_path):
+    from wizolt.session import SessionSnapshotStore
+    from wizolt.session.codec import SessionSnapshotCodec
+
+    # A snapshot written before summaries were kept one per compaction carries one rolling string.
+    assert SessionSnapshotCodec.agent_state({"goal": "g", "summary": "rolling summary from before"}).summaries == ["rolling summary from before"]
+
+    live = session(tmp_path)
+    ContextManager(live).apply_compaction({"summary": "first"}, [], compacted=[{"role": "user", "content": "one"}], title="one")
+    ContextManager(live).apply_compaction({"summary": "second"}, [], compacted=[{"role": "user", "content": "two"}], title="two")
+    await live.save_snapshot()
+    live.close()
+
+    restored = SessionSnapshotStore.load(live.uid, live.config, live.settings, cwd=live.cwd)
+    assert restored.state.summaries == ["[seg.1: one]\nfirst", "[seg.2: two]\nsecond"]
+
+
 def test_compaction_leaves_tool_choice_exactly_as_an_ordinary_request_sets_it(tmp_path):
     """Forcing tool_choice would look safer and cost the prize: it invalidates the messages cache,
     which is the whole conversation this request exists to reuse. Every wire is treated alike."""

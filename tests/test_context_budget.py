@@ -177,7 +177,7 @@ async def test_compaction_uses_configured_context_budget(tmp_path):
     assert "Compact the wizolt working context." in model.input  # the appended instruction
     assert "tool kept" not in model.input  # the kept tail is not handed to the summarizer
     assert "\nrequest" not in model.input  # nor the turn message; "request" alone occurs in the system prompt
-    assert s.state.summary == "compact summary"
+    assert s.state.summaries[-1].endswith("]\ncompact summary")
     assert [vars(item) for item in s.state.plan] == [{"status": "doing", "text": "the agent's own step"}]
     assert s.state.known == ["the agent's own fact"]
     assert [message["role"] for message in s.messages] == ["user", "user", "tool"]
