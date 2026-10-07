@@ -1,6 +1,8 @@
 """ToolScript: stage 1 describe + stage 2 scripted nested MCP calls (black-box)."""
 
 import asyncio
+import json
+import re
 import threading
 from types import SimpleNamespace
 
@@ -163,6 +165,29 @@ class TestRegistration:
         # strict-tools provider, made running a script at all a schema violation.
         assert params["required"] == ["action"]
         assert params["properties"]["tools"]["minItems"] == 1
+
+    def test_the_description_routes_work_and_sets_the_result_contract(self):
+        """Programmatic calling pays off for a bounded batch whose result is small; each line here
+        is one side of that boundary, or what the printed result owes the answer."""
+        description = ToolScript.schema()["function"]["description"]
+        assert "plus the evidence the answer needs (paths, lines, counts), or a clear failure line" in description
+        assert "call directly for one or two calls or when each result should steer the next step" in description
+        assert "Built-ins take their own schema's args and return text in their direct-call format" in description
+        # A built-in's args are already in its own schema: describing one costs a round trip for
+        # nothing, so the example asks only about an MCP tool.
+        assert '"tools":["server.tool"]' in description and '"tools":["Read"' not in description
+
+    async def test_a_builtin_returns_its_direct_call_format_to_the_script(self, tmp_path):
+        """What the description promises a script: the envelope the model already knows from the
+        direct call. Only the source-view id is the direct call's own -- Edit's handle, not data."""
+        s = _mcp_session(tmp_path)
+        (tmp_path / "r.txt").write_text("alpha\nbeta\n")
+        direct = await _runner(s).run([ToolCall("r1", "Read", [{"path": "r.txt"}])])
+        body = re.sub(r' source="view\.\d+"', "", str(direct[0]["content"]).partition("\noutput:\n")[2])
+
+        out = await _run_script(s, 'import json\nprint(json.dumps(call("Read", {"path": "r.txt"})))')
+
+        assert body.startswith('<Read path="r.txt"') and json.dumps(body) in out
 
     def test_toolscript_always_in_schemas(self, tmp_path):
         s = Session(cwd=str(tmp_path))

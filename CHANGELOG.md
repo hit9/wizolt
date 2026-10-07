@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `ToolScript`'s description follows OpenAI's programmatic tool calling guide: a script prints
+  its result with the evidence behind it (paths, lines, counts) or a clear failure line; the
+  model calls tools directly for one or two calls or when each result should steer the next step;
+  built-ins take their own schema's arguments and return text in their direct-call format, so the
+  example no longer spends a round trip describing a built-in. The tool list changes once (the
+  description grows from 1,329 to 1,473 characters), then stays cached.
+
 - Compaction summaries keep continuation state under fixed headings -- directives, decisions,
   done, active, open, next, files -- instead of free prose, and copy paths, symbols, commands,
   error text, URLs and `tr.N`/`seg.N` ids exactly. Only the compaction request's instruction
