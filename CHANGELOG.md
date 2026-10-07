@@ -29,8 +29,9 @@
   in output, and error lines carry no response text. The report prints as a themed answer in
   the `/status` style — accent titles, warning-marked threshold rows, muted reset details —
   using the new styled command answers below; each provider's block is its own frame, printed
-  the moment that provider answers through the new `ui.report` channel, and the last
-  provider's block is the command's answer (a host without interactive UI answers once, every
+  the moment that provider answers through the new `ui.report` channel, and the block of the
+  provider that answers last is the command's answer, so a fast provider never waits out a slow
+  one's timeout (a host without interactive UI answers once, every
   provider in one frame). A url that spells out its port still matches its provider, and two
   entries of one provider that share their url and key are one account: asked once, with every
   entry name in the title.

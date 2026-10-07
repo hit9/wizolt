@@ -8,6 +8,7 @@ itself. Nothing reaches a provider.
 
 from __future__ import annotations
 
+import asyncio
 import email.message
 import json
 import socket
@@ -592,23 +593,26 @@ async def test_an_entry_with_an_explicit_port_is_still_the_provider(wires, tmp_p
 
 
 async def test_streaming_prints_each_provider_block_as_it_answers(wires, tmp_path):
-    # One frame per provider, the moment that provider answers; the last provider's
-    # block is the command's own answer. A slow first source streams nothing early and
-    # still answers, in one frame, at the end.
+    # One frame per provider, the moment that provider answers; whichever answers last is
+    # the command's own answer. A fast provider configured last used to be held back as the
+    # answer, waiting out a slow one's timeout configured before it.
     wires.answers[DEEPSEEK_BALANCE] = deepseek("110", "10", "100")
-    wires.answers[SYNTHETIC_QUOTAS] = {"weeklyTokenLimit": {"percentRemaining": 66, "nextRegenAt": "2023-11-14T23:00:00+00:00"}}
-    wires.delays[DEEPSEEK_BALANCE] = 0.02
+    wires.answers[GO_USAGE] = usage_plugin.HttpError(503)
+    wires.delays[GO_USAGE] = 0.2
     blocks: list[list[usage_plugin.Line]] = []
+    finished = asyncio.Event()
 
     async def report(lines: list[usage_plugin.Line]) -> None:
+        assert not finished.is_set()
         blocks.append(list(lines))
 
-    config = provider_config(("deep", DEEPSEEK, "k"), ("synth", SYNTHETIC, "k"))
+    config = provider_config(("go", GO, "k"), ("deep", DEEPSEEK, "k"))
     answer = await usage_plugin.usage(configured(tmp_path, config), {}, report)
+    finished.set()
     assert blocks == [
         [Line((Text("DeepSeek API", "accent"),)), Line((Text("balance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ", "text"), Text("ok", "muted")))],
     ]
-    assert answer == [Line((Text("Synthetic", "accent"),)), Line((Text("weekly    34%  [███░░░░░░░]", "text"), Text("  resets in 46m", "muted")))]
+    assert answer == [Line((Text("OpenCode Go", "accent"),)), Line((Text("error: HTTP 503", "error"),))]
 
 
 async def test_a_host_that_cannot_show_blocks_answers_in_one_frame(wires, tmp_path):

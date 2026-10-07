@@ -479,11 +479,12 @@ async def usage(context: Context, arguments: Mapping[str, Any], report: Callable
     if not groups:
         return "No configured provider matches a supported usage API (OpenCode Go, DeepSeek, Kimi, z.ai, Synthetic, Command Code)."
     # Each provider's block prints the moment that provider answers -- one frame per
-    # provider -- through the host's report channel; the last provider's block is the
-    # command's own answer, printed once everything has answered. A host that cannot
-    # show blocks (an offline trial) answers the same way with every block at the end.
+    # provider -- through the host's report channel; the block of whichever provider answers
+    # last is the command's own answer. Holding back the last one in config order instead
+    # would make a fast provider wait out a slow one's timeout. A host that cannot show
+    # blocks (an offline trial) answers the same way with every block at the end.
     counts = Counter(source for source, _key, _url in groups)
-    last = list(groups)[-1]
+    pending = len(groups)
     reports: dict[tuple[Source, str, str], Report] = {}
     streamed: set[tuple[Source, str, str]] = set()
     channel: Callable[[list[Line]], Awaitable[None]] | None = report
@@ -497,9 +498,10 @@ async def usage(context: Context, arguments: Mapping[str, Any], report: Callable
         return title if len(names) == 1 and counts[source] == 1 else f"{title} ({', '.join(names)})"
 
     async def one(group: tuple[Source, str, str]) -> None:
-        nonlocal channel
+        nonlocal channel, pending
         reports[group] = await fetch_report(*group)
-        if group is last or channel is None:
+        pending -= 1  # One event loop runs every `one`, so this count cannot race.
+        if not pending or channel is None:
             return
         try:
             await channel(section(titled(group), reports[group]))
