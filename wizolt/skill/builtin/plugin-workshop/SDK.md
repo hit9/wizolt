@@ -14,7 +14,7 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.settings.update(values, *, reset=())` | Async; atomically save declared overrides, remove reset keys and return resolved immutable settings; current `config` is unchanged |
 | `plugin.field(name, callback)` | Sync `(Context) -> str \| int \| float \| bool`; floats must be finite |
 | `plugin.component(slot, callback, *, gap_before=0)` | Sync `(Context) -> Panel` |
-| `plugin.command(name, description, handler, *, during_turn=False)` | Async `(Context, Mapping[str, Any]) -> str`; register `/name` |
+| `plugin.command(name, description, handler, *, during_turn=False)` | Async `(Context, Mapping[str, Any]) -> str \| list[Line]`; register `/name`; styled rows answer the user in the host's report frame, one theme role per `Text` span (a tool stays text: it answers the model) |
 | `plugin.tool(name, description, parameters, handler)` | Register a plugin operation, not a standalone model tool; same handler, JSON Schema object parameters; call only through `Plugin` list/describe/call |
 | `plugin.on(event, observer)` | Async `(Event) -> None`; observers do not control the agent's operation |
 | `plugin.theme(name, definition)` | Register theme metadata; see [APPEARANCE.md](APPEARANCE.md) |
@@ -38,6 +38,7 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.ui.show(view)` | Async; ViewResult or None |
 | `plugin.ui.open(view)` | Async context manager; `result()` and `update(view)` |
 | `plugin.ui.notify(message, *, level="info")` | Async; themed session-local notice |
+| `plugin.ui.report(lines)` | Async; append a framed, theme-colored `Line` block to the answer area during an action; raises without interactive UI |
 | `plugin.ui.shortcuts.list()` | Async; bindings, protected keys and preference error |
 | `plugin.ui.shortcuts.bind(key, command, *, replace=False)` | Async; save a global key for plugin.command |
 | `plugin.ui.shortcuts.unbind(key)` | Async; remove saved override |

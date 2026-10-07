@@ -44,6 +44,7 @@ from wizolt.config import (
 from wizolt.providers.compat import builtin_tools_issue
 from wizolt.providers.schema import CatalogSyncError
 from wizolt.providers.sync import CATALOG_URL
+from wizolt.sdk import Line
 from wizolt.session import Session, SessionBusyError, SessionEntry, SessionLease, SessionSnapshotStore
 from wizolt.ui.cli import appearance
 from wizolt.ui.cli.agents import agents_command
@@ -105,7 +106,7 @@ SET_VALUES: dict[str, tuple[str, ...]] = {
 # fmt: on
 
 
-CommandResult = str | LogBlock | WidthDependent | None
+CommandResult = str | LogBlock | WidthDependent | list[Line] | None
 
 
 async def mcp_command(loop: CommandLoop, args: str) -> str | None:

@@ -26,7 +26,7 @@ from wizolt.base import (
     run_blocking,
 )
 from wizolt.image import UserInput
-from wizolt.sdk import PluginError
+from wizolt.sdk import Line, PluginError
 from wizolt.session import QueuedInput, SessionLease, SessionSnapshotStore
 from wizolt.tools import transcript
 from wizolt.ui.cli.commands import QUEUED_SUBCOMMANDS
@@ -37,7 +37,7 @@ from wizolt.ui.cli.resume import ResumeRenderer
 from wizolt.ui.cli.runtime import TuiRuntime
 from wizolt.ui.cli.update import UpdateChecker
 from wizolt.ui.cli.view import CommandCompleter, View
-from wizolt.ui.render import InputStyle, Theme, UiPrinter, WidthDependent, search_sources_footer
+from wizolt.ui.render import InputStyle, StyledReport, Theme, UiPrinter, WidthDependent, search_sources_footer
 
 if TYPE_CHECKING:
     from wizolt.ui.cli.agents import AgentsFrontend
@@ -639,6 +639,11 @@ class CommandLoop:
                 self.presentation.emit(output)
             elif isinstance(output, WidthDependent):
                 self.presentation.ui.emit_block(output)
+            elif isinstance(output, list):
+                # A plugin command's styled answer: theme roles the host renders in a frame.
+                # An empty one has no rows, and renders nothing at all.
+                if output and isinstance(output[0], Line):
+                    self.presentation.ui.emit_block(StyledReport(output))
             elif entry is not None and entry.render == "answer":
                 self.presentation.ui.emit_answer(output, indent=TurnBox.CONTENT_LEVEL)
             else:

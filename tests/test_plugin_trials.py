@@ -229,6 +229,43 @@ accent = "#aabbcc"
     assert report["frames"][0]["context"]["cwd"] == str(tmp_path)
 
 
+async def test_cli_gives_the_trial_the_config_it_was_pointed_at(tmp_path):
+    # A trial command reading context paths answers with the workspace's own config and
+    # data dir -- the --config the CLI was pointed at, never the user's real one.
+    config = tmp_path / "moved" / "config.toml"
+    config.parent.mkdir()
+    config.write_text(f'[paths]\ndata_dir = "{tmp_path}/data"\n')
+    path = plugin(
+        tmp_path,
+        '''def setup(p):
+    async def where(ctx, args):
+        return f"{ctx.config_path}|{ctx.data_dir}"
+    p.command("where", "Report the context paths", where)
+''',
+    )
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-m",
+        "wizolt",
+        "plugin",
+        "test",
+        path,
+        "--config",
+        str(config),
+        "--project",
+        str(tmp_path),
+        "--call",
+        "command:where",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await process.communicate()
+    assert process.returncode == 0, stderr.decode() + stdout.decode()
+    report = json.loads(stdout)
+    assert report["status"] == "passed"
+    assert report["results"] == [f"{config}|{Path(str(tmp_path) + '/data').resolve()}"]
+
+
 def test_source_rejects_fifo_and_bounds_in_memory_revisions(tmp_path):
     from wizolt.plugins.loading import MAX_SOURCE_BYTES
     from wizolt.sdk import PluginError

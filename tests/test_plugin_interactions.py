@@ -6,7 +6,7 @@ from dataclasses import asdict
 import pytest
 
 from wizolt.plugins.runtime import PluginRuntime
-from wizolt.sdk import Context, PluginError
+from wizolt.sdk import Context, Line, PluginError, Text
 from wizolt.sdk.views import Action, Choice, Document, Field, Form, Section, Selection, View
 
 
@@ -189,3 +189,98 @@ def test_view_wire_round_trip(body):
 def test_invalid_view_is_rejected_before_rendering(view):
     with pytest.raises(PluginError):
         View.decode(asdict(view))
+
+
+def reporting_plugin(tmp_path):
+    path = tmp_path / "reporting.py"
+    path.write_text('''SDK_VERSION = 1
+from wizolt.sdk import Line, Text
+
+def setup(plugin):
+    async def go(ctx, args):
+        await plugin.ui.report([Line((Text("half", "warning"),))])
+        return [Line((Text("done", "success"),))]
+    plugin.command("go", "Report rows as they arrive", go)
+''')
+    return str(path)
+
+
+class RecordingTerminal:
+    """Answer every service and record what crossed the wire."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, str, dict]] = []
+
+    async def call(self, owner: str, service: str, arguments: dict) -> dict:
+        self.calls.append((owner, service, arguments))
+        return {}
+
+
+async def test_a_reported_block_streams_through_the_real_worker(tmp_path):
+    runtime = runtime_for(tmp_path)
+    terminal = RecordingTerminal()
+    runtime.interactions.handler = terminal.call
+    try:
+        await runtime.manage("enable", reporting_plugin(tmp_path))
+        answer = await runtime.invoke("reporting", "command", "go", {})
+        assert answer == [Line((Text("done", "success"),))]
+        [(owner, service, arguments)] = terminal.calls
+        assert (owner, service) == ("reporting", "ui.report")
+        assert arguments == {"lines": [{"spans": [{"text": "half", "role": "warning"}]}]}
+    finally:
+        await runtime.close()
+
+
+async def test_reporting_requires_interactive_ui(tmp_path):
+    runtime = runtime_for(tmp_path)
+    try:
+        await runtime.manage("enable", reporting_plugin(tmp_path))
+        with pytest.raises(PluginError, match="Interactive UI"):
+            await runtime.invoke("reporting", "command", "go", {})
+    finally:
+        await runtime.close()
+
+
+def streaming_plugin(tmp_path):
+    path = tmp_path / "streaming.py"
+    path.write_text('''SDK_VERSION = 1
+import asyncio
+from wizolt.sdk import Line, Text
+
+def setup(plugin):
+    async def go(ctx, args):
+        await plugin.ui.report([Line((Text("first", "warning"),))])
+        await asyncio.sleep(1.5)
+        await plugin.ui.report([Line((Text("second", "warning"),))])
+        return "done"
+    plugin.command("go", "Report rows as they arrive", go)
+''')
+    return str(path)
+
+
+async def test_a_report_arrives_while_the_action_is_still_running(tmp_path):
+    # A frame crosses the pipe before the command answers: what makes progressive frames
+    # on screen, rather than every block surfacing with the final answer.
+    runtime = runtime_for(tmp_path)
+    terminal = RecordingTerminal()
+    seen: list[float] = []
+
+    async def call(owner: str, service: str, arguments: dict) -> dict:
+        seen.append(asyncio.get_running_loop().time())
+        return await terminal.call(owner, service, arguments)
+
+    runtime.interactions.handler = call
+    try:
+        await runtime.manage("enable", streaming_plugin(tmp_path))
+        started = asyncio.get_running_loop().time()
+        answer = await runtime.invoke("streaming", "command", "go", {})
+        finished = asyncio.get_running_loop().time()
+        assert answer == "done"
+        assert [service for _owner, service, _arguments in terminal.calls] == ["ui.report", "ui.report"]
+        first, second = seen
+        # Each frame lands while the action is still in flight, and in arrival order:
+        # the first before the second, the second before the answer.
+        assert started < first < started + 1.0
+        assert first + 1.0 < second < finished
+    finally:
+        await runtime.close()

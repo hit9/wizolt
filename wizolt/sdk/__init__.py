@@ -176,6 +176,9 @@ Field = Callable[[Context], Value]
 Component = Callable[[Context], Panel]
 Observer = Callable[[Event], Awaitable[None]]
 Handler = Callable[[Context, Mapping[str, Any]], Awaitable[str]]
+# A command answers the user, not the model, so it may answer styled rows instead of text;
+# the host colors them by their theme roles. A tool feeds the model and stays text.
+CommandHandler = Callable[[Context, Mapping[str, Any]], Awaitable[str | list[Line]]]
 # (context, operation value, next) -> result; next: async (value) -> downstream result.
 InterceptHandler = Callable[[Context, Any, Callable[[Any], Awaitable[Any]]], Awaitable[Any]]
 
@@ -210,7 +213,7 @@ class Action:
     """Describe an explicit operation; rendering and observation never invoke it implicitly."""
 
     description: str
-    handler: Handler
+    handler: Handler | CommandHandler
     parameters: Mapping[str, Any] = field(default_factory=lambda: {"type": "object", "properties": {}, "additionalProperties": False})
     during_turn: bool = False
 
@@ -342,7 +345,7 @@ class Plugin:
         self._callback(callback, asynchronous=False)
         self._register(self.components, slot, ComponentRegistration(callback, gap_before))
 
-    def command(self, name: str, description: str, handler: Handler, *, during_turn: bool = False) -> None:
+    def command(self, name: str, description: str, handler: CommandHandler, *, during_turn: bool = False) -> None:
         """Register ``/name``; native invocations pass raw trailing text as arguments['input'].
 
         Set during_turn only for operations safe alongside an active turn, such as changing

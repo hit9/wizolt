@@ -2,23 +2,28 @@
 
 `/usage` asks every configured provider that offers a usage or balance API -- OpenCode Go,
 DeepSeek, Kimi (Moonshot), z.ai, Synthetic and Command Code -- and prints one section per
-provider: usage windows as percentages with reset times, balances as amounts. Providers are
-matched by their API domain, so any entry name works. A provider that fails prints one
-`error:` line; the rest still report.
+provider in a themed frame of its own, each the moment its provider answers: usage windows
+as percentages with reset times, balances as amounts. Providers are matched by their API
+domain, so any entry name works; two entries of one provider that share their url and key
+are one account, asked once. A provider that fails prints one `error:` line; the rest still
+report.
 
 ```text
 OpenCode Go
-  rolling   12%  [██░░░░░░░░]  resets in 1h23m
-  weekly    34%  [████░░░░░░]  resets in 2d
-  monthly   56%  [██████░░░░]  resets in 19d
+rolling   12%  [██░░░░░░░░]  resets in 1h23m
+weekly    34%  [████░░░░░░]  resets in 2d
+monthly   56%  [██████░░░░]  resets in 19d
+
 DeepSeek API
-  balance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok
+balance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok
 ```
 
 ## Use
 
 - Enable **usage** in `/plugins`, then type `/usage`. It makes one or two requests per
   supported provider, with that provider's configured key, and sends nothing else.
+- A host without interactive UI (an offline `plugin test`) answers once, every provider
+  in one frame.
 - A `!` marks a window at 80% or more, or a balance of 10 or less.
 """
 
@@ -39,13 +44,13 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
-from wizolt.sdk import Context, Plugin
+from wizolt.sdk import Context, Line, Plugin, PluginError, Text
 
 SDK_VERSION = 1
 
@@ -136,8 +141,12 @@ def timestamp(value: object, now: float) -> float:
 
 
 def hosted_by(url: str, domain: str) -> bool:
-    """The url's host is the domain or one of its subdomains, never a lookalike or a path."""
-    host = urllib.parse.urlsplit(url).netloc.lower()
+    """The url's host is the domain or one of its subdomains, never a lookalike or a path.
+
+    `hostname` carries no port and no userinfo, so an entry that spells either out still
+    matches; a lookalike domain still does not.
+    """
+    host = urllib.parse.urlsplit(url).hostname or ""
     return host == domain or host.endswith("." + domain)
 
 
@@ -374,13 +383,12 @@ def resolve_key(name: str, entry: dict, secrets: dict[str, str]) -> str:
     return str(entry.get("key") or "").strip() or str(secrets.get(name) or "").strip()
 
 
-async def fetch_report(name: str, entry: dict, source: Source, secrets: dict[str, str]) -> Report:
+async def fetch_report(source: Source, key: str, url: str) -> Report:
     """One provider's report, whatever went wrong: failures stay inside their own section."""
-    key = resolve_key(name, entry, secrets)
     if not key:
         return Report(source.title, note="skipped: no key configured")
     try:
-        data = await asyncio.to_thread(source.fetch, key, str(entry.get("url") or ""))
+        data = await asyncio.to_thread(source.fetch, key, url)
         return Report(source.report_title(data), rows=source.rows(data, time.time()))
     except asyncio.CancelledError:
         raise
@@ -412,33 +420,43 @@ def relative(seconds: float) -> str:
     return f"{days}d{hours}h" if hours else f"{days}d"
 
 
-def window_line(row: Window) -> str:
+def window_line(row: Window) -> Line:
+    """One usage window: a warning-marked row at the threshold, its reset time muted."""
     percent = round(row.percent)
     filled = round(BAR_CELLS * percent / 100.0)
     bar = "█" * filled + "░" * (BAR_CELLS - filled)
-    mark = "! " if percent >= WARN_PERCENT else ""
     reset = f"  resets in {relative(row.resets_at - time.time())}" if row.resets_at else ""
-    return f"{mark}{row.label:<8} {percent:3.0f}%  [{bar}]{reset}"
+    role = "warning" if percent >= WARN_PERCENT else "text"
+    mark = "! " if role == "warning" else ""
+    return Line((Text(f"{mark}{row.label:<8} {percent:3.0f}%  [{bar}]", role), Text(reset, "muted")))
 
 
-def balance_line(row: Balance) -> str:
+def balance_line(row: Balance) -> Line:
+    """One account balance: amounts in text, the state muted, failures in the error role."""
     symbol = SYMBOLS.get(row.currency, f"{row.currency} ")
     total = round(row.total, 2)
     parts = " + ".join(f"{name} {symbol}{amount:.2f}" for name, amount in row.parts)
     detail = f"  ({parts})" if parts else ""
     state = "ok" if row.available else "insufficient"
     mark = "! " if (not row.available or total <= WARN_AMOUNT) else ""
-    return f"{mark}balance  {symbol}{total:.2f}{detail}  {state}"
+    spans = (
+        Text(mark, "warning"),
+        Text(f"balance  {symbol}{total:.2f}{detail}  ", "error" if not row.available else "text"),
+        Text(state, "muted" if row.available else "error"),
+    )
+    return Line(tuple(span for span in spans if span.text))
 
 
-def section(title: str, report: Report) -> str:
+def section(title: str, report: Report) -> list[Line]:
+    """One provider's block: a title row, then its rows, or the one note line."""
     if report.note:
-        return f"{title}\n  {report.note}"
-    lines = [window_line(row) if isinstance(row, Window) else balance_line(row) for row in report.rows]
-    return "\n".join([title, *(f"  {line}" for line in lines)])
+        role = "error" if report.note.startswith("error") else "muted"
+        return [Line((Text(title, "accent"),)), Line((Text(report.note, role),))]
+    rows = [window_line(row) if isinstance(row, Window) else balance_line(row) for row in report.rows]
+    return [Line((Text(title, "accent"),)), *rows]
 
 
-async def usage(context: Context, arguments: Mapping[str, Any]) -> str:
+async def usage(context: Context, arguments: Mapping[str, Any], report: Callable[[list[Line]], Awaitable[None]] | None = None) -> str | list[Line]:
     root = Path(context.data_dir or "~/.wizolt").expanduser()
     config_path = Path(context.config_path) if context.config_path else root / "config.toml"
     try:
@@ -450,32 +468,66 @@ async def usage(context: Context, arguments: Mapping[str, Any]) -> str:
         return "config.toml is unreadable; fix it and try again."
     secrets = load_secrets(config_path.parent / "secrets.toml")  # Beside the config, as wizolt resolves them.
     entries = provider_entries(config)
-    plans = []
+    # One request per distinct (source, key, url): two entries of one provider that share
+    # their url and key are one account, and are asked once, not once per entry name.
+    groups: dict[tuple[Source, str, str], list[str]] = {}
     for source in SOURCES:
         for name, entry in entries.items():
             url = str(entry.get("url") or "")
             if url and source.matches(url):
-                plans.append((name, entry, source))
-    if not plans:
+                groups.setdefault((source, resolve_key(name, entry, secrets), url), []).append(name)
+    if not groups:
         return "No configured provider matches a supported usage API (OpenCode Go, DeepSeek, Kimi, z.ai, Synthetic, Command Code)."
-    reports = list(
-        zip(
-            plans,
-            await asyncio.gather(*(fetch_report(name, entry, source, secrets) for name, entry, source in plans)),
-        )
-    )
-    counts = Counter(source for _, _, source in plans)
-    sections = []
-    for (name, _, source), report in reports:
-        title = f"{report.title} ({name})" if counts[source] > 1 else report.title
-        sections.append(section(title, report))
-    return "\n\n".join(sections)
+    # Each provider's block prints the moment that provider answers -- one frame per
+    # provider -- through the host's report channel; the last provider's block is the
+    # command's own answer, printed once everything has answered. A host that cannot
+    # show blocks (an offline trial) answers the same way with every block at the end.
+    counts = Counter(source for source, _key, _url in groups)
+    last = list(groups)[-1]
+    reports: dict[tuple[Source, str, str], Report] = {}
+    streamed: set[tuple[Source, str, str]] = set()
+    channel: Callable[[list[Line]], Awaitable[None]] | None = report
+
+    def titled(group: tuple[Source, str, str]) -> str:
+        # A merged account names every entry it covers, and one provider's second account
+        # names its own entry: either way the report shows every configured entry.
+        source, _key, _url = group
+        names = groups[group]
+        title = reports[group].title
+        return title if len(names) == 1 and counts[source] == 1 else f"{title} ({', '.join(names)})"
+
+    async def one(group: tuple[Source, str, str]) -> None:
+        nonlocal channel
+        reports[group] = await fetch_report(*group)
+        if group is last or channel is None:
+            return
+        try:
+            await channel(section(titled(group), reports[group]))
+            streamed.add(group)
+        except PluginError:
+            channel = None  # The host cannot show blocks; the rest answer in one frame.
+
+    await asyncio.gather(*(one(group) for group in groups))
+    sections: list[Line] = []
+    for group in groups:
+        if group in streamed:
+            continue
+        if sections:
+            sections.append(Line())  # One blank row between providers, not after the last.
+        sections.extend(section(titled(group), reports[group]))
+    return sections
 
 
 def setup(plugin: Plugin) -> None:
     """Default enablement belongs to the installation catalog, never to plugin source code."""
+
+    async def run(context: Context, arguments: Mapping[str, Any]) -> str | list[Line]:
+        # The host's report channel streams each provider's block as it answers; the SDK
+        # hands a handler only the context and the arguments, so it closes over plugin.
+        return await usage(context, arguments, report=plugin.ui.report)
+
     plugin.command(
         "usage",
         "Show usage and balance for configured providers (OpenCode Go, DeepSeek, Kimi, z.ai, Synthetic, Command Code); one or two API requests each",
-        usage,
+        run,
     )

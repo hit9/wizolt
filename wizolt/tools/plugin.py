@@ -132,6 +132,10 @@ class PluginTool(Tool):
             arguments = payload.get("arguments", {})
             if not isinstance(arguments, dict):
                 raise ToolError("Plugin tool arguments must be an object")
-            return await runtime.invoke(plugin, "tool", tool, arguments)
+            answer = await runtime.invoke(plugin, "tool", tool, arguments)
+            # A tool answers the model, so it stays text; the worker refuses anything else.
+            if not isinstance(answer, str):
+                raise ToolError(f"Plugin tool {plugin}.{tool} must answer with text")
+            return answer
         except ValueError as error:
             raise ToolError(str(error)) from error

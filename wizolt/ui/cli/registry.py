@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from wizolt.sdk import PluginError
-from wizolt.ui.cli.commands import COMMAND_LOOKUP, COMMAND_NAMES, Command
+from wizolt.ui.cli.commands import COMMAND_LOOKUP, COMMAND_NAMES, Command, CommandResult
 
 if TYPE_CHECKING:
     from wizolt.plugins.runtime import PluginRuntime
@@ -24,7 +24,7 @@ class PluginCommand:
     plugin: str
     name: str
 
-    async def __call__(self, _loop: CommandLoop, arguments: str) -> str:
+    async def __call__(self, _loop: CommandLoop, arguments: str) -> CommandResult:
         try:
             return await self.runtime.invoke(self.plugin, "command", self.name, {"input": arguments})
         except Exception as error:  # noqa: BLE001 - user plugin failures belong in command output.

@@ -139,7 +139,20 @@ def main(argv: list[str]) -> int:
         if installed:
             args.path = installed.path
         context = Context(
-            "preview", "main", workspace.cwd, args.status, args.context_percent, 0, "preview-model", 0, args.width, viewport=Viewport(args.width, args.height)
+            "preview",
+            "main",
+            workspace.cwd,
+            args.status,
+            args.context_percent,
+            0,
+            "preview-model",
+            0,
+            args.width,
+            viewport=Viewport(args.width, args.height),
+            # The workspace's own config and data dir, so a trial's /usage reads the config
+            # it was pointed at and never the user's real one.
+            data_dir=workspace.data_dir,
+            config_path=workspace.config_path,
         )
         if args.facts:
             facts = json.loads(read_input(args.facts, 256 * 1024))

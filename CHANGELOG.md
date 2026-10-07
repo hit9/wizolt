@@ -26,7 +26,27 @@
   weekly windows plus the credit balance; it shows no monthly window because the API has none
   (its monthly cap is only derivable from a community plan table). A provider that fails prints
   one `error:` line and the rest still report; keys appear only in Authorization headers, never
-  in output, and error lines carry no response text.
+  in output, and error lines carry no response text. The report prints as a themed answer in
+  the `/status` style — accent titles, warning-marked threshold rows, muted reset details —
+  using the new styled command answers below; each provider's block is its own frame, printed
+  the moment that provider answers through the new `ui.report` channel, and the last
+  provider's block is the command's answer (a host without interactive UI answers once, every
+  provider in one frame). A url that spells out its port still matches its provider, and two
+  entries of one provider that share their url and key are one account: asked once, with every
+  entry name in the title.
+- A plugin command may now answer with styled rows instead of plain text: a list of `Line`s of
+  `Text` spans, each carrying one theme color role. The host frames the answer like `/status`,
+  colors each span with the active theme (an unknown role renders as plain text), clips rows to
+  the pane and re-lays them out on replay, exactly as prompt panels already did. Tools still
+  answer with text — they answer the model, not the user — and the worker rejects a styled tool
+  result. `plugin.ui.report(lines)` streams the same blocks during an action, one frame per
+  call, the moment a plugin has rows to show; a host without interactive UI raises, and the
+  caller decides what happens to the rows it could not show.
+- `wizolt plugin test` now hands the trial the workspace's own config path and data directory:
+  `plugin test --config … --call command:…` was reading the user's real config (and, for a
+  command like `/usage`, making real requests with real keys), ignoring the `--config` it was
+  pointed at. The trial context now carries both, so an explicit action sees exactly what a
+  session on that config would.
 - Plugin admission now rejects a single-file plugin source that imports past the public SDK:
   `wizolt.sdk` (and its submodules, plus the stdlib) is the author contract, and an import of
   any other `wizolt.*` module fails `plugin validate`, `plugin test` and activation with the

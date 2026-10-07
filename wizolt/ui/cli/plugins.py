@@ -25,6 +25,7 @@ from wizolt.ui.tui import ChoiceViewState
 if TYPE_CHECKING:
     from wizolt.plugins.runtime import PluginRuntime
     from wizolt.plugins.session import SessionPlugins
+    from wizolt.ui.cli.commands import CommandResult  # commands imports this module; the cycle stays at type level
     from wizolt.ui.cli.loop import CommandLoop
 
 
@@ -255,7 +256,8 @@ def unwrap(markdown: str) -> str:
     return "\n".join(lines)
 
 
-async def plugins_command(loop: CommandLoop, args: str) -> str:
+async def plugins_command(loop: CommandLoop, args: str) -> CommandResult:
+    # A `/plugins run` of a plugin command may answer styled rows; dispatch renders them.
     runtime = loop.session.plugins
     if runtime is None:
         return "Plugins are unavailable"

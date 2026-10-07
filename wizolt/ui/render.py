@@ -38,7 +38,10 @@ from wizolt.base import (
     LogEdge,
     LogRole,
     Text,
+    TurnBox,
 )
+from wizolt.formats import clean, clip
+from wizolt.sdk import Line
 from wizolt.ui.bars import BarLayout, Value
 from wizolt.ui.themes import BUILTIN as NAMED_THEMES
 from wizolt.ui.themes import DIFF_STYLES, Palette, blend, contrast, generated_pygments_style, lift, load_custom, normalize_color
@@ -171,6 +174,38 @@ class LogBlockCell(WidthDependent):
 
     def fragments(self, width: int) -> StyleAndTextTuples:
         return list(self.printer.log_segments(self.block, width))
+
+
+@dataclass(frozen=True)
+class StyledReport(WidthDependent):
+    """A plugin command's styled answer: theme-colored rows inside the report frame.
+
+    The rows arrive as the Line and Text values a plugin handler returned, one theme role per
+    span; a role the theme does not know renders as plain text, the same rule the prompt panels
+    use. The frame is drawn as /status draws its own, and laid out again for the width it lands
+    in, so the right border follows the rows wherever the report is replayed.
+    """
+
+    lines: list[Line]
+
+    MARGIN: ClassVar[str] = LogBlock.margin(TurnBox.CONTENT_LEVEL)
+    WIDTH: ClassVar[int] = 84  # the report frame's width, as /status draws its own
+
+    def text(self, width: int = 80) -> str:
+        return "".join(fragment[1] for fragment in self.fragments(width))
+
+    def fragments(self, width: int) -> StyleAndTextTuples:
+        outer = max(5, min(width - len(self.MARGIN), self.WIDTH))
+        inside = max(1, outer - 4)
+        border = Theme.fg("muted")
+        rows: list[list[tuple[str, str]]] = [[(border, "╭" + "─" * (outer - 2) + "╮")]]
+        for line in self.lines:
+            # Control characters become spaces, so a span cannot smuggle in a row break.
+            clipped = clip([(Theme.fg(span.role if span.role in Theme.ROLES else "text"), clean(span.text)) for span in line.spans], inside)
+            used = sum(get_cwidth(fragment[1]) for fragment in clipped)
+            rows.append([(border, "│ "), *clipped, ("", " " * max(0, inside - used)), (border, " │")])
+        rows.append([(border, "╰" + "─" * (outer - 2) + "╯")])
+        return [fragment for row in rows for fragment in (("", self.MARGIN), *row, ("", "\n"))]
 
 
 @dataclass(frozen=True)

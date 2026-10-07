@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 from wizolt.plugins.layout import SLOTS, LayoutBudget
 from wizolt.plugins.loading import LoadedPlugin, PluginSource
 from wizolt.plugins.protocol import MAX_FRAME, MAX_REQUEST, MAX_ROW_CHARACTERS, Snapshot
-from wizolt.sdk import Context, Event, PluginError, ToolActivity
+from wizolt.sdk import Context, Event, Line, PluginError, Text, ToolActivity
 
 if TYPE_CHECKING:
     from wizolt.sdk.operations import Operation, Value
@@ -234,9 +234,20 @@ class Worker:
                     raise PluginError(f"Invalid arguments for {plugin.name}.{request['name']}: {error.message}") from error
             with plugin.services.invocation():
                 result = await registry[request["name"]].handler(context, request["arguments"])
-            if not isinstance(result, str):
-                raise PluginError("Plugin actions must return text")
-            return result
+            if isinstance(result, str):
+                return result
+            # A command may answer with styled rows: the same Line/Text values views use, one
+            # theme role per span. Tools feed the model, so they stay plain text.
+            if (
+                request["kind"] == "command"
+                and isinstance(result, list)
+                and all(
+                    isinstance(item, Line) and all(isinstance(span, Text) and isinstance(span.text, str) and isinstance(span.role, str) for span in item.spans)
+                    for item in result
+                )
+            ):
+                return {"styled": [asdict(item) for item in result]}
+            raise PluginError("Plugin actions must return text" + (" or styled lines" if request["kind"] == "command" else ""))
         raise PluginError(f"Unknown worker operation: {operation}")
 
     async def respond(self, request: dict) -> None:

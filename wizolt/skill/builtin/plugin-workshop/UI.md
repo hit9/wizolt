@@ -22,6 +22,7 @@ All calls below are async except `open`, which returns an async context manager.
 | `opened.result()` | `ViewResult` or `None`; awaiting it does not block terminal input |
 | `opened.update(view)` | Replace content; retain body kind/fullscreen and stable IDs to preserve navigation/drafts |
 | `plugin.ui.notify(message, *, level="info")` | Session-local transcript notice; info/success/warning/error; no desktop notification |
+| `plugin.ui.report(lines)` | Append one framed, theme-colored `Line` block to the answer area during an action, the moment it arrives; raises without interactive UI |
 | `plugin.ui.shortcuts.list()` | Dictionary with `bindings`, `protected` keys and `error` |
 | `plugin.ui.shortcuts.bind(key, command, *, replace=False)` | Updated shortcut report; command is `plugin.command` |
 | `plugin.ui.shortcuts.unbind(key)` | Updated report; restores host behavior, idempotent |

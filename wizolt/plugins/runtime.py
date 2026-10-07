@@ -23,7 +23,7 @@ from wizolt.plugins.presenters import Presenters
 from wizolt.plugins.process import PluginProcess, WorkerError
 from wizolt.plugins.protocol import Capabilities, Snapshot
 from wizolt.plugins.settings import PluginSettings
-from wizolt.sdk import Context, Panel, PluginError, ToolActivity, Value, Viewport
+from wizolt.sdk import Context, Line, Panel, PluginError, Text, ToolActivity, Value, Viewport
 from wizolt.sdk.models import HostCall
 from wizolt.sdk.presentation import ActivityStatus
 from wizolt.sdk.ui import Component
@@ -632,7 +632,7 @@ class PluginRuntime:
         }
         return [identities[identity].snapshot.panels[slot] for identity in self.order.ordered(slot, identities)]
 
-    async def invoke(self, name: str, kind: str, action: str, arguments: Mapping[str, Any]) -> str:
+    async def invoke(self, name: str, kind: str, action: str, arguments: Mapping[str, Any]) -> str | list[Line]:
         """Pin the worker until completion; authorization remains at the user/model boundary."""
         if self._closed:
             raise PluginError("Plugin runtime is closed")
@@ -660,8 +660,13 @@ class PluginRuntime:
                 arguments=dict(arguments),
                 context=asdict(self.facts()),
             )
+            answer: str | list[Line] = result
+            if isinstance(result, dict) and "styled" in result:
+                # The worker already vetted these rows; decode them back into the same
+                # Line/Text values a command handler built them from.
+                answer = [Line(tuple(Text(span["text"], span["role"]) for span in row["spans"])) for row in result["styled"]]
             self.refresh_soon()
-            return result
+            return answer
         finally:
             generation.invocations -= 1
             self._publish()

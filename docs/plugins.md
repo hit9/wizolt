@@ -138,10 +138,12 @@ remains. It makes no model calls.
 Enable **usage** in `/plugins`, then type `/usage`: one section for every configured provider
 that offers a usage or balance API — OpenCode Go, DeepSeek, Kimi (Moonshot), z.ai, Synthetic
 and Command Code. Usage windows show as percentages with their reset times; balances show as
-amounts. Providers are matched by their API domain, so any entry name works. Each run makes
-one or two requests per provider, with that provider's configured key; a provider that fails prints one
-`error:` line and the rest still report. It starts disabled, writes nothing and makes no
-model calls.
+amounts; the report prints in a themed frame like `/status`, one blank row between providers.
+Providers are matched by their API domain (a port spelled out in the url still matches), so
+any entry name works; two entries of one provider that share their url and key are one
+account — asked once, with every entry name in the title. Each run makes one or two requests
+per provider, with that provider's configured key; a provider that fails prints one `error:`
+line and the rest still report. It starts disabled, writes nothing and makes no model calls.
 
 ## Choose the model's tools
 
