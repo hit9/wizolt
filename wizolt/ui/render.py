@@ -12,7 +12,7 @@ import shutil
 import sys
 import threading
 import time
-from collections.abc import Callable, Hashable
+from collections.abc import Callable, Hashable, Iterable
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
@@ -36,7 +36,6 @@ from wizolt.base import (
     Json,
     LogBlock,
     LogEdge,
-    LogLine,
     LogRole,
     Text,
 )
@@ -170,6 +169,23 @@ class LogBlockCell(WidthDependent):
 
     def fragments(self, width: int) -> StyleAndTextTuples:
         return list(self.printer.log_segments(self.block, width))
+
+
+@dataclass(frozen=True)
+class CallGap(WidthDependent):
+    """The blank row before a tool call, left out between two calls that each fit on one line.
+
+    A run of one-line calls is a list of what the agent did, and a blank row between every pair
+    doubles its height for nothing; the moment a call brings output or a diff with it, the gap is
+    back. Asked again at every replay, so the gaps follow a record format switched after the calls
+    were printed. `above` is the previous call's blocks, `below` the call line this gap opens.
+    """
+
+    above: list[LogBlock]
+    below: LogBlock
+
+    def fragments(self, width: int) -> StyleAndTextTuples:
+        return [] if UiPrinter.one_line(self.above) and UiPrinter.one_line([self.below]) else [("", "\n")]
 
 
 @dataclass(frozen=True)
@@ -1085,18 +1101,18 @@ class UiPrinter:
         # leaves one blank row. Starts at one, so the first block of a session does not open with a
         # blank row it has nothing to be parted from.
         self.trailing_blanks = 1
-        # Whether the last thing printed was a call that fit on one line with nothing hanging off
-        # it. A run of those reads as a list, so the callers that part blocks with a blank row skip
-        # it between two of them; anything else printed clears the flag and the gap comes back.
-        self.emitted_single_line = False
+        # The blocks of the tool call printed last -- its call line, then whatever settled under it
+        # -- while nothing else has been printed after it. A run of one-line calls reads as a list,
+        # so the gap before the next call (`CallGap`) is skipped between two of them; anything else
+        # printed clears this and the gap comes back. `Presentation.tool_output` keeps it.
+        self.call_group: list[LogBlock] | None = None
 
     @staticmethod
-    def single_line_block(text: str | LogBlock) -> bool:
-        """Whether a block is one log line: a call with no output, no children, no wrapped text."""
-        if not isinstance(text, LogBlock) or len(text.items) != 1:
-            return False
-        line = text.items[0]
-        return isinstance(line, LogLine) and "\n" not in (line.text + line.meta)
+    def one_line(blocks: Iterable[LogBlock]) -> bool:
+        """Whether blocks draw one log line between them: a call with no output, no children, no
+        wrapped text. Asked of the blocks as they draw now, so it follows a redrawn record."""
+        lines = [line for block in blocks for line, _ in block.walk()]
+        return len(lines) == 1 and "\n" not in (lines[0].text + lines[0].meta)
 
     def track_layout(self, text: str) -> None:
         """Record what one emit left on screen: rows drawn, and blank rows left at the end.
@@ -1117,8 +1133,8 @@ class UiPrinter:
         # A wholly blank emit extends the run above it; anything with content restarts the count.
         self.trailing_blanks = self.trailing_blanks + blanks if blanks == len(rows) else blanks
         # Cleared here rather than in `emit`, so output that never goes through it -- an answer, a
-        # rule, a direct write -- also ends a run of one-line calls. `emit` sets it again after.
-        self.emitted_single_line = False
+        # rule, a direct write -- also ends a run of one-line calls. `tool_output` sets it again after.
+        self.call_group = None
 
     def separate(self, rows: int = 1) -> None:
         """Ensure `rows` blank rows part what comes next from what is already on screen.
@@ -1308,7 +1324,10 @@ class UiPrinter:
         if isinstance(text, LogBlock):
             indent = 0
         if not self.color:
-            self.output_fn(self.indent_message(str(text), "", indent) if indent else str(text))
+            # A record that draws nothing in this format (a live call's, under `minimal`) is still
+            # kept for a colored replay, which can redraw it; plain output has no replay.
+            if not (isinstance(text, LogBlock) and not str(text)):
+                self.output_fn(self.indent_message(str(text), "", indent) if indent else str(text))
             return
         segments = self.log_segments(text) if isinstance(text, LogBlock) else self.segments(text)
         if indent:
@@ -1317,7 +1336,6 @@ class UiPrinter:
         # close is how far apart they are on screen, and one Bash call with its output goes further
         # than four Reads. A block that wrapped counts the rows it actually took.
         self.track_layout("".join(fragment for _, fragment in segments))
-        self.emitted_single_line = self.single_line_block(text)
         # A log block sizes its diff gutter and wrapping from the pane, so it is recorded as itself
         # and laid out again on replay. Plain text needs no such treatment: `segments` never wraps,
         # so the terminal re-flows it for free.
@@ -1327,6 +1345,17 @@ class UiPrinter:
             self._batch_parts.append(part)
             return
         self._scrollback_print(part)
+
+    def emit_gap(self, gap: CallGap) -> None:
+        """Print the gap before a tool call, which a replay asks again. Uncolored output gets none,
+        as `separate` opens none there."""
+        if not self.color:
+            return
+        self.track_layout("".join(fragment[1] for fragment in gap.fragments(0)))
+        if self._batch_parts is not None:
+            self._batch_parts.append(gap)
+            return
+        self._scrollback_print(gap)
 
     def emit_block(self, block: WidthDependent) -> None:
         """Print a block that lays itself out, parted from what is above it. Uncolored output gets

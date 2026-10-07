@@ -157,7 +157,12 @@ def select(loop: CommandLoop, group: str, value: str) -> str:
     table[group] = value
     loop.session.config.transcript = table
     if loop.presentation.tui is not None:
-        loop.presentation.tui.invalidate()
+        # The records already printed follow a new format: they are redrawn the way a theme
+        # switch redraws the transcript. The look settings only shape what is printed next.
+        if group == "format":
+            loop.presentation.tui.recolor()
+        else:
+            loop.presentation.tui.invalidate()
     result = f"transcript.{group}: {value}"
     if loop.session.config.path:
         try:

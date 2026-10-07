@@ -935,7 +935,11 @@ def test_tool_runner_compact_bash_result_keeps_bounded_output_without_live_frame
 async def test_tool_runner_silent_bash_leaves_no_row_under_its_call_line(tmp_path):
     s = session(tmp_path)
     events = []
-    runner = ToolRunner(s, ContextManager(s), input_fn=lambda prompt: "", output_fn=lambda text: events.append(("display", str(text))))
+    # Through a plain printer: the empty record under the call line is still handed on (a record
+    # format switched later can give it rows), and drawing it must not cost a row.
+    printer = UiPrinter(output_fn=lambda text: events.append(("display", text)))
+    printer.color = False
+    runner = ToolRunner(s, ContextManager(s), input_fn=lambda prompt: "", output_fn=printer.emit)
     runner.hooks.live_start = lambda: events.append(("start", ""))
     runner.hooks.live_output = lambda stream, text: events.append((stream, text))
 

@@ -224,9 +224,10 @@ class ToolRunner:
         strings (a tool display that renders itself, e.g. Note) carry no tree to indent.
 
         A block with no line in it prints no line either: a call that returned nothing, under a
-        call line the runner already drew, is not a blank row in the transcript."""
+        call line the runner already drew, is not a blank row in the transcript. One that redraws
+        itself is still printed, drawing nothing: a record format switched later can give it rows."""
         if isinstance(block, LogBlock):
-            if not block.items:
+            if not block.items and block.redraw is None:
                 return
             for _ in range(self.nesting):
                 block = LogBlock([self.rooted(block)], gutter=True)
@@ -240,12 +241,14 @@ class ToolRunner:
         right. The edge here and the rail the gutter draws under it are the same column, so the
         script, each call it made -- including everything that call logged below itself -- and the
         result it returned read as one unbroken bracket. Lines that already carry an edge are a
-        block's own children and keep it."""
+        block's own children and keep it. A block that redraws itself still does, rooted."""
+        redraw = block.redraw
         return LogBlock(
             [
                 cls.rooted(item) if isinstance(item, LogBlock) else replace(item, edge=LogEdge.CONTINUE) if item.edge is LogEdge.NONE else item
                 for item in block.items
-            ]
+            ],
+            redraw=(lambda: cls.rooted(LogBlock(redraw())).items) if redraw is not None else None,
         )
 
     def vision_client(self) -> ModelClient:

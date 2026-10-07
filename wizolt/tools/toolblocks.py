@@ -9,7 +9,8 @@ can render the same call the same way.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 
 from prompt_toolkit.utils import get_cwidth
 
@@ -253,11 +254,42 @@ def _call_lexer(call: ToolCall) -> str:
     return tool_class.log_lexer(call.args) if tool_class is not None else ""
 
 
-def running_line(session: Session, call: ToolCall, d: ToolDisplay, batch_suffix: str = "") -> LogBlock:
+class _Redraw:
+    """A printed record's items in the format in effect now (`LogBlock.redraw`).
+
+    Drawn again only when the format for its tool changes, so a resize still replays the rows it
+    has, and a saved `/theme` transcript switch redraws the records already on screen. A deep copy
+    (the printer snapshots every block it emits) shares it: it holds the session.
+    """
+
+    def __init__(self, session: Session, call: ToolCall, items: list[LogLine | LogBlock], draw: Callable[[str], LogBlock]):
+        self.session, self.call, self.items, self.draw = session, call, items, draw
+        self.source = transcript.effective_format(session.config, call.name)
+
+    def __call__(self) -> list[LogLine | LogBlock]:
+        source = transcript.effective_format(self.session.config, self.call.name)
+        if source != self.source:
+            self.source, self.items = source, self.draw(source).items
+        return self.items
+
+    def __deepcopy__(self, _memo: dict) -> _Redraw:
+        return self
+
+
+def running_line(session: Session, call: ToolCall, d: ToolDisplay, batch_suffix: str = "", *, source: str | None = None) -> LogBlock:
     """The call line drawn before a call runs (above a live preview, or while it blocks), in the
     record format in effect: the format's call row, so the settled record -- which then leaves its
-    own call row out -- reads as one record, not a builtin line over a formatted one."""
-    template = _record_format(session, call)
+    own call row out -- reads as one record, not a builtin line over a formatted one. Without a
+    `source` it follows the format, as the settled record under it does."""
+    block = _running_line(session, call, d, batch_suffix, source)
+    if source is None:
+        d = replace(d)
+        block.redraw = _Redraw(session, call, block.items, lambda source: _running_line(session, call, d, batch_suffix, source))
+    return block
+
+
+def _running_line(session: Session, call: ToolCall, d: ToolDisplay, batch_suffix: str, source: str | None) -> LogBlock:
+    template = _record_format(session, call, source)
     if template is not None:
         values = transcript.record_values(tool=call.name, args=_record_args(session, call, d), output="", elapsed=None, citation="", failed=False)
         if rendered := transcript.render_record(template, values, []):
@@ -379,8 +411,32 @@ def finish_display(
     source: str | None = None,
 ) -> str | LogBlock:
     """The block a finished call prints, in the record format `source` names (by default the
-    one `[transcript]` sets for this tool; empty or `preset:standard` is the builtin assembly)."""
-    d = d or ToolDisplay()
+    one `[transcript]` sets for this tool, followed when it changes; empty or `preset:standard` is
+    the builtin assembly)."""
+    d = replace(d) if d else ToolDisplay()
+    block = _finish_display(session, call, key, output, failed=failed, elapsed=elapsed, d=d, source=source)
+    if source is None and isinstance(block, LogBlock):
+
+        def draw(source: str) -> LogBlock:
+            redrawn = _finish_display(session, call, key, output, failed=failed, elapsed=elapsed, d=d, source=source)
+            assert isinstance(redrawn, LogBlock)  # only a Note prints text, whatever the format
+            return redrawn
+
+        block.redraw = _Redraw(session, call, block.items, draw)
+    return block
+
+
+def _finish_display(
+    session: Session,
+    call: ToolCall,
+    key: str,
+    output: str,
+    *,
+    failed: bool,
+    elapsed: float | None,
+    d: ToolDisplay,
+    source: str | None,
+) -> str | LogBlock:
     if call.name == "Note" and not failed and d.display:
         return tooloutput.with_batch_suffix(d.display.removeprefix("Note ").strip(), d.batch_suffix)
     template = _record_format(session, call, source)

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Fix switching `/theme` > Transcript > Record format (`standard` ↔ `minimal`, or a custom
+  format) only reaching tool calls that settle afterwards: saving a format now redraws the
+  records already on screen, live call lines and calls nested in a ToolScript included, the way
+  a theme switch redraws their colors. The blank row between two calls is redrawn with them, so
+  a run of one-line calls packs into a list and a call with output is parted from it in the new
+  format too. A record keeps the facts it was drawn from and redraws only when its tool's format
+  changes, so a resize still replays it as drawn; a live call's record that draws nothing is now
+  still printed, so it can regain its output rows. Records a plugin presenter reshaped stay as
+  printed.
+
 - Subagents: `max_subagents` now limits children **running at once** (default 3) instead of
   children retained. A finished, failed or stopped child frees its slot and keeps its
   conversation, so fanning out more tasks than the limit no longer needs an approved archive;

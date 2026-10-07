@@ -568,6 +568,10 @@ class LogBlock:
     # nested calls). Every line below the region's own root lines then carries the rail; see
     # margin_units and ToolRunner.emit.
     gutter: bool = False
+    # The block's items as the settings in effect now draw them, for a block whose look follows a
+    # setting the user can change after it was printed (a tool call's `[transcript] format`). Every
+    # walk asks it first, so a transcript rebuild redraws the block instead of replaying it.
+    redraw: Callable[[], list[LogLine | LogBlock]] | None = field(default=None, compare=False, repr=False)
 
     @classmethod
     def hierarchy(cls, root: LogLine | None, children: list[LogLine]) -> LogBlock:
@@ -608,6 +612,8 @@ class LogBlock:
         contains draw their edges, so deeper lines rail in the same column instead of floating free
         under them."""
         level = parent_level + 1
+        if self.redraw is not None:
+            self.items = self.redraw()
         if self.gutter:
             rails = (*rails, level + 1)
         for item in self.items:

@@ -201,7 +201,8 @@ jumps between settings, and **Enter** saves; each choice is previewed as you mov
 
 **Record format** decides how a finished tool call is written. Choose `standard` (the default)
 for a call line, a short preview of its output and a `tr.N` reference that **Ctrl-O** expands, or
-`minimal` for a one-line checklist row per call.
+`minimal` for a one-line checklist row per call. Saving a format redraws the calls already on
+screen in it, except calls a plugin reshaped.
 
 ```text
 standard

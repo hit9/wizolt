@@ -15,7 +15,7 @@ from wizolt.base import ImageRouteNotice, LogBlock, LogEdge, LogLine, LogRole, T
 from wizolt.session import Session
 from wizolt.tools import transcript
 from wizolt.ui.cli.update import UpdateStatus
-from wizolt.ui.render import BashLivePreview, InputStyle, StatusBar, UiPrinter
+from wizolt.ui.render import BashLivePreview, CallGap, InputStyle, StatusBar, UiPrinter
 
 if TYPE_CHECKING:
     from wizolt.ui.cli.runtime import ScrollbackWriter
@@ -154,18 +154,28 @@ class Presentation:
 
     def tool_output(self, text: str | LogBlock = "") -> None:
         def output() -> None:
-            # The blank line parts each block from the one above; it is skipped when the block
-            # sits directly under a phase rule just drawn,
-            # which already provides the seam.
+            # The blank line parts each call from the one above; it is skipped when the call sits
+            # directly under a phase rule just drawn, which already provides the seam.
             #
-            # It is skipped again between two calls that each fit on one line: a run of them is a
-            # list of what the agent did, and a blank row between every pair doubles its height for
-            # nothing. The moment a call brings output, a diff, or narration with it, the gap is
-            # back -- that block needs to be parted from the one above.
-            packed = self.ui.single_line_block(text) and self.ui.emitted_single_line
-            if not packed and (isinstance(text, str) or (text.items and isinstance(text.items[0], LogLine))):
+            # Between two calls it is a `CallGap`, which also skips it when both fit on one line --
+            # and asks again when the transcript is redrawn, since a record format switched later
+            # can change that. A block with no call line of its own (the record settled under a
+            # live call line, a script's nested calls) continues the call above, gap-free.
+            above = self.ui.call_group
+            group: list[LogBlock] | None = above
+            if isinstance(text, str):
+                group = None
                 self.ui.separate()
+            elif text.items and isinstance(text.items[0], LogLine):
+                group = []
+                if above is not None and self.ui.trailing_blanks == 0:
+                    self.ui.emit_gap(CallGap(above, text))
+                else:
+                    self.ui.separate()
             self.emit(text)
+            if group is not None and isinstance(text, LogBlock):
+                group.append(text)
+            self.ui.call_group = group
 
         self.with_status_paused(output)
 

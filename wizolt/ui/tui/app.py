@@ -681,7 +681,8 @@ class TuiApp:
                 raise
 
     def recolor(self) -> None:
-        """Redraw the transcript above the app in the active theme; the app repaints on its own."""
+        """Redraw the transcript above the app in the active theme and transcript format; the app
+        repaints on its own."""
         self.scrollback.recolor()
         self.invalidate()
 

@@ -8,14 +8,17 @@ output keeps its citation), an unset key stays the builtin assembly byte for byt
 per-tool override beats the global format.
 """
 
+import re
 from types import SimpleNamespace
 
 import pytest
 from agent_harness import session
 
-from wizolt.base import LogLine, LogRole, ToolCall
+from wizolt.agent.runner import ToolRunner
+from wizolt.base import LogBlock, LogLine, LogRole, ToolCall
 from wizolt.tools import Tool, toolblocks, transcript
 from wizolt.tools.toolblocks import ToolDisplay
+from wizolt.ui.render import UiPrinter
 
 # Five lines, so a `|tail:2` row has something to hide and `{elided}` has a value.
 OUTPUT = "l1\nl2\nl3\nl4\nl5"
@@ -470,6 +473,67 @@ def test_an_explicit_source_renders_without_touching_the_config(tmp_path):
 
     assert str(toolblocks.finish_display(s, call, "tr.1", "body", failed=False, source="preset:minimal")) == "  ● read  a.rs → tr.1"
     assert s.config.transcript == {}
+
+
+# --- records already printed follow a format switch -----------------------------------------
+
+STANDARD_BASH = "  Bash  rg -n export_rows src → tr.1\n    └ src/db/rows.rs:12: export_rows"
+MINIMAL_BASH = "  ● bash  rg -n export_rows src → tr.1"
+
+
+def plain(ansi: str) -> str:
+    return re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", ansi).replace("\r", "").rstrip("\n")
+
+
+def test_a_printed_record_is_redrawn_in_the_format_switched_to_after_it(tmp_path):
+    """The transcript replays what it recorded; a record must draw itself in the format in effect
+    at replay, both ways, or `/theme`'s switch only reaches the calls that settle afterwards."""
+    s = session(tmp_path)
+    recorded = []
+    printer = UiPrinter(output_fn=lambda text: None)
+    printer.color = True
+    printer.transcript_sink = recorded.append
+    call = ToolCall("bash-1", "Bash", ["rg -n export_rows src"])
+    printer.emit(toolblocks.finish_display(s, call, "tr.1", bash_output("src/db/rows.rs:12: export_rows"), failed=False))
+    (record,) = recorded
+    assert plain(record(80)) == STANDARD_BASH
+
+    s.config.transcript = {"format": "preset:minimal"}
+    assert plain(record(80)) == MINIMAL_BASH
+    s.config.transcript = {"format": "preset:standard"}
+    assert plain(record(80)) == STANDARD_BASH
+
+
+def test_a_live_call_line_and_its_record_switch_format_together(tmp_path):
+    """A Bash call's early call line and the record settled under it are two writes; switching
+    only one would leave a builtin line over a formatted record, or the call line twice."""
+    s = session(tmp_path)
+    s.config.transcript = {"format": "preset:minimal"}
+    line = toolblocks.running_line(s, LIVE, ToolDisplay())
+    record = toolblocks.finish_display(s, LIVE, "tr.1", bash_output("All checks passed!"), failed=False, d=ToolDisplay(nested_display=True, auto=True))
+    assert (str(line), str(record)) == ("  ● bash  uv run ruff check wizolt tests", "")
+
+    s.config.transcript = {}
+    assert (str(line), str(record)) == ("  Bash  uv run ruff check wizolt tests", "    └ All checks passed! · tr.1 [auto]")
+
+
+def test_a_record_nested_in_a_script_keeps_its_bracket_when_redrawn(tmp_path):
+    s = session(tmp_path)
+    block = toolblocks.finish_display(s, ToolCall("bash-1", "Bash", ["rg -n export_rows src"]), "tr.1", bash_output("src/db/rows.rs:12: export_rows"), failed=False)
+    assert isinstance(block, LogBlock)
+    nested = LogBlock([ToolRunner.rooted(block)], gutter=True)
+    assert str(nested) == "    │ Bash rg -n export_rows src → tr.1\n    │ └ src/db/rows.rs:12: export_rows"
+
+    s.config.transcript = {"format": "preset:minimal"}
+    assert str(nested) == "    │ ● bash rg -n export_rows src → tr.1"
+
+
+def test_a_record_drawn_in_an_explicit_format_keeps_it(tmp_path):
+    """The `/theme` sample is drawn in the draft it was asked for, not in whatever is saved."""
+    s = session(tmp_path)
+    block = toolblocks.finish_display(s, ToolCall("read-1", "Read", [{"path": "a.rs"}]), "tr.1", "body", failed=False, source="preset:minimal")
+    s.config.transcript = {"format": "{tool} {args}"}
+    assert str(block) == "  ● read  a.rs → tr.1"
 
 
 # --- the config table ---------------------------------------------------------------------

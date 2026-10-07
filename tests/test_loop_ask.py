@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import time
 from types import SimpleNamespace
 
@@ -21,7 +22,8 @@ from wizolt.base import (
     Text,
     ToolCall,
 )
-from wizolt.tools import AskSpec
+from wizolt.tools import AskSpec, Tool, toolblocks
+from wizolt.tools.toolblocks import ToolDisplay
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.modals import choice_application, question_interaction
 from wizolt.ui.cli.presentation import Presentation
@@ -243,19 +245,14 @@ async def test_colored_assistant_and_tool_blocks_each_start_with_one_blank_line(
     loop.presentation.ui.color = True
     loop.presentation.ui.emit_phase_rule = lambda: None  # the narration's opening rule is this test's noise
     loop.presentation.ui.trailing_blanks = 0  # content above with no gap after it: the blocks need their blank line
-    events = []
-    loop.presentation.ui.emit = lambda text="", indent=0: events.append(text)
-    loop.presentation.ui.emit_answer = lambda text, **_kwargs: events.append(text)
-    first = LogBlock.hierarchy(LogLine("Bash", "first"), [])
-    first_result = LogBlock.hierarchy(None, [LogLine("stored", "tr.1")])
-    second = LogBlock.hierarchy(LogLine("Bash", "second"), [])
+    transcript = _transcript(loop)
 
     loop.presentation.emit_narration("Working on it.")
-    loop.presentation.tool_output(first)
-    loop.presentation.tool_output(first_result)
-    loop.presentation.tool_output(second)
+    loop.presentation.tool_output(LogBlock.hierarchy(LogLine("Bash", "first"), []))
+    loop.presentation.tool_output(LogBlock.hierarchy(None, [LogLine("stored", "tr.1")]))
+    loop.presentation.tool_output(LogBlock.hierarchy(LogLine("Bash", "second"), []))
 
-    assert events == ["", "Working on it.", "", first, first_result, "", second]
+    assert transcript() == "\n  Working on it.\n\n  Bash  first\n    stored  tr.1\n\n  Bash  second\n"
 
 
 def _colored_loop(tmp_path):
@@ -264,6 +261,13 @@ def _colored_loop(tmp_path):
     loop.presentation.ui.color = True
     loop.presentation.ui._scrollback_print = lambda _fragment: None
     return loop
+
+
+def _transcript(loop):
+    """What the loop's printer recorded, as the plain rows a replay at 80 columns draws."""
+    recorded = []
+    loop.presentation.ui.transcript_sink = recorded.append
+    return lambda: re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", "".join(item(80) for item in recorded)).replace("\r", "")
 
 
 async def test_interim_narration_closes_with_a_phase_rule_when_far_from_last_rule(tmp_path):
@@ -337,25 +341,71 @@ async def test_final_answer_takes_no_phase_rule(tmp_path):
 async def test_a_run_of_one_line_calls_is_packed_into_a_list(tmp_path):
     """Calls that each fit on one line run together as a list; the blank row comes back for the
     first one of a run and for any call that brings something with it."""
-    loop = _colored_loop(tmp_path)
-    blanks = []
-    loop.presentation.ui.separate = lambda rows=1: blanks.append(rows)
+    loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda _text: None), output_fn=lambda _text: None)
+    loop.presentation.ui.color = True
+    loop.presentation.ui.trailing_blanks = 0
+    transcript = _transcript(loop)
 
     def one_liner(name):
         return LogBlock([LogLine(name, "x.py", LogRole.TOOL)])
 
     loop.presentation.tool_output(one_liner("Read"))
-    assert blanks == [1]  # nothing above it was a one-line call, so it still parts itself
+    assert transcript() == "\n  Read  x.py\n"  # nothing above it was a one-line call, so it still parts itself
 
     loop.presentation.tool_output(one_liner("Read"))
-    assert blanks == [1]  # packed straight under the call above
+    assert transcript().endswith("\n  Read  x.py\n  Read  x.py\n")  # packed straight under the call above
 
     with_output = LogBlock.hierarchy(LogLine("Bash", "pytest -q", LogRole.TOOL), [LogLine("", "41 passed", LogRole.OUTPUT, LogEdge.END)])
     loop.presentation.tool_output(with_output)
-    assert blanks == [1, 1]  # a call that brings output is parted from the run above it
+    assert transcript().endswith("  Read  x.py\n\n  Bash  pytest -q\n    └ 41 passed\n")  # a call that brings output is parted
 
     loop.presentation.tool_output(one_liner("Read"))
-    assert blanks == [1, 1, 1]  # and the run has to start over under it
+    assert transcript().endswith("    └ 41 passed\n\n  Read  x.py\n")  # and the run has to start over under it
+
+
+STANDARD_CALLS = "\n  Bash  rg x0 → tr.0\n    └ hit0\n\n  Bash  rg x1 → tr.1\n    └ hit1\n"
+MINIMAL_CALLS = "\n  ● bash  rg x0 → tr.0\n  ● bash  rg x1 → tr.1\n"
+
+
+@pytest.mark.parametrize(("printed", "switched", "before", "after"), [({}, "preset:minimal", STANDARD_CALLS, MINIMAL_CALLS), ({"format": "preset:minimal"}, "", MINIMAL_CALLS, STANDARD_CALLS)])
+async def test_the_gaps_between_calls_follow_a_record_format_switched_after_them(tmp_path, printed, switched, before, after):
+    """Redrawn records keep the transcript's spacing rule: one-line calls packed into a list, a
+    call with output parted by a blank row. A gap decided in the old format would leave a
+    minimal checklist double-spaced, or standard records glued together."""
+    loop = CommandLoop(Agent(session(tmp_path), output_fn=lambda _text: None), output_fn=lambda _text: None)
+    loop.presentation.ui.color = True
+    loop.presentation.ui.trailing_blanks = 0
+    loop.session.config.transcript = printed
+    transcript = _transcript(loop)
+    for index in range(2):
+        call = ToolCall(f"bash-{index}", "Bash", [f"rg x{index}"])
+        output = Tool.process_result("BashToolResult", 0, f"hit{index}", "")
+        loop.presentation.tool_output(toolblocks.finish_display(loop.session, call, f"tr.{index}", output, failed=False))
+    assert transcript() == before
+
+    loop.session.config.transcript = {"format": switched}
+    assert transcript() == after
+
+
+async def test_a_live_call_printed_under_minimal_regains_its_output_and_gap(tmp_path):
+    """Under `minimal` a live call's settled record draws nothing below its call line; it is still
+    printed, so switching back shows the output under the line and parts the next call from it."""
+    session_ = session(tmp_path)
+    session_.config.transcript = {"format": "preset:minimal"}
+    loop = CommandLoop(Agent(session_, output_fn=lambda _text: None), output_fn=lambda _text: None)
+    loop.presentation.ui.color = True
+    loop.presentation.ui.trailing_blanks = 0
+    loop.agent.tools.output_fn = loop.presentation.tool_output
+    transcript = _transcript(loop)
+    runner = loop.agent.tools
+    live = ToolCall("bash-1", "Bash", ["pytest -q"])
+    runner.emit(toolblocks.running_line(session_, live, ToolDisplay()))
+    runner.emit(toolblocks.finish_display(session_, live, "tr.1", Tool.process_result("BashToolResult", 0, "41 passed", ""), failed=False, d=ToolDisplay(nested_display=True)))
+    runner.emit(toolblocks.finish_display(session_, ToolCall("read-1", "Read", [{"path": "x.py"}]), "tr.2", "body", failed=False))
+    assert transcript() == "\n  ● bash  pytest -q\n  ● read  x.py → tr.2\n"
+
+    session_.config.transcript = {}
+    assert transcript() == "\n  Bash  pytest -q\n    └ 41 passed · tr.1\n\n  Read  x.py → tr.2\n"
 
 
 async def test_tool_batch_closes_a_long_silent_run_with_a_phase_rule(tmp_path):

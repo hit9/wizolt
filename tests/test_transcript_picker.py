@@ -24,11 +24,13 @@ CUSTOM_TEMPLATE = "{name} {args} ({duration})"
 
 
 class TranscriptModal(ModalHarness):
+    recolored = 0
+
     def invalidate(self):
         pass
 
     def recolor(self):
-        pass
+        self.recolored += 1
 
     def set_input_style(self, style):
         self.input_style = style
@@ -131,6 +133,15 @@ async def test_enter_saves_the_global_format_and_keeps_the_rest_of_the_file(comm
     assert Path(command_loop.session.config.path).read_text().startswith("# keep comment")
     assert command_loop.session.config.transcript == {"format": "preset:minimal"}
     assert transcript.effective_format(command_loop.session.config, "Bash") == "preset:minimal"
+    assert modal.recolored == 1, "the records already on screen are redrawn in the saved format"
+
+
+async def test_saving_only_a_look_setting_leaves_the_printed_records_alone(command_loop):
+    """Thinking and the tool-run divider shape what is printed next; nothing on screen changes."""
+    modal = command_loop.presentation.tui = TranscriptModal(["h", "j", "j", "j", " ", "enter"])
+    result = await theme_command(command_loop, "")
+    assert result is not None and "transcript.thinking: collapsed (saved)" in result
+    assert modal.recolored == 0
 
 
 async def test_escape_discards_the_selected_format(command_loop):
