@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Compatibility catalog: recognize Command Code (`api.commandcode.ai/provider/v1`) — its one
+  base URL serves Claude models on the Anthropic wire and everything else on OpenAI-compatible
+  endpoints, so `api=auto` now routes by model, and no cache-key hint is sent because the
+  service documents none. Fix OpenCode Zen routing against its current model list:
+  `qwen3.8-max` moved to Chat Completions (other Qwen models stay on Messages) and Muse Spark
+  models now route to Responses; Zen's Gemini models use a Google-specific endpoint wizolt has
+  no wire for and are left unrouted. Synthetic (`api.synthetic.new`) needs no catalog entry:
+  its OpenAI-compatible endpoint works through the generic defaults, and its Anthropic
+  endpoint is selected by `api = "anthropic"` or a `/messages` base URL. Catalog version
+  2026100601.
+
 - Fix transcript `{output|tail:N}` losing the last output lines when `N` exceeds the 64-line
   preview limit. Dismissing `/prompt` by disabling or reloading its plugin now closes the editor
   without saving instead of reporting a missing `text` field. Plugin editors request attention

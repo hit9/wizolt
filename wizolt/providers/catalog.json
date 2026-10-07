@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "version": 2026092901,
-  "updated_at": "2026-09-29",
+  "version": 2026100601,
+  "updated_at": "2026-10-06",
   "maintenance_scope": "well_known_and_necessary_specializations_only",
   "defaults": {
     "effort_order": [
@@ -1882,7 +1882,22 @@
       "defaults": {},
       "model_rules": [
         {
-          "id": "provider-rule.api-0.claude--qwen",
+          "id": "provider-rule.api-0.qwen3-8-max",
+          "match": {
+            "prefixes": [
+              "qwen3.8-max"
+            ]
+          },
+          "set": {
+            "api": "chat"
+          },
+          "why": "Zen serves qwen3.8-max through Chat Completions, unlike the Qwen models on Messages",
+          "evidence": [
+            "https://opencode.ai/docs/zen"
+          ]
+        },
+        {
+          "id": "provider-rule.api-1.claude--qwen",
           "match": {
             "prefixes": [
               "claude-",
@@ -1898,17 +1913,18 @@
           ]
         },
         {
-          "id": "provider-rule.api-1.gpt--grok-",
+          "id": "provider-rule.api-2.gpt--grok--muse",
           "match": {
             "prefixes": [
               "gpt-",
-              "grok-"
+              "grok-",
+              "muse-spark-"
             ]
           },
           "set": {
             "api": "responses"
           },
-          "why": "OpenCode Zen routes GPT and Grok model IDs through Responses",
+          "why": "OpenCode Zen routes GPT, Grok, and Muse Spark model IDs through Responses",
           "evidence": [
             "https://opencode.ai/docs/zen"
           ]
@@ -1920,7 +1936,44 @@
         "https://opencode.ai/docs/zen"
       ],
       "notes": [
-        "Zen documents its websearch and webfetch features as client tools, not API server tools; builtin_tools_by_wire therefore remains empty."
+        "Zen documents its websearch and webfetch features as client tools, not API server tools; builtin_tools_by_wire therefore remains empty.",
+        "Zen serves Gemini models through a Google-specific endpoint wizolt has no wire for, so no rule routes them."
+      ]
+    },
+    {
+      "id": "provider.commandcode",
+      "hosts": [
+        "commandcode.ai"
+      ],
+      "defaults": {
+        "cache.prompt_key": false
+      },
+      "model_rules": [
+        {
+          "id": "provider-rule.api-0.claude",
+          "match": {
+            "prefixes": [
+              "claude-"
+            ]
+          },
+          "set": {
+            "api": "anthropic"
+          },
+          "why": "Command Code serves Claude models on /v1/messages only and answers 400 on the OpenAI endpoints",
+          "evidence": [
+            "https://commandcode.ai/docs/provider"
+          ]
+        }
+      ],
+      "builtin_tools_by_wire": {},
+      "why": "One Command Code base URL multiplexes wire protocols by model, so api=auto cannot infer the protocol from the URL",
+      "evidence": [
+        "https://commandcode.ai/docs/provider"
+      ],
+      "notes": [
+        "OpenAI and open models answer on both Chat Completions and Responses, so the generic chat default stays correct for them without a rule.",
+        "Command Code documents no prompt_cache_key or cache-key parameter, so none is sent.",
+        "Remote type mcp tools are rejected on Responses; wizolt declares MCP tools client-side as function tools, which pass through unchanged."
       ]
     },
     {

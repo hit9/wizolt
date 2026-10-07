@@ -100,6 +100,34 @@ def test_opencode_routes_grok_through_responses_and_uses_its_documented_levels()
     assert resolved.reasoning_effort == "high"
     assert reasoning_choices(provider) == ("low", "medium", "high")
 
+def test_opencode_routes_qwen_max_through_chat_and_the_rest_through_messages():
+    """Zen moved qwen3.8-max to Chat Completions while the other Qwen models stay on Messages."""
+    assert resolve(ProviderConfig(url="https://opencode.ai/zen/v1", model="qwen3.8-max")).api == "chat"
+    assert resolve(ProviderConfig(url="https://opencode.ai/zen/v1", model="qwen3.8-flash")).api == "anthropic"
+    assert resolve(ProviderConfig(url="https://opencode.ai/zen/v1", model="qwen3.7-plus")).api == "anthropic"
+
+
+def test_opencode_routes_muse_spark_through_responses():
+    provider = ProviderConfig(url="https://opencode.ai/zen/v1", model="muse-spark-1.3")
+
+    assert resolve(provider).api == "responses"
+
+
+@pytest.mark.parametrize("url", ("https://api.commandcode.ai/provider/v1", "https://commandcode.ai/provider/v1"))
+def test_commandcode_routes_claude_through_messages_and_others_through_chat(url):
+    """One base URL multiplexes protocols by model: Claude only answers on /v1/messages, and
+    OpenAI/open models answer on the generic chat default, so no rule exists for them."""
+    assert resolve(ProviderConfig(url=url, model="claude-sonnet-4-6")).api == "anthropic"
+    assert resolve(ProviderConfig(url=url, model="deepseek/deepseek-v4-flash")).api == "chat"
+
+
+def test_commandcode_sends_no_prompt_cache_key():
+    """Command Code documents no cache-key parameter, so the routing hint stays off."""
+    provider = ProviderConfig(url="https://api.commandcode.ai/provider/v1", model="gpt-6-sol")
+
+    assert resolve(provider).prompt_cache_key is False
+
+
 @pytest.mark.parametrize(
     ("model", "reasoning", "chat_reasoning", "effort"),
     (
