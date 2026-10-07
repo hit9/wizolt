@@ -70,8 +70,9 @@ See [Switching sessions](usage.md#switching-sessions).
 **`/compact`** — Summarize and shrink the conversation immediately. wizolt keeps
 long sessions within budget on its own, but `/compact` trims on demand.
 
-**`/compact log [seg.N]`** — Browse past summaries, or print one by its segment name.
-See [Keeping context manageable](context.md#keeping-context-manageable).
+**`/compact log [seg.N]`** — Browse past summaries, or print one by its segment name. Each
+lists your directives, decisions, finished, active and open work, next steps and the files that
+matter, with paths, commands and error text quoted exactly. See [Keeping context manageable](context.md#keeping-context-manageable).
 
 **`/agents`** — Browse agents, their states and context usage. Move the cursor to preview a task
 and live reply in a bordered window; Enter switches to that agent. Its conversation, input and

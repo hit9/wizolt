@@ -852,7 +852,20 @@ def test_compaction_instructions_are_concise_and_agree_on_the_shape():
         assert not any(key in instruction for key in ("set_goal", "replace_plan", "append_known", "set_check"))
     assert "exactly two string keys" in COMPACTION_PROMPT
     assert "no other keys" in COMPACTION_REMINDER
-    assert sum(map(len, (COMPACTION_PROMPT, COMPACTION_REMINDER, COMPACTION_ECHO_RETRY, COMPACTION_RETRY))) < 1_100
+    # The summary's headings are the one deliberate growth: they name the state a continuation needs.
+    assert sum(map(len, (COMPACTION_PROMPT, COMPACTION_REMINDER, COMPACTION_ECHO_RETRY, COMPACTION_RETRY))) < 1_500
+
+
+def test_the_summary_keeps_state_under_fixed_headings_and_literals_verbatim():
+    """A summary is continuation state, not a story: each heading is a kind of state the next
+    request needs, and the literals it names must survive word for word."""
+    from wizolt.agent.prompts import COMPACTION_PROMPT, compaction_tail
+
+    for heading in ("Directives:", "Decisions:", "Done:", "Active:", "Open:", "Next:", "Files:"):
+        assert heading in COMPACTION_PROMPT
+    assert "Copy paths, symbols, commands, error text, URLs, and ids (tr.N, seg.N) exactly" in COMPACTION_PROMPT
+    # The inline request appends the contract; the flattened one sends it as its system message.
+    assert COMPACTION_PROMPT in compaction_tail(state="s", previous_summary="", recent_count=2)
 
 
 async def test_compaction_sends_json_response_format_only_where_the_provider_supports_it(tmp_path, monkeypatch):

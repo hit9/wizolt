@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Compaction summaries keep continuation state under fixed headings -- directives, decisions,
+  done, active, open, next, files -- instead of free prose, and copy paths, symbols, commands,
+  error text, URLs and `tr.N`/`seg.N` ids exactly. Only the compaction request's instruction
+  changed: the conversation's cached prefix is untouched. Drawn from the summary templates of
+  pi and opencode.
+
 - Fix switching `/theme` > Transcript > Record format (`standard` ↔ `minimal`, or a custom
   format) only reaching tool calls that settle afterwards: saving a format now redraws the
   records already on screen, live call lines and calls nested in a ToolScript included, the way
