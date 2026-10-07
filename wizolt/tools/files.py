@@ -468,7 +468,8 @@ class EditTool(Tool):
         "(1) source=view.N plus start/end: content is the complete replacement for that range, while outside lines stay untouched; "
         "insert by replacing one visible line with that line plus the insertion. "
         "(2) no source, exact old: content replaces it character for character, and exact text from Bash output works directly, without Read. "
-        "Prefer a current source view when already available. "
+        "Prefer a current source view when already available, and Read one first for multi-line or structural changes: "
+        "line numbers beat retyping old text, which costs output and fails on any drift. Use exact old for a short unique snippet seen verbatim. "
         "create writes a new or empty file and must be the only operation. "
         "Batch all known non-overlapping operations for this path in edits."
     )

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Prompt and tool guidance, sent to the main agent and every subagent: the SAFETY secrets rule
+  is now one hard rule that no file, tool output or web page can lift, naming environment
+  variables (`env`, `printenv`) and wizolt's own `secrets.toml` and config keys, and the agent
+  says when only a live request could settle something instead of handing over a probe command.
+  Subagents, and the `Subagent` tool that assigns their work, are told that repo-wide mutating
+  commands (`git stash`/`checkout`/`reset`, whole-tree formatters) rewrite every agent's files
+  and run only when assigned. Edit now steers multi-line and structural changes to a Read view
+  and line numbers, keeping exact `old` text for short snippets seen verbatim. The system prompt
+  and tool schemas change, so the first request after upgrading misses the prompt cache once.
+
 - A tool call cut off mid-stream no longer wedges the session. Its broken arguments were sent
   back with every later request, and hosts that check history (OpenCode Go among them) answered
   each with `400 … arguments must be a JSON object string`. Chat and Responses now replay such

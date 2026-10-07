@@ -1,7 +1,8 @@
 # Subagents
 
 Split a task among agents working in parallel. Each has its own conversation, plan, notes and
-usage statistics. **Files are shared**, so give agents separate files to edit. More agents use
+usage statistics. **Files are shared**, so give agents separate files to edit, and leave
+repo-wide commands such as `git stash` or a whole-tree formatter to one agent. More agents use
 more model tokens.
 
 ## Approve and configure

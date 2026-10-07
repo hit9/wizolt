@@ -31,6 +31,8 @@ SHARED_WORKSPACE = """You share the working directory and filesystem with other 
 are immediately visible to all agents; you do not have a separate worktree. Your conversation and
 statistics are independent. Follow the assigned task and file boundaries. Do not overwrite or
 revert other agents' changes. Coordinate overlapping edits with the parent before proceeding.
+Never run repo-wide mutating commands (git stash/checkout/reset/clean, whole-tree formatters or
+codegen) unless the task assigns them: they rewrite other agents' files.
 Report the files changed and verification performed. Do not create specialized agent roles.
 """
 
