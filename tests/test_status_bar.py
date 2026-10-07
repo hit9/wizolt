@@ -69,7 +69,7 @@ def test_status_bar_keeps_semantic_colors(tmp_path):
     assert by_text["default/"] == Theme.inline("status_provider")
     assert by_text["model"] == Theme.inline("status_model") + " bold"
     assert by_text[s.config.provider.reasoning] == Theme.inline("status_reason")
-    assert by_text["mcp 0"] == Theme.inline("status_mcp")
+    assert by_text["mcp 0"] == Theme.inline("status_services")
     assert by_text["ctx 0%"] == Theme.inline("status_context")
 
 

@@ -215,6 +215,9 @@ def scheme(
             "status_model": model,
             "status_reason": yellow,
             "status_mcp": comment,
+            # The service counts' own hue: magenta, the one classic accent no other status
+            # role takes, so the counts never share a color with a neighbor or a separator.
+            "status_services": blend(purple, red, 0.5),
             "status_context": success,
             "status_cache": blue,
             "status_yolo": red,
@@ -266,6 +269,7 @@ def scheme(
         "status_model",
         "status_reason",
         "status_mcp",
+        "status_services",
         "status_context",
         "status_cache",
         "status_yolo",

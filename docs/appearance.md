@@ -102,8 +102,9 @@ for a context meter across a tinted row, or `monitor` for a fuller dashboard. `b
 colored outlines; `compact` highlights the model; `minimal` pairs it with a small meter.
 The colors follow your chosen theme, with separate text and segment colors.
 
-Every preset names the selected agent and shows YOLO when enabled. Narrow rows drop optional
-details; every layout keeps the agent and model ahead of usage.
+Every preset names the selected agent and shows YOLO when enabled, and carries the
+connected MCP and skill counts. Narrow rows drop optional details, the counts first;
+every layout keeps the agent and model ahead of usage.
 Context usage turns yellow at 70% and red at 90%.
 
 The placement is saved in `ui.statusbar.format`: **All left** as the preset's name, **Left /

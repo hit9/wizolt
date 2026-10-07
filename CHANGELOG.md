@@ -9,6 +9,15 @@
   failed call tells the model it was cut off and to send it again, rather than blaming its
   arguments.
 
+- Every built-in statusbar preset now carries the connected MCP and skill counts, in their own
+  color — a new `status_services` highlight, the magenta family no other statusbar field takes,
+  so the counts never share a color with a neighbor or a separator. `default`,
+  `monitor` and `lualine` already showed them and `vim` showed the MCP count alone; `minimal`,
+  `split`, `compact`, `brackets`, `blocks` and `powerline` showed none. Each one renders the
+  counts in its own idiom (a `·`-separated group, a bracketed pair, a detail segment), in the
+  lowest-priority optional group — the same as the plugins count — so a narrow row drops them
+  first, ahead of reasoning, usage and identity.
+
 - A new bundled plugin, off until you enable it in `/plugins`: **usage** adds `/usage`, one
   section for every configured provider with a key-authenticated usage or balance API —
   OpenCode Go, DeepSeek, Kimi (Moonshot), z.ai, Synthetic and Command Code (endpoints verified

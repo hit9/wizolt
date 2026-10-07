@@ -119,7 +119,9 @@ AGENT_GROUP = (
     "[/][status_mcp] │ [/]{% endoptional %}{% endif %}"
 )
 PLUGIN_GROUP = "{% if plugins.count %}{% optional priority=5 %}[status_mcp]plugins {plugins.count} │ [/]{% endoptional %}{% endif %}"
-SERVICE_DETAILS = "{mcp.label} · skills {skills.count}{% if plugins.count %} · plugins {plugins.count}{% endif %}"
+# The service counts every preset carries: less prominent than identity or usage, so the
+# first group to elide on a narrow row (the same priority as the plugins count).
+SERVICE_COUNTS = "{mcp.label} · skills {skills.count}"
 IDENTITY = (
     "{% if agent.name %}[status_agent bold]{agent.name}[/][status_mcp] / [/]{% endif %}"
     "{% if yolo %}[status_yolo bold]yolo[/][status_mcp] · [/]{% endif %}" + AGENT_GROUP + PLUGIN_GROUP
@@ -173,20 +175,28 @@ STATUS_LAYOUTS: dict[str, Callable[[bool], str]] = {
         + "]] [/]{% endoptional %}{% endif %}"
         + "[status_provider]{provider}/[/][status_model bold]{model}[/]"
         + "{% optional priority=20 %}[subtle] · [/][status_reason]{reasoning}[/]{% endoptional %}"
-        + "{% optional priority=5 %}[subtle] | [/][status_mcp]"
-        + SERVICE_DETAILS
-        + "[/]{% endoptional %}",
+        + "{% optional priority=5 %}[subtle] | [/][status_services]"
+        + SERVICE_COUNTS
+        + "[/][status_mcp]{% if plugins.count %} · plugins {plugins.count}{% endif %}[/]{% endoptional %}",
         pressure("ctx {context.percent}%") + "{% optional priority=10 %}[status_cache] · cache {cache.percent}%[/]{% endoptional %}",
         split,
         separator="[subtle] | [/]",
     ),
-    "minimal": lambda split: compose(IDENTITY + "[status_base bold]{model}[/]", pressure(meter(5) + " {context.percent}%"), split, separator=" "),
+    "minimal": lambda split: compose(
+        IDENTITY + "[status_base bold]{model}[/]",
+        "{% optional priority=5 %}[status_services]" + SERVICE_COUNTS + "[/] {% endoptional %}" + pressure(meter(5) + " {context.percent}%"),
+        split,
+        separator=" ",
+    ),
     "split": lambda split: compose(
         "[status.split] [status_provider]▎ [/]"
         + IDENTITY
         + "{% optional priority=35 %}[status_provider]{provider}/[/]{% endoptional %}[status_model bold]{model}[/]"
         + "{% optional priority=20 %}[status_mcp] · [/][status_reason]{reasoning}[/]{% endoptional %}",
-        "{% optional priority=30 %}"
+        "{% optional priority=5 %}[status_services]"
+        + SERVICE_COUNTS
+        + "[/][status_mcp] │ [/]{% endoptional %}"
+        + "{% optional priority=30 %}"
         + pressure("{% optional priority=12 %}" + meter(8) + " {% endoptional %}ctx {context.percent}%")
         + "{% endoptional %}"
         + "{% optional priority=10 %}[status_mcp] │ [/][status_cache]cache {cache.percent}%[/]{% endoptional %}",
@@ -199,7 +209,7 @@ STATUS_LAYOUTS: dict[str, Callable[[bool], str]] = {
         IDENTITY
         + "{% optional priority=10 %}[status_provider]{provider} [/]{% endoptional %}[status.model] {model} [/]"
         + "{% optional priority=20 %}[status_mcp] › [/][status_reason]{reasoning}[/]{% endoptional %}",
-        pressure("{context.percent}%"),
+        "{% optional priority=5 %}[status_services]" + SERVICE_COUNTS + "[/][status_mcp] › [/]{% endoptional %}" + pressure("{context.percent}%"),
         split,
         separator="[status_mcp] › [/]",
     ),
@@ -207,7 +217,11 @@ STATUS_LAYOUTS: dict[str, Callable[[bool], str]] = {
         IDENTITY
         + "[status_provider][[{provider}[/][status_mcp]/[/][status_model bold]{model}]][/] "
         + "{% optional priority=20 %}[status_reason][[{reasoning}]][/] {% endoptional %}",
-        pressure("[[ctx {context.percent}%]]") + "{% optional priority=10 %}[status_cache] [[cache {cache.percent}%]][/]{% endoptional %}",
+        "{% optional priority=5 %}[status_services] [["
+        + SERVICE_COUNTS
+        + "]] [/] {% endoptional %}"
+        + pressure("[[ctx {context.percent}%]]")
+        + "{% optional priority=10 %}[status_cache] [[cache {cache.percent}%]][/]{% endoptional %}",
         split,
     ),
     "monitor": lambda split: compose(
@@ -215,7 +229,9 @@ STATUS_LAYOUTS: dict[str, Callable[[bool], str]] = {
         + IDENTITY
         + "{% optional priority=35 %}[status_provider]{provider}/[/]{% endoptional %}[status_model bold]{model}[/]"
         + "{% optional priority=20 %}[status_mcp]  [/][status.reason] {reasoning} [/]{% endoptional %}",
-        "{% optional priority=5 %}[status_mcp]{mcp.label} · skills {skills.count} │ [/]{% endoptional %}"
+        "{% optional priority=5 %}[status_services]"
+        + SERVICE_COUNTS
+        + "[/][status_mcp] │ [/]{% endoptional %}"
         + "{% optional priority=30 %}"
         + pressure("ctx {context.percent}%{% optional priority=12 %} " + meter(6) + "{% endoptional %}")
         + "{% endoptional %}"
@@ -230,7 +246,8 @@ STATUS_LAYOUTS: dict[str, Callable[[bool], str]] = {
         + "{% optional priority=35 %}[status.provider] {provider} [reset]{% endoptional %}"
         + "[status.model] {model} [reset]"
         + "{% optional priority=20 %}[status.reason] {reasoning} [reset]{% endoptional %}",
-        "{% optional priority=10 %}[status.cache] cache {cache.percent}% [reset]{% endoptional %}"
+        "{% optional priority=5 %}[status.services] {mcp.label} skills {skills.count} [reset]{% endoptional %}"
+        + "{% optional priority=10 %}[status.cache] cache {cache.percent}% [reset]{% endoptional %}"
         + "{% optional priority=30 %}"
         + SEGMENT_USAGE
         + "{% endoptional %}",
@@ -243,7 +260,12 @@ STATUS_LAYOUTS: dict[str, Callable[[bool], str]] = {
         + PLUGIN_GROUP
         + "{% optional priority=35 %}[status_provider]{provider}[/][status_mcp] / [/]{% endoptional %}[status_base bold]{model}[/]"
         + "{% optional priority=20 %} [status_reason underline]{reasoning}[/]{% endoptional %}",
-        "{% optional priority=5 %}[status_mcp]{mcp.label} │ [/]{% endoptional %}" + "{% optional priority=30 %}" + SEGMENT_USAGE + "{% endoptional %}",
+        "{% optional priority=5 %}[status_services]"
+        + SERVICE_COUNTS
+        + "[/][status_mcp] │ [/]{% endoptional %}"
+        + "{% optional priority=30 %}"
+        + SEGMENT_USAGE
+        + "{% endoptional %}",
         split,
         separator="[status_mcp] │ [/]",
         tail="[reset]",
@@ -251,7 +273,7 @@ STATUS_LAYOUTS: dict[str, Callable[[bool], str]] = {
     ),
     "lualine": lambda split: compose(
         "[status.band]" + segment("{agent.name}", "status.agent", when="agent.name") + segment("{model}", "status.model") + SEGMENT_DETAILS,
-        segment("{mcp.label} · skills {skills.count}", "status.detail", priority=5, right=split)
+        segment(SERVICE_COUNTS, "status.services", priority=5, right=split)
         + segment("cache {cache.percent}%", "status.cache.segment", priority=10, right=split)
         + usage_segment(split),
         split,
@@ -260,7 +282,7 @@ STATUS_LAYOUTS: dict[str, Callable[[bool], str]] = {
     ),
     "powerline": lambda split: compose(
         segment("{agent.name}", "status.detail bold", when="agent.name") + segment("{model}", "status.model") + SEGMENT_DETAILS,
-        usage_segment(split),
+        segment(SERVICE_COUNTS, "status.services", priority=5, right=split) + usage_segment(split),
         split,
         tail="[reset]",
     ),
