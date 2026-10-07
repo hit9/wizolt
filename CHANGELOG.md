@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fixed an `Unhandled exception in event loop … list index out of range` while a turn ran: the
+  activity area read its lines twice per redraw and, when they grew in between, put its cursor
+  past the last line. It now places the cursor within the lines it draws.
+
 - OpenCode Go works again: it began answering `400 MissingSessionID` to requests without an
   `x-opencode-session` header. Provider `headers` values may now use `{session_id}`, the
   conversation's id (each subagent its own; an unknown `{name}` is a config error). Catalog

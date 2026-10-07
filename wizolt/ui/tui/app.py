@@ -19,7 +19,6 @@ from prompt_toolkit.application import Application, get_app
 from prompt_toolkit.application.run_in_terminal import in_terminal
 from prompt_toolkit.buffer import Buffer, CompletionState
 from prompt_toolkit.completion import CompleteEvent, Completer, Completion
-from prompt_toolkit.data_structures import Point
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition, has_completions, is_done, is_searching
 from prompt_toolkit.formatted_text import OneStyleAndTextTuple, StyleAndTextTuples
@@ -1616,11 +1615,14 @@ class TuiApp:
         )
         self.activity_window = Window(
             FormattedTextControl(
-                lambda: self.activity_fragments_fn() if self.input_mode == InputMode.RUNNING else self.idle_divider_fragments_fn(),
-                show_cursor=False,
-                get_cursor_position=lambda: Point(
-                    x=0, y=sum(fragment[1].count("\n") for fragment in self.activity_fragments_fn()) if self.input_mode == InputMode.RUNNING else 0
+                # The cursor marks the last line so wrapping scrolls the newest activity into view.
+                # It rides in the same fragments it measures: a second activity_fragments_fn() call
+                # can return more lines than the rendered text, a cursor past the end that crashed
+                # wrapped scrolling.
+                lambda: (
+                    [*self.activity_fragments_fn(), ("[SetCursorPosition]", "")] if self.input_mode == InputMode.RUNNING else self.idle_divider_fragments_fn()
                 ),
+                show_cursor=False,
             ),
             dont_extend_height=True,
             wrap_lines=True,
