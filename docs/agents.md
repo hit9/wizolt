@@ -45,7 +45,7 @@ The time freezes when the turn ends and survives resume.
 | Enter | Open the highlighted conversation |
 | x | Stop it after confirmation |
 | Shift+X | Stop it immediately |
-| d | Archive it and its children after confirmation; free their slots |
+| d | Archive it and its children after confirmation; remove them from the group |
 | Esc | Return without switching |
 
 The input box, history, statusbar and `/status` follow the selected agent.
@@ -85,10 +85,15 @@ new input. Main's input history includes earlier sessions; each child's history 
 max_subagents = 3
 ```
 
-The default is **3**, excluding main; allowed values are **0–32**. Completed children and forked
-skills still count. Stopping does not free a slot. Archive finished agents with **d** in `/agents`
-to make room for new tasks with fresh conversations.
-Change the limit from main with `/set runtime.max_subagents NUMBER`; check it with `/status`.
+At most **3** children run at once, excluding main; allowed values are **0–32**. Nested children
+and forked skills count while they run. A finished, failed or stopped child frees its slot and
+keeps its conversation, so the model can send it more work later. Input you type into a child
+yourself is never refused. The group keeps up to **32** children; archive finished ones with
+**d** in `/agents` to make room beyond that.
+
+`max_subagents = 0` turns subagents off: the model is not offered the `Subagent` tool, and forked
+skills are refused. Change the limit from main with `/set runtime.max_subagents NUMBER`; `/status`
+shows how many are running.
 
 ## Model tools
 
@@ -124,8 +129,8 @@ not included. **list** is a status overview — state, context use, errors and t
 also includes archived agents so the model can find their IDs. None of these actions starts work
 or changes the selected conversation.
 
-Main can request **archive**. Approval lists the target, its descendants, their status and the
-slots freed. Archiving stops their work and discards queued inputs while retaining history and
+Main can request **archive**. Approval lists the target, its descendants and their status.
+Archiving stops their work and discards queued inputs while retaining history and
 file changes. If the branch changes during approval, main must request approval again.
 
 | Action | Human approval |

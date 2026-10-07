@@ -706,7 +706,7 @@ def test_cli_agents_live_preview_and_stop_keys(pane):
     wait("main  test-model", absent="read-only")
     _settled_capture(pane)
     pane.send("archive via model")
-    wait("slots released")
+    wait("agents removed")
     wait("api-review: interrupted")
     wait("Approve")  # Even --yolo must stop here, after inspect ran without approval.
     pane.keys("Enter")

@@ -18,6 +18,7 @@ from uuid import uuid4
 from wizolt.agent.inspection import inspect_session
 from wizolt.agent.results import settled_result
 from wizolt.base import Json, ToolError, oneline, run_blocking
+from wizolt.config import MAX_SUBAGENTS
 from wizolt.image import UserInput
 from wizolt.session import QueuedInput, Session, SessionSnapshotStore
 from wizolt.session.ownership import subagent_root_uid
@@ -127,7 +128,30 @@ class Subagents:
 
     @property
     def limit(self) -> int:
+        """How many children may run at once; 0 turns subagents off."""
         return self.root.session.settings.max_subagents
+
+    @property
+    def active(self) -> int:
+        """Children holding a slot: an inbox consumer is live, including while it awaits approval.
+
+        A settled child keeps its history and frees its slot; only retention counts it.
+        """
+        return sum(1 for entry in self.entries.values() if entry.agent is not self.root and entry.task is not None and not entry.task.done())
+
+    def _admit(self, entry: AgentEntry | None = None) -> None:
+        """Refuse model-started work beyond the running limit; call under the admission lock.
+
+        Steering an agent that already holds a slot needs no new one.
+        """
+        if entry is not None and entry.task is not None and not entry.task.done():
+            return
+        if self.limit == 0:
+            raise ToolError("Subagents are off (runtime.max_subagents = 0)")
+        if self.active >= self.limit:
+            raise ToolError(
+                f"Subagent limit reached: {self.active} of {self.limit} agents running (excluding main); wait for one to settle before starting another"
+            )
 
     @property
     def counts(self) -> AgentCounts:
@@ -229,8 +253,9 @@ class Subagents:
                 raise ToolError("Agent group is closed")
             if parent.uid not in self.entries:
                 raise ToolError("Cannot spawn from an archived agent")
-            if len(self.entries) - 1 >= self.limit:
-                raise ToolError(f"Subagent limit reached ({self.limit}, excluding main); reuse an existing agent with send")
+            self._admit()
+            if len(self.entries) - 1 >= MAX_SUBAGENTS:
+                raise ToolError(f"{MAX_SUBAGENTS} agents retained (excluding main); reuse one with send, or ask the user to archive finished agents")
             if not isinstance(name, str) or not isinstance(message, str) or not name.strip() or not message.strip():
                 raise ToolError("spawn requires name and message")
             name = oneline("".join(char if char.isprintable() else " " for char in name), 40)
@@ -270,6 +295,9 @@ class Subagents:
                 raise ToolError("Agent group is closed")
             if not str(message).strip():
                 raise ToolError("send requires message")
+            if start and not commands:
+                # The user typing into a child's frontend is not admitted against the limit.
+                self._admit(entry)
             # Commands come only from the user's frontend; everything else is the parent model's.
             entry.agent.session.enqueue_user_input(message, commands=commands, origin="user" if commands else "child")
             await entry.agent.session.save_snapshot()
@@ -408,7 +436,7 @@ class Subagents:
 
         `inspect` and `wait` are bounded by design; this is where the text is read as written.
         An archived child is read from its snapshot, so a finished review stays readable after
-        its slots are freed.
+        it leaves the group.
         """
         entry = self.entries.get(uid)
         if entry is not None:
@@ -430,7 +458,7 @@ class Subagents:
             session.close()
 
     async def archive(self, uid: str, *, expected: frozenset[str] | None = None) -> None:
-        """Confirmed retirement, retaining snapshots/assets while releasing live slots.
+        """Confirmed retirement, retaining snapshots/assets while releasing retained room.
 
         Publish the archived manifest before disposing engines. Resume consults this manifest,
         never filesystem discovery, so no tombstone or destructive log deletion is needed.

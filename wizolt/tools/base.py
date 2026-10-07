@@ -107,12 +107,15 @@ class Tool:
         # reshaping the tool block (see wizolt.skill.listing).
         has_skills = session.skills is not None and SkillListing.of(session, session.skills).tool
         has_mcp = bool(session.mcp and (session.mcp.tools or session.mcp.resources))
+        # `max_subagents = 0` is the off switch: no slot to start an agent, so no schema to pay for.
+        has_agents = (session.subagents.limit if session.subagents is not None else session.settings.max_subagents) > 0
         return [
             tool.session_schema(session, strict) if tool is SubagentTool else tool.schema(strict)
             for tool in TOOL_REGISTRY.values()
             if (not session.tool_names or tool.NAME in session.tool_names)
             and (tool is not SkillTool or has_skills)
             and (tool is not MCPTool or has_mcp)
+            and (tool is not SubagentTool or has_agents)
             and (tool is not NextHintsTool or session.next_hints_available)
         ]
 

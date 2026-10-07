@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Subagents: `max_subagents` now limits children **running at once** (default 3) instead of
+  children retained. A finished, failed or stopped child frees its slot and keeps its
+  conversation, so fanning out more tasks than the limit no longer needs an approved archive;
+  the group still keeps at most 32 children. Waking an idle child with `send` takes a slot,
+  steering a running one does not, and input you type into a child is never refused.
+  `max_subagents = 0` now turns subagents off fully: the model is no longer offered the
+  `Subagent` tool. `/status` shows `group subagents` as `N/LIMIT running` or `off`. Archive
+  results report `removed` instead of `released_slots`. Borrowed from OpenAI's Responses
+  multi-agent design.
+
 - Subagent `list` rows carry the first 200 characters of each agent's spawn task, archived
   ones included, so the model can tell children apart after compaction drops the spawn call.
 

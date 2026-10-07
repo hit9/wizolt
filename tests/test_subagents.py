@@ -51,12 +51,12 @@ async def test_main_archive_always_confirms_affected_branch(group, monkeypatch, 
     payload = {"action": "archive", "agent_id": parent.agent.session.uid}
     view = SubagentTool(root, [payload]).approval_view()
     assert "review: completed" in view.text and "nested: completed" in view.text
-    assert ("slots released", "2") in view.rows
+    assert ("agents removed", "2") in view.rows
     await group.root.tools.run([call("Subagent", [payload])])
     assert len(prompts) == 1
     if approve:
         result = json.loads(root.tool_records[-1].output)
-        assert result["released_slots"] == 2
+        assert result["removed"] == 2
         assert {row["agent_id"] for row in result["archived"]} == {parent.agent.session.uid, nested.agent.session.uid}
         assert set(group.entries) == {root.uid}
         assert (await group.inspect(parent.agent.session.uid))["status"] == "archived"
@@ -819,25 +819,77 @@ async def test_yolo_send_requires_approval_and_does_not_change_child_settings(gr
     assert "Cancelled" in root.tool_errors[-1].error
 
 
-@pytest.mark.parametrize("limit", [0, 1, 5, 32])
-async def test_configured_limit_is_group_wide_and_visible_to_all_models(group, limit):
+@pytest.mark.parametrize("limit", [1, 3])
+async def test_running_limit_is_group_wide_and_settled_children_free_their_slots(group, monkeypatch, limit):
+    release = asyncio.Event()
+
+    async def request(client, messages, tools=None):
+        await release.wait()
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
     root = group.root.session
     root.settings.max_subagents = limit
     root_schema = next(s for s in Tool.resolved_schemas(root) if s["function"]["name"] == "Subagent")
-    assert f"Maximum retained child agents: {limit} (excluding main)" in root_schema["function"]["description"]
-    parent = root
-    for index in range(min(limit, 5)):
-        entry = await group.spawn(parent, f"child {index}", "task")
-        task = entry.task
-        group.stop(entry.agent.session.uid)
-        await asyncio.gather(task, return_exceptions=True)
-        parent = entry.agent.session
+    assert f"Maximum running child agents: {limit} (excluding main)" in root_schema["function"]["description"]
+    parent, entries = root, []
+    for index in range(limit):
+        entries.append(await group.spawn(parent, f"child {index}", "task"))
+        parent = entries[-1].agent.session
         parent.settings.max_subagents = 32  # child settings cannot increase group admission.
-    if limit <= 5:
-        with pytest.raises(ToolError, match="Subagent limit reached"):
-            await group.spawn(parent, "overflow", "task")
+    with pytest.raises(ToolError, match=f"Subagent limit reached: {limit} of {limit} agents running"):
+        await group.spawn(parent, "overflow", "task")
     child_schema = next(s for s in Tool.resolved_schemas(parent) if s["function"]["name"] == "Subagent")
-    assert f"Maximum retained child agents: {limit} (excluding main)" in child_schema["function"]["description"]
+    assert f"Maximum running child agents: {limit} (excluding main)" in child_schema["function"]["description"]
+    # Steering an agent that already holds a slot needs no new one.
+    await group.send(entries[0].agent.session.uid, "steer")
+    release.set()
+    for entry in entries:
+        await finished(group, entry)
+    assert group.active == 0
+    # Settled children keep their place in the group while new work fits again.
+    await finished(group, await group.spawn(root, "after", "task"))
+    await group.send(entries[0].agent.session.uid, "follow-up")
+    await finished(group, entries[0])
+    assert len(group.entries) == limit + 2
+
+
+async def test_waking_an_idle_child_needs_a_slot_but_queueing_and_user_input_do_not(group, monkeypatch):
+    release = asyncio.Event()
+    release.set()
+
+    async def request(client, messages, tools=None):
+        await release.wait()
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    group.root.session.settings.max_subagents = 1
+    idle = await finished(group, await group.spawn(group.root.session, "idle", "task"))
+    release.clear()
+    busy = await group.spawn(group.root.session, "busy", "task")
+    uid = idle.agent.session.uid
+    with pytest.raises(ToolError, match="Subagent limit reached: 1 of 1"):
+        await group.send(uid, "wake")
+    assert idle.agent.session.pending_user_inputs == [] and idle.task is None
+    await group.send(uid, "queued", start=False)
+    assert idle.task is None and [item.text for item in idle.agent.session.pending_user_inputs] == ["queued"]
+    # The user typing into a child's frontend is never refused by the model's limit.
+    await group.send(uid, "from the user", commands=True)
+    assert idle.task is not None
+    release.set()
+    await finished(group, busy)
+    await finished(group, idle)
+    assert idle.agent.session.pending_user_inputs == []
+
+
+async def test_zero_limit_turns_subagents_off_for_the_model(group):
+    root = group.root.session
+    assert any(s["function"]["name"] == "Subagent" for s in Tool.resolved_schemas(root))
+    root.settings.max_subagents = 0
+    assert not any(s["function"]["name"] == "Subagent" for s in Tool.resolved_schemas(root))
+    with pytest.raises(ToolError, match=r"Subagents are off \(runtime.max_subagents = 0\)"):
+        await group.spawn(root, "child", "task")
+    assert set(group.entries) == {root.uid}
 
 
 @pytest.mark.parametrize("value", [-1, 33, True, "3", 1.5])
@@ -1427,8 +1479,8 @@ async def test_bad_child_snapshot_does_not_block_healthy_family_restore(group, m
         restored.close()
 
 
-@pytest.mark.parametrize("limit,name,error", [(1, "new", "limit reached"), (2, "existing", "name already in use")])
-async def test_restore_serializes_admission_before_limit_and_name_checks(group, monkeypatch, limit, name, error):
+@pytest.mark.parametrize("retained,name,error", [(1, "new", "1 agents retained"), (32, "existing", "name already in use")])
+async def test_restore_serializes_admission_before_retention_and_name_checks(group, monkeypatch, retained, name, error):
     async def request(client, messages, tools=None):
         return {"role": "assistant", "content": "done"}, [], "done"
 
@@ -1437,7 +1489,7 @@ async def test_restore_serializes_admission_before_limit_and_name_checks(group, 
     await finished(group, entry)
     root = group.root.session
     restored = SessionSnapshotStore.load(root.uid, config=deepcopy(root.config), settings=deepcopy(root.settings), cwd=root.cwd)
-    restored.settings.max_subagents = limit
+    monkeypatch.setattr("wizolt.agent.subagents.MAX_SUBAGENTS", retained)
     bootstrap_features(restored)
     restored.borrow_ownership(root)
     agent = Agent(restored, output_fn=lambda _: None)
@@ -1640,26 +1692,36 @@ async def test_forked_skill_uses_a_child_without_forking_again(group, isolate_ho
     assert {entry.agent.session.agent_name for entry in group.entries.values() if entry.parent} == {skill.fork_name, *names}
 
 
-@pytest.mark.parametrize("limit", [0, 1])
-async def test_forked_skills_respect_retained_limit_without_falling_back_inline(group, isolate_home, monkeypatch, limit):
+@pytest.mark.parametrize("limit,error", [(0, "Subagents are off"), (1, "Subagent limit reached")])
+async def test_forked_skills_respect_running_limit_without_falling_back_inline(group, isolate_home, monkeypatch, limit, error):
     folder = isolate_home / ".claude" / "skills" / "inspect"
     folder.mkdir(parents=True)
     (folder / "SKILL.md").write_text("---\nname: inspect\ndescription: inspect\ncontext: fork\n---\nInspect in isolation.\n")
     root = group.root.session
     root.skills.reload()
     root.settings.max_subagents = limit
+    release = asyncio.Event()
+    release.set()
 
     async def request(client, messages, tools=None):
+        await release.wait()
         return {"role": "assistant", "content": "done"}, [], "done"
 
     monkeypatch.setattr(ModelClient, "request", request)
+    busy = None
     if limit:
+        # A finished fork frees its slot; one still running holds it.
         assert await SkillTool(root, ["inspect"]).call() == "done"
+        release.clear()
+        busy = await group.spawn(root, "busy", "task")
     # Model invocation preserves the fork boundary: it never falls back to running inline.
-    with pytest.raises(ToolError, match="Subagent limit reached"):
+    with pytest.raises(ToolError, match=error):
         await SkillTool(root, ["inspect"]).call()
-    assert len(group.entries) == limit + 1
+    assert len(group.entries) == 2 * limit + 1
     assert root.active_skills == [] and root.messages == []
+    release.set()
+    if busy is not None:
+        await finished(group, busy)
 
 
 @pytest.mark.parametrize("stop", [False, True])

@@ -688,7 +688,7 @@ model = ""
 # max_context_tokens = 262144      # 256K; how much of the model's window to use, not its size.
                                # Raise it for a 1M-window model; lower it for a smaller one.
 # max_agent_steps = 400
-# max_subagents = 3            # retained children across the whole group; 0 disables spawn, maximum 32
+# max_subagents = 3            # children running at once across the whole group; 0 turns subagents off, maximum 32
 # bash_output_tokens = 6000    # Bash output the model sees inline (1000-6000); later requests re-send it,
                                # so 2000 saves tokens on each; the full output stays in a file
 # shell_timeout = 60

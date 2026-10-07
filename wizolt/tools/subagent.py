@@ -26,8 +26,8 @@ class SubagentTool(Tool):
         "Delegate concrete, independent workstreams that can run at the same time, e.g. separate code areas, competing options or independent components. "
         "Do it yourself when steps depend on each other, the task is small, or the work would edit the same files. "
         "Delegate only when parallel work shortens the task, or when the user asks for agents. "
-        "The limit applies to all non-archived child agents in the group, including nested and completed agents; reuse send for follow-up work. "
-        "Only main can request archive: it stops a child and its descendants, frees their slots and preserves read-only history. "
+        "The limit counts child agents running at once across the group, including nested ones; a settled agent frees its slot and keeps its context, so reuse send for follow-up work. "
+        "Only main can request archive: it stops a child and its descendants, removes them from the group and preserves read-only history. "
         "archive always requires human approval, even under yolo; the approval lists the affected agents. "
         "spawn and send require user approval even under yolo; users can configure each child's model before approving spawn. "
         "spawn returns immediately; assign disjoint file boundaries and explicit verification. "
@@ -55,7 +55,7 @@ class SubagentTool(Tool):
     def session_schema(cls, session: Session, strict: bool = False) -> Json:
         schema = cls.schema(strict)
         limit = session.subagents.limit if session.subagents is not None else session.settings.max_subagents
-        schema["function"]["description"] += f" Maximum retained child agents: {limit} (excluding main)."
+        schema["function"]["description"] += f" Maximum running child agents: {limit} (excluding main)."
         if session.agent_parent:
             schema["function"]["parameters"]["properties"]["action"]["enum"].remove("archive")
         return schema
@@ -144,7 +144,7 @@ class SubagentTool(Tool):
             scope = self._archive_scope
             targets = [{"agent_id": key, "name": entry.agent.session.agent_name, "status": "archived"} for key, entry in group.entries.items() if key in scope]
             await group.archive(uid, expected=scope)
-            return json.dumps({"archived": targets, "released_slots": len(targets)}, ensure_ascii=False)
+            return json.dumps({"archived": targets, "removed": len(targets)}, ensure_ascii=False)
         if action == "spawn":
             entry = await group.spawn(self.session, payload.get("name", ""), payload.get("message", ""), model_settings=self.approval_config())
             uid = entry.agent.session.uid
@@ -244,14 +244,14 @@ class SubagentTool(Tool):
             group = self.session.subagents
             assert group is not None
             targets = [entry for key, entry in group.entries.items() if key in scope]
-            text = "Stop these agents, discard queued inputs and free their slots. Keep conversation history and file changes.\n\n"
+            text = "Stop these agents, discard queued inputs and remove them from the group. Keep conversation history and file changes.\n\n"
             text += "\n".join(f"- {entry.agent.session.agent_name}: {entry.status}" for entry in targets)
             return ApprovalView(
                 "archive agents",
                 text,
                 rows=[
                     ("target", group.entry(payload["agent_id"]).agent.session.agent_name),
-                    ("slots released", str(len(scope))),
+                    ("agents removed", str(len(scope))),
                     ("history", "kept, read-only in /agents"),
                 ],
             )

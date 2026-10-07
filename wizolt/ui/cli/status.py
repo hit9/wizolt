@@ -209,7 +209,7 @@ def activity_rows(loop: CommandLoop) -> tuple[Row, ...]:
         counts = group.counts
         if counts.total > 1:
             rows += [Row("group agents", str(counts.total)), Row("group running", str(counts.running)), Row("group waiting", str(counts.waiting))]
-        rows.append(Row("group subagents", f"{len(group.entries) - 1}/{group.limit}"))
+        rows.append(Row("group subagents", f"{group.active}/{group.limit} running" if group.limit else "off"))
     return tuple(rows)
 
 
