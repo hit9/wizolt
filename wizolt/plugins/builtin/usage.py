@@ -532,4 +532,7 @@ def setup(plugin: Plugin) -> None:
         "usage",
         "Show usage and balance for configured providers (OpenCode Go, DeepSeek, Kimi, z.ai, Synthetic, Command Code); one or two API requests each",
         run,
+        # Read-only over the host's config and remote APIs: safe to run while an agent turn
+        # works, and worth allowing -- a usage check is exactly what you want mid-turn.
+        during_turn=True,
     )

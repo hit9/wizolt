@@ -43,7 +43,8 @@
   one's timeout (a host without interactive UI answers once, every
   provider in one frame). A url that spells out its port still matches its provider, and two
   entries of one provider that share their url and key are one account: asked once, with every
-  entry name in the title.
+  entry name in the title. The command is read-only, so it answers from the queued path while
+  an agent turn is still working — no more `unavailable while the agent is working` for it.
 - A plugin command may now answer with styled rows instead of plain text: a list of `Line`s of
   `Text` spans, each carrying one theme color role. The host frames the answer like `/status`,
   colors each span with the active theme (an unknown role renders as plain text), clips rows to

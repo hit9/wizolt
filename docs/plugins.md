@@ -143,7 +143,9 @@ Providers are matched by their API domain (a port spelled out in the url still m
 any entry name works; two entries of one provider that share their url and key are one
 account — asked once, with every entry name in the title. Each run makes one or two requests
 per provider, with that provider's configured key; a provider that fails prints one `error:`
-line and the rest still report. It starts disabled, writes nothing and makes no model calls.
+line and the rest still report. It answers while an agent turn is still working, so there is
+no need to interrupt the turn for it. It starts disabled, writes nothing and makes no model
+calls.
 
 ## Choose the model's tools
 

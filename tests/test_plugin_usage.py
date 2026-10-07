@@ -524,6 +524,13 @@ async def test_the_live_worker_skips_a_provider_without_a_key(runtime, tmp_path)
     assert plain(await runtime.invoke("usage", "command", "usage", {})) == "DeepSeek API\nskipped: no key configured"
 
 
+async def test_the_command_answers_from_the_queued_path_mid_turn(runtime):
+    """A usage check is read-only, so a running turn does not have to be interrupted for it."""
+    from wizolt.ui.cli.registry import CommandCatalog
+
+    assert CommandCatalog(runtime).get("/usage").queue_safe
+
+
 # The real transport: a loopback server the test starts itself, with nothing monkeypatched.
 #
 # The command cannot be aimed at it: only KimiBalance reads the entry url, and only when its netloc
