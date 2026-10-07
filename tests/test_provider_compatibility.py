@@ -117,13 +117,35 @@ def test_opencode_go_facts_stay_off_zen(url):
     assert resolve(ProviderConfig(url=url, model="glm-5.3-flash", reasoning="high")).chat_reasoning == "thinking_effort"
 
 
-def test_opencode_go_sends_minimax_m27_through_messages():
-    """Go answers minimax-m2.7 on Chat with ModelProtocolUnsupported."""
-    assert resolve(ProviderConfig(url=GO, model="minimax-m2.7")).api == "anthropic"
-    assert resolve(ProviderConfig(url=GO, model="minimax-m3")).api == "chat"
-    assert resolve(ProviderConfig(url=GO, model="qwen3.8-max")).api == "chat"
-    assert resolve(ProviderConfig(url=GO, model="qwen3.8-flash")).api == "anthropic"
-    assert resolve(ProviderConfig(url=GO, model="gpt-6-luna")).api == "responses"
+def test_opencode_go_follows_its_documented_wires():
+    """Go answers minimax-m2.7 on Chat with ModelProtocolUnsupported, and has withdrawn Chat for
+    Qwen models before, so every wire is the one Go documents."""
+    for model, api in (("minimax-m2.7", "anthropic"), ("minimax-m3", "anthropic"), ("qwen3.8-max", "anthropic"), ("qwen3.8-flash", "anthropic"), ("gpt-6-luna", "responses"), ("glm-5.3", "chat")):
+        assert resolve(ProviderConfig(url=GO, model=model)).api == api, model
+    assert resolve(ProviderConfig(url="https://opencode.ai/zen/v1", model="minimax-m3")).api == "chat"
+
+
+def test_opencode_go_minimax_thinking_follows_minimaxs_messages_contract(tmp_path):
+    """M3 on Messages thinks only when asked for adaptive and ignores effort; M2.x always thinks."""
+    client = ModelClient(session(tmp_path))
+    assert reasoning_choices(ProviderConfig(url=GO, model="minimax-m3")) == ("off", "high")
+    params = {}
+    client.apply_provider_params(params, ProviderConfig(url=GO, model="minimax-m3", reasoning="high"))
+    assert params["thinking"] == {"type": "adaptive"}
+    params = {}
+    client.apply_provider_params(params, ProviderConfig(url=GO, model="minimax-m3", reasoning="off"))
+    assert params == {"thinking": {"type": "disabled"}}
+
+    assert reasoning_choices(ProviderConfig(url=GO, model="minimax-m2.7")) == ("high",)
+    params = {}
+    client.apply_provider_params(params, ProviderConfig(url=GO, model="minimax-m2.7", reasoning="high"))
+    assert params == {}
+
+
+@pytest.mark.parametrize(("model", "text_only"), (("minimax-m2.7", True), ("minimax-m3", False), ("mimo-v2.5-pro", True), ("mimo-v2.5", False), ("mimo-v2.6-pro", False)))
+def test_text_only_models_are_known_before_an_image_fails(model, text_only):
+    assert resolve(ProviderConfig(url=GO, model=model)).text_only is text_only
+    assert resolve(ProviderConfig(url="https://openrouter.ai/api/v1", model=model)).text_only is text_only
 
 
 @pytest.mark.parametrize(("model", "levels"), (("glm-5.3", ("low", "high", "max")), ("glm-5.3-flash", ("low", "high", "max")), ("glm-5.2", ("high", "max"))))

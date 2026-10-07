@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 2026100702,
+  "version": 2026100703,
   "updated_at": "2026-10-07",
   "maintenance_scope": "well_known_and_necessary_specializations_only",
   "defaults": {
@@ -1535,14 +1535,15 @@
     {
       "id": "model.text-only-19",
       "match": {
-        "pattern": "minimax-m2\\.5(?:-|$)"
+        "pattern": "minimax-m2\\.[57](?:-|$)"
       },
       "set": {
         "image.input": "text_only"
       },
-      "why": "Documented text-only Minimax model",
+      "why": "Documented text-only Minimax models",
       "evidence": [
-        "https://platform.minimaxi.com/document/Models"
+        "https://platform.minimaxi.com/document/Models",
+        "https://platform.minimax.io/docs/api-reference/text-chat-anthropic"
       ],
       "notes": [
         "Rules are anchored to complete documented families or exact IDs; matching is case-insensitive.",
@@ -1561,6 +1562,24 @@
       "why": "gpt-oss text models; the vision-tuned variants never match",
       "evidence": [
         "https://developers.openai.com/api/docs/models/gpt-oss-120b"
+      ],
+      "notes": [
+        "Rules are anchored to complete documented families or exact IDs; matching is case-insensitive.",
+        "A gateway id in canonical vendor/model form is matched by its model part only when the vendor is canonical (see model_id_forms); a custom alias stays unknown and is probed.",
+        "Claude stays unknown/main-first and is never in the negative list."
+      ]
+    },
+    {
+      "id": "model.text-only-21",
+      "match": {
+        "pattern": "mimo-v2\\.5-pro(?:-|$)"
+      },
+      "set": {
+        "image.input": "text_only"
+      },
+      "why": "MiMo V2.5 Pro is text-only; Xiaomi lists only mimo-v2.5 and V2.6 for images",
+      "evidence": [
+        "https://mimo.mi.com/docs/en-US/quick-start/usage-guide/multimodal-understanding/image-understanding"
       ],
       "notes": [
         "Rules are anchored to complete documented families or exact IDs; matching is case-insensitive.",
@@ -1966,27 +1985,49 @@
             ]
           },
           "set": {
-            "api": "anthropic"
+            "api": "anthropic",
+            "reasoning.recipe": "mandatory",
+            "reasoning.dialect": "mandatory_thinking",
+            "reasoning.levels": [
+              "high"
+            ],
+            "reasoning.mandatory": true
           },
-          "why": "Go serves minimax-m2.7 only through Messages and answers Chat with ModelProtocolUnsupported, unlike Zen",
+          "why": "Go serves minimax-m2.7 on Messages only, where M2.x always thinks",
           "evidence": [
-            "https://opencode.ai/docs/go/"
+            "https://opencode.ai/docs/go/",
+            "https://models.dev/providers/opencode-go/",
+            "https://platform.minimax.io/docs/api-reference/text-chat-anthropic",
+            "https://github.com/weselben-orion/GoModel/issues/2"
+          ],
+          "notes": [
+            "Go answers minimax-m2.7 on Chat with ModelProtocolUnsupported, unlike Zen.",
+            "MiniMax accepts but ignores thinking disabled and output_config.effort on M2.x, so there is nothing to choose."
           ]
         },
         {
-          "id": "go-rule.api-1.qwen3-8-max",
+          "id": "go-rule.api-1.minimax-m3",
           "match": {
             "prefixes": [
-              "qwen3.8-max"
+              "minimax-m3"
             ]
           },
           "set": {
-            "api": "chat"
+            "api": "anthropic",
+            "reasoning.recipe": "messages.adaptive",
+            "reasoning.levels": [
+              "high"
+            ]
           },
-          "why": "Go lists qwen3.8-max on Messages but also serves it on Chat Completions, the wire that carries its reasoning_effort and that Zen documents",
+          "why": "Go documents minimax-m3 on Messages, where thinking is off unless adaptive",
           "evidence": [
             "https://opencode.ai/docs/go/",
-            "https://opencode.ai/docs/zen"
+            "https://models.dev/providers/opencode-go/",
+            "https://platform.minimax.io/docs/api-reference/text-chat-anthropic"
+          ],
+          "notes": [
+            "MiniMax-M3 ignores output_config.effort, so on and off are the only choices.",
+            "Zen serves minimax-m3 on Chat only; this rule is Go's."
           ]
         },
         {
@@ -2083,8 +2124,9 @@
       ],
       "notes": [
         "Matched by the /zen/go path on opencode.ai; every other opencode.ai URL is Zen.",
-        "minimax-m3 stays on Chat: Go also lists it on Messages, where MiniMax defaults thinking off, and Zen serves it on Chat only.",
-        "Wire and reasoning facts here were checked against the live Go endpoint on 2026-10-07; the published docs list wires only."
+        "Wires follow Go's docs and OpenCode's own client data on models.dev; Go has withdrawn Chat for Qwen models before, so undocumented wires are not relied on.",
+        "Qwen on Messages gets no reasoning fields, as OpenCode's client sends none.",
+        "GLM facts were also checked against the live Go endpoint on 2026-10-07; the published docs list wires only."
       ]
     },
     {

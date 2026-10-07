@@ -15,6 +15,14 @@
   on every request) and no longer offer off, which Go refuses. Zen is unchanged. Checked against
   the Go docs, the gateway source, and the live endpoint.
 
+- OpenCode Go now follows its documented wires for every model: `minimax-m3` and `qwen3.8-max`
+  move to Messages (Go has withdrawn Chat for Qwen models before). `minimax-m3` there offers off
+  or on, sent as adaptive thinking, which MiniMax-M3 needs to think at all; `minimax-m2.7` always
+  thinks and offers nothing to choose. Zen is unchanged.
+
+- `minimax-m2.7` and `mimo-v2.5-pro` are known to be text-only, so an image goes to the vision
+  model up front instead of failing once first.
+
 - `deepseek-v4.1-flash`, the gateway name for DeepSeek V4.1 Flash, now gets DeepSeek's thinking
   controls: before, off did not stop thinking and no level was sent.
 
