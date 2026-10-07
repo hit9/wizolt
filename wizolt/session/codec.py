@@ -138,6 +138,7 @@ class SessionSnapshotCodec:
             "messages": segment.messages,
             "summary": segment.summary,
             "model": segment.model,
+            "files_read": list(segment.files_read),
         }
 
     @staticmethod
@@ -156,6 +157,7 @@ class SessionSnapshotCodec:
                 messages=int(d.get("messages", 0) or 0),
                 summary=str(d.get("summary", "") or ""),
                 model=str(d.get("model", "") or ""),
+                files_read=[path for path in d.get("files_read") or [] if isinstance(path, str)],
             )
             for d in data
         ]

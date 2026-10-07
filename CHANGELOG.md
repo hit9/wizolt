@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Compaction records which files the summarized messages read (Read calls, minus files the same
+  span edited) on its history segment, and every later checkpoint lists the last 20 of them as
+  written, beside the modified files, commands and failures it already carried. The summarizer
+  can no longer drop or reword a consulted path. Segments saved before this load with an empty
+  list. The checkpoint is rebuilt only at compaction, so the cached prefix is untouched between
+  compactions. Borrowed from pi's read/modified file lists.
+
 - The flattened compaction payload -- sent when `[compaction]` names another provider or a
   `context.compact` plugin is active -- cuts each tool result over 2,000 characters to its head
   and tail, keeping its `tr.N` key and how it ended. Over eight real sessions it shrank from

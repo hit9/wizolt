@@ -29,6 +29,7 @@ from wizolt.base import (
     Json,
     ModelError,
     Text,
+    ToolCall,
     run_blocking,
 )
 from wizolt.image import IMAGE_REFS_KEY, IMAGE_TEXT_ONLY_KEY, TOOL_IMAGE_OBSERVATION_KEY, ImageInputs
@@ -495,10 +496,41 @@ class ContextManager:
             fallback=fallback,
             messages=len(compacted),
             model=model,
+            files_read=self.files_read(compacted),
         )
         self.session.history.append(segment)
         del self.session.history[: -self.MAX_HISTORY_SEGMENTS]  # newest kept; a shorter list is left alone
         return segment
+
+    # Paths one segment records; a span that read more keeps the ones it read last.
+    MAX_FILES_READ: ClassVar[int] = 20
+
+    @classmethod
+    def files_read(cls, messages: list[Json]) -> list[str]:
+        """The paths the span's Read calls named and no Edit in it changed, first read first.
+
+        Edited paths are left out: the checkpoint lists modified files on its own, and a file the
+        span changed is not one it merely consulted."""
+        read: list[str] = []
+        edited: set[str] = set()
+        for message in messages:
+            for raw in message.get("tool_calls") or [] if message.get("role") == "assistant" else []:
+                function = raw.get("function") if isinstance(raw, dict) else None
+                if not isinstance(function, dict) or function.get("name") not in ("Read", "Edit"):
+                    continue
+                arguments = function.get("arguments")
+                try:
+                    payload = json.loads(arguments, strict=False) if isinstance(arguments, str) else arguments
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(payload, dict):
+                    continue
+                paths = ToolCall("", function["name"], [payload], payload=payload).paths()
+                if function["name"] == "Edit":
+                    edited.update(paths)
+                else:
+                    read.extend(path for path in paths if path not in read)
+        return [path for path in read if path not in edited][-cls.MAX_FILES_READ :]
 
     def _summary_block(self) -> list[Json]:
         """One durable checkpoint containing everything needed after the compacted prefix.

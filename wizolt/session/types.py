@@ -249,6 +249,9 @@ class HistorySegment:
     messages: int = 0  # evicted message count
     summary: str = ""
     model: str = ""  # effective model the summary ran on; empty = fell back to trimming
+    # Paths the evicted messages read without editing, as the calls named them: recorded by the
+    # host rather than recalled by the summarizer, so a filename is never reworded on its way out.
+    files_read: list[str] = field(default_factory=list)
 
     _KEY_RE: ClassVar[re.Pattern] = re.compile(r"seg\.(\d+)")
 
