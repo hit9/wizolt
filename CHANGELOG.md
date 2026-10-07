@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `/status` breathes: a blank row inside the frame's top and bottom edges and two spaces beside
+  each border, a blank row between related groups in each tab (Overview's agent, model and goal
+  apart from its context and usage; Progress's goal, steps, known facts and check; Session's
+  where, how and docs), and a known fact or plan step that wraps now hangs past its bullet, so
+  each item still reads as one. The frame is two to four rows taller; tabs still scroll in short
+  terminals.
+
 - The `REACTIONS` block now says only how to react and what you see; whether to react is the
   model's call, so how often a reply reacts depends on the model.
 

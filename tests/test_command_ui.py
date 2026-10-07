@@ -23,8 +23,30 @@ from wizolt.ui.tui import TUI_MODAL_PENDING
 
 async def test_status_ends_with_the_documentation_link(tmp_path):
     """The command list lives in the docs now, so every /status ends with the one place to read it."""
-    last = StatusReport.of(loop(tmp_path)).text().splitlines()[-2]  # the row above the frame's edge
-    assert last.strip(" │").split() == ["docs", "https://wizolt.readthedocs.io"]
+    inside = [row.strip(" │") for row in StatusReport.of(loop(tmp_path)).text().splitlines()[1:-1]]
+    last = [row for row in inside if row][-1]  # the last row with content; padding sits below it
+    assert last.split() == ["docs", "https://wizolt.readthedocs.io"]
+
+
+async def test_status_rows_keep_off_the_frame_and_related_rows_group(tmp_path):
+    """Every tab used to run edge to edge: rows against the borders and one block of labels."""
+    rows = StatusReport.of(loop(tmp_path)).text().splitlines()
+    assert not rows[1].strip(" │") and not rows[-2].strip(" │")  # a blank row inside each edge
+    assert all(row.lstrip().startswith("│  ") for row in rows[1:-1])  # two spaces beside the border
+    overview = [row.strip(" │") for row in rows[2 : rows.index(next(row for row in rows if row.strip(" │") == "Progress"))]]
+    # Who and on what, then how much: a blank row parts the two.
+    assert overview.index("") > max(index for index, row in enumerate(overview) if row.startswith("model"))
+    assert overview.index("") < min(index for index, row in enumerate(overview) if row.startswith("context"))
+
+
+def test_a_wrapped_list_item_hangs_past_its_marker():
+    """A long known fact used to wrap back under its bullet, so seven facts read as one wall."""
+    from wizolt.ui.cli.status import Entry, table, words
+
+    fact = "a fact long enough to wrap onto a second row of the narrow table"
+    rows = ["".join(text for _, text in row) for row in table([("", [Entry("known", [("", fact)], marker=(words("• "),))])], 40, 8)]
+    assert rows[0].startswith("known   • a fact")
+    assert len(rows) > 1 and all(row.startswith(" " * 10) and row[10] != " " for row in rows[1:])
 
 
 async def test_image_route_notice_matches_view_image_tree_vocabulary(tmp_path):
