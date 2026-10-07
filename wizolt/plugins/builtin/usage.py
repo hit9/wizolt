@@ -427,8 +427,10 @@ def window_line(row: Window) -> Line:
     bar = "█" * filled + "░" * (BAR_CELLS - filled)
     reset = f"  resets in {relative(row.resets_at - time.time())}" if row.resets_at else ""
     role = "warning" if percent >= WARN_PERCENT else "text"
-    mark = "! " if role == "warning" else ""
-    return Line((Text(f"{mark}{row.label:<8} {percent:3.0f}%  [{bar}]", role), Text(reset, "muted")))
+    # The mark takes a column every row reserves after the percent, so a marked row keeps the
+    # left edge and columns of the rest of the frame.
+    mark = "!" if role == "warning" else " "
+    return Line((Text(f"{row.label:<8} {percent:3.0f}%{mark} [{bar}]", role), Text(reset, "muted")))
 
 
 def balance_line(row: Balance) -> Line:
@@ -436,15 +438,18 @@ def balance_line(row: Balance) -> Line:
     symbol = SYMBOLS.get(row.currency, f"{row.currency} ")
     total = round(row.total, 2)
     parts = " + ".join(f"{name} {symbol}{amount:.2f}" for name, amount in row.parts)
-    detail = f"  ({parts})" if parts else ""
+    detail = f" ({parts})  " if parts else "  "
     state = "ok" if row.available else "insufficient"
-    mark = "! " if (not row.available or total <= WARN_AMOUNT) else ""
+    # As on a window row, the mark sits in a column after the amount, never ahead of the row.
+    mark = "!" if (not row.available or total <= WARN_AMOUNT) else " "
+    body = "error" if not row.available else "text"
     spans = (
+        Text(f"balance  {symbol}{total:.2f}", body),
         Text(mark, "warning"),
-        Text(f"balance  {symbol}{total:.2f}{detail}  ", "error" if not row.available else "text"),
+        Text(detail, body),
         Text(state, "muted" if row.available else "error"),
     )
-    return Line(tuple(span for span in spans if span.text))
+    return Line(spans)
 
 
 def section(title: str, report: Report) -> list[Line]:

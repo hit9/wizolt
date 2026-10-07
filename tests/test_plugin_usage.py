@@ -262,6 +262,15 @@ async def test_two_entries_of_one_provider_keep_their_names_when_their_titles_di
     )
 
 
+def test_a_marked_window_keeps_the_frames_columns():
+    # The mark used to lead the row ("! rolling"), pushing it two columns right of the title
+    # and of the unmarked rows below it.
+    rows = [usage_plugin.window_line(usage_plugin.Window(label, percent)).text for label, percent in (("rolling", 93), ("weekly", 37), ("monthly", 100))]
+    assert [row.index(label) for row, label in zip(rows, ("rolling", "weekly", "monthly"))] == [0, 0, 0]
+    assert len({row.index("[") for row in rows}) == 1
+    assert len({len(row) for row in rows}) == 1
+
+
 async def test_marks_a_window_at_80_and_a_balance_at_10(wires, tmp_path):
     # The printed numbers decide the marks: 79.9 reads as 80% and is marked, a balance of 10.004
     # rounds to 10.00 and is marked, and 10.01 is above the threshold.
@@ -279,9 +288,9 @@ async def test_marks_a_window_at_80_and_a_balance_at_10(wires, tmp_path):
     wires.answers[DEEPSEEK_BALANCE] = balance
     config = provider_config(("go", GO, "k"), ("dry", DEEPSEEK, "dry"), ("poor", DEEPSEEK, "poor"), ("edge", DEEPSEEK, "edge"), ("rich", DEEPSEEK, "rich"))
     assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == sections(
-        "OpenCode Go\n! rolling   80%  [████████░░]\nweekly    79%  [████████░░]",
-        "DeepSeek API (dry)\n! balance  XXX 500.00  (granted XXX 0.00 + topped up XXX 500.00)  insufficient",
-        "DeepSeek API (poor)\n! balance  ¥10.00  (granted ¥0.00 + topped up ¥10.00)  ok",
+        "OpenCode Go\nrolling   80%! [████████░░]\nweekly    79%  [████████░░]",
+        "DeepSeek API (dry)\nbalance  XXX 500.00! (granted XXX 0.00 + topped up XXX 500.00)  insufficient",
+        "DeepSeek API (poor)\nbalance  ¥10.00! (granted ¥0.00 + topped up ¥10.00)  ok",
         "DeepSeek API (edge)\nbalance  ¥10.01  (granted ¥0.00 + topped up ¥10.01)  ok",
         "DeepSeek API (rich)\nbalance  $250.00  (granted $0.00 + topped up $250.00)  ok",
     )
@@ -432,7 +441,7 @@ async def test_a_string_zero_cap_keeps_the_window_and_the_report_alive(wires, tm
     # `"max": "0"` is truthy as given; the parsed zero ends the window, not the whole report.
     wires.answers[SYNTHETIC_QUOTAS] = {"rollingFiveHourLimit": {"max": "0", "remaining": "0"}, "weeklyTokenLimit": {"percentRemaining": 10}}
     config = provider_config(("synth", SYNTHETIC, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Synthetic\n! weekly    90%  [█████████░]"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Synthetic\nweekly    90%! [█████████░]"
 
 
 async def test_an_unusable_amount_never_prints_the_response_it_came_from(wires, tmp_path):
@@ -445,14 +454,14 @@ async def test_an_all_zero_commandcode_balance_prints_no_empty_parts(wires, tmp_
     wires.answers[COMMANDCODE_WHOAMI] = {"user": {"login": "me"}}
     wires.answers[COMMANDCODE_CREDITS] = {"credits": {"monthlyCredits": 0, "purchasedCredits": 0, "freeCredits": 0}}
     config = provider_config(("cc", COMMANDCODE, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Command Code\n! balance  $0.00  ok"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Command Code\nbalance  $0.00!  ok"
 
 
 async def test_commandcode_used_over_the_cap_clamps_and_a_small_reset_counts_from_now(wires, tmp_path):
     wires.answers[COMMANDCODE_WHOAMI] = {"user": {"login": "me"}}
     wires.answers[COMMANDCODE_CREDITS] = {"windowLimits": {"weekly": {"used": 45, "cap": 35, "resetAt": 3600}}}
     config = provider_config(("cc", COMMANDCODE, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Command Code\n! weekly   100%  [██████████]  resets in 1h"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Command Code\nweekly   100%! [██████████]  resets in 1h"
 
 
 async def test_a_config_beside_a_moved_data_directory_is_still_read(wires, tmp_path):
@@ -617,7 +626,10 @@ async def test_streaming_prints_each_provider_block_as_it_answers(wires, tmp_pat
     answer = await usage_plugin.usage(configured(tmp_path, config), {}, report)
     finished.set()
     assert blocks == [
-        [Line((Text("DeepSeek API", "accent"),)), Line((Text("balance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ", "text"), Text("ok", "muted")))],
+        [
+            Line((Text("DeepSeek API", "accent"),)),
+            Line((Text("balance  ¥110.00", "text"), Text(" ", "warning"), Text(" (granted ¥10.00 + topped up ¥100.00)  ", "text"), Text("ok", "muted"))),
+        ],
     ]
     assert answer == [Line((Text("OpenCode Go", "accent"),)), Line((Text("error: HTTP 503", "error"),))]
 
@@ -669,7 +681,7 @@ async def test_report_rows_carry_theme_roles(wires, tmp_path):
     result = await usage_plugin.usage(configured(tmp_path, config), {})
     assert result == [
         Line((Text("DeepSeek API", "accent"),)),
-        Line((Text("! ", "warning"), Text("balance  ¥0.00  (granted ¥0.00 + topped up ¥0.00)  ", "error"), Text("insufficient", "error"))),
+        Line((Text("balance  ¥0.00", "error"), Text("!", "warning"), Text(" (granted ¥0.00 + topped up ¥0.00)  ", "error"), Text("insufficient", "error"))),
         Line(),
         Line((Text("Synthetic", "accent"),)),
         Line((Text("error: no quota data", "error"),)),
