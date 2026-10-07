@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- A tool call cut off mid-stream no longer wedges the session. Its broken arguments were sent
+  back with every later request, and hosts that check history (OpenCode Go among them) answered
+  each with `400 … arguments must be a JSON object string`. Chat and Responses now replay such
+  arguments as `{}`, as Anthropic already did, so a stuck session continues once resumed; the
+  failed call tells the model it was cut off and to send it again, rather than blaming its
+  arguments.
+
 - Fixed an `Unhandled exception in event loop … list index out of range` while a turn ran: the
   activity area read its lines twice per redraw and, when they grew in between, put its cursor
   past the last line. It now places the cursor within the lines it draws.

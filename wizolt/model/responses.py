@@ -26,7 +26,7 @@ from wizolt.base import (
 )
 from wizolt.config import ProviderConfig
 from wizolt.image import ImageInputs
-from wizolt.model.protocol import keeps_reasoning, omit_request_fields
+from wizolt.model.protocol import cut_off_call, keeps_reasoning, omit_request_fields, replayable_arguments
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
@@ -116,7 +116,7 @@ def responses_input(
                         "type": "function_call",
                         "call_id": str(raw.get("id") or uuid.uuid4().hex),
                         "name": str(function.get("name") or ""),
-                        "arguments": str(function.get("arguments") or "{}"),
+                        "arguments": replayable_arguments(function.get("arguments")),
                     }
                 )
     return converted
@@ -301,11 +301,12 @@ def responses_result(
             name = str(message_field(item, "name") or "")
             call_id = str(message_field(item, "call_id") or message_field(item, "id") or uuid.uuid4().hex)
             arguments = str(message_field(item, "arguments") or "{}")
+            tool_calls.append({"id": call_id, "type": "function", "function": {"name": name, "arguments": arguments}})
             try:
                 payload = json.loads(arguments, strict=False)
             except json.JSONDecodeError:
-                payload = {}
-            tool_calls.append({"id": call_id, "type": "function", "function": {"name": name, "arguments": arguments}})
+                calls.append(cut_off_call(call_id, name))
+                continue
             calls.append(tool_call(call_id, name, payload))
     text = "".join(text_parts) or str(message_field(result, "output_text") or "")
     # Streaming already reported every provider-side call live, and the stream and the terminal

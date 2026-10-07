@@ -43,7 +43,7 @@ from wizolt.image import IMAGE_REFS_KEY, ImageInputs
 from wizolt.model import resilience, responses
 from wizolt.model.anthropic import AnthropicWire
 from wizolt.model.chat import ChatWire
-from wizolt.model.protocol import WireProtocol
+from wizolt.model.protocol import WireProtocol, cut_off_call
 from wizolt.model.responses import ResponsesWire
 from wizolt.providers.compat import (
     ResolvedProvider,
@@ -859,7 +859,7 @@ class ModelClient:
                 # git commit message) parse instead of dropping the call's args.
                 payload = json.loads(arguments, strict=False)
             except json.JSONDecodeError:
-                calls.append(ToolCall(id=call_id, name=name, args=[]))
+                calls.append(cut_off_call(call_id, name))
                 continue
             calls.append(self.tool_call(call_id, name, payload))
         return calls
