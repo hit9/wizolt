@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Subagent `list` rows carry the first 200 characters of each agent's spawn task, archived
+  ones included, so the model can tell children apart after compaction drops the spawn call.
+
 - The `Subagent` tool description now says when delegating helps (independent work that can
   run at the same time) and when to do the work directly (dependent steps, small tasks, edits
   to the same files). Changing it costs the provider cache once.

@@ -133,6 +133,8 @@ async def test_inspect_is_bounded_readonly_and_includes_archived_history(group, 
     assert "hidden-never-project" not in str(result)
     assert child.messages == before
     assert result["model"] == child.config.provider.model
+    live = {row["agent_id"]: row for row in json.loads(await SubagentTool(root, [{"action": "list"}]).call())}
+    assert live[child.uid]["task"] == "inspect task" and "answer" not in live[child.uid]
     await group.archive(child.uid)
     archived = json.loads(await SubagentTool(root, [{"action": "inspect", "agent_id": child.uid}]).call())
     assert archived["status"] == "archived"
@@ -140,6 +142,7 @@ async def test_inspect_is_bounded_readonly_and_includes_archived_history(group, 
     assert child.uid not in group.entries
     listing = json.loads(await SubagentTool(root, [{"action": "list"}]).call())
     assert listing[-1]["agent_id"] == child.uid and listing[-1]["status"] == "archived"
+    assert listing[-1]["task"] == "inspect task"  # Which child did what survives archival.
     with pytest.raises(ToolError, match="Unknown agent"):
         await group.inspect("not-in-this-family")
 

@@ -119,7 +119,8 @@ are not announced again. This does not start a new parent turn or add user input
 **inspect** reads an active or archived agent without approval: its task, plan, model settings,
 duration, eight recent messages, four recent tool results and current tool batch. Long text is
 clipped, and a clipped result says to read the answer with **report**; partial streaming text is
-not included. **list** is a status overview — state, context use and errors, no answer text — and
+not included. **list** is a status overview — state, context use, errors and the first
+**200 characters** of each agent's task, no answer text — and
 also includes archived agents so the model can find their IDs. None of these actions starts work
 or changes the selected conversation.
 

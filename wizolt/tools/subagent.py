@@ -12,6 +12,9 @@ from wizolt.tools.base import Tool
 # whole text is `report`'s job, and a `list` of many children would otherwise spend context the
 # model did not ask to read.
 ANSWER_HEAD = 4_000
+# Enough of the spawn task for `list` to say which child does what once compaction has dropped
+# the spawn call; `inspect` shows the task whole.
+TASK_HEAD = 200
 
 
 class SubagentTool(Tool):
@@ -31,7 +34,7 @@ class SubagentTool(Tool):
         "The creating agent must supply a short, unique, task-based name, e.g. api-review, ui-review, or test-check; main is reserved. "
         "send steers a running agent or starts another turn in its existing context. "
         "Archived agents cannot receive input; spawn a new agent for fresh work. "
-        "Use start=false to queue without waking an idle agent. list shows each agent's state only. "
+        f"Use start=false to queue without waking an idle agent. list shows each agent's state and the head of its spawn task ({TASK_HEAD} characters), not its answer. "
         "report returns one child's latest answer whole, as plain text, live or archived; "
         "wait rows carry each settled target's answer head (4000 characters) and a truncated flag. "
         "inspect reads a bounded snapshot of an active or archived agent: task, plan, recent messages, tool activity, settings and result; a clipped result names report for the full text. No approval is needed. "
@@ -194,7 +197,9 @@ class SubagentTool(Tool):
                 "context_percent": entry.agent.session.usage.context_percent(entry.agent.session.state.context_percent),
                 "error": entry.error,
             }
-            if action != "list":
+            if action == "list":
+                row["task"] = entry.instruction[:TASK_HEAD]
+            else:
                 # A row carries the answer -- and proof of delivery -- only when the model asked
                 # to read it; a status overview must not acknowledge a result it never showed.
                 row["result_id"] = entry.result.get("result_id", "") if entry.status in {"completed", "failed", "interrupted"} else ""
@@ -204,7 +209,13 @@ class SubagentTool(Tool):
             rows.append(row)
         if action == "list":
             rows.extend(
-                {"agent_id": item["uid"], "name": item.get("name", ""), "parent": item.get("parent", ""), "status": "archived"}
+                {
+                    "agent_id": item["uid"],
+                    "name": item.get("name", ""),
+                    "parent": item.get("parent", ""),
+                    "status": "archived",
+                    "task": str(item.get("instruction", ""))[:TASK_HEAD],
+                }
                 for item in group.root.session.subagent_entries
                 if item.get("archived")
             )
