@@ -10,6 +10,7 @@ from test_core_logic import session
 
 from wizolt.agent.context import ContextManager
 from wizolt.base import (
+    ConfigError,
     ModelError,
     ModelUsage,
     ToolCall,
@@ -363,6 +364,34 @@ def test_configured_headers_may_replace_wizolt_defaults(tmp_path):
     provider = ProviderConfig.from_dict({"url": "https://gateway.example/v1", "key": "k", "model": "m", "headers": {"User-Agent": "fleet/1"}})
 
     assert ModelClient(_session_for(tmp_path, provider)).client(provider).default_headers["User-Agent"] == "fleet/1"
+
+
+def test_opencode_requests_carry_the_session_id_it_routes_by(tmp_path):
+    """OpenCode Go answers 400 MissingSessionID to a request without `x-opencode-session`."""
+    provider = ProviderConfig.from_dict({"url": "https://opencode.ai/zen/go/v1", "key": "k", "model": "kimi-k2.7-code"})
+    built_session = _session_for(tmp_path, provider)
+    client = ModelClient(built_session)
+    for built in (client.client(provider), client.anthropic_client(provider)):
+        assert built.default_headers["x-opencode-session"] == built_session.uid
+
+    # A configured header of the same name still wins, and other hosts never see this one.
+    provider.headers = {"x-opencode-session": "fixed"}
+    assert client.client(provider).default_headers["x-opencode-session"] == "fixed"
+    other = ProviderConfig.from_dict({"url": "https://gateway.example/v1", "key": "k", "model": "m"})
+    assert "x-opencode-session" not in ModelClient(_session_for(tmp_path, other)).client(other).default_headers
+
+
+def test_configured_headers_expand_the_session_id(tmp_path):
+    """A host the catalog does not know yet can still be routed per conversation from config."""
+    provider = ProviderConfig.from_dict({"url": "https://gateway.example/v1", "key": "k", "model": "m", "headers": {"x-session": "wz-{session_id}", "x-raw": '{"a":1}'}})
+    built_session = _session_for(tmp_path, provider)
+
+    headers = ModelClient(built_session).client(provider).default_headers
+    assert headers["x-session"] == "wz-" + built_session.uid
+    assert headers["x-raw"] == '{"a":1}'
+
+    with pytest.raises(ConfigError, match="unknown variable"):
+        ProviderConfig.from_dict({"url": "https://gateway.example/v1", "headers": {"x-session": "{sessionid}"}})
 
 
 def test_unsendable_headers_are_a_config_error_not_a_request_failure():

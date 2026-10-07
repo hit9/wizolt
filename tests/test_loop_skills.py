@@ -14,6 +14,7 @@ from wizolt.agent.lifecycle import create_session
 from wizolt.agent.prompts import SYSTEM_PROMPT
 from wizolt.base import Text, ToolError
 from wizolt.skill.library import SkillLibrary
+from wizolt.skill.listing import SkillListing
 from wizolt.tools import SkillTool, Tool
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.commands import skills_command
@@ -89,14 +90,15 @@ async def test_skill_tool_unknown_lists_available(tmp_path):
 def test_skill_mentions_name_the_skill_without_inlining_body(tmp_path):
     _write_skill(tmp_path, "triage", "triage a bug", "Reproduce first.")
     s = session(tmp_path)
+    listing = SkillListing.of(s, s.skills)
 
-    resolved = s.skills.resolve_mentions("please $triage this")
+    resolved = listing.resolve_mentions(s.skills, "please $triage this")
     assert "--- SKILL MENTIONS ---" in resolved
     assert "- triage [project]: triage a bug" in resolved
     assert "Reproduce first." not in resolved
     # a bare word without $ is not a mention; an unknown $token is ignored
-    assert s.skills.resolve_mentions("triage this") == ""
-    assert s.skills.resolve_mentions("$unknown") == ""
+    assert listing.resolve_mentions(s.skills, "triage this") == ""
+    assert listing.resolve_mentions(s.skills, "$unknown") == ""
 
 
 def test_skill_tool_absent_only_when_no_skills(tmp_path):
@@ -258,13 +260,15 @@ def test_status_breakdown_is_an_estimate_of_disjoint_parts(tmp_path):
     parts = dict(context.parts)
 
     # Named for what a user configures, in the order the request carries them.
-    assert list(parts) == ["system prompt", "system tools", "mcp servers", "memory files", "skills", "messages"]
+    # The context layout's order: the tool block, the system prompt, the header parts, then the conversation.
+    assert list(parts) == ["system tools", "system prompt", "memory files", "skills", "mcp servers", "summary", "messages"]
     assert parts["messages"] >= 10_000 and parts["system prompt"] > 0 and parts["system tools"] > 0
     assert parts["memory files"] > 0  # AGENTS.md
-    # Without MCP, its part is absent from the legend rather than shown as a measured zero.
-    assert parts["mcp servers"] == 0
+    # Without MCP, or before any compaction, a part is absent from the legend rather than shown
+    # as a measured zero.
+    assert parts["mcp servers"] == 0 and parts["summary"] == 0
     text = StatusReport.of(loop).text(100)
-    assert value(text, "messages").startswith("■") and "mcp servers" not in text
+    assert value(text, "messages").startswith("■") and "mcp servers" not in text and "summary" not in text
     assert value(text, "memory files").startswith("■")
     assert value(text, "total") == "~" + Text.abbreviate_count(sum(parts.values()))
     assert value(text, "compacts at") == Text.abbreviate_count(context.threshold)
@@ -448,6 +452,20 @@ def test_status_view_opens_on_a_concise_overview_and_switches_tabs(tmp_path):
         # Every tab keeps the frame's height, so switching never moves it.
         assert len(screen().splitlines()) == rows
     assert view.handle_key("escape") is None
+
+
+@pytest.mark.parametrize("height", [7, 9, 12, 40])
+def test_status_view_fits_its_pane_and_keeps_the_keys_edge(tmp_path, monkeypatch, height):
+    """The padding rows inside the frame once pushed its bottom edge -- and the Esc hint -- out
+    of a short pane; there the padding goes, so the frame fits and its edge stays."""
+    loop = status_loop(tmp_path)
+    view = StatusView(loop, StatusReport.of(loop).snapshot)
+    monkeypatch.setattr(view, "size", lambda: (100, height))
+    rows = "".join(fragment[1] for fragment in view.fragments()).splitlines()
+    assert len(rows) <= height and "Esc close" in rows[-1]
+    padded = not rows[1].strip(" │")
+    tallest = max(len(view.tabs.rows(tab, 100)) for tab in TABS)
+    assert padded == (tallest + 6 <= height)
 
 
 async def test_status_command_shows_the_view_interactively_and_prints_otherwise(tmp_path):

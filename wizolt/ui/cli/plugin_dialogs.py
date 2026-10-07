@@ -14,9 +14,11 @@ from typing import TYPE_CHECKING
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyBindings
 
-from wizolt.sdk import PluginError
+from wizolt.formats import clean
+from wizolt.sdk import Line, PluginError, Text
+from wizolt.sdk.operations import MAX_TEXT
 from wizolt.sdk.views import View
-from wizolt.ui.bars import clean
+from wizolt.ui.render import StyledReport
 from wizolt.ui.tui.app import TuiApp
 from wizolt.ui.tui.keys import normalized_key
 from wizolt.ui.tui.plugin_views import DialogState
@@ -70,6 +72,19 @@ class PluginDialogs:
             bindings.add(key, filter=active, eager=True)(lambda event, key=key: self.tui.dispatch_modal_key(key, event.data))
         self.tui.view_bindings = bindings
 
+    async def edit(self, owner: str, arguments: dict) -> str | None:
+        """``ui.edit``: the user's editor on the plugin's text, as Ctrl-G edits the input. A plugin
+        owning an open view cannot also take the terminal from under it."""
+        text = arguments.get("text")
+        if set(arguments) != {"text"} or not isinstance(text, str) or len(text) > MAX_TEXT:
+            raise PluginError(f"The editor takes text of at most {MAX_TEXT // 1024} KiB")
+        if any(name == owner for name, _ in self.dialogs):
+            raise PluginError("Close the plugin's open view before opening the editor")
+        if not self.tui.managed and (self.tui.app is None or not self.tui.app.is_running):
+            raise PluginError("The editor requires a running TUI session")
+        async with self.lock:  # Waits behind another plugin's view, like a second view would.
+            return await self.tui.edit_text(text)
+
     async def call(self, owner: str, service: str, arguments: dict) -> dict:
         if service.startswith("ui.shortcuts."):
             if self.keys is None:
@@ -91,6 +106,27 @@ class PluginDialogs:
             roles = {"info": LogRole.MUTED, "success": LogRole.SUCCESS, "warning": LogRole.WARNING, "error": LogRole.ERROR}
             self.presentation.emit(LogBlock([LogLine(f"plugin [{owner}]", clean(message), roles[level])]))
             return {}
+        if service == "ui.report":
+            rows = arguments.get("lines")
+            if (
+                not isinstance(rows, list)
+                or len(rows) > 64
+                or not all(isinstance(row, dict) and set(row) == {"spans"} and isinstance(row["spans"], list) and len(row["spans"]) <= 32 for row in rows)
+                or not all(
+                    isinstance(span, dict) and set(span) == {"text", "role"} and isinstance(span["text"], str) and isinstance(span["role"], str)
+                    for row in rows
+                    for span in row["spans"]
+                )
+                or sum(len(span["text"]) for row in rows for span in row["spans"]) > 4000
+            ):
+                raise PluginError("Report takes at most 64 rows of at most 4000 characters")
+            lines = [Line(tuple(Text(span["text"], span["role"]) for span in row["spans"])) for row in rows]
+            # The same framed, theme-colored answer block a styled command answer renders
+            # as, printed the moment the action streams it.
+            self.presentation.ui.emit_block(StyledReport(lines))
+            return {}
+        if service == "ui.edit":
+            return {"text": await self.edit(owner, arguments)}
         if service not in {"ui.views.show", "ui.views.update", "ui.views.close"}:
             raise PluginError(f"Unknown UI operation: {service}")
         identity = arguments.get("id")

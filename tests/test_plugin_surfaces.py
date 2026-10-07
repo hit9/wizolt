@@ -58,7 +58,7 @@ def setup(p):
     rates = []
     async def sample(event):
         rates.append(event.context.usage.output_rate)
-    p.on("sample", sample)
+    p.on("tick", sample)
     p.component("above_divider", lambda ctx: Panel((Line((Text(str(len(rates)), "success"), Text(str(ctx.window.parts[0]), "warning"))),)))
 ''')
     report = await PluginTrial(context()).run(str(source), times=(0, 1, 2))
@@ -135,13 +135,6 @@ def test_trial_inputs_accept_pipes_and_symlinks(tmp_path, capsys):
     finally:
         os.close(read)
     assert "context 300 / 1000" in json.loads(capsys.readouterr().out)["previews"][0]["text"]
-    history = tmp_path / "history.txt"
-    history.write_text("Decided to ship.\n")
-    (tmp_path / "link.txt").symlink_to(history)
-    plugin = tmp_path / "digest.py"
-    plugin.write_text("SDK_VERSION = 1\ndef setup(p):\n    async def summarize(ctx, text):\n        return 'Digest: ' + text.strip()\n    p.summarizer(summarize)\n")
-    assert main(["test", str(plugin), "--summarize", str(tmp_path / "link.txt"), "--project", str(tmp_path)]) == 0
-    assert json.loads(capsys.readouterr().out)["results"] == ["Digest: Decided to ship."]
 
 
 def test_rejected_contribution_reports_the_validate_stage(tmp_path, capsys):
@@ -152,3 +145,19 @@ def test_rejected_contribution_reports_the_validate_stage(tmp_path, capsys):
     assert main(["validate", str(plugin), "--project", str(tmp_path)]) == 1
     report = json.loads(capsys.readouterr().out)
     assert report["stage"] == "validate" and "no_such_field" in report["error"]
+
+
+def test_bundled_pet_keeps_its_shape_and_theme_roles_in_every_mood():
+    from prompt_toolkit.utils import get_cwidth
+
+    from wizolt.plugins.builtin.pet import PETS, _draw
+
+    for name, pet in PETS.items():
+        shapes = set()
+        for status in ("", "idle", "running", "waiting", "failed", "completed", "interrupted"):
+            for now in (0, 0.5, 1, 3.5):
+                panel = _draw(Context("a", "main", "/", status, 0, 0, "m", now), pet, 0.0, captioned=False)
+                rows = [row.spans if isinstance(row, Line) else (row,) for row in panel.rows]
+                assert all(span.role in Theme.ROLES for spans in rows for span in spans), name
+                shapes.add(tuple(get_cwidth("".join(span.text for span in spans)) for spans in rows))
+        assert shapes == {(pet.width, pet.width)}, name  # Animation and mood never move the outline.

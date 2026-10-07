@@ -94,6 +94,7 @@ class UserInput(str):
 
     images: tuple[ImageRef, ...]
     pastes: tuple[PasteRef, ...]
+    origin: str = "user"  # "child" for a parent model's message to a subagent; see QueuedInput.
 
     def __new__(cls, text: str, images: tuple[ImageRef, ...] = (), pastes: tuple[PasteRef, ...] = ()) -> Self:
         value = super().__new__(cls, text)

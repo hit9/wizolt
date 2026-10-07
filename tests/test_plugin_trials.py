@@ -229,6 +229,43 @@ accent = "#aabbcc"
     assert report["frames"][0]["context"]["cwd"] == str(tmp_path)
 
 
+async def test_cli_gives_the_trial_the_config_it_was_pointed_at(tmp_path):
+    # A trial command reading context paths answers with the workspace's own config and
+    # data dir -- the --config the CLI was pointed at, never the user's real one.
+    config = tmp_path / "moved" / "config.toml"
+    config.parent.mkdir()
+    config.write_text(f'[paths]\ndata_dir = "{tmp_path}/data"\n')
+    path = plugin(
+        tmp_path,
+        '''def setup(p):
+    async def where(ctx, args):
+        return f"{ctx.config_path}|{ctx.data_dir}"
+    p.command("where", "Report the context paths", where)
+''',
+    )
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-m",
+        "wizolt",
+        "plugin",
+        "test",
+        path,
+        "--config",
+        str(config),
+        "--project",
+        str(tmp_path),
+        "--call",
+        "command:where",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await process.communicate()
+    assert process.returncode == 0, stderr.decode() + stdout.decode()
+    report = json.loads(stdout)
+    assert report["status"] == "passed"
+    assert report["results"] == [f"{config}|{Path(str(tmp_path) + '/data').resolve()}"]
+
+
 def test_source_rejects_fifo_and_bounds_in_memory_revisions(tmp_path):
     from wizolt.plugins.loading import MAX_SOURCE_BYTES
     from wizolt.sdk import PluginError
@@ -241,8 +278,38 @@ def test_source_rejects_fifo_and_bounds_in_memory_revisions(tmp_path):
         PluginSource.read(str(tmp_path / "huge.py"), "x" * (MAX_SOURCE_BYTES + 1))
 
 
+def test_source_admits_only_public_sdk_imports(tmp_path):
+    from wizolt.sdk import SDK_VERSION, PluginError
+
+    body = f'''"""A doc."""
+SDK_VERSION = {SDK_VERSION}
+import json
+import wizolt
+from wizolt import sdk
+from wizolt.sdk import Plugin
+
+
+def setup(plugin):
+    plugin.command("sample", "does nothing", lambda context, arguments: "ok")
+'''
+    path = tmp_path / "boundary.py"
+    path.write_text(body)
+    assert PluginSource.read(str(path)).name == "boundary"  # The allowed set passes.
+    for bad in ("import wizolt.plugins.session", "from wizolt.config import Config", "from wizolt import plugins"):
+        path.write_text(f"{body}\n{bad}\n")
+        with pytest.raises(PluginError) as error:
+            PluginSource.read(str(path))
+        assert "plugins may import only the public SDK (wizolt.sdk)" in str(error.value)
+
+
 async def test_protocol_damage_and_oversized_component_do_not_hang(trial, tmp_path):
-    damaged = plugin(tmp_path, "import os\ndef setup(p):\n    os.write(1, b'not json\\n')\n")
+    # Descriptor 1 is no longer the protocol; damage the worker's private stream itself.
+    damaged = plugin(
+        tmp_path,
+        "import gc\ndef setup(p):\n"
+        "    worker = next(o for o in gc.get_objects() if type(o).__name__ == 'Worker')\n"
+        "    worker.output.write('not json\\n')\n    worker.output.flush()\n",
+    )
     async with asyncio.timeout(5):
         report = await trial.run(damaged)
     assert report.status == "failed" and "protocol" in report.error
@@ -255,6 +322,60 @@ def setup(p):
     )
     report = await trial.run(oversized)
     assert report.status == "failed" and "4096" in report.error
+
+
+async def test_long_field_text_is_rejected_before_any_paint(trial, tmp_path):
+    from wizolt.plugins.protocol import Snapshot
+    from wizolt.sdk import PluginError
+
+    report = await trial.run(plugin(tmp_path, 'def setup(p):\n    p.field("long", lambda ctx: "x" * 5000)\n'), times=(0,))
+    assert report.status == "failed" and "at most 4096 characters" in report.error
+    with pytest.raises(PluginError, match="4096"):  # The host does not trust the worker's check.
+        Snapshot.decode({"fields": {"long": "x" * 5000}, "panels": {}})
+
+
+async def test_stderr_flood_costs_the_host_little_cpu(tmp_path):
+    import time
+
+    source = plugin(
+        tmp_path,
+        """import sys, time
+def setup(p):
+    async def flood(ctx, args):
+        end = time.monotonic() + 1
+        while time.monotonic() < end:
+            sys.stderr.write(("x" * 200 + "\\n") * 50)
+        return "done"
+    p.command("flood", "Flood", flood)
+""",
+    )
+    worker, _ = await PluginProcess.start(PluginSource.read(source))
+    try:
+        cpu = time.process_time()
+        context = asdict(Context("a", "main", "/tmp", "idle", 0, 0, "m", 0))
+        assert await worker.request("invoke", kind="command", name="flood", arguments={}, context=context, timeout=10) == "done"
+        assert time.process_time() - cpu < 0.5  # Draining at full speed took about a core.
+        assert "xxxx" in worker.stderr  # Its log tail is still kept.
+    finally:
+        await worker.close()
+
+
+async def test_plugin_subprocesses_cannot_read_or_write_the_protocol(trial, tmp_path):
+    source = plugin(
+        tmp_path,
+        """import os
+def setup(p):
+    async def shell(ctx, args):
+        os.write(1, b"raw descriptor\\n")
+        os.system("echo child stdout; head -c 1")  # head would otherwise eat a host request.
+        return "ok"
+    p.command("shell", "Shell", shell)
+""",
+    )
+    async with asyncio.timeout(10):
+        report = await trial.run(source, stimuli=(Stimulus("command", "shell"), Stimulus("command", "shell")))
+    assert report.status == "passed" and report.results == ["ok", "ok"]
+    assert "raw descriptor" in report.log and "child stdout" in report.log
 
 
 async def test_explicit_bad_config_fails_without_falling_back(tmp_path):

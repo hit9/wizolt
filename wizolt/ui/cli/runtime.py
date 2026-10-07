@@ -18,6 +18,7 @@ from prompt_toolkit.styles import DynamicStyle
 from wizolt.agent.lifecycle import close_agent_resources
 from wizolt.base import MalformedToolCallError, TurnBox, WizoltError, run_blocking
 from wizolt.image import UserInput
+from wizolt.sdk import PluginError
 from wizolt.ui.cli.modals import tool_output_viewer
 from wizolt.ui.render import Theme, search_sources_footer
 from wizolt.ui.tui import TuiApp
@@ -235,8 +236,8 @@ class TuiRuntime:
         text = str(value).strip()
         if not text:
             return
-        # A skill's `/name` is a message for the turn, like any follow-up; other `/` text is a command.
-        if not value.images and "\n" not in text and text.startswith("/") and not self.loop.skill_command(text):
+        # Any other `/` text is a command, queued to run between turns.
+        if not value.images and "\n" not in text and text.startswith("/"):
             self.spawn(self.loop.run_queued_command(text), name="queued-command")
         else:
             self.submit_accepted(_Submission(value))
@@ -479,6 +480,7 @@ class TuiRuntime:
             tui.extension_fragments_fn = PluginView(self.loop.session.plugins).fragments
             keys = PluginKeys(self.loop.session.plugins, tui, self.submit_shortcut)
             self.loop.session.plugins.reload_preferences = keys.load
+            self.loop.session.plugins.read_stream = lambda: (self.loop.presentation.model_stream_kind, self.loop.presentation.model_stream_text)
             self.loop.session.plugins.interactions.handler = PluginDialogs(tui, self.loop.presentation, keys).call
         tui.input_hint_fn = self.loop.view.tui_input_hint
         tui.quick_hints_fn = lambda: self.loop.session.quick_hints
@@ -530,6 +532,8 @@ class TuiRuntime:
             self.submit_next(self.loop.take_pending_inputs())
 
     def reset_turn(self) -> None:
+        # A turn that printed nothing at all still prints the message that opened it.
+        self.loop.presentation.ui.release_held()
         self.loop.presentation.model_stream_output("", "")
         # A request can fail after permanent promotion but before Agent re-publishes the text and
         # consumes its marker. Never let that stale marker suppress an identical later response.
@@ -540,7 +544,7 @@ class TuiRuntime:
     async def dispatch(self, user_input: str | UserInput) -> bool:
         """Dispatch one input. Return true when it was fully handled as a command."""
         user_input = user_input if isinstance(user_input, UserInput) else UserInput(user_input)
-        self.loop.presentation.ui.emit_answer(user_input.display_text(), role="user", rule=False)
+        self.loop.presentation.user_message(user_input.display_text(), turn=not self.loop.is_command(user_input.strip()))
         try:
             # Isolate command cancellation from the input loop: swallowing CancelledError in
             # /compact must not leave the next model turn running on a cancelling parent task.
@@ -605,6 +609,12 @@ class TuiRuntime:
             answer = str(error)
             malformed_tool_call = True
         except WizoltError as error:
+            turn_error = error
+            answer = f"Error: {error}"
+        except PluginError as error:
+            # A failed interceptor chain (prompt.submit, model.request, context.compact) is a
+            # turn failure, not an app failure: the input loop must stay usable so the plugin
+            # can be disabled or reloaded from /plugins (design/PLUGIN_INTERCEPTION.md).
             turn_error = error
             answer = f"Error: {error}"
         finally:
@@ -808,7 +818,7 @@ class TuiRuntime:
                 self.spawn(self._finish_starting(scan, skills), name="startup-settle")
                 self.submit_next(self.loop.take_pending_inputs())
                 # Input admission may proceed, but commands such as /status freeze the model's
-                # skill listing and /name needs discovery. Neither may race the initial scan.
+                # skill listing and mentions need discovery. Neither may race the initial scan.
                 if skills is not None:
                     await self._until_shutdown(skills)
                 if not self.shutdown.is_set():

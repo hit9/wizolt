@@ -4,7 +4,7 @@ Bound the transport independently of UI clipping: a renderer must never receive 
 plugin response. These are host budgets, not extension points or a security sandbox.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from wizolt.sdk import Line, Panel, PluginError, Text
@@ -16,6 +16,7 @@ MAX_REQUEST = 64 * 1024 * 1024
 MAX_PANEL_ROWS = 12
 MAX_ROW_CHARACTERS = 4096
 MAX_ROW_SPANS = 256
+MAX_FIELDS = 64  # The SDK's per-registry limit.
 
 
 @dataclass(frozen=True)
@@ -37,7 +38,8 @@ class Capabilities:
     tools: dict[str, Operation]
     themes: dict[str, dict[str, Any]]
     presets: dict[str, dict[str, str]]
-    summarizer: bool = False
+    intercepts: dict[str, "InterceptSpec"] = field(default_factory=dict)
+    presenters: dict[str, "PresenterSpec"] = field(default_factory=dict)
 
     @classmethod
     def decode(cls, name: str, value: dict) -> "Capabilities":
@@ -50,8 +52,62 @@ class Capabilities:
             {key: Operation(**item) for key, item in value["tools"].items()},
             value["themes"],
             value["presets"],
-            value.get("summarizer", False),
+            {key: InterceptSpec.decode(key, item) for key, item in value.get("intercepts", {}).items()},
+            {key: PresenterSpec.decode(key, item) for key, item in value.get("presenters", {}).items()},
         )
+
+
+@dataclass(frozen=True)
+class InterceptSpec:
+    """A registration's host-side prefilter and response mode; never a plugin predicate."""
+
+    match: dict[str, frozenset[str]]
+    response: str = ""
+
+    @classmethod
+    def decode(cls, operation: str, value: dict) -> "InterceptSpec":
+        from wizolt.sdk.operations import OPERATIONS
+
+        spec = OPERATIONS.get(operation)
+        match = value.get("match", {})
+        if spec is None or not isinstance(match, dict) or not set(match) <= spec.match:
+            raise PluginError(f"Invalid interceptor registration for {operation}")
+        if any(not isinstance(items, list) or not items or any(not isinstance(item, str) for item in items) for items in match.values()):
+            raise PluginError(f"Invalid {operation} matcher")
+        response = value.get("response", "")
+        if response not in (("preserve", "replace") if spec.response_modes else ("",)):
+            raise PluginError(f"Invalid {operation} response mode")
+        return cls({key: frozenset(items) for key, items in match.items()}, response)
+
+    def matches(self, value: object) -> bool:
+        return all(getattr(value, key, None) in allowed for key, allowed in self.match.items())
+
+
+@dataclass(frozen=True)
+class PresenterSpec:
+    """A presenter registration's host-side prefilter; never a plugin predicate."""
+
+    match: dict[str, frozenset[str]]
+
+    @classmethod
+    def decode(cls, site: str, value: dict) -> "PresenterSpec":
+        from wizolt.sdk.presentation import SITES
+
+        allowed = SITES.get(site)
+        match = value.get("match", {})
+        if allowed is None or not isinstance(match, dict) or not set(match) <= allowed:
+            raise PluginError(f"Invalid presenter registration for {site}")
+        if any(not isinstance(items, list) or not items or any(not isinstance(item, str) for item in items) for items in match.values()):
+            raise PluginError(f"Invalid {site} presenter matcher")
+        return cls({key: frozenset(items) for key, items in match.items()})
+
+    def matches(self, value: object) -> bool:
+        return all(getattr(value, key, None) in allowed for key, allowed in self.match.items())
+
+
+def decode_panel(value: dict) -> Panel:
+    """One panel from worker JSON; callers bound it with ``Snapshot.check_panel``."""
+    return Panel(tuple(Line(tuple(Text(**span) for span in row["spans"])) if "spans" in row else Text(**row) for row in value["rows"]))
 
 
 @dataclass(frozen=True)
@@ -64,12 +120,13 @@ class Snapshot:
         """Decode only data. The parent never imports classes supplied by plugin Python."""
         try:
             fields = value["fields"]
-            panels = {
-                slot: Panel(tuple(Line(tuple(Text(**span) for span in row["spans"])) if "spans" in row else Text(**row) for row in panel["rows"]))
-                for slot, panel in value["panels"].items()
-            }
-            if not isinstance(fields, dict):
-                raise TypeError("fields must be an object")
+            panels = {slot: decode_panel(panel) for slot, panel in value["panels"].items()}
+            # Bars sanitize field text on every paint: bound it here like a panel row, so a
+            # long string cannot make each frame of the host's UI slow.
+            if not isinstance(fields, dict) or len(fields) > MAX_FIELDS:
+                raise TypeError(f"fields must be an object with at most {MAX_FIELDS} entries")
+            if any(type(value) not in (str, int, float, bool) or (isinstance(value, str) and len(value) > MAX_ROW_CHARACTERS) for value in fields.values()):
+                raise TypeError(f"fields must be scalars; text at most {MAX_ROW_CHARACTERS} characters")
             for panel in panels.values():
                 cls.check_panel(panel)
             return cls(fields, panels)

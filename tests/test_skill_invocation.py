@@ -1,4 +1,4 @@
-"""Starting a skill: `/name args`, argument placeholders, and `!`command`` context at load time."""
+"""Starting a skill: arguments, argument placeholders, and `!`command`` context at load time."""
 
 import asyncio
 import contextlib
@@ -13,7 +13,7 @@ from prompt_toolkit.document import Document
 
 from wizolt.agent.context import ContextManager
 from wizolt.agent.engine import Agent
-from wizolt.base import SESSION_EVENT_KEY
+from wizolt.base import SESSION_EVENT_KEY, ToolError
 from wizolt.skill.invocation import Arguments, Invocation
 from wizolt.skill.trust import ProjectTrust
 from wizolt.tools import SkillTool
@@ -44,14 +44,6 @@ def test_argument_placeholders():
     # No arguments: shell positionals in an existing skill are left alone.
     assert Arguments().fill("awk '{print $1}'") == "awk '{print $1}'"
     assert Arguments().fill("all: [$ARGUMENTS]") == "all: []"
-
-
-def test_split_command():
-    assert Invocation.split_command("/deploy staging now") == ("deploy", Arguments("staging now"))
-    assert Invocation.split_command("/deploy") == ("deploy", Arguments())
-    assert Invocation.split_command("/review\nfocus on errors\nand tests") == ("review", Arguments("focus on errors\nand tests"))
-    assert Invocation.split_command("/usr/bin/env is broken") is None  # a path, not a command
-    assert Invocation.split_command("deploy") is None
 
 
 # --- the model's Skill tool ---
@@ -98,29 +90,36 @@ async def test_repeat_loads_collapse_only_when_identical(tmp_path):
     assert "repeat load of skill deploy; instructions shown earlier at tr.1" in deduped[2]
 
 
-# --- the user's /name ---
+# --- a skill is not a command ---
 
 
-async def test_slash_name_starts_a_turn_with_the_skill_loaded(tmp_path):
+async def test_slash_name_is_not_a_skill_command_anymore(tmp_path):
     _skill(tmp_path, "deploy", "argument-hint: <env>\n", "Deploy to $ARGUMENTS. Branch !`echo main`.")
     s = session(tmp_path)
+    loop = _loop(s)
+    emitted = []
+    loop.presentation.emit_turn = emitted.append
 
-    assert await _loop(s).command("/deploy staging") == (False, False)  # not handled: it is a turn
-    blocks = await Agent(s, output_fn=lambda _text: None).mention_messages("/deploy staging")
-    assert len(blocks) == 1
-    assert blocks[0][SESSION_EVENT_KEY] == "skill_command"
-    assert blocks[0]["content"].startswith('<Skill name="deploy" source="project" args="staging" invoked-by="user">')
-    assert "Deploy to staging. Branch main." in blocks[0]["content"]
+    assert await loop.command("/deploy staging") == (True, False)
+    assert emitted[-1] == "Unknown command: /deploy"
+    assert await Agent(s, output_fn=lambda _text: None).mention_messages("/deploy staging") == []
 
 
-async def test_user_only_skill_starts_from_slash_name(tmp_path):
+async def test_a_user_only_skill_opens_when_the_user_names_it(tmp_path):
     _skill(tmp_path, "ship", "disable-model-invocation: true\n", "Ship it.")
-    blocks = await Agent(session(tmp_path), output_fn=lambda _text: None).mention_messages("/ship")
+    s = session(tmp_path)
+    agent = Agent(s, output_fn=lambda _text: None)
 
-    assert "Ship it." in blocks[0]["content"]
+    with pytest.raises(ToolError, match="held back from the model"):
+        await SkillTool(s, ["ship"]).call()
+    [block] = await agent.mention_messages("run $ship")
+    assert block[SESSION_EVENT_KEY] == "skill_mentions"
+    assert "- ship [project]: ship skill" in block["content"]
+    assert "Ship it." not in block["content"]
+    assert "Ship it." in await SkillTool(s, ["ship"]).call()
 
 
-async def test_non_user_invocable_and_builtin_names_are_not_skill_commands(tmp_path):
+async def test_user_invocable_is_gone_and_builtin_names_still_win(tmp_path):
     _skill(tmp_path, "background", "user-invocable: false\n", "Knowledge.")
     _skill(tmp_path, "status", "", "A skill named like a built-in.")
     s = session(tmp_path)
@@ -130,22 +129,18 @@ async def test_non_user_invocable_and_builtin_names_are_not_skill_commands(tmp_p
 
     assert await loop.command("/background") == (True, False)
     assert emitted[-1] == "Unknown command: /background"
-    assert not loop.skill_command("/status")  # the built-in wins the name
-    assert await Agent(s, output_fn=lambda _text: None).mention_messages("/background") == []
+    # The refused field no longer hides a skill; it warns instead.
+    assert "- background [project]: background skill" in s.skills.index()
+    assert "user-invocable" in " ".join(s.skills.get("background").warnings)
 
 
-def test_slash_completion_offers_skill_commands(tmp_path):
+def test_slash_completion_offers_no_skill_commands(tmp_path):
     _skill(tmp_path, "deploy", "argument-hint: <env>\n")
-    _skill(tmp_path, "digest")
-    _skill(tmp_path, "background", "user-invocable: false\n")
     _skill(tmp_path, "status")
     completer = _loop(session(tmp_path)).input_completer
 
-    rows = {row.text: row.display_meta_text for row in completer.get_completions(Document("/d"), None)}
-    assert rows["/deploy "] == "<env>"  # takes arguments: Enter opens them
-    assert rows["/digest"] == "skill"
-    assert not any(text.startswith("/background") for text in completer_texts(completer, "/b"))
-    assert completer_texts(completer, "/status") == ["/status"]  # built-ins appear once; the skill cannot shadow /status
+    assert completer_texts(completer, "/d") == []  # a skill is not a command
+    assert completer_texts(completer, "/status") == ["/status"]  # the built-in alone; a skill cannot shadow it
 
 
 def completer_texts(completer, text):
@@ -287,7 +282,7 @@ async def test_cancelled_spawn_failure_still_propagates_cancellation(tmp_path, m
         await asyncio.wait_for(task, 5)
 
 
-async def test_skill_command_output_is_capped(tmp_path):
+async def test_skill_load_output_is_capped(tmp_path):
     _skill(tmp_path, "dump", "", "Log:\n!`head -c 50000 /dev/zero | tr '\\0' x`\nEnd.")
     output = await SkillTool(session(tmp_path), ["dump"]).call()
 
@@ -297,7 +292,7 @@ async def test_skill_command_output_is_capped(tmp_path):
     assert output.rstrip().endswith("</Skill>") and "End." in output
 
 
-async def test_skill_command_in_a_missing_directory_reports_instead_of_raising(tmp_path):
+async def test_skill_load_in_a_missing_directory_reports_instead_of_raising(tmp_path):
     _skill(tmp_path, "where", "", "Here: !`pwd`")
     s = session(tmp_path)
     s.cwd = str(tmp_path / "removed")
@@ -305,15 +300,6 @@ async def test_skill_command_in_a_missing_directory_reports_instead_of_raising(t
     output = await SkillTool(s, ["where"]).call()
 
     assert "Here: [`pwd` failed with exit code 127: cannot start:" in output
-
-
-def test_exit_is_never_a_skill_command(tmp_path):
-    _skill(tmp_path, "exit", "", "Not an exit.")
-    _skill(tmp_path, "quit", "", "Not a quit.")
-    loop = _loop(session(tmp_path))
-
-    assert not loop.skill_command("/exit")
-    assert not loop.skill_command("/quit")
 
 
 async def test_shell_stdin_and_environment(tmp_path):

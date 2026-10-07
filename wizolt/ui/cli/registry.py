@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from wizolt.sdk import PluginError
-from wizolt.ui.cli.commands import COMMAND_LOOKUP, COMMAND_NAMES, Command
+from wizolt.ui.cli.commands import COMMAND_LOOKUP, COMMAND_NAMES, Command, CommandResult
 
 if TYPE_CHECKING:
     from wizolt.plugins.runtime import PluginRuntime
@@ -24,7 +24,7 @@ class PluginCommand:
     plugin: str
     name: str
 
-    async def __call__(self, _loop: CommandLoop, arguments: str) -> str:
+    async def __call__(self, _loop: CommandLoop, arguments: str) -> CommandResult:
         try:
             return await self.runtime.invoke(self.plugin, "command", self.name, {"input": arguments})
         except Exception as error:  # noqa: BLE001 - user plugin failures belong in command output.
@@ -44,12 +44,14 @@ class CommandCatalog:
         if self.runtime is None:
             return result
         for owner, entry in self.runtime.entries.items():
+            if entry.disabling:
+                continue  # A stopping plugin admits no new commands.
             for name, action in entry.active.plugin.commands.items():
                 spelling = "/" + name
                 if spelling in COMMAND_NAMES:
                     # Embeddings may have loaded plugins before assembling their CLI. Keep the
                     # built-in reachable and report the conflict, as normal activation would.
-                    entry.active.error = str(PluginError(f"Reserved command: {spelling}"))
+                    entry.active.fail(f"command:{name}", str(PluginError(f"Reserved command: {spelling}")))
                     continue
                 result[spelling] = Command(
                     spelling,

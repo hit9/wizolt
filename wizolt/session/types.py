@@ -6,6 +6,7 @@ projects is one import away from the behavior that mutates it.
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from collections.abc import Iterable
@@ -68,7 +69,10 @@ class AgentState:
     plan: list[PlanItem | Json | str] = field(default_factory=list)
     known: list[str] = field(default_factory=list)
     check: str = ""
-    summary: str = ""
+    # One summary per compaction, oldest first, each kept as written: a later compaction summarizes
+    # only what it evicts, so an earlier summary is not paraphrased again on every pass. Folded into
+    # one only once together they pass SUMMARY_FOLD_CHARS (`apply_summary`).
+    summaries: list[str] = field(default_factory=list)
     # How this session is labelled when listed, and where that label came from. `apply` never sets
     # either: the name follows the user and the goal, not whatever a tool call happens to write.
     name: str = ""
@@ -126,8 +130,29 @@ class AgentState:
         rows = [item.row(status=status, style=style) for item in cls.plan_items(items)]
         return rows or ["- (empty)"]
 
-    def apply_summary(self, data: Json) -> None:
-        """Take the one field a compaction reply owns.
+    # About four summaries as compactors write them (3.5-4k characters each, measured on real
+    # sessions); the plugin summary bound is the same size.
+    SUMMARY_FOLD_CHARS: ClassVar[int] = 16_000
+
+    @property
+    def summary(self) -> str:
+        """Every kept summary, oldest first: what a checkpoint carries."""
+        return "\n\n".join(self.summaries)
+
+    @summary.setter
+    def summary(self, text: str) -> None:
+        self.summaries = [text] if text else []
+
+    def fold_due(self) -> bool:
+        """Whether the next compaction folds the kept summaries into its own instead of adding one.
+
+        One rule, read both when the request is written and when its reply is applied, so the
+        compactor is told exactly what will happen to the summaries it was shown."""
+        return len(self.summary) > self.SUMMARY_FOLD_CHARS
+
+    def apply_summary(self, data: Json, *, label: str = "") -> None:
+        """Take the one field a compaction reply owns: added as the newest summary, or replacing
+        them all when a fold was due. `label` names the span it covers.
 
         `goal`, `plan`, `known` and `check` are `Note`'s, and a compaction used to overwrite all
         four from the same JSON. They did not need rescuing: they live here and survive eviction
@@ -137,8 +162,10 @@ class AgentState:
         thing it must produce. Anything it learned that belongs in `known` reaches the model
         through the summary, which can then call `Note` like any other writer.
         """
-        if isinstance(data.get("summary"), str):
-            self.summary = str(data["summary"]).strip()
+        if not isinstance(data.get("summary"), str) or not (text := str(data["summary"]).strip()):
+            return
+        block = f"[{label}]\n{text}" if label else text
+        self.summaries = [block] if self.fold_due() else [*self.summaries, block]
 
     def format(self, *, include_summary: bool = False) -> str:
         known = ["- " + item for item in self.known] or ["- (empty)"]
@@ -173,6 +200,40 @@ class ToolErrorRecord:
 
 
 @dataclass
+class OperationReceipt:
+    """What an intercepted operation actually did, kept apart from what was delivered.
+
+    Bounded and durable: inputs are clipped JSON text and the actual result is a reference to the
+    existing tool record (``tr.N``), never a second copy of the payload. ``core`` is ``not_run``,
+    ``started``, ``completed``, ``failed``, ``interrupted`` or ``unknown`` (it may have run before
+    a crash; resume never retries it). ``origin`` is ``core`` or the plugin registration that
+    produced the result; ``shaped`` names registrations that changed the delivered result.
+    """
+
+    TEXT_LIMIT: ClassVar[int] = 2000
+    LIMIT: ClassVar[int] = 200  # Receipts kept per session, newest last.
+
+    id: str
+    operation: str
+    target: str
+    original: str = ""
+    effective: str = ""
+    origin: str = "core"
+    core: str = "not_run"
+    actual: str = ""
+    shaped: tuple[str, ...] = ()
+    wrapper_failure: str = ""
+    retry_of: str = ""
+    # Settled: the turn holds a result or settlement for it. Only a crash leaves this unset.
+    delivered: bool = False
+
+    @classmethod
+    def clip(cls, value: object) -> str:
+        text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+        return text if len(text) <= cls.TEXT_LIMIT else text[: cls.TEXT_LIMIT] + "…"
+
+
+@dataclass
 class TurnDiff:
     TRANSCRIPT_CHAR_LIMIT: ClassVar[int] = 64 * 1024
 
@@ -200,9 +261,8 @@ class HistorySegment:
 
     The fields after `text` describe the compaction that produced the segment, for `/compact log`
     and for the export's index entry; they are what makes an eviction reviewable afterwards.
-    `summary` is the checkpoint summary as it stood at this compaction -- the live checkpoint
-    carries only the newest one, so without this copy every earlier summary would be unreachable
-    once the next compaction replaced it."""
+    `summary` is this span's own summary as the compactor wrote it. The checkpoint keeps it too
+    until a fold replaces the kept summaries, so this copy is what keeps it reachable afterwards."""
 
     key: str
     title: str
@@ -214,6 +274,9 @@ class HistorySegment:
     messages: int = 0  # evicted message count
     summary: str = ""
     model: str = ""  # effective model the summary ran on; empty = fell back to trimming
+    # Paths the evicted messages read without editing, as the calls named them: recorded by the
+    # host rather than recalled by the summarizer, so a filename is never reworded on its way out.
+    files_read: list[str] = field(default_factory=list)
 
     _KEY_RE: ClassVar[re.Pattern] = re.compile(r"seg\.(\d+)")
 
@@ -243,9 +306,16 @@ class QueuedInput:
     # stays a label everywhere the text is still the user's own. Never serialized -- a snapshot
     # cannot carry the references, and the flattened `draft` is what a resumed entry reads.
     source: UserInput | None = None
+    # The admission receipt once claimed: the effective model message and expansion records, or
+    # a refusal. Reused across request rebuilds, release/reclaim and resume, so plugins, hooks
+    # and mention discovery run once per submitted item.
+    admission: Json | None = None
+    # Who authored it: "user" (a frontend submission) or "child" (a parent model's message to
+    # a subagent). Interceptors see it as the prompt origin; it never makes input a command.
+    origin: str = "user"
 
     def to_json(self) -> str | Json:
-        if not self.images and not self.next_turn and not self.commands:
+        if not self.images and not self.next_turn and not self.commands and self.admission is None and self.origin == "user":
             return self.text
         data: Json = {"text": self.text, "draft": self.draft}
         if self.images:
@@ -254,6 +324,10 @@ class QueuedInput:
             data["next_turn"] = True
         if self.commands:
             data["commands"] = True
+        if self.admission is not None:
+            data["admission"] = self.admission
+        if self.origin != "user":
+            data["origin"] = self.origin
         return data
 
     @classmethod
@@ -268,14 +342,18 @@ class QueuedInput:
         draft = str(value.get("draft") or text)
         next_turn = value.get("next_turn") is True  # absent in snapshots written before the flag
         commands = value.get("commands") is True
+        admission = value.get("admission") if isinstance(value.get("admission"), dict) else None
+        origin = "child" if value.get("origin") == "child" else "user"
         if not text.strip():
             return None
         if draft.count("\ufffc") != len(images):
-            return cls(text, next_turn=next_turn, commands=commands)
-        return cls(text, images, draft, next_turn=next_turn, commands=commands)
+            return cls(text, next_turn=next_turn, commands=commands, admission=admission, origin=origin)
+        return cls(text, images, draft, next_turn=next_turn, commands=commands, admission=admission, origin=origin)
 
     def user_input(self) -> UserInput:
-        return self.source if self.source is not None else UserInput(self.draft or self.text, self.images)
+        value = self.source if self.source is not None else UserInput(self.draft or self.text, self.images)
+        value.origin = self.origin
+        return value
 
     def message(self, prefix: str = "") -> Json:
         message: Json = {"role": "user", "content": prefix + self.text}

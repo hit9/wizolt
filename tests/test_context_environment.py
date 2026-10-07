@@ -9,6 +9,7 @@ from agent_harness import session
 from wizolt.agent.context import ContextManager
 from wizolt.agent.prompts import (
     GIT_ATTRIBUTION_FOOTER,
+    REACTIONS,
     SYSTEM_PROMPT,
 )
 from wizolt.base import (
@@ -23,6 +24,7 @@ def test_model_messages_are_ordered_context_messages(tmp_path):
     s = session(tmp_path)
     s.skills = SkillLibrary({})  # no skills: assert the base frame ordering
     s.settings.attribution = False  # its tail block has its own test; keep this frame bare
+    s.settings.reactions = False
     s.messages.extend([{"role": "user", "content": "old request"}, {"role": "assistant", "content": "old answer"}])
     turn = [
         {"role": "user", "content": "current request"},
@@ -45,6 +47,7 @@ def test_language_auto_injects_nothing_byte_identical(tmp_path):
     s = session(tmp_path)
     s.skills = SkillLibrary({})  # no skills: assert the base frame
     s.settings.attribution = False  # asserted bare: the tail block has its own test
+    s.settings.reactions = False
     turn = [{"role": "user", "content": "request"}]
     messages = ContextManager(s).model_messages(SYSTEM_PROMPT, turn)
 
@@ -55,6 +58,7 @@ def test_language_auto_injects_nothing_byte_identical(tmp_path):
 def test_language_directive_appends_stable_block_to_system_tail(tmp_path):
     s = session(tmp_path)
     s.settings.attribution = False  # the language block is what ends the system prompt here
+    s.settings.reactions = False
     turn = [{"role": "user", "content": "request"}]
     context = ContextManager(s)
     auto_messages = context.model_messages(SYSTEM_PROMPT, turn)
@@ -76,6 +80,7 @@ def test_attribution_directive_appends_a_stable_block_by_default(tmp_path):
     s = session(tmp_path)
     turn = [{"role": "user", "content": "request"}]
     context = ContextManager(s)
+    s.settings.reactions = False  # the reactions block would follow this one
 
     s.settings.attribution = False
     bare = context.model_messages(SYSTEM_PROMPT, turn)
@@ -91,6 +96,29 @@ def test_attribution_directive_appends_a_stable_block_by_default(tmp_path):
     # only the system tail changes: everything after it is byte-identical to the bare request
     assert messages[1:] == bare[1:]
     # the block is a pure function of the flag: repeated projections are identical
+    assert context.model_messages(SYSTEM_PROMPT, turn) == messages
+
+def test_reactions_directive_ends_the_main_agents_system_prompt_only(tmp_path):
+    s = session(tmp_path)
+    s.settings.attribution = False
+    turn = [{"role": "user", "content": "request"}]
+    context = ContextManager(s)
+
+    messages = context.model_messages(SYSTEM_PROMPT, turn)
+    s.settings.reactions = False
+    bare = context.model_messages(SYSTEM_PROMPT, turn)
+    s.settings.reactions = True
+    s.agent_parent = "parent-uid"  # a subagent talks to its parent model, never to the user
+    child = context.model_messages(SYSTEM_PROMPT, turn)
+
+    system = messages[0]["content"]
+    assert system.startswith(SYSTEM_PROMPT.strip() + "\n\nREACTIONS:")  # on by default
+    assert "[react:<emoji>]" in system and " ".join(REACTIONS) in system
+    assert bare[0]["content"] == SYSTEM_PROMPT.strip()
+    assert child[0]["content"] == SYSTEM_PROMPT.strip()
+    # only the system tail changes, and it is the same bytes on every request
+    assert messages[1:] == bare[1:]
+    s.agent_parent = ""
     assert context.model_messages(SYSTEM_PROMPT, turn) == messages
 
 def test_environment_uses_cached_system_info(tmp_path, monkeypatch):

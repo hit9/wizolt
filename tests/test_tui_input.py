@@ -81,7 +81,7 @@ def test_real_theme_keys_edit_and_save_a_custom_input_without_reopening_editor(t
 
     def drive(pipe_input):
         wait_until(lambda: app.modal is not None)
-        pipe_input.send_text("he\x15hello ❯ \t\x15→ \r\r")
+        pipe_input.send_text("hhe\x15hello ❯ \t\x15→ \r\r")
 
     run_interactive_tui(monkeypatch, app, drive=drive)
     assert "saved as ui.input" in results[0]
@@ -1014,6 +1014,26 @@ def test_interactive_tui_keeps_padding_around_running_queue(monkeypatch):
     assert activity.ypos == 1
     assert prompt.ypos == activity.ypos + activity.height + 2
     assert status.ypos == prompt.ypos + prompt.height + 2
+
+
+def test_activity_cursor_stays_inside_activity_that_grows_between_reads():
+    """Activity read twice in one render used to place the cursor by the second, longer read:
+    a line past the rendered text, which wrapped scrolling indexed and crashed the event loop."""
+    lines = ["working"]
+
+    def activity():
+        lines.append(f"+ step {len(lines)}")
+        return [("", "\n".join(lines))]
+
+    app = TuiApp(activity_fragments_fn=activity)
+    app.build_layout()
+    app.set_running("working")
+    assert app.activity_window is not None
+
+    content = app.activity_window.content.create_content(40, None)
+
+    assert content.cursor_position.y == content.line_count - 1
+    content.get_height_for_line(content.cursor_position.y, 40, None)
 
 
 def test_interactive_tui_approval_has_no_leading_blank_row(monkeypatch):

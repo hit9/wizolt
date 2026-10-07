@@ -11,6 +11,13 @@ from wizolt.plugins.catalog import Installation, PluginCatalog
 from wizolt.plugins.preferences import PluginPreferences
 
 
+def test_every_bundled_plugin_is_off_until_the_user_enables_it(tmp_path):
+    records, errors = PluginCatalog.for_user(str(tmp_path)).read()
+    bundled = {name: item for name, item in records.items() if name in {"pet", "layout"}}
+    assert not errors and set(bundled) == {"pet", "layout"}
+    assert not any(item.enabled for item in records.values())
+
+
 @pytest.mark.parametrize("record", [[], [["enabled", True]]])
 def test_array_is_not_an_installation_record(tmp_path, record):
     catalog = PluginCatalog.for_user(str(tmp_path))

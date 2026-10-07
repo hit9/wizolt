@@ -51,12 +51,12 @@ async def test_main_archive_always_confirms_affected_branch(group, monkeypatch, 
     payload = {"action": "archive", "agent_id": parent.agent.session.uid}
     view = SubagentTool(root, [payload]).approval_view()
     assert "review: completed" in view.text and "nested: completed" in view.text
-    assert ("slots released", "2") in view.rows
+    assert ("agents removed", "2") in view.rows
     await group.root.tools.run([call("Subagent", [payload])])
     assert len(prompts) == 1
     if approve:
         result = json.loads(root.tool_records[-1].output)
-        assert result["released_slots"] == 2
+        assert result["removed"] == 2
         assert {row["agent_id"] for row in result["archived"]} == {parent.agent.session.uid, nested.agent.session.uid}
         assert set(group.entries) == {root.uid}
         assert (await group.inspect(parent.agent.session.uid))["status"] == "archived"
@@ -133,6 +133,8 @@ async def test_inspect_is_bounded_readonly_and_includes_archived_history(group, 
     assert "hidden-never-project" not in str(result)
     assert child.messages == before
     assert result["model"] == child.config.provider.model
+    live = {row["agent_id"]: row for row in json.loads(await SubagentTool(root, [{"action": "list"}]).call())}
+    assert live[child.uid]["task"] == "inspect task" and "answer" not in live[child.uid]
     await group.archive(child.uid)
     archived = json.loads(await SubagentTool(root, [{"action": "inspect", "agent_id": child.uid}]).call())
     assert archived["status"] == "archived"
@@ -140,6 +142,7 @@ async def test_inspect_is_bounded_readonly_and_includes_archived_history(group, 
     assert child.uid not in group.entries
     listing = json.loads(await SubagentTool(root, [{"action": "list"}]).call())
     assert listing[-1]["agent_id"] == child.uid and listing[-1]["status"] == "archived"
+    assert listing[-1]["task"] == "inspect task"  # Which child did what survives archival.
     with pytest.raises(ToolError, match="Unknown agent"):
         await group.inspect("not-in-this-family")
 
@@ -183,6 +186,90 @@ async def test_inspect_result_suppresses_duplicate_completion_notification(group
     assert group.root.session.state.child_results_seen[entry.agent.session.uid] == entry.result["result_id"]
 
 
+@pytest.mark.parametrize("archived", [False, True])
+async def test_report_returns_the_whole_answer_for_live_and_archived_children(group, monkeypatch, archived):
+    answer = "SUMMARY\n" + "detail line\n" * 700 + "END"
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": answer}, [], answer
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    entry = await finished(group, await group.spawn(root, "review", "work"))
+    uid = entry.agent.session.uid
+    if archived:
+        await group.archive(uid)
+        assert uid not in group.entries
+    tool = SubagentTool(root, [{"action": "report", "agent_id": uid}])
+    assert tool.needs_confirmation() is False
+    assert await tool.call() == answer
+    assert await group.report(uid) == answer  # The snapshot's answer follows the live rule.
+
+
+async def test_report_keeps_its_plain_text_through_the_runner_and_claims_no_delivery(group, monkeypatch):
+    from wizolt.agent.results import receive_results
+    from wizolt.base import SUBAGENT_RECEIPTS_KEY
+
+    answer = "The whole answer, verbatim: 100% " + "x" * 200
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": answer}, [], answer
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    entry = await finished(group, await group.spawn(root, "review", "work"))
+    turn = await group.root.tools.run([call("Subagent", [{"action": "report", "agent_id": entry.agent.session.uid}])])
+    assert answer in turn[0]["content"]
+    assert SUBAGENT_RECEIPTS_KEY not in turn[0]
+    # Reading the text by hand is not the result envelope; the child is still announced once.
+    receive_results(root, turn, group.results_for(root.uid))
+    assert len(turn) == 2
+
+
+async def test_report_states_status_and_error_when_the_child_produced_no_text(group, monkeypatch):
+    async def request(client, messages, tools=None):
+        raise ModelError("quota exhausted")
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await finished(group, await group.spawn(group.root.session, "review", "work"))
+    text = await SubagentTool(group.root.session, [{"action": "report", "agent_id": entry.agent.session.uid}]).call()
+    assert "no answer text" in text and "failed" in text and "quota exhausted" in text
+
+
+async def test_list_is_a_status_overview_that_does_not_claim_a_result(group, monkeypatch):
+    from wizolt.agent.results import receive_results
+    from wizolt.base import SUBAGENT_RECEIPTS_KEY
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    root = group.root.session
+    await finished(group, await group.spawn(root, "review", "work"))
+    turn = await group.root.tools.run([call("Subagent", [{"action": "list"}])])
+    rows = json.loads(root.tool_records[-1].output)
+    assert [row["status"] for row in rows] == ["idle", "completed"]
+    assert all("answer" not in row and "result_id" not in row for row in rows)
+    assert SUBAGENT_RECEIPTS_KEY not in turn[0]
+    # Nothing was shown, so the child's result still has to be announced to the parent.
+    receive_results(root, turn, group.results_for(root.uid))
+    assert len(turn) == 2
+
+
+@pytest.mark.parametrize("long", [False, True])
+async def test_inspect_points_at_report_only_when_the_result_was_clipped(group, monkeypatch, long):
+    answer = "summary " * (400 if long else 4)
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": answer}, [], answer
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await finished(group, await group.spawn(group.root.session, "review", "work"))
+    inspected = await group.inspect(entry.agent.session.uid)
+    assert inspected["result"]["truncated"] is long
+    assert ("report" in inspected["result"].get("hint", "")) is long
+
+
 async def test_turn_clock_is_live_then_frozen_and_restored(group, monkeypatch):
     from wizolt.session import types
 
@@ -205,7 +292,7 @@ async def test_turn_clock_is_live_then_frozen_and_restored(group, monkeypatch):
     assert loaded.state.elapsed == 192
 
 
-@pytest.mark.parametrize("action", ["inspect", "list", "wait"])
+@pytest.mark.parametrize("action", ["inspect", "wait"])
 @pytest.mark.parametrize("truncated", [False, True])
 async def test_result_receipts_are_independent_of_tool_framing_and_survive_snapshot(group, monkeypatch, action, truncated):
     from wizolt.agent.results import receive_results
@@ -732,25 +819,77 @@ async def test_yolo_send_requires_approval_and_does_not_change_child_settings(gr
     assert "Cancelled" in root.tool_errors[-1].error
 
 
-@pytest.mark.parametrize("limit", [0, 1, 5, 32])
-async def test_configured_limit_is_group_wide_and_visible_to_all_models(group, limit):
+@pytest.mark.parametrize("limit", [1, 3])
+async def test_running_limit_is_group_wide_and_settled_children_free_their_slots(group, monkeypatch, limit):
+    release = asyncio.Event()
+
+    async def request(client, messages, tools=None):
+        await release.wait()
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
     root = group.root.session
     root.settings.max_subagents = limit
     root_schema = next(s for s in Tool.resolved_schemas(root) if s["function"]["name"] == "Subagent")
-    assert f"Maximum retained child agents: {limit} (excluding main)" in root_schema["function"]["description"]
-    parent = root
-    for index in range(min(limit, 5)):
-        entry = await group.spawn(parent, f"child {index}", "task")
-        task = entry.task
-        group.stop(entry.agent.session.uid)
-        await asyncio.gather(task, return_exceptions=True)
-        parent = entry.agent.session
+    assert f"Maximum running child agents: {limit} (excluding main)" in root_schema["function"]["description"]
+    parent, entries = root, []
+    for index in range(limit):
+        entries.append(await group.spawn(parent, f"child {index}", "task"))
+        parent = entries[-1].agent.session
         parent.settings.max_subagents = 32  # child settings cannot increase group admission.
-    if limit <= 5:
-        with pytest.raises(ToolError, match="Subagent limit reached"):
-            await group.spawn(parent, "overflow", "task")
+    with pytest.raises(ToolError, match=f"Subagent limit reached: {limit} of {limit} agents running"):
+        await group.spawn(parent, "overflow", "task")
     child_schema = next(s for s in Tool.resolved_schemas(parent) if s["function"]["name"] == "Subagent")
-    assert f"Maximum retained child agents: {limit} (excluding main)" in child_schema["function"]["description"]
+    assert f"Maximum running child agents: {limit} (excluding main)" in child_schema["function"]["description"]
+    # Steering an agent that already holds a slot needs no new one.
+    await group.send(entries[0].agent.session.uid, "steer")
+    release.set()
+    for entry in entries:
+        await finished(group, entry)
+    assert group.active == 0
+    # Settled children keep their place in the group while new work fits again.
+    await finished(group, await group.spawn(root, "after", "task"))
+    await group.send(entries[0].agent.session.uid, "follow-up")
+    await finished(group, entries[0])
+    assert len(group.entries) == limit + 2
+
+
+async def test_waking_an_idle_child_needs_a_slot_but_queueing_and_user_input_do_not(group, monkeypatch):
+    release = asyncio.Event()
+    release.set()
+
+    async def request(client, messages, tools=None):
+        await release.wait()
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    group.root.session.settings.max_subagents = 1
+    idle = await finished(group, await group.spawn(group.root.session, "idle", "task"))
+    release.clear()
+    busy = await group.spawn(group.root.session, "busy", "task")
+    uid = idle.agent.session.uid
+    with pytest.raises(ToolError, match="Subagent limit reached: 1 of 1"):
+        await group.send(uid, "wake")
+    assert idle.agent.session.pending_user_inputs == [] and idle.task is None
+    await group.send(uid, "queued", start=False)
+    assert idle.task is None and [item.text for item in idle.agent.session.pending_user_inputs] == ["queued"]
+    # The user typing into a child's frontend is never refused by the model's limit.
+    await group.send(uid, "from the user", commands=True)
+    assert idle.task is not None
+    release.set()
+    await finished(group, busy)
+    await finished(group, idle)
+    assert idle.agent.session.pending_user_inputs == []
+
+
+async def test_zero_limit_turns_subagents_off_for_the_model(group):
+    root = group.root.session
+    assert any(s["function"]["name"] == "Subagent" for s in Tool.resolved_schemas(root))
+    root.settings.max_subagents = 0
+    assert not any(s["function"]["name"] == "Subagent" for s in Tool.resolved_schemas(root))
+    with pytest.raises(ToolError, match=r"Subagents are off \(runtime.max_subagents = 0\)"):
+        await group.spawn(root, "child", "task")
+    assert set(group.entries) == {root.uid}
 
 
 @pytest.mark.parametrize("value", [-1, 33, True, "3", 1.5])
@@ -1006,6 +1145,62 @@ async def test_wait_any_returns_first_settled_target_and_keeps_others_running(gr
     assert settled == [second, first]
 
 
+async def test_wait_all_returns_once_every_target_settles(group, monkeypatch):
+    release = {name: asyncio.Event() for name in ("first", "second")}
+
+    async def request(client, messages, tools=None):
+        await release[client.session.agent_name].wait()
+        return {"role": "assistant", "content": client.session.agent_name}, [], client.session.agent_name
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    first, second = [await group.spawn(group.root.session, name, "task") for name in release]
+    ids = [first.agent.session.uid, second.agent.session.uid]
+    tool = SubagentTool(group.root.session, [{"action": "wait", "agent_ids": ids, "mode": "all"}])
+    assert tool.short_args()[0] == "wait all"  # The transcript names the mode.
+    waiter = asyncio.create_task(tool.call())
+    release["second"].set()
+    await finished(group, second)
+    await asyncio.sleep(0.05)
+    assert not waiter.done()  # One settled is not all.
+    release["first"].set()
+    rows = json.loads(await asyncio.wait_for(waiter, 3))
+    assert sorted((row["agent_id"], row["status"]) for row in rows) == sorted([(ids[0], "completed"), (ids[1], "completed")])
+
+
+async def test_wait_all_timeout_reports_every_target_with_its_state(group, monkeypatch):
+    release = asyncio.Event()
+
+    async def request(client, messages, tools=None):
+        if client.session.agent_name == "slow":
+            await release.wait()
+        return {"role": "assistant", "content": "done"}, [], "done"
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    quick, slow = [await group.spawn(group.root.session, name, "task") for name in ("quick", "slow")]
+    await finished(group, quick)
+    rows = json.loads(await SubagentTool(group.root.session, [{"action": "wait", "mode": "all", "agent_ids": [quick.agent.session.uid, slow.agent.session.uid], "timeout": 0}]).call())
+    assert {row["agent_id"]: row["status"] for row in rows} == {quick.agent.session.uid: "completed", slow.agent.session.uid: "running"}
+    with pytest.raises(ToolError, match='mode must be "any" or "all"'):
+        await group.wait([quick.agent.session.uid], 0, mode="some")
+    release.set()
+    await finished(group, slow)
+
+
+@pytest.mark.parametrize("length", [60, 5_000])
+async def test_wait_rows_show_the_answer_head_and_flag_the_cut(group, monkeypatch, length):
+    answer = "HEAD " + "x" * (length - 5)
+
+    async def request(client, messages, tools=None):
+        return {"role": "assistant", "content": answer}, [], answer
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await finished(group, await group.spawn(group.root.session, "review", "work"))
+    row = json.loads(await SubagentTool(group.root.session, [{"action": "wait", "timeout": 0, "agent_ids": [entry.agent.session.uid]}]).call())[0]
+    assert row["truncated"] is (length > 4_000)
+    assert row["answer"] == answer[:4_000]
+    assert (row["answer"] == answer) is (length <= 4_000)  # The head, never the tail.
+
+
 async def test_cancel_wait_does_not_cancel_children(group, monkeypatch):
     async def request(client, messages, tools=None):
         await asyncio.Event().wait()
@@ -1155,7 +1350,8 @@ async def test_stop_and_list_survive_interrupted_tool_call_only_history(group, m
     )
     assert json.loads(await stop.call())[0]["status"] == "interrupted"  # repeated stops are safe.
     listing = json.loads(await SubagentTool(root, [{"action": "list"}]).call())
-    assert len(listing) == 3 and listing[0]["answer"] == ""
+    assert [row["status"] for row in listing] == ["idle", "interrupted", "running"]
+    assert all("answer" not in row for row in listing)
     release.set()
     await finished(group, two)
 
@@ -1283,8 +1479,8 @@ async def test_bad_child_snapshot_does_not_block_healthy_family_restore(group, m
         restored.close()
 
 
-@pytest.mark.parametrize("limit,name,error", [(1, "new", "limit reached"), (2, "existing", "name already in use")])
-async def test_restore_serializes_admission_before_limit_and_name_checks(group, monkeypatch, limit, name, error):
+@pytest.mark.parametrize("retained,name,error", [(1, "new", "1 agents retained"), (32, "existing", "name already in use")])
+async def test_restore_serializes_admission_before_retention_and_name_checks(group, monkeypatch, retained, name, error):
     async def request(client, messages, tools=None):
         return {"role": "assistant", "content": "done"}, [], "done"
 
@@ -1293,7 +1489,7 @@ async def test_restore_serializes_admission_before_limit_and_name_checks(group, 
     await finished(group, entry)
     root = group.root.session
     restored = SessionSnapshotStore.load(root.uid, config=deepcopy(root.config), settings=deepcopy(root.settings), cwd=root.cwd)
-    restored.settings.max_subagents = limit
+    monkeypatch.setattr("wizolt.agent.subagents.MAX_SUBAGENTS", retained)
     bootstrap_features(restored)
     restored.borrow_ownership(root)
     agent = Agent(restored, output_fn=lambda _: None)
@@ -1496,27 +1692,36 @@ async def test_forked_skill_uses_a_child_without_forking_again(group, isolate_ho
     assert {entry.agent.session.agent_name for entry in group.entries.values() if entry.parent} == {skill.fork_name, *names}
 
 
-@pytest.mark.parametrize("limit", [0, 1])
-async def test_forked_skills_respect_retained_limit_without_falling_back_inline(group, isolate_home, monkeypatch, limit):
+@pytest.mark.parametrize("limit,error", [(0, "Subagents are off"), (1, "Subagent limit reached")])
+async def test_forked_skills_respect_running_limit_without_falling_back_inline(group, isolate_home, monkeypatch, limit, error):
     folder = isolate_home / ".claude" / "skills" / "inspect"
     folder.mkdir(parents=True)
     (folder / "SKILL.md").write_text("---\nname: inspect\ndescription: inspect\ncontext: fork\n---\nInspect in isolation.\n")
     root = group.root.session
     root.skills.reload()
     root.settings.max_subagents = limit
+    release = asyncio.Event()
+    release.set()
 
     async def request(client, messages, tools=None):
+        await release.wait()
         return {"role": "assistant", "content": "done"}, [], "done"
 
     monkeypatch.setattr(ModelClient, "request", request)
+    busy = None
     if limit:
+        # A finished fork frees its slot; one still running holds it.
         assert await SkillTool(root, ["inspect"]).call() == "done"
-    # User slash invocation and model invocation both preserve the fork boundary.
-    assert await group.root.skill_command("/inspect")
-    with pytest.raises(ToolError, match="Subagent limit reached"):
+        release.clear()
+        busy = await group.spawn(root, "busy", "task")
+    # Model invocation preserves the fork boundary: it never falls back to running inline.
+    with pytest.raises(ToolError, match=error):
         await SkillTool(root, ["inspect"]).call()
-    assert len(group.entries) == limit + 1
+    assert len(group.entries) == 2 * limit + 1
     assert root.active_skills == [] and root.messages == []
+    release.set()
+    if busy is not None:
+        await finished(group, busy)
 
 
 @pytest.mark.parametrize("stop", [False, True])

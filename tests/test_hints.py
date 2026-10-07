@@ -3,7 +3,7 @@
 from wizolt.ui.cli.hints import HINTS, Context, HintPicker
 
 SESSIONS = "/sessions resumes a past session"
-SKILL = "$skill loads a skill inline"
+SKILL = "$skill points the agent at a skill"
 MCP = "@server.tool mentions an MCP tool"
 IMAGE = "Paste an image path to attach it"
 WIZOLT_HELP = "Questions about wizolt? Just ask"

@@ -1,9 +1,9 @@
 """The model's one plugin gateway: apply saved choices, and use tools that plugins register."""
 
 import json
-from typing import ClassVar
+from typing import Any, ClassVar
 
-from wizolt.base import ApprovalView, Json, ToolError
+from wizolt.base import ApprovalView, Json, ToolCall, ToolError
 from wizolt.tools.base import Tool
 
 
@@ -49,11 +49,52 @@ class PluginTool(Tool):
         plan = runtime.reload_plan(name if isinstance(name, str) else "")
         changed = [f"- {plugin}: {change}" for plugin, change in plan if change != runtime.UNCHANGED]
         restarted = [plugin for plugin, change in plan if change == runtime.UNCHANGED]
-        lines = [*changed] or ["No changes."] if plan else ["Nothing to reload: no saved plugin choices match."]
+        if not plan:
+            lines = ["Nothing to reload: no saved plugin choices match."]
+        elif changed:
+            lines = list(changed)
+        else:
+            lines = ["No changes."]
         if restarted:
             lines.append(f"Restart without changes, resetting what they keep in memory: {', '.join(restarted)}")
         text = "Run saved plugin code in this agent, with your permissions.\n\n" + "\n".join(lines)
         return ApprovalView("plugin reload", text, rows=[("scope", name or "all saved plugins"), ("changes", f"{len(changed)} of {len(plan)}")])
+
+    @staticmethod
+    def usable(runtime, name: str = "") -> list[tuple[str, str, Any]]:
+        """``(plugin, tool, operation)`` for every tool of a running plugin, optionally one plugin's:
+        what ``list`` discloses and what ``tools.offer`` may add."""
+        return [
+            (plugin, tool, operation)
+            for plugin, entry in runtime.entries.items()
+            if (not name or plugin == name) and not entry.disabling and not entry.active.worker.error and entry.active.worker.process.returncode is None
+            for tool, operation in entry.active.plugin.tools.items()
+        ]
+
+    MAX_WIRE_NAME: ClassVar[int] = 64  # Providers reject longer function names.
+
+    @classmethod
+    def offerable(cls, runtime) -> tuple[str, ...]:
+        """``plugin.tool`` for every running plugin tool that can be offered directly: one whose
+        wire name a provider accepts, so adding it can never make the turn's requests fail."""
+        return tuple(f"{plugin}.{tool}" for plugin, tool, _ in cls.usable(runtime) if len(plugin) + 1 + len(tool) <= cls.MAX_WIRE_NAME)
+
+    @staticmethod
+    def wire_name(qualified: str) -> str:
+        """The request's name for a plugin tool offered directly: ``notes.search`` -> ``notes-search``.
+        Plugin and tool names are identifiers, so the hyphen cannot be ambiguous."""
+        return qualified.replace(".", "-", 1)
+
+    @classmethod
+    def resident_call(cls, session, call: ToolCall) -> ToolCall:
+        """A call to a directly offered plugin tool, as the gateway call it runs as: the same
+        approval, ``tool.call`` chain and result. Any other call is returned unchanged."""
+        plugin, separator, tool = call.name.partition("-")
+        offered = session.offered_tools
+        if not separator or offered is None or f"{plugin}.{tool}" not in offered:
+            return call
+        payload: Json = {"action": "call", "name": plugin, "tool": tool, "arguments": call.payload if isinstance(call.payload, dict) else {}}
+        return ToolCall(call.id, cls.NAME, [payload], call.error, payload)
 
     def short_args(self) -> list[str]:
         payload = self.payload()
@@ -83,15 +124,7 @@ class PluginTool(Tool):
             if action == "reload":
                 return json.dumps(await runtime.hot_reload(name), ensure_ascii=False)
             if action == "list":
-                tools = [
-                    {"name": plugin, "tool": tool, "description": operation.description}
-                    for plugin, entry in runtime.entries.items()
-                    if (not name or plugin == name)
-                    and not entry.active.error
-                    and not entry.active.worker.error
-                    and entry.active.worker.process.returncode is None
-                    for tool, operation in entry.active.plugin.tools.items()
-                ]
+                tools = [{"name": plugin, "tool": tool, "description": operation.description} for plugin, tool, operation in self.usable(runtime, name)]
                 return json.dumps({"tools": tools}, ensure_ascii=False)
             plugin, tool, operation = self.operation(payload)
             if action == "describe":
@@ -99,6 +132,10 @@ class PluginTool(Tool):
             arguments = payload.get("arguments", {})
             if not isinstance(arguments, dict):
                 raise ToolError("Plugin tool arguments must be an object")
-            return await runtime.invoke(plugin, "tool", tool, arguments)
+            answer = await runtime.invoke(plugin, "tool", tool, arguments)
+            # A tool answers the model, so it stays text; the worker refuses anything else.
+            if not isinstance(answer, str):
+                raise ToolError(f"Plugin tool {plugin}.{tool} must answer with text")
+            return answer
         except ValueError as error:
             raise ToolError(str(error)) from error

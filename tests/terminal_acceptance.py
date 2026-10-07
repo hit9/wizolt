@@ -146,11 +146,12 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     pane.send(f"{sys.executable} {entry} --config {config} --yolo")
 
     def wait(text):
+        """Text, or a pattern where column padding depends on the bundled names."""
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             visible = pane.visible()
             assert "Unhandled exception" not in visible, visible
-            if text in visible:
+            if text.search(visible) if isinstance(text, re.Pattern) else text in visible:
                 return visible
             time.sleep(.05)
         raise AssertionError(f"missing {text!r}: {visible}")
@@ -158,18 +159,19 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     wait("test-model")
     pane.send("/plugins")
     wait("disabled")
-    pane.keys("Down")  # layout and pet are both bundled, disabled installations.
+    for _ in range(2):  # context_bar, layout and pet are bundled, disabled installations.
+        pane.keys("Down")
     pane.keys("Enter")
     wait("1. enable")
     pane.keys("Enter")
-    wait("enabled   active")
+    wait("enabled   running")
     pane.keys("Escape")
-    wait("on standby")
+    wait("strolling")  # The idle pet's caption.
     pane.resize(160, 30)
     wait("plugins 1")
     for width, height in ((40, 18), (100, 30), (60, 20)):
         pane.resize(width, height)
-        wait("on standby")
+        wait("strolling")
     pane.send("/plugins")
     wait("Plugins")
     pane.keys("Enter")
@@ -177,12 +179,12 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     pane.keys("Down")
     wait("2. disable")
     pane.keys("Enter")
-    visible = wait("pet     builtin  disabled")
+    visible = wait(re.compile(r"pet +builtin +disabled"))
     assert "plugins 1" not in visible
     pane.keys("Escape")
     pane.send("/plugins")
     visible = wait("Plugins")
-    assert "on standby" not in visible
+    assert "strolling" not in visible
     pane.keys("Escape", "C-d")
 
 
@@ -222,7 +224,7 @@ def test_plugin_appearance_reload_preserves_input_and_updates_bars(pane):
     wait("h/l tab")
     pane.keys("Escape")
     pane.send("/plugins disable look")
-    wait('"disabled"')
+    wait('"off"')
     pane.send("/plugins enable look")
     wait("RELOADED-LOOK test-model")
     pane.keys("C-d")
@@ -704,7 +706,7 @@ def test_cli_agents_live_preview_and_stop_keys(pane):
     wait("main  test-model", absent="read-only")
     _settled_capture(pane)
     pane.send("archive via model")
-    wait("slots released")
+    wait("agents removed")
     wait("api-review: interrupted")
     wait("Approve")  # Even --yolo must stop here, after inspect ran without approval.
     pane.keys("Enter")
@@ -959,7 +961,7 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
     for cycle in range(3):
         log.with_suffix(f".open-{cycle}").touch()
         visible_containing("Colorscheme")
-        pane.keys("h", "h")
+        pane.keys("h", "h", "h")  # Wraps back past Transcript and Input to Divider.
         visible_containing("Running (preview)")
         chosen = ("capsule", "frame", "rail")[cycle]
         pane.keys(str(cycle + 2))
@@ -1022,7 +1024,7 @@ def test_bar_cascade_previews_survive_resize_and_cancel(pane):
         time.sleep(0.03)
     log.with_suffix(".open-4").touch()
     visible_containing("Colorscheme")
-    pane.keys("h", "j")
+    pane.keys("h", "h", "j")  # Wraps back past Transcript to Input.
     visible_containing("❯ Explain this function")
     for width, height in ((60, 18), (100, 30), (80, 24)):
         pane.resize(width, height)

@@ -114,7 +114,8 @@ class PreviewExporter:
         svg.extend(("</g>", "</svg>"))
         # Slot names are not paths. The SDK currently restricts them, but exporters should not
         # acquire arbitrary write capability if the slot vocabulary grows in a future SDK.
-        name = f"frame-{index}-{''.join(c if c.isalnum() else '-' for c in slot)}"
+        # Keep "_" and "-": preset names may differ only by them, and each needs its own files.
+        name = f"frame-{index}-{''.join(c if c.isalnum() or c in '_-' else '.' for c in slot)}"
         self.directory.mkdir(parents=True, exist_ok=True)
         svg_path = self.directory / f"{name}.svg"
         svg_path.write_text("\n".join(svg), encoding="utf-8")

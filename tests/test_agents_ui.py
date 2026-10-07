@@ -544,13 +544,14 @@ async def test_group_limit_setting_validation_and_status_from_each_agent(fronten
     assert root.session.settings.max_subagents == 5
     assert set_value(root, "runtime.worker on") == "Unknown config key: runtime.worker"
     runtime = await child(frontend)
-    def retained(loop) -> str:
+    def running(loop) -> str:
         return dict(StatusReport.of(loop).snapshot.activity.rows)["group subagents"]
 
-    assert retained(root) == retained(runtime.loop) == "1/5"
+    # The idle child is retained but holds no slot.
+    assert running(root) == running(runtime.loop) == "0/5 running"
     assert "main agent" in set_value(runtime.loop, "runtime.max_subagents 32")
     assert set_value(root, "runtime.max_subagents 0") == "Set runtime.max_subagents"
-    assert retained(runtime.loop) == "1/0"
+    assert running(runtime.loop) == "off"
 
 
 async def pick(frontend, runtime, monkeypatch):

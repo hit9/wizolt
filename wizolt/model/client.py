@@ -10,7 +10,7 @@ import json
 import re
 import threading
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
@@ -43,12 +43,13 @@ from wizolt.image import IMAGE_REFS_KEY, ImageInputs
 from wizolt.model import resilience, responses
 from wizolt.model.anthropic import AnthropicWire
 from wizolt.model.chat import ChatWire
-from wizolt.model.protocol import WireProtocol
+from wizolt.model.protocol import WireProtocol, cut_off_call
 from wizolt.model.responses import ResponsesWire
 from wizolt.providers.compat import (
     ResolvedProvider,
     builtin_tools_issue,
 )
+from wizolt.utils.headers import render_header
 from wizolt.utils.json_repair import JsonRepair
 
 if TYPE_CHECKING:
@@ -160,6 +161,11 @@ class ModelClient:
         # The effective model the last compaction summary ran on; "" when the last compaction fell
         # back to deterministic trimming or never ran. Recorded on the HistorySegment by callers.
         self.last_compaction_model = ""
+        # model.request bookkeeping: the last logical request's ID, the one a manual retry replaces,
+        # and whether a response-replacing plugin currently owns what the user sees.
+        self._last_request = ""
+        self._retry_of = (0, "")  # (turn it was claimed in, request it replaces)
+        self.preview_suppressed = False
         self._wires: dict[str, WireProtocol] = {
             "chat": ChatWire(self),
             "responses": ResponsesWire(self),
@@ -333,10 +339,70 @@ class ModelClient:
         if lease.active:
             callback()
 
-    async def request(self, messages: list[Json], tools: list[Json] | None = None) -> tuple[Json, list[ToolCall], str]:
+    async def request(self, messages: list[Json], tools: list[Json] | None = None, *, reason: str = "normal") -> tuple[Json, list[ToolCall], str]:
+        """One agent-step request: the ``turn`` purpose of the logical ``model.request`` boundary.
+
+        ``reason`` is ``normal``, ``image_fallback`` or ``tool_correction``. Transport retries run
+        inside the boundary and reuse the transformed request; a manual retry starts a new
+        logical request linked to the one it replaces through ``retry_of``.
+        """
         if missing := self.session.missing_config():
             raise ModelError("missing config: " + ", ".join(missing))
         tools = tools if tools is not None else Tool.resolved_schemas(self.session)
+        config = self.session.config
+        # A retry links only within the turn that claimed it: one whose turn ended before the
+        # rebuilt request went out replaces nothing in a later turn.
+        (claimed_in, retry_of), self._retry_of = self._retry_of, (0, "")
+        retry_of = retry_of if claimed_in == self.session.state.round_count else ""
+        self._last_request = ""  # Set only when interception sees this request; never a stale one.
+        try:
+            return await self.logical(
+                "turn",
+                messages,
+                tools,
+                provider=config.provider,
+                entry=config.active_provider,
+                send=lambda provider: self._transport_request(messages, tools, None if provider is config.provider else provider),
+                reason=reason,
+                retry_of=retry_of,
+            )
+        except ModelRequestRetry:
+            self._retry_of = (self.session.state.round_count, self._last_request)  # The rebuilt request names it.
+            raise
+
+    async def logical(
+        self,
+        purpose: str,
+        messages: list[Json],
+        tools: list[Json] | None,
+        *,
+        provider: ProviderConfig,
+        entry: str,
+        send: Callable[[ProviderConfig], Awaitable[tuple[Json, list[ToolCall], str]]],
+        reason: str = "normal",
+        retry_of: str = "",
+    ) -> tuple[Json, list[ToolCall], str]:
+        """Route one model request through ``model.request`` interception exactly once."""
+        from wizolt.model.interception import client_request
+
+        def remember(identity: str) -> None:
+            self._last_request = identity
+
+        return await client_request(
+            self, purpose, messages, tools, provider=provider, entry=entry, send=send, reason=reason, retry_of=retry_of, on_request=remember
+        )
+
+    @contextlib.contextmanager
+    def suppressed_preview(self):
+        """While a response-replacing plugin may rewrite the answer, show progress, not tokens."""
+        previous, self.preview_suppressed = self.preview_suppressed, True
+        try:
+            yield
+        finally:
+            self.preview_suppressed = previous
+
+    async def _transport_request(self, messages: list[Json], tools: list[Json] | None, provider: ProviderConfig | None) -> tuple[Json, list[ToolCall], str]:
+        """The provider attempts behind one logical request, with bounded transport retries."""
         state = self.session.state
         state.model_retry_reason = ""
         try:
@@ -350,7 +416,7 @@ class ModelClient:
                 # meant is decided by the attempt's own claim, not by this flag.
                 state.manual_model_retry_requested = False
                 try:
-                    return await self._attempt_request(messages, tools)
+                    return await self._attempt_request(messages, tools, provider)
                 except ModelError as error:
                     retryable = resilience.retryable_error(error)
                     if attempt >= MODEL_REQUEST_RETRIES or not retryable:
@@ -371,7 +437,9 @@ class ModelClient:
             state.current_model_attempt = 0
             state.model_retry_reason = ""
 
-    async def _attempt_request(self, messages: list[Json], tools: list[Json] | None) -> tuple[Json, list[ToolCall], str]:
+    async def _attempt_request(
+        self, messages: list[Json], tools: list[Json] | None, provider: ProviderConfig | None = None
+    ) -> tuple[Json, list[ToolCall], str]:
         """Run one provider attempt as a child task this client can name from another thread.
 
         The child exists so a manual retry has something exact to claim: a request the user asked to
@@ -381,7 +449,7 @@ class ModelClient:
         and only a claim made under the attempt lock turns a cancelled child into a retry."""
 
         loop = asyncio.get_running_loop()
-        task = loop.create_task(self.api_request(messages, tools))
+        task = loop.create_task(self.api_request(messages, tools) if provider is None else self.api_request(messages, tools, provider=provider))
         with self._attempt_lock:
             self._attempt = task
             self._attempt_loop = loop
@@ -543,7 +611,8 @@ class ModelClient:
         if not state.stream_started_at:
             state.stream_started_at = time.monotonic()
         state.stream_chars += len(delta)
-        if self.hooks.on_stream is not None:
+        # A response-replacing plugin may rewrite this answer: progress counts, tokens stay hidden.
+        if self.hooks.on_stream is not None and not self.preview_suppressed:
             self._request_callback(lambda: self.hooks.on_stream(kind, delta) if self.hooks.on_stream is not None else None)
 
     @classmethod
@@ -568,17 +637,19 @@ class ModelClient:
         return (match.group(1) if match else text).strip()
 
     @staticmethod
-    def request_headers(provider: ProviderConfig) -> dict[str, str]:
-        """Default headers for one entry: wizolt's own, then the entry's `headers` over them.
+    def request_headers(provider: ProviderConfig, catalog_headers: Mapping[str, str], session_id: str) -> dict[str, str]:
+        """Default headers for one entry: wizolt's own, the catalog's, then the entry's `headers`.
 
         Both wires share this so a header configured for an entry follows it across a `/provider`
-        switch and into the worker and compaction entries, which are copies of it."""
+        switch and into the worker and compaction entries, which are copies of it. Templates expand
+        per session: a subagent sends its own `{session_id}`, keeping its cached prefix apart."""
+        variables = {"session_id": session_id}
         headers = {"User-Agent": HTTP_USER_AGENT}
-        for name, value in provider.headers.items():
+        for name, value in [*catalog_headers.items(), *provider.headers.items()]:
             # httpx treats header names case-insensitively, but the OpenAI SDK starts with its own
             # exact-cased User-Agent. Keep that spelling so a configured override replaces it
             # instead of coexisting with it under a differently cased key.
-            headers["User-Agent" if name.lower() == "user-agent" else name.lower()] = value
+            headers["User-Agent" if name.lower() == "user-agent" else name.lower()] = render_header(value, variables)
         return headers
 
     def client(self, provider: ProviderConfig | None = None) -> AsyncOpenAI:
@@ -588,19 +659,21 @@ class ModelClient:
         # lazy import: keeps the ~0.8s provider SDK import off the startup path (see the TYPE_CHECKING block above)
         from openai import AsyncOpenAI
 
+        resolved = self.resolved(provider)
         return AsyncOpenAI(
             api_key=provider.key,
-            base_url=self.resolved(provider).base_url,
+            base_url=resolved.base_url,
             timeout=provider.timeout,
             max_retries=0,
-            default_headers=self.request_headers(provider),
+            default_headers=self.request_headers(provider, resolved.headers, self.session.uid),
         )
 
     def anthropic_client(self, provider: ProviderConfig | None = None) -> AsyncAnthropic:
         provider = provider if provider is not None else self.session.config.provider
         if missing := self.session.missing_config():
             raise ModelError("missing config: " + ", ".join(missing))
-        url = self.resolved(provider).base_url.rstrip("/")
+        resolved = self.resolved(provider)
+        url = resolved.base_url.rstrip("/")
         # lazy import: keeps the ~0.8s provider SDK import off the startup path (see the TYPE_CHECKING block above)
         from anthropic import AsyncAnthropic
 
@@ -609,7 +682,7 @@ class ModelClient:
             base_url=url.removesuffix("/v1"),
             timeout=provider.timeout,
             max_retries=0,
-            default_headers=self.request_headers(provider),
+            default_headers=self.request_headers(provider, resolved.headers, self.session.uid),
         )
 
     def report_builtin_call(self, name: str, detail: object) -> None:
@@ -786,7 +859,7 @@ class ModelClient:
                 # git commit message) parse instead of dropping the call's args.
                 payload = json.loads(arguments, strict=False)
             except json.JSONDecodeError:
-                calls.append(ToolCall(id=call_id, name=name, args=[]))
+                calls.append(cut_off_call(call_id, name))
                 continue
             calls.append(self.tool_call(call_id, name, payload))
         return calls

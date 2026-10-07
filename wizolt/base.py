@@ -343,6 +343,21 @@ class Text:
         content: TextFragments,
         width: int | None = None,
     ) -> TextRows:
+        # The common transcript row -- printable ASCII on one line that fits -- needs no cells:
+        # every character is one column, so its width is its length. The same fragments the
+        # general path builds, merged by style the way `_styled_row` merges them.
+        if all(text.isascii() and text.isprintable() for _, text in content):
+            prefix_width = sum(_cwidth(text) for _, text in prefix)
+            if not width or sum(len(text) for _, text in content) <= max(1, width - prefix_width):
+                row = list(prefix)
+                for style, text in content:
+                    if not text:
+                        continue
+                    if row and row[-1][0] == style:
+                        row[-1] = (style, row[-1][1] + text)
+                    else:
+                        row.append((style, text))
+                return [row]
         logical_lines: list[list[_TextCell]] = [[]]
         for style, text in content:
             for char in text:
@@ -515,7 +530,8 @@ class ApprovalView:
     the transcript's syntax highlighting and red/green bands. `rows` are the
     header fields shown above the text. `result` is what the call returned, shown below the text
     when the view is opened after the fact; it is empty at a confirmation prompt, where the call
-    has not run yet.
+    has not run yet. `parts` continue the text in the same frame and lexer, each `(label, text)`
+    under a gray rule carrying its label.
     """
 
     label: str
@@ -524,6 +540,7 @@ class ApprovalView:
     rows: list[tuple[str, str]] = field(default_factory=list)
     result: str = ""
     section: str = ""
+    parts: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -553,6 +570,10 @@ class LogBlock:
     # nested calls). Every line below the region's own root lines then carries the rail; see
     # margin_units and ToolRunner.emit.
     gutter: bool = False
+    # The block's items as the settings in effect now draw them, for a block whose look follows a
+    # setting the user can change after it was printed (a tool call's `[transcript] format`). Every
+    # walk asks it first, so a transcript rebuild redraws the block instead of replaying it.
+    redraw: Callable[[], list[LogLine | LogBlock]] | None = field(default=None, compare=False, repr=False)
 
     @classmethod
     def hierarchy(cls, root: LogLine | None, children: list[LogLine]) -> LogBlock:
@@ -593,6 +614,8 @@ class LogBlock:
         contains draw their edges, so deeper lines rail in the same column instead of floating free
         under them."""
         level = parent_level + 1
+        if self.redraw is not None:
+            self.items = self.redraw()
         if self.gutter:
             rails = (*rails, level + 1)
         for item in self.items:

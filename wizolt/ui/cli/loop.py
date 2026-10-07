@@ -26,7 +26,9 @@ from wizolt.base import (
     run_blocking,
 )
 from wizolt.image import UserInput
+from wizolt.sdk import Line, PluginError
 from wizolt.session import QueuedInput, SessionLease, SessionSnapshotStore
+from wizolt.tools import transcript
 from wizolt.ui.cli.commands import QUEUED_SUBCOMMANDS
 from wizolt.ui.cli.modals import approval_text_viewer, question_interaction
 from wizolt.ui.cli.presentation import Presentation
@@ -35,7 +37,7 @@ from wizolt.ui.cli.resume import ResumeRenderer
 from wizolt.ui.cli.runtime import TuiRuntime
 from wizolt.ui.cli.update import UpdateChecker
 from wizolt.ui.cli.view import CommandCompleter, View
-from wizolt.ui.render import InputStyle, Theme, UiPrinter, WidthDependent, search_sources_footer
+from wizolt.ui.render import InputStyle, StyledReport, Theme, UiPrinter, WidthDependent, search_sources_footer
 
 if TYPE_CHECKING:
     from wizolt.ui.cli.agents import AgentsFrontend
@@ -62,6 +64,12 @@ class CommandLoop:
     EDITOR_CONTEXT_ELLIPSIS: ClassVar[str] = "# [... earlier lines of this reply omitted ...]"
     EDITOR_CONTEXT_SEPARATOR: ClassVar[str] = "# --- (earlier reply) ---"
     INPUT_HISTORY_BYTES: ClassVar[int] = 512 * 1024
+    EXIT_WORDS: ClassVar[frozenset[str]] = frozenset({"/exit", "/quit", "exit", "quit"})
+
+    @classmethod
+    def is_command(cls, text: str) -> bool:
+        """Whether `command` handles this input itself rather than passing it to the model."""
+        return text in cls.EXIT_WORDS or text.startswith("/")
 
     def __init__(self, agent: Agent, input_fn=input, output_fn=print):
         self.agent = agent
@@ -121,7 +129,6 @@ class CommandLoop:
             mcp_tools=lambda server: tuple(tool.name for tool in self.session.mcp.tools.get(server, [])) if self.session.mcp else (),
             skills=lambda: tuple(skill.name for skill in self.session.skills.all()) if self.session.skills else (),
             skill_source=lambda name: skill.source if self.session.skills and (skill := self.session.skills.get(name)) else "",
-            skill_commands=lambda: tuple((skill.name, skill.argument_hint) for skill in self.session.skills.commands()) if self.session.skills else (),
             file_matches=self.session.mentions.cached_matches if self.session.mentions else None,
             agents_rows=lambda: self.session.agents.menu_rows() if self.session.agents else [],
         )
@@ -216,11 +223,6 @@ class CommandLoop:
         if not parts:
             return ""
         return "\n".join(parts)
-
-    def skill_command(self, text: str) -> bool:
-        """True when `text` starts a skill with `/name` rather than naming a built-in command:
-        built-ins win a name clash, and the skill stays reachable as `$name`."""
-        return text.partition(" ")[0].partition("\n")[0] not in self.commands.names() and bool(self.session.skills and self.session.skills.command(text))
 
     async def run_queued_command(self, text: str) -> None:
         """Dispatch a read-only slash command while an agent turn is running."""
@@ -359,6 +361,10 @@ class CommandLoop:
                     malformed_tool_call = True
                 except WizoltError as error:
                     answer = f"Error: {error}"
+                except PluginError as error:
+                    # A failed interceptor chain is a turn failure, not an app failure: the loop
+                    # must stay usable so the plugin can be disabled or reloaded from /plugins.
+                    answer = f"Error: {error}"
             finally:
                 self.presentation.status_bar.stop()
             # Same rule as TuiRuntime.run_agent_turn: the engine publishes its own final answer
@@ -408,6 +414,7 @@ class CommandLoop:
         self.theme_problems.extend(self.presentation.status_bar.layout.load(self.session.config.ui, Theme.bar_styles))
         self.presentation.input_style, problems = InputStyle.load(self.session.config.ui)
         self.theme_problems.extend(problems)
+        self.theme_problems.extend(transcript.validate(self.session.config.transcript))
 
     def start_session(self, *, show_banner: bool = True) -> None:
         """Initialize output and background services shared by both command-loop frontends."""
@@ -616,15 +623,13 @@ class CommandLoop:
         here, so its request lives on the same loop as everything else the session opened. Every
         other handler is local and bounded, and runs directly."""
 
-        if text in {"/exit", "/quit", "exit", "quit"}:
+        if text in self.EXIT_WORDS:
             await self.resume.save_and_emit_resume()
             return True, True
-        if not text.startswith("/"):
+        if not self.is_command(text):
             return False, False
         name, _, args = text.partition(" ")
         entry = self.commands.get(name)
-        if self.skill_command(text):
-            return False, False  # a turn, which loads the skill (see Agent.skill_command)
         output = entry.handler(self, args.strip()) if entry else f"Unknown command: {name}"
         if inspect.isawaitable(output):
             output = await output
@@ -634,6 +639,11 @@ class CommandLoop:
                 self.presentation.emit(output)
             elif isinstance(output, WidthDependent):
                 self.presentation.ui.emit_block(output)
+            elif isinstance(output, list):
+                # A plugin command's styled answer: theme roles the host renders in a frame.
+                # An empty one has no rows, and renders nothing at all.
+                if output and isinstance(output[0], Line):
+                    self.presentation.ui.emit_block(StyledReport(output))
             elif entry is not None and entry.render == "answer":
                 self.presentation.ui.emit_answer(output, indent=TurnBox.CONTENT_LEVEL)
             else:

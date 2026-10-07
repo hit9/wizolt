@@ -104,7 +104,9 @@ wizolt = ["providers/catalog.json", "skill/builtin/*/*.md", "plugins/builtin/*.p
 testpaths = ["tests"]
 # Real multiplexer acceptance tests need terminals and real time; exclude them by default.
 # Run them with `uv run pytest -m tmux` or `uv run pytest -m zellij`; CI has dedicated jobs.
-addopts = ["-n", "auto", "-m", "not tmux and not zellij"]
+# worksteal, not the default chunked "load": a worker that drew slow subprocess tests used to keep
+# the run going long after the others went idle (measured 57 s -> 32 s for the full suite).
+addopts = ["-n", "auto", "--dist", "worksteal", "-m", "not tmux and not zellij"]
 markers = [
     "tmux: real-tmux terminal acceptance tests (slow; excluded by default)",
     "zellij: real-Zellij terminal acceptance tests (slow; excluded by default)",

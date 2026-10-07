@@ -63,7 +63,7 @@ async def test_a_late_cancel_cannot_reach_the_next_turn(tmp_path):
     agent = Agent(s, output_fn=lambda _text: None)
 
     class Model:
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             return {"role": "assistant", "content": "done"}, [], "done"
 
     agent.model = Model()
@@ -84,7 +84,7 @@ async def test_agent_injects_pending_user_input_once(tmp_path):
         def __init__(self):
             self.messages = []
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.messages.append(messages)
             if len(self.messages) == 1:
                 s.enqueue_user_input("second instruction")
@@ -131,7 +131,7 @@ async def test_agent_expands_file_mentions_in_queued_input_before_sending(tmp_pa
         def __init__(self):
             self.messages = []
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             del tools
             self.messages.append(messages)
             return {"role": "assistant", "content": "done"}, [], "done"
@@ -160,7 +160,7 @@ async def test_agent_never_reshapes_tools_for_a_live_followup(tmp_path):
         def __init__(self):
             self.requests = []
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append((messages, tools))
             if len(self.requests) == 1:
                 return {}, [call("Bash", ["echo hi"])], ""
@@ -194,7 +194,7 @@ async def test_agent_never_rewrites_a_sent_followup_message(tmp_path):
         def __init__(self):
             self.requests = []
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append([dict(message) for message in messages])
             if len(self.requests) == 1:
                 return {}, [read], "on it"
@@ -224,7 +224,7 @@ async def test_agent_keeps_one_tool_block_for_the_whole_turn(tmp_path):
         def __init__(self):
             self.requests = []
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append((messages, tools))
             if len(self.requests) == 1:
                 s.enqueue_user_input("a later follow-up")
@@ -267,7 +267,7 @@ async def test_agent_commits_textual_tool_call_correction_to_history(tmp_path):
         def __init__(self):
             self.requests = []
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append(([dict(message) for message in messages], tools))
             if len(self.requests) == 1:
                 return {"role": "assistant", "content": pseudo}, [], pseudo
@@ -303,7 +303,7 @@ async def test_agent_shares_textual_tool_call_limit_across_corrections(tmp_path)
         def __init__(self):
             self.requests = []
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append((messages, tools))
             return {"role": "assistant", "content": pseudo}, [], pseudo
 
@@ -360,7 +360,7 @@ async def test_agent_emits_and_records_intermediate_content_before_tools(tmp_pat
         def __init__(self):
             self.messages = []
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.messages.append(messages)
             if len(self.messages) == 1:
                 return {}, [call("Read", [{"path": "a.txt", "ranges": [[0, 1]]}])], "I'll inspect that first."

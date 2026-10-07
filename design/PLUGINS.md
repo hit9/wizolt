@@ -13,7 +13,7 @@ Pure row projection has a bounded cache keyed by immutable row content, terminal
 `Theme.key()`. Never key it only by plugin name or row position: sampling and focused-agent
 theme changes must be visible immediately. Cached fragments are immutable; callers own copies.
 Context-category estimation runs at admission/request boundaries, not in the 5 Hz sampler.
-Sampling observers may keep bounded histories; render callbacks consume them without IO.
+`tick` observers may keep bounded histories; render callbacks consume them without IO.
 
 `LayoutPreferences` owns per-slot user preferences; `LayoutBudget` allocates once in visual order.
 The runtime samples each generation once, fusing that with its first allocated component, and
@@ -46,14 +46,15 @@ the user's configured choice, so re-enabling can restore it.
 
 Package admission freezes regular files and resources before launching the worker. The parent
 owns the extracted directory, including cleanup after native exits; never let the worker own
-its only cleanup handle. Source rollback keeps the complete snapshot and settings, not just the
-entry module. A fresh worker provides module isolation for both single-file and package plugins.
+its only cleanup handle. A fresh worker provides module isolation for both single-file and package plugins.
 `pyproject.toml` is metadata only: admission must not invoke a build backend or install into the
 host interpreter. Descriptor-based bounded reads reject symlinks and special files before code
 execution.
 
 Read this with [the proposal](PLUGINS_PROPOSAL.md). The proposal is direction; the SDK and its
 packaged reference define what this implementation currently exposes.
+For the proposed interception and deeper presentation contracts, see
+[Plugin operations and presentation](PLUGIN_INTERCEPTION.md); those APIs are not shipped yet.
 
 ## Ownership and dependency direction
 
@@ -80,21 +81,42 @@ CLI manager / Plugin tool / agent lifecycle
   switch, so failed saves cannot change which interpreter an installation uses. Explicit custom
   interpreter paths remain the user's responsibility. A copied profile requires reinstalling
   dependencies; never silently fall back to host Python when an environment is absent.
-- Bundled plugins supply disabled installation defaults. They use the same loader, SDK, and
-  controls as user plugins; the terminal does not know which component is the pet.
+- Every bundled plugin is off by default; only the user's explicit enable turns one on. Wizolt
+  never adds features, plugins or functions the user has not explicitly asked for. Never ship a
+  bundled plugin enabled, enable one on upgrade, or make a host feature depend on one being
+  enabled. They use the same loader, SDK, and controls as user plugins; the terminal does
+  not know which component is the pet.
 
 ## Replacement and cancellation
 
 Validation constructs an unpublished generation. A failed candidate leaves active code intact.
-An active turn freezes the whole registry; command/tool and summarizer invocations pin only their
+An active turn freezes the whole registry; command/tool invocations and interception chains pin only their
 own generation. An idle plugin can therefore publish while another plugin is awaiting input.
-Replacement returns pending until its applicable leases end. Publication has no awaits. Each
-entry retains at most one previous and one pending generation. The previous revision retains
-one `Revision` containing source, settings and its interpreter path,
-not a second worker; superseded workers are retired by owned tasks that shutdown joins. Never
-resolve a rollback's interpreter from today's installation preferences: dependencies may have
-changed since that revision ran. Reload must also retain the installed identity, which owns
+Replacement reports `starting`, `reloading` or `stopping` until its applicable leases end;
+each live status word names one situation, and the saved enable choice is a separate field.
+Publication has no awaits. Each entry holds one active and at most one pending generation;
+superseded workers are retired by owned tasks that shutdown joins. Wizolt keeps no previous
+versions: source history is the user's version control (Git), and undo is a checkout plus a
+reload. A failed reload keeping the running generation is atomic replacement, not rollback,
+and must stay. Reload must also retain the installed identity, which owns
 settings and tool namespaces, even if a package's manifest was renamed on disk.
+
+Bringing a candidate in has two halves. **Launch** (identity check, worker start, setup,
+capability decode, appearance validation, first snapshot) touches only that plugin's process
+and is nearly all the cost. **Admit** (command collisions against the registry, then
+staging and publication) must see one consistent registry, so it runs under the runtime lock
+with no awaits between its check and its stage. Startup runs in this order:
+
+```text
+management lock held for the whole load (a /plugins disable waits, then applies)
+  read saved choices and revisions .............. serial, in saved order
+  launch every enabled candidate ................ parallel, outside the registry lock
+  admit and stage each candidate ................ serial, in saved order, under the registry lock
+```
+
+Saved order, not launch completion, decides collisions, so the result equals a sequential
+startup. Interactive enable and reload launch and admit one candidate under the lock. Shutdown
+cancels unadmitted launches and closes their workers; none outlives the runtime.
 
 The turn guard remains held while completion observers run. Never clear the engine's active task
 before awaiting observers: another turn could otherwise overlap the old generation. Cancellation
@@ -143,6 +165,16 @@ The host supplies viewport dimensions, theme roles and height budgets. Repeated 
 reuse one projection per frame. Plugins return plain data, never ANSI or prompt-toolkit widgets.
 Empty or clipped components must leave the input usable, including after multiplexer resizing.
 
+Beyond observing and registering, a plugin can wrap a semantic operation or render a named
+presentation site. Both are host-owned seams with public SDK contracts, per-registration health
+and a builtin path: `Interception` in `plugins/interception.py` runs ordered chains around
+`prompt.submit`, `context.compose`, `model.request`, `tool.call` and `context.compact`, and
+`Presenters` in `plugins/presenters.py` selects one renderer per site (`tool.call`,
+`tool.result`, `activity`), falling back to the builtin rendering on a conflict, a failure or a
+missed deadline. Final validation, approval, accounting and persistence stay with the adapters
+at each boundary; see [Plugin operations and presentation](PLUGIN_INTERCEPTION.md) for the
+contracts and the failing-registration rules.
+
 Interactive views follow the same data boundary (see [Plugin views](PLUGIN_VIEWS.md)). The host
 owns keys, validation, focus, queues and modal lifetime; no worker callback runs on the UI thread.
 Views belong to their invocation and agent. Background agents request attention instead of
@@ -157,7 +189,8 @@ broken plugin.
 ## Dependency environments
 
 Prepare a fresh environment constrained by host versions and persist its environment ID with the
-installation. New candidate workers use that interpreter, without restarting the host. Never
+installation. `enable` is the one saving verb: it prepares only when the host (or the saved
+environment's recorded declarations) cannot serve the plugin, and never touches a custom interpreter. New candidate workers use that interpreter, without restarting the host. Never
 pip-install into the running environment. Failure/cancel removes a candidate under construction.
 The environment borrows the installed host, including editable-source paths: it is not a portable
 bundle or a promise of survival after the host is removed.
@@ -191,12 +224,16 @@ replacement of an author's previous evidence.
 
 ## Verification
 
-A summarizer is a single-writer strategy, not a history transform. Admission rejects competing
-strategies before publication, including pending generations. The compactor supplies the selected
+Summaries are a `context.compact` interception, not a history transform. Several compact
+interceptors chain in interception order. With one active, the compactor supplies the selected
 flattened span and existing working state; this intentionally gives up main-prefix cache reuse.
 Plugins return bounded text only. The core retains split/keep, protocol pairing, echo validation,
-checkpoint application and persistence. Both automatic and manual compaction pin the generation;
-cancellation propagates, while other failures mark it unhealthy and fall back to the builtin path.
+checkpoint application and persistence. Both automatic and manual compaction pin the chain;
+cancellation propagates. Failure is explicit, never a fallback: automatic compaction fails the
+user's turn while leaving history and checkpoints intact, and `/compact` applies no checkpoint.
+Health is per registration: observation and presentation skip a failed registration; a failed
+matching interceptor blocks its operations until reload or disable. The core `/plugins` command
+and `--no-plugins` remain independent recovery paths.
 
 `test_plugins.py` executes examples from the packaged SDK reference. Lifecycle tests exercise
 actual module loading and offline wheel installation; UI tests exercise the real selector and

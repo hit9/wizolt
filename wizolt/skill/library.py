@@ -5,9 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from wizolt.base import ToolCall
-from wizolt.mentions import scan_mentions
 from wizolt.skill.discovery import SkillDiscovery
-from wizolt.skill.invocation import Invocation
 from wizolt.skill.skillfile import Skill
 from wizolt.skill.trust import ProjectTrust
 from wizolt.utils.workspace import Workspace
@@ -23,7 +21,6 @@ class SkillLibrary:
     and the full body is pulled into the conversation only when the model calls Skill(name) or the
     user references it with `$name` or `@skill:name`."""
 
-    MAX_MENTION_BLOCKS = 50
     # The SKILLS index rides every request. 16K characters is about 4K tokens: room for roughly a
     # hundred skills at the description cut below, and a hard stop for the thousand-skill home dir.
     INDEX_BUDGET_CHARS = 16_000
@@ -92,19 +89,6 @@ class SkillLibrary:
         """Whether an active skill's `allowed-tools` covers the call, so it needs no prompt."""
         return any(rule.permits(call) for skill in self.active(names) for rule in skill.allowed_tools)
 
-    def command(self, text: str) -> Invocation | None:
-        """The skill a `/name args` message starts, or None when no user-invocable skill answers
-        to that name. The one place the command loop, the runtime and the engine all ask."""
-        parsed = Invocation.split_command(text)
-        skill = self.get(parsed[0]) if parsed else None
-        if parsed is None or skill is None or not skill.user_invocable:
-            return None
-        return Invocation(skill, parsed[1])
-
-    def commands(self) -> list[Skill]:
-        """The skills `/name` can start, for completion."""
-        return [skill for skill in self.all() if skill.user_invocable]
-
     def model_visible(self) -> list[Skill]:
         """The skills the model may load, i.e. everything but `disable-model-invocation` ones."""
         return [skill for skill in self.all() if skill.model_invocable]
@@ -138,29 +122,3 @@ class SkillLibrary:
             description = description[: self.INDEX_DESCRIPTION_CHARS - 1].rstrip() + "…"
         hint = f" (args: {skill.argument_hint})" if skill.argument_hint else ""
         return f"- {skill.name} [{skill.source}]{hint}: {description}"
-
-    def resolve_mentions(self, text: str) -> str:
-        seen: set[str] = set()
-        blocks: list[str] = []
-        for span in scan_mentions(text):
-            if span.kind != "skill" or not span.complete or not span.payload:
-                continue
-            raw = span.payload
-            skill = self.get(raw)
-            if skill is None or skill.name in seen:
-                continue
-            seen.add(skill.name)
-            row = self.row(skill)
-            # The user asked for it, but the author reserved it for `/name`: say so rather than let
-            # the model call Skill and be refused.
-            blocks.append(row if skill.model_invocable else f"{row} (only the user can start this one, with /{skill.name})")
-            if len(blocks) >= self.MAX_MENTION_BLOCKS:
-                break
-        if not blocks:
-            return ""
-        header = [
-            "--- SKILL MENTIONS ---",
-            "The user referenced these skills. Load the one the request needs with Skill(name); the instructions are not inlined.",
-            "",
-        ]
-        return "\n".join(header + blocks).strip()

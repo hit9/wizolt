@@ -34,7 +34,17 @@ def context():
     return Context("test", "main", "/tmp", "idle", 0, 0, "test", 0)
 
 
-@pytest.mark.parametrize("action", ["reload", "hot_reload", "load", "enable", "install"])
+def test_a_package_introduces_itself_from_its_project_or_its_entry_docstring(tmp_path):
+    module = package(tmp_path / "plugin")
+    assert PluginSource.read(str(tmp_path / "plugin")).description == ""
+    (module / "__init__.py").write_text('"""Shows a sample value.\n\nAuthor notes stay out."""\n' + (module / "__init__.py").read_text())
+    assert PluginSource.read(str(tmp_path / "plugin")).description == "Shows a sample value."
+    manifest = tmp_path / "plugin" / "pyproject.toml"
+    manifest.write_text(manifest.read_text().replace('version = "0.1.0"', 'version = "0.1.0"\ndescription = "Samples, from the project."'))
+    assert PluginSource.read(str(tmp_path / "plugin")).description == "Samples, from the project."
+
+
+@pytest.mark.parametrize("action", ["reload", "hot_reload", "load", "enable"])
 async def test_installed_package_cannot_change_identity_on_reload(tmp_path, action):
     from agent_harness import session_with_provider
 
@@ -106,9 +116,9 @@ async def test_package_relative_imports_resources_reload_and_full_rollback(tmp_p
         with pytest.raises(PluginError, match="bad candidate"):
             await runtime.manage("reload", "sample_plugin")
         assert runtime.fields()["plugins.sample_plugin.value"] == 2
-        shutil.rmtree(root)
-        await runtime.manage("rollback", "sample_plugin")
-        assert runtime.fields() == {"plugins.sample_plugin.value": 1, "plugins.sample_plugin.text": "original"}
+        shutil.rmtree(root)  # The live generation runs from its frozen snapshot, not the tree.
+        await runtime.refresh()
+        assert runtime.fields() == {"plugins.sample_plugin.value": 2, "plugins.sample_plugin.text": "updated"}
     finally:
         await runtime.close()
 

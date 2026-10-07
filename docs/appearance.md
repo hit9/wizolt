@@ -102,8 +102,9 @@ for a context meter across a tinted row, or `monitor` for a fuller dashboard. `b
 colored outlines; `compact` highlights the model; `minimal` pairs it with a small meter.
 The colors follow your chosen theme, with separate text and segment colors.
 
-Every preset names the selected agent and shows YOLO when enabled. Narrow rows drop optional
-details; every layout keeps the agent and model ahead of usage.
+Every preset names the selected agent and shows YOLO when enabled, and carries the
+connected MCP and skill counts. Narrow rows drop optional details, the counts first;
+every layout keeps the agent and model ahead of usage.
 Context usage turns yellow at 70% and red at 90%.
 
 The placement is saved in `ui.statusbar.format`: **All left** as the preset's name, **Left /
@@ -193,3 +194,57 @@ For your own colors, statusbar backgrounds, layouts or animations, see
 
 If colors look wrong and wizolt warns about true color, add `export COLORTERM=truecolor`
 to your shell profile. `NO_COLOR=1` turns colors off.
+
+## Transcript
+
+Three settings share the **Transcript** tab. **Space** chooses the highlighted value, **Tab**
+jumps between settings, and **Enter** saves; each choice is previewed as you move.
+
+**Record format** decides how a finished tool call is written. Choose `standard` (the default)
+for a call line, a short preview of its output and a `tr.N` reference that **Ctrl-O** expands, or
+`minimal` for a one-line checklist row per call. Saving a format redraws the calls already on
+screen in it, except calls a plugin reshaped.
+
+```text
+standard
+
+  ● Bash  rg -n export_rows src
+    src/jobs/export.rs:42:  export_rows(&pool, &cfg);
+    … +2 more lines · Ctrl-O for more
+
+minimal
+
+  ● bash rg -n export_rows src
+  ● read src/db/rows.rs
+```
+
+**Thinking display** decides how the model's reasoning reads while it arrives: `expanded` keeps
+the newest lines (the default), `collapsed` keeps its opening line only, and `hidden` shows
+nothing -- the divider below still says `thinking`.
+
+**Tool-run divider** decides what closes a long run of tool calls the agent never talks over: a
+full-width line (the default), a blank line, or nothing. Saving it redraws the dividers already on
+screen, in a resumed session too.
+
+Press **f** on a record format to see what it stands for and **e** to write your own. Each line of a
+format is one row, written like a status bar format: fields such as `{tool}`, `{args}`,
+`{duration}`, `{citation}` and `{elided}`, and `{% if %}` blocks. A line that is just
+`{output|tail:3}` shows the call's last three output lines; a row that comes out empty is left out.
+Rows wizolt owns -- a diff, an approval card, a failed call's error line, the stored result's
+reference -- are always drawn, whatever the format says. **c** copies the format and **t** copies
+it as a `[transcript]` block for your config file.
+
+```toml
+[transcript]
+format = "preset:minimal"
+thinking = "collapsed"
+close = "blank"
+
+[transcript.tool.Bash]
+format = """{tool} {args}
+{output|tail:5}"""
+```
+
+An unset key keeps the standard rendering, and an unset tool keeps the table's format, so a
+per-tool line is only needed for the tools you want different. The
+[template reference](appearance-reference.md#custom-templates) lists every field.

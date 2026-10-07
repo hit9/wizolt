@@ -41,7 +41,7 @@ instructions load when needed.
 
 ```{figure} _static/skills-workflow.svg
 :class: concept-diagram
-:alt: Install a SKILL.md, invoke it with /release-notes, and let the agent follow its instructions.
+:alt: Install a SKILL.md, point the agent at it with $release-notes, and let it follow the instructions.
 
 Write once, use when needed.
 ```
@@ -85,10 +85,6 @@ no trust.
 ## Using skills
 
 - **On demand** — the agent loads a skill itself when it fits your request.
-- **`/name`** — type `/release-notes` to start a skill yourself; its instructions go to the
-  agent with your message. Words after the name are the skill's
-  [arguments](#arguments). Skills appear in the `/` menu after the built-in commands; a
-  built-in command keeps its name if a skill shares it.
 - **`$name`** — mention a skill in a message (Tab-completes) to point the agent at it
   <span class="marker">for that turn</span>; it loads the instructions itself when they matter.
   The menu shows whether each skill is a project or a user skill.
@@ -101,12 +97,14 @@ no trust.
 Pointing the agent at a skill with $name.
 ```
 
-Two frontmatter fields decide who can start a skill:
+One frontmatter field decides who can start a skill:
 
 | Field | Effect |
 |---|---|
-| `disable-model-invocation: true` | Only you can start it, with `/name`. Use it for something like a deploy you want to trigger yourself. |
-| `user-invocable: false` | It is not in the `/` menu; only the agent loads it. Use it for background knowledge. |
+| `disable-model-invocation: true` | The skill stays out of the agent's list until you name it with `$name`. Use it for something like a deploy you want to trigger yourself. |
+
+Claude Code's `user-invocable` field is not supported: skills are not commands, so `/skills`
+lists it as a warning.
 
 ## Writing richer skills
 
@@ -122,9 +120,8 @@ Run the generator: `python {skill_dir}/generate.py`
 
 ### Arguments
 
-`/deploy staging eu` passes `staging eu` to the skill; the agent can pass arguments too.
-Give the expected shape in `argument-hint` (`argument-hint: <env> [region]`); it shows in the
-`/` menu and in the agent's list of skills.
+When the agent loads a skill it passes along the arguments that fit. Give the expected shape in
+`argument-hint` (`argument-hint: <env> [region]`); it shows in the agent's list of skills.
 
 | In the body | Becomes |
 |---|---|
@@ -145,9 +142,8 @@ Current branch: !`git branch --show-current`
 Changed files: !`git diff --name-only`
 ```
 
-When the agent loads such a skill you approve the commands first, shown with the arguments
-filled in; when you start it with `/name`, starting it is the approval. A failing command is
-replaced by its exit code and error. Each command gets `runtime.shell_timeout` seconds and keeps
+When such a skill loads you approve the commands first, shown with the arguments filled in. A
+failing command is replaced by its exit code and error. Each command gets `runtime.shell_timeout` seconds and keeps
 at most 8,000 characters of output, since the result stays in the conversation.
 
 ### Hooks and pre-approved tools
@@ -190,10 +186,9 @@ otherwise it inherits your model. The child has its own conversation, commands a
 returns to the caller. Select it with `/agents` to inspect its work or add input. A skill loaded
 inside a subagent stays in that subagent.
 
-Each fork uses one retained child slot, including after it finishes. At `max_subagents = 0`
-or when the group is full, a new fork is refused; it never runs inline in main instead.
-Archive an old child with **d** in `/agents` to free its slot, raise the limit from main,
-or load the skill inside an existing child for follow-up work.
+A fork holds one subagent slot while it runs. At `max_subagents = 0`, or while every slot is
+busy, a new fork is refused; it never runs inline in main instead. Wait for a child to finish,
+raise the limit from main, or load the skill inside an existing child for follow-up work.
 
 Claude Code's `agent` and `model` fields are not supported. `/skills` lists them as warnings:
 choose the child's model at approval instead.

@@ -185,7 +185,7 @@ def test_background_filter_releases_escape_and_unrecognized_sequences():
     assert ''.join(forwarded) == '\x1btext\x1b[?invalid\x1b]11;not-color\x1b\\'
 
 
-@pytest.mark.parametrize('entered', ['/guide', 'use $guide'])
+@pytest.mark.parametrize('entered', ['use $guide'])
 async def test_assembly_inputs_wait_for_initial_skill_scan(tmp_path, startup_ui, monkeypatch, entered):
     pipe, _output, apps = startup_ui
     folder = tmp_path / '.wizolt' / 'skills' / 'guide'
@@ -244,10 +244,7 @@ async def test_assembly_inputs_wait_for_initial_skill_scan(tmp_path, startup_ui,
         assert s.skill_listing is not None and s.skill_listing.tool
         assert 'guide [project]' in s.skill_listing.index
         assert any(tool['function']['name'] == 'Skill' for tool in tools)
-        if entered.startswith('/'):
-            assert 'STARTUP_SKILL_BODY' in str(messages)
-        else:
-            assert any(message.get('_session_event') == 'skill_mentions' for message in messages)
+        assert any(message.get('_session_event') == 'skill_mentions' for message in messages)
         await wait_for(lambda: command_loop.presentation.tui.input_mode == tui_module.InputMode.CHAT)
         pipe.send_text('\x15\x04')
         assert await asyncio.wait_for(task, 5) == (0, command_loop)

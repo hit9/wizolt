@@ -340,6 +340,47 @@ async def test_simple_repl_publishes_the_final_answer_exactly_once(tmp_path, mon
     expected = "Error: provider is down" if raised else "The answer."
     assert sum(expected in line for line in printed) == 1
 
+def _replayed_silent_run(tmp_path):
+    """A resumed session whose agent ran eight Read batches without a word, replayed into a
+    colored printer; returns the session and the replay as a function of the settings now."""
+    import re
+
+    s = session(tmp_path)
+    s.resumed = True
+    s.messages.append({"role": "user", "content": "look"})
+    for index in range(1, 9):
+        arguments = json.dumps({"files": [{"path": f"f{index}.py"}]})
+        s.messages.append({"role": "assistant", "content": None, "tool_calls": [{"id": f"tc.{index}", "type": "function", "function": {"name": "Read", "arguments": arguments}}]})
+        s.messages.append({"role": "tool", "tool_call_id": f"tc.{index}", "content": "body"})
+        s.tool_records.append(ToolResultRecord(f"tr.{index}", "Read", [{"path": f"f{index}.py"}], "body\nmore", f"f{index}.py"))
+    s.messages.append({"role": "assistant", "content": "done"})
+    loop = CommandLoop(Agent(s, output_fn=lambda _text: None), output_fn=lambda _text: None)
+    loop.presentation.ui.color = True
+    recorded = []
+    loop.presentation.ui.transcript_sink = recorded.append
+    loop.resume.render_resumed_session()
+    loop.presentation.ui.drain_scrollback()
+    return s, lambda: re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", "".join(item(80) for item in recorded)).replace("\r", "")
+
+
+async def test_resumed_history_follows_a_tool_run_divider_switched_after_it(tmp_path):
+    """The resumed silent run closed with the divider set then; `/theme` > Transcript > Tool-run
+    divider saved afterwards reaches it on the next redraw, like the record format does."""
+    s, replay = _replayed_silent_run(tmp_path)
+    rule = "─" * 80
+    ruled = replay()
+    assert ruled.count(rule) == 1 and "f8.py" in ruled and "done" in ruled
+
+    # `blank` is the rule's gap above it alone; `none` draws nothing in its place.
+    s.config.transcript = {"close": "blank"}
+    assert replay() == ruled.replace(rule + "\n\n", "")
+    s.config.transcript = {"close": "none"}
+    assert replay() == ruled.replace("\n" + rule + "\n\n", "")
+
+    s.config.transcript = {"close": "rule"}
+    assert replay() == ruled
+
+
 async def test_select_choice_noninteractive_does_not_prompt(tmp_path):
     output = []
     loop = CommandLoop(Agent(session(tmp_path), output_fn=output.append), input_fn=lambda prompt="": "1", output_fn=output.append)

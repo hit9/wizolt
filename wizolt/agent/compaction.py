@@ -13,8 +13,8 @@ need the model; `run` drives both.
 from __future__ import annotations
 
 import asyncio
+import uuid
 from difflib import SequenceMatcher
-from functools import partial
 from typing import TYPE_CHECKING, ClassVar
 
 from wizolt.agent.prompts import (
@@ -30,6 +30,8 @@ from wizolt.agent.prompts import (
 from wizolt.base import SESSION_EVENT_KEY, Billing, Json, ModelError, ModelResponseTimeout, Text, WizoltError
 from wizolt.config import ProviderConfig, compaction_provider_config
 from wizolt.model import ModelClient
+from wizolt.model.interception import client_request
+from wizolt.sdk import PluginError
 from wizolt.shellhooks import POST_COMPACT, PRE_COMPACT, HookOutcome
 from wizolt.tools import Tool
 
@@ -105,6 +107,11 @@ class Compactor:
                 error_detail = "cancelled by user"
                 cancelled = error
                 data = None
+            except PluginError as error:
+                # A failed plugin interceptor is explicit: never trim history around it. The turn
+                # fails when it cannot fit; disabling the plugin restores the builtin strategy.
+                error_detail = Text.clip_width(" ".join(str(error).split()), 220)
+                raise
             except Exception as error:  # noqa: BLE001 - compaction degrades to deterministic trimming on any model failure.
                 error_detail = Text.clip_width(" ".join(str(error).split()) or type(error).__name__, 220)
                 data = None
@@ -146,18 +153,74 @@ class Compactor:
         inline_messages: list[Json] | None = None,
         tools: list[Json] | None = None,
         echo_source: str = "",
+        trigger: str = "auto",
     ) -> Json:
+        """The summary for a core-selected span: ``context.compact`` wraps the builtin strategy.
+
+        Core keeps split/keep, pairing, checkpoint validation and persistence. A plugin may return
+        a summary without calling the builtin, or change the one it returns; either passes the
+        echo guard and the plugin summary bound. Interceptor failures propagate: there is no
+        implicit fallback, so callers never trim history around a failed plugin.
+        """
         model = self.model
         model.last_compaction_model = ""
         plugins = model.session.plugins
-        if plugins is not None:
-            result = await plugins.summarize(
-                context or self.ctx.messages_text(inline_messages or []), partial(self.validate_plugin_summary, echo_source=echo_source)
-            )
-            if result is not None:
-                name, summary = result
-                model.last_compaction_model = f"plugin:{name}"
-                return {"summary": summary}
+        interception = getattr(plugins, "interception", None)
+        if interception is None or not interception.would_match("context.compact", trigger=trigger):
+            return await self.builtin_compact(context, inline_messages, tools, echo_source)
+        from wizolt.sdk.operations import Compaction, Summary
+        from wizolt.session.types import OperationReceipt
+
+        builtin: dict = {}
+        source = context or self.ctx.messages_text(inline_messages or [])
+        # What actually happened, apart from what was delivered: whether the builtin summary ran,
+        # and which plugin produced or changed the result. Compaction has no outside effects, so
+        # the receipt is for diagnosis; it never drives a retry.
+        original = OperationReceipt.clip(f"{len(source)} characters")
+        receipt = model.session.record_operation(OperationReceipt(uuid.uuid4().hex, "context.compact", trigger, original))
+
+        async def core(_value: object) -> Summary:
+            receipt.core = "started"
+            try:
+                builtin["data"] = data = await self.builtin_compact(context, inline_messages, tools, echo_source)
+            except BaseException:
+                receipt.core = "failed"
+                raise
+            receipt.core = "completed"
+            builtin["summary"] = summary = Summary(str(data.get("summary") or "").strip() or "(empty summary)")
+            return summary
+
+        def checked(_received: object, result: object, downstream: object, _owner: str) -> None:
+            if downstream is not None and result == downstream:
+                return
+            assert isinstance(result, Summary)
+            if len(result.text) > self.PLUGIN_SUMMARY_LIMIT:
+                raise PluginError(f"Plugin summaries are at most {self.PLUGIN_SUMMARY_LIMIT} characters")
+            try:
+                self.validate_plugin_summary(result.text, echo_source=echo_source)
+            except ModelError as error:
+                raise PluginError(str(error)) from None
+
+        trace: dict = {}
+        try:
+            result = await interception.run("context.compact", Compaction(source, trigger), core, result_check=checked, trace=trace)
+        except PluginError as error:
+            receipt.wrapper_failure = OperationReceipt.clip(str(error))
+            raise
+        finally:
+            receipt.origin, receipt.shaped, receipt.delivered = trace.get("origin", "core"), tuple(trace.get("shaped", ())), True
+        assert isinstance(result, Summary)
+        receipt.effective = OperationReceipt.clip(f"{len(result.text)}-character summary")
+        if result == builtin.get("summary"):
+            return builtin["data"]  # The builtin's own checkpoint, plan and known facts included.
+        if origin := trace.get("origin"):
+            model.last_compaction_model = f"plugin:{origin.partition('/')[0]}"
+        return {**builtin.get("data", {}), "summary": result.text.strip()}
+
+    PLUGIN_SUMMARY_LIMIT = 16000
+
+    async def builtin_compact(self, context: str, inline_messages: list[Json] | None, tools: list[Json] | None, echo_source: str) -> Json:
+        model = self.model
         # The summary request runs on the [compaction]-resolved provider entry (empty [compaction]
         # = the active provider), resolved per call so a runtime /provider switch applies next
         # time. The context budget is untouched: compaction still measures against the main
@@ -184,14 +247,16 @@ class Compactor:
         # Named in every failure the compactor raises below: compaction can run on its own
         # `[compaction]` provider, so an error has to say which model served the request.
         entry_label = f"{entry_name}/{provider.model}"
-        data = await self.compact_attempts(messages, provider, response_timeout, entry_label, tools=tools if inline else None, echo_source=echo_source)
+        data = await self.compact_attempts(
+            messages, provider, response_timeout, entry_label, tools=tools if inline else None, echo_source=echo_source, entry=entry_name
+        )
         model.last_compaction_model = provider.model
         return data
 
     def validate_plugin_summary(self, summary: str, *, echo_source: str) -> None:
         """Apply the same echo guard before any plugin result reaches durable state."""
         if self.echoes_source(summary, echo_source):
-            raise ModelError("Plugin summarizer echoed the conversation")
+            raise ModelError("The plugin summary echoed the conversation")
 
     async def compact_attempts(
         self,
@@ -201,6 +266,7 @@ class Compactor:
         entry_label: str,
         tools: list[Json] | None = None,
         echo_source: str = "",
+        entry: str = "",
     ) -> Json:
         """Ask for the summary, and ask once more if what came back was not a JSON object.
 
@@ -221,14 +287,19 @@ class Compactor:
                 # request exists to reuse -- it would spend the prize to buy the guarantee. The
                 # instruction not to call tools lives in the appended message instead, and a model
                 # that calls one anyway returns no text, which the retry below already handles.
-                _, _, content = await model.api_request(
-                    attempt_messages,
+                # The builtin strategy's model call is a `model.request` of purpose compaction;
+                # `context.compact` wraps the strategy around it. Intentional nesting, not twice.
+                sent = list(attempt_messages)
+                _, _, content = await client_request(
+                    model,
+                    "compaction",
+                    sent,
                     tools,
-                    allow_stream=False,
-                    response_timeout=response_timeout,
                     provider=provider,
-                    json_object=True,
-                    billing=Billing.COMPACTION,
+                    entry=entry or model.session.config.active_provider,
+                    send=lambda route, sent=sent: model.api_request(
+                        sent, tools, allow_stream=False, response_timeout=response_timeout, provider=route, json_object=True, billing=Billing.COMPACTION
+                    ),
                 )
             except ModelResponseTimeout:
                 raise ModelResponseTimeout(
@@ -300,9 +371,9 @@ class Compactor:
         a rendering that drops tool calls -- but the reuse this method is named for does not apply
         there."""
         ctx = self.ctx
-        if ctx.session.plugins is not None and ctx.session.plugins.has_summarizer:
-            # A plugin consumes the flattened, selected span plus prior working state. It does
-            # not borrow the main provider's cached request or receive authority over the cut.
+        if ctx.session.plugins is not None and ctx.session.plugins.interception.active("context.compact"):
+            # An interceptor consumes the flattened, selected span plus prior working state. It
+            # does not borrow the main provider's cached request or receive authority over the cut.
             return None
         if ctx.session.config.compaction_provider or ctx.session.system_info is None:
             return None
@@ -313,7 +384,12 @@ class Compactor:
         # carries it, and its reasoning boundary is read off the whole projection below even when
         # only the stored half is being sliced.
         live = ctx.model_messages(base_system, turn_messages if turn_messages is not None else live_turn)
-        header = len(ctx.model_header(base_system))
+        plain = len(ctx.model_header(base_system))
+        # A composing plugin changed what the turn sent ahead of the conversation; ride those exact
+        # bytes, or this request misses the cache it exists to reuse.
+        sent = ctx.sent_header(live[:plain])
+        live = [*sent, *live[plain:]]
+        header = len(sent)
         # A turn-scope span sits after the stored conversation rather than at the head of it, so
         # its slice starts there. Both scopes are ordinary prefixes of the same projection; only
         # the offset differs.
@@ -324,6 +400,7 @@ class Compactor:
             state="\n\n".join(filter(None, (ctx.session.state.format(), ctx.session.recent_activity()))),
             previous_summary=ctx.session.state.summary,
             recent_count=min(self.COMPACT_RECENT_MESSAGES, len(compacted)),
+            fold=ctx.session.state.fold_due(),
         )
         # Where the appended instruction sits relative to the reasoning boundary decides whether
         # this request replays the same reasoning the live one did, and the answer differs by shape.
@@ -342,9 +419,29 @@ class Compactor:
         return format_compaction_input(
             state="\n\n".join(filter(None, (self.ctx.session.state.format(), self.ctx.session.recent_activity()))),
             previous_summary=self.ctx.session.state.summary,
-            older_messages=self.ctx.messages_text(older),
-            recent_messages=self.ctx.messages_text(recent),
+            older_messages=self.ctx.messages_text([self.trimmed(message) for message in older]),
+            recent_messages=self.ctx.messages_text([self.trimmed(message) for message in recent]),
+            fold=self.ctx.session.state.fold_due(),
         )
+
+    # How much of one tool result the flattened payload carries. A summary keeps a result's
+    # conclusion, not its body, and the full text stays readable under its `tr.N` key, which the
+    # head keeps. Only the flattened payload is trimmed: the inline request must stay
+    # byte-identical to the turn it reuses the cache of.
+    SUMMARY_TOOL_RESULT_CHARS: ClassVar[int] = 2000
+
+    @classmethod
+    def trimmed(cls, message: Json) -> Json:
+        """A tool result cut to its head and tail for the summarizer: the call line and the first
+        rows, then where it ended -- the exit status, the error, the last lines -- on both sides of
+        a marker counting what was left out."""
+        content = message.get("content")
+        if message.get("role") != "tool" or not isinstance(content, str) or len(content) <= cls.SUMMARY_TOOL_RESULT_CHARS:
+            return message
+        head = content[: cls.SUMMARY_TOOL_RESULT_CHARS * 2 // 5]
+        tail = content[-(cls.SUMMARY_TOOL_RESULT_CHARS - len(head)) :]
+        omitted = len(content) - len(head) - len(tail)
+        return {**message, "content": f"{head}\n[... {omitted} characters omitted ...]\n{tail}"}
 
     def prefix_count(self, turn_messages: list[Json] | None = None, recent: int | None = None) -> int:
         """How many messages of the scope's own list the summary request carries.

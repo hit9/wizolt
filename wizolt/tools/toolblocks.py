@@ -9,13 +9,16 @@ can render the same call the same way.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 
 from prompt_toolkit.utils import get_cwidth
 
 from wizolt.base import ApprovalView, LogBlock, LogEdge, LogLine, LogRole, ToolCall, oneline
+from wizolt.sdk import Line, Panel
+from wizolt.sdk import Text as PluginText
 from wizolt.session import Session
-from wizolt.tools import tooloutput
+from wizolt.tools import tooloutput, transcript
 from wizolt.tools.base import Tool
 from wizolt.tools.editplan import EditBatchPlan
 from wizolt.tools.files import EditTool
@@ -223,6 +226,179 @@ def reject_display(session: Session, call: ToolCall, output: str, *, d: ToolDisp
     return LogBlock.hierarchy(log_root(display + " · rejected: " + reason, LogRole.MUTED, d.batch_suffix, call), [])
 
 
+def _result_tag(output: str, *, failed: bool, d: ToolDisplay) -> str:
+    """The status tag after a settled call's key: how it ended, or how it was allowed to run."""
+    return " [refused]" if failed and "user refused" in output else " [failed]" if failed else " [approved]" if d.approved else " [auto]" if d.auto else ""
+
+
+def _record_format(session: Session, call: ToolCall, source: str | None = None) -> transcript.RecordTemplate | None:
+    """The record format in effect for this call (`source`, else the config's), or None for the
+    builtin assembly -- unset, standard, or broken: config validation already reported that."""
+    try:
+        return transcript.parsed(transcript.effective_format(session.config, call.name) if source is None else source)
+    except ValueError:
+        return None
+
+
+def _record_args(session: Session, call: ToolCall, d: ToolDisplay) -> str:
+    """`{args}`: the call display's first line. A record row is one line, so a multi-line command
+    or edit is marked with `…` rather than joined into one garbled line; Ctrl-O shows it whole."""
+    first, newline, _ = (d.display or tooloutput.short_call(session, call)).partition(" ")[2].partition("\n")
+    return first + (" …" if newline else "")
+
+
+def _call_lexer(call: ToolCall) -> str:
+    from wizolt.tools import TOOL_REGISTRY  # local import: the registry is built on top of every tool
+
+    tool_class = TOOL_REGISTRY.get(call.name)
+    return tool_class.log_lexer(call.args) if tool_class is not None else ""
+
+
+class _Redraw:
+    """A printed record's items in the format in effect now (`LogBlock.redraw`).
+
+    Drawn again only when the format for its tool changes, so a resize still replays the rows it
+    has, and a saved `/theme` transcript switch redraws the records already on screen. A deep copy
+    (the printer snapshots every block it emits) shares it: it holds the session.
+    """
+
+    def __init__(self, session: Session, call: ToolCall, items: list[LogLine | LogBlock], draw: Callable[[str], LogBlock]):
+        self.session, self.call, self.items, self.draw = session, call, items, draw
+        self.source = transcript.effective_format(session.config, call.name)
+
+    def __call__(self) -> list[LogLine | LogBlock]:
+        source = transcript.effective_format(self.session.config, self.call.name)
+        if source != self.source:
+            self.source, self.items = source, self.draw(source).items
+        return self.items
+
+    def __deepcopy__(self, _memo: dict) -> _Redraw:
+        return self
+
+
+def running_line(session: Session, call: ToolCall, d: ToolDisplay, batch_suffix: str = "", *, source: str | None = None) -> LogBlock:
+    """The call line drawn before a call runs (above a live preview, or while it blocks), in the
+    record format in effect: the format's call row, so the settled record -- which then leaves its
+    own call row out -- reads as one record, not a builtin line over a formatted one. Without a
+    `source` it follows the format, as the settled record under it does."""
+    block = _running_line(session, call, d, batch_suffix, source)
+    if source is None:
+        d = replace(d)
+        block.redraw = _Redraw(session, call, block.items, lambda source: _running_line(session, call, d, batch_suffix, source))
+    return block
+
+
+def _running_line(session: Session, call: ToolCall, d: ToolDisplay, batch_suffix: str, source: str | None) -> LogBlock:
+    template = _record_format(session, call, source)
+    if template is not None:
+        values = transcript.record_values(tool=call.name, args=_record_args(session, call, d), output="", elapsed=None, citation="", failed=False)
+        if rendered := transcript.render_record(template, values, []):
+            name, args = transcript.call_label(rendered[0], call.name)
+            meta = ("  " + batch_suffix) if batch_suffix else ""
+            return LogBlock.hierarchy(LogLine(name, args, LogRole.TOOL, meta=meta, syntax=_call_lexer(call)), [])
+    return LogBlock.hierarchy(log_root(d.display or tooloutput.short_call(session, call), batch_suffix=batch_suffix, call=call), [])
+
+
+def _format_display(
+    session: Session,
+    call: ToolCall,
+    key: str,
+    output: str,
+    template: transcript.RecordTemplate,
+    *,
+    failed: bool,
+    elapsed: float | None,
+    d: ToolDisplay,
+) -> LogBlock | None:
+    """The `[transcript] format` path for one record: None keeps the builtin assembly, so a
+    format that cannot render this call's facts never loses the record.
+
+    The format owns the record's own rows -- the call line, the output preview, a closing row.
+    Engine-owned structure is attached as the builtin path attaches it: `_engine_rows` for the
+    tools that have them (they are those tools' output, so the format's output rows stay empty),
+    and the error row for a failed call (the failure is not output to show twice).
+    """
+    tag = _result_tag(output, failed=failed, d=d)
+    citation = (key + tag).strip() if key else tag.strip()
+    # A Bash record's output is the bounded stream preview, not the stored XML envelope: the
+    # envelope's tags are not output, exactly as the builtin Bash branch treats them. `hidden`
+    # is what that bound dropped, so `{elided}` counts everything the reader cannot see.
+    hidden = 0
+    lines: list[str] = []
+    if template.reads_output and not failed and call.name not in ENGINE_ROW_TOOLS:
+        text = output
+        if call.name == "Bash":
+            rows, hidden = tooloutput.bash_tail_preview(output, transcript.MAX_OUTPUT_LINES)
+            text = "\n".join(rows)
+        lines = transcript.output_lines(text)
+    values = transcript.record_values(
+        tool=call.name,
+        args=_record_args(session, call, d),
+        output=output,
+        elapsed=elapsed,
+        citation=citation,
+        failed=failed,
+        elided=len(lines) - template.shown(len(lines)) + hidden,
+        exit_code=tooloutput.bash_exit_code(output) if call.name == "Bash" else "",
+    )
+    rendered = transcript.render_record(template, values, lines)
+    if rendered is None:
+        return None
+    lexer = _call_lexer(call)
+    return transcript.template_block(
+        rendered,
+        citation=citation,
+        failed=failed,
+        output=output,
+        nested=d.nested_display,
+        extras=[] if failed else _engine_rows(call, output, elapsed, vision_entry=d.vision_entry),
+        batch_suffix=d.batch_suffix,
+        lexer=lexer,
+        tool=call.name,
+        format_cites=template.uses_citation,
+    )
+
+
+ENGINE_ROW_TOOLS = frozenset({"MCP", "ToolScript", "Ask", "ViewImage"})
+
+
+def _engine_rows(call: ToolCall, output: str, elapsed: float | None, *, vision_entry: str) -> list[LogLine]:
+    """The structure rows a succeeded call of these tools carries under any record shape, in the
+    builtin assembly and under a format alike: one computation, so the two cannot drift.
+
+    - MCP: a one-line summary of the result.
+    - ToolScript: closes the bracket the nested calls were indented under -- how many there were,
+      how long the script took, and the first lines of what it printed, the printed output being
+      the whole point of a script. A script that raised returns its envelope normally, so the
+      call itself did not fail and nothing above says otherwise: the head says so here, or a script
+      that died on call 2 of 40 reads exactly like one that finished. A describe returns tool
+      shapes, not a script envelope, and adds nothing.
+    - Ask: the answer; a replay whose record was compacted away draws no empty label.
+    - ViewImage: the vision-provider observation, a child of the call line so the trace can never
+      appear above its own call. TOOL, not META: it is a real request on another paid entry.
+    """
+    if call.name == "MCP":
+        summary = tooloutput.mcp_result_summary(call, output, elapsed)
+        return [LogLine("", summary, LogRole.META, LogEdge.END)] if summary else []
+    if call.name == "ToolScript" and (fields := tooloutput.toolscript_result_fields(output)) is not None:
+        counted, stdout, error = fields
+        duration = f" · {elapsed:.1f}s" if elapsed is not None else ""
+        head = ("failed · " if error else "") + f"calls {counted}" + duration
+        body = error or stdout
+        return [
+            LogLine(head, "Ctrl-O for more", LogRole.ERROR if error else LogRole.META, LogEdge.BRANCH),
+            *(
+                LogLine("", line, LogRole.ERROR if error else LogRole.OUTPUT, LogEdge.CONTINUE)
+                for line in tooloutput.preview_lines(body, tooloutput.BASH_TRANSCRIPT_PREVIEW_LINES)
+            ),
+        ]
+    if call.name == "Ask" and output:
+        return [LogLine("answer", oneline(output, 220), LogRole.META, LogEdge.END)]
+    if call.name == "ViewImage" and vision_entry:
+        return [LogLine("described by", vision_entry, LogRole.TOOL, LogEdge.BRANCH)]
+    return []
+
+
 def finish_display(
     session: Session,
     call: ToolCall,
@@ -232,12 +408,41 @@ def finish_display(
     failed: bool,
     elapsed: float | None = None,
     d: ToolDisplay | None = None,
+    source: str | None = None,
 ) -> str | LogBlock:
-    """The block a finished call prints."""
-    d = d or ToolDisplay()
+    """The block a finished call prints, in the record format `source` names (by default the
+    one `[transcript]` sets for this tool, followed when it changes; empty or `preset:standard` is
+    the builtin assembly)."""
+    d = replace(d) if d else ToolDisplay()
+    block = _finish_display(session, call, key, output, failed=failed, elapsed=elapsed, d=d, source=source)
+    if source is None and isinstance(block, LogBlock):
+
+        def draw(source: str) -> LogBlock:
+            redrawn = _finish_display(session, call, key, output, failed=failed, elapsed=elapsed, d=d, source=source)
+            assert isinstance(redrawn, LogBlock)  # only a Note prints text, whatever the format
+            return redrawn
+
+        block.redraw = _Redraw(session, call, block.items, draw)
+    return block
+
+
+def _finish_display(
+    session: Session,
+    call: ToolCall,
+    key: str,
+    output: str,
+    *,
+    failed: bool,
+    elapsed: float | None,
+    d: ToolDisplay,
+    source: str | None,
+) -> str | LogBlock:
     if call.name == "Note" and not failed and d.display:
         return tooloutput.with_batch_suffix(d.display.removeprefix("Note ").strip(), d.batch_suffix)
-    tag = " [refused]" if failed and "user refused" in output else " [failed]" if failed else " [approved]" if d.approved else " [auto]" if d.auto else ""
+    template = _record_format(session, call, source)
+    if template is not None and (block := _format_display(session, call, key, output, template, failed=failed, elapsed=elapsed, d=d)):
+        return block
+    tag = _result_tag(output, failed=failed, d=d)
     tree = d.nested_display or call.name == "Bash" or bool(d.vision_entry)
     # A failed call explains itself in the error child below, so its root only has to identify
     # the call -- collapsed to one line, or a multi-line display (Note keeps the whole rendered
@@ -252,10 +457,6 @@ def finish_display(
     if failed:
         label = "refused" if "user refused" in output else "error"
         children.append(LogLine(label, oneline(output, 220), LogRole.ERROR, LogEdge.END))
-    elif call.name == "MCP":
-        summary = tooloutput.mcp_result_summary(call, output, elapsed)
-        if summary:
-            children.append(LogLine("", summary, LogRole.META, LogEdge.END))
     elif call.name == "Bash":
         # The output tail leads; the key rides the call line (`→ tr.N`) like every other tool, so
         # a complete result costs no extra row -- the trailer exists only when the bound dropped
@@ -277,36 +478,8 @@ def finish_display(
                 # Nothing was dropped: the output's own last row closes the block, citing the key.
                 children[-1] = cited(children[-1], citation)
         bash_key_handled = True
-    elif call.name == "ToolScript":
-        # Closes the bracket the nested calls were indented under: how many of them there were,
-        # how long the script took, and the first lines of what it printed -- the printed output
-        # being the whole point of a script, since only that comes back to the model. The script
-        # body itself stays one keypress away rather than repeated here.
-        fields = tooloutput.toolscript_result_fields(output)
-        if fields is not None:  # a describe returns tool shapes, not a script envelope
-            counted, stdout, error = fields
-            duration = f" · {elapsed:.1f}s" if elapsed is not None else ""
-            # A script that raised returns its envelope normally, so the call itself did not
-            # fail and nothing above this line says otherwise. Said here, or a script that died
-            # on call 2 of 40 reads exactly like one that finished -- and the error, unlike the
-            # printed output, is the part the reader needs.
-            head = ("failed · " if error else "") + f"calls {counted}" + duration
-            children.append(LogLine(head, "Ctrl-O for more", LogRole.ERROR if error else LogRole.META, LogEdge.BRANCH))
-            body = error or stdout
-            children.extend(
-                LogLine("", line, LogRole.ERROR if error else LogRole.OUTPUT, LogEdge.CONTINUE)
-                for line in tooloutput.preview_lines(body, tooloutput.BASH_TRANSCRIPT_PREVIEW_LINES)
-            )
-    elif call.name == "Ask":
-        # No answer to show (a replay whose record was compacted away) draws no empty label.
-        if output:
-            children.append(LogLine("answer", oneline(output, 220), LogRole.META, LogEdge.END))
-    elif call.name == "ViewImage" and d.vision_entry:
-        # The vision-provider observation is a child of the call line, drawn before the stored row, so
-        # the trace can never appear above its own call (the attachment path's standalone
-        # line is the engine's, not a tool's). TOOL, not sibling children's META: the stored
-        # row is bookkeeping, this is a real request on another paid entry.
-        children.append(LogLine("described by", d.vision_entry, LogRole.TOOL, LogEdge.BRANCH))
+    elif call.name in ENGINE_ROW_TOOLS:
+        children.extend(_engine_rows(call, output, elapsed, vision_entry=d.vision_entry))
     if tree and not failed and not bash_key_handled:
         citation = key + tag if key else tag.strip()
         if children and citation:
@@ -323,6 +496,76 @@ def finish_display(
         tail = ((" → " + key) if key else "") + tag
         root = LogLine(root.label, root.text, root.role, meta=root.meta + tail, syntax=root.syntax)
     return LogBlock.hierarchy(None if d.nested_display else root, children)
+
+
+def presented_display(
+    builtin: LogBlock,
+    card: Panel | None,
+    summary: Panel | None,
+    *,
+    key: str,
+    status: str,
+    d: ToolDisplay,
+) -> LogBlock:
+    """A presented tool block: plugin rows in the tree, the host citation kept on them.
+
+    The ``tool.call`` panel's first row is the call line (all of its rows when the runner already
+    drew one above a live preview); the ``tool.result`` panel's rows are the summary. A site with
+    no panel keeps its part of ``builtin``. The stored-result citation and status tag are
+    host-owned facts, so they ride the block whatever the panels said -- a presenter cannot forge
+    or drop them.
+    """
+    builtin_root = next((item for item in builtin.items if isinstance(item, LogLine)), None)
+    builtin_children = [item for block in builtin.items if isinstance(block, LogBlock) for item in block.items if isinstance(item, LogLine)]
+    batch = ("  " + d.batch_suffix) if d.batch_suffix else ""
+    card_rows = list(card.rows) if card is not None else []
+    lead = None if d.nested_display or not card_rows else _presented_line(card_rows.pop(0))
+    extra = [_presented_line(row) for row in card_rows]
+    if summary is None:
+        # The builtin summary already carries the citation -- on its last row, or on the call
+        # line's meta, which the presented call line inherits.
+        root = builtin_root if lead is None else LogLine(lead.label, lead.text, lead.role, meta=builtin_root.meta if builtin_root else batch)
+        return LogBlock.hierarchy(root, [*extra, *builtin_children])
+    if lead is not None:
+        root = LogLine(lead.label, lead.text, lead.role, meta=batch)
+    elif builtin_root is not None:
+        # The builtin call line without the citation tail it may carry: the summary rows cite it.
+        root = LogLine(builtin_root.label, builtin_root.text, builtin_root.role, meta=batch, syntax=builtin_root.syntax)
+    else:
+        root = None
+    tag = " [refused]" if status == "refused" else " [failed]" if status == "failed" else " [approved]" if d.approved else " [auto]" if d.auto else ""
+    citation = (key + tag) if key else tag.strip()
+    children = [*extra, *(_presented_line(row) for row in summary.rows)]
+    if root is not None and citation and not children:
+        root = LogLine(root.label, root.text, root.role, meta=root.meta + citation, syntax=root.syntax)
+    elif citation:
+        # The citation cites the block's last row, exactly as the builtin rendering does for a
+        # body of its own; with no rows to cite it names the stored result on the block's only row.
+        if children:
+            children[-1] = cited(children[-1], citation)
+        else:
+            children.append(LogLine("stored" if key else "done", citation, LogRole.META, LogEdge.END))
+    return LogBlock.hierarchy(root, children)
+
+
+def _presented_line(row: PluginText | Line) -> LogLine:
+    """One plugin panel row as a log line: the first span is the row's label, the role its tone."""
+    spans = row.spans if isinstance(row, Line) else (row,)
+    first = spans[0] if spans else PluginText("", "")
+    return LogLine(first.text, "".join(span.text for span in spans[1:]), PRESENTED_ROLES.get(first.role, LogRole.OUTPUT))
+
+
+PRESENTED_ROLES = {
+    "tool": LogRole.TOOL,
+    "meta": LogRole.META,
+    "muted": LogRole.MUTED,
+    "error": LogRole.ERROR,
+    "warning": LogRole.WARNING,
+    "success": LogRole.SUCCESS,
+    "diff": LogRole.DIFF,
+    "field": LogRole.FIELD,
+    "code": LogRole.CODE,
+}
 
 
 def full_text_block(view: ApprovalView) -> LogBlock:

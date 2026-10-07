@@ -135,14 +135,14 @@ class _StdoutCapture:
 class ToolScript(Tool):
     NAME = "ToolScript"
     DESCRIPTION = (
-        "Describe tool shapes or run Python that invokes tools through call(name, args) and prints only the derived result. "
-        "Use for 4+ same-shape calls when individual outputs are unnecessary; otherwise emit normal tool calls. "
-        "Use call_many([(name, args), ...]) for independent calls; it preserves order and returns failures as values. "
-        "call raises on failure. MCP calls may use format='json'; built-ins use text. Do not start threads."
+        "Run Python that calls tools via call(name, args) and prints only the derived result plus the evidence the answer needs (paths, lines, counts), or a clear failure line. "
+        "Use for 4+ same-shape calls whose individual outputs are unnecessary; call directly for one or two calls or when each result should steer the next step. "
+        "Built-ins take their own schema's args and return text in their direct-call format; MCP calls may use format='json'. "
+        "call raises on failure; call_many([(name, args), ...]) runs independent calls in order, returning failures as values. Do not start threads."
     )
     EXAMPLE = (
         'Aggregate many same-shape calls into one line. Example: {"action":"call","code":"hits = 0\\nfor path in (\\"a.py\\", \\"b.py\\", \\"c.py\\", \\"d.py\\"):\\n    hits += call(\\"Read\\", {\\"path\\": path}).count(\\"TODO\\")\\nprint(hits)"}',
-        'Learn call shapes before scripting them. Example: {"action":"describe","tools":["Read","server.tool"]}',
+        'Describe an MCP tool before scripting it. Example: {"action":"describe","tools":["server.tool"]}',
     )
     MUTATES = True
     runner: ToolRunner | None = None  # injected by ToolRunner.call_tool; the runner owns the confirm wiring

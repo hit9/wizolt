@@ -12,9 +12,9 @@ import shutil
 import sys
 import threading
 import time
-from collections.abc import Callable, Hashable
+from collections.abc import Callable, Hashable, Iterable
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from itertools import accumulate, pairwise
 from typing import TYPE_CHECKING, Any, ClassVar, Self
@@ -36,10 +36,12 @@ from wizolt.base import (
     Json,
     LogBlock,
     LogEdge,
-    LogLine,
     LogRole,
     Text,
+    TurnBox,
 )
+from wizolt.formats import clean, clip
+from wizolt.sdk import Line
 from wizolt.ui.bars import BarLayout, Value
 from wizolt.ui.themes import BUILTIN as NAMED_THEMES
 from wizolt.ui.themes import DIFF_STYLES, Palette, blend, contrast, generated_pygments_style, lift, load_custom, normalize_color
@@ -48,6 +50,7 @@ from wizolt.utils import terminal
 if TYPE_CHECKING:
     from pygments.style import Style as PygmentsStyle
     from rich.console import Console
+    from rich.text import Text as RichText
     from rich.theme import Theme as RichTheme
 
     from wizolt.session import Session
@@ -137,6 +140,7 @@ class MessageBlock(WidthDependent):
     text: str
     role: str
     indent: int
+    reaction: str = ""  # the model's emoji beside a user message
 
     def ansi(self, width: int) -> str:
         # Rich loads on first render, not at import: the first frame needs no Markdown console.
@@ -145,7 +149,7 @@ class MessageBlock(WidthDependent):
         printer = self.printer
         console = markdown_console(width)
         with console.capture() as capture:
-            printer.render_message(console, self.text, self.role, False, self.indent)
+            printer.render_message(console, self.text, self.role, False, self.indent, self.reaction)
         cleaned = printer.strip_unknown_escapes(printer.strip_trailing_pad(capture.get()))
         # A block owns its inside, never its outside: the gap above it is `separate`'s to open and
         # the one below belongs to whatever comes next, so a document that opens on a heading or
@@ -170,6 +174,77 @@ class LogBlockCell(WidthDependent):
 
     def fragments(self, width: int) -> StyleAndTextTuples:
         return list(self.printer.log_segments(self.block, width))
+
+
+@dataclass(frozen=True)
+class StyledReport(WidthDependent):
+    """A plugin command's styled answer: theme-colored rows inside the report frame.
+
+    The rows arrive as the Line and Text values a plugin handler returned, one theme role per
+    span; a role the theme does not know renders as plain text, the same rule the prompt panels
+    use. The frame is drawn as /status draws its own, and laid out again for the width it lands
+    in, so the right border follows the rows wherever the report is replayed.
+    """
+
+    lines: list[Line]
+
+    MARGIN: ClassVar[str] = LogBlock.margin(TurnBox.CONTENT_LEVEL)
+    WIDTH: ClassVar[int] = 84  # the report frame's width, as /status draws its own
+
+    def text(self, width: int = 80) -> str:
+        return "".join(fragment[1] for fragment in self.fragments(width))
+
+    def fragments(self, width: int) -> StyleAndTextTuples:
+        outer = max(5, min(width - len(self.MARGIN), self.WIDTH))
+        inside = max(1, outer - 4)
+        border = Theme.fg("muted")
+        rows: list[list[tuple[str, str]]] = [[(border, "╭" + "─" * (outer - 2) + "╮")]]
+        for line in self.lines:
+            # Control characters become spaces, so a span cannot smuggle in a row break.
+            clipped = clip([(Theme.fg(span.role if span.role in Theme.ROLES else "text"), clean(span.text)) for span in line.spans], inside)
+            used = sum(get_cwidth(fragment[1]) for fragment in clipped)
+            rows.append([(border, "│ "), *clipped, ("", " " * max(0, inside - used)), (border, " │")])
+        rows.append([(border, "╰" + "─" * (outer - 2) + "╯")])
+        return [fragment for row in rows for fragment in (("", self.MARGIN), *row, ("", "\n"))]
+
+
+@dataclass(frozen=True)
+class CallGap(WidthDependent):
+    """The blank row before a tool call, left out between two calls that each fit on one line.
+
+    A run of one-line calls is a list of what the agent did, and a blank row between every pair
+    doubles its height for nothing; the moment a call brings output or a diff with it, the gap is
+    back. Asked again at every replay, so the gaps follow a record format switched after the calls
+    were printed. `above` is the previous call's blocks, `below` the call line this gap opens.
+    """
+
+    above: list[LogBlock]
+    below: LogBlock
+
+    def fragments(self, width: int) -> StyleAndTextTuples:
+        return [] if UiPrinter.one_line(self.above) and UiPrinter.one_line([self.below]) else [("", "\n")]
+
+
+@dataclass(frozen=True)
+class RunSeam(WidthDependent):
+    """What closes a long run of silent tool calls, in the `[transcript] close` style in effect at
+    each replay: a full-width rule, a blank row, or nothing. `style` reads the setting, so a saved
+    `/theme` switch redraws the seams already on screen, resumed history included.
+
+    Whether a gap opens above it was settled when it printed. The rows below were laid out for the
+    style it printed in, so a switch to or from `none` can leave one blank row more or fewer than a
+    fresh print would."""
+
+    rule_style: str
+    style: Callable[[], str]
+    gap_above: bool
+
+    def fragments(self, width: int) -> StyleAndTextTuples:
+        style = self.style()
+        if style == "none":
+            return []
+        above: StyleAndTextTuples = [("", "\n")] if self.gap_above else []
+        return [*above, *HorizontalRule(self.rule_style, blank_after=True).fragments(width)] if style == "rule" else above
 
 
 @dataclass(frozen=True)
@@ -316,6 +391,7 @@ class Theme:
         "status_model": "#d7b0ff",
         "status_reason": "#f0c77f",
         "status_mcp": "#93a4b7",
+        "status_services": "#e8a0cd",
         "status_context": "#8dd6a1",
         "status_cache": "#80b8ef",
         "status_yolo": "#ff8f9c",
@@ -362,6 +438,7 @@ class Theme:
         "status_model": "#7547a3",
         "status_reason": "#855d12",
         "status_mcp": "#596879",
+        "status_services": "#96437d",
         "status_context": "#236d48",
         "status_cache": "#285da6",
         "status_yolo": "#b63f58",
@@ -522,6 +599,7 @@ class Theme:
                 "status.yolo": solid(colors["status_yolo_bg"], bold=True),
                 "status.detail": f"fg:{detail} bg:{colors['menu_bg']}",
                 "status.cache": f"fg:{colors['status_cache']} bg:{colors['menu_bg']}",
+                "status.services": f"fg:{colors['status_services']} bg:{colors['menu_bg']}",
                 "status.cache.segment": solid(colors["status_cache_bg"]),
                 "status.usage": solid(colors["status_context_bg"]),
                 "status.usage.warning": solid(warning, bold=True),
@@ -857,6 +935,7 @@ class Theme:
 
         styles = {f"wizolt.{role}": cls.rich_color(role) for role in ("user", "error", "muted", "rule")}
         styles["wizolt.user"] += " on " + cls.rich_color("user_bg")
+        styles["wizolt.reaction"] = styles["wizolt.muted"] + " on " + cls.rich_color("user_bg")
         return RichTheme({**styles, **cls.markdown_styles()}, inherit=True)
 
     @classmethod
@@ -1034,6 +1113,8 @@ class UiPrinter:
     # application (erase + repaint), so batching a burst of tool-result lines into one suspend
     # keeps the animated divider on screen; 30ms is well below human perception.
     SCROLLBACK_BATCH_WINDOW: ClassVar[float] = 0.03
+    # The tallest user message the live region holds while the model may still react to it.
+    MAX_HELD_ROWS: ClassVar[int] = 6
     MCP_STATUS_RE: ClassVar[re.Pattern[str]] = re.compile(r"● (connected|connecting|disconnected|disconnecting|error|skipped)")
     MCP_STATUS_ANSI: ClassVar[dict[str, str]] = {
         "connected": "\x1b[32m",
@@ -1085,18 +1166,23 @@ class UiPrinter:
         # leaves one blank row. Starts at one, so the first block of a session does not open with a
         # blank row it has nothing to be parted from.
         self.trailing_blanks = 1
-        # Whether the last thing printed was a call that fit on one line with nothing hanging off
-        # it. A run of those reads as a list, so the callers that part blocks with a blank row skip
-        # it between two of them; anything else printed clears the flag and the gap comes back.
-        self.emitted_single_line = False
+        # The blocks of the tool call printed last -- its call line, then whatever settled under it
+        # -- while nothing else has been printed after it. A run of one-line calls reads as a list,
+        # so the gap before the next call (`CallGap`) is skipped between two of them; anything else
+        # printed clears this and the gap comes back. `Presentation.tool_output` keeps it.
+        self.call_group: list[LogBlock] | None = None
+        # The user's message waiting for the model's reaction (`hold_user_message`), the blank rows
+        # asked for below it meanwhile, and its live layout. Guarded by `_scrollback_lock`.
+        self._held: MessageBlock | None = None
+        self._held_gap = 0
+        self._held_render: tuple[Hashable, StyleAndTextTuples] | None = None
 
     @staticmethod
-    def single_line_block(text: str | LogBlock) -> bool:
-        """Whether a block is one log line: a call with no output, no children, no wrapped text."""
-        if not isinstance(text, LogBlock) or len(text.items) != 1:
-            return False
-        line = text.items[0]
-        return isinstance(line, LogLine) and "\n" not in (line.text + line.meta)
+    def one_line(blocks: Iterable[LogBlock]) -> bool:
+        """Whether blocks draw one log line between them: a call with no output, no children, no
+        wrapped text. Asked of the blocks as they draw now, so it follows a redrawn record."""
+        lines = [line for block in blocks for line, _ in block.walk()]
+        return len(lines) == 1 and "\n" not in (lines[0].text + lines[0].meta)
 
     def track_layout(self, text: str) -> None:
         """Record what one emit left on screen: rows drawn, and blank rows left at the end.
@@ -1117,8 +1203,8 @@ class UiPrinter:
         # A wholly blank emit extends the run above it; anything with content restarts the count.
         self.trailing_blanks = self.trailing_blanks + blanks if blanks == len(rows) else blanks
         # Cleared here rather than in `emit`, so output that never goes through it -- an answer, a
-        # rule, a direct write -- also ends a run of one-line calls. `emit` sets it again after.
-        self.emitted_single_line = False
+        # rule, a direct write -- also ends a run of one-line calls. `tool_output` sets it again after.
+        self.call_group = None
 
     def separate(self, rows: int = 1) -> None:
         """Ensure `rows` blank rows part what comes next from what is already on screen.
@@ -1133,7 +1219,12 @@ class UiPrinter:
         if not self.color:
             return
         for _ in range(max(0, rows - self.trailing_blanks)):
-            self.emit()
+            if self._held is not None:
+                # A gap below a held message waits with it: printing it would print the message.
+                self._held_gap += 1
+                self.track_layout("\n")
+            else:
+                self.emit()
 
     def write_direct(self, callback: Callable[[], None]) -> None:
         """Run one write with no application to print above, draining anything queued first.
@@ -1156,6 +1247,8 @@ class UiPrinter:
             self._scrollback_parts = []
             self._scrollback_scheduled = False
             self._scrollback_generation += 1
+        # Queued writes went in before the message was held, so they print first.
+        parts += self._take_held()
         if parts:
             self.print_parts(parts)
 
@@ -1231,6 +1324,9 @@ class UiPrinter:
         create_app_session instead, this degrades gracefully to per-emit direct prints -- the
         pre-batch behavior, correct but with the divider blink back.
         """
+        parts = [*self._take_held(), *parts]
+        if not parts:
+            return
         app = get_app_or_none()
         # `_running_in_terminal` has no public accessor; it is the only way to see "a suspend is
         # already in progress" so a nested emit prints inside it instead of rejoining the window
@@ -1289,6 +1385,7 @@ class UiPrinter:
         Inside a live application the parts join the same queue as ordinary emits -- landing after
         anything already queued and flushing as one print; outside one they print directly, in
         order, as one call."""
+        parts = [*self._take_held(), *parts]
         app = get_app_or_none()
         if app is None or not app.is_running or app._running_in_terminal:
             self.drain_scrollback()
@@ -1308,7 +1405,10 @@ class UiPrinter:
         if isinstance(text, LogBlock):
             indent = 0
         if not self.color:
-            self.output_fn(self.indent_message(str(text), "", indent) if indent else str(text))
+            # A record that draws nothing in this format (a live call's, under `minimal`) is still
+            # kept for a colored replay, which can redraw it; plain output has no replay.
+            if not (isinstance(text, LogBlock) and not str(text)):
+                self.output_fn(self.indent_message(str(text), "", indent) if indent else str(text))
             return
         segments = self.log_segments(text) if isinstance(text, LogBlock) else self.segments(text)
         if indent:
@@ -1317,7 +1417,6 @@ class UiPrinter:
         # close is how far apart they are on screen, and one Bash call with its output goes further
         # than four Reads. A block that wrapped counts the rows it actually took.
         self.track_layout("".join(fragment for _, fragment in segments))
-        self.emitted_single_line = self.single_line_block(text)
         # A log block sizes its diff gutter and wrapping from the pane, so it is recorded as itself
         # and laid out again on replay. Plain text needs no such treatment: `segments` never wraps,
         # so the terminal re-flows it for free.
@@ -1327,6 +1426,17 @@ class UiPrinter:
             self._batch_parts.append(part)
             return
         self._scrollback_print(part)
+
+    def emit_gap(self, gap: CallGap) -> None:
+        """Print the gap before a tool call, which a replay asks again. Uncolored output gets none,
+        as `separate` opens none there."""
+        if not self.color:
+            return
+        self.track_layout("".join(fragment[1] for fragment in gap.fragments(0)))
+        if self._batch_parts is not None:
+            self._batch_parts.append(gap)
+            return
+        self._scrollback_print(gap)
 
     def emit_block(self, block: WidthDependent) -> None:
         """Print a block that lays itself out, parted from what is above it. Uncolored output gets
@@ -1435,10 +1545,10 @@ class UiPrinter:
                 seen_content = True
         return "".join(payload for _, payload in tokens)
 
-    def emit_answer(self, text: str, *, role: str = "", rule: bool = True, indent: int = 0) -> None:
+    def emit_answer(self, text: str, *, role: str = "", rule: bool = True, indent: int = 0, reaction: str = "") -> None:
         if not self.color:
             if role == "user":
-                text, role = "\n" + self.USER_LOG_PREFIX + text, ""
+                text, role = "\n" + self.USER_LOG_PREFIX + text + (f"  ← {reaction}" if reaction else ""), ""
             elif role == "assistant":
                 role = ""
             self.output_fn(self.indent_message(text, role, indent))
@@ -1453,7 +1563,7 @@ class UiPrinter:
         # captured ANSI, and a 100-column rule replayed into a 60-column pane wraps onto a second
         # row -- the other three rules already avoid this the same way.
         drew_rule = rule and not self.is_error(text)
-        block = MessageBlock(self, text, role, indent)
+        block = MessageBlock(self, text, role, indent, reaction)
         # Count the rule's row as Rich's own row was counted, so spacing decisions taken from
         # `rows_since_rule` and `trailing_blanks` are unchanged by where the rule is drawn.
         self.track_layout(("─\n" if drew_rule else "") + block.ansi(shutil.get_terminal_size().columns))
@@ -1464,6 +1574,58 @@ class UiPrinter:
             self._batch_parts.extend(parts)
             return
         self._scrollback_print_parts(parts)
+
+    def hold_user_message(self, text: str) -> bool:
+        """Lay out the user's message as `emit_answer` would, but keep it out of scrollback until
+        the next write, so the model's reaction (`react`) can still join its row: a printed row
+        cannot be changed. The live region draws it meanwhile (`held_fragments`). Whatever is
+        written next -- the reply, a tool row, a refusal, the turn's end -- takes it out first.
+
+        False, and nothing held, without color, inside a batch, or for a message taller than
+        MAX_HELD_ROWS: a tall message would crowd the live region, so it prints at once and
+        gets no reaction."""
+        if not self.color or self._batch_parts is not None or self._held is not None:
+            return False
+        block = MessageBlock(self, text, "user", 0)
+        rows = block.ansi(shutil.get_terminal_size().columns)
+        if rows.count("\n") > self.MAX_HELD_ROWS:
+            return False
+        self.separate()
+        self.track_layout(rows)
+        with self._scrollback_lock:
+            self._held, self._held_gap = block, 0
+        return True
+
+    def react(self, reaction: str) -> bool:
+        """Put the model's reaction beside the held user message. False once it has been printed:
+        a reaction that arrives after anything else was written is dropped, not drawn late."""
+        with self._scrollback_lock:
+            if self._held is None:
+                return False
+            self._held = replace(self._held, reaction=reaction)
+        return True
+
+    def held_fragments(self, width: int) -> StyleAndTextTuples:
+        """The held message as the live region draws it, laid out once per width and theme."""
+        held = self._held
+        if held is None:
+            return []
+        key = (held, width, Theme.key())
+        if self._held_render is None or self._held_render[0] != key:
+            self._held_render = (key, held.fragments(width))
+        return self._held_render[1]
+
+    def release_held(self) -> None:
+        """Print the held message now, with its reaction if one arrived."""
+        self._write_scrollback([])
+
+    def _take_held(self) -> list[FormattedText | ANSI | WidthDependent]:
+        with self._scrollback_lock:
+            held, gap = self._held, self._held_gap
+            self._held, self._held_gap, self._held_render = None, 0, None
+        if held is None:
+            return []
+        return [held, *(FormattedText(self.segments("")) for _ in range(gap))]
 
     def emit_phase_rule(self) -> None:
         """Close a stretch of the turn with the same quiet full-width rule the turn ends with,
@@ -1489,6 +1651,24 @@ class UiPrinter:
         self.track_layout("─\n\n")
         # Distance to the next rule is measured from here, so the rule's own rows do not count.
         self.rows_since_rule = 0
+
+    def emit_run_seam(self, style: Callable[[], str]) -> None:
+        """Close a run of silent tool calls with a `RunSeam`, laid out now in the style `style()`
+        names: the same rows `emit_phase_rule` or `separate` draw, or none at all."""
+        if not self.color:
+            return
+        seam = RunSeam(Theme.fg("rule"), style, gap_above=self.trailing_blanks < 1)
+        text = "".join(fragment[1] for fragment in seam.fragments(1))
+        if self._batch_parts is not None:
+            self._batch_parts.append(seam)
+        else:
+            self._scrollback_print(seam)
+        if text:
+            # A seam that draws nothing leaves the layout as it was: a run of one-line calls on
+            # either side of it still packs into one list.
+            self.track_layout(text)
+        if style() == "rule":
+            self.rows_since_rule = 0
 
     def rule_due(self, min_rows: int) -> bool:
         """Whether a phase rule would land at least `min_rows` rendered rows below the last one
@@ -1534,7 +1714,18 @@ class UiPrinter:
         """Whether a message reads as an error, which is drawn without a rule above it."""
         return text.startswith(("Error:", "ConfigError:", "Unknown command:"))
 
-    def render_message(self, console: Console, text: str, role: str, rule: bool, indent: int) -> None:
+    @staticmethod
+    def reaction_text(console: Console, line: RichText, reaction: str, width: int) -> RichText:
+        """The model's `← 👍` after the user's message: two spaces after its last row when the
+        whole mark fits there, else at the start of a row of its own, so it is never split and
+        never squeezed into the words. Muted, unlike the message, so nobody reads it as typed."""
+        from rich.text import Text as RichText
+
+        mark = f"← {reaction}"
+        last = line.wrap(console, width)[-1].cell_len
+        return RichText(("  " if last + 2 + get_cwidth(mark) <= width else "\n") + mark, style="wizolt.reaction")
+
+    def render_message(self, console: Console, text: str, role: str, rule: bool, indent: int, reaction: str = "") -> None:
         # Rich renders completed output only, so it loads here rather than at module scope and the
         # first frame does not pay for it. See `wizolt.ui.markdown`.
         from rich.padding import Padding
@@ -1549,7 +1740,10 @@ class UiPrinter:
             console.print(Rule(style="wizolt.rule", characters="─"))
         margin = LogBlock.margin(indent)
         if role == "user":
-            console.print(Padding(RichText(UiPrinter.USER_LOG_PREFIX + text, style="wizolt.user"), (0, 0, 0, len(margin)), style="wizolt.user"))
+            line = RichText(UiPrinter.USER_LOG_PREFIX + text, style="wizolt.user")
+            if reaction:
+                line.append_text(self.reaction_text(console, line, reaction, console.width - len(margin)))
+            console.print(Padding(line, (0, 0, 0, len(margin)), style="wizolt.user"))
         elif role == "assistant":
             content = RichText(styled_text, style="wizolt.error") if error else WizoltMarkdown(styled_text)
             console.print(Padding(content, (0, 0, 0, len(margin))))
@@ -1629,8 +1823,16 @@ class UiPrinter:
                     end += 1
                 diff_lines = [entry[0] for entry in entries[index:end]]
                 diff_text = "\n".join(item.text for item in diff_lines)
+                # The pair of file-header rows is read but not drawn: the call line above the block
+                # already names the file, and repeating it costs two rows for every edited file. Read,
+                # because `diff_segments` takes the lexer for the whole body from the `+++` path, and
+                # dropped from its rendered rows and the row list both -- one list left longer and every
+                # row below would print its neighbour's text. Only the pair opening the block counts: a
+                # removed body line can render as `--- x` on its own, its content having begun with `-- `.
+                old_marker, new_marker = self.DIFF_HEADER_PREFIXES
+                header_rows = 2 if len(diff_lines) > 1 and diff_lines[0].text.startswith(old_marker) and diff_lines[1].text.startswith(new_marker) else 0
                 highlighted = self.segment_lines(self.diff_segments(diff_text))
-                for item, rendered in zip(diff_lines, highlighted):
+                for item, rendered in zip(diff_lines[header_rows:], highlighted[header_rows:]):
                     prefix = [*margin, *self.edge_segments(item.edge)]
                     rendered = self.remove_line_ending(rendered)
                     for row in Text.wrap_styled(prefix, prefix, rendered, width):
@@ -1855,7 +2057,8 @@ class UiPrinter:
     # git and difflib write `--- <path>`, and `--- ` even when the path is empty). Matching the
     # marker alone drew a removed markdown rule (`---`, so the diff line is `----`) as a dim
     # header: no red band, and the row it then never counted shifted every old line number
-    # under it in that hunk.
+    # under it in that hunk. The pair is ordered -- the old side's marker, then the new side's --
+    # which is the order `log_segments` drops a block's header rows in.
     DIFF_HEADER_PREFIXES: ClassVar[tuple[str, ...]] = ("--- ", "+++ ")
     # Width of the line-number gutter `diff_segments` writes (`NNNN NNNN │ `). A caller wrapping a
     # diff row indents its continuation by this much, so the wrapped text stays in the body column

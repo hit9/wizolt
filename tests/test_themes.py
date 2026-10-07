@@ -136,7 +136,18 @@ def test_named_themes_footer_reads_on_its_band_and_off_it_and_the_divider_keeps_
         assert re.fullmatch(r"#[0-9a-f]{6}", colors["status_bg"]), name
         assert colors["divider_label"] == colors["accent"], name
         # A preset lays the footer on the band or leaves it on the background: both must read.
-        for role in ("status_base", "status_provider", "status_model", "status_reason", "status_mcp", "status_context", "status_cache", "status_yolo", "status_agent"):
+        for role in (
+            "status_base",
+            "status_provider",
+            "status_model",
+            "status_reason",
+            "status_mcp",
+            "status_services",
+            "status_context",
+            "status_cache",
+            "status_yolo",
+            "status_agent",
+        ):
             assert contrast(colors[role], colors["status_bg"]) >= MUTED_CONTRAST, (name, role)
             assert contrast(colors[role], palette.background) >= MUTED_CONTRAST, (name, role)
     # The terminal-following themes keep the label they always had.

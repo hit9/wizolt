@@ -18,9 +18,11 @@ from uuid import uuid4
 from wizolt.agent.inspection import inspect_session
 from wizolt.agent.results import settled_result
 from wizolt.base import Json, ToolError, oneline, run_blocking
+from wizolt.config import MAX_SUBAGENTS
 from wizolt.image import UserInput
 from wizolt.session import QueuedInput, Session, SessionSnapshotStore
 from wizolt.session.ownership import subagent_root_uid
+from wizolt.session.types import SubagentRecord
 
 if TYPE_CHECKING:
     from wizolt.agent.engine import Agent
@@ -29,6 +31,8 @@ SHARED_WORKSPACE = """You share the working directory and filesystem with other 
 are immediately visible to all agents; you do not have a separate worktree. Your conversation and
 statistics are independent. Follow the assigned task and file boundaries. Do not overwrite or
 revert other agents' changes. Coordinate overlapping edits with the parent before proceeding.
+Never run repo-wide mutating commands (git stash/checkout/reset/clean, whole-tree formatters or
+codegen) unless the task assigns them: they rewrite other agents' files.
 Report the files changed and verification performed. Do not create specialized agent roles.
 """
 
@@ -36,6 +40,30 @@ Report the files changed and verification performed. Do not create specialized a
 def unavailable_input(_prompt: str) -> str:
     """A background engine never owns process stdin; its frontend must provide approvals."""
     raise ToolError("Subagent approval requires an interactive frontend; no input was read")
+
+
+def latest_answer(session: Session) -> str:
+    """Latest textual answer; a tool-call-only assistant message may have null content.
+
+    Interruption can leave such a message as the history tail. It is valid conversation state,
+    not a damaged agent, and must not break list/stop/report or turn into literal 'None'.
+    """
+    return next(
+        (text for message in reversed(session.messages) if message.get("role") == "assistant" and isinstance(text := message.get("content"), str) and text),
+        "",
+    )
+
+
+def report_text(session: Session, *, status: str) -> str:
+    """`report`'s payload: the answer as written, or why there is none to show.
+
+    A child that never produced text -- a failure before its first reply -- would otherwise
+    report an empty result, which reads as a truncated one. State the status instead.
+    """
+    if answer := latest_answer(session):
+        return answer
+    error = session.state.last_turn_error
+    return f"{session.agent_name}: no answer text (status: {status})" + (f"; last error: {error}" if error else "")
 
 
 @dataclass
@@ -55,19 +83,8 @@ class AgentEntry:
 
     @property
     def answer(self) -> str:
-        """Latest textual answer; a tool-call-only assistant message may have null content.
-
-        Interruption can leave such a message as the history tail. It is valid conversation
-        state, not a damaged agent, and must not break list/stop or turn into literal 'None'.
-        """
-        return next(
-            (
-                text
-                for message in reversed(self.agent.session.messages)
-                if message.get("role") == "assistant" and isinstance(text := message.get("content"), str) and text
-            ),
-            "",
-        )
+        """Latest textual answer; `report` reads a retained snapshot with the same rule."""
+        return latest_answer(self.agent.session)
 
     @property
     def status(self) -> str:
@@ -113,7 +130,30 @@ class Subagents:
 
     @property
     def limit(self) -> int:
+        """How many children may run at once; 0 turns subagents off."""
         return self.root.session.settings.max_subagents
+
+    @property
+    def active(self) -> int:
+        """Children holding a slot: an inbox consumer is live, including while it awaits approval.
+
+        A settled child keeps its history and frees its slot; only retention counts it.
+        """
+        return sum(1 for entry in self.entries.values() if entry.agent is not self.root and entry.task is not None and not entry.task.done())
+
+    def _admit(self, entry: AgentEntry | None = None) -> None:
+        """Refuse model-started work beyond the running limit; call under the admission lock.
+
+        Steering an agent that already holds a slot needs no new one.
+        """
+        if entry is not None and entry.task is not None and not entry.task.done():
+            return
+        if self.limit == 0:
+            raise ToolError("Subagents are off (runtime.max_subagents = 0)")
+        if self.active >= self.limit:
+            raise ToolError(
+                f"Subagent limit reached: {self.active} of {self.limit} agents running (excluding main); wait for one to settle before starting another"
+            )
 
     @property
     def counts(self) -> AgentCounts:
@@ -215,8 +255,9 @@ class Subagents:
                 raise ToolError("Agent group is closed")
             if parent.uid not in self.entries:
                 raise ToolError("Cannot spawn from an archived agent")
-            if len(self.entries) - 1 >= self.limit:
-                raise ToolError(f"Subagent limit reached ({self.limit}, excluding main); reuse an existing agent with send")
+            self._admit()
+            if len(self.entries) - 1 >= MAX_SUBAGENTS:
+                raise ToolError(f"{MAX_SUBAGENTS} agents retained (excluding main); reuse one with send, or ask the user to archive finished agents")
             if not isinstance(name, str) or not isinstance(message, str) or not name.strip() or not message.strip():
                 raise ToolError("spawn requires name and message")
             name = oneline("".join(char if char.isprintable() else " " for char in name), 40)
@@ -240,7 +281,7 @@ class Subagents:
             session.provider_overrides = session.frozen_provider_overrides()
             entry = await self._attach(session, parent.uid, message)
             # Save the child before publishing its reference, so resume never points at a missing log.
-            session.enqueue_user_input(message)
+            session.enqueue_user_input(message, origin="child")  # The parent model's task.
             await session.save_snapshot()
             self.root.session.subagent_entries.append({"uid": session.uid, "parent": parent.uid, "instruction": message})
             await self.root.session.save_snapshot()
@@ -256,7 +297,11 @@ class Subagents:
                 raise ToolError("Agent group is closed")
             if not str(message).strip():
                 raise ToolError("send requires message")
-            entry.agent.session.enqueue_user_input(message, commands=commands)
+            if start and not commands:
+                # The user typing into a child's frontend is not admitted against the limit.
+                self._admit(entry)
+            # Commands come only from the user's frontend; everything else is the parent model's.
+            entry.agent.session.enqueue_user_input(message, commands=commands, origin="user" if commands else "child")
             await entry.agent.session.save_snapshot()
             if start:
                 self._start(entry)
@@ -334,12 +379,18 @@ class Subagents:
             else:
                 self.changed(entry)
 
-    async def wait(self, uids: list[str], timeout: float = DEFAULT_WAIT_TIMEOUT) -> list[AgentEntry]:
-        """Observe any selected inbox settling without cancelling its work.
+    async def wait(self, uids: list[str], timeout: float = DEFAULT_WAIT_TIMEOUT, mode: str = "any") -> list[AgentEntry]:
+        """Observe selected inboxes settling without cancelling their work.
+
+        ``any`` returns the settled targets once one settles, or [] on timeout. ``all`` returns
+        once every target has settled; on timeout it returns every target, running ones
+        included, so the caller sees what finished and what did not.
 
         A consumer can hand off queued input to a replacement task during cleanup.
         Recheck the entries after wakeup so that handoff is not reported as completion.
         """
+        if mode not in ("any", "all"):
+            raise ToolError('wait mode must be "any" or "all"')
         if not isinstance(uids, list) or not uids or any(not isinstance(uid, str) or not uid for uid in uids):
             raise ToolError("wait requires a non-empty agent_ids list")
         entries = [self.entry(uid) for uid in dict.fromkeys(uids)]
@@ -350,12 +401,12 @@ class Subagents:
         deadline = loop.time() + remaining
         while True:
             settled = [entry for entry in entries if entry.task is None or entry.task.done()]
-            if settled:
+            if settled and (mode == "any" or len(settled) == len(entries)):
                 return settled
-            tasks = {entry.task for entry in entries if entry.task is not None}
-            done, _ = await asyncio.wait(tasks, timeout=remaining, return_when=asyncio.FIRST_COMPLETED)
+            pending = {entry.task for entry in entries if entry.task is not None and not entry.task.done()}
+            done, _ = await asyncio.wait(pending, timeout=remaining, return_when=asyncio.FIRST_COMPLETED)
             if not done:
-                return []
+                return entries if mode == "all" else []
             remaining = max(0, deadline - loop.time())
 
     def stop(self, uid: str) -> None:
@@ -373,22 +424,43 @@ class Subagents:
             result.update(children)
         return result
 
-    async def inspect(self, uid: str) -> Json:
-        if uid in self.entries:
-            entry = self.entries[uid]
-            return inspect_session(entry.agent.session, status=entry.status, instruction=entry.instruction, calls=entry.agent.tools.active_calls)
+    async def _retained(self, uid: str) -> tuple[Session, SubagentRecord]:
+        """Open an archived child's snapshot for reading; the caller closes it."""
         item = next((item for item in self.root.session.subagent_entries if item.get("uid") == uid and item.get("archived")), None)
         if item is None:
             raise ToolError(f"Unknown agent: {uid}")
         root = self.root.session
         session = await run_blocking(lambda: SessionSnapshotStore.load(uid, config=deepcopy(root.config), settings=replace(root.settings), cwd=root.cwd))
+        return session, item
+
+    async def report(self, uid: str) -> str:
+        """One child's latest answer whole, live or archived.
+
+        `inspect` and `wait` are bounded by design; this is where the text is read as written.
+        An archived child is read from its snapshot, so a finished review stays readable after
+        it leaves the group.
+        """
+        entry = self.entries.get(uid)
+        if entry is not None:
+            return report_text(entry.agent.session, status=entry.status)
+        session, _item = await self._retained(uid)
+        try:
+            return report_text(session, status="archived")
+        finally:
+            session.close()
+
+    async def inspect(self, uid: str) -> Json:
+        if uid in self.entries:
+            entry = self.entries[uid]
+            return inspect_session(entry.agent.session, status=entry.status, instruction=entry.instruction, calls=entry.agent.tools.active_calls)
+        session, item = await self._retained(uid)
         try:
             return inspect_session(session, status="archived", instruction=item.get("instruction", ""))
         finally:
             session.close()
 
     async def archive(self, uid: str, *, expected: frozenset[str] | None = None) -> None:
-        """Confirmed retirement, retaining snapshots/assets while releasing live slots.
+        """Confirmed retirement, retaining snapshots/assets while releasing retained room.
 
         Publish the archived manifest before disposing engines. Resume consults this manifest,
         never filesystem discovery, so no tombstone or destructive log deletion is needed.

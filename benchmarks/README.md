@@ -9,7 +9,91 @@ document any retained cost. Update `baselines/` and this README's reference befo
 never accept a regression merely by replacing the baseline. If the environment or workload changed,
 remeasure the previous reference revision too so the comparison remains meaningful.
 
+## Compaction payload trim (branch review)
+
+[Results](results/linux-arm64-py314-compaction-flat-trim.json): `Compactor.input()`, the
+flattened compaction payload, over the stored messages of eight real local sessions, before
+(`8a32f222`, tool results carried whole) and after (results over 2,000 characters cut to head
+and tail). Linux ARM64, CPython 3.14.7; sizes are wizolt's own token estimate.
+
+| Workload | Before (tokens) | After (tokens) | Change |
+| --- | ---: | ---: | ---: |
+| 8 sessions, 2,554 messages, 534 of 1,289 tool results trimmed | 952,860 | 488,737 | -48.7% |
+
+Per session the cut ranges from -28% to -66%. Only the flattened payload is affected: it is
+used when `[compaction]` names another provider, a `context.compact` plugin is active, or the
+inline request cannot be built. The inline request is unchanged byte for byte. The trade-off is
+that the summarizer no longer sees the middle of a long result; its `tr.N` key stays in the
+head, and the full text remains readable under it.
+
+## Transcript records (branch review)
+
+[Before](results/linux-arm64-py314-transcript-rows-before.json) is `4c3d0727`; the
+[after report](results/linux-arm64-py314-transcript-rows-after.json) is the working tree over it,
+where `[transcript] format` rows render through the shared format language (`wizolt.formats`)
+and `Text.wrap_styled` lays out a fitting printable-ASCII row without per-character cells. Linux
+ARM64, CPython 3.14.7, nine samples, two rounds run back to back; the better round is compared.
+The release reference is unchanged.
+
+The new `transcript.py` suite settles 300 tool calls (Bash with a 50-line stream, Read with
+200 lines, a failure) through `finish_display` and lays every block out at 100 columns:
+
+| Workload | Before (ms) | After (ms) | Change |
+| --- | ---: | ---: | ---: |
+| 300 records, default (builtin) rendering | 15.794 | 12.361 | -21.7% |
+| 300 records, `preset:minimal` | 16.160 | 11.489 | -28.9% |
+| 300 records, custom tail-3 format | 27.693 | 17.831 | -35.6% |
+
+Output digests match before and after for all three and for every `replay.py` probe, so the
+same bytes are drawn. Replay is otherwise unchanged within noise: recolor measured 107-111 ms
+on both sides over three further rounds, first projection 97-101 ms. The custom format no
+longer parses per record (formats are cached by source) and skips splitting output it does
+not show; the remaining cost is laying out its extra rows, shared with the builtin path.
+
 ## Plugin foundation
+
+### Interception and presenters (branch review)
+
+[Master](results/linux-arm64-py314-interception-master.json) and the
+[reviewed branch](results/linux-arm64-py314-interception-review.json) (working tree over
+`3effe92b`, exact source hash in the report) use Linux ARM64, CPython 3.14.7, identical
+dependencies and workloads, nine samples, run back to back without tests or builds in flight.
+The release reference is unchanged.
+
+The first comparison found two startup regressions, both fixed before this measurement:
+worker launch had grown by about 15 ms (`packaging` loaded even for plugins declaring no
+dependencies, plus eager operation/presentation modules), and CLI import by about 5 ms
+(interception modules loaded eagerly). Both now load only when used, guarded by import tests in
+`tests/test_startup.py`.
+
+| Workload | Master (ms) | Branch (ms) | Change |
+| --- | ---: | ---: | ---: |
+| First prompt frame | 148.595 | 154.117 | +3.7% |
+| CLI import | 194.203 | 193.947 | -0.1% |
+| Ten headless turns, no hooks | 26.717 | 28.252 | +5.8% |
+| Enable and close one plugin | 100.837 | 104.069 | +3.2% |
+| Plugin tool, 20 calls | 16.758 | 5.022 | -70.0% |
+| Cached projection, 1,000 reads | 5.427 | 5.836 | +7.5% |
+
+Replay and dense output hashes match. No workload rose more than 8%. The turn and projection
+paths gained interception fast-path checks and per-registration health; the retained cost is
+about 0.15 ms per turn and 0.4 microseconds per cached read.
+
+New long-term probes (`plugins.py`) track the chain itself. Cores are trivial, so these are
+pure host and IPC overhead:
+
+| Interception workload | Median (ms) |
+| --- | ---: |
+| Empty chain, 1,000 operations | 2.015 |
+| Non-matching chain, 1,000 operations | 2.715 |
+| Three no-op interceptors, 20 operations | 24.100 |
+| Buffered response transform, 20 requests | 8.316 |
+| Present one tool result, 20 times | 4.224 |
+| Refresh with an activity presenter, 20 passes | 11.055 |
+
+An operation no plugin intercepts costs about 2 microseconds; each matching interceptor about
+0.4 ms (the call and its `next` round trip). An activity presenter adds one round trip to each
+5 Hz refresh pass.
 
 ### Cached plugin row projection (dev27)
 

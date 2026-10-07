@@ -158,8 +158,8 @@ async def test_compaction_exports_and_identical_image_assets_have_distinct_owner
         image_paths.append(session.images.asset_path(session.pending_user_inputs[0].images[0]))
     assert image_paths[0] != image_paths[1]
     assert Path(image_paths[0]).read_bytes() == Path(image_paths[1]).read_bytes()
-    assert root.state.summary == "summary main"
-    assert child.session.state.summary == "summary child"
+    assert root.state.summaries[-1].endswith("]\nsummary main")
+    assert child.session.state.summaries[-1].endswith("]\nsummary child")
     child.session.request_context_reset()
     child.session.apply_context_reset()
     assert root.state.known == ["main"] and child.session.state.known == ["child"]

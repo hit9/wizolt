@@ -288,7 +288,7 @@ async def test_manual_compact_inserts_summary_before_latest_user(tmp_path):
     assert s.messages[0]["content"].startswith(COMPACTION_SUMMARY_TITLE)  # the checkpoint leads
     assert s.messages[-2]["content"] == "latest"  # and sits before the latest request, not after
     assert s.messages[-1]["content"] == "tool kept"
-    assert s.state.summary == "summary"
+    assert s.state.summaries[-1].endswith("]\nsummary")
     assert transitions == ["compacting context", "dispatch"]
     assert "messages 12 -> " in result
     assert "prior summary inserted" in result
@@ -395,6 +395,7 @@ async def test_overdue_usage_triggers_compaction_even_when_estimate_fits(tmp_pat
     estimate alone decides, so a small follow-up after an 80% request is not compacted."""
     s = session(tmp_path)
     s.settings.max_context_tokens = 21_000  # budget 520; the ASCII payload estimates ~326
+    s.settings.reactions = False  # its system block alone would overflow so small a budget
     s.messages = [
         {"role": "user", "content": "old user"},
         {"role": "assistant", "content": "old answer"},

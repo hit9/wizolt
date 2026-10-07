@@ -1,4 +1,26 @@
-"""Optional layout manager: ordinary SDK tools, with policy and persistence owned by the host."""
+"""Lets the agent arrange plugin panels and bind keyboard shortcuts for you when you ask.
+
+Enable **layout** in `/plugins`, then ask in plain words. Nothing happens until you do.
+
+## Arrange panels
+
+> Put my context bar before my pet and leave one empty line between them.
+
+> Remove that empty line. Keep the current order.
+
+Order and spacing survive restarts and stay when you disable this plugin. Without a saved
+order, panels appear in plugin-name order.
+
+## Bind shortcuts
+
+> Bind F6 to my task list. Check for conflicts first.
+
+Keys must be function keys or Ctrl keys. The agent asks before replacing a key that is already
+taken; input and cancellation keys can never be replaced. A binding fires only at idle input
+and goes dormant while its plugin is disabled.
+"""
+
+# An optional layout manager: ordinary SDK tools, with policy and persistence owned by the host.
 
 import json
 from dataclasses import asdict

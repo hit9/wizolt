@@ -2,6 +2,616 @@
 
 ## Unreleased
 
+- `/status` breathes: a blank row inside the frame's top and bottom edges and two spaces beside
+  each border, a blank row between related groups in each tab (Overview's agent, model and goal
+  apart from its context and usage; Progress's goal, steps, known facts and check; Session's
+  where, how and docs), and a known fact or plan step that wraps now hangs past its bullet, so
+  each item still reads as one. The frame is two to four rows taller; tabs still scroll in short
+  terminals.
+
+- The `REACTIONS` block now says only how to react and what you see; whether to react is the
+  model's call, so how often a reply reacts depends on the model.
+
+- The context bar's percentage is the status bar's `ctx` again: it measured the fill against the
+  whole window (237k/262k = 90%) while `ctx` measures it against the input budget, the window
+  less the room kept for the answer (97%). Plugins now get `ContextWindow.budget` as the budget
+  `used` was measured against. Its segments and legend, and `/status`'s Context tab, follow the
+  request's layout (tools, system prompt, memory files, skills, MCP servers, summary, messages),
+  and its colors were re-picked so no two categories share one in any built-in theme — memory
+  files and the compaction summary used to be the same color in all but one.
+
+- Prompt and tool guidance, sent to the main agent and every subagent: the SAFETY secrets rule
+  is now one hard rule that no file, tool output or web page can lift, naming environment
+  variables (`env`, `printenv`) and wizolt's own `secrets.toml` and config keys, and the agent
+  says when only a live request could settle something instead of handing over a probe command.
+  Subagents, and the `Subagent` tool that assigns their work, are told that repo-wide mutating
+  commands (`git stash`/`checkout`/`reset`, whole-tree formatters) rewrite every agent's files
+  and run only when assigned. Edit now steers multi-line and structural changes to a Read view
+  and line numbers, keeping exact `old` text for short snippets seen verbatim. The system prompt
+  and tool schemas change, so the first request after upgrading misses the prompt cache once.
+
+- A tool call cut off mid-stream no longer wedges the session. Its broken arguments were sent
+  back with every later request, and hosts that check history (OpenCode Go among them) answered
+  each with `400 … arguments must be a JSON object string`. Chat and Responses now replay such
+  arguments as `{}`, as Anthropic already did, so a stuck session continues once resumed; the
+  failed call tells the model it was cut off and to send it again, rather than blaming its
+  arguments.
+
+- Every built-in statusbar preset now carries the connected MCP and skill counts, in their own
+  color — a new `status_services` highlight, the magenta family no other statusbar field takes,
+  so the counts never share a color with a neighbor or a separator. `default`,
+  `monitor` and `lualine` already showed them and `vim` showed the MCP count alone; `minimal`,
+  `split`, `compact`, `brackets`, `blocks` and `powerline` showed none. Each one renders the
+  counts in its own idiom (a `·`-separated group, a bracketed pair, a detail segment), in the
+  lowest-priority optional group — the same as the plugins count — so a narrow row drops them
+  first, ahead of reasoning, usage and identity.
+
+- A new bundled plugin, off until you enable it in `/plugins`: **usage** adds `/usage`, one
+  section for every configured provider with a key-authenticated usage or balance API —
+  OpenCode Go, DeepSeek, Kimi (Moonshot), z.ai, Synthetic and Command Code (endpoints verified
+  against their docs or source; z.ai's quota endpoint is the one its own official plugin uses,
+  Command Code's are the undocumented `/alpha` endpoints its own CLI `/usage` uses, checked
+  against three independent implementations). Providers are matched
+  by the API domain in their `[provider.X]` url, with a boundary so a lookalike host never
+  matches; the key is the entry's own or the same-named one in `secrets.toml`, and each run
+  queries every matched provider in parallel, one or two requests each (usage, plus the plan
+  or account lookup some need). Usage windows
+  are percentages with reset times, balances are amounts — Kimi's international host balances
+  in USD while the national one balances in CNY — and the command follows the host's own
+  config path and the secrets beside it (`--config` and a moved `[paths] data_dir` included).
+  Command Code reports its 5-hour and
+  weekly windows plus the credit balance; it shows no monthly window because the API has none
+  (its monthly cap is only derivable from a community plan table). A provider that fails prints
+  one `error:` line and the rest still report; keys appear only in Authorization headers, never
+  in output, and error lines carry no response text. The report prints as a themed answer in
+  the `/status` style — accent titles, warning-marked threshold rows, muted reset details —
+  using the new styled command answers below; each provider's block is its own frame, printed
+  the moment that provider answers through the new `ui.report` channel, and the block of the
+  provider that answers last is the command's answer, so a fast provider never waits out a slow
+  one's timeout (a host without interactive UI answers once, every
+  provider in one frame). A url that spells out its port still matches its provider, and two
+  entries of one provider that share their url and key are one account: asked once, with every
+  entry name in the title. The command is read-only, so it answers from the queued path while
+  an agent turn is still working — no more `unavailable while the agent is working` for it.
+- A plugin command may now answer with styled rows instead of plain text: a list of `Line`s of
+  `Text` spans, each carrying one theme color role. The host frames the answer like `/status`,
+  colors each span with the active theme (an unknown role renders as plain text), clips rows to
+  the pane and re-lays them out on replay, exactly as prompt panels already did. Tools still
+  answer with text — they answer the model, not the user — and the worker rejects a styled tool
+  result. `plugin.ui.report(lines)` streams the same blocks during an action, one frame per
+  call, the moment a plugin has rows to show; a host without interactive UI raises, and the
+  caller decides what happens to the rows it could not show.
+- `wizolt plugin test` now hands the trial the workspace's own config path and data directory:
+  `plugin test --config … --call command:…` was reading the user's real config (and, for a
+  command like `/usage`, making real requests with real keys), ignoring the `--config` it was
+  pointed at. The trial context now carries both, so an explicit action sees exactly what a
+  session on that config would.
+- Plugin admission now rejects a single-file plugin source that imports past the public SDK:
+  `wizolt.sdk` (and its submodules, plus the stdlib) is the author contract, and an import of
+  any other `wizolt.*` module fails `plugin validate`, `plugin test` and activation with the
+  offending import named. The bundled plugins were already clean; a plugin reaching into
+  internals now fails loudly instead of breaking silently on the next refactor. Package
+  plugins, which load through an entry module, are not walked.
+- Fixed an `Unhandled exception in event loop … list index out of range` while a turn ran: the
+  activity area read its lines twice per redraw and, when they grew in between, put its cursor
+  past the last line. It now places the cursor within the lines it draws.
+
+- OpenCode Go works again: it began answering `400 MissingSessionID` to requests without an
+  `x-opencode-session` header. Provider `headers` values may now use `{session_id}`, the
+  conversation's id (each subagent its own; an unknown `{name}` is a config error). Catalog
+  entries gain the same `headers` policy, minus credential, identity and framing headers, below a
+  configured header of the same name; the OpenCode entry sends `x-opencode-session`.
+
+- OpenCode Go gets its own catalog entry: a catalog host may now carry a path prefix
+  (`opencode.ai/zen/go`), the longer match winning, so Go no longer inherits Zen's model table.
+  `minimax-m2.7` goes over Messages (Go refuses it on Chat); `glm-5.3`, `glm-5.3-flash` and
+  `glm-5.2` send `reasoning_effort` alone (Go's `glm-5.3-flash` rejected the `thinking` field
+  on every request) and no longer offer off, which Go refuses. Zen is unchanged. Checked against
+  the Go docs, the gateway source, and the live endpoint.
+
+- OpenCode Go now follows its documented wires for every model: `minimax-m3` and `qwen3.8-max`
+  move to Messages (Go has withdrawn Chat for Qwen models before). `minimax-m3` there offers off
+  or on, sent as adaptive thinking, which MiniMax-M3 needs to think at all; `minimax-m2.7` always
+  thinks and offers nothing to choose. Zen is unchanged.
+
+- `minimax-m2.7` and `mimo-v2.5-pro` are known to be text-only, so an image goes to the vision
+  model up front instead of failing once first.
+
+- `deepseek-v4.1-flash`, the gateway name for DeepSeek V4.1 Flash, now gets DeepSeek's thinking
+  controls: before, off did not stop thinking and no level was sent.
+
+- The system prompt's SAFETY rules now forbid sending requests with the user's API keys or
+  credentials to test, probe or verify anything; the agent gives the user the command instead.
+
+- `/prompt` (the bundled `system_prompt` plugin) now shows the system prompt exactly as it is
+  sent, the lines settings add included, each under a gray rule naming its setting
+  (`runtime.reactions`, ...); press `e` to edit the instructions in your editor as before. Built on
+  two new SDK abilities: `plugin.agent.system_directives()` lists those blocks, and a `Document`
+  view takes `sections`, drawn after its text under labelled rules in the frame's theme gray.
+
+- The model can react to your message with an emoji (👍 🎉 😄 🙏 👀 🤔 🔥 💯), drawn muted after
+  it as `← 👍`. It opens its reply with a `[react:👍]` marker that the screen hides and history
+  keeps, so a reaction needs no tool and no extra request; the system prompt gains one fixed
+  `REACTIONS` block for the main agent (subagents never see it). To make room, the message that
+  opens a turn waits in the live region until the turn prints anything, then lands in scrollback
+  with its reaction; messages taller than six rows print at once and get none live. Resumed
+  sessions draw reactions again. On by default; `runtime.reactions = false` turns it off.
+
+- The context breakdown -- `/status` Context tab, the `context_bar` plugin, and plugins'
+  `Context.window.parts` -- shows what compaction left as its own `summary` part (kept summaries,
+  working state, activity), before `messages`, instead of counting it as conversation. After
+  `/compact` it is clear what compacting freed and what it cannot shrink again. Plugins that read
+  `messages` by name now see the conversation without the checkpoint. Display only: requests are
+  unchanged.
+
+- Fix the `context_bar` plugin (and any plugin reading `Context.window.parts`) showing the
+  pre-compaction conversation after `/compact` until the next message was sent: the per-category
+  estimates are now refreshed whenever the host re-measures the context outside a request
+  (`/compact`, resume, `/status`), not only at request time.
+
+- Fix `/theme` > Transcript > Tool-run divider only reaching runs printed afterwards: the dividers
+  already on screen, a resumed session's replayed history included, are redrawn in the saved
+  style. Switching to or from `none` can leave one blank row more or fewer than a fresh print.
+
+- Compaction no longer re-summarizes the previous summary on every pass. Each compaction
+  summarizes only the messages it evicts and adds that summary, labelled with its `seg.N` span,
+  beside the earlier ones, which are kept as written. Once the kept summaries pass 16,000
+  characters (four or five, at the 3,500-4,100 characters measured on real sessions), the next
+  compaction folds them into its own: about one paraphrase per five compactions instead of one
+  per compaction, with no extra model call. `/compact log` and the history
+  index now show each span's own summary instead of the running one. Sessions saved before this
+  load their single summary as the oldest kept one. The checkpoint is rebuilt only at compaction,
+  so the cached prefix is untouched between compactions.
+
+- Compaction records which files the summarized messages read (Read calls, minus files the same
+  span edited) on its history segment, and every later checkpoint lists the last 20 of them as
+  written, beside the modified files, commands and failures it already carried. The summarizer
+  can no longer drop or reword a consulted path. Segments saved before this load with an empty
+  list. The checkpoint is rebuilt only at compaction, so the cached prefix is untouched between
+  compactions. Borrowed from pi's read/modified file lists.
+
+- The flattened compaction payload -- sent when `[compaction]` names another provider or a
+  `context.compact` plugin is active -- cuts each tool result over 2,000 characters to its head
+  and tail, keeping its `tr.N` key and how it ended. Over eight real sessions it shrank from
+  952,860 to 488,737 estimated tokens (-48.7%; [results](benchmarks/results/linux-arm64-py314-compaction-flat-trim.json)).
+  The inline request, which reuses the conversation's cache, is unchanged byte for byte.
+
+- `ToolScript`'s description follows OpenAI's programmatic tool calling guide: a script prints
+  its result with the evidence behind it (paths, lines, counts) or a clear failure line; the
+  model calls tools directly for one or two calls or when each result should steer the next step;
+  built-ins take their own schema's arguments and return text in their direct-call format, so the
+  example no longer spends a round trip describing a built-in. The tool list changes once (the
+  description grows from 1,329 to 1,473 characters), then stays cached.
+
+- Compaction summaries keep continuation state under fixed headings -- directives, decisions,
+  done, active, open, next, files -- instead of free prose, and copy paths, symbols, commands,
+  error text, URLs and `tr.N`/`seg.N` ids exactly. Only the compaction request's instruction
+  changed: the conversation's cached prefix is untouched. Drawn from the summary templates of
+  pi and opencode.
+
+- Fix switching `/theme` > Transcript > Record format (`standard` ↔ `minimal`, or a custom
+  format) only reaching tool calls that settle afterwards: saving a format now redraws the
+  records already on screen, live call lines and calls nested in a ToolScript included, the way
+  a theme switch redraws their colors. The blank row between two calls is redrawn with them, so
+  a run of one-line calls packs into a list and a call with output is parted from it in the new
+  format too. A record keeps the facts it was drawn from and redraws only when its tool's format
+  changes, so a resize still replays it as drawn; a live call's record that draws nothing is now
+  still printed, so it can regain its output rows. Records a plugin presenter reshaped stay as
+  printed.
+
+- Subagents: `max_subagents` now limits children **running at once** (default 3) instead of
+  children retained. A finished, failed or stopped child frees its slot and keeps its
+  conversation, so fanning out more tasks than the limit no longer needs an approved archive;
+  the group still keeps at most 32 children. Waking an idle child with `send` takes a slot,
+  steering a running one does not, and input you type into a child is never refused.
+  `max_subagents = 0` now turns subagents off fully: the model is no longer offered the
+  `Subagent` tool. `/status` shows `group subagents` as `N/LIMIT running` or `off`. Archive
+  results report `removed` instead of `released_slots`. Borrowed from OpenAI's Responses
+  multi-agent design.
+
+- Subagent `list` rows carry the first 200 characters of each agent's spawn task, archived
+  ones included, so the model can tell children apart after compaction drops the spawn call.
+
+- The `Subagent` tool description now says when delegating helps (independent work that can
+  run at the same time) and when to do the work directly (dependent steps, small tasks, edits
+  to the same files). Changing it costs the provider cache once.
+
+- Fix a failed plugin interceptor (`prompt.submit`, `model.request`, `context.compact`) ending
+  the whole session instead of the turn: `PluginError` is not a `WizoltError`, so the turn
+  layer let it escape and the TUI shut down, leaving no way to reach `/plugins` to disable the
+  plugin. Also fix three smaller defects found in review: a record whose output text contains
+  its own `tr.N` key (a bounded result's asset path) lost the citation that makes the result
+  reachable; a plugin request's deadline that had already fired was rescheduled, surfacing an
+  internal `RuntimeError` as the plugin's error; `context.compose` over blocks with no host
+  part raised `IndexError` instead of a reported plugin error; and a failed `model.request`
+  wrapper recorded no reason while the tool and compaction sites did.
+
+- Compatibility catalog: recognize Command Code (`api.commandcode.ai/provider/v1`) — its one
+  base URL serves Claude models on the Anthropic wire and everything else on OpenAI-compatible
+  endpoints, so `api=auto` now routes by model, and no cache-key hint is sent because the
+  service documents none. Fix OpenCode Zen routing against its current model list:
+  `qwen3.8-max` moved to Chat Completions (other Qwen models stay on Messages) and Muse Spark
+  models now route to Responses; Zen's Gemini models use a Google-specific endpoint wizolt has
+  no wire for and are left unrouted. Synthetic (`api.synthetic.new`) needs no catalog entry:
+  its OpenAI-compatible endpoint works through the generic defaults, and its Anthropic
+  endpoint is selected by `api = "anthropic"` or a `/messages` base URL. Catalog version
+  2026100601.
+
+- Fix transcript `{output|tail:N}` losing the last output lines when `N` exceeds the 64-line
+  preview limit. Dismissing `/prompt` by disabling or reloading its plugin now closes the editor
+  without saving instead of reporting a missing `text` field. Plugin editors request attention
+  and wait for their agent's frontend, existing modals and approvals before taking the terminal.
+
+- Fix `/tools` refusing to open when a tool description exceeds the selector's 300-character
+  label limit; long labels now end with an ellipsis. The `/plugins` detail page now reports
+  whether a bundled plugin is enabled instead of always claiming it is.
+  The selection-color regression test now isolates inherited terminal color settings.
+
+- Fix `tools.offer` gaps: two calls to a removed read-only tool in one batch ran in parallel
+  instead of being refused; a failing or interrupted offer chain left its turn unsettled (no
+  failure marker, input not released); and a plugin tool whose `plugin-tool` name exceeds the
+  providers' 64-character limit could be offered, failing every request of the turn. Such tools
+  are no longer available to add. The `/theme` sample for `thinking = "hidden"` no longer shows
+  a `✻ thinking` row the live view never draws. `/prompt` refuses to save a prompt over 256 KiB
+  instead of writing one the plugin would then skip.
+
+- Plugins can choose the tools a turn offers the model with the new `tools.offer` operation:
+  remove built-in tools (a call to a removed one is refused without running), or offer a running
+  plugin's tool directly as `plugin-tool` instead of only through `Plugin`. It runs once per
+  turn and every request of the turn offers the same set, so a changed choice costs one provider
+  cache miss and the tools stay byte-identical after it. Receipts in `/status` name what was
+  added and removed, for turns whose set changed. A plugin tool offered directly reaches
+  `tool.call` interceptors as `Plugin`, like a gateway call. `plugin.agent.tools()` lists the
+  tools an offer starts from and may add, with descriptions, and `plugin.agent.system_prompt()`
+  returns the `system` text compose handlers see; both work before any turn.
+
+- Plugins can find files the user writes for them with `plugin.user_file_paths(context, name)`
+  (the project's `.wizolt/plugins/NAME/` copy over the user's own under the data directory; it
+  reads and creates nothing), and hand the user their editor with `plugin.ui.edit(text)`, as
+  Ctrl-G does for the input. `Context` gains `data_dir`; trials script the editor as an
+  `edit` interaction.
+
+- Two new bundled plugins, off until you enable them in `/plugins`, built only on those
+  abilities: **tool_visibility** adds `/tools` to choose which tools the model is offered (hide
+  built-in ones, offer a plugin's tool directly), and **system_prompt** adds `/prompt` to replace
+  wizolt's system prompt with your own file, written only when you save a change. Each change
+  costs the provider cache once; requests are byte-identical again after it.
+
+- Render transcript records faster: settling 300 tool calls takes 22% less time at the default
+  rendering (15.8 to 12.4 ms), 29% less with `preset:minimal` and 36% less with a custom format
+  (27.7 to 17.8 ms), with identical output; Linux ARM64, CPython 3.14.7, recorded in
+  `benchmarks/README.md`. A printable single-line row now lays out without per-character
+  measuring, record formats are parsed once, and a format that shows no output no longer splits
+  it. `benchmarks/transcript.py` tracks this path. Internal: the format language moved from
+  `ui.bars` to `wizolt/formats.py`, shared by bars and records, and the rows MCP, ToolScript, Ask
+  and ViewImage calls carry are computed once for every record shape.
+
+- Maintenance: a refused call under a record format is labelled `refused`, and in `/theme` a
+  custom format edited back to a preset's own rows selects that preset. The transcript tests
+  assert through rendered records and drawn seams rather than private counters, and the tmux
+  appearance acceptance test walks past the new Transcript tab, which had broken its navigation.
+
+- Choose how the model's reasoning reads while it arrives and what closes a long run of tool calls
+  with `[transcript] thinking` (`expanded`, `collapsed`, `hidden`) and `[transcript] close`
+  (`rule`, `blank`, `none`); both are on the `/theme` Transcript tab beside the record format,
+  which now lists its three settings as one grouped list (**Space** chooses, **Tab** jumps
+  groups, **f** edits the format row).
+
+- Change how a finished tool call is written to the transcript with `[transcript] format`: each
+  line is one row in the status bar's format language, with fields such as `{tool}`, `{args}`,
+  `{duration}` and `{citation}` and `{% if %}` blocks; a line of just `{output|tail:3}` shows the
+  last three output lines, and a row that renders empty is left out. The tool's name in a call
+  row takes the tool color even after a marker, as in `preset:minimal`'s `● bash`. A call drawn
+  before it runs (Bash above its live preview) uses the format's call row too, and its settled
+  record does not print the call again; a failure, an Ask answer or a ToolScript result is never
+  repeated as output rows, `{args}` is the call's first line (`…` marks more), and `{failed}`
+  prints no text. `preset:standard` (the
+  default) is the built-in rendering; `preset:minimal` is a one-line checklist row per call.
+  `[transcript.tool.NAME]` overrides one tool. The new `/theme` **Transcript** tab previews each
+  format on a sample call exactly as the transcript prints it, **f** edits it as a draft and
+  **c**/**t** copy it; a diff, an approval card, a failed call's error row and the stored-result
+  reference are always drawn, whatever a format says.
+
+- Stop printing a diff's two file-header rows (`--- path` / `+++ path`) in the transcript: the call
+  line above the block already names the file, and every edit repeated it twice more. The `+++`
+  path is still read for syntax highlighting, so the body keeps its colors.
+
+- Read a subagent's answer in full with the new `Subagent` **report** action: one child's latest
+  answer as plain text, live or archived, with a long one written to a file like any other cut
+  tool result. **wait** rows now carry the answer's first 4,000 characters plus a `truncated`
+  flag, instead of its last 12,000 (a long report's summary is at the front), and `inspect`'s
+  clipped result says to use `report`. **list** is now a status overview without answer text, and
+  no longer counts as the model having received a child's result: listing agents silently
+  swallowed the completion notice.
+
+- Fix request-projection defects that only appear while compacting with plugins: the projection is
+  now rebuilt after every compaction attempt, not only when no pass compacted, so a header block
+  that appears while a summary request runs can no longer displace the turn's first message in a
+  `context.compose` request; and inline compaction re-sends the composed prefix the turn sent, so
+  a composing plugin no longer costs a full cache miss on every compaction.
+
+- Wait for a whole batch of subagents with `wait`'s new `mode: "all"`: it returns once every
+  target has settled, and on timeout reports every target with its state instead of `[]`. `any`
+  stays the default, and the transcript line says which kind of wait it was.
+
+- Report what an intercepted `context.compact` actually did -- whether the builtin summary ran,
+  which plugin produced or changed the result, and why a wrapper failed -- in its operation
+  receipt, like other intercepted operations. `wizolt plugin test --timeout N` now bounds an
+  interceptor's own handler time too, not only its host calls.
+
+- Settle a host result the worker cannot receive instead of leaving the call to its deadline: a
+  frame that is too large to send, or that cannot be encoded at all, fails `next()` and the
+  matching host service at once, on both reverse paths. Cancelling a request also clears
+  continuations whose task never started.
+
+- Fix a `prompt.submit` rewrite silently discarding a folded paste's body: the initial turn's
+  input reached interceptors as the folded chip (`[Pasted text #1 · 41 lines, 680 B]`), so any
+  plugin that rewrote the text froze that label into the conversation in place of the body.
+  The interceptor now sees the model's own projection, with pastes open, exactly like queued
+  follow-ups; the `text reaches the model` contract holds again.
+
+- Speed up the test suite from about 77 s to 32 s (8 workers, Linux ARM64). pytest now runs
+  with `--dist worksteal`: under the default chunked scheduling, the worker that drew slow
+  subprocess tests kept the run going long after the others were idle (57 s -> 32 s). The MCP
+  reaping test fires its timeout as soon as the server hangs instead of waiting 30 real seconds
+  (35 s -> 5.6 s), and the lease test's child exits when released instead of sleeping 5 s.
+
+- Add `runtime.bash_output_tokens` (default 6000, 1000–6000, also `/set`): how much of a Bash
+  result the model sees inline; the rest stays in the file the cut points to. Results stay in
+  the conversation and are re-sent by every later request; across 30 recent sessions (Linux
+  ARM64 author workload), 2000 would have cut prompt tokens by about 5%, while the agent opened
+  a cut result's full output for 7 of 78 truncations. Only new results are shaped, so already
+  sent requests and prompt caching never change. Measured and rejected: cleaning output (~1%),
+  pointers for repeated identical results (0.01%); batching guidance already exists.
+
+- `/plugins` now introduces each plugin in its preview: the first paragraph of a single-file
+  plugin's docstring, or a package's `[project] description` (falling back to its entry
+  module's docstring), read without running the plugin, so disabled plugins show one too.
+  Every built-in opens with a user-facing introduction, and a test keeps new ones honest.
+
+- Skills no longer occupy the `/` command namespace (matching how other agents, such as Codex,
+  treat them): a skill is loaded by the agent — on demand, or after you point at it with `$name`
+  — and never started by a `/name` command. Typing a skill's old `/name` now reports an unknown
+  command, and the `/` menu lists built-ins alone. `disable-model-invocation: true` still keeps
+  a skill out of the agent's list, but naming it in a message opens it to the agent;
+  Claude Code's `user-invocable` field is no longer supported and warns in `/skills`.
+
+- Fix plugin interception and presenter failures blamed on the wrong party:
+  - An outer interceptor that relayed an inner plugin's refusal was blocked as if it had
+    refused after `next`. Relaying is allowed; changing a
+    downstream result into a refusal still is not.
+  - A slow presenter retired its whole worker, taking the plugin's commands, tools and
+    interceptors with it. The site deadline now cancels only the callback; a worker whose
+    event loop is blocked is still retired.
+  - A request frame the host could not send blocked the interceptor. It now fails that one
+    operation, like an out-of-bounds value.
+  - An effort override is now checked against the model's offered efforts instead of being
+    silently mapped to the nearest one, for plugins' own `model.complete` requests too.
+  - The status bar's context figure now includes blocks that `context.compose` adds.
+  - The tmux acceptance test no longer depends on the bundled names' column width.
+  - Disabling a plugin cancelled any in-flight operation of a kind it registered for, even one
+    its match rejected (a Bash-only interceptor's disable cancelled a long `Read`). Only
+    registrations that match the operation are pinned and cancelled.
+  - A rewritten `Subagent` result still carried the original's proof of delivery, so child
+    results the model never saw were not announced again.
+  - A manual retry of a request no interceptor saw linked to an older, unrelated request ID.
+  - Resume replay matched receipts by provider call ID, which some providers reuse every turn,
+    so an older call could show what a plugin did to a later one. A receipt now attaches by its
+    stored result key or a call ID that occurs once; an ambiguous one shows no note.
+
+- `Plugin(action="reload")` and its approval plan now retire a live plugin whose installation
+  record was deleted from the config; before, it kept running, invisible to reload. A damaged
+  record protects only its own plugin, and an unreadable config retires nothing. A deleted
+  source file with its record still present
+  remains a failed reload that keeps the running generation, as before.
+
+- Add the built-in `context_bar` plugin, disabled by default and without model calls: a
+  stacked context-window bar with per-category theme colors, percentage and legend.
+- Replace the built-in pet with a rainbow pet that strolls the prompt line while the agent works.
+  `/pet` picks a cat, bear, owl, bunny, fish or robot, each its own silhouette, and saves it as
+  `[plugins.pet] pet`. The `/plugins` preview now shows the selected plugin's documentation
+  rendered as Markdown (a single file's docstring, or a package's README.md), read without
+  running it, above the host's facts about the plugin.
+
+- Restore plugin worker launch and CLI import speed. Workers loaded `packaging` even for plugins
+  declaring no dependencies, plus the interception modules; the CLI loaded interception eagerly.
+  Against master (Linux ARM64, CPython 3.14.7, nine samples, back to back): worker enable/close
+  had grown about 15 ms and CLI import about 5 ms; after the fix they measure +3.2% and -0.1%.
+  Import tests guard both. Add interception probes to `benchmarks/plugins.py` (empty,
+  non-matching and no-op chains, a buffered transform, presenter rendering, an activity refresh);
+  results and retained costs are in `benchmarks/README.md`.
+
+- Document interception and presenter wishes for users in `docs/plugins.md`: what to ask for,
+  what stays wizolt's, what it costs in tokens and cache reuse, and how a broken step recovers.
+
+- Share the value-only interception rules (kept attachments, offered tool names, context block
+  placement) between the live adapters and `--operations` trials in `wizolt/plugins/rules.py`,
+  so a trial rejects what a session would. Model routing is still checked only in a session.
+  Add a background-agent recovery test: a child's broken interceptor stays the child's, and its
+  own core `/plugins disable` recovers it.
+
+- Add `wizolt plugin presenter list/choose/reset`: the choice persists as
+  `[plugin_manager.presenters] choice` beside the interception order, an agent applies it with
+  `Plugin(action=reload)`, and `choose` starts the candidate once to verify it registers the
+  site. `list` shows every enabled plugin's sites and the current choice; a plugin that cannot
+  start is listed under `errors` instead of failing the whole listing.
+
+- Add the `activity` presentation site: the plugin runtime's refresh pass renders it into a
+  cached snapshot (status word, stream text, active tools and counts), and the TUI activity region
+  shows that panel instead of the builtin stream preview. Queued follow-ups, the live preview and
+  the divider stay host-owned; an empty, failed or conflicted snapshot falls back to the builtin.
+
+- Present settled tool calls through the named sites: `runner.finish()` briefly awaits the
+  `tool.call` and `tool.result` panels and emits them as one tree (`presented_display`); the
+  stored-result citation and status tag stay host-owned on whatever the panels said. Approval
+  displays and pre-execution cards are never presented. The sites are independent: a site with
+  no panel (empty, failed, conflicted or unmatched) keeps its builtin rows, so a lone
+  `tool.result` presenter keeps the builtin call line and a lone `tool.call` presenter the
+  builtin summary. Nonmatching work keeps the unchanged fast path.
+
+- Add host-side presenter selection (`wizolt/plugins/presenters.py`): one presenter per site,
+  chosen by the user or by being the sole match. Overlapping matches keep the builtin rendering
+  until the user picks one; failed, slow or unmatched presentations fall back to the builtin
+  rendering without failing the turn. A host view over the boundary limits stays builtin without
+  blocking the registration, and disabling the activity presenter drops its cached panel.
+
+- Add the `plugin.presenter` registration and its worker `present` operation: named
+  presentation sites (`tool.call`, `tool.result`, `activity`) receive immutable view models
+  (`wizolt.sdk.presentation`) and return the same Panel declaration components use. Panels are
+  bounded and validated at the process boundary; presenters get no host services.
+
+- Add `wizolt plugin test --operations FIXTURE.json`: each ordered entry runs an operation
+  through the real handler and the live chain executor, with `next` answered from the fixture
+  (a result or a failure). Missing or unused `next` results fail the trial, so no real tool,
+  model or compaction runs. Reports record effective inputs, delivered results and provenance;
+  views compose with `--interactions`.
+
+- Make disabling a plugin cancel the operations it is intercepting, so recovery never waits
+  for a hung interceptor's full deadline. Core `/plugins disable` stays outside every chain:
+  a broken `prompt.submit` or `context.compose` interceptor can always be turned off, and the
+  next turn runs normally.
+
+- Replace `plugin.summarizer` with the `context.compact` operation. A plugin returns a
+  `Summary` instead of calling the builtin strategy, or shapes the summary the builtin returns
+  (its plan and known facts are kept). Plugin summaries pass the echo guard and the 16,000
+  character bound. Interceptor failures are explicit: automatic compaction fails the turn and
+  `/compact` applies no checkpoint, with no deterministic-trim fallback around a failed
+  plugin. Several compact interceptors now chain instead of excluding each other. The trial
+  `--summarize` flag is removed; `--operations` fixtures replace it.
+
+- Make request context composable (`context.compose`). The header is now built from named parts
+  (system, environment, instructions, skills, MCP). Plugins may replace the system and
+  instruction text (directives stay host-owned) and add their own `plugin:<name>:<id>` blocks,
+  placed after the header in plugin order; the conversation is a bounded read-only view and
+  durable history never changes. The composed request must fit the context budget. A receipt
+  records changed blocks and the token estimate.
+
+- Route every model request through one logical `model.request` boundary above the wire
+  encoders: agent steps, image-fallback resends, textual-tool corrections, vision
+  observations, builtin compaction and `plugin.models.complete`. Interceptors may change the
+  provider entry, model or effort for one request, validated against credentials and the context
+  budget. Transport retries stay inside `next`; a manual retry links its new request with
+  `retry_of`. `response="preserve"` keeps push streaming without worker IPC; `"replace"`
+  suppresses the content preview for that request. A plugin's auxiliary requests skip its own
+  registration. Test fakes of `ModelClient.request` accept the new `reason` keyword. The
+  receipt is checkpointed as `started` before the provider call, so a crash mid-request resumes
+  as `unknown`, and an interceptor failure before `next` reads `not_run`, not `failed`.
+
+- Make submitted input interceptable (`prompt.submit`) for a turn's opening input, queued
+  follow-ups and a parent model's messages to subagents. Interception runs once per item, after
+  slash-command dispatch and before the `UserPromptSubmit` hook and mention expansion. The model
+  gets the effective text while user history keeps the original. Attachments can be omitted,
+  never added. Follow-ups keep an admission receipt, so request retries, release/reclaim and
+  resume never repeat hooks, plugins or mention discovery. Queued input records its origin.
+
+- Persist operation receipts in session snapshots. Each checkpoint writes only the receipts
+  that changed. On resume, an operation a crash interrupted after core execution began is
+  marked `unknown` and reported once to the model; it is never retried. Replay shows plugin
+  answers, changed results and wrapper failures from the receipts, without running plugins.
+
+- Make tool calls interceptable (`tool.call`). The adapter sits in the runner path shared with
+  ToolScript's nested calls. A matching call runs singly, and its rewritten arguments go through
+  the ordinary validation, `PreToolUse`, approval, observers and post-tool hooks; non-matching
+  calls keep the batch fast path. Plugin-produced results and refusals are marked as such and
+  emit no execution events. Hook feedback survives wrappers. Each intercepted call gets an
+  operation receipt, checkpointed at core start and completion.
+
+- Add `wizolt plugin order list|move|reset` for the user-level interceptor order, saved as
+  `[plugin_manager.interception] order` and applied by the next reload in each agent. The fixed
+  `Plugin` gateway gains no actions; the agent runs the command through Bash.
+
+- Add the plugin interception core (design/PLUGIN_INTERCEPTION.md): typed operation values in
+  `wizolt.sdk.operations`, `plugin.intercept`, a single-use cross-process `next()` on its own
+  transport message class, ordered chain snapshots with leases, read-only field checks, typed
+  refusals and the block-until-reload failure policy. Interceptors get per-operation host
+  services; their deadline pauses while downstream work runs. Plugin health is now tracked per
+  registration: a failed observer or component no longer hides a plugin's fields, commands or
+  tools. A host value outside the operation bounds (such as a model's `NaN` tool argument)
+  fails that operation without blocking the interceptor.
+
+- Document the proposed plugin middleware and presentation architecture: typed semantic
+  operations, scoped cross-process continuations, deterministic ordering, execution receipts,
+  request purposes/retries, buffered-response preview rules and independent recovery paths.
+  No new runtime API is introduced by this proposal.
+
+- Start enabled plugins concurrently at startup. Each worker launch, nearly all of a plugin's
+  startup cost, now runs in parallel; checking command collisions and
+  publishing stay serial, in saved order, so the outcome is unchanged. Loading three enabled
+  plugins (two user packages and the bundled layout plugin) went from 348–356 ms to 139–145 ms,
+  five runs each, Linux ARM64 / Python 3.14.7, before and after this change on
+  `bugfix/plugin-system-audit`; measured with a scratch script, not the benchmark suite.
+  Shutdown during startup closes workers that have launched but are not yet admitted.
+
+- Remove plugin rollback (`/plugins rollback` and the manager's Rollback action). Source history
+  belongs to Git: to undo, check out the earlier source and reload. A failed reload still keeps
+  the running version.
+
+- Stop slow plugin fields from delaying turns and plugin commands. Turn start, turn end and
+  every command awaited a full refresh of all plugins, behind any refresh already running: a
+  field taking 0.5 s added about 1 s to each, and a field near its 2 s deadline about 4 s.
+  They now ask for an immediate refresh without waiting; the UI catches up in that pass.
+
+- Keep misbehaving plugins from slowing wizolt's own UI loop:
+  - Plugin fields are bounded like panel rows: at most 64, with text of at most 4,096
+    characters, checked in the worker and again by the host. A near-1 MB field string cost
+    36 ms of sanitizing on every statusbar paint.
+  - View text validation scans with a regex, with the same rules. A 1,000-choice, 0.94 MB
+    selection took 30.5 ms to validate on the UI loop and now takes 2.8 ms; an action
+    updating a view in a loop could repeat that for its whole deadline.
+  - Stderr is drained at a paced 8 MB/s. A plugin printing in a tight loop for 2 s cost the
+    host 1.98 s of CPU and now costs 0.06 s; beyond the pace, only the plugin's writes block.
+  Measured once each on Linux ARM64 / Python 3.14.7 with the scratch workloads described,
+  before and after this change on `bugfix/plugin-system-audit`; not part of the benchmark suite.
+
+- Admit no new work into a plugin that is stopping: its commands, tools and summarizer are
+  refused and no longer listed or completed. Each new call used to renew the lease, so
+  overlapping calls could keep a disabled plugin running indefinitely.
+
+- Keep a plugin disabled from `/plugins` while startup is still loading plugins. Startup read
+  the saved choices first and bypassed the management lock, so it went on to start the plugin:
+  saved as disabled, yet running. A disable now waits for loading and then applies.
+
+- Name each live plugin state once: `running`, `failed` or `off`, and while a change waits for
+  a turn or that plugin's command, `starting`, `reloading` or `stopping`. `pending` used to
+  cover all three waits, and `not loaded`/`disabled` duplicated the separate `enabled` choice.
+  Flatten the status and component-visibility chains in the runtime into early returns.
+
+- Fold `wizolt plugin install` into `enable`: one verb saves a plugin and prepares a dependency
+  environment when the host, or the saved environment, cannot satisfy its `DEPENDENCIES`. An
+  unchanged list reuses the saved environment; a custom interpreter is left alone. `install`
+  is removed. Environments prepared before this change are rebuilt on their next enable.
+
+- Rename the plugin SDK's `sample` event to `tick`: it is the UI refresh (about 5 Hz), not a
+  lifecycle transition. Plugins observing `sample` now fail setup with the list of valid
+  events; replace the name. The SDK reference's callback table gains a column for views,
+  notices and settings writes, so one table answers what each callback may call.
+
+- Polish the bundled pet: its mood colors only the outline, the face keeps the theme's text
+  contrast and the caption is muted. It gains a cat's `ω` mouth, blinks now and then while
+  working and wags its tail. It still takes two rows and only theme colors. Redraw the
+  plugin overview and pet figures.
+
+- Record that every bundled plugin is off by default: wizolt never switches on what the user
+  has not explicitly asked for. Guard it with a test.
+
+- Keep a plugin selection view's highlighted choice after a live update or scripted answer
+  while a search filter is active. Focus used an index into all items rather than the visible
+  rows, so Enter could submit a different choice than the one the user had highlighted.
+
+- Fail a scripted plugin trial whose expected view updates never arrive, even when the plugin
+  catches the resulting error. The timeout carried no message, so the trial reported success.
+
+- Let plugins run subprocesses such as `git status` without breaking their worker. Children
+  inherited the protocol's stdin and stdout: output corrupted replies and killed the plugin,
+  and a child reading stdin swallowed host requests until the call timed out. The worker now
+  speaks on private descriptors; stray output reaches the plugin's log.
+
+- Give each contributed preset preview its own image files when preset names differ only by
+  `-` and `_`; the second used to overwrite the first while the report listed both.
+
+- Report layout and shortcut services as unavailable in scripted plugin trials, as trials
+  without fixtures do, instead of failing the whole trial when the plugin handles that error.
+
 - Stabilize the real stdio MCP cleanup test under parallel CI load: allow cold process startup,
   explicitly trigger cancellation during close, and bound PID waits. Preserve timeout and
   process-reaping assertions without requiring discovery to finish within two seconds.

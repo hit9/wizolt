@@ -11,8 +11,10 @@ from typing import TYPE_CHECKING
 
 from wizolt.base import ConfigError
 from wizolt.plugins.catalog import Installation, PluginCatalog
+from wizolt.plugins.interception import InterceptionOrder
 from wizolt.plugins.layout import LayoutPreferences
 from wizolt.plugins.loading import PluginSource
+from wizolt.plugins.presenters import PresenterChoices
 from wizolt.plugins.process import WorkerError
 from wizolt.plugins.runtime import PluginRuntime, Revision
 from wizolt.plugins.settings import PluginSettings
@@ -40,6 +42,8 @@ class SessionPlugins(PluginRuntime):
         self.read_context: Callable[[], list[tuple[str, int]]] | None = None
         super().__init__(self.snapshot, PluginSettings(session.config.plugins, session.config.path))
         self.order = LayoutPreferences(self.catalog.preferences)
+        self.interception_order = InterceptionOrder(self.catalog.preferences)
+        self.presenters.choices = PresenterChoices(self.catalog.preferences)
 
     def reload_layout(self) -> None:
         if self.reload_preferences is not None:
@@ -50,8 +54,18 @@ class SessionPlugins(PluginRuntime):
             self.problems.pop("layout", None)
         except (OSError, ValueError, ConfigError) as error:
             self.problems["layout"] = str(error)
+        try:
+            self.interception_order.load()
+            self.problems.pop("interception order", None)
+        except (OSError, ValueError, ConfigError) as error:
+            self.problems["interception order"] = str(error)
+        try:
+            self.presenters.choices.load()
+            self.problems.pop("presenters", None)
+        except (OSError, ValueError, ConfigError) as error:
+            self.problems["presenters"] = str(error)
 
-    async def prepare(self, revision: Revision):
+    async def launch(self, revision: Revision):
         # Populate an idle/resumed agent's meter when enabling a plugin too. This is an
         # admission boundary, not a render/sample callback; the engine supplies the estimator.
         if self.read_context is not None:
@@ -60,7 +74,7 @@ class SessionPlugins(PluginRuntime):
         for item in records.values():
             if item.path == revision.source.path:
                 revision.source.require_name(item.name)
-        return await super().prepare(revision)
+        return await super().launch(revision)
 
     def snapshot(self) -> Context:
         session = self.session
@@ -81,13 +95,25 @@ class SessionPlugins(PluginRuntime):
             window=ContextWindow(
                 fill["used"],
                 session.config.provider.context_token_limit(session.settings.max_context_tokens),
-                session.request_token_budget(),
+                # The budget `used` was measured against -- the pair the status bar's ctx divides --
+                # so a plugin's percentage cannot disagree with the status row's.
+                fill["budget"],
                 self.context_parts,
             ),
+            data_dir=os.path.expanduser(session.config.data_dir),
+            config_path=session.config.path,  # The config's own path; data_dir is state, not always its directory.
         )
 
     async def load(self) -> None:
-        """Attempt startup once per agent; safe mode skips imports while preserving recovery tools."""
+        """Attempt startup once per agent; safe mode skips imports while preserving recovery tools.
+
+        Startup holds the management lock too: a disable accepted while it loads must wait and
+        then apply, not be undone by an activation from the records read before it.
+        """
+        async with self._management_lock:
+            await self._load()
+
+    async def _load(self) -> None:
         if self.loaded:
             return
         self.loaded = True
@@ -95,14 +121,20 @@ class SessionPlugins(PluginRuntime):
         records, _ = self.catalog.read()
         if os.environ.get("WIZOLT_NO_PLUGINS") == "1":
             return
+        names, revisions = [], []
         for item in records.values():
             if not item.enabled:
                 continue
+            self.interpreters[item.name] = item.python
             try:
-                self.interpreters[item.name] = item.python
-                await super().manage("enable", item.path)
+                revisions.append(self.read_revision(item.path))
+                names.append(item.name)
             except Exception as error:  # noqa: BLE001 - one bad plugin must not prevent startup.
                 self.problems[item.name] = str(error)
+        # Plugins start concurrently; admission keeps saved order (see enable_many).
+        for name, failure in zip(names, await self.enable_many(revisions), strict=True):
+            if failure is not None:
+                self.problems[name] = str(failure)
 
     def reload_plan(self, name: str = "") -> list[tuple[str, str]]:
         """What `hot_reload(name)` would change, as (plugin, change), without running plugin code.
@@ -111,8 +143,8 @@ class SessionPlugins(PluginRuntime):
         executing setup; capabilities are only known once setup runs, so the reload result reports
         them. An unchanged plugin still restarts, which resets whatever it keeps in memory.
         """
-        records, _ = self.catalog.read()
-        plan = []
+        records, problems = self.catalog.read()
+        plan = [(key, "remove: no longer installed") for key in self.removed(records, problems) if not name or key == name]
         for key, item in records.items():
             if name and key != name:
                 continue
@@ -141,6 +173,26 @@ class SessionPlugins(PluginRuntime):
 
     UNCHANGED = "restart"
 
+    @staticmethod
+    def description(path: str) -> str:
+        """An off plugin's introduction, parsed from its source without running it."""
+        try:
+            return PluginSource.read(path).description
+        except Exception:  # noqa: BLE001 - a broken or missing source simply has no introduction.
+            return ""
+
+    def removed(self, records: dict, problems: list[str]) -> list[str]:
+        """Live plugins whose installation record is gone: deleted from the config by hand.
+
+        A damaged record is dropped from ``records`` too, so it is no evidence of deletion: its
+        name (the catalog reports ``name: error``) stays. A failed read returns no records at all,
+        not even the bundled defaults, and then nothing counts as removed.
+        """
+        if not records:
+            return []
+        damaged = {problem.split(":", 1)[0] for problem in problems}
+        return sorted({*self.entries, *self._pending_new} - set(records) - damaged)
+
     async def hot_reload(self, name: str = "") -> dict:
         """Reconcile saved choices into this agent only, with per-plugin failure isolation.
 
@@ -154,10 +206,17 @@ class SessionPlugins(PluginRuntime):
                 raise PluginError("Plugins are disabled for this launch (--no-plugins); restart normally to reload")
             records, problems = self.catalog.read()
             self.reload_layout()
-            if name and name not in records:
+            removed = [key for key in self.removed(records, problems) if not name or key == name]
+            if name and name not in records and not removed:
                 raise PluginError(f"Unknown installed plugin: {name}")
             self.loaded = True
             results = []
+            for key in removed:
+                try:
+                    results.append({**await super().manage("disable", key), "note": "no longer installed"})
+                    self.problems.pop(key, None)
+                except Exception as error:  # noqa: BLE001 - one retirement must not prevent other reloads.
+                    results.append({"name": key, "status": "failed", "error": str(error), "previous_retained": key in self.entries})
             for key, item in records.items():
                 if name and key != name:
                     continue
@@ -168,7 +227,7 @@ class SessionPlugins(PluginRuntime):
                     elif key in self.entries or key in self._pending_new:
                         result = await super().manage("disable", key)
                     else:
-                        result = {"name": key, "status": "disabled"}
+                        result = {"name": key, "status": "off"}
                     self.problems.pop(key, None)
                     results.append(result)
                 except Exception as error:  # noqa: BLE001 - one candidate must not prevent other reloads.
@@ -197,9 +256,9 @@ class SessionPlugins(PluginRuntime):
     async def _manage(self, action: str, target: str) -> dict:
         if self._closed:
             raise PluginError("Plugin runtime is closed")
-        if os.environ.get("WIZOLT_NO_PLUGINS") == "1" and action in {"enable", "reload", "rollback"}:
+        if os.environ.get("WIZOLT_NO_PLUGINS") == "1" and action in {"enable", "reload"}:
             raise PluginError("Plugins are disabled for this launch (--no-plugins); restart normally to enable")
-        await self.load()
+        await self._load()
         records, problems = self.catalog.read()
         for item in records.values():
             self.interpreters[item.name] = item.python
@@ -212,15 +271,15 @@ class SessionPlugins(PluginRuntime):
         if action == "disable" and target not in self.entries and target not in self._pending_new and target in records:
             self.catalog.save(replace(records[target], enabled=False))
             self.problems.pop(target, None)
-            return {"name": target, "status": "disabled"}
+            return {"name": target, "status": "off"}
         query = "list" if action == "inspect" else action
         result = await super().manage(query, "" if query == "list" else target, commit=self._save_choice if action in {"enable", "disable"} else None)
-        if action in ("enable", "reload", "rollback", "disable"):
+        if action in ("enable", "reload", "disable"):
             self.problems.pop(str(result["name"]), None)
         if action in ("list", "inspect"):
             present = {item["name"] for item in result["plugins"]}
             result["plugins"].extend(
-                {"name": item.name, "path": item.path, "status": "not loaded" if item.enabled else "disabled", "python": item.python}
+                {"name": item.name, "path": item.path, "description": self.description(item.path), "status": "off", "python": item.python}
                 for item in records.values()
                 if item.name not in present
             )

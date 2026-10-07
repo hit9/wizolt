@@ -119,8 +119,10 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
 ## ToolScript
 
 `ToolScript` lets the agent run several tool calls from a small Python script and return only
-the summary it prints. For example, it can check ten files and report the three that need work,
-keeping the full intermediate results out of the conversation.
+the result it prints, with the paths, lines or counts behind it. For example, it can check ten
+files and report the three that need work and where, keeping the full intermediate results out of
+the conversation. The agent calls tools directly for one or two calls, or when each result decides
+the next step.
 
 The terminal groups the script's calls together so you can follow what it did.
 

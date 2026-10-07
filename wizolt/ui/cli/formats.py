@@ -1,13 +1,14 @@
-"""View, copy and edit a bar's format, or the divider's sweep formula, inside `/theme`.
+"""View, copy and edit one format -- a bar's, the divider's sweep, or a record -- in `/theme`.
 
-The statusbar and divider tabs share this panel. It knows the setting's text, not what that text
-draws: the picker hands it the configuration path that validates and previews a draft, and any
-rendered samples. Nothing here parses or renders templates or formulas.
+The statusbar, divider and transcript tabs share this panel. It knows the setting's text, not
+what that text draws: the picker hands it the configuration path that validates and previews a
+draft, its preset registry, and any rendered samples. Nothing here parses or renders templates
+or formulas.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 from prompt_toolkit.document import Document
 from prompt_toolkit.formatted_text import StyleAndTextTuples
@@ -21,23 +22,42 @@ from wizolt.utils.clipboard import Clipboard
 
 VIEW_KEYS = "c copy value · t copy TOML · e edit · j/k scroll · Esc back"
 EDIT_KEYS = "Ctrl-S apply · Esc discard · arrows move · Enter new line"
-# Each editable setting, by its preset registry (`ui.bars.PRESETS`), as a [ui.TABLE] KEY.
-CONFIG_KEYS = {"statusbar": ("statusbar", "format"), "divider": ("divider", "format"), "sweep": ("divider", "sweep")}
+# Each editable setting, by its preset registry (`ui.bars.PRESETS`), as a (TABLE, KEY) pair.
+CONFIG_KEYS = {
+    "statusbar": ("statusbar", "format"),
+    "divider": ("divider", "format"),
+    "sweep": ("divider", "sweep"),
+    "transcript": ("transcript", "format"),
+}
+# Settings that live in their own top-level table rather than under `[ui]`.
+TOP_LEVEL = frozenset({"transcript"})
+
+
+def expanded(source: str, presets: Mapping[str, str]) -> str:
+    """The template a value stands for. A `preset:` name the registry does not know is shown as
+    the text it is, rather than raising in a key handler: a renamed or hand-typed preset is a
+    config problem the config check already reports, not a reason to break the picker."""
+    try:
+        return expand(source, presets)
+    except ValueError:
+        return source
 
 
 def toml_snippet(kind: str, source: str) -> str:
     import tomlkit  # Loaded on use, like every other config write: startup does not pay for it.
 
     table, key = CONFIG_KEYS[kind]
-    return tomlkit.dumps({"ui": {table: {key: source}}})
+    root = {table: {key: source}} if kind in TOP_LEVEL else {"ui": {table: {key: source}}}
+    return tomlkit.dumps(root)
 
 
 class FormatPanel:
-    """One setting -- a bar's format or the sweep formula -- viewed, copied, or edited as a draft.
+    """One setting -- a bar's format, the sweep formula, or a record format -- viewed, copied,
+    or edited as a draft.
 
-    `kind` names its preset registry. `current` is the value the picker would save, `saved` the
-    one in effect when it opened.
-    `apply` validates a draft through the bar's configuration path and previews it when valid,
+    `kind` names its preset registry (`presets`, defaulting to the bar registries). `current` is
+    the value the picker would save, `saved` the one in effect when it opened.
+    `apply` validates a draft through the setting's configuration path and previews it when valid,
     returning the problems otherwise; `accept` makes a valid draft the picker's selection. A
     discarded draft re-applies `current`, so the preview returns to it."""
 
@@ -50,9 +70,11 @@ class FormatPanel:
         apply: Callable[[str], list[str]],
         accept: Callable[[str], None],
         preview: Callable[[], StyleAndTextTuples] | None = None,
+        presets: Mapping[str, str] | None = None,
     ) -> None:
         self.kind, self.current, self.saved = kind, current, saved
         self.apply, self.accept, self.preview = apply, accept, preview
+        self.presets = presets if presets is not None else PRESETS[kind]
         self.draft: Document | None = None
         self.problems: list[str] = []
         self.notice: tuple[str, str] = ("", "")  # role, text
@@ -61,7 +83,7 @@ class FormatPanel:
 
     @property
     def setting(self) -> str:
-        return "ui." + ".".join(CONFIG_KEYS[self.kind])
+        return ".".join(CONFIG_KEYS[self.kind]) if self.kind in TOP_LEVEL else "ui." + ".".join(CONFIG_KEYS[self.kind])
 
     def handle_key(self, key: str, data: str = "") -> bool:
         """Whether the panel stays open."""
@@ -80,7 +102,7 @@ class FormatPanel:
             )
         elif key == "e":
             # A preset is edited as the template or formula it stands for.
-            self.draft = Document(expand(source, PRESETS[self.kind]))
+            self.draft = Document(expanded(source, self.presets))
             self.problems, self.notice, self.top = [], ("", ""), 0
         elif key in {"j", "down"}:
             self.top += 1
@@ -158,7 +180,11 @@ class FormatPanel:
         if self.show_toml:  # after a failed copy, what would have been copied
             rows += [[], *self.block("TOML", toml_snippet(self.kind, source).rstrip("\n"), width)]
         if source.startswith("preset:"):
-            rows += [[], *self.block("expands to", expand(source, PRESETS[self.kind]), width)]
+            expansion = expanded(source, self.presets)
+            # A name this build does not know expands to itself; one that stands for the builtin
+            # rendering (the transcript's `standard`) expands to nothing to show.
+            if expansion and expansion != source:
+                rows += [[], *self.block("expands to", expansion, width)]
         return rows
 
     @staticmethod

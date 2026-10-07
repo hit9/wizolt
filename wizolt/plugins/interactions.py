@@ -38,7 +38,7 @@ class Interactions:
         except asyncio.CancelledError:
             if not entry.dismissed:
                 raise
-            return {"result": None}
+            return {"text": None} if service == "ui.edit" else {"result": None}
         finally:
             self.pending.remove(entry)
 

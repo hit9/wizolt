@@ -10,10 +10,12 @@ the live path and the replay path can be kept in agreement deliberately, not by 
 from __future__ import annotations
 
 import json
+from collections import Counter
 from collections.abc import Callable
+from itertools import pairwise
 from typing import ClassVar, Protocol
 
-from wizolt.agent.prompts import LIVE_FOLLOWUP_PREFIX
+from wizolt.agent.prompts import LIVE_FOLLOWUP_PREFIX, split_reaction
 from wizolt.base import (
     Json,
     LogBlock,
@@ -23,9 +25,11 @@ from wizolt.base import (
     ToolCall,
     ToolError,
     TurnBox,
+    oneline,
 )
 from wizolt.image import ImageInputs
 from wizolt.session import Session, SessionSnapshotCodec, ToolResultRecord
+from wizolt.session.types import OperationReceipt
 from wizolt.tools import TOOL_REGISTRY, tool_payload, toolblocks, tooloutput
 from wizolt.tools.toolblocks import ToolDisplay
 from wizolt.ui.render import UiPrinter
@@ -63,6 +67,9 @@ class ResumeRenderer:
         self.session = session
         self.presentation = presentation
         self.refresh_context = refresh_context
+        self.reactions: dict[int, str] = {}  # id(user message) -> the reaction its reply opened with
+        self.receipts_by_key: dict[str, OperationReceipt] = {}
+        self.receipts_by_id: dict[str, OperationReceipt] = {}
 
     def render_resumed_session(self) -> None:
         # Transcript reconstruction owns historical call/result matching and ordering invariants.
@@ -89,6 +96,12 @@ class ResumeRenderer:
                     tool_results[str(message["tool_call_id"])] = {**result, "status": "rejected", "reason": reason}
         semantic_tool_results = any("status" in message for message in tool_results.values())
         messages = [message for message in transcript if not SessionSnapshotCodec.is_internal_message(message) and message.get("role") != "tool"]
+        # Providers may reuse call IDs across turns, so a receipt is tied to its call by the stored
+        # result key it names, or by an ID that occurs once; an ambiguous one shows no note at all.
+        calls = Counter(raw.get("id") for message in messages for raw in message.get("tool_calls") or [] if isinstance(raw, dict))
+        receipts = [receipt for receipt in self.session.operation_receipts if receipt.operation == "tool.call"]
+        self.receipts_by_key = {receipt.actual: receipt for receipt in receipts if receipt.actual}
+        self.receipts_by_id = {receipt.target: receipt for receipt in receipts if not receipt.actual and calls[receipt.target] == 1}
         # The replay is a burst of independent emits; batch them into a single print_formatted_text
         # call so the whole session restores in one flush (and one TUI coordination) instead of one
         # per line.
@@ -101,6 +114,15 @@ class ResumeRenderer:
             transcript_diffs = self.session.transcript_turn_diffs or self.session.turn_diffs
             diffs = {diff.key: diff.diff for diff in transcript_diffs if diff.key and diff.diff}
             tool_record_index = 0
+            # A reply that opened with a reaction marker reacted to the message that opened its
+            # turn; a live follow-up is never held for one, so it gets none here either.
+            self.reactions = {
+                id(message): split_reaction(ImageInputs.label_text(reply))[0]
+                for message, reply in pairwise(messages)
+                if message.get("role") == "user"
+                and reply.get("role") == "assistant"
+                and not str(message.get("content") or "").startswith(LIVE_FOLLOWUP_PREFIX.strip())
+            }
             turns = TurnBox.group(messages)
             hidden = len(turns) - self.MAX_REDRAWN_TURNS
             if hidden > 0:
@@ -134,6 +156,8 @@ class ResumeRenderer:
         presentation = self.presentation
         role = str(message.get("role") or "")
         content = ImageInputs.label_text(message).strip()
+        if role == "assistant":
+            content = split_reaction(content)[1].strip()  # drawn beside the user's message instead
         if role == "notice":
             if content and not dry_run:
                 presentation.context_reset_notice(content)
@@ -163,7 +187,9 @@ class ResumeRenderer:
         if role == "user" and content and not ImageInputs.is_tool_observation(message) and not dry_run:
             # The follow-up marker is model-facing context, part of history because it was sent.
             # The scrollback shows what the user typed, exactly as it looked when they typed it.
-            presentation.ui.emit_answer(content.removeprefix(LIVE_FOLLOWUP_PREFIX.strip()).lstrip(), role=role, rule=False)
+            presentation.ui.emit_answer(
+                content.removeprefix(LIVE_FOLLOWUP_PREFIX.strip()).lstrip(), role=role, rule=False, reaction=self.reactions.get(id(message), "")
+            )
             # Replay the same spacing used by a live turn.
             presentation.user_turn_rule()
         return tool_record_index
@@ -194,11 +220,32 @@ class ResumeRenderer:
                         status=str(result.get("status") or "failed"),
                         reason=str(result.get("reason") or ""),
                     )
+                    self.emit_receipt(self.receipt_for(call, str(result.get("result_key") or "")))
                 continue
             record, tool_record_index = self.transcript_tool_record(call, tool_record_index)
             if not dry_run:
                 self.emit_transcript_tool(call, record.key if record else "", diffs)
+                self.emit_receipt(self.receipt_for(call, record.key if record else ""))
         return tool_record_index
+
+    def receipt_for(self, call: ToolCall, key: str) -> OperationReceipt | None:
+        return self.receipts_by_key.get(key) if key and key in self.receipts_by_key else self.receipts_by_id.get(call.id)
+
+    def emit_receipt(self, receipt: OperationReceipt | None) -> None:
+        """Replay what a plugin did to this call from its recorded receipt; no plugin runs."""
+        if receipt is None:
+            return
+        notes: list[tuple[str, LogRole]] = []
+        if receipt.origin != "core":
+            notes.append((f"answered by plugin {receipt.origin.partition('/')[0]}; the tool did not run", LogRole.META))
+        if receipt.core == "unknown":
+            notes.append(("wizolt stopped while it ran; outcome unknown", LogRole.WARNING))
+        if receipt.shaped:
+            notes.append((f"result changed by {', '.join(name.partition('/')[0] for name in receipt.shaped)}", LogRole.META))
+        if receipt.wrapper_failure:
+            notes.append((oneline(receipt.wrapper_failure, 200), LogRole.ERROR))
+        if notes:
+            self.presentation.tool_output(LogBlock.hierarchy(None, [LogLine("plugin", text, role, LogEdge.END) for text, role in notes]))
 
     def render_remaining_tool_records(self, tool_record_index: int, diffs: dict[str, str]) -> None:
         records = self.session.transcript_tool_records or self.session.tool_records

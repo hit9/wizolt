@@ -36,13 +36,10 @@ class Skill:
     warnings: tuple[str, ...] = ()
     location: str = ""  # the folder as /skills shows it, e.g. ".claude/skills/deploy"
     overrides: tuple[str, ...] = ()  # locations of same-named skills this one hides, lowest first
-    argument_hint: str = ""  # `argument-hint`, e.g. "<env>": what `/name` expects after it
-    # `disable-model-invocation: true` clears this: the skill stays out of the index and only `/name`
-    # starts it (a deploy the user wants to trigger themselves).
+    argument_hint: str = ""  # `argument-hint`, e.g. "<env>": the shape of the skill's arguments
+    # `disable-model-invocation: true` clears this: the skill stays out of the index, and the model
+    # may load it only after the user names it in a message (`$name` or `@skill:name`).
     model_invocable: bool = True
-    # `user-invocable: false` clears this: no `/name` command, for background knowledge the model
-    # loads when relevant but that is no action a user would start.
-    user_invocable: bool = True
     # `hooks:` in Claude Code's shape: in force from the skill's first load to the session's end.
     hooks: tuple[HookCommand, ...] = ()
     # `allowed-tools`: calls that need no approval while the skill is active.
@@ -71,7 +68,11 @@ class SkillFile:
     MAX_FRONTMATTER_CHARS: ClassVar[int] = 64_000
     # Agent type/model frontmatter is not a wizolt configuration surface. Forked skills use
     # the ordinary subagent approval, where the user can choose their model settings.
-    UNSUPPORTED: ClassVar[dict[str, str]] = {"agent": "context: fork starts a subagent", "model": "choose model settings in the session or subagent approval"}
+    UNSUPPORTED: ClassVar[dict[str, str]] = {
+        "agent": "context: fork starts a subagent",
+        "model": "choose model settings in the session or subagent approval",
+        "user-invocable": "skills are not commands; the agent loads them on demand",
+    }
 
     def __init__(self, meta: Json):
         self.meta = meta
@@ -137,7 +138,6 @@ class SkillFile:
             source,
             argument_hint=" ".join(self.text("argument-hint").split()),
             model_invocable=not self.flag("disable-model-invocation", False),
-            user_invocable=self.flag("user-invocable", True),
             hooks=self.hooks(name),
             allowed_tools=self.rules("allowed-tools"),
             fork=context == "fork",

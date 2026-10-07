@@ -71,7 +71,7 @@ A *role* names what a color is used for. Set only the roles you want to change:
 | Reading and navigation | `text`, `muted`, `subtle`, `accent`, `accent_secondary`, `info`, `rule` |
 | Messages and results | `user`, `user_bg`, `tool`, `success`, `warning`, `error` |
 | Code | `syntax_assign`, `syntax_string`, `syntax_number`, `syntax_ident`, `syntax_builtin`, `syntax_default` |
-| Statusbar fields | `status_base`, `status_provider`, `status_model`, `status_reason`, `status_mcp`, `status_context`, `status_cache`, `status_yolo`, `status_agent` |
+| Statusbar fields | `status_base`, `status_provider`, `status_model`, `status_reason`, `status_mcp`, `status_services`, `status_context`, `status_cache`, `status_yolo`, `status_agent` |
 | Statusbar segments | `status_provider_bg`, `status_model_bg`, `status_reason_bg`, `status_context_bg`, `status_cache_bg`, `status_yolo_bg`, `status_agent_bg` |
 | Statusbar background | `status_bg` — the band in `vim` and `lualine`, and the base tint in `split` and `monitor` |
 | Divider | `divider_glow`, `divider_rule`, `divider_label`; glow and rule require `#rrggbb` |
@@ -116,7 +116,7 @@ added_word = "#0061a8"     # the words it changed
 removed = "#5c3300"
 removed_word = "#a35a00"
 gutter = "#5a6470"         # the line numbers and their rail
-header = "#5a6470"         # the --- and +++ file lines
+header = "#5a6470"         # a ---/+++ row in a diff body (an edit's own pair is hidden)
 hunk = "#3d9dbf"           # the @@ hunk position line
 added_sign = "#3d9dbf"     # the + that marks an added line
 removed_sign = "#a35a00"   # the - that marks a removed line
@@ -310,6 +310,57 @@ Available fields:
 The full `label`, `spinner` and queue counts are populated only in the divider; the statusbar
 supplies empty strings or zero for those fields. Put fields such as `rate` inside conditions when you want to omit their surrounding text
 while they are empty. Field contents never become template instructions.
+
+### Transcript records
+
+`[transcript] format` describes a tool call's record one row per line: its call line, its output
+rows and any closing row. Each line is written in the status bar's format language -- fields with
+optional format specs and `{% if %}` blocks -- without `[styles]`, fills or joins, since a
+record's colors follow the theme. `preset:standard` keeps the built-in rendering;
+`preset:minimal` writes one checklist row per call.
+
+```toml
+[transcript]
+format = """{marker} {tool} {args}
+{output|tail:5}
+{% if elided %}… +{elided} more lines · {citation}{% endif %}"""
+
+[transcript.tool.Bash]
+format = "{marker} {tool} {args} · {duration}{% if exit != '0' %} · exit {exit}{% endif %}"
+```
+
+| Field | Meaning |
+| --- | --- |
+| `tool`, `args` | The tool's name and the arguments the call line shows |
+| `name` | The tool's name in lowercase |
+| `marker` | `●` |
+| `duration` | How long the call took, as `0.4s` |
+| `elapsed` | The same in seconds, for a spec such as `{elapsed:.2f}` |
+| `exit` | A command's exit code, when the tool reports one |
+| `citation` | The stored result's `tr.N` reference with its status tag |
+| `elided` | How many output lines the record left out |
+| `error` | The failure's first line, when the call failed |
+| `failed` | Whether the call failed, for `{% if failed %}` |
+
+A line that is exactly `{output}`, `{output|tail:N}` or `{output|head:N}` stands for the call's
+output lines (at most 64). A row that renders empty is left out, so `{% if %}` can drop a whole
+row. Conditions are expressions over the fields: `{% if elided > 0 %}`, `{% if not failed %}`.
+Problems are reported with their row when the config is read, and the record falls back to the
+standard rendering.
+
+A failed call always keeps an error row, and a record that shows output always keeps its `tr.N`
+reference, whatever the format says. A fact wizolt has no value for renders as nothing rather than
+as a zero; a format spec on it (`{elapsed:.1f}` for a call with no measured time) prints that
+record in the standard rendering.
+Diffs, approval cards and a script's call trace are drawn by wizolt and do not appear in the
+template.
+
+The same table holds two more keys:
+
+| Key | Values | Meaning |
+| --- | --- | --- |
+| `thinking` | `expanded`, `collapsed`, `hidden` | The reasoning shown while it arrives: the newest lines, its opening line, or none |
+| `close` | `rule`, `blank`, `none` | What closes a long run of tool calls the agent never talks over |
 
 ### Powerline colors
 

@@ -1,7 +1,8 @@
 # Subagents
 
 Split a task among agents working in parallel. Each has its own conversation, plan, notes and
-usage statistics. **Files are shared**, so give agents separate files to edit. More agents use
+usage statistics. **Files are shared**, so give agents separate files to edit, and leave
+repo-wide commands such as `git stash` or a whole-tree formatter to one agent. More agents use
 more model tokens.
 
 ## Approve and configure
@@ -45,7 +46,7 @@ The time freezes when the turn ends and survives resume.
 | Enter | Open the highlighted conversation |
 | x | Stop it after confirmation |
 | Shift+X | Stop it immediately |
-| d | Archive it and its children after confirmation; free their slots |
+| d | Archive it and its children after confirmation; remove them from the group |
 | Esc | Return without switching |
 
 The input box, history, statusbar and `/status` follow the selected agent.
@@ -85,14 +86,19 @@ new input. Main's input history includes earlier sessions; each child's history 
 max_subagents = 3
 ```
 
-The default is **3**, excluding main; allowed values are **0–32**. Completed children and forked
-skills still count. Stopping does not free a slot. Archive finished agents with **d** in `/agents`
-to make room for new tasks with fresh conversations.
-Change the limit from main with `/set runtime.max_subagents NUMBER`; check it with `/status`.
+At most **3** children run at once, excluding main; allowed values are **0–32**. Nested children
+and forked skills count while they run. A finished, failed or stopped child frees its slot and
+keeps its conversation, so the model can send it more work later. Input you type into a child
+yourself is never refused. The group keeps up to **32** children; archive finished ones with
+**d** in `/agents` to make room beyond that.
+
+`max_subagents = 0` turns subagents off: the model is not offered the `Subagent` tool, and forked
+skills are refused. Change the limit from main with `/set runtime.max_subagents NUMBER`; `/status`
+shows how many are running.
 
 ## Model tools
 
-The model uses one `Subagent` tool with **spawn**, **send**, **list**, **inspect**, **wait**, **stop** and **archive** actions. Creating agents
+The model uses one `Subagent` tool with **spawn**, **send**, **list**, **inspect**, **report**, **wait**, **stop** and **archive** actions. Creating agents
 returns immediately. Waiting defaults to **3 minutes**, up to **10 minutes** per call
 (`timeout=600`); `timeout=0` checks immediately. A timeout does not stop the child.
 
@@ -106,23 +112,31 @@ Other agents keep working. An already settled target returns
 immediately; remove returned IDs before waiting again. A timeout returns `[]`.
 For one agent, use a one-item `agent_ids` list. Waiting requires no approval.
 
+Add `"mode": "all"` to wait until **every** target has settled instead, for example after
+starting several reviewers. On timeout it returns every target, still-running ones marked
+`running`. The transcript shows which kind of wait it was (`wait any` or `wait all`).
+
 The parent receives each direct child's latest completed, failed or interrupted result before
-its next model request, even while doing other work. Notifications include up to **1000 characters**;
-`list` or `wait` retrieves more while the child is not archived. Results already returned by those
-tools or `inspect` are not announced again. This does not start a new parent turn or add user input to history.
+its next model request, even while doing other work. Notifications include up to **1000 characters**.
+`wait` returns each answer's first **4,000 characters** and marks the rest `truncated`; **report**
+returns one child's answer in full, live or archived. Results already returned by `wait` or `inspect`
+are not announced again. This does not start a new parent turn or add user input to history.
 
 **inspect** reads an active or archived agent without approval: its task, plan, model settings,
 duration, eight recent messages, four recent tool results and current tool batch. Long text is
-clipped; partial streaming text is not included. **list** also includes archived agents so the
-model can find their IDs. Neither action starts work or changes the selected conversation.
+clipped, and a clipped result says to read the answer with **report**; partial streaming text is
+not included. **list** is a status overview — state, context use, errors and the first
+**200 characters** of each agent's task, no answer text — and
+also includes archived agents so the model can find their IDs. None of these actions starts work
+or changes the selected conversation.
 
-Main can request **archive**. Approval lists the target, its descendants, their status and the
-slots freed. Archiving stops their work and discards queued inputs while retaining history and
+Main can request **archive**. Approval lists the target, its descendants and their status.
+Archiving stops their work and discards queued inputs while retaining history and
 file changes. If the branch changes during approval, main must request approval again.
 
 | Action | Human approval |
 |---|---|
-| list, inspect, wait | Not required by default |
+| list, inspect, report, wait | Not required by default |
 | spawn, send | Required, including with `--yolo` |
 | archive | Main only; required, including with `--yolo` |
 | stop | Required normally; `--yolo` can skip it |

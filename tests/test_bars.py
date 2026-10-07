@@ -297,6 +297,25 @@ def test_plugin_count_follows_each_preset_and_remains_bounded(name, split):
         assert get_cwidth(text(template.render(values, width, styles))) <= width
 
 
+@pytest.mark.parametrize("name", STATUS_LAYOUTS)
+@pytest.mark.parametrize("split", [False, True])
+def test_service_counts_follow_every_preset_and_elide_before_identity(name, split):
+    from wizolt.ui.render import Theme
+
+    template = Template(status_template(name, split))
+    values = dict.fromkeys(FIELDS, 0)
+    values.update(model="model", provider="test", reasoning="high", **{"agent.name": "main", "mcp.label": "mcp 3", "skills.count": 6})
+    styles = Theme.bar_styles(template.styles)
+    rendered = text(template.render(values, 200, styles))
+    assert "mcp 3" in rendered and "skills 6" in rendered
+    narrow = text(template.render(values, 20, styles))
+    # Identity survives where the service counts elide first: less prominent, never gone.
+    assert "main" in narrow
+    assert "mcp 3" not in narrow and "skills 6" not in narrow
+    for width in (1, 20, 40, 80, 120):
+        assert get_cwidth(text(template.render(values, width, styles))) <= width
+
+
 @pytest.mark.parametrize("name", ["default", "minimal", "compact", "brackets"])
 def test_single_sided_status_presets_do_not_spread_across_the_terminal(name):
     template = Template("preset:" + name, STATUS_PRESETS)
@@ -356,8 +375,9 @@ def test_moved_segments_keep_their_joins_connected(name, split):
     def background(style):
         return next((part[3:] for part in reversed(style.split()) if part.startswith("bg:")), None)
 
-    # The usage group opens with the MCP segment in lualine and is the context alone in powerline.
-    group = next(index for index, (_, value) in enumerate(parts) if ("mcp 3" if name == "lualine" else "ctx 42%") in value)
+    # The usage group opens with the MCP segment in lualine and powerline, and is the context
+    # alone in the presets whose right group is usage only.
+    group = next(index for index, (_, value) in enumerate(parts) if ("mcp 3" if name in ("lualine", "powerline") else "ctx 42%") in value)
     joins = [index for index, (_, value) in enumerate(parts) if value in ("", "")]
     assert len(joins) >= 4
     for index in joins:
@@ -391,8 +411,9 @@ def test_context_meter_fills_to_the_nearest_cell():
     template = Template("preset:minimal", STATUS_PRESETS)
     styles = dict.fromkeys(template.styles, "")
     for percent, filled in ((0, 0), (9, 0), (10, 1), (37, 2), (89, 4), (90, 5), (100, 5)):
-        rendered = text(template.render({"model": "m", "context.percent": percent}, 80, styles))
-        assert rendered == "m " + "▰" * filled + "▱" * (5 - filled) + f" {percent}%"
+        values = {"model": "m", "context.percent": percent, "mcp.label": "mcp 0", "skills.count": 0}
+        rendered = text(template.render(values, 80, styles))
+        assert rendered == "m mcp 0 · skills 0 " + "▰" * filled + "▱" * (5 - filled) + f" {percent}%"
 
 
 @pytest.mark.parametrize("split", [True, False])

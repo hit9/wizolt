@@ -1160,6 +1160,8 @@ def test_the_description_teaches_both_modes_and_prefers_a_view_when_one_exists()
     assert "old" in text and "source=view.N" in text
     assert "Bash output works directly" in text
     assert "Prefer a current source view when already available" in text
+    assert "Read one first for multi-line or structural changes" in text
+    assert "Use exact old for a short unique snippet seen verbatim" in text
     assert "Batch all known non-overlapping operations" in text
     # And the description no longer claims a redundant Read is required first.
     assert "before editing" not in text

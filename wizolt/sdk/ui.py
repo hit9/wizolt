@@ -6,9 +6,10 @@ cannot change layout; disabling a manager never discards the user's chosen order
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import asdict, dataclass
 
-from wizolt.sdk import PluginError
+from wizolt.sdk import Line, PluginError
 from wizolt.sdk.models import HostCall
 from wizolt.sdk.views import Choice, Field, Form, OpenView, Selection, View, ViewResult
 
@@ -103,6 +104,16 @@ class UI:
         result = await self.show(View(title, Form((Field("value", title, default, required, multiline),))))
         return result.values["value"] if result else None
 
+    async def edit(self, text: str) -> str | None:
+        """Hand the terminal to the user's editor (``$VISUAL``, ``$EDITOR``) on ``text``; the saved
+        text, or None when the editor could not start or exited without success. Writes nothing
+        anywhere: what to do with the result is yours."""
+        if self.call is None:
+            raise PluginError("Interactive UI is unavailable")
+        if not isinstance(text, str):
+            raise PluginError("The editor takes text")
+        return (await self.call("ui.edit", {"text": text}))["text"]
+
     async def confirm(self, title: str) -> bool:
         """Default to cancellation. This business choice never grants tool approval."""
         return await self.select(title, items=(Choice("no", "Cancel"), Choice("yes", "Confirm"))) == "yes"
@@ -120,3 +131,14 @@ class UI:
         if self.call is None:
             raise PluginError("Interactive UI is unavailable")
         await self.call("ui.notify", {"message": message, "level": level})
+
+    async def report(self, lines: Sequence[Line]) -> None:
+        """Append a framed, theme-colored block to the answer area during an explicit action.
+
+        The rows are the same Line and Text values a styled command answer is made of, one
+        theme role per span; a host that cannot show them raises, and the caller decides
+        what to do with the rows it could not show.
+        """
+        if self.call is None:
+            raise PluginError("Interactive UI is unavailable")
+        await self.call("ui.report", {"lines": [asdict(line) for line in lines]})

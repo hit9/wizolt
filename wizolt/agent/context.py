@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import uuid
 from collections.abc import Callable, Hashable
 from typing import TYPE_CHECKING, ClassVar, TypeVar
 
@@ -16,6 +17,7 @@ from wizolt.agent.prompts import (
     PREVIOUS_CONTEXT_TRIMMED,
     git_attribution_directive,
     language_directive,
+    reactions_directive,
 )
 from wizolt.base import (
     ANTHROPIC_CONTENT_KEY,
@@ -26,7 +28,9 @@ from wizolt.base import (
     SESSION_EVENT_KEY,
     TOOL_OUTPUT_ASSET_SUFFIX,
     Json,
+    ModelError,
     Text,
+    ToolCall,
     run_blocking,
 )
 from wizolt.image import IMAGE_REFS_KEY, IMAGE_TEXT_ONLY_KEY, TOOL_IMAGE_OBSERVATION_KEY, ImageInputs
@@ -39,6 +43,20 @@ if TYPE_CHECKING:
     from wizolt.model import ModelClient
 
 _IdentityT = TypeVar("_IdentityT", bound=Hashable)
+
+
+def setting_directives(session: Session) -> list[tuple[str, str]]:
+    """The fixed blocks settings append to the system text, in sent order, each with the setting
+    that controls it. Stable text that depends only on the value, so the cacheable system prefix
+    is unchanged; host-owned, so a plugin replacing the system text never drops one."""
+    settings = session.settings
+    directives = (
+        ("runtime.language", language_directive(settings.language)),
+        ("runtime.attribution", git_attribution_directive(settings.attribution)),
+        # Only the main agent talks to the user; a subagent's messages come from its parent.
+        ("runtime.reactions", reactions_directive(settings.reactions and not session.agent_parent)),
+    )
+    return [(setting, text) for setting, text in directives if text]
 
 
 class ContextManager:
@@ -75,6 +93,8 @@ class ContextManager:
     def __init__(self, session: Session, model: ModelClient | None = None):
         self.session = session
         self.model = model
+        # (plain header, composed prefix) of the last composed turn request; see sent_header.
+        self.composed_header: tuple[list[Json], list[Json]] | None = None
         # Automatic compaction runs inside request projection, below the UI layer. The on_compaction
         # field of this manager's hooks lets orchestration expose that real phase without making
         # context depend on a renderer. False is emitted in a finally block, including model
@@ -89,23 +109,105 @@ class ContextManager:
 
         Factored out because it is exactly the span a provider caches, and the compaction request
         reuses it verbatim so its summary rides the same prefix the turn just paid for."""
-        content = base_system.strip()
-        # Each setting that appends one fixed block to the system tail: stable text that depends only
-        # on the value, so the cacheable system prefix is unchanged.
-        for directive in (
-            language_directive(self.session.settings.language),
-            git_attribution_directive(self.session.settings.attribution),
-        ):
-            if directive:
-                content += "\n\n" + directive
-        messages: list[Json] = [
-            {"role": "system", "content": content},
-            {"role": "user", "content": "--- Environment ---\n" + (self.environment() or "(empty)")},
-        ]
-        for context in (self.instructions_context(), self.skills_context(), self.mcp_tools_context()):
+        return self.render_header(self.header_parts(base_system))
+
+    # The header's named parts, in request order: the producers, not a parse of rendered text.
+    HEADER_PARTS: ClassVar[tuple[str, ...]] = ("system", "environment", "instructions", "skills", "mcp")
+
+    def header_parts(self, base_system: str) -> list[tuple[str, str]]:
+        """(name, text) for each present part. ``system`` excludes the host-owned directives."""
+        parts = [("system", base_system.strip()), ("environment", "--- Environment ---\n" + (self.environment() or "(empty)"))]
+        for name, context in (("instructions", self.instructions_context()), ("skills", self.skills_context()), ("mcp", self.mcp_tools_context())):
             if context:
-                messages.append({"role": "user", "content": context})
-        return messages
+                parts.append((name, context))
+        return parts
+
+    EDITABLE_PARTS: ClassVar[frozenset[str]] = frozenset({"system", "instructions"})
+    CONVERSATION_VIEW: ClassVar[tuple[int, int]] = (40, 2000)  # Messages shown, characters each.
+
+    def conversation_view(self, conversation: list[Json]) -> str:
+        """A bounded, read-only view for composing plugins. It is a view: nothing here is sent."""
+        limit, width = self.CONVERSATION_VIEW
+        rows = [f"({len(conversation) - limit} earlier messages are not shown in this view)"] if len(conversation) > limit else []
+        for message in conversation[-limit:]:
+            text = ImageInputs.label_text(message)
+            rows.append(f"{message.get('role')}: {text if len(text) <= width else text[:width] + '…'}")
+        return "\n".join(rows)
+
+    async def compose(self, plugins: object, base_system: str, messages: list[Json], tools: list[Json] | None) -> list[Json]:
+        """``context.compose`` over one prepared turn request. Durable messages never change.
+
+        Editable: the system instructions (the language, attribution and reactions directives
+        stay host-owned) and the project/user instructions. Environment, skills, MCP and the
+        conversation are read-only. Plugins add their own ``plugin:<name>:<id>`` blocks, which
+        the host places after the header, before the conversation, in interception order.
+        """
+        interception = getattr(plugins, "interception", None)
+        if interception is None or not interception.would_match("context.compose", purpose="turn"):
+            self.composed_header = None  # This request sends the plain header.
+            return messages
+        from wizolt.plugins.rules import adapter_rules
+        from wizolt.sdk import operations
+        from wizolt.sdk.operations import Block, Blocks
+
+        parts = self.header_parts(base_system)
+        conversation = messages[len(parts) :]
+        value = Blocks(
+            (*(Block(name, text, name in self.EDITABLE_PARTS) for name, text in parts), Block("conversation", self.conversation_view(conversation))), "turn"
+        )
+
+        async def accept(composed: operations.Value) -> operations.Value:
+            return composed
+
+        transition, result_check = adapter_rules(value, plugins.interception_order.ordered)  # type: ignore[attr-defined]
+        result = await interception.run("context.compose", value, accept, transition=transition, result_check=result_check)  # type: ignore[attr-defined]
+        assert isinstance(result, Blocks)
+        texts = {block.id: block.text for block in result.blocks}
+        header = self.render_header([(name, texts[name]) for name, _ in parts])
+        added = [{"role": "user", "content": block.text} for block in result.blocks if block.id.startswith("plugin:") and block.text]
+        composed = Text.value([*header, *added, *conversation])
+        tokens = self.request_tokens(composed, tools)
+        # Request diagnostics: which blocks changed and what the prefix now costs. A changed
+        # prefix genuinely costs provider cache reuse; this is where a user can see why.
+        from wizolt.session.types import OperationReceipt
+
+        original = dict(parts)
+        changes = {
+            "changed": [name for name, _ in parts if texts[name] != original[name]],
+            "added": [block.id for block in result.blocks if block.id.startswith("plugin:")],
+            "tokens": tokens,
+        }
+        self.session.record_operation(
+            OperationReceipt(
+                uuid.uuid4().hex,
+                "context.compose",
+                "turn",
+                OperationReceipt.clip({"tokens": self.request_tokens(messages, tools)}),
+                OperationReceipt.clip(changes),
+                core="completed",
+                delivered=True,
+            )
+        )
+        if tokens >= self.request_token_budget():
+            raise ModelError("Plugin context composition does not fit the context budget")
+        self.update_percent(composed, tools, tokens=tokens)  # The status bar shows what is sent.
+        # What this request sent ahead of the conversation, keyed by the plain header it replaced:
+        # an inline compaction request re-sends exactly these bytes, so it still hits the cache.
+        self.composed_header = (Text.value(messages[: len(parts)]), composed[: len(composed) - len(conversation)])
+        return composed
+
+    def sent_header(self, header: list[Json]) -> list[Json]:
+        """The prefix the last turn request sent for this plain header: composed when a plugin
+        composed it, else the header itself. A changed header means a different request."""
+        if self.composed_header is not None and self.composed_header[0] == header:
+            return self.composed_header[1]
+        return header
+
+    def render_header(self, parts: list[tuple[str, str]]) -> list[Json]:
+        content = parts[0][1]
+        for _, directive in setting_directives(self.session):
+            content += "\n\n" + directive
+        return [{"role": "system", "content": content}, *({"role": "user", "content": text} for _, text in parts[1:])]
 
     def model_messages(self, base_system: str, turn_messages: list[Json] | None = None) -> list[Json]:
         messages = self.model_header(base_system)
@@ -189,6 +291,12 @@ class ContextManager:
         tokens = self.request_tokens(messages, tools)
         self.session.state.context_tokens = tokens
         self.session.state.context_percent = min(100, tokens * 100 // self.request_token_budget())
+        # The context changed outside a request -- `/compact`, a resume -- so the parts plugins read
+        # (`Context.window.parts`) change with it here, not only at the next request; otherwise a
+        # meter shows the evicted conversation beside the new total until the user sends again.
+        plugins = self.session.plugins
+        if plugins is not None and plugins.entries:
+            plugins.context_parts = tuple(self.breakdown(base_system))
         return tokens
 
     def breakdown(self, base_system: str) -> list[tuple[str, int]]:
@@ -201,14 +309,22 @@ class ContextManager:
             return self.estimated_tokens([{"role": "user", "content": content}]) if content else 0
 
         conversation = [*self.session.messages, *self.session._active_turn_messages]
+        # The compaction checkpoint -- kept summaries, working state, activity -- is what `/compact`
+        # leaves behind and cannot shrink again, so it is its own part rather than conversation
+        # that looks as if compacting barely freed anything.
+        checkpoints = [message for message in conversation if self.is_compaction_summary(message)]
+        conversation = [message for message in conversation if not self.is_compaction_summary(message)]
         # Named for what a user configures: AGENTS.md files are "memory files", and what connected
-        # MCP servers add to the prefix (their tools and resources index) is "mcp servers".
+        # MCP servers add to the prefix (their tools and resources index) is "mcp servers". Listed
+        # in the context layout's order: the tool block leads the cached prefix with the system
+        # prompt, then the header in HEADER_PARTS order, then the conversation.
         return [
-            ("system prompt", self.estimated_tokens(self.model_header(base_system)[:2])),
             ("system tools", self.estimated_tokens(Tool.resolved_schemas(self.session))),
-            ("mcp servers", text(self.mcp_tools_context())),
+            ("system prompt", self.estimated_tokens(self.model_header(base_system)[:2])),
             ("memory files", text(self.instructions_context())),
             ("skills", text(self.skills_context())),
+            ("mcp servers", text(self.mcp_tools_context())),
+            ("summary", self.estimated_tokens(checkpoints) if checkpoints else 0),
             ("messages", self.estimated_tokens(self.dedup_skill_loads(self.dedup_mcp_describes(conversation)))),
         ]
 
@@ -251,6 +367,13 @@ class ContextManager:
         # over budget. Reporting per pass would fire on every ordinary turn, where the history pass
         # does the work and the short current turn has nothing to give. `attempted` keeps it to one
         # report -- once both scopes are marked, later requests skip the passes and stay quiet.
+        if attempted:
+            # Every pass awaited a summary request, so the request built before the last one may
+            # predate a header change (an MCP server connecting, a skills scan finishing). Rebuild
+            # once at the end: callers such as compose split the header from the conversation by
+            # the header's current parts, so a stale projection drops its first message.
+            messages = self.model_messages(base_system, turn_messages)
+            raw = self.request_tokens(messages, tools)
         if attempted and not compacted_any and raw >= budget:
             self._report_incompressible()
         self.update_percent(messages, tools, tokens=raw)
@@ -396,10 +519,41 @@ class ContextManager:
             fallback=fallback,
             messages=len(compacted),
             model=model,
+            files_read=self.files_read(compacted),
         )
         self.session.history.append(segment)
         del self.session.history[: -self.MAX_HISTORY_SEGMENTS]  # newest kept; a shorter list is left alone
         return segment
+
+    # Paths one segment records; a span that read more keeps the ones it read last.
+    MAX_FILES_READ: ClassVar[int] = 20
+
+    @classmethod
+    def files_read(cls, messages: list[Json]) -> list[str]:
+        """The paths the span's Read calls named and no Edit in it changed, first read first.
+
+        Edited paths are left out: the checkpoint lists modified files on its own, and a file the
+        span changed is not one it merely consulted."""
+        read: list[str] = []
+        edited: set[str] = set()
+        for message in messages:
+            for raw in message.get("tool_calls") or [] if message.get("role") == "assistant" else []:
+                function = raw.get("function") if isinstance(raw, dict) else None
+                if not isinstance(function, dict) or function.get("name") not in ("Read", "Edit"):
+                    continue
+                arguments = function.get("arguments")
+                try:
+                    payload = json.loads(arguments, strict=False) if isinstance(arguments, str) else arguments
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(payload, dict):
+                    continue
+                paths = ToolCall("", function["name"], [payload], payload=payload).paths()
+                if function["name"] == "Edit":
+                    edited.update(paths)
+                else:
+                    read.extend(path for path in paths if path not in read)
+        return [path for path in read if path not in edited][-cls.MAX_FILES_READ :]
 
     def _summary_block(self) -> list[Json]:
         """One durable checkpoint containing everything needed after the compacted prefix.
@@ -463,18 +617,25 @@ class ContextManager:
             if compacted
             else None
         )
-        if data is not None:
-            self.session.state.apply_summary(data)
-        if fallback_note:
-            self.session.state.summary = (self.session.state.summary + "\n" + fallback_note).strip()
         if segment is not None:
-            # After apply(): the summary worth keeping is the one this compaction just produced,
-            # not the one it replaced. The compactor's own name for the span replaces the
-            # deterministic one, which was only ever the first user message of the window and says
-            # little once a span starts mid-work. The compactor computes the name (flattened and
-            # bounded) and passes it in; empty falls back to the deterministic name.
-            segment.summary = self.session.state.summary
+            # The compactor's own name for the span replaces the deterministic one, which was only
+            # ever the first user message of the window and says little once a span starts
+            # mid-work. The compactor computes the name (flattened and bounded) and passes it in;
+            # empty falls back to the deterministic name.
             segment.title = title or segment.title
+        state = self.session.state
+        if data is not None:
+            # Labelled with the span it covers, so the checkpoint maps each kept summary to the
+            # `history.N.md` that holds the span word for word.
+            state.apply_summary(data, label=f"{segment.key}: {segment.title}" if segment is not None else "")
+        if fallback_note:
+            # A trim the summarizer never saw is its own entry, so no kept summary is rewritten.
+            state.summaries = [*state.summaries, fallback_note]
+        if segment is not None:
+            # This span's own summary, as written -- not every kept summary again, which the
+            # checkpoint already carries.
+            text = str(data.get("summary") or "").strip() if data is not None else ""
+            segment.summary = "\n".join(filter(None, (text, fallback_note)))
         # Exported after the summary request returned and before the checkpoint is built: nothing
         # here can touch the cached prefix of that request, and the checkpoint below names the
         # index only once it exists on disk.
@@ -545,24 +706,26 @@ class ContextManager:
     def is_compaction_summary(self, message: Json) -> bool:
         return message.get("role") == "user" and str(message.get("content") or "").startswith(COMPACTION_SUMMARY_TITLE)
 
-    def requires_artifact(self, text: str) -> bool:
+    def requires_artifact(self, text: str, budget: int | None = None) -> bool:
         """True when bounding `text` would omit a middle, so a retained key deserves an artifact."""
 
-        return self.estimated_text_tokens(text) > MAX_TOOL_OUTPUT_TOKENS
+        return self.estimated_text_tokens(text) > (budget or MAX_TOOL_OUTPUT_TOKENS)
 
-    def bound_output(self, text: str, *, path: str = "") -> str:
+    def bound_output(self, text: str, *, path: str = "", budget: int | None = None) -> str:
         """The model-facing form of a long tool result: a head, a tail, and the omission marker
-        between them, which names `path` when the full text was written there."""
+        between them, which names `path` when the full text was written there. `budget` is the
+        inline token share, a tool's own when it has one; by default the shared cap."""
+        budget = budget or MAX_TOOL_OUTPUT_TOKENS
         estimated = self.estimated_text_tokens(text)
-        if estimated <= MAX_TOOL_OUTPUT_TOKENS:
+        if estimated <= budget:
             return text
-        limit = MAX_TOOL_OUTPUT_TOKENS * 4
+        limit = budget * 4
         head_limit = max(1, limit * 2 // 5)
         tail_limit = max(1, limit - head_limit)
         head = self.head_excerpt(text, head_limit)
         tail = self.tail_excerpt(text, tail_limit)
         omitted_tokens = max(0, estimated - self.estimated_text_tokens(head) - self.estimated_text_tokens(tail))
-        return TextBlock(head, tail, estimated, omitted_tokens, MAX_TOOL_OUTPUT_TOKENS, path).render()
+        return TextBlock(head, tail, estimated, omitted_tokens, budget, path).render()
 
     async def materialize_output(self, key: str, text: str) -> str:
         """Write the full tool output next to the truncated marker as a navigable artifact.

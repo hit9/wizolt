@@ -109,12 +109,36 @@ async def test_reload_uses_new_service_scope_and_retires_old_connection(tmp_path
 async def test_samples_cannot_start_service(tmp_path):
     revision, log = source(tmp_path)
     text = revision.text.replace(
-        'p.command("connect", "Use connection", use)', 'async def sample(event):\n        await service.get()\n    p.on("sample", sample)'
+        'p.command("connect", "Use connection", use)', 'async def sample(event):\n        await service.get()\n    p.on("tick", sample)'
     )
     worker, _ = await PluginProcess.start(PluginSource.read(revision.path, text))
     try:
         with pytest.raises(PluginError, match="explicit action"):
             await worker.request("snapshot", context=asdict(Context("test", "main", str(tmp_path), "idle", 0, 0, "test", 0)))
         assert not log.exists()
+    finally:
+        await worker.close()
+
+
+async def test_a_command_may_answer_styled_rows_but_a_tool_may_not(tmp_path):
+    """Commands answer the user, tools answer the model: only the user-facing answer may
+    carry theme roles, and the worker vets the rows before they cross the wire."""
+    path = tmp_path / "styled.py"
+    path.write_text('''SDK_VERSION = 1
+from wizolt.sdk import Line, Text
+
+def setup(p):
+    async def rows(ctx, args):
+        return [Line((Text("done", "success"),))]
+    p.command("rows", "Styled rows", rows)
+    p.tool("tool_rows", "Styled tool", {"type": "object"}, rows)
+''')
+    worker, _ = await PluginProcess.start(PluginSource.read(str(path)))
+    try:
+        context = asdict(Context("test", "main", str(tmp_path), "idle", 0, 0, "test", 0))
+        result = await worker.request("invoke", kind="command", name="rows", arguments={}, context=context)
+        assert result == {"styled": [{"spans": [{"text": "done", "role": "success"}]}]}
+        with pytest.raises(PluginError, match="must return text"):
+            await worker.request("invoke", kind="tool", name="tool_rows", arguments={}, context=context)
     finally:
         await worker.close()

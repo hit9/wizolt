@@ -8,6 +8,7 @@ import inspect
 import json
 import re
 import time
+import uuid
 from collections.abc import Callable
 
 from wizolt.agent.context import ContextManager
@@ -39,9 +40,10 @@ from wizolt.base import (
     oneline,
     run_blocking,
 )
-from wizolt.image import ImageInputs, UserInput
+from wizolt.image import IMAGE_REFS_KEY, ImageInputs, UserInput
 from wizolt.model import ModelClient, PreparedRequest, resilience
 from wizolt.session import QueuedInput, Session, SessionSnapshotCodec
+from wizolt.session.types import OperationReceipt
 from wizolt.shellhooks import SESSION_END, SESSION_START, STOP, STOP_FAILURE, SUBAGENT_START, SUBAGENT_STOP, USER_PROMPT_SUBMIT, HookOutcome, PromptBlocked
 from wizolt.skill.listing import SkillListing
 from wizolt.tools import (
@@ -80,10 +82,10 @@ class Agent:
         self.model = ModelClient(session)
         self.context = ContextManager(session, self.model)
         if session.plugins is not None:
-            from wizolt.agent.plugin_models import PluginModels
+            from wizolt.agent.plugin_services import PluginServices
 
             session.plugins.read_context = lambda: self.context.breakdown(self.session.system_prompt)
-            session.plugins.host_service = PluginModels(session).call
+            session.plugins.host_service = PluginServices(session).call
         self.vision_observe = VisionObserver(self.model).observe
         self.tools = ToolRunner(session, self.context, input_fn=input_fn, output_fn=output_fn)
         self.output_fn = output_fn
@@ -260,6 +262,7 @@ class Agent:
         # images; the TUI already admitted its own submissions, so this is an idempotent re-check.
         # Stored before the opening message exists, so a checkpoint can never capture a reference
         # to an asset the write did not finish.
+        origin = user_input.origin if isinstance(user_input, UserInput) else "user" if self.session.listed else "child"
         if isinstance(user_input, UserInput) and user_input.images:
             user_input = await self.session.images.admit(user_input)
         self.turn_sources = []
@@ -268,13 +271,17 @@ class Agent:
         malformed_tool_names: list[str] = []
         self._current_image_messages = []
         user_message = self._initial_user_message(user_input)
-        if ImageInputs.input_refs(user_message):
+        # The interceptor and hooks see the model's own projection: pastes open into their full
+        # text, so a rewritten prompt keeps the body instead of the folded chip a rewrite would
+        # otherwise freeze into history. Queued follow-ups already pass this same text.
+        user_text = str(user_message.get("content") or "")
+        # Before anything is committed: a prompt a plugin or UserPromptSubmit hook refuses never
+        # becomes a turn. The model gets the effective input; user history keeps the original.
+        model_message, admitted_text = await self.intercept_prompt(user_message, user_text, origin)
+        if ImageInputs.input_refs(model_message):
             # The opening attachment is a current image occurrence for the first request of the turn.
-            self._current_image_messages.append(user_message)
-        # Mentions belong to the user's typed input, never to projected image content.
-        user_text = user_input.display_text() if isinstance(user_input, UserInput) else self.session.images.label_text(user_message)
-        # Before anything is committed: a prompt a UserPromptSubmit hook refuses never becomes a turn.
-        turn_messages = [user_message, *await self.admit_input(user_text), *await self.skill_announcement()]
+            self._current_image_messages.append(model_message)
+        turn_messages = [model_message, *await self.admit_input(admitted_text), *await self.skill_announcement()]
         self.session.clear_quick_hints()  # an admitted turn invalidates the previous turn's offers
         self.session.state.round_count += 1
         self.session.state.turn_step = 0
@@ -288,6 +295,9 @@ class Agent:
         await self.checkpoint_turn(turn_messages, transcript_messages)
         self._session_hook_context = ()
         try:
+            # Inside the turn's settlement: the opening message is already checkpointed, so a
+            # failing or interrupted offer chain must end the turn like any other failure.
+            await self.offer_tools()
             for step in range(self.session.settings.max_steps):
                 self.session.state.turn_step = step + 1
                 self.session.clear_quick_hints()  # a later step supersedes hints from a non-terminal batch; only the terminal batch keeps its hints
@@ -454,7 +464,7 @@ class Agent:
         while True:
             try:
                 self.raise_if_cancelled()
-                return await self.model.request(accepted.messages, accepted.tools)
+                return await self.model.request(accepted.messages, accepted.tools, reason="image_fallback")
             except ModelRequestRetry:
                 # The paid observation is already in `accepted`; resend that
                 # exact request instead of rebuilding it and observing again.
@@ -502,7 +512,7 @@ class Agent:
             correction_messages = [*base_messages, *corrections]
             while True:
                 try:
-                    assistant, tool_calls, content = await self.model.request(correction_messages, tools)
+                    assistant, tool_calls, content = await self.model.request(correction_messages, tools, reason="tool_correction")
                     self.record_sources(assistant)
                     break
                 except ModelRequestRetry:
@@ -668,6 +678,48 @@ class Agent:
             raise ValueError("internal messages cannot be added to the visible transcript")
         return projected
 
+    async def offer_tools(self) -> None:
+        """``tools.offer``, once per turn: the set every request of this turn offers.
+
+        Held in ``session.offered_tools`` for the turn, so the steps, a fallback or correction
+        resend and an inline compaction request all send the same tools and keep the provider
+        cache. Without a matching registration nothing is copied and every tool is offered."""
+        plugins = self.session.plugins
+        previous, self.session.offered_tools = self.session.offered_tools, None
+        if plugins is None or not plugins.interception.would_match("tools.offer"):
+            return
+        from wizolt.plugins.rules import adapter_rules
+        from wizolt.sdk.operations import ToolOffer, Value
+        from wizolt.tools.plugin import PluginTool
+
+        builtin = tuple(schema["function"]["name"] for schema in Tool.builtin_schemas(self.session))
+        value = ToolOffer(builtin, PluginTool.offerable(plugins))
+
+        async def accept(offer: Value) -> Value:
+            return offer
+
+        transition, result_check = adapter_rules(value, plugins.interception_order.ordered)
+        trace: dict = {}
+        result = await plugins.interception.run("tools.offer", value, accept, transition=transition, result_check=result_check, trace=trace)
+        assert isinstance(result, ToolOffer)
+        self.session.offered_tools = result.tools
+        if result.tools == previous:
+            return  # The same set as the last turn: nothing to report, and receipts are capped.
+        changes = {"removed": [name for name in builtin if name not in result.tools], "added": [name for name in result.tools if name not in builtin]}
+        self.session.record_operation(
+            OperationReceipt(
+                uuid.uuid4().hex,
+                "tools.offer",
+                "turn",
+                OperationReceipt.clip(list(builtin)),
+                OperationReceipt.clip(changes),
+                origin=trace.get("origin", "core"),
+                core="completed",
+                shaped=tuple(trace.get("shaped", ())),
+                delivered=True,
+            )
+        )
+
     async def prepare_request(self, turn_messages: list[Json]) -> PreparedRequest:
         if self.session.subagents is not None:
             receive_results(self.session, turn_messages, self.session.subagents.results_for(self.session.uid))
@@ -680,16 +732,17 @@ class Agent:
         if pending:
             request_turn = [*turn_messages]
             for item in pending:
-                try:
-                    mentions = await self.admit_input(item.text)
-                except PromptBlocked as blocked:
+                admission = item.admission if item.admission is not None else await self.admit_followup(item)
+                if "refused" in admission:
                     # Withheld from the model, not from the turn: the request still goes out, and
                     # the input is acknowledged with the rest so it is never retried.
-                    self.output_fn(f"Follow-up withheld by a UserPromptSubmit hook: {blocked}")
+                    if not admission.get("reported"):
+                        self.output_fn(f"Follow-up withheld{admission['refused']}")
+                        admission["reported"] = True
                     continue
-                pending_message = item.message(LIVE_FOLLOWUP_PREFIX)
+                pending_message = admission["message"]
                 request_turn.append(pending_message)
-                request_turn.extend(mentions)
+                request_turn.extend(admission["mentions"])
                 if ImageInputs.input_refs(pending_message):
                     # A claimed queued attachment is a current image occurrence.
                     current.append(pending_message)
@@ -714,6 +767,8 @@ class Agent:
         self.session.state.turn_messages = len(request_turn)
         tools = Tool.resolved_schemas(self.session)
         messages = await self.context.prepare_messages(self.model, self.session.system_prompt, request_turn, tools)
+        # After compaction, so a recomposed projection passes the same budget check.
+        messages = await self.context.compose(self.session.plugins, self.session.system_prompt, messages, tools)
         if self.session.plugins is not None and self.session.plugins.entries:
             # Token estimation belongs at request boundaries, never in the 5 Hz UI sampler.
             self.session.plugins.context_parts = tuple(self.context.breakdown(self.session.system_prompt))
@@ -744,7 +799,7 @@ class Agent:
         self._emit_image_route_notice(ImageRouteNotice("main model rejected image input (400)", described_by=self._vision_entry_label(), images=names))
         tools = Tool.resolved_schemas(self.session)
         messages = await self.context.prepare_messages(self.model, self.session.system_prompt, converted, tools)
-        self.context.update_percent(messages, tools)
+        messages = await self.context.compose(self.session.plugins, self.session.system_prompt, messages, tools)
         retry = PreparedRequest(messages, tools, request.pending, converted)
         self.session.state.turn_messages = len(converted)
         return retry, replacements
@@ -787,9 +842,8 @@ class Agent:
 
         blocks: list[Json] = []
         for event, resolver in (
-            ("skill_command", self.skill_command if self.session.skills is not None else None),
             ("mcp_mentions", self.session.mcp.resolve_mentions if self.session.mcp is not None else None),
-            ("skill_mentions", self.session.skills.resolve_mentions if self.session.skills is not None else None),
+            ("skill_mentions", self.skill_mentions if self.session.skills is not None else None),
             ("agents_mentions", self.session.agents.resolve_mentions if self.session.agents is not None else None),
             ("file_mentions", self.session.mentions.resolve_mentions if self.session.mentions is not None else None),
             ("plugin_mentions", plugin_mentions if self.session.plugins is not None else None),
@@ -809,6 +863,67 @@ class Agent:
                 # boundary on the raw message that caused them, including queued follow-ups.
                 blocks.append({"role": "user", "content": content, SESSION_EVENT_KEY: event})
         return blocks
+
+    async def admit_followup(self, item: QueuedInput) -> Json:
+        """Admit a claimed follow-up once and record its receipt on the queue entry.
+
+        A user's follow-up is origin ``followup``; a parent model's message to this subagent keeps
+        origin ``child`` and never becomes a command. Plugins see the text without the host's
+        follow-up prefix.
+        """
+        origin = "child" if item.origin == "child" else "followup"
+        try:
+            message, text = await self.intercept_prompt(item.message(), item.text, origin)
+        except PromptBlocked as blocked:
+            item.admission = {"refused": f": {blocked}"}
+            return item.admission
+        try:
+            mentions = await self.admit_input(text)
+        except PromptBlocked as blocked:
+            item.admission = {"refused": f" by a UserPromptSubmit hook: {blocked}"}
+            return item.admission
+        item.admission = {"message": {**message, "content": LIVE_FOLLOWUP_PREFIX + str(message.get("content") or "")}, "mentions": mentions}
+        return item.admission
+
+    async def intercept_prompt(self, message: Json, text: str, origin: str) -> tuple[Json, str]:
+        """``prompt.submit``: the effective model message and the text admission continues with.
+
+        Runs once per submitted item, before the UserPromptSubmit hook and expansion. A plugin
+        may rewrite text and omit attachments, never add them; a refusal raises PromptBlocked.
+        No matching registration means the message passes through untouched.
+        """
+        plugins = self.session.plugins
+        if plugins is None or not plugins.interception.would_match("prompt.submit", origin=origin):
+            return message, text
+        # Imported once a registration matches: an agent without interceptors never pays for them.
+        from wizolt.plugins.rules import adapter_rules
+        from wizolt.sdk import operations
+
+        refs = [ref for ref in message.get(IMAGE_REFS_KEY) or [] if isinstance(ref, dict)]
+        value = operations.Prompt(text, text, tuple(str(ref.get("name") or "") for ref in refs), origin)
+
+        async def accept(effective: operations.Value) -> operations.Value:
+            return effective
+
+        receipt = self.session.record_operation(OperationReceipt(uuid.uuid4().hex, "prompt.submit", origin, OperationReceipt.clip(text)))
+        transition, result_check = adapter_rules(value, plugins.interception_order.ordered)
+        trace: dict = {}
+        try:
+            result = await plugins.interception.run("prompt.submit", value, accept, transition=transition, result_check=result_check, trace=trace)
+        finally:
+            receipt.origin, receipt.shaped, receipt.delivered = trace.get("origin", "core"), tuple(trace.get("shaped", ())), True
+        if isinstance(result, operations.Refusal):
+            receipt.core = "not_run"
+            raise PromptBlocked(f"refused by plugin {receipt.origin.partition('/')[0]}: {result.reason}")
+        assert isinstance(result, operations.Prompt)
+        receipt.core, receipt.effective = "completed", OperationReceipt.clip(result.text)
+        if result.text == text and result.attachments == value.attachments:
+            return message, text
+        kept = [ref for ref in refs if str(ref.get("name") or "") in result.attachments]
+        effective = {key: item for key, item in message.items() if key != IMAGE_REFS_KEY} | {"content": result.text}
+        if kept:
+            effective[IMAGE_REFS_KEY] = kept
+        return effective, result.text
 
     async def admit_input(self, text: str) -> list[Json]:
         """The session-event messages one user input brings: what UserPromptSubmit hooks add, then
@@ -865,15 +980,20 @@ class Agent:
         text = SkillListing.of(self.session, library).announcement(library)
         return [{"role": "user", "content": text, SESSION_EVENT_KEY: "new_skills"}] if text else []
 
-    async def skill_command(self, text: str) -> str:
-        """The skill a `/name args` message starts, loaded now: the user asked for it by name, so
-        the model receives the instructions instead of a pointer to them."""
-        command = self.session.skills.command(text) if self.session.skills is not None else None
-        if command is None:
+    def skill_mentions(self, text: str) -> str:
+        """The SKILL MENTIONS block for one user message, and the record that opens what it names: a
+        disable-model-invocation skill is loadable from the moment its user names it.
+
+        A mention that arrives before anything froze the listing creates an unfrozen one (epoch
+        -1): the turn's rescan and the first request still freeze it (see skill_announcement),
+        rather than freezing an empty index in the mention's place."""
+        library = self.session.skills
+        if library is None:
             return ""
-        if command.skill.fork and not self.session.agent_parent:
-            return command.fork_notice()  # the worker is sent from the Skill tool
-        return await command.load(self.session, invoked_by="user")
+        listing = self.session.skill_listing
+        if listing is None:
+            listing = self.session.skill_listing = SkillListing()
+        return listing.resolve_mentions(library, text)
 
     @classmethod
     def textual_tool_call(cls, content: str, tools: list[Json]) -> str | None:

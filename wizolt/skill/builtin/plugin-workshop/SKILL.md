@@ -17,8 +17,8 @@ even when another is first on PATH. Its config and project default to this sessi
 after `cd`. Installations, enable/disable and layout are user-level across directories;
 preferences live in `config.toml` under `[plugin_manager]` (installations, layout and shortcuts).
 Plugin-specific settings remain in `[plugins.NAME]`; never put host fields there. The project only
-sets execution context. `/plugins` is the user's interactive manager. The bundled `pet` is installed but
-disabled; enable it by name. The optional built-in `layout` plugin exposes list/move/gap/reset tools:
+sets execution context. `/plugins` is the user's interactive manager. Bundled plugins (`pet`,
+`layout`) are installed but always off until the user enables one by name. The optional built-in `layout` plugin exposes list/move/gap/reset tools:
 enable and reload it to arrange components and spacing for the user. `/plugins` manages lifecycle only.
 It also supplies shortcut list/bind/unbind operations; configure keys for the user through
 `Plugin`, checking conflicts and asking before replacing occupied keys.
@@ -38,19 +38,20 @@ It also supplies shortcut list/bind/unbind operations; configure keys for the us
    Handlers calling `models.complete`, layout or shortcut services need a live session: validate offline,
    then reload and test through `Plugin call`. “Host services unavailable in offline trials”
    is that boundary, not evidence your handler is broken. Plugin-owned `service()` resources work offline.
-   With `DEPENDENCIES`, run step 4's `install` first; then test by installed NAME.
-4. **Save:** `plugin enable PATH` (or `install PATH` for dependencies). This saves a preference;
-   it does not activate anything.
+   With `DEPENDENCIES`, run step 4's `enable` first; then test by installed NAME.
+4. **Save:** `plugin enable PATH`. This saves a preference and prepares a worker environment
+   when declared dependencies need one; it does not activate anything.
 5. **Activate:** call `Plugin(action="reload", name="NAME")`; omit name to apply all saved choices. It
-   affects this agent only; pending waits for the current turn or this plugin's active call. A failure includes `traceback`
+   affects this agent only; `starting`/`reloading`/`stopping` wait for the current turn or this plugin's active call. A failure includes `traceback`
    and `log`; the previous version keeps running.
 
-`plugin disable NAME`, then a reload, turns a plugin off without deleting it. `/plugins`
-also offers rollback. Files never load just because they exist.
+`plugin disable NAME`, then a reload, turns a plugin off without deleting it. Files never load
+just because they exist.
 
 Keep source, tests and non-secret metadata in Git; exclude secrets, virtualenvs and trial output.
 Review the diff and checkpoint tested changes with commits under the user's Git instructions.
-Git preserves development history; hot-reload rollback only retains the previous live revision.
+Git is the only history: wizolt keeps no previous versions, so undo by checking out an earlier
+commit and reloading.
 A local repository is enough: sharing and remote hosting are optional.
 
 **What a plugin can add:** UI (fields, components, themes, presets), slash commands for the user,
@@ -69,7 +70,8 @@ Settings go in `[plugins.NAME]` of wizolt's config; declare them with `plugin.co
 save interactive choices with `await plugin.settings.update(values, reset=[...])` (see SDK.md).
 Apply the returned settings yourself or reload; `plugin.config` stays frozen.
 Use `plugin.service` for connections, `plugin.models.complete` for model
-requests and `plugin.summarizer` for compaction; tell the user about model costs first. Do not
+requests and `plugin.intercept` (see INTERCEPTION.md) to change how wizolt submits prompts,
+composes context, sends model requests, runs tools or compacts; tell the user about model costs first. Do not
 mutate host internals, create unmanaged tasks, install into the running interpreter, or send
 desktop notifications.
 

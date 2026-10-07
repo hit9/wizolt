@@ -13,7 +13,7 @@ import wizolt.model.responses as responses_module
 from wizolt.base import PROVIDER_ECHO_KEYS, SESSION_EVENT_KEY, SUBAGENT_RECEIPTS_KEY, Billing, Json, ModelError, Text, ToolCall
 from wizolt.config import ProviderConfig
 from wizolt.image import IMAGE_REFS_KEY, IMAGE_TEXT_ONLY_KEY, TOOL_IMAGE_OBSERVATION_KEY, TOOL_IMAGE_QUESTION_KEY, ImageInputs
-from wizolt.model.protocol import keeps_reasoning, omit_request_fields
+from wizolt.model.protocol import keeps_reasoning, omit_request_fields, replayable_arguments
 from wizolt.providers.compat import ResolvedProvider
 
 if TYPE_CHECKING:
@@ -66,6 +66,13 @@ def chat_messages(
                 clean.pop(key, None)
         if message.get("role") == "user" and images.refs(message):
             clean["content"] = images.chat_content(message, text_only=text_only, payloads=image_payloads)
+        if message.get("role") == "assistant" and isinstance(message.get("tool_calls"), list):
+            clean["tool_calls"] = [
+                {**call, "function": {**call["function"], "arguments": replayable_arguments(call["function"].get("arguments"))}}
+                if isinstance(call, dict) and isinstance(call.get("function"), dict)
+                else call
+                for call in message["tool_calls"]
+            ]
         converted.append(clean)
     return Text.value(converted)
 

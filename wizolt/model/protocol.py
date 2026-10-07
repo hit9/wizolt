@@ -5,10 +5,36 @@ Concrete adapters live beside their conversions in chat.py, responses.py and ant
 
 from __future__ import annotations
 
+import json
 from typing import Protocol
 
 from wizolt.base import Billing, Json, ToolCall
 from wizolt.config import ProviderConfig
+
+
+def replayable_arguments(arguments: object) -> str:
+    """A stored tool call's arguments as history may send them back: a JSON object, else `{}`.
+
+    A stream cut off mid-call leaves arguments that are not JSON. The call already failed with a
+    tool result saying so, and hosts that check history reject every later request carrying the
+    broken text, so a session would stay stuck. History keeps the raw text; only the wire is
+    cleaned, the same way Anthropic replay parses into an object.
+    """
+
+    text = str(arguments or "{}")
+    try:
+        # strict=False: argument strings often carry literal newlines (a multi-line commit message).
+        return text if isinstance(json.loads(text, strict=False), dict) else "{}"
+    except json.JSONDecodeError:
+        return "{}"
+
+
+def cut_off_call(call_id: str, name: str) -> ToolCall:
+    """A call whose arguments did not parse, failing with a result that says the call was lost.
+
+    Empty args would fail as an argument-count error, which reads as the model's own mistake."""
+
+    return ToolCall(id=call_id, name=name, args=[], error=f"{name} arguments were not complete JSON (the call was cut off); send it again")
 
 
 def omit_request_fields(params: Json, names: tuple[str, ...]) -> Json:

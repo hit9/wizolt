@@ -7,6 +7,7 @@ IDs identify choices and actions; displayed labels are never interpreted as comm
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
@@ -47,11 +48,21 @@ class Field:
 
 
 @dataclass(frozen=True)
+class Section:
+    """A labelled part of a Document, drawn after its text under a gray rule carrying the label."""
+
+    label: str
+    text: str
+
+
+@dataclass(frozen=True)
 class Document:
-    """Read-only text; lexer selects plain text, Markdown or syntax highlighting."""
+    """Read-only text; lexer selects plain text, Markdown or syntax highlighting. Sections
+    continue it in the same frame and lexer, each set apart by its labelled rule."""
 
     text: str
     lexer: str = "text"
+    sections: tuple[Section, ...] = ()
     kind: Literal["document"] = field(default="document", init=False)
 
 
@@ -90,9 +101,19 @@ class View:
             body = dict(data.pop("body"))
             kind = body.pop("kind")
             if kind == "document":
+                body["sections"] = tuple(Section(**item) for item in body.get("sections", ()))
                 content = Document(**body)
                 _text(content.text, 256_000)
                 _text(content.lexer, 80)
+                if len(content.sections) > 32:
+                    raise ValueError("At most 32 sections are allowed")
+                for section in content.sections:
+                    _text(section.label, 200)
+                    _text(section.text, 256_000)
+                    if "\n" in section.label:
+                        raise ValueError("Section labels must be single-line")
+                if sum(len(section.text) for section in content.sections) + len(content.text) > 256_000:
+                    raise ValueError("Document is limited to 256000 characters")
             elif kind == "selection":
                 body["items"] = _choices(body["items"])
                 body["selected"] = tuple(body.get("selected", ()))
@@ -143,8 +164,14 @@ class View:
             raise PluginError(f"Invalid view: {error}") from error
 
 
+# C0 controls except tab and newline, DEL and C1 controls. A regex scans at C speed: the host
+# validates every view and update on its UI loop, and a per-character loop over a full frame
+# took about 30 ms, which an action updating in a loop could repeat for its whole deadline.
+_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
 def _text(value: str, limit: int) -> None:
-    if not isinstance(value, str) or len(value) > limit or any((ord(c) < 32 and c not in "\n\t") or 127 <= ord(c) < 160 for c in value):
+    if not isinstance(value, str) or len(value) > limit or _CONTROL.search(value):
         raise ValueError(f"Expected plain text of at most {limit} characters")
 
 

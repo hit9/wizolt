@@ -182,9 +182,11 @@ class ScrollbackRegion:
         return self._rebuild_owed
 
     def recolor(self) -> None:
-        """Owe a rebuild that re-renders every retained write in the active theme.
+        """Owe a rebuild that re-renders every retained write in the active theme and transcript
+        format.
 
-        The cached layouts hold rows drawn in the old colors, so they go; the rebuild itself is
+        The cached layouts hold rows drawn in the old colors and records in the old format, so they
+        go; the rebuild itself is
         the one a width change runs, and is paid on the next render like that one.
         """
         self._layouts.clear()

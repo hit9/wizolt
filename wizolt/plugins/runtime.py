@@ -7,6 +7,7 @@ rendering only reads completed snapshots. A worker is fault isolation, not a dat
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field, replace
@@ -15,27 +16,41 @@ from typing import Any
 
 from wizolt.plugins.activity import TurnActivity
 from wizolt.plugins.interactions import Interactions
+from wizolt.plugins.interception import Interception, InterceptionOrder
 from wizolt.plugins.layout import SLOTS, LayoutBudget, LayoutPreferences
 from wizolt.plugins.loading import PluginSource
+from wizolt.plugins.presenters import Presenters
 from wizolt.plugins.process import PluginProcess, WorkerError
 from wizolt.plugins.protocol import Capabilities, Snapshot
 from wizolt.plugins.settings import PluginSettings
-from wizolt.sdk import Context, Panel, PluginError, ToolActivity, Value, Viewport
+from wizolt.sdk import Context, Line, Panel, PluginError, Text, ToolActivity, Value, Viewport
 from wizolt.sdk.models import HostCall
+from wizolt.sdk.presentation import ActivityStatus
 from wizolt.sdk.ui import Component
 
 
 @dataclass(frozen=True)
 class Revision:
-    """Complete launch inputs, captured once; rollback never consults current preferences.
+    """Complete launch inputs, captured once before the candidate starts.
 
     Settings are an owned deep copy. Runtime services may persist new settings, but must not
-    mutate this snapshot or combine old source with a newly installed interpreter.
+    mutate this snapshot. Source history belongs to the user's version control, not here.
     """
 
     source: PluginSource
     settings: dict
     python: str
+
+
+def visibility(panel: Panel, available: int) -> str:
+    """How a component fared in its allocation, as the layout service reports it."""
+    if available == 0:
+        return "hidden by height budget"
+    if len(panel.rows) > available:
+        return "clipped by height budget"
+    if panel.rows:
+        return "visible"
+    return "empty"
 
 
 @dataclass
@@ -44,24 +59,42 @@ class Generation:
     plugin: Capabilities
     worker: PluginProcess
     snapshot: Snapshot = field(default_factory=lambda: Snapshot({}, {}))
-    error: str = ""
+    # Health per registration ("presentation", "observer:<event>", "intercept:<operation>"),
+    # never one generation-wide flag: a failed component skips presentation, a failed
+    # interceptor blocks its operations, and commands keep working while the worker lives.
+    failures: dict[str, str] = field(default_factory=dict)
     calls: int = 0
     seconds: float = 0
     invocations: int = 0  # Pin this worker, never unrelated plugin generations.
+    # Tasks running an operation this generation's registration matched. Disable cancels them:
+    # recovery must not wait for a poisoned turn to finish.
+    operations: set[asyncio.Task] = field(default_factory=set)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     events: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+    def fail(self, registration: str, reason: str) -> None:
+        self.failures.setdefault(registration, reason)
+
+    def failure(self, registration: str) -> str:
+        """Why a registration is unavailable: its own failure, or its worker's exit."""
+        return self.failures.get(registration) or self.worker.error
+
+    @property
+    def error(self) -> str:
+        """A summary for status and inspection only; decisions use ``failure(registration)``."""
+        return "; ".join(f"{key}: {reason}" for key, reason in self.failures.items()) or self.worker.error
 
     async def refresh(self, context: Context, *, components: bool = False) -> None:
         """Serialize samples, never enqueue a sample for every terminal layout query."""
         async with self.lock:
-            if self.error:
+            if self.failure("presentation"):
                 return
             started = time.monotonic()
             try:
                 sampled = Snapshot.decode(await self.worker.request("snapshot" if components else "sample", context=asdict(context)))
                 self.snapshot = sampled if components else Snapshot(sampled.fields, self.snapshot.panels)
             except Exception as error:  # noqa: BLE001 - UI callback failures cannot fail turns.
-                self.error = str(error)
+                self.fail("presentation", str(error))
             finally:
                 self.calls += 1
                 self.seconds += time.monotonic() - started
@@ -83,12 +116,22 @@ class Generation:
 
 @dataclass
 class Entry:
-    """Rollback retains launch inputs, not a second idle worker or its mutable state."""
+    """One live generation, and at most one validated replacement waiting to publish."""
 
     active: Generation
-    previous: Revision | None = None
     pending: Generation | None = None
     disabling: bool = False
+
+    @property
+    def status(self) -> str:
+        """The live word; a waiting disable or replacement outranks the failure it would clear."""
+        if self.disabling:
+            return "stopping"
+        if self.pending:
+            return "reloading"
+        if self.active.error:
+            return "failed"
+        return "running"
 
 
 class PluginRuntime:
@@ -111,14 +154,20 @@ class PluginRuntime:
         self._sampling = asyncio.Lock()
         self._components: dict[str, Component] = {}
         self._refresh_task: asyncio.Task | None = None
+        self._wake = asyncio.Event()
         self._retiring: set[asyncio.Task] = set()
+        self._launching: set[asyncio.Task] = set()  # Startup candidates not yet admitted.
         self.reserved_commands: frozenset[str] = frozenset()
         self.interpreters: dict[str, str] = {}
         self.validate: Callable[[Capabilities], None] | None = None
         self.on_change: Callable[[], None] | None = None
         self.host_service: HostCall | None = None
+        self.read_stream: Callable[[], tuple[str, str]] | None = None
         self.interactions = Interactions()
         self.reload_preferences: Callable[[], None] | None = None
+        self.interception_order = InterceptionOrder()
+        self.interception = Interception(self)
+        self.presenters = Presenters(self)
 
     def read_revision(self, path: str) -> Revision:
         """Capture disk and preferences before starting any candidate worker."""
@@ -126,7 +175,20 @@ class PluginRuntime:
         return Revision(source, self.settings.read(source.name), self.interpreters.get(source.name, ""))
 
     async def prepare(self, revision: Revision) -> Generation:
+        """Launch, then admit; the caller holds the registry lock."""
+        candidate = await self.launch(revision)
+        try:
+            self.admit(candidate)
+        except BaseException:
+            await candidate.worker.close()
+            raise
+        return candidate
+
+    async def launch(self, revision: Revision) -> Generation:
+        """Start and sample an unpublished candidate. This is nearly all of a plugin's startup
+        cost and touches only its own process, so candidates may launch concurrently."""
         source = revision.source
+        # An installed path owns its name: reject a renamed source before running any of it.
         for name, entry in self.entries.items():
             if entry.active.revision.source.path == source.path:
                 source.require_name(name)
@@ -139,29 +201,27 @@ class PluginRuntime:
             capabilities = Capabilities.decode(source.name, description)
             if self.validate is not None:
                 self.validate(capabilities)
-            occupied = set(self.reserved_commands)
-            for name, entry in self.entries.items():
-                if name != source.name:
-                    if capabilities.summarizer and (entry.active.plugin.summarizer or (entry.pending and entry.pending.plugin.summarizer)):
-                        raise PluginError(f"Summarizer already supplied by {name}; disable it before enabling another")
-                    occupied.update(entry.active.plugin.commands)
-                    if entry.pending:
-                        occupied.update(entry.pending.plugin.commands)
-            for name, candidate in self._pending_new.items():
-                if name != source.name:
-                    if capabilities.summarizer and candidate.plugin.summarizer:
-                        raise PluginError(f"Summarizer already supplied by {name}; disable it before enabling another")
-                    occupied.update(candidate.plugin.commands)
-            if collisions := occupied.intersection(capabilities.commands):
-                raise PluginError(f"Command names already registered: {', '.join(sorted(collisions))}")
             candidate = Generation(revision, capabilities, worker)
             await candidate.refresh(self.facts(), components=True)
-            if candidate.error:
-                raise WorkerError(candidate.error, log=worker.stderr, traceback=worker.traceback)
+            if reason := candidate.failure("presentation"):
+                raise WorkerError(reason, log=worker.stderr, traceback=worker.traceback)
             return candidate
         except BaseException:
             await worker.close()
             raise
+
+    def admit(self, candidate: Generation) -> None:
+        """Check a launched candidate against the registry. No awaits: the caller holds the
+        lock, so the registry it checks is the one it stages into."""
+        name, capabilities = candidate.plugin.name, candidate.plugin
+        occupied = set(self.reserved_commands)
+        others = [entry.active for key, entry in self.entries.items() if key != name]
+        others += [entry.pending for key, entry in self.entries.items() if key != name and entry.pending]
+        others += [pending for key, pending in self._pending_new.items() if key != name]
+        for other in others:
+            occupied.update(other.plugin.commands)
+        if collisions := occupied.intersection(capabilities.commands):
+            raise PluginError(f"Command names already registered: {', '.join(sorted(collisions))}")
 
     async def manage(self, action: str, target: str = "", *, commit: Callable[[str, PluginSource], None] | None = None) -> dict[str, Any]:
         """Prepare before publication; failed candidates leave active generations intact.
@@ -179,27 +239,7 @@ class PluginRuntime:
                     raise PluginError(f"Unknown plugin: {target}")
                 return {"plugins": items}
             if action == "enable":
-                candidate = await self.prepare(self.read_revision(target))
-                name = candidate.plugin.name
-                entry = self.entries.get(name)
-                existing = entry.active if entry else self._pending_new.get(name)
-                if existing and existing.revision.source.path != candidate.revision.source.path:
-                    await candidate.worker.close()
-                    raise PluginError(f"Plugin name {name!r} already belongs to {existing.revision.source.path}")
-                # Persistence belongs to the assembly layer, but must succeed before
-                # staging/retiring any generation. A failed write owns only this candidate.
-                try:
-                    if commit is not None:
-                        commit(action, candidate.revision.source)
-                except BaseException:
-                    await candidate.worker.close()
-                    raise
-                if entry is None:
-                    if pending := self._pending_new.pop(name, None):
-                        self._retire(pending)
-                    self._pending_new[name] = candidate
-                    self._publish()
-                    return self.describe(name, self.entries[name]) if name in self.entries else self.staged(candidate)
+                return await self._enable(await self.prepare(self.read_revision(target)), commit)
             else:
                 name = target
                 entry = self.entries.get(name)
@@ -209,14 +249,10 @@ class PluginRuntime:
                             commit(action, pending.revision.source)
                         self._pending_new.pop(name)
                         self._retire(pending)
-                        return {"name": name, "status": "disabled"}
+                        return {"name": name, "status": "off"}
                     raise PluginError(f"Unknown plugin: {name}")
                 if action == "reload":
                     candidate = await self.prepare(self.read_revision(entry.active.revision.source.path))
-                elif action == "rollback":
-                    if entry.previous is None:
-                        raise PluginError(f"{name}: no previous version")
-                    candidate = await self.prepare(entry.previous)
                 elif action == "disable":
                     if commit is not None:
                         commit(action, entry.active.revision.source)
@@ -225,22 +261,116 @@ class PluginRuntime:
                         entry.pending = None
                     entry.disabling = True
                     self.interactions.dismiss(name)
+                    for task in tuple(entry.active.operations):
+                        task.cancel()  # An operation this plugin intercepts must not outlast the disable.
                     self._publish()
-                    return {"name": name, "status": "pending" if name in self.entries else "disabled"}
+                    return {"name": name, "status": "stopping" if name in self.entries else "off"}
                 else:
                     raise PluginError(f"Unknown plugin action: {action}")
-            assert entry is not None
-            if entry.pending:
-                self._retire(entry.pending)
-            entry.pending, entry.disabling = candidate, False
-            self.interactions.dismiss(name)
-            self._publish()
-            return self.describe(name, entry)
+            return self._replace(entry, candidate)
 
+    async def _enable(self, candidate: Generation, commit: Callable[[str, PluginSource], None] | None) -> dict[str, Any]:
+        """Stage an admitted candidate; the caller holds the lock. It owns the candidate's worker."""
+        name = candidate.plugin.name
+        entry = self.entries.get(name)
+        existing = entry.active if entry else self._pending_new.get(name)
+        try:
+            if existing and existing.revision.source.path != candidate.revision.source.path:
+                raise PluginError(f"Plugin name {name!r} already belongs to {existing.revision.source.path}")
+            # Persistence belongs to the assembly layer, but must succeed before
+            # staging/retiring any generation. A failed write owns only this candidate.
+            if commit is not None:
+                commit("enable", candidate.revision.source)
+        except BaseException:
+            await candidate.worker.close()
+            raise
+        if entry is not None:
+            return self._replace(entry, candidate)
+        if pending := self._pending_new.pop(name, None):
+            self._retire(pending)
+        self._pending_new[name] = candidate
+        self._publish()
+        return self.describe(name, self.entries[name]) if name in self.entries else self.staged(candidate)
+
+    def _replace(self, entry: Entry, candidate: Generation) -> dict[str, Any]:
+        name = candidate.plugin.name
+        if entry.pending:
+            self._retire(entry.pending)
+        entry.pending, entry.disabling = candidate, False
+        self.interactions.dismiss(name)
+        self._publish()
+        return self.describe(name, entry)
+
+    async def enable_many(self, revisions: list[Revision]) -> list[BaseException | None]:
+        """Startup: launch every candidate concurrently, then admit them one by one in order.
+
+        Launching is the slow part and is independent per plugin. Admission stays serial under
+        the registry lock, in the given order, so command collisions resolve
+        exactly as a sequential startup would. Returns each revision's failure, or None.
+        """
+        launches = [asyncio.create_task(self.launch(revision)) for revision in revisions]
+        self._launching.update(launches)
+        try:
+            if launches:
+                await asyncio.wait(launches)
+        except BaseException:
+            await self._discard(launches)
+            raise
+        finally:
+            self._launching.difference_update(launches)
+        failures: list[BaseException | None] = []
+        async with self._lock:
+            for index, task in enumerate(launches):
+                try:
+                    failures.append(await self._admit_launched(task))
+                except BaseException:
+                    await self._discard(launches[index + 1 :])
+                    raise
+        return failures
+
+    async def _admit_launched(self, task: asyncio.Task) -> BaseException | None:
+        """Admit and stage one finished launch; return its failure. One bad plugin must not
+        prevent the others from starting."""
+        if task.cancelled():
+            return PluginError("Plugin startup was cancelled")
+        if (error := task.exception()) is not None:
+            return error
+        candidate = task.result()
+        try:
+            if self._closed:
+                raise PluginError("Plugin runtime is closed")
+            self.admit(candidate)
+        except Exception as error:  # noqa: BLE001
+            await candidate.worker.close()
+            return error
+        try:
+            await self._enable(candidate, None)  # Closes the worker itself on failure.
+        except Exception as error:  # noqa: BLE001
+            return error
+        return None
+
+    @staticmethod
+    async def _discard(launches: list[asyncio.Task]) -> None:
+        """Cancel launches and close the workers of those that finished, unpublished."""
+        for task in launches:
+            task.cancel()
+        results = await asyncio.gather(*launches, return_exceptions=True)
+        await asyncio.gather(*(item.worker.close() for item in results if isinstance(item, Generation)), return_exceptions=True)
+
+    # Live status words, each naming one situation: starting (a new plugin waits to publish),
+    # running, reloading (a replacement waits), stopping (a disable waits), failed, and off.
+    # The saved enable choice is reported separately; "pending" meant too many of these at once.
     @staticmethod
     def staged(generation: Generation) -> dict[str, Any]:
         source = generation.revision.source
-        return {"name": generation.plugin.name, "path": source.path, "status": "pending", "version": "", "pending_version": source.digest}
+        return {
+            "name": generation.plugin.name,
+            "path": source.path,
+            "description": source.description,
+            "status": "starting",
+            "version": "",
+            "pending_version": source.digest,
+        }
 
     @property
     def active_count(self) -> int:
@@ -259,14 +389,19 @@ class PluginRuntime:
         return {
             "name": name,
             "path": item.revision.source.path,
-            "status": "pending" if entry.pending or entry.disabling else "error" if item.error else "active",
+            "description": item.revision.source.description,
+            "status": entry.status,
             "version": item.revision.source.digest,
             "pending_version": entry.pending.revision.source.digest if entry.pending else "",
             "fields": list(item.plugin.fields),
             "commands": list(item.plugin.commands),
             "tools": {key: {"description": action.description, "parameters": action.parameters} for key, action in item.plugin.tools.items()},
             "slots": list(item.plugin.components),
-            "summarizer": item.plugin.summarizer,
+            "intercepts": {
+                operation: {"match": {key: sorted(values) for key, values in spec.match.items()}, **({"response": spec.response} if spec.response else {})}
+                for operation, spec in item.plugin.intercepts.items()
+            },
+            "presenters": {site: {"match": {key: sorted(values) for key, values in spec.match.items()}} for site, spec in item.plugin.presenters.items()},
             "themes": list(item.plugin.themes),
             "presets": {kind: list(values) for kind, values in item.plugin.presets.items()},
             "error": item.error,
@@ -279,6 +414,10 @@ class PluginRuntime:
         task = asyncio.create_task(generation.worker.close())
         self._retiring.add(task)
         task.add_done_callback(self._retiring.discard)
+
+    def after_lease(self) -> None:
+        """An operation released the generations it pinned; publish what was waiting."""
+        self._publish()
 
     def _publish(self) -> None:
         """Atomic registry switch: no await, and no imported Python objects cross generations."""
@@ -299,7 +438,11 @@ class PluginRuntime:
                 del self.entries[name]
             elif entry.pending:
                 self._retire(entry.active)
-                entry.previous, entry.active, entry.pending = entry.active.revision, entry.pending, None
+                entry.active, entry.pending = entry.pending, None
+        if not self.presenters.registered("activity"):
+            # The refresh loop stops with the last entry, so the switch drops a retired activity
+            # presenter's cached panel itself rather than painting it on.
+            self.presenters.activity = None
         if self.entries and (self._refresh_task is None or self._refresh_task.done()):
             self._refresh_task = asyncio.create_task(self._refresh_loop())
         if self.on_change is not None:
@@ -307,8 +450,19 @@ class PluginRuntime:
 
     async def _refresh_loop(self) -> None:
         while self.entries and not self._closed:
-            await asyncio.sleep(self.REFRESH_INTERVAL)
+            with contextlib.suppress(TimeoutError):
+                async with asyncio.timeout(self.REFRESH_INTERVAL):
+                    await self._wake.wait()
+            self._wake.clear()
             await self.refresh()
+
+    def refresh_soon(self) -> None:
+        """Ask for the next pass now without waiting for it.
+
+        Refreshing is presentation. Turns and actions must not wait for every plugin's sample:
+        one slow field would otherwise add up to two sample deadlines to each of them.
+        """
+        self._wake.set()
 
     async def refresh(self) -> None:
         """Allocate in visual order outside painting, then publish one coherent layout.
@@ -328,10 +482,12 @@ class PluginRuntime:
             panels: dict[str, dict[str, Panel]] = {name: {} for name in generations}
             components = {}
             for slot in SLOTS:
-                candidates = {f"{name}.{slot}": item for name, item in generations.items() if slot in item.plugin.components and not item.error}
+                candidates = {
+                    f"{name}.{slot}": item for name, item in generations.items() if slot in item.plugin.components and not item.failure("presentation")
+                }
                 for identity in self.order.ordered(slot, candidates):
                     generation = candidates[identity]
-                    if generation.error:
+                    if generation.failure("presentation"):
                         continue
                     gap = self.order.gap(identity, slot, generation.plugin.components[slot])
                     allocated = budget.context(context, slot, gap)
@@ -340,31 +496,32 @@ class PluginRuntime:
                         panel = await generation.render(allocated, sample=generation.plugin.name not in sampled)
                         sampled.add(generation.plugin.name)
                     except Exception as error:  # noqa: BLE001 - broken components cannot fail the host.
-                        generation.error = str(error)
+                        generation.fail("presentation", str(error))
                         continue
                     clipped = budget.consume(allocated.layout, panel)
                     rendered_gap = allocated.layout.gap_before if clipped.rows else 0
                     panels[generation.plugin.name][slot] = clipped
                     available = allocated.layout.rows
-                    visibility = (
-                        "hidden by height budget"
-                        if available == 0
-                        else "clipped by height budget"
-                        if len(panel.rows) > available
-                        else "visible"
-                        if panel.rows
-                        else "empty"
-                    )
                     components[identity] = Component(
-                        identity, generation.plugin.name, slot, len(clipped.rows) - rendered_gap, available, visibility, gap, rendered_gap
+                        identity, generation.plugin.name, slot, len(clipped.rows) - rendered_gap, available, visibility(panel, available), gap, rendered_gap
                     )
             if version == self._layout_version:
                 for name, item in generations.items():
                     item.snapshot = Snapshot(item.snapshot.fields, panels[name])
                 self._components = components
+            # The activity snapshot follows the sampling cadence; paint reads only this cache,
+            # so a slow presenter delays the next pass, never a frame.
+            if self.presenters.registered("activity"):
+                self.presenters.activity = await self.presenters.render("activity", self.activity_view(), timeout=0.25)
 
     def facts(self) -> Context:
         return replace(self.context(), columns=self.viewport.columns, viewport=self.viewport, layout=None, turn=self.activity.snapshot())
+
+    def activity_view(self) -> ActivityStatus:
+        """The activity site's view model: the live status word, stream and execution facts."""
+        kind, text = self.read_stream() if self.read_stream is not None else ("", "")
+        facts = self.facts()
+        return ActivityStatus(facts.status, facts.elapsed, kind, text, facts.turn.active_tools, facts.turn.tools)
 
     def resize(self, columns: int, rows: int) -> None:
         viewport = Viewport(max(0, columns), max(0, rows))
@@ -421,20 +578,22 @@ class PluginRuntime:
         self.activity.reset()
         self.turn_active = True
         await self.emit("turn.started")
-        await self.refresh()
+        self.refresh_soon()
 
     async def finish_turn(self) -> None:
         if not self.turn_active:
             return
         try:
             await self.emit("turn.finished")
-            await self.refresh()
+            self.refresh_soon()
         finally:
             self.turn_active = False
             self._publish()
 
     async def emit(self, name: str, *, tool: ToolActivity | None = None, reason: str = "") -> None:
-        generations = [entry.active for entry in self.entries.values() if name in entry.active.plugin.observers and not entry.active.error]
+        generations = [
+            entry.active for entry in self.entries.values() if name in entry.active.plugin.observers and not entry.active.failure(f"observer:{name}")
+        ]
         if not generations:
             return
         context = self.facts()
@@ -444,20 +603,20 @@ class PluginRuntime:
         # Serialize each plugin's observers, not tool execution. Parallel plugins do not
         # multiply the deadline, and a failed observer leaves other generations usable.
         async with generation.events:
-            if generation.error:
+            if generation.failure(f"observer:{name}"):
                 return
             try:
                 await generation.worker.request(
                     "event", timeout=self.OBSERVER_TIMEOUT, name=name, context=asdict(context), tool=asdict(tool) if tool else None, reason=reason
                 )
             except Exception as error:  # noqa: BLE001 - observer failure cannot fail an agent turn.
-                generation.error = f"{name}: {error}"
+                generation.fail(f"observer:{name}", str(error))
 
     def fields(self) -> dict[str, Value]:
         return {
             f"plugins.{name}.{key}": value
             for name, entry in self.entries.items()
-            if not entry.active.error
+            if not entry.active.failure("presentation")
             for key, value in entry.active.snapshot.fields.items()
         }
 
@@ -466,10 +625,14 @@ class PluginRuntime:
         one, such as /status, must not resize what the sampler lays out for the prompt slots."""
         if columns is not None:
             self.resize(columns, self.viewport.rows)
-        identities = {f"{name}.{slot}": entry.active for name, entry in self.entries.items() if not entry.active.error and slot in entry.active.snapshot.panels}
+        identities = {
+            f"{name}.{slot}": entry.active
+            for name, entry in self.entries.items()
+            if not entry.active.failure("presentation") and slot in entry.active.snapshot.panels
+        }
         return [identities[identity].snapshot.panels[slot] for identity in self.order.ordered(slot, identities)]
 
-    async def invoke(self, name: str, kind: str, action: str, arguments: Mapping[str, Any]) -> str:
+    async def invoke(self, name: str, kind: str, action: str, arguments: Mapping[str, Any]) -> str | list[Line]:
         """Pin the worker until completion; authorization remains at the user/model boundary."""
         if self._closed:
             raise PluginError("Plugin runtime is closed")
@@ -478,6 +641,9 @@ class PluginRuntime:
         entry = self.entries.get(name)
         if entry is None:
             raise PluginError(f"Unknown plugin: {name}")
+        if entry.disabling:
+            # Draining admits no new work: overlapping calls would keep renewing the lease.
+            raise PluginError(f"{name} is being disabled")
         generation = entry.active
         operation = (generation.plugin.commands if kind == "command" else generation.plugin.tools).get(action)
         if operation is None:
@@ -494,34 +660,13 @@ class PluginRuntime:
                 arguments=dict(arguments),
                 context=asdict(self.facts()),
             )
-            await self.refresh()
-            return result
-        finally:
-            generation.invocations -= 1
-            self._publish()
-
-    @property
-    def _summary_generation(self) -> Generation | None:
-        """Admission guarantees one strategy; failed generations fall back until reload."""
-        return next((entry.active for entry in self.entries.values() if entry.active.plugin.summarizer and not entry.active.error), None)
-
-    @property
-    def has_summarizer(self) -> bool:
-        return self._summary_generation is not None
-
-    async def summarize(self, text: str, validate: Callable[[str], None]) -> tuple[str, str] | None:
-        """Lease the generation through manual compaction too; core validates semantics."""
-        generation = self._summary_generation
-        if generation is None or self._closed:
-            return None
-        generation.invocations += 1
-        try:
-            summary = await generation.worker.request("compact", timeout=self.ACTION_TIMEOUT, text=text, context=asdict(self.facts()))
-            validate(summary)
-            return generation.plugin.name, summary
-        except Exception as error:  # noqa: BLE001 - a broken strategy must not strand compaction.
-            generation.error = f"summarizer: {error}"
-            return None
+            answer: str | list[Line] = result
+            if isinstance(result, dict) and "styled" in result:
+                # The worker already vetted these rows; decode them back into the same
+                # Line/Text values a command handler built them from.
+                answer = [Line(tuple(Text(span["text"], span["role"]) for span in row["spans"])) for row in result["styled"]]
+            self.refresh_soon()
+            return answer
         finally:
             generation.invocations -= 1
             self._publish()
@@ -537,6 +682,8 @@ class PluginRuntime:
         if self._refresh_task is not None:
             self._refresh_task.cancel()
             await asyncio.gather(self._refresh_task, return_exceptions=True)
+        # Startup launches run outside the lock; their workers must not outlive the runtime.
+        await self._discard(list(self._launching))
         for entry in self.entries.values():
             self._retire(entry.active)
             if entry.pending:

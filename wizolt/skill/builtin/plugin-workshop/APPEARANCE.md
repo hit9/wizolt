@@ -35,7 +35,7 @@ custom highlight groups belong in bar formats.
 | General | `text`, `muted`, `subtle`, `accent`, `accent_secondary`, `info`, `rule` |
 | Messages | `user`, `user_bg`, `tool`, `success`, `warning`, `error` |
 | Syntax | `syntax_assign`, `syntax_string`, `syntax_number`, `syntax_ident`, `syntax_builtin`, `syntax_default` |
-| Status text | `status_base`, `status_provider`, `status_model`, `status_reason`, `status_mcp`, `status_context`, `status_cache`, `status_yolo`, `status_agent` |
+| Status text | `status_base`, `status_provider`, `status_model`, `status_reason`, `status_mcp`, `status_services`, `status_context`, `status_cache`, `status_yolo`, `status_agent` |
 | Status backgrounds | `status_bg`, `status_provider_bg`, `status_model_bg`, `status_reason_bg`, `status_context_bg`, `status_cache_bg`, `status_yolo_bg`, `status_agent_bg` |
 | Divider | `divider_glow`, `divider_rule`, `divider_label` |
 | Menus | `selection_bg`, `selection_fg`, `menu_bg`, `menu_muted` |

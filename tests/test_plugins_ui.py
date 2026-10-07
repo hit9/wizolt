@@ -14,16 +14,32 @@ def test_plugin_columns_align_and_long_names_leave_space_for_states():
 
     manager = PluginManager(None, None)
     manager.records = {
-        "pet": {"builtin": True, "enabled": False, "status": "disabled"},
-        "very_long_plugin_name_that_would_push_states_off_screen": {"builtin": False, "enabled": True, "status": "active"},
+        "pet": {"builtin": True, "enabled": False, "status": "off"},
+        "very_long_plugin_name_that_would_push_states_off_screen": {"builtin": False, "enabled": True, "status": "running"},
     }
     for width in (35, 50, 80):
         labels = list(manager.labels(width).values())
         assert labels[0].index("builtin") == labels[1].index("user")
         assert labels[0].index("disabled") == labels[1].index("enabled")
-        assert labels[0].rindex("disabled") == labels[1].index("active")
+        assert labels[0].index("off") == labels[1].index("running")
         assert all(len(label) <= width for label in labels)
         assert "..." in labels[1]
+
+
+def test_a_bundled_plugins_page_states_whether_it_is_enabled():
+    """Bundled plugins ship off: the page once said "enabled for your user" for every one of them,
+    beside a list row that said `disabled`."""
+    from wizolt.ui.cli.plugins import PluginManager
+
+    manager = PluginManager(None, SimpleNamespace(components=lambda: ()))
+    manager.records = {
+        "pet": {"path": "/b/pet.py", "builtin": True, "enabled": False},
+        "layout": {"path": "/b/layout.py", "builtin": True, "enabled": True},
+        "mine": {"path": "/u/mine.py", "builtin": False, "enabled": True},
+    }
+    assert manager.facts("pet", 60)[0] == "Built in · off until you enable it"
+    assert manager.facts("layout", 60)[0] == "Built in · enabled for your user"
+    assert not any("Built in" in line for line in manager.facts("mine", 60))
 
 
 def test_manager_preview_names_presets_and_keeps_the_file_name_visible(monkeypatch):
@@ -38,11 +54,14 @@ def test_manager_preview_names_presets_and_keeps_the_file_name_visible(monkeypat
         "gitline": {"path": deep, "presets": {"statusbar": ["git"], "divider": []}},
         "plain": {"path": "/p/plain.py", "presets": {"statusbar": [], "divider": []}},
     }
-    lines = manager.preview("gitline").splitlines()
+    lines = manager.facts("gitline", 34)
     # The kinds dict is always complete; listing its keys named presets a plugin never registered.
-    assert "Presets: statusbar git" in lines and "divider" not in manager.preview("gitline")
-    assert "Presets" not in manager.preview("plain")
+    assert "Presets: statusbar git" in lines and not any("divider" in line for line in lines)
+    assert not any("Presets" in line for line in manager.facts("plain", 34))
     assert lines[0].endswith("gitline.py") and lines[0].startswith("...") and len(lines[0]) <= 34
+    # An unreadable source still gets a page that says why, above the same facts.
+    preview = "".join(text for _, text in manager.preview("gitline"))
+    assert "Could not read this plugin's" in preview and "Presets: statusbar git" in preview
 
 
 async def test_statusbar_plugin_count_tracks_only_this_agents_live_generations(tmp_path):
@@ -96,10 +115,10 @@ async def test_manager_keeps_disabled_plugins_and_can_reenable(tmp_path):
 
     loop = SimpleNamespace(session=session, interactive_input=True, presentation=SimpleNamespace(tui=Terminal()))
     assert await plugins_command(loop, "") == ""
-    assert "enabled" in frames[0] and "active" in frames[0]
+    assert "enabled" in frames[0] and "running" in frames[0]
     assert "builtin" in frames[0] and "user" in frames[0]
     assert "disabled" in frames[2] and "sample" in frames[2]
-    assert "enabled" in frames[4] and "active" in frames[4]
+    assert "enabled" in frames[4] and "running" in frames[4]
     assert path.exists()
     await session.plugins.close()
 

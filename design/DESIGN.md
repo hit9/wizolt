@@ -134,6 +134,9 @@ is in parentheses.
 - **Replacing the scroll region/replay with erase-and-print, estimated row deletion, or resize
   CPR.** Those approaches already failed repeated real-tmux reflow (Terminal boundary).
 - **Mocking the behavior under test instead of the external boundary** (Test design).
+- **Shipping a bundled plugin enabled.** Every builtin plugin is off until the user enables it:
+  nothing the user has not explicitly asked for is switched on, and host features never depend
+  on a plugin (Plugin boundaries).
 
 ## Maintenance
 
@@ -254,7 +257,7 @@ Cancellation joins the assembly worker before the entry point releases its sessi
 Assembly only attaches skill sources. During `starting…`, the runtime scans them off the event
 loop, alongside MCP discovery and mention refresh. Input stays editable and submissions enter
 their FIFO, but command/turn dispatch waits for that initial skill scan: `/status` can freeze the
-model's skill listing just as a request can, and `/name` and skill mentions require discovery.
+model's skill listing just as a request can, and skill mentions require discovery.
 Dispatch does not wait for MCP discovery or SDK warm-up. The starting indicator clears after the
 skill scan, SDK warm-up and initial mention refresh finish. The non-TTY frontend also scans skills
 before reading its first command. Scan workers settle on cancellation before resource shutdown.
@@ -476,7 +479,11 @@ and `Note` updates and resume events are conversation, not context inserted ahea
   opens). `skill/listing.py` freezes the SKILLS index and the Skill tool's presence at the first
   request; later skills arrive as one appended `NEW SKILLS` message, and the index is rebuilt only
   when `Session.context_epoch` moves (compaction, context reset). The Skill tool never appears
-  mid-session: a session that started without it only gains `/name` starts. Startup attaches the
+  mid-session: a session that started without it only gains `$name` mentions. A mention that
+  arrives before the first request creates an unfrozen listing (epoch -1); the first freeze still
+  sees the scanned library, and what the mention authorized survives it. Naming a skill is what
+  opens a `disable-model-invocation` one to the model; a context rebuild clears the
+  authorization with the mentions that carried it. Startup attaches the
   library without reading disk (`bootstrap_features` -> `SkillLibrary.attach`) and the interactive
   runtime runs the first scan off the loop during the "starting" settle, the way MCP connects its
   servers in the background; a resumed session scans before `load_session` returns, because its
@@ -694,6 +701,12 @@ that projection. Its two mechanisms are inseparable:
   visible context must not expand the width-change cost to ordinary selector interactions.
   Snapshot the height bound at opening; querying terminal size again inside layout can mix two
   resize geometries in one frame. The parent clips the window if the pane subsequently shrinks.
+- The message that opens a model turn is held out of scrollback (`UiPrinter.hold_user_message`)
+  and drawn at the top of the live region, so the model's reaction (`[react:👍]` opening its
+  reply) can join the row as a muted `← 👍`: a printed row is never edited. Any write takes the
+  message out first -- reply, tool row, refusal, turn end -- and `reset_turn` releases one nothing
+  followed. A reaction after that is dropped, not drawn late. Commands, subagents, the simple
+  frontend and messages over six rows are never held. History keeps the marker; display strips it.
 - Adopt the CLI's preprinted startup output into the transcript without printing it again.
   Direct runtime callers install the sink before printing their banner, still before terminal
   probing. Early visibility must not bypass recording: replay cannot recover unrecorded output.
@@ -866,11 +879,16 @@ completed transcript or its tool/diff replay metadata, even when the active turn
   runtime generates itself — a mention expansion, a protocol correction — is marked as a session
   event and does not become the boundary; otherwise it inherits the protection and the request it
   was appended to is summarized away mid-turn.
-- Feed the previous summary and structured goal/plan/known/checks to the compactor explicitly; an
-  old summary is not ordinary conversation to summarize again; each evicted span is captured once.
+- Keep three layers apart: stable state (goal/plan/known/check, owned by `Note`, plus host-built
+  activity — modified and read files, commands, failures), one summary per compaction, and the
+  recent raw tail. Each compaction summarizes only what it evicts; earlier summaries are shown to
+  it and kept as written, so a compacted fact is worded once. Only when the kept summaries pass
+  `AgentState.SUMMARY_FOLD_CHARS` does the next compaction fold them into its own — one
+  paraphrase per budget's worth instead of per pass, and no extra model call. The compactor is
+  told which of the two happens, by the same rule that applies its reply (`fold_due`).
 - Store a bounded verbatim excerpt as a `seg.N` segment; replace the evicted prefix with one
-  checkpoint (summary + working state + segment pointer); prune `tr.N` records by the surviving
-  reachability set.
+  checkpoint (kept summaries + working state + activity + segment pointer); prune `tr.N` records
+  by the surviving reachability set.
 - On model compaction failure, fall back to deterministic trimming with an explicit marker that
   never enters the live answer preview.
 - Compaction cannot fit an oversized fixed prefix, latest user boundary, tool schema set, or single
@@ -937,8 +955,12 @@ model commands through `ModelSettingsHost`, with only the draft and the calling 
 terminal dependencies; no live engine configuration is changed. Approval publishes the draft
 to the new child before its first request. Spawn and send opt out of yolo auto-approval.
 Forked skills use the same spawn approval draft. Admission reads the root's `max_subagents`
-under the group lock; child settings cannot enlarge it. The group limit is also projected
-into tool descriptions and `/status`.
+under the group lock; child settings cannot enlarge it. It bounds children running at once (a
+live inbox consumer), not retained ones: a settled child frees its slot and keeps its context.
+Model spawns and waking sends are admitted; steering a running child and input the user types
+into a child's frontend are not. Retention has its own ceiling, `MAX_SUBAGENTS`, freed only by
+archive. `0` is the off switch: the `Subagent` schema leaves the request. The limit is also
+projected into tool descriptions and `/status`.
 
 `ui/cli/agents.py` owns selection and each agent's frontend. A frontend retains its input buffer,
 history, approvals, queues, transcript and statistics. One application projects the selected

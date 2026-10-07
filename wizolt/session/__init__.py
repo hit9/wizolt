@@ -41,7 +41,17 @@ from wizolt.session.store import (
     SessionSnapshotStore,
     local_timestamp,
 )
-from wizolt.session.types import AgentState, HistorySegment, PlanItem, QueuedInput, SubagentRecord, ToolErrorRecord, ToolResultRecord, TurnDiff
+from wizolt.session.types import (
+    AgentState,
+    HistorySegment,
+    OperationReceipt,
+    PlanItem,
+    QueuedInput,
+    SubagentRecord,
+    ToolErrorRecord,
+    ToolResultRecord,
+    TurnDiff,
+)
 from wizolt.source import SourceView, SourceViewDraft
 
 __all__ = [
@@ -105,6 +115,8 @@ class Session:
     tool_results: dict[str, str] = field(default_factory=dict)
     tool_records: list[ToolResultRecord] = field(default_factory=list)
     tool_errors: list[ToolErrorRecord] = field(default_factory=list)
+    # Receipts for intercepted operations: actual outcome apart from what was delivered.
+    operation_receipts: list[OperationReceipt] = field(default_factory=list)
     # Compact command receipts survive pruning of the much larger tool results. They describe
     # completed foreground commands, never inferred test success or Git state.
     recent_commands: list[Json] = field(default_factory=list)
@@ -119,6 +131,9 @@ class Session:
     # Runtime projection settings; assembly restores them without persisting executable handles.
     system_prompt: str = SYSTEM_PROMPT
     tool_names: tuple[str, ...] = ()  # empty tuple = no filtering
+    # Runtime: the names this turn's `tools.offer` chain settled on (`plugin.tool` for a plugin
+    # tool offered directly), held for every request of the turn; None = no chain, offer them all.
+    offered_tools: tuple[str, ...] | None = field(default=None, repr=False, compare=False)
     listed: bool = True  # False -> no latest pointer, hidden from /sessions
     agent_name: str = "main"
     agent_parent: str = ""
@@ -402,7 +417,7 @@ class Session:
         self.source_views = {key: view for key, view in self.source_views.items() if key in referenced}
         return before - len(self.source_views)
 
-    def enqueue_user_input(self, value: str | UserInput, *, next_turn: bool = False, commands: bool = False) -> None:
+    def enqueue_user_input(self, value: str | UserInput, *, next_turn: bool = False, commands: bool = False, origin: str = "user") -> None:
         # `source` keeps the submitted form for as long as the entry is live in memory: the
         # queue's rows, the echo, and recall read it so a folded paste stays a chip. The
         # flattened fields below are the model's and the snapshot's -- a resumed entry has no
@@ -420,7 +435,7 @@ class Session:
             draft = text
         if not text:
             return
-        self.pending_user_inputs.append(QueuedInput(text, images, draft, next_turn=next_turn, commands=commands, source=source))
+        self.pending_user_inputs.append(QueuedInput(text, images, draft, next_turn=next_turn, commands=commands, source=source, origin=origin))
 
     def claim_user_inputs(self) -> list[QueuedInput]:
         # claim/ack/release is a transaction across model retries; keep this boundary even though each step is small.
@@ -518,6 +533,13 @@ class Session:
         usage.last_cache_write_prompt_tokens = 0
         return True
 
+    def record_operation(self, receipt: OperationReceipt) -> OperationReceipt:
+        """Keep one receipt per operation (updated in place as it progresses), newest last."""
+        if not any(item is receipt for item in self.operation_receipts):
+            self.operation_receipts.append(receipt)
+            del self.operation_receipts[: -OperationReceipt.LIMIT]
+        return receipt
+
     def record_tool_error(self, key: str, name: str, args: ToolArgs, error: str) -> None:
         self.tool_errors.append(ToolErrorRecord(key, name, Text.value(list(args)), " ".join(Text.clean(error).split())))
         self.tool_errors = self.tool_errors[-5:]
@@ -558,6 +580,12 @@ class Session:
         )
         if errors:
             rows.extend(["Previous tool failures:", *(f"- {name}: {json.dumps(error, ensure_ascii=False)}" for name, error in reversed(errors))])
+        # What compacted spans read, newest span first: the summary may drop a file it consulted,
+        # and the path is the one thing a later read needs. Last, because the clip below cuts from
+        # the end: a consulted path is worth less than a command's exit code or a failure.
+        read = [path for path in dict.fromkeys(path for segment in reversed(self.history) for path in reversed(segment.files_read)) if path not in paths][:20]
+        if read:
+            rows.extend(["Files read in compacted history:", *("- " + json.dumps(path[:240], ensure_ascii=False) for path in reversed(read))])
         if not rows:
             return ""
         body = "\n".join(rows)

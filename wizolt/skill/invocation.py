@@ -1,7 +1,7 @@
 """Starting a skill: the arguments it was given, and the text the model reads when it loads.
 
-One path for both starters. The model's Skill tool and the user's `/name` build the same
-`<Skill ...>` block; only who started it differs, and the block says which.
+One path for every start. The model's Skill tool builds the `<Skill ...>` block; the user points
+the agent at a skill with a mention (`$name` or `@skill:name`), and the model starts it.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class Arguments:
-    """The text after `/name`, or the Skill tool's `arguments`, and how a body receives it."""
+    """The Skill tool's `arguments`, and how a body receives it."""
 
     text: str = ""
 
@@ -70,19 +70,10 @@ class Invocation:
     skill: Skill
     arguments: Arguments = field(default_factory=Arguments)
 
-    # `/name` then, after any whitespace including a newline, the argument text to the end.
-    SLASH_COMMAND: ClassVar[re.Pattern] = re.compile(r"/([^\s/]+)(?:\s+(.*))?\Z", re.DOTALL)
     SKILL_DIR_PLACEHOLDERS: ClassVar[tuple[str, ...]] = ("{skill_dir}", "${SKILL_DIR}", "${CLAUDE_SKILL_DIR}")
     # A `!`command`` result stays in the conversation for its whole life; a `cat` of a large file
     # must not take the context with it. About two thousand tokens a command.
     MAX_COMMAND_OUTPUT: ClassVar[int] = 8_000
-
-    @classmethod
-    def split_command(cls, text: str) -> tuple[str, Arguments] | None:
-        """`/name args...` as (name, arguments), or None when the text is not a slash command. The
-        name is only a candidate: whether a skill answers to it is the library's question."""
-        match = cls.SLASH_COMMAND.match(text)
-        return (match.group(1), Arguments((match.group(2) or "").strip())) if match else None
 
     def prepared_body(self) -> str:
         """The body with the folder and arguments filled in, before any command runs. What an
@@ -101,7 +92,7 @@ class Invocation:
         arguments = f", arguments={json.dumps(self.arguments.text, ensure_ascii=False)}" if self.arguments.text else ""
         return f"Skill(name={json.dumps(self.skill.name)}{arguments})"
 
-    async def load(self, session: Session, *, invoked_by: str = "model") -> str:
+    async def load(self, session: Session) -> str:
         """Load the skill into the session: run its `!`commands``, put its hooks and allowed-tools
         in force for the rest of the session, and return the `<Skill ...>` block the model reads.
 
@@ -112,8 +103,6 @@ class Invocation:
         attributes = {"name": self.skill.name, "source": self.skill.source}
         if self.arguments.text:
             attributes["args"] = self.arguments.text
-        if invoked_by == "user":
-            attributes["invoked-by"] = "user"
         return f"{self.opening(attributes)}\n{body}\n</Skill>" + self.in_force_note()
 
     async def run_commands(self, cwd: str, timeout: float) -> str:
@@ -145,12 +134,6 @@ class Invocation:
             f"Run the `{self.skill.name}` skill: call {self.call_text()} and follow its instructions to the end.\n"
             "Report what you did and what you found; that report is all the requester will see."
         )
-
-    def fork_notice(self) -> str:
-        """What `/name` gives the model for a forked skill: a request to start it with the Skill
-        tool, which is where the worker is sent from, instead of the instructions themselves."""
-        opening = self.opening({"name": self.skill.name, "context": "fork", "invoked-by": "user"})
-        return f"{opening}\nThe user started this skill. It runs in the worker: call {self.call_text()} now, then relay its report.\n</Skill>"
 
     @staticmethod
     def opening(attributes: dict[str, str]) -> str:

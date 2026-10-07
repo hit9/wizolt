@@ -106,10 +106,13 @@ model = "deepseek/deepseek-flash"
 headers = { x-cmd-zdr = "1" }   # Command Code: route only to zero-retention upstreams
 ```
 
-Values are ASCII strings or plain integers. The entry's key still supplies authentication, so a header is
-only needed for what the provider documents separately — zero-retention routing, a gateway's
-tenant or routing key. The same headers are used when `/model` asks the endpoint for its model
-list. `/config` lists the headers in effect.
+Values are ASCII strings or plain integers. `{session_id}` in a value becomes the conversation's
+id (each subagent sends its own), for a provider that routes by session:
+`headers = { x-session = "{session_id}" }`. Known providers that need one, such as OpenCode Go,
+get it without configuration; a header you set of the same name wins. The entry's key still
+supplies authentication, so a header is only needed for what the provider documents separately —
+zero-retention routing, a gateway's tenant or routing key. The same headers are used when `/model`
+asks the endpoint for its model list. `/config` lists the headers you configured.
 
 ### Fields an endpoint rejects
 
@@ -253,12 +256,14 @@ Optional; the defaults shown are used when omitted.
 | `max_agent_steps` | `400` | Maximum tool steps in one turn |
 | `shell_timeout` | `60` | Maximum shell-command lifetime, in seconds |
 | `bash_wait_timeout` | `10` | Foreground wait before a running command becomes a background job; `0` disables promotion |
+| `bash_output_tokens` | `6000` | Bash output the agent sees inline, `1000`–`6000`; the rest stays in a file it can open. Lower saves tokens on every later request ([context](context.md)) |
 | `max_parallel_tools` | `4` | Maximum read-only tool calls executed concurrently; `1` disables parallelism |
-| `max_subagents` | `3` | Retained children across the whole agent group, excluding main; `0` disables creation, maximum `32`. Change it from main with `/set runtime.max_subagents NUMBER` |
+| `max_subagents` | `3` | Children running at once across the whole agent group, excluding main; `0` turns subagents off, maximum `32`. Change it from main with `/set runtime.max_subagents NUMBER` |
 | `session_retention_days` | `7` | Delete saved sessions untouched for this many days, swept in the background at startup; `0` keeps them indefinitely |
 | `theme` | `auto` | Color theme: `auto`, `light`, `dark`, or a named theme (see [Color themes](appearance.md#color-themes)); overridden by `--theme`, and set for you by `/theme`. `auto` asks the terminal for its background color, then reads `COLORFGBG`, and falls back to `dark` |
 | `language` | `auto` | Force the reply language (`auto` follows your messages and injects nothing); set a name like `Chinese` to append a fixed `LANGUAGE OVERRIDE` block to the system prompt. Change for the current session with `/language` |
 | `attribution` | `true` | Ask the model to end every commit message and pull-request body it writes with `Generated with [wizolt](https://wizolt.readthedocs.io).` — a prompt-level request, not a guarantee. `/set runtime.attribution off` stops it for the session, `false` for good |
+| `reactions` | `true` | Let the model react to your message with an emoji, shown muted after it as `← 👍`. It costs one short block in the system prompt and a few tokens on a reply that reacts; no extra request. Your message appears in scrollback when the reply starts rather than the moment you send it. `/set runtime.reactions off` stops it for the session, `false` for good |
 | `agents_md` | `true` | Inject your instructions into every request, as one block of their own ahead of the skills and MCP indexes: the global `~/.wizolt/AGENTS.md` followed by the project's `AGENTS.md` files (each falling back to `CLAUDE.md`) from the repository root down to the working directory, together bounded to about 8,000 tokens |
 
 Selected tuning values can be changed for the current session with `/set` (Tab completion

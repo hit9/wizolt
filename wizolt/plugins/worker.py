@@ -10,27 +10,75 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import os
 import sys
 import traceback
 from contextvars import ContextVar
 from dataclasses import asdict, replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from wizolt.plugins.layout import SLOTS, LayoutBudget
 from wizolt.plugins.loading import LoadedPlugin, PluginSource
-from wizolt.plugins.protocol import MAX_FRAME, MAX_REQUEST, Snapshot
-from wizolt.sdk import Context, Event, PluginError, ToolActivity
+from wizolt.plugins.protocol import MAX_FRAME, MAX_REQUEST, MAX_ROW_CHARACTERS, Snapshot
+from wizolt.sdk import Context, Event, Line, PluginError, Text, ToolActivity
+
+if TYPE_CHECKING:
+    from wizolt.sdk.operations import Operation, Value
+
+
+class Continuation:
+    """The author-facing ``next``: single-use, bound to one handler call, awaited inside it.
+
+    The host enforces the same rules with its own token; this side only fails fast with a clear
+    message. Calling after the handler returned, twice, or concurrently is an error.
+    """
+
+    def __init__(self, worker: Worker, token: str, parent: int, spec: Operation):
+        self.worker, self.token, self.parent, self.spec = worker, token, parent, spec
+        self.used = False
+        self.closed = False
+
+    async def __call__(self, value: Value) -> Value:
+        if self.closed:
+            raise PluginError("next() belongs to its handler call and cannot be used after it returns")
+        if self.used:
+            raise PluginError("next() is single-use")
+        self.used = True
+        if not isinstance(value, self.spec.input):
+            raise PluginError(f"next() takes a {self.spec.input.__name__}")
+        from wizolt.sdk import operations  # Loaded by the intercept call that created this.
+
+        future = asyncio.get_running_loop().create_future()
+        self.worker.continuations[self.token] = future
+        try:
+            self.worker.write({"continue": self.token, "parent": self.parent, "input": operations.encode(value)})
+            raw = await future
+        finally:
+            self.worker.continuations.pop(self.token, None)
+        return operations.decode(raw, self.spec.results)  # Downstream may refuse too.
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class Worker:
     def __init__(self):
-        self.output = sys.stdout
+        # Subprocesses inherit descriptors 0 and 1, not sys.stdin/sys.stdout. Move the protocol
+        # to private, non-inheritable duplicates: a plugin's `git status` must neither corrupt
+        # replies on the protocol stdout nor consume host requests from the protocol stdin.
+        self.input = os.fdopen(os.dup(0), "r", encoding="utf-8")
+        self.output = os.fdopen(os.dup(1), "w", encoding="utf-8")
+        devnull = os.open(os.devnull, os.O_RDONLY)
+        os.dup2(devnull, 0)
+        os.close(devnull)
+        os.dup2(2, 1)
         sys.stdout = sys.stderr
         self.loaded: LoadedPlugin | None = None
         self.tasks: dict[int, asyncio.Task] = {}
         self.current_request: ContextVar[int | None] = ContextVar("plugin_request", default=None)
         self.service_sequence = 0
         self.services: dict[int, asyncio.Future] = {}
+        self.continuations: dict[str, asyncio.Future] = {}
 
     async def call_host(self, service: str, arguments: dict) -> dict:
         parent = self.current_request.get()
@@ -60,6 +108,7 @@ class Worker:
             self.loaded = LoadedPlugin.load(source, request.get("config"), request.get("directory", ""))
             plugin = self.loaded.plugin
             plugin.models.call = self.call_host
+            plugin.agent.call = self.call_host
             plugin.settings.call = self.call_host
             plugin.ui.components.call = self.call_host
             plugin.ui.call = self.call_host
@@ -70,12 +119,16 @@ class Worker:
                 "events": list(plugin.observers),
                 "themes": plugin.themes,
                 "presets": plugin.presets,
-                "summarizer": plugin.summary_handler is not None,
                 "commands": {
                     name: {"description": action.description, "parameters": dict(action.parameters), "during_turn": action.during_turn}
                     for name, action in plugin.commands.items()
                 },
                 "tools": {name: {"description": action.description, "parameters": dict(action.parameters)} for name, action in plugin.tools.items()},
+                "intercepts": {
+                    name: {"match": {key: list(values) for key, values in item.match.items()}, "response": item.response}
+                    for name, item in plugin.interceptors.items()
+                },
+                "presenters": {site: {"match": {key: list(values) for key, values in item.match.items()}} for site, item in plugin.presenters.items()},
             }
         if operation == "shutdown":
             # Join callbacks before closing their resources. Never cancel this shutdown call.
@@ -92,18 +145,11 @@ class Worker:
             raise PluginError("Plugin is not loaded")
         plugin = self.loaded.plugin
         context = Context.decode(request["context"])
-        if operation == "compact":
-            if plugin.summary_handler is None:
-                raise PluginError("Plugin has no summarizer")
-            with plugin.services.invocation():
-                summary = await plugin.summary_handler(context, request["text"])
-            if not isinstance(summary, str) or not summary.strip() or len(summary) > 16000:
-                raise PluginError("Summarizer must return non-empty text of at most 16000 characters")
-            return summary.strip()
         if operation in ("snapshot", "sample", "sample_render"):
             sampled = replace(context, layout=None)
-            for callback in plugin.observers.get("sample", ()):
-                await callback(Event("sample", sampled))
+            # The public name says what it is: the refresh tick, not a lifecycle transition.
+            for callback in plugin.observers.get("tick", ()):
+                await callback(Event("tick", sampled))
             fields = {}
             for name, callback in plugin.fields.items():
                 value = callback(sampled)
@@ -111,6 +157,8 @@ class Worker:
                     raise PluginError(f"Field {name} must return a scalar")
                 if isinstance(value, float) and not math.isfinite(value):
                     raise PluginError(f"Field {name} must return a finite number")
+                if isinstance(value, str) and len(value) > MAX_ROW_CHARACTERS:
+                    raise PluginError(f"Field {name} must return at most {MAX_ROW_CHARACTERS} characters")
                 fields[name] = value
             panels = {}
             if operation == "snapshot":
@@ -141,6 +189,33 @@ class Worker:
             for callback in plugin.observers.get(request["name"], ()):
                 await callback(Event(request["name"], context, tool, request.get("reason", "")))
             return None
+        if operation == "intercept":
+            from wizolt.sdk import operations  # Imported on first use: most plugins never intercept.
+
+            spec = operations.OPERATIONS[request["name"]]
+            item = plugin.interceptors.get(spec.name)
+            if item is None:
+                raise PluginError(f"No interceptor registered for {spec.name}")
+            value = operations.decode(request["input"], (spec.input,))
+            continuation = Continuation(self, request["token"], request["id"], spec)
+            with plugin.services.invocation():
+                try:
+                    result = await item.handler(context, value, continuation)
+                finally:
+                    continuation.close()
+            if not isinstance(result, spec.results):
+                raise PluginError(f"{spec.name} handlers return {' or '.join(cls.__name__ for cls in spec.results)}")
+            return operations.encode(result)
+        if operation == "present":
+            item = plugin.presenters.get(request["site"])
+            if item is None:
+                raise PluginError(f"No presenter registered for {request['site']}")
+            from wizolt.sdk import presentation
+
+            view = presentation.decode(request["site"], request["view"])
+            panel = await item.handler(context, view)
+            Snapshot.check_panel(panel)
+            return asdict(panel)
         if operation == "invoke":
             if request["kind"] not in ("command", "tool"):
                 raise PluginError("Invocation kind must be command or tool")
@@ -159,9 +234,20 @@ class Worker:
                     raise PluginError(f"Invalid arguments for {plugin.name}.{request['name']}: {error.message}") from error
             with plugin.services.invocation():
                 result = await registry[request["name"]].handler(context, request["arguments"])
-            if not isinstance(result, str):
-                raise PluginError("Plugin actions must return text")
-            return result
+            if isinstance(result, str):
+                return result
+            # A command may answer with styled rows: the same Line/Text values views use, one
+            # theme role per span. Tools feed the model, so they stay plain text.
+            if (
+                request["kind"] == "command"
+                and isinstance(result, list)
+                and all(
+                    isinstance(item, Line) and all(isinstance(span, Text) and isinstance(span.text, str) and isinstance(span.role, str) for span in item.spans)
+                    for item in result
+                )
+            ):
+                return {"styled": [asdict(item) for item in result]}
+            raise PluginError("Plugin actions must return text" + (" or styled lines" if request["kind"] == "command" else ""))
         raise PluginError(f"Unknown worker operation: {operation}")
 
     async def respond(self, request: dict) -> None:
@@ -179,11 +265,18 @@ class Worker:
 
     async def run(self) -> None:
         try:
-            while line := await asyncio.to_thread(sys.stdin.readline, MAX_REQUEST + 1):
+            while line := await asyncio.to_thread(self.input.readline, MAX_REQUEST + 1):
                 if len(line) > MAX_REQUEST:
                     raise PluginError("Plugin request exceeds protocol frame limit")
                 request = json.loads(line)
-                if "service_result" in request:
+                if "continue_result" in request:
+                    future = self.continuations.get(request["continue_result"])
+                    if future is not None and not future.done():
+                        if error := request.get("error"):
+                            future.set_exception(PluginError(error))
+                        else:
+                            future.set_result(request["value"])
+                elif "service_result" in request:
                     future = self.services.get(request["service_result"])
                     if future is not None and not future.done():
                         if error := request.get("error"):

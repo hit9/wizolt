@@ -14,14 +14,19 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.settings.update(values, *, reset=())` | Async; atomically save declared overrides, remove reset keys and return resolved immutable settings; current `config` is unchanged |
 | `plugin.field(name, callback)` | Sync `(Context) -> str \| int \| float \| bool`; floats must be finite |
 | `plugin.component(slot, callback, *, gap_before=0)` | Sync `(Context) -> Panel` |
-| `plugin.command(name, description, handler, *, during_turn=False)` | Async `(Context, Mapping[str, Any]) -> str`; register `/name` |
+| `plugin.command(name, description, handler, *, during_turn=False)` | Async `(Context, Mapping[str, Any]) -> str \| list[Line]`; register `/name`; styled rows answer the user in the host's report frame, one theme role per `Text` span (a tool stays text: it answers the model) |
 | `plugin.tool(name, description, parameters, handler)` | Register a plugin operation, not a standalone model tool; same handler, JSON Schema object parameters; call only through `Plugin` list/describe/call |
 | `plugin.on(event, observer)` | Async `(Event) -> None`; observers do not control the agent's operation |
 | `plugin.theme(name, definition)` | Register theme metadata; see [APPEARANCE.md](APPEARANCE.md) |
 | `plugin.preset(kind, name, source)` | Register a `statusbar` or `divider` format string |
 | `plugin.service(name, factory)` | `factory() -> AsyncContextManager[T]`; returns `Service[T]` |
-| `plugin.summarizer(callback)` | Async `(Context, str) -> str`; one summary strategy per agent |
+| `plugin.user_file_paths(context, name)` | Where a file the user writes for you lives, in precedence order: `<project>/.wizolt/plugins/NAME/<name>`, then `<data_dir>/plugins/NAME/<name>`; read the first that exists, write a new one to the last; reads and creates nothing. Read it when you need it, so an edit applies without a reload |
+| `plugin.intercept(operation, handler, *, match=None, response=None)` | Async `(Context, value, next) -> result`; wrap one operation; see [INTERCEPTION.md](INTERCEPTION.md) |
+| `plugin.presenter(site, render, *, match=None)` | Async `(Context, view) -> Panel`; render one presentation site; see [UI.md](UI.md) |
 | `plugin.models.complete(prompt, *, system="", provider="", model="", effort="", api="")` | Async text request; returns `ModelReply` |
+| `plugin.agent.tools()` | Async; `tuple[ToolInfo, ...]`: the built-in tools a turn's `tools.offer` starts from and the plugin tools it may add (`plugin.tool`), each with `name`, `description` (first line), `kind` (`builtin`/`plugin`) and `offered` (by the last turn); works before any turn |
+| `plugin.agent.system_prompt()` | Async; the text a `context.compose` handler receives as its `system` block, before any plugin changes it |
+| `plugin.agent.system_directives()` | Async; `tuple[Directive, ...]`: the fixed blocks wizolt's settings append after the `system` block in every request, in sent order, whatever replaced it; each has `setting` (`runtime.reactions`) and `text` |
 | `plugin.ui.components.list()` | Async; returns `tuple[Component, ...]` in visual order |
 | `plugin.ui.components.move(component, *, before="", after="")` | Async; exactly one anchor, same slot; persists user order and returns the updated list |
 | `plugin.ui.components.set_gap(component, gap_before)` | Async; save a nonnegative integer gap, or `None` to restore the declared default; returns the updated list |
@@ -33,16 +38,19 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.ui.show(view)` | Async; ViewResult or None |
 | `plugin.ui.open(view)` | Async context manager; `result()` and `update(view)` |
 | `plugin.ui.notify(message, *, level="info")` | Async; themed session-local notice |
+| `plugin.ui.report(lines)` | Async; append a framed, theme-colored `Line` block to the answer area during an action; raises without interactive UI |
 | `plugin.ui.shortcuts.list()` | Async; bindings, protected keys and preference error |
 | `plugin.ui.shortcuts.bind(key, command, *, replace=False)` | Async; save a global key for plugin.command |
 | `plugin.ui.shortcuts.unbind(key)` | Async; remove saved override |
 | `handle.get()` | Async; returns the same acquired service object until the generation closes |
 
 Only the interfaces documented here and in [UI.md](UI.md) are author APIs. Registration dictionaries, `wizolt.sdk.Action`,
-`summary_handler`, `plugin.services`, `Models.call`, `Context.decode`, SDK implementation helpers,
+`plugin.interceptors`, `plugin.services`, `Models.call`, `Context.decode`, SDK implementation helpers,
 and everything under `wizolt.plugins` are host plumbing, even where Python names lack `_`.
 Do not construct `Plugin`, `Models` or `Service` yourself, mutate registries or call lifecycle
-methods. SDK 1 is experimental; the bundled reference matches the installed wizolt version.
+methods. Admission rejects a plugin source that imports any `wizolt.*` module besides
+`wizolt.sdk` (and the stdlib); `plugin validate` names the offending import. SDK 1 is
+experimental; the bundled reference matches the installed wizolt version.
 
 **Plugin tools are not entries in the model's tool table.** `plugin.tool("remember", ...)`
 does not make `remember` or `my_plugin.remember` directly callable, including as a ToolScript
@@ -50,13 +58,15 @@ tool name. The model uses `Plugin(action="list", name="my_plugin")`, then
 `Plugin(action="describe", name="my_plugin", tool="remember")`, then
 `Plugin(action="call", name="my_plugin", tool="remember", arguments={...})` with normal approval.
 Registration does not change the model's fixed tool schema; descriptions and parameters are
-disclosed on demand. The offline CLI is a testing entry point, not another model tool.
+disclosed on demand. A `tools.offer` interceptor may offer one directly instead, as
+`my_plugin-remember` (see `tools.offer` in [INTERCEPTION.md](INTERCEPTION.md)). The offline CLI is a
+testing entry point, not another model tool.
 
 ## Public values and imports
 
 Import `Plugin`, `Context`, `Usage`, `ContextWindow`, `Text`, `Line`, `Panel`, `Event`,
 `Viewport`, `Layout`, `Turn`, `ToolCounts`, `ToolActivity`, `PluginError` and `SDK_VERSION` from `wizolt.sdk`. For annotations, import `Component` from `wizolt.sdk.ui`, `ModelReply` from
-`wizolt.sdk.models` and `Service` from `wizolt.sdk.services`. `PluginError` derives from
+`wizolt.sdk.models`, `ToolInfo` and `Directive` from `wizolt.sdk.agent` and `Service` from `wizolt.sdk.services`. `PluginError` derives from
 `ValueError`; raising it gives a readable action error. Exceptions and cancellation still require
 your own resource cleanup in `finally`.
 
@@ -64,13 +74,16 @@ All data values below are frozen dataclasses. Tuple fields must be tuples; do no
 contents. Host-supplied context is a snapshot, not a live handle. The listed constructors can
 also be used in plugin-owned tests.
 
-Interactive declarations (`View`, `Document`, `Selection`, `Form`, `Field`, `Choice`, `Action`,
+Interactive declarations (`View`, `Document`, `Section`, `Selection`, `Form`, `Field`, `Choice`, `Action`,
 `ViewResult`) are imported from `wizolt.sdk.views`; their complete tables and examples are in
 [UI.md](UI.md). Do not import the unrelated internal registration `Action` from `wizolt.sdk`.
 
+Presenter view models (`ToolCard`, `ToolSummary`, `ActivityStatus`) are imported from
+`wizolt.sdk.presentation`; their sites, fields and limits are in [UI.md](UI.md).
+
 | Type | Fields / defaults |
 | --- | --- |
-| `Context` | Required: `agent_id: str`, `agent_name: str`, `cwd: str`, `status: str`, `context_percent: float`, `elapsed: float`, `model: str`, `now: float`; optional: `columns: int = 80`, `usage: Usage = Usage()`, `window: ContextWindow = ContextWindow()`, `viewport: Viewport = Viewport()`, `layout: Layout \| None = None`, `turn: Turn = Turn()` |
+| `Context` | Required: `agent_id: str`, `agent_name: str`, `cwd: str`, `status: str`, `context_percent: float`, `elapsed: float`, `model: str`, `now: float`; optional: `columns: int = 80`, `usage: Usage = Usage()`, `window: ContextWindow = ContextWindow()`, `viewport: Viewport = Viewport()`, `layout: Layout \| None = None`, `turn: Turn = Turn()`, `data_dir: str = ""`, `config_path: str = ""` |
 | `Viewport` | `columns: int = 80`, `rows: int = 24` |
 | `Layout` | `slot: str`, `columns: int`, `rows: int`, `gap_before: int = 0` |
 | `Turn` | `tools: ToolCounts = ToolCounts()`, `active_tools: tuple[ToolActivity, ...] = ()` |
@@ -84,6 +97,8 @@ Interactive declarations (`View`, `Document`, `Selection`, `Form`, `Field`, `Cho
 | `Panel` | `rows: tuple[Text \| Line, ...] = ()`; `Panel()` occupies no space |
 | `Event` | `name: str`, `context: Context`, `tool: ToolActivity \| None = None`, `reason: str = ""` |
 | `ModelReply` | `text: str`, `model: str`, `usage: Usage` |
+| `ToolInfo` | `name: str`, `description: str`, `kind: str` (`builtin` or `plugin`), `offered: bool` |
+| `Directive` | `setting: str`, `text: str` |
 
 Times are seconds; `now` is monotonic, not a date. `columns` is terminal cells, not characters.
 `status` is `idle`, `running`, `completed`, `interrupted`, `failed`, or `waiting` for user input;
@@ -99,21 +114,24 @@ registry are rejected; commands also cannot collide with built-ins or other enab
 There are at most 64 registrations per registry (presets: per kind), and 64 observers total.
 One component is allowed per slot; compose multiple rows inside that callback.
 
-| Callback | Async? | Models / service acquisition? | Deadline |
-| --- | --- | --- | --- |
-| Entry (`setup` or package entry) | No | No | Load: 5 seconds |
-| Field / component | No | No | Whole sample: 2 seconds |
-| `sample` observer | Yes | No | Shares the whole sample's 2 seconds |
-| Lifecycle observer (session / turn / tool) | Yes | No | Each event's callbacks together: 1 second |
-| Command / tool handler | Yes | Yes; host services unavailable offline | Live execution: 60 seconds, paused during host-owned human interaction |
-| Summarizer | Yes | Yes; models unavailable offline | 60 seconds |
+| Callback | Async? | Models / service acquisition? | UI views, notices, settings writes? | Deadline |
+| --- | --- | --- | --- | --- |
+| Entry (`setup` or package entry) | No | No | No | Load: 5 seconds |
+| Field / component | No | No | No | Whole refresh: 2 seconds |
+| `tick` observer | Yes | No | No | Shares the whole refresh's 2 seconds |
+| Lifecycle observer (session / turn / tool) | Yes | No | No | Each event's callbacks together: 1 second |
+| Presenter | Yes | No | No | Tool sites 0.5 seconds, activity 0.25 |
+| Command / tool handler | Yes | Yes; host services unavailable offline | Yes; views need a live TUI or trial fixtures | Live execution: 60 seconds, paused during host-owned human interaction |
+| Interceptor | Yes | Yes; host services unavailable offline | `prompt.submit` and `tool.call` only | 60 seconds of its own time; `next` and human waiting do not count |
 
 Trial `--timeout` overrides each trial call's deadline (default 5, greater than 0 and at most 60
 seconds). Host model calls still have their independent 50-second/four-concurrent-call limit.
 Panels allow 12 rows, 256 spans per row and 4,096 total characters per row. Prompt slots share
 at most six visible rows. Single-file source is at most 256 KiB; package limits are below.
 Templates allow 8,192 characters. A timed-out worker can be killed; ordinary callback errors
-are reported. A failed render/observer/summary stays unhealthy until reload. Do not suppress
+are reported. Health is per registration until reload: a failed observer or component is skipped
+(your commands and tools keep working); a failed interceptor blocks the operations it matches; a
+failed presenter falls back to the builtin rendering. Do not suppress
 `asyncio.CancelledError`; it must unwind resources and release the generation.
 
 ## Layout and execution facts
@@ -136,9 +154,9 @@ components consume no gap. Gaps share the height budget and shrink to reserve on
 is the space actually used. Resetting order preserves gaps; `set_gap(id, None)` restores the
 plugin default without changing order. Do not add those empty rows yourself.
 
-Layout calls are available inside explicit command/tool handlers and summarizers (not renderers or observers),
+Layout calls are available inside explicit command/tool handlers only (not interceptors, renderers or observers),
 and unavailable in offline trials. `visibility` is `pending layout`, `empty`, `visible`,
-`clipped by height budget`, or `hidden by height budget`; allocation updates on the next sample.
+`clipped by height budget`, or `hidden by height budget`; allocation updates on the next refresh.
 
 `context.turn.tools` counts admitted executions in this agent's current/latest turn, even
 before a plugin is enabled. It resets at the next turn; it is not saved across resume.
@@ -162,13 +180,20 @@ the agent's operation.
 
 ## Packages
 
-Single files declare `SDK_VERSION = 1`, optional `DEPENDENCIES`, and `setup(plugin)`.
-For multiple files, pass a directory containing `pyproject.toml` to the same CLI commands:
+Single files declare `SDK_VERSION = 1`, optional `DEPENDENCIES`, and `setup(plugin)`. Open with
+a module docstring written for the user, in Markdown: `/plugins` renders it as the plugin's page
+when the user selects it, without running your code. Make the first paragraph a one-line
+introduction, then add a `## Use` section and a small `text` block showing what it draws. Keep
+notes for authors in comments, not the docstring.
+For multiple files, pass a directory containing `pyproject.toml` to the same CLI commands;
+`README.md` is the page and `[project] description` the one-line introduction (the entry
+module's docstring is the fallback for both):
 
 ```toml
 [project]
 name = "my-helper"
 version = "0.1.0"
+description = "Shows the current branch's open review comments above the input."
 dependencies = []
 
 [tool.wizolt.plugin]
@@ -181,9 +206,9 @@ Use `my_helper/__init__.py` or `src/my_helper/__init__.py`; ordinary relative im
 another synchronous callable. The installed/configuration name is `my_helper` (hyphens and dots
 normalize to underscores). Package metadata replaces the single-file constants.
 
-Dependencies must be static; no build backend runs. `install` prepares a dependency environment.
-Source and resources are frozen together, so reload/rollback includes helpers and assets, even
-after the original directory is deleted. Keep the import tree small: at most 4 MiB, 512 files,
+Dependencies must be static; no build backend runs. `enable` prepares a dependency environment.
+Source and resources are frozen together at load, so a running plugin keeps its helpers and
+assets even after the original directory is deleted. Keep the import tree small: at most 4 MiB, 512 files,
 1,024 directory entries and 32 directory levels; symlinks and special files are rejected.
 VCS, virtualenv, build and Python cache directories are excluded. Runtime writes belong outside
 the package snapshot, which is deleted when its worker closes.
@@ -235,14 +260,14 @@ The returned settings are resolved and immutable. `plugin.config` remains this g
 original snapshot: apply the returned values yourself for immediate changes, or explicitly reload.
 There is no automatic config-file watching or reload. Other plugin tables cannot be targeted.
 
-Validate/test/install use the selected config. Live reload rereads only its `[plugins]` table,
-and fixes settings for the candidate's lifetime. Failed validation preserves the active instance;
-rollback restores retained source, settings and the dependency environment. Keep the installed
+Validate/test/enable use the selected config. Live reload rereads only its `[plugins]` table,
+and fixes settings for the candidate's lifetime. Failed validation preserves the active instance.
+Previous versions are not kept; restore one from Git and reload. Keep the installed
 package name unchanged when editing its manifest. Other running agents remain unchanged.
 
 ### Model requests
 
-Inside a command or summarizer, `await plugin.models.complete(prompt, system="", provider="", model="",
+Inside a command, tool or interceptor, `await plugin.models.complete(prompt, system="", provider="", model="",
 effort="", api="")` makes one text-only request through a configured provider. Empty routing
 fields inherit the agent's configuration. It returns `.text`, `.model` and `.usage` (input,
 output and cached tokens). Put preferred routing names in your plugin's own configuration.
@@ -268,29 +293,33 @@ plugin.command("ask-helper", "Ask my helper (uses model tokens)", ask)
 
 ### Compaction
 
-`plugin.summarizer(async_callback)` supplies summary text for the history span selected by wizolt.
-The callback receives `(context, text)`, including previous summary and working state. Return
-non-empty text up to 16,000 characters. It may call `plugin.models.complete` or managed services.
-Enable only one summarizer plugin at a time. Enabling it opts into automatic calls on compaction;
-explain any model cost before enabling. Core history boundaries, notes and persistence remain
-unchanged. An exception, timeout, empty answer or copied source marks the plugin failed and falls
-back to built-in compaction; fix it and reload to try again.
+Intercept `context.compact` to supply or shape the summary of the history span wizolt selected
+(see [INTERCEPTION.md](INTERCEPTION.md)). The span arrives as `Compaction(text, trigger)`,
+including previous summary and working state. Return `Summary(text)` (non-empty, up to 16,000
+characters) without calling `next` to replace the builtin strategy, or wrap what `next` returns.
+Enabling it opts into automatic calls on compaction; explain any model cost before enabling. Core
+history boundaries, notes and persistence remain unchanged. There is no fallback: an exception,
+timeout, empty answer or copied source fails that compaction and blocks the interceptor until
+reload or disable; disabling the plugin restores the builtin strategy.
 
 ```python
+from wizolt.sdk.operations import Summary
+
+
 def setup(plugin):
-    async def summarize(context, text):
+    async def summarize(context, span, next):
         reply = await plugin.models.complete(
-            text,
+            span.text,
             system="Summarize completed work, decisions and outstanding tasks. Return concise plain text.",
             provider=plugin.config.get("provider", ""),
         )
-        return reply.text
+        return Summary(reply.text)
 
-    plugin.summarizer(summarize)
+    plugin.intercept("context.compact", summarize)
 ```
 
-Use `wizolt plugin test PATH --summarize history.txt` for a local algorithm. Model-backed trials
-report unavailable host services; enable and run `/compact` to exercise the configured model.
+Model-backed trials report unavailable host services; enable and run `/compact` to exercise the
+configured model.
 
 ### Managed services
 
@@ -330,7 +359,7 @@ from the worker's process group. Connections are independent across agents and r
 
 The entry callable receives `plugin: wizolt.sdk.Plugin` and registers callbacks synchronously.
 Callbacks receive immutable `Context`: agent_id, agent_name, cwd, status, context_percent,
-elapsed seconds, model, monotonic now, and available columns.
+elapsed seconds, model, monotonic now, available columns, and wizolt's data_dir.
 `context.usage` contains cumulative calls/input_tokens/output_tokens/cached_tokens and estimated
 live output_rate (tokens/s). `context.window` contains used/limit/budget and `(category, tokens)`
 parts. Parts are local estimates refreshed at activation/request boundaries; used may be a
@@ -363,9 +392,10 @@ Registration methods:
   tool:OPERATION --arguments '{...}'` runs a fresh instance with preview context, provided the
   handler does not need host RPC (see the trial boundaries below).
 - `on(event, observer)`: async `(Event) -> None`; Event has name and context.
-  Events: session.started, session.finished, turn.started, turn.finished, tool.started, tool.finished, sample. `sample` runs before fields/components are sampled
-  (normally 5 Hz); collect a bounded history here, then render it without side effects. Turn
-  observers have a one-second deadline, a complete sample two seconds, live actions 60 seconds.
+  Events: session.started, session.finished, turn.started, turn.finished, tool.started, tool.finished, tick. `tick` is the UI refresh
+  (normally 5 Hz), not a lifecycle transition: it runs just before fields/components are read;
+  collect a bounded history here, then render it without side effects. Turn
+  observers have a one-second deadline, a complete refresh two seconds, live actions 60 seconds.
 
 UI callbacks may run frequently. Read cached state only; use context.now for lightweight animation.
 No callback implicitly calls an LLM. Modules are independently executed for every agent and reload;
@@ -385,14 +415,16 @@ stay under `[plugins.NAME]`, so strict configure schemas never see host fields. 
 execution context only; it never scopes installation. Enabling persists the source path
 for future agents in any directory. Existing agents keep their
 own instances. Reload/disable wait for active turns or that plugin's invocations; unrelated
-plugin invocations do not delay publication. The reload result reports pending.
+plugin invocations do not delay publication. Live `status` is `running`, `failed` or `off`;
+a waiting change reports `starting`, `reloading` or `stopping`. `enabled` is the saved choice.
 Set `WIZOLT_NO_PLUGINS=1` on startup to skip installed plugins and recover a broken installation.
 
 Optional module metadata: `DEPENDENCIES = ["package>=1.0"]` (literal requirement strings).
 Use PEP 508 requirements, including named direct URLs or environment markers; installer
 options such as `--python`, `--target` and `--requirements` are not dependencies.
-Use `wizolt plugin install PATH` to prepare a worker environment constrained by the host's installed
-versions, then call `Plugin(action="reload")`. No host restart is needed. The environment borrows the host
+`wizolt plugin enable PATH` prepares a worker environment constrained by the host's installed
+versions when the host or the saved environment cannot satisfy the declarations; an unchanged
+list reuses the saved environment. Then call `Plugin(action="reload")`. No host restart is needed. The environment borrows the host
 installation; it is not portable. No installation command replaces packages in the running process.
 
 ## Offline feedback
@@ -439,12 +471,12 @@ or raster fonts. See [TESTING.md](TESTING.md) for interaction fixtures and repor
   All above-input components share a height budget. Empty panels hide a component.
 - Do not create detached processes, unmanaged threads/tasks, or access host internals. On timeout
   the host may kill the whole worker process group. That cannot undo completed external effects.
-- Check reload results: failed candidates retain the old version; pending waits for turn/invocation
-  completion. A failure includes `traceback` and `log` tails naming the failing line, as does
+- Check reload results: failed candidates retain the old version; `starting`, `reloading` and
+  `stopping` wait for turn/invocation completion. A failure includes `traceback` and `log` tails naming the failing line, as does
   `/plugins inspect NAME` for a generation that failed later. Existing agents do not inherit each other's plugin state. Resume reads saved choices;
   ordinary Python variables do not survive a worker replacement or session restart.
-- For recovery, disable through the CLI, then reload; `/plugins` can restore previous source with
-  rollback. `WIZOLT_NO_PLUGINS=1 wizolt` skips startup execution. Check config/project paths before
+- For recovery, disable through the CLI, then reload, or check out the last good commit and
+  reload. `WIZOLT_NO_PLUGINS=1 wizolt` skips startup execution. Check config/project paths before
   changing preferences. Saved choices live in the config printed by `wizolt plugin list`.
 
 ## Example: pet.py
@@ -548,7 +580,7 @@ class TokenWave:
     def __init__(self):
         self.rates = deque(maxlen=40)
 
-    async def sample(self, event):
+    async def tick(self, event):
         self.rates.append(event.context.usage.output_rate)
 
     def draw(self, context):
@@ -559,7 +591,7 @@ class TokenWave:
 
 def setup(plugin):
     wave = TokenWave()
-    plugin.on("sample", wave.sample)
+    plugin.on("tick", wave.tick)
     plugin.component("below_input", wave.draw)
 ```
 
@@ -572,6 +604,8 @@ compaction summaries with paid model requests; summary trials report unavailable
 ```python
 from contextlib import asynccontextmanager
 from io import StringIO
+
+from wizolt.sdk.operations import Summary
 
 SDK_VERSION = 1
 
@@ -597,18 +631,18 @@ def setup(plugin):
         reply = await plugin.models.complete(arguments["input"], provider=plugin.config["provider"])
         return f"{reply.text}\nTokens: {reply.usage.input_tokens} in / {reply.usage.output_tokens} out"
 
-    async def summarize(context, text):
+    async def summarize(context, span, next):
         reply = await plugin.models.complete(
-            text,
+            span.text,
             system="Summarize decisions, completed work and remaining tasks in concise plain text.",
             provider=plugin.config["provider"],
         )
-        return reply.text
+        return Summary(reply.text)
 
     plugin.command("helper-test", "Check the helper", check)
     plugin.command("helper-ask", "Ask a model (uses tokens)", ask)
     plugin.tool("self_test", "Check the helper offline", {"type": "object", "additionalProperties": False}, check)
-    plugin.summarizer(summarize)
+    plugin.intercept("context.compact", summarize)
 ```
 
 ## Source fallback

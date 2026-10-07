@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import asdict, replace
 
 from wizolt.plugins.catalog import Installation, PluginCatalog
-from wizolt.plugins.loading import PluginSource
+from wizolt.plugins.loading import PluginSource, unmet_dependencies
 from wizolt.plugins.process import PluginProcess
 from wizolt.plugins.protocol import Capabilities
 from wizolt.plugins.settings import PluginSettings
@@ -23,6 +23,16 @@ class PluginInstallations:
         self.cwd = cwd
         self.settings = settings or PluginSettings()
         self.validate: Callable[[Capabilities], None] | None = None
+
+    def needs_environment(self, python: str, source: PluginSource) -> bool:
+        """One verb enables: prepare a worker environment only when the saved one cannot serve."""
+        if not python:
+            return bool(unmet_dependencies(source.dependencies))
+        if self.catalog.environment(python):
+            from wizolt.plugins.dependencies import DependencyEnvironment
+
+            return not DependencyEnvironment.built_for(python, source)
+        return False  # An explicit custom interpreter remains the user's responsibility.
 
     async def manage(self, action: str, target: str = "") -> dict:
         records, problems = self.catalog.read()
@@ -40,7 +50,7 @@ class PluginInstallations:
             if target not in records:
                 raise PluginError(f"Unknown installed plugin: {target}")
             item = replace(records[target], enabled=False)
-        elif action in ("enable", "install"):
+        elif action == "enable":
             previous = records.get(target)
             source = PluginSource.read(previous.path if previous else target)
             for record in records.values():
@@ -50,7 +60,7 @@ class PluginInstallations:
             if previous and previous.path != source.path:
                 raise PluginError(f"Plugin name {source.name!r} is already installed from another path")
             python = previous.python if previous else ""
-            if action == "install" and source.dependencies:
+            if source.dependencies and self.needs_environment(python, source):
                 from wizolt.plugins.dependencies import DependencyEnvironment
 
                 result = await DependencyEnvironment(self.catalog.directory / "environments", [source], self.cwd, self.settings).prepare()

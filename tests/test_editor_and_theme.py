@@ -104,6 +104,8 @@ def test_theme_does_not_restyle_frozen_interaction_regions(tmp_path, monkeypatch
     """Theme work must not repaint input hints, thinking, or the divider, and every cursor in the
     UI must stay the one selection band -- the same pair in both appearances, never `reverse`,
     which would take its color from whatever the row underneath is drawn in."""
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.delenv("PROMPT_TOOLKIT_COLOR_DEPTH", raising=False)
     monkeypatch.setattr(Theme, "_mode", mode)
     style = loop(tmp_path).view.style()
 
@@ -204,6 +206,53 @@ async def test_edit_text_in_editor_roundtrips_edited_content(tmp_path, monkeypat
     fake_editor(tmp_path, monkeypatch, 'printf " EDITED" >> "$1"\n')
 
     assert await TuiApp()._edit_text_in_editor("hello") == "hello EDITED"
+
+
+async def test_a_plugin_editor_waits_for_its_agents_frontend(tmp_path, monkeypatch):
+    seen = tmp_path / "editor-started"
+    fake_editor(tmp_path, monkeypatch, f'touch "{seen}"\nprintf " EDITED" >> "$1"\n')
+    app = TuiApp()
+    app.managed = True
+    attention = asyncio.Event()
+    app.on_attention = attention.set
+    task = asyncio.create_task(app.edit_text("hello"))
+    try:
+        await asyncio.wait_for(attention.wait(), 3)
+        assert not seen.exists() and not task.done()
+        app.view_ready.set()
+        assert await asyncio.wait_for(task, 3) == "hello EDITED"
+        assert seen.exists()
+    finally:
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_a_plugin_editor_waits_for_an_existing_approval(tmp_path, monkeypatch):
+    seen = tmp_path / "editor-started"
+    fake_editor(tmp_path, monkeypatch, f'touch "{seen}"\nprintf " EDITED" >> "$1"\n')
+    app = TuiApp()
+    app.managed = True
+    app.view_ready.set()
+    attention = asyncio.Event()
+    app.on_attention = attention.set
+    approval = asyncio.create_task(app.request_input("Approve?"))
+    editor = None
+    try:
+        await asyncio.wait_for(attention.wait(), 3)
+        attention.clear()
+        editor = asyncio.create_task(app.edit_text("hello"))
+        await asyncio.wait_for(attention.wait(), 3)
+        assert not seen.exists() and not editor.done()
+        app.resolve_input("n")
+        assert await asyncio.wait_for(approval, 3) == "n"
+        assert await asyncio.wait_for(editor, 3) == "hello EDITED"
+    finally:
+        tasks = [approval, *([editor] if editor is not None else [])]
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def test_edit_text_in_editor_leaves_input_untouched_when_editor_missing(monkeypatch):

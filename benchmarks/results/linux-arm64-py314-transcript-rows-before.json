@@ -1,0 +1,373 @@
+{
+  "revision": "4c3d07279994bb4bbe8cd90b9946a25e20c39572",
+  "environment": {
+    "system": "Linux",
+    "release": "6.8.0-111-generic",
+    "machine": "aarch64",
+    "processor": "aarch64",
+    "python": "3.14.7",
+    "implementation": "CPython",
+    "cpu_count": 8,
+    "cpu_affinity_count": 8,
+    "cpu_quota": "max 100000",
+    "packages": {
+      "Authlib": "1.7.2",
+      "Jinja2": "3.1.6",
+      "MarkupSafe": "3.0.3",
+      "PyJWT": "2.13.0",
+      "PyYAML": "6.0.3",
+      "Pygments": "2.21.0",
+      "SecretStorage": "3.5.0",
+      "Sphinx": "9.1.0",
+      "aiofile": "3.12.3",
+      "alabaster": "1.0.0",
+      "annotated-types": "0.8.0",
+      "anthropic": "1.0.0",
+      "anyio": "4.14.2",
+      "attrs": "26.1.0",
+      "babel": "2.18.0",
+      "beartype": "0.22.9",
+      "cachetools": "7.1.7",
+      "caio": "0.12.2",
+      "certifi": "2026.7.22",
+      "cffi": "2.1.1",
+      "charset-normalizer": "3.5.1",
+      "click": "8.4.2",
+      "code-symbol-index": "0.6.0",
+      "cryptography": "50.0.0",
+      "dnspython": "2.8.0",
+      "docstring_parser": "0.18.0",
+      "docutils": "0.22.4",
+      "email-validator": "2.3.0",
+      "exceptiongroup": "1.3.1",
+      "execnet": "2.1.2",
+      "fastmcp-slim": "3.4.7",
+      "h11": "0.16.0",
+      "httpcore": "1.0.9",
+      "httpcore2": "2.12.0",
+      "httpx": "0.28.1",
+      "httpx-sse": "0.4.3",
+      "httpx2": "2.12.0",
+      "idna": "3.19",
+      "imagesize": "2.0.1",
+      "iniconfig": "2.3.0",
+      "jaraco.classes": "3.4.0",
+      "jaraco.context": "6.1.2",
+      "jaraco.functools": "4.6.0",
+      "jeepney": "0.9.0",
+      "jiter": "0.16.0",
+      "joserfc": "1.7.4",
+      "json_repair": "0.63.3",
+      "jsonschema": "4.26.0",
+      "jsonschema-specifications": "2025.9.1",
+      "keyring": "25.7.0",
+      "linkify-it-py": "2.2.0",
+      "markdown-it-py": "4.2.0",
+      "mcp": "2.2.0",
+      "mcp-types": "2.2.0",
+      "mdit-py-plugins": "0.6.1",
+      "mdurl": "0.1.2",
+      "more-itertools": "11.1.0",
+      "myst-parser": "5.1.0",
+      "nodeenv": "1.10.0",
+      "openai": "3.3.1",
+      "opentelemetry-api": "1.44.0",
+      "packaging": "26.3",
+      "pathspec": "1.1.1",
+      "pillow": "12.3.0",
+      "platformdirs": "4.11.3",
+      "pluggy": "1.6.0",
+      "prompt_toolkit": "3.0.53",
+      "py-key-value-aio": "0.4.5",
+      "pycparser": "3.0",
+      "pydantic": "2.13.4",
+      "pydantic-settings": "2.15.0",
+      "pydantic_core": "2.46.4",
+      "pyright": "1.1.414",
+      "pytest": "9.1.1",
+      "pytest-asyncio": "1.4.0",
+      "pytest-xdist": "3.8.0",
+      "python-dotenv": "1.2.3",
+      "python-multipart": "0.0.32",
+      "referencing": "0.37.0",
+      "requests": "2.34.2",
+      "rich": "15.0.0",
+      "roman-numerals": "4.1.0",
+      "rpds-py": "2026.6.3",
+      "ruff": "0.16.0",
+      "sniffio": "1.3.1",
+      "snowballstemmer": "3.1.1",
+      "socksio": "1.0.0",
+      "sphinx-better-theme": "0.1.5",
+      "sphinx-copybutton": "0.5.2",
+      "sphinx_rtd_theme": "3.1.0",
+      "sphinxcontrib-applehelp": "2.0.0",
+      "sphinxcontrib-devhelp": "2.0.0",
+      "sphinxcontrib-htmlhelp": "2.1.0",
+      "sphinxcontrib-jquery": "4.1",
+      "sphinxcontrib-jsmath": "1.0.1",
+      "sphinxcontrib-qthelp": "2.0.0",
+      "sphinxcontrib-serializinghtml": "2.0.0",
+      "sse-starlette": "3.4.8",
+      "starlette": "1.6.0",
+      "tomlkit": "0.15.1",
+      "tree-sitter": "0.26.0",
+      "tree-sitter-language-pack": "1.14.3",
+      "truststore": "0.10.4",
+      "typing-inspection": "0.4.4",
+      "typing_extensions": "4.16.0",
+      "urllib3": "2.7.0",
+      "uvicorn": "0.52.4",
+      "wcwidth": "0.8.2",
+      "websockets": "17.0.1"
+    }
+  },
+  "repeat": 9,
+  "rounds": 2,
+  "workload": "benchmarks/transcript.py (300 settled tool calls at default/minimal/custom tail-3) and benchmarks/replay.py; HEAD and tree run back to back",
+  "results": {
+    "transcript": {
+      "settle_300_records_default": {
+        "rounds_median_ms": [
+          15.794,
+          16.801
+        ],
+        "samples_ms": [
+          24.208458,
+          17.506125,
+          16.794375,
+          17.100125,
+          16.999583,
+          16.801209,
+          16.670166,
+          16.322708,
+          16.620125
+        ],
+        "median_ms": 16.801,
+        "min_ms": 16.323,
+        "max_ms": 24.208,
+        "output_sha256": "1915df8ac66479dda1a846bee445886ad3c4254354e3f9a2f4cbe7ff23988c93"
+      },
+      "settle_300_records_minimal": {
+        "rounds_median_ms": [
+          16.16,
+          17.42
+        ],
+        "samples_ms": [
+          17.476083,
+          18.916167,
+          18.223375,
+          17.419583,
+          18.243334,
+          17.254959,
+          16.911375,
+          16.549667,
+          16.405541
+        ],
+        "median_ms": 17.42,
+        "min_ms": 16.406,
+        "max_ms": 18.916,
+        "output_sha256": "c286b0cfb9984b9044b2496d5679762e4a0f7e59373056a29bd63a574aa80f3b"
+      },
+      "settle_300_records_custom_tail3": {
+        "rounds_median_ms": [
+          27.693,
+          28.948
+        ],
+        "samples_ms": [
+          27.646333,
+          27.203875,
+          28.181625,
+          28.586,
+          29.466208,
+          29.425041,
+          29.400583,
+          29.668167,
+          28.948084
+        ],
+        "median_ms": 28.948,
+        "min_ms": 27.204,
+        "max_ms": 29.668,
+        "output_sha256": "28fd29e8435f72dba68cff46e97dd2d52a443779a2757509c95c951dcf98e90e"
+      }
+    },
+    "replay": {
+      "first_projection_100_blocks": {
+        "rounds_median_ms": [
+          109.885,
+          112.924
+        ],
+        "samples_ms": [
+          166.141667,
+          97.03975,
+          99.983166,
+          98.134625,
+          113.102666,
+          112.923834,
+          111.082875,
+          114.831958,
+          119.614375
+        ],
+        "median_ms": 112.924,
+        "min_ms": 97.04,
+        "max_ms": 166.142,
+        "output_sha256": "da8d23b49fc750bb7218e7750c0d4aea558a185882ce317d0608452bf90af1e6"
+      },
+      "new_width_100_blocks": {
+        "rounds_median_ms": [
+          98.811,
+          111.814
+        ],
+        "samples_ms": [
+          114.158125,
+          113.711209,
+          116.520375,
+          114.594916,
+          102.057708,
+          111.814209,
+          106.757709,
+          101.285667,
+          109.871792
+        ],
+        "median_ms": 111.814,
+        "min_ms": 101.286,
+        "max_ms": 116.52,
+        "output_sha256": "da8d23b49fc750bb7218e7750c0d4aea558a185882ce317d0608452bf90af1e6"
+      },
+      "revisited_width_100_blocks": {
+        "rounds_median_ms": [
+          0.018,
+          0.027
+        ],
+        "samples_ms": [
+          0.039459,
+          0.0335,
+          0.025375,
+          0.018916,
+          0.026666,
+          0.029208,
+          0.029333,
+          0.022625,
+          0.019875
+        ],
+        "median_ms": 0.027,
+        "min_ms": 0.019,
+        "max_ms": 0.039,
+        "output_sha256": "da8d23b49fc750bb7218e7750c0d4aea558a185882ce317d0608452bf90af1e6"
+      },
+      "append_100_blocks": {
+        "rounds_median_ms": [
+          0.609,
+          0.671
+        ],
+        "samples_ms": [
+          0.849833,
+          0.703625,
+          0.775666,
+          0.647792,
+          0.628541,
+          0.6065,
+          0.670667,
+          0.6215,
+          1.093
+        ],
+        "median_ms": 0.671,
+        "min_ms": 0.607,
+        "max_ms": 1.093,
+        "output_sha256": "ce6fd51c2a5ff7f61202443108c74c7ae393365a5b36d3ef365600c85fba2bca"
+      },
+      "append_at_5000_write_limit": {
+        "rounds_median_ms": [
+          0.862,
+          0.889
+        ],
+        "samples_ms": [
+          1.074833,
+          0.925833,
+          0.881625,
+          0.9095,
+          0.853208,
+          0.87775,
+          0.911333,
+          0.889333,
+          0.870791
+        ],
+        "median_ms": 0.889,
+        "min_ms": 0.853,
+        "max_ms": 1.075,
+        "output_sha256": "bcefe9268c4c59cbe27712aed385adeb625baf447becc9266fbbec22dc56cb5c"
+      },
+      "revisited_width_above_character_budget": {
+        "rounds_median_ms": [
+          247.493,
+          248.981
+        ],
+        "samples_ms": [
+          254.022125,
+          248.480167,
+          258.685084,
+          247.91525,
+          280.434334,
+          261.335667,
+          242.769333,
+          248.550125,
+          248.980625
+        ],
+        "median_ms": 248.981,
+        "min_ms": 242.769,
+        "max_ms": 280.434,
+        "output_sha256": "36f89f65799116133c0c221e1bc82d888fb709960bb21caa0f3c37294b01fe1c"
+      },
+      "emit_500_plain_rows": {
+        "rounds_median_ms": [
+          6.575,
+          6.436
+        ],
+        "samples_ms": [
+          6.641167,
+          6.435875,
+          6.388667,
+          6.32675,
+          6.799083,
+          6.391208,
+          6.339292,
+          6.641,
+          6.659709
+        ],
+        "median_ms": 6.436,
+        "min_ms": 6.327,
+        "max_ms": 6.799,
+        "output_sha256": "06584db11aeff7ab7aaf72ead75da84d42da7d75b7a3d4a97acd766164d959b8"
+      },
+      "two_widths_100_blocks_memory": {
+        "rounds_median_ms": [
+          null,
+          null
+        ],
+        "retained_bytes": 241313,
+        "peak_bytes": 8582475
+      },
+      "recolor_100_blocks_500_rows": {
+        "rounds_median_ms": [
+          107.463,
+          111.576
+        ],
+        "samples_ms": [
+          113.326625,
+          108.297958,
+          105.135583,
+          107.859625,
+          109.332875,
+          116.852,
+          113.733625,
+          111.5755,
+          114.102291
+        ],
+        "median_ms": 111.576,
+        "min_ms": 105.136,
+        "max_ms": 116.852,
+        "output_sha256": "6f35ce8d6efae90cc9d988c8c2591a866f6e2e5898cc5bc705ea0f521716ad73"
+      }
+    }
+  }
+}

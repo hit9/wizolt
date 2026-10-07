@@ -44,6 +44,7 @@ from wizolt.config import (
 from wizolt.providers.compat import builtin_tools_issue
 from wizolt.providers.schema import CatalogSyncError
 from wizolt.providers.sync import CATALOG_URL
+from wizolt.sdk import Line
 from wizolt.session import Session, SessionBusyError, SessionEntry, SessionLease, SessionSnapshotStore
 from wizolt.ui.cli import appearance
 from wizolt.ui.cli.agents import agents_command
@@ -87,13 +88,16 @@ SET_HANDLERS: dict[str, SetHandler] = {
     "runtime.max_subagents": ("settings", "max_subagents", lambda v: RuntimeSettings.clean_max_subagents(int(v))),
     "runtime.shell_timeout": ("settings", "shell_timeout", lambda v: max(1, int(v))),
     "runtime.bash_wait_timeout": ("settings", "bash_wait_timeout", lambda v: max(0, int(v))),
+    "runtime.bash_output_tokens": ("settings", "bash_output_tokens", lambda v: RuntimeSettings.clean_bash_output_tokens(int(v))),
     "runtime.attribution": ("settings", "attribution", lambda v: v == "on"),
+    "runtime.reactions": ("settings", "reactions", lambda v: v == "on"),
 }
 SET_KEYS = tuple(SET_HANDLERS)
 # Keys whose values are a closed set: rejected by /set when unknown, and offered whole as completions.
 SET_CHOICES: dict[str, tuple[str, ...]] = {
     "provider.stream": ("on", "off"),
     "runtime.attribution": ("on", "off"),
+    "runtime.reactions": ("on", "off"),
 }
 SET_VALUES: dict[str, tuple[str, ...]] = {
     "provider.temperature": ("off",),
@@ -102,7 +106,7 @@ SET_VALUES: dict[str, tuple[str, ...]] = {
 # fmt: on
 
 
-CommandResult = str | LogBlock | WidthDependent | None
+CommandResult = str | LogBlock | WidthDependent | list[Line] | None
 
 
 async def mcp_command(loop: CommandLoop, args: str) -> str | None:
@@ -251,7 +255,7 @@ def skills_command(loop: CommandLoop, args: str) -> str:
             "No skills installed. Add `<name>/SKILL.md` under `.wizolt/skills/`, `.agents/skills/` or `.claude/skills/` (project), "
             "or the same folders in your home directory (user)."
         )
-    parts = [f"### Skills · {len(skills)}", "", "Start one with `/name`, or point the agent at one with `$name`."]
+    parts = [f"### Skills · {len(skills)}", "", "Point the agent at one with `$name`, and it loads what the request needs."]
     if skills:
         table = markdown_table(
             ["skill", "source", "from", "description"],
@@ -364,6 +368,7 @@ def config(loop: CommandLoop, args: str) -> str:
             f"provider.response_timeout: {provider.response_timeout or '(off)'}",
             f"paths.data_dir: {loop.session.data_path()}",
             f"runtime.shell_timeout: {loop.session.settings.shell_timeout}",
+            f"runtime.bash_output_tokens: {loop.session.settings.bash_output_tokens}",
             f"runtime.max_agent_steps: {loop.session.settings.max_steps}",
             f"runtime.max_context_tokens: {loop.session.settings.max_context_tokens}",
             f"runtime.max_parallel_tools: {loop.session.settings.max_parallel_tools}",
@@ -372,6 +377,7 @@ def config(loop: CommandLoop, args: str) -> str:
             f"runtime.yolo: {'on' if loop.session.settings.yolo else 'off'}",
             f"runtime.language: {loop.session.settings.language}",
             f"runtime.attribution: {'on' if loop.session.settings.attribution else 'off'}",
+            f"runtime.reactions: {'on' if loop.session.settings.reactions else 'off'}",
             f"runtime.agents_md: {'on' if loop.session.settings.agents_md else 'off'}",
             f"compaction.provider: {loop.session.config.compaction_provider or loop.session.config.active_provider}",
             f"compaction.model: {compaction_effective.model}",
@@ -694,6 +700,7 @@ async def compact(loop: CommandLoop, args: str) -> str | LogBlock | None:
     # Imported at use: /compact is the only entry to the manual compaction stack, and that stack
     # (the Compactor, its prompts, and wizolt.model through it) is not needed for the first frame.
     from wizolt.agent.compaction import Compactor
+    from wizolt.sdk import PluginError
 
     compactor = Compactor(loop.agent.context, loop.agent.model)
     compacted, keep = compactor.parts()
@@ -715,9 +722,12 @@ async def compact(loop: CommandLoop, args: str) -> str | LogBlock | None:
         # Same pairing as the automatic path: the echo guard checks what the model is handed, and
         # the inline slice carries one message more than `compacted` does.
         sent = request[0][:-1] if request else compacted
-        data = await compactor.compact(compactor.input(compacted), *(request or ()), echo_source=compactor.echo_source(sent))
+        data = await compactor.compact(compactor.input(compacted), *(request or ()), echo_source=compactor.echo_source(sent), trigger="manual")
     except (asyncio.CancelledError, KeyboardInterrupt):
         return "Cancelled"
+    except PluginError as error:
+        # A failed plugin interceptor applies no checkpoint and no trimming fallback.
+        return f"Compaction failed: {error}"
     except Exception as error:  # noqa: BLE001 - manual compaction uses the same deterministic fallback as automatic compaction.
         loop.agent.context.apply_compaction(None, keep, fallback_note=PREVIOUS_CONTEXT_TRIMMED, compacted=compacted, trigger="manual")
         fallback = True
@@ -849,12 +859,13 @@ async def remote_models(loop: ModelSettingsHost, provider: ProviderConfig) -> tu
 
         from wizolt.model import ModelClient
 
+        resolved = loop.session.policy.resolve(provider)
         client = AsyncOpenAI(
             api_key=provider.key,
-            base_url=loop.session.policy.resolve(provider).base_url,
+            base_url=resolved.base_url,
             timeout=min(provider.timeout, 10),
             max_retries=0,
-            default_headers=ModelClient.request_headers(provider),
+            default_headers=ModelClient.request_headers(provider, resolved.headers, loop.session.uid),
         )
         try:
             page = await client.models.list()
@@ -1015,7 +1026,7 @@ class Command:
 # Dispatch, completion and queue admission share one registry.
 # fmt: off
 COMMANDS: tuple[Command, ...] = (
-    Command("/plugins", plugins_command),
+    Command("/plugins", plugins_command, queue_safe=True),
     Command("/agents", agents_command, queue_safe=True),
     Command("/status", status, queue_safe=True),
     Command("/catalog", catalog_command, queue_safe=True, render="answer"),
@@ -1049,6 +1060,8 @@ QUEUE_SAFE_COMMANDS = frozenset(command.name for command in COMMANDS if command.
 QUEUED_SUBCOMMANDS: dict[str, tuple[frozenset[str], str]] = {
     "/catalog": (frozenset({"status"}), "Only /catalog (status) is available while the agent is working."),
     "/mcp": (frozenset({"tools", "status"}), "Only read-only /mcp (status, tools) is available while the agent is working."),
+    # Bare /plugins opens the manager, which is read-only while a turn runs.
+    "/plugins": (frozenset({"list", "inspect"}), "Only read-only /plugins (list, inspect) is available while the agent is working."),
     # Trusting changes which skills the running turn can load under it.
     "/skills": (frozenset({"list"}), "Only /skills (list) is available while the agent is working."),
 }

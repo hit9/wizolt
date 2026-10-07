@@ -89,7 +89,7 @@ async def test_a_session_without_skills_keeps_its_tool_block_when_one_appears(tm
 
 
 @pytest.mark.parametrize("api", ["chat", "responses"])
-async def test_loading_and_starting_skills_only_append(tmp_path, monkeypatch, api):
+async def test_loading_and_naming_skills_only_append(tmp_path, monkeypatch, api):
     skills = tmp_path / ".wizolt" / "skills"
     _skill(skills, "guide", body="Follow the guide for $0.")
     _skill(skills, "deploy", extra="argument-hint: <env>\n", body="Deploy to $ARGUMENTS.")
@@ -102,7 +102,7 @@ async def test_loading_and_starting_skills_only_append(tmp_path, monkeypatch, ap
     )
 
     await agent.run("use the guide")
-    await agent.run("/deploy staging")
+    await agent.run("$deploy staging")
     await agent.run("remember $guide")
 
     _assert_append_only(server, api)

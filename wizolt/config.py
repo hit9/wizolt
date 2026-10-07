@@ -18,8 +18,9 @@ from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, ClassVar
 
-from wizolt.base import ConfigError, Json, builtin_function_names
+from wizolt.base import MAX_TOOL_OUTPUT_TOKENS, ConfigError, Json, builtin_function_names
 from wizolt.providers.compat import bundled_policy
+from wizolt.utils.headers import HEADER_VARIABLES, unknown_header_variables
 from wizolt.utils.workspace import Workspace
 
 if TYPE_CHECKING:
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
 
 DEFAULT_MAX_CONTEXT_TOKENS = 256 * 1024
 MAX_SUBAGENTS = 32
+MIN_BASH_OUTPUT_TOKENS = 1_000  # Below this, error tails start to lose the line that matters.
 PROVIDER_API_CHOICES = ("auto", "chat", "responses", "anthropic")
 REASONING_HISTORY_CHOICES = ("auto", "all", "current_turn", "tool_calls")
 
@@ -331,10 +333,15 @@ class RuntimeSettings:
     # Max read-only tool calls from one model batch to execute concurrently; 1 disables parallelism.
     max_parallel_tools: int = 4
     max_subagents: int = 3
+    # Tokens of a Bash result the model receives inline. Every later request re-sends it, so a
+    # lower cap saves tokens on each of them; the full output stays in a file the cut points to.
+    # Applies to new results only, so already-sent requests and the prompt cache never change.
+    bash_output_tokens: int = MAX_TOOL_OUTPUT_TOKENS
     yolo: bool = False
     theme: str = "auto"
     language: str = "auto"  # forced reply language; "auto" injects nothing (see /language)
     attribution: bool = True  # ask the model to sign the commits and PR bodies it writes
+    reactions: bool = True  # let the model react to your message with an emoji
     agents_md: bool = True  # inject global and project instructions into every request
 
     @classmethod
@@ -347,11 +354,13 @@ class RuntimeSettings:
             max_context_tokens=max(1, Config.int(runtime, "max_context_tokens", DEFAULT_MAX_CONTEXT_TOKENS)),
             max_parallel_tools=max(1, Config.int(runtime, "max_parallel_tools", 4)),
             max_subagents=cls.clean_max_subagents(Config.int(runtime, "max_subagents", 3)),
+            bash_output_tokens=cls.clean_bash_output_tokens(Config.int(runtime, "bash_output_tokens", MAX_TOOL_OUTPUT_TOKENS)),
             session_retention_days=max(0, Config.int(runtime, "session_retention_days", 7)),
             yolo=yolo or Config.bool(runtime, "yolo", False),
             theme=theme or Config.str(runtime, "theme", "auto"),
             language=RuntimeSettings.clean_language(Config.str(runtime, "language", "auto")),
             attribution=Config.bool(runtime, "attribution", True),
+            reactions=Config.bool(runtime, "reactions", True),
             agents_md=Config.bool(runtime, "agents_md", True),
         )
 
@@ -359,6 +368,12 @@ class RuntimeSettings:
     def clean_max_subagents(value: int) -> int:
         if isinstance(value, bool) or not 0 <= value <= MAX_SUBAGENTS:
             raise ConfigError(f"max_subagents must be between 0 and {MAX_SUBAGENTS}")
+        return value
+
+    @staticmethod
+    def clean_bash_output_tokens(value: int) -> int:
+        if isinstance(value, bool) or not MIN_BASH_OUTPUT_TOKENS <= value <= MAX_TOOL_OUTPUT_TOKENS:
+            raise ConfigError(f"bash_output_tokens must be between {MIN_BASH_OUTPUT_TOKENS} and {MAX_TOOL_OUTPUT_TOKENS}")
         return value
 
     @staticmethod
@@ -394,6 +409,8 @@ class Config:
     plugins: Json = field(default_factory=dict)
     # UI owns parsing and validation; config only carries the raw tables.
     ui: Json = field(default_factory=dict)
+    # The raw `[transcript]` table (record format); `wizolt.tools.transcript` validates it.
+    transcript: Json = field(default_factory=dict)
     # The provider entry compaction summaries run on: compaction_provider names
     # a base provider entry (empty = the active provider), and compaction_model/reasoning/api
     # override that entry per field (empty = inherit the entry's value). Resolved per call by
@@ -485,6 +502,7 @@ class Config:
             hooks=cls.table(data, "hooks"),
             plugins=cls.table(data, "plugins"),
             ui=cls.table(data, "ui"),
+            transcript=cls.table(data, "transcript"),
             compaction_provider=compaction_provider,
             compaction_model=compaction_model,
             compaction_reasoning=compaction_reasoning,
@@ -549,6 +567,8 @@ class Config:
             normalized = name.lower()
             if HTTP_HEADER_NAME.fullmatch(name) is None or not text.isascii() or any(ord(char) < 32 or ord(char) == 127 for char in text):
                 raise ConfigError(f"config value `{key}.{name}` must be an ASCII HTTP header name and single-line value")
+            if unknown := unknown_header_variables(text):
+                raise ConfigError(f"config value `{key}.{name}` uses unknown variable `{{{unknown[0]}}}`; known: {', '.join(sorted(HEADER_VARIABLES))}")
             if normalized in headers:
                 raise ConfigError(f"config value `{key}` contains the duplicate header `{name}`")
             headers[normalized] = text
@@ -673,7 +693,9 @@ model = ""
 # max_context_tokens = 262144      # 256K; how much of the model's window to use, not its size.
                                # Raise it for a 1M-window model; lower it for a smaller one.
 # max_agent_steps = 400
-# max_subagents = 3            # retained children across the whole group; 0 disables spawn, maximum 32
+# max_subagents = 3            # children running at once across the whole group; 0 turns subagents off, maximum 32
+# bash_output_tokens = 6000    # Bash output the model sees inline (1000-6000); later requests re-send it,
+                               # so 2000 saves tokens on each; the full output stays in a file
 # shell_timeout = 60
                                # (flipping it changes the tool block and thus the prompt-cache scope)
 # language = "auto"           # auto follows your messages and injects nothing; set a language
@@ -682,6 +704,8 @@ model = ""
                                # previews built-ins, ui.themes and <data_dir>/themes/, and saves here
 # attribution = true           # ask the model to end the commit messages and pull requests it
                                # writes with a "Generated with wizolt" line
+# reactions = true             # let the model react to your message with an emoji, shown as
+                               # "← 👍" beside it; off sends nothing about reactions
 # agents_md = true               # inject global AGENTS.md and the project's AGENTS.md files (or CLAUDE.md
                                  # fallback), repository root down to cwd, under one shared budget
 
@@ -694,6 +718,15 @@ model = ""
 # theme = "inherit"           # own colors: an existing theme name, or auto for terminal light/dark
 # [ui.divider]
 # theme = "inherit"           # line, glow and labels; /theme divider theme forest
+
+# [transcript]                # how one settled tool call prints; /theme Transcript previews it
+# format = "preset:standard"  # or one bar-format row per line: {tool} {name} {args} {marker}
+                               # {duration} {exit} {citation} {elided} {error}, {% if %};
+                               # a line of just {output|tail:N} shows the last N output lines
+# thinking = "expanded"       # reasoning while it arrives: expanded, collapsed (first line), hidden
+# close = "rule"              # a long run of silent calls: rule, blank, none
+# [transcript.tool.Bash]      # sparse per-tool override; unset tools inherit format above
+# format = "preset:minimal"
 
 # [subagent]                   # defaults for new children; approval can override each field
 # provider = "default"         # name of a configured provider entry; omitted = inherit parent

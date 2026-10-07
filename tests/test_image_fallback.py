@@ -55,7 +55,7 @@ class FallbackModel:
         self.requests = []
         self.vision_calls = []
 
-    async def request(self, messages, tools=None):
+    async def request(self, messages, tools=None, *, reason="normal"):
         self.requests.append(messages)
         outcome = next(self.outcomes)
         if isinstance(outcome, BaseException):
@@ -312,7 +312,7 @@ async def test_queued_attachment_400_commits_once_after_fallback(tmp_path):
             self.vision_calls = []
             self.step = 0
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append(messages)
             self.step += 1
             if self.step == 1:
@@ -496,7 +496,7 @@ async def test_queued_image_400_fallback_cancelled_keeps_pending_and_no_history_
             self.vision_calls = []
             self.step = 0
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append(messages)
             self.step += 1
             if self.step == 1:
@@ -539,7 +539,7 @@ async def test_queued_image_400_fallback_manual_retry_observes_once(tmp_path):
             self.vision_calls = []
             self.step = 0
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append(messages)
             self.step += 1
             if self.step == 1:
@@ -577,7 +577,7 @@ async def test_view_image_400_fallback_cancel_keeps_paid_observation(tmp_path):
             self.vision_calls = []
             self.step = 0
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append(messages)
             self.step += 1
             if self.step == 1:
@@ -610,7 +610,7 @@ async def test_queued_image_400_manual_retry_then_cancel_releases_pending(tmp_pa
             self.vision_calls = []
             self.step = 0
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append(messages)
             self.step += 1
             if self.step == 1:
@@ -644,7 +644,7 @@ async def test_queued_image_400_fallback_failure_keeps_paid_observation(tmp_path
             self.vision_calls = []
             self.step = 0
 
-        async def request(self, messages, tools=None):
+        async def request(self, messages, tools=None, *, reason="normal"):
             self.requests.append(messages)
             self.step += 1
             if self.step == 1:

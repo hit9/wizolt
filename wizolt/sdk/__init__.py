@@ -10,6 +10,7 @@ import inspect
 import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
@@ -119,6 +120,8 @@ class Context:
     viewport: Viewport = field(default_factory=Viewport)
     layout: Layout | None = None
     turn: Turn = field(default_factory=Turn)
+    data_dir: str = ""  # wizolt's data directory; a user's own plugin files live under it (`user_file_paths`).
+    config_path: str = ""  # the config file this session reads; "" when the host did not say.
 
     @classmethod
     def decode(cls, value: dict) -> Context:
@@ -173,7 +176,28 @@ Field = Callable[[Context], Value]
 Component = Callable[[Context], Panel]
 Observer = Callable[[Event], Awaitable[None]]
 Handler = Callable[[Context, Mapping[str, Any]], Awaitable[str]]
-Summarizer = Callable[[Context, str], Awaitable[str]]
+# A command answers the user, not the model, so it may answer styled rows instead of text;
+# the host colors them by their theme roles. A tool feeds the model and stays text.
+CommandHandler = Callable[[Context, Mapping[str, Any]], Awaitable[str | list[Line]]]
+# (context, operation value, next) -> result; next: async (value) -> downstream result.
+InterceptHandler = Callable[[Context, Any, Callable[[Any], Awaitable[Any]]], Awaitable[Any]]
+
+
+@dataclass(frozen=True)
+class Interceptor:
+    """Internal registration: one handler per operation, its prefilter and response mode."""
+
+    handler: InterceptHandler
+    match: Mapping[str, tuple[str, ...]]
+    response: str = ""
+
+
+@dataclass(frozen=True)
+class PresenterRegistration:
+    """Internal registration: one renderer per presentation site and its prefilter."""
+
+    handler: Callable[[Context, Any], Awaitable[Panel]]
+    match: Mapping[str, tuple[str, ...]]
 
 
 @dataclass(frozen=True)
@@ -189,7 +213,7 @@ class Action:
     """Describe an explicit operation; rendering and observation never invoke it implicitly."""
 
     description: str
-    handler: Handler
+    handler: Handler | CommandHandler
     parameters: Mapping[str, Any] = field(default_factory=lambda: {"type": "object", "properties": {}, "additionalProperties": False})
     during_turn: bool = False
 
@@ -203,13 +227,15 @@ class Plugin:
     imported module state, but have the user's filesystem/network permissions: not a sandbox.
     """
 
-    EVENTS = frozenset(("session.started", "session.finished", "turn.started", "turn.finished", "tool.started", "tool.finished", "sample"))
+    EVENTS = frozenset(("session.started", "session.finished", "turn.started", "turn.finished", "tool.started", "tool.finished", "tick"))
     SLOTS = frozenset(("above_divider", "above_input", "below_input", "status"))
     MAX_REGISTRATIONS = 64
     IDENTIFIER = r"[A-Za-z_][A-Za-z_0-9]*"
     COMMAND_NAME = r"[A-Za-z_][A-Za-z_0-9-]*"
+    FILE_NAME = r"[A-Za-z_0-9][A-Za-z_0-9.-]{0,63}"  # One file name: no directories, no leading dot.
 
     def __init__(self, name: str, config: Mapping[str, Any] | None = None):
+        from wizolt.sdk.agent import AgentFacts
         from wizolt.sdk.models import Models
         from wizolt.sdk.services import Services
         from wizolt.sdk.settings import Settings, freeze
@@ -228,20 +254,11 @@ class Plugin:
         self.presets: dict[str, dict[str, str]] = {"statusbar": {}, "divider": {}}
         self.services = Services()
         self.models = Models()
+        self.agent = AgentFacts()
         self.ui = UI()
         self._service_handles: dict[str, Service] = {}
-        self.summary_handler: Summarizer | None = None
-
-    def summarizer(self, callback: Summarizer) -> None:
-        """Supply summary text for a core-selected span; never rewrite history or plans.
-
-        Only one enabled plugin may register a summarizer. Failure falls back to built-in
-        compaction. The callback may use models/services and has the normal action deadline.
-        """
-        self._callback(callback, asynchronous=True)
-        if self.summary_handler is not None:
-            raise PluginError("A summarizer is already registered")
-        self.summary_handler = callback
+        self.interceptors: dict[str, Interceptor] = {}
+        self.presenters: dict[str, PresenterRegistration] = {}
 
     def service(self, name: str, factory: Callable[[], AbstractAsyncContextManager[Resource]]) -> Service[Resource]:
         """Register a lazy async context manager; disabling/reloading closes its resources.
@@ -276,6 +293,16 @@ class Plugin:
         it automatically or overwrites a user's existing theme choice.
         """
         self._register(self.themes, name, dict(definition), pattern=self.COMMAND_NAME)
+
+    def user_file_paths(self, context: Context, name: str) -> tuple[Path, ...]:
+        """Where a file the user writes for this plugin lives, in precedence order: the project's
+        ``.wizolt/plugins/<plugin>/<name>``, then the user's own ``<data_dir>/plugins/<plugin>/<name>``
+        (the AGENTS.md layering). Read the first that exists; write a new one to the last. Nothing
+        is read or created here."""
+        if not isinstance(name, str) or not re.fullmatch(self.FILE_NAME, name):
+            raise PluginError(f"Invalid user file name {name!r}: one plain file name")
+        bases = (Path(context.cwd, ".wizolt") if context.cwd else None, Path(context.data_dir).expanduser() if context.data_dir else None)
+        return tuple(base / "plugins" / self.name / name for base in bases if base is not None)
 
     def preset(self, kind: str, name: str, source: str) -> None:
         """Contribute a statusbar/divider format string to the existing appearance picker."""
@@ -318,7 +345,7 @@ class Plugin:
         self._callback(callback, asynchronous=False)
         self._register(self.components, slot, ComponentRegistration(callback, gap_before))
 
-    def command(self, name: str, description: str, handler: Handler, *, during_turn: bool = False) -> None:
+    def command(self, name: str, description: str, handler: CommandHandler, *, during_turn: bool = False) -> None:
         """Register ``/name``; native invocations pass raw trailing text as arguments['input'].
 
         Set during_turn only for operations safe alongside an active turn, such as changing
@@ -358,3 +385,67 @@ class Plugin:
         if sum(map(len, self.observers.values())) >= self.MAX_REGISTRATIONS:
             raise PluginError(f"At most {self.MAX_REGISTRATIONS} observers are supported")
         self.observers.setdefault(event, []).append(observer)
+
+    def presenter(self, site: str, render: Callable[[Context, Any], Awaitable[Panel]], *, match: Mapping[str, str | tuple[str, ...]] | None = None) -> None:
+        """Render one named presentation site: ``async render(context, view) -> Panel``.
+
+        Sites are ``tool.call`` (how a settled invocation is identified), ``tool.result``
+        (its result summary) and ``activity`` (what the agent is doing). One registration
+        per site. The panel replaces only that site's rows: approvals, citations, tags
+        and queue facts stay host-owned. ``match`` prefilters on read-only view fields
+        (the tool sites match on ``tool``); nonmatching calls never reach this worker.
+        A failed, slow or conflicted presenter falls back to the builtin rendering.
+        """
+        from wizolt.sdk.presentation import SITES
+
+        allowed = SITES.get(site)
+        if allowed is None:
+            raise PluginError(f"Unknown presentation site {site!r}; choose {', '.join(sorted(SITES))}")
+        self._callback(render, asynchronous=True)
+        if site in self.presenters:
+            raise PluginError(f"Duplicate presenter for {site}; compose its cases in one handler")
+        normalized: dict[str, tuple[str, ...]] = {}
+        for key, value in (match or {}).items():
+            if key not in allowed:
+                raise PluginError(f"{site} matches only {', '.join(sorted(allowed)) or 'no fields'}")
+            values = (value,) if isinstance(value, str) else tuple(value)
+            if not values or any(not isinstance(item, str) or not item for item in values):
+                raise PluginError(f"match[{key!r}] must be a name or a list of names")
+            normalized[key] = values
+        self.presenters[site] = PresenterRegistration(render, normalized)
+
+    def intercept(
+        self, operation: str, handler: InterceptHandler, *, match: Mapping[str, str | tuple[str, ...]] | None = None, response: str | None = None
+    ) -> None:
+        """Wrap a semantic operation: ``async handler(context, value, next)``.
+
+        ``await next(value)`` runs the rest of the chain and then the host; call it at most once,
+        inside the handler. Return its result, a replacement result, or a typed ``Refusal``
+        before calling it. One registration per operation: compose cases in ordinary Python.
+        ``match`` is a host-side prefilter on read-only input fields; nonmatching operations
+        never reach this worker. ``model.request`` declares ``response="preserve"`` (default:
+        route and pass the response through, keeping live streaming) or ``"replace"``.
+        """
+        from wizolt.sdk.operations import OPERATIONS
+
+        spec = OPERATIONS.get(operation)
+        if spec is None:
+            raise PluginError(f"Unknown operation {operation!r}; choose {', '.join(sorted(OPERATIONS))}")
+        self._callback(handler, asynchronous=True)
+        if operation in self.interceptors:
+            raise PluginError(f"Duplicate interceptor for {operation}; compose its cases in one handler")
+        normalized: dict[str, tuple[str, ...]] = {}
+        for key, value in (match or {}).items():
+            if key not in spec.match:
+                raise PluginError(f"{operation} matches only {', '.join(sorted(spec.match))}")
+            values = (value,) if isinstance(value, str) else tuple(value)
+            if not values or any(not isinstance(item, str) or not item for item in values):
+                raise PluginError(f"match[{key!r}] must be a name or a list of names")
+            normalized[key] = values
+        if spec.response_modes:
+            response = response or "preserve"
+            if response not in ("preserve", "replace"):
+                raise PluginError('response must be "preserve" or "replace"')
+        elif response is not None:
+            raise PluginError("response applies only to model.request")
+        self.interceptors[operation] = Interceptor(handler, normalized, response or "")

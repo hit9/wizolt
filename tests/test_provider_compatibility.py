@@ -100,6 +100,98 @@ def test_opencode_routes_grok_through_responses_and_uses_its_documented_levels()
     assert resolved.reasoning_effort == "high"
     assert reasoning_choices(provider) == ("low", "medium", "high")
 
+def test_opencode_routes_qwen_max_through_chat_and_the_rest_through_messages():
+    """Zen moved qwen3.8-max to Chat Completions while the other Qwen models stay on Messages."""
+    assert resolve(ProviderConfig(url="https://opencode.ai/zen/v1", model="qwen3.8-max")).api == "chat"
+    assert resolve(ProviderConfig(url="https://opencode.ai/zen/v1", model="qwen3.8-flash")).api == "anthropic"
+    assert resolve(ProviderConfig(url="https://opencode.ai/zen/v1", model="qwen3.7-plus")).api == "anthropic"
+
+
+GO = "https://opencode.ai/zen/go/v1"
+
+
+@pytest.mark.parametrize("url", ("https://opencode.ai/zen/v1", "https://opencode.ai/zen/gopher/v1"))
+def test_opencode_go_facts_stay_off_zen(url):
+    """Go and Zen share a domain but not a model table: only the /zen/go path is Go."""
+    assert resolve(ProviderConfig(url=url, model="minimax-m2.7")).api == "chat"
+    assert resolve(ProviderConfig(url=url, model="glm-5.3-flash", reasoning="high")).chat_reasoning == "thinking_effort"
+
+
+def test_opencode_go_follows_its_documented_wires():
+    """Go answers minimax-m2.7 on Chat with ModelProtocolUnsupported, and has withdrawn Chat for
+    Qwen models before, so every wire is the one Go documents."""
+    for model, api in (("minimax-m2.7", "anthropic"), ("minimax-m3", "anthropic"), ("qwen3.8-max", "anthropic"), ("qwen3.8-flash", "anthropic"), ("gpt-6-luna", "responses"), ("glm-5.3", "chat")):
+        assert resolve(ProviderConfig(url=GO, model=model)).api == api, model
+    assert resolve(ProviderConfig(url="https://opencode.ai/zen/v1", model="minimax-m3")).api == "chat"
+
+
+def test_opencode_go_minimax_thinking_follows_minimaxs_messages_contract(tmp_path):
+    """M3 on Messages thinks only when asked for adaptive and ignores effort; M2.x always thinks."""
+    client = ModelClient(session(tmp_path))
+    assert reasoning_choices(ProviderConfig(url=GO, model="minimax-m3")) == ("off", "high")
+    params = {}
+    client.apply_provider_params(params, ProviderConfig(url=GO, model="minimax-m3", reasoning="high"))
+    assert params["thinking"] == {"type": "adaptive"}
+    params = {}
+    client.apply_provider_params(params, ProviderConfig(url=GO, model="minimax-m3", reasoning="off"))
+    assert params == {"thinking": {"type": "disabled"}}
+
+    assert reasoning_choices(ProviderConfig(url=GO, model="minimax-m2.7")) == ("high",)
+    params = {}
+    client.apply_provider_params(params, ProviderConfig(url=GO, model="minimax-m2.7", reasoning="high"))
+    assert params == {}
+
+
+@pytest.mark.parametrize(("model", "text_only"), (("minimax-m2.7", True), ("minimax-m3", False), ("mimo-v2.5-pro", True), ("mimo-v2.5", False), ("mimo-v2.6-pro", False)))
+def test_text_only_models_are_known_before_an_image_fails(model, text_only):
+    assert resolve(ProviderConfig(url=GO, model=model)).text_only is text_only
+    assert resolve(ProviderConfig(url="https://openrouter.ai/api/v1", model=model)).text_only is text_only
+
+
+@pytest.mark.parametrize(("model", "levels"), (("glm-5.3", ("low", "high", "max")), ("glm-5.3-flash", ("low", "high", "max")), ("glm-5.2", ("high", "max"))))
+def test_opencode_go_glm_takes_reasoning_effort_alone_and_never_stops_thinking(model, levels, tmp_path):
+    """Go's glm-5.3-flash upstream rejects a `thinking` field, and its GLM models refuse to stop
+    thinking, so off is not offered and an off carried over still sends a level."""
+    client = ModelClient(session(tmp_path))
+    assert reasoning_choices(ProviderConfig(url=GO, model=model)) == levels
+    for reasoning in (*levels, "off"):
+        params = {}
+        client.apply_provider_params(params, ProviderConfig(url=GO, model=model, reasoning=reasoning))
+        assert params == {"reasoning_effort": reasoning if reasoning != "off" else levels[0]}
+
+
+@pytest.mark.parametrize("url", ("https://api.deepseek.com", GO))
+def test_deepseek_v41_flash_alias_takes_deepseek_thinking_controls(url, tmp_path):
+    client = ModelClient(session(tmp_path))
+    params = {}
+    client.apply_provider_params(params, ProviderConfig(url=url, model="deepseek-v4.1-flash", reasoning="max"))
+    assert params == {"extra_body": {"thinking": {"type": "enabled"}}, "reasoning_effort": "max"}
+    params = {}
+    client.apply_provider_params(params, ProviderConfig(url=url, model="deepseek-v4.1-flash", reasoning="off"))
+    assert params == {"extra_body": {"thinking": {"type": "disabled"}}}
+
+
+def test_opencode_routes_muse_spark_through_responses():
+    provider = ProviderConfig(url="https://opencode.ai/zen/v1", model="muse-spark-1.3")
+
+    assert resolve(provider).api == "responses"
+
+
+@pytest.mark.parametrize("url", ("https://api.commandcode.ai/provider/v1", "https://commandcode.ai/provider/v1"))
+def test_commandcode_routes_claude_through_messages_and_others_through_chat(url):
+    """One base URL multiplexes protocols by model: Claude only answers on /v1/messages, and
+    OpenAI/open models answer on the generic chat default, so no rule exists for them."""
+    assert resolve(ProviderConfig(url=url, model="claude-sonnet-4-6")).api == "anthropic"
+    assert resolve(ProviderConfig(url=url, model="deepseek/deepseek-v4-flash")).api == "chat"
+
+
+def test_commandcode_sends_no_prompt_cache_key():
+    """Command Code documents no cache-key parameter, so the routing hint stays off."""
+    provider = ProviderConfig(url="https://api.commandcode.ai/provider/v1", model="gpt-6-sol")
+
+    assert resolve(provider).prompt_cache_key is False
+
+
 @pytest.mark.parametrize(
     ("model", "reasoning", "chat_reasoning", "effort"),
     (

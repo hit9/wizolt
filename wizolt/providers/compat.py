@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
+from types import MappingProxyType
 from typing import Literal, Protocol, cast
 from urllib.parse import urlparse
 
@@ -104,6 +105,9 @@ class ResolvedProvider:
     reasoning_recipe: str = "off"
     reasoning_mandatory: bool = False
     output_max_tokens: int = 0
+    # Header templates the host needs (OpenCode routes each conversation by `{session_id}`); the
+    # client expands them, and the entry's own configured `headers` win over them.
+    headers: Mapping[str, str] = MappingProxyType({})
 
 
 @dataclass(frozen=True)
@@ -184,11 +188,22 @@ class CompatibilityResolver:
 
     # -- host matching -------------------------------------------------------
 
-    def provider_for_host(self, host: str) -> ProviderRule | None:
-        """The most specific domain overlay while respecting DNS label boundaries."""
+    def provider_for_url(self, url: str) -> ProviderRule | None:
+        """The most specific overlay for an endpoint URL, respecting DNS label and path boundaries.
 
-        matches = ((domain, provider) for domain, provider in self._host_providers.items() if host == domain or host.endswith(f".{domain}"))
-        return max(matches, key=lambda item: len(item[0]), default=("", None))[1]
+        A catalog host may carry a path prefix (`opencode.ai/zen/go`) for one domain that serves
+        two products with different model tables; the longer entry wins over the bare domain."""
+
+        parsed = urlparse(str(url).rstrip("/"))
+        host = (parsed.hostname or "").lower()
+        path = parsed.path.rstrip("/") + "/"
+
+        def matches(entry: str) -> bool:
+            domain, _, prefix = entry.partition("/")
+            return (host == domain or host.endswith(f".{domain}")) and (not prefix or path.startswith(f"/{prefix}/"))
+
+        found = ((entry, provider) for entry, provider in self._host_providers.items() if matches(entry))
+        return max(found, key=lambda item: len(item[0]), default=("", None))[1]
 
     # -- selector matching ---------------------------------------------------
 
@@ -469,9 +484,7 @@ class ProviderPolicy:
     # -- helpers shared by config/CLI/tests ---------------------------------
 
     def _provider_for(self, config: PolicyConfig | None) -> ProviderRule | None:
-        url = getattr(config, "url", "")
-        host = (urlparse(str(url).rstrip("/")).hostname or "").lower()
-        return self._resolver.provider_for_host(host)
+        return self._resolver.provider_for_url(str(getattr(config, "url", "")))
 
     def supported_efforts(self, config: PolicyConfig, model: str = "") -> tuple[str, ...]:
         """The effort levels this model accepts -- what ``/reason`` offers, and all it offers.
@@ -562,7 +575,7 @@ class ProviderPolicy:
 
         url = str(getattr(config, "url", "")).rstrip("/").removesuffix("/chat/completions").removesuffix("/responses").removesuffix("/messages")
         host = (urlparse(url).hostname or "").lower()
-        provider = self._resolver.provider_for_host(host)
+        provider = self._resolver.provider_for_url(url)
         model = str(getattr(config, "model", "")).lower()
 
         api = str(getattr(config, "api", "auto"))
@@ -649,6 +662,7 @@ class ProviderPolicy:
             reasoning_recipe=reasoning_recipe,
             reasoning_mandatory=self.reasoning_mandatory(config, model),
             output_max_tokens=output_max_tokens,
+            headers=cast(Mapping[str, str], self._resolver.field_value(provider, model, "headers") or MappingProxyType({})),
         )
 
     # -- request recipes ----------------------------------------------------

@@ -8,6 +8,14 @@ from wizolt.base import ApprovalView, Json, ToolError
 from wizolt.session import Session
 from wizolt.tools.base import Tool
 
+# How much of an answer a settled result row carries: the head, where a child's summary is. The
+# whole text is `report`'s job, and a `list` of many children would otherwise spend context the
+# model did not ask to read.
+ANSWER_HEAD = 4_000
+# Enough of the spawn task for `list` to say which child does what once compaction has dropped
+# the spawn call; `inspect` shows the task whole.
+TASK_HEAD = 200
+
 
 class SubagentTool(Tool):
     NAME = "Subagent"
@@ -15,33 +23,40 @@ class SubagentTool(Tool):
     DESCRIPTION = (
         "Run parallel agents with isolated conversations in the SAME working directory and filesystem. "
         "File changes are immediately visible to all agents; no separate worktree is created. "
-        "The limit applies to all non-archived child agents in the group, including nested and completed agents; reuse send for follow-up work. "
-        "Only main can request archive: it stops a child and its descendants, frees their slots and preserves read-only history. "
+        "Delegate concrete, independent workstreams that can run at the same time, e.g. separate code areas, competing options or independent components. "
+        "Do it yourself when steps depend on each other, the task is small, or the work would edit the same files. "
+        "Delegate only when parallel work shortens the task, or when the user asks for agents. "
+        "The limit counts child agents running at once across the group, including nested ones; a settled agent frees its slot and keeps its context, so reuse send for follow-up work. "
+        "Only main can request archive: it stops a child and its descendants, removes them from the group and preserves read-only history. "
         "archive always requires human approval, even under yolo; the approval lists the affected agents. "
         "spawn and send require user approval even under yolo; users can configure each child's model before approving spawn. "
-        "spawn returns immediately; assign disjoint file boundaries and explicit verification. "
+        "spawn returns immediately; assign disjoint file boundaries and explicit verification, "
+        "and say who may run repo-wide mutating commands (git stash/checkout/reset, whole-tree formatters): they rewrite every agent's files. "
         "The creating agent must supply a short, unique, task-based name, e.g. api-review, ui-review, or test-check; main is reserved. "
         "send steers a running agent or starts another turn in its existing context. "
         "Archived agents cannot receive input; spawn a new agent for fresh work. "
-        "Use start=false to queue without waking an idle agent. list shows state; wait returns the latest answer. "
-        "inspect reads a bounded snapshot of an active or archived agent: task, plan, recent messages, tool activity, settings and result; no approval is needed. "
+        f"Use start=false to queue without waking an idle agent. list shows each agent's state and the head of its spawn task ({TASK_HEAD} characters), not its answer. "
+        "report returns one child's latest answer whole, as plain text, live or archived; "
+        "wait rows carry each settled target's answer head (4000 characters) and a truncated flag. "
+        "inspect reads a bounded snapshot of an active or archived agent: task, plan, recent messages, tool activity, settings and result; a clipped result names report for the full text. No approval is needed. "
         "wait defaults to 180 seconds (3 minutes); choose timeout up to 600 seconds (10 minutes) for longer tasks. "
         "Omit agent_ids to wait for any of your currently running direct children; if none are running, return [] immediately. "
         "Or pass a non-empty agent_ids list to select targets, including already settled agents. "
         "wait returns all currently settled targets when any completes, fails or is interrupted, "
         "after any immediately resumed queued work also settles, "
         "or [] on timeout. Other agents keep running. Remove returned IDs before waiting again; already settled targets return immediately. "
+        'mode="all" instead returns once every target has settled; on timeout it returns every target, running ones marked running. '
         "A wait timeout does not stop the child; wait again or continue other work. "
         "Your direct children's latest settled results are reported automatically before your next model request; "
-        "this does not start a new turn. list/wait retrieves longer answer excerpts while the agent is not archived. "
-        "Do not overwrite or revert other agents' edits. Inspect the actual changes before accepting a report."
+        "this does not start a new turn. "
+        "Do not overwrite or revert other agents' edits; verify their claims against the files."
     )
 
     @classmethod
     def session_schema(cls, session: Session, strict: bool = False) -> Json:
         schema = cls.schema(strict)
         limit = session.subagents.limit if session.subagents is not None else session.settings.max_subagents
-        schema["function"]["description"] += f" Maximum retained child agents: {limit} (excluding main)."
+        schema["function"]["description"] += f" Maximum running child agents: {limit} (excluding main)."
         if session.agent_parent:
             schema["function"]["parameters"]["properties"]["action"]["enum"].remove("archive")
         return schema
@@ -86,10 +101,10 @@ class SubagentTool(Tool):
 
         return cls.object_schema(
             {
-                "action": {"type": "string", "enum": ["spawn", "send", "list", "inspect", "wait", "stop", "archive"]},
+                "action": {"type": "string", "enum": ["spawn", "send", "list", "inspect", "report", "wait", "stop", "archive"]},
                 "name": {"type": "string", "description": "Required for spawn: unique task-based name, e.g. api-review, ui-review, test-check. Never main."},
                 "message": {"type": "string", "description": "Standalone task or additional steering input"},
-                "agent_id": {"type": "string", "description": "Target for send, inspect, stop or archive"},
+                "agent_id": {"type": "string", "description": "Target for send, inspect, report, stop or archive"},
                 "agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
@@ -97,6 +112,11 @@ class SubagentTool(Tool):
                     "description": "Optional for wait: select targets explicitly; omit to wait for currently running direct children",
                 },
                 "start": {"type": "boolean", "description": "Wake an idle agent on send (default true)"},
+                "mode": {
+                    "type": "string",
+                    "enum": ["any", "all"],
+                    "description": "For wait: any (default) returns when one target settles; all returns when every target has settled",
+                },
                 "timeout": {
                     "type": "integer",
                     "minimum": 0,
@@ -119,11 +139,13 @@ class SubagentTool(Tool):
         uid = payload.get("agent_id", "")
         if action == "inspect":
             return json.dumps(await group.inspect(uid), ensure_ascii=False)
+        if action == "report":
+            return await group.report(uid)
         if action == "archive":
             scope = self._archive_scope
             targets = [{"agent_id": key, "name": entry.agent.session.agent_name, "status": "archived"} for key, entry in group.entries.items() if key in scope]
             await group.archive(uid, expected=scope)
-            return json.dumps({"archived": targets, "released_slots": len(targets)}, ensure_ascii=False)
+            return json.dumps({"archived": targets, "removed": len(targets)}, ensure_ascii=False)
         if action == "spawn":
             entry = await group.spawn(self.session, payload.get("name", ""), payload.get("message", ""), model_settings=self.approval_config())
             uid = entry.agent.session.uid
@@ -149,7 +171,7 @@ class SubagentTool(Tool):
                     return "[]"
             if isinstance(uids, list) and self.session.uid in uids:
                 raise ToolError("Cannot wait for the calling agent")
-            entries = await group.wait(uids, timeout)
+            entries = await group.wait(uids, timeout, mode=payload.get("mode", "any"))
         elif action == "stop":
             if uid == self.session.uid:
                 raise ToolError("Cannot stop the calling agent")
@@ -166,22 +188,35 @@ class SubagentTool(Tool):
             raise ToolError(f"Unknown Subagent action: {action}")
         if action != "wait":
             entries = list(group.entries.values()) if action == "list" else [group.entry(uid)]
-        rows = [
-            {
+        rows = []
+        for entry in entries:
+            row: Json = {
                 "agent_id": entry.agent.session.uid,
                 "name": entry.agent.session.agent_name,
                 "parent": entry.parent,
                 "status": entry.status,
-                "result_id": entry.result.get("result_id", "") if entry.status in {"completed", "failed", "interrupted"} else "",
                 "context_percent": entry.agent.session.usage.context_percent(entry.agent.session.state.context_percent),
                 "error": entry.error,
-                "answer": entry.answer[-12000:],
             }
-            for entry in entries
-        ]
+            if action == "list":
+                row["task"] = entry.instruction[:TASK_HEAD]
+            else:
+                # A row carries the answer -- and proof of delivery -- only when the model asked
+                # to read it; a status overview must not acknowledge a result it never showed.
+                row["result_id"] = entry.result.get("result_id", "") if entry.status in {"completed", "failed", "interrupted"} else ""
+                answer = entry.answer
+                row["answer"] = answer[:ANSWER_HEAD]
+                row["truncated"] = len(answer) > ANSWER_HEAD
+            rows.append(row)
         if action == "list":
             rows.extend(
-                {"agent_id": item["uid"], "name": item.get("name", ""), "parent": item.get("parent", ""), "status": "archived"}
+                {
+                    "agent_id": item["uid"],
+                    "name": item.get("name", ""),
+                    "parent": item.get("parent", ""),
+                    "status": "archived",
+                    "task": str(item.get("instruction", ""))[:TASK_HEAD],
+                }
                 for item in group.root.session.subagent_entries
                 if item.get("archived")
             )
@@ -192,10 +227,13 @@ class SubagentTool(Tool):
 
     def short_args(self) -> list[str]:
         payload = self.single_dict_arg("Subagent requires named fields")
-        target = payload.get("agent_ids") if payload.get("action") == "wait" else payload.get("name") or payload.get("agent_id")
+        action = payload.get("action")
+        target = payload.get("agent_ids") if action == "wait" else payload.get("name") or payload.get("agent_id")
         if isinstance(target, list):
             target = ", ".join(str(uid) for uid in target)
-        return [str(value) for value in (payload.get("action"), target) if value]
+        if action == "wait":
+            action = f"wait {payload.get('mode', 'any')}"  # The transcript says which wait it was.
+        return [str(value) for value in (action, target) if value]
 
     def always_confirms(self) -> bool:
         return self.single_dict_arg("Subagent requires named fields").get("action") in {"spawn", "send", "archive"}
@@ -207,14 +245,14 @@ class SubagentTool(Tool):
             group = self.session.subagents
             assert group is not None
             targets = [entry for key, entry in group.entries.items() if key in scope]
-            text = "Stop these agents, discard queued inputs and free their slots. Keep conversation history and file changes.\n\n"
+            text = "Stop these agents, discard queued inputs and remove them from the group. Keep conversation history and file changes.\n\n"
             text += "\n".join(f"- {entry.agent.session.agent_name}: {entry.status}" for entry in targets)
             return ApprovalView(
                 "archive agents",
                 text,
                 rows=[
                     ("target", group.entry(payload["agent_id"]).agent.session.agent_name),
-                    ("slots released", str(len(scope))),
+                    ("agents removed", str(len(scope))),
                     ("history", "kept, read-only in /agents"),
                 ],
             )

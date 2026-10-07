@@ -60,6 +60,33 @@ async def test_pruned_history_survives_a_snapshot_round_trip(tmp_path):
     assert [segment.text for segment in restored.history] == [segment.text for segment in s.history]
 
 
+async def test_compaction_rides_the_composed_prefix_the_turn_actually_sent(tmp_path):
+    """A context.compose plugin changes what the turn sends ahead of the conversation; the inline
+    compaction request has to re-send those exact bytes, or it misses the cache it exists for."""
+    live = session(tmp_path)
+    live.messages = [{"role": "user", "content": f"step {index}"} if index % 2 == 0 else {"role": "assistant", "content": "ok"} for index in range(20)]
+    plugin = tmp_path / "notes.py"
+    plugin.write_text(
+        "SDK_VERSION = 1\ndef setup(p):\n    async def h(ctx, blocks, next):\n"
+        "        return await next(blocks.add('notes', 'Release freeze is on.'))\n    p.intercept('context.compose', h)\n"
+    )
+    await live.plugins.manage("enable", str(plugin))
+    context = ContextManager(live)
+    try:
+        sent = await context.compose(live.plugins, live.system_prompt, context.model_messages(live.system_prompt), [])
+        assert "Release freeze is on." in [message["content"] for message in sent]
+        compacted, _keep = compaction.Compactor(context, _StubModel()).parts()
+        messages, _tools = compaction.Compactor(context, _StubModel()).request(compacted)
+        assert messages[:-1] == sent[: len(messages) - 1]  # Byte-identical to the composed request.
+        # The plugin is gone: the next turn sends the plain header, and so does compaction.
+        await live.plugins.manage("disable", "notes")
+        plain = await context.compose(live.plugins, live.system_prompt, context.model_messages(live.system_prompt), [])
+        messages, _tools = compaction.Compactor(context, _StubModel()).request(compacted)
+        assert messages[:-1] == plain[: len(messages) - 1]
+    finally:
+        await live.plugins.close()
+
+
 def test_compaction_reuses_the_agent_prefix_and_keeps_real_messages(tmp_path):
     """The summary request is the agent's own request truncated, with an instruction appended, so
     the provider cache already covers it -- and the compactor sees tool calls, which the flattened
@@ -152,6 +179,110 @@ def test_compaction_falls_back_to_the_flat_payload_on_a_separate_provider(tmp_pa
     live.messages = [{"role": "user", "content": "hello"}]
     live.config.compaction_provider = "cheap"
     assert compaction.Compactor(ContextManager(live), _StubModel()).request(list(live.messages)) is None
+
+
+def _long_tool_exchange() -> list:
+    """A request, then a Bash call whose result is a long log ending in the error that matters."""
+    body = "\n".join(f"collecting module_{index}.py" for index in range(400))
+    result = f"tool tr.1 Bash pytest -q\noutput:\n{body}\nFAILED tests/test_api.py::test_login - AssertionError: 401 != 200"
+    return [
+        {"role": "user", "content": "fix the login test"},
+        {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "Bash", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": result},
+        {"role": "tool", "tool_call_id": "c2", "content": "tool tr.2 Read a.py\noutput:\nshort"},
+        *({"role": "assistant", "content": f"step {index}"} for index in range(10)),
+    ]
+
+
+def test_the_flat_payload_carries_a_tool_results_head_and_tail_not_its_body(tmp_path):
+    """The summarizer keeps a result's conclusion, not its log: the key that reaches the full text
+    and the error at the end survive, the middle does not, and the stored message is untouched."""
+    live = session(tmp_path)
+    messages = _long_tool_exchange()
+    stored = json.dumps(messages)
+
+    payload = compaction.Compactor(ContextManager(live), _StubModel()).input(messages)
+
+    assert "tool tr.1 Bash pytest -q" in payload
+    assert "FAILED tests/test_api.py::test_login - AssertionError: 401 != 200" in payload
+    assert "collecting module_200.py" not in payload
+    assert "characters omitted" in payload
+    assert "tool tr.2 Read a.py\noutput:\nshort" in payload  # a short result is carried whole
+    assert json.dumps(messages) == stored
+    assert len(payload) < len(json.dumps(messages)) // 2
+
+
+def test_the_inline_request_carries_tool_results_byte_for_byte(tmp_path):
+    """The inline request rides the turn's cached prefix: trimming a result there would miss the
+    cache for the whole conversation, the very thing it exists to reuse."""
+    live = session(tmp_path)
+    live.messages = _long_tool_exchange()
+
+    built = compaction.Compactor(ContextManager(live), _StubModel()).request(list(live.messages))
+
+    assert built is not None
+    assert live.messages[2] in built[0]
+
+
+def _compact(context: ContextManager, summary: str, note: str) -> str:
+    """One compaction of a one-message span, as `Compactor.run` applies it; returns the request's
+    flattened payload, which says what the compactor was told about the earlier summaries."""
+    span = [{"role": "user", "content": note}]
+    payload = compaction.Compactor(context, _StubModel()).input(span)
+    context.apply_compaction({"summary": summary}, [], compacted=span, title=note)
+    return payload
+
+
+def test_an_earlier_summary_survives_later_compactions_as_written(tmp_path):
+    """Re-summarizing the previous summary at every compaction paraphrases old facts again each
+    time; kept as written, a compacted fact is worded once."""
+    live = session(tmp_path)
+    context = ContextManager(live)
+    _compact(context, "Directives: keep `parse_rows` signature\nOpen: tests/test_rows.py::test_empty fails", "parser bug")
+    payload = _compact(context, "Done: fixed the empty case", "verify")
+
+    assert "Earlier Summaries (kept as written: summarize only the conversation after them; do not restate them)" in payload
+    assert live.state.summaries == [
+        "[seg.1: parser bug]\nDirectives: keep `parse_rows` signature\nOpen: tests/test_rows.py::test_empty fails",
+        "[seg.2: verify]\nDone: fixed the empty case",
+    ]
+    checkpoint = live.messages[0]["content"]
+    assert "Directives: keep `parse_rows` signature\nOpen: tests/test_rows.py::test_empty fails" in checkpoint
+    assert [segment.summary for segment in live.history] == [
+        "Directives: keep `parse_rows` signature\nOpen: tests/test_rows.py::test_empty fails",
+        "Done: fixed the empty case",
+    ]
+
+
+def test_summaries_past_the_budget_are_folded_once_into_the_next(tmp_path):
+    """Kept summaries are bounded: once together they pass the budget, the next compaction is told
+    its summary replaces them, and it does -- one paraphrase per budget's worth, not per pass."""
+    live = session(tmp_path)
+    context = ContextManager(live)
+    live.state.summaries = ["x" * (AgentState.SUMMARY_FOLD_CHARS // 2), "y" * (AgentState.SUMMARY_FOLD_CHARS // 2 + 1)]
+
+    payload = _compact(context, "Done: everything so far, compressed", "fold")
+
+    assert "Earlier Summaries (your summary replaces these: carry forward what still matters, compressed hard)" in payload
+    assert live.state.summaries == ["[seg.1: fold]\nDone: everything so far, compressed"]
+    assert not live.state.fold_due()
+
+
+async def test_kept_summaries_survive_a_snapshot_and_a_legacy_summary_is_the_oldest(tmp_path):
+    from wizolt.session import SessionSnapshotStore
+    from wizolt.session.codec import SessionSnapshotCodec
+
+    # A snapshot written before summaries were kept one per compaction carries one rolling string.
+    assert SessionSnapshotCodec.agent_state({"goal": "g", "summary": "rolling summary from before"}).summaries == ["rolling summary from before"]
+
+    live = session(tmp_path)
+    ContextManager(live).apply_compaction({"summary": "first"}, [], compacted=[{"role": "user", "content": "one"}], title="one")
+    ContextManager(live).apply_compaction({"summary": "second"}, [], compacted=[{"role": "user", "content": "two"}], title="two")
+    await live.save_snapshot()
+    live.close()
+
+    restored = SessionSnapshotStore.load(live.uid, live.config, live.settings, cwd=live.cwd)
+    assert restored.state.summaries == ["[seg.1: one]\nfirst", "[seg.2: two]\nsecond"]
 
 
 def test_compaction_leaves_tool_choice_exactly_as_an_ordinary_request_sets_it(tmp_path):

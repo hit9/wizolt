@@ -386,7 +386,7 @@ class AgentsFrontend:
                         loop,
                         f"Archive {name} and its children?",
                         ("archive", "back"),
-                        labels={"archive": "Stop work and free slots; keep history", "back": "Back"},
+                        labels={"archive": "Stop work and remove from the group; keep history", "back": "Back"},
                         current="back",
                     )
                     == "archive"

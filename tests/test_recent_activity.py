@@ -100,6 +100,61 @@ async def test_checkpoints_freeze_activity_and_resume_preserves_the_bounded_wind
     assert s.messages == first
 
 
+def _calls(*calls: tuple[str, dict]) -> dict:
+    """An assistant message making these tool calls, stored as the provider sent them."""
+    return {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+            {"id": f"c{index}", "type": "function", "function": {"name": name, "arguments": json.dumps(args)}} for index, (name, args) in enumerate(calls)
+        ],
+    }
+
+
+async def test_compacted_reads_reach_every_later_checkpoint_verbatim(tmp_path):
+    """A summary may drop a file the span only consulted; the path is what a later read needs,
+    so the host records it, word for word, and carries it past the next compaction and a resume."""
+    s = session(tmp_path)
+    ctx = ContextManager(s)
+    first_span = [
+        {"role": "user", "content": "find the login bug"},
+        _calls(("Read", {"path": "src/auth/login.py"}), ("Read", {"files": [{"path": "src/auth/view.12.py"}, {"path": "src/db/users.py"}]})),
+        _calls(("Edit", {"path": "src/db/users.py", "edits": []}), ("Read", {"path": "src/auth/login.py"})),
+    ]
+    ctx.apply_compaction({"summary": "first"}, [], compacted=first_span)
+
+    checkpoint = s.messages[0]["content"]
+    assert "Files read in compacted history:" in checkpoint
+    assert '"src/auth/login.py"' in checkpoint and checkpoint.count('"src/auth/login.py"') == 1
+    assert '"src/auth/view\\u002e12.py"' in checkpoint  # the id-shaped name keeps its escaped dot
+    # Edited in the same span: a file the span changed is not one it merely read.
+    assert '"src/db/users.py"' not in checkpoint.split("Files read in compacted history:")[1].split("\n\n")[0]
+
+    await s.save_snapshot()
+    restored = SessionSnapshotStore.load(s.uid, s.config, s.settings, cwd=s.cwd)
+    assert restored.history[-1].files_read == ["src/auth/login.py", "src/auth/view.12.py"]
+    ContextManager(restored).apply_compaction({"summary": "second"}, [], compacted=[{"role": "user", "content": "go on"}, _calls(("Read", {"path": "README.md"}))])
+    later = restored.messages[0]["content"]
+    assert later.index('"src/auth/login.py"') < later.index('"README.md"')  # oldest first, as every list here
+    assert ContextManager.files_read([_calls(*(("Read", {"path": f"f{index}.py"}) for index in range(30)))]) == [f"f{index}.py" for index in range(10, 30)]
+
+
+def test_long_read_paths_never_clip_away_command_results_or_failures(tmp_path):
+    """The activity block is clipped from its end; consulted paths are the least of it, so twenty
+    long ones are what the clip takes, never an exit code or a failure."""
+    s = session(tmp_path)
+    for index in range(10):
+        s.record_command_result(f"pytest -q tests/{'long_' * 30}{index}.py", index)
+    s.record_tool_error("tr.9", "Edit", ["a.py"], "ToolError: old text not found")
+    long_reads = [_calls(*(("Read", {"path": f"src/{'deep/' * 50}file{index}.py"}) for index in range(20)))]
+    ContextManager(s).apply_compaction({"summary": "s"}, [], compacted=[{"role": "user", "content": "go"}, *long_reads])
+
+    activity = s.recent_activity()
+    assert "[activity clipped]" in activity
+    assert f"tests/{'long_' * 30}9.py" in activity and "exit code 9" in activity
+    assert "old text not found" in activity
+
+
 def test_activity_is_bounded_and_compactor_receives_it_even_for_fallback(tmp_path):
     s = session(tmp_path)
     for i in range(30):

@@ -198,3 +198,35 @@ def test_ui_batched_passthrough_when_plain():
         ui.emit("one")
         ui.emit("two")
     assert calls == ["one", "two"]
+
+
+def test_a_styled_report_frames_rows_and_keeps_theme_roles():
+    from prompt_toolkit.utils import get_cwidth
+
+    from wizolt.sdk import Line, Text
+    from wizolt.ui.render import StyledReport
+
+    report = StyledReport(
+        [
+            Line((Text("OpenCode Go", "accent"),)),
+            Line((Text("! weekly  90%", "warning"), Text("  resets in 2d", "muted"))),
+            Line(),  # the blank row between providers
+            Line((Text("DeepSeek API", "accent"),)),
+        ]
+    )
+    rows = report.text(84).splitlines()
+    outer = 82  # the frame's width inside the content margin, as /status draws its own
+    assert rows[0] == StyledReport.MARGIN + "╭" + "─" * (outer - 2) + "╮"
+    assert rows[1] == StyledReport.MARGIN + "│ " + "OpenCode Go".ljust(outer - 4) + " │"
+    assert rows[2] == StyledReport.MARGIN + "│ " + "! weekly  90%  resets in 2d".ljust(outer - 4) + " │"
+    assert rows[3] == StyledReport.MARGIN + "│ " + "".ljust(outer - 4) + " │"
+    assert rows[4] == StyledReport.MARGIN + "│ " + "DeepSeek API".ljust(outer - 4) + " │"
+    assert rows[5] == StyledReport.MARGIN + "╰" + "─" * (outer - 2) + "╯"
+    assert all(get_cwidth(row) == len(StyledReport.MARGIN) + outer for row in rows)
+    # An unknown role renders as plain text; a row wider than the frame is clipped.
+    styles = [style for style, _ in report.fragments(84)]
+    from wizolt.ui.render import Theme
+
+    assert Theme.fg("accent") in styles and Theme.fg("warning") in styles and Theme.fg("muted") in styles
+    wide = StyledReport([Line((Text("x" * 200, "accent"),))])
+    assert all(get_cwidth(row) == len(StyledReport.MARGIN) + 28 for row in wide.text(30).splitlines()[1:2])

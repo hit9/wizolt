@@ -20,8 +20,8 @@ from prompt_toolkit.utils import get_cwidth
 
 from wizolt.base import LogBlock, ModelUsage, Text, TextFragments, TextRows, TurnBox
 from wizolt.config import compaction_provider_config
+from wizolt.formats import clip
 from wizolt.sdk import Panel
-from wizolt.ui.bars import clip
 from wizolt.ui.cli.modals import picker_height
 from wizolt.ui.cli.update import UpdateChecker
 from wizolt.ui.render import Theme, UiPrinter, WidthDependent
@@ -209,7 +209,7 @@ def activity_rows(loop: CommandLoop) -> tuple[Row, ...]:
         counts = group.counts
         if counts.total > 1:
             rows += [Row("group agents", str(counts.total)), Row("group running", str(counts.running)), Row("group waiting", str(counts.waiting))]
-        rows.append(Row("group subagents", f"{len(group.entries) - 1}/{group.limit}"))
+        rows.append(Row("group subagents", f"{group.active}/{group.limit} running" if group.limit else "off"))
     return tuple(rows)
 
 
@@ -265,6 +265,7 @@ class StatusTabs:
         if not (snapshot.goal or snapshot.plan or snapshot.known or snapshot.check):
             return [[words("No plan yet. The agent writes its goal, steps and checks here as it works.")]]
         entries = [Entry("goal", text(snapshot.goal) if snapshot.goal else [words("none yet")])]
+        steps: list[Entry] = []
         if snapshot.plan:
             counts = {status: sum(step == status for step, _ in snapshot.plan) for status in STEP_MARKS}
             summary = [figure(str(counts["done"])), words(f" of {len(snapshot.plan)} done")]
@@ -280,11 +281,13 @@ class StatusTabs:
             for index, (status, step) in enumerate(snapshot.plan):
                 mark, role = STEP_MARKS.get(status, STEP_MARKS["todo"])
                 # Finished steps recede; the live and blocked ones keep full weight.
-                entries.append(Entry("plan" if index == 0 else "", [(Theme.fg(role), mark + " "), (Theme.fg("muted" if status == "done" else "text"), step)]))
-        entries += [Entry("known" if index == 0 else "", [words("• "), *text(fact)]) for index, fact in enumerate(snapshot.known)]
-        if snapshot.check:
-            entries.append(Entry("check", text(snapshot.check)))
-        return table([("", entries)], width, self.column)
+                steps.append(
+                    Entry("plan" if index == 0 else "", [(Theme.fg("muted" if status == "done" else "text"), step)], marker=((Theme.fg(role), mark + " "),))
+                )
+        known = [Entry("known" if index == 0 else "", text(fact), marker=(words("• "),)) for index, fact in enumerate(snapshot.known)]
+        check = [Entry("check", text(snapshot.check))] if snapshot.check else []
+        # The goal and its tally, the steps, what is known, then the check: a blank row parts each.
+        return table([("", group) for group in (entries, steps, known, check) if group], width, self.column)
 
     def overview(self, width: int) -> TextRows:
         """What most visits want: who, on what, how full, how much so far."""
@@ -316,12 +319,13 @@ class StatusTabs:
         cells = min(OVERVIEW_METER, width - self.column - 1 - width_of(reading))
         filled = round(min(100, context.percent) * cells / 100)
         meter = [(Theme.fg(context.level), "█" * filled), (Theme.fg("subtle"), "░" * (cells - filled))]
-        entries += [Entry("context", [*meter, ("", " "), *reading] if cells >= 6 else reading), Entry("usage", self.traffic())]
+        # Who and on what, then how much: a blank row parts the two.
+        measures = [Entry("context", [*meter, ("", " "), *reading] if cells >= 6 else reading), Entry("usage", self.traffic())]
         if (group := snapshot.group) is not None:
             agents = [figure(str(group.total)), words(" · "), figure(str(group.running), "accent"), words(" running · ")]
             agents += [figure(str(group.waiting), "warning" if group.waiting else NUMBER_ROLE), words(" waiting")]
-            entries.append(Entry("agents", agents))
-        return table([("", entries)], width, self.column)
+            measures.append(Entry("agents", agents))
+        return table([("", entries), ("", measures)], width, self.column)
 
     def traffic(self) -> TextFragments:
         """The usage totals in one line: counts, then the share served from cache."""
@@ -378,7 +382,12 @@ class StatusTabs:
     def session(self, width: int) -> TextRows:
         from wizolt.ui.cli.plugins import PluginView
 
-        rows = table([self.snapshot.configuration.entries()], width, self.column)
+        # Where this session lives, how it behaves, then where to read more: a blank row parts each.
+        _, entries = self.snapshot.configuration.entries()
+        where = [entry for entry in entries if entry.label in {"workspace", "session", "parent"}]
+        about = [entry for entry in entries if entry.label in {"update", "docs"}]
+        behavior = [entry for entry in entries if entry not in where and entry not in about]
+        rows = table([("", group) for group in (where, behavior, about) if group], width, self.column)
         if self.snapshot.plugins:
             rows += [[], [(Theme.fg("accent"), "Plugins")]]
             for panel in self.snapshot.plugins:
@@ -419,6 +428,9 @@ class Entry(NamedTuple):
     label: str
     value: TextFragments
     numeric: bool = False
+    # A list item's marker ("• ", "✓ "): it leads the first row, and the value's wrapped rows
+    # hang past it, so an item that wraps still reads as one item.
+    marker: tuple[tuple[str, str], ...] = ()
 
 
 Group = tuple[str, Sequence[Entry]]  # a heading ("" for none) and its entries
@@ -457,29 +469,38 @@ def table(groups: Sequence[Group], width: int, column: int = 0) -> TextRows:
             rows.append([(Theme.fg("text", "bold"), heading)])
         for entry in group:
             value = [("", " " * (number - width_of(entry.value))), *entry.value] if entry.numeric else entry.value
-            rows += Text.wrap_styled([(Theme.fg("muted"), entry.label.ljust(column))], [("", " " * column)], value, width)
+            label = [(Theme.fg("muted"), entry.label.ljust(column)), *entry.marker]
+            rows += Text.wrap_styled(label, [("", " " * (column + width_of(list(entry.marker))))], value, width)
     return rows
 
 
-def frame(body: TextRows, width: int, *, footer: str = "") -> TextRows:
-    """`body` inside the report's border, `width` columns in all; `footer` sits in the bottom edge."""
+def inner_width(width: int) -> int:
+    """The columns rows get inside a frame `width` wide: its borders and their padding take six."""
+    return max(1, width - 6)
+
+
+def frame(body: TextRows, width: int, *, footer: str = "", padded: bool = True) -> TextRows:
+    """`body` inside the report's border, `width` columns in all; `footer` sits in the bottom edge.
+
+    A blank row inside each edge (`padded`) and two spaces beside each border keep the rows off
+    the frame; a pane too short for the padding rows goes without them rather than lose rows."""
     # A structure line, not an accent: quiet like the keys in its own edge, so color stays on the
     # tabs and the values.
     border = Theme.fg("muted")
-    inside = max(1, width - 4)
+    inside = inner_width(width)
     rows: TextRows = [[(border, "╭" + "─" * (width - 2) + "╮")]]
-    for row in body:
+    for row in [[], *body, []] if padded else body:
         row = clip(row, inside)
-        rows.append([(border, "│ "), *row, ("", " " * max(0, inside - width_of(row))), (border, " │")])
+        rows.append([(border, "│  "), *row, ("", " " * max(0, inside - width_of(row))), (border, "  │")])
     keys = f" {Text.clip_width(footer, width - 6)} " if footer else ""
     rows.append([(border, "╰" + "─" * max(0, width - 3 - get_cwidth(keys))), (Theme.fg("muted"), keys), (border, "─╯")])
     return rows
 
 
 def frame_width(width: int) -> int:
-    """The frame's columns for `width` available ones: its borders and padding take four, so it
+    """The frame's columns for `width` available ones: its borders and padding take six, so it
     keeps one cell inside however narrow the pane, and never outgrows what it is given."""
-    return max(5, min(width, FRAME_WIDTH))
+    return max(7, min(width, FRAME_WIDTH))
 
 
 @dataclass(frozen=True)
@@ -504,7 +525,7 @@ class StatusReport(WidthDependent):
         for tab in TABS:
             if body:  # Overview needs no heading: it opens the report
                 body += [[], [(Theme.fg("accent", "bold"), tab)]]
-            body += tabs.rows(tab, outer - 4)
+            body += tabs.rows(tab, inner_width(outer))
         return [fragment for row in frame(body, outer) for fragment in (("", self.MARGIN), *row, ("", "\n"))]
 
 
@@ -531,15 +552,18 @@ class StatusView:
     def fragments(self) -> StyleAndTextTuples:
         width, height = self.size()
         outer = frame_width(width - 2)
-        inside = outer - 4
+        inside = inner_width(outer)
         tallest = max(len(self.tabs.rows(tab, inside)) for tab in TABS)
-        # Two rows are the frame's edges, two the tab row and the gap beneath it.
-        room = max(1, min(tallest, height - 4))
+        # Two rows are the frame's edges, two the tab row and the gap beneath it, and two the
+        # padding inside the edges -- kept only while the tallest tab still fits beside them: a
+        # short pane spends its rows on content and on the edge that names the keys.
+        padded = tallest + 6 <= height
+        room = max(1, min(tallest, height - (6 if padded else 4)))
         rows = self.tabs.rows(TABS[self.state.tab], inside)
         self.state.scroll = min(self.state.scroll, max(0, len(rows) - room))
         visible = rows[self.state.scroll : self.state.scroll + room]
         body = [UiPrinter.tab_segments(TABS, self.state.tab), [], *visible, *([[]] * (room - len(visible)))]
-        return [fragment for row in frame(body, outer, footer=KEYS) for fragment in (("", "  "), *row, ("", "\n"))]
+        return [fragment for row in frame(body, outer, footer=KEYS, padded=padded) for fragment in (("", "  "), *row, ("", "\n"))]
 
     def handle_key(self, key: str, data: str = "") -> Any:
         if key in {"escape", "q", "c-c", "enter"}:

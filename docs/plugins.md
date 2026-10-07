@@ -81,14 +81,88 @@ viewer. Your input draft remains intact when you return.
 Ask the agent to manage shortcuts through the built-in **layout** plugin. Bindings survive
 restarts and become inactive when their plugin is disabled.
 
+### Change how a step works
+
+Plugins can step into what you send, the model requests, tool calls and summaries:
+
+> When my message starts with `fix:`, expand it into my usual bug-fix checklist. Keep what I
+> typed in my history.
+
+> Send image descriptions and summaries to my cheaper `[provider.fast]` model.
+
+> Before any Bash command that deletes files, show me the command and ask first.
+
+> Add my project's open decisions from `DECISIONS.md` to every request.
+
+> Summarize with my local model when the conversation is compacted.
+
+wizolt's own checks still apply: a rewritten tool call still asks for approval, and your history
+keeps what you typed. Adding text to every request costs tokens on each turn and can reduce
+provider cache reuse. A plugin that calls a model is billed like any other request.
+
+If such a plugin breaks, the step it wraps stops with an error naming it, rather than quietly
+skipping it. Disable or reload it in `/plugins` to continue. When two plugins wrap the same
+step, the first in `wizolt plugin order list` runs first; ask the agent to reorder them.
+
+### Redraw tool results and activity
+
+> Show Bash results as the command plus the first line of output, green when it passed.
+
+> Replace the running-reply preview with a one-line status: current tool and elapsed time.
+
+A plugin can redraw a finished tool call, its result summary, or the activity line while the
+agent works. Approvals and the stored-result key (`tr.N`) stay wizolt's. If two plugins want
+the same spot, wizolt keeps its own drawing until you pick one with
+`wizolt plugin presenter choose`. A slow or failing redraw falls back to wizolt's.
+
 ## Try the built-in pet
 
-Open `/plugins`, select **pet**, then **enable**. A small cat reacts to the agent above your
-input. It starts disabled and makes no model calls.
+Open `/plugins`, select **pet**, then **enable**. A rainbow pet strolls along your prompt line
+while the agent works and rests when it stops. Type `/pet` to choose a cat, bear, owl, bunny,
+fish or robot; your choice is saved. It starts disabled and makes no model calls.
 
-![The pet working, waiting for input and resting.](_static/plugins-pet.svg)
+![The pet working, waiting for input and finishing.](_static/plugins-pet.svg)
 
 > Move @plugin:pet above the divider and reload it.
+
+## The built-in context bar
+
+Enable **context_bar** in `/plugins` to see what fills your context window above the input: one
+colored segment per category, in the order the request carries them (tools, system prompt,
+memory files, skills, MCP servers, the summary compaction left, messages), the same percentage
+as the status bar's `ctx` at the end, and a legend with token counts. In a short terminal only
+the bar remains. It makes no model calls.
+
+## Check your provider usage
+
+Enable **usage** in `/plugins`, then type `/usage`: one section for every configured provider
+that offers a usage or balance API — OpenCode Go, DeepSeek, Kimi (Moonshot), z.ai, Synthetic
+and Command Code. Usage windows show as percentages with their reset times; balances show as
+amounts; the report prints in a themed frame like `/status`, one blank row between providers.
+Providers are matched by their API domain (a port spelled out in the url still matches), so
+any entry name works; two entries of one provider that share their url and key are one
+account — asked once, with every entry name in the title. Each run makes one or two requests
+per provider, with that provider's configured key; a provider that fails prints one `error:`
+line and the rest still report. It answers while an agent turn is still working, so there is
+no need to interrupt the turn for it. It starts disabled, writes nothing and makes no model
+calls.
+
+## Choose the model's tools
+
+Enable **tool_visibility** in `/plugins`, then type `/tools`: each tool is listed with what it
+does. Uncheck the built-in tools you never want the model to use, and check a plugin's tool to
+offer it to the model directly instead of only through `Plugin`. Your choice is saved and applies from the next turn. A change
+costs the provider cache once; after that each request offers the same tools again.
+
+## Write your own system prompt
+
+Enable **system_prompt** in `/plugins` and type `/prompt` to read the system prompt exactly as it
+is sent: the instructions, then each line a setting adds (language, attribution, reactions) under
+a gray rule naming that setting. Press `e` to edit the instructions in your editor. Save a change
+and it replaces them from the next request; the settings' lines stay, and only their settings
+turn them off. Nothing is written until you save. Your file is
+`~/.wizolt/plugins/system_prompt/system.md`; a copy in a project's
+`.wizolt/plugins/system_prompt/` applies there instead. Delete it to return to wizolt's prompt.
 
 ## Arrange your space
 
@@ -116,10 +190,14 @@ The list shows its source (`builtin` or `user`), whether it is enabled, and its 
 | --- | --- |
 | Enable / Disable | Turn it on or off across projects |
 | Reload | Apply its latest code and settings |
-| Rollback | Restore the previous loaded version |
 
-Changes can show **pending** during a turn or while that plugin's command is running.
-Commands in other plugins do not hold up the update. A failed update or
+To undo a change, restore the earlier source from Git and reload; wizolt keeps no old versions.
+If you delete a plugin's `[plugin_manager.installations.NAME]` table from `config.toml`, the next
+reload stops it in running agents too.
+
+The state is **running**, **failed** or **off**. During a turn, or while that plugin's command
+is running, a change waits and shows what it waits to do: **starting**, **reloading** or
+**stopping**. Commands in other plugins do not hold up the update. A failed update or
 settings save leaves the current plugin unchanged. You can ask the agent to manage it too:
 
 > Update @plugin:pet, preview the change, then reload it. Keep its source in its own Git

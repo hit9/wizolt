@@ -34,6 +34,22 @@ def test_detail_sheet_wraps_every_section_and_reaches_the_end(monkeypatch, lexer
     assert sheet.handle_key("c-o", "") is None
 
 
+def test_detail_sheet_parts_follow_the_text_under_gray_labelled_rules(monkeypatch):
+    monkeypatch.setattr("shutil.get_terminal_size", lambda fallback: os.terminal_size((40, 40)))
+    sheet = DetailSheet(UiPrinter(), ApprovalView("prompt", "BASE", "text", parts=(("added by runtime.reactions", "REACTIONS block"),)))
+
+    rows = "".join(fragment[1] for fragment in sheet.fragments()).splitlines()
+    rule = next(fragment for fragment in sheet.fragments() if "added by runtime.reactions" in fragment[1])
+
+    # Inside the frame, after the text and before the part, drawn in the frame's own gray.
+    assert "class:detail.border" in rule[0] and rule[1].startswith("── added by runtime.reactions ─")
+    assert [index for index, row in enumerate(rows) if "BASE" in row] < [index for index, row in enumerate(rows) if "runtime.reactions" in row]
+    at = rows.index(next(row for row in rows if "runtime.reactions" in row))
+    # A blank frame row on each side parts the rule from the text above and the part below.
+    assert rows[at - 1].strip(" │") == "" and rows[at + 1].strip(" │") == "" and "REACTIONS block" in rows[at + 2]
+    assert all(get_cwidth(row) <= 40 for row in rows)
+
+
 def test_detail_sheet_code_surface_does_not_color_plain_output(monkeypatch):
     monkeypatch.setattr("shutil.get_terminal_size", lambda fallback: os.terminal_size((80, 40)))
     sheet = DetailSheet(UiPrinter(), ApprovalView("command", "echo hello", "bash", result="OUTPUT"))

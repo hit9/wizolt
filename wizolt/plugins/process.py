@@ -13,11 +13,13 @@ import json
 import os
 import signal
 import sys
+from collections.abc import Callable
 from typing import Any
 
-from wizolt.plugins.hostcalls import HostCalls, RequestDeadline
+from wizolt.plugins.hostcalls import Continuations, HostCalls, RequestDeadline
 from wizolt.plugins.loading import PluginSource
 from wizolt.plugins.protocol import MAX_FRAME, MAX_REQUEST
+from wizolt.plugins.scope import InvocationScope
 from wizolt.sdk import PluginError
 
 
@@ -35,6 +37,10 @@ class WorkerError(PluginError):
         return {key: value[-limit:] for key, value, limit in (("traceback", traceback, 4000), ("log", log, 2000)) if value.strip()}
 
 
+class FrameLimitError(PluginError):
+    """The host could not send a request: the plugin never saw it, so it is not the plugin's fault."""
+
+
 class PluginProcess:
     def __init__(self, process: asyncio.subprocess.Process):
         self.process = process
@@ -42,10 +48,14 @@ class PluginProcess:
         self.operations: dict[int, str] = {}
         self.host_calls = HostCalls(self._write, self.admits_host_call)
         self.deadlines: dict[int, RequestDeadline] = {}
+        self.scopes: dict[int, InvocationScope] = {}
         self.host_calls.suspend = lambda identity: self.deadlines[identity].pause()
-        self.host_calls.interactive = lambda identity: self.operations.get(identity) == "invoke"
+        self.host_calls.permits = self.permits
+        self.host_calls.scope_of = self.scopes.get
+        self.continuations = Continuations(self._write, lambda identity: self.operations.get(identity, "").startswith("intercept:"))
+        self.continuations.suspend = lambda identity: self.deadlines[identity].pause()
         self.sequence = 0
-        self.stderr = ""
+        self._stderr = b""
         self.error = ""
         self.traceback = ""
         self.reader = asyncio.create_task(self._read())
@@ -55,7 +65,20 @@ class PluginProcess:
 
     def admits_host_call(self, identity: int) -> bool:
         future = self.pending.get(identity)
-        return future is not None and not future.done() and self.operations.get(identity) in ("invoke", "compact")
+        operation = self.operations.get(identity, "")
+        return future is not None and not future.done() and (operation == "invoke" or operation.startswith("intercept:"))
+
+    # Views and notices: explicit actions, and the two interceptors that act for the user.
+    INTERACTIVE = frozenset({"invoke", "intercept:prompt.submit", "intercept:tool.call"})
+
+    def permits(self, identity: int, service: str) -> bool:
+        """Per-operation service permissions. Settings and layout writes stay explicit-action only."""
+        operation = self.operations.get(identity, "")
+        if service.startswith(("settings.", "ui.components.", "ui.shortcuts.")):
+            return operation == "invoke"
+        if service.startswith("ui."):
+            return operation in self.INTERACTIVE
+        return True
 
     @classmethod
     async def start(
@@ -97,16 +120,24 @@ class PluginProcess:
             raise PluginError(self.error or "Plugin process is closed")
         frame = json.dumps(value, ensure_ascii=True, allow_nan=False).encode() + b"\n"
         if len(frame) > MAX_REQUEST:
-            raise PluginError("Plugin request exceeds protocol frame limit")
+            raise FrameLimitError("Plugin request exceeds protocol frame limit")
         self.process.stdin.write(frame)
 
-    async def request(self, operation: str, *, timeout: float = 2, **parameters: Any) -> Any:
+    async def request(
+        self, operation: str, *, timeout: float = 2, scope: InvocationScope | None = None, on_start: Callable[[int], None] | None = None, **parameters: Any
+    ) -> Any:
+        """One worker call. ``scope`` is restored around its host-service calls; ``on_start``
+        learns the request identity before the frame is sent (continuation tokens bind to it)."""
         self.sequence += 1
         identity = self.sequence
         future = asyncio.get_running_loop().create_future()
         self.pending[identity] = future
-        self.operations[identity] = operation
+        self.operations[identity] = f"intercept:{parameters.get('name')}" if operation == "intercept" else operation
+        if scope is not None:
+            self.scopes[identity] = scope
         deadline = self.deadlines[identity] = RequestDeadline(timeout)
+        if on_start is not None:
+            on_start(identity)
         try:
             self._write({"id": identity, "operation": operation, **parameters})
             # wait(), not shield(): the future must outlive a cancel to receive the worker's
@@ -136,7 +167,9 @@ class PluginProcess:
             self.pending.pop(identity, None)
             self.operations.pop(identity, None)
             await self.host_calls.cancel(identity)
+            await self.continuations.cancel(identity)
             self.deadlines.pop(identity, None)
+            self.scopes.pop(identity, None)
             if future.done() and not future.cancelled():
                 future.exception()
             elif not future.done():
@@ -149,6 +182,9 @@ class PluginProcess:
                 message = json.loads(line)
                 if "service_id" in message:
                     self.host_calls.dispatch(message)
+                    continue
+                if "continue" in message:
+                    self.continuations.dispatch(message)
                     continue
                 future = self.pending.get(message["id"])
                 if future is None or future.done():
@@ -166,16 +202,32 @@ class PluginProcess:
                 if not future.done():
                     future.set_exception(PluginError(self.error))
             await self.host_calls.cancel()
+            await self.continuations.cancel()
+
+    @property
+    def stderr(self) -> str:
+        return self._stderr.decode(errors="replace")
 
     async def _drain_errors(self) -> None:
+        """Keep a bounded tail, draining at a bounded rate.
+
+        Draining prevents print deadlocks, but a plugin printing in a tight loop made the host
+        spend a whole core copying its output. Pacing each read by its size caps the drain at
+        STDERR_RATE: beyond it the pipe fills and the flood blocks only the plugin's own writes.
+        A line of ordinary logging costs microseconds of pacing.
+        """
         assert self.process.stderr is not None
-        while chunk := await self.process.stderr.read(4096):
-            self.stderr = (self.stderr + chunk.decode(errors="replace"))[-8192:]
+        while chunk := await self.process.stderr.read(64 * 1024):
+            self._stderr = (self._stderr + chunk)[-8192:]
+            await asyncio.sleep(len(chunk) / self.STDERR_RATE)
+
+    STDERR_RATE = 8 * 1024 * 1024  # Bytes per second.
 
     async def close(self) -> None:
         """Offer bounded resource teardown, then kill the group and drain pipe consumers."""
         async with self._close_lock:
             await self.host_calls.cancel()
+            await self.continuations.cancel()
             if not self.error and self.process.returncode is None:
                 # Do not use request(): its timeout calls close(), which would await this lock.
                 self.sequence += 1

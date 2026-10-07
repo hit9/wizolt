@@ -64,7 +64,7 @@ Working through a repository task in an interactive session.
 | **[Sessions](usage.md#sessions)** | Your work is saved, named, and resumable with `/sessions`, `-c`, or `--resume`. |
 | **[MCP](mcp.md)** | Connect external Model Context Protocol servers and use their tools. |
 | **[Subagents](agents.md)** | Run parallel agents and switch between their separate conversations. |
-| **[Skills](skills.md)** | Load reusable instruction packs on demand, or start one with `/name`. |
+| **[Skills](skills.md)** | Load reusable instruction packs on demand, or point the agent at one with `$name`. |
 | **[Plugins](plugins.md)** | Customize wizolt with Python, or enable the built-in pet. |
 | **[Hooks](hooks.md)** | Automatically run your checks, formatters and cleanup commands. |
 | **[Appearance](appearance.md)** | Themes, statusbar layouts, dividers and sweep animations. |

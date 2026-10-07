@@ -5,6 +5,7 @@ import threading
 import time
 from types import SimpleNamespace
 
+import pytest
 from agent_harness import call, queue, session
 from catalog_harness import resolve
 from test_agent_turn import _runner
@@ -53,7 +54,8 @@ async def test_agent_tool_error_feedback_is_visible_on_next_model_request(tmp_pa
 
 
 def test_provider_compatibility_and_prompt_cache_key(tmp_path):
-    opencode_claude = ProviderConfig(url="https://opencode.ai/zen/go/v1", key="k", model="claude-sonnet", api="auto")
+    # Claude is a Zen model; Go serves no Claude and has its own catalog entry.
+    opencode_claude = ProviderConfig(url="https://opencode.ai/zen/v1", key="k", model="claude-sonnet", api="auto")
     assert resolve(opencode_claude).api == "anthropic"
 
     opencode_qwen = ProviderConfig(url="https://opencode.ai/zen/go/v1", key="k", model="qwen3.7-max", api="auto")
@@ -143,6 +145,48 @@ def test_malformed_tool_args_defer_to_execution_chat(tmp_path):
     assert len(calls) == 1
     assert calls[0].args == []
     assert "non-empty" in calls[0].error
+
+
+CUT_OFF = '{"command": "rm -rf /tmp/hsa && git clone --depth 1 -q https://github.com/example/repo /tmp/hsa && echo ok'
+
+
+def _cut_off_history():
+    return [
+        {"role": "user", "content": "clone it"},
+        {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "Bash", "arguments": CUT_OFF}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": "failed"},
+        {"role": "assistant", "content": "", "tool_calls": [{"id": "c2", "type": "function", "function": {"name": "Bash", "arguments": '{"command": "pwd"}'}}]},
+        {"role": "tool", "tool_call_id": "c2", "content": "/tmp"},
+    ]
+
+
+@pytest.mark.parametrize("api", ("chat", "responses"))
+def test_a_cut_off_tool_call_replays_as_an_empty_object_so_the_session_is_not_stuck(tmp_path, api):
+    """A stream cut off mid-call left Bash arguments that were not JSON; hosts that check history
+    then answered every later request with 400, so the session could never continue."""
+    client = ModelClient(Session(cwd=str(tmp_path)))
+    history = _cut_off_history()
+
+    wire = client.wire(ProviderConfig(api=api, model="m")).messages(history)
+
+    if api == "chat":
+        replayed = [call["function"]["arguments"] for message in wire for call in message.get("tool_calls") or []]
+    else:
+        replayed = [item["arguments"] for item in wire if item.get("type") == "function_call"]
+    assert replayed == ["{}", '{"command": "pwd"}']
+    assert history[1]["tool_calls"][0]["function"]["arguments"] == CUT_OFF
+
+
+def test_a_cut_off_tool_call_fails_saying_it_was_cut_off(tmp_path):
+    client = ModelClient(Session(cwd=str(tmp_path)))
+    message = SimpleNamespace(tool_calls=[SimpleNamespace(id="c1", function=SimpleNamespace(name="Bash", arguments=CUT_OFF))])
+
+    calls = client.tool_calls(message)
+
+    assert calls == [ToolCall(id="c1", name="Bash", args=[], error="Bash arguments were not complete JSON (the call was cut off); send it again")]
+    result = SimpleNamespace(output=[SimpleNamespace(type="function_call", call_id="c1", name="Bash", arguments=CUT_OFF)], usage={})
+    _, response_calls, _ = client.wire(ProviderConfig(api="responses", model="m")).result(result)
+    assert response_calls == calls
 
 
 def test_malformed_tool_args_defer_to_execution_anthropic(tmp_path):

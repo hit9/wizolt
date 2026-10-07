@@ -9,7 +9,7 @@ counts them too. Press **h**/**l** (or **1**–**5**) for the rest:
 | Tab | Shows |
 | --- | --- |
 | Progress | The agent's own note: its goal, plan steps (done, in progress, blocked, to do), what it knows, and how it will check the work |
-| Context | What the next request holds (system prompt, system tools, MCP servers, memory files, skills, messages) and where compaction starts |
+| Context | What the next request holds, in its order (system tools, system prompt, memory files, skills, MCP servers, the summary compaction left, messages) and where compaction starts |
 | Usage | Tokens and cache hits across every request, compaction, and activity counts |
 | Session | Workspace, session ID, permissions, limits and instruction files |
 
@@ -17,7 +17,7 @@ Context figures marked `~` and **estimated** are wizolt's own count; others come
 provider's report of the last request. Without an interactive terminal, `/status` prints every
 tab, one after another.
 
-<div class="term-shot" role="img" aria-label="The /status Overview tab inside its frame: labeled rows for the selected agent and its state, the model in the statusbar's colors, a context meter beside the reading, and the usage totals with counts and the cache share highlighted, with the Progress, Context, Usage and Session tabs one key away."><span class="fs-user">• /status</span><span> </span><span class="fs-dim">  ╭────────────────────────────────────────────────────────────────────────────╮</span><span><span class="fs-i fs-dim">  │ </span><span class="fs-i fs-tab-on"> Overview </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-off"> Progress </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-off"> Context </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-off"> Usage </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-off"> Session </span><span>                 </span><span class="fs-i fs-dim"> │</span></span><span><span class="fs-i fs-dim">  │ </span><span>                                                                          </span><span class="fs-i fs-dim"> │</span></span><span><span class="fs-i fs-dim">  │ </span><span class="fs-i fs-dim">agent            </span><span class="fs-i" style="color:#e7ac80;font-weight:700">main</span><span class="fs-i fs-dim"> · completed</span><span>                                         </span><span class="fs-i fs-dim"> │</span></span><span><span class="fs-i fs-dim">  │ </span><span class="fs-i fs-dim">model            </span><span class="fs-i" style="color:#67d4e8">openai</span><span class="fs-i fs-dim"> / </span><span class="fs-i" style="color:#d7b0ff;font-weight:700">gpt-5.6</span><span class="fs-i fs-dim"> · </span>responses<span class="fs-i fs-dim"> · effort </span><span class="fs-i" style="color:#f0c77f">medium</span><span>             </span><span class="fs-i fs-dim"> │</span></span><span><span class="fs-i fs-dim">  │ </span><span class="fs-i fs-dim">context          </span><span class="fs-i" style="color:#8dd6a1">██████</span><span class="fs-i fs-dim">░░░░░░░░░░░░░░░░░░</span><span> </span><span class="fs-i" style="color:#8dd6a1;font-weight:700">62.4K</span><span class="fs-i fs-dim"> / </span><span class="fs-i" style="color:#d2a8ff">240.5K</span><span class="fs-i fs-dim"> · </span><span class="fs-i" style="color:#8dd6a1;font-weight:700">25%</span><span>            </span><span class="fs-i fs-dim"> │</span></span><span><span class="fs-i fs-dim">  │ </span><span class="fs-i fs-dim">usage            </span><span class="fs-i" style="color:#d2a8ff">215</span><span class="fs-i fs-dim"> requests · </span><span class="fs-i" style="color:#d2a8ff">13.6M</span><span class="fs-i fs-dim"> in · </span><span class="fs-i" style="color:#d2a8ff">182.4K</span><span class="fs-i fs-dim"> out · </span><span class="fs-i" style="color:#80b8ef">93%</span><span class="fs-i fs-dim"> cached</span><span>        </span><span class="fs-i fs-dim"> │</span></span><span><span class="fs-i fs-dim">  │ </span><span>                                                                          </span><span class="fs-i fs-dim"> │</span></span><span><span class="fs-i fs-dim">  │ </span><span>                                                                          </span><span class="fs-i fs-dim"> │</span></span><span><span class="fs-i fs-dim">  ╰────────────────────────────────────────</span><span class="fs-i fs-dim"> h/l tabs · j/k scroll · Esc close </span><span class="fs-i fs-dim">─╯</span></span></div>
+<div class="term-shot" role="img" aria-label="The /status Overview tab inside its frame: labeled rows for the selected agent and its state, the model in the statusbar's colors, a context meter beside the reading, and the usage totals with counts and the cache share highlighted, with the Progress, Context, Usage and Session tabs one key away."><span class="fs-user">• /status</span><span> </span><span class="fs-dim">  ╭────────────────────────────────────────────────────────────────────────────╮</span><span><span class="fs-i fs-dim">  │  </span><span>                                                                        </span><span class="fs-i fs-dim">  │</span></span><span><span class="fs-i fs-dim">  │  </span><span class="fs-i fs-tab-on"> Overview </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-off"> Progress </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-off"> Context </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-off"> Usage </span><span class="fs-i fs-dim"> │ </span><span class="fs-i fs-tab-off"> Session </span><span>               </span><span class="fs-i fs-dim">  │</span></span><span><span class="fs-i fs-dim">  │  </span><span>                                                                        </span><span class="fs-i fs-dim">  │</span></span><span><span class="fs-i fs-dim">  │  </span><span class="fs-i fs-dim">agent            </span><span class="fs-i" style="color:#e7ac80;font-weight:700">main</span><span class="fs-i fs-dim"> · completed</span><span>                                       </span><span class="fs-i fs-dim">  │</span></span><span><span class="fs-i fs-dim">  │  </span><span class="fs-i fs-dim">model            </span><span class="fs-i" style="color:#67d4e8">openai</span><span class="fs-i fs-dim"> / </span><span class="fs-i" style="color:#d7b0ff;font-weight:700">gpt-5.6</span><span class="fs-i fs-dim"> · </span>responses<span class="fs-i fs-dim"> · effort </span><span class="fs-i" style="color:#f0c77f">medium</span><span>           </span><span class="fs-i fs-dim">  │</span></span><span><span class="fs-i fs-dim">  │  </span><span>                                                                        </span><span class="fs-i fs-dim">  │</span></span><span><span class="fs-i fs-dim">  │  </span><span class="fs-i fs-dim">context          </span><span class="fs-i" style="color:#8dd6a1">██████</span><span class="fs-i fs-dim">░░░░░░░░░░░░░░░░░░</span><span> </span><span class="fs-i" style="color:#8dd6a1;font-weight:700">62.4K</span><span class="fs-i fs-dim"> / </span><span class="fs-i" style="color:#d2a8ff">240.5K</span><span class="fs-i fs-dim"> · </span><span class="fs-i" style="color:#8dd6a1;font-weight:700">25%</span><span>          </span><span class="fs-i fs-dim">  │</span></span><span><span class="fs-i fs-dim">  │  </span><span class="fs-i fs-dim">usage            </span><span class="fs-i" style="color:#d2a8ff">215</span><span class="fs-i fs-dim"> requests · </span><span class="fs-i" style="color:#d2a8ff">13.6M</span><span class="fs-i fs-dim"> in · </span><span class="fs-i" style="color:#d2a8ff">182.4K</span><span class="fs-i fs-dim"> out · </span><span class="fs-i" style="color:#80b8ef">93%</span><span class="fs-i fs-dim"> cached</span><span>      </span><span class="fs-i fs-dim">  │</span></span><span><span class="fs-i fs-dim">  │  </span><span>                                                                        </span><span class="fs-i fs-dim">  │</span></span><span><span class="fs-i fs-dim">  │  </span><span>                                                                        </span><span class="fs-i fs-dim">  │</span></span><span><span class="fs-i fs-dim">  ╰────────────────────────────────────────</span><span class="fs-i fs-dim"> h/l tabs · j/k scroll · Esc close </span><span class="fs-i fs-dim">─╯</span></span></div>
 
 **`/ps`** — Lists active background jobs (see [Tools](tools.md#built-in-tools)).
 Each row shows job id, state, command, and elapsed time.
@@ -28,8 +28,6 @@ names, warnings, and files that did not load. `reload` rescans the skill folders
 lets this repository's skills that run commands or carry hooks be used, and `untrust` takes
 that back ([Trusting a repository](skills.md#trusting-a-repository)). While the agent works,
 only the list is available.
-
-**`/name [arguments]`** — Starts the [skill](skills.md#using-skills) of that name.
 
 **`/config`** — Shows the active configuration: provider blocks, runtime settings,
 and their resolved values.
@@ -72,8 +70,9 @@ See [Switching sessions](usage.md#switching-sessions).
 **`/compact`** — Summarize and shrink the conversation immediately. wizolt keeps
 long sessions within budget on its own, but `/compact` trims on demand.
 
-**`/compact log [seg.N]`** — Browse past summaries, or print one by its segment name.
-See [Keeping context manageable](context.md#keeping-context-manageable).
+**`/compact log [seg.N]`** — Browse past summaries, or print one by its segment name. Each
+lists your directives, decisions, finished, active and open work, next steps and the files that
+matter, with paths, commands and error text quoted exactly. See [Keeping context manageable](context.md#keeping-context-manageable).
 
 **`/agents`** — Browse agents, their states and context usage. Move the cursor to preview a task
 and live reply in a bordered window; Enter switches to that agent. Its conversation, input and
@@ -96,8 +95,8 @@ and, where the values are a fixed set, the values. Example: `/set provider.respo
 | `/yolo` | Toggle confirmation prompts — read [Safety](safety.md) before leaving them off |
 | `/strict` | Toggle strict tool-call schemas (OpenAI / DeepSeek) |
 
-**`/theme [NAME]`** — Open one appearance picker with Colorscheme, Diff, StatusBar, Divider and Input
-tabs. Use `h`/`l` or the left/right arrows to switch tabs, `j`/`k` or up/down to move, and `/`
+**`/theme [NAME]`** — Open one appearance picker with Colorscheme, Diff, StatusBar, Divider, Input
+and Transcript tabs. Use `h`/`l` or the left/right arrows to switch tabs, `j`/`k` or up/down to move, and `/`
 to search the current list. Moving previews each choice; Enter saves the changes across all
 tabs, and Esc cancels them. While searching, Esc leaves search first and then clears the filter.
 The StatusBar tab previews in the bottom row; Divider includes both layouts and sweeps, with
@@ -105,7 +104,9 @@ idle, running and queued examples. In Divider, Space chooses a layout or sweep a
 between the two groups. Changing colors redraws the output already on screen.
 Input offers five prompt symbols; `e` edits the ordinary and running prefixes. Enter in the
 editor applies the edit and returns to the list; Enter in the list saves.
-Choices are saved in your config file.
+Transcript holds three settings: how a finished tool call is written, how the model's reasoning
+reads while it arrives, and what closes a long run of tool calls. Space chooses, Tab jumps between
+the three, and `f` opens the record format in the same editor. Choices are saved in your config file.
 
 Choose directly with `/theme NAME`, `/theme diff NAME`, `/theme statusbar NAME`,
 `/theme divider NAME`, `/theme sweep NAME` or `/theme input NAME`. See [Appearance](appearance.md) for colors,
@@ -114,7 +115,8 @@ layouts and custom templates.
 ## While a turn runs
 
 Commands that only read the session answer without interrupting it: `/status`, `/ps`,
-`/skills`, `/config`, `/catalog`, `/agents`, and `/mcp`'s tool list, along with the `/yolo` toggle.
+`/skills`, `/config`, `/catalog`, `/agents`, `/mcp`'s tool list, and `/plugins` for browsing
+(enabling, disabling and reloading wait for the turn to end), along with the `/yolo` toggle.
 Any other one waits for the turn to end.
 
 A request that fails transiently — transport, timeout, a 5xx — is retried on its own, up to five

@@ -19,7 +19,6 @@ from prompt_toolkit.application import Application, get_app
 from prompt_toolkit.application.run_in_terminal import in_terminal
 from prompt_toolkit.buffer import Buffer, CompletionState
 from prompt_toolkit.completion import CompleteEvent, Completer, Completion
-from prompt_toolkit.data_structures import Point
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition, has_completions, is_done, is_searching
 from prompt_toolkit.formatted_text import OneStyleAndTextTuple, StyleAndTextTuples
@@ -681,7 +680,8 @@ class TuiApp:
                 raise
 
     def recolor(self) -> None:
-        """Redraw the transcript above the app in the active theme; the app repaints on its own."""
+        """Redraw the transcript above the app in the active theme and transcript format; the app
+        repaints on its own."""
         self.scrollback.recolor()
         self.invalidate()
 
@@ -1615,11 +1615,14 @@ class TuiApp:
         )
         self.activity_window = Window(
             FormattedTextControl(
-                lambda: self.activity_fragments_fn() if self.input_mode == InputMode.RUNNING else self.idle_divider_fragments_fn(),
-                show_cursor=False,
-                get_cursor_position=lambda: Point(
-                    x=0, y=sum(fragment[1].count("\n") for fragment in self.activity_fragments_fn()) if self.input_mode == InputMode.RUNNING else 0
+                # The cursor marks the last line so wrapping scrolls the newest activity into view.
+                # It rides in the same fragments it measures: a second activity_fragments_fn() call
+                # can return more lines than the rendered text, a cursor past the end that crashed
+                # wrapped scrolling.
+                lambda: (
+                    [*self.activity_fragments_fn(), ("[SetCursorPosition]", "")] if self.input_mode == InputMode.RUNNING else self.idle_divider_fragments_fn()
                 ),
+                show_cursor=False,
             ),
             dont_extend_height=True,
             wrap_lines=True,
@@ -2165,6 +2168,18 @@ class TuiApp:
         """Ctrl-X Ctrl-E / Ctrl-G: edit the current input in an external editor, then load the result back."""
         if self.app is not None:
             self.app.create_background_task(self._run_input_editor())
+
+    async def edit_text(self, text: str) -> str | None:
+        """Hand the terminal to the user's editor on `text`; the saved text, or None when the
+        editor could not start or exited non-zero. Used by commands that edit a file's text."""
+        if self.managed:
+            self.on_attention()
+            await self.view_ready.wait()
+        # Like a plugin view, the editor waits for existing modals and approvals to release input.
+        while self.modal is not None or self._input_pending is not None:
+            await (self._modal_idle_event() if self.modal is not None else self._input_idle_event()).wait()
+        async with in_terminal():
+            return await self._edit_text_in_editor(text)
 
     async def animate(self) -> None:
         """Invalidate at the animation frame rate while the running region is on screen.

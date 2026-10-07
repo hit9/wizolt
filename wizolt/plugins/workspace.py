@@ -20,6 +20,9 @@ class PluginWorkspace:
     data: Json
     data_dir: str
     catalog: PluginCatalog
+    # The config a loaded workspace actually read; empty when none was given and the usual
+    # default is absent. A trial context should see the same paths the session would.
+    config_path: str = ""
 
     @property
     def settings(self) -> PluginSettings:
@@ -37,10 +40,11 @@ class PluginWorkspace:
 
     @classmethod
     def open(cls, config: str | None, project: str) -> "PluginWorkspace":
-        data = ConfigFile.load(config) if config or Path(ConfigFile.resolve_path(None)).exists() else {}
+        exists = bool(config) or Path(ConfigFile.resolve_path(None)).exists()
+        data = ConfigFile.load(config) if exists else {}
         cwd = str(Path(project).expanduser().resolve())
         data_dir = str(Path(Config.data_dir_from(data)).expanduser().resolve())
-        return cls(cwd, data, data_dir, PluginCatalog.for_user(data_dir, ConfigFile.resolve_path(config)))
+        return cls(cwd, data, data_dir, PluginCatalog.for_user(data_dir, ConfigFile.resolve_path(config)), ConfigFile.resolve_path(config) if exists else "")
 
     def installed(self, target: str) -> tuple[Installation | None, list[str]]:
         records, problems = self.catalog.read()

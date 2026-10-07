@@ -1,0 +1,17 @@
+{
+  "workload": "Compactor.input() over the stored messages of 8 real local sessions (91-607 messages), the flattened compaction payload; sizes are ContextManager.estimated_text_tokens",
+  "environment": "Linux ARM64, CPython 3.14.7",
+  "before": "8a32f222 (tool results carried whole; measured as the working tree with Compactor.trimmed disabled, which is that revision's input())",
+  "after": "working tree over 8a32f222: tool results over 2,000 characters cut to head and tail",
+  "sessions": [
+    {"session": "s1", "messages": 607, "tool_results": 288, "trimmed": 88, "before_tokens": 175776, "after_tokens": 98328},
+    {"session": "s2", "messages": 244, "tool_results": 133, "trimmed": 84, "before_tokens": 168703, "after_tokens": 57581},
+    {"session": "s3", "messages": 283, "tool_results": 153, "trimmed": 68, "before_tokens": 107099, "after_tokens": 57368},
+    {"session": "s4", "messages": 303, "tool_results": 150, "trimmed": 61, "before_tokens": 118645, "after_tokens": 52946},
+    {"session": "s5", "messages": 192, "tool_results": 96, "trimmed": 44, "before_tokens": 66839, "after_tokens": 45134},
+    {"session": "s6", "messages": 492, "tool_results": 244, "trimmed": 88, "before_tokens": 127118, "after_tokens": 91410},
+    {"session": "s7", "messages": 91, "tool_results": 56, "trimmed": 30, "before_tokens": 53903, "after_tokens": 23407},
+    {"session": "s8", "messages": 342, "tool_results": 169, "trimmed": 71, "before_tokens": 134777, "after_tokens": 62563}
+  ],
+  "total": {"before_tokens": 952860, "after_tokens": 488737, "change": "-48.7%"}
+}

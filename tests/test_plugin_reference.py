@@ -15,6 +15,7 @@ from wizolt import sdk
 from wizolt.plugins.runtime import PluginRuntime
 from wizolt.plugins.testing import PluginTrial, Stimulus
 from wizolt.sdk.models import ModelReply
+from wizolt.sdk.operations import Compaction, Summary
 from wizolt.sdk.ui import UI, Component, Shortcuts
 from wizolt.sdk.views import Action, Choice, Document, Field, Form, OpenView, Selection, View, ViewResult
 from wizolt.ui.bars import FIELDS, Template
@@ -197,6 +198,11 @@ async def test_shipped_helper_exercises_services_models_and_summary(tmp_path):
         await runtime.manage("enable", str(path))
         result = await runtime.invoke("helper", "command", "helper-ask", {"input": "Question"})
         assert result == "Answer\nTokens: 12 in / 3 out"
-        assert await runtime.summarize("A short history", lambda _: None) == ("helper", "Answer")
+
+        async def builtin(_span):
+            raise AssertionError("the helper replaces the builtin strategy")
+
+        summary = await runtime.interception.run("context.compact", Compaction("A short history"), builtin)
+        assert summary == Summary("Answer")
     finally:
         await runtime.close()

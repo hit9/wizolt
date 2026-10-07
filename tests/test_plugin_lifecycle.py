@@ -103,6 +103,82 @@ async def test_dependency_metadata_cannot_be_interpreted_as_installer_options(tm
     assert not environment.path.exists()
 
 
+def startup_plugins(runtime, tmp_path, specs):
+    """Save plugins in order; each (name, setup delay, command) records its worker's pid."""
+    from wizolt.plugins.catalog import Installation
+
+    for name, delay, command in specs:
+        path = tmp_path / f"{name}.py"
+        path.write_text(
+            f"import os, time\nSDK_VERSION = 1\ndef setup(p):\n"
+            f"    open({str(tmp_path / (name + '.pid'))!r}, 'w').write(str(os.getpid()))\n"
+            f"    time.sleep({delay})\n"
+            f"    async def run(ctx, args):\n        return {name!r}\n"
+            f"    p.command({command!r}, 'Run', run)\n"
+        )
+        runtime.catalog.save(Installation(name, str(path)))
+
+
+async def test_startup_launches_plugins_concurrently(tmp_path):
+    import time
+
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    startup_plugins(runtime, tmp_path, [(name, 0.5, name) for name in ("one", "two", "three")])
+    started = time.monotonic()
+    await runtime.load()
+    assert set(runtime.entries) == {"one", "two", "three"} and not runtime.problems
+    assert time.monotonic() - started < 1.2  # One after another took at least 1.5 s.
+    await runtime.close()
+
+
+async def test_startup_collisions_still_follow_saved_order(tmp_path):
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    # The first saved plugin launches last, yet still owns the shared command.
+    startup_plugins(runtime, tmp_path, [("first", 0.4, "go"), ("second", 0, "go")])
+    await runtime.load()
+    assert list(runtime.entries) == ["first"]
+    assert "Command names already registered: go" in runtime.problems["second"]
+    assert await runtime.invoke("first", "command", "go", {}) == "first"
+    await runtime.close()
+
+
+async def test_closing_during_startup_leaves_no_workers(tmp_path):
+    import asyncio
+    import os
+
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    startup_plugins(runtime, tmp_path, [("fast", 0, "fast"), ("slow", 3, "slow")])
+    startup = asyncio.create_task(runtime.load())
+    while not (tmp_path / "slow.pid").exists() or not (tmp_path / "fast.pid").exists():
+        await asyncio.sleep(0.02)
+    await asyncio.sleep(0.3)  # The fast plugin has finished launching; the slow one has not.
+    await runtime.close()
+    await asyncio.gather(startup, return_exceptions=True)
+    assert not runtime.entries
+    for name in ("fast", "slow"):
+        with pytest.raises(ProcessLookupError):
+            os.kill(int((tmp_path / f"{name}.pid").read_text()), 0)
+
+
+async def test_disable_during_startup_loading_is_not_undone_by_it(tmp_path):
+    import asyncio
+
+    from wizolt.plugins.catalog import Installation
+
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    for name, setup in (("first", "    import time\n    time.sleep(0.5)\n"), ("second", "")):
+        path = tmp_path / f"{name}.py"
+        path.write_text(f'SDK_VERSION = 1\ndef setup(p):\n{setup}    p.field("value", lambda ctx: 1)\n')
+        runtime.catalog.save(Installation(name, str(path)))
+    startup = asyncio.create_task(runtime.load())  # As the engine starts a session.
+    await asyncio.sleep(0.1)  # Startup is now starting the slow first plugin.
+    await runtime.manage("disable", "second")
+    await startup
+    assert "second" not in runtime.entries and "first" in runtime.entries
+    assert not runtime.catalog.read()[0]["second"].enabled
+    await runtime.close()
+
+
 async def test_disable_pending_install_does_not_activate_at_turn_end(tmp_path):
     runtime = SessionPlugins(session_with_provider(tmp_path))
     path = tmp_path / "pending.py"
@@ -112,7 +188,8 @@ async def test_disable_pending_install_does_not_activate_at_turn_end(tmp_path):
     await runtime.manage("disable", "pending")
     await runtime.finish_turn()
     assert runtime.fields() == {}
-    assert (await runtime.manage("inspect", "pending"))["plugins"][0]["status"] == "disabled"
+    listed = (await runtime.manage("inspect", "pending"))["plugins"][0]
+    assert listed["status"] == "off" and not listed["enabled"]
     await runtime.close()
 
 
@@ -229,7 +306,22 @@ def setup(p):
     assert result.returncode == 0, result.stderr
 
 
-async def test_dependency_install_uses_new_environment_and_preserves_host(tmp_path, monkeypatch):
+def test_enable_prepares_again_only_for_changed_declarations(tmp_path):
+    from wizolt.plugins.dependencies import DependencyEnvironment
+    from wizolt.plugins.loading import PluginSource
+
+    python = tmp_path / "env" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    source = tmp_path / "dependent.py"
+    source.write_text('SDK_VERSION = 1\nDEPENDENCIES = ["b>=1", "a"]\ndef setup(p):\n    pass\n')
+    assert not DependencyEnvironment.built_for(str(python), PluginSource.read(str(source)))  # No metadata.
+    (tmp_path / "env" / "plugins.json").write_text('{"requirements": ["a", "b>=1"], "plugins": {}}')
+    assert DependencyEnvironment.built_for(str(python), PluginSource.read(str(source)))
+    source.write_text('SDK_VERSION = 1\nDEPENDENCIES = ["a", "b>=2"]\ndef setup(p):\n    pass\n')
+    assert not DependencyEnvironment.built_for(str(python), PluginSource.read(str(source)))
+
+
+async def test_dependency_enable_uses_new_environment_and_preserves_host(tmp_path, monkeypatch):
     """A real offline wheel exercises uv, validation and hot reload without a network fixture."""
     from wizolt.plugins.installation import PluginInstallations
     from wizolt.plugins.settings import PluginSettings
@@ -253,23 +345,21 @@ def setup(p):
     runtime = SessionPlugins(session_with_provider(tmp_path))
     runtime.session.config.plugins["dependent"] = {"offset": 1}
     old_path = list(sys.path)
-    result = await PluginInstallations(runtime.catalog, runtime.session.cwd, PluginSettings(runtime.session.config.plugins)).manage("install", str(path))
+    installations = PluginInstallations(runtime.catalog, runtime.session.cwd, PluginSettings(runtime.session.config.plugins))
+    result = await installations.manage("enable", str(path))  # The host lacks the dependency.
     assert result["status"] == "saved" and result["python"]
+    # The same declarations reuse that environment instead of preparing another one.
+    assert (await installations.manage("enable", "dependent"))["python"] == result["python"]
     assert runtime.fields() == {} and sys.path == old_path
     assert "wizolt_plugin_testdep" not in sys.modules
     await runtime.hot_reload("dependent")
     assert runtime.fields() == {"plugins.dependent.value": 43}
-    # A later installation can change interpreters. Rollback must retain the original
-    # dependency environment along with source/settings, not use the latest preference.
+    # A later installation can change interpreters; reload follows the saved preference.
     from wizolt.plugins.catalog import Installation
 
     path.write_text('SDK_VERSION = 1\ndef setup(p):\n    p.field("value", lambda ctx: 99)\n')
     runtime.catalog.save(Installation("dependent", str(path)))
     await runtime.hot_reload("dependent")
-    assert runtime.fields() == {"plugins.dependent.value": 99}
-    await runtime.manage("rollback", "dependent")
-    assert runtime.fields() == {"plugins.dependent.value": 43}
-    await runtime.manage("rollback", "dependent")
     assert runtime.fields() == {"plugins.dependent.value": 99}
     await runtime.close()
 
@@ -286,12 +376,16 @@ async def test_builtin_pet_is_disabled_persists_choice_and_uses_semantic_colors(
     runtime.session.state.last_turn_status = "running"
     await runtime.refresh()
     panels = runtime.panels("above_input")
-    assert panels and all(row.role == "accent" for row in panels[0].rows)
+
+    def caption(panel):  # The mood colors the caption; the body is the theme's rainbow.
+        return {(span.text, span.role) for span in panel.rows[0].spans if span.text.strip().isalpha() or " " in span.text.strip()}
+
+    assert panels and ("on it", "accent") in caption(panels[0])
     rendered = PluginView.render(panels, 80, 6)
     assert any(style == Theme.fg("accent") for style, text in rendered if text.strip())
     runtime.session.state.awaiting_input = True
     await runtime.refresh()
-    assert all(row.role == "warning" for row in runtime.panels("above_input")[0].rows)
+    assert ("your move", "warning") in caption(runtime.panels("above_input")[0])
     await runtime.manage("disable", "pet")
     await runtime.close()
     fresh = SessionPlugins(session_with_provider(tmp_path))
@@ -316,7 +410,7 @@ async def test_hot_reload_reconciles_saved_choices_only_in_calling_agent(tmp_pat
         await runtime.start_turn()
         path.write_text('SDK_VERSION = 1\ndef setup(p):\n    p.field("count", lambda ctx: 2)\n')
         result = await runtime.hot_reload("counter")
-        assert result["plugins"][0]["status"] == "pending"
+        assert result["plugins"][0]["status"] == "reloading"
         assert runtime.fields()["plugins.counter.count"] == 1
         await runtime.finish_turn()
         assert runtime.fields()["plugins.counter.count"] == 2
@@ -331,6 +425,41 @@ async def test_hot_reload_reconciles_saved_choices_only_in_calling_agent(tmp_pat
     finally:
         await runtime.close()
         await sibling.close()
+
+
+async def test_reload_retires_a_plugin_whose_record_was_deleted(tmp_path):
+    import re
+
+    from wizolt.plugins.installation import PluginInstallations
+
+    runtime = SessionPlugins(session_with_provider(tmp_path))
+    choices = PluginInstallations(runtime.catalog, runtime.session.cwd)
+    for name in ("counter", "keeper"):
+        (tmp_path / f"{name}.py").write_text(f'SDK_VERSION = 1\ndef setup(p):\n    p.field("n", lambda ctx: "{name}")\n')
+        await choices.manage("enable", str(tmp_path / f"{name}.py"))
+    await runtime.load()
+    config = runtime.catalog.preferences.path
+    original = config.read_text()
+    try:
+        # A damaged config is no evidence of deletion: nothing live is retired.
+        config.write_text(original + "\n[plugin_manager.installations.counter\n")
+        assert ("counter", "remove: no longer installed") not in runtime.reload_plan()
+        await runtime.hot_reload()
+        assert "plugins.counter.n" in runtime.fields()
+        # A damaged record protects only its own plugin.
+        config.write_text(re.sub(r"(\[plugin_manager\.installations\.keeper\])[^\[]*", '\\1\npath = 3\nenabled = "yes"\n\n', original))
+        assert "keeper" not in runtime.catalog.read()[0] and runtime.catalog.read()[0]  # Damaged alone.
+        assert ("keeper", "remove: no longer installed") not in runtime.reload_plan()
+        # The user deletes the record by hand: reload sees it and stops the plugin, even beside
+        # an unrelated stale record.
+        config.write_text(re.sub(r"\[plugin_manager\.installations\.counter\][^\[]*", "", original) + "\n[plugin_manager.installations.ghost]\nenabled = true\n")
+        assert ("counter", "remove: no longer installed") in runtime.reload_plan()
+        [removed] = [item for item in (await runtime.hot_reload())["plugins"] if item["name"] == "counter"]
+        assert removed["status"] == "off" and removed["note"] == "no longer installed"
+        assert "plugins.counter.n" not in runtime.fields() and runtime.fields()["plugins.keeper.n"] == "keeper"
+        assert runtime.reload_plan("counter") == []
+    finally:
+        await runtime.close()
 
 
 async def test_failed_live_reload_reports_where_the_plugin_failed(tmp_path):

@@ -19,12 +19,14 @@ from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.styles import Style
 from prompt_toolkit.utils import get_cwidth
 
+from wizolt.agent.prompts import opens_reaction, split_reaction
 from wizolt.agentsmd import MenuRow
 from wizolt.base import LogBlock, LogEdge, Text, TurnBox
 from wizolt.config import PROVIDER_API_CHOICES
 from wizolt.mentions import MentionSpan, active_mention, encode_file_mention, mention_spellings
 from wizolt.providers.compat import bundled_policy
 from wizolt.session import QueuedInput, Session
+from wizolt.tools import transcript
 from wizolt.ui.bars import PRESETS, BarLayout
 from wizolt.ui.cli.appearance import KINDS
 from wizolt.ui.cli.commands import NEEDS_ARGUMENT, SET_KEYS, SET_VALUES
@@ -65,8 +67,6 @@ class CommandCompleter(Completer):
         skills: Callable[[], tuple[str, ...]] = tuple,
         # "project" or "user" for a skill name, shown beside it so two sources never look alike.
         skill_source: Callable[[str], str] = lambda _name: "",
-        # (name, argument hint) of each skill `/name` can start.
-        skill_commands: Callable[[], tuple[tuple[str, str], ...]] = tuple,
         files: Callable[[], tuple[tuple[str, str], ...]] = tuple,
         file_matches: Callable[[str], tuple[str, ...]] | None = None,
         agents_rows: Callable[[], list[MenuRow]] = list,
@@ -82,7 +82,6 @@ class CommandCompleter(Completer):
         self.mcp_tools = mcp_tools
         self.skills = skills
         self.skill_source = skill_source
-        self.skill_commands = skill_commands
         # (lowercase, original) workspace-relative paths from the session's cached path list.
         self.files = files
         self.file_matches = file_matches
@@ -183,17 +182,12 @@ class CommandCompleter(Completer):
                         display_meta=entry.description,
                     )
                 yield completion
-            for name, hint in self.skill_commands():
-                command = "/" + name
-                if command.startswith(text) and command not in names:
-                    # A skill that takes arguments opens them on Enter, like `/set`.
-                    yield Completion(command + " " if hint else command, start_position=-len(text), display=command, display_meta=hint or "skill")
 
     def command_state(self, word: str) -> str:
         """How a `/` draft's first word should be coloured while it is typed: "known" when a
-        command or skill would run it, "partial" while it is still a prefix of one, "" once no
-        spelling would accept it."""
-        spellings = self.commands.names() + tuple("/" + name for name, _ in self.skill_commands())
+        command would run it, "partial" while it is still a prefix of one, "" once no spelling
+        would accept it."""
+        spellings = self.commands.names()
         if word in spellings:
             return "known"
         return "partial" if any(spelling.startswith(word) for spelling in spellings) else ""
@@ -497,13 +491,17 @@ class View:
     def tui_activity_fragments(self) -> StyleAndTextTuples:
         sent, waiting = self.followup_fragments()
         fragments = sent
-        stream = self.model_stream_fragments()
+        stream = self.plugin_activity_fragments() or self.model_stream_fragments()
         if fragments:
             fragments.append(("", "\n"))
             # A blank row lifts the echoed follow-up off whatever follows it: the streamed reply,
             # or the standing divider when no stream exists yet. The divider always sits below,
             # so the gap can never leave a hanging blank row at the end of the activity region.
             fragments.append(("", "\n"))
+        # The message that opened the turn, while the model may still react to it: drawn as it will
+        # print, with the gap the turn opens below it, until the turn's first output prints it.
+        if held := self.presentation.ui.held_fragments(max(20, shutil.get_terminal_size((120, 20)).columns)):
+            fragments = [*held, ("", "\n"), *fragments]
         fragments.extend(stream)
         if stream:
             fragments.append(("", "\n"))
@@ -518,10 +516,34 @@ class View:
         fragments.extend(waiting)
         return fragments
 
+    def plugin_activity_fragments(self) -> StyleAndTextTuples:
+        """The activity site's cached panel, when a presenter owns that row region.
+
+        The panel is produced by the runtime's refresh pass, never by paint; an empty, failed or
+        conflicted snapshot falls back to the builtin stream preview. Queued follow-ups, the live
+        preview and the divider stay host-owned rows the site cannot replace.
+        """
+        plugins = self.session.plugins
+        panel = plugins.presenters.activity if plugins is not None else None
+        if panel is None or not panel.rows:
+            return []
+        from wizolt.ui.cli.plugins import PluginView
+
+        width = max(20, shutil.get_terminal_size((120, 20)).columns)
+        fragments: StyleAndTextTuples = []
+        for row in panel.rows:
+            fragments.extend(PluginView._row(row, width, Theme.key()))
+            fragments.append(("", "\n"))
+        return fragments
+
     def model_stream_fragments(self) -> StyleAndTextTuples:
         text = self.presentation.model_stream_text
         kind = self.presentation.model_stream_kind
-        if not text:
+        if kind == "output":
+            # The reaction marker is shown beside the user's message, never as reply text.
+            text = "" if opens_reaction(text) else split_reaction(text)[1]
+        mode = transcript.thinking(self.session.config) if kind == "reasoning" else transcript.THINKING[0]
+        if not text or mode == "hidden":
             return []
         width = max(20, shutil.get_terminal_size((120, 20)).columns)
         # Drawn with LogBlock's own rail so it cannot drift from the tree every tool call draws.
@@ -529,7 +551,13 @@ class View:
         # is no line above the block for one to join. Nor does a `└` close it - the stream is still
         # arriving, and an end cap would say it had finished.
         rail = LogBlock.prefix(TurnBox.CONTENT_LEVEL + 1, LogEdge.CONTINUE)
-        rows = [Text.clip_width(line.expandtabs(4), max(1, width - len(rail) - 1)) for line in text.replace("\r", "\n").splitlines()[-6:]]
+        # `collapsed` keeps the reasoning's own opening line rather than its newest one: the point
+        # of the mode is a steady one-line trace, and a line that keeps being replaced by the next
+        # is not steady. Blank openings are skipped: a stream that starts with a bare newline would
+        # otherwise draw an empty row for the whole answer, since only the first line is ever shown.
+        lines = text.replace("\r", "\n").splitlines()
+        shown = [line for line in lines if line.strip()][:1] if mode == "collapsed" else lines[-6:]
+        rows = [Text.clip_width(line.expandtabs(4), max(1, width - len(rail) - 1)) for line in shown]
         # The spark's row is the region's own, never the text's: a gray word beside the spark names
         # the phase (the same wording the divider below uses), and the first streamed line can arrive
         # on the next row down instead of racing for whatever room the spark leaves. The rows are

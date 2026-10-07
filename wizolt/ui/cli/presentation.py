@@ -11,10 +11,12 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, ClassVar
 
+from wizolt.agent.prompts import opens_reaction, split_reaction
 from wizolt.base import ImageRouteNotice, LogBlock, LogEdge, LogLine, LogRole, Text, TurnBox
 from wizolt.session import Session
+from wizolt.tools import transcript
 from wizolt.ui.cli.update import UpdateStatus
-from wizolt.ui.render import BashLivePreview, InputStyle, StatusBar, UiPrinter
+from wizolt.ui.render import BashLivePreview, CallGap, InputStyle, StatusBar, UiPrinter
 
 if TYPE_CHECKING:
     from wizolt.ui.cli.runtime import ScrollbackWriter
@@ -153,18 +155,28 @@ class Presentation:
 
     def tool_output(self, text: str | LogBlock = "") -> None:
         def output() -> None:
-            # The blank line parts each block from the one above; it is skipped when the block
-            # sits directly under a phase rule just drawn,
-            # which already provides the seam.
+            # The blank line parts each call from the one above; it is skipped when the call sits
+            # directly under a phase rule just drawn, which already provides the seam.
             #
-            # It is skipped again between two calls that each fit on one line: a run of them is a
-            # list of what the agent did, and a blank row between every pair doubles its height for
-            # nothing. The moment a call brings output, a diff, or narration with it, the gap is
-            # back -- that block needs to be parted from the one above.
-            packed = self.ui.single_line_block(text) and self.ui.emitted_single_line
-            if not packed and (isinstance(text, str) or (text.items and isinstance(text.items[0], LogLine))):
+            # Between two calls it is a `CallGap`, which also skips it when both fit on one line --
+            # and asks again when the transcript is redrawn, since a record format switched later
+            # can change that. A block with no call line of its own (the record settled under a
+            # live call line, a script's nested calls) continues the call above, gap-free.
+            above = self.ui.call_group
+            group: list[LogBlock] | None = above
+            if isinstance(text, str):
+                group = None
                 self.ui.separate()
+            elif text.items and isinstance(text.items[0], LogLine):
+                group = []
+                if above is not None and self.ui.trailing_blanks == 0:
+                    self.ui.emit_gap(CallGap(above, text))
+                else:
+                    self.ui.separate()
             self.emit(text)
+            if group is not None and isinstance(text, LogBlock):
+                group.append(text)
+            self.ui.call_group = group
 
         self.with_status_paused(output)
 
@@ -196,6 +208,11 @@ class Presentation:
         same promotion handling with the flag flipped. Only the flag differs; the answer takes no
         phase rule below it, because the turn-end rule already closes the turn and two rules in a
         row would read as a box."""
+        # The reaction marker stays in history as the model wrote it; the screen shows it beside
+        # the user's message instead. Taken off first, since a promotion was published without it.
+        reaction, text = split_reaction(text)
+        if reaction:
+            self.react(reaction)
         # An early promotion is presentation-only: Agent still publishes the same semantic text
         # after ModelClient returns. Consume the one-shot marker instead of printing it twice.
         promoted = self.model_stream_promoted_text
@@ -205,8 +222,27 @@ class Presentation:
             if not remaining:
                 return
             text = remaining
+        if reaction and not text.strip():
+            return  # a reply that was only its reaction
         emit = self.emit_narration if interim else self.emit_final_answer
         self.with_status_paused(lambda: emit(text))
+
+    def user_message(self, text: str, *, turn: bool) -> None:
+        """The user's submitted message. One that opens a model turn the model may react to waits
+        in the live region until the turn's first output (`UiPrinter.hold_user_message`), so the
+        reaction can join its row; anything else prints at once."""
+        if turn and self.tui is not None and self.reactions_enabled() and self.ui.hold_user_message(text):
+            self.tui.invalidate()
+            return
+        self.ui.emit_answer(text, role="user", rule=False)
+
+    def reactions_enabled(self) -> bool:
+        """Whether this agent's model was told it may react: the main agent's, with the setting on."""
+        return self.session.settings.reactions and not self.session.agent_parent
+
+    def react(self, reaction: str) -> None:
+        if self.ui.react(reaction) and self.tui is not None:
+            self.tui.invalidate_frame()
 
     def agent_answer_output(self, text: str = "") -> None:
         """The turn's final answer: the same markdown rendering as interim narration, but no phase
@@ -228,7 +264,10 @@ class Presentation:
             # preview standing and let the ordinary post-request output keep the transcript ordered.
             return
         if kind == "output_done":
-            promote = text.strip()
+            reaction, promote = split_reaction(text)
+            promote = promote.strip()
+            if reaction:
+                self.react(reaction)
             self.model_stream_kind = self.model_stream_text = ""
             if promote and tui is not None:
                 self.model_stream_promoted_text = promote
@@ -239,7 +278,11 @@ class Presentation:
         elif text:
             if kind != self.model_stream_kind:
                 self.model_stream_kind, self.model_stream_text = kind, ""
+            # The reaction shows the moment its marker completes, while the reply still streams.
+            opening = kind == "output" and opens_reaction(self.model_stream_text)
             self.model_stream_text = (self.model_stream_text + text)[-8000:]
+            if opening and (reaction := split_reaction(self.model_stream_text)[0]):
+                self.react(reaction)
         if tui is not None:
             tui.invalidate_frame()
             if promote:
@@ -311,7 +354,11 @@ class Presentation:
         the resumed transcript cannot drift into drawing the seam by different rules."""
         self._silent_batches += 1
         if self._silent_batches >= self.TOOL_RUN_RULE_BATCHES and self.ui.rule_due(self.MIN_ROWS_BETWEEN_RULES):
-            self.ui.emit_phase_rule()
+            # The run has earned a seam; `[transcript] close` says what that seam is. `none` closes
+            # it with nothing at all, which is a real choice for a reader who wants the calls to run
+            # together, so the count resets either way: the next seam is a full run away. The seam
+            # reads the setting again whenever it is redrawn, so a later switch reaches it too.
+            self.ui.emit_run_seam(lambda: transcript.close(self.session.config))
             self._silent_batches = 0
 
     def tool_batch_output(self, silent: bool) -> None:

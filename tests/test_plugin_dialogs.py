@@ -44,6 +44,18 @@ def test_rejected_answer_is_atomic_and_human_can_correct_it():
     assert state.key("enter").values == {"first": "kept", "second": "x"}
 
 
+def test_filtered_selection_keeps_focus_across_update_and_scripted_answer():
+    items = (Choice("x", "Xylophone"), Choice("b", "Banana"), Choice("m", "Mango"), Choice("n", "Orange"))
+    state = DialogState(View("Pick", Selection(items)), lambda: (60, 20), UiPrinter())
+    state.fragments()
+    for key in ("/", "a", "n", "enter"):  # Leaves Banana, Mango and Orange visible.
+        state.key(key)
+    state.update(View("Pick", Selection(items)))
+    assert state.key("enter").selected == ("b",)
+    state.answer({"selected": ["n"]})
+    assert state.body.result("submit").selected == ("n",)
+
+
 @pytest.mark.parametrize("reply", [
     {"action": []}, {"selected": [{}]}, {"selected": ["a", "a"]}, {"selected": ["missing"]},
     {"values": []}, {"values": {"unexpected": "x"}}, {"other": "x"},

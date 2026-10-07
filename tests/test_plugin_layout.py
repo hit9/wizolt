@@ -165,7 +165,7 @@ def setup(p):
         return state["samples"]
     def draw(ctx):
         return Panel((Text(str(ctx.layout.rows)),))
-    p.on("sample", sample)
+    p.on("tick", sample)
     p.field("samples", value)
     for slot in ("above_input", "below_input", "status"):
         p.component(slot, draw)

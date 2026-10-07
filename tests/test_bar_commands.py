@@ -107,7 +107,7 @@ async def test_search_letters_do_not_switch_tabs_and_tab_focus_is_retained(comma
 async def test_older_presets_and_custom_sweep_can_be_kept(command_loop):
     layout = command_loop.presentation.status_bar.layout
     assert not layout.configure({"divider": "preset:plain", "sweep": "0.5"}, Theme.bar_styles)
-    modal = command_loop.presentation.tui = BarModal(["h", "h", "g", "tab", "enter"])
+    modal = command_loop.presentation.tui = BarModal(["h", "h", "h", "g", "tab", "enter"])
     assert await theme_command(command_loop, "") is None
     rendered = "".join(text for frame in modal.frames for _, text in frame)
     assert "current (plain)" in rendered and "custom (current)" in rendered
@@ -117,7 +117,7 @@ async def test_older_presets_and_custom_sweep_can_be_kept(command_loop):
 
 
 async def test_divider_picker_selects_powerline(command_loop):
-    command_loop.presentation.tui = BarModal(["left", "left", "j", "j", "j", "j", " ", "enter"])
+    command_loop.presentation.tui = BarModal(["left", "left", "left", "j", "j", "j", "j", " ", "enter"])
     assert "divider.format: preset:powerline" in await theme_command(command_loop, "")
     assert saved(command_loop)["ui"]["divider"]["format"] == "preset:powerline"
 
@@ -318,21 +318,21 @@ def test_roomy_appearance_previews_have_bounded_frames(command_loop, monkeypatch
 
 
 async def test_choosing_sweep_preserves_pinned_layout_while_crossing_other_layouts(command_loop):
-    modal = command_loop.presentation.tui = BarModal(["h", "h", "j", " ", "j", "j", "j", "j", "j", "j", " ", "enter"])
+    modal = command_loop.presentation.tui = BarModal(["h", "h", "h", "j", " ", "j", "j", "j", "j", "j", "j", " ", "enter"])
     await theme_command(command_loop, "")
     assert saved(command_loop)["ui"]["divider"] == {"format": "preset:capsule", "sweep": "preset:ripple"}
     assert any("* capsule" in text for frame in modal.frames for _, text in frame)
 
 
 async def test_group_jump_keeps_unconfirmed_previews_out_of_saved_layout(command_loop):
-    command_loop.presentation.tui = BarModal(["h", "h", "j", "tab", "j", " ", "enter"])
+    command_loop.presentation.tui = BarModal(["h", "h", "h", "j", "tab", "j", " ", "enter"])
     await theme_command(command_loop, "")
     assert saved(command_loop)["ui"]["divider"] == {"sweep": "preset:ripple"}
     assert command_loop.presentation.status_bar.layout.sources["divider"] == "preset:comet"
 
 
 async def test_space_marks_chosen_values_and_enter_does_not_save_a_hover(command_loop):
-    modal = command_loop.presentation.tui = BarModal(["h", "h", "j", " ", "tab", "j", " ", "j", "enter"])
+    modal = command_loop.presentation.tui = BarModal(["h", "h", "h", "j", " ", "tab", "j", " ", "j", "enter"])
     await theme_command(command_loop, "")
     assert saved(command_loop)["ui"]["divider"] == {"format": "preset:capsule", "sweep": "preset:ripple"}
     chosen = "".join(text for _, text in modal.frames[-2])
@@ -353,7 +353,7 @@ async def test_input_presets_save_and_restore_from_config(command_loop, name, pr
 
 async def test_input_picker_previews_a_preset_and_escape_restores_custom_prefixes(command_loop):
     original = command_loop.presentation.input_style = InputStyle("chat ", "queue ")
-    modal = command_loop.presentation.tui = BarModal(["h", "g", "j", "escape"])
+    modal = command_loop.presentation.tui = BarModal(["h", "h", "g", "j", "escape"])
     assert await theme_command(command_loop, "") is None
     assert command_loop.presentation.input_style == original and modal.input_style == original
     assert any("❯ " in text for frame in modal.frames for _, text in frame)
@@ -361,24 +361,24 @@ async def test_input_picker_previews_a_preset_and_escape_restores_custom_prefixe
 
 
 async def test_input_custom_edit_returns_to_list_and_enter_saves_instead_of_editing_again(command_loop):
-    modal = command_loop.presentation.tui = BarModal(["h", "e", "c-u", "λ", " ", "tab", "c-u", "→", " ", "enter", "enter"], consumed=True)
+    modal = command_loop.presentation.tui = BarModal(["h", "h", "e", "c-u", "λ", " ", "tab", "c-u", "→", " ", "enter", "enter"], consumed=True)
     result = await theme_command(command_loop, "")
     assert "saved as ui.input" in result
-    assert modal.pos == 11
+    assert modal.pos == 12
     assert saved(command_loop)["ui"]["input"] == {"prompt": "λ ", "running": "→ "}
     assert command_loop.presentation.input_style == InputStyle("λ ", "→ ")
     assert any("* custom" in text for _, text in modal.frames[-2])
     assert "e edit" in "".join(text for _, text in modal.frames[-2])
     # Opening the picker again on a custom row must also let Enter close it.
-    modal = command_loop.presentation.tui = BarModal(["h", "enter"], consumed=True)
+    modal = command_loop.presentation.tui = BarModal(["h", "h", "enter"], consumed=True)
     assert await theme_command(command_loop, "") is None
-    assert modal.pos == 2 and "Tab field" not in "".join(text for frame in modal.frames for _, text in frame)
+    assert modal.pos == 3 and "Tab field" not in "".join(text for frame in modal.frames for _, text in frame)
 
 
 @pytest.mark.parametrize("ending", ["escape", "c-c"])
 async def test_cancel_or_interrupt_discards_custom_input_edits(command_loop, ending):
     original = command_loop.presentation.input_style = InputStyle("❯ ", "follow ")
-    command_loop.presentation.tui = BarModal(["h", "e", "c-u", "x", ending, "escape"])
+    command_loop.presentation.tui = BarModal(["h", "h", "e", "c-u", "x", ending, "escape"])
     if ending == "c-c":
         with pytest.raises(KeyboardInterrupt):
             await theme_command(command_loop, "")
@@ -389,14 +389,14 @@ async def test_cancel_or_interrupt_discards_custom_input_edits(command_loop, end
 
 
 async def test_applied_custom_input_can_still_be_cancelled_before_saving(command_loop):
-    command_loop.presentation.tui = BarModal(["h", "e", "c-u", "x", "enter", "escape"])
+    command_loop.presentation.tui = BarModal(["h", "h", "e", "c-u", "x", "enter", "escape"])
     assert await theme_command(command_loop, "") is None
     assert command_loop.presentation.input_style == InputStyle()
     assert "ui" not in saved(command_loop)
 
 
 async def test_custom_input_editor_rejects_an_overwide_prefix_until_corrected(command_loop):
-    modal = command_loop.presentation.tui = BarModal(["h", "e", "c-u", *(["界"] * 17), "enter", "backspace", "enter", "enter"])
+    modal = command_loop.presentation.tui = BarModal(["h", "h", "e", "c-u", *(["界"] * 17), "enter", "backspace", "enter", "enter"])
     await theme_command(command_loop, "")
     assert saved(command_loop)["ui"]["input"]["prompt"] == "界" * 16
     assert any("at most 32 columns" in text for frame in modal.frames for _, text in frame)
@@ -434,7 +434,7 @@ async def test_unknown_component_theme_does_not_change_or_save_settings(command_
     assert "ui" not in saved(command_loop)
 
 
-@pytest.mark.parametrize("kind,keys", [("statusbar", ["l", "l", "tab"]), ("divider", ["h", "h", "tab", "tab"])])
+@pytest.mark.parametrize("kind,keys", [("statusbar", ["l", "l", "tab"]), ("divider", ["h", "h", "h", "tab", "tab"])])
 async def test_picker_component_color_confirmation_and_cancel(command_loop, kind, keys):
     # inherit -> auto -> dark -> light -> slate; Space pins slate, forest stays a hover.
     command_loop.presentation.tui = BarModal([*keys, "j", "j", "j", "j", " ", "j", "enter"])
@@ -649,7 +649,7 @@ async def test_sweep_rows_open_the_sweep_formula_in_the_format_panel(command_loo
     copied = []
     monkeypatch.setattr(Clipboard, "copy", staticmethod(copied.append))
     # The Divider tab, then its Sweep group; f opens the formula, not the divider's format.
-    keys = ["h", "h", "tab", "f", "t", "e", "end", ")", "backspace", *" * 0.5", "c-s", "escape", "enter"]
+    keys = ["h", "h", "h", "tab", "f", "t", "e", "end", ")", "backspace", *" * 0.5", "c-s", "escape", "enter"]
     modal = command_loop.presentation.tui = BarModal(keys)
     assert "divider.sweep:" in await theme_command(command_loop, "")
     frames = frames_text(modal)

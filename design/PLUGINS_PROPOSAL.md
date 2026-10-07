@@ -5,6 +5,8 @@ Status: proposal for review. The API names and paths below are illustrative, not
 The experimental DIY foundation is now implemented; see [implementation boundaries](PLUGINS.md)
 for the shipped subset and the packaged `plugin-workshop` SDK reference for actual API names.
 Interventions, managed background tasks, persistent plugin data and deeper UI sites remain future work.
+The [operations and presentation design](PLUGIN_INTERCEPTION.md) refines interventions and
+UI replacements; it takes precedence over illustrative APIs below for that future work.
 
 ## Goal
 
@@ -202,7 +204,7 @@ errors, logs and component preview images before activation.
 ## Loading, reload, and recovery
 
 Provide local-path loading, `/plugins`, and one core management tool with actions such as
-inspect, validate, enable, disable, reload, and rollback. Installation records a plugin source;
+inspect, validate, enable, disable and reload. Installation records a plugin source;
 activation executes it. Workspace discovery alone must not execute newly found Python code.
 The user request determines authorization; avoid asking again for each already-authorized step.
 
@@ -222,8 +224,8 @@ rolled back by the manager, so staged validation is not a general transaction. P
 survives reload; migrations must preserve the promised rollback path or explicitly require a
 backup. Dependency changes and modules that cannot unload cleanly may require restart.
 
-Report installed and active versions separately, with pending operations and errors. Keep a
-recoverable previous version. Core management remains available when a plugin fails; startup
+Report installed and active versions separately, with pending operations and errors. Previous
+versions are recovered from the user's Git history, not kept by wizolt. Core management remains available when a plugin fails; startup
 must offer a way to disable plugins before importing them.
 
 ## LLM-assisted DIY

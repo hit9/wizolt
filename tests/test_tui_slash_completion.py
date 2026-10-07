@@ -724,10 +724,10 @@ def test_complete_slash_command_submits_on_the_first_enter(monkeypatch):
 
 
 def test_command_state_of_a_typed_word():
-    completer = CommandCompleter(skill_commands=lambda: (("guide", "topic"),))
+    completer = CommandCompleter()
     assert completer.command_state("/status") == "known"
-    assert completer.command_state("/guide") == "known"
     assert completer.command_state("/st") == "partial"
+    assert completer.command_state("/guide") == ""  # a skill name is not a command
     assert completer.command_state("/statux") == ""
 
 
