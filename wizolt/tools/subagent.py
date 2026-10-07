@@ -20,6 +20,9 @@ class SubagentTool(Tool):
     DESCRIPTION = (
         "Run parallel agents with isolated conversations in the SAME working directory and filesystem. "
         "File changes are immediately visible to all agents; no separate worktree is created. "
+        "Delegate concrete, independent workstreams that can run at the same time, e.g. separate code areas, competing options or independent components. "
+        "Do it yourself when steps depend on each other, the task is small, or the work would edit the same files. "
+        "Delegate only when parallel work shortens the task, or when the user asks for agents. "
         "The limit applies to all non-archived child agents in the group, including nested and completed agents; reuse send for follow-up work. "
         "Only main can request archive: it stops a child and its descendants, frees their slots and preserves read-only history. "
         "archive always requires human approval, even under yolo; the approval lists the affected agents. "

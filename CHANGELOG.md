@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The `Subagent` tool description now says when delegating helps (independent work that can
+  run at the same time) and when to do the work directly (dependent steps, small tasks, edits
+  to the same files). Changing it costs the provider cache once.
+
 - Fix a failed plugin interceptor (`prompt.submit`, `model.request`, `context.compact`) ending
   the whole session instead of the turn: `PluginError` is not a `WizoltError`, so the turn
   layer let it escape and the TUI shut down, leaving no way to reach `/plugins` to disable the
