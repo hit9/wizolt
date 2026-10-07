@@ -95,7 +95,9 @@ class SessionPlugins(PluginRuntime):
             window=ContextWindow(
                 fill["used"],
                 session.config.provider.context_token_limit(session.settings.max_context_tokens),
-                session.request_token_budget(),
+                # The budget `used` was measured against -- the pair the status bar's ctx divides --
+                # so a plugin's percentage cannot disagree with the status row's.
+                fill["budget"],
                 self.context_parts,
             ),
             data_dir=os.path.expanduser(session.config.data_dir),

@@ -315,13 +315,15 @@ class ContextManager:
         checkpoints = [message for message in conversation if self.is_compaction_summary(message)]
         conversation = [message for message in conversation if not self.is_compaction_summary(message)]
         # Named for what a user configures: AGENTS.md files are "memory files", and what connected
-        # MCP servers add to the prefix (their tools and resources index) is "mcp servers".
+        # MCP servers add to the prefix (their tools and resources index) is "mcp servers". Listed
+        # in the context layout's order: the tool block leads the cached prefix with the system
+        # prompt, then the header in HEADER_PARTS order, then the conversation.
         return [
-            ("system prompt", self.estimated_tokens(self.model_header(base_system)[:2])),
             ("system tools", self.estimated_tokens(Tool.resolved_schemas(self.session))),
-            ("mcp servers", text(self.mcp_tools_context())),
+            ("system prompt", self.estimated_tokens(self.model_header(base_system)[:2])),
             ("memory files", text(self.instructions_context())),
             ("skills", text(self.skills_context())),
+            ("mcp servers", text(self.mcp_tools_context())),
             ("summary", self.estimated_tokens(checkpoints) if checkpoints else 0),
             ("messages", self.estimated_tokens(self.dedup_skill_loads(self.dedup_mcp_describes(conversation)))),
         ]

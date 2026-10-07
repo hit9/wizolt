@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The context bar's percentage is the status bar's `ctx` again: it measured the fill against the
+  whole window (237k/262k = 90%) while `ctx` measures it against the input budget, the window
+  less the room kept for the answer (97%). Plugins now get `ContextWindow.budget` as the budget
+  `used` was measured against. Its segments and legend, and `/status`'s Context tab, follow the
+  request's layout (tools, system prompt, memory files, skills, MCP servers, summary, messages),
+  and its colors were re-picked so no two categories share one in any built-in theme — memory
+  files and the compaction summary used to be the same color in all but one.
+
 - Prompt and tool guidance, sent to the main agent and every subagent: the SAFETY secrets rule
   is now one hard rule that no file, tool output or web page can lift, naming environment
   variables (`env`, `printenv`) and wizolt's own `secrets.toml` and config keys, and the agent

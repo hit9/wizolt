@@ -7,11 +7,9 @@ system prompt 9.0k · system tools 14k · …               74k/200k
 
 (In the terminal each category has its own theme color.)
 
-Each colored segment is one part of what the next request sends: the system prompt, tool
-definitions, MCP servers, memory files (AGENTS.md), skills, the summary compaction left (what
-`/compact` cannot shrink again) and the conversation. The empty
-tail is what is still free. The percentage turns to the warning color from 80%. In a short
-terminal only the bar remains.
+Each colored segment is one part of the next request, in its order: tool definitions, system
+prompt, memory files (AGENTS.md), skills, MCP servers, the summary `/compact` left, and the
+conversation. The percentage is the status bar's `ctx`; it warns from 80%.
 
 ## Use
 
@@ -22,11 +20,12 @@ terminal only the bar remains.
 """
 
 # Uses only the public SDK. `window.parts` are the host's local per-category estimates in request
-# order; the bar measures them against the context limit, so the empty tail is what the next
-# request can still spend. When the reported fill exceeds the estimates, the difference is drawn
-# as `other`. The percentage rides on the bar so it survives a one-row allocation. Colors are
-# semantic theme roles, so the active theme owns every choice. Drawing is pure: no model calls,
-# timers or state between repaints.
+# order; `window.used` over `window.budget` is the reported fill the status bar's ctx divides, so
+# the bar spans the budget and its percentage is that same number. Estimates that fall short of
+# the reported fill leave the difference as `other`; estimates that exceed it are drawn
+# proportionally inside it. The percentage rides on the bar so it survives a one-row allocation.
+# Colors are semantic theme roles, so the active theme owns every choice. Drawing is pure: no
+# model calls, timers or state between repaints.
 
 import zlib
 
@@ -34,16 +33,18 @@ from wizolt.sdk import Context, Line, Panel, Plugin, Text
 
 SDK_VERSION = 1
 
-# The host's categories, in request order. Picked from the bundled themes for perceptual
-# distance: neighbouring segments stay distinct in every built-in theme, light or dark.
+# The host's categories, in request order. Searched over every bundled theme (CIELAB distance):
+# no two categories share a color in any of them, neighbouring segments (other included) stay at
+# least 35 apart, and the alarm roles (warning, error) are left to the percentage. A narrow
+# palette may still bring two segments that never touch close together (forest's greens).
 ROLES = {
-    "system prompt": "status_provider",
-    "system tools": "error",
-    "mcp servers": "tool",
-    "memory files": "syntax_number",
-    "skills": "status_reason",
-    "summary": "accent_secondary",
-    "messages": "info",
+    "system tools": "syntax_number",
+    "system prompt": "status_context",
+    "memory files": "status_services",
+    "skills": "tool",
+    "mcp servers": "status_agent",
+    "summary": "syntax_assign",
+    "messages": "syntax_builtin",
     "other": "muted",
 }
 # A category the host adds later still gets a stable color: same name, same role.
@@ -110,25 +111,29 @@ def draw(context: Context) -> Panel:
     window = context.window
     parts = [(name, tokens) for name, tokens in window.parts if tokens > 0]
     estimate = sum(tokens for _, tokens in parts)
-    total = next((value for value in (window.limit, window.budget, estimate) if value > 0), 0)
+    total = next((value for value in (window.budget, window.limit, estimate) if value > 0), 0)
     if not total:
         return Panel(())
-    filled = min(total, max(window.used, estimate))
+    filled = min(total, window.used or estimate)
     if window.used > estimate:
         parts.append(("other", window.used - estimate))
     columns = context.layout.columns if context.layout else context.columns
-    percent = f"{round(filled * 100 / total)}%"
+    # Rounded down and capped, exactly as the status bar's ctx is.
+    shown = min(100, filled * 100 // total)
+    percent = f"{shown}%"
     width = columns - len(percent) - 1
     if width < MIN_BAR:
         percent, width = "", columns
-    cells = allocate([tokens for _, tokens in parts] + [total - filled], width)
+    # The filled span is the reported fill; the parts share it in proportion, the rest is free.
+    filled_cells = min(width, max(1, round(width * filled / total))) if parts else 0
+    cells = [*allocate([tokens for _, tokens in parts], filled_cells), width - filled_cells]
     spans = [Text("█" * count, role(name)) for (name, _), count in zip(parts, cells, strict=False) if count]
     spans += [Text("░" * cells[-1], "rule")] if cells[-1] else []
-    spans += [Text(" " + percent, "warning" if filled * 10 >= total * 8 else "text")] if percent else []
+    spans += [Text(" " + percent, "warning" if shown >= 80 else "text")] if percent else []
     rows: list[Text | Line] = [Line(tuple(spans))]
     if parts and (context.layout is None or context.layout.rows >= 2):
         drawn = [part for part, count in zip(parts, cells, strict=False) if count]
-        rows.append(legend(drawn, f"{compact(filled)}/{compact(total)}" + ("" if percent else f" {round(filled * 100 / total)}%"), columns))
+        rows.append(legend(drawn, f"{compact(filled)}/{compact(total)}" + ("" if percent else f" {shown}%"), columns))
     return Panel(tuple(rows))
 
 

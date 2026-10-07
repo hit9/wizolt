@@ -107,19 +107,30 @@ async def bar_panel(runtime, window, columns=60):
 async def test_context_bar_stacks_categories_and_the_unestimated_rest(runtime):
     panel = await bar_panel(runtime, ContextWindow(50_000, 200_000, 180_000, (("system prompt", 10_000), ("messages", 30_000))))
     bar, legend = panel.rows
-    assert text(bar).endswith(" 25%") and len(text(bar)) == 60
+    # Measured against the input budget the status bar's ctx divides (50k * 100 // 180k), not
+    # the whole 200k window: the bar used to read 25% beside a status row reading 27%.
+    assert text(bar).endswith(" 27%") and len(text(bar)) == 60
     # Categories in request order with their theme roles, then "other" for the fill the
     # estimates do not explain, then the free tail.
-    assert [span.role for span in bar.spans] == ["status_provider", "info", "muted", "rule", "text"]
-    assert sum(len(span.text) for span in bar.spans[:3]) == round(50_000 * 56 / 200_000)
-    assert "system prompt 10k" in text(legend) and "other 10k" in text(legend) and text(legend).endswith("50k/200k")
+    assert [span.role for span in bar.spans] == ["status_context", "syntax_builtin", "muted", "rule", "text"]
+    assert sum(len(span.text) for span in bar.spans[:3]) == round(50_000 * 56 / 180_000)
+    assert "system prompt 10k" in text(legend) and "other 10k" in text(legend) and text(legend).endswith("50k/180k")
+
+
+async def test_context_bar_spreads_estimates_above_the_reported_fill_inside_it(runtime):
+    # The local estimates can run ahead of the last reported request; the bar still ends where
+    # the reported fill does, so its cells and its percentage tell the same story.
+    panel = await bar_panel(runtime, ContextWindow(90_000, 200_000, 180_000, (("system prompt", 20_000), ("messages", 100_000))))
+    bar, _legend = panel.rows
+    assert text(bar).endswith(" 50%")
+    assert sum(len(span.text) for span in bar.spans if span.role != "rule" and span.role not in ("text", "warning")) == 28
 
 
 async def test_context_bar_draws_what_compaction_left_apart_from_the_conversation(runtime):
     window = ContextWindow(60_000, 200_000, 180_000, (("skills", 10_000), ("summary", 20_000), ("messages", 30_000)))
     bar, legend = (await bar_panel(runtime, window)).rows
     # Its own role, distinct from both neighbours, in request order before the conversation.
-    assert [span.role for span in bar.spans][:3] == ["status_reason", "accent_secondary", "info"]
+    assert [span.role for span in bar.spans][:3] == ["tool", "syntax_assign", "syntax_builtin"]
     assert "summary 20k" in text(legend)
 
 
@@ -127,7 +138,7 @@ async def test_context_bar_keeps_small_categories_and_fits_narrow_terminals(runt
     window = ContextWindow(100_000, 200_000, 0, (("system prompt", 100), ("system tools", 9_900), ("skills", 40_000), ("messages", 50_000)))
     panel = await bar_panel(runtime, window, columns=40)
     bar, legend = panel.rows
-    assert len(text(bar)) == 40 and bar.spans[0] == Text("█", "status_provider")  # Tiny, still drawn.
+    assert len(text(bar)) == 40 and bar.spans[0] == Text("█", "status_context")  # Tiny, still drawn.
     assert "…" in text(legend) and len(text(legend)) == 40 and text(legend).endswith("100k/200k")
     # Too narrow for the percentage beside the bar: the legend's totals carry it instead.
     bar, legend = (await bar_panel(runtime, window, columns=13)).rows

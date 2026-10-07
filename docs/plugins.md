@@ -128,10 +128,10 @@ fish or robot; your choice is saved. It starts disabled and makes no model calls
 ## The built-in context bar
 
 Enable **context_bar** in `/plugins` to see what fills your context window above the input: one
-colored segment per category (system prompt, tools, memory files, skills, the summary compaction
-left, messages), the
-percentage used at the end, and a legend with token counts. In a short terminal only the bar
-remains. It makes no model calls.
+colored segment per category, in the order the request carries them (tools, system prompt,
+memory files, skills, MCP servers, the summary compaction left, messages), the same percentage
+as the status bar's `ctx` at the end, and a legend with token counts. In a short terminal only
+the bar remains. It makes no model calls.
 
 ## Check your provider usage
 

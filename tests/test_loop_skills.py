@@ -260,7 +260,8 @@ def test_status_breakdown_is_an_estimate_of_disjoint_parts(tmp_path):
     parts = dict(context.parts)
 
     # Named for what a user configures, in the order the request carries them.
-    assert list(parts) == ["system prompt", "system tools", "mcp servers", "memory files", "skills", "summary", "messages"]
+    # The context layout's order: the tool block, the system prompt, the header parts, then the conversation.
+    assert list(parts) == ["system tools", "system prompt", "memory files", "skills", "mcp servers", "summary", "messages"]
     assert parts["messages"] >= 10_000 and parts["system prompt"] > 0 and parts["system tools"] > 0
     assert parts["memory files"] > 0  # AGENTS.md
     # Without MCP, or before any compaction, a part is absent from the legend rather than shown
