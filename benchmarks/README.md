@@ -151,9 +151,43 @@ The file probes also rose (0.57 ms and 2.58 ms); their implementation is unchang
 measurements do not establish a regression in file discovery. Keep the raw observations rather
 than absorbing them into a new baseline. No broad performance improvement is claimed.
 
+### 0.74.0 release reference
+
+The current reference is [0.74.0](baselines/linux-arm64-py314-0.74.0.json), measured after
+merging `bugfix/plugin-system-audit` into `master` (`1e812b1d`, with release changes; exact
+source hash in the report). [0.73.0a2 was remeasured](results/linux-arm64-py314-before-0.74.0.json)
+with the same current workloads, dependencies and environment: Linux ARM64, CPython 3.14.7,
+nine samples, sequential runs without concurrent tests or builds.
+
+| Workload | 0.73.0a2 (ms) | 0.74.0 (ms) | Change |
+| --- | ---: | ---: | ---: |
+| First prompt frame | 153.403 | 154.110 | +0.5% |
+| Startup bootstrap, three user skills | 91.695 | 104.963 | +14.5% |
+| CLI import | 179.498 | 190.127 | +5.9% |
+| Ten headless turns, no hooks | 25.427 | 28.236 | +11.0% |
+| Prepare a request over 1 MB of history | 6.550 | 9.059 | +38.3% |
+| Plugin tool, 20 calls | 21.946 | 4.847 | -77.9% |
+| Settle 300 transcript records | 15.187 | 13.191 | -13.1% |
+
+Replay, dense plugin and transcript output hashes match. These regressions are recorded, not
+absorbed:
+
+- Request preparation: about 1.2 ms of it bisects to `8eabc7e6` (reactions). The system prompt
+  now carries emoji outside the Basic Multilingual Plane, so the token estimate's single JSON
+  dump of the whole payload is held four bytes per character and transcoded to UTF-8 on every
+  estimate. History that already held such a character (a reaction marker, any emoji) paid this
+  before; CJK pays a smaller share. Per-message counting was measured and rejected: it slows
+  all-ASCII payloads by about as much as it saves here. Under 0.1% of a model request.
+- Startup bootstrap (+13 ms per fresh interpreter), headless turns (+2.8 ms per ten) and CLI
+  import (+11 ms) rose across the release and were not attributed to single commits; bisect
+  samples put most of the bootstrap rise in its first seventeen commits.
+- `snapshot_unchanged_1mb` (+25.5%) and `skills_turn_rescan_100` (+37.7%) also rose in this run
+  but measured 2.82 ms and 0.48 ms at the merged branch tip, level with 0.73.0a2: treat those
+  two as noise until a rerun confirms them.
+
 ### Alpha 2 release reference
 
-The current reference is [0.73.0a2](baselines/linux-arm64-py314-0.73.0a2.json), measured
+The previous reference is [0.73.0a2](baselines/linux-arm64-py314-0.73.0a2.json), measured
 after merging `dev27` into `master` (`eae455be`, with release changes; exact source hash in
 the report). [Alpha 1 was remeasured](results/linux-arm64-py314-before-0.73.0a2.json) with
 the same current workloads, dependencies and environment: Linux ARM64, CPython 3.14.7,

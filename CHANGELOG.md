@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.74.0 - 2026-10-07
+
+- Benchmarks: the 0.74.0 reference replaces 0.73.0a2, against which it was remeasured. Recorded
+  regressions: request preparation over 1 MB of history +38% (6.6 → 9.1 ms; about 1.2 ms from
+  the reactions block's emoji widening the token estimate's payload string), startup bootstrap
+  +14.5% (92 → 105 ms), ten headless turns +11% and CLI import +6%; plugin tool calls -78% and
+  transcript settling -13%. See `benchmarks/README.md` (0.74.0 release reference).
+
 - `/status` breathes: a blank row inside the frame's top and bottom edges and two spaces beside
   each border, a blank row between related groups in each tab (Overview's agent, model and goal
   apart from its context and usage; Progress's goal, steps, known facts and check; Session's
