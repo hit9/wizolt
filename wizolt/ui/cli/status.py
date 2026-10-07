@@ -479,16 +479,17 @@ def inner_width(width: int) -> int:
     return max(1, width - 6)
 
 
-def frame(body: TextRows, width: int, *, footer: str = "") -> TextRows:
+def frame(body: TextRows, width: int, *, footer: str = "", padded: bool = True) -> TextRows:
     """`body` inside the report's border, `width` columns in all; `footer` sits in the bottom edge.
 
-    A blank row inside each edge and two spaces beside each border keep the rows off the frame."""
+    A blank row inside each edge (`padded`) and two spaces beside each border keep the rows off
+    the frame; a pane too short for the padding rows goes without them rather than lose rows."""
     # A structure line, not an accent: quiet like the keys in its own edge, so color stays on the
     # tabs and the values.
     border = Theme.fg("muted")
     inside = inner_width(width)
     rows: TextRows = [[(border, "╭" + "─" * (width - 2) + "╮")]]
-    for row in [[], *body, []]:
+    for row in [[], *body, []] if padded else body:
         row = clip(row, inside)
         rows.append([(border, "│  "), *row, ("", " " * max(0, inside - width_of(row))), (border, "  │")])
     keys = f" {Text.clip_width(footer, width - 6)} " if footer else ""
@@ -553,14 +554,16 @@ class StatusView:
         outer = frame_width(width - 2)
         inside = inner_width(outer)
         tallest = max(len(self.tabs.rows(tab, inside)) for tab in TABS)
-        # Four rows are the frame's edges and the padding inside them, two the tab row and the gap
-        # beneath it.
-        room = max(1, min(tallest, height - 6))
+        # Two rows are the frame's edges, two the tab row and the gap beneath it, and two the
+        # padding inside the edges -- kept only while the tallest tab still fits beside them: a
+        # short pane spends its rows on content and on the edge that names the keys.
+        padded = tallest + 6 <= height
+        room = max(1, min(tallest, height - (6 if padded else 4)))
         rows = self.tabs.rows(TABS[self.state.tab], inside)
         self.state.scroll = min(self.state.scroll, max(0, len(rows) - room))
         visible = rows[self.state.scroll : self.state.scroll + room]
         body = [UiPrinter.tab_segments(TABS, self.state.tab), [], *visible, *([[]] * (room - len(visible)))]
-        return [fragment for row in frame(body, outer, footer=KEYS) for fragment in (("", "  "), *row, ("", "\n"))]
+        return [fragment for row in frame(body, outer, footer=KEYS, padded=padded) for fragment in (("", "  "), *row, ("", "\n"))]
 
     def handle_key(self, key: str, data: str = "") -> Any:
         if key in {"escape", "q", "c-c", "enter"}:

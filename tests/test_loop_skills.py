@@ -454,6 +454,20 @@ def test_status_view_opens_on_a_concise_overview_and_switches_tabs(tmp_path):
     assert view.handle_key("escape") is None
 
 
+@pytest.mark.parametrize("height", [7, 9, 12, 40])
+def test_status_view_fits_its_pane_and_keeps_the_keys_edge(tmp_path, monkeypatch, height):
+    """The padding rows inside the frame once pushed its bottom edge -- and the Esc hint -- out
+    of a short pane; there the padding goes, so the frame fits and its edge stays."""
+    loop = status_loop(tmp_path)
+    view = StatusView(loop, StatusReport.of(loop).snapshot)
+    monkeypatch.setattr(view, "size", lambda: (100, height))
+    rows = "".join(fragment[1] for fragment in view.fragments()).splitlines()
+    assert len(rows) <= height and "Esc close" in rows[-1]
+    padded = not rows[1].strip(" │")
+    tallest = max(len(view.tabs.rows(tab, 100)) for tab in TABS)
+    assert padded == (tallest + 6 <= height)
+
+
 async def test_status_command_shows_the_view_interactively_and_prints_otherwise(tmp_path):
     loop = status_loop(tmp_path)
     blocks = []
