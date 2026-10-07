@@ -1,5 +1,7 @@
 """Model-facing prompts and prompt templates used by wizolt."""
 
+import re
+
 # These shared rules keep the parent and worker from drifting. They ship on every request: sharpen
 # wording in place instead of adding examples, rationale, or restatements.
 LANGUAGE_RULES = """\
@@ -204,3 +206,40 @@ def git_attribution_directive(enabled: bool) -> str:
         "once, after the body; the link is intended, and an existing commit or pull request is never "
         "rewritten just to add it."
     )
+
+
+# Single code points the terminal draws two cells wide everywhere: a variation selector (❤️) or a
+# joined sequence would break column alignment in multiplexers.
+REACTIONS = ("👍", "🎉", "😄", "🙏", "👀", "🤔", "🔥", "💯")
+REACTION_MARK = "[react:"
+REACTION_RE = re.compile(r"\s*\[react:(.)\][ \t]*\n?")
+
+
+def reactions_directive(enabled: bool) -> str:
+    """The fixed REACTIONS block appended to the system prompt when the model may react to the
+    user's message, or "" when it may not. A pure function of the flag, so the system prefix
+    stays prompt-cache stable. The marker rides in the reply itself: no tool, no extra request."""
+    if not enabled:
+        return ""
+    return (
+        "REACTIONS:\n"
+        f"- You may react to the user's message by opening your first response of the turn with `{REACTION_MARK}<emoji>]`, "
+        f"one of {' '.join(REACTIONS)}. The terminal shows it beside their message and hides the marker. React rarely, "
+        "only when the message clearly invites it (thanks, good news, a sharp idea); most messages get none. Never mention it."
+    )
+
+
+def split_reaction(text: str) -> tuple[str, str]:
+    """The reaction a reply opens with and the text left to show, or ("", text) when it opens
+    with none. Only a known emoji counts: anything else stays visible exactly as written."""
+    match = REACTION_RE.match(text)
+    if match is None or match.group(1) not in REACTIONS:
+        return "", text
+    return match.group(1), text[match.end() :]
+
+
+def opens_reaction(text: str) -> bool:
+    """Whether a reply streamed this far could still turn out to open with a reaction marker, so a
+    preview holds it back instead of flashing half a marker."""
+    head = text.lstrip()
+    return len(head) <= len(REACTION_MARK) + 1 and (REACTION_MARK.startswith(head) or head.startswith(REACTION_MARK))

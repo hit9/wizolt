@@ -395,6 +395,7 @@ async def test_overdue_usage_triggers_compaction_even_when_estimate_fits(tmp_pat
     estimate alone decides, so a small follow-up after an 80% request is not compacted."""
     s = session(tmp_path)
     s.settings.max_context_tokens = 21_000  # budget 520; the ASCII payload estimates ~326
+    s.settings.reactions = False  # its system block alone would overflow so small a budget
     s.messages = [
         {"role": "user", "content": "old user"},
         {"role": "assistant", "content": "old answer"},

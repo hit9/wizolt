@@ -701,6 +701,12 @@ that projection. Its two mechanisms are inseparable:
   visible context must not expand the width-change cost to ordinary selector interactions.
   Snapshot the height bound at opening; querying terminal size again inside layout can mix two
   resize geometries in one frame. The parent clips the window if the pane subsequently shrinks.
+- The message that opens a model turn is held out of scrollback (`UiPrinter.hold_user_message`)
+  and drawn at the top of the live region, so the model's reaction (`[react:👍]` opening its
+  reply) can join the row as a muted `← 👍`: a printed row is never edited. Any write takes the
+  message out first -- reply, tool row, refusal, turn end -- and `reset_turn` releases one nothing
+  followed. A reaction after that is dropped, not drawn late. Commands, subagents, the simple
+  frontend and messages over six rows are never held. History keeps the marker; display strips it.
 - Adopt the CLI's preprinted startup output into the transcript without printing it again.
   Direct runtime callers install the sink before printing their banner, still before terminal
   probing. Early visibility must not bypass recording: replay cannot recover unrecorded output.

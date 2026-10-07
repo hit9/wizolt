@@ -1,7 +1,7 @@
 """Replace the system prompt with your own file, edited with /prompt.
 
-Your file replaces wizolt's instruction text in every request; the language and attribution
-lines wizolt adds stay. Nothing is written until you save an edit, so enabling this changes
+Your file replaces wizolt's instruction text in every request; the language, attribution and
+reactions lines wizolt adds stay. Nothing is written until you save an edit, so enabling this changes
 nothing by itself. A project's copy overrides your own. An edit applies from the next request;
 each saved change costs the provider cache once. It makes no model calls.
 

@@ -11,6 +11,7 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, ClassVar
 
+from wizolt.agent.prompts import opens_reaction, split_reaction
 from wizolt.base import ImageRouteNotice, LogBlock, LogEdge, LogLine, LogRole, Text, TurnBox
 from wizolt.session import Session
 from wizolt.tools import transcript
@@ -207,6 +208,11 @@ class Presentation:
         same promotion handling with the flag flipped. Only the flag differs; the answer takes no
         phase rule below it, because the turn-end rule already closes the turn and two rules in a
         row would read as a box."""
+        # The reaction marker stays in history as the model wrote it; the screen shows it beside
+        # the user's message instead. Taken off first, since a promotion was published without it.
+        reaction, text = split_reaction(text)
+        if reaction:
+            self.react(reaction)
         # An early promotion is presentation-only: Agent still publishes the same semantic text
         # after ModelClient returns. Consume the one-shot marker instead of printing it twice.
         promoted = self.model_stream_promoted_text
@@ -216,8 +222,27 @@ class Presentation:
             if not remaining:
                 return
             text = remaining
+        if reaction and not text.strip():
+            return  # a reply that was only its reaction
         emit = self.emit_narration if interim else self.emit_final_answer
         self.with_status_paused(lambda: emit(text))
+
+    def user_message(self, text: str, *, turn: bool) -> None:
+        """The user's submitted message. One that opens a model turn the model may react to waits
+        in the live region until the turn's first output (`UiPrinter.hold_user_message`), so the
+        reaction can join its row; anything else prints at once."""
+        if turn and self.tui is not None and self.reactions_enabled() and self.ui.hold_user_message(text):
+            self.tui.invalidate()
+            return
+        self.ui.emit_answer(text, role="user", rule=False)
+
+    def reactions_enabled(self) -> bool:
+        """Whether this agent's model was told it may react: the main agent's, with the setting on."""
+        return self.session.settings.reactions and not self.session.agent_parent
+
+    def react(self, reaction: str) -> None:
+        if self.ui.react(reaction) and self.tui is not None:
+            self.tui.invalidate_frame()
 
     def agent_answer_output(self, text: str = "") -> None:
         """The turn's final answer: the same markdown rendering as interim narration, but no phase
@@ -239,7 +264,10 @@ class Presentation:
             # preview standing and let the ordinary post-request output keep the transcript ordered.
             return
         if kind == "output_done":
-            promote = text.strip()
+            reaction, promote = split_reaction(text)
+            promote = promote.strip()
+            if reaction:
+                self.react(reaction)
             self.model_stream_kind = self.model_stream_text = ""
             if promote and tui is not None:
                 self.model_stream_promoted_text = promote
@@ -250,7 +278,11 @@ class Presentation:
         elif text:
             if kind != self.model_stream_kind:
                 self.model_stream_kind, self.model_stream_text = kind, ""
+            # The reaction shows the moment its marker completes, while the reply still streams.
+            opening = kind == "output" and opens_reaction(self.model_stream_text)
             self.model_stream_text = (self.model_stream_text + text)[-8000:]
+            if opening and (reaction := split_reaction(self.model_stream_text)[0]):
+                self.react(reaction)
         if tui is not None:
             tui.invalidate_frame()
             if promote:

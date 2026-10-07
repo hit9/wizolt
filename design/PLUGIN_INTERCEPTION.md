@@ -103,7 +103,7 @@ them from the producers in `ContextManager.model_header`, not by parsing rendere
 
 | Block, in default order | Editing contract |
 | --- | --- |
-| `system` | Replace instruction text; language/attribution directives stay host-owned |
+| `system` | Replace instruction text; language/attribution/reactions directives stay host-owned |
 | `environment` | Read-only facts |
 | `instructions` | Replace project/user instruction text for this request |
 | `skills`, `mcp` | Read-only capability indexes; do not invent executable capabilities |

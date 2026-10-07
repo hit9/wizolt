@@ -71,7 +71,7 @@ request, after compaction, before `model.request`.
 
 | Block | You may |
 | --- | --- |
-| `system` | Replace the instruction text (language and attribution directives stay wizolt's) |
+| `system` | Replace the instruction text (language, attribution and reactions directives stay wizolt's) |
 | `environment`, `skills`, `mcp` | Read |
 | `instructions` | Replace the project/user instructions for this request |
 | `conversation` | Read a bounded view (recent messages, clipped); history itself is never edited |

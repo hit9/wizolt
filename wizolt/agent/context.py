@@ -17,6 +17,7 @@ from wizolt.agent.prompts import (
     PREVIOUS_CONTEXT_TRIMMED,
     git_attribution_directive,
     language_directive,
+    reactions_directive,
 )
 from wizolt.base import (
     ANTHROPIC_CONTENT_KEY,
@@ -122,8 +123,8 @@ class ContextManager:
     async def compose(self, plugins: object, base_system: str, messages: list[Json], tools: list[Json] | None) -> list[Json]:
         """``context.compose`` over one prepared turn request. Durable messages never change.
 
-        Editable: the system instructions (the language and attribution directives stay
-        host-owned) and the project/user instructions. Environment, skills, MCP and the
+        Editable: the system instructions (the language, attribution and reactions directives
+        stay host-owned) and the project/user instructions. Environment, skills, MCP and the
         conversation are read-only. Plugins add their own ``plugin:<name>:<id>`` blocks, which
         the host places after the header, before the conversation, in interception order.
         """
@@ -195,6 +196,8 @@ class ContextManager:
         for directive in (
             language_directive(self.session.settings.language),
             git_attribution_directive(self.session.settings.attribution),
+            # Only the main agent talks to the user; a subagent's messages come from its parent.
+            reactions_directive(self.session.settings.reactions and not self.session.agent_parent),
         ):
             if directive:
                 content += "\n\n" + directive

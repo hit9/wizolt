@@ -532,6 +532,8 @@ class TuiRuntime:
             self.submit_next(self.loop.take_pending_inputs())
 
     def reset_turn(self) -> None:
+        # A turn that printed nothing at all still prints the message that opened it.
+        self.loop.presentation.ui.release_held()
         self.loop.presentation.model_stream_output("", "")
         # A request can fail after permanent promotion but before Agent re-publishes the text and
         # consumes its marker. Never let that stale marker suppress an identical later response.
@@ -542,7 +544,7 @@ class TuiRuntime:
     async def dispatch(self, user_input: str | UserInput) -> bool:
         """Dispatch one input. Return true when it was fully handled as a command."""
         user_input = user_input if isinstance(user_input, UserInput) else UserInput(user_input)
-        self.loop.presentation.ui.emit_answer(user_input.display_text(), role="user", rule=False)
+        self.loop.presentation.user_message(user_input.display_text(), turn=not self.loop.is_command(user_input.strip()))
         try:
             # Isolate command cancellation from the input loop: swallowing CancelledError in
             # /compact must not leave the next model turn running on a cancelling parent task.

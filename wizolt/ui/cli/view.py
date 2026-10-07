@@ -19,6 +19,7 @@ from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.styles import Style
 from prompt_toolkit.utils import get_cwidth
 
+from wizolt.agent.prompts import opens_reaction, split_reaction
 from wizolt.agentsmd import MenuRow
 from wizolt.base import LogBlock, LogEdge, Text, TurnBox
 from wizolt.config import PROVIDER_API_CHOICES
@@ -497,6 +498,10 @@ class View:
             # or the standing divider when no stream exists yet. The divider always sits below,
             # so the gap can never leave a hanging blank row at the end of the activity region.
             fragments.append(("", "\n"))
+        # The message that opened the turn, while the model may still react to it: drawn as it will
+        # print, with the gap the turn opens below it, until the turn's first output prints it.
+        if held := self.presentation.ui.held_fragments(max(20, shutil.get_terminal_size((120, 20)).columns)):
+            fragments = [*held, ("", "\n"), *fragments]
         fragments.extend(stream)
         if stream:
             fragments.append(("", "\n"))
@@ -534,6 +539,9 @@ class View:
     def model_stream_fragments(self) -> StyleAndTextTuples:
         text = self.presentation.model_stream_text
         kind = self.presentation.model_stream_kind
+        if kind == "output":
+            # The reaction marker is shown beside the user's message, never as reply text.
+            text = "" if opens_reaction(text) else split_reaction(text)[1]
         mode = transcript.thinking(self.session.config) if kind == "reasoning" else transcript.THINKING[0]
         if not text or mode == "hidden":
             return []

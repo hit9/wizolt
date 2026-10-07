@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The model can react to your message with an emoji (👍 🎉 😄 🙏 👀 🤔 🔥 💯), drawn muted after
+  it as `← 👍`. It opens its reply with a `[react:👍]` marker that the screen hides and history
+  keeps, so a reaction needs no tool and no extra request; the system prompt gains one fixed
+  `REACTIONS` block for the main agent (subagents never see it). To make room, the message that
+  opens a turn waits in the live region until the turn prints anything, then lands in scrollback
+  with its reaction; messages taller than six rows print at once and get none live. Resumed
+  sessions draw reactions again. On by default; `runtime.reactions = false` turns it off.
+
 - The context breakdown -- `/status` Context tab, the `context_bar` plugin, and plugins'
   `Context.window.parts` -- shows what compaction left as its own `summary` part (kept summaries,
   working state, activity), before `messages`, instead of counting it as conversation. After

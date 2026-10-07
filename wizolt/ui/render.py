@@ -14,7 +14,7 @@ import threading
 import time
 from collections.abc import Callable, Hashable, Iterable
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from itertools import accumulate, pairwise
 from typing import TYPE_CHECKING, Any, ClassVar, Self
@@ -47,6 +47,7 @@ from wizolt.utils import terminal
 if TYPE_CHECKING:
     from pygments.style import Style as PygmentsStyle
     from rich.console import Console
+    from rich.text import Text as RichText
     from rich.theme import Theme as RichTheme
 
     from wizolt.session import Session
@@ -136,6 +137,7 @@ class MessageBlock(WidthDependent):
     text: str
     role: str
     indent: int
+    reaction: str = ""  # the model's emoji beside a user message
 
     def ansi(self, width: int) -> str:
         # Rich loads on first render, not at import: the first frame needs no Markdown console.
@@ -144,7 +146,7 @@ class MessageBlock(WidthDependent):
         printer = self.printer
         console = markdown_console(width)
         with console.capture() as capture:
-            printer.render_message(console, self.text, self.role, False, self.indent)
+            printer.render_message(console, self.text, self.role, False, self.indent, self.reaction)
         cleaned = printer.strip_unknown_escapes(printer.strip_trailing_pad(capture.get()))
         # A block owns its inside, never its outside: the gap above it is `separate`'s to open and
         # the one below belongs to whatever comes next, so a document that opens on a heading or
@@ -895,6 +897,7 @@ class Theme:
 
         styles = {f"wizolt.{role}": cls.rich_color(role) for role in ("user", "error", "muted", "rule")}
         styles["wizolt.user"] += " on " + cls.rich_color("user_bg")
+        styles["wizolt.reaction"] = styles["wizolt.muted"] + " on " + cls.rich_color("user_bg")
         return RichTheme({**styles, **cls.markdown_styles()}, inherit=True)
 
     @classmethod
@@ -1072,6 +1075,8 @@ class UiPrinter:
     # application (erase + repaint), so batching a burst of tool-result lines into one suspend
     # keeps the animated divider on screen; 30ms is well below human perception.
     SCROLLBACK_BATCH_WINDOW: ClassVar[float] = 0.03
+    # The tallest user message the live region holds while the model may still react to it.
+    MAX_HELD_ROWS: ClassVar[int] = 6
     MCP_STATUS_RE: ClassVar[re.Pattern[str]] = re.compile(r"● (connected|connecting|disconnected|disconnecting|error|skipped)")
     MCP_STATUS_ANSI: ClassVar[dict[str, str]] = {
         "connected": "\x1b[32m",
@@ -1128,6 +1133,11 @@ class UiPrinter:
         # so the gap before the next call (`CallGap`) is skipped between two of them; anything else
         # printed clears this and the gap comes back. `Presentation.tool_output` keeps it.
         self.call_group: list[LogBlock] | None = None
+        # The user's message waiting for the model's reaction (`hold_user_message`), the blank rows
+        # asked for below it meanwhile, and its live layout. Guarded by `_scrollback_lock`.
+        self._held: MessageBlock | None = None
+        self._held_gap = 0
+        self._held_render: tuple[Hashable, StyleAndTextTuples] | None = None
 
     @staticmethod
     def one_line(blocks: Iterable[LogBlock]) -> bool:
@@ -1171,7 +1181,12 @@ class UiPrinter:
         if not self.color:
             return
         for _ in range(max(0, rows - self.trailing_blanks)):
-            self.emit()
+            if self._held is not None:
+                # A gap below a held message waits with it: printing it would print the message.
+                self._held_gap += 1
+                self.track_layout("\n")
+            else:
+                self.emit()
 
     def write_direct(self, callback: Callable[[], None]) -> None:
         """Run one write with no application to print above, draining anything queued first.
@@ -1194,6 +1209,8 @@ class UiPrinter:
             self._scrollback_parts = []
             self._scrollback_scheduled = False
             self._scrollback_generation += 1
+        # Queued writes went in before the message was held, so they print first.
+        parts += self._take_held()
         if parts:
             self.print_parts(parts)
 
@@ -1269,6 +1286,9 @@ class UiPrinter:
         create_app_session instead, this degrades gracefully to per-emit direct prints -- the
         pre-batch behavior, correct but with the divider blink back.
         """
+        parts = [*self._take_held(), *parts]
+        if not parts:
+            return
         app = get_app_or_none()
         # `_running_in_terminal` has no public accessor; it is the only way to see "a suspend is
         # already in progress" so a nested emit prints inside it instead of rejoining the window
@@ -1327,6 +1347,7 @@ class UiPrinter:
         Inside a live application the parts join the same queue as ordinary emits -- landing after
         anything already queued and flushing as one print; outside one they print directly, in
         order, as one call."""
+        parts = [*self._take_held(), *parts]
         app = get_app_or_none()
         if app is None or not app.is_running or app._running_in_terminal:
             self.drain_scrollback()
@@ -1486,10 +1507,10 @@ class UiPrinter:
                 seen_content = True
         return "".join(payload for _, payload in tokens)
 
-    def emit_answer(self, text: str, *, role: str = "", rule: bool = True, indent: int = 0) -> None:
+    def emit_answer(self, text: str, *, role: str = "", rule: bool = True, indent: int = 0, reaction: str = "") -> None:
         if not self.color:
             if role == "user":
-                text, role = "\n" + self.USER_LOG_PREFIX + text, ""
+                text, role = "\n" + self.USER_LOG_PREFIX + text + (f"  ← {reaction}" if reaction else ""), ""
             elif role == "assistant":
                 role = ""
             self.output_fn(self.indent_message(text, role, indent))
@@ -1504,7 +1525,7 @@ class UiPrinter:
         # captured ANSI, and a 100-column rule replayed into a 60-column pane wraps onto a second
         # row -- the other three rules already avoid this the same way.
         drew_rule = rule and not self.is_error(text)
-        block = MessageBlock(self, text, role, indent)
+        block = MessageBlock(self, text, role, indent, reaction)
         # Count the rule's row as Rich's own row was counted, so spacing decisions taken from
         # `rows_since_rule` and `trailing_blanks` are unchanged by where the rule is drawn.
         self.track_layout(("─\n" if drew_rule else "") + block.ansi(shutil.get_terminal_size().columns))
@@ -1515,6 +1536,58 @@ class UiPrinter:
             self._batch_parts.extend(parts)
             return
         self._scrollback_print_parts(parts)
+
+    def hold_user_message(self, text: str) -> bool:
+        """Lay out the user's message as `emit_answer` would, but keep it out of scrollback until
+        the next write, so the model's reaction (`react`) can still join its row: a printed row
+        cannot be changed. The live region draws it meanwhile (`held_fragments`). Whatever is
+        written next -- the reply, a tool row, a refusal, the turn's end -- takes it out first.
+
+        False, and nothing held, without color, inside a batch, or for a message taller than
+        MAX_HELD_ROWS: a tall message would crowd the live region, so it prints at once and
+        gets no reaction."""
+        if not self.color or self._batch_parts is not None or self._held is not None:
+            return False
+        block = MessageBlock(self, text, "user", 0)
+        rows = block.ansi(shutil.get_terminal_size().columns)
+        if rows.count("\n") > self.MAX_HELD_ROWS:
+            return False
+        self.separate()
+        self.track_layout(rows)
+        with self._scrollback_lock:
+            self._held, self._held_gap = block, 0
+        return True
+
+    def react(self, reaction: str) -> bool:
+        """Put the model's reaction beside the held user message. False once it has been printed:
+        a reaction that arrives after anything else was written is dropped, not drawn late."""
+        with self._scrollback_lock:
+            if self._held is None:
+                return False
+            self._held = replace(self._held, reaction=reaction)
+        return True
+
+    def held_fragments(self, width: int) -> StyleAndTextTuples:
+        """The held message as the live region draws it, laid out once per width and theme."""
+        held = self._held
+        if held is None:
+            return []
+        key = (held, width, Theme.key())
+        if self._held_render is None or self._held_render[0] != key:
+            self._held_render = (key, held.fragments(width))
+        return self._held_render[1]
+
+    def release_held(self) -> None:
+        """Print the held message now, with its reaction if one arrived."""
+        self._write_scrollback([])
+
+    def _take_held(self) -> list[FormattedText | ANSI | WidthDependent]:
+        with self._scrollback_lock:
+            held, gap = self._held, self._held_gap
+            self._held, self._held_gap, self._held_render = None, 0, None
+        if held is None:
+            return []
+        return [held, *(FormattedText(self.segments("")) for _ in range(gap))]
 
     def emit_phase_rule(self) -> None:
         """Close a stretch of the turn with the same quiet full-width rule the turn ends with,
@@ -1603,7 +1676,18 @@ class UiPrinter:
         """Whether a message reads as an error, which is drawn without a rule above it."""
         return text.startswith(("Error:", "ConfigError:", "Unknown command:"))
 
-    def render_message(self, console: Console, text: str, role: str, rule: bool, indent: int) -> None:
+    @staticmethod
+    def reaction_text(console: Console, line: RichText, reaction: str, width: int) -> RichText:
+        """The model's `← 👍` after the user's message: two spaces after its last row when the
+        whole mark fits there, else at the start of a row of its own, so it is never split and
+        never squeezed into the words. Muted, unlike the message, so nobody reads it as typed."""
+        from rich.text import Text as RichText
+
+        mark = f"← {reaction}"
+        last = line.wrap(console, width)[-1].cell_len
+        return RichText(("  " if last + 2 + get_cwidth(mark) <= width else "\n") + mark, style="wizolt.reaction")
+
+    def render_message(self, console: Console, text: str, role: str, rule: bool, indent: int, reaction: str = "") -> None:
         # Rich renders completed output only, so it loads here rather than at module scope and the
         # first frame does not pay for it. See `wizolt.ui.markdown`.
         from rich.padding import Padding
@@ -1618,7 +1702,10 @@ class UiPrinter:
             console.print(Rule(style="wizolt.rule", characters="─"))
         margin = LogBlock.margin(indent)
         if role == "user":
-            console.print(Padding(RichText(UiPrinter.USER_LOG_PREFIX + text, style="wizolt.user"), (0, 0, 0, len(margin)), style="wizolt.user"))
+            line = RichText(UiPrinter.USER_LOG_PREFIX + text, style="wizolt.user")
+            if reaction:
+                line.append_text(self.reaction_text(console, line, reaction, console.width - len(margin)))
+            console.print(Padding(line, (0, 0, 0, len(margin)), style="wizolt.user"))
         elif role == "assistant":
             content = RichText(styled_text, style="wizolt.error") if error else WizoltMarkdown(styled_text)
             console.print(Padding(content, (0, 0, 0, len(margin))))

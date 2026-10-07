@@ -12,9 +12,10 @@ from __future__ import annotations
 import json
 from collections import Counter
 from collections.abc import Callable
+from itertools import pairwise
 from typing import ClassVar, Protocol
 
-from wizolt.agent.prompts import LIVE_FOLLOWUP_PREFIX
+from wizolt.agent.prompts import LIVE_FOLLOWUP_PREFIX, split_reaction
 from wizolt.base import (
     Json,
     LogBlock,
@@ -66,6 +67,7 @@ class ResumeRenderer:
         self.session = session
         self.presentation = presentation
         self.refresh_context = refresh_context
+        self.reactions: dict[int, str] = {}  # id(user message) -> the reaction its reply opened with
         self.receipts_by_key: dict[str, OperationReceipt] = {}
         self.receipts_by_id: dict[str, OperationReceipt] = {}
 
@@ -112,6 +114,15 @@ class ResumeRenderer:
             transcript_diffs = self.session.transcript_turn_diffs or self.session.turn_diffs
             diffs = {diff.key: diff.diff for diff in transcript_diffs if diff.key and diff.diff}
             tool_record_index = 0
+            # A reply that opened with a reaction marker reacted to the message that opened its
+            # turn; a live follow-up is never held for one, so it gets none here either.
+            self.reactions = {
+                id(message): split_reaction(ImageInputs.label_text(reply))[0]
+                for message, reply in pairwise(messages)
+                if message.get("role") == "user"
+                and reply.get("role") == "assistant"
+                and not str(message.get("content") or "").startswith(LIVE_FOLLOWUP_PREFIX.strip())
+            }
             turns = TurnBox.group(messages)
             hidden = len(turns) - self.MAX_REDRAWN_TURNS
             if hidden > 0:
@@ -145,6 +156,8 @@ class ResumeRenderer:
         presentation = self.presentation
         role = str(message.get("role") or "")
         content = ImageInputs.label_text(message).strip()
+        if role == "assistant":
+            content = split_reaction(content)[1].strip()  # drawn beside the user's message instead
         if role == "notice":
             if content and not dry_run:
                 presentation.context_reset_notice(content)
@@ -174,7 +187,9 @@ class ResumeRenderer:
         if role == "user" and content and not ImageInputs.is_tool_observation(message) and not dry_run:
             # The follow-up marker is model-facing context, part of history because it was sent.
             # The scrollback shows what the user typed, exactly as it looked when they typed it.
-            presentation.ui.emit_answer(content.removeprefix(LIVE_FOLLOWUP_PREFIX.strip()).lstrip(), role=role, rule=False)
+            presentation.ui.emit_answer(
+                content.removeprefix(LIVE_FOLLOWUP_PREFIX.strip()).lstrip(), role=role, rule=False, reaction=self.reactions.get(id(message), "")
+            )
             # Replay the same spacing used by a live turn.
             presentation.user_turn_rule()
         return tool_record_index

@@ -64,6 +64,12 @@ class CommandLoop:
     EDITOR_CONTEXT_ELLIPSIS: ClassVar[str] = "# [... earlier lines of this reply omitted ...]"
     EDITOR_CONTEXT_SEPARATOR: ClassVar[str] = "# --- (earlier reply) ---"
     INPUT_HISTORY_BYTES: ClassVar[int] = 512 * 1024
+    EXIT_WORDS: ClassVar[frozenset[str]] = frozenset({"/exit", "/quit", "exit", "quit"})
+
+    @classmethod
+    def is_command(cls, text: str) -> bool:
+        """Whether `command` handles this input itself rather than passing it to the model."""
+        return text in cls.EXIT_WORDS or text.startswith("/")
 
     def __init__(self, agent: Agent, input_fn=input, output_fn=print):
         self.agent = agent
@@ -617,10 +623,10 @@ class CommandLoop:
         here, so its request lives on the same loop as everything else the session opened. Every
         other handler is local and bounded, and runs directly."""
 
-        if text in {"/exit", "/quit", "exit", "quit"}:
+        if text in self.EXIT_WORDS:
             await self.resume.save_and_emit_resume()
             return True, True
-        if not text.startswith("/"):
+        if not self.is_command(text):
             return False, False
         name, _, args = text.partition(" ")
         entry = self.commands.get(name)

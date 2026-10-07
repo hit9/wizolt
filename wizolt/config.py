@@ -340,6 +340,7 @@ class RuntimeSettings:
     theme: str = "auto"
     language: str = "auto"  # forced reply language; "auto" injects nothing (see /language)
     attribution: bool = True  # ask the model to sign the commits and PR bodies it writes
+    reactions: bool = True  # let the model react to your message with an emoji
     agents_md: bool = True  # inject global and project instructions into every request
 
     @classmethod
@@ -358,6 +359,7 @@ class RuntimeSettings:
             theme=theme or Config.str(runtime, "theme", "auto"),
             language=RuntimeSettings.clean_language(Config.str(runtime, "language", "auto")),
             attribution=Config.bool(runtime, "attribution", True),
+            reactions=Config.bool(runtime, "reactions", True),
             agents_md=Config.bool(runtime, "agents_md", True),
         )
 
@@ -699,6 +701,8 @@ model = ""
                                # previews built-ins, ui.themes and <data_dir>/themes/, and saves here
 # attribution = true           # ask the model to end the commit messages and pull requests it
                                # writes with a "Generated with wizolt" line
+# reactions = true             # let the model react to your message with an emoji, shown as
+                               # "← 👍" beside it; off sends nothing about reactions
 # agents_md = true               # inject global AGENTS.md and the project's AGENTS.md files (or CLAUDE.md
                                  # fallback), repository root down to cwd, under one shared budget
 
