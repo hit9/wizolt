@@ -12,7 +12,17 @@ BUILTIN = Path(__file__).parents[1] / "wizolt/plugins/builtin"
 
 
 def facts(**changes):
-    values = {"agent_id": "root", "agent_name": "main", "cwd": "/tmp", "status": "idle", "context_percent": 0, "elapsed": 0, "model": "m", "now": 0, "columns": 60}
+    values = {
+        "agent_id": "root",
+        "agent_name": "main",
+        "cwd": "/tmp",
+        "status": "idle",
+        "context_percent": 0,
+        "elapsed": 0,
+        "model": "m",
+        "now": 0,
+        "columns": 60,
+    }
     return Context(**{**values, **changes})
 
 
@@ -69,7 +79,7 @@ def test_about_pages_reflow_prose_but_keep_code_and_lists():
 
 def test_builtins_ship_disabled(tmp_path):
     records, _ = PluginCatalog.for_user(str(tmp_path)).read()
-    assert set(records) == {"context_bar", "layout", "pet", "system_prompt", "tool_visibility"} and not any(item.enabled for item in records.values())
+    assert set(records) == {"context_bar", "layout", "pet", "system_prompt", "tool_visibility", "usage"} and not any(item.enabled for item in records.values())
 
 
 async def bar_panel(runtime, window, columns=60):

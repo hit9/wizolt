@@ -133,6 +133,16 @@ left, messages), the
 percentage used at the end, and a legend with token counts. In a short terminal only the bar
 remains. It makes no model calls.
 
+## Check your provider usage
+
+Enable **usage** in `/plugins`, then type `/usage`: one section for every configured provider
+that offers a usage or balance API — OpenCode Go, DeepSeek, Kimi (Moonshot), z.ai, Synthetic
+and Command Code. Usage windows show as percentages with their reset times; balances show as
+amounts. Providers are matched by their API domain, so any entry name works. Each run makes one
+request per provider, with that provider's configured key; a provider that fails prints one
+`error:` line and the rest still report. It starts disabled, writes nothing and makes no
+model calls.
+
 ## Choose the model's tools
 
 Enable **tool_visibility** in `/plugins`, then type `/tools`: each tool is listed with what it

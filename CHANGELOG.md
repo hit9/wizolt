@@ -9,6 +9,19 @@
   failed call tells the model it was cut off and to send it again, rather than blaming its
   arguments.
 
+- A new bundled plugin, off until you enable it in `/plugins`: **usage** adds `/usage`, one
+  section for every configured provider with a key-authenticated usage or balance API —
+  OpenCode Go, DeepSeek, Kimi (Moonshot), z.ai, Synthetic and Command Code (endpoints verified
+  against their docs or source; z.ai's quota endpoint is the one its own official plugin uses,
+  Command Code's are the undocumented `/alpha` endpoints its own CLI `/usage` uses, checked
+  against three independent implementations). Providers are matched
+  by the API domain in their `[provider.X]` url, the key is the entry's own or the same-named
+  one in `secrets.toml`, and each run makes one request per provider in parallel: usage windows
+  as percentages with reset times, balances as amounts. Command Code reports its 5-hour and
+  weekly windows plus the credit balance; it shows no monthly window because the API has none
+  (its monthly cap is only derivable from a community plan table). A provider that fails prints
+  one `error:` line and the rest still report; keys appear only in Authorization headers, never
+  in output.
 - Fixed an `Unhandled exception in event loop … list index out of range` while a turn ran: the
   activity area read its lines twice per redraw and, when they grew in between, put its cursor
   past the last line. It now places the cursor within the lines it draws.
