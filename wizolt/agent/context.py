@@ -300,6 +300,11 @@ class ContextManager:
             return self.estimated_tokens([{"role": "user", "content": content}]) if content else 0
 
         conversation = [*self.session.messages, *self.session._active_turn_messages]
+        # The compaction checkpoint -- kept summaries, working state, activity -- is what `/compact`
+        # leaves behind and cannot shrink again, so it is its own part rather than conversation
+        # that looks as if compacting barely freed anything.
+        checkpoints = [message for message in conversation if self.is_compaction_summary(message)]
+        conversation = [message for message in conversation if not self.is_compaction_summary(message)]
         # Named for what a user configures: AGENTS.md files are "memory files", and what connected
         # MCP servers add to the prefix (their tools and resources index) is "mcp servers".
         return [
@@ -308,6 +313,7 @@ class ContextManager:
             ("mcp servers", text(self.mcp_tools_context())),
             ("memory files", text(self.instructions_context())),
             ("skills", text(self.skills_context())),
+            ("summary", self.estimated_tokens(checkpoints) if checkpoints else 0),
             ("messages", self.estimated_tokens(self.dedup_skill_loads(self.dedup_mcp_describes(conversation)))),
         ]
 

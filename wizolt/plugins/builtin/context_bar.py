@@ -8,7 +8,8 @@ system prompt 9.0k · system tools 14k · …               74k/200k
 (In the terminal each category has its own theme color.)
 
 Each colored segment is one part of what the next request sends: the system prompt, tool
-definitions, MCP servers, memory files (AGENTS.md), skills and the conversation. The empty
+definitions, MCP servers, memory files (AGENTS.md), skills, the summary compaction left (what
+`/compact` cannot shrink again) and the conversation. The empty
 tail is what is still free. The percentage turns to the warning color from 80%. In a short
 terminal only the bar remains.
 
@@ -41,6 +42,7 @@ ROLES = {
     "mcp servers": "tool",
     "memory files": "syntax_number",
     "skills": "status_reason",
+    "summary": "accent_secondary",
     "messages": "info",
     "other": "muted",
 }

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The context breakdown -- `/status` Context tab, the `context_bar` plugin, and plugins'
+  `Context.window.parts` -- shows what compaction left as its own `summary` part (kept summaries,
+  working state, activity), before `messages`, instead of counting it as conversation. After
+  `/compact` it is clear what compacting freed and what it cannot shrink again. Plugins that read
+  `messages` by name now see the conversation without the checkpoint. Display only: requests are
+  unchanged.
+
 - Fix the `context_bar` plugin (and any plugin reading `Context.window.parts`) showing the
   pre-compaction conversation after `/compact` until the next message was sent: the per-category
   estimates are now refreshed whenever the host re-measures the context outside a request

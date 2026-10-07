@@ -260,13 +260,14 @@ def test_status_breakdown_is_an_estimate_of_disjoint_parts(tmp_path):
     parts = dict(context.parts)
 
     # Named for what a user configures, in the order the request carries them.
-    assert list(parts) == ["system prompt", "system tools", "mcp servers", "memory files", "skills", "messages"]
+    assert list(parts) == ["system prompt", "system tools", "mcp servers", "memory files", "skills", "summary", "messages"]
     assert parts["messages"] >= 10_000 and parts["system prompt"] > 0 and parts["system tools"] > 0
     assert parts["memory files"] > 0  # AGENTS.md
-    # Without MCP, its part is absent from the legend rather than shown as a measured zero.
-    assert parts["mcp servers"] == 0
+    # Without MCP, or before any compaction, a part is absent from the legend rather than shown
+    # as a measured zero.
+    assert parts["mcp servers"] == 0 and parts["summary"] == 0
     text = StatusReport.of(loop).text(100)
-    assert value(text, "messages").startswith("■") and "mcp servers" not in text
+    assert value(text, "messages").startswith("■") and "mcp servers" not in text and "summary" not in text
     assert value(text, "memory files").startswith("■")
     assert value(text, "total") == "~" + Text.abbreviate_count(sum(parts.values()))
     assert value(text, "compacts at") == Text.abbreviate_count(context.threshold)

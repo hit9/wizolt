@@ -64,6 +64,33 @@ async def test_a_manual_compact_refreshes_the_window_parts_plugins_read(agent, t
 
     assert messages_part() < before // 2
     assert messages_part() == dict(agent.context.breakdown(session.system_prompt))["messages"]
+    # What compaction left is its own part: the checkpoint, measured apart from the conversation.
+    parts = dict(session.plugins.snapshot().window.parts)
+    checkpoint = [message for message in session.messages if agent.context.is_compaction_summary(message)]
+    rest = [message for message in session.messages if not agent.context.is_compaction_summary(message)]
+    assert parts["summary"] == agent.context.estimated_tokens(checkpoint) > 0
+    assert parts["messages"] == agent.context.estimated_tokens(rest)
+
+
+async def test_an_automatic_compaction_refreshes_the_window_parts_before_the_request(agent, tmp_path):
+    """Automatic compaction happens while a request is prepared; the parts plugins read follow it
+    in the same step, so a meter never shows the evicted conversation for that request."""
+    session = agent.session
+    session.messages = [
+        *({"role": role, "content": f"{role} {index} " + "detail " * 400} for index in range(12) for role in ("user", "assistant")),
+        {"role": "user", "content": "now"},
+    ]
+    session.transcript_messages = list(session.messages)
+    await session.plugins.manage("enable", source(tmp_path))
+    before = dict(session.plugins.snapshot().window.parts)["messages"]
+    session.settings.max_context_tokens = before * 2 // 3  # the next request no longer fits
+
+    await agent.prepare_request([])
+
+    assert session.state.compaction_count == 1
+    parts = dict(session.plugins.snapshot().window.parts)
+    assert parts["messages"] < before // 2
+    assert parts == dict(agent.context.breakdown(session.system_prompt))
 
 
 async def test_a_window_sized_non_english_span_reaches_the_plugin(agent, tmp_path):

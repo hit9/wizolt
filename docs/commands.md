@@ -9,7 +9,7 @@ counts them too. Press **h**/**l** (or **1**–**5**) for the rest:
 | Tab | Shows |
 | --- | --- |
 | Progress | The agent's own note: its goal, plan steps (done, in progress, blocked, to do), what it knows, and how it will check the work |
-| Context | What the next request holds (system prompt, system tools, MCP servers, memory files, skills, messages) and where compaction starts |
+| Context | What the next request holds (system prompt, system tools, MCP servers, memory files, skills, the summary compaction left, messages) and where compaction starts |
 | Usage | Tokens and cache hits across every request, compaction, and activity counts |
 | Session | Workspace, session ID, permissions, limits and instruction files |
 

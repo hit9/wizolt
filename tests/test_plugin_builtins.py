@@ -93,6 +93,14 @@ async def test_context_bar_stacks_categories_and_the_unestimated_rest(runtime):
     assert "system prompt 10k" in text(legend) and "other 10k" in text(legend) and text(legend).endswith("50k/200k")
 
 
+async def test_context_bar_draws_what_compaction_left_apart_from_the_conversation(runtime):
+    window = ContextWindow(60_000, 200_000, 180_000, (("skills", 10_000), ("summary", 20_000), ("messages", 30_000)))
+    bar, legend = (await bar_panel(runtime, window)).rows
+    # Its own role, distinct from both neighbours, in request order before the conversation.
+    assert [span.role for span in bar.spans][:3] == ["status_reason", "accent_secondary", "info"]
+    assert "summary 20k" in text(legend)
+
+
 async def test_context_bar_keeps_small_categories_and_fits_narrow_terminals(runtime):
     window = ContextWindow(100_000, 200_000, 0, (("system prompt", 100), ("system tools", 9_900), ("skills", 40_000), ("messages", 50_000)))
     panel = await bar_panel(runtime, window, columns=40)
