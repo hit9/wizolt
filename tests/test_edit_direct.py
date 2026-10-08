@@ -140,7 +140,11 @@ def test_omitted_op_is_inferred_only_for_an_unambiguous_direct_replace(tmp_path)
         ("", [{"op": "view", "old": "a\n", "content": "A\n"}], "Edit op must be create, replace, or delete"),
         ("", [{"op": "insert_after", "old": "a\n", "content": "A\n"}], "Edit op must be create, replace, or delete"),
         ("", [{"op": "replace", "olde": "a\n", "content": "A\n"}], "Edit unexpected field: olde"),
-        ("", [{"op": "replace", "old": "a\n", "content": "A\n", "source": "view.1"}], "Edit unexpected field: source"),
+        # The fields models recurrently misplace or rename are refused with the repair named.
+        ("", [{"op": "replace", "old": "a\n", "content": "A\n", "source": "view.1"}], "Edit unexpected field: source; source: source belongs at the top level"),
+        ("", [{"op": "replace", "old": "a\n", "new": "A\n"}], "Edit unexpected field: new; new: put the replacement text in content"),
+        ("", [{"old": "a\n", "replace": "A\n"}], "Edit unexpected field: replace; replace: replace is an op value"),
+        ("", [{"op": "replace", "old": "a\n", "content": "A\n", "path": "other.txt"}], "Edit unexpected field: path; path: path belongs at the top level"),
     ],
 )
 def test_edit_rejects_ambiguous_or_malformed_direct_calls(tmp_path, source, edits, message):

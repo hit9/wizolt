@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `Edit` names the repair for fields models misplace or rename: `new` and `replace` (use
+  `content`), and `source` or `path` inside an edit (they belong at the top level).
+
 ## 0.74.2 - 2026-10-08
 
 - `/usage` titles every section with the entry names it answered for, `DeepSeek API (deep)`

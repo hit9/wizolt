@@ -292,6 +292,15 @@ MIXED_EDIT_EVIDENCE = "mixed edit evidence modes"
 # an item is allowed to combine is what the per-mode builders decide.
 EDIT_FIELDS = frozenset({"op", "start", "end", "old", "content"})
 
+# The repair for an unexpected field models recurrently send, appended to the refusal. These are
+# hints, not aliases: the call is still refused, so the schema keeps a single spelling per field.
+FIELD_HINTS = {
+    "new": "put the replacement text in content",
+    "replace": "replace is an op value; set op=replace and put the replacement text in content",
+    "source": "source belongs at the top level of the call, beside path",
+    "path": "path belongs at the top level of the call, beside edits",
+}
+
 # How many occurrences of an ambiguous target are counted before the scan stops. The number only
 # has to tell the model that its excerpt is not unique and roughly how far from unique it is;
 # counting every occurrence of a one-character target in a large file buys nothing for that.
@@ -668,7 +677,8 @@ class EditTool(Tool):
             if not isinstance(item, dict):
                 raise ToolError("each edit must be an object")
             if unexpected := sorted(set(item) - EDIT_FIELDS):
-                raise ToolError("Edit unexpected field: " + ", ".join(unexpected))
+                hints = [f"{field}: {FIELD_HINTS[field]}" for field in unexpected if field in FIELD_HINTS]
+                raise ToolError("Edit unexpected field: " + ", ".join(unexpected) + "".join(f"; {hint}" for hint in hints))
             raw_op = item.get("op")
             if raw_op is None and self._implicit_replace(item, source_name):
                 # A recurring provider omission: exact evidence plus explicit replacement text has
