@@ -656,7 +656,9 @@ async def test_a_channel_that_fails_midway_answers_the_rest_in_one_frame(wires, 
     wires.answers[DEEPSEEK_BALANCE] = deepseek("110", "10", "100")
     wires.answers[SYNTHETIC_QUOTAS] = {"weeklyTokenLimit": {"percentRemaining": 66, "nextRegenAt": "2023-11-14T23:00:00+00:00"}}
     wires.answers[GO_USAGE] = usage_plugin.HttpError(503)
-    wires.delays[GO_USAGE] = 0.02  # Go answers last, so DeepSeek and Synthetic stream first.
+    # DeepSeek answers first, Synthetic second, Go last: the order is set, not left to a thread race.
+    wires.delays[SYNTHETIC_QUOTAS] = 0.01
+    wires.delays[GO_USAGE] = 0.05
     blocks: list[list[usage_plugin.Line]] = []
 
     async def report(lines: list[usage_plugin.Line]) -> None:
