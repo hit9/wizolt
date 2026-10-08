@@ -81,7 +81,8 @@ class BashTool(Tool):
     DESCRIPTION = (
         "Run any Bash program with live output and an exit code; conditionals, loops, functions, pipelines, and multiline scripts are valid. "
         "Each call starts in cwd: never `cd` there first. "
-        "Combine dependent steps with &&, ||, or |; emit unrelated work as separate tool calls in the same response. Bound noisy output. "
+        "Combine dependent steps with &&, ||, or |; emit unrelated work as separate tool calls in the same response. "
+        "Bound noisy output in the command itself (`| head`, `tail`, `rg -m`): a result the output limit cuts has to be re-read from its file or re-run. "
         "Use Read when editable numbered source is useful. Write source with Edit, not shell redirection. "
         "Exact output works as Edit old without Read, but is never source=view.N. A long command continues as a Job. Never expose secrets or `.env`."
     )

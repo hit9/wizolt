@@ -256,7 +256,7 @@ Optional; the defaults shown are used when omitted.
 | `max_agent_steps` | `400` | Maximum tool steps in one turn |
 | `shell_timeout` | `60` | Maximum shell-command lifetime, in seconds |
 | `bash_wait_timeout` | `10` | Foreground wait before a running command becomes a background job; `0` disables promotion |
-| `bash_output_tokens` | `6000` | Bash output the agent sees inline, `1000`–`6000`; the rest stays in a file it can open. Lower saves tokens on every later request ([context](context.md)) |
+| `bash_output_tokens` | `2000` | Bash output the agent sees inline, `1000`–`6000`; the rest stays in a file it can open. Lower saves tokens on every later request; raise it when you would rather see more inline ([context](context.md)) |
 | `max_parallel_tools` | `4` | Maximum read-only tool calls executed concurrently; `1` disables parallelism |
 | `max_subagents` | `3` | Children running at once across the whole agent group, excluding main; `0` turns subagents off, maximum `32`. Change it from main with `/set runtime.max_subagents NUMBER` |
 | `session_retention_days` | `7` | Delete saved sessions untouched for this many days, swept in the background at startup; `0` keeps them indefinitely |
@@ -303,6 +303,7 @@ as a cheaper one. Leave a field empty to inherit it from the selected provider.
 | `[compaction] model` | inherit | Override the entry's model; empty inherits |
 | `[compaction] reasoning` | inherit | Override the entry's reasoning effort; empty inherits |
 | `[compaction] api` | inherit | Override the entry's wire protocol; empty inherits |
+| `[compaction] threshold` | `1.0` | Fraction of the request budget at which automatic compaction runs, `0.5`–`1.0`. The default compacts only when a request no longer fits — a line already below the context window by the output reserve and the safety margin; lower compacts earlier, for rate limits that count the full prompt |
 
 To choose a summarizer for one provider, add `[provider.NAME.compaction]`. It accepts `model`,
 `reasoning` and `api`, and takes precedence over `[compaction]`:

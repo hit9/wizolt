@@ -52,6 +52,31 @@ async def test_a_short_tail_of_large_messages_is_still_compactable(tmp_path):
             assert after < budget, f"{steps} steps: still over budget after compacting"
 
 
+async def test_a_lowered_threshold_compacts_history_below_the_budget(tmp_path):
+    # The default line is the budget itself -- a request that fits compacts nothing. A lowered
+    # [compaction].threshold moves the line under the budget for rate limits that count the full
+    # prompt; the budget stays the hard line the current turn compacts at.
+    s = session_with_provider(tmp_path)
+    s.settings.max_context_tokens = 200_000
+    s.messages = [
+        {"role": "user", "content": "start"},
+        {"role": "assistant", "content": "work " + "y" * 480_000},
+        {"role": "user", "content": "continue"},
+        {"role": "assistant", "content": "later"},
+    ]
+    context = ContextManager(s)
+    assert context.request_tokens(context.model_messages("system"), None) < context.request_token_budget()
+
+    model = _CountingModel(s)
+    await context.prepare_messages(model, "system")
+    assert model.calls == 0  # fits: the default threshold is the budget
+
+    s.config.compaction_threshold = 0.5
+    model = _CountingModel(s)
+    await context.prepare_messages(model, "system")
+    assert model.calls == 1  # about 120k of a 200k budget is over half: the history pass runs
+
+
 async def test_over_budget_with_nothing_compactable_is_reported_once(tmp_path):
     # The irreducible case: the latest user message and one enormous tool result. The cut may not
     # land between a tool result and the call that produced it, so there is nothing to compact at

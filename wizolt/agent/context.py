@@ -74,8 +74,9 @@ class ContextManager:
     skill loads collapse to a pointer at the first copy, re-promoted when compaction removes it.
 
     The budget is the context limit less the provider's output reserve and a safety margin, measured
-    against the payload that actually crosses the wire. Over budget compacts prior history first, and
-    the current turn only if still over.
+    against the payload that actually crosses the wire. Over the compaction line -- the budget, or a
+    lowered [compaction].threshold fraction of it -- compacts prior history first, and the current
+    turn only if still over budget.
     """
 
     # How many evicted spans stay exported. Every compaction adds one and nothing removed them, so a
@@ -275,6 +276,14 @@ class ContextManager:
     def request_token_budget(self) -> int:
         return self.session.request_token_budget()
 
+    def auto_compaction_limit(self) -> int:
+        """The estimate an automatic history pass runs at. The budget is the default line -- it
+        already sits under the model's context window by the output reserve and the safety margin
+        -- and a lowered `[compaction].threshold` moves it earlier for rate limits that count the
+        full prompt. The budget stays the hard line: the current turn compacts only when the
+        request would not fit, whatever the threshold."""
+        return int(self.request_token_budget() * self.session.config.compaction_threshold)
+
     def request_tokens(self, messages: list[Json], tools: list[Json] | None = None) -> int:
         if self.model is not None:
             return self.model.estimated_request_tokens(messages, tools)
@@ -335,7 +344,7 @@ class ContextManager:
         compactor = compaction.Compactor(self, model)
         budget = self.request_token_budget()
         raw = self.request_tokens(messages, tools)
-        if raw < budget and not self._overdue_by_usage():
+        if raw < self.auto_compaction_limit() and not self._overdue_by_usage():
             self.update_percent(messages, tools, tokens=raw)
             return messages
         attempted = compacted_any = False

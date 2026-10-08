@@ -383,6 +383,7 @@ def config(loop: CommandLoop, args: str) -> str:
             f"compaction.model: {compaction_effective.model}",
             f"compaction.reasoning: {compaction_effective.reasoning}",
             f"compaction.api: {compaction_effective.api}",
+            f"compaction.threshold: {loop.session.config.compaction_threshold}",
         ]
     )
 

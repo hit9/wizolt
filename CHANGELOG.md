@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Bash results are capped at 2000 inline tokens by default (was 6000, the shared tool cap). The
+  p95 of 4,740 Bash results recorded on this machine is about 1.9k tokens, so about 4% of results
+  are cut more than before, and the cut keeps head and tail with the full output in the file the
+  marker names; across those recorded conversations the lower cap would cut the Bash share of
+  carried conversation tokens by about 12%. Explicit `runtime.bash_output_tokens` settings and
+  already-sent results are unaffected.
+- The Bash tool description tells the model to bound noisy output in the command itself
+  (`| head`, `tail`, `rg -m`) instead of relying on the output cap: a cut result has to be re-read
+  from its file or re-run.
+- New `[compaction] threshold` (`0.5`–`1.0`, default `1.0`): the fraction of the request budget
+  at which automatic compaction runs. The default keeps the previous behavior — compact only
+  when a request no longer fits, a line already below the context window by the output reserve
+  and the safety margin (about 89% of a 200K window, close to Codex's 90%-of-window default).
+  A lower value compacts earlier, for rate limits that count the full prompt; `/config` shows it.
+
 - `Edit` writes a file back with its own line ending: a one-line edit to a CRLF (or CR) file was
   rewriting every line as LF. A file mixing endings, or one `create` writes, is still LF (the
   write's platform default).

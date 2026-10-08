@@ -32,6 +32,10 @@ if TYPE_CHECKING:
 DEFAULT_MAX_CONTEXT_TOKENS = 256 * 1024
 MAX_SUBAGENTS = 32
 MIN_BASH_OUTPUT_TOKENS = 1_000  # Below this, error tails start to lose the line that matters.
+# The default inline share of a Bash result: the p95 of 4,740 Bash results recorded on this
+# machine is about 1.9k tokens, so 2,000 leaves about 96% of results whole while cutting the share
+# every later request re-sends; the shared 6,000 cap was the inherited default, not a measurement.
+DEFAULT_BASH_OUTPUT_TOKENS = 2_000
 PROVIDER_API_CHOICES = ("auto", "chat", "responses", "anthropic")
 REASONING_HISTORY_CHOICES = ("auto", "all", "current_turn", "tool_calls")
 
@@ -336,7 +340,7 @@ class RuntimeSettings:
     # Tokens of a Bash result the model receives inline. Every later request re-sends it, so a
     # lower cap saves tokens on each of them; the full output stays in a file the cut points to.
     # Applies to new results only, so already-sent requests and the prompt cache never change.
-    bash_output_tokens: int = MAX_TOOL_OUTPUT_TOKENS
+    bash_output_tokens: int = DEFAULT_BASH_OUTPUT_TOKENS
     yolo: bool = False
     theme: str = "auto"
     language: str = "auto"  # forced reply language; "auto" injects nothing (see /language)
@@ -354,7 +358,7 @@ class RuntimeSettings:
             max_context_tokens=max(1, Config.int(runtime, "max_context_tokens", DEFAULT_MAX_CONTEXT_TOKENS)),
             max_parallel_tools=max(1, Config.int(runtime, "max_parallel_tools", 4)),
             max_subagents=cls.clean_max_subagents(Config.int(runtime, "max_subagents", 3)),
-            bash_output_tokens=cls.clean_bash_output_tokens(Config.int(runtime, "bash_output_tokens", MAX_TOOL_OUTPUT_TOKENS)),
+            bash_output_tokens=cls.clean_bash_output_tokens(Config.int(runtime, "bash_output_tokens", DEFAULT_BASH_OUTPUT_TOKENS)),
             session_retention_days=max(0, Config.int(runtime, "session_retention_days", 7)),
             yolo=yolo or Config.bool(runtime, "yolo", False),
             theme=theme or Config.str(runtime, "theme", "auto"),
@@ -420,6 +424,12 @@ class Config:
     compaction_model: str = ""
     compaction_reasoning: str = ""
     compaction_api: str = ""
+    # The fraction of the request budget an automatic compaction pass runs at. The budget itself
+    # is already under the model's context window by the output reserve and the safety margin, so
+    # 1.0 -- the default -- is "compact only when a request no longer fits"; a lower value
+    # compacts earlier, for rate limits that count the full prompt. The budget stays the hard
+    # line either way, and the current turn compacts only at the budget.
+    compaction_threshold: float = 1.0
 
     # The provider entry used by explicit ViewImage calls. It only perceives an image and question;
     # attachments still go directly to the active provider and never route here implicitly.
@@ -483,6 +493,8 @@ class Config:
         if effective_compaction_reasoning and effective_compaction_reasoning not in compaction_choices:
             raise ConfigError("compaction.reasoning must be one of " + ", ".join(compaction_choices))
         compaction_api = cls.str(compaction_root, "api", "")
+        threshold = Config.float(compaction_root, "threshold", 1.0)
+        compaction_threshold = cls.clean_compaction_threshold(1.0 if threshold is None else threshold)
         if compaction_api and compaction_api not in PROVIDER_API_CHOICES:
             raise ConfigError("compaction.api must be one of " + ", ".join(PROVIDER_API_CHOICES))
         vision_root = cls.table(data, "vision")
@@ -507,11 +519,18 @@ class Config:
             compaction_model=compaction_model,
             compaction_reasoning=compaction_reasoning,
             compaction_api=compaction_api,
+            compaction_threshold=compaction_threshold,
             vision_provider=vision_provider,
             path=path,
         )
         config.for_subagent(policy=policy)  # reject invalid creation defaults at config load
         return config
+
+    @staticmethod
+    def clean_compaction_threshold(value: float) -> float:
+        if isinstance(value, bool) or not 0.5 <= value <= 1.0:
+            raise ConfigError("compaction.threshold must be between 0.5 and 1.0")
+        return float(value)
 
     @classmethod
     def data_dir_from(cls, data: Json) -> str:

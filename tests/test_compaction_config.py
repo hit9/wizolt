@@ -94,6 +94,16 @@ def test_compaction_config_rejects_invalid_values():
         Config.from_dict({"compaction": {"api": "oai"}, "provider": {"default": {}}})
 
 
+def test_compaction_threshold_parses_and_validates():
+    config = Config.from_dict({"compaction": {"threshold": 0.85}, "provider": {"default": {"model": "d"}}})
+    assert config.compaction_threshold == 0.85
+    # Default: compact only when a request no longer fits.
+    assert Config.from_dict({"provider": {"default": {"model": "d"}}}).compaction_threshold == 1.0
+    for value in (0.4, 1.5):
+        with pytest.raises(ConfigError, match="compaction.threshold"):
+            Config.from_dict({"compaction": {"threshold": value}, "provider": {"default": {}}})
+
+
 def test_compaction_provider_config_folds_overrides_without_sharing():
     from wizolt.config import compaction_provider_config
 
