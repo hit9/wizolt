@@ -318,17 +318,18 @@ class TextReplacement:
 
 
 class DirectMatchError(ToolError):
-    """A direct-mode resolution failure, carrying where an ambiguous target was found.
+    """A direct-mode resolution failure, carrying the places in the file that explain it.
 
-    The offsets exist so the caller can answer ambiguity with a view of the actual occurrences.
-    They are deliberately not a shortlist to choose from: nothing here ever picks one.
+    `spots` are (character offset, length) spans: every occurrence of an ambiguous target, and
+    the point where a missing target stops matching. They exist so the caller can answer with a
+    view of those places. They are deliberately not a shortlist to choose from: nothing here ever
+    picks one.
     """
 
-    def __init__(self, category: str, detail: str, offsets: tuple[int, ...] = (), target_length: int = 0):
+    def __init__(self, category: str, detail: str, spots: tuple[tuple[int, int], ...] = ()):
         super().__init__(f"{category} {detail}")
         self.category = category
-        self.offsets = offsets
-        self.target_length = target_length
+        self.spots = spots
 
 
 def direct_occurrences(text: str, needle: str) -> list[int]:
@@ -346,6 +347,72 @@ def direct_occurrences(text: str, needle: str) -> list[int]:
     return found
 
 
+def _unique_offset(text: str, needle: str) -> int | None:
+    """The offset of `needle` when it occurs exactly once in `text`, overlapping included."""
+    first = text.find(needle)
+    if first == -1 or text.find(needle, first + 1) != -1:
+        return None
+    return first
+
+
+def _longest_present(text: str, size: int, piece: Callable[[int], str]) -> int:
+    """The largest n < size whose `piece(n)` occurs in `text`, for a target that does not.
+
+    Presence is monotonic in n -- a shorter prefix (or suffix) of present text is present -- so a
+    binary search finds it in a logarithmic number of scans of the file.
+    """
+    low, high = 0, size - 1
+    while low < high:
+        middle = (low + high + 1) // 2
+        if piece(middle) in text:
+            low = middle
+        else:
+            high = middle - 1
+    return low
+
+
+def _snippet(text: str, *, backward: bool = False) -> str:
+    """The quoted text a reader compares at a mismatch: up to the line's end, at most 24 chars."""
+    if backward:
+        piece = text[-24:]
+        piece = piece[piece.rfind("\n", 0, len(piece) - 1) + 1 :]
+        return repr(piece) if piece else "the start of the file"
+    piece = text[:24]
+    piece = piece[: piece.find("\n") + 1] if "\n" in piece else piece
+    return repr(piece) if piece else "the end of the file"
+
+
+def _position(text: str, offset: int) -> str:
+    line = text.count("\n", 0, offset) + 1
+    column = offset - text.rfind("\n", 0, offset)
+    return f"line {line} column {column}"
+
+
+def diagnose_missing(text: str, old: str) -> tuple[str, int | None]:
+    """Where a missing target parts from the file: a sentence, and the file offset it names.
+
+    The longest start of `old` the file contains is located; when it occurs exactly once, the
+    first character after it is where the file and `old` disagree, and both are quoted -- a
+    miscounted repeat, a stale line, a trailing space, or a typographic quote all surface as that
+    one difference. Failing that, the longest end of `old` is tried the same way. This is a
+    diagnosis, never a match: the call is refused either way, and when neither end is unique the
+    answer is that there is nothing exact to point at.
+    """
+    size = len(old)
+    head = _longest_present(text, size, lambda n: old[:n])
+    if head and (at := _unique_offset(text, old[:head])) is not None:
+        split = at + head
+        return (
+            f"old matches the file up to {_position(text, split)}, where the file has {_snippet(text[split:])} and old has {_snippet(old[head:])}",
+            split,
+        )
+    tail = _longest_present(text, size, lambda n: old[size - n :])
+    if tail and (at := _unique_offset(text, old[size - tail :])) is not None:
+        before = f"the file has {_snippet(text[:at], backward=True)} and old has {_snippet(old[: size - tail], backward=True)}"
+        return f"the end of old matches the file from {_position(text, at)}; before that {before}", at
+    return "old is not in the file, and neither its start nor its end occurs exactly once; Read the target and retry", None
+
+
 def resolve_direct(original: str, edits: list[Edit]) -> list[TextReplacement]:
     """Resolve every direct edit's exact `old` against one immutable file content.
 
@@ -353,21 +420,33 @@ def resolve_direct(original: str, edits: list[Edit]) -> list[TextReplacement]:
     another operation in the same call wrote, and the order the operations were listed in does not
     change the result. Zero matches, several matches, or targets that overlap each other refuse the
     whole call: each of those is a case where writing would mean guessing which text was meant.
+
+    Every edit is resolved before refusing, and the refusal names each failing edit by position:
+    a batch that fails on one target out of many is otherwise rewritten whole while the model
+    searches for the one it got wrong.
     """
     replacements: list[TextReplacement] = []
-    for edit in edits:
+    problems: list[tuple[str, int, str, tuple[tuple[int, int], ...]]] = []
+    for index, edit in enumerate(edits):
         offsets = direct_occurrences(original, edit.old)
         if not offsets:
-            raise DirectMatchError(DIRECT_TARGET_MISSING, "the file no longer contains the supplied old text; inspect the current file and retry")
+            detail, split = diagnose_missing(original, edit.old)
+            problems.append((DIRECT_TARGET_MISSING, index, detail, ((split, 0),) if split is not None else ()))
+            continue
         if len(offsets) > 1:
             counted = f"more than {DIRECT_OCCURRENCE_CAP}" if len(offsets) > DIRECT_OCCURRENCE_CAP else str(len(offsets))
-            raise DirectMatchError(
-                DIRECT_TARGET_AMBIGUOUS,
-                f"old text occurs {counted} times; include more exact context or use a source view",
-                tuple(offsets[:DIRECT_OCCURRENCE_CAP]),
-                len(edit.old),
-            )
+            detail = f"old text occurs {counted} times; include more exact context or use a source view"
+            problems.append((DIRECT_TARGET_AMBIGUOUS, index, detail, tuple((offset, len(edit.old)) for offset in offsets[:DIRECT_OCCURRENCE_CAP])))
+            continue
         replacements.append(TextReplacement(offsets[0], offsets[0] + len(edit.old), edit.content))
+    if problems:
+        spots = tuple(spot for *_, found in problems for spot in found)
+        category, index, detail, _ = problems[0]
+        if len(problems) == 1:
+            raise DirectMatchError(category, f"in edit {index + 1}: {detail}", spots)
+        lines = [f"in {len(problems)} of {len(edits)} edits; nothing was written"]
+        lines += [f"edit {index + 1} {kind.removeprefix('direct target ')}: {detail}" for kind, index, detail, _ in problems]
+        raise DirectMatchError(category, "\n".join(lines), spots)
     order = sorted(range(len(replacements)), key=lambda index: replacements[index].start)
     for first, second in itertools.pairwise(order):
         if replacements[second].start < replacements[first].end:
@@ -967,24 +1046,25 @@ class EditTool(Tool):
         Preview and execution both come through here, so approval can never show a diff that a
         weaker rule produced than the one the write obeys. A refusal answers with the current file
         only where the file can settle the question: an ambiguous target gets a view of the places
-        it actually occurs, while a missing one gets none -- there is no exact location to show,
-        and a nearby approximation is the guess this mode exists to refuse.
+        it actually occurs, and a missing one a view of the exact point where it stops matching the
+        file. A missing target with no such unique point gets none: a nearby approximation is the
+        guess this mode exists to refuse.
         """
         try:
             replacements = resolve_direct(original, edits)
         except DirectMatchError as error:
-            recovery = self.ambiguity_recovery(original, error.offsets, error.target_length) if error.category == DIRECT_TARGET_AMBIGUOUS else None
-            raise ToolError(str(error), recovery=recovery) from error
+            raise ToolError(str(error), recovery=self.spots_recovery(original, error.spots)) from error
         lines = split_lines(original)
         return self.splice_lines(lines, direct_line_replacements(lines, replacements))
 
-    def ambiguity_recovery(self, original: str, offsets: tuple[int, ...], target_length: int, path: str | None = None) -> ToolOutput | None:
-        """A bounded view of the places an ambiguous target occurs, or None when none of them fit.
+    def spots_recovery(self, original: str, spots: tuple[tuple[int, int], ...]) -> ToolOutput | None:
+        """A bounded view of the places a direct refusal names, or None when there are none.
 
-        Both boundaries are shown for a multi-line target: the differing context may follow its end,
-        and showing only a long repeated target's first lines would leave the model unable to widen
-        `old` without another Read. Occurrences are added until the next one's boundary windows would
-        push the view past the recovery budget.
+        A spot is an occurrence of an ambiguous target or the point a missing one stops matching.
+        Both boundaries are shown for a multi-line occurrence: the differing context may follow its
+        end, and showing only a long repeated target's first lines would leave the model unable to
+        widen `old` without another Read. Spots are added until the next one's boundary windows
+        would push the view past the recovery budget.
 
         The view describes the content the targets were matched against, which inside a batch is
         the planned file rather than the one on disk -- the same content the no-op refusal shows,
@@ -992,9 +1072,9 @@ class EditTool(Tool):
         """
         lines = split_lines(original)
         ranges: list[tuple[int, int]] = []
-        for offset in offsets:
+        for offset, length in spots:
             first = original.count("\n", 0, offset) + 1
-            last = original.count("\n", 0, offset + target_length - 1) + 1
+            last = original.count("\n", 0, offset + max(length, 1) - 1) + 1
             candidate = [
                 *ranges,
                 (max(1, first - self.RECOVERY_CONTEXT_LINES), min(len(lines), first + self.RECOVERY_CONTEXT_LINES)),
@@ -1007,7 +1087,7 @@ class EditTool(Tool):
         spans = SourceSpan.build(lines, ranges)
         if not spans:
             return None
-        path = path if path is not None else self.parse()[0]
+        path = self.parse()[0]
         block = SourceBlock(SourceViewDraft(path, self.session.relpath(path), len(lines), spans, EDIT))
         return ToolOutput(block.render(), (block,))
 

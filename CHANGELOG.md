@@ -11,6 +11,14 @@
   mode, with an `ignored-source` warning, instead of refusing it; a refusal remains when an edit
   also gives `start`/`end` or another edit has no `old`. This refusal was 24 of the 123 failed
   edits in the same sessions.
+- A direct `Edit` refusal names every failing edit by position, and for exact `old` text the file
+  does not contain, quotes where it parts from the file -- `edit 14: old matches the file up to
+  line 196 column 93, where the file has '░░]' and old has ']'` -- with a small editable view of
+  that spot. Missing `old` text was the largest failure in recorded sessions (39 of 123 failed
+  edits, 45% of the output those failures wasted): with no position in the error, models resent
+  whole batches, up to 36 edits, or wrote scripts to find the one edit that missed. A missing
+  target whose start and end both occur in several places still gets no view: there is nothing
+  exact to point at.
 - `Edit` names the repair for fields models misplace or rename: `new` and `replace` (use
   `content`), and `source` or `path` inside an edit (they belong at the top level).
 

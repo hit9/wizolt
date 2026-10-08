@@ -22,6 +22,7 @@ from wizolt.agent.runner import ToolRunner
 from wizolt.base import ToolCall, ToolError, split_lines
 from wizolt.config import Config
 from wizolt.session import Session, SessionSnapshotStore
+from wizolt.source import ToolOutput
 from wizolt.tools.editplan import EditBatchPlan
 from wizolt.tools.files import (
     MODE_CREATE,
@@ -338,7 +339,59 @@ def test_a_target_that_is_not_literally_present_is_missing(original, old):
     with pytest.raises(DirectMatchError, match="direct target missing") as error:
         resolve_direct(original, [replace(old, "x")])
 
-    assert error.value.offsets == ()
+    # Never a match: at most the one exact point where old parts from the file.
+    assert len(error.value.spots) <= 1
+
+
+@pytest.mark.parametrize(
+    ("original", "old", "expected"),
+    [
+        # The longest start of old found once in the file: the next characters are the difference.
+        ("value = 1\n", "value = 1 \n", "old matches the file up to line 1 column 10, where the file has '\\n' and old has ' \\n'"),
+        ("say 'hi'\n", "say ‘hi’\n", "up to line 1 column 5, where the file has \"'hi'\\n\" and old has '‘hi’\\n'"),
+        ("a\nb\n", "a\nb\nc\n", "up to line 3 column 1, where the file has the end of the file and old has 'c\\n'"),
+        # A miscounted run of a repeated character: the shape behind the 36-edit retry chain.
+        ("bar [██░░]  1h\n", "bar [██░]  1h\n", "up to line 1 column 9, where the file has '░]  1h\\n' and old has ']  1h\\n'"),
+        # A changed first character leaves no start to find: the end of old locates it instead.
+        ("value = 1\n", "Value = 1\n", "the end of old matches the file from line 1 column 2; before that the file has 'v' and old has 'V'"),
+        ("x = 1\n\tx\n", "    x\n", "the end of old matches the file from line 2 column 2; before that the file has '\\t' and old has '    '"),
+        # Neither end occurs exactly once: there is nothing exact to point at.
+        ("a\na\na\n", "a\nz\na\n", "neither its start nor its end occurs exactly once; Read the target and retry"),
+    ],
+)
+def test_a_missing_target_names_where_it_parts_from_the_file(original, old, expected):
+    with pytest.raises(DirectMatchError, match="direct target missing in edit 1: ") as error:
+        resolve_direct(original, [replace(old, "x")])
+
+    assert expected in str(error.value)
+
+
+def test_a_stale_line_inside_a_long_target_is_pointed_at():
+    """The shape behind a five-retry chain: an external tool rewrote one line of a quoted block."""
+    original = "import a\nfrom b import C, D\nimport e\n"
+    old = "import a\nfrom b import C, D, Text\nimport e\n"
+
+    with pytest.raises(DirectMatchError) as error:
+        resolve_direct(original, [replace(old, "x")])
+
+    assert "up to line 2 column 19, where the file has '\\n' and old has ', Text\\n'" in str(error.value)
+    assert error.value.spots == ((len("import a\nfrom b import C, D"), 0),)
+
+
+def test_every_failing_edit_in_a_batch_is_named_at_once():
+    original = "alpha = 1\nbeta = 2\nbeta = 2\ngamma = 3\n"
+    edits = [replace("alpha = 1\n", "A\n"), replace("beta = 2\n", "B\n"), replace("gamma = 4\n", "G\n"), replace("delta\n", "D\n")]
+
+    with pytest.raises(DirectMatchError) as error:
+        resolve_direct(original, edits)
+
+    lines = str(error.value).splitlines()
+    # The category is the first failing edit's; every failing edit gets a line naming it.
+    assert lines[0] == "direct target ambiguous in 3 of 4 edits; nothing was written"
+    assert lines[1].startswith("edit 2 ambiguous: old text occurs 2 times")
+    assert lines[2].startswith("edit 3 missing: old matches the file up to line 4 column 9")
+    assert lines[3].startswith("edit 4 missing: old is not in the file")
+    assert len(lines) == 4  # edit 1 resolved and is not mentioned
 
 
 def test_a_one_character_external_change_inside_the_target_makes_it_missing():
@@ -359,7 +412,7 @@ def test_repeated_targets_are_ambiguous_and_report_where_they_occur():
         resolve_direct(original, [replace(" = 1\n", " = 2\n")])
 
     assert error.value.category == "direct target ambiguous"
-    assert error.value.offsets == (1, 7, 13)
+    assert error.value.spots == ((1, 5), (7, 5), (13, 5))
 
 
 def test_overlapping_occurrences_count_as_separate_matches():
@@ -373,7 +426,7 @@ def test_a_very_common_target_reports_a_capped_count_rather_than_scanning_on():
     with pytest.raises(DirectMatchError, match="occurs more than 50 times") as error:
         resolve_direct("a" * 500, [replace("a", "b")])
 
-    assert len(error.value.offsets) == 50
+    assert len(error.value.spots) == 50
 
 
 # --- several operations in one call ------------------------------------------------------------
@@ -610,6 +663,30 @@ def test_ambiguity_shows_where_the_target_occurs_and_writes_nothing(tmp_path):
     recovery = render(s, error.value.recovery)
     assert "2 | value = 1" in recovery and "4 | value = 1" in recovery and "6 | value = 1" in recovery
     assert (tmp_path / "code.txt").read_text(encoding="utf-8") == original
+
+
+async def test_a_missing_target_shows_where_it_parts_from_the_file_and_writes_nothing(tmp_path):
+    s = session(tmp_path)
+    original = "".join(f"pad {n}\n" for n in range(1, 20)) + "from b import C, D\n" + "".join(f"tail {n}\n" for n in range(1, 20))
+    path = tmp_path / "code.txt"
+    path.write_text(original, encoding="utf-8")
+    edits = [{"op": "replace", "old": "pad 1\n", "content": "PAD\n"}, {"op": "replace", "old": "from b import C, D, Text\n", "content": "from b import C\n"}]
+
+    with pytest.raises(ToolError, match="direct target missing in edit 2: old matches the file up to line 20 column 19") as error:
+        edit(s, "code.txt", edits)
+
+    # A small editable view of the mismatch, so the retry needs no Read.
+    recovery = render(s, error.value.recovery)
+    assert "20 | from b import C, D" in recovery and "17 | pad 17" in recovery and "23 | tail 3" in recovery
+    assert "pad 1\n" not in recovery and "tail 9" not in recovery
+    assert path.read_text(encoding="utf-8") == original
+
+    # A batch plan refuses the same call the same way.
+    call = direct_call("edit", "code.txt", edits)
+    plan = await EditBatchPlan(s).build([call])
+    message, recovery = plan.errors[call.id]
+    assert message == str(error.value)
+    assert isinstance(recovery, ToolOutput) and "20 | from b import C, D" in render(s, recovery)
 
 
 def test_ambiguity_recovery_stays_inside_the_existing_view_budget(tmp_path):
@@ -1207,7 +1284,7 @@ def test_tool_schemas_point_bash_output_at_direct_evidence():
     ("edits", "expected"),
     [
         ([{"op": "replace", "old": "a\n", "content": "A\n"}], "include more exact context or use a source view"),
-        ([{"op": "replace", "old": "zzz\n", "content": "Z\n"}], "inspect the current file and retry"),
+        ([{"op": "replace", "old": "zzz\n", "content": "Z\n"}], "Read the target and retry"),
         (
             [{"op": "replace", "old": "a\nb\n", "content": "X\n"}, {"op": "replace", "old": "b\na\n", "content": "Y\n"}],
             "edit them as one operation",
