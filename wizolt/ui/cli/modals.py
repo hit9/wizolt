@@ -460,7 +460,11 @@ def edit_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView | Non
     text = record.output.strip()
     if not text:
         return None
-    return ApprovalView(f"edit · {record.key}", text, DIFF_LEXER, [("key", record.key)])
+    # A receipt saved before receipts dropped the diff carries it inside the edit block; a newer
+    # one is the fresh source view. A hunk header row is the difference: a rendered source row
+    # always begins with its line number, and a code line starting with "@@ " cannot be one.
+    legacy = any(line.startswith("@@ ") for line in text.splitlines())
+    return ApprovalView(f"edit · {record.key}", text, DIFF_LEXER if legacy else "text", [("key", record.key)])
 
 
 def job_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView:

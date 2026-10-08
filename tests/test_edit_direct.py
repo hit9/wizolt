@@ -143,7 +143,7 @@ def test_omitted_op_is_inferred_only_for_an_unambiguous_direct_replace(tmp_path)
         # The fields models recurrently misplace or rename are refused with the repair named.
         ("", [{"op": "replace", "old": "a\n", "content": "A\n", "source": "view.1"}], "Edit unexpected field: source; source: source belongs at the top level"),
         ("", [{"op": "replace", "old": "a\n", "new": "A\n"}], "Edit unexpected field: new; new: put the replacement text in content"),
-        ("", [{"old": "a\n", "replace": "A\n"}], "Edit unexpected field: replace; replace: replace is an op value"),
+        ("", [{"old": "a\n", "replace": "A\n"}], "Edit unexpected field: replace; replace: remove it, set op=replace"),
         ("", [{"op": "replace", "old": "a\n", "content": "A\n", "path": "other.txt"}], "Edit unexpected field: path; path: path belongs at the top level"),
     ],
 )
@@ -376,12 +376,14 @@ def test_a_target_that_is_not_literally_present_is_missing(original, old):
         # The longest start of old found once in the file: the next characters are the difference.
         ("value = 1\n", "value = 1 \n", "old matches the file up to line 1 column 10, where the file has '\\n' and old has ' \\n'"),
         ("say 'hi'\n", "say ‘hi’\n", "up to line 1 column 5, where the file has \"'hi'\\n\" and old has '‘hi’\\n'"),
-        ("a\nb\n", "a\nb\nc\n", "up to line 3 column 1, where the file has the end of the file and old has 'c\\n'"),
+        ("a\nb\n", "a\nb\nc\n", "up to line 3 column 1, where the file ends and old has 'c\\n'"),
         # A miscounted run of a repeated character: the shape behind the 36-edit retry chain.
         ("bar [██░░]  1h\n", "bar [██░]  1h\n", "up to line 1 column 9, where the file has '░]  1h\\n' and old has ']  1h\\n'"),
         # A changed first character leaves no start to find: the end of old locates it instead.
         ("value = 1\n", "Value = 1\n", "the end of old matches the file from line 1 column 2; before that the file has 'v' and old has 'V'"),
         ("x = 1\n\tx\n", "    x\n", "the end of old matches the file from line 2 column 2; before that the file has '\\t' and old has '    '"),
+        # Extra text before old's matched end at the very start of the file: nothing precedes it.
+        ("alpha\nbeta\n", "Zalpha\n", "the end of old matches the file from line 1 column 1; before that the file has nothing and old has 'Z'"),
         # Neither end occurs exactly once: there is nothing exact to point at.
         ("a\na\na\n", "a\nz\na\n", "neither its start nor its end occurs exactly once; Read the target and retry"),
     ],

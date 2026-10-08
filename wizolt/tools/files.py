@@ -297,7 +297,7 @@ EDIT_FIELDS = frozenset({"op", "start", "end", "old", "content"})
 # hints, not aliases: the call is still refused, so the schema keeps a single spelling per field.
 FIELD_HINTS = {
     "new": "put the replacement text in content",
-    "replace": "replace is an op value; set op=replace and put the replacement text in content",
+    "replace": "remove it, set op=replace, and put the replacement text in content",
     "source": "source belongs at the top level of the call, beside path",
     "path": "path belongs at the top level of the call, beside edits",
 }
@@ -402,14 +402,21 @@ def diagnose_missing(text: str, old: str) -> tuple[str, int | None]:
     head = _longest_present(text, size, lambda n: old[:n])
     if head and (at := _unique_offset(text, old[:head])) is not None:
         split = at + head
-        return (
-            f"old matches the file up to {_position(text, split)}, where the file has {_snippet(text[split:])} and old has {_snippet(old[head:])}",
-            split,
-        )
+        if text[split:]:
+            return (
+                f"old matches the file up to {_position(text, split)}, where the file has {_snippet(text[split:])} and old has {_snippet(old[head:])}",
+                split,
+            )
+        return f"old matches the file up to {_position(text, split)}, where the file ends and old has {_snippet(old[head:])}", split
     tail = _longest_present(text, size, lambda n: old[size - n :])
     if tail and (at := _unique_offset(text, old[size - tail :])) is not None:
-        before = f"the file has {_snippet(text[:at], backward=True)} and old has {_snippet(old[: size - tail], backward=True)}"
-        return f"the end of old matches the file from {_position(text, at)}; before that {before}", at
+        if at:
+            before = f"the file has {_snippet(text[:at], backward=True)} and old has {_snippet(old[: size - tail], backward=True)}"
+            return f"the end of old matches the file from {_position(text, at)}; before that {before}", at
+        return (
+            f"the end of old matches the file from {_position(text, at)}; before that the file has nothing and old has {_snippet(old[: size - tail], backward=True)}",
+            at,
+        )
     return "old is not in the file, and neither its start nor its end occurs exactly once; Read the target and retry", None
 
 

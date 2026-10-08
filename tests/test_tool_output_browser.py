@@ -244,7 +244,8 @@ async def test_tool_output_browser_opens_the_edit_its_row_names(tmp_path, monkey
 
 async def test_tool_output_browser_still_lists_an_edit_whose_receipt_is_gone(tmp_path, monkeypatch):
     """Past the retained window a session holds no receipt for an old edit. The row stays, opening
-    the output it did retain, which carries the diff inside the edit block."""
+    the output it did retain -- here the diff a receipt saved before receipts dropped it still
+    carries inside the edit block."""
     command_loop = loop(tmp_path)
     command_loop.session.store_tool_result("Edit", ["x.py"], '<Edit path="x.py">\n--- x.py\n+++ x.py\n@@ -1 +1 @@\n-zebra_old\n+zebra_new\n</Edit>')
     modal = await _open_detail(command_loop, ["enter"], monkeypatch)
