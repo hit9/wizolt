@@ -42,11 +42,11 @@ The newest **50** compacted spans keep these files.
 Run **`/compact`** to summarize now, such as before starting a large refactor.
 Use **`/compact log`** to review past summaries, or `/compact log seg.N` to print one.
 
-### Starting a new window
+### Compacting at the right moment
 
-The agent can use its `Context` tool to schedule a fresh model window after its current turn.
-wizolt keeps the working notes and recent activity, your visible transcript, background jobs
-and workspace. The divider shows `reset pending` until it happens.
+The agent can use its `Context` tool to compact when it knows the older conversation is spent,
+without waiting for the window to fill: the next request carries a summary instead. Your
+visible transcript, background jobs and workspace all stay.
 
 ### When a summary does not arrive
 

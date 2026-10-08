@@ -123,9 +123,9 @@ class Session:
     pending_user_inputs: list[QueuedInput] = field(default_factory=list)
     quick_hints: tuple[str, ...] = field(default_factory=tuple)  # transient offered next-step inputs; never serialized, cleared each turn
     next_hints_available: bool = True  # transient frontend capability; false for the simple REPL, which has no chip UI
-    # Durable intent: a crash after the tool result must not lose the promised reset.
-    context_reset_requested: bool = False
-    # Runtime: bumped whenever the conversation's head is rebuilt (compaction, context reset), which
+    # Durable intent: a crash after the tool result must not lose the promised compaction.
+    context_compact_requested: bool = False
+    # Runtime: bumped whenever the conversation's head is rebuilt (compaction), which
     # is when prefix context frozen for the old head may be rebuilt too. Never persisted.
     context_epoch: int = field(default=0, repr=False, compare=False)
     # Runtime projection settings; assembly restores them without persisting executable handles.
@@ -466,22 +466,22 @@ class Session:
     def clear_quick_hints(self) -> None:
         self.quick_hints = ()
 
-    def request_context_reset(self) -> bool:
-        """Ask for the conversation to be dropped when the running turn settles.
+    def request_context_compact(self) -> bool:
+        """Ask for the prior conversation to be compacted at the next request.
 
-        A turn is a transaction (design/DESIGN.md, "A turn, and its three endings"): clearing history from
-        inside a tool batch would leave the assistant message whose calls are still being answered
-        without its results, and every provider rejects that replay. So the request is recorded here
-        and applied at settlement, by `apply_context_reset`; a batch that asks twice is one reset.
+        A compaction summarizes settled history and exports the dropped span; it never drops
+        conversation outright, so nothing waits for a turn to settle: the batch that asked for it
+        still gets its results, and the request after it carries the summary. A batch that asks
+        twice is one request, and the flag is durable so a crash cannot lose the promise.
         """
-        first = not self.context_reset_requested
-        self.context_reset_requested = True
+        first = not self.context_compact_requested
+        self.context_compact_requested = True
         return first
 
     def compacted_history_line(self) -> str:
         """The checkpoint line naming the compacted-history index, or "" while there is none.
 
-        Called only while a checkpoint is being built -- a compaction rebuild or a context reset --
+        Called only while a checkpoint is being built -- a compaction rebuild --
         and the text is frozen into that message. Rebuilding it on a later projection would move the
         prefix of a request already cached. Asking the disk here is what keeps the line honest: an
         older session that never exported, or an export that could not be written, names nothing.
@@ -490,48 +490,13 @@ class Session:
         return f"Compacted history: {index} (one history.N.md per compaction beside it)" if os.path.isfile(index) else ""
 
     def advance_context_epoch(self) -> None:
-        """Invalidate knowledge tied to the old context after reset or compaction.
+        """Invalidate knowledge tied to the old context after a compaction rebuild.
 
         Skill listings refreeze lazily by epoch. MCP documentation may have left the window,
         so its next tool call must inject it again; neither operation touches sibling knowledge.
         """
         self.context_epoch += 1
         self.mcp_resource_reads.clear()
-
-    def apply_context_reset(self) -> bool:
-        """Start a new model window with a frozen working-state checkpoint; retain the transcript.
-
-        Note state, compacted-history exports, stored tool results, jobs, source views and the
-        workspace are not conversation and survive untouched. The usage snapshot goes with the
-        conversation it described: leaving it in place would keep the status bar and
-        `Context(remaining)` reporting a full window for a context that is now empty.
-        """
-        if not self.context_reset_requested or self._active_turn_messages or self._active_transcript_messages:
-            return False
-        self.context_reset_requested = False
-        self.advance_context_epoch()
-        self.messages.clear()
-        self.state.summary = ""
-        checkpoint = self.state_checkpoint_event()
-        checkpoint[SESSION_EVENT_KEY] = "context_reset"
-        checkpoint["content"] = "Context reset. Working-state snapshot below; later Note calls supersede it. Transcript is retained.\n" + checkpoint["content"]
-        if activity := self.recent_activity():
-            checkpoint["content"] += "\n\n" + activity
-        # This checkpoint replaces the conversation, so the last compaction's line naming the
-        # exports is no longer in context unless this one names them again.
-        if line := self.compacted_history_line():
-            checkpoint["content"] += "\n" + line
-        self.messages.append(checkpoint)
-        self.transcript_messages.append({"role": "notice", "content": "Context reset."})
-        self.state.turn_messages = 0
-        self.state.context_percent = 0
-        self.state.context_tokens = 0
-        usage = self.usage
-        usage.last_prompt_tokens = 0
-        usage.last_prompt_budget = 0
-        usage.last_cached_prompt_tokens = 0
-        usage.last_cache_write_prompt_tokens = 0
-        return True
 
     def record_operation(self, receipt: OperationReceipt) -> OperationReceipt:
         """Keep one receipt per operation (updated in place as it progresses), newest last."""

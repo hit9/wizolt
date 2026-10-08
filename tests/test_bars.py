@@ -230,9 +230,6 @@ def test_rail_separates_activity_and_metrics_and_keeps_queue_kinds_distinct():
     assert rendered.endswith("12s · 42 tok/s · 2 queued · 1 next turn")
     for width in range(100):
         assert get_cwidth(text(template.render(values, width, styles))) <= width
-    values.update(rate="", reset_pending=True)
-    rendered = text(template.render(values, 100, styles))
-    assert "tok/s" not in rendered and rendered.endswith("reset pending")
 
 
 @pytest.mark.parametrize("name", STATUS_PRESETS)

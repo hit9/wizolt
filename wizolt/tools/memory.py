@@ -152,38 +152,40 @@ class NoteTool(Tool):
 
 
 class ContextTool(Tool):
-    """Inspect context usage or request a reset at turn settlement."""
+    """Inspect context usage, or compact prior conversation on the model's own decision."""
 
     NAME = "Context"
     DESCRIPTION = (
-        "Report tokens left in the context window, or start a new one. A reset keeps Note state, "
-        "compacted history files, results, jobs and transcript; it drops model conversation after this turn."
+        "Report tokens left in the context window, or compact the conversation now. A compact "
+        "summarizes prior conversation into a summary message and history exports; nothing is "
+        "dropped outright, and it runs at the next request."
     )
     STORES_RESULT = False
     MUTATES = True
 
     def needs_confirmation(self) -> bool:
-        # Only model context changes; user-visible history and workspace remain.
+        # Only a compaction is scheduled; the user-visible transcript and the workspace remain.
         return False
 
     @classmethod
     def params_schema(cls) -> Json:
-        return cls.object_schema({"action": {"type": "string", "enum": ["remaining", "reset"]}}, ["action"])
+        return cls.object_schema({"action": {"type": "string", "enum": ["remaining", "compact"]}}, ["action"])
 
     def call(self) -> str:
         action = self.action()
         if action == "remaining":
             return json.dumps(self.session.context_fill(), ensure_ascii=False)
-        if not self.session.request_context_reset():
-            return "Reset is already scheduled for the end of this turn."
-        # The reset lands at turn settlement, not here: the conversation still holds the assistant
-        # message this call is answering, and dropping it mid-batch would leave that message's other
-        # calls without results. Say so, because it decides whether more work in this turn is worth
-        # doing -- everything after this point is dropped with the conversation.
+        if not self.session.messages:
+            raise ToolError("Context compact has no prior conversation to compact")
+        if not self.session.request_context_compact():
+            return "Compaction is already scheduled for the next request."
+        # The compaction runs at the next request, not here: summarizing settled history between
+        # this batch and the next drops nothing the batch still owes the model, so nothing waits
+        # for a turn to settle. The receipt says what the next request carries.
         return (
-            "Reset scheduled: the conversation is dropped when this turn ends. Note state, compacted history "
-            "files, stored results, jobs, transcript and workspace remain. Finish the turn now; later "
-            "conversation in this turn is also dropped. Note and recent activity seed the new window."
+            "Compaction scheduled: the next request replaces prior conversation with a summary and "
+            "history exports; nothing is dropped outright. Note state, stored results, jobs, "
+            "transcript and workspace all stay."
         )
 
     def action(self) -> str:
@@ -191,8 +193,8 @@ class ContextTool(Tool):
         if unexpected := sorted(set(payload) - {"action"}):
             raise ToolError("Context unexpected field: " + ", ".join(unexpected))
         action = str(payload.get("action") or "").strip()
-        if action not in {"remaining", "reset"}:
-            raise ToolError("Context action must be remaining or reset")
+        if action not in {"remaining", "compact"}:
+            raise ToolError("Context action must be remaining or compact")
         return action
 
     def short_args(self) -> list[str]:

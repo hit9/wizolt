@@ -478,7 +478,7 @@ and `Note` updates and resume events are conversation, not context inserted ahea
 - Skills can change on disk mid-session (installs, `/skills trust`, a package folder the agent
   opens). `skill/listing.py` freezes the SKILLS index and the Skill tool's presence at the first
   request; later skills arrive as one appended `NEW SKILLS` message, and the index is rebuilt only
-  when `Session.context_epoch` moves (compaction, context reset). The Skill tool never appears
+  when `Session.context_epoch` moves (compaction). The Skill tool never appears
   mid-session: a session that started without it only gains `$name` mentions. A mention that
   arrives before the first request creates an unfrozen listing (epoch -1); the first freeze still
   sees the scanned library, and what the mention authorized survives it. Naming a skill is what
@@ -596,7 +596,7 @@ dispatching its complete call set; return results before the model may judge or 
 - Compaction exports each evicted span as a plain-text `history.N.md` (message text in full, tool
   calls as label lines), beside the append-only `history.md` index that says what every span holds.
   A retained segment with no file yet (an older session's, or a failed write) is backfilled as its
-  stored excerpt at the next compaction. A checkpoint (compaction rebuild or context reset) names
+  stored excerpt at the next compaction. A compaction checkpoint names
   the index when it exists on disk at that moment, and that text is frozen with the checkpoint;
   nothing lists segments in a request, and grep or `Read` inside a span file is how one comes back.
 - The export is a derived copy written at compaction time, in the same directory as the `tr.N.txt`
@@ -858,13 +858,12 @@ must not break input; the preview reports them and the failed light evaluates to
 
 ## Compaction
 
-Explicit context reset is a separate cache epoch: apply only after turn settlement, replace model
-history with one frozen working-state/recent-activity checkpoint, and retain the transcript and
-recall stores. Persist the pending request with tool-batch snapshots; loading such a snapshot
-settles the interrupted turn and applies the reset before the resume event. Never erase transcript
-to make model context smaller, or rebuild the reset checkpoint on normal requests.
-The pending indicator is presentation-only. The completion notice belongs to the durable transcript,
-not model messages; displaying or replaying it must not add anything to the request prefix.
+The model can ask for a compaction by hand (`Context(compact)`), answering knowledge that the
+conversation's bulk is spent rather than a threshold: the request is one durable per-session
+flag, spent by the next `prepare_messages`, which forces the history pass below the estimate
+while keeping the one-pass-per-message-count guard. Manual and automatic passes share the whole
+compaction path: the epoch bump, the exports, and the checkpoint naming them. The model cannot
+drop its own conversation outright.
 
 Compaction is the deliberate persisted exception to send-time-only projection: it replaces old
 active messages with a summary when the effective request, including tools, reaches the input

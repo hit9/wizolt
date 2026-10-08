@@ -264,9 +264,8 @@ class TestMCPResources:
             repeated = await MCPTool(conversation, [{"server": "test", "tool": "query", "arguments": {}}]).call()
             assert "GRAMMAR DOC" not in repeated
         assert reads == ["metabase://docs/cq.md", "metabase://docs/cq.md"]
-        # Reset and compaction drop prior document knowledge in just their owning context.
-        child.request_context_reset()
-        assert child.apply_context_reset()
+        # A rebuild drops prior document knowledge in just its owning context.
+        child.advance_context_epoch()
         assert main.mcp_resource_reads and not child.mcp_resource_reads
         output = await MCPTool(child, [{"server": "test", "tool": "query", "arguments": {}}]).call()
         assert "GRAMMAR DOC" in output

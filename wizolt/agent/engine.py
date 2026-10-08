@@ -553,14 +553,6 @@ class Agent:
             self.session.transcript_messages.extend(transcript_messages)
         self.session.clear_active_turn()
         self.session.state.turn_messages = 0
-        # A reset the model asked for inside this turn lands here, at its settlement: the turn is
-        # now whole and durable, so dropping the conversation cannot orphan a tool call.
-        self.apply_context_reset()
-
-    def apply_context_reset(self) -> None:
-        """Publish the transcript-only notice after the session has applied the reset."""
-        if self.session.apply_context_reset():
-            (self.hooks.on_context_reset or self.output_fn)(self.session.transcript_messages[-1]["content"])
 
     def terminal_next_hints(self, tool_calls: list[ToolCall]) -> bool:
         """True when a batch is nothing but NextHints calls — a terminal batch that ends the turn."""

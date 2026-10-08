@@ -52,9 +52,6 @@ class Presentation:
         self.scrollback: ScrollbackWriter | None = None
         self.tui: TuiApp | None = None
 
-    def context_reset_notice(self, text: str) -> None:
-        self.emit(LogBlock.hierarchy(LogLine(text, role=LogRole.META), []))
-
     def agent_notice(self, identity: str, status: str) -> None:
         """Theme-aware outcomes and attention requests; never added to model history."""
         symbol, label, role = {

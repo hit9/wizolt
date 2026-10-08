@@ -103,7 +103,7 @@ zero. This syntax describes formats; the plugin API does not register divider sw
 | Services | `mcp.count`, `mcp.label`, `skills.count`, `plugins.count` |
 | Activity | `running`, `elapsed`, `rate` |
 | Divider labels | `activity`, `spinner`, `label` |
-| Divider queue | `queue.total`, `queue.followup`, `queue.next_turn`, `reset_pending` |
+| Divider queue | `queue.total`, `queue.followup`, `queue.next_turn` |
 
 `plugins.count` counts healthy live plugins in this agent. Family counts include main.
 `rate` is already formatted text, not a numeric token rate. The complete `label`, `spinner`,

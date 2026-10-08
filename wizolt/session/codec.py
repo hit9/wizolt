@@ -172,7 +172,7 @@ class SessionSnapshotCodec:
                 bool(session.pending_user_inputs),
                 bool(session.subagent_entries),
                 bool(state.turn_result),
-                session.context_reset_requested,
+                session.context_compact_requested,
                 bool(session.tool_records),
                 bool(session.tool_errors),
                 bool(session.operation_receipts),
@@ -360,7 +360,7 @@ class SessionSnapshotCodec:
             "context_layout_version": session.context_layout_version, "messages": cls.snapshot_messages(session),
             "transcript_messages": cls.snapshot_transcript_messages(session),
             "active_transcript_messages": cls.active_transcript_messages(session), "transcript_sync": TRANSCRIPT_SYNC_VERSION,
-            "context_reset_requested": session.context_reset_requested,
+            "context_compact_requested": session.context_compact_requested,
             "agent_name": session.agent_name, "agent_parent": session.agent_parent,
             "subagent_entries": list(session.subagent_entries),
             "pending_user_inputs": [item.to_json() for item in session.pending_user_inputs],
@@ -393,7 +393,7 @@ class SessionSnapshotCodec:
             "created_at": session.created_at,
             "context_layout_version": session.context_layout_version,
             "transcript_sync": TRANSCRIPT_SYNC_VERSION,
-            "context_reset_requested": session.context_reset_requested,
+            "context_compact_requested": session.context_compact_requested,
         }
         if current["agent_metadata_digest"] != saved.get("agent_metadata_digest"):
             delta.update(agent_name=session.agent_name, agent_parent=session.agent_parent, subagent_entries=list(session.subagent_entries))
@@ -625,7 +625,7 @@ class SessionSnapshotCodec:
             "created_at",
             "context_layout_version",
             "transcript_sync",
-            "context_reset_requested",
+            "context_compact_requested",
             "agent_name",
             "agent_parent",
             "subagent_entries",

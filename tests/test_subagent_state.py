@@ -160,8 +160,8 @@ async def test_compaction_exports_and_identical_image_assets_have_distinct_owner
     assert Path(image_paths[0]).read_bytes() == Path(image_paths[1]).read_bytes()
     assert root.state.summaries[-1].endswith("]\nsummary main")
     assert child.session.state.summaries[-1].endswith("]\nsummary child")
-    child.session.request_context_reset()
-    child.session.apply_context_reset()
+    child.session.request_context_compact()
+    assert not root.context_compact_requested and child.session.context_compact_requested
     assert root.state.known == ["main"] and child.session.state.known == ["child"]
     await asyncio.gather(root.save_snapshot(), child.session.save_snapshot())
     for agent in [family.root, child]:

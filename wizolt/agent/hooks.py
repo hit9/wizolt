@@ -33,8 +33,6 @@ class UiHooks:
     # One gray block per image-routing decision: a reason root line plus an optional described-by
     # child. Presentation only, never model context. None shows nothing.
     on_image_route_notice: Callable[[ImageRouteNotice], None] | None = None
-    # A deterministic context trim happened. None shows nothing.
-    on_context_reset: Callable[[str], None] | None = None
     # Fired once after each tool batch's output is out, with whether the batch carried text.
     # A fact, not a decision: whether that boundary is worth drawing anything is the view's to
     # judge. Never model context. None shows nothing.

@@ -350,8 +350,7 @@ def test_the_index_line_is_decided_when_the_checkpoint_is_written_and_never_afte
     would miss the cache from that message on."""
     s = session(tmp_path)
     context = ContextManager(s)
-    s.request_context_reset()
-    s.apply_context_reset()
+    context.apply_compaction({"summary": "s"}, [])
     before = context.model_messages("system", [])
 
     os.makedirs(s.images.assets_dir(), exist_ok=True)

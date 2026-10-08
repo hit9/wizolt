@@ -144,7 +144,6 @@ class CommandLoop:
         hooks.on_compaction = self.presentation.automatic_compaction_status
         hooks.on_retry_wait = self.presentation.model_retry_wait_status
         hooks.on_image_route_notice = self.presentation.image_route_notice
-        hooks.on_context_reset = self.presentation.context_reset_notice
         hooks.on_tool_batch = self.presentation.tool_batch_output
         hooks.live_start = self.presentation.tool_live_start
         hooks.live_output = self.presentation.tool_live_output

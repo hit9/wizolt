@@ -439,8 +439,6 @@ class View:
             return [("class:muted", status)]
         else:
             label = status
-        if self.session.context_reset_requested:
-            label += " · reset pending"
         counts = [f"{queued} queued"] if queued else []
         if next_turn:
             # Held-back inputs are invisible to the running turn, so they must not inflate the

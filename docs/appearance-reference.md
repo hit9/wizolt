@@ -305,7 +305,7 @@ Available fields:
 | `agents.count`, `agents.running`, `agents.waiting` | Group totals including main, currently running agents and agents waiting for input; completed agents stay in the total |
 | `running`, `elapsed`, `rate` | Whether the agent is running, seconds since the turn started, and the current output-rate label |
 | `activity`, `spinner`, `label` | Divider activity, waiting dot, and the complete activity/elapsed/queue label used by default |
-| `queue.total`, `queue.followup`, `queue.next_turn`, `reset_pending` | Divider queue counts and pending context reset |
+| `queue.total`, `queue.followup`, `queue.next_turn` | Divider queue counts |
 
 The full `label`, `spinner` and queue counts are populated only in the divider; the statusbar
 supplies empty strings or zero for those fields. Put fields such as `rate` inside conditions when you want to omit their surrounding text

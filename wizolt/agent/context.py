@@ -344,11 +344,16 @@ class ContextManager:
         compactor = compaction.Compactor(self, model)
         budget = self.request_token_budget()
         raw = self.request_tokens(messages, tools)
-        if raw < self.auto_compaction_limit() and not self._overdue_by_usage():
+        # A compaction the model asked for by hand runs whatever the estimate says: it answers
+        # knowledge that this conversation's bulk is spent, not a threshold. The flag is spent
+        # here, so one request cannot repeat a pass, and a refused or empty pass does not linger.
+        manual = self.session.context_compact_requested
+        self.session.context_compact_requested = False
+        if raw < self.auto_compaction_limit() and not self._overdue_by_usage() and not manual:
             self.update_percent(messages, tools, tokens=raw)
             return messages
         attempted = compacted_any = False
-        if self._auto_compaction_allowed("history", self.session.messages):
+        if manual or self._auto_compaction_allowed("history", self.session.messages):
             attempted = True
             recent = None
             compacted, keep = compactor.parts()
