@@ -208,6 +208,23 @@ class TestMCPContextBlocks:
         assert sum("<MCPDescribe" in t for t in tool_texts) == 1
         assert sum("<MCPDescribe" in m["content"] for m in s.messages) == 2  # history untouched
 
+    def test_dedup_projection_is_stable_across_appended_messages(self):
+        """The projection never rewrites a message an earlier request already sent: a repeat
+        collapses in the request that first carries it and stays collapsed, so a growing
+        conversation never costs a prompt-cache miss on the already-sent prefix."""
+        s = Session(cwd="/tmp")
+        bootstrap_features(s)
+        ctx = ContextManager(s)
+        conversation = [self._describe_msg("a", "tr.1", "echo", "schema"), self._describe_msg("b", "tr.2", "echo", "schema")]
+
+        sent = ctx.dedup_mcp_describes(conversation)
+        later = ctx.dedup_mcp_describes([*conversation, self._describe_msg("c", "tr.3", "echo", "schema")])
+
+        assert "<MCPDescribe" not in sent[1]["content"]  # the repeat is collapsed at its first send
+        assert later[:2] == sent  # already-sent bytes unchanged: the prefix stays a cache hit
+        assert "repeat describe of test.echo" in later[2]["content"] and "tr.1" in later[2]["content"]
+        assert ctx.dedup_mcp_describes(sent) == sent  # idempotent once sent
+
 class TestDescribeTool:
     def test_describe_uses_cached_metadata(self, monkeypatch):
         """describe returns rendered metadata from cache."""
