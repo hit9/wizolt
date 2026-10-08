@@ -605,10 +605,15 @@ class EditTool(Tool):
         *,
         created: bool = False,
     ) -> ToolOutput:
-        """Render a completed edit receipt and expose its turn diff on the owning loop."""
+        """Render a completed edit receipt and expose its turn diff on the owning loop.
+
+        The diff goes to the turn diff and the UI only. The model wrote every added line and
+        supplied or was shown every removed one, and the fresh view shows the result in place, so
+        the diff would hand it the same change twice -- about half of a receipt.
+        """
         self.last_path = self.session.relpath(path)
         self.last_diff = self.diff(path, before, after, created=created)
-        parts: list[str | SourceBlock] = [f"<Edit path={json.dumps(self.last_path)}>", self.last_diff.rstrip()]
+        parts: list[str | SourceBlock] = [f"<Edit path={json.dumps(self.last_path)}>"]
         if warnings:
             parts.append(warnings)
         if relocations:

@@ -531,10 +531,16 @@ def test_preview_and_execution_agree_on_the_diff_and_the_result(tmp_path):
     previewed = EditTool(s, ["code.txt", "", edits]).preview()
     assert (tmp_path / "code.txt").read_text(encoding="utf-8") == "a\nb\nc\n"  # preview writes nothing
 
-    out = EditTool(s, ["code.txt", "", edits]).call()
+    tool = EditTool(s, ["code.txt", "", edits])
+    out = tool.call()
 
-    assert previewed == EditTool(s, ["code.txt", "", edits]).diff(str(tmp_path / "code.txt"), "a\nb\nc\n", "A\nb\n")
-    assert previewed in render(s, out)
+    assert previewed == tool.diff(str(tmp_path / "code.txt"), "a\nb\nc\n", "A\nb\n")
+    receipt = tool.turn_diff()
+    assert receipt is not None and receipt.diff == previewed
+    # The diff is the UI's: the model gets the fresh view of the result, not the change twice.
+    rendered = render(s, out)
+    assert "--- code.txt" not in rendered and "-c" not in rendered.splitlines()
+    assert "1 | A" in rendered
     assert (tmp_path / "code.txt").read_text(encoding="utf-8") == "A\nb\n"
 
 

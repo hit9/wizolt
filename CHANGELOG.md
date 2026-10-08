@@ -4,6 +4,9 @@
 
 - `Edit` writes a file back with its own line ending: a one-line edit to a CRLF (or CR) file was
   rewriting every line as LF. A file mixing endings is still normalized to LF.
+- `Edit` receipts no longer send the model the unified diff beside the fresh view of the same
+  lines; the diff stays in the UI, the turn diff and the browser. Across 980 recorded edits on the
+  developer's machine the diff was 49% of receipt text, about 1.5k characters per edit.
 - `Edit` resolves a call that names `source` but gives exact `old` text in every edit in direct
   mode, with an `ignored-source` warning, instead of refusing it; a refusal remains when an edit
   also gives `start`/`end` or another edit has no `old`. This refusal was 24 of the 123 failed

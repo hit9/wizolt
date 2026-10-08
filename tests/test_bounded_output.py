@@ -285,7 +285,7 @@ def test_projection_keeps_evidence_when_literal_parts_alone_fill_the_budget(tmp_
 
 
 async def test_large_edit_diff_and_source_share_the_normal_output_budget(tmp_path, monkeypatch):
-    """A source-bearing Edit must not bypass output bounding through its ordinary diff text."""
+    """A source-bearing Edit's large fresh view stays inside the ordinary output budget."""
     from wizolt.tools import EditTool
 
     path = tmp_path / "large.py"
@@ -299,7 +299,7 @@ async def test_large_edit_diff_and_source_share_the_normal_output_budget(tmp_pat
     result = EditTool(s, ["large.py", source, [{"op": "replace", "start": 1, "end": 1, "content": body}]]).call()
     message = await runner.finish(call("Edit", ["large.py", source, []]), result)
 
-    assert message.count("<bounded_output") >= 2  # the diff and the large fresh source block
+    assert message.count("<bounded_output") == 1  # the large fresh source block; the diff is the UI's
     assert ' file="' in message
     assert runner.context.estimated_text_tokens(message) < MAX_TOOL_OUTPUT_TOKENS * 1.2
     assert path.read_text(encoding="utf-8") == body

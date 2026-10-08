@@ -452,8 +452,8 @@ def edit_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView | Non
 
     The recorded diff is preferred: it is the change alone, and it is whole, where the transcript
     trims a long replay's diffs to a readable window. Once a session has more edits than the
-    retained window holds, the receipt is gone and the retained output -- which still carries the
-    diff inside the edit block -- is what remains."""
+    retained window holds, the receipt is gone and the retained output is what remains: the fresh
+    view of the result, or the diff inside the edit block for edits saved before receipts dropped it."""
     receipt = next((entry for entry in loop.session.turn_diffs if entry.key == record.key), None)
     if receipt is not None and receipt.diff.strip():
         return ApprovalView(f"diff · {receipt.path}", receipt.diff, DIFF_LEXER, [("file", receipt.path), ("key", record.key)])
