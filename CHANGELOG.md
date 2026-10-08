@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `Edit` resolves a call that names `source` but gives exact `old` text in every edit in direct
+  mode, with an `ignored-source` warning, instead of refusing it; a refusal remains when an edit
+  also gives `start`/`end` or another edit has no `old`. This refusal was 24 of the 123 failed
+  edits in the same sessions.
 - `Edit` names the repair for fields models misplace or rename: `new` and `replace` (use
   `content`), and `source` or `path` inside an edit (they belong at the top level).
 

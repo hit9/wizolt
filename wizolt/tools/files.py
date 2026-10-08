@@ -493,6 +493,7 @@ class EditTool(Tool):
     # point is to save one round trip, not to page a file back through an error message.
     RECOVERY_CONTEXT_LINES = 3
     RECOVERY_MAX_LINES = 60
+    ignored_source = ""  # the view a parsed call named but did not need; set by parse
 
     @classmethod
     def params_schema(cls) -> Json:
@@ -609,6 +610,8 @@ class EditTool(Tool):
         into content leaves behind. Identical lines inside a range stay legitimate and unpoliced.
         """
         lines = []
+        if self.ignored_source:
+            lines.append(f"ignored-source: every edit gave exact old text, so {self.ignored_source} was not needed; omit source when editing by old")
         if (large := _large_edit(edits)) is not None:
             lines.append(large)
         lines.extend(seam_duplicates or [])
@@ -672,6 +675,12 @@ class EditTool(Tool):
         raw_edits = self.args[2]
         if not isinstance(raw_edits, list) or not raw_edits:
             raise ToolError("Edit edits must be a non-empty array")
+        # A source beside nothing but exact old text is redundant evidence: each old is already a
+        # compare-and-swap condition stronger than the view, so the call resolves in direct mode.
+        # The model is told, so it stops sending the view it did not need.
+        self.ignored_source = source_name if source_name and all(self._plain_direct_item(item) for item in raw_edits) else ""
+        if self.ignored_source:
+            source_name = ""
         edits = []
         for index, item in enumerate(raw_edits):
             if not isinstance(item, dict):
@@ -694,7 +703,7 @@ class EditTool(Tool):
             if op == "create":
                 edits.append(self._create_edit(item, len(raw_edits), source_name))
             elif source_name and "old" in item:
-                raise self._mixed_evidence_error(index, path, raw_edits)
+                raise self._mixed_evidence_error(index, raw_edits)
             elif source_name:
                 edits.append(self._range_edit(item, op))
             elif "old" in item:
@@ -703,17 +712,22 @@ class EditTool(Tool):
                 raise ToolError(f"{op} needs evidence: source=view.N with start/end, or old set to the exact text it replaces")
         return path, source_name, edits
 
-    def _mixed_evidence_error(self, index: int, path: str, raw_edits: list[Json]) -> ToolError:
-        """The refusal for a call that names a source view and supplies old text.
+    @staticmethod
+    def _plain_direct_item(item: object) -> bool:
+        """Whether an edit item carries old as its only evidence: no line range, and no create."""
+        return isinstance(item, dict) and "old" in item and not {"start", "end"} & set(item) and str(item.get("op") or "replace") in {"replace", "delete"}
 
-        The one refusal in parse whose legal retry is not mechanical: dropping either field means
-        rewriting the call around the surviving evidence, so the file is consulted before refusing.
-        When every edit in the call carries old, the drop-source reading is preflighted against the
-        current content: a clean run says the retry is a deletion, a failed one names the edit that
-        would fail anyway and shows the same ambiguity view the direct mode itself would. When some
-        edit has no old, dropping source strands it, and the answer is the split instead. Outside
-        the workspace or unreadable, the refusal stands alone, as it does when a sibling edit that
-        parse has not reached yet is malformed on its own: a refusal, never a guess.
+    def _mixed_evidence_error(self, index: int, raw_edits: list[Json]) -> ToolError:
+        """The refusal for a call that names a source view and supplies old text it cannot just
+        resolve without the view.
+
+        A call whose every edit is plain old text never gets here: parse resolves it in direct
+        mode. What remains leans on the view somewhere, and dropping either field means rewriting
+        the call around the surviving evidence. When every edit carries old, the view is there only
+        for the edits that also give start/end, so those are named. When some edit has no old,
+        dropping source strands it, and the answer is the split instead. A sibling that parse has
+        not reached yet and that is malformed on its own gets no repair promised: a refusal, never
+        a guess.
         """
 
         detail = f"edit {index + 1} gives both source and old; drop source to edit by exact text, or drop old and give start/end"
@@ -729,23 +743,11 @@ class EditTool(Tool):
             return source_error(
                 MIXED_EDIT_EVIDENCE, detail + "; split the call: edits with old become a direct call without source, range edits keep source and drop old"
             )
-        if not (self.session.in_cwd(path) or self.session.owns_asset(path) or self.session.is_global_agents_md(path)) or os.path.isdir(path):
-            return source_error(MIXED_EDIT_EVIDENCE, detail)
-        try:
-            with open(path, encoding="utf-8") as file:
-                original = file.read()
-        except (OSError, UnicodeDecodeError):
-            return source_error(MIXED_EDIT_EVIDENCE, detail)
-        recovery = None
-        try:
-            direct_edits = [self._direct_edit(entry, str(entry.get("op") or "replace")) for entry in raw_edits]
-            resolve_direct(original, direct_edits)
-            verdict = "dropping source and resending these edits as one direct call would succeed"
-        except ToolError as error:
-            verdict = "dropping source would fail too: " + str(error)
-            if isinstance(error, DirectMatchError) and error.category == DIRECT_TARGET_AMBIGUOUS:
-                recovery = self.ambiguity_recovery(original, error.offsets, error.target_length, path)
-        return source_error(MIXED_EDIT_EVIDENCE, f"{detail}; {verdict}", recovery=recovery)
+        ranged = ", ".join(str(position + 1) for position, entry in enumerate(raw_edits) if {"start", "end"} & set(entry))
+        return source_error(
+            MIXED_EDIT_EVIDENCE,
+            f"edit {ranged} gives both old and start/end; drop start/end to edit by exact text without source, or drop old to edit the view's lines",
+        )
 
     def _create_edit(self, item: Json, count: int, source_name: str) -> Edit:
         if count != 1:

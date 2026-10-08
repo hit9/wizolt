@@ -808,21 +808,6 @@ def test_edit_can_create_the_global_file_when_it_does_not_exist(tmp_path):
     assert (tmp_path / "data" / "AGENTS.md").read_text(encoding="utf-8") == "# Rule\nKeep it short.\n"
 
 
-def test_edit_mixed_evidence_preflights_the_drop_source_repair_for_the_global_file(tmp_path):
-    s = agents_session(tmp_path, global_text=GLOBAL_TEXT, cwd_name="work")
-    edits = [{"op": "replace", "old": "Four spaces for indentation.\n", "content": "Two spaces.\n"}]
-
-    with pytest.raises(ToolError, match="mixed edit evidence") as error:
-        EditTool(s, [global_agents_md_path(s.config.data_dir), "view.99", edits]).parse()
-    assert "dropping source and resending these edits as one direct call would succeed" in str(error.value)
-
-    outside = tmp_path / "work" / "notes.txt"
-    outside.write_text("Four spaces for indentation.\n", encoding="utf-8")
-    with pytest.raises(ToolError, match="mixed edit evidence") as error:
-        EditTool(s, [str(tmp_path / "data" / "notes.txt"), "view.99", edits]).parse()
-    assert "dropping source" not in str(error.value)  # outside the workspace: the refusal stands alone
-
-
 # --- the /status row ---
 
 
