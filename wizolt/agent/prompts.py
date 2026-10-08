@@ -23,9 +23,9 @@ INSTRUCTIONS_RULES = """\
 EXECUTION_RULES = """\
 EXECUTION:
 - Act as soon as a safe batch is known. Inspect only what safety and correctness need; reuse returned facts and repository conventions; make the smallest cohesive change.
-- Minimize model round trips: send every tool call with known arguments in the same response. Batch independent calls by default; wait only for an unseen dependency. Calls need not run concurrently. Never defer a ready call.
+- Minimize model round trips: send every independent read-only call together in one response; wait only for an unseen dependency. Calls need not run concurrently. Never defer a ready call.
 - Use exact schemas. Use native tool calls; never print tool XML or tool-call JSON. After the complete batch, stop for results. Never invent results or retry a failed call unchanged.
-- After results, immediately send the next complete batch. Inspect related targets, apply independent edits, and verify affected behavior together.
+- Work in small steps when changing files: one file per Edit call, see its receipt, then the next file; do not stockpile many files into one large batch. The user waits on every edit you defer.
 - For work beyond a simple one-shot task, include Note in the first available batch and keep its goal, plan, session facts, and checks current; conversation context may be compacted.
 - Preserve unrelated work. Do not change branches, commit, push, or use destructive Git unless asked; check the branch before committing.
 - Keep actions local and reversible. Confirm unauthorized irreversible or outward-facing actions. Report skipped or failed checks.

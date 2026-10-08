@@ -580,14 +580,14 @@ class EditTool(Tool):
         "Prefer a current source view when already available, and Read one first for multi-line or structural changes: "
         "line numbers beat retyping old text, which costs output and fails on any drift. Use exact old for a short unique snippet seen verbatim. "
         "create writes a new or empty file and must be the only operation. "
-        "Batch all known non-overlapping operations for this path in edits. "
+        "Work in small steps: one file per call, and see its receipt before the next; do not stockpile many files into one large batch. "
         "The success receipt's fresh view marks each rewritten run with an <edited lines> pair, a <deleted/> marker "
         "where a removal left a hole, and cuts unmarked context rows at 200 columns."
     )
     EXAMPLE = (
         'create file. Example: {"path":"src/app.py","edits":[{"op":"create","content":"print(1)\\n"}]}',
         'replace range. Example: {"path":"src/app.py","source":"view.12","edits":[{"op":"replace","start":10,"end":12,"content":"new_value = 1\\n"}]}',
-        'batch exact replacements, no source. Example: {"path":"src/app.py","edits":[{"op":"replace","old":"old_name","content":"new_name"},{"op":"delete","old":"# obsolete\\n"}]}',
+        'exact replacements, no source. Example: {"path":"src/app.py","edits":[{"op":"replace","old":"old_name","content":"new_name"},{"op":"delete","old":"# obsolete\\n"}]}',
     )
     MUTATES = True
     # A recovery view answers the edit that failed, so it spans the requested lines plus context

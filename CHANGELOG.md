@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The Edit guidance no longer teaches the model to stockpile changes: the tool description says
+  one file per call, see its receipt, then the next file, and the execution prompt's batching
+  rule now scopes same-response batching to read-only calls while file edits go one at a time.
+  Before, both taught batching every known operation (`Batch all known non-overlapping
+  operations`, `apply independent edits ... together`), so the model hoarded many files into
+  one large edit batch the user waited on.
 - An Edit success receipt now tells the changed lines from the context lines: each rewritten
   run is wrapped in an `<edited lines>` pair, a deletion leaves a `<deleted lines/>` marker naming
   the pre-call lines it removed, and unmarked context rows are cut at 200 columns (changed rows
