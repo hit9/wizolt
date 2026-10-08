@@ -38,8 +38,10 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
   - Creates or changes one UTF-8 file by inserting, replacing, or deleting content.
     You see the proposed diff before approval. wizolt checks the original lines or exact text
     before writing: if the file changed or the text matches several places, it refuses the edit
-    and shows the agent enough context to try again. A successful edit is followed by the diff it
-    made. A file that uses Windows (CRLF) line endings keeps them.
+    and shows the agent enough context to try again. A successful edit is followed by the changed
+    lines in place; the diff you approved is the one that ran. A file that uses one line ending
+    throughout keeps it -- a Windows (CRLF) file stays CRLF -- while a file mixing endings, or a
+    newly created file, is written as LF.
 
     :::{figure} ../snapshots/wizolt-edit-preview.png
     :alt: An Edit confirmation previewing the proposed diff

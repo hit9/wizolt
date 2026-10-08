@@ -3,7 +3,8 @@
 ## Unreleased
 
 - `Edit` writes a file back with its own line ending: a one-line edit to a CRLF (or CR) file was
-  rewriting every line as LF. A file mixing endings is still normalized to LF.
+  rewriting every line as LF. A file mixing endings, or one `create` writes, is still LF (the
+  write's platform default).
 - `Edit` receipts no longer send the model the unified diff beside the fresh view of the same
   lines; the diff stays in the UI, the turn diff and the browser. Across 980 recorded edits on the
   developer's machine the diff was 49% of receipt text, about 1.5k characters per edit.
@@ -13,9 +14,9 @@
   or is unknown to the session. The mixed-evidence refusal was 24 of the 123 failed edits in the
   same sessions.
 - A direct `Edit` refusal names every failing edit by position, and for exact `old` text the file
-  does not contain, quotes where it parts from the file -- `edit 14: old matches the file up to
-  line 196 column 93, where the file has '░░]' and old has ']'` -- with a small editable view of
-  that spot. Missing `old` text was the largest failure in recorded sessions (39 of 123 failed
+  does not contain, quotes where it parts from the file -- `direct target missing in edit 14: old
+  matches the file up to line 196 column 93, where the file has '░░]' and old has ']'` -- with a
+  small editable view of that spot. Missing `old` text was the largest failure in recorded
   edits, 45% of the output those failures wasted): with no position in the error, models resent
   whole batches, up to 36 edits, or wrote scripts to find the one edit that missed. A missing
   target whose start and end both occur in several places still gets no view: there is nothing
