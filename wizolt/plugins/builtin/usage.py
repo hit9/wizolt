@@ -3,18 +3,19 @@
 `/usage` asks every configured provider that offers a usage or balance API -- OpenCode Go,
 DeepSeek, Kimi (Moonshot), z.ai, Synthetic and Command Code -- and prints one section per
 provider in a themed frame of its own, each the moment its provider answers: usage windows
-as percentages with reset times, balances as amounts. Providers are matched by their API
-domain, so any entry name works; two entries of one provider that share their url and key
-are one account, asked once. A provider that fails prints one `error:` line; the rest still
-report.
+as percentages with reset times, balances as amounts. Every section is titled with the
+provider and the entry names it answered for. Providers are matched by their API domain, so
+any entry name works; two entries of one provider that share their url and key are one
+account, asked once and named together. A provider that fails prints one `error:` line; the
+rest still report.
 
 ```text
-OpenCode Go
+OpenCode Go (go)
 rolling   12%  [██░░░░░░░░]  resets in 1h23m
 weekly    34%  [████░░░░░░]  resets in 2d
 monthly   56%  [██████░░░░]  resets in 19d
 
-DeepSeek API
+DeepSeek API (deep)
 balance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok
 ```
 
@@ -43,7 +44,6 @@ import tomllib
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -488,19 +488,16 @@ async def usage(context: Context, arguments: Mapping[str, Any], report: Callable
     # last is the command's own answer. Holding back the last one in config order instead
     # would make a fast provider wait out a slow one's timeout. A host that cannot show
     # blocks (an offline trial) answers the same way with every block at the end.
-    counts = Counter(source for source, _key, _url in groups)
     pending = len(groups)
     reports: dict[tuple[Source, str, str], Report] = {}
     streamed: set[tuple[Source, str, str]] = set()
     channel: Callable[[list[Line]], Awaitable[None]] | None = report
 
     def titled(group: tuple[Source, str, str]) -> str:
-        # A merged account names every entry it covers, and one provider's second account
-        # names its own entry: either way the report shows every configured entry.
-        source, _key, _url = group
-        names = groups[group]
+        # Every section names the entries it answered for, one or many: the entry names are
+        # the config's own words, so every configured entry stays visible in the report.
         title = reports[group].title
-        return title if len(names) == 1 and counts[source] == 1 else f"{title} ({', '.join(names)})"
+        return f"{title} ({', '.join(groups[group])})"
 
     async def one(group: tuple[Source, str, str]) -> None:
         nonlocal channel, pending

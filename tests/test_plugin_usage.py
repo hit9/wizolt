@@ -172,12 +172,12 @@ async def test_every_supported_domain_reports_in_sources_order(wires, tmp_path):
     )
     config = provider_config(("cc", COMMANDCODE, "k"), ("synth", SYNTHETIC, "k"), ("z", ZAI, "k"), ("kimi", KIMI, "k"), ("deep", DEEPSEEK, "k"), ("go", GO, "k"))
     assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == sections(
-        "OpenCode Go\nrolling   12%  [█░░░░░░░░░]  resets in 1h23m",
-        "DeepSeek API\nbalance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok",
-        "Kimi\nbalance  ¥42.50  (cash ¥2.50 + voucher ¥40.00)  ok",
-        "Z.ai GLM Coding Plan\nsession   36%  [████░░░░░░]  resets in 30m\nsearches   3%  [░░░░░░░░░░]",
-        "Synthetic\nweekly    34%  [███░░░░░░░]  resets in 46m",
-        "Command Code\n5-hour    20%  [██░░░░░░░░]  resets in 2h\nweekly    40%  [████░░░░░░]  resets in 7d\nbalance  $46.20  (monthly $41.20 + purchased $5.00)  ok",
+        "OpenCode Go (go)\nrolling   12%  [█░░░░░░░░░]  resets in 1h23m",
+        "DeepSeek API (deep)\nbalance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok",
+        "Kimi (kimi)\nbalance  ¥42.50  (cash ¥2.50 + voucher ¥40.00)  ok",
+        "Z.ai GLM Coding Plan (z)\nsession   36%  [████░░░░░░]  resets in 30m\nsearches   3%  [░░░░░░░░░░]",
+        "Synthetic (synth)\nweekly    34%  [███░░░░░░░]  resets in 46m",
+        "Command Code (cc)\n5-hour    20%  [██░░░░░░░░]  resets in 2h\nweekly    40%  [████░░░░░░]  resets in 7d\nbalance  $46.20  (monthly $41.20 + purchased $5.00)  ok",
     )
     assert len(wires.calls) == 8  # Two calls each for z.ai and Command Code, one each for the rest.
 
@@ -193,7 +193,7 @@ async def test_a_reset_time_is_read_as_a_duration_or_an_epoch_time(wires, tmp_pa
     }
     config = provider_config(("go", GO, "k"))
     assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == sections(
-        "OpenCode Go\nrolling   12%  [█░░░░░░░░░]  resets in 1h23m\nweekly    34%  [███░░░░░░░]  resets in 2h\nmonthly   56%  [██████░░░░]  resets in 3h"
+        "OpenCode Go (go)\nrolling   12%  [█░░░░░░░░░]  resets in 1h23m\nweekly    34%  [███░░░░░░░]  resets in 2h\nmonthly   56%  [██████░░░░]  resets in 3h"
     )
 
 
@@ -206,13 +206,13 @@ async def test_a_lone_unsupported_config_names_what_is_supported(wires, tmp_path
 async def test_an_unsupported_or_urlless_entry_is_not_queried(wires, tmp_path):
     wires.answers[DEEPSEEK_BALANCE] = deepseek("110", "10", "100")
     config = provider_config(("openai", "https://api.openai.com/v1", "k"), ("local", "", "k"), ("deep", DEEPSEEK, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "DeepSeek API\nbalance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "DeepSeek API (deep)\nbalance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok"
     assert wires.calls == [(DEEPSEEK_BALANCE, "k")]
 
 
 async def test_a_provider_without_a_key_is_skipped_where_it_stands(wires, tmp_path):
     config = provider_config(("deep", DEEPSEEK, None))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "DeepSeek API\nskipped: no key configured"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "DeepSeek API (deep)\nskipped: no key configured"
     assert wires.calls == []
 
 
@@ -248,8 +248,8 @@ async def test_two_entries_sharing_url_and_key_are_asked_once_and_named_together
 
 
 async def test_two_entries_of_one_provider_keep_their_names_when_their_titles_differ(wires, tmp_path):
-    # Two accounts of one provider, one failing and one reporting its plan's name: the names are
-    # counted per source, so both sections still say which entry they came from.
+    # Two accounts of one provider, one failing and one reporting its plan's name: each
+    # section names its own entry, and the plan's name stays with its own account.
     def plan(key: str) -> object:
         return usage_plugin.HttpError(403) if key == "work" else {"data": [{"productName": "GLM Coding Plan"}]}
 
@@ -288,7 +288,7 @@ async def test_marks_a_window_at_80_and_a_balance_at_10(wires, tmp_path):
     wires.answers[DEEPSEEK_BALANCE] = balance
     config = provider_config(("go", GO, "k"), ("dry", DEEPSEEK, "dry"), ("poor", DEEPSEEK, "poor"), ("edge", DEEPSEEK, "edge"), ("rich", DEEPSEEK, "rich"))
     assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == sections(
-        "OpenCode Go\nrolling   80%! [████████░░]\nweekly    79%  [████████░░]",
+        "OpenCode Go (go)\nrolling   80%! [████████░░]\nweekly    79%  [████████░░]",
         "DeepSeek API (dry)\nbalance  XXX 500.00! (granted XXX 0.00 + topped up XXX 500.00)  insufficient",
         "DeepSeek API (poor)\nbalance  ¥10.00! (granted ¥0.00 + topped up ¥10.00)  ok",
         "DeepSeek API (edge)\nbalance  ¥10.01  (granted ¥0.00 + topped up ¥10.01)  ok",
@@ -309,11 +309,11 @@ async def test_each_failure_becomes_one_error_line_in_its_own_section(wires, tmp
     config = provider_config(("deep", DEEPSEEK, "k"), ("go", GO, "k"), ("kimi", KIMI, "k"), ("z", ZAI, "k"), ("synth", SYNTHETIC, "k"))
     result = plain(await usage_plugin.usage(configured(tmp_path, config), {}))
     assert result == sections(
-        "OpenCode Go\nerror: unparsable response",
-        "DeepSeek API\nbalance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok",
-        "Kimi\nerror: HTTP 503",
-        "Z.ai\nerror: network (name or service not known)",
-        "Synthetic\nerror: no quota data",
+        "OpenCode Go (go)\nerror: unparsable response",
+        "DeepSeek API (deep)\nbalance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok",
+        "Kimi (kimi)\nerror: HTTP 503",
+        "Z.ai (z)\nerror: network (name or service not known)",
+        "Synthetic (synth)\nerror: no quota data",
     )
     assert result.count("error:") == 4
 
@@ -321,7 +321,7 @@ async def test_each_failure_becomes_one_error_line_in_its_own_section(wires, tmp
 async def test_a_subscription_without_usage_windows_says_so(wires, tmp_path):
     wires.answers[GO_USAGE] = {"usage": {}}
     config = provider_config(("go", GO, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "OpenCode Go\nerror: no subscription or no usage windows"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "OpenCode Go (go)\nerror: no subscription or no usage windows"
 
 
 @pytest.mark.parametrize(
@@ -333,21 +333,21 @@ async def test_a_rejected_kimi_key_retries_the_other_host_and_its_currency(wires
     wires.answers[asked] = usage_plugin.HttpError(401)
     wires.answers[retried] = {"data": {"available_balance": "300", "cash_balance": "0", "voucher_balance": "0"}}
     config = provider_config(("kimi", url, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == f"Kimi\nbalance  {symbol}300.00  (cash {symbol}0.00 + voucher {symbol}0.00)  ok"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == f"Kimi (kimi)\nbalance  {symbol}300.00  (cash {symbol}0.00 + voucher {symbol}0.00)  ok"
     assert wires.calls == [(asked, "k"), (retried, "k")]  # The same key, once per host.
 
 
 async def test_a_moonshot_url_without_a_scheme_falls_back_to_the_national_host(wires, tmp_path):
     wires.answers[KIMI_BALANCE] = {"data": {"available_balance": "300", "cash_balance": "0", "voucher_balance": "0"}}
     config = provider_config(("kimi", "//api.moonshot.cn", "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Kimi\nbalance  ¥300.00  (cash ¥0.00 + voucher ¥0.00)  ok"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Kimi (kimi)\nbalance  ¥300.00  (cash ¥0.00 + voucher ¥0.00)  ok"
     assert wires.calls == [(KIMI_BALANCE, "k")]
 
 
 async def test_a_kimi_failure_other_than_a_rejection_is_not_retried(wires, tmp_path):
     wires.answers[KIMI_BALANCE] = usage_plugin.HttpError(500)
     config = provider_config(("kimi", KIMI, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Kimi\nerror: HTTP 500"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Kimi (kimi)\nerror: HTTP 500"
     assert wires.calls == [(KIMI_BALANCE, "k")]
 
 
@@ -356,14 +356,14 @@ async def test_a_failed_plan_lookup_of_any_kind_still_reports_the_quotas(wires, 
     wires.answers[ZAI_QUOTA] = {"data": {"limits": [{"type": "TOKENS_LIMIT", "unit": 6, "number": 7, "percentage": 40}]}}
     wires.answers[ZAI_PLAN] = failure
     config = provider_config(("z", ZAI, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Z.ai\nweekly    40%  [████░░░░░░]"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Z.ai (z)\nweekly    40%  [████░░░░░░]"
 
 
 async def test_a_plan_name_with_line_breaks_stays_on_one_line(wires, tmp_path):
     wires.answers[ZAI_QUOTA] = {"data": {"limits": [{"type": "TOKENS_LIMIT", "unit": 6, "number": 7, "percentage": 40}]}}
     wires.answers[ZAI_PLAN] = {"data": [{"productName": "GLM\nCoding\tPlan"}]}
     config = provider_config(("z", ZAI, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Z.ai GLM Coding Plan\nweekly    40%  [████░░░░░░]"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Z.ai GLM Coding Plan (z)\nweekly    40%  [████░░░░░░]"
 
 
 async def test_commandcode_computes_the_percent_and_prints_the_nonzero_credit_parts(wires, tmp_path):
@@ -380,7 +380,7 @@ async def test_commandcode_computes_the_percent_and_prints_the_nonzero_credit_pa
     }
     config = provider_config(("cc", COMMANDCODE, "k"))
     assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == (
-        "Command Code\n"
+        "Command Code (cc)\n"
         "5-hour    20%  [██░░░░░░░░]  resets in 2h\n"
         "weekly    40%  [████░░░░░░]  resets in 7d\n"
         "balance  $46.20  (monthly $41.20 + purchased $5.00)  ok"
@@ -392,14 +392,14 @@ async def test_commandcode_scopes_credits_to_the_org_whoami_names(wires, tmp_pat
     wires.answers[COMMANDCODE_WHOAMI] = {"org": {"id": "org_123", "login": "acme"}}
     wires.answers[COMMANDCODE_CREDITS_ORG] = {"windowLimits": {"weekly": {"used": 4, "cap": 8}}, "credits": {"monthlyCredits": 20}}
     config = provider_config(("cc", COMMANDCODE, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Command Code\nweekly    50%  [█████░░░░░]\nbalance  $20.00  (monthly $20.00)  ok"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Command Code (cc)\nweekly    50%  [█████░░░░░]\nbalance  $20.00  (monthly $20.00)  ok"
     assert wires.calls == [(COMMANDCODE_WHOAMI, "k"), (COMMANDCODE_CREDITS_ORG, "k")]
 
 
 async def test_a_rejected_commandcode_key_fails_without_asking_for_credits(wires, tmp_path):
     wires.answers[COMMANDCODE_WHOAMI] = usage_plugin.HttpError(401)
     config = provider_config(("cc", COMMANDCODE, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Command Code\nerror: HTTP 401"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Command Code (cc)\nerror: HTTP 401"
     assert wires.calls == [(COMMANDCODE_WHOAMI, "k")]
 
 
@@ -408,14 +408,14 @@ async def test_a_commandcode_account_without_windows_reports_only_the_balance(wi
     wires.answers[COMMANDCODE_WHOAMI] = {"user": {"login": "me"}}
     wires.answers[COMMANDCODE_CREDITS] = {"credits": {"purchasedCredits": 30, "freeCredits": 1.5}}
     config = provider_config(("cc", COMMANDCODE, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Command Code\nbalance  $31.50  (purchased $30.00 + free $1.50)  ok"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Command Code (cc)\nbalance  $31.50  (purchased $30.00 + free $1.50)  ok"
 
 
 async def test_commandcode_without_windows_or_credits_says_so(wires, tmp_path):
     wires.answers[COMMANDCODE_WHOAMI] = {"user": {"login": "me"}}
     wires.answers[COMMANDCODE_CREDITS] = {"windowLimits": {"fiveHour": {"used": 0, "cap": 0}}}
     config = provider_config(("cc", COMMANDCODE, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Command Code\nerror: no usage windows or credits"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Command Code (cc)\nerror: no usage windows or credits"
 
 
 async def test_a_lookalike_host_or_a_pasted_path_is_not_the_provider(wires, tmp_path):
@@ -434,34 +434,34 @@ async def test_a_lookalike_host_or_a_pasted_path_is_not_the_provider(wires, tmp_
 async def test_a_null_resetsAt_falls_back_to_the_seconds_left(wires, tmp_path):
     wires.answers[GO_USAGE] = {"usage": {"rolling": {"percent": 12, "resetsAt": None, "resetInSec": 5000}}}
     config = provider_config(("go", GO, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "OpenCode Go\nrolling   12%  [█░░░░░░░░░]  resets in 1h23m"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "OpenCode Go (go)\nrolling   12%  [█░░░░░░░░░]  resets in 1h23m"
 
 
 async def test_a_string_zero_cap_keeps_the_window_and_the_report_alive(wires, tmp_path):
     # `"max": "0"` is truthy as given; the parsed zero ends the window, not the whole report.
     wires.answers[SYNTHETIC_QUOTAS] = {"rollingFiveHourLimit": {"max": "0", "remaining": "0"}, "weeklyTokenLimit": {"percentRemaining": 10}}
     config = provider_config(("synth", SYNTHETIC, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Synthetic\nweekly    90%! [█████████░]"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Synthetic (synth)\nweekly    90%! [█████████░]"
 
 
 async def test_an_unusable_amount_never_prints_the_response_it_came_from(wires, tmp_path):
     wires.answers[DEEPSEEK_BALANCE] = {"balance_infos": [{"currency": "CNY", "total_balance": "n/a"}]}
     config = provider_config(("deep", DEEPSEEK, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "DeepSeek API\nerror: unparsable response"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "DeepSeek API (deep)\nerror: unparsable response"
 
 
 async def test_an_all_zero_commandcode_balance_prints_no_empty_parts(wires, tmp_path):
     wires.answers[COMMANDCODE_WHOAMI] = {"user": {"login": "me"}}
     wires.answers[COMMANDCODE_CREDITS] = {"credits": {"monthlyCredits": 0, "purchasedCredits": 0, "freeCredits": 0}}
     config = provider_config(("cc", COMMANDCODE, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Command Code\nbalance  $0.00!  ok"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Command Code (cc)\nbalance  $0.00!  ok"
 
 
 async def test_commandcode_used_over_the_cap_clamps_and_a_small_reset_counts_from_now(wires, tmp_path):
     wires.answers[COMMANDCODE_WHOAMI] = {"user": {"login": "me"}}
     wires.answers[COMMANDCODE_CREDITS] = {"windowLimits": {"weekly": {"used": 45, "cap": 35, "resetAt": 3600}}}
     config = provider_config(("cc", COMMANDCODE, "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Command Code\nweekly   100%! [██████████]  resets in 1h"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "Command Code (cc)\nweekly   100%! [██████████]  resets in 1h"
 
 
 async def test_a_config_beside_a_moved_data_directory_is_still_read(wires, tmp_path):
@@ -473,7 +473,7 @@ async def test_a_config_beside_a_moved_data_directory_is_still_read(wires, tmp_p
     (elsewhere / "config.toml").write_text(provider_config(("deep", DEEPSEEK, None)))
     (elsewhere / "secrets.toml").write_text('deep = "from-secrets"\n')
     result = plain(await usage_plugin.usage(context(tmp_path, str(elsewhere / "config.toml")), {}))
-    assert result == "DeepSeek API\nbalance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok"
+    assert result == "DeepSeek API (deep)\nbalance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok"
     assert wires.calls == [(DEEPSEEK_BALANCE, "from-secrets")]
 
 
@@ -484,13 +484,13 @@ async def test_a_missing_or_broken_config_says_what_to_do(wires, tmp_path):
     assert wires.calls == []
 
 
-@pytest.mark.parametrize(("active", "secrets"), [('active = "work"\n', 'work = "from-secrets"\n'), ("", 'default = "from-secrets"\n')])
-async def test_the_flat_provider_block_is_read_under_its_active_name(wires, tmp_path, active, secrets):
+@pytest.mark.parametrize(("active", "secrets", "name"), [('active = "work"\n', 'work = "from-secrets"\n', "work"), ("", 'default = "from-secrets"\n', "default")])
+async def test_the_flat_provider_block_is_read_under_its_active_name(wires, tmp_path, active, secrets, name):
     # A config that still keeps its provider inline: the block takes the name `active` gives it,
     # and a secret under that name fills the key the block leaves out.
     wires.answers[DEEPSEEK_BALANCE] = deepseek("110", "10", "100")
     config = f'[provider]\n{active}url = "{DEEPSEEK}"\n'
-    assert plain(await usage_plugin.usage(configured(tmp_path, config, secrets), {})) == "DeepSeek API\nbalance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config, secrets), {})) == f"DeepSeek API ({name})\nbalance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok"
     assert wires.calls == [(DEEPSEEK_BALANCE, "from-secrets")]
 
 
@@ -505,7 +505,7 @@ async def test_a_failed_request_never_prints_the_key(monkeypatch, tmp_path):
     monkeypatch.setattr(urllib.request, "urlopen", refuse)
     config = provider_config(("deep", DEEPSEEK, key))
     result = plain(await usage_plugin.usage(configured(tmp_path, config), {}))
-    assert result == "DeepSeek API\nerror: HTTP 401"
+    assert result == "DeepSeek API (deep)\nerror: HTTP 401"
     assert [request.headers["Authorization"] for request in requests] == [f"Bearer {key}"]  # The header is the only place it travels.
     assert key not in result
 
@@ -519,7 +519,7 @@ async def test_an_unreachable_provider_never_prints_the_key(monkeypatch, tmp_pat
     monkeypatch.setattr(urllib.request, "urlopen", refuse)
     config = provider_config(("synth", SYNTHETIC, key))
     result = plain(await usage_plugin.usage(configured(tmp_path, config), {}))
-    assert result == "Synthetic\nerror: network (getaddrinfo failed)"
+    assert result == "Synthetic (synth)\nerror: network (getaddrinfo failed)"
     assert key not in result
 
 
@@ -530,7 +530,7 @@ async def test_the_live_worker_reads_the_config_directory(runtime, tmp_path):
 
 async def test_the_live_worker_skips_a_provider_without_a_key(runtime, tmp_path):
     (tmp_path / "config.toml").write_text(provider_config(("deep", DEEPSEEK, None)))
-    assert plain(await runtime.invoke("usage", "command", "usage", {})) == "DeepSeek API\nskipped: no key configured"
+    assert plain(await runtime.invoke("usage", "command", "usage", {})) == "DeepSeek API (deep)\nskipped: no key configured"
 
 
 async def test_the_command_answers_from_the_queued_path_mid_turn(runtime):
@@ -604,7 +604,7 @@ async def test_an_entry_with_an_explicit_port_is_still_the_provider(wires, tmp_p
     # A port in the url is spelling, not identity: the entry is still matched and asked.
     wires.answers[DEEPSEEK_BALANCE] = deepseek("110", "10", "100")
     config = provider_config(("deep", f"{DEEPSEEK}:443", "k"))
-    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "DeepSeek API\nbalance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok"
+    assert plain(await usage_plugin.usage(configured(tmp_path, config), {})) == "DeepSeek API (deep)\nbalance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok"
     assert wires.calls == [(DEEPSEEK_BALANCE, "k")]
 
 
@@ -627,11 +627,11 @@ async def test_streaming_prints_each_provider_block_as_it_answers(wires, tmp_pat
     finished.set()
     assert blocks == [
         [
-            Line((Text("DeepSeek API", "accent"),)),
+            Line((Text("DeepSeek API (deep)", "accent"),)),
             Line((Text("balance  ¥110.00", "text"), Text(" ", "warning"), Text(" (granted ¥10.00 + topped up ¥100.00)  ", "text"), Text("ok", "muted"))),
         ],
     ]
-    assert answer == [Line((Text("OpenCode Go", "accent"),)), Line((Text("error: HTTP 503", "error"),))]
+    assert answer == [Line((Text("OpenCode Go (go)", "accent"),)), Line((Text("error: HTTP 503", "error"),))]
 
 
 async def test_a_host_that_cannot_show_blocks_answers_in_one_frame(wires, tmp_path):
@@ -645,8 +645,8 @@ async def test_a_host_that_cannot_show_blocks_answers_in_one_frame(wires, tmp_pa
 
     config = provider_config(("deep", DEEPSEEK, "k"), ("go", GO, "k"))
     assert plain(await usage_plugin.usage(configured(tmp_path, config), {}, refuse)) == sections(
-        "OpenCode Go\nerror: HTTP 503",
-        "DeepSeek API\nbalance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok",
+        "OpenCode Go (go)\nerror: HTTP 503",
+        "DeepSeek API (deep)\nbalance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok",
     )
 
 
@@ -669,8 +669,8 @@ async def test_a_channel_that_fails_midway_answers_the_rest_in_one_frame(wires, 
     config = provider_config(("deep", DEEPSEEK, "k"), ("go", GO, "k"), ("synth", SYNTHETIC, "k"))
     answer = await usage_plugin.usage(configured(tmp_path, config), {}, report)
     assert plain(answer) == sections(
-        "OpenCode Go\nerror: HTTP 503",
-        "Synthetic\nweekly    34%  [███░░░░░░░]  resets in 46m",
+        "OpenCode Go (go)\nerror: HTTP 503",
+        "Synthetic (synth)\nweekly    34%  [███░░░░░░░]  resets in 46m",
     )
 
 
@@ -682,10 +682,10 @@ async def test_report_rows_carry_theme_roles(wires, tmp_path):
     config = provider_config(("deep", DEEPSEEK, "k"), ("synth", SYNTHETIC, "k"))
     result = await usage_plugin.usage(configured(tmp_path, config), {})
     assert result == [
-        Line((Text("DeepSeek API", "accent"),)),
+        Line((Text("DeepSeek API (deep)", "accent"),)),
         Line((Text("balance  ¥0.00", "error"), Text("!", "warning"), Text(" (granted ¥0.00 + topped up ¥0.00)  ", "error"), Text("insufficient", "error"))),
         Line(),
-        Line((Text("Synthetic", "accent"),)),
+        Line((Text("Synthetic (synth)", "accent"),)),
         Line((Text("error: no quota data", "error"),)),
     ]
 

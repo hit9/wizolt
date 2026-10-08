@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `/usage` titles every section with the entry names it answered for, `DeepSeek API (deep)`
+  instead of the provider's name alone: one account or several, every section says which
+  configured entry it is.
+
 ## 0.74.1 - 2026-10-07
 
 - wizolt failed to start on CPython 3.14.8: its dataclass check rejected the shared empty
