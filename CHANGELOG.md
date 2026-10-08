@@ -8,9 +8,10 @@
   marker names; across those recorded conversations the lower cap would cut the Bash share of
   carried conversation tokens by about 12%. Explicit `runtime.bash_output_tokens` settings and
   already-sent results are unaffected.
-- The Bash tool description tells the model to bound noisy output in the command itself
+- The Bash tool description asks the model to bound noisy output in the command itself
   (`| head`, `tail`, `rg -m`) instead of relying on the output cap: a cut result has to be re-read
-  from its file or re-run.
+  from its file or re-run. A request, not a mechanism -- the 2000 cap above is what actually
+  cuts; the sentence only lowers how often that happens.
 - New `[compaction] threshold` (`0.5`–`1.0`, default `1.0`): the fraction of the request budget
   at which automatic compaction runs. The default keeps the previous behavior — compact only
   when a request no longer fits, a line already below the context window by the output reserve
