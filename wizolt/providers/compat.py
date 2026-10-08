@@ -14,7 +14,7 @@ whitelisted recipe interpreter.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from types import MappingProxyType
 from typing import Literal, Protocol, cast
@@ -107,7 +107,9 @@ class ResolvedProvider:
     output_max_tokens: int = 0
     # Header templates the host needs (OpenCode routes each conversation by `{session_id}`); the
     # client expands them, and the entry's own configured `headers` win over them.
-    headers: Mapping[str, str] = MappingProxyType({})
+    # A factory, not a shared instance: newer CPython (3.14.8) rejects a mappingproxy default as
+    # mutable, which failed this module at import.
+    headers: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
 
 @dataclass(frozen=True)
