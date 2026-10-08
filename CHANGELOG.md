@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.74.1 - 2026-10-07
+
+- wizolt failed to start on CPython 3.14.8: its dataclass check rejected the shared empty
+  mapping `ResolvedProvider.headers` defaulted to as a mutable default, so importing the provider
+  compatibility module raised `ValueError`. The default is now built per instance.
+- Tests: the `/usage` test of a report channel failing midway fixed which provider answers
+  first, instead of relying on a thread race it lost now and then.
+
 ## 0.74.0 - 2026-10-07
 
 - Benchmarks: the 0.74.0 reference replaces 0.73.0a2, against which it was remeasured. Recorded
