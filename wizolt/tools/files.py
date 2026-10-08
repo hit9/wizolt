@@ -519,7 +519,7 @@ def own_newline(file: TextIO) -> str | None:
 @dataclass
 class EditApplyResult:
     content: str
-    changes: list[tuple[int, int, int, int]]
+    changes: list[tuple[int, int, int, int, int, int]]
     replacements: list[tuple[int, int, list[str]]]
     relocations: list[str] = field(default_factory=list)  # "relocated ... -> ..." reports
     # Boundary-duplicate advisories: a replacement edge line equal to the preserved line just
@@ -580,7 +580,9 @@ class EditTool(Tool):
         "Prefer a current source view when already available, and Read one first for multi-line or structural changes: "
         "line numbers beat retyping old text, which costs output and fails on any drift. Use exact old for a short unique snippet seen verbatim. "
         "create writes a new or empty file and must be the only operation. "
-        "Batch all known non-overlapping operations for this path in edits."
+        "Batch all known non-overlapping operations for this path in edits. "
+        "The success receipt's fresh view marks each rewritten run with an <edited lines> pair, a <deleted/> marker "
+        "where a removal left a hole, and cuts unmarked context rows at 200 columns."
     )
     EXAMPLE = (
         'create file. Example: {"path":"src/app.py","edits":[{"op":"create","content":"print(1)\\n"}]}',
@@ -665,7 +667,7 @@ class EditTool(Tool):
         path: str,
         before: str,
         after: str,
-        changes: list[tuple[int, int, int, int]],
+        changes: list[tuple[int, int, int, int, int, int]],
         warnings: str,
         relocations: list[str],
         *,
@@ -687,7 +689,7 @@ class EditTool(Tool):
         path: str,
         before: str,
         after: str,
-        changes: list[tuple[int, int, int, int]],
+        changes: list[tuple[int, int, int, int, int, int]],
         warnings: str,
         relocations: list[str],
         *,
@@ -1040,7 +1042,7 @@ class EditTool(Tool):
         """
         if edits[0].op == "create":
             lines = self.content_lines(edits[0].content, False)
-            return EditApplyResult("".join(lines), [(0, 0, 0, len(lines))], [], relocations=[])
+            return EditApplyResult("".join(lines), [(0, 0, 0, len(lines), 0, 0)], [], relocations=[])
         if view is None:
             return self.apply_direct(original, edits)
         lines = split_lines(original)
@@ -1173,7 +1175,10 @@ class EditTool(Tool):
             new_start = start + delta
             new_end = new_start + len(replacement)
             clear_end = 0 if len(replacement) != end - start else new_start + (end - start)
-            changes.append((new_start, clear_end, new_start, new_end))
+            # The trailing pair is the pre-call span (0-based half-open) the replacement removed:
+            # a deleted range keeps its old coordinates for the receipt's marker, because the
+            # file that now exists has no lines left to name it by.
+            changes.append((new_start, clear_end, new_start, new_end, start, end))
             delta += len(replacement) - (end - start)
             if replacement and replacement[0].strip() and start > 0 and start - 1 not in rewritten:
                 above = lines[start - 1]
@@ -1213,16 +1218,25 @@ class EditTool(Tool):
         block = SourceBlock(draft)
         return ToolOutput(block.render(), (block,))
 
-    def fresh_block(self, path: str, lines: list[str], changes: list[tuple[int, int, int, int]]) -> SourceBlock:
+    def fresh_block(self, path: str, lines: list[str], changes: list[tuple[int, int, int, int, int, int]]) -> SourceBlock:
         """The fresh view after a successful edit: every changed hunk plus up to three unchanged
         context lines on either side, as one new view the model can continue editing from."""
         ranges = []
-        for _, _, start, end in changes:
+        edited = []
+        removed = []
+        for _, _, start, end, old_start, old_end in changes:
             # A deletion has no changed line left to show, so the view covers the seam it left
             # behind: without it the block would be empty and the model would have to Read again
             # just to keep editing the file it only just changed.
             ranges.append((max(1, start - 2), min(len(lines), max(end, start) + 3)))
-        return SourceBlock(SourceViewDraft(path, self.session.relpath(path), len(lines), SourceSpan.build(lines, ranges), EDIT))
+            if end > start:
+                edited.append((start + 1, end))
+            else:
+                removed.append((start, old_start + 1, old_end))
+        draft = SourceViewDraft(path, self.session.relpath(path), len(lines), SourceSpan.build(lines, ranges), EDIT)
+        # The marks separate the change from its context: `edited` names the rewritten runs in
+        # the file that now exists, and a deletion names its hole by the lines it used to occupy.
+        return SourceBlock(draft, edited=tuple(edited), removed=tuple(removed))
 
     def content_lines(self, content: str, followed_by_more: bool) -> list[str]:
         content = self.normalize_text(content)

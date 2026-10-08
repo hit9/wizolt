@@ -58,7 +58,7 @@ class EditBatchPlan:
     @dataclass
     class ApplyResult:
         lines: list[EditBatchPlan.Line]
-        changes: list[tuple[int, int, int, int]]
+        changes: list[tuple[int, int, int, int, int, int]]
         replacements: list[tuple[int, int, list[str]]]
         relocations: list[str] = field(default_factory=list)
         consumed: set[tuple[str, int]] = field(default_factory=set)
@@ -80,7 +80,7 @@ class EditBatchPlan:
         before: str
         after: str
         created: bool
-        changes: list[tuple[int, int, int, int]]
+        changes: list[tuple[int, int, int, int, int, int]]
         warnings: str
         relocations: list[str] = field(default_factory=list)
 
@@ -289,7 +289,7 @@ class EditBatchPlan:
         """
         if edits[0].op == "create":
             lines = tool.content_lines(edits[0].content, False)
-            return self.ApplyResult(self.new_lines(lines), [(0, 0, 0, len(lines))], [], relocations=[])
+            return self.ApplyResult(self.new_lines(lines), [(0, 0, 0, len(lines), 0, 0)], [], relocations=[])
         if view is None:
             # Direct mode carries no view lines to relocate against, so the planned text is the
             # whole of what this call is resolved against, exactly as a standalone call would be.

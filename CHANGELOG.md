@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- An Edit success receipt now tells the changed lines from the context lines: each rewritten
+  run is wrapped in an `<edited lines>` pair, a deletion leaves a `<deleted lines/>` marker naming
+  the pre-call lines it removed, and unmarked context rows are cut at 200 columns (changed rows
+  are never cut). The ±3 context window, the outer `lines=` label, the evidence rules, and the
+  failure recovery views are unchanged. Before, every row of the fresh view looked the same, so
+  which lines the call changed was ambiguous per receipt, and long context rows were sent whole.
 - Removed the model-facing `Context(reset)`: the model could drop its own conversation outright
   and replace it with a working-state checkpoint, and one such reset discarded conversation the
   user still wanted summarized. `Context` now offers `remaining` and `compact`: on its own

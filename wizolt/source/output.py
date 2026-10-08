@@ -50,6 +50,10 @@ class SourceBlock:
     `bounded` records a projection clip: the visible spans are head spans followed by tail spans,
     and `split_span` is the index of the first tail span. The omitted middle is not part of any
     registered span and cannot be targeted.
+
+    `edited` and `removed` are an Edit receipt's change marks: the runs the change rewrote and
+    the holes it left. Only a fresh-view receipt carries them, and a bounded projection drops
+    them: a clipped block cannot keep paired markers well formed.
     """
 
     draft: SourceViewDraft
@@ -59,6 +63,8 @@ class SourceBlock:
     budget_tokens: int = 0  # the projection budget the block was clipped to
     split_span: int = 0  # index of the first tail span when bounded
     note_file: str = ""  # materialized asset path for the full retained output, filled by the runner
+    edited: tuple[tuple[int, int], ...] = ()  # 1-based inclusive runs the change rewrote
+    removed: tuple[tuple[int, int, int], ...] = ()  # (hole after this 1-based line, first..last pre-call removed line)
 
     @classmethod
     def around(cls, path: str, display_path: str, lines: Sequence[str], center: int, producer: str = EDIT) -> SourceBlock:
@@ -76,13 +82,48 @@ class SourceBlock:
             # An empty file is the one view that legitimately shows nothing. A block with no spans
             # over a file that has content means its producer selected nothing; render it as the
             # empty block it is rather than failing while building an error message.
-            return "\n".join([self._open_tag(key), "(empty file)" if draft.total_lines == 0 else "(no lines selected)", self._close_tag()])
+            body = "(empty file)" if draft.total_lines == 0 else "(no lines selected)"
+            return "\n".join([self._open_tag(key), *self._deleted_markers(), body, self._close_tag()])
         width = len(str(max(span.end for span in draft.spans)))
-        rows = [_numbered(span.start + offset, width, line) for span in draft.spans for offset, line in enumerate(span.lines)]
-        if not self.bounded:
-            return "\n".join([self._open_tag(key), *rows, self._close_tag()])
-        head = sum(len(span.lines) for span in draft.spans[: self.split_span])
-        return "\n".join([self._open_tag(key), *rows[:head], self._note(), *rows[head:], self._close_tag()])
+        if self.bounded or not (self.edited or self.removed):
+            rows = [_numbered(span.start + offset, width, line) for span in draft.spans for offset, line in enumerate(span.lines)]
+            if not self.bounded:
+                return "\n".join([self._open_tag(key), *rows, self._close_tag()])
+            head = sum(len(span.lines) for span in draft.spans[: self.split_span])
+            return "\n".join([self._open_tag(key), *rows[:head], self._note(), *rows[head:], self._close_tag()])
+        return self._marked(key, width)
+
+    def _marked(self, key: str, width: int) -> str:
+        """The receipt's rows with the change marked off from its context.
+
+        Each rewritten run is wrapped in an `<edited lines>` pair, each deletion's hole is named by
+        a `<deleted/>` marker in the pre-call coordinates the call itself used, and unmarked
+        context rows are cut to `MARGIN_COLUMNS`: the marked rows are the evidence.
+        """
+        opens = {start: f'<edited lines="{start}:{end}">' for start, end in self.edited}
+        closes = {end for _start, end in self.edited}
+        rewritten = {number for start, end in self.edited for number in range(start, end + 1)}
+        holes = {after: f'<deleted lines="{first}:{last}"/>' for after, first, last in self.removed}
+        rows = [self._open_tag(key)]
+        for span in self.draft.spans:
+            for offset, line in enumerate(span.lines):
+                number = span.start + offset
+                if number - 1 in holes:
+                    rows.append(holes.pop(number - 1))
+                if number in opens:
+                    rows.append(opens[number])
+                rows.append(_numbered(number, width, line) if number in rewritten else _margin_row(number, width, line))
+                if number in closes:
+                    rows.append("</edited>")
+        # A deletion at the end of the file leaves its hole after the last line, so the holes left
+        # over sit after the last visible row.
+        rows.extend(holes[position] for position in sorted(holes))
+        rows.append(self._close_tag())
+        return "\n".join(rows)
+
+    def _deleted_markers(self) -> list[str]:
+        """The `<deleted/>` markers of a receipt over no lines, e.g. a change that emptied a file."""
+        return [f'<deleted lines="{first}:{last}"/>' for _after, first, last in self.removed]
 
     def _note(self) -> str:
         return _omission_note(self.budget_tokens, self.estimated_tokens, self.omitted_tokens, self.note_file)
@@ -109,6 +150,19 @@ class SourceBlock:
 
 def _quote(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+# Unmarked receipt rows are orientation, not evidence, so past this many columns a long one is
+# cut short; the marked rows are the change itself and are never cut.
+MARGIN_COLUMNS = 200
+
+
+def _margin_row(number: int, width: int, line: str) -> str:
+    """A receipt's unmarked context row, cut to `MARGIN_COLUMNS` columns when it runs long."""
+    text = line.rstrip(chr(10))
+    if len(text) > MARGIN_COLUMNS:
+        text = text[:MARGIN_COLUMNS] + "…"
+    return _numbered(number, width, text)
 
 
 def _numbered(number: int, width: int, line: str) -> str:
