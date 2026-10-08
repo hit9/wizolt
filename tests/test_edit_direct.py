@@ -213,6 +213,33 @@ def test_an_ignored_source_still_resolves_old_exactly(tmp_path):
     assert (tmp_path / "code.txt").read_text(encoding="utf-8") == "a\na\n"
 
 
+def test_an_ignored_source_still_has_to_name_this_file(tmp_path):
+    s = session(tmp_path)
+    (tmp_path / "code.txt").write_text("a\nb\n", encoding="utf-8")
+    (tmp_path / "other.txt").write_text("a\nb\n", encoding="utf-8")
+    key = view(s, "other.txt")
+
+    # A source naming another file is a confusion to refuse, not redundancy to drop: the old
+    # text would match either file, and the model can only learn that from a refusal.
+    with pytest.raises(ToolError, match="source path mismatch") as error:
+        EditTool(s, ["code.txt", key, [{"op": "replace", "old": "a\n", "content": "A\n"}]]).call()
+
+    assert "drop source and resend" in str(error.value)
+    assert (tmp_path / "code.txt").read_text(encoding="utf-8") == "a\nb\n"
+
+
+def test_an_ignored_source_still_has_to_be_a_view_the_session_holds(tmp_path):
+    s = session(tmp_path)
+    (tmp_path / "code.txt").write_text("a\nb\n", encoding="utf-8")
+
+    # A typo'd or expired id is never blessed as "not needed" by the warning: the repair is named.
+    with pytest.raises(ToolError, match="source missing") as error:
+        EditTool(s, ["code.txt", "view.99", [{"op": "replace", "old": "a\n", "content": "A\n"}]]).call()
+
+    assert "drop source and resend" in str(error.value)
+    assert (tmp_path / "code.txt").read_text(encoding="utf-8") == "a\nb\n"
+
+
 def test_a_view_named_beside_edits_that_need_it_is_not_ignored(tmp_path):
     s = session(tmp_path)
     (tmp_path / "code.txt").write_text("a\nb\n", encoding="utf-8")

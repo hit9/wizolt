@@ -9,8 +9,9 @@
   developer's machine the diff was 49% of receipt text, about 1.5k characters per edit.
 - `Edit` resolves a call that names `source` but gives exact `old` text in every edit in direct
   mode, with an `ignored-source` warning, instead of refusing it; a refusal remains when an edit
-  also gives `start`/`end` or another edit has no `old`. This refusal was 24 of the 123 failed
-  edits in the same sessions.
+  also gives `start`/`end`, another edit has no `old`, or the named view belongs to another file
+  or is unknown to the session. The mixed-evidence refusal was 24 of the 123 failed edits in the
+  same sessions.
 - A direct `Edit` refusal names every failing edit by position, and for exact `old` text the file
   does not contain, quotes where it parts from the file -- `edit 14: old matches the file up to
   line 196 column 93, where the file has '░░]' and old has ']'` -- with a small editable view of

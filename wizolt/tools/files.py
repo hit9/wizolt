@@ -777,10 +777,21 @@ class EditTool(Tool):
             raise ToolError("Edit edits must be a non-empty array")
         # A source beside nothing but exact old text is redundant evidence: each old is already a
         # compare-and-swap condition stronger than the view, so the call resolves in direct mode.
-        # The model is told, so it stops sending the view it did not need.
-        self.ignored_source = source_name if source_name and all(self._plain_direct_item(item) for item in raw_edits) else ""
-        if self.ignored_source:
+        # The view is still checked before it is dropped: a source naming another file or an id the
+        # session never held is a confusion the model can only learn from a refusal, and dropping
+        # it sight unseen would turn either into a write the warning calls "not needed".
+        ignored = source_name if source_name and all(self._plain_direct_item(item) for item in raw_edits) else ""
+        if ignored:
+            named = self.session.get_source_view(ignored)
+            if named is None:
+                raise source_error(SOURCE_MISSING, f"{ignored} is unknown or expired; drop source and resend these edits without it")
+            if named.path != path:
+                raise source_error(
+                    SOURCE_PATH_MISMATCH,
+                    f"Edit path and {ignored} path differ; drop source and resend these edits without it, or use the view returned for this path",
+                )
             source_name = ""
+        self.ignored_source = ignored
         edits = []
         for index, item in enumerate(raw_edits):
             if not isinstance(item, dict):
