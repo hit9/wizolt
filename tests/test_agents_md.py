@@ -808,6 +808,27 @@ def test_edit_can_create_the_global_file_when_it_does_not_exist(tmp_path):
     assert (tmp_path / "data" / "AGENTS.md").read_text(encoding="utf-8") == "# Rule\nKeep it short.\n"
 
 
+def test_edit_resolves_a_source_beside_exact_old_for_the_global_file(tmp_path):
+    s = agents_session(tmp_path, global_text=GLOBAL_TEXT, cwd_name="work")
+    global_path = global_agents_md_path(s.config.data_dir)
+    out = ReadTool(s, [{"path": global_path}]).call()
+    key = s.register_source_drafts(list(out.drafts))[0]
+    edits = [{"op": "replace", "old": "Four spaces for indentation.\n", "content": "Two spaces.\n"}]
+
+    # The user's own durable store behaves like any file here: exact old text carries the call,
+    # the view beside it is redundant, and the warning says so instead of a refusal.
+    result = EditTool(s, [global_path, key, edits]).call()
+
+    assert "ignored-source" in result.retained_text
+    assert (tmp_path / "data" / "AGENTS.md").read_text(encoding="utf-8") == "# House style\nTwo spaces.\n"
+
+    # An id the session never held is not blessed as redundant: the repair is named, and nothing is written.
+    with pytest.raises(ToolError, match="source missing") as error:
+        EditTool(s, [global_path, "view.99", edits]).call()
+    assert "drop source and resend" in str(error.value)
+    assert (tmp_path / "data" / "AGENTS.md").read_text(encoding="utf-8") == "# House style\nTwo spaces.\n"
+
+
 # --- the /status row ---
 
 

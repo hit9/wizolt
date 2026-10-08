@@ -51,6 +51,22 @@ async def test_tool_runner_planned_edit_writes_adjacent_duplicates_without_warni
     assert path.read_text(encoding="utf-8") == "a\nx\nx\nc\n"
 
 
+async def test_a_planned_edit_names_the_source_it_ignored(tmp_path, monkeypatch):
+    s = session(tmp_path)
+    s.settings.yolo = True
+    path = tmp_path / "code.txt"
+    path.write_text("a\nb\nc\n", encoding="utf-8")
+    key = view(s, "code.txt")
+
+    # A planned call resolves in direct mode like an immediate one, so the redundant view is
+    # dropped there too and the receipt warns about it instead of staying silent.
+    await runner(s).run([ToolCall("ignored", "Edit", ["code.txt", key, [{"op": "replace", "old": "b\n", "content": "B\n"}]])])
+
+    record = next(record for record in s.tool_records if record.name == "Edit")
+    assert f"ignored-source: every edit gave exact old text, so {key} was not needed" in record.output
+    assert path.read_text(encoding="utf-8") == "a\nB\nc\n"
+
+
 async def test_tool_runner_batch_edit_rejects_create_mixed_with_patch_ops(tmp_path, monkeypatch):
     s = session(tmp_path)
     s.settings.yolo = True
