@@ -556,13 +556,32 @@ def test_two_targets_inside_one_line_both_apply(tmp_path):
     assert (tmp_path / "code.py").read_text(encoding="utf-8") == "x = LEFT + RIGHT\n"
 
 
-def test_a_crlf_file_matches_through_the_normalized_text(tmp_path):
+@pytest.mark.parametrize(
+    ("original", "expected"),
+    [
+        # One ending throughout is the file's own, and the edit writes it back: a one-line diff.
+        (b"a\r\nb\r\nc\r\n", b"a\r\nB\r\nc\r\n"),
+        (b"a\rb\rc\r", b"a\rB\rc\r"),
+        (b"a\nb\nc\n", b"a\nB\nc\n"),
+        # Mixed endings have no single answer the "\n" line model can carry: they are normalized.
+        (b"a\r\nb\nc\r\n", b"a\nB\nc\n"),
+    ],
+    ids=("crlf", "cr", "lf", "mixed"),
+)
+async def test_an_edit_writes_a_file_back_with_its_own_line_ending(tmp_path, original, expected):
     s = session(tmp_path)
-    (tmp_path / "code.txt").write_bytes(b"a\r\nb\r\nc\r\n")
+    path = tmp_path / "code.txt"
+    path.write_bytes(original)
 
     edit(s, "code.txt", [{"op": "replace", "old": "b\n", "content": "B\n"}])
+    assert path.read_bytes() == expected
 
-    assert (tmp_path / "code.txt").read_text(encoding="utf-8") == "a\nB\nc\n"
+    # The batch plan writes through its own transaction and keeps the ending the same way.
+    path.write_bytes(original)
+    call = direct_call("edit", "code.txt", [{"op": "replace", "old": "b\n", "content": "B\n"}])
+    plan = await EditBatchPlan(s).build([call])
+    await plan.planned[call.id].apply(EditTool(s, call.args))
+    assert path.read_bytes() == expected
 
 
 def test_a_target_at_the_end_of_a_file_without_a_final_newline(tmp_path):

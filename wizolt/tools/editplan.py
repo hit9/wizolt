@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from wizolt.base import ToolCall, ToolError, run_blocking, split_lines
 from wizolt.source import SOURCE_TARGET_CONSUMED, SourceView, ToolOutput, source_error
-from wizolt.tools.files import MIXED_EDIT_EVIDENCE, MODE_CREATE, Edit, EditTool, edit_mode
+from wizolt.tools.files import MIXED_EDIT_EVIDENCE, MODE_CREATE, Edit, EditTool, edit_mode, own_newline
 from wizolt.utils.filelock import path_lock
 
 if TYPE_CHECKING:
@@ -99,15 +99,16 @@ class EditBatchPlan:
                 if os.path.exists(self.path):
                     with open(self.path, encoding="utf-8") as file:
                         current = file.read()
+                        newline = own_newline(file)
                 elif self.created and not self.before:
-                    current = ""
+                    current, newline = "", None
                 else:
                     raise ToolError("planned edit is stale; file changed")
                 if current != self.before:
                     raise ToolError("planned edit is stale; file changed")
                 if self.created:
                     os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
-                with open(self.path, "w", encoding="utf-8") as file:
+                with open(self.path, "w", encoding="utf-8", newline=newline) as file:
                     file.write(self.after)
             return self
 

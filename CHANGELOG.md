@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `Edit` writes a file back with its own line ending: a one-line edit to a CRLF (or CR) file was
+  rewriting every line as LF. A file mixing endings is still normalized to LF.
 - `Edit` resolves a call that names `source` but gives exact `old` text in every edit in direct
   mode, with an `ignored-source` warning, instead of refusing it; a refusal remains when an edit
   also gives `start`/`end` or another edit has no `old`. This refusal was 24 of the 123 failed

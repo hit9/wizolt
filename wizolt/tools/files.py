@@ -9,6 +9,7 @@ import json
 import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from typing import TextIO
 
 from wizolt.base import Json, ModelError, ToolArgs, ToolError, split_lines
 from wizolt.image import ImageRef
@@ -418,6 +419,17 @@ def direct_line_replacements(lines: list[str], replacements: list[TextReplacemen
     return spliced
 
 
+def own_newline(file: TextIO) -> str | None:
+    """The line ending to write a fully read file back with: its own, when it uses exactly one.
+
+    Edit's line model is "\\n" only, so text mode translates every ending on the way in. A file
+    using one ending is written back with it, so a one-line edit to a CRLF file stays a one-line
+    diff. A file mixing endings has no single answer that line model can carry; it gets None, the
+    platform default, like a file with no line ending at all.
+    """
+    return file.newlines if isinstance(file.newlines, str) else None
+
+
 @dataclass
 class EditApplyResult:
     content: str
@@ -540,9 +552,10 @@ class EditTool(Tool):
             if self._validate_target(path, creating):
                 with open(path, encoding="utf-8") as file:
                     original = file.read()
+                    newline = own_newline(file)
                 created = False
             else:
-                original, created = "", True
+                original, created, newline = "", True, None
             result = self.apply(original, edits, view)
             if result.content == original and not created:
                 raise ToolError(self.no_changes_error(original, result), recovery=self.no_op_recovery(path, view, original, result.replacements))
@@ -556,6 +569,7 @@ class EditTool(Tool):
                 self.warnings_block(edits, result.seam_duplicates),
                 result.relocations,
                 created=created,
+                newline=newline,
             )
 
     def write_result(
@@ -568,13 +582,15 @@ class EditTool(Tool):
         relocations: list[str],
         *,
         created: bool = False,
+        newline: str | None = None,
     ) -> ToolOutput:
-        """Write `after` and render the Edit envelope: diff, warnings, relocations, fresh view.
+        """Write `after` with the file's own line ending and render the Edit envelope: diff,
+        warnings, relocations, fresh view.
 
-        The batch plan writes through here too, so a single Edit and a planned one report a change
-        the same way and the fresh view is minted in exactly one place.
+        The batch plan renders through `result` too, so a single Edit and a planned one report a
+        change the same way and the fresh view is minted in exactly one place.
         """
-        with open(path, "w", encoding="utf-8") as file:
+        with open(path, "w", encoding="utf-8", newline=newline) as file:
             file.write(after)
         return self.result(path, before, after, changes, warnings, relocations, created=created)
 
