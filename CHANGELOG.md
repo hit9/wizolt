@@ -5,6 +5,8 @@
 - `/usage` titles every section with the entry names it answered for, `DeepSeek API (deep)`
   instead of the provider's name alone: one account or several, every section says which
   configured entry it is.
+- Tests: the TUI modal resize test waits for the render that follows each resize, instead of
+  occasionally accepting a render queued by the previous one.
 
 ## 0.74.1 - 2026-10-07
 

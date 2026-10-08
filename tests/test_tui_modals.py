@@ -51,7 +51,7 @@ def test_interactive_tui_modal_survives_repeated_resize(monkeypatch, exclusive):
     app = TuiApp()
     output = ResizableOutput()
     result = []
-    rendered = threading.Event()
+    rendered = [threading.Event()]
 
     def fragments():
         return [("", "\n".join(f"choice {index}" for index in range(40)))]
@@ -60,17 +60,25 @@ def test_interactive_tui_modal_survives_repeated_resize(monkeypatch, exclusive):
         return None if key == "q" else TUI_MODAL_PENDING
 
     def after_render(_application):
-        rendered.set()
+        rendered[0].set()
 
     def drive(pipe_input):
         wait_until(lambda: app.app is not None and app.app.is_running)
         modal = show_modal_from_driver(app, fragments, key, exclusive=exclusive)
         wait_until(lambda: app.modal is not None)
         for rows, columns in ((10, 40), (35, 120), (8, 24), (24, 80)):
-            rendered.clear()
-            output.size = Size(rows=rows, columns=columns)
-            app.app.loop.call_soon_threadsafe(app.app._on_resize)
-            assert rendered.wait(timeout=1)
+            resized = threading.Event()
+            size = Size(rows=rows, columns=columns)
+
+            def resize(size=size, resized=resized):
+                # Install the event on the loop, not the driver thread: a render already queued
+                # from the previous resize would otherwise count before this resize runs.
+                rendered[0] = resized
+                output.size = size
+                app.app._on_resize()
+
+            app.app.loop.call_soon_threadsafe(resize)
+            assert resized.wait(timeout=1)
             if not exclusive:
                 assert app.modal_window.height.max == TuiApp.modal_rows(rows)
         pipe_input.send_text("q")
