@@ -82,9 +82,9 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
 
     Plan items are marked `[x]` done, `[~]` in progress, `[ ]` waiting, or `[-]` blocked.
 * - **`Context`**
-  - Checks how much context is in use, or starts a fresh model window after the current turn.
-    See
-    [Starting a new window](context.md#starting-a-new-window).
+  - Checks how much context is in use, or compacts early when the older conversation is spent, so
+    the next request carries a summary instead.
+    See [Compacting at the right moment](context.md#compacting-at-the-right-moment).
 * - **`Ask`**
   - Pauses for a decision that genuinely needs you. A question may include choices and a
     recommended option.
