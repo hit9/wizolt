@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.75.0 - 2026-10-08
+
 - The Edit guidance no longer teaches the model to stockpile changes: the tool description says
   one file per call, see its receipt, then the next file, and the execution prompt's batching
   rule now scopes same-response batching to read-only calls while file edits go one at a time.

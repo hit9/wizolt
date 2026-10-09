@@ -10,7 +10,7 @@ from enum import Enum, auto
 from itertools import groupby
 from typing import Any, ClassVar, TypeVar
 
-__version__ = "0.74.2"
+__version__ = "0.75.0"
 
 _BlockingT = TypeVar("_BlockingT")
 _get_cwidth: Callable[[str], int] | None = None
