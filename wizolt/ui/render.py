@@ -2635,6 +2635,7 @@ class StatusBar:
             "queue.total": 0,
             "queue.followup": 0,
             "queue.next_turn": 0,
+            "reset_pending": False,
             **(source.plugins.fields() if source.plugins is not None else {}),
         }
 

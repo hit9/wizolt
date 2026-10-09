@@ -20,7 +20,8 @@
   decision, below the automatic threshold, the model can compact through the same
   summary-and-export path as `/compact` and automatic compaction; the request is durable and
   spent by the next request. The `reset pending` divider indicator and the transcript reset
-  notice are gone; resumed sessions no longer replay old reset notices, and a pending reset
+  notice are gone (a custom bar format naming `reset_pending` still loads; the field is always
+  false); resumed sessions no longer replay old reset notices, and a pending reset
   persisted by an older snapshot is ignored (that conversation is kept).
 - Bash results are capped at 2000 inline tokens by default (was 6000, the shared tool cap). The
   p95 of 4,740 Bash results recorded on this machine is about 1.9k tokens, so about 4% of results

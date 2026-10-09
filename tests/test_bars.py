@@ -564,6 +564,19 @@ def test_layout_reload_is_atomic_and_rejects_style_injection():
     assert layout.load({"statusbar": False}, Theme.bar_styles)
 
 
+def test_a_format_naming_the_retired_reset_pending_still_loads_and_shows_nothing():
+    from wizolt.ui.bars import BarLayout
+    from wizolt.ui.render import Theme
+
+    # Copied from the old powerline divider preset before the model's reset was removed.
+    old = "{% if running %}{rate} {% if reset_pending %}· reset pending {% endif %}{% endif %}"
+    layout = BarLayout()
+    assert not layout.load({"divider": {"format": old}}, Theme.bar_styles)
+    values = dict.fromkeys(FIELDS, 0)
+    values.update(running=True, rate="42 tok/s")
+    assert text(layout.render("divider", values, 100, Theme.bar_styles)).strip() == "42 tok/s"
+
+
 def test_layout_configuration_renders_real_fields_and_idle_divider(tmp_path):
     from tui_harness import loop
 

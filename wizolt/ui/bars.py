@@ -41,6 +41,9 @@ FIELDS = frozenset(
         "queue.followup",
         "queue.next_turn",
         "label",
+        # Retired with the model's context reset and always false: formats copied from the old
+        # powerline preset still name it, and an unknown field rejects the user's whole bar config.
+        "reset_pending",
     ]
 )
 

@@ -104,8 +104,10 @@ zero. This syntax describes formats; the plugin API does not register divider sw
 | Activity | `running`, `elapsed`, `rate` |
 | Divider labels | `activity`, `spinner`, `label` |
 | Divider queue | `queue.total`, `queue.followup`, `queue.next_turn` |
+| Retired | `reset_pending` |
 
 `plugins.count` counts healthy live plugins in this agent. Family counts include main.
+`reset_pending` is always false; it is accepted only so older formats still load.
 `rate` is already formatted text, not a numeric token rate. The complete `label`, `spinner`,
 and queue counts are populated only for the divider, empty/zero in the statusbar.
 Registered scalar fields add `{plugins.INSTALLED_NAME.FIELD_NAME}`; there is no `{agent}` field.
