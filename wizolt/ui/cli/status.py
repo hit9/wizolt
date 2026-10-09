@@ -136,7 +136,7 @@ class StatusSnapshot:
             percent=fill["percent"],
             reported=bool(session.usage.last_prompt_tokens and session.usage.last_prompt_budget),
             window=provider.context_token_limit(session.settings.max_context_tokens),
-            threshold=session.request_token_budget(),
+            threshold=loop.agent.context.auto_compaction_limit(),
             parts=tuple(loop.agent.context.breakdown(session.system_prompt)),
         )
         usage = [Section("All requests", usage_rows(session.usage), numeric=True)]

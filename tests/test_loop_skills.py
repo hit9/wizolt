@@ -1,6 +1,7 @@
 """loop skills (split from tests/test_loop_commands.py)."""
 
 import colorsys
+from dataclasses import replace
 from itertools import pairwise
 
 import pytest
@@ -319,6 +320,18 @@ def test_status_marks_an_estimate_over_the_compaction_threshold(tmp_path):
 
     assert over > 0
     assert value(report.text(100), "over by") == Text.abbreviate_count(over)
+
+
+def test_status_compaction_line_follows_a_lowered_threshold(tmp_path):
+    s = session(tmp_path)
+    s.config = replace(s.config, compaction_threshold=0.5)
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
+
+    report = StatusReport.of(loop)
+
+    # automatic compaction runs at half the budget, so that is the line /status names
+    assert report.snapshot.context.threshold == s.request_token_budget() // 2
+    assert value(report.text(100), "compacts at") == Text.abbreviate_count(s.request_token_budget() // 2)
 
 
 def value(text: str, label: str) -> str:
