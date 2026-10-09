@@ -73,6 +73,22 @@ def test_receipt_names_a_deleted_hole_by_the_lines_it_removed(tmp_path):
     assert "<edited" not in text
 
 
+def test_receipt_keeps_both_halves_of_a_hole_two_adjacent_deletions_left(tmp_path):
+    s = session(tmp_path)
+    (tmp_path / "code.txt").write_text("".join(f"l{i}\n" for i in range(1, 11)), encoding="utf-8")
+    key = view(s, "code.txt")
+
+    out = EditTool(s, ["code.txt", key, [{"op": "delete", "start": 4, "end": 4}, {"op": "delete", "start": 5, "end": 6}]]).call()
+    text = rendered(out, s)
+
+    lines = text.splitlines()
+    # both deletions leave one hole between l3 and l7, and it names every line they removed
+    hole_at = lines.index('<deleted lines="4:6"/>')
+    assert lines[hole_at - 1] == "3 | l3"
+    assert lines[hole_at + 1] == "4 | l7"
+    assert text.count("<deleted") == 1
+
+
 def test_receipt_cuts_context_rows_but_never_changed_rows(tmp_path):
     s = session(tmp_path)
     long_context, long_change = "b" * 260, "Y" * 260

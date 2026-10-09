@@ -1231,6 +1231,10 @@ class EditTool(Tool):
             ranges.append((max(1, start - 2), min(len(lines), max(end, start) + 3)))
             if end > start:
                 edited.append((start + 1, end))
+            elif removed and removed[-1][0] == start:
+                # Adjacent deletions leave one hole: nothing survived between them, so their
+                # pre-call runs are contiguous and the hole names them as one.
+                removed[-1] = (start, removed[-1][1], old_end)
             else:
                 removed.append((start, old_start + 1, old_end))
         draft = SourceViewDraft(path, self.session.relpath(path), len(lines), SourceSpan.build(lines, ranges), EDIT)
