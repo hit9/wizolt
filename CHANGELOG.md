@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The documentation build passes again: the 0.75.2 entry linked its benchmark result with a
+  workspace-relative path, which MyST resolves as a reference to a document in the docs tree and
+  fails on (`myst.xref_missing`). The link now points at the file on GitHub, like the other
+  benchmark links.
+
 ## 0.75.2 - 2026-10-11
 
 - Settled subagents no longer remain shown as running while their inbox consumer finishes saving
@@ -268,7 +273,8 @@
 - The flattened compaction payload -- sent when `[compaction]` names another provider or a
   `context.compact` plugin is active -- cuts each tool result over 2,000 characters to its head
   and tail, keeping its `tr.N` key and how it ended. Over eight real sessions it shrank from
-  952,860 to 488,737 estimated tokens (-48.7%; [results](benchmarks/results/linux-arm64-py314-compaction-flat-trim.json)).
+  952,860 to 488,737 estimated tokens (-48.7%;
+  [results](https://github.com/hit9/wizolt/blob/master/benchmarks/results/linux-arm64-py314-compaction-flat-trim.json)).
   The inline request, which reuses the conversation's cache, is unchanged byte for byte.
 
 - `ToolScript`'s description follows OpenAI's programmatic tool calling guide: a script prints
