@@ -90,6 +90,8 @@ class AgentEntry:
     def status(self) -> str:
         if self.agent.session.state.awaiting_input:
             return "waiting for input"
+        if self.task is not None and not self.task.done():
+            return "running"
         if self.agent.turn_active:
             return "running"
         state = self.agent.session.state

@@ -203,8 +203,10 @@ class SubagentTool(Tool):
             else:
                 # A row carries the answer -- and proof of delivery -- only when the model asked
                 # to read it; a status overview must not acknowledge a result it never showed.
-                row["result_id"] = entry.result.get("result_id", "") if entry.status in {"completed", "failed", "interrupted"} else ""
-                answer = entry.answer
+                settled = entry.status in {"completed", "failed", "interrupted"}
+                show_result = action in {"wait", "stop"} and settled
+                row["result_id"] = entry.result.get("result_id", "") if show_result else ""
+                answer = entry.answer if show_result else ""
                 row["answer"] = answer[:ANSWER_HEAD]
                 row["truncated"] = len(answer) > ANSWER_HEAD
             rows.append(row)

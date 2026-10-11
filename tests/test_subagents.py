@@ -991,6 +991,42 @@ async def test_followup_reuses_child_history_and_queue_only_does_not_wake_it(gro
     assert entry.agent.session.state.round_count == 2
 
 
+async def test_send_to_settled_child_returns_new_turn_without_stale_result(group, monkeypatch):
+    second_started, release_second = asyncio.Event(), asyncio.Event()
+    requests = 0
+
+    async def request(client, messages, tools=None):
+        nonlocal requests
+        requests += 1
+        if requests == 2:
+            second_started.set()
+            await release_second.wait()
+        answer = f"answer {requests}"
+        return {"role": "assistant", "content": answer}, [], answer
+
+    monkeypatch.setattr(ModelClient, "request", request)
+    entry = await finished(group, await group.spawn(group.root.session, "child", "first task"))
+    old_result_id = entry.result["result_id"]
+
+    rows = json.loads(
+        await SubagentTool(
+            group.root.session,
+            [{"action": "send", "agent_id": entry.agent.session.uid, "message": "second task", "start": True}],
+        ).call()
+    )
+
+    assert rows[0]["status"] == "running"
+    assert rows[0]["answer"] == ""
+    assert rows[0]["result_id"] == ""
+    await asyncio.wait_for(second_started.wait(), 3)
+    release_second.set()
+    waited = json.loads(
+        await SubagentTool(group.root.session, [{"action": "wait", "agent_ids": [entry.agent.session.uid]}]).call()
+    )
+    assert waited[0]["answer"] == "answer 2"
+    assert waited[0]["result_id"] != old_result_id
+
+
 @pytest.mark.parametrize("outcome", ["completed", "failed", "interrupted"])
 @pytest.mark.parametrize("start", [False, True])
 @pytest.mark.parametrize("boundary", ["turn", "consumer"])

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `Subagent(send)` to a settled child now returns the newly started turn as running without the
+  previous turn's answer or result ID; `wait` still returns the new result after it settles.
+
 ## 0.75.0 - 2026-10-08
 
 - The Edit guidance no longer teaches the model to stockpile changes: the tool description says
