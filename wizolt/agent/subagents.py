@@ -90,8 +90,6 @@ class AgentEntry:
     def status(self) -> str:
         if self.agent.session.state.awaiting_input:
             return "waiting for input"
-        if self.task is not None and not self.task.done():
-            return "running"
         if self.agent.turn_active:
             return "running"
         state = self.agent.session.state
@@ -311,6 +309,9 @@ class Subagents:
     def _start(self, entry: AgentEntry) -> None:
         if entry.task is None or entry.task.done():
             entry.restart_requested = False
+            pending = entry.agent.session.pending_user_inputs
+            if pending and not pending[0].commands:
+                entry.agent.session.state.last_turn_status = "running"
             entry.agent.session.state.last_turn_error = ""
             entry.task = asyncio.create_task(self._run(entry), name=f"agent:{entry.agent.session.uid}")
             entry.task.add_done_callback(lambda task: self._cancelled_before_start(entry, task))

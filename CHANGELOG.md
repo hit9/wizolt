@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.75.2 - 2026-10-11
+
+- Settled subagents no longer remain shown as running while their inbox consumer finishes saving
+  the turn; a newly started turn still reports running before its task first enters the engine.
+
 ## 0.75.1 - 2026-10-11
 
 - `Subagent(send)` to a settled child now returns the newly started turn as running without the

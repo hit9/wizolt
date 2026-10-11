@@ -1055,6 +1055,8 @@ async def test_send_during_final_snapshot_hands_off_to_a_new_consumer(group, mon
     monkeypatch.setattr(ModelClient, "request", request)
     entry = await group.spawn(group.root.session, "handoff", "first")
     await asyncio.wait_for(saving.wait(), 3)
+    if boundary == "consumer":
+        assert entry.status == outcome
     await group.send(entry.agent.session.uid, "second", start=start)
     release.set()
     await finished(group, entry)
