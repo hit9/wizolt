@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.75.1 - 2026-10-11
+
 - `Subagent(send)` to a settled child now returns the newly started turn as running without the
   previous turn's answer or result ID; `wait` still returns the new result after it settles.
 
