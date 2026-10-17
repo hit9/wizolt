@@ -23,7 +23,7 @@ from wizolt.base import (
     LogLine,
     LogRole,
 )
-from wizolt.ui.render import StatusBar, Theme, UiPrinter
+from wizolt.ui.render import Theme, UiPrinter
 from wizolt.ui.tui import TuiApp
 
 
@@ -96,7 +96,7 @@ def test_completion_menu_sits_on_one_surface(tmp_path, monkeypatch, mode, surfac
 
 
 def test_status_roles_have_palette_entries():
-    assert all(f"status_{role}" in Theme.ROLES for role in StatusBar.ROLE_KEYS)
+    assert all(f"status_{role}" in Theme.ROLES for role in ("provider", "reason", "mcp", "context", "yolo", "agent"))
 
 
 @pytest.mark.parametrize("mode,rule", [("dark", "4b5563"), ("light", "9ca3af")])

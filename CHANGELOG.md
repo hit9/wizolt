@@ -6,6 +6,20 @@
   workspace-relative path, which MyST resolves as a reference to a document in the docs tree and
   fails on (`myst.xref_missing`). The link now points at the file on GitHub, like the other
   benchmark links.
+- Bash commands that run another program now ask for approval outside yolo mode. Before, the
+  read-only allowlist ran `rg --pre CMD`, `sort --compress-program=CMD`, and sed scripts using
+  the `e` command or `s///e` flag without asking. sed is now auto-approved only for scripts made
+  of addresses with `p`, `d`, `q`, `=` and plain `s///` commands, so `w` writes and `-f FILE`
+  scripts ask too.
+- `runtime.shell_timeout = 0` and `provider.timeout = 0` in the config file are clamped to 1
+  second, as `/set` already did. Before, the first killed every Bash command as soon as it
+  started and the second timed out every model request.
+- A `Job` result for a still-running job now names the wait that actually ran. A `status`
+  without a timeout no longer claims "the wait ended", and a wait reports its own length, or the
+  cap when the cap cut a longer request short. Before, every running result quoted the cap.
+- Removed dead code: the write-only `ModelUsage.last_cache_write_prompt_tokens` field (older
+  session files that still carry it load unchanged), the unused `ContextManager.HEADER_PARTS`
+  constant, and `StatusBar.ROLE_KEYS`, which only a test read.
 
 ## 0.75.2 - 2026-10-11
 

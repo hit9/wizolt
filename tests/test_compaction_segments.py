@@ -450,7 +450,6 @@ def test_apply_compaction_clears_last_usage_but_keeps_cumulative(tmp_path):
     s.usage.last_prompt_tokens = 1234
     s.usage.last_prompt_budget = 1200
     s.usage.last_cached_prompt_tokens = 300
-    s.usage.last_cache_write_prompt_tokens = 50
     s.usage.prompt_tokens = 9999
     s.usage.calls = 7
     s.messages = [
@@ -466,7 +465,6 @@ def test_apply_compaction_clears_last_usage_but_keeps_cumulative(tmp_path):
     assert s.usage.last_prompt_tokens == 0
     assert s.usage.last_prompt_budget == 0
     assert s.usage.last_cached_prompt_tokens == 0
-    assert s.usage.last_cache_write_prompt_tokens == 0
     assert s.usage.prompt_tokens == 9999
     assert s.usage.calls == 7
     assert context._overdue_by_usage() is False

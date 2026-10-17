@@ -293,7 +293,6 @@ def test_model_usage_counts_cached_tokens_from_multiple_shapes():
     assert usage.cached_prompt_tokens == 6
     assert usage.last_cached_prompt_tokens == 2
     assert usage.cache_write_prompt_tokens == 11
-    assert usage.last_cache_write_prompt_tokens == 5
 
 
 def test_model_usage_folds_anthropic_cache_legs_into_prompt_tokens():
@@ -305,7 +304,7 @@ def test_model_usage_folds_anthropic_cache_legs_into_prompt_tokens():
 
     assert usage.last_prompt_tokens == 31_020
     assert usage.last_cached_prompt_tokens == 30_000
-    assert usage.last_cache_write_prompt_tokens == 1_000
+    assert usage.cache_write_prompt_tokens == 1_000
     assert usage.last_cached_prompt_tokens * 100 // usage.last_prompt_tokens == 96
     assert usage.prompt_tokens == 31_020
     assert usage.total_tokens == 31_025

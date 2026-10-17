@@ -2507,7 +2507,6 @@ class StatusBar:
     """
 
     RETRY_NOTICE_DURATION: ClassVar[float] = 2.0
-    ROLE_KEYS: ClassVar[tuple[str, ...]] = ("provider", "reason", "mcp", "context", "yolo", "agent")
     SPINNER_FRAMES: ClassVar[str] = "⠋⠙⠹⠸⠼⠴⠦⠧"
 
     def __init__(self, session: Session):

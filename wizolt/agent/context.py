@@ -112,11 +112,9 @@ class ContextManager:
         reuses it verbatim so its summary rides the same prefix the turn just paid for."""
         return self.render_header(self.header_parts(base_system))
 
-    # The header's named parts, in request order: the producers, not a parse of rendered text.
-    HEADER_PARTS: ClassVar[tuple[str, ...]] = ("system", "environment", "instructions", "skills", "mcp")
-
     def header_parts(self, base_system: str) -> list[tuple[str, str]]:
-        """(name, text) for each present part. ``system`` excludes the host-owned directives."""
+        """(name, text) for each present part, in request order: the producers, not a parse of
+        rendered text. ``system`` excludes the host-owned directives."""
         parts = [("system", base_system.strip()), ("environment", "--- Environment ---\n" + (self.environment() or "(empty)"))]
         for name, context in (("instructions", self.instructions_context()), ("skills", self.skills_context()), ("mcp", self.mcp_tools_context())):
             if context:
@@ -326,7 +324,7 @@ class ContextManager:
         # Named for what a user configures: AGENTS.md files are "memory files", and what connected
         # MCP servers add to the prefix (their tools and resources index) is "mcp servers". Listed
         # in the context layout's order: the tool block leads the cached prefix with the system
-        # prompt, then the header in HEADER_PARTS order, then the conversation.
+        # prompt, then the header in header_parts order, then the conversation.
         return [
             ("system tools", self.estimated_tokens(Tool.resolved_schemas(self.session))),
             ("system prompt", self.estimated_tokens(self.model_header(base_system)[:2])),
@@ -675,7 +673,6 @@ class ContextManager:
         usage.last_prompt_tokens = 0
         usage.last_prompt_budget = 0
         usage.last_cached_prompt_tokens = 0
-        usage.last_cache_write_prompt_tokens = 0
 
     def prune_tool_records(self, keep_messages: list[Json]) -> None:
         records = self.session.tool_records

@@ -231,7 +231,6 @@ def test_status_usage_reports_cache_ratios_and_writes(tmp_path):
     s = session(tmp_path)
     s.usage.calls = 3
     s.usage.last_cached_prompt_tokens = 76_000
-    s.usage.last_cache_write_prompt_tokens = 1_200
     s.usage.last_prompt_tokens = 76_100
     s.usage.cached_prompt_tokens = 83_400
     s.usage.cache_write_prompt_tokens = 4_500

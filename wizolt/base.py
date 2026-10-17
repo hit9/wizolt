@@ -407,7 +407,6 @@ class ModelUsage:
     last_prompt_tokens: int = 0
     last_prompt_budget: int = 0
     last_cached_prompt_tokens: int = 0
-    last_cache_write_prompt_tokens: int = 0
 
     def context_percent(self, fallback: int = 0) -> int:
         """How full the last request's prompt was, as a percentage of that request's budget.
@@ -466,7 +465,6 @@ class ModelUsage:
             if budget is not None:
                 self.last_prompt_budget = budget
             self.last_cached_prompt_tokens = cached_tokens
-            self.last_cache_write_prompt_tokens = cache_write_tokens
 
 
 @dataclass

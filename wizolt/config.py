@@ -228,7 +228,7 @@ class ProviderConfig:
             reasoning=reasoning,
             chat_reasoning=chat_reasoning,
             reasoning_history=reasoning_history,
-            timeout=Config.int(data, "timeout", 120),
+            timeout=max(1, Config.int(data, "timeout", 120)),
             response_timeout=max(0, Config.int(data, "response_timeout", 600)),
             extra_body=Config.table(data, "extra_body"),
             headers=Config.header_table(data, "headers"),
@@ -352,7 +352,7 @@ class RuntimeSettings:
     def from_dict(cls, data: Json, *, yolo: bool = False, theme: str = "") -> RuntimeSettings:
         runtime = Config.table(data, "runtime")
         return cls(
-            shell_timeout=Config.int(runtime, "shell_timeout", 60),
+            shell_timeout=max(1, Config.int(runtime, "shell_timeout", 60)),
             bash_wait_timeout=max(0, Config.int(runtime, "bash_wait_timeout", 10)),
             max_steps=max(1, Config.int(runtime, "max_agent_steps", 400)),
             max_context_tokens=max(1, Config.int(runtime, "max_context_tokens", DEFAULT_MAX_CONTEXT_TOKENS)),

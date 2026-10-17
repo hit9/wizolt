@@ -77,6 +77,14 @@ class BashTool(Tool):
     _DEV_NULL_REDIRECT_RE: ClassVar[re.Pattern] = re.compile(r"(?:\d*>>?|&>|<)\s*/dev/null(?![\w./])")
     _BACKGROUND_AMP_RE: ClassVar[re.Pattern] = re.compile(r"(?<!&)&(?!&)")
     _CONTROL_OPERATOR_RE: ClassVar[re.Pattern] = re.compile(r"&&|\|\||[|;\n]")
+    # A sed script of `[addr[,addr]][!]p|d|q|=` and `s/re/text/[gpiI0-9]` commands; see _sed_readonly.
+    _SED_ADDRESS: ClassVar[str] = r"(?:\d+|\$|/(?:[^/\\]|\\.)*/)"
+    _SED_COMMAND: ClassVar[str] = rf"(?:{_SED_ADDRESS}(?:,{_SED_ADDRESS})?)?!?(?:[pdq=]|s/(?:[^/\\]|\\.)*/(?:[^/\\]|\\.)*/[gpiI0-9]*)"
+    _SED_READONLY_SCRIPT_RE: ClassVar[re.Pattern] = re.compile(rf"\s*{_SED_COMMAND}(?:\s*;\s*{_SED_COMMAND})*\s*;?\s*")
+    _SED_SHORT_FLAGS: ClassVar[frozenset[str]] = frozenset("nErsuz")
+    _SED_LONG_FLAGS: ClassVar[frozenset[str]] = frozenset(
+        {"--quiet", "--silent", "--regexp-extended", "--separate", "--unbuffered", "--null-data", "--posix", "--sandbox"}
+    )
     LOG_LEXER = "bash"
     DESCRIPTION = (
         "Run any Bash program with live output and an exit code; conditionals, loops, functions, pipelines, and multiline scripts are valid. "
@@ -115,9 +123,9 @@ class BashTool(Tool):
     # fmt: off
     SAFE_COMMANDS: ClassVar[frozenset[str]] = frozenset(
         {
-            # Common read-only inspection commands. The obvious file-writing forms (`sort -o`,
-            # `uniq IN OUT`, `sed -i`, `tree -o`) are guarded below; we do not chase exotic paths
-            # like sed's `w` command — common sense over exhaustive safety.
+            # Common read-only inspection commands. The obvious file-writing and program-running
+            # forms (`sort -o`, `uniq IN OUT`, `sed -i`, `tree -o`, `rg --pre`) are guarded below;
+            # sed scripts are allowlisted because their `e` and `w` commands can sit anywhere.
             "ls", "cat", "head", "tail", "wc", "find", "grep", "egrep", "fgrep", "rg", "sort", "uniq",
             "sed", "tree", "cut", "tr", "nl", "comm", "column", "fold", "paste", "join", "echo", "printf", "pwd",
             "stat", "file", "basename", "dirname", "realpath", "readlink", "which", "type",
@@ -184,14 +192,44 @@ class BashTool(Tool):
         # Flags/args that turn a read-only command into a writer.
         if cmd == "find" and any(t in {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"} for t in tokens):
             return False
-        if cmd == "sed" and any(t.startswith(("-i", "--in-place")) for t in tokens):
+        if cmd == "sed" and not cls._sed_readonly(tokens):
             return False
+        if cmd == "rg" and any(t == "--pre" or t.startswith("--pre=") for t in tokens):
+            return False  # `rg --pre CMD` runs CMD on every searched file
         if cmd == "tree" and any(t.startswith(("-o", "--output")) for t in tokens):
             return False  # `tree -o FILE` writes the listing to a file
-        if cmd == "sort" and any(t.startswith(("-o", "--output")) for t in tokens):
-            return False  # `sort -o FILE` / `--output=FILE` writes to a file
+        if cmd == "sort" and any(t.startswith(("-o", "--output", "--compress-program")) for t in tokens):
+            return False  # `sort -o FILE` writes to a file; `--compress-program=CMD` runs CMD
         # `uniq INPUT OUTPUT` writes the second file operand.
         return not (cmd == "uniq" and cls._uniq_writes(tokens))
+
+    @classmethod
+    def _sed_readonly(cls, tokens: list[str]) -> bool:
+        # sed's `e` command and `s///e` flag run shell commands, and `w` writes files, anywhere in a
+        # script. Rather than hunt for them, approve only scripts made of print/delete/quit and plain
+        # `s///` commands; `-i`, `-f FILE`, and any option not listed here ask.
+        scripts: list[str] = []
+        operands: list[str] = []
+        rest = iter(tokens[1:])
+        for token in rest:
+            if token.startswith("--expression="):
+                scripts.append(token.partition("=")[2])
+            elif token == "--expression":
+                scripts.append(next(rest, ""))
+            elif token.startswith("--"):
+                if token not in cls._SED_LONG_FLAGS:
+                    return False
+            elif token.startswith("-") and len(token) > 1:
+                flags, _, script = token[1:].partition("e")
+                if not set(flags) <= cls._SED_SHORT_FLAGS:
+                    return False
+                if "e" in token[1:]:
+                    scripts.append(script or next(rest, ""))
+            else:
+                operands.append(token)
+        if not scripts and operands:
+            scripts.append(operands[0])
+        return bool(scripts) and all(cls._SED_READONLY_SCRIPT_RE.fullmatch(script) for script in scripts)
 
     @staticmethod
     def _uniq_writes(tokens: list[str]) -> bool:
@@ -711,8 +749,10 @@ class JobTool(Tool):
     async def _status(self, payload: Json) -> str:
         try:
             job = self._resolve_job(payload)
-            interrupted = await self._await_process(job, payload) if self.requested_timeout(payload) else False
-            return self._format(job, payload, interrupted=interrupted)
+            if not self.requested_timeout(payload):
+                return self._format(job, payload)
+            interrupted = await self._await_process(job, payload)
+            return self._format(job, payload, waited=True, interrupted=interrupted)
         finally:
             # Close the live region on every exit path (done, budget exhausted, Ctrl-C, a ToolError
             # from _resolve_job): the runner has already started it, and leaving it open would leak
@@ -724,7 +764,7 @@ class JobTool(Tool):
         try:
             job = self._resolve_job(payload)
             interrupted = await self._await_process(job, payload)
-            return self._format(job, payload, interrupted=interrupted)
+            return self._format(job, payload, waited=True, interrupted=interrupted)
         finally:
             if self.live_output is not None:
                 self.live_output("", "")
@@ -759,7 +799,7 @@ class JobTool(Tool):
         job.update_status()
         return job
 
-    def _format(self, job: BackgroundJob, payload: Json, *, interrupted: bool = False) -> str:
+    def _format(self, job: BackgroundJob, payload: Json, *, waited: bool = False, interrupted: bool = False) -> str:
         limit = max(1, int(payload.get("limit") or self.DEFAULT_LIMIT))
         output = job.tail(limit)
         lines = [
@@ -775,8 +815,17 @@ class JobTool(Tool):
         if job.status == "running":
             # A wait that comes back while the job runs returns the same shape as one that comes
             # back because it finished. Without this the output below reads as the final result.
-            reason = "the user interrupted the wait" if interrupted else f"the wait ended; one wait lasts at most {self.MAX_WAIT}s"
-            lines.append(f"Still running ({reason}); any output above is partial. Do other work and check back, or wait again.")
+            # The reason names the wait that actually ran: none for a non-blocking status, and the
+            # cap only when it cut a longer request short.
+            if interrupted:
+                reason = " (the user interrupted the wait)"
+            elif not waited:
+                reason = ""
+            elif self.requested_timeout(payload) > self.MAX_WAIT:
+                reason = f" (the wait ended at the {self.MAX_WAIT:g}s cap)"
+            else:
+                reason = f" (the {self.wait_budget(payload):g}s wait ended)"
+            lines.append(f"Still running{reason}; any output above is partial. Do other work and check back, or wait again.")
         if output:
             lines.extend(["--- output ---", output])
         return "\n".join(lines)

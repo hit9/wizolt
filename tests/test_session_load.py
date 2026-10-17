@@ -592,7 +592,6 @@ async def test_usage_roundtrip_with_prompt_and_completion_tokens(tmp_path):
     s.usage.cached_prompt_tokens = 20
     s.usage.cache_write_prompt_tokens = 12
     s.usage.last_cached_prompt_tokens = 5
-    s.usage.last_cache_write_prompt_tokens = 7
     await s.save_snapshot()
 
     s.close()  # release the writer before reloading
@@ -604,7 +603,6 @@ async def test_usage_roundtrip_with_prompt_and_completion_tokens(tmp_path):
     assert s2.usage.cached_prompt_tokens == 20
     assert s2.usage.cache_write_prompt_tokens == 12
     assert s2.usage.last_cached_prompt_tokens == 5
-    assert s2.usage.last_cache_write_prompt_tokens == 7
 
 async def test_agent_state_roundtrip(tmp_path):
     """Agent state (goal, plan, known, check, summary) survives save/load."""

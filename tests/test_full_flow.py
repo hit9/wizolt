@@ -88,7 +88,7 @@ async def test_append_only_turns_reuse_implicit_cache_for_both_openai_protocols(
     assert first_prompt > 0 and first_read == 0 and first_write > 0
     assert second_prompt > first_prompt and second_read > 0 and second_write > 0
     assert session.usage.last_cached_prompt_tokens == second_read
-    assert session.usage.last_cache_write_prompt_tokens == second_write
+    assert session.usage.cache_write_prompt_tokens == first_write + second_write
 
     key = "input" if api == "responses" else "messages"
     first_items = server.requests[0][key]

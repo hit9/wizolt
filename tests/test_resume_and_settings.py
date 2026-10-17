@@ -123,6 +123,8 @@ def test_runtime_settings_reads_limits_and_yolo_override():
     assert settings.max_steps == 1
     assert settings.max_context_tokens == 1
     assert settings.yolo is True
+    # A zero timeout would kill every Bash command at once; /set already clamps it to 1.
+    assert RuntimeSettings.from_dict({"runtime": {"shell_timeout": 0}}).shell_timeout == 1
 
 
 def test_runtime_language_defaults_normalizes_and_validates():
@@ -163,6 +165,9 @@ def test_provider_timeout_defaults_distinguish_inactivity_from_total_generation(
     assert ProviderConfig().response_timeout == 600
     assert Config.from_dict({}).provider.response_timeout == 600
     assert ProviderConfig.from_dict({"response_timeout": 0}).response_timeout == 0
+    # Unlike response_timeout, 0 does not disable the inactivity timeout: the client would time
+    # out every request at once. /set already clamps it to 1.
+    assert ProviderConfig.from_dict({"timeout": 0}).timeout == 1
     assert "# response_timeout = 600" in ConfigFile.DEFAULT_TEXT
 
 

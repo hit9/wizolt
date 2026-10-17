@@ -89,7 +89,11 @@ async def test_job_wait_is_bounded_and_says_the_job_is_still_running(tmp_path, m
     monkeypatch.setattr(JobTool, "MAX_WAIT", 0.2)
     await JobTool(s, [{"action": "start", "command": "sleep 30"}]).call()
 
-    for payload in ({}, {"timeout": 0}, {"timeout": 3600}):
+    for payload, reason in (
+        ({}, "(the 0.2s wait ended)"),
+        ({"timeout": 0}, "(the 0.2s wait ended)"),
+        ({"timeout": 3600}, "(the wait ended at the 0.2s cap)"),
+    ):
         started = time.monotonic()
         waited = await JobTool(s, [{"action": "wait", "job": "job.1", **payload}]).call()
         elapsed = time.monotonic() - started
@@ -97,8 +101,13 @@ async def test_job_wait_is_bounded_and_says_the_job_is_still_running(tmp_path, m
         assert elapsed < 2, f"wait with {payload} blocked for {elapsed:.1f}s"
         assert elapsed >= 0.15  # the budget was actually spent, not skipped
         assert "Status: running" in waited
-        assert "Still running (the wait ended" in waited
+        assert f"Still running {reason};" in waited
         assert "Exit code:" not in waited
+
+    # A status without a timeout never waited, so it must not say a wait ended.
+    polled = await JobTool(s, [{"action": "status", "job": "job.1"}]).call()
+    assert "Still running; any output above is partial" in polled
+    assert "wait ended" not in polled
 
     # status with a timeout goes through the same budget.
     started = time.monotonic()
@@ -614,6 +623,9 @@ def test_bash_readonly_auto_approval_classification(tmp_path):
     assert readonly("ls -la >/dev/null 2>&1")  # /dev/null + stderr-merge
     assert readonly("cat f | sed -n '1,20p'")  # sed for read-only filtering
     assert readonly("tree -L 2 src")
+    assert readonly("sed -n -e 10,20p -e '/def /p' f")
+    assert readonly("sed -E 's/(a+)b/\\1/g' f")
+    assert readonly("sed --quiet '$p' f")
 
     # Anything that writes, executes code, mutates git, or hides execution still asks.
     assert not readonly("rm -rf build")
@@ -644,6 +656,14 @@ def test_bash_readonly_auto_approval_classification(tmp_path):
     assert not readonly("ls & rm x")  # backgrounding
     assert not readonly("ls; rm x")  # unsafe stage in a sequence
     assert not readonly("FOO=1 env")  # env assignment / wrapper
+    # Options and scripts of read-only commands that run another program.
+    assert not readonly("rg --pre=sh needle .")
+    assert not readonly("rg --pre sh needle .")
+    assert not readonly("sort --compress-program=sh -S1 f")
+    assert not readonly("sed -n '1e touch pwned' f")  # `e` runs a shell command
+    assert not readonly("sed 's/x/touch pwned/e' f")  # so does the `e` flag
+    assert not readonly("sed -ne 's/x/y/w out' f")  # `w` writes a file
+    assert not readonly("sed -f script.sed f")  # a script we cannot see
 
 
 async def test_bash_slow_command_promotes_to_job(tmp_path):
