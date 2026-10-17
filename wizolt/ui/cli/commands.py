@@ -855,27 +855,39 @@ async def remote_models(loop: ModelSettingsHost, provider: ProviderConfig) -> tu
     if not provider.url or not provider.key:
         return ()
     try:
-        # lazy import: /model discovery is the only OpenAI use here, so the SDK stays off the startup path
-        from openai import AsyncOpenAI
-
         from wizolt.model import ModelClient
 
         resolved = loop.session.policy.resolve(provider)
-        client = AsyncOpenAI(
-            api_key=provider.key,
-            base_url=resolved.base_url,
-            timeout=min(provider.timeout, 10),
-            max_retries=0,
-            default_headers=ModelClient.request_headers(provider, resolved.headers, loop.session.uid),
-        )
-        try:
-            page = await client.models.list()
-        finally:
-            await client.close()
+        headers = ModelClient.request_headers(provider, resolved.headers, loop.session.uid)
+        if resolved.host == "opencode.ai":
+            # OpenCode publishes /models without authentication; a Bearer header can make this
+            # otherwise-public endpoint reject a Go key before it returns the model table.
+            import httpx2
+
+            async with httpx2.AsyncClient(timeout=min(provider.timeout, 10), headers=headers) as client:
+                response = await client.get(resolved.base_url.rstrip("/") + "/models")
+                response.raise_for_status()
+                page = response.json()
+        else:
+            # lazy import: /model discovery is the only OpenAI use here, so the SDK stays off the startup path
+            from openai import AsyncOpenAI
+
+            client = AsyncOpenAI(
+                api_key=provider.key,
+                base_url=resolved.base_url,
+                timeout=min(provider.timeout, 10),
+                max_retries=0,
+                default_headers=headers,
+            )
+            try:
+                page = await client.models.list()
+            finally:
+                await client.close()
     except Exception:  # noqa: BLE001 - remote model discovery is optional and provider SDKs expose varied failures.
         return ()
+    items = page.get("data", page) if isinstance(page, dict) else getattr(page, "data", page)
     names = []
-    for item in getattr(page, "data", page) or []:
+    for item in items or []:
         name = item.get("id") if isinstance(item, dict) else getattr(item, "id", None)
         if isinstance(name, str) and name:
             names.append(name)

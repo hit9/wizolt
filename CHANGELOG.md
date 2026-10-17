@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `/model` can discover OpenCode Zen and Go models again. Their public `/models` endpoints are
+  now queried without the provider key; sending the key as Bearer authentication could make the
+  otherwise-valid listing fail with a misleading `api_key_expired` response.
 - The documentation build passes again: the 0.75.2 entry linked its benchmark result with a
   workspace-relative path, which MyST resolves as a reference to a document in the docs tree and
   fails on (`myst.xref_missing`). The link now points at the file on GitHub, like the other

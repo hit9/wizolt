@@ -3,6 +3,7 @@
 import asyncio
 from types import SimpleNamespace
 
+import httpx2
 import openai as openai_module
 import pytest
 from catalog_harness import resolve
@@ -490,6 +491,49 @@ async def test_remote_models_normalizes_sdk_results(monkeypatch, tmp_path):
     assert calls[0]["api_key"] == "secret"
     assert calls[0]["max_retries"] == 0
     assert calls[0]["default_headers"]["x-tenant"] == "team-a"
+
+
+async def test_remote_models_does_not_authenticate_opencodes_public_listing(monkeypatch, tmp_path):
+    command_loop = loop(tmp_path)
+    provider = command_loop.session.config.provider
+    provider.url = "https://opencode.ai/zen/go/v1"
+    provider.key = "go-secret"
+    calls = []
+
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"data": [{"id": "kimi-k2.7-code"}]}
+
+    class Client:
+        def __init__(self, **kwargs):
+            calls.append(("init", kwargs))
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            pass
+
+        async def get(self, url):
+            calls.append(("get", url))
+            return Response()
+
+    monkeypatch.setattr(httpx2, "AsyncClient", Client)
+    monkeypatch.setattr(
+        openai_module,
+        "AsyncOpenAI",
+        lambda **_kwargs: pytest.fail("OpenCode listing used authenticated SDK client"),
+    )
+
+    assert await remote_models(command_loop, provider) == ("kimi-k2.7-code",)
+    assert calls[0][0] == "init"
+    assert calls[0][1]["headers"]["x-opencode-session"] == command_loop.session.uid
+    assert "authorization" not in {name.lower() for name in calls[0][1]["headers"]}
+    assert provider.key not in repr(calls)
+    assert calls[1] == ("get", "https://opencode.ai/zen/go/v1/models")
 
 
 async def test_remote_models_is_optional_and_failure_safe(monkeypatch, tmp_path):
