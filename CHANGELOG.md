@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.75.3 - 2026-10-17
 
 - `/model` can discover OpenCode Zen and Go models again. Their public `/models` endpoints are
   now queried without the provider key; sending the key as Bearer authentication could make the
