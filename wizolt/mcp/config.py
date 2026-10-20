@@ -16,6 +16,7 @@ class MCPServerConfig:
     command: str = ""
     args: tuple[str, ...] = ()
     env: dict[str, str] = field(default_factory=dict)
+    secret_env: dict[str, str] = field(default_factory=dict)
     auth: str = ""
     bearer_token_env_var: str = ""
     env_http_headers: dict[str, str] = field(default_factory=dict)
@@ -55,11 +56,18 @@ def parse_config(name: str, raw: Json) -> MCPServerConfig:
 
     read_field("args", string_list, "args must be a string list")
     read_field("env", string_map, "env must be a string map")
+    read_field("secret_env", string_map, "secret_env must be a string map")
     read_field("env_http_headers", string_map, "env_http_headers must be a string map")
     if bool(config.url) == bool(config.command):
         config_error("exactly one of url or command is required")
     elif config.command and (config.auth or config.bearer_token_env_var or raw.get("env_http_headers")):
         config_error("command (stdio) servers cannot use auth/bearer_token_env_var/env_http_headers")
+    if config.url and config.secret_env:
+        config_error("secret_env applies to command (stdio) servers only")
+    if any(not name or "=" in name or "\0" in name or not secret for name, secret in config.secret_env.items()):
+        config_error("secret_env needs non-empty environment variable names without '=' and non-empty secret names")
+    if overlap := sorted(set(config.env) & set(config.secret_env)):
+        config_error("env and secret_env both set " + ", ".join(overlap))
     if config.auth not in {"", "oauth"}:
         config_error("auth must be oauth")
     if config.auth == "oauth" and config.bearer_token_env_var:

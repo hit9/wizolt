@@ -10,7 +10,8 @@ import re
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
-from wizolt.base import Json, ToolError, run_blocking
+from wizolt.base import ConfigError, Json, ToolError, run_blocking
+from wizolt.config import ConfigFile
 from wizolt.mcp.config import MCPServerConfig, has_header, parse_config
 from wizolt.mcp.rendering import (
     MCPResourceInfo,
@@ -581,6 +582,26 @@ class MCPManager:
 
         import wizolt.mcp.oauth  # noqa: F401
 
+    def _secret_env(self, config: MCPServerConfig) -> dict[str, str]:
+        """Resolve `secret_env` names at spawn time, never caching or rendering their values.
+
+        A provider entry wins over secrets.toml, matching Config.load. Only the named
+        variables are injected; unlike `env`, this does not opt into inheriting the rest of
+        the environment. The error names the secret and the server, never the value.
+        """
+        if not config.secret_env:
+            return {}
+        path = self.session.config.path
+        secrets = ConfigFile.load_secrets(path) if path else {}
+        resolved: dict[str, str] = {}
+        for name, secret_name in config.secret_env.items():
+            provider = self.session.config.providers.get(secret_name)
+            value = (provider.key if provider is not None else "").strip() or secrets.get(secret_name, "").strip()
+            if not value:
+                raise ConfigError(f"MCP server '{config.name}' secret_env `{secret_name}` has no key; set it in secrets.toml or [provider.{secret_name}]")
+            resolved[name] = value
+        return resolved
+
     def _transport(self, config: MCPServerConfig, headers: dict[str, str], auth: WizoltOAuth | None = None) -> StdioServerParameters | Transport:
         from mcp.client.stdio import StdioServerParameters
         from mcp.client.streamable_http import streamable_http_client
@@ -589,9 +610,11 @@ class MCPManager:
         if config.command:
             # The SDK layers env over a small safe subset of the environment, not all of it, so
             # layer the configured vars over the inherited environment to keep what a server
-            # launched from the user's shell would see.
-            env = {**os.environ, **config.env} if config.env else None
-            return StdioServerParameters(command=config.command, args=list(config.args), env=env)
+            # launched from the user's shell would see. `secret_env` alone stays scoped to the
+            # named variables and does not inherit everything.
+            env = {**os.environ, **config.env} if config.env else {}
+            env.update(self._secret_env(config))
+            return StdioServerParameters(command=config.command, args=list(config.args), env=env or None)
 
         from mcp.shared.exceptions import MCPError
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- MCP command servers can reuse a configured provider key with `secret_env`, for example
+  `secret_env = { DEEPSEEK_API_KEY = "deepseek" }`. wizolt reads that provider entry's key, or the
+  matching `secrets.toml` line, when it starts the server and injects only the named variables.
+  Before, the key had to be copied into `config.toml`, exported in the shell, or read by the server
+  itself.
+
 ## 0.75.3 - 2026-10-17
 
 - `/model` can discover OpenCode Zen and Go models again. Their public `/models` endpoints are

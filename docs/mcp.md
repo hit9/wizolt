@@ -26,6 +26,7 @@ bearer_token_env_var = "EXAMPLE_MCP_TOKEN"  # optional: send a bearer token from
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
 # env = { FOO = "bar" }   # optional extra environment variables
+# secret_env = { DEEPSEEK_API_KEY = "deepseek" }  # optional: reuse a configured provider key
 # auto_connect = true
 ```
 
@@ -36,6 +37,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
 | `url` | remote | Server endpoint (mutually exclusive with `command`) |
 | `command`, `args` | local | Program and arguments to launch |
 | `env` | local | Extra environment variables for the subprocess |
+| `secret_env` | local | Map of environment variable → provider entry (or `secrets.toml` name); injects only those keys |
 | `auth = "oauth"` | remote | Authenticate via interactive OAuth |
 | `bearer_token_env_var` | remote | Send `Authorization: Bearer <env var>` |
 | `env_http_headers` | remote | Map of HTTP header → env var holding its value |
@@ -85,6 +87,10 @@ the calls and return a short summary. See [ToolScript](tools.md#toolscript).
 
 ### Authentication
 
+- **Local server** — name the key in `secret_env`, for example
+  `secret_env = { DEEPSEEK_API_KEY = "deepseek" }`. wizolt reads that entry's key, or the
+  matching `secrets.toml` line, when it starts the server and injects only that variable.
+  The key stays out of `config.toml` and your shell.
 - **Bearer token** — set `bearer_token_env_var` (or a custom header via `env_http_headers`).
 - **OAuth** — set `auth = "oauth"`. `/mcp connect` opens the sign-in page in your browser and
   shows its link; you have 5 minutes to finish. The login is saved, so later sessions connect

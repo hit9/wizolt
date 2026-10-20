@@ -16,6 +16,7 @@ from mcp_harness import mcp_cfg, mcp_tool_info, session
 
 from wizolt.agent.context import ContextManager
 from wizolt.agent.lifecycle import bootstrap_features
+from wizolt.base import ConfigError
 from wizolt.config import (
     Config,
 )
@@ -32,6 +33,16 @@ def parse_one(raw: dict) -> MCPServerConfig | None:
     bootstrap_features(s)
     configs = s.mcp.parse_configs()
     return configs[0] if configs else None
+
+
+def stdio_session(tmp_path, server: dict, provider: dict | None = None) -> Session:
+    """A bootstrapped session with one command server and an optional provider table."""
+    data: dict = {"mcp": {"x": {"command": "npx", **server}}}
+    if provider is not None:
+        data["provider"] = provider
+    s = Session(cwd=str(tmp_path), config=Config.from_dict(data, path=str(tmp_path / "config.toml")))
+    bootstrap_features(s)
+    return s
 
 
 class TestConfigParsing:
@@ -146,6 +157,53 @@ class TestStdioConfig:
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg()))
         bootstrap_features(s)
         assert not isinstance(s.mcp._transport(s.mcp.parse_configs()[0], {}), StdioServerParameters)
+
+    def test_secret_env_parsed_for_stdio(self):
+        """secret_env maps environment variable names to secret entry names."""
+        cfg = parse_one({"mcp": {"x": {"command": "npx", "secret_env": {"DEEPSEEK_API_KEY": "deepseek"}}}})
+        assert cfg.secret_env == {"DEEPSEEK_API_KEY": "deepseek"}
+        assert cfg.error == ""
+
+    def test_secret_env_rejected_for_remote(self):
+        """Remote servers have no subprocess environment to inject into."""
+        cfg = parse_one(mcp_cfg(secret_env={"DEEPSEEK_API_KEY": "deepseek"}))
+        assert "stdio" in cfg.error
+
+    def test_secret_env_requires_a_string_map(self):
+        cfg = parse_one({"mcp": {"x": {"command": "npx", "secret_env": "bad"}}})
+        assert "secret_env must be a string map" in cfg.error
+
+    def test_secret_env_rejects_env_overlap(self):
+        """One variable cannot hold both a literal and a secret."""
+        cfg = parse_one({"mcp": {"x": {"command": "npx", "env": {"KEY": "literal"}, "secret_env": {"KEY": "deepseek"}}}})
+        assert "both set KEY" in cfg.error
+
+    def test_transport_resolves_secret_env(self, tmp_path):
+        """The named secrets.toml entry reaches the server environment."""
+        (tmp_path / "secrets.toml").write_text('deepseek = "from-secrets"\n')
+        s = stdio_session(tmp_path, {"secret_env": {"DEEPSEEK_API_KEY": "deepseek"}}, {"active": "deepseek", "deepseek": {}})
+        params = s.mcp._transport(s.mcp.parse_configs()[0], {})
+        assert params.env == {"DEEPSEEK_API_KEY": "from-secrets"}
+
+    def test_provider_key_wins_over_secrets_file(self, tmp_path):
+        """A key written in the provider entry takes precedence, as it does for model requests."""
+        (tmp_path / "secrets.toml").write_text('deepseek = "from-secrets"\n')
+        s = stdio_session(
+            tmp_path,
+            {"secret_env": {"DEEPSEEK_API_KEY": "deepseek"}},
+            {"active": "deepseek", "deepseek": {"key": "from-provider"}},
+        )
+        params = s.mcp._transport(s.mcp.parse_configs()[0], {})
+        assert params.env == {"DEEPSEEK_API_KEY": "from-provider"}
+
+    def test_missing_secret_env_does_not_print_a_value(self, tmp_path):
+        """A missing secret fails the connection with a name-only error."""
+        (tmp_path / "secrets.toml").write_text('other = "do-not-print"\n')
+        s = stdio_session(tmp_path, {"secret_env": {"DEEPSEEK_API_KEY": "nope"}})
+        with pytest.raises(ConfigError) as error:
+            s.mcp._transport(s.mcp.parse_configs()[0], {})
+        assert "`nope`" in str(error.value)
+        assert "do-not-print" not in str(error.value)
 
 
 # ---------------------------------------------------------------------------
