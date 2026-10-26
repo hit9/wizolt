@@ -205,6 +205,11 @@ class TestStdioConfig:
         assert "`nope`" in str(error.value)
         assert "do-not-print" not in str(error.value)
 
+    def test_mcp_index_names_secret_env_variables(self, tmp_path):
+        """The /mcp table names the injected variables; values never reach a rendering."""
+        s = stdio_session(tmp_path, {"secret_env": {"DEEPSEEK_API_KEY": "deepseek"}})
+        assert "secret_env(DEEPSEEK_API_KEY)" in s.mcp.render_server_status()
+
 
 # ---------------------------------------------------------------------------
 # MCPManager header/auth building

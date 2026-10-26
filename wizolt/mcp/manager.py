@@ -585,9 +585,10 @@ class MCPManager:
     def _secret_env(self, config: MCPServerConfig) -> dict[str, str]:
         """Resolve `secret_env` names at spawn time, never caching or rendering their values.
 
-        A provider entry wins over secrets.toml, matching Config.load. Only the named
-        variables are injected; unlike `env`, this does not opt into inheriting the rest of
-        the environment. The error names the secret and the server, never the value.
+        A provider entry wins over secrets.toml; a name without one resolves from secrets.toml
+        alone (Config.load only fills keys of providers its config already defines). Only the
+        named variables are injected; unlike `env`, this does not opt into inheriting the rest
+        of the environment. The error names the secret and the server, never the value.
         """
         if not config.secret_env:
             return {}
@@ -1161,6 +1162,8 @@ class MCPManager:
             if config.bearer_token_env_var:
                 auth.append("bearer_token_env_var(" + config.bearer_token_env_var + ")")
             auth.extend("env_header(" + name + ")" for name in config.env_http_headers)
+            # Variable names only: the values live in secrets.toml and never reach a rendering.
+            auth.extend("secret_env(" + name + ")" for name in config.secret_env)
             rows.append(
                 (
                     "`" + self.markdown_cell(config.name) + "`",

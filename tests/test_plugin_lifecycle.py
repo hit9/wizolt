@@ -785,6 +785,73 @@ async def test_a_restart_that_cannot_happen_surfaces_as_a_failure(tmp_path, monk
         await session.plugins.close()
 
 
+async def test_cancelling_a_call_during_the_restart_leaves_the_plugin_parked(tmp_path, monkeypatch):
+    import asyncio
+
+    from agent_harness import session_with_provider
+
+    from wizolt.agent.lifecycle import bootstrap_features
+    from wizolt.plugins.process import PluginProcess
+    from wizolt.tools.plugin import PluginTool
+
+    started = asyncio.Event()
+
+    async def hanging_start(*args, **kwargs):
+        started.set()
+        await asyncio.Event().wait()  # Never finishes: the test cancels during the restart.
+
+    session = session_with_provider(tmp_path)
+    bootstrap_features(session)
+    (tmp_path / "notes.py").write_text(NOTES)
+    try:
+        await session.plugins.manage("enable", str(tmp_path / "notes.py"))
+        assert session.plugins.entries["notes"].active.idle
+        monkeypatch.setattr(PluginProcess, "start", hanging_start)
+        task = asyncio.create_task(session.plugins.invoke("notes", "tool", "peek", {}))
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        entry = session.plugins.entries["notes"]
+        assert entry.active.idle and entry.status == "idle"  # Cancelled, not "failed": retryable.
+        assert PluginTool.usable(session.plugins)  # Still discoverable after the interrupt.
+        monkeypatch.undo()
+        assert await session.plugins.invoke("notes", "tool", "peek", {}) == "no notes"
+    finally:
+        await session.plugins.close()
+
+
+async def test_cancelling_a_call_during_the_parked_teardown_ends_the_call(tmp_path, monkeypatch):
+    import asyncio
+
+    from agent_harness import session_with_provider
+
+    from wizolt.agent.lifecycle import bootstrap_features
+
+    session = session_with_provider(tmp_path)
+    bootstrap_features(session)
+    (tmp_path / "notes.py").write_text(NOTES)
+    try:
+        await session.plugins.manage("enable", str(tmp_path / "notes.py"))
+        entry = session.plugins.entries["notes"]
+        assert entry.active.idle
+        teardown_started = asyncio.Event()
+
+        async def slow_close():
+            teardown_started.set()
+            await asyncio.sleep(10)  # The test cancels inside this teardown window.
+
+        monkeypatch.setattr(entry.active.worker, "close", slow_close)
+        task = asyncio.create_task(session.plugins.invoke("notes", "tool", "peek", {}))
+        await teardown_started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert entry.active.idle  # Nothing ran; the next call restarts and retries.
+    finally:
+        await session.plugins.close()
+
+
 async def test_the_builtin_plugins_are_classified_by_their_registrations(tmp_path):
     from agent_harness import session_with_provider
 

@@ -443,11 +443,16 @@ class PluginRuntime:
                 return  # A concurrent call resumed it while this one waited for the lock.
             # Let the parked worker finish its bounded teardown first: a plugin holding an
             # exclusive resource (a lock file, a port) would otherwise race its own restart.
-            with contextlib.suppress(BaseException):
+            # Exception, not BaseException: swallowing this call's cancellation would let a
+            # mutating call finish after the user pressed Esc and report as a normal result.
+            with contextlib.suppress(Exception):
                 await generation.worker.close()
             source = generation.revision.source
             try:
                 worker, _ = await PluginProcess.start(source, python=generation.revision.python, cwd=self.context().cwd, config=generation.revision.settings)
+            except asyncio.CancelledError:
+                # A cancellation is not a failed restart: the plugin stays parked and retryable.
+                raise
             except BaseException:
                 # A restart that cannot happen is a failure, not a parked plugin: leave the closed
                 # worker visible so status says "failed" and discovery stops offering the tool.

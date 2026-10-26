@@ -71,8 +71,9 @@ class PluginTool(Tool):
 
     @staticmethod
     def usable(runtime, name: str = "") -> list[tuple[str, str, Any]]:
-        """``(plugin, tool, operation)`` for every tool of a running plugin, optionally one plugin's:
-        what ``list`` discloses and what ``tools.offer`` may add."""
+        """``(plugin, tool, operation)`` for every tool of a usable plugin (running, or parked
+        between calls), optionally one plugin's: what ``list`` discloses and what ``tools.offer``
+        may add."""
         return [
             (plugin, tool, operation)
             for plugin, entry in runtime.entries.items()

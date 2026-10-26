@@ -35,6 +35,13 @@
   sampler also no longer sends a field request every tick (0.2 s) to plugins that register
   neither fields nor a `tick` observer.
 
+- Cancelling a plugin call while a parked tools-only plugin restarts its worker no longer marks
+  the plugin "failed" with a phantom exit error: it stays parked ("idle") and the next call
+  retries. Cancelling during the parked worker's teardown now ends the call instead of letting
+  the tool run to completion and report as a normal result after the user pressed Esc.
+- The `/mcp` server table now shows the environment variable names a stdio server receives from
+  `secret_env` (names only; values stay in secrets.toml).
+
 ## 0.75.3 - 2026-10-17
 
 - `/model` can discover OpenCode Zen and Go models again. Their public `/models` endpoints are
