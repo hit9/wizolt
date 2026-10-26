@@ -141,7 +141,9 @@ class PluginManager:
             lines.insert(0, "Built in · enabled for your user" if item.get("enabled") else "Built in · off until you enable it")
         for key in ("fields", "commands", "tools", "slots", "themes"):
             if values := item.get(key):
-                lines.append(f"{key.capitalize()}: {', '.join(values)}")
+                # Only tools carry per-entry metadata: mark the ones whose calls skip approval.
+                names = [name if not spec.get("read_only") else f"{name} (read-only)" for name, spec in values.items()] if key == "tools" else values
+                lines.append(f"{key.capitalize()}: {', '.join(names)}")
         # Presets arrive grouped by kind, and every kind is present even when it is empty.
         if presets := [f"{kind} {', '.join(names)}" for kind, names in item.get("presets", {}).items() if names]:
             lines.append(f"Presets: {'; '.join(presets)}")

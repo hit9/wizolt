@@ -15,7 +15,7 @@ mutable state in your own objects. `*` below means keyword-only arguments.
 | `plugin.field(name, callback)` | Sync `(Context) -> str \| int \| float \| bool`; floats must be finite |
 | `plugin.component(slot, callback, *, gap_before=0)` | Sync `(Context) -> Panel` |
 | `plugin.command(name, description, handler, *, during_turn=False)` | Async `(Context, Mapping[str, Any]) -> str \| list[Line]`; register `/name`; styled rows answer the user in the host's report frame, one theme role per `Text` span (a tool stays text: it answers the model) |
-| `plugin.tool(name, description, parameters, handler)` | Register a plugin operation, not a standalone model tool; same handler, JSON Schema object parameters; call only through `Plugin` list/describe/call |
+| `plugin.tool(name, description, parameters, handler, *, read_only=False)` | Register a plugin operation, not a standalone model tool; same handler, JSON Schema object parameters; call only through `Plugin` list/describe/call; a `read_only` tool answers without approval |
 | `plugin.on(event, observer)` | Async `(Event) -> None`; observers do not control the agent's operation |
 | `plugin.theme(name, definition)` | Register theme metadata; see [APPEARANCE.md](APPEARANCE.md) |
 | `plugin.preset(kind, name, source)` | Register a `statusbar` or `divider` format string |
@@ -56,7 +56,8 @@ experimental; the bundled reference matches the installed wizolt version.
 does not make `remember` or `my_plugin.remember` directly callable, including as a ToolScript
 tool name. The model uses `Plugin(action="list", name="my_plugin")`, then
 `Plugin(action="describe", name="my_plugin", tool="remember")`, then
-`Plugin(action="call", name="my_plugin", tool="remember", arguments={...})` with normal approval.
+`Plugin(action="call", name="my_plugin", tool="remember", arguments={...})` with the user's
+approval — or without asking, for a tool registered `read_only=True`.
 Registration does not change the model's fixed tool schema; descriptions and parameters are
 disclosed on demand. A `tools.offer` interceptor may offer one directly instead, as
 `my_plugin-remember` (see `tools.offer` in [INTERCEPTION.md](INTERCEPTION.md)). The offline CLI is a
@@ -387,7 +388,8 @@ Registration methods:
   external schemas are not fetched.
   This is how a plugin gives the agent a capability. The agent's `Plugin` tool lists tools by name
   and description, describes one's parameters on request, then calls it with the user's approval
-  (yolo auto-approves); arguments are validated before your handler runs. Write the description
+  (yolo auto-approves; a `read_only=True` tool runs without asking); arguments are validated
+  before your handler runs. Write the description
   for a model: what it does and when to use it. Offline: `wizolt plugin test NAME --call
   tool:OPERATION --arguments '{...}'` runs a fresh instance with preview context, provided the
   handler does not need host RPC (see the trial boundaries below).

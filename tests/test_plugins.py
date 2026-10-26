@@ -448,12 +448,14 @@ def setup(p):
     finally:
         await session.plugins.close()
 
+
 async def test_read_only_plugin_tools_skip_approval_and_plugin_calls_stay_serial(tmp_path):
     from agent_harness import call, session_with_provider
 
     from wizolt.agent.context import ContextManager
     from wizolt.agent.lifecycle import bootstrap_features
     from wizolt.agent.runner import ToolRunner
+    from wizolt.base import ToolError
     from wizolt.tools.plugin import PluginTool
 
     session = session_with_provider(tmp_path)
@@ -486,6 +488,10 @@ def setup(p):
         # Plugin calls stay serial until the worker concurrency contract exists; list keeps its place.
         assert not runner.parallel_safe(call("Plugin", [{"action": "call", "name": "notes", "tool": "peek"}]))
         assert runner.parallel_safe(call("Plugin", [{"action": "list"}]))
+        # Malformed args refuse the same way they did before the flag, and never go parallel.
+        with pytest.raises(ToolError):
+            PluginTool(session, ["not a dict"]).needs_confirmation()
+        assert not runner.parallel_safe(call("Plugin", ["not a dict"]))
     finally:
         await session.plugins.close()
 
@@ -499,6 +505,115 @@ def test_tool_capabilities_carry_read_only_and_default_for_older_workers():
     current = Capabilities.decode("notes", payload({"peek": {"description": "d", "parameters": {}, "read_only": True}}))
     older = Capabilities.decode("notes", payload({"peek": {"description": "d", "parameters": {}}}))
     assert current.tools["peek"].read_only and not older.tools["peek"].read_only
+    with pytest.raises(PluginError, match="read_only must be a boolean"):
+        Capabilities.decode("notes", payload({"peek": {"description": "d", "parameters": {}, "read_only": "false"}}))
+
+
+def test_read_only_must_be_declared_with_a_boolean():
+    async def handler(ctx, args):
+        return "read"
+
+    plugin = Plugin("notes")
+    with pytest.raises(PluginError, match="read_only must be a boolean"):
+        plugin.tool("peek", "Read notes back", {"type": "object"}, handler, read_only="false")
+    with pytest.raises(PluginError, match="read_only must be a boolean"):
+        plugin.tool("peek", "Read notes back", {"type": "object"}, handler, read_only=1)
+
+
+NOTES_WITH_PEEK = '''SDK_VERSION = 1
+def setup(p):
+    async def remember(ctx, args):
+        return "saved " + args["body"]
+    async def peek(ctx, args):
+        return "no notes"
+    p.tool("remember", "Save a note", {"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, remember)
+    p.tool("peek", "Read notes back", {"type": "object", "additionalProperties": False}, peek, read_only=True)
+'''
+
+
+async def test_read_only_tools_are_visible_in_list_describe_and_inspection(tmp_path):
+    from agent_harness import call, session_with_provider
+
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.lifecycle import bootstrap_features
+    from wizolt.agent.runner import ToolRunner
+
+    session = session_with_provider(tmp_path)
+    bootstrap_features(session)
+    runner = ToolRunner(session, ContextManager(session), output_fn=lambda _: None)
+
+    async def run(**payload):
+        [message] = await runner.run([call("Plugin", [payload])])
+        return str(message["content"])
+
+    (tmp_path / "notes.py").write_text(NOTES_WITH_PEEK)
+    try:
+        await session.plugins.manage("enable", str(tmp_path / "notes.py"))
+        listed = await run(action="list", name="notes")
+        assert '"tool": "peek", "description": "Read notes back", "read_only": true' in listed
+        assert '"tool": "remember", "description": "Save a note", "read_only": false' in listed
+        assert '"read_only": true' in await run(action="describe", name="notes", tool="peek")
+        record = await session.plugins.manage("inspect", "notes")
+        inspected = record["plugins"][0]["tools"]
+        assert inspected["peek"]["read_only"] is True and inspected["remember"]["read_only"] is False
+    finally:
+        await session.plugins.close()
+
+
+async def test_a_pretool_use_ask_still_prompts_for_a_read_only_plugin_call(tmp_path):
+    from agent_harness import call, session_with_provider
+
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.lifecycle import bootstrap_features
+    from wizolt.agent.runner import ToolRunner
+    from wizolt.shellhooks import HookCommand, ShellHooks
+
+    session = session_with_provider(tmp_path)
+    bootstrap_features(session)
+    asked = []
+
+    def answer(prompt):
+        asked.append(prompt)
+        return "n"
+
+    ask = '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask"}}'
+    table = {"PreToolUse": [{"matcher": "", "hooks": [{"type": "command", "command": f"echo '{ask}'"}]}]}
+    session.shell_hooks = ShellHooks(HookCommand.parse_table(table), str(session.cwd))
+    runner = ToolRunner(session, ContextManager(session), input_fn=answer, output_fn=lambda _: None)
+    (tmp_path / "notes.py").write_text(NOTES_WITH_PEEK)
+    try:
+        await session.plugins.manage("enable", str(tmp_path / "notes.py"))
+        [message] = await runner.run([call("Plugin", [{"action": "call", "name": "notes", "tool": "peek"}])])
+        assert len(asked) == 1 and "no notes" not in str(message["content"])  # The hook's ask outranks the exemption.
+    finally:
+        await session.plugins.close()
+
+
+async def test_yolo_off_a_read_only_call_runs_unprompted_while_a_mutating_one_asks(tmp_path):
+    from agent_harness import call, session_with_provider
+
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.lifecycle import bootstrap_features
+    from wizolt.agent.runner import ToolRunner
+
+    session = session_with_provider(tmp_path)
+    bootstrap_features(session)
+    asked = []
+
+    def answer(prompt):
+        asked.append(prompt)
+        return "n"
+
+    runner = ToolRunner(session, ContextManager(session), input_fn=answer, output_fn=lambda _: None)
+    (tmp_path / "notes.py").write_text(NOTES_WITH_PEEK)
+    try:
+        await session.plugins.manage("enable", str(tmp_path / "notes.py"))
+        [peeked] = await runner.run([call("Plugin", [{"action": "call", "name": "notes", "tool": "peek", "arguments": {}}])])
+        assert asked == [] and "no notes" in str(peeked["content"])
+        [refused] = await runner.run([call("Plugin", [{"action": "call", "name": "notes", "tool": "remember", "arguments": {"body": "milk"}}])])
+        assert len(asked) == 1 and "saved milk" not in str(refused["content"])
+    finally:
+        await session.plugins.close()
 
 
 def test_builtin_skill_is_discoverable(tmp_path):

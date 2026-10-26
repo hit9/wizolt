@@ -15,6 +15,11 @@
   is the author's promise, not a checked boundary. Plugin calls remain serial: a read-only call
   does not yet join parallel batches, waiting on a documented worker concurrency contract.
   The built-in layout plugin's `list_shortcuts` and `list_components` tools are now read-only.
+- The read-only flag is visible where the decision is made: `Plugin list` and `describe` answers
+  carry `read_only` per tool, `wizolt plugin inspect` and the `/plugins` details mark read-only
+  tools, and `plugin.tool(read_only=...)` now refuses a non-boolean (a truthy `"false"` would
+  otherwise silently skip approval). A code comment and the plugin-issues note now state the
+  approval/execution generation invariant a reload cannot cross during a turn.
 
 ## 0.75.3 - 2026-10-17
 

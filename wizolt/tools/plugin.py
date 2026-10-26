@@ -133,14 +133,24 @@ class PluginTool(Tool):
             if action == "reload":
                 return json.dumps(await runtime.hot_reload(name), ensure_ascii=False)
             if action == "list":
-                tools = [{"name": plugin, "tool": tool, "description": operation.description} for plugin, tool, operation in self.usable(runtime, name)]
+                tools = [
+                    {"name": plugin, "tool": tool, "description": operation.description, "read_only": operation.read_only}
+                    for plugin, tool, operation in self.usable(runtime, name)
+                ]
                 return json.dumps({"tools": tools}, ensure_ascii=False)
             plugin, tool, operation = self.operation(payload)
             if action == "describe":
-                return json.dumps({"name": plugin, "tool": tool, "description": operation.description, "parameters": operation.parameters}, ensure_ascii=False)
+                return json.dumps(
+                    {"name": plugin, "tool": tool, "description": operation.description, "parameters": operation.parameters, "read_only": operation.read_only},
+                    ensure_ascii=False,
+                )
             arguments = payload.get("arguments", {})
             if not isinstance(arguments, dict):
                 raise ToolError("Plugin tool arguments must be an object")
+            # Approval judged this generation's tools: a reload publishes a new one only at a turn
+            # boundary (finish_turn), so during a turn the approved and executed handlers agree.
+            # A runner that bypasses the turn lifecycle re-opens that window and must keep the
+            # same guarantee, or confirm calls itself.
             answer = await runtime.invoke(plugin, "tool", tool, arguments)
             # A tool answers the model, so it stays text; the worker refuses anything else.
             if not isinstance(answer, str):

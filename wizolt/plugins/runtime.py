@@ -395,7 +395,10 @@ class PluginRuntime:
             "pending_version": entry.pending.revision.source.digest if entry.pending else "",
             "fields": list(item.plugin.fields),
             "commands": list(item.plugin.commands),
-            "tools": {key: {"description": action.description, "parameters": action.parameters} for key, action in item.plugin.tools.items()},
+            "tools": {
+                key: {"description": action.description, "parameters": action.parameters, "read_only": action.read_only}
+                for key, action in item.plugin.tools.items()
+            },
             "slots": list(item.plugin.components),
             "intercepts": {
                 operation: {"match": {key: sorted(values) for key, values in spec.match.items()}, **({"response": spec.response} if spec.response else {})}

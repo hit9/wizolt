@@ -26,6 +26,11 @@ class Operation:
     during_turn: bool = False
     read_only: bool = False  # Older workers omit it; an untagged tool is treated as mutating.
 
+    def __post_init__(self) -> None:
+        # The wire is ours, but the flag decides approval, so a non-boolean never reaches it.
+        if type(self.read_only) is not bool:
+            raise PluginError("Tool read_only must be a boolean")
+
 
 @dataclass(frozen=True)
 class Capabilities:

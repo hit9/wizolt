@@ -76,7 +76,7 @@ def setup(p):
         tool = PluginTool(session, [{"action": "list", "name": "lookup"}])
         assert not tool.needs_confirmation()
         listed = json.loads(await tool.call())
-        assert listed == {"tools": [{"name": "lookup", "tool": "operation", "description": "SECRET_DESCRIPTION"}]}
+        assert listed == {"tools": [{"name": "lookup", "tool": "operation", "description": "SECRET_DESCRIPTION", "read_only": False}]}
         assert json.loads(await PluginTool(session, [{"action": "list", "name": "unknown"}]).call()) == {"tools": []}
         [block] = await Agent(session, output_fn=lambda _: None).mention_messages("@plugin:lookup")
         assert "SECRET_DESCRIPTION" not in block["content"] and "operation" not in block["content"]

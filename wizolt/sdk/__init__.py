@@ -375,6 +375,9 @@ class Plugin:
         from jsonschema.exceptions import SchemaError
 
         self._callback(handler, asynchronous=True)
+        if type(read_only) is not bool:
+            # A truthy non-boolean ("false") would silently skip approval, so refuse it here.
+            raise PluginError("read_only must be a boolean")
         try:
             Draft202012Validator.check_schema(dict(parameters))
         except SchemaError as error:
