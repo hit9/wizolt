@@ -76,7 +76,10 @@ class PluginTool(Tool):
         return [
             (plugin, tool, operation)
             for plugin, entry in runtime.entries.items()
-            if (not name or plugin == name) and not entry.disabling and not entry.active.worker.error and entry.active.worker.process.returncode is None
+            # A parked tools-only plugin stays discoverable and callable: its worker restarts.
+            if (not name or plugin == name)
+            and not entry.disabling
+            and (entry.active.idle or (not entry.active.worker.error and entry.active.worker.process.returncode is None))
             for tool, operation in entry.active.plugin.tools.items()
         ]
 

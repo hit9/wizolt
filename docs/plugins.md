@@ -200,7 +200,9 @@ To undo a change, restore the earlier source from Git and reload; wizolt keeps n
 If you delete a plugin's `[plugin_manager.installations.NAME]` table from `config.toml`, the next
 reload stops it in running agents too.
 
-The state is **running**, **failed** or **off**. During a turn, or while that plugin's command
+The state is **running**, **idle**, **failed** or **off**. A plugin that only adds tools is
+**idle**: its worker is parked, and the first use of one of its tools starts it again (about a
+tenth of a second); it parks again after five minutes unused. During a turn, or while that plugin's command
 is running, a change waits and shows what it waits to do: **starting**, **reloading** or
 **stopping**. Commands in other plugins do not hold up the update. A failed update or
 settings save leaves the current plugin unchanged. You can ask the agent to manage it too:

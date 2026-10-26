@@ -50,6 +50,13 @@ class Capabilities:
     intercepts: dict[str, "InterceptSpec"] = field(default_factory=dict)
     presenters: dict[str, "PresenterSpec"] = field(default_factory=dict)
 
+    @property
+    def resident(self) -> bool:
+        """Whether anything registered is push-driven and needs a live worker while idle: fields,
+        panels, events, commands or step-ins. A tools-only plugin (themes and presets are
+        host-side data) answers from these cached descriptions between its calls."""
+        return bool(self.fields or self.components or self.observers or self.commands or self.intercepts or self.presenters)
+
     @classmethod
     def decode(cls, name: str, value: dict) -> "Capabilities":
         return cls(

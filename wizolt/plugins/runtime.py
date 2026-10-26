@@ -71,18 +71,22 @@ class Generation:
     operations: set[asyncio.Task] = field(default_factory=set)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     events: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # A tools-only plugin parked between calls: cached capabilities answer until a call resumes it.
+    idle: bool = False
+    park: asyncio.Lock = field(default_factory=asyncio.Lock)  # Serializes parking with a resume.
+    last_used: float = field(default_factory=time.monotonic)
 
     def fail(self, registration: str, reason: str) -> None:
         self.failures.setdefault(registration, reason)
 
     def failure(self, registration: str) -> str:
         """Why a registration is unavailable: its own failure, or its worker's exit."""
-        return self.failures.get(registration) or self.worker.error
+        return self.failures.get(registration) or ("" if self.idle else self.worker.error)
 
     @property
     def error(self) -> str:
         """A summary for status and inspection only; decisions use ``failure(registration)``."""
-        return "; ".join(f"{key}: {reason}" for key, reason in self.failures.items()) or self.worker.error
+        return "; ".join(f"{key}: {reason}" for key, reason in self.failures.items()) or ("" if self.idle else self.worker.error)
 
     async def refresh(self, context: Context, *, components: bool = False) -> None:
         """Serialize samples, never enqueue a sample for every terminal layout query."""
@@ -129,6 +133,8 @@ class Entry:
             return "stopping"
         if self.pending:
             return "reloading"
+        if self.active.idle:
+            return "idle"
         if self.active.error:
             return "failed"
         return "running"
@@ -138,6 +144,7 @@ class PluginRuntime:
     OBSERVER_TIMEOUT = 1.0
     ACTION_TIMEOUT = 60.0
     REFRESH_INTERVAL = 0.2
+    IDLE_AFTER = 300.0  # A tools-only plugin's worker parks once this many seconds pass unused.
 
     def __init__(self, context: Callable[[], Context], settings: PluginSettings | None = None):
         self.context = context
@@ -379,9 +386,7 @@ class PluginRuntime:
         A deferred disable still runs until its lease ends, so it remains counted. Failed
         callbacks and dead workers are excluded even before the next sampler notices EOF.
         """
-        return sum(
-            not entry.active.error and not entry.active.worker.error and entry.active.worker.process.returncode is None for entry in self.entries.values()
-        )
+        return sum(not entry.active.error and (entry.active.idle or entry.active.worker.process.returncode is None) for entry in self.entries.values())
 
     @staticmethod
     def describe(name: str, entry: Entry) -> dict[str, Any]:
@@ -418,6 +423,43 @@ class PluginRuntime:
         self._retiring.add(task)
         task.add_done_callback(self._retiring.discard)
 
+    def _park(self, generation: Generation) -> None:
+        """Stop a tools-only plugin's worker; cached capabilities answer until a call resumes it.
+
+        A crash never sets ``idle``: a parked generation is healthy by definition until its next
+        call proves otherwise, while a dead worker of a running generation stays "failed".
+        """
+        generation.idle = True
+        task = asyncio.create_task(generation.worker.close())
+        self._retiring.add(task)
+        task.add_done_callback(self._retiring.discard)
+
+    async def _resume(self, generation: Generation) -> None:
+        """Restart a parked worker for this call. The pinned revision launches exactly what
+        approval judged; the decoded description is the one already cached, so it is ignored."""
+        async with generation.park:
+            if not generation.idle:
+                return  # A concurrent call resumed it while this one waited for the lock.
+            source = generation.revision.source
+            worker, _ = await PluginProcess.start(source, python=generation.revision.python, cwd=self.context().cwd, config=generation.revision.settings)
+            worker.host_calls.handler = partial(self.call_host, owner=source.name)
+            generation.worker, generation.idle = worker, False
+
+    def _sweep(self, now: float) -> None:
+        """Park tools-only generations unused past the idle window. Calls pin ``invocations``
+        first, so a parking sweep and an arriving call never race on one worker."""
+        for entry in self.entries.values():
+            generation = entry.active
+            if (
+                not generation.idle
+                and not generation.plugin.resident
+                and entry.pending is None
+                and not entry.disabling
+                and not generation.invocations
+                and now - generation.last_used > self.IDLE_AFTER
+            ):
+                self._park(generation)
+
     def after_lease(self) -> None:
         """An operation released the generations it pinned; publish what was waiting."""
         self._publish()
@@ -433,7 +475,10 @@ class PluginRuntime:
             return
         self._layout_version += 1
         self._components.clear()
-        self.entries.update((name, Entry(candidate)) for name, candidate in self._pending_new.items())
+        published: list[Generation] = []
+        for name, candidate in self._pending_new.items():
+            self.entries[name] = Entry(candidate)
+            published.append(candidate)
         self._pending_new.clear()
         for name, entry in eligible.items():
             if entry.disabling:
@@ -442,6 +487,12 @@ class PluginRuntime:
             elif entry.pending:
                 self._retire(entry.active)
                 entry.active, entry.pending = entry.pending, None
+                published.append(entry.active)
+        # Validation had to run the plugin; a tools-only one has nothing push-driven to keep
+        # alive, so park it now. Discovery reads cached capabilities and a call restarts it.
+        for generation in published:
+            if not generation.plugin.resident:
+                self._park(generation)
         if not self.presenters.registered("activity"):
             # The refresh loop stops with the last entry, so the switch drops a retired activity
             # presenter's cached panel itself rather than painting it on.
@@ -475,11 +526,16 @@ class PluginRuntime:
         """
         if not self.entries:
             return
+        self._sweep(time.monotonic())
         async with self._sampling:
             version = self._layout_version
             generations = {name: entry.active for name, entry in self.entries.items()}
             context = self.facts()
-            await asyncio.gather(*(item.refresh(context) for item in generations.values() if not item.plugin.components))
+            # Sample only generations with fields to read: a parked or tools-only one would
+            # otherwise pay one IPC per tick to fetch an empty dict.
+            await asyncio.gather(
+                *(item.refresh(context) for item in generations.values() if item.plugin.fields and not item.plugin.components and not item.idle)
+            )
             sampled: set[str] = set()
             budget = LayoutBudget(self.viewport)
             panels: dict[str, dict[str, Panel]] = {name: {} for name in generations}
@@ -653,8 +709,11 @@ class PluginRuntime:
             raise PluginError(f"Unknown {kind}: {name}.{action}")
         # Schema evaluation can itself block (for example, a pathological regex). The
         # worker validates before calling the handler, under the same action deadline.
+        # Pin before the resume check: the idle sweep must never park a worker under a call.
         generation.invocations += 1
         try:
+            if generation.idle:
+                await self._resume(generation)
             result = await generation.worker.request(
                 "invoke",
                 timeout=self.ACTION_TIMEOUT,
@@ -672,6 +731,7 @@ class PluginRuntime:
             return answer
         finally:
             generation.invocations -= 1
+            generation.last_used = time.monotonic()
             self._publish()
 
     async def close(self) -> None:

@@ -606,3 +606,159 @@ def test_user_catalog_resolves_data_directory_symlinks_without_project_storage(t
     assert catalog.directory == data / "plugins" / ".state"
     assert "example" in PluginCatalog.for_user(str(data)).read()[0]
     assert not (data / "projects").exists()
+
+
+# --- tools-only plugins park their worker between calls -------------------------------------------
+
+
+NOTES = '''SDK_VERSION = 1
+def setup(p):
+    async def peek(ctx, args):
+        return "no notes"
+    p.tool("peek", "Read notes back", {"type": "object"}, peek, read_only=True)
+'''
+
+
+async def test_a_tools_only_plugin_parks_after_enable_and_stays_discoverable(tmp_path):
+    import json
+
+    from agent_harness import session_with_provider
+
+    from wizolt.agent.lifecycle import bootstrap_features
+    from wizolt.tools.plugin import PluginTool
+
+    session = session_with_provider(tmp_path)
+    bootstrap_features(session)
+    (tmp_path / "notes.py").write_text(NOTES)
+    try:
+        await session.plugins.manage("enable", str(tmp_path / "notes.py"))
+        entry = session.plugins.entries["notes"]
+        assert entry.active.idle and entry.status == "idle"  # Validation ran it; nothing keeps it alive.
+        assert session.plugins.active_count == 1  # A parked plugin is usable, not failed or gone.
+        assert [(plugin, tool) for plugin, tool, _ in PluginTool.usable(session.plugins)] == [("notes", "peek")]
+        listed = json.loads(await PluginTool(session, [{"action": "list", "name": "notes"}]).call())
+        assert listed["tools"][0]["tool"] == "peek"  # Discovery answers from cached capabilities.
+        described = json.loads(await PluginTool(session, [{"action": "describe", "name": "notes", "tool": "peek"}]).call())
+        assert described["read_only"] is True
+        assert (await session.plugins.manage("inspect", "notes"))["plugins"][0]["status"] == "idle"
+    finally:
+        await session.plugins.close()
+
+
+async def test_a_parked_plugin_restarts_on_its_first_call(tmp_path):
+    from agent_harness import call, session_with_provider
+
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.lifecycle import bootstrap_features
+    from wizolt.agent.runner import ToolRunner
+
+    session = session_with_provider(tmp_path)
+    bootstrap_features(session)
+    runner = ToolRunner(session, ContextManager(session), output_fn=lambda _: None)
+    (tmp_path / "notes.py").write_text(NOTES)
+    try:
+        await session.plugins.manage("enable", str(tmp_path / "notes.py"))
+        assert session.plugins.entries["notes"].active.idle
+        # Read-only: no approval is needed, so the restart is the call's only extra cost.
+        [message] = await runner.run([call("Plugin", [{"action": "call", "name": "notes", "tool": "peek", "arguments": {}}])])
+        assert "no notes" in str(message["content"])
+        entry = session.plugins.entries["notes"]
+        assert not entry.active.idle and entry.active.worker.process.returncode is None
+    finally:
+        await session.plugins.close()
+
+
+async def test_a_restarted_worker_parks_again_after_the_idle_window(tmp_path, monkeypatch):
+    from agent_harness import call, session_with_provider
+
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.lifecycle import bootstrap_features
+    from wizolt.agent.runner import ToolRunner
+    from wizolt.plugins.runtime import PluginRuntime
+
+    monkeypatch.setattr(PluginRuntime, "IDLE_AFTER", 0.0)
+    session = session_with_provider(tmp_path)
+    bootstrap_features(session)
+    runner = ToolRunner(session, ContextManager(session), output_fn=lambda _: None)
+    (tmp_path / "notes.py").write_text(NOTES)
+    try:
+        await session.plugins.manage("enable", str(tmp_path / "notes.py"))
+        [first] = await runner.run([call("Plugin", [{"action": "call", "name": "notes", "tool": "peek", "arguments": {}}])])
+        assert "no notes" in str(first["content"]) and not session.plugins.entries["notes"].active.idle
+        await session.plugins.refresh()  # The sweep runs with each sampling pass.
+        assert session.plugins.entries["notes"].active.idle
+        [again] = await runner.run([call("Plugin", [{"action": "call", "name": "notes", "tool": "peek", "arguments": {}}])])
+        assert "no notes" in str(again["content"])  # Parked again, and still callable.
+    finally:
+        await session.plugins.close()
+
+
+async def test_resident_registrations_keep_their_worker_alive(tmp_path):
+    from agent_harness import session_with_provider
+
+    from wizolt.agent.lifecycle import bootstrap_features
+
+    sources = {
+        "fielded": 'SDK_VERSION = 1\ndef setup(p):\n    p.field("value", lambda ctx: 7)\n',
+        "commanded": 'SDK_VERSION = 1\ndef setup(p):\n    async def run(ctx, args):\n        return "ran"\n    p.command("run", "Run it", run)\n',
+        "paneled": 'from wizolt.sdk import Panel, Text\nSDK_VERSION = 1\ndef setup(p):\n    def draw(ctx):\n        return Panel((Text("hi"),))\n    p.component("status", draw)\n',
+        "watching": 'SDK_VERSION = 1\ndef setup(p):\n    async def tick(ctx):\n        return None\n    p.on("tick", tick)\n',
+    }
+    session = session_with_provider(tmp_path)
+    bootstrap_features(session)
+    try:
+        for name, source in sources.items():
+            (tmp_path / f"{name}.py").write_text(source)
+            await session.plugins.manage("enable", str(tmp_path / f"{name}.py"))
+        await session.plugins.refresh()
+        for name in sources:
+            entry = session.plugins.entries[name]
+            assert not entry.active.idle and entry.active.worker.process.returncode is None, name
+    finally:
+        await session.plugins.close()
+
+
+async def test_the_builtin_plugins_are_classified_by_their_registrations(tmp_path):
+    from agent_harness import session_with_provider
+
+    from wizolt.agent.lifecycle import bootstrap_features
+
+    session = session_with_provider(tmp_path)
+    bootstrap_features(session)
+    try:
+        for name in session.plugins.catalog.defaults:
+            await session.plugins.manage("enable", name)
+        # Only layout registers tools alone; the rest have commands, panels or step-ins.
+        assert {name: session.plugins.entries[name].active.idle for name in session.plugins.entries} == {
+            "layout": True,
+            "pet": False,
+            "context_bar": False,
+            "system_prompt": False,
+            "tool_visibility": False,
+            "usage": False,
+        }
+    finally:
+        await session.plugins.close()
+
+
+async def test_reloading_a_parked_plugin_validates_then_parks_again(tmp_path):
+    from agent_harness import call, session_with_provider
+
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.lifecycle import bootstrap_features
+    from wizolt.agent.runner import ToolRunner
+
+    session = session_with_provider(tmp_path)
+    bootstrap_features(session)
+    runner = ToolRunner(session, ContextManager(session), output_fn=lambda _: None)
+    (tmp_path / "notes.py").write_text(NOTES)
+    try:
+        await session.plugins.manage("enable", str(tmp_path / "notes.py"))
+        (tmp_path / "notes.py").write_text(NOTES.replace("no notes", "fresh notes"))
+        await session.plugins.manage("reload", "notes")
+        entry = session.plugins.entries["notes"]
+        assert entry.active.idle  # The reload validated the new code, then parked it again.
+        [message] = await runner.run([call("Plugin", [{"action": "call", "name": "notes", "tool": "peek", "arguments": {}}])])
+        assert "fresh notes" in str(message["content"])
+    finally:
+        await session.plugins.close()

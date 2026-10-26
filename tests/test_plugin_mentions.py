@@ -69,6 +69,7 @@ def setup(p):
     async def run(ctx, args):
         return "unused"
     p.tool("operation", "SECRET_DESCRIPTION", {"type": "object"}, run)
+    p.field("v", lambda ctx: 1)  # A field keeps the worker resident: only tools would park it.
 ''')
     try:
         await session.plugins.manage("enable", str(path))

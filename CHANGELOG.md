@@ -21,6 +21,15 @@
   otherwise silently skip approval), and so does `plugin.command(..., during_turn=...)` for the
   same reason. A code comment and the plugin-issues note now state the
   approval/execution generation invariant a reload cannot cross during a turn.
+- A plugin that registers only tools no longer keeps a worker process alive. wizolt still runs it
+  once to validate on enable or reload, then parks the worker: discovery (`Plugin` list and
+  `describe`, `/plugins`, directly offered tools) answers from cached capabilities, and the first
+  `Plugin call` restarts it — about a tenth of a second on a warm cache, the only added latency.
+  An idle sweep parks it again after five unused minutes, and a crashed worker of a running
+  plugin is still "failed" and not discoverable. A parked plugin shows as `idle` in `/plugins`.
+  Plugins with fields, panels, events, commands, interceptors or presenters stay resident as
+  before; among the built-ins only `layout` is tools-only. The sampler also no longer sends a
+  field request every tick (0.2 s) to plugins that register no fields.
 
 ## 0.75.3 - 2026-10-17
 

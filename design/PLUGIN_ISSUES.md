@@ -1,9 +1,11 @@
 # Plugin issues and improvement options
 
 Status: discussion draft, 2026-10-19; item 1 stage 1 implemented 2026-10-25 (read-only metadata,
-target-aware confirmation, serial plugin calls kept). Items 2 and 3 remain open. This note records
-gaps found while comparing wizolt's plugin tool contract with Claude Code, Codex, Gemini CLI and
-Cursor. It is a maintainer note, not a user guide; user-facing behavior belongs in `docs/plugins.md`.
+target-aware confirmation, serial plugin calls kept), and item 3's first two steps implemented
+2026-10-26 (discovery from cached capabilities, tools-only lazy park/resume with an idle sweep;
+commands still imply a resident worker). Item 2 remains open. This note records gaps found while
+comparing wizolt's plugin tool contract with Claude Code, Codex, Gemini CLI and Cursor. It is a
+maintainer note, not a user guide; user-facing behavior belongs in `docs/plugins.md`.
 
 ## Current model
 
@@ -169,6 +171,15 @@ agents would violate the documented contract and the state-ownership rules.
 
 Recommendation: keep isolation for now. Collect measurements before changing lifecycle. This
 item is noted, not agreed.
+
+Implemented 2026-10-26, first two steps: discovery (`Plugin list`/`describe`, `/plugins`, direct
+offers) answers from cached capabilities without a live worker; a tools-only plugin — nothing
+registered besides tools, themes and presets — parks its worker right after validation, the first
+call restarts it, and an idle sweep parks it again after five unused minutes (`runtime.py`,
+`_park`/`_resume`/`_sweep`). A crash never marks `idle`, so a dead running generation stays
+"failed" and undiscoverable. Commands still imply a resident worker; process sharing remains
+rejected. Cold start measured at roughly a tenth of a second (full interpreter plus load
+handshake) on a warm cache.
 
 ## Recommended order
 
