@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Benchmarks: the performance reference is updated on merged master after 0.76.0. The full
+  run (now also carrying the `plugins` and `transcript` suites, 9 samples per metric) was
+  compared against the previous reference and the dev27 plugin hotspots run: no regression
+  beyond noise. The one recorded trade-off is `enable_close_one` +6% — enabling a tools-only
+  plugin now also pays its bounded park close right after validation; warm calls, sampling and
+  layout are unchanged (the parked-worker cold start is measured separately under
+  `benchmarks/results/linux-arm64-py314-plugin-worker-park-resume.json`).
+
 ## 0.76.0 - 2026-10-26
 
 - MCP command servers can reuse a configured provider key with `secret_env`, for example
