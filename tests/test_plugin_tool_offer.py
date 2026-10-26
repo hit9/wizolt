@@ -46,7 +46,7 @@ async def agent(tmp_path):
     session.config.path = str(tmp_path / "config.toml")  # Where plugin settings are saved.
     (tmp_path / "config.toml").write_text("")
     bootstrap_features(session)
-    session.settings.yolo = True  # Plugin calls confirm like any mutating tool.
+    session.settings.yolo = True  # Mutating plugin calls confirm; yolo auto-approves them for scripted turns.
     instance = Agent(session, output_fn=lambda _text: None)
     instance.sent = []  # The tools each request carried, as the wire JSON.
     instance.script = []  # A tool call (or a list: one batch) per step; then a final answer.

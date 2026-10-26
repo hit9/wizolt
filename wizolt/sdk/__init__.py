@@ -353,6 +353,8 @@ class Plugin:
         plugin-owned UI state. This grants no access to mutate the host's model context.
         """
         self._callback(handler, asynchronous=True)
+        if type(during_turn) is not bool:
+            raise PluginError("during_turn must be a boolean")
         self._register(self.commands, name, Action(description, handler, during_turn=during_turn), pattern=self.COMMAND_NAME)
 
     def tool(self, name: str, description: str, parameters: Mapping[str, Any], handler: Handler, *, read_only: bool = False) -> None:

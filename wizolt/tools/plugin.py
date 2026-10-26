@@ -147,8 +147,8 @@ class PluginTool(Tool):
             arguments = payload.get("arguments", {})
             if not isinstance(arguments, dict):
                 raise ToolError("Plugin tool arguments must be an object")
-            # Approval judged this generation's tools: a reload publishes a new one only at a turn
-            # boundary (finish_turn), so during a turn the approved and executed handlers agree.
+            # Approval judged this generation's tools, and runtime._publish holds the registry
+            # while the turn is active, so during a turn the approved and executed handlers agree.
             # A runner that bypasses the turn lifecycle re-opens that window and must keep the
             # same guarantee, or confirm calls itself.
             answer = await runtime.invoke(plugin, "tool", tool, arguments)

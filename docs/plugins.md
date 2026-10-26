@@ -64,7 +64,8 @@ Type `@plugin:` to name an installed plugin. Mentioning it does not enable or ru
 ![The agent reads saved project notes through a plugin.](_static/plugins-tool.svg)
 
 A tool that only looks something up and answers can be declared read-only by its plugin; it then
-runs without asking, while every other plugin tool still asks each time.
+runs without asking, while every other plugin tool still asks each time. `/plugins` names a
+plugin's read-only tools when you select it.
 
 You can also ask for a new color theme, statusbar or divider style. Plugin styles appear in
 `/theme`. Panels can sit above the divider, above or below the input, or inside `/status`.

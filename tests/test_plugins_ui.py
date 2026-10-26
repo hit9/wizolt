@@ -42,6 +42,14 @@ def test_a_bundled_plugins_page_states_whether_it_is_enabled():
     assert not any("Built in" in line for line in manager.facts("mine", 60))
 
 
+def test_the_plugins_page_marks_read_only_tools():
+    from wizolt.ui.cli.plugins import PluginManager
+
+    manager = PluginManager(None, SimpleNamespace(components=lambda: ()))
+    manager.records = {"notes": {"path": "/u/notes.py", "tools": {"peek": {"read_only": True}, "remember": {"read_only": False}}}}
+    assert "Tools: peek (read-only), remember" in manager.facts("notes", 60)
+
+
 def test_manager_preview_names_presets_and_keeps_the_file_name_visible(monkeypatch):
     import os
 

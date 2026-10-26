@@ -81,11 +81,12 @@ blocks, and `reload` still always confirms (`wizolt/agent/runner.py:864`). The f
 become a way to bypass hook policy.
 
 The approval decision and the executed handler must be the same generation. Today that holds
-because a reload publishes a new generation only at a turn boundary (`finish_turn`); during a
-turn it stays pending, so a mid-batch read-only approval cannot be answered by newly reloaded
-mutating code. This is an invariant, not an accident: a runner that bypasses the turn lifecycle
-re-opens the window and must keep the same guarantee or confirm calls itself
-(`wizolt/tools/plugin.py`, the `invoke` site).
+because `runtime._publish` refuses to swap the registry while the turn is active, so a mid-batch
+reload stays pending and cannot answer a read-only approval with newly reloaded mutating code.
+This is an invariant, not an accident: a runner that bypasses the turn lifecycle re-opens the
+window and must keep the same guarantee or confirm calls itself
+(`wizolt/tools/plugin.py`, the `invoke` site). A mechanical pin (passing the approved generation
+into `invoke`) remains a stage-2 option.
 
 ### Tests
 

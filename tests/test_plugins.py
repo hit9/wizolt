@@ -507,9 +507,11 @@ def test_tool_capabilities_carry_read_only_and_default_for_older_workers():
     assert current.tools["peek"].read_only and not older.tools["peek"].read_only
     with pytest.raises(PluginError, match="read_only must be a boolean"):
         Capabilities.decode("notes", payload({"peek": {"description": "d", "parameters": {}, "read_only": "false"}}))
+    with pytest.raises(PluginError, match="during_turn must be a boolean"):
+        Capabilities.decode("notes", {"fields": [], "slots": {}, "events": [], "themes": {}, "presets": {}, "commands": {"run": {"description": "d", "parameters": {}, "during_turn": "yes"}}, "tools": {}})
 
 
-def test_read_only_must_be_declared_with_a_boolean():
+def test_boolean_flags_must_be_declared_with_booleans():
     async def handler(ctx, args):
         return "read"
 
@@ -518,6 +520,8 @@ def test_read_only_must_be_declared_with_a_boolean():
         plugin.tool("peek", "Read notes back", {"type": "object"}, handler, read_only="false")
     with pytest.raises(PluginError, match="read_only must be a boolean"):
         plugin.tool("peek", "Read notes back", {"type": "object"}, handler, read_only=1)
+    with pytest.raises(PluginError, match="during_turn must be a boolean"):
+        plugin.command("run", "Run", handler, during_turn="yes")
 
 
 NOTES_WITH_PEEK = '''SDK_VERSION = 1
