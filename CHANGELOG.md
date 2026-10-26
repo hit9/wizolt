@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.76.0 - 2026-10-26
 
 - MCP command servers can reuse a configured provider key with `secret_env`, for example
   `secret_env = { DEEPSEEK_API_KEY = "deepseek" }`. wizolt reads that provider entry's key, or the
