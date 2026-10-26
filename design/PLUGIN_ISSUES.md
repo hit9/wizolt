@@ -179,7 +179,13 @@ call restarts it, and an idle sweep parks it again after five unused minutes (`r
 `_park`/`_resume`/`_sweep`). A crash never marks `idle`, so a dead running generation stays
 "failed" and undiscoverable. Commands still imply a resident worker; process sharing remains
 rejected. Cold start measured at roughly a tenth of a second (full interpreter plus load
-handshake) on a warm cache.
+handshake) on a warm cache: `benchmarks/results/linux-arm64-py314-plugin-worker-park-resume.json`.
+A park drops process memory between calls — plugins that cache in memory start over after the
+idle window; durable state belongs in callbacks or files. Review follow-ups (2026-10-26): the
+sampler still samples generations with a `tick` observer (it fires on the sample), the sweep
+never parks a crashed generation, a restart that cannot happen leaves the generation "failed",
+`PluginProcess.close` is idempotent for the park-then-retire double close, and a resume lets the
+parked worker finish teardown and refuses to start one after the runtime closed.
 
 ## Recommended order
 

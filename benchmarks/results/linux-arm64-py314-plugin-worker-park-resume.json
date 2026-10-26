@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-26T08:45:57.618291+00:00",
+  "label": "linux-arm64-py314-plugin-worker-park-resume",
+  "environment": {
+    "system": "Linux",
+    "release": "6.8.0-111-generic",
+    "machine": "aarch64",
+    "python": "3.14.7",
+    "implementation": "CPython",
+    "cpu_count": 8,
+    "filesystem_cache": "warm"
+  },
+  "workload": "Cold start of a parked tools-only plugin: interpreter + import of wizolt.plugins.worker, and PluginProcess.start (boot + load handshake + capabilities) with a minimal one-tool plugin, 5 sequential runs; a warm invoke on the same worker timed for contrast.",
+  "revision": "e53b90f4",
+  "results": {
+    "interpreter_import_ms": [
+      74.0,
+      75.7,
+      69.5,
+      72.2,
+      69.5
+    ],
+    "full_start_ms": [
+      115.7,
+      102.9,
+      101.6,
+      101.3,
+      103.3
+    ],
+    "warm_invoke_ms": [
+      0.2,
+      0.3,
+      0.2,
+      0.2,
+      0.2
+    ]
+  },
+  "comparison": "Before: every enabled plugin paid full_start at each agent start and stayed resident. After (e53b90f4): tools-only plugins pay it once per enable/reload plus once per first call after a park; discovery and warm calls are unchanged."
+}

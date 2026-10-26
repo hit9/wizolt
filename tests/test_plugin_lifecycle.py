@@ -693,16 +693,18 @@ async def test_a_restarted_worker_parks_again_after_the_idle_window(tmp_path, mo
         await session.plugins.close()
 
 
-async def test_resident_registrations_keep_their_worker_alive(tmp_path):
+async def test_resident_registrations_keep_their_worker_alive_and_ticking(tmp_path):
     from agent_harness import session_with_provider
 
     from wizolt.agent.lifecycle import bootstrap_features
 
+    ticks = tmp_path / "ticks"
     sources = {
         "fielded": 'SDK_VERSION = 1\ndef setup(p):\n    p.field("value", lambda ctx: 7)\n',
         "commanded": 'SDK_VERSION = 1\ndef setup(p):\n    async def run(ctx, args):\n        return "ran"\n    p.command("run", "Run it", run)\n',
         "paneled": 'from wizolt.sdk import Panel, Text\nSDK_VERSION = 1\ndef setup(p):\n    def draw(ctx):\n        return Panel((Text("hi"),))\n    p.component("status", draw)\n',
-        "watching": 'SDK_VERSION = 1\ndef setup(p):\n    async def tick(ctx):\n        return None\n    p.on("tick", tick)\n',
+        # tick fires on the sample: the watcher must stay resident and keep receiving them.
+        "watching": f'from pathlib import Path\nSDK_VERSION = 1\nLOG = Path({str(ticks)!r})\ndef setup(p):\n    async def tick(ctx):\n        with LOG.open("a") as fh:\n            fh.write("x")\n    p.on("tick", tick)\n',
     }
     session = session_with_provider(tmp_path)
     bootstrap_features(session)
@@ -711,9 +713,74 @@ async def test_resident_registrations_keep_their_worker_alive(tmp_path):
             (tmp_path / f"{name}.py").write_text(source)
             await session.plugins.manage("enable", str(tmp_path / f"{name}.py"))
         await session.plugins.refresh()
+        await session.plugins.refresh()
         for name in sources:
             entry = session.plugins.entries[name]
             assert not entry.active.idle and entry.active.worker.process.returncode is None, name
+        assert len(ticks.read_text()) >= 2  # The sampler keeps a tick observer ticking.
+    finally:
+        await session.plugins.close()
+
+
+async def test_a_crashed_tools_only_generation_is_not_parked_into_idle(tmp_path):
+    import asyncio
+    import os
+    import signal
+
+    from agent_harness import call, session_with_provider
+
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.lifecycle import bootstrap_features
+    from wizolt.agent.runner import ToolRunner
+    from wizolt.tools.plugin import PluginTool
+
+    session = session_with_provider(tmp_path)
+    bootstrap_features(session)
+    runner = ToolRunner(session, ContextManager(session), output_fn=lambda _: None)
+    (tmp_path / "notes.py").write_text(NOTES)
+    try:
+        await session.plugins.manage("enable", str(tmp_path / "notes.py"))
+        await runner.run([call("Plugin", [{"action": "call", "name": "notes", "tool": "peek", "arguments": {}}])])
+        entry = session.plugins.entries["notes"]
+        os.kill(entry.active.worker.process.pid, signal.SIGKILL)
+        await entry.active.worker.process.wait()
+        async with asyncio.timeout(5):  # The reader records the exit after the pipes close.
+            while not entry.active.worker.error:
+                await asyncio.sleep(0.01)
+        assert entry.status == "failed"
+        entry.active.last_used = 0.0  # Long past the idle window: the sweep must not park it.
+        await session.plugins.refresh()
+        assert not entry.active.idle and entry.status == "failed"  # The evidence survives.
+        assert PluginTool.usable(session.plugins) == [] and session.plugins.active_count == 0
+    finally:
+        await session.plugins.close()
+
+
+async def test_a_restart_that_cannot_happen_surfaces_as_a_failure(tmp_path, monkeypatch):
+    from agent_harness import call, session_with_provider
+
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.lifecycle import bootstrap_features
+    from wizolt.agent.runner import ToolRunner
+    from wizolt.plugins.process import PluginProcess, WorkerError
+    from wizolt.tools.plugin import PluginTool
+
+    async def broken(*args, **kwargs):
+        raise WorkerError("start failed")
+
+    session = session_with_provider(tmp_path)
+    bootstrap_features(session)
+    runner = ToolRunner(session, ContextManager(session), output_fn=lambda _: None)
+    (tmp_path / "notes.py").write_text(NOTES)
+    try:
+        await session.plugins.manage("enable", str(tmp_path / "notes.py"))
+        assert session.plugins.entries["notes"].active.idle
+        monkeypatch.setattr(PluginProcess, "start", broken)  # Only the restart path is broken.
+        [message] = await runner.run([call("Plugin", [{"action": "call", "name": "notes", "tool": "peek", "arguments": {}}])])
+        assert "start failed" in str(message["content"])
+        entry = session.plugins.entries["notes"]
+        assert not entry.active.idle and entry.status == "failed"  # Not parked: the failure shows.
+        assert PluginTool.usable(session.plugins) == []
     finally:
         await session.plugins.close()
 

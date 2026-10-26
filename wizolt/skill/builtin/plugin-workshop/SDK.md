@@ -417,8 +417,11 @@ stay under `[plugins.NAME]`, so strict configure schemas never see host fields. 
 execution context only; it never scopes installation. Enabling persists the source path
 for future agents in any directory. Existing agents keep their
 own instances. Reload/disable wait for active turns or that plugin's invocations; unrelated
-plugin invocations do not delay publication. Live `status` is `running`, `failed` or `off`;
-a waiting change reports `starting`, `reloading` or `stopping`. `enabled` is the saved choice.
+plugin invocations do not delay publication. Live `status` is `running`, `idle`, `failed` or
+`off`; a waiting change reports `starting`, `reloading` or `stopping`. `enabled` is the saved choice.
+A plugin that registers nothing besides tools is `idle`: its worker parks between uses, restarts
+on the first call to one of its tools, and parks again after five unused minutes — process
+memory (a cache) does not survive a park, so keep durable state outside it.
 Set `WIZOLT_NO_PLUGINS=1` on startup to skip installed plugins and recover a broken installation.
 
 Optional module metadata: `DEPENDENCIES = ["package>=1.0"]` (literal requirement strings).

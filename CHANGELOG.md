@@ -24,12 +24,16 @@
 - A plugin that registers only tools no longer keeps a worker process alive. wizolt still runs it
   once to validate on enable or reload, then parks the worker: discovery (`Plugin` list and
   `describe`, `/plugins`, directly offered tools) answers from cached capabilities, and the first
-  `Plugin call` restarts it — about a tenth of a second on a warm cache, the only added latency.
-  An idle sweep parks it again after five unused minutes, and a crashed worker of a running
-  plugin is still "failed" and not discoverable. A parked plugin shows as `idle` in `/plugins`.
-  Plugins with fields, panels, events, commands, interceptors or presenters stay resident as
-  before; among the built-ins only `layout` is tools-only. The sampler also no longer sends a
-  field request every tick (0.2 s) to plugins that register no fields.
+  `Plugin call` restarts it. That restart costs one full worker start, about 0.1 s on a warm
+  cache ([measurement with workload and environment](https://github.com/hit9/wizolt/blob/master/benchmarks/results/linux-arm64-py314-plugin-worker-park-resume.json));
+  warm calls stay sub-millisecond. The trade-off: a park drops whatever the plugin kept in
+  process memory between calls, so a plugin caching in memory starts over after five idle
+  minutes. An idle sweep parks a restarted worker again after those five unused minutes, and a
+  crashed worker of a running plugin is still "failed" and not discoverable. A parked plugin
+  shows as `idle` in `/plugins`. Plugins with fields, panels, events, commands, interceptors or
+  presenters stay resident as before; among the built-ins only `layout` is tools-only. The
+  sampler also no longer sends a field request every tick (0.2 s) to plugins that register
+  neither fields nor a `tick` observer.
 
 ## 0.75.3 - 2026-10-17
 

@@ -61,6 +61,7 @@ class PluginProcess:
         self.reader = asyncio.create_task(self._read())
         self.errors = asyncio.create_task(self._drain_errors())
         self._close_lock = asyncio.Lock()
+        self._closed_once = False  # A second close must not signal an already-reaped process group.
         self.snapshot = None
 
     def admits_host_call(self, identity: int) -> bool:
@@ -224,8 +225,13 @@ class PluginProcess:
     STDERR_RATE = 8 * 1024 * 1024  # Bytes per second.
 
     async def close(self) -> None:
-        """Offer bounded resource teardown, then kill the group and drain pipe consumers."""
+        """Offer bounded resource teardown, then kill the group and drain pipe consumers.
+
+        Idempotent: parking closes a worker early and disable, reload or shutdown close it
+        again later, once the first teardown already reaped the process."""
         async with self._close_lock:
+            if self._closed_once:
+                return
             await self.host_calls.cancel()
             await self.continuations.cancel()
             if not self.error and self.process.returncode is None:
@@ -263,3 +269,4 @@ class PluginProcess:
             if self.snapshot is not None:
                 self.snapshot.cleanup()
                 self.snapshot = None
+            self._closed_once = True

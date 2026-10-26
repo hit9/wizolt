@@ -73,7 +73,7 @@ class Generation:
     events: asyncio.Lock = field(default_factory=asyncio.Lock)
     # A tools-only plugin parked between calls: cached capabilities answer until a call resumes it.
     idle: bool = False
-    park: asyncio.Lock = field(default_factory=asyncio.Lock)  # Serializes parking with a resume.
+    park: asyncio.Lock = field(default_factory=asyncio.Lock)  # Serializes concurrent resumes of one generation.
     last_used: float = field(default_factory=time.monotonic)
 
     def fail(self, registration: str, reason: str) -> None:
@@ -365,8 +365,9 @@ class PluginRuntime:
         await asyncio.gather(*(item.worker.close() for item in results if isinstance(item, Generation)), return_exceptions=True)
 
     # Live status words, each naming one situation: starting (a new plugin waits to publish),
-    # running, reloading (a replacement waits), stopping (a disable waits), failed, and off.
-    # The saved enable choice is reported separately; "pending" meant too many of these at once.
+    # running, idle (a tools-only plugin is parked between calls), reloading (a replacement
+    # waits), stopping (a disable waits), failed, and off. The saved enable choice is reported
+    # separately; "pending" meant too many of these at once.
     @staticmethod
     def staged(generation: Generation) -> dict[str, Any]:
         source = generation.revision.source
@@ -440,14 +441,28 @@ class PluginRuntime:
         async with generation.park:
             if not generation.idle:
                 return  # A concurrent call resumed it while this one waited for the lock.
+            # Let the parked worker finish its bounded teardown first: a plugin holding an
+            # exclusive resource (a lock file, a port) would otherwise race its own restart.
+            with contextlib.suppress(BaseException):
+                await generation.worker.close()
             source = generation.revision.source
-            worker, _ = await PluginProcess.start(source, python=generation.revision.python, cwd=self.context().cwd, config=generation.revision.settings)
+            try:
+                worker, _ = await PluginProcess.start(source, python=generation.revision.python, cwd=self.context().cwd, config=generation.revision.settings)
+            except BaseException:
+                # A restart that cannot happen is a failure, not a parked plugin: leave the closed
+                # worker visible so status says "failed" and discovery stops offering the tool.
+                generation.idle = False
+                raise
+            if self._closed:
+                await worker.close()  # The runtime closed while this worker started; it must not outlive it.
+                raise PluginError("Plugin runtime is closed")
             worker.host_calls.handler = partial(self.call_host, owner=source.name)
             generation.worker, generation.idle = worker, False
 
     def _sweep(self, now: float) -> None:
         """Park tools-only generations unused past the idle window. Calls pin ``invocations``
-        first, so a parking sweep and an arriving call never race on one worker."""
+        first, so a parking sweep and an arriving call never race on one worker, and a crashed
+        worker is never parked: its generation stays "failed", with its evidence."""
         for entry in self.entries.values():
             generation = entry.active
             if (
@@ -456,6 +471,8 @@ class PluginRuntime:
                 and entry.pending is None
                 and not entry.disabling
                 and not generation.invocations
+                and not generation.worker.error
+                and generation.worker.process.returncode is None
                 and now - generation.last_used > self.IDLE_AFTER
             ):
                 self._park(generation)
@@ -531,10 +548,15 @@ class PluginRuntime:
             version = self._layout_version
             generations = {name: entry.active for name, entry in self.entries.items()}
             context = self.facts()
-            # Sample only generations with fields to read: a parked or tools-only one would
-            # otherwise pay one IPC per tick to fetch an empty dict.
+            # Sample generations with fields to read, and ones whose "tick" observer fires on
+            # the sample: a parked or fieldless one would otherwise pay one IPC per tick for an
+            # empty dict, and a tick watcher would never tick.
             await asyncio.gather(
-                *(item.refresh(context) for item in generations.values() if item.plugin.fields and not item.plugin.components and not item.idle)
+                *(
+                    item.refresh(context)
+                    for item in generations.values()
+                    if (item.plugin.fields or "tick" in item.plugin.observers) and not item.plugin.components and not item.idle
+                )
             )
             sampled: set[str] = set()
             budget = LayoutBudget(self.viewport)
