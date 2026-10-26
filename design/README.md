@@ -6,6 +6,8 @@ These documents describe implementation decisions and invariants. User documenta
 - [Design](DESIGN.md): orientation, module boundaries and durable decisions.
 - [State ownership](STATE_OWNERSHIP.md): main/subagent isolation, shared services and data lifetimes.
 - [Known issues](KNOWN_ISSUES.md): accepted costs and unresolved terminal behavior.
+- [Plugin issues](PLUGIN_ISSUES.md): approval, read-only metadata and worker-cost options for the
+  plugin contract.
 - [Dependency review](DEPENDENCY_REVIEW.md): production dependency costs and alternatives.
 - [Tools and prompts](TOOLS_AND_PROMPTS.md): the plugin abilities to choose a turn's tools and
   substitute a user-written prompt, and the two bundled plugins built on them.

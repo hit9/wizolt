@@ -24,6 +24,7 @@ class Operation:
     description: str
     parameters: dict[str, Any]
     during_turn: bool = False
+    read_only: bool = False  # Older workers omit it; an untagged tool is treated as mutating.
 
 
 @dataclass(frozen=True)

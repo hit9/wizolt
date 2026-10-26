@@ -123,7 +123,10 @@ class Worker:
                     name: {"description": action.description, "parameters": dict(action.parameters), "during_turn": action.during_turn}
                     for name, action in plugin.commands.items()
                 },
-                "tools": {name: {"description": action.description, "parameters": dict(action.parameters)} for name, action in plugin.tools.items()},
+                "tools": {
+                    name: {"description": action.description, "parameters": dict(action.parameters), "read_only": action.read_only}
+                    for name, action in plugin.tools.items()
+                },
                 "intercepts": {
                     name: {"match": {key: list(values) for key, values in item.match.items()}, "response": item.response}
                     for name, item in plugin.interceptors.items()

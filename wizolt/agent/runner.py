@@ -755,6 +755,13 @@ class ToolRunner:
             or (self.session.shell_hooks is not None and self.session.shell_hooks.watches_tool(self.session, call.name))
         ):
             return False
+        if tool_class is PluginTool:
+            # Only the host-state answers (list/describe) may overlap: a plugin `call`, read-only or
+            # not, stays serial until the worker's concurrency contract is documented.
+            try:
+                return PluginTool(self.session, call.args).payload().get("action") in ("list", "describe")
+            except Exception:  # noqa: BLE001 - malformed args are never parallel-safe.
+                return False
         try:
             return not tool_class(self.session, call.args).needs_confirmation()
         except Exception:  # noqa: BLE001 - malformed third-party tool implementations are never parallel-safe.

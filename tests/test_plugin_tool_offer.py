@@ -32,6 +32,13 @@ def setup(p):
     p.tool("search", "Search my notes", {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}, search)
 """
 
+PEEK = """
+def setup(p):
+    async def peek(ctx, args):
+        return "nothing to see"
+    p.tool("peek", "Read-only peek", {"type": "object", "additionalProperties": False}, peek, read_only=True)
+"""
+
 
 @pytest.fixture
 async def agent(tmp_path):
@@ -196,6 +203,23 @@ async def test_a_plugin_tool_not_offered_directly_is_not_callable_by_its_wire_na
     await enable(agent, tmp_path, "notes", NOTES)
     result = await run_turn_with_a_tool_call(agent, ModelClient.tool_call("n1", "notes-search", {"query": "freeze"}))
     assert "unknown tool notes-search" in result
+
+
+async def test_a_directly_offered_read_only_plugin_tool_needs_no_approval_and_stays_serial(agent, tmp_path):
+    """The wire name is rewritten to the gateway call before the runner decides anything."""
+    await enable(agent, tmp_path, "peek", PEEK)
+    await enable(agent, tmp_path, "resident", "def setup(p):\n    async def h(ctx, tools, next):\n        return await next(tools.adding('peek.peek'))\n    p.intercept('tools.offer', h)\n")
+    result = await run_turn_with_a_tool_call(agent, ModelClient.tool_call("n1", "peek-peek", {}))
+    assert "nothing to see" in result
+
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.runner import ToolRunner
+    from wizolt.tools.plugin import PluginTool
+
+    rewritten = PluginTool.resident_call(agent.session, ModelClient.tool_call("n2", "peek-peek", {}))
+    assert rewritten.name == "Plugin" and not PluginTool(agent.session, rewritten.args).needs_confirmation()
+    runner = ToolRunner(agent.session, ContextManager(agent.session), output_fn=lambda _: None)
+    assert not runner.parallel_safe(rewritten)
 
 
 # --- the bundled tool_visibility plugin: /tools built on tools.offer ------------------------------

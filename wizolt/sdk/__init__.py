@@ -216,6 +216,7 @@ class Action:
     handler: Handler | CommandHandler
     parameters: Mapping[str, Any] = field(default_factory=lambda: {"type": "object", "properties": {}, "additionalProperties": False})
     during_turn: bool = False
+    read_only: bool = False
 
 
 class Plugin:
@@ -354,17 +355,22 @@ class Plugin:
         self._callback(handler, asynchronous=True)
         self._register(self.commands, name, Action(description, handler, during_turn=during_turn), pattern=self.COMMAND_NAME)
 
-    def tool(self, name: str, description: str, parameters: Mapping[str, Any], handler: Handler) -> None:
-        """Register an operation the agent can call through its ``Plugin`` tool, with approval.
+    def tool(self, name: str, description: str, parameters: Mapping[str, Any], handler: Handler, *, read_only: bool = False) -> None:
+        """Register an operation the agent can call through its ``Plugin`` tool.
 
         This does not add a standalone tool to the model's tool table or ToolScript. Discover
         it with Plugin list, obtain parameters with describe, and execute with call. The name
         alone is not callable. Description should explain what it does and when to use it.
 
+        Set ``read_only=True`` only for an operation that just reads and answers: no files,
+        settings, network or state change. The call then runs without approval. It is a
+        declaration, not enforcement: a handler that mutates despite the flag still runs.
+
         Offline trials can exercise handlers that need no host RPC. models.complete and
         ui.components require an active session: reload, then test through Plugin call.
         Plugin-owned resources acquired with service() can still be used in offline trials.
         """
+
         from jsonschema import Draft202012Validator
         from jsonschema.exceptions import SchemaError
 
@@ -375,7 +381,7 @@ class Plugin:
             raise PluginError(f"Invalid tool schema for {name}: {error.message}") from error
         if parameters.get("type") != "object":
             raise PluginError("Tool parameters must describe an object")
-        self._register(self.tools, name, Action(description, handler, parameters))
+        self._register(self.tools, name, Action(description, handler, parameters, read_only=read_only))
 
     def on(self, event: str, observer: Observer) -> None:
         """Observe a lifecycle event; observers cannot replace or cancel the host operation."""

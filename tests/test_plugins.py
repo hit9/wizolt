@@ -448,6 +448,58 @@ def setup(p):
     finally:
         await session.plugins.close()
 
+async def test_read_only_plugin_tools_skip_approval_and_plugin_calls_stay_serial(tmp_path):
+    from agent_harness import call, session_with_provider
+
+    from wizolt.agent.context import ContextManager
+    from wizolt.agent.lifecycle import bootstrap_features
+    from wizolt.agent.runner import ToolRunner
+    from wizolt.tools.plugin import PluginTool
+
+    session = session_with_provider(tmp_path)
+    bootstrap_features(session)
+    runner = ToolRunner(session, ContextManager(session), output_fn=lambda _: None)
+
+    def confirms(payload):
+        return PluginTool(session, [payload]).needs_confirmation()
+
+    # With no plugin running, a call cannot be judged and stays confirming.
+    assert confirms({"action": "reload"}) and not confirms({"action": "list"})
+    assert confirms({"action": "call", "name": "notes", "tool": "peek"})
+
+    path = tmp_path / "notes.py"
+    path.write_text('''SDK_VERSION = 1
+def setup(p):
+    async def remember(ctx, args):
+        return "saved " + args["body"]
+    async def peek(ctx, args):
+        return "no notes"
+    p.tool("remember", "Save a note", {"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, remember)
+    p.tool("peek", "Read notes back", {"type": "object", "additionalProperties": False}, peek, read_only=True)
+''')
+    try:
+        await session.plugins.manage("enable", str(path))
+        # The target decides: read-only answers without approval; a mutating or unknown one asks.
+        assert not confirms({"action": "call", "name": "notes", "tool": "peek"})
+        assert confirms({"action": "call", "name": "notes", "tool": "remember"})
+        assert confirms({"action": "call", "name": "notes", "tool": "gone"})
+        # Plugin calls stay serial until the worker concurrency contract exists; list keeps its place.
+        assert not runner.parallel_safe(call("Plugin", [{"action": "call", "name": "notes", "tool": "peek"}]))
+        assert runner.parallel_safe(call("Plugin", [{"action": "list"}]))
+    finally:
+        await session.plugins.close()
+
+
+def test_tool_capabilities_carry_read_only_and_default_for_older_workers():
+    from wizolt.plugins.protocol import Capabilities
+
+    def payload(tools):
+        return {"fields": [], "slots": {}, "events": [], "themes": {}, "presets": {}, "commands": {}, "tools": tools}
+
+    current = Capabilities.decode("notes", payload({"peek": {"description": "d", "parameters": {}, "read_only": True}}))
+    older = Capabilities.decode("notes", payload({"peek": {"description": "d", "parameters": {}}}))
+    assert current.tools["peek"].read_only and not older.tools["peek"].read_only
+
 
 def test_builtin_skill_is_discoverable(tmp_path):
     from agent_harness import session_with_provider

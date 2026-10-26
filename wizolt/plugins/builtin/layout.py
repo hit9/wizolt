@@ -43,6 +43,7 @@ def setup(plugin):
         "List user shortcuts and protected keys. Plugin commands are targets; disabled plugins keep dormant bindings.",
         {"type": "object", "additionalProperties": False},
         list_shortcuts,
+        read_only=True,
     )
     plugin.tool(
         "bind_shortcut",
@@ -92,6 +93,7 @@ def setup(plugin):
         "List components in visual order, with their height allocation and visibility.",
         {"type": "object", "additionalProperties": False},
         listing,
+        read_only=True,
     )
     plugin.tool(
         "move_component",

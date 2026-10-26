@@ -7,6 +7,14 @@
   matching `secrets.toml` line, when it starts the server and injects only the named variables.
   Before, the key had to be copied into `config.toml`, exported in the shell, or read by the server
   itself.
+- Added a maintainer note on plugin approval, read-only tool metadata and worker lifecycle
+  options (`design/PLUGIN_ISSUES.md`). No behavior changed.
+- A plugin tool can be declared read-only with `plugin.tool(..., read_only=True)`. Its calls then
+  answer without approval, like `Plugin list`/`describe` always did; a mutating tool in the same
+  plugin still asks, an unknown target still asks, and `reload` still always confirms. The flag
+  is the author's promise, not a checked boundary. Plugin calls remain serial: a read-only call
+  does not yet join parallel batches, waiting on a documented worker concurrency contract.
+  The built-in layout plugin's `list_shortcuts` and `list_components` tools are now read-only.
 
 ## 0.75.3 - 2026-10-17
 

@@ -57,7 +57,9 @@ A local repository is enough: sharing and remote hosting are optional.
 **What a plugin can add:** UI (fields, components, themes, presets), slash commands for the user,
 and tools for you. Register `plugin.tool` when the user wants *you* to gain an ability; after
 activation, use `Plugin` actions `list`, `describe`, then `call` (the user approves calls).
-`plugin.tool` does **not** add a standalone model tool. Do not call its bare name or look for it
+Declare a pure lookup `plugin.tool(..., read_only=True)` — it reads and answers, changes nothing —
+and its calls run without approval. Mislabeling a mutating tool is on the author, so tag only
+handlers you can vouch for. `plugin.tool` does **not** add a standalone model tool. Do not call its bare name or look for it
 in ToolScript's tool table; its model-facing entry point is the existing `Plugin` gateway.
 `@plugin:NAME` is a reference only. Use `Plugin(action="list", name="NAME")` to discover its
 current tools, or CLI `plugin inspect NAME` for saved installation state; mentioning does not enable it.

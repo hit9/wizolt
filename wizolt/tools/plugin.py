@@ -14,7 +14,8 @@ class PluginTool(Tool):
     one-line descriptions, `describe` one tool's parameters, and `call` runs it. The schema never
     changes as plugins come and go, so enabling one cannot invalidate the provider's prompt cache,
     and a plugin with many tools costs nothing until asked for. Reloads and calls execute trusted
-    plugin code with the user's permissions, so they confirm like any other mutating tool.
+    plugin code with the user's permissions, so they confirm like any other mutating tool -- except
+    a call to the one tool its plugin declared read-only, which answers without approval.
     """
 
     NAME = "Plugin"
@@ -37,7 +38,15 @@ class PluginTool(Tool):
         return self.single_dict_arg("Plugin requires named fields")
 
     def needs_confirmation(self) -> bool:
-        return self.payload().get("action") in ("reload", "call")
+        payload = self.payload()
+        action = payload.get("action")
+        if action != "call":
+            return action == "reload"
+        try:
+            operation = self.operation(payload)[2]
+        except ToolError:
+            return True  # Unknown target or no runtime: confirm rather than guess at its effects.
+        return not operation.read_only
 
     def approval_view(self) -> ApprovalView | None:
         """For a reload, what each plugin would do, so approving it is an informed choice."""
