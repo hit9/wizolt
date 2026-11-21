@@ -22,9 +22,11 @@ that trade is taken rather than guessing how many physical rows to delete.
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -163,3 +165,27 @@ def test_capture_requires_a_stable_frame(tmp_path, monkeypatch, stable):
         with pytest.raises(AssertionError, match="pane did not settle"):
             _settled_capture(pane, attempts=2)
         assert (tmp_path / "unstable-capture.txt").read_text() == "third"
+
+
+def test_long_transcript_is_available_in_copy_mode_after_resize(pane):
+    log = pane.path / "long.log"
+    pane.send(f"{sys.executable} {acceptance.DRIVER} 540 0.001 {log}")
+    acceptance._wait_for_markers(log, 516)
+    pane.resize(45, 21)
+    acceptance._wait_for_markers(log, 540)
+    acceptance._stop_selectors(log)
+    wire = pane.path / "pane-1.ansi"
+    start = wire.stat().st_size
+    for width, height in ((24, 12), (97, 32), (45, 23)):
+        pane.resize(width, height)
+        lines = _settled_capture(pane)
+        markers = re.findall(r"MARKER-(\d+)", "\n".join(lines))
+        assert markers == [f"{n:04d}" for n in range(1, 541)]
+    if tmux("show-option", "-wv", "-t", pane.session, "alternate-screen").strip() == "on":
+        assert b"MARKER-0001" not in wire.read_bytes()[start:]
+    tmux("set-option", "-w", "-t", pane.session, "mode-keys", "vi")
+    tmux("copy-mode", "-t", pane.session)
+    pane.keys("C-u")
+    assert int(tmux("display-message", "-p", "-t", pane.session, "#{scroll_position}")) > 0
+    tmux("send-keys", "-t", pane.session, "-X", "history-top")
+    assert "MARKER-0001" in tmux("display-message", "-p", "-t", pane.session, "#{copy_cursor_line}")

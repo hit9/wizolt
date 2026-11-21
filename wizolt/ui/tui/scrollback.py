@@ -34,6 +34,7 @@ from __future__ import annotations
 import re
 import shutil
 import sys
+from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -116,18 +117,82 @@ class _ReplayLayout:
     characters: int = 0
 
 
+class TmuxViewport:
+    """Keep only uncommitted lines on the alternate screen. tmux copy-mode sees
+    primary history followed by this screen. Each line therefore has one owner."""
+
+    def __init__(self) -> None:
+        self.lines: deque[str] = deque()
+        self.geometry: tuple[int, int, int] | None = None
+
+    def draw(self, app: Application, text: str, height: int) -> None:
+        renderer = app.renderer
+        out = renderer.output
+        rows, columns = out.get_size()
+        geometry = (rows, columns, height)
+        if not text and geometry == self.geometry and renderer.last_rendered_screen is not None:
+            return
+        entering = self.geometry is None
+        self.geometry = geometry
+        if text:
+            # Rich may put a final SGR reset after its newline. Keep it with
+            # the next write, so a style-only fragment never becomes a blank row.
+            if self.lines and not self.lines[-1].endswith("\n"):
+                text = self.lines.pop() + text
+            self.lines.extend(text.splitlines(keepends=True))
+        # Work backwards only through the screenful we can keep. A large new batch
+        # is written to native history once, with no retained-prefix scan on resize.
+        space = rows - height
+        used = visible = 0
+        for line in reversed(self.lines):
+            count = physical_rows(line, columns)
+            if used + count > space:
+                break
+            used += count
+            visible += 1
+        overflow = len(self.lines) - visible
+        if entering or overflow:
+            if entering:
+                out.write_raw("\x1b[r\x1b[0m\x1b[H\x1b[2J\x1b[3J")
+            else:
+                out.write_raw("\x1b[?1049l")
+            if overflow:
+                # Two rows and one trailing LF push the last completed row into
+                # history too. Keep the saved primary screen empty between appends.
+                out.write_raw("\x1b[1;2r\x1b[H")
+                out.write_raw("".join(self.lines.popleft() for _ in range(overflow)))
+                out.write_raw("\r\n\x1b[r")
+            out.write_raw("\x1b[?1049h")
+        out.write_raw("\x1b[r\x1b[0m\x1b[H\x1b[2J")
+        out.cursor_goto(max(1, space - used + 1), 1)
+        out.write_raw("".join(self.lines))
+        renderer.reset(leave_alternate_screen=False)
+        out.cursor_goto(space + 1, 1)
+        renderer._min_available_height = height
+
+    def leave(self, app: Application) -> None:
+        out = app.renderer.output
+        out.write_raw("\x1b[?1049l\x1b[H" + "".join(self.lines))
+        out.flush()
+
+
 class ScrollbackRegion:
     """Owns the transcript and the escape sequences that project it onto the terminal."""
 
     # Bound retained writes, not physical rows (a batch can contain many lines). Older entries
     # cannot be restored after a purge, even if the terminal retained a larger native history.
     MAX_REPLAY = 5000
+    TMUX_VIEWPORT_ROWS = 512
     # Two recently visited widths, at most ~8 MiB of Unicode text plus bounded entry metadata.
     MAX_CACHED_LAYOUT_CHARS = 1_000_000
 
     def __init__(self) -> None:
         # Number of rows above the next transcript line; None means the tail is unknown and
         # writes conservatively start immediately above the live app.
+        self.tmux_viewport_available = False
+        self.viewport: TmuxViewport | None = None
+        self._written_rows = 0
+        self._recolor_owed = False
         self.tail_row: int | None = None
         self.transcript: list[ScrollbackText] = []
         self._pending: list[ScrollbackText] = []
@@ -164,7 +229,9 @@ class ScrollbackRegion:
             return
         columns = shutil.get_terminal_size((80, 24)).columns
         for item in pending:
-            sys.stdout.write(item(columns) if callable(item) else item)
+            rendered = item(columns) if callable(item) else item
+            self._written_rows += rendered.count("\n")
+            sys.stdout.write(rendered)
         sys.stdout.flush()
         self._retain(pending)
 
@@ -190,6 +257,7 @@ class ScrollbackRegion:
         the one a width change runs, and is paid on the next render like that one.
         """
         self._layouts.clear()
+        self._recolor_owed = True
         self._rebuild_owed = True
 
     def reanchor(self) -> None:
@@ -224,10 +292,35 @@ class ScrollbackRegion:
         out.write_raw("\x1b[r")
         out.write_raw(f"\x1b[{top + renderer._cursor_pos.y + 1};{renderer._cursor_pos.x + 1}H")
         out.flush()
-        self.tail_row = min(top, tail + physical_rows(text, columns))
+        written = physical_rows(text, columns)
+        self._written_rows += written
+        self.tail_row = min(top, tail + written)
 
         self._retain(self._pending)
         self._pending.clear()
+
+    def draw_tmux_viewport(self, app: Application, height: int) -> bool:
+        if not self.tmux_viewport_available or (self.viewport is None and max(self._written_rows, len(self.transcript)) < self.TMUX_VIEWPORT_ROWS):
+            return False
+        if self._recolor_owed:
+            self.leave_viewport(app)
+            self._recolor_owed = False
+        pending, self._pending = self._pending, []
+        self._retain(pending)
+        if self.viewport is None:
+            self.viewport = TmuxViewport()
+            pending = self.transcript
+        columns = app.output.get_size().columns
+        text = "".join(item(columns) if callable(item) else item for item in pending)
+        self.viewport.draw(app, text, height)
+        self.tail_row = app.output.get_size().rows - height
+        self._rebuild_owed = False
+        return True
+
+    def leave_viewport(self, app: Application) -> None:
+        if self.viewport is not None:
+            self.viewport.leave(app)
+            self.viewport = None
 
     def _retain(self, writes: list[ScrollbackText]) -> None:
         self.transcript.extend(writes)
@@ -284,7 +377,7 @@ class ScrollbackRegion:
             anchor = app_top_row(renderer)
         except HeightIsUnknownError:
             anchor = None
-        self._rebuild_owed = False
+        self._rebuild_owed = self._recolor_owed = False
         self.tail_row = None
         self._retain(self._pending)
         self._pending.clear()

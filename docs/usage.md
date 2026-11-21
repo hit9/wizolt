@@ -304,3 +304,10 @@ a whole, including work outside wizolt, use Git.
 wizolt keeps long conversations within a working budget on its own, summarizing older
 context as needed so a session can run indefinitely. Run `/compact` to trim it now, or
 `/status` to see current context and token usage.
+
+### Long sessions in tmux
+
+With tmux's default `alternate-screen on`, long sessions keep earlier output in native
+scrollback as you resize. Use **Ctrl-b [** and your usual copy-mode navigation and search.
+Earlier diffs keep their original layout and wrap with the pane. With `alternate-screen off`,
+resizing rebuilds the retained transcript.

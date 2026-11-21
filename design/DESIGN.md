@@ -647,6 +647,12 @@ them to model messages, including compaction requests and checkpoints.
 
 ## Terminal boundary
 
+In a long tmux session with alternate-screen support, the visible tail and native history have
+separate owners. Copy-mode reads primary scrollback followed by the current alternate screen.
+As the tail fills, completed lines leave it once for primary scrollback. Resizing remeasures
+only the remaining tail. Theme changes explicitly rebuild the retained transcript. Short
+sessions and terminals without this capability use the primary-screen projection below.
+
 - Completed user/assistant/tool output prints into native terminal or tmux scrollback.
 - Drafts, live previews, queue state, selectors, and status are one prompt-toolkit application on
   the primary screen; exclusive tool-detail viewers may use the alternate screen and restore on

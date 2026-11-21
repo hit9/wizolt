@@ -1436,12 +1436,13 @@ class TuiApp:
             return
         # Erase the region we own on the screen we are leaving, so no stale footer is left behind
         # (on the way back this also drops us out of the alternate screen).
+        self.scrollback.leave_viewport(app)
         app.renderer.erase()
         app.renderer.full_screen = enabled
         app._request_absolute_cursor_position()
 
     @staticmethod
-    async def alternate_screen_available() -> bool:
+    async def alternate_screen_available(*, on_error: bool = True) -> bool:
         """Whether an exclusive modal can preserve the primary screen in this terminal."""
         if not os.environ.get("TMUX"):
             return True
@@ -1463,10 +1464,11 @@ class TuiApp:
             except TimeoutError:
                 process.kill()
                 await process.communicate()
-                return True
+                return on_error
         except OSError:
-            return True
-        return process.returncode != 0 or stdout.decode("utf-8", errors="replace").strip() != "0"
+            return on_error
+        value = stdout.strip()
+        return value == b"1" if process.returncode == 0 and value in (b"0", b"1") else on_error
 
     def modal_fragments(self) -> StyleAndTextTuples:
         return self.modal.fragments_fn() if self.modal is not None else []
@@ -2326,6 +2328,9 @@ class TuiApp:
                     # whether a tool is still active when its old screen is resized.
                     self.scrollback.note_size(rows, columns)
                     height = layout_height(rows, columns)
+                    if self.scrollback.draw_tmux_viewport(app, height):
+                        vanilla_render(*args, **kwargs)
+                        return
                     previous = renderer.last_rendered_screen
                     # Only changes to the live layout can move its top edge. Growing first uses
                     # the gap below the transcript, then scrolls just enough to protect its tail.
@@ -2385,6 +2390,7 @@ class TuiApp:
         renderer.render = render
 
     async def run(self, style: BaseStyle | None = None) -> None:  # pragma: no cover — interactive
+        self.scrollback.tmux_viewport_available = bool(os.environ.get("TMUX_PANE")) and await self.alternate_screen_available(on_error=False)
         app = self._build_application(style)
         self.app = app
 
@@ -2399,6 +2405,7 @@ class TuiApp:
             with patch_stdout():
                 await app.run_async(pre_run=start)
         finally:
+            self.scrollback.leave_viewport(app)
             self._after_run()
 
     def _after_run(self) -> None:

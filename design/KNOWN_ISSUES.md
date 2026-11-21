@@ -7,8 +7,9 @@ those decisions leave behind.
 
 ## Terminal resize costs on the primary screen
 
-Wizolt keeps its whole UI on the terminal's primary screen so that completed output lands in
-native terminal and tmux scrollback. The following costs remain with that choice.
+The primary-screen projection below is used for short sessions and when the terminal cannot
+expose primary history while displaying an alternate screen. Long tmux sessions with
+`alternate-screen on` use the visible-tail projection described in `DESIGN.md`.
 
 ### 1. A pane resize clears the terminal, including pre-wizolt shell history
 
