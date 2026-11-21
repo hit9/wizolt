@@ -303,7 +303,7 @@ as a cheaper one. Leave a field empty to inherit it from the selected provider.
 | `[compaction] model` | inherit | Override the entry's model; empty inherits |
 | `[compaction] reasoning` | inherit | Override the entry's reasoning effort; empty inherits |
 | `[compaction] api` | inherit | Override the entry's wire protocol; empty inherits |
-| `[compaction] threshold` | `1.0` | Fraction of the request budget at which automatic compaction runs, `0.5`–`1.0`. The default compacts only when a request no longer fits — a line already below the context window by the output reserve and the safety margin; lower compacts earlier, for rate limits that count the full prompt |
+| `[compaction] threshold` | `1.0` | Fraction of the request budget that triggers foreground compaction, `0.5`–`1.0`. At 80% of that line, wizolt can start summarizing older messages in the background. The next request can use a finished summary. Lower the threshold for rate limits that count the full prompt. |
 
 To choose a summarizer for one provider, add `[provider.NAME.compaction]`. It accepts `model`,
 `reasoning` and `api`, and takes precedence over `[compaction]`:

@@ -2516,6 +2516,7 @@ class StatusBar:
         self.running = False
         self.rendered = False
         self.output = create_output(sys.stderr)
+        self.summarizing = False
         self.seen_retry_count = session.state.model_retry_count
         self.retry_notice_until = 0.0
 
@@ -2640,7 +2641,11 @@ class StatusBar:
 
     def fragments(self) -> StyleAndTextTuples:
         columns = shutil.get_terminal_size((120, 20)).columns
-        return list(self.layout.render("statusbar", self.values(), max(1, columns - 1), Theme.bar_styles))
+        notice = "summarizing · " if self.summarizing else ""
+        bar: StyleAndTextTuples = list(self.layout.render("statusbar", self.values(), max(1, columns - 1 - len(notice)), Theme.bar_styles))
+        if notice:
+            bar.insert(0, ("class:subtle", notice))
+        return bar
 
     def mcp_label(self) -> str:
         """The MCP group's text: `mcp N`, with a spinner frame in front of the count while

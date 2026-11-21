@@ -161,6 +161,7 @@ async def close_agent_resources(agent: Agent, *, shared_mcp: bool = False, reaso
             if entry.agent is not agent:
                 await close_agent_resources(entry.agent, shared_mcp=True, reason=reason)
                 entry.agent.session.close()
+    await agent.context.background_history.cancel()
     try:
         await agent.end_session(reason)
     except Exception as error:  # noqa: BLE001 - a shutdown hook must not prevent resource cleanup

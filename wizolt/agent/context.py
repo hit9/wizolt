@@ -101,6 +101,7 @@ class ContextManager:
         # context depend on a renderer. False is emitted in a finally block, including model
         # failures that fall back to trimming.
         self.hooks = UiHooks()
+        self.background_history = compaction.BackgroundHistory()
         # Message count per scope ("history"/"turn") at the last automatic compaction decision. See
         # _auto_compaction_allowed: this is what stops a compaction loop.
         self._auto_compacted_at: dict[str, int] = {}
@@ -347,9 +348,17 @@ class ContextManager:
         # here, so one request cannot repeat a pass, and a refused or empty pass does not linger.
         manual = self.session.context_compact_requested
         self.session.context_compact_requested = False
-        if raw < self.auto_compaction_limit() and not self._overdue_by_usage() and not manual:
+        limit = self.auto_compaction_limit()
+        overdue = self._overdue_by_usage()
+        start = limit * 0.8 <= raw < limit and not overdue and not manual
+        if self.background_history.prepare(compactor, turn_messages, start=start, manual=manual):
+            messages = self.model_messages(base_system, turn_messages)
+            raw = self.request_tokens(messages, tools)
+            overdue = False
+        if raw < limit and not overdue and not manual:
             self.update_percent(messages, tools, tokens=raw)
             return messages
+        await self.background_history.cancel()
         attempted = compacted_any = False
         if manual or self._auto_compaction_allowed("history", self.session.messages):
             attempted = True

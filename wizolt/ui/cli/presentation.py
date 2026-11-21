@@ -83,6 +83,13 @@ class Presentation:
         root = LogLine(label, text, LogRole.META, LogEdge.NONE, meta=" · " + notice.reason)
         self.tool_output(LogBlock.hierarchy(root, children))
 
+    def history_summary_status(self, phase: str) -> None:
+        self.status_bar.summarizing = phase == "running"
+        if phase == "applied":
+            self.tool_output(LogBlock([LogLine("context", "earlier messages summarized", LogRole.META, LogEdge.NONE)]))
+        if self.tui is not None:
+            self.tui.invalidate()
+
     def automatic_compaction_status(self, active: bool, error: str = "") -> None:
         """Show automatic context compaction as a distinct phase of the running turn."""
         self.compaction_active = active

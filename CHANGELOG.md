@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Automatic history compaction can prepare a summary in the background as the request
+  approaches its configured threshold. New messages survive while the summary is pending.
 - Updated reasoning effort mappings for GPT-6.1/6.2, Gemini 4, Qwen4-Max and Alibaba-hosted Kimi K3.1 Pro and MiniMax M3.1 Flash.
 
 - Benchmarks: the performance reference is updated on merged master after 0.76.0. The full

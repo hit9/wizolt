@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from wizolt.base import ApprovalView, ImageRouteNotice
 
@@ -55,6 +55,8 @@ class UiHooks:
     # -- ContextManager: what a projection reports.
     # (active, error) around an automatic compaction. None shows nothing.
     on_compaction: Callable[[bool, str], None] | None = None
+
+    on_history_summary: Callable[[Literal["running", "finished", "applied"]], None] | None = None
 
     # -- ToolRunner and the tools it runs: the call-time seams.
     # A live one-line preview of a running command: start(budget) then output(stream, text).

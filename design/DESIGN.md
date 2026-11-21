@@ -858,6 +858,14 @@ must not break input; the preview reports them and the failed light evaluates to
 
 ## Compaction
 
+One in-process background summary can run per agent at 80% of its foreground threshold.
+The worker uses a separate model client, a frozen request, and the agent's compaction usage
+counter. At request preparation the context manager checks the epoch and exact source prefix
+before appending the new tail to the kept messages. Only this foreground operation publishes
+the segment and prunes records. A pending or failed candidate cannot delay a request below the
+threshold. Foreground compaction and shutdown cancel pending work. A configured compaction
+hook or interceptor retains its foreground lifecycle.
+
 The model can ask for a compaction by hand (`Context(compact)`), answering knowledge that the
 conversation's bulk is spent rather than a threshold: the request is one durable per-session
 flag, spent by the next `prepare_messages`, which forces the history pass below the estimate

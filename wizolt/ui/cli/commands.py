@@ -710,6 +710,7 @@ async def compact(loop: CommandLoop, args: str) -> str | LogBlock | None:
     pre = await compactor.fire_hooks("PreCompact", "manual")
     if pre.blocked:
         return f"Compaction blocked: {pre.reason}"
+    await loop.agent.context.background_history.cancel()
     fallback = False
     fallback_error = ""
     loop.presentation.status_bar.begin()

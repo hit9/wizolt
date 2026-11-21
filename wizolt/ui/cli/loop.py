@@ -141,6 +141,7 @@ class CommandLoop:
         hooks.on_stream = self.presentation.model_stream_output
         hooks.on_builtin_call = self.presentation.builtin_call_output
         hooks.on_queue_flush = self.flush_queued_to_log
+        hooks.on_history_summary = self.presentation.history_summary_status
         hooks.on_compaction = self.presentation.automatic_compaction_status
         hooks.on_retry_wait = self.presentation.model_retry_wait_status
         hooks.on_image_route_notice = self.presentation.image_route_notice

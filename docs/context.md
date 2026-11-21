@@ -23,7 +23,9 @@ in the context meter.
 ### Compaction
 
 As context fills up, wizolt summarizes older conversation and keeps **about eight recent
-messages**. The task continues. Summaries can lose detail, so restate an important constraint
+messages**. While the status bar shows **summarizing**, you can keep working. A quiet transcript
+line confirms when a later request starts using the summary. If the request reaches its
+compaction limit first, it waits for foreground compaction. Summaries can lose detail, so restate an important constraint
 if the agent seems to have forgotten it. Each compaction adds its own summary and keeps the
 earlier ones as written; about every fifth compaction merges them into one. Some things are
 carried exactly as written: the last 10 files changed, the last **20** files read in summarized

@@ -1,5 +1,8 @@
 """compaction auto (split from tests/test_context.py)."""
 
+import asyncio
+
+import pytest
 from agent_harness import session, session_with_provider
 from test_context import _CountingModel, _huge_history
 
@@ -156,3 +159,77 @@ async def test_prepare_messages_builds_under_budget_context_once(tmp_path, monke
     await context.prepare_messages(object(), "system", [{"role": "user", "content": "request"}])
 
     assert calls == 1
+
+@pytest.mark.parametrize("changed", [False, True])
+async def test_background_summary_commits_at_next_request_only(tmp_path, monkeypatch, changed):
+    from wizolt.model import ModelClient
+    from wizolt.ui.cli.presentation import Presentation
+
+    s, context = _huge_history(tmp_path, steps=16, chars=2048)
+    model = _CountingModel(s)
+    raw = context.request_tokens(context.model_messages("system"))
+    monkeypatch.setattr(context, "auto_compaction_limit", lambda: int(raw / 0.9))
+    started, release, finished = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    output = []
+    ui = Presentation(s, output_fn=output.append)
+    def notify(phase):
+        ui.history_summary_status(phase)
+        if phase == "finished":
+            finished.set()
+    context.hooks.on_history_summary = notify
+
+    async def summarize(self, *args, **kwargs):
+        started.set()
+        await release.wait()
+        return None, [], '{"summary": "Earlier work is complete."}'
+
+    monkeypatch.setattr(ModelClient, "api_request", summarize)
+    await context.prepare_messages(model, "system")
+    await asyncio.wait_for(started.wait(), 1)
+    assert "summarizing" in "".join(text for _, text in ui.status_bar.fragments())
+    await context.prepare_messages(model, "system")
+    assert s.state.compaction_count == 0
+    if changed:
+        s.messages[2]["content"] = "edited since preparation"
+    appended = {"role": "user", "content": "A new follow-up"}
+    s.messages.append(appended)
+    release.set()
+    await asyncio.wait_for(finished.wait(), 1)
+    assert "summarizing" not in "".join(text for _, text in ui.status_bar.fragments())
+    assert s.state.compaction_count == 0
+    prepared = await context.prepare_messages(model, "system")
+    assert appended in prepared
+    assert s.state.compaction_count == int(not changed)
+    assert ("earlier messages summarized" in str(output)) == (not changed)
+    if changed:
+        assert s.messages[2]["content"] == "edited since preparation"
+    await context.background_history.cancel()
+
+
+async def test_foreground_fallback_cancels_pending_summary(tmp_path, monkeypatch):
+    from wizolt.model import ModelClient
+
+    s, context = _huge_history(tmp_path, steps=16, chars=2048)
+    raw = context.request_tokens(context.model_messages("system"))
+    limit = int(raw / 0.9)
+    monkeypatch.setattr(context, "auto_compaction_limit", lambda: limit)
+    started, cancelled = asyncio.Event(), asyncio.Event()
+    phases = []
+    context.hooks.on_history_summary = phases.append
+
+    async def slow_request(self, *args, **kwargs):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    monkeypatch.setattr(ModelClient, "api_request", slow_request)
+    model = _CountingModel(s)
+    await context.prepare_messages(model, "system")
+    await asyncio.wait_for(started.wait(), 1)
+    limit = raw
+    await context.prepare_messages(model, "system")
+    assert cancelled.is_set()
+    assert s.state.compaction_count == model.calls == 1
+    assert phases == ["running", "finished"]
