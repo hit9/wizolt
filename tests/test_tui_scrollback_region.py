@@ -291,13 +291,17 @@ def test_stream_header_and_spark_survive_a_full_preview(monkeypatch, tmp_path, w
         command_loop.session.close()
 
 
+@pytest.mark.parametrize("long_tmux", [False, True])
 @pytest.mark.parametrize("signal_first", [False, True])
 @pytest.mark.parametrize("size_changed", [False, True])
-def test_resize_rebuilds_the_transcript_regardless_of_notification_order(monkeypatch, wired, signal_first, size_changed):
+def test_resize_rebuilds_the_transcript_regardless_of_notification_order(monkeypatch, wired, signal_first, size_changed, long_tmux):
     output, app, printer = wired
 
     async def resize_before_signal():
         await wait_for(lambda: app.app.renderer.last_rendered_screen is not None)
+        if long_tmux:
+            app.scrollback.tmux_viewport_available = True
+            monkeypatch.setattr(app.scrollback, "TMUX_VIEWPORT_ROWS", 1)
         printer.emit("retained transcript")
         await wait_for(lambda: "retained transcript" in "".join(app.scrollback.transcript))
         app.app._redraw()

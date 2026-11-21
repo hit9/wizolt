@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 2026112101,
+  "version": 2026112102,
   "updated_at": "2026-11-21",
   "maintenance_scope": "well_known_and_necessary_specializations_only",
   "defaults": {
@@ -1317,7 +1317,7 @@
     {
       "id": "model.qwen4-max",
       "match": {
-        "pattern": "qwen4-max(?:$|-\\d)"
+        "pattern": "qwen4-max(?:-preview)?(?:$|-\\d)"
       },
       "set": {
         "reasoning.recipe": "reasoning.effort",
@@ -1330,9 +1330,10 @@
         "reasoning.off": "none",
         "history.reasoning": "all"
       },
-      "why": "Qwen4-Max uses high for medium effort and preserves thinking by default",
+      "why": "Both preserve thinking. Stable Qwen4-Max maps medium effort to high.",
       "evidence": [
-        "https://www.alibabacloud.com/help/en/model-studio/qwen4-max"
+        "https://www.alibabacloud.com/help/en/model-studio/qwen4-max",
+        "https://www.alibabacloud.com/help/en/model-studio/qwen4-max-preview"
       ]
     },
     {

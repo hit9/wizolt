@@ -125,12 +125,12 @@ class TmuxViewport:
         self.lines: deque[str] = deque()
         self.geometry: tuple[int, int, int] | None = None
 
-    def draw(self, app: Application, text: str, height: int) -> None:
+    def draw(self, app: Application, text: str, height: int, *, reanchor: bool) -> None:
         renderer = app.renderer
         out = renderer.output
         rows, columns = out.get_size()
         geometry = (rows, columns, height)
-        if not text and geometry == self.geometry and renderer.last_rendered_screen is not None:
+        if not reanchor and not text and geometry == self.geometry and renderer.last_rendered_screen is not None:
             return
         entering = self.geometry is None
         self.geometry = geometry
@@ -312,7 +312,7 @@ class ScrollbackRegion:
             pending = self.transcript
         columns = app.output.get_size().columns
         text = "".join(item(columns) if callable(item) else item for item in pending)
-        self.viewport.draw(app, text, height)
+        self.viewport.draw(app, text, height, reanchor=self._rebuild_owed)
         self.tail_row = app.output.get_size().rows - height
         self._rebuild_owed = False
         return True

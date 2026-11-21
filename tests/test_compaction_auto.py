@@ -1,6 +1,7 @@
 """compaction auto (split from tests/test_context.py)."""
 
 import asyncio
+import json
 
 import pytest
 from agent_harness import session, session_with_provider
@@ -160,8 +161,15 @@ async def test_prepare_messages_builds_under_budget_context_once(tmp_path, monke
 
     assert calls == 1
 
-@pytest.mark.parametrize("changed", [False, True])
-async def test_background_summary_commits_at_next_request_only(tmp_path, monkeypatch, changed):
+@pytest.mark.parametrize(
+    ("changed", "summary", "applied"),
+    [
+        pytest.param(False, "Earlier work is complete.", True, id="appended"),
+        pytest.param(True, "Earlier work is complete.", False, id="edited"),
+        pytest.param(False, "摘" * 9000, False, id="larger-utf8-summary"),
+    ],
+)
+async def test_background_summary_commits_at_next_request_only(tmp_path, monkeypatch, changed, summary, applied):
     from wizolt.model import ModelClient
     from wizolt.ui.cli.presentation import Presentation
 
@@ -181,7 +189,7 @@ async def test_background_summary_commits_at_next_request_only(tmp_path, monkeyp
     async def summarize(self, *args, **kwargs):
         started.set()
         await release.wait()
-        return None, [], '{"summary": "Earlier work is complete."}'
+        return None, [], json.dumps({"summary": summary})
 
     monkeypatch.setattr(ModelClient, "api_request", summarize)
     await context.prepare_messages(model, "system")
@@ -199,8 +207,8 @@ async def test_background_summary_commits_at_next_request_only(tmp_path, monkeyp
     assert s.state.compaction_count == 0
     prepared = await context.prepare_messages(model, "system")
     assert appended in prepared
-    assert s.state.compaction_count == int(not changed)
-    assert ("earlier messages summarized" in str(output)) == (not changed)
+    assert s.state.compaction_count == int(applied)
+    assert ("earlier messages summarized" in str(output)) == applied
     if changed:
         assert s.messages[2]["content"] == "edited since preparation"
     await context.background_history.cancel()
@@ -233,3 +241,27 @@ async def test_foreground_fallback_cancels_pending_summary(tmp_path, monkeypatch
     assert cancelled.is_set()
     assert s.state.compaction_count == model.calls == 1
     assert phases == ["running", "finished"]
+
+
+async def test_provider_change_before_background_summary_starts_discards_prepared_request(tmp_path, monkeypatch):
+    from wizolt.model import ModelClient
+
+    s, context = _huge_history(tmp_path, steps=16, chars=2048)
+    model = _CountingModel(s)
+    raw = context.request_tokens(context.model_messages("system"))
+    monkeypatch.setattr(context, "auto_compaction_limit", lambda: int(raw / 0.9))
+    calls = []
+
+    async def summarize(self, *args, provider, **kwargs):
+        calls.append(provider.url)
+        return None, [], '{"summary": "Earlier work is complete."}'
+
+    monkeypatch.setattr(ModelClient, "api_request", summarize)
+    await context.prepare_messages(model, "system")
+    s.config.provider.url = "https://new-provider.example/v1"
+    await asyncio.sleep(0)  # The old request has been planned, but its task had not run yet.
+    assert not calls
+    await context.prepare_messages(model, "system")
+    await asyncio.sleep(0)
+    assert calls == [s.config.provider.url]
+    await context.background_history.cancel()

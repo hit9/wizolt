@@ -621,6 +621,17 @@ def test_only_deepseek_keeps_completed_tool_reasoning_across_user_turns(tmp_path
     assert "reasoning_content" not in qwen.wire(qwen.session.config.provider).messages(history)[1]
 
 
+@pytest.mark.parametrize("model", ["qwen4-max", "qwen4-max-preview"])
+def test_qwen4_replays_reasoning_across_turns(tmp_path, model):
+    s = _session(tmp_path, url="https://dashscope.aliyuncs.com/compatible-mode/v1", model=model)
+    history = [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "answer", "reasoning_content": "earlier reasoning"},
+        {"role": "user", "content": "continue"},
+    ]
+    assert ModelClient(s).wire(s.config.provider).messages(history)[1] == history[1]
+
+
 def test_explicit_reasoning_history_keeps_final_reasoning(tmp_path):
     s = _session(
         tmp_path,

@@ -83,14 +83,14 @@ class BackgroundHistory:
         if session.plugins and session.plugins.interception.active("context.compact"):
             eligible = False
         if self._task is not None:
-            if self._task.done():
-                task, self._task = self._task, None
-                candidate = None if task.cancelled() else task.result()
-                if eligible and candidate is not None and candidate.apply(ctx, turn):
-                    if callback := ctx.hooks.on_history_summary:
-                        callback("applied")
-                    return True
-            return False
+            if not self._task.done():
+                return False
+            task, self._task = self._task, None
+            candidate = None if task.cancelled() else task.result()
+            if eligible and candidate is not None and candidate.apply(ctx, turn):
+                if callback := ctx.hooks.on_history_summary:
+                    callback("applied")
+                return True
         attempt = (session.context_epoch, len(session.messages))
         if not eligible or not start or self._attempt == attempt:
             return False
@@ -103,7 +103,15 @@ class BackgroundHistory:
         flat = "" if request else compactor.input(compacted)
         echo = compactor.echo_source(request[0][:-1] if request else compacted)
 
+        entry = session.config.compaction_provider or session.config.active_provider
+        route = copy.deepcopy(compaction_provider_config(session.config))
+
         async def generate() -> HistoryCandidate | None:
+            # A provider switch between scheduling and first execution must not
+            # send a request shaped for the old endpoint to the new one.
+            if entry != (session.config.compaction_provider or session.config.active_provider) or route != compaction_provider_config(session.config):
+                self._attempt = None
+                return None
             client = ModelClient(session)
             notify = ctx.hooks.on_history_summary
             try:
@@ -111,7 +119,11 @@ class BackgroundHistory:
                     notify("running")
                 data = await Compactor(ctx, client).compact(flat, *(request or ()), echo_source=echo)
                 summary = data.get("summary")
-                if isinstance(summary, str) and summary.strip() and ctx.estimated_text_tokens(summary) < ctx.estimated_tokens(compacted):
+                if (
+                    isinstance(summary, str)
+                    and summary.strip()
+                    and ctx.estimated_tokens([{"role": "user", "content": summary}]) < ctx.estimated_tokens(compacted)
+                ):
                     return HistoryCandidate(attempt[0], baseline, compacted, keep, data, client.last_compaction_model)
             except Exception:  # A speculative failure leaves the foreground fallback in charge.
                 logging.getLogger(__name__).debug("Background history summary failed", exc_info=True)
