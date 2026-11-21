@@ -102,7 +102,7 @@ def test_provider_context_limit_reaches_every_budget_reader(tmp_path):
 
     s = session(tmp_path)
     s.config = Config.from_dict({"provider": {"active": "wide", "wide": {"model": "m", "max_context_tokens": 1_048_576}}})
-    s.settings.max_context_tokens = 262_144  # the runtime default, deliberately much smaller
+    s.settings.max_context_tokens = 262_144  # deliberately smaller than the provider override
     expected = request_budget_for(1_048_576, s.config.provider.output_token_budget())
     runtime_only = request_budget_for(262_144, s.config.provider.output_token_budget())
     assert expected != runtime_only
@@ -187,15 +187,10 @@ async def test_compaction_uses_configured_context_budget(tmp_path):
     assert s.messages[2]["content"] == "tool kept"
     assert all("recent 7" not in str(message.get("content") or "") for message in s.messages)
 
-def test_default_budget_leaves_more_input_room_than_the_previous_240k_ceiling(tmp_path):
-    """The output reserve trades against the input budget one for one, so the two defaults are one
-    decision: doubling the output cap only pays off because the ceiling rose further."""
+def test_default_compaction_budget_reserves_output_and_two_percent_for_safety(tmp_path):
     s = session(tmp_path)
-    context = ContextManager(s)
-
-    assert s.settings.max_context_tokens == 256 * 1024
-    assert s.config.provider.output_token_budget() == DEFAULT_OUTPUT_RESERVE_TOKENS
-    assert context.request_token_budget() > 240 * 1024 - 8_192 - MIN_CONTEXT_SAFETY_TOKENS
+    assert s.settings.max_context_tokens == 512 * 1024
+    assert ContextManager(s).request_token_budget() == 512 * 1024 - DEFAULT_OUTPUT_RESERVE_TOKENS - 10_486
 
 def test_compaction_budget_reserves_output_and_safety(tmp_path):
     s = session(tmp_path)

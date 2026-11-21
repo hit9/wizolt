@@ -154,9 +154,9 @@ def test_runtime_attribution_is_on_by_default_and_parses_off():
     assert RuntimeSettings.from_dict({"runtime": {"attribution": False}}).attribution is False
 
 
-def test_runtime_settings_default_context_budget_is_256k():
-    assert RuntimeSettings().max_context_tokens == 256 * 1024
-    assert RuntimeSettings.from_dict({}).max_context_tokens == 256 * 1024
+def test_runtime_settings_default_context_budget_is_512k():
+    assert RuntimeSettings().max_context_tokens == 512 * 1024
+    assert RuntimeSettings.from_dict({}).max_context_tokens == 512 * 1024
 
 
 def test_provider_timeout_defaults_distinguish_inactivity_from_total_generation():

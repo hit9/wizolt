@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from wizolt.agentsmd import AgentsFile
     from wizolt.providers.compat import ProviderPolicy
 
-DEFAULT_MAX_CONTEXT_TOKENS = 256 * 1024
+DEFAULT_MAX_CONTEXT_TOKENS = 512 * 1024
 MAX_SUBAGENTS = 32
 MIN_BASH_OUTPUT_TOKENS = 1_000  # Below this, error tails start to lose the line that matters.
 # The default inline share of a Bash result: the p95 of 4,740 Bash results recorded on this
@@ -709,7 +709,7 @@ model = ""
 
 # [runtime]                    # optional overrides (defaults shown)
 # yolo = false
-# max_context_tokens = 262144      # 256K; how much of the model's window to use, not its size.
+# max_context_tokens = 524288      # 512K; how much of the model's window to use, not its size.
                                # Raise it for a 1M-window model; lower it for a smaller one.
 # max_agent_steps = 400
 # max_subagents = 3            # children running at once across the whole group; 0 turns subagents off, maximum 32

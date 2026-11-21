@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Raised the default `runtime.max_context_tokens` from 256K to 512K (524,288 tokens).
+
 - Automatic history compaction can prepare a summary in the background as the request
   approaches its configured threshold. New messages survive while the summary is pending.
 - Long tmux sessions keep earlier transcript lines in native copy-mode history while resizing
