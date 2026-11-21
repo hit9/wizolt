@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "version": 2026100703,
-  "updated_at": "2026-10-07",
+  "version": 2026112101,
+  "updated_at": "2026-11-21",
   "maintenance_scope": "well_known_and_necessary_specializations_only",
   "defaults": {
     "effort_order": [
@@ -745,7 +745,7 @@
     {
       "id": "model.trait-gpt-6",
       "match": {
-        "pattern": "gpt-6-astra(?:-|$)"
+        "pattern": "gpt-6(?:-astra|\\.1-sol|\\.2-(?:astra|sol))(?:-|$)"
       },
       "set": {
         "reasoning.recipe": "reasoning.effort",
@@ -760,19 +760,16 @@
         "reasoning.off": "low",
         "reasoning.mandatory": true
       },
-      "why": "GPT-6 Astra cannot disable reasoning",
+      "why": "These GPT-6 models require reasoning",
       "evidence": [
         "https://developers.openai.com/api/docs/guides/latest-model",
         "https://developers.openai.com/api/docs/guides/reasoning"
-      ],
-      "notes": [
-        "Sol and Luna support none and share the optional-reasoning rule below."
       ]
     },
     {
       "id": "model.trait-00",
       "match": {
-        "pattern": "(?:gpt-5\\.6|gpt-6-(?:sol|luna))(?:-|$)"
+        "pattern": "(?:gpt-5\\.6|gpt-6-(?:sol|luna)|gpt-6\\.1-terra)(?:-|$)"
       },
       "set": {
         "reasoning.recipe": "reasoning.effort",
@@ -1176,7 +1173,9 @@
         "prefixes": [
           "gemini-3.1-pro",
           "gemini-3.7-flash",
-          "gemini-3.8-flash"
+          "gemini-3.8-flash",
+          "gemini-4-argon",
+          "gemini-4-carbon"
         ]
       },
       "set": {
@@ -1190,6 +1189,31 @@
         "reasoning.mandatory": true
       },
       "why": "These Gemini models start at low and cannot stop reasoning",
+      "evidence": [
+        "https://ai.google.dev/gemini-api/docs/openai",
+        "https://ai.google.dev/gemini-api/docs/thinking"
+      ]
+    },
+    {
+      "id": "model.gemini-4-xhigh",
+      "match": {
+        "prefixes": [
+          "gemini-4-neon",
+          "gemini-4-hydrogen"
+        ]
+      },
+      "set": {
+        "reasoning.recipe": "reasoning.effort",
+        "reasoning.dialect": "reasoning_effort",
+        "reasoning.levels": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "reasoning.mandatory": true
+      },
+      "why": "These Gemini models allow xhigh effort and cannot disable thinking",
       "evidence": [
         "https://ai.google.dev/gemini-api/docs/openai",
         "https://ai.google.dev/gemini-api/docs/thinking"
@@ -1270,7 +1294,8 @@
       "id": "model.trait-24",
       "match": {
         "prefixes": [
-          "qwen3.8-"
+          "qwen3.8-",
+          "qwen4-max-preview"
         ]
       },
       "set": {
@@ -1283,9 +1308,31 @@
         ],
         "reasoning.off": "none"
       },
-      "why": "Qwen3.8-Max has no minimal, and neither high nor max is a spelling",
+      "why": "These models expose low, medium and xhigh effort",
       "evidence": [
-        "https://docs.qwencloud.com/api-reference/chat/openai-chat"
+        "https://docs.qwencloud.com/api-reference/chat/openai-chat",
+        "https://www.alibabacloud.com/help/en/model-studio/qwen4-max-preview"
+      ]
+    },
+    {
+      "id": "model.qwen4-max",
+      "match": {
+        "pattern": "qwen4-max(?:$|-\\d)"
+      },
+      "set": {
+        "reasoning.recipe": "reasoning.effort",
+        "reasoning.dialect": "reasoning_effort",
+        "reasoning.levels": [
+          "low",
+          "high",
+          "xhigh"
+        ],
+        "reasoning.off": "none",
+        "history.reasoning": "all"
+      },
+      "why": "Qwen4-Max uses high for medium effort and preserves thinking by default",
+      "evidence": [
+        "https://www.alibabacloud.com/help/en/model-studio/qwen4-max"
       ]
     },
     {
@@ -2211,6 +2258,67 @@
         "json.response_format": true
       },
       "model_rules": [
+        {
+          "id": "provider-rule.kimi-direct",
+          "match": {
+            "pattern": "kimi/kimi-k3(?:\\.1-pro(?:-highspeed)?)?$"
+          },
+          "set": {
+            "reasoning.recipe": "reasoning.effort",
+            "reasoning.dialect": "reasoning_effort",
+            "reasoning.levels": [
+              "max"
+            ],
+            "reasoning.off": "max",
+            "reasoning.mandatory": true,
+            "history.reasoning": "all"
+          },
+          "why": "Moonshot-direct K3 deployments on Alibaba expose only max effort",
+          "evidence": [
+            "https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions"
+          ]
+        },
+        {
+          "id": "provider-rule.minimax-m3.1-flash",
+          "match": {
+            "pattern": "(?:minimax/)?minimax-m3\\.1-flash$"
+          },
+          "set": {
+            "reasoning.recipe": "reasoning.effort",
+            "reasoning.dialect": "reasoning_effort",
+            "reasoning.levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "reasoning.off": "low",
+            "reasoning.mandatory": true
+          },
+          "why": "The Alibaba deployment accepts five efforts and rejects none",
+          "evidence": [
+            "https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions"
+          ]
+        },
+        {
+          "id": "provider-rule.kimi-k3.1-pro",
+          "match": {
+            "pattern": "^kimi-k3\\.1-pro$"
+          },
+          "set": {
+            "reasoning.levels": [
+              "low",
+              "medium",
+              "high",
+              "max"
+            ]
+          },
+          "why": "The Alibaba deployment adds medium to the K3 scale",
+          "evidence": [
+            "https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions"
+          ]
+        },
         {
           "id": "provider-rule.levels-0.glm-5.3",
           "match": {

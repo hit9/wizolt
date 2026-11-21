@@ -58,7 +58,7 @@ def test_openai_effort_uses_each_models_nearest_supported_level(url, model, reas
 
 @pytest.mark.parametrize(
     ("model", "expected"),
-    (("gpt-5.6-sol", "none"), ("gpt-5.5-pro", "medium"), ("gpt-5.3-codex", "low"), ("gpt-6-astra", "low")),
+    (("gpt-5.6-sol", "none"), ("gpt-5.5-pro", "medium"), ("gpt-5.3-codex", "low"), ("gpt-6-astra", "low"), ("gpt-6.2-sol", "low"), ("gpt-6.1-terra", "none")),
 )
 def test_openai_reasoning_off_uses_the_models_lowest_supported_level(model, expected):
     provider = ProviderConfig(url="https://api.openai.com/v1", model=model, api="responses", reasoning="off")
@@ -516,3 +516,17 @@ def test_unknown_provider_resolution_stays_generic_and_explicit_values_win():
     assert resolved.suppress_temperature is True
     assert resolved.prompt_cache_key is True
     assert resolved.strict_tools_active is False
+
+
+@pytest.mark.parametrize(("host", "model", "requested", "effective"), [
+    ("dashscope.aliyuncs.com", "kimi-k3.1-pro", "medium", "medium"),
+    ("dashscope.aliyuncs.com", "kimi/kimi-k3.1-pro", "low", "max"),
+    ("dashscope.aliyuncs.com", "MiniMax/MiniMax-M3.1-Flash", "off", "low"),
+    ("api.moonshot.cn", "kimi-k3.1-pro", "medium", "high"),
+    ("dashscope.aliyuncs.com", "qwen4-max", "medium", "high"),
+    ("dashscope.aliyuncs.com", "qwen4-max-preview", "medium", "medium"),
+    ("generativelanguage.googleapis.com", "gemini-4-carbon", "max", "high"),
+    ("generativelanguage.googleapis.com", "gemini-4-neon", "max", "xhigh"),
+])
+def test_new_model_effort_matches_the_serving_endpoint(host, model, requested, effective):
+    assert resolve(ProviderConfig(url=f"https://{host}/v1", model=model, reasoning=requested)).reasoning_effort == effective
