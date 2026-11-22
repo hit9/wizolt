@@ -9,6 +9,20 @@ document any retained cost. Update `baselines/` and this README's reference befo
 never accept a regression merely by replacing the baseline. If the environment or workload changed,
 remeasure the previous reference revision too so the comparison remains meaningful.
 
+## 0.77.1 release reference
+
+The [release reference](baselines/linux-arm64-py314-0.77.1.json) measures merged master
+at `e75b10cf` against [0.77.0](results/linux-arm64-py314-before-0.77.1.json) at `b4684b31`.
+Both ran on Linux ARM64, CPython 3.14.7, with identical dependencies and nine samples per
+timing metric. Across 49 metrics, seven of twelve output digests matched. The five changes
+were the two themed replay probes and the three transcript formats. Comparing their visible
+text, and the replay probes’ row counts, matched across both revisions.
+
+Emitting 500 styled plain rows took 6.94 ms versus 6.39 ms (+8.7%). A second run in reverse
+order measured 6.65 ms versus 6.41 ms (+3.7%). Collecting 10,000 external files measured
++11.3% in the first run and −0.5% in the repeat. The [row-counting measurements](results/linux-arm64-py314-render-cleanup.md#transcript-row-counting)
+cover the individual operation separately from emission and rendering.
+
 ## 0.77.0 release reference
 
 The [release reference](baselines/linux-arm64-py314-0.77.0.json) measures merged master
