@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.77.2 - 2026-11-22
+
 - Fix import ordering in the theme preview generator and align the local lint command with CI.
 
 ## 0.77.1 - 2026-11-22
