@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
@@ -68,7 +69,7 @@ html_short_title = project
 html_static_path = ["_static"]
 # Loaded via html_css_files (not the theme's cssfiles option) so Sphinx appends a
 # ?v=<checksum> cache buster; without it browsers keep a stale custom.css.
-html_css_files = ["custom.css"]
+html_css_files = ["custom.css", "theme-preview.css"]
 html_js_files = ["scrollspy.js"]
 html_show_sphinx = False
 html_copy_source = False
@@ -80,3 +81,15 @@ pygments_style = "one-dark"
 copybutton_prompt_text = r"\$ |>>> "
 
 copybutton_prompt_is_regexp = True
+
+
+def build_theme_preview(app) -> None:
+    docs = Path(app.srcdir)
+    subprocess.run(
+        [sys.executable, str(docs / "tools/theme_preview.py"), "--fragment", "--output", str(docs / "_build/previews/theme-preview-widget.html")],
+        check=True,
+    )
+
+
+def setup(app):
+    app.connect("builder-inited", build_theme_preview)

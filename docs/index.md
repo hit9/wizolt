@@ -81,6 +81,7 @@ Working through a repository task in an interactive session.
 getting-started
 usage
 appearance
+theme-preview
 context
 safety
 troubleshooting

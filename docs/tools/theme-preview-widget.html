@@ -1,0 +1,54 @@
+<div class="theme-preview">
+  <div class="theme-controls">
+    <label>Theme <select name="theme"></select></label>
+    <label>Status bar <select name="statusbar"></select></label>
+    <label>Divider <select name="divider"></select></label>
+  </div>
+  <p class="theme-description" aria-live="polite"></p>
+  <div class="theme-comparison">
+    <figure><figcaption>Terminal default</figcaption><div class="theme-terminal"></div></figure>
+    <figure><figcaption>Selected theme</figcaption><div class="theme-terminal"></div></figure>
+  </div>
+  <details><summary>Configuration</summary><pre></pre></details>
+  <noscript>Enable JavaScript for the interactive preview. In wizolt, use /theme to try these presets.</noscript>
+  <script type="application/json">__DATA__</script>
+  <script>
+    (() => {
+      const preview = document.currentScript.parentElement;
+      const data = JSON.parse(preview.querySelector('script[type="application/json"]').textContent);
+      const [theme, bar, divider] = preview.querySelectorAll('select');
+      for (const item of data) theme.add(new Option(item.name, item.base));
+      for (const name of Object.keys(data[0].after.bars)) bar.add(new Option(name));
+      for (const name of Object.keys(data[0].after.dividers)) divider.add(new Option(name));
+      theme.value = 'slate';
+      bar.value = 'lualine';
+      divider.value = 'comet';
+
+      function render() {
+        const item = data.find(entry => entry.base === theme.value);
+        preview.querySelector('.theme-description').textContent = item.note;
+        const figures = preview.querySelectorAll('figure');
+        for (const [index, sample] of [item.before, item.after].entries()) {
+          const figure = figures[index];
+          const title = index === 0 ? 'Terminal ' + item.baseline : item.name;
+          figure.querySelector('figcaption').textContent = title;
+          const terminal = figure.querySelector('.theme-terminal');
+          terminal.style.backgroundColor = item.bg;
+          terminal.setAttribute('role', 'img');
+          terminal.setAttribute('aria-label', title + ' conversation with classic diff, ' + bar.value + ' status bar and ' + divider.value + ' divider');
+          const images = [sample.body, sample.dividers[divider.value], sample.input, sample.bars[bar.value]].map(svg => {
+            const image = document.createElement('img');
+            image.alt = '';
+            image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+            return image;
+          });
+          terminal.replaceChildren(...images);
+        }
+        preview.querySelector('pre').textContent = item.config +
+          '\n\n[ui.statusbar]\nformat = "preset:' + bar.value + '"\n\n[ui.divider]\nformat = "preset:' + divider.value + '"';
+      }
+      preview.addEventListener('change', render);
+      render();
+    })();
+  </script>
+</div>

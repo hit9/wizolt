@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add an interactive theme comparison to the Appearance guide. Each docs build renders the current
+  palettes, status bars and dividers. The standalone preview lives under `docs/_build/previews/`.
+
 - Generate the local theme comparison at `docs/_build/previews/theme-preview.html`.
 
 - Fix a race during MCP OAuth discovery after restart that could prompt for browser login

@@ -47,9 +47,7 @@ uv run --no-sync python docs/tools/theme_preview.py
 uv run --no-sync python docs/tools/theme_preview.py --output /tmp/theme-preview.html
 ```
 
-The page compares the built-in palettes against default `dark` or `light`. Switch the
-statusbar and divider selectors, then mark a favorite. Copy the configuration shown below
-into your config. Every sample uses the existing `classic` diff colors.
+The [Theme preview](../theme-preview.md) page uses the same comparison. The docs build regenerates it from the checkout. Switch the theme, status bar or divider and open **Configuration** to copy the selection. Every sample uses the existing `classic` diff colors.
 Git ignores the generated preview under `docs/_build/`.
 
 Preset names and captions live in `CANDIDATES`; colors come directly from wizolt.
