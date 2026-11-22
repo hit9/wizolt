@@ -25,8 +25,8 @@ from rich.text import Text
 from wizolt.base import LogBlock, LogEdge, LogLine, LogRole
 from wizolt.config import Config
 from wizolt.session import Session
-from wizolt.ui.cli.appearance import DIFF_STYLE_SAMPLE
 from wizolt.ui.bars import DIVIDER_PRESETS, STATUS_PRESETS
+from wizolt.ui.cli.appearance import DIFF_STYLE_SAMPLE
 from wizolt.ui.render import Theme
 
 CAPTIONS = {

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix import ordering in the theme preview generator and align the local lint command with CI.
+
 ## 0.77.1 - 2026-11-22
 
 - Updated the [release benchmark reference](https://github.com/hit9/wizolt/blob/v0.77.1/benchmarks/README.md#0771-release-reference) with a same-environment comparison to 0.77.0.
