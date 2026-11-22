@@ -44,7 +44,7 @@ from wizolt.formats import clean, clip
 from wizolt.sdk import Line
 from wizolt.ui.bars import BarLayout, Value
 from wizolt.ui.themes import BUILTIN as NAMED_THEMES
-from wizolt.ui.themes import DIFF_STYLES, Palette, blend, contrast, generated_pygments_style, lift, load_custom, normalize_color
+from wizolt.ui.themes import CONTEXT_COLORS, DIFF_STYLES, Palette, blend, contrast, generated_pygments_style, lift, load_custom, normalize_color
 from wizolt.utils import terminal
 
 if TYPE_CHECKING:
@@ -367,6 +367,7 @@ class Theme:
     """
 
     DARK: ClassVar[dict[str, str]] = {
+        **CONTEXT_COLORS["dark"],
         "text": "default",
         "muted": "ansibrightblack",
         "subtle": "ansibrightblack",
@@ -414,6 +415,7 @@ class Theme:
         "pygments": "github-dark",
     }
     LIGHT: ClassVar[dict[str, str]] = {
+        **CONTEXT_COLORS["light"],
         "text": "default",
         "muted": "ansibrightblack",
         "subtle": "ansibrightblack",

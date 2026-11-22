@@ -7,8 +7,9 @@
   acceptance test by waiting for the prompt after closing the theme picker.
 
 - Remove the bundled pet plugin and its `/pet` command.
-  The context bar pairs solid color blocks with matching labels, marks free space with a subdued line,
-  and highlights pressure at 80% and 95%.
+- The context bar uses dedicated category colors in truecolor and 256-color terminals. A narrow gap
+  separates neighboring blocks, and each legend label matches its block. The percentage highlights
+  pressure at 80% and 95%.
 
 - Refreshed the built-in themes with quieter tool labels and status bars. The Colorscheme
   tab previews a conversation, and classic diffs use separate line and word highlights in

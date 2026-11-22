@@ -112,7 +112,7 @@ async def test_context_bar_stacks_categories_and_the_unestimated_rest(runtime):
     assert text(bar).endswith(" 27%") and len(text(bar)) == 60
     # Categories in request order with their theme roles, then "other" for the fill the
     # estimates do not explain, then the free tail.
-    assert [span.role for span in bar.spans] == ["success", "info", "muted", "rule", "text"]
+    assert [span.role for span in bar.spans] == ["context_system", "context_chat", "context_other", "rule", "text"]
     assert sum(len(span.text) for span in bar.spans[:3]) == round(50_000 * 56 / 180_000)
     assert "system 10k" in text(legend) and "other 10k" in text(legend) and text(legend).endswith("50k/180k")
 
@@ -130,7 +130,7 @@ async def test_context_bar_draws_what_compaction_left_apart_from_the_conversatio
     window = ContextWindow(60_000, 200_000, 180_000, (("skills", 10_000), ("summary", 20_000), ("messages", 30_000)))
     bar, legend = (await bar_panel(runtime, window)).rows
     # Its own role, distinct from both neighbours, in request order before the conversation.
-    assert [span.role for span in bar.spans][:3] == ["syntax_string", "warning", "info"]
+    assert [span.role for span in bar.spans][:3] == ["context_skills", "context_summary", "context_chat"]
     assert "summary 20k" in text(legend)
 
 
@@ -138,7 +138,7 @@ async def test_context_bar_keeps_small_categories_and_fits_narrow_terminals(runt
     window = ContextWindow(100_000, 200_000, 0, (("system prompt", 100), ("system tools", 9_900), ("skills", 40_000), ("messages", 50_000)))
     panel = await bar_panel(runtime, window, columns=40)
     bar, legend = panel.rows
-    assert len(text(bar)) == 40 and bar.spans[0] == Text("█", "success")  # Tiny, still drawn.
+    assert len(text(bar)) == 40 and bar.spans[0] == Text("▉", "context_system")  # Tiny, still drawn.
     assert "…" in text(legend) and len(text(legend)) == 40 and text(legend).endswith("100k/200k")
     # Too narrow for the percentage beside the bar: the legend's totals carry it instead.
     bar, legend = (await bar_panel(runtime, window, columns=13)).rows
@@ -169,6 +169,9 @@ async def test_context_bar_warns_near_the_limit_and_hides_without_a_window(runti
 
 @pytest.mark.parametrize("depth", ["DEPTH_8_BIT", "DEPTH_24_BIT"])
 def test_context_categories_are_distinct_in_terminal_output(depth, monkeypatch):
+    from itertools import combinations
+    from math import dist
+
     from prompt_toolkit.formatted_text import FormattedText
     from prompt_toolkit.output import ColorDepth
     from rich.text import Text as RichText
@@ -176,22 +179,27 @@ def test_context_categories_are_distinct_in_terminal_output(depth, monkeypatch):
     from wizolt.plugins.builtin.context_bar import KEYS, draw
     from wizolt.ui.cli.plugins import PluginView
     from wizolt.ui.render import Theme, UiPrinter
+    from wizolt.ui.themes import contrast
 
     for variable in ("COLORTERM", "PROMPT_TOOLKIT_COLOR_DEPTH", "NO_COLOR"):
         monkeypatch.delenv(variable, raising=False)
     parts = tuple((name, 100) for name in KEYS if name != "other")
     panel = draw(facts(columns=180, window=ContextWindow(800, 1000, 1000, parts)))
     bar, legend = panel.rows
-    segments = [span for span in bar.spans if span.text.endswith("█")]
+    segments = [span for span in bar.spans if span.text.endswith(("█", "▉"))]
     assert len(segments) == len(KEYS)
+    assert all(span.text.endswith("▉") for span in segments[:-1]) and segments[-1].text.endswith("█")
     assert {span.text.strip(): span.role for span in legend.spans if span.text.strip() in dict(KEYS.values())} == dict(KEYS.values())
     for theme in Theme.BUILTIN:
         monkeypatch.setattr(Theme, "_mode", theme)
         rendered = PluginView.render([panel], 180, 2)
         ansi = UiPrinter.render_to_ansi([FormattedText(rendered)], columns=180, color_depth=ColorDepth[depth])
         first = RichText.from_ansi(ansi.splitlines()[0])
-        colors = {str(span.style) for span in first.spans if "█" in first.plain[span.start:span.end]}
+        colors = {span.style.color.get_truecolor() for span in first.spans if "█" in first.plain[span.start:span.end]}
         assert len(colors) == len(KEYS), (theme, depth, colors)
+        assert min(dist(a, b) for a, b in combinations(colors, 2)) >= 75, (theme, depth, colors)
+        background = Theme.active().background or ("#ffffff" if Theme.appearance() == "light" else "#1e1e1e")
+        assert all(contrast(color.hex, background) >= 4.5 for color in colors), (theme, depth)
 
 
 @pytest.mark.parametrize(("used", "role"), [(79, "text"), (80, "warning"), (94, "warning"), (95, "error")])

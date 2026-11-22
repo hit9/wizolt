@@ -36,14 +36,14 @@ SDK_VERSION = 1
 # Segment and legend share a hue. Short names keep the conversation visible in the
 # legend alongside the smaller categories even on a split pane.
 KEYS = {
-    "system tools": ("tools", "syntax_number"),
-    "system prompt": ("system", "success"),
-    "memory files": ("memory", "error"),
-    "skills": ("skills", "syntax_string"),
-    "mcp servers": ("MCP", "user"),
-    "summary": ("summary", "warning"),
-    "messages": ("chat", "info"),
-    "other": ("other", "muted"),
+    "system tools": ("tools", "context_tools"),
+    "system prompt": ("system", "context_system"),
+    "memory files": ("memory", "context_memory"),
+    "skills": ("skills", "context_skills"),
+    "mcp servers": ("MCP", "context_mcp"),
+    "summary": ("summary", "context_summary"),
+    "messages": ("chat", "context_chat"),
+    "other": ("other", "context_other"),
 }
 FALLBACK_ROLES = ("accent", "accent_secondary", "success", "info")
 MIN_BAR = 12
@@ -129,14 +129,16 @@ def draw(context: Context) -> Panel:
         percent, width = "", columns
     # The filled span is the reported fill; the parts share it in proportion, the rest is free.
     filled_cells = min(width, max(1, round(width * filled / total))) if parts else 0
-    cells = [*allocate([tokens for _, tokens in parts], filled_cells), width - filled_cells]
-    spans = [Text("█" * count, key(name)[1]) for (name, _), count in zip(parts, cells, strict=False) if count]
-    spans += [Text("─" * cells[-1], "rule")] if cells[-1] else []
+    cells = allocate([tokens for _, tokens in parts], filled_cells)
+    drawn = [(name, tokens, count) for (name, tokens), count in zip(parts, cells, strict=True) if count]
+    # A seven-eighths block leaves a hairline at each join, even between one-cell categories.
+    spans = [Text("█" * (count - 1) + ("▉" if i + 1 < len(drawn) else "█"), key(name)[1]) for i, (name, _, count) in enumerate(drawn)]
+    if filled_cells < width:
+        spans.append(Text("─" * (width - filled_cells), "rule"))
     spans += [Text(" " + percent, "error" if shown >= 95 else "warning" if shown >= 80 else "text")] if percent else []
     rows: list[Text | Line] = [Line(tuple(spans))]
     if parts and (context.layout is None or context.layout.rows >= 2):
-        drawn = [part for part, count in zip(parts, cells, strict=False) if count]
-        rows.append(legend(drawn, f"{compact(filled)}/{compact(total)}" + ("" if percent else f" {shown}%"), columns))
+        rows.append(legend([(name, tokens) for name, tokens, _ in drawn], f"{compact(filled)}/{compact(total)}" + ("" if percent else f" {shown}%"), columns))
     return Panel(tuple(rows))
 
 

@@ -70,6 +70,7 @@ A *role* names what a color is used for. Set only the roles you want to change:
 | --- | --- |
 | Reading and navigation | `text`, `muted`, `subtle`, `accent`, `accent_secondary`, `info`, `rule` |
 | Messages and results | `user`, `user_bg`, `tool`, `success`, `warning`, `error` |
+| Context bar | `context_tools`, `context_system`, `context_memory`, `context_skills`, `context_mcp`, `context_summary`, `context_chat`, `context_other` |
 | Code | `syntax_assign`, `syntax_string`, `syntax_number`, `syntax_ident`, `syntax_builtin`, `syntax_default` |
 | Statusbar fields | `status_base`, `status_provider`, `status_model`, `status_reason`, `status_mcp`, `status_services`, `status_context`, `status_cache`, `status_yolo`, `status_agent` |
 | Statusbar segments | `status_provider_bg`, `status_model_bg`, `status_reason_bg`, `status_context_bg`, `status_cache_bg`, `status_yolo_bg`, `status_agent_bg` |

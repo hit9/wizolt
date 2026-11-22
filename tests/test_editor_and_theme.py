@@ -584,14 +584,14 @@ def test_the_roles_that_carry_text_are_the_terminal_own_colors():
     Contrast, brightness, and taste belong to whoever set up the terminal, and a role drawn in one
     of its own colors inherits all three. A fixed tone can only guess at them, so it is reserved
     for the handful of things that are a specific colour rather than a role: an identity, the
-    syntax tones that pair with a Pygments style, the status footer, a gradient's endpoints, the
+    syntax tones that pair with a Pygments style, the status footer, context categories, a gradient's endpoints, the
     selection band, which has to stay one colour across every list instead of taking the colour of
     the row it lands on, and the completion menu's surface, which carries no text of its own.
     """
     fixed = {"user", "user_bg", "syntax_default", "divider_glow", "divider_rule", "selection_bg", "selection_fg", "menu_bg"}
     for palette in (Theme.DARK, Theme.LIGHT):
         for role in Theme.ROLES:
-            if role in fixed or role.startswith(("status_", "syntax_")):
+            if role in fixed or role.startswith(("status_", "syntax_", "context_")):
                 continue
             value = palette[role]
             assert value == "default" or value in Theme.RICH_COLOR_NAMES, (role, value)

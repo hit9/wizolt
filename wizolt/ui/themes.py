@@ -118,6 +118,31 @@ DIFF_STYLES: dict[str, DiffStyle] = {
 # fmt: on
 
 
+# Exact xterm palette entries keep these categorical colors distinct at either terminal depth.
+CONTEXT_COLORS = {
+    "dark": {
+        "context_tools": "#af87ff",
+        "context_system": "#5fd787",
+        "context_memory": "#ff875f",
+        "context_skills": "#00d7d7",
+        "context_mcp": "#ff87af",
+        "context_summary": "#ffd75f",
+        "context_chat": "#5fafff",
+        "context_other": "#afafaf",
+    },
+    "light": {
+        "context_tools": "#8700af",
+        "context_system": "#005f00",
+        "context_memory": "#d70000",
+        "context_skills": "#005f87",
+        "context_mcp": "#af005f",
+        "context_summary": "#875f00",
+        "context_chat": "#005fd7",
+        "context_other": "#626262",
+    },
+}
+
+
 # `Theme.ramp` interpolates between these two, so they must be hex rather than a terminal color.
 HEX_ROLES = ("divider_glow", "divider_rule")
 # WCAG contrast floors for a scheme's grey text: secondary text on the background, and the menu's
@@ -192,6 +217,7 @@ def scheme(
     palette = Palette(
         appearance,
         {
+            **CONTEXT_COLORS[appearance],
             "text": "default",
             "muted": muted,
             "subtle": lift(comment, fg, background, 3.0),

@@ -205,7 +205,7 @@ theme = "personal"
 [ui.themes.personal]
 base = "forest"
 [ui.themes.personal.colors]
-info = "#aabbcc"
+context_chat = "#aabbcc"
 ''')
     facts = tmp_path / "facts.json"
     facts.write_text(json.dumps({"window": {"used": 10, "limit": 100, "parts": [["messages", 10]]}}))
