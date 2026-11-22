@@ -68,11 +68,16 @@ def physical_rows(text: str, columns: int) -> int:
     if not text:
         return 0
     lines = text.split("\n")
-    if lines and lines[-1] == "":
+    if lines[-1] == "":
         lines.pop()  # the newline that ended the last row, not a row of its own
     columns = max(1, columns)
     rows = 0
     for line in lines:
+        line = line.removesuffix("\r")  # A final carriage return moves the cursor within the same row.
+        # Printable ASCII occupies one cell per character, including across soft wraps.
+        if line.isascii() and line.isprintable():
+            rows += max(1, (len(line) + columns - 1) // columns)
+            continue
         rows += 1
         used = 0
         for char in line:

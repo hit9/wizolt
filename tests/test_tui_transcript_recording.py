@@ -257,6 +257,8 @@ def test_physical_rows_counts_wrapped_lines_not_newlines():
     ("a\tbcd\r\n", 5, 2),
     ("abcde\tbcd\r\n", 5, 2),
     ("abcde\bxx\r\n", 5, 2),
+    ("abcde\r\nabcdef\r\n\r\n", 5, 4),
+    ("abcd\rxy", 5, 1),
 ])
 def test_physical_rows_keeps_wide_glyphs_together(text, columns, expected):
     assert physical_rows(text, columns) == expected

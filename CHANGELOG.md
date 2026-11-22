@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Count printable ASCII transcript rows by length. Counting 500 styled Read lines fell from
+  1.06 ms to 0.19 ms. [Workloads and Unicode results](benchmarks/results/linux-arm64-py314-render-cleanup.md#transcript-row-counting)
+
 - Simplify interrupted and failed turn settlement by passing the shared result text directly.
 
 - Reuse the Context tab’s rounded segments and palette for its bar and legend.

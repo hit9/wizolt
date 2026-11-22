@@ -30,3 +30,24 @@ Styled fragments matched exactly (SHA-256 of their Python representation
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Before | 69.69 | 71.06 | 73.47 | 70.99 | 69.07 | 70.95 | 70.45 |
 | After | 63.70 | 61.99 | 66.89 | 64.82 | 65.13 | 65.17 | 63.80 |
+
+## Transcript row counting
+
+Scrollback blob `9f5b158b2d` versus `97de1ceb`. Timed `physical_rows(text, 80)` in
+the same interpreter over three prebuilt 500-line strings. Each timing is the median of nine
+batches of 25 calls, alternating the order of the two implementations. Input generation
+and output comparisons were outside the timed region.
+
+| Input | Rows returned by both | Before (ms) | After (ms) | Change |
+| --- | ---: | ---: | ---: | ---: |
+| Long plain ASCII | 1500 | 6.9965 | 0.1540 | -97.8% |
+| Styled Read lines from UiPrinter | 500 | 1.0556 | 0.1937 | -81.7% |
+| Wide characters, combining marks and cursor controls | 500 | 0.3288 | 0.3329 | +1.2% |
+
+The plain input repeats `("tool output  " * 16 + "\n")` 500 times. The styled input joins
+500 `UiPrinter.print_parts` transcript captures, each with `"Read "` in the tool role and
+`f"src/file{index}.py 0:100\n"` in muted style. The mixed input repeats
+`"𠮷e\u0301中\tfoo\b\r\n"` 500 times and exercises the existing cell-by-cell path.
+A separate differential check found identical counts for 7,000 deterministic combinations
+of widths, glyphs, style escapes and cursor controls. These timings cover row measurement
+only; terminal IO and complete frame rendering are outside the measurement.
