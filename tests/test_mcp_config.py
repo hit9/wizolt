@@ -377,7 +377,8 @@ class TestMCPManagerDiscovery:
         assert await store.has_server_tokens(url) is True
         await store.clear_server(url)
 
-        assert (await tokens.get_tokens(), await tokens.get_client_info(), await tokens.get_token_expiry()) == (None, None, None)
+        assert await tokens.load_tokens() == (None, None)
+        assert await tokens.get_client_info() is None
 
     async def test_login_stored_by_fastmcp_still_loads(self, tmp_path):
         """wizolt used fastmcp before the MCP SDK; a login it wrote must survive the upgrade."""
@@ -391,7 +392,7 @@ class TestMCPManagerDiscovery:
 
         assert (await tokens.get_tokens()).refresh_token == "r"
         assert (await tokens.get_client_info()).client_id == "c"
-        assert await tokens.get_token_expiry() == pytest.approx(expires_at)
+        assert (await tokens.load_tokens())[1] == pytest.approx(expires_at, abs=0.001, rel=0)
 
     async def test_reloaded_token_keeps_its_absolute_expiry(self, tmp_path):
         """An expired access token must look expired after a restart, so the provider refreshes it
@@ -411,6 +412,27 @@ class TestMCPManagerDiscovery:
 
         assert auth.context.is_token_valid() is False
         assert auth.context.can_refresh_token() is True
+
+    async def test_refresh_during_provider_initialization_keeps_token_and_expiry_together(self, tmp_path, monkeypatch):
+        from mcp.shared.auth import OAuthToken
+
+        s = Session(cwd=str(tmp_path), config=Config.from_dict(mcp_cfg(auth="oauth")))
+        bootstrap_features(s)
+        provider = s.mcp.oauth_client(s.mcp.find_config("test"))
+        storage = provider.storage
+        await storage.set_tokens(OAuthToken(access_token="old", token_type="Bearer", expires_in=10, refresh_token="r"))
+        now = time.time() + 60
+        monkeypatch.setattr(time, "time", lambda: now)
+        load_client = storage.get_client_info
+
+        async def refresh_during_load():
+            await storage.set_tokens(OAuthToken(access_token="new", token_type="Bearer", expires_in=3600, refresh_token="r2"))
+            return await load_client()
+
+        monkeypatch.setattr(storage, "get_client_info", refresh_during_load)
+        await provider._initialize()
+        # A discovery peer may rotate the token while this provider is loading client info.
+        assert provider.context.is_token_valid() == (provider.context.current_tokens.access_token == "new")
 
     async def test_oauth_redirect_requires_explicit_interactive_connection(self):
         s = Session(cwd="/tmp", config=Config.from_dict(mcp_cfg(auth="oauth")))

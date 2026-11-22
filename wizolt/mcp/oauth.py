@@ -151,9 +151,11 @@ class WizoltOAuth(OAuthClientProvider):
         # The SDK treats a reloaded token as unexpired until the server rejects it, and a rejection
         # starts a full browser login rather than a refresh. Restoring the stored absolute expiry
         # lets an expired access token take the refresh path instead.
-        await super()._initialize()
-        if self.context.current_tokens and self.context.current_tokens.expires_in:
-            self.context.token_expiry_time = await self.storage.get_token_expiry()
+        tokens, expiry = await self.storage.load_tokens()
+        self.context.current_tokens = tokens
+        self.context.token_expiry_time = expiry if tokens and tokens.expires_in is not None else None
+        self.context.client_info = await self.storage.get_client_info()
+        self._initialized = True
 
     def needs_refresh(self) -> bool:
         return not self.context.is_token_valid() and self.context.can_refresh_token()

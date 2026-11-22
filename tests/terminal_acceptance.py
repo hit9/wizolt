@@ -204,12 +204,12 @@ def test_plugin_appearance_reload_preserves_input_and_updates_bars(pane):
     )
     pane.send(f"{sys.executable} -m wizolt --config {config} --yolo")
 
-    def wait(text):
+    def wait(text, *, prompt=False):
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             visible = pane.visible()
             assert "Unhandled exception" not in visible, visible
-            if text in visible:
+            if text in visible and (not prompt or ("h/l tab" not in visible and re.search(r"(?m)^> ", visible))):
                 return visible
             time.sleep(.05)
         raise AssertionError(f"missing {text!r}: {visible}")
@@ -223,6 +223,7 @@ def test_plugin_appearance_reload_preserves_input_and_updates_bars(pane):
     pane.send("/theme")
     wait("h/l tab")
     pane.keys("Escape")
+    wait("RELOADED-LOOK test-model", prompt=True)
     pane.send("/plugins disable look")
     wait('"off"')
     pane.send("/plugins enable look")

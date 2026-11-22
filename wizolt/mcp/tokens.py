@@ -74,30 +74,43 @@ class MCPFileTokenStore:
             self.save(data)
 
     async def get(self, key: str, *, collection: str | None = None) -> Json | None:
-        return await run_blocking(lambda: self._get_sync(key, collection=collection or self.DEFAULT_COLLECTION))
+        (value,) = await self.read_entries((collection or self.DEFAULT_COLLECTION, key))
+        return value
 
-    def _get_sync(self, key: str, *, collection: str) -> Json | None:
-        with self.transaction():
-            data = self.load()
-            entry = data.get(collection, {}).get(key)
-            if entry is None:
-                return None
-            if self.expired(entry):
-                data.get(collection, {}).pop(key, None)
-                self.save(data)
-                return None
-            value = entry.get("value")
-            return dict(value) if isinstance(value, dict) else None
+    async def read_entries(self, *keys: tuple[str, str]) -> list[Json | None]:
+        def read() -> list[Json | None]:
+            with self.transaction():
+                data = self.load()
+                values = []
+                changed = False
+                for collection, key in keys:
+                    entries = data.get(collection, {})
+                    entry = entries.get(key)
+                    if entry is not None and self.expired(entry):
+                        del entries[key]
+                        entry = None
+                        changed = True
+                    value = entry.get("value") if entry else None
+                    values.append(value if isinstance(value, dict) else None)
+                if changed:
+                    self.save(data)
+                return values
+
+        return await run_blocking(read)
 
     async def put(self, key: str, value: Json, *, collection: str | None = None, ttl: float | None = None) -> None:
-        await run_blocking(lambda: self._put_sync(key, value, collection=collection or self.DEFAULT_COLLECTION, ttl=ttl))
+        await self.write_entries({(collection or self.DEFAULT_COLLECTION, key): value}, ttl=ttl)
 
-    def _put_sync(self, key: str, value: Json, *, collection: str, ttl: float | None) -> None:
-        expires_at = time.time() + float(ttl) if ttl is not None else None
-        with self.transaction():
-            data = self.load()
-            data.setdefault(collection, {})[key] = {"value": dict(value), "expires_at": expires_at}
-            self.save(data)
+    async def write_entries(self, entries: dict[tuple[str, str], Json], *, ttl: float | None) -> None:
+        def write() -> None:
+            expires_at = time.time() + ttl if ttl is not None else None
+            with self.transaction():
+                data = self.load()
+                for (collection, key), value in entries.items():
+                    data.setdefault(collection, {})[key] = {"value": value, "expires_at": expires_at}
+                self.save(data)
+
+        await run_blocking(write)
 
     async def delete(self, key: str, *, collection: str | None = None) -> bool:
         return await run_blocking(lambda: self._delete_sync(key, collection=collection or self.DEFAULT_COLLECTION))
@@ -162,27 +175,25 @@ class MCPServerTokens:
     def __init__(self, store: MCPFileTokenStore, server_url: str):
         self.store = store
         self.server_url = server_url
+        self.token_key = ("mcp-oauth-token", store.token_key(server_url, "/tokens"))
+        self.expiry_key = ("mcp-oauth-token-expiry", store.token_key(server_url, "/token_expiry"))
 
-    async def get_tokens(self) -> OAuthToken | None:
+    async def load_tokens(self) -> tuple[OAuthToken | None, float | None]:
+        """Read one generation of credentials from the two legacy storage entries."""
         from mcp.shared.auth import OAuthToken
 
-        value = await self.store.get(self.store.token_key(self.server_url, "/tokens"), collection="mcp-oauth-token")
-        return OAuthToken.model_validate(value) if value else None
+        value, expiry = await self.store.read_entries(self.token_key, self.expiry_key)
+        expires_at = (expiry or {}).get("expires_at")
+        tokens = OAuthToken.model_validate(value) if value else None
+        return tokens, float(expires_at) if isinstance(expires_at, int | float) else None
+
+    async def get_tokens(self) -> OAuthToken | None:
+        tokens, _ = await self.load_tokens()
+        return tokens
 
     async def set_tokens(self, tokens: OAuthToken) -> None:
-        await self.store.put(self.store.token_key(self.server_url, "/tokens"), tokens.model_dump(mode="json"), collection="mcp-oauth-token", ttl=self.TOKEN_TTL)
-        if tokens.expires_in is not None:
-            await self.store.put(
-                self.store.token_key(self.server_url, "/token_expiry"),
-                {"expires_at": time.time() + int(tokens.expires_in)},
-                collection="mcp-oauth-token-expiry",
-                ttl=self.TOKEN_TTL,
-            )
-
-    async def get_token_expiry(self) -> float | None:
-        value = await self.store.get(self.store.token_key(self.server_url, "/token_expiry"), collection="mcp-oauth-token-expiry")
-        expires_at = (value or {}).get("expires_at")
-        return float(expires_at) if isinstance(expires_at, int | float) else None
+        expires_at = time.time() + tokens.expires_in if tokens.expires_in is not None else None
+        await self.store.write_entries({self.token_key: tokens.model_dump(mode="json"), self.expiry_key: {"expires_at": expires_at}}, ttl=self.TOKEN_TTL)
 
     async def get_client_info(self) -> OAuthClientInformationFull | None:
         from mcp.shared.auth import OAuthClientInformationFull

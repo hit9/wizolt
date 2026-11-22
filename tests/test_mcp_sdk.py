@@ -716,12 +716,14 @@ async def test_expired_access_token_is_refreshed_after_a_restart_without_a_brows
     """Guards the refresh race. Discovery lists tools and resources at once, each with its own
     provider; a server that rotates refresh tokens rejects the second use of one, so both
     refreshing lost the resources or failed discovery. Exactly one refresh, both listings."""
+    now = int(time.time())
+    monkeypatch.setattr(time, "time", lambda: now)
     s = oauth_session(tmp_path)
 
     async with login_server(monkeypatch, era, MemoryAuthServer(access_ttl=2, rotate=rotate)) as (auth, browser):
         assert await s.mcp.connect_server("fixture", interactive=True) == CONNECTED
         # Past the access token's lifetime; the stored absolute expiry is all a new session has.
-        monkeypatch.setattr(time, "time", lambda real=time.time: real() + 60)
+        now += 60
         assert await oauth_session(tmp_path).mcp.connect_server("fixture") == CONNECTED
         # And the refreshed login is itself stored: the next restart needs no refresh at all.
         assert await oauth_session(tmp_path).mcp.connect_server("fixture") == CONNECTED
@@ -731,11 +733,13 @@ async def test_expired_access_token_is_refreshed_after_a_restart_without_a_brows
 
 
 async def test_an_expired_login_without_a_refresh_token_asks_for_connect(tmp_path, monkeypatch, era):
+    now = int(time.time())
+    monkeypatch.setattr(time, "time", lambda: now)
     s = oauth_session(tmp_path)
 
     async with login_server(monkeypatch, era, MemoryAuthServer(access_ttl=2, issue_refresh=False)) as (auth, browser):
         assert await s.mcp.connect_server("fixture", interactive=True) == CONNECTED
-        monkeypatch.setattr(time, "time", lambda real=time.time: real() + 60)
+        now += 60
 
         assert await oauth_session(tmp_path).mcp.connect_server("fixture") == "MCP server error: fixture: authentication required; run /mcp connect fixture"
     assert len(browser.opened) == 1 and auth.refreshes == 0

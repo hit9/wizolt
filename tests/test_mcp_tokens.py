@@ -23,14 +23,16 @@ def test_two_processes_writing_logins_at_once_lose_neither(tmp_path):
     start = tmp_path / "go"
     writer = textwrap.dedent(
         """
-        import os, sys, time
+        import asyncio, os, sys, time
         from wizolt.mcp import MCPFileTokenStore
         path, start, name = sys.argv[1:4]
         store = MCPFileTokenStore(path)
         while not os.path.exists(start):
             time.sleep(0.001)
-        for index in range(60):
-            store._put_sync(f"{name}-{index}", {"access_token": name}, collection="mcp-oauth-token", ttl=None)
+        async def write():
+            for index in range(60):
+                await store.put(f"{name}-{index}", {"access_token": name}, collection="mcp-oauth-token", ttl=None)
+        asyncio.run(write())
         """
     )
     writers = [subprocess.Popen([sys.executable, "-c", writer, str(path), str(start), name]) for name in ("a", "b")]
@@ -61,6 +63,31 @@ async def test_async_store_roundtrip_delete_and_server_clear(tmp_path):
     assert await store.get(store.token_key(url, "/client_info"), collection="mcp-oauth-client-info") is None
     # The file survives with the collections' structure intact.
     assert os.path.isfile(store.path)
+
+
+async def test_refresh_publishes_the_new_expiry_with_the_new_token(tmp_path, monkeypatch):
+    from mcp.shared.auth import OAuthToken
+
+    from wizolt.mcp.tokens import MCPServerTokens
+
+    url = "https://example.com/mcp"
+    store = MCPFileTokenStore(str(tmp_path / "tokens.json"))
+    tokens = MCPServerTokens(store, url)
+    monkeypatch.setattr("time.time", lambda: 1000)
+    await tokens.set_tokens(OAuthToken(access_token="old", token_type="Bearer", expires_in=10))
+    save = store.save
+    published = []
+
+    def observe_save(data):
+        save(data)
+        snapshot = store.load()
+        token = snapshot["mcp-oauth-token"][url + "/tokens"]["value"]
+        expiry = snapshot["mcp-oauth-token-expiry"][url + "/token_expiry"]["value"]
+        published.append((token["access_token"], expiry["expires_at"]))
+
+    monkeypatch.setattr(store, "save", observe_save)
+    await tokens.set_tokens(OAuthToken(access_token="new", token_type="Bearer", expires_in=60))
+    assert published and set(published) == {("new", 1060)}
 
 
 async def test_expired_token_is_dropped_on_read(tmp_path):
