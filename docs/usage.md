@@ -310,6 +310,11 @@ context as needed so a session can run indefinitely. Run `/compact` to trim it n
 With tmux's default `alternate-screen on`, long sessions keep earlier output in native
 scrollback as you resize. Making the pane taller moves the prompt down and keeps recent output
 in place. Changing the width keeps the visible transcript in place when its lines still fit.
-Use **Ctrl-b [** and your usual copy-mode navigation and search.
+Press your tmux prefix followed by **[** to use your usual copy-mode navigation and search.
 Earlier diffs keep their original layout and wrap with the pane. With `alternate-screen off`,
 resizing rebuilds the retained transcript.
+
+Zoom and unzoom with your tmux prefix followed by **z**. Through SSH or a sandbox shell,
+wizolt recognizes the outer tmux from its terminal replies. If your connection filters those
+replies and the outer tmux has `alternate-screen on`, run
+`WIZOLT_TMUX_VIEWPORT=1 wizolt --resume UID` inside the remote shell.

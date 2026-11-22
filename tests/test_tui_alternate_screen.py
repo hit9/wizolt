@@ -32,11 +32,11 @@ import subprocess
 
 from wizolt.ui.tui import TuiApp
 
-print(asyncio.run(TuiApp.alternate_screen_available()))
+print(asyncio.run(TuiApp().alternate_screen_available()))
 subprocess.run([{executable!r}, "set-option", "-wg", "alternate-screen", "off"], check=True)
-print(asyncio.run(TuiApp.alternate_screen_available()))
+print(asyncio.run(TuiApp().alternate_screen_available()))
 subprocess.run([{executable!r}, "set-option", "-wg", "alternate-screen", "on"], check=True)
-print(asyncio.run(TuiApp.alternate_screen_available()))
+print(asyncio.run(TuiApp().alternate_screen_available()))
 """
     )
     run = f"{shlex.quote(sys.executable)} {shlex.quote(str(probe))} > {shlex.quote(str(tmp_path / 'out'))} 2>&1"

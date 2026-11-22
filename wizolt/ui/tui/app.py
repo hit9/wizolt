@@ -23,6 +23,7 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition, has_completions, is_done, is_searching
 from prompt_toolkit.formatted_text import OneStyleAndTextTuple, StyleAndTextTuples
 from prompt_toolkit.history import History
+from prompt_toolkit.input.vt100 import Vt100Input
 from prompt_toolkit.key_binding import DynamicKeyBindings, KeyBindings, merge_key_bindings
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.layout import Layout
@@ -49,6 +50,7 @@ from wizolt.mentions import MENU_KEYS, FilePick, MentionSpan, active_mention, en
 from wizolt.paste import PASTE_MARKER, PasteRef
 from wizolt.ui.render import InputStyle, ScrollbackText, Theme, UiPrinter
 from wizolt.ui.tui.scrollback import ScrollbackRegion, app_top_row, physical_rows
+from wizolt.ui.tui.terminal_replies import terminal_queries
 from wizolt.ui.tui.views import TUI_MODAL_PENDING
 
 
@@ -457,6 +459,8 @@ class TuiApp:
         # Completed output is recorded, then projected onto the terminal from inside the render
         # cycle. See tui/scrollback.py: the app's rows must stay out of the terminal's text flow.
         self.scrollback = ScrollbackRegion()
+        self.on_terminal_background: Callable[[tuple[int, int, int]], None] | None = None
+        self._remote_tmux_mode: bool | None = None
         self._screen_update_active = False
         self.input_window: Window | None = None
         self.activity_window: Window | None = None
@@ -1442,11 +1446,10 @@ class TuiApp:
         app.renderer.full_screen = enabled
         app._request_absolute_cursor_position()
 
-    @staticmethod
-    async def alternate_screen_available(*, on_error: bool = True) -> bool:
+    async def alternate_screen_available(self, *, on_error: bool = True) -> bool:
         """Whether an exclusive modal can preserve the primary screen in this terminal."""
         if not os.environ.get("TMUX"):
-            return True
+            return self._remote_tmux_mode is not False
         # alternate-screen is a window option, so show-options reports it only when a window
         # overrides it and stays silent for the usual global `set -wg` form. Formatting the
         # resolved value instead answers for both, as 1 (enabled) or 0 (disabled).
@@ -2275,8 +2278,7 @@ class TuiApp:
                 app._redraw()
 
         app._on_resize = on_resize
-        if not os.environ.get("TMUX_PANE"):
-            return
+        local_tmux = bool(os.environ.get("TMUX_PANE"))
 
         # tmux reflows the pane itself during a drag. Wait for a quiet interval
         # before replacing the live rows, including repaints from the animation
@@ -2300,7 +2302,7 @@ class TuiApp:
 
         def schedule(*, signal: bool = True) -> None:
             nonlocal pending, observed_size
-            if not self.scrollback.long_transcript:
+            if not (local_tmux or self._remote_tmux_mode is not None) or not self.scrollback.long_transcript:
                 on_resize()
                 return
             observed_size = app.output.get_size()
@@ -2314,7 +2316,13 @@ class TuiApp:
             pending = asyncio.get_running_loop().call_later(self.TMUX_RESIZE_SETTLE, settle)
 
         def redraw_when_settled(render_as_done: bool = False) -> None:
-            if self.scrollback.long_transcript and not repairing and not render_as_done and app.renderer._last_size is not None:
+            if (
+                (local_tmux or self._remote_tmux_mode is not None)
+                and self.scrollback.long_transcript
+                and not repairing
+                and not render_as_done
+                and app.renderer._last_size is not None
+            ):
                 size = app.output.get_size()
                 if size != app.renderer._last_size and (pending is None or observed_size != size):
                     schedule(signal=False)
@@ -2324,7 +2332,7 @@ class TuiApp:
 
         # In the main thread prompt-toolkit installs SIGWINCH. Its independent
         # size poll would deliver the same drag again after the frame settles.
-        if in_main_thread() and os.name == "posix":
+        if in_main_thread() and os.name == "posix" and (local_tmux or isinstance(app.input, Vt100Input) and app.input.stdin.isatty()):
             app.terminal_size_polling_interval = None
         app._on_resize = schedule
         app._redraw = redraw_when_settled
@@ -2448,9 +2456,19 @@ class TuiApp:
         renderer.render = render
 
     async def run(self, style: BaseStyle | None = None) -> None:  # pragma: no cover — interactive
-        self.scrollback.tmux_viewport_available = bool(os.environ.get("TMUX_PANE")) and await self.alternate_screen_available(on_error=False)
+        local_tmux = bool(os.environ.get("TMUX_PANE"))
+        if not local_tmux and os.environ.get("WIZOLT_TMUX_VIEWPORT") == "1":
+            self._remote_tmux_mode = True
+        self.scrollback.tmux_viewport_available = await self.alternate_screen_available(on_error=False) if local_tmux else self._remote_tmux_mode is True
         app = self._build_application(style)
         self.app = app
+
+        def remote_tmux(enabled: bool) -> None:
+            self._remote_tmux_mode = enabled
+            self.scrollback.tmux_viewport_available = enabled
+            app.invalidate()
+
+        probe_tmux = remote_tmux if not local_tmux and self._remote_tmux_mode is None else None
 
         def start() -> None:
             # pre_run already runs inside the application's loop, and the task it starts is
@@ -2460,7 +2478,7 @@ class TuiApp:
             self.on_ready()
 
         try:
-            with patch_stdout():
+            with patch_stdout(), terminal_queries(app, self.on_terminal_background, probe_tmux):
                 await app.run_async(pre_run=start)
         finally:
             self.scrollback.leave_viewport(app)

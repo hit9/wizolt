@@ -649,6 +649,9 @@ them to model messages, including compaction requests and checkpoints.
 
 In a long tmux session with alternate-screen support, the visible tail and native history have
 separate owners. Copy-mode reads primary scrollback followed by the current alternate screen.
+A local tmux reports its window option over its socket. Across a PTY bridge, the live input
+reader identifies tmux via secondary device attributes and checks whether leaving the alternate
+screen restores the primary cursor. It consumes the probe replies before key dispatch.
 As the tail fills, completed lines leave it once for primary scrollback. Resizing remeasures
 only the remaining tail. A large pending batch counts toward the threshold on its first frame.
 When a pane grows vertically, move only the live region and preserve the transcript tail row.

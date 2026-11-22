@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Detect an outer tmux through a remote PTY so zooming and unzooming a sandbox pane
+  preserves long transcript history even when the shell has no tmux environment variables.
+
 - Background summaries compare source and summary sizes using the same UTF-8 token estimate.
   Changing the compaction provider before a queued summary starts discards the old request.
 - Long tmux sessions preserve transcript rows that fit across a pane-width change.

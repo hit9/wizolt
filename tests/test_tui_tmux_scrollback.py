@@ -220,15 +220,21 @@ def test_dragging_split_boundary_settles_once_without_replaying_old_rows(pane):
         assert emitted.count(b"MARKER-0160") == 1
 
 
-@pytest.mark.parametrize("vertical", [False, True], ids=["wider", "taller"])
-def test_growing_pane_keeps_transcript_on_attached_client(pane, vertical):
+@pytest.mark.parametrize("resize", ["wider", "taller", "remote-zoom"])
+def test_resize_keeps_transcript_on_attached_client(pane, resize):
     import pty
     import select
     import termios
 
-    pane.split(vertical=vertical)
+    pane.split(vertical=resize == "taller")
     log = pane.path / "attached.log"
-    pane.send(f"{sys.executable} {acceptance.DRIVER} 160 0.002 {log}")
+    command = shlex.join([sys.executable, str(acceptance.DRIVER), "160", "0.002", str(log)])
+    if resize == "remote-zoom":
+        tmux("set-option", "-t", pane.session, "prefix", "C-a")
+        # A second PTY forwards VT replies and SIGWINCH across the shell boundary.
+        command = "env -u TMUX -u TMUX_PANE -u WIZOLT_TMUX_VIEWPORT TERM=xterm " + command
+        command = "script -q /dev/null " + command if sys.platform == "darwin" else "script -q -c " + shlex.quote(command) + " /dev/null"
+    pane.send(command)
     acceptance._wait_for_markers(log, 160)
     acceptance._stop_selectors(log)
 
@@ -252,13 +258,25 @@ def test_growing_pane_keeps_transcript_on_attached_client(pane, vertical):
         ) as client:
             try:
                 assert b"MARKER-0160" in read_client()
-                tmux("resize-pane", "-t", pane.session, *(("-y", "23") if vertical else ("-x", "75")))
-                lines = _settled_capture(pane)
-                received = read_client()
-                assert received
-                assert sum("MARKER-0160" in line for line in lines) == 1
-                if tmux("show-option", "-wv", "-t", pane.session, "alternate-screen").strip() == "on":
-                    assert received.count(b"MARKER-0160") <= 1
+                supported = tmux("show-option", "-wv", "-t", pane.session, "alternate-screen").strip() == "on"
+                for zoomed in ([True, False] if resize == "remote-zoom" else [False]):
+                    wire = pane.path / "pane-1.ansi"
+                    offset = wire.stat().st_size
+                    if resize == "remote-zoom":
+                        os.write(master, b"\x01z")
+                    else:
+                        tmux("resize-pane", "-t", pane.session, *(("-y", "23") if resize == "taller" else ("-x", "75")))
+                    lines = _settled_capture(pane)
+                    received = read_client()
+                    assert received
+                    assert tmux("display-message", "-p", "-t", pane.session, "#{window_zoomed_flag}").strip() == str(int(zoomed))
+                    assert re.findall(r"MARKER-(\d+)", "\n".join(lines)) == [f"{i:04d}" for i in range(1, 161)]
+                    emitted = wire.read_bytes()[offset:]
+                    if supported:
+                        assert received.count(b"MARKER-0160") <= 1
+                        assert b"MARKER-0001" not in emitted
+                    elif resize == "remote-zoom":
+                        assert b"MARKER-0001" in emitted
             finally:
                 client.terminate()
     finally:

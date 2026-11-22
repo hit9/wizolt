@@ -21,7 +21,8 @@ from wizolt.providers.sync import CatalogRuntime
 from wizolt.session import Session, SessionSnapshotStore
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.update import UpdateChecker
-from wizolt.ui.startup import _BackgroundReply, _run_startup
+from wizolt.ui.startup import _run_startup
+from wizolt.ui.tui.terminal_replies import TerminalReplies
 from wizolt.utils import terminal
 
 
@@ -160,7 +161,7 @@ async def test_exit_or_failure_during_assembly_restores_the_application(tmp_path
 def test_background_replies_preserve_keys_arrows_and_pasted_escape_sequences(chunk_size):
     keys, colors = [], []
     parser = Vt100Parser(keys.append)
-    replies = _BackgroundReply(parser.feed, lambda: parser._in_bracketed_paste, colors.append)
+    replies = TerminalReplies(parser.feed, lambda: parser._in_bracketed_paste, colors.append, lambda _: None, None)
     parser.feed = replies.feed
     color = '\x1b]11;rgb:ffff/eeee/dddd\x1b\\'
     pasted = 'pasted ' + color + ' text'
@@ -177,7 +178,7 @@ def test_background_replies_preserve_keys_arrows_and_pasted_escape_sequences(chu
 
 def test_background_filter_releases_escape_and_unrecognized_sequences():
     forwarded = []
-    replies = _BackgroundReply(forwarded.append, lambda: False, lambda _: None)
+    replies = TerminalReplies(forwarded.append, lambda: False, lambda _: None, lambda _: None, None)
     replies.feed('\x1b')
     replies.flush()
     replies.feed('text\x1b[?invalid\x1b]11;not-color\x1b\\')
@@ -260,7 +261,7 @@ async def test_assembly_inputs_wait_for_initial_skill_scan(tmp_path, startup_ui,
 def test_input_timeout_does_not_turn_a_partial_background_reply_into_typing():
     keys, colors = [], []
     parser = Vt100Parser(keys.append)
-    replies = _BackgroundReply(parser.feed, lambda: parser._in_bracketed_paste, colors.append)
+    replies = TerminalReplies(parser.feed, lambda: parser._in_bracketed_paste, colors.append, lambda _: None, None)
     replies.feed('draft\x1b]11;rgb:ffff/')
     replies.flush()  # The application's ESC timeout fires between two terminal reply chunks.
     parser.flush()
@@ -314,3 +315,21 @@ async def test_skill_scan_failure_or_exit_settles_before_shutdown(tmp_path, star
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
         command_loop.session.close()
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_remote_tmux_probe_leaves_keyboard_and_renderer_position_replies_intact(enabled):
+    keys, writes, modes = [], [], []
+    parser = Vt100Parser(keys.append)
+    replies = TerminalReplies(parser.feed, lambda: parser._in_bracketed_paste, lambda _: None, writes.append, modes.append)
+    identity = "\x1b[>84;0;0c"
+    position = "\x1b[1;3R" if enabled else "\x1b[1;4R"
+    replies.feed("\x1b[200~" + identity + "\x1b[201~")
+    assert not writes
+    for char in "draft" + identity + "\x1b[1;3R" + identity + position + "x":
+        replies.feed(char)
+    assert modes == [enabled]
+    assert len(writes) == 1
+    assert [key.data for key in keys if key.key == Keys.CPRResponse] == ["\x1b[1;3R"]
+    assert [key.data for key in keys if key.key == Keys.BracketedPaste] == [identity]
+    assert "".join(key.data for key in keys if key.key not in (Keys.CPRResponse, Keys.BracketedPaste)) == "draftx"
