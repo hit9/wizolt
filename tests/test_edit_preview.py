@@ -21,9 +21,9 @@ def test_approval_segments_highlight_inline_edit_preview():
     rendered = "".join(text for _, text in segments)
 
     assert (Theme.fg("tool"), "Edit") in segments
-    assert any(style.endswith("bg:#003b00") and style != "bg:#003b00" and "return" in text for style, text in segments)
-    assert any(style == "fg:ansigreen bg:#003b00" and text == "+" for style, text in segments)
-    assert any(style == "fg:default bg:#520000" and "pass" in text for style, text in segments)
+    assert any(style.endswith("bg:#005f00") and style != "bg:#005f00" and "return" in text for style, text in segments)
+    assert any(style == "fg:ansigreen bg:#005f00" and text == "+" for style, text in segments)
+    assert any(style == "fg:default bg:#5f0000" and "pass" in text for style, text in segments)
     assert "\n\n" not in rendered
 
 
@@ -42,7 +42,7 @@ def test_a_diff_does_not_draw_the_file_header_rows_it_was_named_by():
     assert "@@ -1,2 +1,2 @@" in rendered and "return 42" in rendered
     # Still read before being dropped: the body keeps the Python lexer's color, which only the
     # `+++` path named.
-    assert any("return" in text and style.endswith("bg:#003b00") and style != "bg:#003b00" for style, text in segments)
+    assert any("return" in text and style.endswith("bg:#005f00") and style != "bg:#005f00" for style, text in segments)
 
 
 def test_a_header_shaped_body_row_off_the_block_head_is_still_drawn():
@@ -151,8 +151,8 @@ def test_diff_segments_gracefully_degrades_without_header_path(tmp_path):
     diff = "@@ -1,1 +1,1 @@\n- old\n+ new\n"
     segments = ui.diff_segments(diff)
 
-    assert any(t == "-" and s == "fg:ansired bg:#520000" for s, t in segments)
-    assert any(t == "+" and s == "fg:ansigreen bg:#003b00" for s, t in segments)
+    assert any(t == "-" and s == "fg:ansired bg:#5f0000" for s, t in segments)
+    assert any(t == "+" and s == "fg:ansigreen bg:#005f00" for s, t in segments)
 
 
 def test_diff_segments_gracefully_degrades_without_lexer(tmp_path):
@@ -160,9 +160,9 @@ def test_diff_segments_gracefully_degrades_without_lexer(tmp_path):
     diff = "--- foo.unknownxyz\n+++ foo.unknownxyz\n@@ -1,1 +1,1 @@\n- old\n+ new\n"
     segments = ui.diff_segments(diff)
 
-    assert any(t == "-" and s == "fg:ansired bg:#520000" for s, t in segments)
+    assert any(t == "-" and s == "fg:ansired bg:#5f0000" for s, t in segments)
     assert any("old" in t and s == "fg:default " + Theme.diff_style("diff.removed.emph") for s, t in segments)
-    assert any(t == "+" and s == "fg:ansigreen bg:#003b00" for s, t in segments)
+    assert any(t == "+" and s == "fg:ansigreen bg:#005f00" for s, t in segments)
 
 
 def test_diff_segments_syntax_highlights_python(tmp_path):
@@ -170,16 +170,16 @@ def test_diff_segments_syntax_highlights_python(tmp_path):
     diff = "--- foo.py\n+++ foo.py\n@@ -1,2 +1,2 @@\n def hello():\n-    pass\n+    return 42\n"
     segments = ui.diff_segments(diff)
 
-    assert any(t == "+" and s == "fg:ansigreen bg:#003b00" for s, t in segments)
+    assert any(t == "+" and s == "fg:ansigreen bg:#005f00" for s, t in segments)
     # Highlighted by the theme's Pygments style, on the added band: the color is the style's, the
     # band is the diff's own pinned green.
-    assert any(t == "return" and s.endswith("bg:#003b00") and s.startswith("fg:#") for s, t in segments)
+    assert any(t == "return" and s.endswith("bg:#005f00") and s.startswith("fg:#") for s, t in segments)
 
-    assert any(t == "-" and s == "fg:ansired bg:#520000" for s, t in segments)
-    assert any("pass" in t and s == "fg:default bg:#520000" for s, t in segments)
+    assert any(t == "-" and s == "fg:ansired bg:#5f0000" for s, t in segments)
+    assert any("pass" in t and s == "fg:default bg:#5f0000" for s, t in segments)
 
     # Changed-line gutters join the background band; context stays unfilled.
-    assert any("│" in text and style == "fg:ansibrightblack bg:#003b00" for style, text in segments)
-    assert any("│" in text and style == "fg:ansibrightblack bg:#520000" for style, text in segments)
+    assert any("│" in text and style == "fg:ansibrightblack bg:#005f00" for style, text in segments)
+    assert any("│" in text and style == "fg:ansibrightblack bg:#5f0000" for style, text in segments)
     assert any("1" in text and "│" in text and "bg:" not in style for style, text in segments)
     assert any(text == "def" and "bg:" not in style for style, text in segments)

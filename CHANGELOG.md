@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Refreshed the built-in themes with quieter tool labels and status bars. The Colorscheme
+  tab previews a conversation, and classic diffs use separate line and word highlights in
+  green and red. Dark classic uses the same four colors in truecolor and 256-color terminals.
+
 ## 0.77.0 - 2026-11-21
 
 - Automatic context compaction prepares a summary in the background. The status bar shows

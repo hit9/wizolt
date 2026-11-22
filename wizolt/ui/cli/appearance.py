@@ -63,21 +63,21 @@ _SAVE = object()
 
 
 def theme_preview(_name: str) -> StyleAndTextTuples:
-    """Labeled color samples; dedicated tabs preview the statusbar, divider and input layout."""
+    """A single exchange in transcript order; a short pane shows its opening rows."""
     fg = Theme.fg
-    added = Theme.diff_style("diff.added.bg") + " " + Theme.diff_style("diff.added.fg")
-    removed = Theme.diff_style("diff.removed.bg") + " " + Theme.diff_style("diff.removed.fg")
-    rows: list[tuple[str, Sequence[tuple[str, str]]]] = [
-        ("Code", UiPrinter.syntax_segments("def split_words(text: str) -> list[str]:", "python", fg("text"))),
-        ("Removed", [(removed, "-    return text.split()")]),
-        ("Added", [(added, "+    return WORD.findall(text)")]),
-        ("Your message", [(fg("user", f"bg:{Theme.color('user_bg')}"), " • tighten the tokenizer ")]),
-        ("Reply", [(fg("text"), "Renamed "), (fg("text", "bold"), "split_words"), (fg("text"), " and kept the old name as an alias.")]),
-        ("Tool call", [(fg("tool"), "Edit "), *UiPrinter.tool_arg_segments('path="parser.py" replace_all=false', fg("text"))]),
-        ("Results", [(fg("success"), "12 passed"), (fg("warning"), " · 1 skipped"), (fg("error"), " · 0 failed")]),
-        ("Menu selection", [("class:choice.selected", " /theme "), (fg("muted"), " Choose a color theme")]),
+    return [
+        (fg("user", f"bg:{Theme.color('user_bg')}"), " • Handle repeated spaces "),
+        ("", "\n"),
+        (fg("text"), "Use Python’s whitespace splitter."),
+        ("", "\n"),
+        (fg("tool"), "Edit "),
+        (fg("muted"), "parser.py"),
+        ("", "\n"),
+        *UiPrinter().diff_segments('-    words = text.split(" ")\n+    words = text.split()'),
+        ("", "\n"),
+        (fg("success"), "✓ "),
+        (fg("text"), "12 tests passed"),
     ]
-    return [fragment for label, row in rows for fragment in ((fg("muted"), f"  {label:15} "), *row, ("", "\n"))]
 
 
 DIFF_STYLE_SAMPLE = """@@ -8,4 +8,4 @@ def tokenize(text):
@@ -390,7 +390,7 @@ class AppearancePicker:
         # A roomy layout spends six rows on header spacing, borders and inner padding.
         # Charge these to the preview, not the choices, so navigation keeps a useful window.
         room = self.height - (6 if framed else 0)
-        return max(0, min(8, room - 13)) if kind == "theme" else max(0, min(9, room - 8 - (kind == "divider")))
+        return max(0, min(6, room - 13)) if kind == "theme" else max(0, min(9, room - 8 - (kind == "divider")))
 
     def preview(self, kind: str, *, framed: bool = False, title: str = "") -> Any:
         if kind == "statusbar" and not framed:
@@ -441,7 +441,7 @@ class AppearancePicker:
         inside = width - 4
         border = Theme.fg("rule")
         caption = " " + Text.clip_width(title, width - 4) + " "
-        parts: StyleAndTextTuples = [(border, "  ╭" + caption + "─" * (width - 2 - get_cwidth(caption)) + "╮\n")]
+        parts: StyleAndTextTuples = [(border, "  ╭"), (Theme.fg("muted"), caption), (border, "─" * (width - 2 - get_cwidth(caption)) + "╮\n")]
         for row in [[], *rows, []]:
             clipped = StatusBar.clip_fragments(row, inside)
             parts.extend([(border, "  │ "), *clipped, ("", " " * (inside - fragment_list_width(clipped))), (border, " │\n")])
@@ -539,9 +539,8 @@ class AppearancePicker:
             rows = 1 + sum(fragment[1].count("\n") for fragment in parts)
             return [*parts, ("", "\n" * max(0, self.height - rows))]
         # The list's own title row gives way to the tabs; its blank row after them stays.
-        shown = self.preview_limit("theme", framed)
         preview_title = {
-            "theme": f"Color samples · {shown}/8 shown" + (" · enlarge to see all" if shown < 8 else ""),
+            "theme": "Conversation preview",
             "diff": "Diff · removed, added and changed words",
             "statusbar": "Status bar · live preview below",
             "divider": "Divider · idle, running and queued",

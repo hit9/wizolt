@@ -29,7 +29,7 @@ from wizolt.utils import terminal
 
 # 24-bit SGR parameters for colors the tests switch between.
 SAND_RED = "38;2;243;151;126"  # sand `error`, lifted for text contrast
-SAND_GRAY = "38;2;178;160;135"  # sand `rule`
+SAND_GRAY = "38;2;123;96;60"  # sand `rule`
 PLUM_RED = "38;2;243;148;176"  # plum `error`
 
 CONFIG = """# my own notes
@@ -219,12 +219,13 @@ async def test_new_themes_switch_save_and_preview(tmp_path, name, appearance):
     assert f'theme = "{name}"' in (tmp_path / "config.toml").read_text()
     preview = theme_preview(name)
     text = "".join(text for _, text in preview)
-    assert Theme.appearance() == appearance and "split_words" in text
-    assert "Edit " in text and "return WORD.findall(text)" in text
-    for label in ("Code", "Removed", "Added", "Your message", "Reply", "Tool call", "Results", "Menu selection"):
-        assert label in text
-    assert any(Theme.color("user") in style and "tighten" in text for style, text in preview)
+    assert Theme.appearance() == appearance
+    assert len(text.splitlines()) == 6
+    assert 'text.split(" ")' in text and "text.split()" in text and "12 tests passed" in text
+    assert any(Theme.color("user") in style and "repeated spaces" in text for style, text in preview)
     assert any(Theme.color("tool") in style and "Edit" in text for style, text in preview)
+    assert any(Theme.diff_style("diff.removed.emph") in style for style, _ in preview)
+
 
 
 def test_menu_descriptions_take_the_menu_text_color(tmp_path):
@@ -484,7 +485,7 @@ def test_named_themes_draw_exact_colors_on_a_true_color_terminal(monkeypatch):
 
     assert "38;2;" not in row(80) and "boom" in row(80)
     Theme.set_mode("sand")
-    assert "38;2;255;196;109" in row(80)  # sand amber, not its nearest 256-color neighbour
+    assert "38;2;234;207;168" in row(80)  # sand amber, not its nearest 256-color neighbour
     monkeypatch.setenv("COLORTERM", "")
     Theme.set_mode("sand")
     assert "38;2;" not in row(80)
@@ -681,8 +682,7 @@ async def test_the_picker_applies_each_row_it_lands_on_and_escape_restores_the_t
     assert tui.painted == ["forest", "sand", "slate"]
     assert Theme.name() == "slate" and tui.recolored == 0
     assert (tmp_path / "config.toml").read_text() == CONFIG.replace('"auto"', '"slate"')
-    # The preview is drawn in the row's theme: the user row in forest's orange on its frame.
-    assert any("split_words" in text for _, text in tui.frames[1])
+    assert any(BUILTIN["forest"].colors["user"] in style and "repeated spaces" in text for style, text in tui.frames[1])
 
 
 async def test_the_picker_restores_the_theme_when_interrupted(tmp_path):
@@ -754,6 +754,20 @@ async def test_theme_by_name_leaves_the_diff_colors_alone(tmp_path):
     assert "Diff colors" not in result and Theme.diff_style_name() == "classic"
 
 
+@pytest.mark.parametrize("depth", [ColorDepth.DEPTH_8_BIT, ColorDepth.DEPTH_24_BIT])
+def test_dark_classic_renders_the_recorded_terminal_colors_at_both_depths(depth):
+    # The demo showed xterm's green/red cube entries. Literal RGB must look the same
+    # when the shell starts advertising truecolor.
+    Theme.set_mode("dark")
+    parts = FormattedText([(Theme.diff_style("diff." + role), "X") for role in
+                           ("added.bg", "added.emph", "removed.bg", "removed.emph")])
+    ansi = UiPrinter.render_to_ansi([parts], columns=20, color_depth=depth)
+    expected = ("5;22", "5;28", "5;52", "5;124") if depth == ColorDepth.DEPTH_8_BIT else (
+        "2;0;95;0", "2;0;135;0", "2;95;0;0", "2;175;0;0",
+    )
+    assert re.findall(r"48;([0-9;]+)mX", ansi) == list(expected)
+
+
 def test_builtin_palettes_use_classic_by_default_and_all_diff_choices_support_both_appearances():
     assert set(BUILTIN) == {"slate", "forest", "sand", "plum", "paper", "gruvbox-dark", "solarized-dark", "dracula", "papercolor-light", "papercolor-dark"}
     assert set(DIFF_STYLES) == {"classic", "delta", "zebra"}
@@ -792,7 +806,7 @@ def test_a_theme_file_inherits_its_bases_diff_pairing_and_its_bands_win(tmp_path
     assert Theme.pygments_style() is Theme._pygments_cache["zenburn"]
     Theme.set_diff_style("classic")
     assert Theme.diff_style("diff.removed.bg") == "bg:#112233"
-    assert Theme.diff_style("diff.added.bg") == "bg:#003b00"
+    assert Theme.diff_style("diff.added.bg") == "bg:#005f00"
     # Foregrounds keep the appearance's pinned ones under every style.
     assert Theme.diff_style("diff.added.fg") == Theme.DIFF_DARK["diff.added.fg"]
 
@@ -944,11 +958,13 @@ def test_custom_user_background_preserves_full_width_padding(tmp_path, backgroun
 
 def test_the_app_style_follows_a_theme_switch(tmp_path):
     view = loop(tmp_path).view
-    assert view.style().get_attrs_for_style_str("class:choice.selected").bgcolor == "0077a8"
+    before = view.style().get_attrs_for_style_str("class:choice.selected").bgcolor
+    assert before == Theme.color("selection_bg")[1:]
 
     Theme.set_mode("sand")
 
-    assert view.style().get_attrs_for_style_str("class:choice.selected").bgcolor == "83bec3"
+    after = view.style().get_attrs_for_style_str("class:choice.selected").bgcolor
+    assert after == Theme.color("selection_bg")[1:] and after != before
 
 
 @pytest.mark.parametrize("name", tuple(BUILTIN))

@@ -95,13 +95,13 @@ class DiffStyle:
     light: dict[str, str] | None = None
 
 
-# Independent diff styles: preserve classic's established red and green bands.
+# Independent diff styles: classic uses exact xterm color-cube entries so truecolor matches the recorded terminal.
 # fmt: off
 DIFF_STYLES: dict[str, DiffStyle] = {
     "classic": DiffStyle(
-        "wizolt's bright red and green",
-        dark=bands("#003b00", "#1c7a1c", "#520000", "#9c1c1c"),
-        light=bands("#d1f0d1", "#8fd88f", "#f5c8c8", "#e88f8f"),
+        "green and red bands with stronger word highlights",
+        dark=bands("#005f00", "#008700", "#5f0000", "#af0000"),
+        light=bands("#d5eddd", "#a1d4ae", "#f4d8da", "#e5a8af"),
     ),
     # https://github.com/dandavison/delta/blob/main/src/color.rs
     "delta": DiffStyle(
@@ -183,7 +183,9 @@ def scheme(
 ) -> Palette:
     """Map a palette onto UI roles, lifting text contrast on its actual surfaces."""
     muted = lift(comment, fg, background, MUTED_CONTRAST)
-    provider, model = aqua, purple
+    provider, model = blend(comment, aqua, 0.25), aqua
+    selection = blend(surface, aqua, 0.30)
+    edge = "#ffffff" if appearance == "dark" else "#000000"
     success = "#98c78d" if appearance == "dark" else "#327244"
     # Tool arguments are colored like code: keys as properties, values as strings and numbers.
     code = {"assign": blue, "string": green, "number": purple, "ident": aqua, "builtin": yellow}
@@ -196,13 +198,12 @@ def scheme(
             "accent": aqua,
             "accent_secondary": purple,
             "info": blue,
-            "user": orange,
-            "tool": green,
-            # Keep success green even when a theme uses cyan for tools. Custom colors can override it.
+            "user": blend(fg, aqua, 0.35),
+            "tool": blend(comment, fg, 0.35),
             "success": success,
             "warning": yellow,
             "error": red,
-            "rule": comment,
+            "rule": rule,
             "syntax_assign": code["assign"],
             "syntax_string": code["string"],
             "syntax_number": code["number"],
@@ -213,32 +214,32 @@ def scheme(
             "status_base": fg,
             "status_provider": provider,
             "status_model": model,
-            "status_reason": yellow,
+            "status_reason": blend(comment, fg, 0.4),
             "status_mcp": comment,
             # The service counts' own hue: magenta, the one classic accent no other status
             # role takes, so the counts never share a color with a neighbor or a separator.
             "status_services": blend(purple, red, 0.5),
             "status_context": success,
-            "status_cache": blue,
+            "status_cache": blend(comment, blue, 0.25),
             "status_yolo": red,
-            "status_agent": orange,
+            "status_agent": blend(comment, orange, 0.3),
             # Mix raw accents with the theme's background, before text contrast is lifted.
             # Lifted ink reused as a surface makes all segments pale; saturated accent fills
             # overpower the theme. Only the model gets a stronger, still blended surface.
-            "status_provider_bg": blend(background, provider, 0.28),
-            "status_model_bg": blend(background, model, 0.5),
-            "status_reason_bg": blend(background, yellow, 0.35),
-            "status_context_bg": blend(background, success, 0.27),
-            "status_cache_bg": blend(background, blue, 0.21),
-            "status_agent_bg": blend(background, orange, 0.17),
+            "status_provider_bg": blend(status, provider, 0.12),
+            "status_model_bg": blend(status, model, 0.34),
+            "status_reason_bg": blend(status, fg, 0.10),
+            "status_context_bg": blend(status, success, 0.16),
+            "status_cache_bg": blend(status, blue, 0.10),
+            "status_agent_bg": blend(status, orange, 0.09),
             "status_yolo_bg": blend(background, red, 0.27),
             "status_bg": status,
-            "user_bg": blend(background, "#ffffff" if appearance == "dark" else "#000000", 0.04),
-            "divider_glow": aqua,
+            "user_bg": blend(background, aqua, 0.09),
+            "divider_glow": blend(rule, aqua, 0.65),
             "divider_rule": rule,
             "divider_label": aqua,
-            "selection_bg": lift(blue, fg, background, 4.5),
-            "selection_fg": background,
+            "selection_bg": selection,
+            "selection_fg": lift(fg, edge, selection, MENU_TEXT_CONTRAST),
             "menu_bg": surface,
             "menu_muted": lift(comment, fg, surface, MENU_TEXT_CONTRAST),
             "pygments": pygments,
@@ -275,7 +276,6 @@ def scheme(
         "status_yolo",
         "status_agent",
     ):
-        edge = "#ffffff" if appearance == "dark" else "#000000"
         palette.colors[role] = lift(lift(palette.colors[role], edge, status, MUTED_CONTRAST), edge, background, MUTED_CONTRAST)
     return palette
 
@@ -286,27 +286,27 @@ def scheme(
 BUILTIN: dict[str, Palette] = {
     "slate": scheme(
         "dark", fg="#d7e5f1", comment="#91a5b7", surface="#293d52", rule="#4a6884", background="#242b35",
-        red="#f08c91", green="#82d6bd", yellow="#e8ca83", blue="#79b9f2", purple="#c4acf0", aqua="#6bb9ff", orange="#e7bf86",
+        red="#f08c91", green="#82d6bd", yellow="#e8ca83", blue="#79b9f2", purple="#c4acf0", aqua="#88c1dd", orange="#e7bf86",
         status="#1f3042", pygments="nord", diff_style="classic",
     ),
     "forest": scheme(
         "dark", fg="#dde8cf", comment="#9caa91", surface="#30422d", rule="#566a44", background="#252d26",
-        red="#ed9691", green="#9cd59b", yellow="#e1cf7d", blue="#83c6d1", purple="#d5b1a0", aqua="#b1d878", orange="#e4bd7c",
+        red="#ed9691", green="#9cd59b", yellow="#e1cf7d", blue="#83c6d1", purple="#d5b1a0", aqua="#a6c597", orange="#e4bd7c",
         status="#243525", pygments="zenburn", diff_style="classic",
     ),
     "sand": scheme(
         "dark", fg="#f0dfc0", comment="#b2a087", surface="#493723", rule="#7b603c", background="#30291f",
-        red="#f3977e", green="#b9ce8a", yellow="#f2cc72", blue="#83bec3", purple="#d7a8bf", aqua="#ffc15e", orange="#ffc46d",
+        red="#f3977e", green="#b9ce8a", yellow="#f2cc72", blue="#83bec3", purple="#d7a8bf", aqua="#e0b17a", orange="#ffc46d",
         status="#3a2d1e", pygments="gruvbox-dark", diff_style="classic",
     ),
     "plum": scheme(
         "dark", fg="#ece0f5", comment="#b19bbb", surface="#432f50", rule="#695281", background="#292330",
-        red="#f394b0", green="#87d4ca", yellow="#e6c986", blue="#a2bdf0", purple="#cca7ee", aqua="#d1a0ff", orange="#eda6c3",
+        red="#f394b0", green="#87d4ca", yellow="#e6c986", blue="#a2bdf0", purple="#cca7ee", aqua="#c8a4cb", orange="#eda6c3",
         status="#33223f", pygments="dracula", diff_style="classic",
     ),
     "paper": scheme(
         "light", fg="#243b4a", comment="#617482", surface="#e0e9ef", rule="#a4b8c6", background="#f4f6f8",
-        red="#a63d49", green="#297c71", yellow="#886323", blue="#286496", purple="#805795", aqua="#286496", orange="#8b5942",
+        red="#a63d49", green="#297c71", yellow="#886323", blue="#286496", purple="#805795", aqua="#346a78", orange="#8b5942",
         status="#e0e9ef", pygments="friendly", diff_style="classic",
     ),
     # https://github.com/morhetz/gruvbox — retain its warm, multicolor identity.

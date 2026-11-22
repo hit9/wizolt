@@ -22,11 +22,10 @@ preview so more choices remain visible.
 ## Color themes
 
 Choose a familiar classic or a newer favorite in the **Colorscheme** tab.
-Each theme colors code, menus and diffs together.
-The labeled samples show code, removed and added lines, your messages, replies, tool calls,
-result colors and a selected menu item. The preview heading says how many of the eight types
-are shown. Small panes show fewer samples to leave room for choices; enlarge the pane to
-see them all. The other tabs preview diff details, the actual statusbar, idle/running/queued
+Each theme carries its accent through your messages, the menu selection and the model in
+the status bar. Tool names and separators use quieter colors.
+The preview shows a short exchange with a user message, a reply, an edit and its test result.
+In smaller panes the opening lines stay visible while you browse. The other tabs preview diff details, the actual statusbar, idle/running/queued
 dividers and ordinary/follow-up input symbols.
 
 ```{figure} _static/appearance-colors.svg
@@ -73,7 +72,7 @@ The preview shows added and removed lines, with changed words highlighted more s
 See what changed at a glance.
 ```
 
-Try `classic` for bright red and green, `delta` for deeper colors, or `zebra` for softer ones.
+Try `classic` for green additions and red removals that match in 256-color and truecolor dark terminals, `delta` for deeper colors, or `zebra` for softer ones.
 These are the three diff presets. `auto` uses `classic` for every built-in theme;
 your custom theme can override its diff backgrounds.
 

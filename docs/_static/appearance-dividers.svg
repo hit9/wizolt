@@ -6,10 +6,10 @@
 .appearance-dividers-r2 { fill: #abb2bf }
 .appearance-dividers-r3 { fill: #4a6884 }
 .appearance-dividers-r4 { fill: #98c78d }
-.appearance-dividers-r5 { fill: #6bb9ff;font-weight: bold }
-.appearance-dividers-r6 { fill: #6bb9ff }
-.appearance-dividers-r7 { fill: #4e7394 }
-.appearance-dividers-r8 { fill: #51789d }
+.appearance-dividers-r5 { fill: #88c1dd;font-weight: bold }
+.appearance-dividers-r6 { fill: #72a2be }
+.appearance-dividers-r7 { fill: #4f708c }
+.appearance-dividers-r8 { fill: #527490 }
 .appearance-dividers-r9 { fill: #d7e5f1 }
 </style>
 <defs><clipPath id="appearance-dividers-clip-terminal">

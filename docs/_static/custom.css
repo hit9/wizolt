@@ -224,10 +224,10 @@ table.docutils th { background: var(--nc-surface); color: var(--nc-fg-strong); }
 }
 .term-shot span { display: block; }
 .term-shot .fs-i, .term-shot .fs-caret { display: inline; }
-.fs-user, .fs-queued { color: #d19a66; }
-.fs-user, .fs-prompt { background: #32373f; }
+.fs-user, .fs-queued { color: #cadbea; }
+.fs-user, .fs-prompt { background: #303238; }
 .term-shot > .fs-user, .term-shot > .fs-prompt { padding-block: 1.7em; }
-.fs-tool { color: #98c379; }
+.fs-tool { color: inherit; }
 .fs-prompt { color: #abb2bf; }
 .fs-divider, .fs-hint, .fs-dim { color: #5c6370; }
 .fs-add { color: #98c379; }
@@ -242,7 +242,7 @@ table.docutils th { background: var(--nc-surface); color: var(--nc-fg-strong); }
 .fs-approve { color: #e5c07b; }
 /* The cursor, mirroring Theme.selection(): one band for every list, whatever the row it lands on
    is drawn in -- a picker row, a completion, a browser row, or the focused approval action. */
-.fs-selected { color: #ffffff; background: #0077a8; }
+.fs-selected { color: #edf3f6; background: #3e5769; }
 /* Markdown rendered inside a viewer, mirroring Rich's output: headings magenta underlined,
    inline code cyan on a dark band. */
 .fs-md-b { font-weight: 700; }
@@ -262,20 +262,20 @@ table.docutils th { background: var(--nc-surface); color: var(--nc-fg-strong); }
 .fs-fail { color: #e06c75; font-weight: 600; }
 .fs-rule { color: #4b5563; }
 .fs-glow { color: #67e8f9; }
-.fs-diff-add { background: #003b00; }
-.fs-diff-del { background: #520000; }
+.fs-diff-add { background: #005f00; }
+.fs-diff-del { background: #5f0000; }
 .fs-goal { color: #c678dd; }
 .fs-doing { color: #e5c07b; }
 /* Status bar roles, mirroring the dark palette in wizolt/ui/render.py (Theme.DARK). */
 .sb-base { color: #cbd5e1; }
-.sb-provider { color: #67d4e8; }
-.sb-model { color: #d7b0ff; }
-.sb-agent { color: #e7ac80; font-weight: bold; }
+.sb-provider { color: #a7bbc6; }
+.sb-model { color: #a4d0e2; }
+.sb-agent { color: #c1b7ab; font-weight: bold; }
 .sb-sep { color: #4b5563; }
-.sb-reason { color: #f0c77f; }
+.sb-reason { color: #bcc2cb; }
 .sb-mcp { color: #93a4b7; }
 .sb-ctx { color: #8dd6a1; }
-.sb-cache { color: #80b8ef; }
+.sb-cache { color: #a4b8c8; }
 .sb-yolo { color: #ff8f9c; }
 .sb-warn { color: #fb7185; }
 

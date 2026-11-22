@@ -242,8 +242,8 @@ async def test_small_pane_prioritizes_choices_over_the_sample(command_loop, monk
     await theme_command(command_loop, "")
     text = "".join(text for _, text in modal.frames[0])
     assert "showing 1-6 of" in text
-    assert "def " in text and "Enter save" in text
-    assert "Color samples · 1/8 shown" in text and "enlarge to see all" in text
+    assert "Handle repeated spaces" in text and "Enter save" in text
+    assert "Conversation preview" in text and "12 tests passed" not in text
     assert text.splitlines()[1].strip().endswith("Enter save · Esc cancel")
     assert "customization" in text.splitlines()[2] and "config" in text.splitlines()[2]
     assert 1 + text.count("\n") == 14
@@ -312,7 +312,7 @@ def test_roomy_appearance_previews_have_bounded_frames(command_loop, monkeypatch
             assert {get_cwidth(row) for row in rows[top : bottom + 1]} == {min(width - 4, 100) + 2}
             assert not rows[top + 1].strip(" │") and not rows[bottom - 1].strip(" │")
             if kind == "theme":
-                assert "8/8 shown" in rows[top]
+                assert "Conversation preview" in rows[top]
     finally:
         picker.restore()
 

@@ -4,22 +4,22 @@
 .appearance-custom-sweep-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
 .appearance-custom-sweep-r1 { fill: #91a5b7 }
 .appearance-custom-sweep-r2 { fill: #abb2bf }
-.appearance-custom-sweep-r3 { fill: #6bb9ff }
-.appearance-custom-sweep-r4 { fill: #69b4f7 }
-.appearance-custom-sweep-r5 { fill: #67aeef }
-.appearance-custom-sweep-r6 { fill: #62a3de }
-.appearance-custom-sweep-r7 { fill: #5e99ce }
-.appearance-custom-sweep-r8 { fill: #598ebd }
-.appearance-custom-sweep-r9 { fill: #5788b5 }
-.appearance-custom-sweep-r10 { fill: #537ea5 }
-.appearance-custom-sweep-r11 { fill: #51789d }
-.appearance-custom-sweep-r12 { fill: #4e7394 }
-.appearance-custom-sweep-r13 { fill: #4c6d8c }
+.appearance-custom-sweep-r3 { fill: #72a2be }
+.appearance-custom-sweep-r4 { fill: #6f9eba }
+.appearance-custom-sweep-r5 { fill: #6d9ab6 }
+.appearance-custom-sweep-r6 { fill: #6793af }
+.appearance-custom-sweep-r7 { fill: #628ba7 }
+.appearance-custom-sweep-r8 { fill: #5d839f }
+.appearance-custom-sweep-r9 { fill: #5a7f9b }
+.appearance-custom-sweep-r10 { fill: #557793 }
+.appearance-custom-sweep-r11 { fill: #527490 }
+.appearance-custom-sweep-r12 { fill: #4f708c }
+.appearance-custom-sweep-r13 { fill: #4d6c88 }
 .appearance-custom-sweep-r14 { fill: #4a6884 }
-.appearance-custom-sweep-r15 { fill: #5583ad }
-.appearance-custom-sweep-r16 { fill: #5c93c6 }
-.appearance-custom-sweep-r17 { fill: #609ed6 }
-.appearance-custom-sweep-r18 { fill: #64a9e6 }
+.appearance-custom-sweep-r15 { fill: #577b97 }
+.appearance-custom-sweep-r16 { fill: #5f87a3 }
+.appearance-custom-sweep-r17 { fill: #658fab }
+.appearance-custom-sweep-r18 { fill: #6a96b2 }
 </style>
 <defs><clipPath id="appearance-custom-sweep-clip-terminal">
 <rect width="926.1999999999999" height="340.59999999999997"/>

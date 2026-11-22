@@ -2,7 +2,7 @@
 <title>Rendered UI sample</title>
 <style>
 .plugins-meter-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
-.plugins-meter-r1 { fill: #6bb9ff }
+.plugins-meter-r1 { fill: #88c1dd }
 .plugins-meter-r2 { fill: #98c78d }
 .plugins-meter-r3 { fill: #e8ca83 }
 .plugins-meter-r4 { fill: #79b9f2 }

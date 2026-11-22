@@ -102,7 +102,7 @@ def test_status_roles_have_palette_entries():
 @pytest.mark.parametrize("mode,rule", [("dark", "4b5563"), ("light", "9ca3af")])
 def test_theme_does_not_restyle_frozen_interaction_regions(tmp_path, monkeypatch, mode, rule):
     """Theme work must not repaint input hints, thinking, or the divider, and every cursor in the
-    UI must stay the one selection band -- the same pair in both appearances, never `reverse`,
+    UI uses the active palette’s selection pair, never `reverse`,
     which would take its color from whatever the row underneath is drawn in."""
     monkeypatch.delenv("NO_COLOR", raising=False)
     monkeypatch.delenv("PROMPT_TOOLKIT_COLOR_DEPTH", raising=False)
@@ -111,7 +111,7 @@ def test_theme_does_not_restyle_frozen_interaction_regions(tmp_path, monkeypatch
 
     for name in ("choice.selected", "quickhint.focused", "approval.action.focused", "completion-menu.completion.current", "completion-menu.meta.completion.current"):
         band = style.get_attrs_for_style_str("class:" + name)
-        assert (band.color, band.bgcolor, band.reverse) == ("ffffff", "0077a8", False), name
+        assert (band.color, band.bgcolor, band.reverse) == (Theme.color("selection_fg")[1:], Theme.color("selection_bg")[1:], False), name
     assert style.get_attrs_for_style_str("class:quickhint").color == "ansicyan"
     thinking = style.get_attrs_for_style_str("class:muted")
     assert thinking.color == "ansibrightblack"
@@ -133,11 +133,11 @@ def test_markdown_uses_one_inline_accent_without_coloring_every_span(monkeypatch
 def test_diff_colors_survive_the_palette_reorganization(monkeypatch):
     """Diff colors are pinned, not derived: reshuffling the palette must not move them."""
     assert Theme.DIFF_DARK == {
-        "diff.added.bg": "bg:#003b00",
-        "diff.added.emph": "bg:#1c7a1c",
+        "diff.added.bg": "bg:#005f00",
+        "diff.added.emph": "bg:#008700",
         "diff.added.fg": "fg:default",
-        "diff.removed.bg": "bg:#520000",
-        "diff.removed.emph": "bg:#9c1c1c",
+        "diff.removed.bg": "bg:#5f0000",
+        "diff.removed.emph": "bg:#af0000",
         "diff.removed.fg": "fg:default",
         "diff.gutter": "fg:ansibrightblack",
         "diff.header": "fg:ansibrightblack",
@@ -146,11 +146,11 @@ def test_diff_colors_survive_the_palette_reorganization(monkeypatch):
         "diff.removed.sign": "fg:ansired",
     }
     assert Theme.DIFF_LIGHT == {
-        "diff.added.bg": "bg:#d1f0d1",
-        "diff.added.emph": "bg:#8fd88f",
+        "diff.added.bg": "bg:#d5eddd",
+        "diff.added.emph": "bg:#a1d4ae",
         "diff.added.fg": "fg:#003b00",
-        "diff.removed.bg": "bg:#f5c8c8",
-        "diff.removed.emph": "bg:#e88f8f",
+        "diff.removed.bg": "bg:#f4d8da",
+        "diff.removed.emph": "bg:#e5a8af",
         "diff.removed.fg": "fg:#520000",
         "diff.gutter": "fg:ansibrightblack",
         "diff.header": "fg:ansibrightblack",
@@ -481,9 +481,9 @@ def test_editor_context_combined_budget_keeps_latest_without_note(tmp_path):
     assert lines[-1] == f"latest {max_lines - 1}"
 
 
-def test_desert_user_color_does_not_leak_into_default_ui_style(tmp_path, monkeypatch):
+def test_user_color_does_not_leak_into_default_ui_style(tmp_path, monkeypatch):
     command_loop = loop(tmp_path)
-    for mode, expected in (("dark", "fg:#e0a96d"), ("light", "fg:#9a5b2e")):
+    for mode, expected in (("dark", "fg:#cadbea"), ("light", "fg:#364d5c")):
         monkeypatch.setattr(Theme, "_mode", mode)
         assert UiPrinter.user_log_style().split()[0] == expected
         assert command_loop.view.style().get_attrs_for_style_str("").color == ""
@@ -495,8 +495,8 @@ def test_tool_labels_take_the_palette_tool_color(monkeypatch):
         assert UiPrinter.log_styles(LogRole.TOOL) == (Theme.fg("tool"), Theme.fg("text"))
 
 
-@pytest.mark.parametrize(("mode", "rgb"), [("dark", "224;169;109"), ("light", "154;91;46")])
-def test_resumed_user_rendering_emits_desert_truecolor(mode, rgb, monkeypatch):
+@pytest.mark.parametrize(("mode", "rgb"), [("dark", "202;219;234"), ("light", "54;77;92")])
+def test_resumed_user_rendering_emits_user_truecolor(mode, rgb, monkeypatch):
     monkeypatch.setattr(Theme, "_mode", mode)
     ui = UiPrinter(output_fn=lambda text: None)
     console = markdown_module.markdown_console(40)
@@ -574,8 +574,8 @@ def test_interactive_renderer_keeps_theme_when_parent_exports_no_color(monkeypat
     assert ui.color
     ui.emit_answer("sent message", role="user", rule=False)
 
-    desert_text = "".join(text for style, text in emitted if style.startswith("#e0a96d"))
-    assert "• sent message" in desert_text
+    user_text = "".join(text for style, text in emitted if style.startswith("#cadbea"))
+    assert "• sent message" in user_text
 
 
 def test_the_roles_that_carry_text_are_the_terminal_own_colors():

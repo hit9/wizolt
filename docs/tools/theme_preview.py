@@ -23,23 +23,25 @@ from rich.console import Console
 from rich.terminal_theme import TerminalTheme
 from rich.text import Text
 
+from wizolt.base import LogBlock, LogEdge, LogLine, LogRole
 from wizolt.config import Config
 from wizolt.session import Session
 from wizolt.ui.cli.appearance import DIFF_STYLE_SAMPLE
 from wizolt.ui.render import Theme, UiPrinter
 
 CANDIDATES = [
-    {"id": "reference", "name": "00 · Default dark", "base": "dark", "note": "Unchanged reference palette."},
-    {"id": "slate", "name": "01 · Slate", "base": "slate", "note": "Blue accents with amber messages, mint tools and lavender details."},
-    {"id": "forest", "name": "02 · Forest", "base": "forest", "note": "Leaf green accents with wheat messages, teal code and warm details."},
-    {"id": "sand", "name": "03 · Sand", "base": "sand", "note": "Amber accents with sage tools, teal code and rose details."},
-    {"id": "plum", "name": "04 · Plum", "base": "plum", "note": "Lavender accents with rose messages, cyan tools and gold warnings."},
-    {"id": "paper", "name": "05 · Paper", "base": "paper", "note": "Ink blue with warm brown messages, teal tools and purple details."},
-    {"id": "gruvbox-dark", "name": "06 · Gruvbox Dark", "base": "gruvbox-dark", "note": "Retro orange, olive green and warm cream."},
-    {"id": "solarized-dark", "name": "07 · Solarized Dark", "base": "solarized-dark", "note": "Cyan and ochre on a blue-green terminal."},
-    {"id": "dracula", "name": "08 · Dracula", "base": "dracula", "note": "Bright pink, purple, cyan and green."},
-    {"id": "papercolor-light", "name": "09 · PaperColor Light", "base": "papercolor-light", "note": "White paper with blue, pink and olive syntax colors."},
-    {"id": "papercolor-dark", "name": "10 · PaperColor Dark", "base": "papercolor-dark", "note": "Charcoal with lime, gold and blue syntax colors."},
+    {"id": "reference", "name": "Terminal dark", "base": "dark", "note": "Terminal colors with cool blue details."},
+    {"id": "light", "name": "Terminal light", "base": "light", "note": "Terminal colors with blue ink on pale gray."},
+    {"id": "slate", "name": "Slate", "base": "slate", "note": "Glacier blue with steel-gray tools."},
+    {"id": "forest", "name": "Forest", "base": "forest", "note": "Sage green with moss-tinted input."},
+    {"id": "sand", "name": "Sand", "base": "sand", "note": "Honey amber and warm sandstone."},
+    {"id": "plum", "name": "Plum", "base": "plum", "note": "Orchid accents and dusty mauve."},
+    {"id": "paper", "name": "Paper", "base": "paper", "note": "Blue ink and pale sea-glass shading."},
+    {"id": "gruvbox-dark", "name": "Gruvbox Dark", "base": "gruvbox-dark", "note": "Retro orange, olive green and warm cream."},
+    {"id": "solarized-dark", "name": "Solarized Dark", "base": "solarized-dark", "note": "Cyan and ochre on a blue-green terminal."},
+    {"id": "dracula", "name": "Dracula", "base": "dracula", "note": "Bright pink, purple, cyan and green."},
+    {"id": "papercolor-light", "name": "PaperColor Light", "base": "papercolor-light", "note": "White paper with blue, pink and olive syntax colors."},
+    {"id": "papercolor-dark", "name": "PaperColor Dark", "base": "papercolor-dark", "note": "Charcoal with lime, gold and blue syntax colors."},
 ]
 STATUSBARS = ("lualine", "powerline", "blocks", "split", "vim", "default", "minimal", "compact", "brackets", "monitor")
 DIVIDERS = ("comet", "capsule", "rail")
@@ -58,21 +60,22 @@ def html_text(text: Text, terminal: TerminalTheme) -> str:
 
 def sample(figures: Illustrations, terminal: TerminalTheme) -> dict:
     message = figures.message("Fix the empty-input crash in parser.py", "user", 0)
+    patch_text = "--- a/parser.py\n+++ b/parser.py\n" + DIFF_STYLE_SAMPLE
+    edit = LogBlock.hierarchy(
+        LogLine("Edit", "parser.py", LogRole.TOOL),
+        [LogLine("", line, LogRole.DIFF, LogEdge.CONTINUE) for line in patch_text.splitlines()],
+    )
     rows = [
         message,
         Text(""),
         figures.message("Check the tokenizer, then handle empty input.", "assistant"),
         figures.log("Read", "parser.py"),
-        figures.log("Edit", 'path="parser.py" replace_all=false'),
-        figures.styled(UiPrinter.syntax_segments("def tokenize(text: str) -> list[str]:\n    return text.split()", "python", Theme.fg("text"))),
-        figures.styled(figures.printer.diff_segments(DIFF_STYLE_SAMPLE, row_width=WIDTH)),
+        figures.styled(figures.printer.log_segments(edit, WIDTH)),
         figures.styled(
             [
                 (Theme.fg("success"), "  12 passed"),
                 (Theme.fg("muted"), " · "),
                 (Theme.fg("warning"), "1 skipped"),
-                (Theme.fg("muted"), " · "),
-                (Theme.fg("error"), "0 failed"),
             ]
         ),
         Text(""),
@@ -128,7 +131,7 @@ pre{margin:0;font:12.5px/1.65 "SFMono-Regular",Consolas,"DejaVu Sans Mono",monos
 @media(max-width:560px){main{padding:16px}h1{font-size:26px}.choices{grid-template-columns:repeat(2,1fr)}.caption{display:block}.controls{gap:12px}pre{font-size:11px}.terminal svg{min-width:620px}}
 </style></head><body><main>
 <h1>Wizolt theme preview</h1>
-<p class="intro">Compare palettes, status bars, and dividers. Default dark stays unchanged. Every diff uses the existing classic colors.</p>
+<p class="intro">Compare palettes, status bars, and dividers. Diffs use classic colors.</p>
 <nav class="choices" aria-label="Color presets"></nav>
 <div class="controls">
 <label>Status bar <select id="statusbar"><option>lualine</option><option>powerline</option><option>split</option><option>vim</option><option>default</option><option>minimal</option><option>blocks</option><option>compact</option><option>brackets</option><option>monitor</option></select></label>
@@ -141,7 +144,7 @@ pre{margin:0;font:12.5px/1.65 "SFMono-Regular",Consolas,"DejaVu Sans Mono",monos
 </div>
 <div class="pick"><button id="pick">Pick this preset</button><span id="selection" role="status">Compare a few presets, then pick a favorite.</span></div>
 <details><summary>View the configuration</summary><pre id="config"></pre></details>
-<p class="footnote">Actual wizolt renderers, assembled for comparison. Messages shade only text rows. Input adds one shaded row above and below the text, with plain gaps to the divider and status bar. Both panels use the same terminal background. Light presets use a light terminal. Default dark and classic diff colors stay unchanged.</p>
+<p class="footnote">Actual wizolt renderers, assembled for comparison. Messages shade only text rows. Input adds one shaded row above and below the text, with plain gaps to the divider and status bar. Both panels use the same terminal background. Light presets use a light terminal.</p>
 </main><script id="data" type="application/json">__DATA__</script><script>
 (() => {
 const data=JSON.parse(document.getElementById('data').textContent);

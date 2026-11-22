@@ -4,8 +4,8 @@
 .appearance-custom-width-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
 .appearance-custom-width-r1 { fill: #91a5b7 }
 .appearance-custom-width-r2 { fill: #abb2bf }
-.appearance-custom-width-r3 { fill: #6bb9ff }
-.appearance-custom-width-r4 { fill: #e8ca83 }
+.appearance-custom-width-r3 { fill: #8facc0 }
+.appearance-custom-width-r4 { fill: #adbfce }
 .appearance-custom-width-r5 { fill: #98c78d }
 </style>
 <defs><clipPath id="appearance-custom-width-clip-terminal">
