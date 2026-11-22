@@ -2,8 +2,7 @@
 
 `StatusSnapshot.collect` reads everything at once, so a report never mixes two moments or two
 agents. Rendering only lays that snapshot out. Interactively, `StatusView` shows one tab at a time,
-Overview first; elsewhere `StatusReport` prints every tab as a section of the same frame, laid out
-again when the pane resizes and plain text without color.
+Overview first. Printed reports reflow on resize and show just the overview unless full detail is requested.
 """
 
 from __future__ import annotations
@@ -31,7 +30,7 @@ if TYPE_CHECKING:
     from wizolt.ui.cli import CommandLoop
 
 DOCS_URL = "https://wizolt.readthedocs.io"
-TABS = ("Overview", "Progress", "Context", "Usage", "Session")
+TABS = ("Overview", "Context", "Usage")
 # A plan step's marker and theme role; `doing` takes the accent the running agent wears.
 STEP_MARKS = {"done": ("✓", "success"), "doing": ("●", "accent"), "blocked": ("✕", "error"), "todo": ("○", "muted")}
 KEYS = "h/l tabs · j/k scroll · Esc close"
@@ -107,6 +106,8 @@ class GroupCounts(NamedTuple):
 
 @dataclass(frozen=True)
 class StatusSnapshot:
+    session_name: str
+    session_id: str
     agent: str
     state: str
     route: Route
@@ -147,6 +148,8 @@ class StatusSnapshot:
             usage.append(Section(f"Compaction · {model}", usage_rows(session.compaction_usage), numeric=True))
         counts = session.subagents.counts if session.subagents is not None else None
         return cls(
+            session_name=session.name,
+            session_id=session.uid,
             agent=session.agent_name,
             state=str(loop.presentation.status_bar.values()["agent.state"]),
             route=Route(session.config.active_provider, provider.model or "(empty)", session.policy.resolve(provider).api, provider.reasoning),
@@ -215,7 +218,7 @@ def activity_rows(loop: CommandLoop) -> tuple[Row, ...]:
 
 def configuration_rows(loop: CommandLoop) -> tuple[Row, ...]:
     session = loop.session
-    rows = [Row("workspace", session.cwd), Row("session", session.uid)]
+    rows = [Row("workspace", session.cwd)]
     if session.subagents is not None and (parent := session.subagents.entry(session.uid).parent):
         rows.append(Row("parent", parent))
     rows.append(Row("permissions", "yolo: no confirmations" if session.settings.yolo else "confirm risky actions"))
@@ -251,19 +254,19 @@ class StatusTabs:
         # the sections of a printed report; the widest label anywhere sets it.
         sections = [row.label for section in (*snapshot.usage, snapshot.activity, snapshot.configuration) for row in section.rows]
         parts = [name for name, tokens in snapshot.context.parts if tokens]
-        fixed = ["agent", "model", "goal", "context", "usage", "agents", "used", "total", "over by", "compacts at", "window"]
+        fixed = ["session", "session ID", "agent", "model", "goal", "context", "usage", "agents", "used", "total", "over by", "compacts at", "window"]
         fixed += ["progress", "plan", "known", "check"]
         self.column = label_column([*sections, *parts, *fixed])
 
     def rows(self, tab: str, width: int) -> TextRows:
-        tabs = {"Overview": self.overview, "Progress": self.progress, "Context": self.context, "Usage": self.usage, "Session": self.session}
+        tabs = {"Overview": self.overview, "Context": self.context, "Usage": self.usage}
         return tabs[tab](width)
 
     def progress(self, width: int) -> TextRows:
         """The note the agent keeps for itself: what it is after, how far along, what it knows."""
         snapshot = self.snapshot
         if not (snapshot.goal or snapshot.plan or snapshot.known or snapshot.check):
-            return [[words("No plan yet. The agent writes its goal, steps and checks here as it works.")]]
+            return []
         entries = [Entry("goal", text(snapshot.goal) if snapshot.goal else [words("none yet")])]
         steps: list[Entry] = []
         if snapshot.plan:
@@ -293,6 +296,8 @@ class StatusTabs:
         """What most visits want: who, on what, how full, how much so far."""
         snapshot, context, route = self.snapshot, self.snapshot.context, self.snapshot.route
         entries = [
+            Entry("session", text(snapshot.session_name or "(unnamed)")),
+            Entry("session ID", text(snapshot.session_id)),
             Entry(
                 "agent",
                 [(Theme.fg("status_agent", "bold"), snapshot.agent), words(" · "), (Theme.fg(STATE_ROLES.get(snapshot.state, "muted")), snapshot.state)],
@@ -311,8 +316,6 @@ class StatusTabs:
                 ],
             ),
         ]
-        if snapshot.goal:
-            entries.append(Entry("goal", text(snapshot.goal)))
         reading = context.reading()
         # The meter draws the reading beside it, not the estimated parts the Context tab breaks
         # down: the two can differ. It takes what the reading leaves, and gives way when narrow.
@@ -384,7 +387,7 @@ class StatusTabs:
 
         # Where this session lives, how it behaves, then where to read more: a blank row parts each.
         _, entries = self.snapshot.configuration.entries()
-        where = [entry for entry in entries if entry.label in {"workspace", "session", "parent"}]
+        where = [entry for entry in entries if entry.label in {"workspace", "parent"}]
         about = [entry for entry in entries if entry.label in {"update", "docs"}]
         behavior = [entry for entry in entries if entry not in where and entry not in about]
         rows = table([("", group) for group in (where, behavior, about) if group], width, self.column)
@@ -505,9 +508,10 @@ def frame_width(width: int) -> int:
 
 @dataclass(frozen=True)
 class StatusReport(WidthDependent):
-    """Every tab as a section of one frame: the transcript's copy of a report."""
+    """A transcript summary, or every tab in one frame when full detail is requested."""
 
     snapshot: StatusSnapshot
+    full: bool = False
 
     MARGIN: ClassVar[str] = LogBlock.margin(TurnBox.CONTENT_LEVEL)
 
@@ -515,28 +519,30 @@ class StatusReport(WidthDependent):
         return "".join(fragment[1] for fragment in self.fragments(width))
 
     @classmethod
-    def of(cls, loop: CommandLoop) -> StatusReport:
-        return cls(StatusSnapshot.collect(loop))
+    def of(cls, loop: CommandLoop, *, full: bool = False) -> StatusReport:
+        return cls(StatusSnapshot.collect(loop), full)
 
     def fragments(self, width: int) -> StyleAndTextTuples:
         outer = frame_width(width - len(self.MARGIN))
         tabs = StatusTabs(self.snapshot)
-        body: TextRows = []
-        for tab in TABS:
-            if body:  # Overview needs no heading: it opens the report
-                body += [[], [(Theme.fg("accent", "bold"), tab)]]
-            body += tabs.rows(tab, inner_width(outer))
+        if not self.full:
+            return [fragment for row in tabs.overview(max(1, width - len(self.MARGIN))) if row for fragment in (("", self.MARGIN), *row, ("", "\n"))]
+        inside = inner_width(outer)
+        body = tabs.overview(inside)
+        for title, section in (("Progress", tabs.progress), ("Context", tabs.context), ("Usage", tabs.usage), ("Session", tabs.session)):
+            if rows := section(inside):
+                body += [[], [(Theme.fg("accent", "bold"), title)], *rows]
         return [fragment for row in frame(body, outer) for fragment in (("", self.MARGIN), *row, ("", "\n"))]
 
 
 class StatusView:
-    """The interactive report: one tab at a time in the frame, Overview first. Every tab keeps the
-    tallest tab's height, so switching never moves the frame."""
+    """The interactive report fits the active tab and scrolls it within the available height."""
 
     def __init__(self, loop: CommandLoop, snapshot: StatusSnapshot) -> None:
         self.loop = loop
         self.tabs = StatusTabs(snapshot)
         self.state = TabbedViewState(TABS)
+        self.details = False
 
     def size(self) -> tuple[int, int]:
         """Columns and rows for this frame, from the live app when there is one."""
@@ -553,23 +559,29 @@ class StatusView:
         width, height = self.size()
         outer = frame_width(width - 2)
         inside = inner_width(outer)
-        tallest = max(len(self.tabs.rows(tab, inside)) for tab in TABS)
-        # Two rows are the frame's edges, two the tab row and the gap beneath it, and two the
-        # padding inside the edges -- kept only while the tallest tab still fits beside them: a
-        # short pane spends its rows on content and on the edge that names the keys.
-        padded = tallest + 6 <= height
-        room = max(1, min(tallest, height - (6 if padded else 4)))
-        rows = self.tabs.rows(TABS[self.state.tab], inside)
+        tab = TABS[self.state.tab]
+        rows = self.tabs.rows(tab, inside)
+        footer = KEYS
+        if tab == "Overview":
+            footer = ("d collapse · " if self.details else "d details · ") + KEYS
+            if self.details:
+                rows += [[], *self.tabs.session(inside)]
+                if progress := self.tabs.progress(inside):
+                    rows += [[], [(Theme.fg("accent"), "Progress")], *progress]
+        room = max(1, height - 4)  # Borders, tabs and one gap above the content.
         self.state.scroll = min(self.state.scroll, max(0, len(rows) - room))
         visible = rows[self.state.scroll : self.state.scroll + room]
-        body = [UiPrinter.tab_segments(TABS, self.state.tab), [], *visible, *([[]] * (room - len(visible)))]
-        return [fragment for row in frame(body, outer, footer=KEYS, padded=padded) for fragment in (("", "  "), *row, ("", "\n"))]
+        body = [UiPrinter.tab_segments(TABS, self.state.tab), [], *visible]
+        return [fragment for row in frame(body, outer, footer=footer, padded=False) for fragment in (("", "  "), *row, ("", "\n"))]
 
     def handle_key(self, key: str, data: str = "") -> Any:
         if key in {"escape", "q", "c-c", "enter"}:
             return None
         if key in {"h", "left", "s-tab", "l", "right", "tab"}:
             self.state.switch(-1 if key in {"h", "left", "s-tab"} else 1)
+        elif (data or key) == "d" and self.state.tab == 0:
+            self.details = not self.details
+            self.state.scroll = 0
         elif key in {"j", "down", "k", "up"}:
             self.state.scroll_by(1 if key in {"j", "down"} else -1)
         elif (number := data or key).isdigit() and 1 <= int(number) <= len(TABS):

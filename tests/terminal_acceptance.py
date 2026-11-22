@@ -143,6 +143,7 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
         "CatalogRuntime.refresh_due = lambda self: False\n"
         "main()\n"
     )
+    pane.resize(110, 40)
     pane.send(f"{sys.executable} {entry} --config {config} --yolo")
 
     def wait(text):
@@ -157,8 +158,25 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
         raise AssertionError(f"missing {text!r}: {visible}")
 
     wait("test-model")
+
+    def near_command(command, title):
+        # The echo and the live panel can arrive on successive terminal paints.
+        wait(re.compile(r"• " + re.escape(command) + r"[^\S\n]*\n(?:[^\n]*\n){0,5}[^\n]*" + re.escape(title)))
+
+    pane.send("/status")
+    near_command("/status", "Overview")
+    pane.keys("d")
+    wait("d collapse")
+    pane.keys("Escape")
+    wait(re.compile(r"(?m)^>(?:\s|$)"))
     pane.send("/plugins")
-    wait("disabled")
+    listing = wait("disabled")
+    near_command("/plugins", "Plugins ·")
+    assert "Built in ·" not in listing
+    pane.keys("i")
+    wait("Built in ·")
+    pane.keys("i")
+    wait("i info")
     pane.keys("Enter")
     wait("1. enable")
     pane.keys("Enter")
@@ -1099,7 +1117,7 @@ def test_format_draft_and_status_tabs_survive_resizes(pane):
     logged("closed: statusbar.format: MYBAR ")
 
     visible_containing("Overview")
-    pane.keys("l", "l")  # Past Progress to Context.
+    pane.keys("l")  # Context follows Overview.
     visible_containing("compacts at")
     for width, height in sizes:
         pane.resize(width, height)

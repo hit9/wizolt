@@ -158,7 +158,7 @@ def test_status_and_bar_show_skill_count(tmp_path):
 
     count = len(s.skills.skills)
     assert count == 3  # two project skills and the built-in plugin development skill
-    report = StatusReport.of(loop)
+    report = StatusReport.of(loop, full=True)
     activity = dict(report.snapshot.activity.rows)
     assert activity["mcp servers"] == "1"
     assert activity["skills"] == str(count)
@@ -217,7 +217,7 @@ def test_status_context_uses_last_real_tokens_when_available(tmp_path):
     s.usage.last_prompt_budget = 80_000  # the budget that request was prepared against
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
 
-    report = StatusReport.of(loop)
+    report = StatusReport.of(loop, full=True)
     assert (report.snapshot.context.used, report.snapshot.context.budget, report.snapshot.context.percent) == (20_000, 80_000, 25)
     # A provider's figure carries no estimate marker, and says where it came from.
     assert value(report.text(), "used") == "20.0K / 80.0K · 25%  last request, reported"
@@ -267,7 +267,7 @@ def test_status_breakdown_is_an_estimate_of_disjoint_parts(tmp_path):
     # Without MCP, or before any compaction, a part is absent from the legend rather than shown
     # as a measured zero.
     assert parts["mcp servers"] == 0 and parts["summary"] == 0
-    text = StatusReport.of(loop).text(100)
+    text = StatusReport.of(loop, full=True).text(100)
     assert value(text, "messages").startswith("■") and "mcp servers" not in text and "summary" not in text
     assert value(text, "memory files").startswith("■")
     assert value(text, "total") == "~" + Text.abbreviate_count(sum(parts.values()))
@@ -314,7 +314,7 @@ def test_status_marks_an_estimate_over_the_compaction_threshold(tmp_path):
     s.messages = [{"role": "user", "content": "x" * 200_000}]
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
 
-    report = StatusReport.of(loop)
+    report = StatusReport.of(loop, full=True)
     over = sum(tokens for _, tokens in report.snapshot.context.parts) - report.snapshot.context.threshold
 
     assert over > 0
@@ -326,7 +326,7 @@ def test_status_compaction_line_follows_a_lowered_threshold(tmp_path):
     s.config = replace(s.config, compaction_threshold=0.5)
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
 
-    report = StatusReport.of(loop)
+    report = StatusReport.of(loop, full=True)
 
     # automatic compaction runs at half the budget, so that is the line /status names
     assert report.snapshot.context.threshold == s.request_token_budget() // 2
@@ -373,7 +373,7 @@ def status_loop(tmp_path) -> CommandLoop:
 @pytest.mark.parametrize("width", [120, 80, 44, 21, 18])
 def test_printed_status_frames_every_tab_at_any_width(tmp_path, width):
     loop = status_loop(tmp_path)
-    lines = StatusReport.of(loop).text(width).splitlines()
+    lines = StatusReport.of(loop, full=True).text(width).splitlines()
     text = "\n".join(lines)
 
     # One frame around everything, never wider than the pane, however narrow (regression: at 21
@@ -402,29 +402,29 @@ def test_progress_tab_shows_the_agents_note_with_step_states(tmp_path):
     ]
     state.known, state.check = ["uv run pytest passes"], "uv run pytest -q"
     tabs = StatusTabs(StatusReport.of(loop).snapshot)
-    rows = ["".join(text for _, text in row) for row in tabs.rows("Progress", 76)]
+    rows = ["".join(text for _, text in row) for row in tabs.progress(76)]
     text = "\n".join(rows)
 
     assert "1 of 4 done · 1 doing · 1 blocked" in text
     assert [mark for mark in "✓●✕○" if mark in text] == list("✓●✕○")
     plan = [row for row in rows if row.lstrip().startswith(("plan", *"✓●✕○"))]
     assert plan[0].startswith("plan") and all(row[tabs.column] in "✓●✕○" for row in plan)  # one column
-    assert value(StatusReport.of(loop).text(100), "known") == "• uv run pytest passes"
-    assert value(StatusReport.of(loop).text(100), "check") == "uv run pytest -q"
+    assert value(StatusReport.of(loop, full=True).text(100), "known") == "• uv run pytest passes"
+    assert value(StatusReport.of(loop, full=True).text(100), "check") == "uv run pytest -q"
     # Each step wears its state's role: blocked reads as an error, the live step as the accent.
-    styles = {text.strip(): style for row in tabs.rows("Progress", 76) for style, text in row}
+    styles = {text.strip(): style for row in tabs.progress(76) for style, text in row}
     assert styles["✕"] == Theme.fg("error") and styles["●"] == Theme.fg("accent")
     # The meter takes what the counts leave: it never breaks across rows, and gives way when narrow.
     for width in (120, 60, 44, 30):
-        meter = [row for row in ("".join(text for _, text in row) for row in tabs.rows("Progress", width)) if "░" in row or "█" in row]
+        meter = [row for row in ("".join(text for _, text in row) for row in tabs.progress(width)) if "░" in row or "█" in row]
         assert len(meter) <= 1 and all("of 4 done" in row for row in meter), (width, meter)
 
 
-def test_progress_tab_explains_an_empty_note(tmp_path):
+def test_empty_note_takes_no_progress_rows(tmp_path):
     s = session(tmp_path)
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
-    rows = StatusTabs(StatusReport.of(loop).snapshot).rows("Progress", 76)
-    assert "No plan yet" in "".join(text for row in rows for _, text in row)
+    rows = StatusTabs(StatusReport.of(loop).snapshot).progress(76)
+    assert rows == []
 
 
 def test_status_shares_one_label_column_across_tabs(tmp_path):
@@ -442,13 +442,14 @@ def test_status_shares_one_label_column_across_tabs(tmp_path):
 def test_status_frame_is_a_quiet_structure_line(tmp_path):
     loop = status_loop(tmp_path)
 
-    styles = {style for style, text in StatusReport.of(loop).fragments(100) if "╭" in text or "╰" in text}
+    styles = {style for style, text in StatusReport.of(loop, full=True).fragments(100) if "╭" in text or "╰" in text}
 
     assert styles == {Theme.fg("muted")}
 
 
 def test_status_view_opens_on_a_concise_overview_and_switches_tabs(tmp_path):
     loop = status_loop(tmp_path)
+    loop.session.rename("Terminal polish")
     view = StatusView(loop, StatusReport.of(loop).snapshot)
 
     def screen():
@@ -457,12 +458,14 @@ def test_status_view_opens_on_a_concise_overview_and_switches_tabs(tmp_path):
     overview = screen()
     assert value(overview, "usage") == "1 request · 5.0K in · 100 out · 0% cached"
     assert "workspace" not in overview and "Activity" not in overview
-    rows = len(overview.splitlines())
-    for key, expected in (("l", "a goal long enough"), ("l", "last request, reported"), ("l", "All requests"), ("5", "workspace"), ("l", "context ")):
+    assert value(overview, "session") == "Terminal polish"
+    assert value(overview, "session ID") == loop.session.uid
+    assert len(overview.splitlines()) <= 12 and "a goal long enough" not in overview
+    assert TABS == ("Overview", "Context", "Usage")
+    for key, expected in (("d", "workspace"), ("d", "d details"), ("l", "last request, reported"), ("l", "All requests"), ("1", "context ")):
         assert view.handle_key(key, key) is TUI_MODAL_PENDING
         assert expected in screen()
-        # Every tab keeps the frame's height, so switching never moves it.
-        assert len(screen().splitlines()) == rows
+    assert screen() == overview
     assert view.handle_key("escape") is None
 
 
@@ -475,9 +478,7 @@ def test_status_view_fits_its_pane_and_keeps_the_keys_edge(tmp_path, monkeypatch
     monkeypatch.setattr(view, "size", lambda: (100, height))
     rows = "".join(fragment[1] for fragment in view.fragments()).splitlines()
     assert len(rows) <= height and "Esc close" in rows[-1]
-    padded = not rows[1].strip(" │")
-    tallest = max(len(view.tabs.rows(tab, 100)) for tab in TABS)
-    assert padded == (tallest + 6 <= height)
+    assert "Overview" in rows[1]
 
 
 async def test_status_command_shows_the_view_interactively_and_prints_otherwise(tmp_path):
@@ -486,7 +487,10 @@ async def test_status_command_shows_the_view_interactively_and_prints_otherwise(
     loop.presentation.ui.emit_block = blocks.append
     assert await loop.command("/status") == (True, False)
     [block] = blocks
-    assert isinstance(block, WidthDependent) and block.text(60) != block.text(120)
+    assert isinstance(block, WidthDependent)
+    assert loop.session.uid in block.text(100) and "(unnamed)" in block.text(100)
+    assert len(block.text(100).splitlines()) == 6 and "All requests" not in block.text(100)
+    assert "╭" not in block.text(100) and "context" in block.text(60)
 
     shown = []
 
@@ -502,6 +506,8 @@ async def test_status_command_shows_the_view_interactively_and_prints_otherwise(
     loop.interactive_input = True
     assert await loop.command("/status") == (True, False)
     assert len(blocks) == 1 and "Overview" in shown[0]
+    assert await loop.command("/status full") == (True, False)
+    assert len(shown) == 1 and "All requests" in blocks[-1].text(100)
 
 
 def test_session_from_config_file_theme_param(tmp_path):

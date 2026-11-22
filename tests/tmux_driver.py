@@ -78,7 +78,7 @@ async def main(log) -> None:
                 await asyncio.sleep(0.02)
             log.write(f"closed: {await theme_command(command_loop, '')}\n")
             log.flush()
-            report = StatusReport.of(command_loop)
+            report = StatusReport.of(command_loop, full=True)
             view = StatusView(command_loop, report.snapshot)
             await app.show_modal(view.fragments, view.handle_key)
             log.write("status view closed\n")

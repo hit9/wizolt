@@ -190,7 +190,7 @@ code without deleting anything. Disable the broken plugin in `/plugins`, then re
 
 Open **`/plugins`**, select a plugin and press **Enter**:
 
-The list shows its source (`builtin` or `user`), whether it is enabled, and its current state.
+The list shows its source (`builtin` or `user`), whether it is enabled, and its current state. Press **i** for the selected plugin’s documentation and details.
 
 | Action | What you get |
 | --- | --- |

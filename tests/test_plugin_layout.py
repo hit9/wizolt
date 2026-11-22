@@ -117,7 +117,7 @@ async def test_human_manager_only_offers_lifecycle_actions(tmp_path, monkeypatch
     runtime = session_with_provider(tmp_path).plugins
     choices_seen = []
 
-    async def choose(loop, name, choices, *args):
+    async def choose(loop, name, choices, *args, follow_transcript=False):
         choices_seen.append(choices)
 
     monkeypatch.setattr("wizolt.ui.cli.plugins.choice_application", choose)

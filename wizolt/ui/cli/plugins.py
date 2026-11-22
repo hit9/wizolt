@@ -20,7 +20,7 @@ from wizolt.sdk import Line, Panel, PluginError
 from wizolt.sdk import Text as PluginText
 from wizolt.ui.cli.modals import choice_application, picker_height
 from wizolt.ui.render import Theme
-from wizolt.ui.tui import ChoiceViewState
+from wizolt.ui.tui import TUI_MODAL_PENDING, ChoiceViewState
 
 if TYPE_CHECKING:
     from wizolt.plugins.runtime import PluginRuntime
@@ -103,6 +103,7 @@ class PluginManager:
         self.runtime = runtime
         self.records: dict[str, dict] = {}
         self.pages: dict[tuple[str, int], list] = {}  # Rendered About pages by (plugin, width).
+        self.details = False
         self.notice = ""
         self.state = ChoiceViewState((), {}, set())
 
@@ -165,7 +166,19 @@ class PluginManager:
             title += " · " + clean(self.notice)
         # Read-only while a turn runs: browsing is safe, changes wait until the agent is idle.
         manage = "read-only while the agent works" if self.busy else "Enter manage"
-        return self.state.fragments(title, self.preview, keys=f"↑/↓ j/k move · {manage} · / search · Esc back")
+        width = max(1, shutil.get_terminal_size((80, 24)).columns - 6)
+
+        def summary(name: str) -> str:
+            item = self.records[name]
+            return Text.clip_width(clean(item.get("error") or item.get("description") or ""), width)
+
+        return self.state.fragments(title, self.preview if self.details else summary, keys=f"{manage} · i info · / search · Esc back")
+
+    def handle_key(self, key: str, data: str = ""):
+        if (data or key) == "i" and not self.state.searching:
+            self.details = not self.details
+            return TUI_MODAL_PENDING
+        return self.state.handle_key(key, data)
 
     @property
     def busy(self) -> bool:
@@ -199,7 +212,7 @@ class PluginManager:
                 self.state.selected = self.state.choices.index(current)
             if problems := listing.get("problems"):
                 self.notice = "; ".join(problems)
-            chosen = await tui.show_modal(self.fragments, self.state.handle_key)
+            chosen = await tui.show_modal(self.fragments, self.handle_key, follow_transcript=True)
             if not isinstance(chosen, str):
                 return
             current = chosen
@@ -218,7 +231,7 @@ class PluginManager:
         choices = ("reload", toggle) if entry else (toggle,)
         # Unlike convenience selectors, an action menu must not auto-accept its only item.
         # Opening a disabled plugin shows Enable; it does not itself grant activation.
-        action = await choice_application(self.loop, name, choices, {}, "", set())
+        action = await choice_application(self.loop, name, choices, {}, "", set(), follow_transcript=True)
         if not isinstance(action, str):
             return
         result = await self.runtime.manage(action, name)
@@ -286,6 +299,9 @@ async def plugins_command(loop: CommandLoop, args: str) -> CommandResult:
                 raise PluginError("Usage: /plugins enable NAME")
             await runtime.manage("inspect", parts[1])  # Only existing installations belong in this human manager.
         result = await runtime.manage(action, parts[1] if len(parts) > 1 else "")
+        if not parts:
+            rows = [f"{item['name']}  {item['status']}" for item in result["plugins"]]
+            return "\n".join([*rows, *result.get("problems", [])]) or "No installed plugins."
         return json.dumps(result, ensure_ascii=False, indent=2)
     except Exception as error:  # noqa: BLE001 - plugin errors are user-visible, never a CLI crash.
         return f"Plugin error: {error}"

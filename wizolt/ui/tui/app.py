@@ -64,6 +64,7 @@ class TuiModal:
     # The result future, created by `show_modal` on the loop that opened it. Every modal is opened
     # and awaited on the application's own loop, so there is no second, thread-facing ending.
     future: Any = None
+    follow_transcript: bool = False
 
 
 async def _no_file_picker(_query: str) -> FilePick:
@@ -386,7 +387,7 @@ class TuiApp:
         self.on_app_stop = on_app_stop or (lambda: None)
         self.activity_fragments_fn: Callable[[], StyleAndTextTuples] = activity_fragments_fn or list
         self.activity_follows_transcript_fn: Callable[[], bool] = lambda: False
-        self.activity_gap_rows = 0
+        self.transcript_gap_rows = 0
         self.idle_divider_fragments_fn: Callable[[], StyleAndTextTuples] = list
         self.extension_fragments_fn: Callable[[int, int], dict[str, StyleAndTextTuples]] = lambda columns, rows: {}
         self._extension_frame: tuple[int, int, int] | None = None
@@ -1360,6 +1361,7 @@ class TuiApp:
         key_fn: Callable[[str, str], Any],
         *,
         exclusive: bool = False,
+        follow_transcript: bool = False,
         wait_for_input: bool = False,
     ) -> Any:
         """Show a modal inside this Application and await its result on the loop that runs it.
@@ -1378,7 +1380,7 @@ class TuiApp:
         # Plugin dialogs also wait for approvals; built-in approval viewers may nest.
         while self.modal is not None or (wait_for_input and self._input_pending is not None):
             await (self._modal_idle_event() if self.modal is not None else self._input_idle_event()).wait()
-        modal = TuiModal(fragments_fn, key_fn, exclusive=exclusive)
+        modal = TuiModal(fragments_fn, key_fn, exclusive=exclusive, follow_transcript=follow_transcript)
         modal.future = asyncio.get_running_loop().create_future()
         self._activate_modal(app, modal, exclusive=exclusive)
         try:
@@ -1708,7 +1710,7 @@ class TuiApp:
                 [
                     Window(height=1, dont_extend_height=True),
                     self.modal_window,
-                    Window(height=1, dont_extend_height=True),
+                    Window(height=lambda: 1 + (self.transcript_gap_rows if self.modal and self.modal.follow_transcript else 0), dont_extend_height=True),
                 ]
             ),
             filter=modal_active & ~exclusive_active,
@@ -2397,18 +2399,19 @@ class TuiApp:
         renderer.report_absolute_cursor_row = remember_tail
 
         def layout_height(rows: int, columns: int, pending: str | None = None) -> int:
-            self.activity_gap_rows = 0
+            self.transcript_gap_rows = 0
             height = min(rows, app.layout.container.preferred_height(columns, rows).preferred)
-            if self.input_mode == InputMode.RUNNING and self.modal is None and self.activity_follows_transcript_fn() and self.scrollback.tail_row is not None:
+            follow = self.modal.follow_transcript if self.modal else self.input_mode == InputMode.RUNNING and self.activity_follows_transcript_fn()
+            if follow and self.scrollback.tail_row is not None:
                 # Keep the live command beside its transcript header. Move unused space
                 # below the preview, leaving input/status fixed at the pane bottom.
                 # Pending writes need their space before this frame reserves the gap.
                 if pending is None:
                     pending = self.scrollback.pending_text(columns)
                 tail = self.scrollback.tail_row + physical_rows(pending, columns)
-                self.activity_gap_rows = max(0, rows - height - max(1, tail))
-                height += self.activity_gap_rows
-                if self.activity_gap_rows:
+                self.transcript_gap_rows = max(0, rows - height - max(1, tail))
+                height += self.transcript_gap_rows
+                if self.transcript_gap_rows:
                     # preferred_height cached the unpadded fragments for this render.
                     # Begin a new layout pass so content and cursor share the padded rows.
                     app.render_counter += 1

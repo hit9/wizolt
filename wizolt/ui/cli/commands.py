@@ -177,14 +177,16 @@ async def select_api(loop: ModelSettingsHost, model: str) -> str | object | None
     return await select_choice(loop, "Request API", PROVIDER_API_CHOICES, labels=labels, current=current)
 
 
-async def status(loop: CommandLoop, args: str) -> StatusReport | None:
-    """The tabbed view where there is a TUI to show it, else every tab printed in one frame."""
-    report = StatusReport.of(loop)
+async def status(loop: CommandLoop, args: str) -> StatusReport | str | None:
+    """Open the status tabs, print a short summary, or explicitly print the complete report."""
+    if args.strip() not in ("", "full"):
+        return "Usage: /status [full]"
+    report = StatusReport.of(loop, full=args.strip() == "full")
     tui = loop.presentation.tui
-    if tui is None or not loop.interactive_input:
+    if report.full or tui is None or not loop.interactive_input:
         return report
     view = StatusView(loop, report.snapshot)
-    await tui.show_modal(view.fragments, view.handle_key)
+    await tui.show_modal(view.fragments, view.handle_key, follow_transcript=True)
     return None
 
 

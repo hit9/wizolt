@@ -510,7 +510,7 @@ class View:
         if rows:
             fragments.append(("", "\n"))
             if self.presentation.tui is not None:
-                fragments.append(("", "\n" * self.presentation.tui.activity_gap_rows))
+                fragments.append(("", "\n" * self.presentation.tui.transcript_gap_rows))
         fragments.extend(waiting)
         return fragments
 

@@ -2,12 +2,16 @@
 
 ## Unreleased
 
+- Keep the `/status` and `/plugins` panels beside their transcript commands. The plugin picker
+  shows a one-line description by default. Press `i` for the About page and runtime details.
 - Skip individual provider accounts in `/usage` with `plugins.usage.exclude_providers`.
+
+- Simplify `/status` to Overview, Context and Usage. Overview shows the session name and ID. Press `d` for session details and the working note.
+  Each tab uses only the rows it needs. Printed output defaults to an overview;
+  `/status full` prints the detailed report.
 
 - Add an interactive theme comparison to the Appearance guide. Each docs build renders the current
   palettes, status bars and dividers. The standalone preview lives under `docs/_build/previews/`.
-
-- Generate the local theme comparison at `docs/_build/previews/theme-preview.html`.
 
 - Fix a race during MCP OAuth discovery after restart that could prompt for browser login
   after another request had already refreshed the token. Stabilize the plugin reload terminal

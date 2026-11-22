@@ -23,17 +23,17 @@ from wizolt.ui.tui import TUI_MODAL_PENDING
 
 async def test_status_ends_with_the_documentation_link(tmp_path):
     """The command list lives in the docs now, so every /status ends with the one place to read it."""
-    inside = [row.strip(" │") for row in StatusReport.of(loop(tmp_path)).text().splitlines()[1:-1]]
+    inside = [row.strip(" │") for row in StatusReport.of(loop(tmp_path), full=True).text().splitlines()[1:-1]]
     last = [row for row in inside if row][-1]  # the last row with content; padding sits below it
     assert last.split() == ["docs", "https://wizolt.readthedocs.io"]
 
 
 async def test_status_rows_keep_off_the_frame_and_related_rows_group(tmp_path):
     """Every tab used to run edge to edge: rows against the borders and one block of labels."""
-    rows = StatusReport.of(loop(tmp_path)).text().splitlines()
+    rows = StatusReport.of(loop(tmp_path), full=True).text().splitlines()
     assert not rows[1].strip(" │") and not rows[-2].strip(" │")  # a blank row inside each edge
     assert all(row.lstrip().startswith("│  ") for row in rows[1:-1])  # two spaces beside the border
-    overview = [row.strip(" │") for row in rows[2 : rows.index(next(row for row in rows if row.strip(" │") == "Progress"))]]
+    overview = [row.strip(" │") for row in rows[2 : rows.index(next(row for row in rows if row.strip(" │") == "Context"))]]
     # Who and on what, then how much: a blank row parts the two.
     assert overview.index("") > max(index for index, row in enumerate(overview) if row.startswith("model"))
     assert overview.index("") < min(index for index, row in enumerate(overview) if row.startswith("context"))
@@ -99,7 +99,7 @@ class ModalHarness:
                 return result
         return None
 
-    async def show_modal(self, fragments_fn, key_fn, *, exclusive=False):
+    async def show_modal(self, fragments_fn, key_fn, *, exclusive=False, follow_transcript=False):
         return self._drive(fragments_fn, key_fn, exclusive=exclusive)
 
 

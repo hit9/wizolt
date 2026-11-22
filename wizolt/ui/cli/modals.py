@@ -228,6 +228,7 @@ async def choice_application(
     preview_fn: Callable[[str], StyleAndTextTuples | str] | None = None,
     label_fn: Callable[[str], StyleAndTextTuples] | None = None,
     exclusive: bool = False,
+    follow_transcript: bool = False,
     max_rows: int = 0,
     on_focus: Callable[[str], None] | None = None,
     actions: dict[str, Callable[[str], Any]] | None = None,
@@ -257,7 +258,10 @@ async def choice_application(
         return result
 
     result = await loop.presentation.tui.show_modal(
-        lambda: state.fragments(title, preview_fn, label_fn, keys=keys, preview_title=preview_title), handle_key, exclusive=exclusive
+        lambda: state.fragments(title, preview_fn, label_fn, keys=keys, preview_title=preview_title),
+        handle_key,
+        exclusive=exclusive,
+        follow_transcript=follow_transcript,
     )
     if isinstance(result, KeyboardInterrupt):
         raise result
