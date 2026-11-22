@@ -220,16 +220,20 @@ def test_dragging_split_boundary_settles_once_without_replaying_old_rows(pane):
         assert emitted.count(b"MARKER-0160") == 1
 
 
-@pytest.mark.parametrize("resize", ["wider", "taller", "remote-zoom"])
+@pytest.mark.parametrize("resize", ["wider", "taller", "remote-zoom-wrapped", "remote-zoom-taller"])
 def test_resize_keeps_transcript_on_attached_client(pane, resize):
     import pty
     import select
     import termios
 
-    pane.split(vertical=resize == "taller")
+    remote = resize.startswith("remote-zoom")
+    pane.split(vertical=resize in ("taller", "remote-zoom-taller"))
+    if resize == "remote-zoom-wrapped":
+        # Each 42-column marker occupies two physical rows before zooming.
+        tmux("resize-pane", "-t", pane.session, "-x", "32")
     log = pane.path / "attached.log"
     command = shlex.join([sys.executable, str(acceptance.DRIVER), "160", "0.002", str(log)])
-    if resize == "remote-zoom":
+    if remote:
         tmux("set-option", "-t", pane.session, "prefix", "C-a")
         # A second PTY forwards VT replies and SIGWINCH across the shell boundary.
         command = "env -u TMUX -u TMUX_PANE -u WIZOLT_TMUX_VIEWPORT TERM=xterm " + command
@@ -259,10 +263,10 @@ def test_resize_keeps_transcript_on_attached_client(pane, resize):
             try:
                 assert b"MARKER-0160" in read_client()
                 supported = tmux("show-option", "-wv", "-t", pane.session, "alternate-screen").strip() == "on"
-                for zoomed in ([True, False] if resize == "remote-zoom" else [False]):
+                for zoomed in ([True, False] if remote else [False]):
                     wire = pane.path / "pane-1.ansi"
                     offset = wire.stat().st_size
-                    if resize == "remote-zoom":
+                    if remote:
                         os.write(master, b"\x01z")
                     else:
                         tmux("resize-pane", "-t", pane.session, *(("-y", "23") if resize == "taller" else ("-x", "75")))
@@ -273,10 +277,25 @@ def test_resize_keeps_transcript_on_attached_client(pane, resize):
                     assert re.findall(r"MARKER-(\d+)", "\n".join(lines)) == [f"{i:04d}" for i in range(1, 161)]
                     emitted = wire.read_bytes()[offset:]
                     if supported:
-                        assert received.count(b"MARKER-0160") <= 1
-                        assert b"MARKER-0001" not in emitted
-                    elif resize == "remote-zoom":
+                        displayed = re.findall(rb"MARKER-\d{4}", received)
+                        assert len(displayed) == len(set(displayed))
+                        assert b"MARKER-" not in emitted
+                        if zoomed:
+                            # Only the normal pane, not capture-pane -S - (which includes
+                            # scrollback). The driver's idle editor and status take six rows.
+                            visible = pane.visible().splitlines()
+                            transcript_rows = len(visible) - 6
+                            assert [row.split(" ", 1)[0] for row in visible[:transcript_rows]] == [
+                                f"MARKER-{n:04d}" for n in range(161 - transcript_rows, 161)
+                            ]
+                            assert visible[-1].strip() == "tmux-driver"
+                    elif remote:
                         assert b"MARKER-0001" in emitted
+                if remote and supported:
+                    tmux("copy-mode", "-t", pane.session)
+                    tmux("send-keys", "-t", pane.session, "-X", "history-top")
+                    first = tmux("display-message", "-p", "-t", pane.session, "#{copy_cursor_line}")
+                    assert first.startswith("MARKER-0001")
             finally:
                 client.terminate()
     finally:

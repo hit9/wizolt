@@ -19,6 +19,7 @@ from prompt_toolkit.application import Application, get_app
 from prompt_toolkit.application.run_in_terminal import in_terminal
 from prompt_toolkit.buffer import Buffer, CompletionState
 from prompt_toolkit.completion import CompleteEvent, Completer, Completion
+from prompt_toolkit.data_structures import Point
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition, has_completions, is_done, is_searching
 from prompt_toolkit.formatted_text import OneStyleAndTextTuple, StyleAndTextTuples
@@ -32,6 +33,7 @@ from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl, 
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.menus import CompletionsMenu, CompletionsMenuControl
 from prompt_toolkit.layout.processors import BeforeInput, HighlightIncrementalSearchProcessor, Processor, Transformation
+from prompt_toolkit.layout.screen import Char, Screen
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.renderer import HeightIsUnknownError
 from prompt_toolkit.styles import BaseStyle
@@ -2221,14 +2223,19 @@ class TuiApp:
         # size, or its reserved preview gap can push transcript out of the newly shortened pane.
         out.get_size = lambda: size
         self._screen_update_active = True
+        # tmux 3.7 redraws the whole pane on every reset of synchronized output.
+        # Native history only needs our buffered flush to present the live rows.
+        sync = self.scrollback.viewport is None
         try:
-            out.write_raw("\x1b[?2026h")
+            if sync:
+                out.write_raw("\x1b[?2026h")
             yield
         finally:
             self._screen_update_active = False
             out.flush = flush
             out.get_size = get_size
-            out.write_raw("\x1b[?2026l")
+            if sync:
+                out.write_raw("\x1b[?2026l")
             out.flush()
 
     def _install_resize_reanchor(self, app: Application) -> None:
@@ -2351,6 +2358,31 @@ class TuiApp:
         reported_row: int | None = None
         reserved_height = 0
 
+        # Paint the editing caret with the other cells. The hardware cursor belongs to
+        # tmux's reflowable transcript boundary between frames. Schedule this after floats
+        # so completion menus can still use the editor's real insertion position.
+        container = app.layout.container
+        write_layout = container.write_to_screen
+
+        def write_to_screen(screen: Screen, *args: Any, **kwargs: Any) -> None:
+            write_layout(screen, *args, **kwargs)
+            if self.scrollback.viewport is None or renderer.full_screen:
+                return
+
+            def paint_cursor() -> None:
+                window = app.layout.current_window
+                if screen.show_cursor and renderer._attrs_for_style is not None:
+                    x, y = screen.get_cursor_position(window)
+                    cell = screen.data_buffer[y][x]
+                    reverse = renderer._attrs_for_style[cell.style].reverse
+                    screen.data_buffer[y][x] = Char(cell.char, cell.style + (" noreverse" if reverse else " reverse"))
+                screen.show_cursor = False
+                screen.set_cursor_position(window, Point(x=0, y=0))
+
+            screen.draw_with_z_index(1_000_000, paint_cursor)
+
+        container.write_to_screen = write_to_screen
+
         def remember_tail(row: int) -> None:
             nonlocal reported_row
             if renderer.last_rendered_screen is None:
@@ -2395,7 +2427,10 @@ class TuiApp:
                     pending = self.scrollback.pending_text(columns) if self.scrollback.tmux_viewport_available else None
                     height = layout_height(rows, columns, pending)
                     if pending is not None and self.scrollback.draw_tmux_viewport(app, height, pending):
-                        vanilla_render(*args, **kwargs)
+                        try:
+                            vanilla_render(*args, **kwargs)
+                        finally:
+                            out.write_raw("\x1b8")
                         return
                     previous = renderer.last_rendered_screen
                     # Only changes to the live layout can move its top edge. Growing first uses

@@ -5,6 +5,7 @@ primary screen; getting it wrong on a `set -wg` tmux.conf eats the transcript.
 """
 
 import asyncio
+import os
 import shlex
 import shutil
 import subprocess
@@ -23,7 +24,7 @@ async def test_alternate_screen_probe_reads_the_resolved_window_option(tmp_path)
     executable = shutil.which("tmux")
     if executable is None:
         pytest.skip("requires tmux")
-    socket = "wizolt-test-probe-" + tmp_path.name
+    socket = f"wizolt-test-probe-{os.getpid()}"
     command = [executable, "-L", socket]
     probe = tmp_path / "alternate_screen_probe.py"
     probe.write_text(

@@ -7,10 +7,9 @@
 
 - Background summaries compare source and summary sizes using the same UTF-8 token estimate.
   Changing the compaction provider before a queued summary starts discards the old request.
-- Long tmux sessions preserve transcript rows that fit across a pane-width change.
-  A single resize repairs changed wrapping immediately and continuous drags coalesce.
-  A large restored batch enters the visible-tail view on its first frame. Growing a pane
-  preserves copy-mode rows while new transcript output arrives.
+- Zooming a long tmux session fills the expanded pane from native history and keeps the
+  prompt at the bottom. Regression tests zoom and restore through a second PTY, checking
+  wrapped lines, visible rows, copy-mode history, and the absence of transcript replay.
 - Qwen4-Max Preview keeps historical reasoning across Chat Completions turns.
 
 - Raised the default `runtime.max_context_tokens` from 256K to 512K (524,288 tokens).

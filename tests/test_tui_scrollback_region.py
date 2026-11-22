@@ -317,6 +317,60 @@ def test_restored_batch_draws_once_across_tmux_resizes(monkeypatch, wired):
     run_tui(monkeypatch, app, output, drive)
 
 
+def test_tmux_viewport_keeps_partial_lines_and_draft_cursor_across_resize(monkeypatch, wired):
+    output, app, _printer = wired
+
+    def draft_cells():
+        screen = app.app.renderer.last_rendered_screen
+        assert not screen.show_cursor
+        return {cell.char: cell.style for row in screen.data_buffer.values() for cell in row.values()
+                if cell.char in ("界", "β", "γ")}
+
+    async def edit():
+        app.scrollback.tmux_viewport_available = True
+        monkeypatch.setattr(app.scrollback, "TMUX_VIEWPORT_ROWS", 1)
+        app.record_scrollback("history\r\n" * ROWS + "committed line\r\nfirst frag")
+        buffer = app.app.layout.current_buffer
+        buffer.text = "界βγ"
+        buffer.cursor_position = 1
+        app.app._redraw()
+        assert "first frag" in output.lines
+        assert draft_cells()["β"].endswith(" reverse")
+
+        # The frame measured a short pane before zoom. Its bytes reach a tall pane;
+        # drawing at the old footer row would overwrite completed transcript.
+        monkeypatch.setattr(output, "get_size", lambda: Size(rows=18, columns=60))
+        app.app._on_resize()
+        assert "first frag" in output.lines
+        assert draft_cells()["β"].endswith(" reverse")
+        buffer.cursor_right()
+        app.record_scrollback("ment\r\nsecond frag")
+        app.app._redraw()
+        cells = draft_cells()
+        assert cells["γ"].endswith(" reverse") and not cells["β"].endswith(" reverse")
+        app.record_scrollback("ment\r\n")
+        app.app._redraw()
+        assert [line for line in output.lines if "frag" in line or "committed" in line] == [
+            "committed line", "first fragment", "second fragment",
+        ]
+        # A provisional line longer than a screen must never spill into history.
+        long_line = "long fragment " * 160
+        app.record_scrollback(long_line)
+        app.app._redraw()
+        assert sum("long fragment" in line for line in output.lines) == 1
+        assert any(line.endswith("...") for line in output.lines)
+        app.record_scrollback("\r\n")
+        app.app._redraw()
+        assert output.lines.count(long_line) == 1
+        app.app.exit()
+
+    def drive(_pipe_input):
+        wait_until(lambda: any(line.startswith(UiPrinter.PROMPT_PREFIX) for line in output.lines))
+        asyncio.run_coroutine_threadsafe(edit(), app.app.loop).result(timeout=10)
+
+    run_tui(monkeypatch, app, output, drive)
+
+
 @pytest.mark.parametrize("long_tmux", [False, True])
 @pytest.mark.parametrize("signal_first", [False, True])
 @pytest.mark.parametrize("size_changed", [False, True])
@@ -337,8 +391,10 @@ def test_resize_rebuilds_the_transcript_regardless_of_notification_order(monkeyp
         # though the final dimensions equal the previous frame's dimensions.
         if size_changed:
             output.size = Size(rows=ROWS - 1, columns=80)
-        output.lines[0] = "displaced live preview"
         output.row = min(output.row, output.size.rows)
+        # In native history the terminal cursor moves with the first live row.
+        # On the replay path a stale copy anywhere on screen must be removed.
+        output.lines[output.row - 1 if long_tmux else 0] = "displaced live preview"
         if signal_first:
             app.app._on_resize()
         app.app._redraw()

@@ -7,7 +7,10 @@ puts the application's rows into the terminal's text flow over and over, and onc
 reflows the pane nothing can tell whose rows are whose. That is what leaves blank rows and
 stale fragments behind.
 
-Two things fix it, and both are needed:
+In a long tmux session, TmuxViewport keeps the native cursor at the transcript boundary.
+Resizing reflows the history and cursor together; a frame only redraws below that boundary.
+
+Other sessions use two steps:
 
 * A DEC scroll region strictly above the application (`CSI 1;<top> r`) makes printed lines
   scroll the transcript -- and only the transcript -- off the top into native scrollback.
@@ -34,12 +37,13 @@ from __future__ import annotations
 import re
 import shutil
 import sys
-from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from prompt_toolkit.renderer import HeightIsUnknownError
 from prompt_toolkit.utils import get_cwidth
+
+from wizolt.base import Text
 
 if TYPE_CHECKING:
     from prompt_toolkit.application import Application
@@ -118,83 +122,62 @@ class _ReplayLayout:
 
 
 class TmuxViewport:
-    """Keep only uncommitted lines on the alternate screen. tmux copy-mode sees
-    primary history followed by this screen. Each line therefore has one owner."""
+    """Append completed lines to the primary grid and keep its cursor at the end of history.
+
+    tmux reflows that cursor with the transcript on zoom. Clearing from there removes only
+    the old live frame, regardless of its former height or width.
+    """
 
     def __init__(self) -> None:
-        self.lines: deque[str] = deque()
         self.geometry: tuple[int, int, int] | None = None
+        self.partial = ""
 
-    def draw(self, app: Application, text: str, height: int, *, reanchor: bool) -> bool:
-        """Return whether the transcript tail was placed immediately above the live rows."""
+    def draw(self, app: Application, text: str, height: int, *, reanchor: bool) -> None:
         renderer = app.renderer
         out = renderer.output
         rows, columns = out.get_size()
-        geometry = (rows, columns, height)
-        if not reanchor and not text and geometry == self.geometry and renderer.last_rendered_screen is not None:
-            return False
-        previous = self.geometry
-        entering = previous is None
-        self.geometry = geometry
-        space = rows - height
-        # An attached client has already displayed tmux's resized alternate grid.
-        # A taller pane retains the old rows at the top. A width-only resize
-        # retains every single-row line that fits both widths.
-        if previous is not None and not text:
-            old_rows, old_columns, old_height = previous
-            old_space = old_rows - old_height
-            grew = rows > old_rows and columns == old_columns and space >= old_space
-            width_only = rows == old_rows and height == old_height and columns != old_columns
-            if grew or (width_only and all(physical_rows(line, min(old_columns, columns)) <= 1 for line in self.lines)):
-                renderer.reset(leave_alternate_screen=False)
-                if grew:
-                    out.cursor_goto(old_space + 1, 1)
-                    out.erase_down()
-                out.cursor_goto(space + 1, 1)
-                renderer._min_available_height = height
-                return False
-        if text:
-            # Rich may put a final SGR reset after its newline. Keep it with
-            # the next write, so a style-only fragment never becomes a blank row.
-            if self.lines and not self.lines[-1].endswith("\n"):
-                text = self.lines.pop() + text
-            self.lines.extend(text.splitlines(keepends=True))
-        # Work backwards only through the screenful we can keep. A large new batch
-        # is written to native history once, with no retained-prefix scan on resize.
-        used = visible = 0
-        for line in reversed(self.lines):
-            count = physical_rows(line, columns)
-            if used + count > space:
-                break
-            used += count
-            visible += 1
-        overflow = len(self.lines) - visible
-        if entering or overflow:
-            if entering:
+        geometry = rows, columns, height
+        changed = reanchor or bool(text) or geometry != self.geometry or renderer.last_rendered_screen is None
+        if changed:
+            if self.geometry is None:
                 out.write_raw("\x1b[r\x1b[0m\x1b[H\x1b[2J\x1b[3J")
             else:
-                # Growing a tmux pane can pull committed rows back onto the
-                # primary screen. ED2 scrolls its occupied rows into history
-                # before our top-anchored append can overwrite them.
-                out.write_raw("\x1b[?1049l\x1b[2J")
-            if overflow:
-                # Two rows and one trailing LF push the last completed row into
-                # history too. Keep the saved primary screen empty between appends.
-                out.write_raw("\x1b[1;2r\x1b[H")
-                out.write_raw("".join(self.lines.popleft() for _ in range(overflow)))
-                out.write_raw("\r\n\x1b[r")
-            out.write_raw("\x1b[?1049h")
-        out.write_raw("\x1b[r\x1b[0m\x1b[H\x1b[2J")
-        out.cursor_goto(max(1, space - used + 1), 1)
-        out.write_raw("".join(self.lines))
-        renderer.reset(leave_alternate_screen=False)
-        out.cursor_goto(space + 1, 1)
-        renderer._min_available_height = height
-        return True
+                out.erase_down()
+            self.geometry = geometry
+            if text:
+                complete, newline, self.partial = (self.partial + text).rpartition("\n")
+                out.write_raw(complete + newline)
+            # A write can end partway through a line (or with just an SGR reset). Keep that
+            # fragment editable until the next write completes it; it must enter history once.
+            preview = self.partial
+            preview_rows = physical_rows(preview, columns)
+            if preview_rows > rows - height:
+                # A provisional line must never scroll into history before it is complete.
+                preview = Text.clip_width(_SGR.sub("", preview).expandtabs(), columns) if rows > height else ""
+                preview_rows = int(bool(preview))
+            reserve = preview_rows + height - 1
+            if reserve:
+                out.write_raw("\r\n" * reserve)
+                out.cursor_up(reserve)
+            renderer.reset(leave_alternate_screen=False)
+            renderer._min_available_height = height
+
+        # Save *after* native scrolling. Restore after this frame, before tmux can resize
+        # again. Never carry a saved absolute cursor coordinate across two frames.
+        out.write_raw("\x1b7")
+        if changed and preview_rows:
+            out.write_raw(preview)
+        # The terminal may already have resized again while this frame was in transit.
+        # CUP clamps at its actual bottom; an absolute cached footer row can erase history.
+        out.cursor_goto(9999, 1)
+        if height > 1:
+            out.cursor_up(height - 1)
 
     def leave(self, app: Application) -> None:
         out = app.renderer.output
-        out.write_raw("\x1b[?1049l\x1b[2J\x1b[H" + "".join(self.lines))
+        out.erase_down()
+        out.write_raw(self.partial)
+        out.show_cursor()
         out.flush()
 
 
@@ -340,8 +323,8 @@ class ScrollbackRegion:
             self.viewport = TmuxViewport()
         self._retain(self._pending)
         self._pending.clear()
-        if self.viewport.draw(app, text, height, reanchor=self._rebuild_owed):
-            self.tail_row = app.output.get_size().rows - height
+        self.viewport.draw(app, text, height, reanchor=self._rebuild_owed)
+        self.tail_row = app.output.get_size().rows - height
         self._rebuild_owed = False
         return True
 

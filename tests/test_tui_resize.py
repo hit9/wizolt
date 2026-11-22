@@ -61,7 +61,7 @@ class ReflowingTerminal(ResizableOutput):
         # into `CSI row;column H`, and the scrollback projection spells the first column the same
         # way. Characters are written at `self.column`, a 0-based cell index, so the column is
         # normalized here; keeping it raw leaves every following row one cell to the right.
-        self.row, self.column = row, column - 1
+        self.row, self.column = min(row, self.size.rows), column - 1
 
     def cursor_up(self, amount):
         self.row -= amount
@@ -106,9 +106,13 @@ class ReflowingTerminal(ResizableOutput):
         performed. Only the sequences wizolt emits are handled: purging scrollback and clearing
         the screen, which is what a width change does before replaying the transcript.
         """
-        for match in re.finditer(r"\x1b\[([?0-9;]*)([A-Za-z])|([^\x1b]+)", data):
-            params, final, text = match.groups()
-            if text is not None:
+        for match in re.finditer(r"\x1b\[([?0-9;]*)([A-Za-z])|\x1b([78])|([^\x1b]+)", data):
+            params, final, saved, text = match.groups()
+            if saved == "7":
+                self.saved_cursor = self.row, self.column
+            elif saved == "8":
+                self.row, self.column = self.saved_cursor
+            elif text is not None:
                 self.write(text)
             elif final == "H":
                 row, _, column = params.partition(";")
