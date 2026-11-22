@@ -1858,9 +1858,13 @@ class UiPrinter:
                 for number, item in enumerate(code, 1):
                     rendered = highlighted[number - 1] if highlighted is not None and number - 1 < len(highlighted) else [(Theme.fg("text"), item.text)]
                     prefix = [*margin, *self.edge_segments(item.edge), (Theme.fg("subtle"), f"{number:>{number_width}}  ")]
-                    # A wrapped code row keeps the margin itself (rails included) and blanks only
-                    # the edge and gutter, so a long line cannot punch a hole in the rail.
-                    continuation = [*margin, ("", " " * sum(get_cwidth(fragment[1]) for fragment in prefix[len(margin) :]))]
+                    # A wrapped code row keeps the margin rails and the edge-column bracket alike:
+                    # the continuation draws CONTINUE where the row drew an edge and blanks only
+                    # the number gutter, so a long line cannot punch a hole in either rail.
+                    rail = LogEdge.CONTINUE if item.edge is not LogEdge.NONE else LogEdge.NONE
+                    edge_width = get_cwidth(item.edge.value + " ") if item.edge is not LogEdge.NONE else 0
+                    gutter = sum(get_cwidth(fragment[1]) for fragment in prefix[len(margin) :]) - edge_width
+                    continuation = [*margin, *self.edge_segments(rail), ("", " " * gutter)]
                     for row in Text.wrap_styled(prefix, continuation, rendered, width):
                         segments.extend([*row, ("", "\n")])
                 index = end
@@ -1876,7 +1880,12 @@ class UiPrinter:
                 content.extend(self.syntax_segments(line.text, line.syntax, text_style))
             if line.meta:
                 content.append((Theme.fg("error" if line.role is LogRole.ERROR else "muted"), line.meta))
-            continuation = [*margin, ("", " " * get_cwidth(line.text_prefix()))]
+            # A wrapped row keeps the edge column's bracket unbroken: blanking the edge on a
+            # continuation punches a hole in the block's vertical rail every time a row wraps.
+            # The continuation draws CONTINUE there and blanks only the label and separator.
+            rail = LogEdge.CONTINUE if line.edge is not LogEdge.NONE else LogEdge.NONE
+            blank = get_cwidth(line.text_prefix()) - (get_cwidth(rail.value + " ") if rail is not LogEdge.NONE else 0)
+            continuation = [*margin, *self.edge_segments(rail), ("", " " * blank)]
             for row in Text.wrap_styled(prefix, continuation, content, width):
                 segments.extend([*row, ("", "\n")])
             index += 1

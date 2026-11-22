@@ -7,6 +7,7 @@ from prompt_toolkit.formatted_text import to_formatted_text
 import wizolt.ui.render as render_module
 from wizolt.base import (
     LogBlock,
+    LogEdge,
     LogLine,
     LogRole,
 )
@@ -163,6 +164,44 @@ class TestCodeLogLines:
 
     def test_unknown_lexer_degrades_to_plain_text(self):
         assert self.rendered("a = 1\n", "no-such-lexer").splitlines() == ["  1  a = 1"]
+
+    def test_a_wrapped_code_row_keeps_the_edge_rail(self):
+        block = LogBlock([LogLine("", "x = " + "1 " * 60, LogRole.CODE, LogEdge.CONTINUE, syntax="python")])
+        rows = "".join(text for _, text in UiPrinter().log_segments(block, 60)).splitlines()
+        assert rows[0].startswith("  │ 1  x = ")
+        assert rows[1].startswith("  │    1")  # the rail survives the wrap; only the gutter blanks
+
+
+class TestWrappedRowsKeepTheRail:
+    """A continuation draws CONTINUE in the edge column. Blanking the edge there punched a hole
+    in the block's vertical rail every time an output row wrapped."""
+
+    def rendered(self, block: LogBlock, columns: int = 60) -> list[str]:
+        return "".join(text for _, text in UiPrinter().log_segments(block, columns)).splitlines()
+
+    def test_output_continuation_keeps_the_edge_column_and_alignment(self):
+        block = LogBlock.hierarchy(
+            LogLine("Bash", "cmd", LogRole.TOOL),
+            [LogLine("", "word " * 40, LogRole.OUTPUT, LogEdge.BRANCH), LogLine("", "tail", LogRole.OUTPUT, LogEdge.END)],
+        )
+        rows = self.rendered(block)
+        assert rows[1].startswith("    ├ word ")
+        assert rows[2].startswith("    │ word ")
+        assert rows[-1] == "    └ tail"
+
+    def test_a_labelled_row_blanks_only_the_label_on_continuation(self):
+        block = LogBlock([LogLine("error", "word " * 40, LogRole.ERROR, LogEdge.CONTINUE)])
+        rows = self.rendered(block)
+        assert rows[0].startswith("  │ error word ")
+        assert rows[1].startswith("  │       word ")
+        assert rows[0].index("word") == rows[1].index("word")
+
+    def test_an_edgeless_row_still_wraps_without_a_rail(self):
+        block = LogBlock([LogLine("Bash", "word " * 40, LogRole.TOOL)])
+        rows = self.rendered(block)
+        assert rows[0].startswith("  Bash  word ")
+        assert "│" not in rows[1]
+        assert rows[0].index("word") == rows[1].index("word")
 
 
 def test_ui_batched_collects_into_one_print_formatted_text_call(monkeypatch):

@@ -11,6 +11,9 @@
   minor/patch bumps of transitive and dev dependencies (30 packages total, no new package names).
   Held back by the 7-day cooldown: httpx2 2.16.2, pyyaml 6.0.4, python-multipart 0.0.34. Deferred
   deliberately: wcwidth 0.9 (width tables), ruff 0.17 (pin), anthropic 2.x (API-version migration).
+- Keep the tree rail unbroken across wrapped log rows: a continuation draws `│` in the edge column
+  instead of blanking it, so a long output or code row no longer punches a hole in the block's
+  vertical line.
 
 ## 0.77.3 - 2026-11-22
 
