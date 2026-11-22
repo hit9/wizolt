@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Upgrade Pillow to 13.0.0, PyJWT to 2.15.1 and opentelemetry-api to 1.45.2 for security fixes.
+  Pillow 12.3.0 carries 62 advisories with no 12.x backport, including a critical FPX JPEG heap
+  overflow (CVE-2026-112398); opentelemetry-api fixes CVE-2026-126360 (traceparent parsing DoS).
+- Cap `anthropic<2` and document dependency-update rules in AGENTS.md: per-package lock upgrades,
+  a 7-day cooldown on new releases, and OSV/yank rechecks on upgrade day.
+
 ## 0.77.3 - 2026-11-22
 
 - Make the Bash promotion tests synchronize foreground and background output even on slow shell startup.

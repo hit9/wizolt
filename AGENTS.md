@@ -44,6 +44,12 @@ Keep this file short. It is an entry point, not a second design document.
   `uv run pytest -m tmux` and `uv run pytest -m zellij` when a change touches the terminal
   projection. The Zellij suite requires 0.45.1 (the CI pin) or a compatible later version.
 - **Quality:** run `uv run ruff check .`, `uv run ruff format --check wizolt`, and `uv run pyright`.
+- **Dependency updates:** upgrade per package (`uv lock --upgrade-package name==version`), never a
+  bare `uv lock --upgrade`. Adopt a release only after a 7-day cooldown from its PyPI upload time —
+  fresh releases are the supply-chain attack window (litellm, Oct 2026). On upgrade day recheck
+  every target against OSV advisories and PyPI yanks, and review the lock diff for new package
+  names. Majors need a deliberate migration task, not a lock bump. Security fixes for locked
+  versions are prioritized, not exempt from these checks.
 - **Docs:** on user-facing doc changes, update the English source and build `html`
   (`make -C docs html`).
 - **Docs standard:** `docs/` is written for users, not for the people who changed the code.
