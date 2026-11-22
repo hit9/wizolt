@@ -23,6 +23,8 @@ balance  ¥110.00  (granted ¥10.00 + topped up ¥100.00)  ok
 
 - Enable **usage** in `/plugins`, then type `/usage`. It makes one or two requests per
   supported provider, with that provider's configured key, and sends nothing else.
+- To skip accounts, set `exclude_providers = ["work", "kimi"]` under `[plugins.usage]`
+  and run `/plugins reload usage`. Names match your provider entries.
 - A host without interactive UI (an offline `plugin test`) answers once, every provider
   in one frame.
 - A `!` marks a window at 80% or more, or a balance of 10 or less.
@@ -461,7 +463,9 @@ def section(title: str, report: Report) -> list[Line]:
     return [Line((Text(title, "accent"),)), *rows]
 
 
-async def usage(context: Context, arguments: Mapping[str, Any], report: Callable[[list[Line]], Awaitable[None]] | None = None) -> str | list[Line]:
+async def usage(
+    context: Context, arguments: Mapping[str, Any], report: Callable[[list[Line]], Awaitable[None]] | None = None, *, exclude_providers: tuple[str, ...] = ()
+) -> str | list[Line]:
     root = Path(context.data_dir or "~/.wizolt").expanduser()
     config_path = Path(context.config_path) if context.config_path else root / "config.toml"
     try:
@@ -473,6 +477,10 @@ async def usage(context: Context, arguments: Mapping[str, Any], report: Callable
         return "config.toml is unreadable; fix it and try again."
     secrets = load_secrets(config_path.parent / "secrets.toml")  # Beside the config, as wizolt resolves them.
     entries = provider_entries(config)
+    if entries and entries.keys() <= set(exclude_providers):
+        return "All configured provider entries are excluded from /usage."
+    for name in exclude_providers:
+        entries.pop(name, None)
     # One request per distinct (source, key, url): two entries of one provider that share
     # their url and key are one account, and are asked once, not once per entry name.
     groups: dict[tuple[Source, str, str], list[str]] = {}
@@ -525,10 +533,16 @@ async def usage(context: Context, arguments: Mapping[str, Any], report: Callable
 def setup(plugin: Plugin) -> None:
     """Default enablement belongs to the installation catalog, never to plugin source code."""
 
+    plugin.configure(
+        {"type": "object", "properties": {"exclude_providers": {"type": "array", "items": {"type": "string"}}}, "additionalProperties": False},
+        defaults={"exclude_providers": []},
+    )
+    excluded = tuple(plugin.config["exclude_providers"])
+
     async def run(context: Context, arguments: Mapping[str, Any]) -> str | list[Line]:
         # The host's report channel streams each provider's block as it answers; the SDK
         # hands a handler only the context and the arguments, so it closes over plugin.
-        return await usage(context, arguments, report=plugin.ui.report)
+        return await usage(context, arguments, report=plugin.ui.report, exclude_providers=excluded)
 
     plugin.command(
         "usage",

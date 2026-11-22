@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Skip individual provider accounts in `/usage` with `plugins.usage.exclude_providers`.
+
 - Add an interactive theme comparison to the Appearance guide. Each docs build renders the current
   palettes, status bars and dividers. The standalone preview lives under `docs/_build/previews/`.
 

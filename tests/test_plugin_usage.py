@@ -25,6 +25,7 @@ import pytest
 
 import wizolt.plugins.builtin.usage as usage_plugin
 from wizolt.plugins.runtime import PluginRuntime
+from wizolt.plugins.settings import PluginSettings
 from wizolt.sdk import Context, Line, Text
 
 BUILTIN = Path(__file__).parents[1] / "wizolt/plugins/builtin"
@@ -93,7 +94,7 @@ def frozen_clock(monkeypatch) -> None:
 async def runtime(tmp_path):
     """The real plugin worker, enabled from the builtin source, as a user's /plugins would."""
     state = {"context": context(tmp_path)}
-    instance = PluginRuntime(lambda: state["context"])
+    instance = PluginRuntime(lambda: state["context"], PluginSettings(path=str(tmp_path / "config.toml")))
     try:
         await instance.manage("enable", str(BUILTIN / "usage.py"))
         yield instance
@@ -224,6 +225,16 @@ async def test_the_entry_key_wins_and_a_secret_fills_the_missing_one(wires, tmp_
     result = plain(await usage_plugin.usage(configured(tmp_path, config, secrets), {}))
     assert {url: key for url, key in wires.calls} == {DEEPSEEK_BALANCE: "own", SYNTHETIC_QUOTAS: "from-secrets"}
     assert "shadowed" not in result
+
+
+async def test_excluded_entries_are_neither_queried_nor_listed(wires, tmp_path):
+    config = provider_config(("home", DEEPSEEK, "personal"), ("work", DEEPSEEK, "office"), ("go", GO, "other"))
+    ctx = configured(tmp_path, config)
+    wires.answers[DEEPSEEK_BALANCE] = deepseek("10")
+    result = plain(await usage_plugin.usage(ctx, {}, exclude_providers=("work", "go", "unknown")))
+    assert "DeepSeek API (home)" in result and "work" not in result
+    assert plain(await usage_plugin.usage(ctx, {}, exclude_providers=("home", "work", "go"))) == "All configured provider entries are excluded from /usage."
+    assert wires.calls == [(DEEPSEEK_BALANCE, "personal")]
 
 
 async def test_two_entries_of_one_provider_are_told_apart_by_name(wires, tmp_path):
@@ -531,6 +542,13 @@ async def test_the_live_worker_reads_the_config_directory(runtime, tmp_path):
 async def test_the_live_worker_skips_a_provider_without_a_key(runtime, tmp_path):
     (tmp_path / "config.toml").write_text(provider_config(("deep", DEEPSEEK, None)))
     assert plain(await runtime.invoke("usage", "command", "usage", {})) == "DeepSeek API (deep)\nskipped: no key configured"
+
+
+async def test_reload_applies_provider_exclusions_to_the_live_command(runtime, tmp_path):
+    config = provider_config(("personal", DEEPSEEK, None), ("work", DEEPSEEK, None))
+    configured(tmp_path, config + '\n[plugins.usage]\nexclude_providers = ["work"]\n')
+    await runtime.manage("reload", "usage")
+    assert plain(await runtime.invoke("usage", "command", "usage", {})) == "DeepSeek API (personal)\nskipped: no key configured"
 
 
 async def test_the_command_answers_from_the_queued_path_mid_turn(runtime):

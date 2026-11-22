@@ -145,6 +145,14 @@ line and the rest still report. It answers while an agent turn is still working,
 no need to interrupt the turn for it. It starts disabled, writes nothing and makes no model
 calls.
 
+To skip accounts, list their provider entry names in your config and reload the usage plugin
+with `/plugins reload usage`. Excluded entries generate no usage requests.
+
+```toml
+[plugins.usage]
+exclude_providers = ["work", "kimi"]
+```
+
 ## Choose the model's tools
 
 Enable **tool_visibility** in `/plugins`, then type `/tools`: each tool is listed with what it
