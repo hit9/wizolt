@@ -125,15 +125,34 @@ class TmuxViewport:
         self.lines: deque[str] = deque()
         self.geometry: tuple[int, int, int] | None = None
 
-    def draw(self, app: Application, text: str, height: int, *, reanchor: bool) -> None:
+    def draw(self, app: Application, text: str, height: int, *, reanchor: bool) -> bool:
+        """Return whether the transcript tail was placed immediately above the live rows."""
         renderer = app.renderer
         out = renderer.output
         rows, columns = out.get_size()
         geometry = (rows, columns, height)
         if not reanchor and not text and geometry == self.geometry and renderer.last_rendered_screen is not None:
-            return
-        entering = self.geometry is None
+            return False
+        previous = self.geometry
+        entering = previous is None
         self.geometry = geometry
+        space = rows - height
+        # An attached client has already displayed tmux's resized alternate grid.
+        # A taller pane retains the old rows at the top. A width-only resize
+        # retains every single-row line that fits both widths.
+        if previous is not None and not text:
+            old_rows, old_columns, old_height = previous
+            old_space = old_rows - old_height
+            grew = rows > old_rows and columns == old_columns and space >= old_space
+            width_only = rows == old_rows and height == old_height and columns != old_columns
+            if grew or (width_only and all(physical_rows(line, min(old_columns, columns)) <= 1 for line in self.lines)):
+                renderer.reset(leave_alternate_screen=False)
+                if grew:
+                    out.cursor_goto(old_space + 1, 1)
+                    out.erase_down()
+                out.cursor_goto(space + 1, 1)
+                renderer._min_available_height = height
+                return False
         if text:
             # Rich may put a final SGR reset after its newline. Keep it with
             # the next write, so a style-only fragment never becomes a blank row.
@@ -142,7 +161,6 @@ class TmuxViewport:
             self.lines.extend(text.splitlines(keepends=True))
         # Work backwards only through the screenful we can keep. A large new batch
         # is written to native history once, with no retained-prefix scan on resize.
-        space = rows - height
         used = visible = 0
         for line in reversed(self.lines):
             count = physical_rows(line, columns)
@@ -155,7 +173,10 @@ class TmuxViewport:
             if entering:
                 out.write_raw("\x1b[r\x1b[0m\x1b[H\x1b[2J\x1b[3J")
             else:
-                out.write_raw("\x1b[?1049l")
+                # Growing a tmux pane can pull committed rows back onto the
+                # primary screen. ED2 scrolls its occupied rows into history
+                # before our top-anchored append can overwrite them.
+                out.write_raw("\x1b[?1049l\x1b[2J")
             if overflow:
                 # Two rows and one trailing LF push the last completed row into
                 # history too. Keep the saved primary screen empty between appends.
@@ -169,10 +190,11 @@ class TmuxViewport:
         renderer.reset(leave_alternate_screen=False)
         out.cursor_goto(space + 1, 1)
         renderer._min_available_height = height
+        return True
 
     def leave(self, app: Application) -> None:
         out = app.renderer.output
-        out.write_raw("\x1b[?1049l\x1b[H" + "".join(self.lines))
+        out.write_raw("\x1b[?1049l\x1b[2J\x1b[H" + "".join(self.lines))
         out.flush()
 
 
@@ -182,7 +204,7 @@ class ScrollbackRegion:
     # Bound retained writes, not physical rows (a batch can contain many lines). Older entries
     # cannot be restored after a purge, even if the terminal retained a larger native history.
     MAX_REPLAY = 5000
-    TMUX_VIEWPORT_ROWS = 512
+    TMUX_VIEWPORT_ROWS = 128
     # Two recently visited widths, at most ~8 MiB of Unicode text plus bounded entry metadata.
     MAX_CACHED_LAYOUT_CHARS = 1_000_000
 
@@ -205,10 +227,12 @@ class ScrollbackRegion:
     def pending(self) -> bool:
         return bool(self._pending)
 
-    def pending_rows(self, columns: int) -> int:
-        """Space needed by accepted writes before placing a live preview after their tail."""
-        text = "".join(item(columns) if callable(item) else item for item in self._pending)
-        return physical_rows(text, columns) if text else 0
+    @property
+    def long_transcript(self) -> bool:
+        return self._written_rows >= self.TMUX_VIEWPORT_ROWS
+
+    def pending_text(self, columns: int) -> str:
+        return "".join(item(columns) if callable(item) else item for item in self._pending)
 
     def enqueue(self, text: ScrollbackText) -> None:
         """Accept text or a frozen width-dependent rendering. Project it on the next render."""
@@ -264,7 +288,7 @@ class ScrollbackRegion:
         """Replay retained rows after a resize invalidates the live preview's transcript anchor."""
         self._rebuild_owed = True
 
-    def flush(self, app: Application) -> None:
+    def flush(self, app: Application, text: str | None) -> None:
         """Write queued transcript above the anchored app without repainting its live rows."""
         if not self._pending:
             return
@@ -281,10 +305,11 @@ class ScrollbackRegion:
         assert screen is not None  # app_top_row already refused a renderer without one
         out = renderer.output
         columns = out.get_size().columns
-        text = "".join(item(columns) if callable(item) else item for item in self._pending)
 
         if top <= 0:
             return
+        if text is None:
+            text = self.pending_text(columns)
         tail = min(top, self.tail_row) if self.tail_row is not None else top
         out.write_raw(f"\x1b[1;{top}r")
         out.write_raw(f"\x1b[{max(1, tail)};1H")
@@ -299,21 +324,24 @@ class ScrollbackRegion:
         self._retain(self._pending)
         self._pending.clear()
 
-    def draw_tmux_viewport(self, app: Application, height: int) -> bool:
-        if not self.tmux_viewport_available or (self.viewport is None and max(self._written_rows, len(self.transcript)) < self.TMUX_VIEWPORT_ROWS):
+    def draw_tmux_viewport(self, app: Application, height: int, text: str) -> bool:
+        if self.viewport is None and self._written_rows + text.count("\n") < self.TMUX_VIEWPORT_ROWS:
             return False
         if self._recolor_owed:
             self.leave_viewport(app)
             self._recolor_owed = False
-        pending, self._pending = self._pending, []
-        self._retain(pending)
         if self.viewport is None:
+            # Resume can enqueue thousands of lines in a single write. Include that
+            # batch in the first viewport frame, with no intermediate primary replay.
+            columns = app.output.get_size().columns
+            prefix, _ = self._replay_layout(columns)
+            self._written_rows += text.count("\n")
+            text = prefix + text
             self.viewport = TmuxViewport()
-            pending = self.transcript
-        columns = app.output.get_size().columns
-        text = "".join(item(columns) if callable(item) else item for item in pending)
-        self.viewport.draw(app, text, height, reanchor=self._rebuild_owed)
-        self.tail_row = app.output.get_size().rows - height
+        self._retain(self._pending)
+        self._pending.clear()
+        if self.viewport.draw(app, text, height, reanchor=self._rebuild_owed):
+            self.tail_row = app.output.get_size().rows - height
         self._rebuild_owed = False
         return True
 
@@ -388,6 +416,7 @@ class ScrollbackRegion:
         # Rows, not newlines: a wrapped line takes several, and the count decides where the app
         # is told it starts.
         replayed, written = self._replay_layout(columns)
+        self._written_rows = written
         if anchor is not None and written < anchor:
             # Too little transcript to reach the app's old row. Open the gap above it rather than
             # below, so the app stays put instead of rising to meet a short transcript.

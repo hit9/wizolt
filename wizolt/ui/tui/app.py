@@ -34,7 +34,7 @@ from prompt_toolkit.layout.processors import BeforeInput, HighlightIncrementalSe
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.renderer import HeightIsUnknownError
 from prompt_toolkit.styles import BaseStyle
-from prompt_toolkit.utils import get_cwidth
+from prompt_toolkit.utils import get_cwidth, in_main_thread
 from prompt_toolkit.widgets import SearchToolbar
 
 from wizolt.base import (
@@ -48,7 +48,7 @@ from wizolt.image import IMAGE_MARKER, ImageInputs, ImageRef, UserInput
 from wizolt.mentions import MENU_KEYS, FilePick, MentionSpan, active_mention, encode_file_mention, mention_spellings, scan_mentions
 from wizolt.paste import PASTE_MARKER, PasteRef
 from wizolt.ui.render import InputStyle, ScrollbackText, Theme, UiPrinter
-from wizolt.ui.tui.scrollback import ScrollbackRegion, app_top_row
+from wizolt.ui.tui.scrollback import ScrollbackRegion, app_top_row, physical_rows
 from wizolt.ui.tui.views import TUI_MODAL_PENDING
 
 
@@ -331,6 +331,7 @@ class TuiApp:
     # about one cell per frame, so this rate is what `View.QUEUE_SWEEP_CELLS_PER_SEC` follows.
     ANIMATION_INTERVAL: ClassVar[float] = 1 / 30
     # Idle refresh: no animation runs on the idle screen, only the 0.2s index and MCP spinners.
+    TMUX_RESIZE_SETTLE: ClassVar[float] = 0.30
     IDLE_REFRESH_INTERVAL: ClassVar[float] = 0.2
     # Debounce inline second-stage candidate refreshes while the user is still typing. The external
     # file picker overrides this with a zero-delay handoff at the namespace boundary.
@@ -2249,7 +2250,7 @@ class TuiApp:
                 # resizes can coalesce while the app is descheduled and return to the
                 # previous dimensions after the terminal has already moved its rows.
                 self.scrollback.reanchor()
-                if last_screen is not None and renderer._last_size == renderer.output.get_size():
+                if self.scrollback.viewport is not None or (last_screen is not None and renderer._last_size == renderer.output.get_size()):
                     # Keep the live layout's origin, but replay even when sizes match.
                     app._redraw()
                     return
@@ -2274,6 +2275,59 @@ class TuiApp:
                 app._redraw()
 
         app._on_resize = on_resize
+        if not os.environ.get("TMUX_PANE"):
+            return
+
+        # tmux reflows the pane itself during a drag. Wait for a quiet interval
+        # before replacing the live rows, including repaints from the animation
+        # timer that can observe the new geometry before SIGWINCH arrives.
+        redraw = app._redraw
+        pending: asyncio.TimerHandle | None = None
+        observed_size = None
+        repairing = False
+        last_repair = float("-inf")
+
+        def settle() -> None:
+            nonlocal pending, repairing, last_repair
+            pending = None
+            if app.is_running and not app._running_in_terminal:
+                last_repair = time.monotonic()
+                repairing = True
+                try:
+                    on_resize()
+                finally:
+                    repairing = False
+
+        def schedule(*, signal: bool = True) -> None:
+            nonlocal pending, observed_size
+            if not self.scrollback.long_transcript:
+                on_resize()
+                return
+            observed_size = app.output.get_size()
+            if pending is not None:
+                pending.cancel()
+            # The client has already shown its native grid. Repair a single
+            # resize immediately. Only a continuing drag needs a settling timer.
+            if signal and self.scrollback.viewport is not None and time.monotonic() - last_repair > self.TMUX_RESIZE_SETTLE:
+                settle()
+                return
+            pending = asyncio.get_running_loop().call_later(self.TMUX_RESIZE_SETTLE, settle)
+
+        def redraw_when_settled(render_as_done: bool = False) -> None:
+            if self.scrollback.long_transcript and not repairing and not render_as_done and app.renderer._last_size is not None:
+                size = app.output.get_size()
+                if size != app.renderer._last_size and (pending is None or observed_size != size):
+                    schedule(signal=False)
+                if pending is not None:
+                    return
+            redraw(render_as_done)
+
+        # In the main thread prompt-toolkit installs SIGWINCH. Its independent
+        # size poll would deliver the same drag again after the frame settles.
+        if in_main_thread() and os.name == "posix":
+            app.terminal_size_polling_interval = None
+        app._on_resize = schedule
+        app._redraw = redraw_when_settled
 
     def _install_scrollback_flush(self, app: Application) -> None:
         """Project queued transcript onto the terminal at the end of every render.
@@ -2302,14 +2356,16 @@ class TuiApp:
 
         renderer.report_absolute_cursor_row = remember_tail
 
-        def layout_height(rows: int, columns: int) -> int:
+        def layout_height(rows: int, columns: int, pending: str | None = None) -> int:
             self.activity_gap_rows = 0
             height = min(rows, app.layout.container.preferred_height(columns, rows).preferred)
             if self.input_mode == InputMode.RUNNING and self.modal is None and self.activity_follows_transcript_fn() and self.scrollback.tail_row is not None:
                 # Keep the live command beside its transcript header. Move unused space
                 # below the preview, leaving input/status fixed at the pane bottom.
                 # Pending writes need their space before this frame reserves the gap.
-                tail = self.scrollback.tail_row + self.scrollback.pending_rows(columns)
+                if pending is None:
+                    pending = self.scrollback.pending_text(columns)
+                tail = self.scrollback.tail_row + physical_rows(pending, columns)
                 self.activity_gap_rows = max(0, rows - height - max(1, tail))
                 height += self.activity_gap_rows
                 if self.activity_gap_rows:
@@ -2321,14 +2377,16 @@ class TuiApp:
         def render(*args: Any, **kwargs: Any) -> None:
             nonlocal reserved_height, reported_row
             with self._screen_update(app):
+                pending = None
                 if not renderer.full_screen:
                     out = renderer.output
                     rows, columns = out.get_size()
                     # Projection geometry survives renderer.reset() and cannot depend on
                     # whether a tool is still active when its old screen is resized.
                     self.scrollback.note_size(rows, columns)
-                    height = layout_height(rows, columns)
-                    if self.scrollback.draw_tmux_viewport(app, height):
+                    pending = self.scrollback.pending_text(columns) if self.scrollback.tmux_viewport_available else None
+                    height = layout_height(rows, columns, pending)
+                    if pending is not None and self.scrollback.draw_tmux_viewport(app, height, pending):
                         vanilla_render(*args, **kwargs)
                         return
                     previous = renderer.last_rendered_screen
@@ -2385,7 +2443,7 @@ class TuiApp:
                             # The terminal can resize again during synchronous rendering.
                             self.scrollback.reanchor()
                 else:
-                    self.scrollback.flush(app)
+                    self.scrollback.flush(app, pending)
 
         renderer.render = render
 

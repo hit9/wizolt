@@ -119,6 +119,9 @@ class Pane(NamedTuple):
     session: str
     path: Path
 
+    # Observe frames on both sides of the quiet interval used for pane drags.
+    settle_interval = 0.45
+
     def send(self, keys: str) -> None:
         tmux("send-keys", "-t", self.session, keys, "Enter")
 
@@ -189,3 +192,75 @@ def test_long_transcript_is_available_in_copy_mode_after_resize(pane):
     assert int(tmux("display-message", "-p", "-t", pane.session, "#{scroll_position}")) > 0
     tmux("send-keys", "-t", pane.session, "-X", "history-top")
     assert "MARKER-0001" in tmux("display-message", "-p", "-t", pane.session, "#{copy_cursor_line}")
+
+
+def test_dragging_split_boundary_settles_once_without_replaying_old_rows(pane):
+    pane.split()
+    log = pane.path / "drag.log"
+    pane.send(f"{sys.executable} {acceptance.DRIVER} 160 0.002 {log}")
+    acceptance._wait_for_markers(log, 160)
+    acceptance._stop_selectors(log)
+    _settled_capture(pane)
+    wire = pane.path / "pane-1.ansi"
+    start = wire.stat().st_size
+    for width in range(44, 62, 2):
+        tmux("resize-pane", "-t", pane.session, "-x", str(width))
+        time.sleep(0.02)
+    lines = _settled_capture(pane)
+    assert re.findall(r"MARKER-(\d+)", "\n".join(lines)) == [f"{i:04d}" for i in range(1, 161)]
+    emitted = wire.read_bytes()[start:]
+    alternate = tmux("show-option", "-wv", "-t", pane.session, "alternate-screen").strip()
+    # Count actual terminal writes; settled pixels alone hide intermediate replays.
+    assert b"tmux-driver" in emitted
+    if alternate == "on":
+        assert b"MARKER-" not in emitted
+        assert b"MARKER-0001" not in emitted
+        assert b"\x1b[3J" not in emitted
+    else:
+        assert emitted.count(b"MARKER-0160") == 1
+
+
+@pytest.mark.parametrize("vertical", [False, True], ids=["wider", "taller"])
+def test_growing_pane_keeps_transcript_on_attached_client(pane, vertical):
+    import pty
+    import select
+    import termios
+
+    pane.split(vertical=vertical)
+    log = pane.path / "attached.log"
+    pane.send(f"{sys.executable} {acceptance.DRIVER} 160 0.002 {log}")
+    acceptance._wait_for_markers(log, 160)
+    acceptance._stop_selectors(log)
+
+    # pipe-pane sees only wizolt's writes. A client also sees tmux's own
+    # repaint on resize, which can display the same transcript a second time.
+    master, slave = pty.openpty()
+    termios.tcsetwinsize(slave, (TALL + 1, WIDE))
+
+    def read_client():
+        chunks = []
+        deadline = time.monotonic() + 5
+        while select.select([master], [], [], 0.15)[0]:
+            assert time.monotonic() < deadline, "attached client did not settle"
+            chunks.append(os.read(master, 65536))
+        return b"".join(chunks)
+
+    try:
+        with subprocess.Popen(
+            ["tmux", "-L", SOCKET, "attach-session", "-t", pane.session],
+            stdin=slave, stdout=slave, stderr=slave, env={**os.environ, "TERM": "xterm-256color"},
+        ) as client:
+            try:
+                assert b"MARKER-0160" in read_client()
+                tmux("resize-pane", "-t", pane.session, *(("-y", "23") if vertical else ("-x", "75")))
+                lines = _settled_capture(pane)
+                received = read_client()
+                assert received
+                assert sum("MARKER-0160" in line for line in lines) == 1
+                if tmux("show-option", "-wv", "-t", pane.session, "alternate-screen").strip() == "on":
+                    assert received.count(b"MARKER-0160") <= 1
+            finally:
+                client.terminate()
+    finally:
+        os.close(master)
+        os.close(slave)

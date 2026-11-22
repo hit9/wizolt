@@ -650,7 +650,11 @@ them to model messages, including compaction requests and checkpoints.
 In a long tmux session with alternate-screen support, the visible tail and native history have
 separate owners. Copy-mode reads primary scrollback followed by the current alternate screen.
 As the tail fills, completed lines leave it once for primary scrollback. Resizing remeasures
-only the remaining tail. Theme changes explicitly rebuild the retained transcript. Short
+only the remaining tail. A large pending batch counts toward the threshold on its first frame.
+When a pane grows vertically, move only the live region and preserve the transcript tail row.
+On width-only changes, keep single-row cells that tmux already displayed at the new size.
+Repair changed wrapping immediately on the first resize and coalesce further drag updates.
+Theme changes explicitly rebuild the retained transcript. Short
 sessions and terminals without this capability use the primary-screen projection below.
 
 - Completed user/assistant/tool output prints into native terminal or tmux scrollback.

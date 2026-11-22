@@ -754,7 +754,7 @@ def _settled_capture(pane, attempts: int = 40) -> list[str]:
     """
     previous = pane.capture()
     for _ in range(attempts):
-        time.sleep(0.15)
+        time.sleep(getattr(pane, "settle_interval", 0.15))
         current = pane.capture()
         if current == previous:
             return current

@@ -291,6 +291,32 @@ def test_stream_header_and_spark_survive_a_full_preview(monkeypatch, tmp_path, w
         command_loop.session.close()
 
 
+def test_restored_batch_draws_once_across_tmux_resizes(monkeypatch, wired):
+    output, app, _printer = wired
+    widths = []
+
+    def restored(width):
+        widths.append(width)
+        return "".join(f"restored-{i}\r\n" for i in range(640))
+
+    async def restore_and_resize():
+        app.scrollback.tmux_viewport_available = True
+        app.record_scrollback(restored)
+        app.app._redraw()
+        for width in (60, 90, 80):
+            output.size = Size(rows=ROWS, columns=width)
+            app.app._on_resize()
+            assert any("restored-639" in line for line in output.lines)
+        assert widths == [80]
+        app.app.exit()
+
+    def drive(_pipe_input):
+        wait_until(lambda: any(line.startswith(UiPrinter.PROMPT_PREFIX) for line in output.lines))
+        asyncio.run_coroutine_threadsafe(restore_and_resize(), app.app.loop).result(timeout=10)
+
+    run_tui(monkeypatch, app, output, drive)
+
+
 @pytest.mark.parametrize("long_tmux", [False, True])
 @pytest.mark.parametrize("signal_first", [False, True])
 @pytest.mark.parametrize("size_changed", [False, True])

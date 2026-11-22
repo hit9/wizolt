@@ -308,6 +308,8 @@ context as needed so a session can run indefinitely. Run `/compact` to trim it n
 ### Long sessions in tmux
 
 With tmux's default `alternate-screen on`, long sessions keep earlier output in native
-scrollback as you resize. Use **Ctrl-b [** and your usual copy-mode navigation and search.
+scrollback as you resize. Making the pane taller moves the prompt down and keeps recent output
+in place. Changing the width keeps the visible transcript in place when its lines still fit.
+Use **Ctrl-b [** and your usual copy-mode navigation and search.
 Earlier diffs keep their original layout and wrap with the pane. With `alternate-screen off`,
 resizing rebuilds the retained transcript.
