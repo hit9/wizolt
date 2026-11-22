@@ -110,7 +110,7 @@ def main() -> None:
     for key in ("NO_COLOR", "PROMPT_TOOLKIT_COLOR_DEPTH"):
         os.environ.pop(key, None)
     os.environ["COLORTERM"] = "truecolor"
-    payload = []
+    payload = {}
     with (
         tempfile.TemporaryDirectory(prefix="wizolt-color-preview-") as folder,
         patch("time.monotonic", return_value=NOW),
@@ -129,24 +129,18 @@ def main() -> None:
                 )
                 with patch("wizolt.utils.terminal.background", return_value=bg):
                     baseline = "light" if light else "dark"
-                    Theme.configure(baseline, folder, {})
-                    Theme.set_diff_style("classic")
-                    before = sample(figures, terminal)
                     Theme.configure(base, folder, {})
-                    after = sample(figures, terminal)
+                    Theme.set_diff_style("classic")
+                    rendered = sample(figures, terminal)
                 config = f'[runtime]\ntheme = "{base}"\n\n[ui.diff]\nstyle = "classic"'
-                payload.append(
-                    {
-                        "base": base,
-                        "name": name,
-                        "note": note,
-                        "baseline": baseline,
-                        "before": before,
-                        "after": after,
-                        "bg": "#" + "".join(f"{part:02x}" for part in bg),
-                        "config": config,
-                    }
-                )
+                payload[base] = {
+                    "name": name,
+                    "note": note,
+                    "baseline": baseline,
+                    "sample": rendered,
+                    "bg": "#" + "".join(f"{part:02x}" for part in bg),
+                    "config": config,
+                }
         finally:
             session.close()
     widget = Path(__file__).with_name("theme-preview-widget.html").read_text(encoding="utf-8")

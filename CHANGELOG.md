@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Render each built-in palette once for both sides of the docs theme comparison. The generated
+  HTML fragment is 49.5% smaller. [Measurements](benchmarks/results/linux-arm64-py314-render-cleanup.md#theme-preview)
+
 - Keep the `/status` and `/plugins` panels beside their transcript commands. The plugin picker
   shows a one-line description by default. Press `i` for the About page and runtime details.
 - Skip individual provider accounts in `/usage` with `plugins.usage.exclude_providers`.

@@ -17,18 +17,18 @@
       const preview = document.currentScript.parentElement;
       const data = JSON.parse(preview.querySelector('script[type="application/json"]').textContent);
       const [theme, bar, divider] = preview.querySelectorAll('select');
-      for (const item of data) theme.add(new Option(item.name, item.base));
-      for (const name of Object.keys(data[0].after.bars)) bar.add(new Option(name));
-      for (const name of Object.keys(data[0].after.dividers)) divider.add(new Option(name));
+      for (const [name, item] of Object.entries(data)) theme.add(new Option(item.name, name));
+      for (const name of Object.keys(data.dark.sample.bars)) bar.add(new Option(name));
+      for (const name of Object.keys(data.dark.sample.dividers)) divider.add(new Option(name));
       theme.value = 'slate';
       bar.value = 'lualine';
       divider.value = 'comet';
 
       function render() {
-        const item = data.find(entry => entry.base === theme.value);
+        const item = data[theme.value];
         preview.querySelector('.theme-description').textContent = item.note;
         const figures = preview.querySelectorAll('figure');
-        for (const [index, sample] of [item.before, item.after].entries()) {
+        for (const [index, sample] of [data[item.baseline].sample, item.sample].entries()) {
           const figure = figures[index];
           const title = index === 0 ? 'Terminal ' + item.baseline : item.name;
           figure.querySelector('figcaption').textContent = title;
