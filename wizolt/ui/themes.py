@@ -118,27 +118,27 @@ DIFF_STYLES: dict[str, DiffStyle] = {
 # fmt: on
 
 
-# Exact xterm palette entries keep these categorical colors distinct at either terminal depth.
+# Chat usually fills most of the bar. Keep it slate and reserve stronger hues for the smaller shares.
 CONTEXT_COLORS = {
     "dark": {
-        "context_tools": "#af87ff",
-        "context_system": "#5fd787",
-        "context_memory": "#ff875f",
-        "context_skills": "#00d7d7",
-        "context_mcp": "#ff87af",
-        "context_summary": "#ffd75f",
-        "context_chat": "#5fafff",
-        "context_other": "#afafaf",
+        "context_tools": "#b291ed",
+        "context_system": "#91cc69",
+        "context_memory": "#da8370",
+        "context_skills": "#54ccb2",
+        "context_mcp": "#ed8ab9",
+        "context_summary": "#e1d370",
+        "context_chat": "#8b98a4",
+        "context_other": "#ced2cb",
     },
     "light": {
-        "context_tools": "#8700af",
-        "context_system": "#005f00",
-        "context_memory": "#d70000",
-        "context_skills": "#005f87",
-        "context_mcp": "#af005f",
-        "context_summary": "#875f00",
-        "context_chat": "#005fd7",
-        "context_other": "#626262",
+        "context_tools": "#705bb9",
+        "context_system": "#187011",
+        "context_memory": "#ab1f1f",
+        "context_skills": "#0d6988",
+        "context_mcp": "#9d1f69",
+        "context_summary": "#75691f",
+        "context_chat": "#556571",
+        "context_other": "#2c333a",
     },
 }
 

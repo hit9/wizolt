@@ -4,14 +4,14 @@
 .plugins-context-bar-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
 .plugins-context-bar-r1 { fill: #91a5b7 }
 .plugins-context-bar-r2 { fill: #abb2bf }
-.plugins-context-bar-r3 { fill: #5fd787 }
-.plugins-context-bar-r4 { fill: #af87ff }
-.plugins-context-bar-r5 { fill: #ff875f }
-.plugins-context-bar-r6 { fill: #5fafff }
+.plugins-context-bar-r3 { fill: #91cc69 }
+.plugins-context-bar-r4 { fill: #b291ed }
+.plugins-context-bar-r5 { fill: #da8370 }
+.plugins-context-bar-r6 { fill: #8b98a4 }
 .plugins-context-bar-r7 { fill: #4a6884 }
-.plugins-context-bar-r8 { fill: #00d7d7 }
-.plugins-context-bar-r9 { fill: #ffd75f }
-.plugins-context-bar-r10 { fill: #afafaf }
+.plugins-context-bar-r8 { fill: #54ccb2 }
+.plugins-context-bar-r9 { fill: #e1d370 }
+.plugins-context-bar-r10 { fill: #ced2cb }
 .plugins-context-bar-r11 { fill: #e8ca83 }
 </style>
 <defs><clipPath id="plugins-context-bar-clip-terminal">

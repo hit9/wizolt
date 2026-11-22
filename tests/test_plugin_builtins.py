@@ -195,8 +195,10 @@ def test_context_categories_are_distinct_in_terminal_output(depth, monkeypatch):
         rendered = PluginView.render([panel], 180, 2)
         ansi = UiPrinter.render_to_ansi([FormattedText(rendered)], columns=180, color_depth=ColorDepth[depth])
         first = RichText.from_ansi(ansi.splitlines()[0])
-        colors = {span.style.color.get_truecolor() for span in first.spans if "█" in first.plain[span.start:span.end]}
-        assert len(colors) == len(KEYS), (theme, depth, colors)
+        colors = [span.style.color.get_truecolor() for span in first.spans if "█" in first.plain[span.start:span.end]]
+        by_role = dict(zip((segment.role for segment in segments), colors, strict=True))
+        chat = by_role["context_chat"]
+        assert max(chat) - min(chat) <= 32, (theme, depth, chat)
         assert min(dist(a, b) for a, b in combinations(colors, 2)) >= 75, (theme, depth, colors)
         background = Theme.active().background or ("#ffffff" if Theme.appearance() == "light" else "#1e1e1e")
         assert all(contrast(color.hex, background) >= 4.5 for color in colors), (theme, depth)
