@@ -7,6 +7,10 @@
   overflow (CVE-2026-112398); opentelemetry-api fixes CVE-2026-126360 (traceparent parsing DoS).
 - Cap `anthropic<2` and document dependency-update rules in AGENTS.md: per-package lock upgrades,
   a 7-day cooldown on new releases, and OSV/yank rechecks on upgrade day.
+- Routine dependency updates: anthropic 1.17.0, openai 3.51.0, mcp 2.3.0, pydantic 2.13.5, and
+  minor/patch bumps of transitive and dev dependencies (30 packages total, no new package names).
+  Held back by the 7-day cooldown: httpx2 2.16.2, pyyaml 6.0.4, python-multipart 0.0.34. Deferred
+  deliberately: wcwidth 0.9 (width tables), ruff 0.17 (pin), anthropic 2.x (API-version migration).
 
 ## 0.77.3 - 2026-11-22
 
