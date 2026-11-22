@@ -9,6 +9,15 @@ document any retained cost. Update `baselines/` and this README's reference befo
 never accept a regression merely by replacing the baseline. If the environment or workload changed,
 remeasure the previous reference revision too so the comparison remains meaningful.
 
+## 0.77.0 release reference
+
+The [release reference](baselines/linux-arm64-py314-0.77.0.json) measures merged master
+at `f07453ed` against [the previous master](results/linux-arm64-py314-before-0.77.0.json)
+at `cea05c2d`. Both runs used Linux ARM64, CPython 3.14.7 and nine samples per timing
+metric, with identical workloads and dependencies. All 12 output hashes matched across
+49 metrics. The largest increase in median time was 3.95% for settling 300 transcript
+records with minimal formatting.
+
 ## Compaction payload trim (branch review)
 
 [Results](results/linux-arm64-py314-compaction-flat-trim.json): `Compactor.input()`, the
@@ -153,7 +162,7 @@ than absorbing them into a new baseline. No broad performance improvement is cla
 
 ### 0.74.0 release reference
 
-The current reference is [0.74.0](baselines/linux-arm64-py314-0.74.0.json), measured after
+The 0.74.0 reference is [archived here](baselines/linux-arm64-py314-0.74.0.json), measured after
 merging `bugfix/plugin-system-audit` into `master` (`1e812b1d`, with release changes; exact
 source hash in the report). [0.73.0a2 was remeasured](results/linux-arm64-py314-before-0.74.0.json)
 with the same current workloads, dependencies and environment: Linux ARM64, CPython 3.14.7,

@@ -2,31 +2,27 @@
 
 ## Unreleased
 
-- Detect an outer tmux through a remote PTY so zooming and unzooming a sandbox pane
-  preserves long transcript history even when the shell has no tmux environment variables.
+## 0.77.0 - 2026-11-21
 
-- Background summaries compare source and summary sizes using the same UTF-8 token estimate.
-  Changing the compaction provider before a queued summary starts discards the old request.
-- Zooming a long tmux session fills the expanded pane from native history and keeps the
-  prompt at the bottom. Regression tests zoom and restore through a second PTY, checking
-  wrapped lines, visible rows, copy-mode history, and the absence of transcript replay.
-- Qwen4-Max Preview keeps historical reasoning across Chat Completions turns.
+- Automatic context compaction prepares a summary in the background. The status bar shows
+  progress, and a transcript line marks the request that starts using the summary. Messages
+  added in the meantime are preserved. At the compaction limit, wizolt can compact in the
+  foreground. The default `runtime.max_context_tokens` is now 512K (524,288 tokens).
+- Changing the compaction provider before a queued summary starts discards the old request.
+  Source and summary sizes use the same UTF-8 token estimate.
+- Zooming a long tmux session fills the pane above the prompt from native history. Earlier
+  output remains searchable in copy-mode. This also works through a sandbox or SSH shell
+  when the outer tmux has alternate-screen support and its terminal replies reach wizolt.
+  Regression tests check wrapping, copy-mode history, and redraws on the attached client.
+- Updated reasoning effort mappings for GPT-6.1/6.2, Gemini 4, Qwen4-Max, and Alibaba-hosted
+  Kimi K3.1 Pro and MiniMax M3.1 Flash. Qwen4-Max Preview retains reasoning across Chat
+  Completions turns.
 
-- Raised the default `runtime.max_context_tokens` from 256K to 512K (524,288 tokens).
-
-- Automatic history compaction can prepare a summary in the background as the request
-  approaches its configured threshold. New messages survive while the summary is pending.
-- Long tmux sessions keep earlier transcript lines in native copy-mode history while resizing
-  the visible tail (requires tmux alternate-screen support).
-- Updated reasoning effort mappings for GPT-6.1/6.2, Gemini 4, Qwen4-Max and Alibaba-hosted Kimi K3.1 Pro and MiniMax M3.1 Flash.
-
-- Benchmarks: the performance reference is updated on merged master after 0.76.0. The full
-  run (now also carrying the `plugins` and `transcript` suites, 9 samples per metric) was
-  compared against the previous reference and the dev27 plugin hotspots run: no regression
-  beyond noise. The one recorded trade-off is `enable_close_one` +6% — enabling a tools-only
-  plugin now also pays its bounded park close right after validation; warm calls, sampling and
-  layout are unchanged (the parked-worker cold start is measured separately under
-  `benchmarks/results/linux-arm64-py314-plugin-worker-park-resume.json`).
+- Updated the [release benchmark reference](https://github.com/hit9/wizolt/blob/master/benchmarks/README.md#0770-release-reference)
+  with 49 metrics measured against the previous master. The earlier
+  [0.76.0 reference](https://github.com/hit9/wizolt/blob/cea05c2d/benchmarks/results/linux-arm64-py314-plugins.json)
+  added plugin and transcript workloads and recorded a 6% increase in the cost of enabling
+  and closing a tools-only plugin after worker parking was introduced.
 
 ## 0.76.0 - 2026-10-26
 
