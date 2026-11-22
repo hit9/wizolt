@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Generate the local theme comparison at `docs/_build/previews/theme-preview.html`.
+
 - Fix a race during MCP OAuth discovery after restart that could prompt for browser login
   after another request had already refreshed the token. Stabilize the plugin reload terminal
   acceptance test by waiting for the prompt after closing the theme picker.

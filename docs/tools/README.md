@@ -39,11 +39,10 @@ The clock, terminal size and SVG identifiers are fixed.
 ## Compare color presets
 
 `theme_preview.py` builds a standalone HTML comparison using the same message, diff, menu,
-statusbar and divider renderers. Open the generated file in your browser:
+statusbar and divider renderers. Open `docs/_build/previews/theme-preview.html` in your browser after running:
 
 ```sh
 uv run --no-sync python docs/tools/theme_preview.py
-# Default output: theme-preview.html in the repository root.
 
 uv run --no-sync python docs/tools/theme_preview.py --output /tmp/theme-preview.html
 ```
@@ -51,7 +50,7 @@ uv run --no-sync python docs/tools/theme_preview.py --output /tmp/theme-preview.
 The page compares the built-in palettes against default `dark` or `light`. Switch the
 statusbar and divider selectors, then mark a favorite. Copy the configuration shown below
 into your config. Every sample uses the existing `classic` diff colors.
-The generated `theme-preview.html` is a local preview, ignored by Git; commit the script instead.
+Git ignores the generated preview under `docs/_build/`.
 
 Preset names and captions live in `CANDIDATES`; colors come directly from wizolt.
 Regenerate the HTML after changing palettes or layout. The page uses English text and

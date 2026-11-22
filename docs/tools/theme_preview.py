@@ -27,7 +27,7 @@ from wizolt.base import LogBlock, LogEdge, LogLine, LogRole
 from wizolt.config import Config
 from wizolt.session import Session
 from wizolt.ui.cli.appearance import DIFF_STYLE_SAMPLE
-from wizolt.ui.render import Theme, UiPrinter
+from wizolt.ui.render import Theme
 
 CANDIDATES = [
     {"id": "reference", "name": "Terminal dark", "base": "dark", "note": "Terminal colors with cool blue details."},
@@ -177,7 +177,7 @@ render();
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=ROOT / "theme-preview.html")
+    parser.add_argument("--output", type=Path, default=ROOT / "docs" / "_build" / "previews" / "theme-preview.html")
     args = parser.parse_args()
     for key in ("NO_COLOR", "PROMPT_TOOLKIT_COLOR_DEPTH"):
         os.environ.pop(key, None)
@@ -219,6 +219,7 @@ def main() -> None:
                 )
         finally:
             session.close()
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(PAGE.replace("__DATA__", json.dumps(payload, ensure_ascii=False).replace("<", "\\u003c")), encoding="utf-8")
     print(args.output)
 
