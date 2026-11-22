@@ -1,15 +1,15 @@
 """A bar above your input showing what fills the context window, by category, with a legend.
 
 ```text
-████████████████▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 37%
-system prompt 9.0k · system tools 14k · …               74k/200k
+████████████████████────────────────────────────────── 37%
+tools 14k  system 9.0k  …               74k/200k
 ```
 
-(In the terminal each category has its own theme color.)
+Each legend key matches its segment color. The thin track is free space.
 
 Each colored segment is one part of the next request, in its order: tool definitions, system
 prompt, memory files (AGENTS.md), skills, MCP servers, the summary `/compact` left, and the
-conversation. The percentage is the status bar's `ctx`; it warns from 80%.
+conversation. The percentage is the status bar's `ctx`; it warns from 80% and turns critical at 95%.
 
 ## Use
 
@@ -33,27 +33,26 @@ from wizolt.sdk import Context, Line, Panel, Plugin, Text
 
 SDK_VERSION = 1
 
-# The host's categories, in request order. Searched over every bundled theme (CIELAB distance):
-# no two categories share a color in any of them, neighbouring segments (other included) stay at
-# least 35 apart, and the alarm roles (warning, error) are left to the percentage. A narrow
-# palette may still bring two segments that never touch close together (forest's greens).
-ROLES = {
-    "system tools": "syntax_number",
-    "system prompt": "status_context",
-    "memory files": "status_services",
-    "skills": "tool",
-    "mcp servers": "status_agent",
-    "summary": "syntax_assign",
-    "messages": "syntax_builtin",
-    "other": "muted",
+# Segment and legend share a hue. Short names keep the conversation visible in the
+# legend alongside the smaller categories even on a split pane.
+KEYS = {
+    "system tools": ("tools", "syntax_number"),
+    "system prompt": ("system", "success"),
+    "memory files": ("memory", "error"),
+    "skills": ("skills", "syntax_string"),
+    "mcp servers": ("MCP", "user"),
+    "summary": ("summary", "warning"),
+    "messages": ("chat", "info"),
+    "other": ("other", "muted"),
 }
-# A category the host adds later still gets a stable color: same name, same role.
-FALLBACK_ROLES = ("accent", "accent_secondary", "status_agent", "status_cache", "divider_glow")
-MIN_BAR = 12  # Below this the percentage is dropped rather than squeezing the bar further.
+FALLBACK_ROLES = ("accent", "accent_secondary", "success", "info")
+MIN_BAR = 12
 
 
-def role(name: str) -> str:
-    return ROLES.get(name) or FALLBACK_ROLES[zlib.crc32(name.encode()) % len(FALLBACK_ROLES)]
+def key(name: str) -> tuple[str, str]:
+    if name in KEYS:
+        return KEYS[name]
+    return name, FALLBACK_ROLES[zlib.crc32(name.encode()) % len(FALLBACK_ROLES)]
 
 
 def compact(tokens: float) -> str:
@@ -93,15 +92,17 @@ def legend(parts: list[tuple[str, int]], totals: str, columns: int) -> Line:
     spans: list[Text] = []
     width = 0
     for index, (name, tokens) in enumerate(parts):
-        entry, gap = f"{name} {compact(tokens)}", 3 if spans else 0
-        # Leave room for " · …" unless this is the last entry.
-        if width + gap + len(entry) + (0 if index == len(parts) - 1 else 4) > room:
-            spans += [Text(" · " if spans else "", "muted"), Text("…", "muted")]
+        label, role = key(name)
+        amount = " " + compact(tokens)
+        gap = 2 if spans else 0
+        size = gap + len(label) + len(amount)
+        # Reserve the ellipsis when more keys follow.
+        if width + size + (0 if index == len(parts) - 1 else 3) > room:
+            spans.append(Text(" " * gap + "…", "muted"))
             width += gap + 1
             break
-        spans += [Text(" · ", "muted")] if spans else []
-        spans.append(Text(entry, role(name)))
-        width += gap + len(entry)
+        spans.extend((Text(" " * gap + label, role), Text(amount, "muted")))
+        width += size
     spans.append(Text(" " * max(1, columns - width - len(totals)) + totals, "muted"))
     return Line(tuple(spans))
 
@@ -118,6 +119,8 @@ def draw(context: Context) -> Panel:
     if window.used > estimate:
         parts.append(("other", window.used - estimate))
     columns = context.layout.columns if context.layout else context.columns
+    if columns <= 0 or (context.layout and context.layout.rows <= 0):
+        return Panel(())
     # Rounded down and capped, exactly as the status bar's ctx is.
     shown = min(100, filled * 100 // total)
     percent = f"{shown}%"
@@ -127,9 +130,9 @@ def draw(context: Context) -> Panel:
     # The filled span is the reported fill; the parts share it in proportion, the rest is free.
     filled_cells = min(width, max(1, round(width * filled / total))) if parts else 0
     cells = [*allocate([tokens for _, tokens in parts], filled_cells), width - filled_cells]
-    spans = [Text("█" * count, role(name)) for (name, _), count in zip(parts, cells, strict=False) if count]
-    spans += [Text("░" * cells[-1], "rule")] if cells[-1] else []
-    spans += [Text(" " + percent, "warning" if shown >= 80 else "text")] if percent else []
+    spans = [Text("█" * count, key(name)[1]) for (name, _), count in zip(parts, cells, strict=False) if count]
+    spans += [Text("─" * cells[-1], "rule")] if cells[-1] else []
+    spans += [Text(" " + percent, "error" if shown >= 95 else "warning" if shown >= 80 else "text")] if percent else []
     rows: list[Text | Line] = [Line(tuple(spans))]
     if parts and (context.layout is None or context.layout.rows >= 2):
         drawn = [part for part, count in zip(parts, cells, strict=False) if count]

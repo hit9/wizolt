@@ -377,10 +377,10 @@ async def test_builtin_pet_is_disabled_persists_choice_and_uses_semantic_colors(
     await runtime.refresh()
     panels = runtime.panels("above_input")
 
-    def caption(panel):  # The mood colors the caption; the body is the theme's rainbow.
-        return {(span.text, span.role) for span in panel.rows[0].spans if span.text.strip().isalpha() or " " in span.text.strip()}
+    def caption(panel):  # Only actionable states add a caption beside the sprite.
+        return {(span.text.strip(), span.role) for span in panel.rows[0].spans if any(char.isalpha() for char in span.text)}
 
-    assert panels and ("on it", "accent") in caption(panels[0])
+    assert panels and not caption(panels[0])
     rendered = PluginView.render(panels, 80, 6)
     assert any(style == Theme.fg("accent") for style, text in rendered if text.strip())
     runtime.session.state.awaiting_input = True

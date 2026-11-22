@@ -166,12 +166,12 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     pane.keys("Enter")
     wait("enabled   running")
     pane.keys("Escape")
-    wait("strolling")  # The idle pet's caption.
+    wait("▟▙▄▟▙")  # The perched cat.
     pane.resize(160, 30)
     wait("plugins 1")
     for width, height in ((40, 18), (100, 30), (60, 20)):
         pane.resize(width, height)
-        wait("strolling")
+        wait("▟▙▄▟▙")
     pane.send("/plugins")
     wait("Plugins")
     pane.keys("Enter")
@@ -184,7 +184,7 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     pane.keys("Escape")
     pane.send("/plugins")
     visible = wait("Plugins")
-    assert "strolling" not in visible
+    assert "▟▙▄▟▙" not in visible
     pane.keys("Escape", "C-d")
 
 

@@ -12,6 +12,7 @@ import re
 import sys
 import tempfile
 import tomllib
+from dataclasses import replace
 from html import escape
 from pathlib import Path
 from unittest.mock import patch
@@ -90,10 +91,10 @@ def plugin_example(name: str) -> Plugin:
     return load_plugin(name, match[1])
 
 
-def load_plugin(name: str, code: str) -> Plugin:
+def load_plugin(name: str, code: str, config: dict | None = None) -> Plugin:
     namespace: dict = {}
     exec(compile(code, f"<plugin {name}>", "exec"), namespace)  # noqa: S102 - the workshop's own examples.
-    plugin = Plugin(name)
+    plugin = Plugin(name, config)
     namespace["setup"](plugin)
     return plugin
 
@@ -350,7 +351,7 @@ class Illustrations:
         return Context("main", "main", self.session.cwd, status, 37, 12, "claude-sonnet", NOW, WIDTH - 4, Usage(6, 42_000, 3_100, 30_000, 42), window)
 
     def panel(self, plugin: Plugin, slot: str, context: Context) -> Text:
-        return self.styled(PluginView.render([plugin.components[slot].callback(context)], WIDTH - 4, 12))
+        return self.styled(PluginView.render([plugin.components[slot].callback(context)], context.columns, 12), context.columns)
 
     def plugin_bar(self, plugin: Plugin, choice: str, context: Context) -> Text:
         """A contributed statusbar preset, with the plugin's fields sampled from `context`."""
@@ -361,11 +362,11 @@ class Illustrations:
         fields = {f"plugins.{plugin.name}.{key}": callback(context) for key, callback in plugin.fields.items()}
         return self.styled(layout.render("statusbar", {**self.values, **fields}, WIDTH - 4, Theme.bar_styles), WIDTH - 4)
 
-    def pet(self) -> Plugin:
-        return load_plugin("pet", (ROOT / "wizolt/plugins/builtin/pet.py").read_text(encoding="utf-8"))
+    def builtin(self, name: str, **config) -> Plugin:
+        return load_plugin(name, (ROOT / "wizolt/plugins/builtin" / f"{name}.py").read_text(encoding="utf-8"), config)
 
     def plugins_overview(self) -> None:
-        meter, tokens, pet = plugin_example("meter"), plugin_example("tokens"), self.pet()
+        meter, tokens, pet = plugin_example("meter"), plugin_example("tokens"), self.builtin("pet")
         context = self.plugin_context()
         prompt = [(Theme.fg("text"), "> "), (Theme.fg("text"), "▏")]
         self.save(
@@ -383,11 +384,24 @@ class Illustrations:
         )
 
     def plugins_pet(self) -> None:
-        pet = self.pet()
         rows = []
-        for label, status in (("While the agent works", "running"), ("When it needs you", "waiting"), ("When it finishes", "completed")):
-            rows.extend([self.label(label), self.panel(pet, "above_input", self.plugin_context(status)), Text("")])
-        self.save("plugins-pet", rows[:-1])
+        for group in (("cat", "bear", "owl"), ("bunny", "fish", "robot")):
+            rows.append(self.label("".join(name.ljust(16) for name in group)))
+            sprites = [self.panel(self.builtin("pet", pet=name), "above_input", self.plugin_context("idle")).split("\n") for name in group]
+            for line in zip(*sprites, strict=True):
+                for item in line:
+                    item.pad_right(16 - item.cell_len)
+                rows.append(Text("").join(line))
+            rows.append(Text(""))
+        self.save("plugins-pet", rows[:-1], width=48)
+
+    def plugins_context_bar(self) -> None:
+        plugin = self.builtin("context_bar")
+        context = replace(self.plugin_context(), columns=106)
+        rows = [self.label("Request composition"), self.panel(plugin, "above_input", context)]
+        full = ContextWindow(246_000, 305_000, 305_000, (("system tools", 4200), ("system prompt", 1400), ("memory files", 2100), ("skills", 381), ("summary", 6600), ("messages", 224_000)))
+        rows.extend([Text(""), self.label("Long conversation"), self.panel(plugin, "above_input", replace(context, window=full))])
+        self.save("plugins-context-bar", rows, width=context.columns)
 
     def plugins_meter(self) -> None:
         self.save("plugins-meter", [self.panel(plugin_example("meter"), "above_divider", self.plugin_context())])
@@ -489,6 +503,7 @@ RECIPES = {
     "hooks-workflow": "hooks",
     "plugins-overview": "plugins_overview",
     "plugins-pet": "plugins_pet",
+    "plugins-context-bar": "plugins_context_bar",
     "plugins-meter": "plugins_meter",
     "plugins-tokens": "plugins_tokens",
     "plugins-tool": "plugins_tool",

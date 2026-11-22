@@ -66,7 +66,7 @@ async def test_every_builtin_introduces_itself_in_the_plugin_list(tmp_path):
         assert listing["context_bar"]["status"] == "off" and listing["context_bar"]["description"].startswith("A bar above your input")
         await plugins.manage("enable", "pet")
         listing = {item["name"]: item for item in (await plugins.manage("list"))["plugins"]}
-        assert listing["pet"]["description"].startswith("A rainbow pet")  # Live plugins too.
+        assert listing["pet"]["description"].startswith("A pocket-sized pixel pet")  # Live plugins too.
         from types import SimpleNamespace
 
         from wizolt.ui.cli.plugins import PluginManager
@@ -112,9 +112,9 @@ async def test_context_bar_stacks_categories_and_the_unestimated_rest(runtime):
     assert text(bar).endswith(" 27%") and len(text(bar)) == 60
     # Categories in request order with their theme roles, then "other" for the fill the
     # estimates do not explain, then the free tail.
-    assert [span.role for span in bar.spans] == ["status_context", "syntax_builtin", "muted", "rule", "text"]
+    assert [span.role for span in bar.spans] == ["success", "info", "muted", "rule", "text"]
     assert sum(len(span.text) for span in bar.spans[:3]) == round(50_000 * 56 / 180_000)
-    assert "system prompt 10k" in text(legend) and "other 10k" in text(legend) and text(legend).endswith("50k/180k")
+    assert "system 10k" in text(legend) and "other 10k" in text(legend) and text(legend).endswith("50k/180k")
 
 
 async def test_context_bar_spreads_estimates_above_the_reported_fill_inside_it(runtime):
@@ -130,7 +130,7 @@ async def test_context_bar_draws_what_compaction_left_apart_from_the_conversatio
     window = ContextWindow(60_000, 200_000, 180_000, (("skills", 10_000), ("summary", 20_000), ("messages", 30_000)))
     bar, legend = (await bar_panel(runtime, window)).rows
     # Its own role, distinct from both neighbours, in request order before the conversation.
-    assert [span.role for span in bar.spans][:3] == ["tool", "syntax_assign", "syntax_builtin"]
+    assert [span.role for span in bar.spans][:3] == ["syntax_string", "warning", "info"]
     assert "summary 20k" in text(legend)
 
 
@@ -138,7 +138,7 @@ async def test_context_bar_keeps_small_categories_and_fits_narrow_terminals(runt
     window = ContextWindow(100_000, 200_000, 0, (("system prompt", 100), ("system tools", 9_900), ("skills", 40_000), ("messages", 50_000)))
     panel = await bar_panel(runtime, window, columns=40)
     bar, legend = panel.rows
-    assert len(text(bar)) == 40 and bar.spans[0] == Text("█", "status_context")  # Tiny, still drawn.
+    assert len(text(bar)) == 40 and bar.spans[0] == Text("█", "success")  # Tiny, still drawn.
     assert "…" in text(legend) and len(text(legend)) == 40 and text(legend).endswith("100k/200k")
     # Too narrow for the percentage beside the bar: the legend's totals carry it instead.
     bar, legend = (await bar_panel(runtime, window, columns=13)).rows
@@ -164,7 +164,42 @@ async def test_context_bar_warns_near_the_limit_and_hides_without_a_window(runti
     assert await bar_panel(runtime, ContextWindow()) is None or not (await bar_panel(runtime, ContextWindow())).rows
     panel = await bar_panel(runtime, ContextWindow(190_000, 200_000))
     [bar, _legend] = panel.rows
-    assert bar.spans[-1] == Text(" 95%", "warning")
+    assert bar.spans[-1] == Text(" 95%", "error")
+
+
+@pytest.mark.parametrize("depth", ["DEPTH_8_BIT", "DEPTH_24_BIT"])
+def test_context_categories_are_distinct_in_terminal_output(depth, monkeypatch):
+    from prompt_toolkit.formatted_text import FormattedText
+    from prompt_toolkit.output import ColorDepth
+    from rich.text import Text as RichText
+
+    from wizolt.plugins.builtin.context_bar import KEYS, draw
+    from wizolt.ui.cli.plugins import PluginView
+    from wizolt.ui.render import Theme, UiPrinter
+
+    for variable in ("COLORTERM", "PROMPT_TOOLKIT_COLOR_DEPTH", "NO_COLOR"):
+        monkeypatch.delenv(variable, raising=False)
+    parts = tuple((name, 100) for name in KEYS if name != "other")
+    panel = draw(facts(columns=180, window=ContextWindow(800, 1000, 1000, parts)))
+    bar, legend = panel.rows
+    segments = [span for span in bar.spans if span.text.endswith("█")]
+    assert len(segments) == len(KEYS)
+    assert {span.text.strip(): span.role for span in legend.spans if span.text.strip() in dict(KEYS.values())} == dict(KEYS.values())
+    for theme in Theme.BUILTIN:
+        monkeypatch.setattr(Theme, "_mode", theme)
+        rendered = PluginView.render([panel], 180, 2)
+        ansi = UiPrinter.render_to_ansi([FormattedText(rendered)], columns=180, color_depth=ColorDepth[depth])
+        first = RichText.from_ansi(ansi.splitlines()[0])
+        colors = {str(span.style) for span in first.spans if "█" in first.plain[span.start:span.end]}
+        assert len(colors) == len(KEYS), (theme, depth, colors)
+
+
+@pytest.mark.parametrize(("used", "role"), [(79, "text"), (80, "warning"), (94, "warning"), (95, "error")])
+def test_context_pressure_thresholds(used, role):
+    from wizolt.plugins.builtin.context_bar import draw
+
+    panel = draw(facts(window=ContextWindow(used, 100)))
+    assert panel.rows[0].spans[-1] == Text(f" {used}%", role)
 
 
 async def pet_rows(runtime):
@@ -173,18 +208,24 @@ async def pet_rows(runtime):
     return [text(row) for row in panel.rows]
 
 
-async def test_the_pet_walks_only_while_the_agent_works(runtime):
+@pytest.mark.parametrize("motion", [None, "walk"])
+async def test_pet_motion_credits_only_work_and_perches_by_default(runtime, motion):
+    if motion:
+        runtime.settings.values["pet"] = {"motion": motion}
     await runtime.manage("enable", str(BUILTIN / "pet.py"))
-    crown, body = await pet_rows(runtime)
-    assert "/\\_/\\" in crown and "(" in body  # The cat by default.
-    resting = body.index("(")
-    for now in (1, 2, 3):  # Idle time is never credited to the walk.
+    for now in (1, 2, 3):
         runtime.state["context"] = facts(now=now)
-        assert (await pet_rows(runtime))[1].index("(") == resting
+        crown, body = await pet_rows(runtime)
+        assert crown.startswith("▟▙▄▟▙") and body.startswith("▜")
     for now in (4, 4.5, 5):
         runtime.state["context"] = facts(status="running", now=now)
-        await runtime.refresh()
-    assert (await pet_rows(runtime))[1].index("(") != resting
+        body = (await pet_rows(runtime))[1]
+        if now == 4:
+            assert body.index("▜") == 0
+    body = (await pet_rows(runtime))[1]
+    assert (body.index("▜") > 0) == (motion == "walk")
+    runtime.state["context"] = facts(now=100)
+    assert (await pet_rows(runtime))[1].index("▜") == body.index("▜")
 
 
 async def test_pet_picks_another_pet_in_place(runtime):
@@ -198,7 +239,7 @@ async def test_pet_picks_another_pet_in_place(runtime):
     runtime.interactions.handler = answer
     result = await runtime.invoke("pet", "command", "pet", {})
     assert offered == [["cat", "bear", "owl", "bunny", "fish", "robot"]] and "bear" in result
-    assert "ʕ" in (await pet_rows(runtime))[1]  # No reload: the pick applies at once.
+    assert "▗▛███▜▖" in (await pet_rows(runtime))[0]  # No reload: the pick applies at once.
 
 
 def test_every_pet_has_its_own_silhouette():
@@ -206,28 +247,25 @@ def test_every_pet_has_its_own_silhouette():
 
     # Distinct animals, not one face under different hats: no two pets draw the same body row.
     bodies = [_preview(pet).splitlines()[1] for pet in PETS.values()]
-    crowns = [pet.crown for pet in PETS.values()]
-    assert len(set(crowns)) == len(PETS) and len({(crown, body) for crown, body in zip(crowns, bodies, strict=True)}) == len(PETS)
-    assert len({pet.wrap for pet in PETS.values()}) >= 4
+    assert len(set(bodies)) == len(PETS)
+    for pet in PETS.values():
+        assert pet.crowns[0] != pet.crowns[1]
+        assert any(char in pet.body for char in "█▄▟▙▌▜")
 
 
-def test_the_pet_never_draws_wider_than_the_panel():
-    from wizolt.plugins.builtin.pet import PETS, _caption_left, _draw
+def test_small_pet_respects_granted_viewport():
+    from prompt_toolkit.utils import get_cwidth
 
-    # A terminal narrower than the caption has nowhere to put it: the pet draws without one
-    # rather than a line that spills past the panel.
-    for caption in ("on it", "your move", "nailed it", "taking five", "strolling", "hello"):
-        for columns in range(2, 40):
-            for walked in (0.0, 3.7, 21.0):
-                assert _caption_left(columns, 1, 1, 8, caption) is None or _caption_left(columns, 1, 1, 8, caption) + len(caption) <= columns
-    for columns in range(PETS["cat"].width + 1, 40):
-        for walked in (0.0, 3.7, 21.0):
-            panel = _draw(_pet_context(columns), PETS["cat"], walked, True)
-            for row in panel.rows:
-                assert sum(len(span.text) for span in row.spans) <= columns, (columns, walked)
+    from wizolt.plugins.builtin.pet import PETS, _draw
+    from wizolt.sdk import Viewport
 
-
-def _pet_context(columns):
-    from types import SimpleNamespace
-
-    return SimpleNamespace(columns=columns, layout=None, now=0.0, status="idle", window=SimpleNamespace(parts=[], limit=0, budget=0, used=0.0))
+    for columns in range(32):
+        for rows in (0, 1, 2):
+            context = facts(layout=Viewport(columns, rows), status="waiting")
+            panel = _draw(context, PETS["cat"], 5.0, True)
+            assert len(panel.rows) <= rows
+            assert all(get_cwidth(text(row)) <= columns for row in panel.rows)
+            if rows == 2 and columns >= 25:
+                assert "your move" in text(panel.rows[0])
+            if rows == 1 and columns >= 3:
+                assert text(panel.rows[0]) == "▐▂▌"

@@ -121,11 +121,15 @@ the same spot, wizolt keeps its own drawing until you pick one with
 
 ## Try the built-in pet
 
-Open `/plugins`, select **pet**, then **enable**. A rainbow pet strolls along your prompt line
-while the agent works and rests when it stops. Type `/pet` to choose a cat, bear, owl, bunny,
-fish or robot; your choice is saved. It starts disabled and makes no model calls.
+Open `/plugins`, select **pet**, then **enable**. Type `/pet` to choose a cat, bear, owl,
+bunny, fish or robot. Your companion perches beside the prompt, with a small movement while
+the agent works. Its eyes change with the agent’s mood. A caption appears when it needs
+your attention or hits an error.
 
-![The pet working, waiting for input and finishing.](_static/plugins-pet.svg)
+![The six pixel companions in their resting poses.](_static/plugins-pet.svg)
+
+For a walking pet, set `motion = "walk"` under `[plugins.pet]`. You can also set
+`caption = false`. Reload pet in `/plugins` after editing the config.
 
 > Move @plugin:pet above the divider and reload it.
 
@@ -134,8 +138,11 @@ fish or robot; your choice is saved. It starts disabled and makes no model calls
 Enable **context_bar** in `/plugins` to see what fills your context window above the input: one
 colored segment per category, in the order the request carries them (tools, system prompt,
 memory files, skills, MCP servers, the summary compaction left, messages), the same percentage
-as the status bar's `ctx` at the end, and a legend with token counts. In a short terminal only
+as the status bar's `ctx` at the end, and a legend with token counts. Each solid block matches the color of its label. A subdued line shows free space. The percentage changes to the
+warning color at 80% and the error color at 95%. In a short terminal only
 the bar remains. It makes no model calls.
+
+![The context bar and matching legend at 46% and 80% usage.](_static/plugins-context-bar.svg)
 
 ## Check your provider usage
 

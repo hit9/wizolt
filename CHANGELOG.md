@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The built-in pet now has six filled pixel sprites, quiet stationary poses and optional walking.
+  The context bar pairs solid color blocks with matching labels, marks free space with a subdued line,
+  and highlights pressure at 80% and 95%.
+
 - Refreshed the built-in themes with quieter tool labels and status bars. The Colorscheme
   tab previews a conversation, and classic diffs use separate line and word highlights in
   green and red. Dark classic uses the same four colors in truecolor and 256-color terminals.
