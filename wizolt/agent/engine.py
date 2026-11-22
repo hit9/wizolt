@@ -9,7 +9,6 @@ import json
 import re
 import time
 import uuid
-from collections.abc import Callable
 
 from wizolt.agent.context import ContextManager
 from wizolt.agent.hooks import UiHooks
@@ -631,10 +630,7 @@ class Agent:
             self.session.state.turn_messages = 0
             return
 
-        def cancelled_text(call: Json) -> str:
-            return "Cancelled: the user interrupted before this tool call finished."
-
-        self.settle_unanswered_tool_calls(turn_messages, transcript_messages, cancelled_text)
+        self.settle_unanswered_tool_calls(turn_messages, transcript_messages, "Cancelled: the user interrupted before this tool call finished.")
         turn_messages.append({"role": "user", "content": INTERRUPT_MARKER})
         self.finish_turn(turn_messages, transcript_messages)
 
@@ -642,15 +638,14 @@ class Agent:
         self,
         turn_messages: list[Json],
         transcript_messages: list[Json],
-        text: str | Callable[[Json], str],
+        text: str,
     ) -> None:
         """Give every tool call of the turn that never got a result a synthetic failed one.
 
         A turn that ends early — interrupted or dead from an error — may leave an assistant
         message whose tool_calls have no matching tool results, and providers reject a messages
         list with dangling calls: one such turn would fail every later request on this session.
-        `text` is the result content for each unanswered call; a callable receives the call so
-        the wording can depend on the tool."""
+        `text` is the result content for each unanswered call."""
         answered = {message.get("tool_call_id") for message in turn_messages if message.get("role") == "tool"}
         for message in turn_messages:
             if message.get("role") != "assistant":
@@ -658,8 +653,7 @@ class Agent:
             for call in message.get("tool_calls") or []:
                 call_id = call.get("id")
                 if call_id and call_id not in answered:
-                    content = text(call) if callable(text) else text
-                    turn_messages.append({"role": "tool", "tool_call_id": call_id, "content": content})
+                    turn_messages.append({"role": "tool", "tool_call_id": call_id, "content": text})
                     transcript_messages.append({"role": "tool", "tool_call_id": call_id, "result_key": "", "status": "failed"})
                     answered.add(call_id)
 

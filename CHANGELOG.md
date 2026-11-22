@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Simplify interrupted and failed turn settlement by passing the shared result text directly.
+
 - Reuse the Context tab’s rounded segments and palette for its bar and legend.
   [Render measurements](benchmarks/results/linux-arm64-py314-render-cleanup.md#status-context-tab)
 
