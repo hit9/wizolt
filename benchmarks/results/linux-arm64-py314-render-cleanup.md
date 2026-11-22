@@ -16,3 +16,17 @@ including every status bar and divider SVG, matched the baseline byte for byte.
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Before | 1274 | 1303 | 1208 | 1184 | 1358 |
 | After | 816 | 779 | 785 | 782 | 767 |
+
+## Status Context tab
+
+Status renderer blob `089880e489`, compared with the baseline above. Using the
+`status_loop` fixture from `tests/test_loop_skills.py`, collected the snapshot once and
+timed `StatusTabs(snapshot).context(76)` on the same instance, after one warm-up.
+Across seven batches of 400 draws, median time per draw went from **70.95 to 64.82 µs**.
+Styled fragments matched exactly (SHA-256 of their Python representation
+`0b1d779e4346d3885509d734c5aebc344d85f22e7d12d7f2adad2fb2255d8490`).
+
+| Per draw (µs) | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Before | 69.69 | 71.06 | 73.47 | 70.99 | 69.07 | 70.95 | 70.45 |
+| After | 63.70 | 61.99 | 66.89 | 64.82 | 65.13 | 65.17 | 63.80 |

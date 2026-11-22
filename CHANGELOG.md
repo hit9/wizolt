@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Reuse the Context tab’s rounded segments and palette for its bar and legend.
+  [Render measurements](benchmarks/results/linux-arm64-py314-render-cleanup.md#status-context-tab)
+
 - Render each built-in palette once for both sides of the docs theme comparison. The generated
   HTML fragment is 49.5% smaller. [Measurements](benchmarks/results/linux-arm64-py314-render-cleanup.md#theme-preview)
 

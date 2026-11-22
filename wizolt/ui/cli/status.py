@@ -356,7 +356,7 @@ class StatusTabs:
         over = estimated > context.threshold
         bar_width = max(1, width - self.column)
         # A part too small for a cell is not in the bar; its square stays quiet to say so.
-        colors = self.colors(bar_width)
+        bar, colors = self.bar(bar_width)
         estimate = [
             Entry(
                 name,
@@ -376,7 +376,7 @@ class StatusTabs:
             Entry("compacts at", [figure(Text.abbreviate_count(context.threshold), context.level if context.percent >= WARNING_PERCENT else NUMBER_ROLE)]),
             Entry("window", [figure(Text.abbreviate_count(context.window))]),
         ]
-        used = [Entry("used", reading), Entry("", self.bar(bar_width))]
+        used = [Entry("used", reading), Entry("", bar)]
         return table([("", used), ("Next request · estimated", estimate), ("Limits", limits)], width, self.column)
 
     def usage(self, width: int) -> TextRows:
@@ -411,20 +411,15 @@ class StatusTabs:
                 start = end
         return segments
 
-    def colors(self, width: int) -> dict[str, str]:
-        """Styles for the parts drawn at `width`, from a generated series (`Theme.series`) in bar
-        order, so each part differs most from its neighbors. A part too small for a cell is not
-        drawn and takes no color."""
-        drawn = [name for name, _ in self.segments(width)]
-        return {name: "fg:" + color for name, color in zip(drawn, Theme.series(len(drawn)), strict=True)}
-
-    def bar(self, width: int) -> TextFragments:
-        colors = self.colors(width)
-        fragments: TextFragments = [(colors[name], "█" * cells) for name, cells in self.segments(width)]
-        used = sum(cells for _, cells in self.segments(width))
-        if used < width:
-            fragments.append((Theme.fg("subtle"), "░" * (width - used)))
-        return fragments
+    def bar(self, width: int) -> tuple[TextFragments, dict[str, str]]:
+        """Build the bar and its legend colors from the same rounded segments."""
+        segments = self.segments(width)
+        colors = {name: "fg:" + color for (name, _), color in zip(segments, Theme.series(len(segments)), strict=True)}
+        fragments = [(colors[name], "█" * cells) for name, cells in segments]
+        free = width - sum(cells for _, cells in segments)
+        if free:
+            fragments.append((Theme.fg("subtle"), "░" * free))
+        return fragments, colors
 
 
 class Entry(NamedTuple):

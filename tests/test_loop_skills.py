@@ -282,7 +282,7 @@ def test_context_bar_parts_are_told_apart_without_losing_their_share(tmp_path):
     s.messages = [{"role": "user", "content": "x" * 60_000}]
     loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
     tabs = StatusTabs(StatusReport.of(loop).snapshot)
-    parts = tabs.bar(60)
+    parts, _ = tabs.bar(60)
     drawn = [style for style, text in parts if "█" in text]
 
     # Every cell is accounted for, solid, so shares stay proportional and the bar unbroken.
