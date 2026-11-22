@@ -2,16 +2,20 @@
 
 ## Unreleased
 
+## 0.77.1 - 2026-11-22
+
+- Updated the [release benchmark reference](https://github.com/hit9/wizolt/blob/v0.77.1/benchmarks/README.md#0771-release-reference) with a same-environment comparison to 0.77.0.
+
 - Count printable ASCII transcript rows by length. Counting 500 styled Read lines fell from
-  1.06 ms to 0.19 ms. [Workloads and Unicode results](benchmarks/results/linux-arm64-py314-render-cleanup.md#transcript-row-counting)
+  1.06 ms to 0.19 ms. [Workloads and Unicode results](https://github.com/hit9/wizolt/blob/v0.77.1/benchmarks/results/linux-arm64-py314-render-cleanup.md#transcript-row-counting)
 
 - Simplify interrupted and failed turn settlement by passing the shared result text directly.
 
 - Reuse the Context tab’s rounded segments and palette for its bar and legend.
-  [Render measurements](benchmarks/results/linux-arm64-py314-render-cleanup.md#status-context-tab)
+  [Render measurements](https://github.com/hit9/wizolt/blob/v0.77.1/benchmarks/results/linux-arm64-py314-render-cleanup.md#status-context-tab)
 
 - Render each built-in palette once for both sides of the docs theme comparison. The generated
-  HTML fragment is 49.5% smaller. [Measurements](benchmarks/results/linux-arm64-py314-render-cleanup.md#theme-preview)
+  HTML fragment is 49.5% smaller. [Measurements](https://github.com/hit9/wizolt/blob/v0.77.1/benchmarks/results/linux-arm64-py314-render-cleanup.md#theme-preview)
 
 - Keep the `/status` and `/plugins` panels beside their transcript commands. The plugin picker
   shows a one-line description by default. Press `i` for the About page and runtime details.
