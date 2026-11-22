@@ -223,7 +223,7 @@ async def test_plugins_reads_but_never_changes_while_the_agent_works(tmp_path, m
     loop = CommandLoop(agent, input_fn=lambda *a, **k: "", output_fn=out.append)
     await loop.run_queued_command("/plugins list")
     assert '"plugins"' in "\n".join(str(item) for item in out)  # Read-only forms run at once.
-    for text in ("/plugins enable pet", "/plugins disable pet", "/plugins reload pet", "/plugins run pet pet"):
+    for text in ("/plugins enable usage", "/plugins disable usage", "/plugins reload usage", "/plugins run usage usage"):
         out.clear()
         await loop.run_queued_command(text)
         assert any("Only read-only /plugins (list, inspect)" in str(item) for item in out), text
@@ -235,7 +235,7 @@ async def test_plugins_reads_but_never_changes_while_the_agent_works(tmp_path, m
         asked.append(args)
 
     monkeypatch.setattr("wizolt.ui.cli.plugins.choice_application", choose)
-    picks = iter(["pet", None])
+    picks = iter(["usage", None])
     loop.presentation.tui = SimpleNamespace(show_modal=lambda *args, **kwargs: _resolved(next(picks)))
     manager = PluginManager(loop, s.plugins)
     await manager.run()

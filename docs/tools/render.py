@@ -91,10 +91,10 @@ def plugin_example(name: str) -> Plugin:
     return load_plugin(name, match[1])
 
 
-def load_plugin(name: str, code: str, config: dict | None = None) -> Plugin:
+def load_plugin(name: str, code: str) -> Plugin:
     namespace: dict = {}
     exec(compile(code, f"<plugin {name}>", "exec"), namespace)  # noqa: S102 - the workshop's own examples.
-    plugin = Plugin(name, config)
+    plugin = Plugin(name)
     namespace["setup"](plugin)
     return plugin
 
@@ -362,11 +362,8 @@ class Illustrations:
         fields = {f"plugins.{plugin.name}.{key}": callback(context) for key, callback in plugin.fields.items()}
         return self.styled(layout.render("statusbar", {**self.values, **fields}, WIDTH - 4, Theme.bar_styles), WIDTH - 4)
 
-    def builtin(self, name: str, **config) -> Plugin:
-        return load_plugin(name, (ROOT / "wizolt/plugins/builtin" / f"{name}.py").read_text(encoding="utf-8"), config)
-
     def plugins_overview(self) -> None:
-        meter, tokens, pet = plugin_example("meter"), plugin_example("tokens"), self.builtin("pet")
+        meter, tokens = plugin_example("meter"), plugin_example("tokens")
         context = self.plugin_context()
         prompt = [(Theme.fg("text"), "> "), (Theme.fg("text"), "▏")]
         self.save(
@@ -376,27 +373,14 @@ class Illustrations:
                 Text(""),
                 self.panel(meter, "above_divider", context),
                 self.bar({}, kind="divider", width=WIDTH - 4),
-                self.panel(pet, "above_input", context),
                 self.styled(prompt),
                 Text(""),
                 self.plugin_bar(tokens, "tokens", context),
             ],
         )
 
-    def plugins_pet(self) -> None:
-        rows = []
-        for group in (("cat", "bear", "owl"), ("bunny", "fish", "robot")):
-            rows.append(self.label("".join(name.ljust(16) for name in group)))
-            sprites = [self.panel(self.builtin("pet", pet=name), "above_input", self.plugin_context("idle")).split("\n") for name in group]
-            for line in zip(*sprites, strict=True):
-                for item in line:
-                    item.pad_right(16 - item.cell_len)
-                rows.append(Text("").join(line))
-            rows.append(Text(""))
-        self.save("plugins-pet", rows[:-1], width=48)
-
     def plugins_context_bar(self) -> None:
-        plugin = self.builtin("context_bar")
+        plugin = load_plugin("context_bar", (ROOT / "wizolt/plugins/builtin/context_bar.py").read_text(encoding="utf-8"))
         context = replace(self.plugin_context(), columns=106)
         rows = [self.label("Request composition"), self.panel(plugin, "above_input", context)]
         full = ContextWindow(246_000, 305_000, 305_000, (("system tools", 4200), ("system prompt", 1400), ("memory files", 2100), ("skills", 381), ("summary", 6600), ("messages", 224_000)))
@@ -502,7 +486,6 @@ RECIPES = {
     "skills-workflow": "skills",
     "hooks-workflow": "hooks",
     "plugins-overview": "plugins_overview",
-    "plugins-pet": "plugins_pet",
     "plugins-context-bar": "plugins_context_bar",
     "plugins-meter": "plugins_meter",
     "plugins-tokens": "plugins_tokens",

@@ -170,7 +170,9 @@ def setup(p):
 
 
 async def test_cli_returns_json_and_preview_without_starting_agent(tmp_path):
-    path = Path(__file__).parents[1] / "wizolt/plugins/builtin/pet.py"
+    path = Path(__file__).parents[1] / "wizolt/plugins/builtin/context_bar.py"
+    facts = tmp_path / "facts.json"
+    facts.write_text(json.dumps({"window": {"used": 10, "limit": 100, "parts": [["messages", 10]]}}))
     process = await asyncio.create_subprocess_exec(
         sys.executable,
         "-m",
@@ -180,6 +182,8 @@ async def test_cli_returns_json_and_preview_without_starting_agent(tmp_path):
         str(path),
         "--theme",
         "forest",
+        "--facts",
+        str(facts),
         "--output",
         str(tmp_path),
         stdout=asyncio.subprocess.PIPE,
@@ -201,21 +205,25 @@ theme = "personal"
 [ui.themes.personal]
 base = "forest"
 [ui.themes.personal.colors]
-accent = "#aabbcc"
+info = "#aabbcc"
 ''')
+    facts = tmp_path / "facts.json"
+    facts.write_text(json.dumps({"window": {"used": 10, "limit": 100, "parts": [["messages", 10]]}}))
     process = await asyncio.create_subprocess_exec(
         sys.executable,
         "-m",
         "wizolt",
         "plugin",
         "test",
-        "pet",
+        "context_bar",
         "--config",
         str(config),
         "--project",
         str(tmp_path),
         "--status",
         "running",
+        "--facts",
+        str(facts),
         "--output",
         str(tmp_path),
         stdout=asyncio.subprocess.PIPE,

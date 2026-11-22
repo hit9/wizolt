@@ -132,7 +132,7 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
         f'[paths]\ndata_dir = "{pane.path}/data"\n'
         '[provider]\nactive = "test"\n[provider.test]\n'
         'url = "http://127.0.0.1:9/v1"\nkey = "test"\nmodel = "test-model"\n'
-        '[plugins.pet]\nslot = "above_divider"\n'
+        '[plugins.context_bar]\nslot = "above_divider"\n'
     )
     entry = pane.path / "plugins.py"
     entry.write_text(
@@ -159,19 +159,17 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     wait("test-model")
     pane.send("/plugins")
     wait("disabled")
-    for _ in range(2):  # context_bar, layout and pet are bundled, disabled installations.
-        pane.keys("Down")
     pane.keys("Enter")
     wait("1. enable")
     pane.keys("Enter")
     wait("enabled   running")
     pane.keys("Escape")
-    wait("▟▙▄▟▙")  # The perched cat.
+    wait(re.compile(r"─+ \d+%"))
     pane.resize(160, 30)
     wait("plugins 1")
     for width, height in ((40, 18), (100, 30), (60, 20)):
         pane.resize(width, height)
-        wait("▟▙▄▟▙")
+        wait(re.compile(r"─+ \d+%"))
     pane.send("/plugins")
     wait("Plugins")
     pane.keys("Enter")
@@ -179,13 +177,12 @@ def test_builtin_plugin_can_be_enabled_resized_and_disabled(pane):
     pane.keys("Down")
     wait("2. disable")
     pane.keys("Enter")
-    visible = wait(re.compile(r"pet +builtin +disabled"))
+    visible = wait(re.compile(r"context_bar +builtin +disabled"))
     assert "plugins 1" not in visible
     pane.keys("Escape")
-    pane.send("/plugins")
-    visible = wait("Plugins")
-    assert "▟▙▄▟▙" not in visible
-    pane.keys("Escape", "C-d")
+    visible = wait(re.compile(r"(?m)^>(?:\s|$)"))
+    assert not re.search(r"─+ \d+%", visible)
+    pane.keys("C-d")
 
 
 def test_plugin_appearance_reload_preserves_input_and_updates_bars(pane):

@@ -1,4 +1,4 @@
-"""The bundled context bar and pet through real workers: what a user sees and chooses."""
+"""The bundled plugin catalog and context bar through real workers."""
 
 from pathlib import Path
 
@@ -64,9 +64,9 @@ async def test_every_builtin_introduces_itself_in_the_plugin_list(tmp_path):
         # /plugins lists disabled plugins too: their introduction is read from source, not run.
         listing = {item["name"]: item for item in (await plugins.manage("list"))["plugins"]}
         assert listing["context_bar"]["status"] == "off" and listing["context_bar"]["description"].startswith("A bar above your input")
-        await plugins.manage("enable", "pet")
+        await plugins.manage("enable", "context_bar")
         listing = {item["name"]: item for item in (await plugins.manage("list"))["plugins"]}
-        assert listing["pet"]["description"].startswith("A pocket-sized pixel pet")  # Live plugins too.
+        assert listing["context_bar"]["description"].startswith("A bar above your input")  # Live plugins too.
         from types import SimpleNamespace
 
         from wizolt.ui.cli.plugins import PluginManager
@@ -91,7 +91,7 @@ def test_about_pages_reflow_prose_but_keep_code_and_lists():
 
 def test_builtins_ship_disabled(tmp_path):
     records, _ = PluginCatalog.for_user(str(tmp_path)).read()
-    assert set(records) == {"context_bar", "layout", "pet", "system_prompt", "tool_visibility", "usage"} and not any(item.enabled for item in records.values())
+    assert set(records) == {"context_bar", "layout", "system_prompt", "tool_visibility", "usage"} and not any(item.enabled for item in records.values())
 
 
 async def bar_panel(runtime, window, columns=60):
@@ -200,72 +200,3 @@ def test_context_pressure_thresholds(used, role):
 
     panel = draw(facts(window=ContextWindow(used, 100)))
     assert panel.rows[0].spans[-1] == Text(f" {used}%", role)
-
-
-async def pet_rows(runtime):
-    await runtime.refresh()
-    [panel] = runtime.panels("above_input")
-    return [text(row) for row in panel.rows]
-
-
-@pytest.mark.parametrize("motion", [None, "walk"])
-async def test_pet_motion_credits_only_work_and_perches_by_default(runtime, motion):
-    if motion:
-        runtime.settings.values["pet"] = {"motion": motion}
-    await runtime.manage("enable", str(BUILTIN / "pet.py"))
-    for now in (1, 2, 3):
-        runtime.state["context"] = facts(now=now)
-        crown, body = await pet_rows(runtime)
-        assert crown.startswith("▟▙▄▟▙") and body.startswith("▜")
-    for now in (4, 4.5, 5):
-        runtime.state["context"] = facts(status="running", now=now)
-        body = (await pet_rows(runtime))[1]
-        if now == 4:
-            assert body.index("▜") == 0
-    body = (await pet_rows(runtime))[1]
-    assert (body.index("▜") > 0) == (motion == "walk")
-    runtime.state["context"] = facts(now=100)
-    assert (await pet_rows(runtime))[1].index("▜") == body.index("▜")
-
-
-async def test_pet_picks_another_pet_in_place(runtime):
-    await runtime.manage("enable", str(BUILTIN / "pet.py"))
-    offered = []
-
-    async def answer(owner, service, arguments):
-        offered.append([item["id"] for item in arguments["view"]["body"]["items"]])
-        return {"result": {"action": "submit", "selected": ["bear"]}}
-
-    runtime.interactions.handler = answer
-    result = await runtime.invoke("pet", "command", "pet", {})
-    assert offered == [["cat", "bear", "owl", "bunny", "fish", "robot"]] and "bear" in result
-    assert "▗▛███▜▖" in (await pet_rows(runtime))[0]  # No reload: the pick applies at once.
-
-
-def test_every_pet_has_its_own_silhouette():
-    from wizolt.plugins.builtin.pet import PETS, _preview
-
-    # Distinct animals, not one face under different hats: no two pets draw the same body row.
-    bodies = [_preview(pet).splitlines()[1] for pet in PETS.values()]
-    assert len(set(bodies)) == len(PETS)
-    for pet in PETS.values():
-        assert pet.crowns[0] != pet.crowns[1]
-        assert any(char in pet.body for char in "█▄▟▙▌▜")
-
-
-def test_small_pet_respects_granted_viewport():
-    from prompt_toolkit.utils import get_cwidth
-
-    from wizolt.plugins.builtin.pet import PETS, _draw
-    from wizolt.sdk import Viewport
-
-    for columns in range(32):
-        for rows in (0, 1, 2):
-            context = facts(layout=Viewport(columns, rows), status="waiting")
-            panel = _draw(context, PETS["cat"], 5.0, True)
-            assert len(panel.rows) <= rows
-            assert all(get_cwidth(text(row)) <= columns for row in panel.rows)
-            if rows == 2 and columns >= 25:
-                assert "your move" in text(panel.rows[0])
-            if rows == 1 and columns >= 3:
-                assert text(panel.rows[0]) == "▐▂▌"

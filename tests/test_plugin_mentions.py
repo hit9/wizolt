@@ -37,7 +37,6 @@ async def test_mention_and_completion_do_not_execute_even_broken_disabled_source
         "@plugin:danger",
         "@plugin:context_bar",
         "@plugin:layout",
-        "@plugin:pet",
         "@plugin:system_prompt",
         "@plugin:tool_visibility",
         "@plugin:usage",

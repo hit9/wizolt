@@ -6,7 +6,7 @@
   after another request had already refreshed the token. Stabilize the plugin reload terminal
   acceptance test by waiting for the prompt after closing the theme picker.
 
-- The built-in pet now has six filled pixel sprites, quiet stationary poses and optional walking.
+- Remove the bundled pet plugin and its `/pet` command.
   The context bar pairs solid color blocks with matching labels, marks free space with a subdued line,
   and highlights pressure at 80% and 95%.
 

@@ -61,6 +61,10 @@ class PluginCatalog:
             try:
                 if not isinstance(data, dict):
                     raise PluginError("installation must be a table")
+                # A pathless enable/disable preference belongs to a bundled plugin.
+                # A newer installation may no longer ship its source.
+                if name not in self.defaults and set(data) == {"enabled"} and type(data["enabled"]) is bool:
+                    continue
                 data = dict(data)
                 environment = data.pop("environment", "")
                 if not isinstance(environment, str) or (environment and (not environment.isascii() or not environment.isalnum())):

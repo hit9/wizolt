@@ -14,7 +14,7 @@ def test_plugin_columns_align_and_long_names_leave_space_for_states():
 
     manager = PluginManager(None, None)
     manager.records = {
-        "pet": {"builtin": True, "enabled": False, "status": "off"},
+        "usage": {"builtin": True, "enabled": False, "status": "off"},
         "very_long_plugin_name_that_would_push_states_off_screen": {"builtin": False, "enabled": True, "status": "running"},
     }
     for width in (35, 50, 80):
@@ -33,11 +33,11 @@ def test_a_bundled_plugins_page_states_whether_it_is_enabled():
 
     manager = PluginManager(None, SimpleNamespace(components=lambda: ()))
     manager.records = {
-        "pet": {"path": "/b/pet.py", "builtin": True, "enabled": False},
+        "usage": {"path": "/b/usage.py", "builtin": True, "enabled": False},
         "layout": {"path": "/b/layout.py", "builtin": True, "enabled": True},
         "mine": {"path": "/u/mine.py", "builtin": False, "enabled": True},
     }
-    assert manager.facts("pet", 60)[0] == "Built in · off until you enable it"
+    assert manager.facts("usage", 60)[0] == "Built in · off until you enable it"
     assert manager.facts("layout", 60)[0] == "Built in · enabled for your user"
     assert not any("Built in" in line for line in manager.facts("mine", 60))
 
@@ -84,7 +84,7 @@ async def test_statusbar_plugin_count_tracks_only_this_agents_live_generations(t
     path = tmp_path / "counted.py"
     path.write_text('SDK_VERSION = 1\ndef setup(p):\n    p.field("value", lambda ctx: 1)\n')
     try:
-        assert bar.values()["plugins.count"] == 0  # Installed pet remains disabled.
+        assert bar.values()["plugins.count"] == 0  # Bundled plugins remain disabled.
         await other.manage("enable", str(path))
         assert other.active_count == 1 and bar.values()["plugins.count"] == 0
         await session.plugins.manage("enable", str(path))

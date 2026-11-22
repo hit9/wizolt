@@ -66,21 +66,21 @@ async def test_failed_write_preserves_admission_of_new_plugins(tmp_path, monkeyp
 async def test_invalid_builtin_preference_does_not_disable_live_generation(tmp_path, invalid):
     runtime = SessionPlugins(session_with_provider(tmp_path))
     try:
-        await runtime.manage("enable", "pet")
-        worker = runtime.entries["pet"].active.worker
+        await runtime.manage("enable", "context_bar")
+        worker = runtime.entries["context_bar"].active.worker
         preferences = runtime.catalog.preferences
         if invalid == "record":
-            preferences.save("installations", "pet", {"enabled": "invalid"})
+            preferences.save("installations", "context_bar", {"enabled": "invalid"})
         else:
             preferences.path.write_text('[plugin_manager]\ninstallations = "invalid"\n' if invalid == "table" else "[broken")
         report = await runtime.hot_reload()
         assert report["problems"]
-        assert runtime.entries["pet"].active.worker is worker
+        assert runtime.entries["context_bar"].active.worker is worker
         assert worker.process.returncode is None
         preferences.path.write_text("")
-        preferences.save("installations", "pet", {"enabled": True})
+        preferences.save("installations", "context_bar", {"enabled": True})
         assert not (await runtime.hot_reload())["problems"]
-        assert runtime.entries["pet"].active.worker is not worker
+        assert runtime.entries["context_bar"].active.worker is not worker
     finally:
         await runtime.close()
 
@@ -362,36 +362,6 @@ def setup(p):
     await runtime.hot_reload("dependent")
     assert runtime.fields() == {"plugins.dependent.value": 99}
     await runtime.close()
-
-
-async def test_builtin_pet_is_disabled_persists_choice_and_uses_semantic_colors(tmp_path):
-    from wizolt.ui.cli.plugins import PluginView
-    from wizolt.ui.render import Theme
-
-    runtime = SessionPlugins(session_with_provider(tmp_path))
-    pet = (await runtime.manage("inspect", "pet"))["plugins"][0]
-    assert pet["builtin"] and pet["installed"] and not pet["enabled"]
-    assert runtime.panels("above_input") == []
-    await runtime.manage("enable", "pet")
-    runtime.session.state.last_turn_status = "running"
-    await runtime.refresh()
-    panels = runtime.panels("above_input")
-
-    def caption(panel):  # Only actionable states add a caption beside the sprite.
-        return {(span.text.strip(), span.role) for span in panel.rows[0].spans if any(char.isalpha() for char in span.text)}
-
-    assert panels and not caption(panels[0])
-    rendered = PluginView.render(panels, 80, 6)
-    assert any(style == Theme.fg("accent") for style, text in rendered if text.strip())
-    runtime.session.state.awaiting_input = True
-    await runtime.refresh()
-    assert ("your move", "warning") in caption(runtime.panels("above_input")[0])
-    await runtime.manage("disable", "pet")
-    await runtime.close()
-    fresh = SessionPlugins(session_with_provider(tmp_path))
-    assert not (await fresh.manage("inspect", "pet"))["plugins"][0]["enabled"]
-    assert fresh.panels("above_input") == []
-    await fresh.close()
 
 
 async def test_hot_reload_reconciles_saved_choices_only_in_calling_agent(tmp_path):
@@ -865,7 +835,6 @@ async def test_the_builtin_plugins_are_classified_by_their_registrations(tmp_pat
         # Only layout registers tools alone; the rest have commands, panels or step-ins.
         assert {name: session.plugins.entries[name].active.idle for name in session.plugins.entries} == {
             "layout": True,
-            "pet": False,
             "context_bar": False,
             "system_prompt": False,
             "tool_visibility": False,

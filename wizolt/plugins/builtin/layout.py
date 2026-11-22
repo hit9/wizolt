@@ -4,7 +4,7 @@ Enable **layout** in `/plugins`, then ask in plain words. Nothing happens until 
 
 ## Arrange panels
 
-> Put my context bar before my pet and leave one empty line between them.
+> Put my context bar before my token counter and leave one empty line between them.
 
 > Remove that empty line. Keep the current order.
 

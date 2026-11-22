@@ -381,7 +381,6 @@ async def test_order_cli_saves_one_list_that_reload_applies(tmp_path, capsys):
         "beta",
         "context_bar",
         "layout",
-        "pet",
         "system_prompt",
         "tool_visibility",
         "usage",

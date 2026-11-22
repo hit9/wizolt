@@ -10,7 +10,7 @@ Your plugin settings, enabled choices, shortcuts and layout are saved in `config
 Sync it to keep your preferences on another computer; copy or reinstall your plugin source
 and dependencies there too. Cached data does not need to travel with your configuration.
 
-![A context meter above the divider, a pet above the input and token counts in the statusbar.](_static/plugins-overview.svg)
+![A context meter above the divider and token counts in the statusbar.](_static/plugins-overview.svg)
 
 ## Start with a wish
 
@@ -23,7 +23,7 @@ Tell the agent what you want to see, where it belongs, and when it should appear
 The built-in **plugin-workshop** skill helps the agent build and preview it. Approve the
 reload to try it without restarting.
 
-> Let me choose the pet's appearance from a menu and remember my choice for next time.
+> Let me choose the meter's appearance from a menu and remember my choice for next time.
 > Test choosing, cancelling and reopening before loading it.
 
 Plugins can save their own settings. The agent can test menus with scripted answers and show
@@ -119,20 +119,6 @@ agent works. Approvals and the stored-result key (`tr.N`) stay wizolt's. If two 
 the same spot, wizolt keeps its own drawing until you pick one with
 `wizolt plugin presenter choose`. A slow or failing redraw falls back to wizolt's.
 
-## Try the built-in pet
-
-Open `/plugins`, select **pet**, then **enable**. Type `/pet` to choose a cat, bear, owl,
-bunny, fish or robot. Your companion perches beside the prompt, with a small movement while
-the agent works. Its eyes change with the agent’s mood. A caption appears when it needs
-your attention or hits an error.
-
-![The six pixel companions in their resting poses.](_static/plugins-pet.svg)
-
-For a walking pet, set `motion = "walk"` under `[plugins.pet]`. You can also set
-`caption = false`. Reload pet in `/plugins` after editing the config.
-
-> Move @plugin:pet above the divider and reload it.
-
 ## The built-in context bar
 
 Enable **context_bar** in `/plugins` to see what fills your context window above the input: one
@@ -178,7 +164,7 @@ turn them off. Nothing is written until you save. Your file is
 
 ## Arrange your space
 
-> Enable the built-in layout plugin. Put my context meter before my pet and leave one
+> Enable the built-in layout plugin. Put my context meter before my token counter and leave one
 > empty line between them.
 
 > Remove that empty line. Keep the current order.
@@ -214,7 +200,7 @@ is running, a change waits and shows what it waits to do: **starting**, **reload
 **stopping**. Commands in other plugins do not hold up the update. A failed update or
 settings save leaves the current plugin unchanged. You can ask the agent to manage it too:
 
-> Update @plugin:pet, preview the change, then reload it. Keep its source in its own Git
+> Update @plugin:meter, preview the change, then reload it. Keep its source in its own Git
 > repository so I can undo changes later.
 
 Only enable code you trust: plugins can access your files and network.

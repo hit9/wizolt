@@ -13,41 +13,53 @@ from wizolt.plugins.preferences import PluginPreferences
 
 def test_every_bundled_plugin_is_off_until_the_user_enables_it(tmp_path):
     records, errors = PluginCatalog.for_user(str(tmp_path)).read()
-    bundled = {name: item for name, item in records.items() if name in {"pet", "layout"}}
-    assert not errors and set(bundled) == {"pet", "layout"}
+    bundled = {name: item for name, item in records.items() if name in {"context_bar", "layout"}}
+    assert not errors and set(bundled) == {"context_bar", "layout"}
     assert not any(item.enabled for item in records.values())
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_retired_builtin_preference_is_ignored_but_a_user_installation_still_loads(tmp_path, enabled):
+    catalog = PluginCatalog.for_user(str(tmp_path))
+    catalog.preferences.save("installations", "pet", {"enabled": enabled})
+    records, errors = catalog.read()
+    assert not errors and "pet" not in records
+    custom = Installation("pet", str(tmp_path / "pet.py"), enabled)
+    catalog.save(custom)
+    records, errors = catalog.read()
+    assert not errors and records["pet"] == custom
 
 
 @pytest.mark.parametrize("record", [[], [["enabled", True]]])
 def test_array_is_not_an_installation_record(tmp_path, record):
     catalog = PluginCatalog.for_user(str(tmp_path))
-    catalog.preferences.save("installations", "pet", record)
+    catalog.preferences.save("installations", "context_bar", record)
     records, errors = catalog.read()
-    assert "pet" not in records
-    assert errors == ["pet: installation must be a table"]
+    assert "context_bar" not in records
+    assert errors == ["context_bar: installation must be a table"]
 
 
 def test_preferences_keep_config_comments_symlinks_and_plugin_settings(tmp_path):
     source = tmp_path / "dotfiles.toml"
-    source.write_text('# My profile\n[plugins.pet]\nstyle = "quiet" # keep this\n')
+    source.write_text('# My profile\n[plugins.context_bar]\nstyle = "quiet" # keep this\n')
     source.chmod(0o600)
     link = tmp_path / "config.toml"
     link.symlink_to(source)
     catalog = PluginCatalog.for_user(str(tmp_path / "data"), str(link))
-    catalog.save(Installation("pet", "ignored-builtin-source", False))
-    catalog.preferences.save("shortcuts", "bindings", {"f6": "pet.show"})
-    catalog.preferences.save("layout", "above_input", {"order": ["pet.above_input"], "gaps": {"pet.above_input": 2}})
+    catalog.save(Installation("context_bar", "ignored-builtin-source", False))
+    catalog.preferences.save("shortcuts", "bindings", {"f6": "context_bar.show"})
+    catalog.preferences.save("layout", "above_input", {"order": ["context_bar.above_input"], "gaps": {"context_bar.above_input": 2}})
     assert link.is_symlink()
     assert stat.S_IMODE(source.stat().st_mode) == 0o600
     assert '# My profile' in source.read_text() and '# keep this' in source.read_text()
-    assert ConfigFile.load(str(link))["plugins"] == {"pet": {"style": "quiet"}}
+    assert ConfigFile.load(str(link))["plugins"] == {"context_bar": {"style": "quiet"}}
     # Only the config is copied to another profile; cached installation state is absent.
     copied = tmp_path / "other.toml"
     copied.write_text(source.read_text())
     other = PluginCatalog.for_user(str(tmp_path / "another-machine"), str(copied))
-    assert not other.read()[0]["pet"].enabled
-    assert other.preferences.read("shortcuts")["bindings"] == {"f6": "pet.show"}
-    assert other.preferences.read("layout")["above_input"]["gaps"] == {"pet.above_input": 2}
+    assert not other.read()[0]["context_bar"].enabled
+    assert other.preferences.read("shortcuts")["bindings"] == {"f6": "context_bar.show"}
+    assert other.preferences.read("layout")["above_input"]["gaps"] == {"context_bar.above_input": 2}
 
 
 def test_runtime_cache_never_supplies_preferences_or_creates_config(tmp_path):
