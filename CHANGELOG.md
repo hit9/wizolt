@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.77.3 - 2026-11-22
+
 - Make the Bash promotion tests synchronize foreground and background output even on slow shell startup.
 
 ## 0.77.2 - 2026-11-22
