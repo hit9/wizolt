@@ -9,6 +9,7 @@ import time
 from types import SimpleNamespace
 
 import pytest
+from agent_harness import promote_bash_between_writes
 
 import wizolt.ui.render as render_module
 from wizolt.agent.context import ContextManager
@@ -666,29 +667,17 @@ def test_bash_readonly_auto_approval_classification(tmp_path):
     assert not readonly("sed -f script.sed f")  # a script we cannot see
 
 
-async def test_bash_slow_command_promotes_to_job(tmp_path):
+async def test_bash_slow_command_promotes_to_job(tmp_path, monkeypatch):
     s = session(tmp_path)
-    s.settings.bash_wait_timeout = 0.2
-    s.settings.shell_timeout = 5
-
-    output = await BashTool(s, ["printf early; sleep 0.5; printf late"]).call()
+    output = await promote_bash_between_writes(s, monkeypatch)
 
     assert "* exit_code: -1" in output
-    assert "early" in output
-    assert "backgrounded after 0.2s" in output
+    assert "<stdout>\nearly\n</stdout>" in output
+    assert "backgrounded after 1s" in output
     assert "job.1" in output
-    assert "job.1" in s.jobs
     job = s.jobs["job.1"]
-    assert job.stream_buffer is not None
-    # `early` was consumed by the foreground streaming loop before promotion, so it lives in the
-    # Bash result payload (asserted above). `late` was produced after the drainer took over, so it
-    # lives in the promoted job's tail buffer.
+    assert job.tail(4096) == "earlylate"
     job.process.wait(timeout=5)
-    for _ in range(50):
-        if "late" in job.tail(4096):
-            break
-        await asyncio.sleep(0.05)
-    assert "late" in job.tail(4096)
     job.update_status()
     assert job.status == "done"
     assert job.exit_code == 0

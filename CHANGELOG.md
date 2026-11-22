@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make the Bash promotion tests synchronize foreground and background output even on slow shell startup.
+
 ## 0.77.2 - 2026-11-22
 
 - Fix import ordering in the theme preview generator and align the local lint command with CI.

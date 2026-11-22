@@ -1,12 +1,11 @@
 """tool output browser (split from tests/test_command_ui.py)."""
 
-import asyncio
 import json
 import os
 import shutil
-import time
 
 import pytest
+from agent_harness import promote_bash_between_writes
 from prompt_toolkit.utils import get_cwidth
 from test_command_ui import ModalHarness
 from tui_harness import loop, session
@@ -16,7 +15,7 @@ from wizolt.agent.engine import Agent
 from wizolt.agent.lifecycle import load_session
 from wizolt.base import ToolCall
 from wizolt.session.jobs import BackgroundJob
-from wizolt.tools import BashTool, JobTool, Tool, tooloutput
+from wizolt.tools import JobTool, Tool, tooloutput
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.modals import job_view, tool_output_viewer
 from wizolt.ui.cli.resume import ResumeRenderer
@@ -691,30 +690,17 @@ def test_job_view_falls_back_when_a_known_jobs_log_was_removed(tmp_path):
     assert view.result == ""
 
 
-async def test_promoted_bash_job_view_includes_output_from_before_and_after_promotion(tmp_path):
+async def test_promoted_bash_job_view_includes_output_from_before_and_after_promotion(tmp_path, monkeypatch):
     command_loop = loop(tmp_path)
-    command_loop.session.settings.bash_wait_timeout = 0.03
-
-    promoted = await BashTool(command_loop.session, ["printf early; sleep 0.08; printf late"]).call()
+    promoted = await promote_bash_between_writes(command_loop.session, monkeypatch)
     job = command_loop.session.jobs["job.1"]
     status = await JobTool(command_loop.session, [{"action": "wait", "job": job.id, "timeout": 2}]).call()
-    # The process can exit just before its drainer consumes EOF. Wait for that observable state
-    # instead of relying on one scheduler-sized sleep.
-    deadline = time.monotonic() + 1
-    while time.monotonic() < deadline:
-        snapshot = job.log_snapshot(BackgroundJob.BUFFER_LIMIT)
-        if snapshot is not None and "late" in snapshot[0]:
-            break
-        await asyncio.sleep(0.01)
-    else:
-        raise AssertionError("background drainer did not capture the completed output")
     command_loop.session.store_tool_result("Job", [{"action": "wait", "job": job.id}], status)
 
     view = job_view(command_loop, command_loop.session.tool_records[-1])
 
-    assert "early" in promoted
-    assert "early" in view.text
-    assert "late" in view.text
+    assert "<stdout>\nearly\n</stdout>" in promoted
+    assert view.text == "earlylate"
 
 
 def test_disk_job_log_snapshot_reads_both_ends_with_a_fixed_bound(tmp_path):

@@ -1,6 +1,11 @@
 """Shared harness for the agent test modules: an isolated session, a tool-call factory, and
 the user-input queue helpers."""
 
+import asyncio
+import time
+from pathlib import Path
+from types import SimpleNamespace
+
 from wizolt.agent.lifecycle import bootstrap_features
 from wizolt.base import (
     ToolCall,
@@ -43,3 +48,32 @@ def call(name, args):
 def queue(s, *texts):
     for text in texts:
         s.enqueue_user_input(text)
+
+
+async def promote_bash_between_writes(session, monkeypatch):
+    """Exercise real pipe handoff, advancing the Bash clock only after the first write is read."""
+    from wizolt.tools import BashTool
+
+    session.settings.bash_wait_timeout = 1
+    session.settings.shell_timeout = 30
+    release = Path(session.cwd) / "release-late"
+    bash = BashTool(session, ["printf early; while [ ! -e release-late ]; do sleep 0.01; done; printf late"])
+    stdout = []
+    start = time.monotonic()
+
+    def observe(stream, text):
+        if stream == "stdout":
+            stdout.append(text)
+
+    bash.live_output = observe
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr("wizolt.tools.shell.time", SimpleNamespace(monotonic=lambda: start + (1 if "".join(stdout) == "early" else 0)))
+            promoted = await asyncio.wait_for(bash.call(), timeout=10)
+    finally:
+        release.touch()
+    job = session.jobs["job.1"]
+    assert job.stream_thread is not None
+    await asyncio.to_thread(job.stream_thread.join, 10)
+    assert not job.stream_thread.is_alive()
+    return promoted
