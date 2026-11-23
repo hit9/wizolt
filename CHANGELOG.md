@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.77.18 - 2026-11-23
+
 - Use each theme’s secondary accent for headings in model replies and recognize Markdown headings in the live preview.
 - Keep the idle divider and context bar together below the completed reply across tmux pane zooms.
 - Keep a running Bash preview beside the command and fill the visible pane with available history after a single tmux zoom or unzoom.
