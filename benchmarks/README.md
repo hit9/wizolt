@@ -9,6 +9,30 @@ document any retained cost. Update `baselines/` and this README's reference befo
 never accept a regression merely by replacing the baseline. If the environment or workload changed,
 remeasure the previous reference revision too so the comparison remains meaningful.
 
+## 0.77.20 release reference
+
+The [merged master reference](baselines/linux-arm64-py314-0.77.20.json) measures
+`f89784c2` against the [previous reference revision remeasured with the current dependencies](results/linux-arm64-py314-before-0.77.20.json)
+at `e75b10cf`. Both used Linux ARM64, CPython 3.14.7, and nine samples per timing metric.
+
+The [branch review](results/linux-arm64-py314-dev28-review.json) caught a regression
+in revisiting 150 Markdown blocks above the layout cache budget. Coloring each wrapped
+prose row separately expanded the serialized output from 1.37 to 1.69 million characters,
+so only 88 of the 150 blocks fit in the cache, down from 109. Keeping the foreground across
+line breaks and emitting contiguous color runs restored capacity to 108 blocks. Median time
+went from 212 ms on the reference to 379 ms on the reviewed branch and 236 ms on merged
+master. A separate comparison stripped ANSI and checked visible text for all eight replay
+probes and three transcript formats. All matched, including the replay row counts.
+
+A [reverse-order repeat of the old revision](results/linux-arm64-py314-before-0.77.20-repeat.json)
+measured 213 ms for that same revisit and 98 ms for first projection of 100 Markdown
+blocks, against 236 ms and 111 ms on merged master. These remaining costs accompany
+the colored Markdown projection. The first prompt frame measured 160 ms on both.
+Some timings also moved in paths with unchanged source: appending a 1 MB snapshot
+took 5.01 ms, 6.14 ms and 5.47 ms in the initial reference, merged build and repeated
+reference. Collecting 10,000 external files took 18.53 ms, 23.73 ms and 22.31 ms.
+The runs show variability and do not isolate a cause for those differences.
+
 ## 0.77.1 release reference
 
 The [release reference](baselines/linux-arm64-py314-0.77.1.json) measures merged master
