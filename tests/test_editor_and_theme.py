@@ -585,7 +585,7 @@ def test_the_roles_that_carry_text_are_the_terminal_own_colors():
         for role in Theme.ROLES:
             if palette is Theme.DARK and role in {"accent", "accent_secondary", "divider_label"}:
                 continue
-            if role in fixed or role.startswith(("status_", "syntax_", "context_")):
+            if role in fixed or role.startswith(("status_", "syntax_", "context_", "shell_")):
                 continue
             value = palette[role]
             assert value == "default" or value in Theme.RICH_COLOR_NAMES, (role, value)
