@@ -423,6 +423,7 @@ class Theme:
         **CONTEXT_COLORS["dark"],
         **SHELL_COLORS["dark"],
         "text": "#edf2f6",
+        "assistant": "#ffffff",
         "muted": "#b1bfd0",
         "subtle": "#879ab1",
         "preview": "#777978",
@@ -467,6 +468,7 @@ class Theme:
         **CONTEXT_COLORS["light"],
         **SHELL_COLORS["light"],
         "text": "#233545",
+        "assistant": "#233545",
         "muted": "#575d70",
         "subtle": "#62677a",
         "preview": "#81817d",
@@ -967,7 +969,7 @@ class Theme:
     @classmethod
     def tui_styles(cls) -> dict[str, str]:
         """Semantic classes referenced directly by prompt-toolkit fragments."""
-        return {role: f"fg:{cls.color(role)}" for role in ("text", "muted", "subtle", "preview", "accent", "rule", "success", "error")}
+        return {role: f"fg:{cls.color(role)}" for role in ("text", "assistant", "muted", "subtle", "preview", "accent", "rule", "success", "error")}
 
     @classmethod
     def rich_theme(cls) -> RichTheme:
@@ -1796,7 +1798,7 @@ class UiPrinter:
                 line.append_text(self.reaction_text(console, line, reaction, console.width - len(margin)))
             console.print(Padding(line, (0, 0, 0, len(margin)), style="wizolt.user"))
         elif role == "assistant":
-            content = RichText(styled_text, style="wizolt.error") if error else WizoltMarkdown(styled_text)
+            content = RichText(styled_text, style="wizolt.error") if error else WizoltMarkdown(styled_text, role="assistant")
             console.print(Padding(content, (0, 0, 0, len(margin))))
         else:
             if role:

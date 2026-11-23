@@ -315,10 +315,7 @@ def test_model_stream_preview_switches_phase_and_clears(tmp_path):
 
 
 def test_model_stream_preview_styles_inline_markdown(tmp_path, monkeypatch):
-    """Closed inline markdown tokens in the live preview render with their own styles -- bold,
-    code, italic -- marked in the preview's own gray tones (no color), while plain text stays
-    gray and an unclosed marker stays literal, so a growing stream never toggles a token's
-    style frame to frame."""
+    """Live answers use the reply ink with inline emphasis. Reasoning uses the preview ink."""
     monkeypatch.setattr(shutil, "get_terminal_size", lambda fallback: os.terminal_size((100, 20)))
     config = Config()
     config.data_dir = str(tmp_path / "data")
@@ -329,10 +326,10 @@ def test_model_stream_preview_styles_inline_markdown(tmp_path, monkeypatch):
     assert ("class:preview", "bold code italic and **unclosed") in loop.view.model_stream_fragments()
     loop.presentation.model_stream_output("output", "**bold** `code` *italic* and **unclosed")
     styled = {(text, style) for style, text in loop.view.model_stream_fragments() if text}
-    assert ("bold", "class:text bold") in styled
-    assert ("code", "class:text underline") in styled
-    assert ("italic", "class:text italic") in styled
-    assert (" and **unclosed", "class:text") in styled  # no closing marker: the tail stays literal
+    assert ("bold", "class:assistant bold") in styled
+    assert ("code", "class:assistant underline") in styled
+    assert ("italic", "class:assistant italic") in styled
+    assert (" and **unclosed", "class:assistant") in styled  # no closing marker: the tail stays literal
 
 
 def test_model_stream_preview_keeps_malformed_star_runs_literal(tmp_path, monkeypatch):
@@ -346,9 +343,9 @@ def test_model_stream_preview_keeps_malformed_star_runs_literal(tmp_path, monkey
     loop.presentation.model_stream_output("output", "**a* *a** **** **a**b**")
 
     styled = {(text, style) for style, text in loop.view.model_stream_fragments() if text}
-    assert ("**a* *a** **** ", "class:text") in styled  # unclosed and empty star runs stay literal
-    assert ("a", "class:text bold") in styled  # the closed bold inside the last token still renders
-    assert ("b**", "class:text") in styled  # the trailing unclosed run stays literal
+    assert ("**a* *a** **** ", "class:assistant") in styled  # unclosed and empty star runs stay literal
+    assert ("a", "class:assistant bold") in styled  # the closed bold inside the last token still renders
+    assert ("b**", "class:assistant") in styled  # the trailing unclosed run stays literal
     assert not any(text == "a" and "italic" in style for text, style in styled)  # no italic borrowed from `**`
 
 

@@ -326,14 +326,14 @@ class Presentation:
         # above already counts, the text's own rows count toward the next rule.
         if self.ui.rule_due(self.MIN_ROWS_BETWEEN_RULES):
             self.ui.emit_phase_rule()
-        self.ui.emit_answer(text, rule=False, indent=TurnBox.CONTENT_LEVEL)
+        self.ui.emit_answer(text, role="assistant", rule=False, indent=TurnBox.CONTENT_LEVEL)
 
     def emit_final_answer(self, text: str) -> None:
         """The turn's final answer: the one block of model text the turn-end rule closes, so it
         takes no phase rule of its own."""
         if text.strip():
             self.ui.separate()
-        self.ui.emit_answer(text, rule=False, indent=TurnBox.CONTENT_LEVEL)
+        self.ui.emit_answer(text, role="assistant", rule=False, indent=TurnBox.CONTENT_LEVEL)
 
     def user_turn_rule(self) -> None:
         """Separate a live or restored turn from its shaded user message with whitespace."""

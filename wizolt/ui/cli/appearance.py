@@ -68,7 +68,7 @@ def theme_preview(_name: str) -> StyleAndTextTuples:
     return [
         (fg("user", f"bg:{Theme.color('user_bg')}"), " • Handle repeated spaces "),
         ("", "\n"),
-        (fg("text"), "Use Python’s whitespace splitter."),
+        (fg("assistant"), "Use Python’s whitespace splitter."),
         ("", "\n"),
         (fg("tool"), "Edit "),
         (fg("muted"), "parser.py"),

@@ -92,8 +92,8 @@ class WizoltMarkdown(Markdown):
         "table_open": _Table,
     }
 
-    def __init__(self, markup: str) -> None:
-        super().__init__(markup, style=Theme.rich_color("text"), hyperlinks=False)
+    def __init__(self, markup: str, *, role: str = "text") -> None:
+        super().__init__(markup, style=Theme.rich_color(role), hyperlinks=False)
 
 
 def markdown_console(width: int) -> Console:

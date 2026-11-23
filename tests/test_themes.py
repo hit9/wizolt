@@ -1221,3 +1221,14 @@ def test_shell_preview_is_neutral_and_quieter_than_the_command(name):
     assert gray[1:3] == gray[3:5] == gray[5:7]
     for role in ("shell_command", "shell_string", "shell_variable", "text"):
         assert 4.5 <= contrast(gray, bg) < contrast(palette.colors[role], bg)
+
+
+@pytest.mark.parametrize("name", Theme.BUILTIN)
+def test_model_reply_ink_matches_from_stream_to_transcript(name):
+    Theme.set_mode(name)
+    expected = "#ffffff" if Theme.appearance() == "dark" else Theme.color("text")
+    assert Theme.tui_styles()["assistant"] == f"fg:{expected}"
+    message = MessageBlock(UiPrinter(), "正文 **加粗**", "assistant", 0)
+    for style, char in message.fragments(80):
+        if char.strip():
+            assert style.split()[0] == expected

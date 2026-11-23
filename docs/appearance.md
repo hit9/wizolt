@@ -23,6 +23,7 @@ preview so more choices remain visible.
 
 The **Colorscheme** tab lists every built-in, custom and plugin theme and opens at your current choice.
 Press **/** to search by name, for example `sand` or `gruvbox-dark`.
+Model replies use white body text in dark themes and dark ink in light themes.
 Bash highlights commands in green, quoted strings in gold and variables in teal. Flags and paths use the body text color. Live output and the short output excerpt under a completed command share a neutral gray.
 A breathing star marks live reasoning, replies and Bash commands. Their previews share the transcript grid,
 with quieter text for reasoning and running commands.

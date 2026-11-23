@@ -69,7 +69,7 @@ A *role* names what a color is used for. Set only the roles you want to change:
 | Area | Roles |
 | --- | --- |
 | Reading and navigation | `text`, `muted`, `subtle`, `preview`, `accent`, `accent_secondary`, `info`, `rule` |
-| Messages and results | `user`, `user_bg`, `tool`, `success`, `warning`, `error` |
+| Messages and results | `assistant`, `user`, `user_bg`, `tool`, `success`, `warning`, `error` |
 | Context bar | `context_tools`, `context_system`, `context_memory`, `context_skills`, `context_mcp`, `context_summary`, `context_chat`, `context_other` |
 | Bash transcript | `shell_command`, `shell_string`, `shell_variable`, `shell_output` |
 | Code | `syntax_assign`, `syntax_string`, `syntax_number`, `syntax_ident`, `syntax_builtin`, `syntax_default` |

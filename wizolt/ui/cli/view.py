@@ -577,18 +577,18 @@ class View:
         cursor = 0
         for match in cls.STREAM_INLINE_RE.finditer(row):
             if match.start() > cursor:
-                fragments.append(("class:text", row[cursor : match.start()]))
+                fragments.append(("class:assistant", row[cursor : match.start()]))
             token = match.group(1)
             if token.startswith("**"):
-                fragments.append(("class:text bold", token[2:-2]))
+                fragments.append(("class:assistant bold", token[2:-2]))
             elif token.startswith("`"):
-                fragments.append(("class:text underline", token[1:-1]))
+                fragments.append(("class:assistant underline", token[1:-1]))
             else:
-                fragments.append(("class:text italic", token[1:-1]))
+                fragments.append(("class:assistant italic", token[1:-1]))
             cursor = match.end()
         if cursor < len(row):
-            fragments.append(("class:text", row[cursor:]))
-        return fragments or [("class:text", row)]
+            fragments.append(("class:assistant", row[cursor:]))
+        return fragments or [("class:assistant", row)]
 
     def tui_input_hint(self) -> str:
         tui = self.presentation.tui

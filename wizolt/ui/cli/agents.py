@@ -83,15 +83,16 @@ class AgentPreview:
             prefix = [("class:rule", "  │ "), ("", "  ")] if roomy else [("class:rule", "  │ "), ("class:choice.disabled bold", f"{title:<5} ")]
             continuation = [("class:rule", "  │ "), ("", "  " if roomy else "      ")]
             body_width = width - 4 - sum(get_cwidth(value) for _, value in prefix)
+            style = "class:assistant" if tail else "class:text"
             for raw in text.splitlines():
-                rows.extend(Text.wrap_styled(prefix if not rows else continuation, continuation, [("class:text", raw)], width - 2))
+                rows.extend(Text.wrap_styled(prefix if not rows else continuation, continuation, [(style, raw)], width - 2))
             if len(rows) > budget:
                 # Keep the latest flowing rows and the opening task. The ellipsis stays on the
                 # final/first retained row, so even a five-row pane still shows both sections.
                 rows = rows[-budget:] if tail else rows[:budget]
                 if tail:
                     body = "".join(value for _, value in rows[0][2:])
-                    rows[0] = [*prefix, ("class:choice.disabled", "… "), ("class:text", Text.clip_width(body, body_width))]
+                    rows[0] = [*prefix, ("class:choice.disabled", "… "), (style, Text.clip_width(body, body_width))]
                 else:
                     body = "".join(value for _, value in rows[-1][2:])
                     rows[-1] = [*(prefix if budget == 1 else continuation), ("class:text", Text.clip_width(body, body_width + 1) + "…")]

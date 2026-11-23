@@ -234,12 +234,14 @@ def scheme(
     success = blend(green, fg, 0.15)
     # Tool arguments are colored like code: keys as properties, values as strings and numbers.
     code = {"assign": blend(detail, fg, 0.35), "string": green, "number": purple, "ident": detail, "builtin": yellow}
+    text = lift(fg, edge, background, 11.0)
     palette = Palette(
         appearance,
         {
             **CONTEXT_COLORS[appearance],
             **SHELL_COLORS[appearance],
-            "text": lift(fg, edge, background, 11.0),
+            "text": text,
+            "assistant": "#ffffff" if appearance == "dark" else text,
             "muted": muted,
             "preview": lift(blend(background, comment, 0.50), fg, background, 3.0),
             "subtle": lift(comment, fg, background, 3.0),

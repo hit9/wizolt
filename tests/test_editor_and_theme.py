@@ -580,7 +580,7 @@ def test_interactive_renderer_keeps_theme_when_parent_exports_no_color(monkeypat
 
 def test_the_roles_that_carry_text_are_the_terminal_own_colors():
     """Body text and semantic feedback inherit terminal ink in both default palettes."""
-    fixed = {"text", "tool", "muted", "subtle", "menu_muted", "preview", "user", "user_bg", "syntax_default", "divider_glow", "divider_rule", "selection_bg", "selection_fg", "menu_bg"}
+    fixed = {"text", "assistant", "tool", "muted", "subtle", "menu_muted", "preview", "user", "user_bg", "syntax_default", "divider_glow", "divider_rule", "selection_bg", "selection_fg", "menu_bg"}
     for palette in (Theme.DARK, Theme.LIGHT):
         for role in Theme.ROLES:
             if palette is Theme.DARK and role in {"accent", "accent_secondary", "divider_label"}:

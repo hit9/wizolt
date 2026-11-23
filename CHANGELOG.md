@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use white for model replies in all dark built-in themes, from streaming through transcript replay.
+
 ## 0.77.14 - 2026-11-23
 
 - Give Bash command lines a restrained shell palette and show live and completed output previews in neutral gray across all built-in themes.
