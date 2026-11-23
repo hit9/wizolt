@@ -197,7 +197,7 @@ def test_running_command_stays_beside_history_across_zoom(pane, start_zoomed, hi
         running = next((i for i, line in enumerate(screen) if "running…" in line), -1)
         prompt = next((i for i, line in enumerate(screen) if line.startswith("+>")), -1)
         attached = header > 0 and running == header + 2 and all(line.strip() == "earlier transcript" for line in screen[:header])
-        filled = header == history_rows if history_rows == 3 else 0 < prompt - running <= 5
+        filled = header == history_rows if history_rows == 3 else 0 < prompt - running <= 7
         if attached and filled and screen[-1].strip() == "tmux-driver":
             stable_since = stable_since or time.monotonic()
             if time.monotonic() - stable_since >= pane.settle_interval:

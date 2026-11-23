@@ -115,9 +115,9 @@ def test_width_change_under_an_exclusive_viewer_defers_the_rebuild(monkeypatch, 
     on_alternate_screen = []
     real_rebuild = ScrollbackRegion.rebuild
 
-    def spy(self, application):
+    def spy(self, application, *, keep_anchor):
         on_alternate_screen.append(application.renderer.full_screen)
-        real_rebuild(self, application)
+        real_rebuild(self, application, keep_anchor=keep_anchor)
 
     monkeypatch.setattr(ScrollbackRegion, "rebuild", spy)
 

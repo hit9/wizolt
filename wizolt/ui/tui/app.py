@@ -2399,10 +2399,12 @@ class TuiApp:
                     rows, columns = out.get_size()
                     # Projection geometry survives renderer.reset() and cannot depend on
                     # whether a tool is still active when its old screen is resized.
-                    if self.scrollback.note_size(rows, columns) and self.scrollback.viewport is not None:
-                        # tmux has already reflowed the history. Its old absolute tail row
-                        # cannot measure space for the live preview in the resized pane.
-                        self.scrollback.tail_row = None
+                    viewport = self.scrollback.viewport
+                    if self.scrollback.note_size(rows, columns) and viewport is not None and viewport.geometry is not None:
+                        # tmux moves the transcript with the bottom-anchored live region.
+                        # Reserve from its previous height: a shrinking editor frees rows
+                        # below the running preview, while a growing pane reveals history.
+                        self.scrollback.tail_row = max(0, rows - viewport.geometry[2])
                     pending = self.scrollback.pending_text(columns) if self.scrollback.tmux_viewport_available else None
                     height = layout_height(rows, columns, follow, pending)
                     if pending is not None and self.scrollback.draw_tmux_viewport(app, height, pending):
