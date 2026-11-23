@@ -39,7 +39,10 @@ from wizolt.shellhooks import POST_COMPACT, PRE_COMPACT, HookOutcome
 from wizolt.tools import Tool
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from wizolt.agent.context import ContextManager
+    from wizolt.agent.hooks import HistorySummaryPhase
 
 
 @dataclass
@@ -66,16 +69,24 @@ class BackgroundHistory:
     def __init__(self) -> None:
         self._task: asyncio.Task[HistoryCandidate | None] | None = None
         self._attempt: tuple[int, int] | None = None
+        self._notify: Callable[[HistorySummaryPhase], None] | None = None
 
     async def cancel(self) -> None:
         task, self._task = self._task, None
-        if task is not None and not task.done():
+        if task is None:
+            return
+        if not task.done():
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+        elif self._notify:
+            # A prepared candidate dies here without ever being applied; clear the ready notice.
+            # A still-running task clears itself from its own finally.
+            self._notify("finished")
 
     def prepare(self, compactor: Compactor, turn: list[Json] | None, *, start: bool, manual: bool) -> bool:
         ctx = compactor.ctx
         session = ctx.session
+        self._notify = ctx.hooks.on_history_summary
         if self._task is None and not start:
             return False
         hooks = session.shell_hooks
@@ -91,6 +102,8 @@ class BackgroundHistory:
                 if callback := ctx.hooks.on_history_summary:
                     callback("applied")
                 return True
+            if candidate is not None and (callback := ctx.hooks.on_history_summary):
+                callback("finished")  # Stale or ineligible: the prepared candidate is dropped.
         attempt = (session.context_epoch, len(session.messages))
         if not eligible or not start or self._attempt == attempt:
             return False
@@ -114,6 +127,7 @@ class BackgroundHistory:
                 return None
             client = ModelClient(session)
             notify = ctx.hooks.on_history_summary
+            candidate: HistoryCandidate | None = None
             try:
                 if notify:
                     notify("running")
@@ -124,14 +138,14 @@ class BackgroundHistory:
                     and summary.strip()
                     and ctx.estimated_tokens([{"role": "user", "content": summary}]) < ctx.estimated_tokens(compacted)
                 ):
-                    return HistoryCandidate(attempt[0], baseline, compacted, keep, data, client.last_compaction_model)
+                    candidate = HistoryCandidate(attempt[0], baseline, compacted, keep, data, client.last_compaction_model)
             except Exception:  # A speculative failure leaves the foreground fallback in charge.
                 logging.getLogger(__name__).debug("Background history summary failed", exc_info=True)
             finally:
                 if notify:
-                    notify("finished")
+                    notify("ready" if candidate is not None else "finished")
                 await client.close()
-            return None
+            return candidate
 
         self._task = asyncio.create_task(generate(), name="history-summary")
         return False
@@ -422,7 +436,7 @@ class Compactor:
             # cleanly into session.state and is fed back into every later compaction.
             if self.echoes_source(data.get("summary") or "", echo_source):
                 if attempt == 2:
-                    raise ModelError(f"compactor echoed the conversation instead of summarizing it (compaction provider `{entry_label}`)")
+                    raise ModelError(f"compactor echoed the conversation instead of compacting it (compaction provider `{entry_label}`)")
                 attempt_messages = [
                     *attempt_messages,
                     {"role": "assistant", "content": Tool.compact(content, 400)},

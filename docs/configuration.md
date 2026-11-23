@@ -303,7 +303,7 @@ as a cheaper one. Leave a field empty to inherit it from the selected provider.
 | `[compaction] model` | inherit | Override the entry's model; empty inherits |
 | `[compaction] reasoning` | inherit | Override the entry's reasoning effort; empty inherits |
 | `[compaction] api` | inherit | Override the entry's wire protocol; empty inherits |
-| `[compaction] threshold` | `1.0` | Fraction of the request budget that triggers foreground compaction, `0.5`–`1.0`. At 80% of that line, wizolt can start summarizing older messages in the background. The next request can use a finished summary. Lower the threshold for rate limits that count the full prompt. |
+| `[compaction] threshold` | `1.0` | Fraction of the request budget that triggers foreground compaction, `0.5`–`1.0`. At 80% of that line, wizolt can start compacting older messages in the background; the status bar shows `compaction ready` when one is prepared, and the next request can use it. Lower the threshold for rate limits that count the full prompt. |
 
 To choose a summarizer for one provider, add `[provider.NAME.compaction]`. It accepts `model`,
 `reasoning` and `api`, and takes precedence over `[compaction]`:

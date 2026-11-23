@@ -24,6 +24,11 @@ if TYPE_CHECKING:
 # The Ask tool's question set, as (label, ...) specs, and the answers it gets back.
 QuestionFn = Callable[[list[Any]], Awaitable[list[str]]]
 
+# Background history compaction phases: "running" while the speculative request is in flight,
+# "ready" when it produced a candidate the next request can apply, "finished" when it ends or is
+# dropped without one, "applied" when a request takes the candidate.
+HistorySummaryPhase = Literal["running", "ready", "finished", "applied"]
+
 
 @dataclass
 class UiHooks:
@@ -56,7 +61,7 @@ class UiHooks:
     # (active, error) around an automatic compaction. None shows nothing.
     on_compaction: Callable[[bool, str], None] | None = None
 
-    on_history_summary: Callable[[Literal["running", "finished", "applied"]], None] | None = None
+    on_history_summary: Callable[[HistorySummaryPhase], None] | None = None
 
     # -- ToolRunner and the tools it runs: the call-time seams.
     # A live one-line preview of a running command: start(budget) then output(stream, text).

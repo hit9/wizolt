@@ -305,7 +305,7 @@ a whole, including work outside wizolt, use Git.
 
 ### Long sessions
 
-wizolt keeps long conversations within a working budget on its own, summarizing older
+wizolt keeps long conversations within a working budget on its own, compacting older
 context as needed so a session can run indefinitely. Run `/compact` to trim it now, or
 `/status` to see current context and token usage.
 

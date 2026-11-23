@@ -2591,7 +2591,8 @@ class StatusBar:
         self.running = False
         self.rendered = False
         self.output = create_output(sys.stderr)
-        self.summarizing = False
+        self.compacting = False
+        self.compaction_ready = False
         self.seen_retry_count = session.state.model_retry_count
         self.retry_notice_until = 0.0
 
@@ -2716,7 +2717,10 @@ class StatusBar:
 
     def fragments(self) -> StyleAndTextTuples:
         columns = shutil.get_terminal_size((120, 20)).columns
-        notice = "summarizing · " if self.summarizing else ""
+        # Background compaction sits outside the format language so every custom /theme format
+        # keeps the notice: "compacting" while the speculative request runs, "compaction ready"
+        # from a prepared candidate until the next request applies or drops it.
+        notice = "compacting · " if self.compacting else "compaction ready · " if self.compaction_ready else ""
         bar: StyleAndTextTuples = list(self.layout.render("statusbar", self.values(), max(1, columns - 1 - len(notice)), Theme.bar_styles))
         if notice:
             bar.insert(0, ("class:subtle", notice))

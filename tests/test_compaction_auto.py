@@ -162,14 +162,14 @@ async def test_prepare_messages_builds_under_budget_context_once(tmp_path, monke
     assert calls == 1
 
 @pytest.mark.parametrize(
-    ("changed", "summary", "applied"),
+    ("changed", "summary", "applied", "ready"),
     [
-        pytest.param(False, "Earlier work is complete.", True, id="appended"),
-        pytest.param(True, "Earlier work is complete.", False, id="edited"),
-        pytest.param(False, "摘" * 9000, False, id="larger-utf8-summary"),
+        pytest.param(False, "Earlier work is complete.", True, True, id="appended"),
+        pytest.param(True, "Earlier work is complete.", False, True, id="edited"),
+        pytest.param(False, "摘" * 9000, False, False, id="larger-utf8-summary"),
     ],
 )
-async def test_background_summary_commits_at_next_request_only(tmp_path, monkeypatch, changed, summary, applied):
+async def test_background_summary_commits_at_next_request_only(tmp_path, monkeypatch, changed, summary, applied, ready):
     from wizolt.model import ModelClient
     from wizolt.ui.cli.presentation import Presentation
 
@@ -182,7 +182,7 @@ async def test_background_summary_commits_at_next_request_only(tmp_path, monkeyp
     ui = Presentation(s, output_fn=output.append)
     def notify(phase):
         ui.history_summary_status(phase)
-        if phase == "finished":
+        if phase in ("ready", "finished"):
             finished.set()
     context.hooks.on_history_summary = notify
 
@@ -194,7 +194,7 @@ async def test_background_summary_commits_at_next_request_only(tmp_path, monkeyp
     monkeypatch.setattr(ModelClient, "api_request", summarize)
     await context.prepare_messages(model, "system")
     await asyncio.wait_for(started.wait(), 1)
-    assert "summarizing" in "".join(text for _, text in ui.status_bar.fragments())
+    assert "compacting" in "".join(text for _, text in ui.status_bar.fragments())
     await context.prepare_messages(model, "system")
     assert s.state.compaction_count == 0
     if changed:
@@ -203,15 +203,51 @@ async def test_background_summary_commits_at_next_request_only(tmp_path, monkeyp
     s.messages.append(appended)
     release.set()
     await asyncio.wait_for(finished.wait(), 1)
-    assert "summarizing" not in "".join(text for _, text in ui.status_bar.fragments())
+    assert "compacting" not in "".join(text for _, text in ui.status_bar.fragments())
+    assert ("compaction ready" in "".join(text for _, text in ui.status_bar.fragments())) == ready
     assert s.state.compaction_count == 0
     prepared = await context.prepare_messages(model, "system")
     assert appended in prepared
     assert s.state.compaction_count == int(applied)
-    assert ("earlier messages summarized" in str(output)) == applied
+    assert ("earlier messages compacted" in str(output)) == applied
+    # Applied or dropped, the prepared-compaction notice never outlives the request that judged it.
+    assert "compaction ready" not in "".join(text for _, text in ui.status_bar.fragments())
     if changed:
         assert s.messages[2]["content"] == "edited since preparation"
     await context.background_history.cancel()
+
+
+async def test_cancel_clears_the_prepared_compaction_notice(tmp_path, monkeypatch):
+    from wizolt.model import ModelClient
+    from wizolt.ui.cli.presentation import Presentation
+
+    s, context = _huge_history(tmp_path, steps=16, chars=2048)
+    model = _CountingModel(s)
+    raw = context.request_tokens(context.model_messages("system"))
+    monkeypatch.setattr(context, "auto_compaction_limit", lambda: int(raw / 0.9))
+    output = []
+    ui = Presentation(s, output_fn=output.append)
+    phases = []
+    ready = asyncio.Event()
+
+    def notify(phase):
+        phases.append(phase)
+        ui.history_summary_status(phase)
+        if phase == "ready":
+            ready.set()
+
+    context.hooks.on_history_summary = notify
+
+    async def summarize(self, *args, **kwargs):
+        return None, [], json.dumps({"summary": "Earlier work is complete."})
+
+    monkeypatch.setattr(ModelClient, "api_request", summarize)
+    await context.prepare_messages(model, "system")
+    await asyncio.wait_for(ready.wait(), 1)
+    assert "compaction ready" in "".join(text for _, text in ui.status_bar.fragments())
+    await context.background_history.cancel()
+    assert "compaction ready" not in "".join(text for _, text in ui.status_bar.fragments())
+    assert phases == ["running", "ready", "finished"]
 
 
 async def test_foreground_fallback_cancels_pending_summary(tmp_path, monkeypatch):

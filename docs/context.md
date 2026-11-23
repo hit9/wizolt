@@ -23,7 +23,8 @@ in the context meter.
 ### Compaction
 
 As context fills up, wizolt summarizes older conversation and keeps **about eight recent
-messages**. While the status bar shows **summarizing**, you can keep working. A quiet transcript
+messages**. While the status bar shows **compacting**, you can keep working; **compaction ready**
+means a compaction is already prepared and the next request will use it. A quiet transcript
 line confirms when a later request starts using the summary. If the request reaches its
 compaction limit first, it waits for foreground compaction. Summaries can lose detail, so restate an important constraint
 if the agent seems to have forgotten it. Each compaction adds its own summary and keeps the

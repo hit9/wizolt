@@ -84,9 +84,10 @@ class Presentation:
         self.tool_output(LogBlock.hierarchy(root, children))
 
     def history_summary_status(self, phase: str) -> None:
-        self.status_bar.summarizing = phase == "running"
+        self.status_bar.compacting = phase == "running"
+        self.status_bar.compaction_ready = phase == "ready"
         if phase == "applied":
-            self.tool_output(LogBlock([LogLine("context", "earlier messages summarized", LogRole.META, LogEdge.NONE)]))
+            self.tool_output(LogBlock([LogLine("context", "earlier messages compacted", LogRole.META, LogEdge.NONE)]))
         if self.tui is not None:
             self.tui.invalidate()
 

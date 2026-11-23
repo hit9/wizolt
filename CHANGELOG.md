@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Status bar: background compaction shows `compacting` while it runs and `compaction ready` once a prepared compaction is waiting for the next request (previously `summarizing`, with no ready state). Both notices sit outside the bar format, so custom `/theme` status-bar formats keep them.
+
 ## 0.77.12 - 2026-11-23
 
 - Restore the breathing star beside live reasoning, answers and Bash previews. Brighten all built-in palettes, with high-contrast tool calls and readable completed output.
