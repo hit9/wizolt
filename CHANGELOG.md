@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Coalesce Markdown color runs and preserve plain foreground colors across wraps in the transcript layout cache.
 - Keep streamed Markdown headings on the correct line in replies with CRLF line endings.
 - Report background compaction as ready after the summary client finishes closing, and clear its status if cleanup is interrupted.
 

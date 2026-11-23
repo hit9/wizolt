@@ -940,6 +940,14 @@ def test_theme_names_complete_after_the_command():
     assert completions == ["slate", "sand", "solarized-dark", "statusbar ", "sweep "]
 
 
+def test_wrapped_reply_keeps_the_prose_foreground_across_newlines():
+    Theme.set_mode("dark")
+    block = MessageBlock(UiPrinter(), "word " * 16, "assistant", 0)
+    runs = block.fragments(20)
+    assert "".join(text for _, text in runs).count("\n") > 1
+    assert all(style == Theme.color("assistant") for style, text in runs if text)
+
+
 @pytest.mark.parametrize("name", ("dark", "light", *BUILTIN))
 def test_user_message_background_fills_wrapped_and_empty_rows(name):
     Theme.set_mode(name)
@@ -1241,7 +1249,7 @@ def test_reply_headings_use_the_secondary_accent_at_every_level(name):
     assert heading_color != Theme.color("assistant")
     for level in range(1, 7):
         message = MessageBlock(UiPrinter(), "#" * level + " 标题\n\n正文", "assistant", 0)
-        styles = {char: style.split() for style, char in message.fragments(40)}
+        styles = {char: style.split() for style, span in message.fragments(40) for char in span}
         assert heading_color in styles["标"]
         assert ("bold" if level <= 3 else "italic") in styles["题"]
         assert Theme.color("assistant") in styles["正"]

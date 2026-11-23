@@ -16,7 +16,8 @@ from collections.abc import Callable, Hashable, Iterable
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from functools import lru_cache, partial
-from itertools import accumulate, pairwise
+from itertools import accumulate, groupby, pairwise
+from operator import itemgetter
 from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 from prompt_toolkit import print_formatted_text
@@ -170,7 +171,18 @@ class MessageBlock(WidthDependent):
         return cleaned.strip("\n") + "\n"
 
     def fragments(self, width: int) -> StyleAndTextTuples:
-        return to_formatted_text(ANSI(self.ansi(width)))
+        # The ANSI parser emits one fragment per character. Emit each run of
+        # unchanged attributes together when writing Markdown back to the terminal.
+        chars = to_formatted_text(ANSI(self.ansi(width)))
+        runs = []
+        for style, run in groupby(chars, itemgetter(0)):
+            text = "".join(part[1] for part in run)
+            # A newline has no foreground ink. Keep a plain RGB foreground across
+            # it so consecutive prose rows do not spend the layout cache on resets.
+            if not style and runs and runs[-1][0].startswith("#") and " " not in runs[-1][0] and not text.strip("\n"):
+                style = runs[-1][0]
+            runs.append((style, text))
+        return runs
 
 
 @dataclass(frozen=True)
