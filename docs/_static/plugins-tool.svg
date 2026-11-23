@@ -7,6 +7,7 @@
 .plugins-tool-r3 { fill: #fbb29e }
 .plugins-tool-r4 { fill: #d7e5f1 }
 .plugins-tool-r5 { fill: #91a5b7 }
+.plugins-tool-r6 { fill: #ffffff }
 </style>
 <defs><clipPath id="plugins-tool-clip-terminal">
 <rect width="926.1999999999999" height="194.2"/>
@@ -39,8 +40,8 @@
 </text><text class="plugins-tool-r3" x="24.4" y="68.8" textLength="73.2" clip-path="url(#plugins-tool-line-2)">Plugin</text><text class="plugins-tool-r4" x="97.6" y="68.8" textLength="231.8" clip-path="url(#plugins-tool-line-2)">&#160;&#160;call&#160;notes.recall</text><text class="plugins-tool-r2" x="927.2" y="68.8" textLength="12.2" clip-path="url(#plugins-tool-line-2)">
 </text><text class="plugins-tool-r5" x="48.8" y="93.2" textLength="24.4" clip-path="url(#plugins-tool-line-3)">└&#160;</text><text class="plugins-tool-r4" x="73.2" y="93.2" textLength="744.2" clip-path="url(#plugins-tool-line-3)">Releases&#160;need&#160;a&#160;CHANGELOG&#160;entry.&#160;Tag&#160;vX.Y.Z;&#160;never&#160;push&#160;tags.</text><text class="plugins-tool-r2" x="927.2" y="93.2" textLength="12.2" clip-path="url(#plugins-tool-line-3)">
 </text><text class="plugins-tool-r2" x="927.2" y="117.6" textLength="12.2" clip-path="url(#plugins-tool-line-4)">
-</text><text class="plugins-tool-r4" x="24.4" y="142" textLength="878.4" clip-path="url(#plugins-tool-line-5)">Add&#160;a&#160;CHANGELOG&#160;entry,&#160;then&#160;tag&#160;it&#160;vX.Y.Z&#160;locally.&#160;Your&#160;notes&#160;say&#160;not&#160;to</text><text class="plugins-tool-r2" x="927.2" y="142" textLength="12.2" clip-path="url(#plugins-tool-line-5)">
-</text><text class="plugins-tool-r4" x="24.4" y="166.4" textLength="122" clip-path="url(#plugins-tool-line-6)">push&#160;tags.</text><text class="plugins-tool-r2" x="927.2" y="166.4" textLength="12.2" clip-path="url(#plugins-tool-line-6)">
+</text><text class="plugins-tool-r6" x="24.4" y="142" textLength="878.4" clip-path="url(#plugins-tool-line-5)">Add&#160;a&#160;CHANGELOG&#160;entry,&#160;then&#160;tag&#160;it&#160;vX.Y.Z&#160;locally.&#160;Your&#160;notes&#160;say&#160;not&#160;to</text><text class="plugins-tool-r2" x="927.2" y="142" textLength="12.2" clip-path="url(#plugins-tool-line-5)">
+</text><text class="plugins-tool-r6" x="24.4" y="166.4" textLength="122" clip-path="url(#plugins-tool-line-6)">push&#160;tags.</text><text class="plugins-tool-r2" x="927.2" y="166.4" textLength="12.2" clip-path="url(#plugins-tool-line-6)">
 </text><text class="plugins-tool-r2" x="927.2" y="190.8" textLength="12.2" clip-path="url(#plugins-tool-line-7)">
 </text></g></g>
 </svg>

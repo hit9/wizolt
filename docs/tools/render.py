@@ -141,7 +141,7 @@ class Illustrations:
     def label(self, text: str) -> Text:
         return Text(text, style=Theme.rich_color("muted"))
 
-    def message(self, text: str, role: str = "", indent: int = 1) -> Text:
+    def message(self, text: str, role: str = "assistant", indent: int = 1) -> Text:
         return Text.from_ansi(MessageBlock(self.printer, text, role, indent).ansi(WIDTH))
 
     def log(self, label: str, detail: str, output: str = "") -> Text:
