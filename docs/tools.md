@@ -55,6 +55,8 @@ change your system ask for confirmation unless `--yolo` or `/yolo` is active.
     <span class="marker">directory the call names</span>. Relative `workdir` paths start at the
     workspace; the next call still defaults to the workspace. Commands still running after
     `runtime.bash_wait_timeout` <span class="marker">become background jobs automatically</span>.
+    When the next step needs the result, Bash can pass `wait_seconds: 30` to wait up to
+    30 seconds for that command. The foreground shell timeout still applies.
 
     :::{figure} ../snapshots/wizolt-bash-live-preview.gif
     :alt: A Bash tool call streaming command output in wizolt

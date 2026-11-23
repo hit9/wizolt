@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Bash accepts an optional per-call foreground wait (`wait_seconds`) before a running command becomes a Job.
+
 ## 0.77.10 - 2026-11-23
 
 - Keep segmented status bars distinct across all built-in themes on 256-color terminals.

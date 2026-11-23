@@ -268,6 +268,7 @@ class BashTool(Tool):
         return cls.object_schema({
             "command": {"type": "string", "minLength": 1, "pattern": "^[\\s\\S]*\\S[\\s\\S]*$", "description": "Bash program"},
             "workdir": {"type": "string", "description": "Directory to run in; defaults to the workspace"},
+            "wait_seconds": {"type": "integer", "minimum": 1, "description": "Foreground wait for this call. Use e.g. 30 when the next step needs its result; omit for the session default."},
         }, ["command"])
         # fmt: on
 
@@ -276,21 +277,34 @@ class BashTool(Tool):
         command = str(payload.get("command") or "")
         if not command.strip():
             raise ToolError("Bash command must be non-empty")
-        # `workdir` is a second positional rather than a dict payload so existing callers, stored
-        # results and ToolScript's `call("Bash", [cmd])` keep working unchanged.
         workdir = str(payload.get("workdir") or "")
+        if (wait := payload.get("wait_seconds")) is not None:
+            return [command, workdir, cls.validate_wait(wait)]
         return [command, workdir] if workdir.strip() else [command]
 
+    @staticmethod
+    def validate_wait(value: object) -> int:
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            raise ToolError("Bash wait_seconds must be a positive whole number")
+        return value
+
     def command(self) -> str:
-        command = self.strings(min_count=1, max_count=2)[0]
+        # Stored calls and ToolScript positional calls use [command, workdir?, wait_seconds?].
+        if not 1 <= len(self.args) <= 3 or not all(isinstance(arg, str) for arg in self.args[:2]):
+            raise ToolError("Bash requires a command string and an optional workdir string and wait_seconds")
+        if len(self.args) == 3:
+            self.validate_wait(self.args[2])
+        command = self.args[0]
         if not command.strip():
             raise ToolError("Bash command must be non-empty")
         return command
 
+    def requested_workdir(self) -> str:
+        return self.args[1] if len(self.args) > 1 else ""
+
     def workdir(self) -> str:
         """Resolve this call's directory without changing the session's working directory."""
-        args = self.strings(min_count=1, max_count=2)
-        requested = args[1] if len(args) > 1 else ""
+        requested = self.requested_workdir()
         if not requested.strip():
             return self.session.cwd
         resolved = os.path.abspath(os.path.join(self.session.cwd, os.path.expanduser(requested)))
@@ -300,16 +314,17 @@ class BashTool(Tool):
         return resolved
 
     def short_args(self) -> list[str]:
-        args = self.strings(min_count=1, max_count=2)
-        # Put the directory first so a long command cannot clip it out of the approval title.
-        if len(args) > 1 and args[1].strip():
-            return [f"in {json.dumps(args[1], ensure_ascii=False)}", self.command()]
-        return [self.command()]
+        command = self.command()
+        directory = self.requested_workdir()
+        if directory.strip():
+            return [f"in {json.dumps(directory, ensure_ascii=False)}", command]
+        return [command]
 
     def approval_view(self) -> ApprovalView | None:
-        args = self.strings(min_count=1, max_count=2)
-        if len(args) > 1 and args[1].strip():
-            return ApprovalView("command", self.command(), "bash", [("workdir", json.dumps(args[1], ensure_ascii=False))])
+        command = self.command()
+        directory = self.requested_workdir()
+        if directory.strip():
+            return ApprovalView("command", command, "bash", [("workdir", json.dumps(directory, ensure_ascii=False))])
         return None
 
     async def call(self) -> str:
@@ -320,7 +335,7 @@ class BashTool(Tool):
         try:
             cwd = self.workdir()
             # Freeze before execution: the command may remove or rename its own directory.
-            self.execution_workdir = cwd if len(self.args) > 1 and str(self.args[1]).strip() else None
+            self.execution_workdir = cwd if self.requested_workdir().strip() else None
             # Keep a Popen handle because an auto-promoted command must outlive this event loop;
             # all potentially blocking pipe I/O below is event-loop driven.
             proc = subprocess.Popen(  # noqa: ASYNC220
@@ -383,7 +398,7 @@ class BashTool(Tool):
         promoted = False
         started = time.monotonic()
         shell_deadline = started + self.session.settings.shell_timeout
-        wait_budget = self.session.settings.bash_wait_timeout
+        wait_budget = self.args[2] if len(self.args) == 3 else self.session.settings.bash_wait_timeout
         # Auto-promotion: if the command hasn't exited within bash_wait_timeout, hand the still-
         # running proc to the background jobs registry and return control to the model with a
         # partial-output payload. Disabled when the setting is 0 or the wait budget is already
@@ -402,7 +417,7 @@ class BashTool(Tool):
                     for pipe in pipes.values():
                         loop.remove_reader(pipe.fileno())
                     promoted = True
-                    return self.promote_to_job(proc, pipes, stdout_parts, stderr_parts, pending)
+                    return self.promote_to_job(proc, pipes, stdout_parts, stderr_parts, pending, wait_budget, started)
                 remaining = shell_deadline - now
                 if remaining <= 0:
                     timed_out = True
@@ -447,6 +462,8 @@ class BashTool(Tool):
         stdout_parts: list[str],
         stderr_parts: list[str],
         pending: dict[str, bytes],
+        wait_budget: float,
+        started: float,
     ) -> str:
         """Hand a live Bash process and its pipes to the persistent background-job registry."""
         self.session.job_counter += 1
@@ -461,7 +478,7 @@ class BashTool(Tool):
             workdir=self.execution_workdir or "",
             process=proc,
             log_path="",
-            started_at=time.monotonic() - self.session.settings.bash_wait_timeout,
+            started_at=self.started_at or started,
             stream_buffer=buffer,
             stream_lock=buffer_lock,
         )
@@ -508,7 +525,7 @@ class BashTool(Tool):
         # Leads with status, not wait: this note is read right after backgrounding handed control
         # back, and waiting is what gives it away again. Getting on with other work is the point.
         note = (
-            f"backgrounded after {self.session.settings.bash_wait_timeout}s; still running as {job_id}. "
+            f"backgrounded after {wait_budget:g}s; still running as {job_id}. "
             f'Keep working; check it later with Job(action="status"|"wait"|"kill", job="{job_id}").'
         )
         partial_stderr = partial_stderr + ("\n" if partial_stderr else "") + note

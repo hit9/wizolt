@@ -19,7 +19,7 @@ from wizolt.agent.runner import ToolRunner
 from wizolt.base import LogBlock, LogEdge, LogLine, LogRole, ToolCall, ToolError
 from wizolt.session import Session
 from wizolt.session.jobs import BackgroundJob
-from wizolt.tools import BashTool, JobTool, Tool, toolblocks, tooloutput
+from wizolt.tools import BashTool, JobTool, Tool, tool_payload, toolblocks, tooloutput
 from wizolt.tools.toolblocks import ToolDisplay
 from wizolt.ui.cli import CommandLoop
 from wizolt.ui.cli.commands import ps_command
@@ -520,6 +520,45 @@ async def test_bash_fast_command_does_not_promote(tmp_path):
     assert "hi" in output
     assert "backgrounded" not in output
     assert not s.jobs
+
+
+async def test_bash_call_can_wait_for_a_result_past_the_session_default(tmp_path):
+    s = session(tmp_path)
+    s.settings.bash_wait_timeout = 0.01
+    (tmp_path / "sub").mkdir()
+    args = tool_payload("Bash", {"command": "sleep 0.1; pwd; exit 3", "workdir": "sub", "wait_seconds": 30})
+    result = await BashTool(s, args).call()
+    assert "* exit_code: 3" in result and str(tmp_path / "sub") in result
+    assert not s.jobs and s.settings.bash_wait_timeout == 0.01
+
+
+async def test_bash_promotes_once_at_the_requested_wait(tmp_path):
+    s = session(tmp_path)
+    s.settings.bash_wait_timeout = 0
+    agent = Agent(s, output_fn=lambda _: None)
+    try:
+        args = tool_payload("Bash", {"command": "sleep 60", "wait_seconds": 1})
+        result = await BashTool(s, args).call()
+        assert "backgrounded after 1s; still running as job.1" in result
+        assert list(s.jobs) == ["job.1"]
+        assert s.jobs["job.1"].elapsed() >= 1
+        assert s.settings.bash_wait_timeout == 0
+    finally:
+        await close_agent_resources(agent)
+        s.close()
+
+
+async def test_bash_long_wait_respects_shell_timeout(tmp_path):
+    s = session(tmp_path)
+    s.settings.shell_timeout = 0.1
+    result = await BashTool(s, tool_payload("Bash", {"command": "sleep 60", "wait_seconds": 30})).call()
+    assert "<stderr>\ntimeout\n</stderr>" in result and not s.jobs
+
+
+@pytest.mark.parametrize("value", [0, -1, False, 1.5, "30"])
+def test_bash_rejects_invalid_wait_seconds(value):
+    with pytest.raises(ToolError, match="wait_seconds"):
+        tool_payload("Bash", {"command": "true", "wait_seconds": value})
 
 
 async def test_session_shutdown_reaps_promoted_process_and_output_thread(tmp_path):
@@ -1398,6 +1437,7 @@ def test_bash_workdir_is_visible_in_the_preview(tmp_path):
 def test_bash_payload_keeps_its_single_argument_form_without_a_workdir():
     """Stored results, ToolScript's `call("Bash", [cmd])` and every existing caller pass one
     argument; adding an optional second must not change that shape."""
+    assert tool_payload("Bash", {"command": "ls", "wait_seconds": None}) == ["ls"]
     assert BashTool.payload_args({"command": "ls"}) == ["ls"]
     assert BashTool.payload_args({"command": "ls", "workdir": "  "}) == ["ls"]
     assert BashTool.payload_args({"command": "ls", "workdir": "sub"}) == ["ls", "sub"]
