@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.77.13 - 2026-11-23
+
 - Keep completed commands and their results together in long tmux sessions when the live preview closes.
 
 - Status bar: background compaction shows `compacting` while it runs and `compaction ready` once a prepared compaction is waiting for the next request (previously `summarizing`, with no ready state). Both notices sit outside the bar format, so custom `/theme` status-bar formats keep them.
