@@ -217,7 +217,8 @@ async def test_background_summary_commits_at_next_request_only(tmp_path, monkeyp
     await context.background_history.cancel()
 
 
-async def test_cancel_clears_the_prepared_compaction_notice(tmp_path, monkeypatch):
+@pytest.mark.parametrize("during_close", [False, True])
+async def test_cancel_clears_the_prepared_compaction_notice(tmp_path, monkeypatch, during_close):
     from wizolt.model import ModelClient
     from wizolt.ui.cli.presentation import Presentation
 
@@ -241,13 +242,19 @@ async def test_cancel_clears_the_prepared_compaction_notice(tmp_path, monkeypatc
     async def summarize(self, *args, **kwargs):
         return None, [], json.dumps({"summary": "Earlier work is complete."})
 
+    closing = asyncio.Event()
+    if during_close:
+        async def close(self):
+            closing.set()
+            await asyncio.Event().wait()
+        monkeypatch.setattr(ModelClient, "close", close)
     monkeypatch.setattr(ModelClient, "api_request", summarize)
     await context.prepare_messages(model, "system")
-    await asyncio.wait_for(ready.wait(), 1)
-    assert "compaction ready" in "".join(text for _, text in ui.status_bar.fragments())
+    await asyncio.wait_for((closing if during_close else ready).wait(), 1)
+    assert ("compaction ready" in "".join(text for _, text in ui.status_bar.fragments())) == (not during_close)
     await context.background_history.cancel()
     assert "compaction ready" not in "".join(text for _, text in ui.status_bar.fragments())
-    assert phases == ["running", "ready", "finished"]
+    assert phases == (["running", "finished"] if during_close else ["running", "ready", "finished"])
 
 
 async def test_foreground_fallback_cancels_pending_summary(tmp_path, monkeypatch):

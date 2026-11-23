@@ -489,7 +489,7 @@ def test_streamed_reply_heading_uses_accent_but_a_shell_comment_stays_plain(tmp_
     from tui_harness import loop
 
     command_loop = loop(tmp_path)
-    command_loop.presentation.model_stream_output("output", "## 标题\n正文\n```sh\n# 注释\n```")
+    command_loop.presentation.model_stream_output("output", "开头\r\n## 标题\r\n正文\r\n```sh\r\n# 注释\r\n```")
     fragments = command_loop.view.model_stream_fragments()
     assert (Theme.fg("accent_secondary", "bold"), "标题") in fragments
     assert ("class:assistant", "正文") in fragments

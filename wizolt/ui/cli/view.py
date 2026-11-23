@@ -551,7 +551,8 @@ class View:
         # of the mode is a steady one-line trace, and a line that keeps being replaced by the next
         # is not steady. Blank openings are skipped: a stream that starts with a bare newline would
         # otherwise draw an empty row for the whole answer, since only the first line is ever shown.
-        lines = text.replace("\r", "\n").splitlines()
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        lines = text.removesuffix("\n").split("\n")
         limit = 3 if kind == "reasoning" else 6
         shown = [next((line for line in lines if line.strip()), "")] if mode == "collapsed" else lines[-limit:]
         if mode == "collapsed" and not shown[0]:

@@ -131,7 +131,10 @@ class BackgroundHistory:
             try:
                 if notify:
                     notify("running")
-                data = await Compactor(ctx, client).compact(flat, *(request or ()), echo_source=echo)
+                try:
+                    data = await Compactor(ctx, client).compact(flat, *(request or ()), echo_source=echo)
+                finally:
+                    await client.close()
                 summary = data.get("summary")
                 if (
                     isinstance(summary, str)
@@ -144,7 +147,6 @@ class BackgroundHistory:
             finally:
                 if notify:
                     notify("ready" if candidate is not None else "finished")
-                await client.close()
             return candidate
 
         self._task = asyncio.create_task(generate(), name="history-summary")

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Keep streamed Markdown headings on the correct line in replies with CRLF line endings.
+- Report background compaction as ready after the summary client finishes closing, and clear its status if cleanup is interrupted.
+
 ## 0.77.19 - 2026-11-23
 
 - Accept integer-valued JSON numbers for Bash foreground waits and clarify when the foreground timeout kills a command.
