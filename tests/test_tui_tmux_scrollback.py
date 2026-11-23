@@ -171,6 +171,26 @@ def test_capture_requires_a_stable_frame(tmp_path, monkeypatch, stable):
         assert (tmp_path / "unstable-capture.txt").read_text() == "third"
 
 
+def test_completed_previews_leave_no_blank_rows_in_long_history(pane):
+    log = pane.path / "long-commands.log"
+    pane.send(f"{sys.executable} {acceptance.DRIVER} 160 0 {log} commands")
+    for index in range(3):
+        for marker, gate in ((f"COMMAND-{index}", "output"), ("five", "next")):
+            deadline = time.monotonic() + 10
+            while marker not in pane.visible():
+                assert time.monotonic() < deadline, pane.visible()
+                time.sleep(0.03)
+            log.with_suffix(f".{gate}-{index}").touch()
+    deadline = time.monotonic() + 10
+    while "RESULT-2" not in pane.visible():
+        assert time.monotonic() < deadline, pane.visible()
+        time.sleep(0.03)
+    lines = _settled_capture(pane)
+    start = next(i for i, line in enumerate(lines) if "COMMAND-0" in line)
+    for offset, marker in enumerate(f"{kind}-{i}" for i in range(3) for kind in ("COMMAND", "RESULT")):
+        assert marker in lines[start + offset], "\n".join(lines[start:])
+
+
 def test_long_transcript_is_available_in_copy_mode_after_resize(pane):
     log = pane.path / "long.log"
     pane.send(f"{sys.executable} {acceptance.DRIVER} 540 0.001 {log}")

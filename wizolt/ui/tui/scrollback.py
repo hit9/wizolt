@@ -133,6 +133,7 @@ class TmuxViewport:
         self.geometry: tuple[int, int, int] | None = None
         self.partial = ""
         self.preview = ""
+        self.gap_rows = 0
 
     def draw(self, app: Application, text: str, height: int, *, reanchor: bool) -> None:
         renderer = app.renderer
@@ -143,19 +144,30 @@ class TmuxViewport:
         if not changed:
             return
         first_frame = self.geometry is None
+        same_pane = self.geometry is not None and self.geometry[:2] == geometry[:2] and not reanchor
+        if not same_pane:
+            # tmux reflows the pane before notifying us. Old padding rows may no longer exist.
+            self.gap_rows = 0
         if first_frame:
             out.write_raw("\x1b[r\x1b[0m\x1b[H\x1b[2J\x1b[3J")
         else:
             self.erase_live(app)
+        # Rows freed by a shrinking live preview remain available for the next write.
+        # The editor stays bottom-aligned, so its origin alone cannot locate the transcript.
+        previous_space = 0
+        if same_pane and self.geometry is not None:
+            previous_space = self.gap_rows + physical_rows(self.preview, columns) + self.geometry[2]
         self.geometry = geometry
+        committed = ""
         if text:
             complete, newline, self.partial = (self.partial + text).rpartition("\n")
+            committed = complete + newline
             if first_frame and complete.count("\n") < rows - height:
                 # On a tall pane a restored transcript may leave room above the editor.
                 # Place the short transcript beside it so resize can track both together.
-                used = physical_rows(complete + newline, columns) + physical_rows(self.partial, columns)
+                used = physical_rows(committed, columns) + physical_rows(self.partial, columns)
                 out.cursor_goto(max(1, rows - height - used + 1), 1)
-            out.write_raw(complete + newline)
+            out.write_raw(committed)
         # A write can end partway through a line (or with just an SGR reset). Keep that
         # fragment editable until the next write completes it; it must enter history once.
         preview = self.partial
@@ -164,6 +176,8 @@ class TmuxViewport:
             # A provisional line must never scroll into history before it is complete.
             preview = Text.clip_width(_SGR.sub("", preview).expandtabs(), columns) if rows > height else ""
             preview_rows = int(bool(preview))
+        spare = min(previous_space, rows) - height - preview_rows
+        self.gap_rows = max(0, spare - physical_rows(committed, columns)) if spare > 0 else 0
         reserve = preview_rows + height - 1
         if reserve:
             out.write_raw("\r\n" * reserve)
@@ -184,7 +198,7 @@ class TmuxViewport:
         out = renderer.output
         caret = renderer._cursor_pos
         columns = out.get_size().columns
-        offset = caret.y + physical_rows(self.preview, columns)
+        offset = caret.y + physical_rows(self.preview, columns) + self.gap_rows
         screen = renderer.last_rendered_screen
         if screen is not None and self.geometry is not None and columns < self.geometry[1]:
             # tmux wraps individually painted editor rows when the pane narrows,
@@ -353,7 +367,7 @@ class ScrollbackRegion:
         self._retain(self._pending)
         self._pending.clear()
         self.viewport.draw(app, text, height, reanchor=self._rebuild_owed)
-        self.tail_row = app.output.get_size().rows - height
+        self.tail_row = app.output.get_size().rows - height - self.viewport.gap_rows
         self._rebuild_owed = False
         return True
 

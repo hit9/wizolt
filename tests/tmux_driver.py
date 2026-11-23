@@ -128,6 +128,8 @@ async def main(log) -> None:
         app.activity_fragments_fn = command_loop.view.tui_activity_fragments
         app.activity_follows_transcript_fn = lambda: command_loop.presentation.live_preview.active
         try:
+            if total:
+                app.record_scrollback("earlier transcript\r\n" * total)
             streaming = sys.argv[4] == "command-stream"
             for index, tool in enumerate(["Job"] * 24 if streaming else ("Bash", "Job", "Bash")):
                 ui.emit(LogBlock([LogLine(tool, f"COMMAND-{index}", LogRole.TOOL)]))
@@ -156,6 +158,9 @@ async def main(log) -> None:
                     while not Path(log.name).with_suffix(f".next-{index}").exists():
                         await asyncio.sleep(0.02)
                 command_loop.presentation.tool_live_output("stdout", "")
+                if total:
+                    # The preview may disappear a frame before the result write arrives.
+                    app.app._redraw()
                 ui.emit(LogBlock.hierarchy(None, [LogLine("stored", f"RESULT-{index}", LogRole.META, LogEdge.END)]))
                 if streaming:
                     log.write(f"completed COMMAND-{index} RESULT-{index}\n")
