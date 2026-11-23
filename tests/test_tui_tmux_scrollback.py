@@ -171,6 +171,46 @@ def test_capture_requires_a_stable_frame(tmp_path, monkeypatch, stable):
         assert (tmp_path / "unstable-capture.txt").read_text() == "third"
 
 
+@pytest.mark.parametrize("start_zoomed", [False, True], ids=["enlarge", "shrink"])
+@pytest.mark.parametrize("history_rows", [3, 160], ids=["short", "long"])
+def test_running_command_stays_beside_history_across_zoom(pane, start_zoomed, history_rows):
+    pane.fresh_window()
+    pane.split(vertical=True)
+    if start_zoomed:
+        pane.zoom()
+    pane.send("seq 40")
+    log = pane.path / "zoom-running.log"
+    pane.send(f"{sys.executable} {acceptance.DRIVER} {history_rows} 0 {log} commands")
+    deadline = time.monotonic() + 10
+    while "running…" not in pane.visible():
+        assert time.monotonic() < deadline, pane.visible()
+        time.sleep(0.05)
+    pane.zoom()
+
+    # Ignore the ticking timer. Require a settled layout with history above the command,
+    # only its normal spacer before the preview, and the input still at the bottom.
+    deadline = time.monotonic() + 10
+    stable_since = None
+    while True:
+        screen = pane.visible().splitlines()
+        header = next((i for i, line in enumerate(screen) if "COMMAND-0" in line), -1)
+        running = next((i for i, line in enumerate(screen) if "running…" in line), -1)
+        prompt = next((i for i, line in enumerate(screen) if line.startswith("+>")), -1)
+        attached = header > 0 and running == header + 2 and all(line.strip() == "earlier transcript" for line in screen[:header])
+        filled = header == history_rows if history_rows == 3 else 0 < prompt - running <= 5
+        if attached and filled and screen[-1].strip() == "tmux-driver":
+            stable_since = stable_since or time.monotonic()
+            if time.monotonic() - stable_since >= pane.settle_interval:
+                break
+        else:
+            stable_since = None
+        assert time.monotonic() < deadline, "\n".join(screen)
+        time.sleep(0.05)
+    history = pane.capture()
+    assert sum(line.strip() == "earlier transcript" for line in history) == history_rows
+    assert sum("COMMAND-0" in line for line in history) == 1
+
+
 def test_completed_previews_leave_no_blank_rows_in_long_history(pane):
     log = pane.path / "long-commands.log"
     pane.send(f"{sys.executable} {acceptance.DRIVER} 160 0 {log} commands")

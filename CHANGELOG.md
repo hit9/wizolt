@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep a running Bash preview beside the command and fill the visible pane with available history after a single tmux zoom or unzoom.
+
 ## 0.77.17 - 2026-11-23
 
 - Clarify automatic reply language for mixed-language requests, including the first progress update.

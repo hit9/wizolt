@@ -415,7 +415,7 @@ class ScrollbackRegion:
             rows += entry[1]
         return "".join(replayed), rows
 
-    def rebuild(self, app: Application) -> None:
+    def rebuild(self, app: Application, *, keep_anchor: bool) -> None:
         """Purge the terminal and re-emit the transcript at the current width.
 
         Called when projection geometry or colors change. See the module docstring for why
@@ -428,7 +428,8 @@ class ScrollbackRegion:
         # from the top of the pane moves the app to wherever the transcript happens to end, which
         # reads as the whole session jumping upward on every resize.
         try:
-            anchor = app_top_row(renderer)
+            # A preview following the transcript puts spare space below its content.
+            anchor = app_top_row(renderer) if keep_anchor else None
         except HeightIsUnknownError:
             anchor = None
         self._rebuild_owed = self._recolor_owed = False

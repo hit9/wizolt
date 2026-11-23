@@ -2371,10 +2371,9 @@ class TuiApp:
 
         renderer.report_absolute_cursor_row = remember_tail
 
-        def layout_height(rows: int, columns: int, pending: str | None = None) -> int:
+        def layout_height(rows: int, columns: int, follow: bool, pending: str | None = None) -> int:
             self.transcript_gap_rows = 0
             height = min(rows, app.layout.container.preferred_height(columns, rows).preferred)
-            follow = self.modal.follow_transcript if self.modal else self.input_mode == InputMode.RUNNING and self.activity_follows_transcript_fn()
             if follow and self.scrollback.tail_row is not None:
                 # Keep the live command beside its transcript header. Move unused space
                 # below the preview, leaving input/status fixed at the pane bottom.
@@ -2394,14 +2393,18 @@ class TuiApp:
             nonlocal reserved_height, reported_row
             with self._screen_update(app):
                 pending = None
+                follow = self.modal.follow_transcript if self.modal else self.input_mode == InputMode.RUNNING and self.activity_follows_transcript_fn()
                 if not renderer.full_screen:
                     out = renderer.output
                     rows, columns = out.get_size()
                     # Projection geometry survives renderer.reset() and cannot depend on
                     # whether a tool is still active when its old screen is resized.
-                    self.scrollback.note_size(rows, columns)
+                    if self.scrollback.note_size(rows, columns) and self.scrollback.viewport is not None:
+                        # tmux has already reflowed the history. Its old absolute tail row
+                        # cannot measure space for the live preview in the resized pane.
+                        self.scrollback.tail_row = None
                     pending = self.scrollback.pending_text(columns) if self.scrollback.tmux_viewport_available else None
-                    height = layout_height(rows, columns, pending)
+                    height = layout_height(rows, columns, follow, pending)
                     if pending is not None and self.scrollback.draw_tmux_viewport(app, height, pending):
                         vanilla_render(*args, **kwargs)
                         return
@@ -2444,11 +2447,11 @@ class TuiApp:
                 if owed:
                     # Geometry changed: native reflow/scrolling no longer identifies which
                     # rows belong to the app. Rebuild from the retained transcript instead.
-                    self.scrollback.rebuild(app)
+                    self.scrollback.rebuild(app, keep_anchor=not follow)
                     # Replay establishes a new transcript tail. Padding measured before replay
                     # belongs to the old screen and can push the preview away from its header.
                     app.render_counter += 1
-                    layout_height(*renderer.output.get_size())
+                    layout_height(*renderer.output.get_size(), follow=follow)
                     vanilla_render(*args, **kwargs)
                     # Drawing the live frame can scroll the replayed tail upward. Keep the
                     # insertion point in physical screen coordinates for the next tool result.
