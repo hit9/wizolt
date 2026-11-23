@@ -32,12 +32,12 @@
         font-family: arial;
     }
 
-    .tool-detail-job-r1 { fill: #88c1dd;font-weight: bold }
+    .tool-detail-job-r1 { fill: #cda9a1;font-weight: bold }
 .tool-detail-job-r2 { fill: #abb2bf }
 .tool-detail-job-r3 { fill: #91a5b7 }
-.tool-detail-job-r4 { fill: #4a6884 }
+.tool-detail-job-r4 { fill: #545963 }
 .tool-detail-job-r5 { fill: #91a5b7;font-weight: bold }
-.tool-detail-job-r6 { fill: #98c78d;font-weight: bold }
+.tool-detail-job-r6 { fill: #8fd8c5;font-weight: bold }
 .tool-detail-job-r7 { fill: #c4acf0;font-weight: bold }
     </style>
 
@@ -103,7 +103,7 @@
             </g>
         
     <g transform="translate(9, 41)" clip-path="url(#tool-detail-job-clip-terminal)">
-    <rect fill="#2d3844" x="0" y="1.5" width="61" height="24.65" shape-rendering="crispEdges"/><rect fill="#2d3844" x="61" y="1.5" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#2d3844" x="158.6" y="1.5" width="146.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#2d3844" x="305" y="1.5" width="622.2" height="24.65" shape-rendering="crispEdges"/>
+    <rect fill="#2e353f" x="0" y="1.5" width="61" height="24.65" shape-rendering="crispEdges"/><rect fill="#2e353f" x="61" y="1.5" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#2e353f" x="158.6" y="1.5" width="146.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#2e353f" x="305" y="1.5" width="622.2" height="24.65" shape-rendering="crispEdges"/>
     <g class="tool-detail-job-matrix">
     <text class="tool-detail-job-r1" x="0" y="20" textLength="61" clip-path="url(#tool-detail-job-line-0)">&#160;&#160;Job</text><text class="tool-detail-job-r2" x="61" y="20" textLength="97.6" clip-path="url(#tool-detail-job-line-0)">&#160;·&#160;tr.21</text><text class="tool-detail-job-r3" x="158.6" y="20" textLength="146.4" clip-path="url(#tool-detail-job-line-0)">&#160;·&#160;read-only</text><text class="tool-detail-job-r2" x="927.2" y="20" textLength="12.2" clip-path="url(#tool-detail-job-line-0)">
 </text><text class="tool-detail-job-r4" x="0" y="44.4" textLength="902.8" clip-path="url(#tool-detail-job-line-1)">&#160;&#160;────────────────────────────────────────────────────────────────────────</text><text class="tool-detail-job-r2" x="927.2" y="44.4" textLength="12.2" clip-path="url(#tool-detail-job-line-1)">

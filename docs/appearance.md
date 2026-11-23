@@ -23,8 +23,8 @@ preview so more choices remain visible.
 
 The **Colorscheme** tab lists every built-in, custom and plugin theme and opens at your current choice.
 Press **/** to search by name, for example `sand` or `gruvbox-dark`.
-Each theme carries its accent through your messages, the menu selection and the model in
-the status bar. Tool names and separators use quieter colors.
+Prompts and file paths have separate colors. Reasoning and Bash previews use softer text,
+and the model name picks up the path color in named themes.
 The preview shows a short exchange with a user message, a reply, an edit and its test result.
 In smaller panes the opening lines stay visible while you browse. The other tabs preview diff details, the actual statusbar, idle/running/queued
 dividers and ordinary/follow-up input symbols.
@@ -37,14 +37,14 @@ Six themes, the same code. Preview the others in /theme.
 
 | Feel | Themes |
 | --- | --- |
-| Cool blue and cyan | `slate` |
-| Leaf green | `forest` |
-| Amber and warm brown | `sand` |
-| Pink and lavender | `plum` |
-| Quiet ink on light gray | `paper` |
-| Retro orange and olive | `gruvbox-dark` |
+| Dusty rose and glacier blue | `slate` |
+| Sage and clay | `forest` |
+| Sand gold and sea glass | `sand` |
+| Mulberry and jade | `plum` |
+| Terracotta and blue ink on warm paper | `paper` |
+| Soft orange, faded blue and olive | `gruvbox-dark` |
 | Cyan and ochre | `solarized-dark` |
-| Bright pink, purple and green | `dracula` |
+| Orchid and ice blue with colorful syntax | `dracula` |
 | PaperColor's crisp, colorful syntax | `papercolor-light`, `papercolor-dark` |
 | Your terminal's own colors | `auto`, `dark`, `light` |
 

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Rework all twelve built-in themes with distinct prompt and path colors, quieter live previews and more restrained status bands. Compare the palettes in the updated theme gallery.
+
 ## 0.77.6 - 2026-11-23
 
 - Group consecutive successful file reads printed together in the standard transcript. Ctrl-O keeps each result separately.

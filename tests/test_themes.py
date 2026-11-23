@@ -29,7 +29,7 @@ from wizolt.utils import terminal
 
 # 24-bit SGR parameters for colors the tests switch between.
 SAND_RED = "38;2;243;151;126"  # sand `error`, lifted for text contrast
-SAND_GRAY = "38;2;123;96;60"  # sand `rule`
+SAND_GRAY = "38;2;102;93;81"  # sand `rule`
 PLUM_RED = "38;2;243;148;176"  # plum `error`
 
 CONFIG = """# my own notes
@@ -118,6 +118,17 @@ def test_named_themes_keep_grey_text_readable():
         menu = contrast(colors["menu_muted"], colors["menu_bg"])
         assert menu >= MENU_TEXT_CONTRAST, (name, menu)
         assert contrast(colors["muted"], palette.background) >= contrast(colors["subtle"], palette.background), name
+
+
+@pytest.mark.parametrize("name", Theme.BUILTIN)
+def test_paths_have_their_own_ink_and_live_previews_sit_below_them(name):
+    palette = Theme.BUILTIN[name]
+    colors = palette.colors
+    background = palette.background or ("#282c34" if palette.appearance == "dark" else "#f5f4f0")
+    assert colors["syntax_ident"] != colors["accent"]
+    path_contrast = contrast(colors["syntax_ident"], background)
+    assert path_contrast >= 4.5
+    assert 3 <= contrast(colors["preview"], background) < path_contrast
 
 
 def test_builtin_selections_and_named_ui_labels_have_readable_contrast():

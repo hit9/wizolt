@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT))
 
 from render import NOW, TERMINAL_THEME, WIDTH, Illustrations, powerline_paths
 from rich.console import Console
-from rich.terminal_theme import TerminalTheme
+from rich.terminal_theme import DEFAULT_TERMINAL_THEME, TerminalTheme
 from rich.text import Text
 
 from wizolt.base import LogBlock, LogEdge, LogLine, LogRole
@@ -30,18 +30,18 @@ from wizolt.ui.cli.appearance import DIFF_STYLE_SAMPLE
 from wizolt.ui.render import Theme
 
 CAPTIONS = {
-    "dark": ("Terminal dark", "Terminal colors with cool blue details."),
-    "light": ("Terminal light", "Terminal colors with blue ink on pale gray."),
-    "slate": ("Slate", "Glacier blue with steel-gray tools."),
-    "forest": ("Forest", "Sage green with moss-tinted input."),
-    "sand": ("Sand", "Honey amber and warm sandstone."),
-    "plum": ("Plum", "Orchid accents and dusty mauve."),
-    "paper": ("Paper", "Blue ink and pale sea-glass shading."),
-    "gruvbox-dark": ("Gruvbox Dark", "Retro orange, olive green and warm cream."),
-    "solarized-dark": ("Solarized Dark", "Cyan and ochre on a blue-green terminal."),
-    "dracula": ("Dracula", "Bright pink, purple, cyan and green."),
-    "papercolor-light": ("PaperColor Light", "White paper with blue, pink and olive syntax colors."),
-    "papercolor-dark": ("PaperColor Dark", "Charcoal with lime, gold and blue syntax colors."),
+    "dark": ("Terminal dark", "Terminal cyan with wheat-colored paths."),
+    "light": ("Terminal light", "Cyan prompts and chestnut paths on pale gray."),
+    "slate": ("Slate", "Dusty rose prompts with glacier-blue paths."),
+    "forest": ("Forest", "Sage prompts and clay-colored paths."),
+    "sand": ("Sand", "Sandstone gold with sea-glass paths."),
+    "plum": ("Plum", "Mulberry pink paired with muted jade."),
+    "paper": ("Paper", "Terracotta and blue ink on warm paper."),
+    "gruvbox-dark": ("Gruvbox Dark", "Soft orange and faded blue with olive syntax."),
+    "solarized-dark": ("Solarized Dark", "Ochre prompts and turquoise paths."),
+    "dracula": ("Dracula", "Soft orchid prompts and ice-blue paths."),
+    "papercolor-light": ("PaperColor Light", "Berry and deep blue with olive syntax."),
+    "papercolor-dark": ("PaperColor Dark", "Antique gold and sky blue on charcoal."),
 }
 
 
@@ -67,7 +67,12 @@ def sample(figures: Illustrations, terminal: TerminalTheme) -> dict:
         message,
         Text(""),
         figures.message("Check the tokenizer, then handle empty input.", "assistant"),
-        figures.log("Read", "parser.py"),
+        figures.styled(
+            figures.printer.log_segments(
+                LogBlock([LogLine("Read", "parser.py, tests/test_parser.py", LogRole.TOOL, meta=" → tr.1–tr.2", syntax="tool-args")]), WIDTH
+            )
+        ),
+        figures.styled([(Theme.fg("preview"), "  Checking how the parser handles an empty token…")]),
         figures.styled(figures.printer.log_segments(edit, WIDTH)),
         figures.styled(
             [
@@ -124,9 +129,8 @@ def main() -> None:
                 name, note = CAPTIONS.get(base, (base, ""))
                 light = palette.appearance == "light"
                 bg, fg = ((245, 244, 240), (53, 58, 64)) if light else ((40, 44, 52), (207, 211, 218))
-                terminal = TerminalTheme(
-                    bg, fg, [TERMINAL_THEME.ansi_colors[index] for index in range(8)], [TERMINAL_THEME.ansi_colors[index] for index in range(8, 16)]
-                )
+                ansi = (DEFAULT_TERMINAL_THEME if light else TERMINAL_THEME).ansi_colors
+                terminal = TerminalTheme(bg, fg, [ansi[i] for i in range(8)], [ansi[i] for i in range(8, 16)])
                 with patch("wizolt.utils.terminal.background", return_value=bg):
                     baseline = "light" if light else "dark"
                     Theme.configure(base, folder, {})

@@ -4,22 +4,22 @@
 .appearance-custom-sweep-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
 .appearance-custom-sweep-r1 { fill: #91a5b7 }
 .appearance-custom-sweep-r2 { fill: #abb2bf }
-.appearance-custom-sweep-r3 { fill: #72a2be }
-.appearance-custom-sweep-r4 { fill: #6f9eba }
-.appearance-custom-sweep-r5 { fill: #6d9ab6 }
-.appearance-custom-sweep-r6 { fill: #6793af }
-.appearance-custom-sweep-r7 { fill: #628ba7 }
-.appearance-custom-sweep-r8 { fill: #5d839f }
-.appearance-custom-sweep-r9 { fill: #5a7f9b }
-.appearance-custom-sweep-r10 { fill: #557793 }
-.appearance-custom-sweep-r11 { fill: #527490 }
-.appearance-custom-sweep-r12 { fill: #4f708c }
-.appearance-custom-sweep-r13 { fill: #4d6c88 }
-.appearance-custom-sweep-r14 { fill: #4a6884 }
-.appearance-custom-sweep-r15 { fill: #577b97 }
-.appearance-custom-sweep-r16 { fill: #5f87a3 }
-.appearance-custom-sweep-r17 { fill: #658fab }
-.appearance-custom-sweep-r18 { fill: #6a96b2 }
+.appearance-custom-sweep-r3 { fill: #84797c }
+.appearance-custom-sweep-r4 { fill: #81777a }
+.appearance-custom-sweep-r5 { fill: #7e7579 }
+.appearance-custom-sweep-r6 { fill: #777075 }
+.appearance-custom-sweep-r7 { fill: #716c72 }
+.appearance-custom-sweep-r8 { fill: #6a686f }
+.appearance-custom-sweep-r9 { fill: #67666d }
+.appearance-custom-sweep-r10 { fill: #61626a }
+.appearance-custom-sweep-r11 { fill: #5e5f68 }
+.appearance-custom-sweep-r12 { fill: #5a5d66 }
+.appearance-custom-sweep-r13 { fill: #575b65 }
+.appearance-custom-sweep-r14 { fill: #545963 }
+.appearance-custom-sweep-r15 { fill: #64646b }
+.appearance-custom-sweep-r16 { fill: #6e6a70 }
+.appearance-custom-sweep-r17 { fill: #746e74 }
+.appearance-custom-sweep-r18 { fill: #7a7377 }
 </style>
 <defs><clipPath id="appearance-custom-sweep-clip-terminal">
 <rect width="926.1999999999999" height="340.59999999999997"/>

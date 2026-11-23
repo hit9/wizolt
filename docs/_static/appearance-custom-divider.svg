@@ -4,8 +4,8 @@
 .appearance-custom-divider-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
 .appearance-custom-divider-r1 { fill: #91a5b7 }
 .appearance-custom-divider-r2 { fill: #abb2bf }
-.appearance-custom-divider-r3 { fill: #4a6884 }
-.appearance-custom-divider-r4 { fill: #88c1dd }
+.appearance-custom-divider-r3 { fill: #545963 }
+.appearance-custom-divider-r4 { fill: #cda9a1 }
 </style>
 <defs><clipPath id="appearance-custom-divider-clip-terminal">
 <rect width="926.1999999999999" height="121.0"/>

@@ -4,12 +4,12 @@
 .appearance-dividers-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
 .appearance-dividers-r1 { fill: #91a5b7 }
 .appearance-dividers-r2 { fill: #abb2bf }
-.appearance-dividers-r3 { fill: #4a6884 }
-.appearance-dividers-r4 { fill: #98c78d }
-.appearance-dividers-r5 { fill: #88c1dd;font-weight: bold }
-.appearance-dividers-r6 { fill: #72a2be }
-.appearance-dividers-r7 { fill: #4f708c }
-.appearance-dividers-r8 { fill: #527490 }
+.appearance-dividers-r3 { fill: #545963 }
+.appearance-dividers-r4 { fill: #8fd8c5 }
+.appearance-dividers-r5 { fill: #cda9a1;font-weight: bold }
+.appearance-dividers-r6 { fill: #84797c }
+.appearance-dividers-r7 { fill: #5a5d66 }
+.appearance-dividers-r8 { fill: #5e5f68 }
 .appearance-dividers-r9 { fill: #d7e5f1 }
 </style>
 <defs><clipPath id="appearance-dividers-clip-terminal">
