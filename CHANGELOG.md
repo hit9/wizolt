@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.77.19 - 2026-11-23
+
 - Accept integer-valued JSON numbers for Bash foreground waits and clarify when the foreground timeout kills a command.
 - Refresh the working divider and reasoning preview colors in the usage, commands, and tools guides.
 
