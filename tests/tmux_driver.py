@@ -66,6 +66,27 @@ async def main(log) -> None:
         app.status_fragments_fn = command_loop.presentation.status_bar.fragments
         return session, command_loop
 
+    async def idle_context_loop() -> None:
+        from wizolt.plugins.builtin.context_bar import draw
+        from wizolt.sdk import Context, ContextWindow
+        from wizolt.ui.cli.plugins import PluginView
+
+        session, command_loop = appearance_loop()
+        app.app.style = command_loop.view.style()
+
+        def context_bar(columns, rows):
+            window = ContextWindow(used=43, budget=100, parts=(("tools", 3), ("chat", 40)))
+            context = Context("main", "main", str(session.cwd), "idle", 43, 0, "demo", 0, columns=columns, window=window)
+            return PluginView.project({"above_input": [draw(context)]}, columns, rows)
+
+        app.extension_fragments_fn = context_bar
+        try:
+            app.record_scrollback("".join(f"prior-{index:04}\r\n" for index in range(total)) + "LAST-REPLY\r\n")
+            ui.emit_turn_end(time.monotonic() - 38)
+            await asyncio.Event().wait()
+        finally:
+            session.close()
+
     async def format_editor_loop() -> None:
         """One /theme session for the format editor, then the /status view, then its printed report."""
         from wizolt.ui.cli.appearance import theme_command
@@ -248,6 +269,9 @@ async def main(log) -> None:
         await asyncio.Event().wait()
 
     def start() -> None:
+        if len(sys.argv) > 4 and sys.argv[4] == "idle-context":
+            app.app.create_background_task(idle_context_loop())
+            return
         if len(sys.argv) > 4 and sys.argv[4] == "details":
             app.app.create_background_task(detail_loop())
             return

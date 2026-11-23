@@ -199,18 +199,17 @@ class TmuxViewport:
         caret = renderer._cursor_pos
         columns = out.get_size().columns
         offset = caret.y + physical_rows(self.preview, columns) + self.gap_rows
-        screen = renderer.last_rendered_screen
-        if screen is not None and self.geometry is not None and columns < self.geometry[1]:
-            # tmux wraps individually painted editor rows when the pane narrows,
-            # including the cells before the caret on its own row.
-            for y in range(caret.y + 1):
-                row = screen.data_buffer[y]
-                end = caret.x + 1 if y == caret.y else self.geometry[1]
-                # Count printed cells only. Unpainted trailing spaces in the layout
-                # do not create continuation rows in tmux's grid.
-                end = min(end, max(row, default=-1) + 1)
-                line = "".join(row[x].char if x in row else " " for x in range(end)).rstrip()
-                offset += max(0, physical_rows(line, columns) - 1)
+        if self.geometry is not None and columns < self.geometry[1]:
+            # tmux backspace at column zero crosses a soft wrap and stops at a hard
+            # line boundary. Traverse the rows tmux actually wrapped, including
+            # background-filled cells whose extent differs across color depths.
+            # CR after each backspace returns to column zero on either path.
+            rewind = "\r" + "\b\r" * ((self.geometry[1] - 1) // max(1, columns) + 1)
+            out.write_raw(rewind)
+            for _ in range(caret.y):
+                out.cursor_up(1)
+                out.write_raw(rewind)
+            offset -= caret.y
         if offset:
             out.cursor_up(offset)
         out.write_raw("\r")
@@ -350,16 +349,30 @@ class ScrollbackRegion:
         self._retain(self._pending)
         self._pending.clear()
 
+    def prepare_tmux_frame(self, app: Application, columns: int) -> None:
+        viewport = self.viewport
+        if viewport is None or viewport.geometry is None or columns >= viewport.geometry[1]:
+            return
+        screen = app.renderer.last_rendered_screen
+        if app.renderer.full_screen or screen is None or self._transcript_start:
+            # Never purge native history once it extends beyond the retained transcript.
+            return
+        if any(x >= columns and cell.char.strip() for y in range(app.renderer._cursor_pos.y) for x, cell in screen.data_buffer[y].items()):
+            # Wrapped controls have pushed transcript rows into native history. Erasing
+            # the controls cannot pull those rows back to fill a bottom-aligned pane.
+            self.tail_row = max(0, app.output.get_size().rows - viewport.geometry[2])
+            self.viewport = None
+
     def draw_tmux_viewport(self, app: Application, height: int, text: str) -> bool:
         if self.viewport is None and self._written_rows + text.count("\n") < self.TMUX_VIEWPORT_ROWS:
             return False
+        columns = app.output.get_size().columns
         if self._recolor_owed:
             self.leave_viewport(app)
             self._recolor_owed = False
         if self.viewport is None:
             # Resume can enqueue thousands of lines in a single write. Include that
             # batch in the first viewport frame, with no intermediate primary replay.
-            columns = app.output.get_size().columns
             prefix, _ = self._replay_layout(columns)
             self._written_rows += text.count("\n")
             text = prefix + text

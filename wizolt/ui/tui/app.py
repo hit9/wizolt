@@ -2225,6 +2225,7 @@ class TuiApp:
         self._screen_update_active = True
         # tmux 3.7 redraws the whole pane on every reset of synchronized output.
         # Native history only needs our buffered flush to present the live rows.
+        self.scrollback.prepare_tmux_frame(app, size.columns)
         sync = self.scrollback.viewport is None
         try:
             if sync:

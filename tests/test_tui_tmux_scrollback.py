@@ -211,6 +211,42 @@ def test_running_command_stays_beside_history_across_zoom(pane, start_zoomed, hi
     assert sum("COMMAND-0" in line for line in history) == 1
 
 
+@pytest.mark.parametrize("vertical", [False, True], ids=["width", "height"])
+def test_idle_context_bar_zoom_keeps_one_divider_under_done(pane, vertical):
+    pane.resize(124, 50)
+    pane.split(vertical=vertical)
+    if not vertical:
+        tmux("resize-pane", "-t", pane.session, "-x", "39")
+    log = pane.path / "idle-context.log"
+    pane.send(f"env -u NO_COLOR COLORTERM=truecolor {sys.executable} {acceptance.DRIVER} 160 0 {log} idle-context")
+    deadline = time.monotonic() + 10
+    while "done in" not in pane.visible():
+        assert time.monotonic() < deadline, pane.visible()
+        time.sleep(0.05)
+    wire = pane.path / "pane-1.ansi"
+    for step in range(5):
+        offset = wire.stat().st_size
+        if step:
+            pane.zoom()
+        lines = _settled_capture(pane)
+        frame = wire.read_bytes()[offset:]
+        if step and b"prior-0000" in frame:
+            # The client receives one synchronized replacement even across a PTY bridge.
+            assert frame.count(b"prior-0000") == 1
+            assert frame.rfind(b"\x1b[?2026h", 0, frame.index(b"prior-0000")) >= 0
+            assert b"\x1b[?2026l" in frame[frame.index(b"prior-0159"):]
+        assert lines.count("LAST-REPLY") == 1
+        assert sum("done in" in line for line in lines) == 1
+        start = next(i for i, line in enumerate(lines) if "done in" in line)
+        after = lines[start + 1:]
+        rules = [i for i, line in enumerate(after) if len(line.strip()) >= 3 and set(line.strip()) == {"─"}]
+        assert len(rules) == 1, (step, "\n".join(after))
+        assert rules[0] <= 1, (step, "\n".join(after))
+        assert any("chat" in line for line in after)
+        assert "[main]" in pane.visible().splitlines()[-1]
+        assert [line for line in lines if line.startswith("prior-")] == [f"prior-{i:04}" for i in range(160)]
+
+
 def test_completed_previews_leave_no_blank_rows_in_long_history(pane):
     log = pane.path / "long-commands.log"
     pane.send(f"{sys.executable} {acceptance.DRIVER} 160 0 {log} commands")

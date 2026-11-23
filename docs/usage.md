@@ -315,8 +315,9 @@ With tmux's default `alternate-screen on`, zooming a long session fills the spac
 the prompt with recent transcript lines. Shrinking the pane moves older lines back into
 scrollback. Press your tmux prefix followed by **[** to browse or search earlier output.
 Input method candidates follow the editing cursor, including on wrapped input lines.
-Earlier diffs keep their original layout and wrap with the pane. With `alternate-screen off`,
-resizing rebuilds the retained transcript.
+Earlier diffs normally wrap with the pane. When narrowing wraps the controls above the
+input, wizolt can redraw the retained conversation at the new width to keep the controls
+beside the last reply. With `alternate-screen off`, resizing rebuilds the retained transcript.
 
 Zoom and unzoom with your tmux prefix followed by **z**. Through SSH or a sandbox shell,
 wizolt recognizes the outer tmux from its terminal replies. If your connection filters those

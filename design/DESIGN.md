@@ -653,7 +653,10 @@ position their candidate window. Ordinary edits use the renderer's cell diff. To
 output or replace a resized frame, move back from the caret across the old live rows,
 including any unfinished transcript line, before writing new history. Flush the
 live frame as one write. Ending DEC synchronized output makes tmux 3.7c redraw even
-untouched history on the attached client.
+untouched history on the attached client. When narrowing wraps controls above the caret,
+those extra rows push transcript into native history. If the entire transcript is retained,
+replace the projection in a single synchronized frame so the footer stays attached and
+bottom-aligned. Once retention has evicted entries, preserve native history.
 
 A local tmux reports its window option over its socket. Across a PTY bridge, the live input
 reader identifies tmux via secondary device attributes and checks whether leaving the alternate
