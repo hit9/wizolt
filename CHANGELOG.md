@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.77.10 - 2026-11-23
+
 - Keep segmented status bars distinct across all built-in themes on 256-color terminals.
 
 ## 0.77.9 - 2026-11-23
