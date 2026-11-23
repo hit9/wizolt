@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.77.15 - 2026-11-23
+
 - Use white for model replies in all dark built-in themes, from streaming through transcript replay.
 
 ## 0.77.14 - 2026-11-23
