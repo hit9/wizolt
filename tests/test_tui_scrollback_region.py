@@ -719,6 +719,7 @@ def test_quiet_command_preview_stays_beside_its_transcript_header(monkeypatch, t
                 lines = list(output.lines)
                 head = next(i for i, line in enumerate(lines) if header in line)
                 live = next(i for i, line in enumerate(lines) if 'running…' in line)
+                assert '* running…' in lines[live]
                 assert live == head + 2, '\n'.join(lines)
                 positions.append(next(i for i, line in enumerate(lines) if line.startswith('+>')))
 

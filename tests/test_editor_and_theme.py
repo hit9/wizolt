@@ -90,9 +90,9 @@ def test_completion_menu_sits_on_one_surface(tmp_path, monkeypatch, mode, surfac
 
     for name in ("completion-menu.completion", "completion-menu.meta.completion", "completion-menu.hint", "scrollbar.background"):
         assert attrs(name).bgcolor == surface, name
-    assert attrs("completion-menu.completion").color == "default"  # the terminal's own text color
-    assert attrs("completion-menu.hint").color == attrs("completion-menu.meta.completion").color == "ansibrightblack"
-    assert attrs("scrollbar.button").bgcolor == "ansibrightblack"
+    assert attrs("completion-menu.completion").color == Theme.color("text").lstrip("#")
+    assert attrs("completion-menu.hint").color == attrs("completion-menu.meta.completion").color == Theme.color("menu_muted").lstrip("#")
+    assert attrs("scrollbar.button").bgcolor == Theme.color("subtle").lstrip("#")
 
 
 def test_status_roles_have_palette_entries():
@@ -114,7 +114,7 @@ def test_theme_does_not_restyle_frozen_interaction_regions(tmp_path, monkeypatch
         assert (band.color, band.bgcolor, band.reverse) == (Theme.color("selection_fg")[1:], Theme.color("selection_bg")[1:], False), name
     assert style.get_attrs_for_style_str("class:quickhint").color == Theme.color("accent").lstrip("#")
     thinking = style.get_attrs_for_style_str("class:muted")
-    assert thinking.color == "ansibrightblack"
+    assert thinking.color == Theme.color("muted").lstrip("#")
     working = style.get_attrs_for_style_str("class:divider.working")
     assert working.color == Theme.color("divider_label").lstrip("#") and working.bold
     assert style.get_attrs_for_style_str("class:queue.rule").color == rule
@@ -580,7 +580,7 @@ def test_interactive_renderer_keeps_theme_when_parent_exports_no_color(monkeypat
 
 def test_the_roles_that_carry_text_are_the_terminal_own_colors():
     """Body text and semantic feedback inherit terminal ink in both default palettes."""
-    fixed = {"preview", "user", "user_bg", "syntax_default", "divider_glow", "divider_rule", "selection_bg", "selection_fg", "menu_bg"}
+    fixed = {"text", "tool", "muted", "subtle", "menu_muted", "preview", "user", "user_bg", "syntax_default", "divider_glow", "divider_rule", "selection_bg", "selection_fg", "menu_bg"}
     for palette in (Theme.DARK, Theme.LIGHT):
         for role in Theme.ROLES:
             if palette is Theme.DARK and role in {"accent", "accent_secondary", "divider_label"}:

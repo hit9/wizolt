@@ -268,7 +268,8 @@ def test_live_spark_keeps_range_on_a_light_terminal(monkeypatch):
     assert sum(trough) <= sum(crest) - 300  # the trough stays clearly darker: the breath has range
 
 
-def test_model_stream_preview_draws_the_same_tree_as_the_log(tmp_path):
+def test_model_stream_preview_draws_the_same_tree_as_the_log(tmp_path, monkeypatch):
+    monkeypatch.setattr(time, "monotonic", lambda: 0.0)
     config = Config()
     config.data_dir = str(tmp_path / "data")
     loop = CommandLoop(Agent(Session(cwd=str(tmp_path), config=config)), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
@@ -278,11 +279,11 @@ def test_model_stream_preview_draws_the_same_tree_as_the_log(tmp_path):
     lines = "".join(text for _, text in loop.view.model_stream_fragments()).splitlines()
 
     rail = LogBlock.prefix(TurnBox.CONTENT_LEVEL + 1, LogEdge.CONTINUE)
-    assert lines == [rail + "weighing the two paths", rail + "the second option is cleaner"]
+    assert lines == [rail.replace("│", "✦") + "weighing the two paths", rail + "the second option is cleaner"]
     assert not any(LogEdge.BRANCH.value in line or LogEdge.END.value in line for line in lines)
     # The column a tool's own output lines are drawn in: the two trees share a grid.
     tool = str(LogBlock.hierarchy(LogLine("Bash", "pytest -q", LogRole.TOOL), [LogLine("", "output line", LogRole.OUTPUT, LogEdge.CONTINUE)]))
-    assert tool.splitlines()[1].index(LogEdge.CONTINUE.value) == lines[0].index(LogEdge.CONTINUE.value)
+    assert tool.splitlines()[1].index(LogEdge.CONTINUE.value) == lines[0].index("✦")
 
 
 def test_model_stream_preview_switches_phase_and_clears(tmp_path):

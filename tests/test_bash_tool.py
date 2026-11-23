@@ -1151,7 +1151,7 @@ async def test_tool_runner_job_wait_starts_live_preview_with_budget(tmp_path, mo
     assert not any(kind == "start" for kind, _ in events)
 
 
-def test_uiprinter_renders_bash_preview_like_live_output():
+def test_uiprinter_renders_completed_bash_output_in_the_text_color():
     ui = UiPrinter(output_fn=lambda text: None)
     block = LogBlock.hierarchy(
         LogLine("Bash", "cmd", LogRole.TOOL),
@@ -1164,10 +1164,10 @@ def test_uiprinter_renders_bash_preview_like_live_output():
     )
     segs = ui.log_segments(block)
 
-    assert (Theme.fg("muted"), "stderr:") in segs
-    assert (Theme.fg("muted"), "  Traceback") in segs
-    assert (Theme.fg("muted"), "    File x") in segs
-    assert (Theme.fg("muted"), "  AttributeError") in segs
+    assert (Theme.fg("text"), "stderr:") in segs
+    assert (Theme.fg("text"), "  Traceback") in segs
+    assert (Theme.fg("text"), "    File x") in segs
+    assert (Theme.fg("text"), "  AttributeError") in segs
 
 
 def test_uiprinter_syntax_highlights_bash_arguments(tmp_path):

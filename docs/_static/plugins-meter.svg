@@ -2,11 +2,11 @@
 <title>Rendered UI sample</title>
 <style>
 .plugins-meter-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
-.plugins-meter-r1 { fill: #cda9a1 }
+.plugins-meter-r1 { fill: #ffac95 }
 .plugins-meter-r2 { fill: #8fd8c5 }
 .plugins-meter-r3 { fill: #e8ca83 }
-.plugins-meter-r4 { fill: #a0c6e3 }
-.plugins-meter-r5 { fill: #91a5b7 }
+.plugins-meter-r4 { fill: #84cdff }
+.plugins-meter-r5 { fill: #9fb2c3 }
 .plugins-meter-r6 { fill: #abb2bf }
 </style>
 <defs><clipPath id="plugins-meter-clip-terminal">

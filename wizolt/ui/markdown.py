@@ -93,7 +93,7 @@ class WizoltMarkdown(Markdown):
     }
 
     def __init__(self, markup: str) -> None:
-        super().__init__(markup, hyperlinks=False)
+        super().__init__(markup, style=Theme.rich_color("text"), hyperlinks=False)
 
 
 def markdown_console(width: int) -> Console:

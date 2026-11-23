@@ -2,7 +2,7 @@
 <title>Rendered UI sample</title>
 <style>
 .appearance-custom-width-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
-.appearance-custom-width-r1 { fill: #91a5b7 }
+.appearance-custom-width-r1 { fill: #9fb2c3 }
 .appearance-custom-width-r2 { fill: #abb2bf }
 .appearance-custom-width-r3 { fill: #9caebe }
 .appearance-custom-width-r4 { fill: #adbfce }

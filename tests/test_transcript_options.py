@@ -10,6 +10,7 @@ import os
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from test_transcript_picker import TranscriptModal, frames, saved, transcript_loop
@@ -20,8 +21,9 @@ from wizolt.tools import transcript
 from wizolt.ui.cli import transcripts
 from wizolt.ui.cli.appearance import theme_command
 
-# The rail every streamed preview row hangs on, so a preview row can be told from the spark's.
+# The stream marker and continuation rail occupy the same column.
 RAIL = LogBlock.prefix(TurnBox.CONTENT_LEVEL + 1, LogEdge.CONTINUE)
+SPARK = LogBlock.margin(TurnBox.CONTENT_LEVEL + 1) + "✦ "
 # How the sample box opens one of its rows, and how it closes it.
 BOX_ROW = "  │ "
 BOX_EDGE = " │"
@@ -175,7 +177,9 @@ class RecordingUi:
 
 
 def stream_rows(loop):
-    return [line for line in "".join(text for _, text in loop.view.model_stream_fragments()).splitlines() if line.startswith(RAIL)]
+    with patch("time.monotonic", return_value=0.0):
+        loop.session.state.stream_started_at = 0.0
+        return "".join(text for _, text in loop.view.model_stream_fragments()).splitlines()
 
 
 def test_the_reasoning_preview_keeps_the_rows_the_mode_asks_for(command_loop, monkeypatch):
@@ -186,8 +190,8 @@ def test_the_reasoning_preview_keeps_the_rows_the_mode_asks_for(command_loop, mo
         monkeypatch.setattr(command_loop.session.config, "transcript", {"thinking": mode})
         return stream_rows(command_loop)
 
-    assert rows("expanded") == [RAIL + f"reasoning line {index}" for index in range(5, 8)]  # the newest three
-    assert rows("collapsed") == [RAIL + "reasoning line 0"]  # the opening line, not the newest one
+    assert rows("expanded") == [SPARK + "reasoning line 5", RAIL + "reasoning line 6", RAIL + "reasoning line 7"]  # the newest three
+    assert rows("collapsed") == [SPARK + "reasoning line 0"]  # the opening line, not the newest one
     assert rows("hidden") == []
     assert command_loop.view.model_stream_fragments() == []  # Not even the spark row: the divider names the phase.
 
@@ -200,7 +204,7 @@ def test_a_collapsed_trace_skips_a_blank_opening_line(command_loop, monkeypatch)
     monkeypatch.setattr(command_loop.session.config, "transcript", {"thinking": "collapsed"})
     command_loop.presentation.model_stream_output("reasoning", "\nweighing the two paths\nand a third")
 
-    assert stream_rows(command_loop) == [RAIL + "weighing the two paths"]
+    assert stream_rows(command_loop) == [SPARK + "weighing the two paths"]
 
     # A new request clears the trace; with nothing but blank lines so far, the trace is empty
     # rather than an empty rail row.
@@ -215,7 +219,7 @@ def test_the_answer_preview_ignores_the_thinking_mode(command_loop, monkeypatch)
 
     command_loop.presentation.model_stream_output("output", "\n".join(f"answer line {index}" for index in range(8)))
 
-    assert stream_rows(command_loop) == [RAIL + f"answer line {index}" for index in range(2, 8)]
+    assert stream_rows(command_loop) == [SPARK + "answer line 2", *(RAIL + f"answer line {index}" for index in range(3, 8))]
 
 
 def silent_batches(presentation, count):

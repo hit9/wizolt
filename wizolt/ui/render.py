@@ -15,7 +15,7 @@ import time
 from collections.abc import Callable, Hashable, Iterable
 from copy import deepcopy
 from dataclasses import dataclass, replace
-from functools import partial
+from functools import lru_cache, partial
 from itertools import accumulate, pairwise
 from typing import TYPE_CHECKING, Any, ClassVar, Self
 
@@ -420,16 +420,16 @@ class Theme:
 
     DARK: ClassVar[dict[str, str]] = {
         **CONTEXT_COLORS["dark"],
-        "text": "default",
-        "muted": "ansibrightblack",
-        "subtle": "ansibrightblack",
+        "text": "#edf2f6",
+        "muted": "#b1bfd0",
+        "subtle": "#879ab1",
         "preview": "#777978",
-        "accent": "#d7af87",
+        "accent": "#ffc36d",
         "accent_secondary": "#b7a6be",
         "info": "ansiblue",
         "user": "#e0d8c9",
-        "user_bg": "#303033",
-        "tool": "default",
+        "user_bg": "#38322c",
+        "tool": "#ffce84",
         "success": "ansigreen",
         "warning": "ansiyellow",
         "error": "ansired",
@@ -437,12 +437,12 @@ class Theme:
         "syntax_assign": "#aabcbc",
         "syntax_string": "#afc6a0",
         "syntax_number": "#c1abc7",
-        "syntax_ident": "#92bfbd",
-        "syntax_builtin": "#d7af87",
+        "syntax_ident": "#72dcca",
+        "syntax_builtin": "#ffc36d",
         "syntax_default": "#e6edf3",
         "status_base": "#ccc9c2",
         "status_provider": "#94b1cd",
-        "status_model": "#92bfbd",
+        "status_model": "#72dcca",
         "status_reason": "#baa5d1",
         "status_mcp": "#93a4b7",
         "status_services": "#c69eb8",
@@ -451,37 +451,37 @@ class Theme:
         "status_yolo": "#dc9992",
         "status_agent": "#d8b98d",
         **status_surfaces("dark", "#292b2d"),
-        "divider_glow": "#ae947a",
+        "divider_glow": "#efb96b",
         "divider_rule": "#4b5563",
         "divider_label": "#b7a6be",
         "status_bg": "#292b2d",
-        "selection_bg": "#414f50",
+        "selection_bg": "#345c61",
         "selection_fg": "#f1ebe0",
         "menu_bg": "#292b2d",
-        "menu_muted": "ansibrightblack",
+        "menu_muted": "#b1bfd0",
         "pygments": "github-dark",
     }
     LIGHT: ClassVar[dict[str, str]] = {
         **CONTEXT_COLORS["light"],
-        "text": "default",
-        "muted": "ansibrightblack",
-        "subtle": "ansibrightblack",
+        "text": "#233545",
+        "muted": "#575d70",
+        "subtle": "#62677a",
         "preview": "#81817d",
         "accent": "ansicyan",
         "accent_secondary": "ansimagenta",
         "info": "ansiblue",
         "user": "#364d5c",
         "user_bg": "#eeeeee",
-        "tool": "default",
+        "tool": "#75400e",
         "success": "ansigreen",
         "warning": "ansiyellow",
         "error": "ansired",
         "rule": "ansibrightblack",
-        "syntax_assign": "#005cc5",
-        "syntax_string": "#4c6845",
-        "syntax_number": "#6f42c1",
-        "syntax_ident": "#824c38",
-        "syntax_builtin": "#005cc5",
+        "syntax_assign": "#0a509f",
+        "syntax_string": "#3c5445",
+        "syntax_number": "#583e9c",
+        "syntax_ident": "#893418",
+        "syntax_builtin": "#0a509f",
         "syntax_default": "#24292e",
         "status_base": "#4b5563",
         "status_provider": "#4b636a",
@@ -498,10 +498,10 @@ class Theme:
         "divider_rule": "#9ca3af",
         "divider_label": "ansimagenta",
         "status_bg": "#e8ebef",
-        "selection_bg": "#c8dce3",
+        "selection_bg": "#b2dce8",
         "selection_fg": "#213d48",
         "menu_bg": "#e8ebef",
-        "menu_muted": "ansibrightblack",
+        "menu_muted": "#575d70",
         # No GitHub light style ships with Pygments. Visual Studio's is as plain, and its blue
         # keywords sit with the GitHub-blue builtins above; `default` set bold green beside them.
         "pygments": "vs",
@@ -1837,7 +1837,7 @@ class UiPrinter:
         LogRole.AUTO: ("info", "text"),
         LogRole.META: ("muted", "muted"),
         LogRole.FIELD: ("accent", "text"),
-        LogRole.OUTPUT: ("muted", "muted"),
+        LogRole.OUTPUT: ("text", "text"),
         LogRole.ERROR: ("error", "text"),
         LogRole.WARNING: ("warning", "text"),
         LogRole.SUCCESS: ("success", "text"),
@@ -1973,9 +1973,27 @@ class UiPrinter:
             return [(fallback_style, text)]
         try:
             lexer = get_lexer_by_name(lexer_name, stripnl=False, ensurenl=False)
-            return [(cls.pygments_style(token_type), value) for token_type, value in lexer.get_tokens(text) if value]
+            palette = Theme.active()
+            background = palette.background or ("#282c34" if palette.appearance == "dark" else "#f5f4f0")
+            return [
+                (cls.call_token_style(cls.pygments_style(token_type), fallback_style, palette.colors["text"], background), value)
+                for token_type, value in lexer.get_tokens(text)
+                if value
+            ]
         except Exception:  # noqa: BLE001 - third-party lexers must degrade to plain rendering.
             return [(fallback_style, text)]
+
+    @staticmethod
+    @lru_cache(maxsize=512)
+    def call_token_style(style: str, fallback: str, text: str, background: str) -> str:
+        # A shell lexer can use dim code-comment colors for arguments the user needs to read.
+        # Lift only call-line tokens; edited source keeps its own syntax colors and diff bands.
+        ink, space, attributes = style.partition(" ")
+        if ink == "fg:default":
+            ink = fallback
+        elif ink.startswith("fg:#"):
+            ink = "fg:" + lift(ink[3:], text, background, 7.0)
+        return ink + space + attributes
 
     @classmethod
     def tool_arg_segments(cls, text: str, fallback_style: str) -> list[tuple[str, str]]:
@@ -2441,6 +2459,10 @@ class LiveSpark:
         breath = int(elapsed // cls.PERIOD)
         return cls.GLYPHS[breath % 2]
 
+    @classmethod
+    def marker(cls, started_at: float, *, level: int) -> tuple[str, str]:
+        return cls.style(started_at), LogBlock.margin(level) + cls.glyph(started_at)
+
 
 class BashLivePreview:
     HEIGHT: ClassVar[int] = 3
@@ -2525,7 +2547,7 @@ class BashLivePreview:
         self.rendered_lines = len(rows)
         self.rendered_rows = rows
 
-    def frame_rows(self, *, inline: bool = False) -> list[list[tuple[str, str]]]:
+    def frame_rows(self) -> list[list[tuple[str, str]]]:
         """The frame as styled rows: a breathing spark capping the rail, then the output under it.
 
         The status row used to carry a BRANCH edge under a `hierarchy(None, ...)` — a `├` with no
@@ -2544,7 +2566,7 @@ class BashLivePreview:
         limit = max(1, width - get_cwidth(rail) - 1)
         # Always emit a status row so the frame is visible even before any output arrives.
         status = f"output · {label}{remaining}" if body else f"running… {label}{remaining}"
-        lead = ("", LogBlock.margin(2)) if inline else (LiveSpark.style(self.started_at), LogBlock.margin(2) + LiveSpark.glyph(self.started_at))
+        lead = LiveSpark.marker(self.started_at, level=2)
         rows = [[lead, (Theme.fg("preview"), status)]]
         if body:
             # A blank row keeps the spark off the rail: the star caps the region, it does not sit on it.

@@ -2,7 +2,7 @@
 <title>Rendered UI sample</title>
 <style>
 .appearance-custom-statusbar-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
-.appearance-custom-statusbar-r1 { fill: #91a5b7 }
+.appearance-custom-statusbar-r1 { fill: #9fb2c3 }
 .appearance-custom-statusbar-r2 { fill: #abb2bf }
 .appearance-custom-statusbar-r3 { fill: #9caebe }
 .appearance-custom-statusbar-r4 { fill: #8fd8c5 }

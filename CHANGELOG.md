@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore the breathing star beside live reasoning, answers and Bash previews. Brighten all built-in palettes, with high-contrast tool calls and readable completed output.
+
 ## 0.77.11 - 2026-11-23
 
 - Bash accepts an optional per-call foreground wait (`wait_seconds`) before a running command becomes a Job.

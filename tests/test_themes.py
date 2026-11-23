@@ -496,7 +496,7 @@ def test_named_themes_draw_exact_colors_on_a_true_color_terminal(monkeypatch):
 
     assert "38;2;" not in row(80) and "boom" in row(80)
     Theme.set_mode("sand")
-    assert "38;2;234;207;168" in row(80)  # sand amber, not its nearest 256-color neighbour
+    assert "38;2;247;211;153" in row(80)  # sand amber, not its nearest 256-color neighbour
     monkeypatch.setenv("COLORTERM", "")
     Theme.set_mode("sand")
     assert "38;2;" not in row(80)
@@ -1054,7 +1054,8 @@ async def test_file_picker_uses_the_current_colors_each_time_it_opens(tmp_path, 
         await command_loop.background.close_background()
 
 
-def test_file_picker_translates_terminal_colors_for_fzf():
+def test_file_picker_translates_terminal_colors_for_fzf(monkeypatch):
+    monkeypatch.setitem(Theme.palette(), "menu_muted", "ansibrightblack")
     colors = Theme.fzf_colors()
     assert "ansi" not in colors and "header:8" in colors
 
@@ -1192,3 +1193,21 @@ def test_status_segments_survive_256_color_output(name, preset):
             backgrounds[label.strip()] = bg
     assert backgrounds.keys() == fields
     assert len(set(backgrounds.values())) == len(fields), (name, backgrounds)
+
+
+@pytest.mark.parametrize("name", Theme.BUILTIN)
+def test_finished_tool_calls_are_readable_on_the_theme_background(name):
+    from wizolt.base import LogBlock, LogLine, LogRole
+
+    Theme.set_mode(name)
+    palette = Theme.active()
+    bg = palette.background or ("#282c34" if palette.appearance == "dark" else "#f5f4f0")
+    block = LogBlock([
+        LogLine("Read", "main.py", LogRole.TOOL, syntax="tool-args"),
+        LogLine("Bash", "echo ok", LogRole.TOOL, syntax="bash"),
+        LogLine("", "42 passed", LogRole.OUTPUT),
+    ])
+    emitted = {value.strip(): spec for spec, value in UiPrinter().log_segments(block, 80)}
+    for token in ("Read", "main.py", "Bash", "echo", "ok", "42 passed"):
+        ink = "#" + Theme.transcript_style().get_attrs_for_style_str(emitted[token]).color
+        assert contrast(ink, bg) >= 7, (name, token, ink)

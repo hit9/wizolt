@@ -27,19 +27,19 @@ from wizolt.config import Config
 from wizolt.session import Session
 from wizolt.ui.bars import DIVIDER_PRESETS, STATUS_PRESETS
 from wizolt.ui.cli.appearance import DIFF_STYLE_SAMPLE
-from wizolt.ui.render import Theme
+from wizolt.ui.render import LiveSpark, Theme
 
 CAPTIONS = {
-    "dark": ("Terminal dark", "Warm amber prompts, mist-teal paths and ivory user messages."),
+    "dark": ("Terminal dark", "Warm amber prompts, turquoise paths and ivory user messages."),
     "light": ("Terminal light", "Cyan prompts and chestnut paths on pale gray."),
-    "slate": ("Slate", "Dusty rose prompts with glacier-blue paths."),
-    "forest": ("Forest", "Sage prompts and clay-colored paths."),
-    "sand": ("Sand", "Sandstone gold with sea-glass paths."),
-    "plum": ("Plum", "Mulberry pink paired with muted jade."),
+    "slate": ("Slate", "Coral prompts with glacier-blue paths."),
+    "forest": ("Forest", "Leaf green prompts and apricot paths."),
+    "sand": ("Sand", "Marigold with sea-glass paths."),
+    "plum": ("Plum", "Mulberry pink paired with fresh mint."),
     "paper": ("Paper", "Terracotta and blue ink on warm paper."),
-    "gruvbox-dark": ("Gruvbox Dark", "Soft orange and faded blue with olive syntax."),
+    "gruvbox-dark": ("Gruvbox Dark", "Tangerine and aqua with olive syntax."),
     "solarized-dark": ("Solarized Dark", "Ochre prompts and turquoise paths."),
-    "dracula": ("Dracula", "Soft orchid prompts and ice-blue paths."),
+    "dracula": ("Dracula", "Orchid prompts and ice-blue paths."),
     "papercolor-light": ("PaperColor Light", "Berry and deep blue with olive syntax."),
     "papercolor-dark": ("PaperColor Dark", "Antique gold and sky blue on charcoal."),
 }
@@ -72,7 +72,7 @@ def sample(figures: Illustrations, terminal: TerminalTheme) -> dict:
                 LogBlock([LogLine("Read", "parser.py, tests/test_parser.py", LogRole.TOOL, meta=" → tr.1–tr.2", syntax="tool-args")]), WIDTH
             )
         ),
-        figures.styled([(Theme.fg("preview"), "  Checking how the parser handles an empty token…")]),
+        figures.styled([LiveSpark.marker(NOW, level=2), (Theme.fg("preview"), "Checking how the parser handles an empty token…")]),
         figures.styled(figures.printer.log_segments(edit, WIDTH)),
         figures.styled(
             [

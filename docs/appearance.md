@@ -23,8 +23,9 @@ preview so more choices remain visible.
 
 The **Colorscheme** tab lists every built-in, custom and plugin theme and opens at your current choice.
 Press **/** to search by name, for example `sand` or `gruvbox-dark`.
-Prompts and file paths have separate colors. Reasoning and Bash previews use softer text,
-and the model name picks up the path color in named themes.
+Tool names and arguments use high-contrast colors, and finished output uses the body text color.
+A breathing star marks live reasoning, replies and Bash commands. Their previews share the transcript grid,
+with quieter text for reasoning and running commands.
 The preview shows a short exchange with a user message, a reply, an edit and its test result.
 In smaller panes the opening lines stay visible while you browse. The other tabs preview diff details, the actual statusbar, idle/running/queued
 dividers and ordinary/follow-up input symbols.
@@ -37,16 +38,16 @@ Six themes, the same code. Preview the others in /theme.
 
 | Feel | Themes |
 | --- | --- |
-| Dusty rose and glacier blue | `slate` |
-| Sage and clay | `forest` |
+| Coral and glacier blue | `slate` |
+| Leaf green and apricot | `forest` |
 | Sand gold and sea glass | `sand` |
 | Mulberry and jade | `plum` |
 | Terracotta and blue ink on warm paper | `paper` |
-| Soft orange, faded blue and olive | `gruvbox-dark` |
+| Tangerine, aqua and olive | `gruvbox-dark` |
 | Cyan and ochre | `solarized-dark` |
 | Orchid and ice blue with colorful syntax | `dracula` |
 | PaperColor's crisp, colorful syntax | `papercolor-light`, `papercolor-dark` |
-| Warm amber prompts and mist-teal paths | `dark` |
+| Warm amber prompts and turquoise paths | `dark` |
 | Terminal cyan and chestnut paths on pale gray | `light` |
 
 The default, `auto`, selects `dark` or `light` for your terminal background. Named themes change wizolt's colors, so choose one that suits your

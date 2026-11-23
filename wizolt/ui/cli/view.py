@@ -34,7 +34,7 @@ from wizolt.ui.cli.hints import Context as HintContext
 from wizolt.ui.cli.hints import HintPicker
 from wizolt.ui.cli.registry import CommandCatalog
 from wizolt.ui.cli.runtime import RESUME_STATUS_LABEL, STARTING_STATUS_LABEL
-from wizolt.ui.render import ActivityPulse, InputStyle, Theme, UiPrinter
+from wizolt.ui.render import ActivityPulse, InputStyle, LiveSpark, Theme, UiPrinter
 from wizolt.ui.tui import InputMode
 
 if TYPE_CHECKING:
@@ -504,7 +504,7 @@ class View:
         if stream:
             fragments.append(("", "\n"))
         with self.presentation.live_preview.lock:
-            rows = self.presentation.live_preview.frame_rows(inline=True) if self.presentation.live_preview.active else []
+            rows = self.presentation.live_preview.frame_rows() if self.presentation.live_preview.active else []
         for row in rows:
             fragments.extend([*row, ("", "\n")])
         if rows:
@@ -560,8 +560,8 @@ class View:
             return []
         rows = [Text.clip_width(line.expandtabs(4), max(1, width - len(rail) - 1)) for line in shown]
         fragments: StyleAndTextTuples = []
-        for row in rows:
-            fragments.append(("class:rule", rail))
+        for index, row in enumerate(rows):
+            fragments.append(("class:rule", rail) if index else LiveSpark.marker(self.session.state.stream_started_at, level=TurnBox.CONTENT_LEVEL + 1))
             inline = self._stream_inline_fragments(row)
             if kind == "reasoning":
                 fragments.append(("class:preview", "".join(text for _, text in inline)))
