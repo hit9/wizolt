@@ -254,7 +254,7 @@ Optional; the defaults shown are used when omitted.
 | `yolo` | `false` | Skip ordinary tool confirmations; creating a subagent or sending it a task still requires approval |
 | `max_context_tokens` | `524288` (512K) | Default for every provider entry that does not set its own `max_context_tokens`. How much of the model's context window to use, which sets the automatic-compaction budget — a budget, not the window's size: raise it for a 1M-window model, lower it for a smaller one |
 | `max_agent_steps` | `400` | Maximum tool steps in one turn |
-| `shell_timeout` | `60` | Maximum shell-command lifetime, in seconds |
+| `shell_timeout` | `60` | Maximum lifetime in seconds for a foreground Bash command. A command promoted earlier continues as a background job |
 | `bash_wait_timeout` | `10` | Default foreground wait before a running Bash command becomes a background job; `0` disables automatic promotion by default. Bash can override this per call with `wait_seconds` |
 | `bash_output_tokens` | `2000` | Bash output the agent sees inline, `1000`–`6000`; the rest stays in a file it can open. Lower saves tokens on every later request; raise it when you would rather see more inline ([context](context.md)) |
 | `max_parallel_tools` | `4` | Maximum read-only tool calls executed concurrently; `1` disables parallelism |

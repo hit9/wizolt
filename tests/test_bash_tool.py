@@ -548,14 +548,21 @@ async def test_bash_promotes_once_at_the_requested_wait(tmp_path):
         s.close()
 
 
-async def test_bash_long_wait_respects_shell_timeout(tmp_path):
+@pytest.mark.parametrize("shell_timeout", [1, 0.1], ids=["equal", "above"])
+async def test_bash_long_wait_respects_shell_timeout(tmp_path, shell_timeout):
     s = session(tmp_path)
-    s.settings.shell_timeout = 0.1
-    result = await BashTool(s, tool_payload("Bash", {"command": "sleep 60", "wait_seconds": 30})).call()
+    s.settings.shell_timeout = shell_timeout
+    result = await BashTool(s, tool_payload("Bash", {"command": "sleep 60", "wait_seconds": 1})).call()
     assert "<stderr>\ntimeout\n</stderr>" in result and not s.jobs
 
 
-@pytest.mark.parametrize("value", [0, -1, False, 1.5, "30"])
+def test_bash_accepts_integer_valued_json_numbers():
+    args = tool_payload("Bash", {"command": "true", "wait_seconds": 30.0})
+    assert args == ["true", "", 30]
+    assert type(args[2]) is int
+
+
+@pytest.mark.parametrize("value", [0, -1, True, False, 1.5, "30"])
 def test_bash_rejects_invalid_wait_seconds(value):
     with pytest.raises(ToolError, match="wait_seconds"):
         tool_payload("Bash", {"command": "true", "wait_seconds": value})

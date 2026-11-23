@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Accept integer-valued JSON numbers for Bash foreground waits and clarify when the foreground timeout kills a command.
+- Refresh the working divider and reasoning preview colors in the usage, commands, and tools guides.
+
 ## 0.77.18 - 2026-11-23
 
 - Use each theme’s secondary accent for headings in model replies and recognize Markdown headings in the live preview.

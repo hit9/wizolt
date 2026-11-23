@@ -268,7 +268,7 @@ class BashTool(Tool):
         return cls.object_schema({
             "command": {"type": "string", "minLength": 1, "pattern": "^[\\s\\S]*\\S[\\s\\S]*$", "description": "Bash program"},
             "workdir": {"type": "string", "description": "Directory to run in; defaults to the workspace"},
-            "wait_seconds": {"type": "integer", "minimum": 1, "description": "Foreground wait for this call. Use e.g. 30 when the next step needs its result; omit for the session default."},
+            "wait_seconds": {"type": "integer", "minimum": 1, "description": "Foreground wait before promotion. At or above the shell timeout, an unfinished command times out. Omit for the session default."},
         }, ["command"])
         # fmt: on
 
@@ -284,6 +284,8 @@ class BashTool(Tool):
 
     @staticmethod
     def validate_wait(value: object) -> int:
+        if isinstance(value, float) and value.is_integer():
+            value = int(value)
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
             raise ToolError("Bash wait_seconds must be a positive whole number")
         return value
