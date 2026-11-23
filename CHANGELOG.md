@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.77.6 - 2026-11-23
+
 - Group consecutive successful file reads printed together in the standard transcript. Ctrl-O keeps each result separately.
 
 ## 0.77.5 - 2026-11-23
