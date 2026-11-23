@@ -7,8 +7,8 @@ puts the application's rows into the terminal's text flow over and over, and onc
 reflows the pane nothing can tell whose rows are whose. That is what leaves blank rows and
 stale fragments behind.
 
-In a long tmux session, TmuxViewport keeps the native cursor at the transcript boundary.
-Resizing reflows the history and cursor together; a frame only redraws below that boundary.
+In a long tmux session the native cursor follows the editor. To append output, TmuxViewport
+backs up over the live rows and leaves the completed transcript on the primary grid.
 
 Other sessions use two steps:
 
@@ -127,15 +127,12 @@ class _ReplayLayout:
 
 
 class TmuxViewport:
-    """Append completed lines to the primary grid and keep its cursor at the end of history.
-
-    tmux reflows that cursor with the transcript on zoom. Clearing from there removes only
-    the old live frame, regardless of its former height or width.
-    """
+    """Append completed lines to tmux history and draw the editor with its native caret."""
 
     def __init__(self) -> None:
         self.geometry: tuple[int, int, int] | None = None
         self.partial = ""
+        self.preview = ""
 
     def draw(self, app: Application, text: str, height: int, *, reanchor: bool) -> None:
         renderer = app.renderer
@@ -143,47 +140,74 @@ class TmuxViewport:
         rows, columns = out.get_size()
         geometry = rows, columns, height
         changed = reanchor or bool(text) or geometry != self.geometry or renderer.last_rendered_screen is None
-        if changed:
-            if self.geometry is None:
-                out.write_raw("\x1b[r\x1b[0m\x1b[H\x1b[2J\x1b[3J")
-            else:
-                out.erase_down()
-            self.geometry = geometry
-            if text:
-                complete, newline, self.partial = (self.partial + text).rpartition("\n")
-                out.write_raw(complete + newline)
-            # A write can end partway through a line (or with just an SGR reset). Keep that
-            # fragment editable until the next write completes it; it must enter history once.
-            preview = self.partial
-            preview_rows = physical_rows(preview, columns)
-            if preview_rows > rows - height:
-                # A provisional line must never scroll into history before it is complete.
-                preview = Text.clip_width(_SGR.sub("", preview).expandtabs(), columns) if rows > height else ""
-                preview_rows = int(bool(preview))
-            reserve = preview_rows + height - 1
-            if reserve:
-                out.write_raw("\r\n" * reserve)
-                out.cursor_up(reserve)
-            renderer.reset(leave_alternate_screen=False)
-            renderer._min_available_height = height
+        if not changed:
+            return
+        first_frame = self.geometry is None
+        if first_frame:
+            out.write_raw("\x1b[r\x1b[0m\x1b[H\x1b[2J\x1b[3J")
+        else:
+            self.erase_live(app)
+        self.geometry = geometry
+        if text:
+            complete, newline, self.partial = (self.partial + text).rpartition("\n")
+            if first_frame and complete.count("\n") < rows - height:
+                # On a tall pane a restored transcript may leave room above the editor.
+                # Place the short transcript beside it so resize can track both together.
+                used = physical_rows(complete + newline, columns) + physical_rows(self.partial, columns)
+                out.cursor_goto(max(1, rows - height - used + 1), 1)
+            out.write_raw(complete + newline)
+        # A write can end partway through a line (or with just an SGR reset). Keep that
+        # fragment editable until the next write completes it; it must enter history once.
+        preview = self.partial
+        preview_rows = physical_rows(preview, columns)
+        if preview_rows > rows - height:
+            # A provisional line must never scroll into history before it is complete.
+            preview = Text.clip_width(_SGR.sub("", preview).expandtabs(), columns) if rows > height else ""
+            preview_rows = int(bool(preview))
+        reserve = preview_rows + height - 1
+        if reserve:
+            out.write_raw("\r\n" * reserve)
+        renderer.reset(leave_alternate_screen=False)
+        renderer._min_available_height = height
 
-        # Save *after* native scrolling. Restore after this frame, before tmux can resize
-        # again. Never carry a saved absolute cursor coordinate across two frames.
-        out.write_raw("\x1b7")
-        if changed and preview_rows:
-            out.write_raw(preview)
+        self.preview = preview
         # The terminal may already have resized again while this frame was in transit.
         # CUP clamps at its actual bottom; an absolute cached footer row can erase history.
         out.cursor_goto(9999, 1)
-        if height > 1:
-            out.cursor_up(height - 1)
+        if reserve:
+            out.cursor_up(reserve)
+        if preview_rows:
+            out.write_raw(preview + "\r\n")
+
+    def erase_live(self, app: Application) -> None:
+        renderer = app.renderer
+        out = renderer.output
+        caret = renderer._cursor_pos
+        columns = out.get_size().columns
+        offset = caret.y + physical_rows(self.preview, columns)
+        screen = renderer.last_rendered_screen
+        if screen is not None and self.geometry is not None and columns < self.geometry[1]:
+            # tmux wraps individually painted editor rows when the pane narrows,
+            # including the cells before the caret on its own row.
+            for y in range(caret.y + 1):
+                row = screen.data_buffer[y]
+                end = caret.x + 1 if y == caret.y else self.geometry[1]
+                # Count printed cells only. Unpainted trailing spaces in the layout
+                # do not create continuation rows in tmux's grid.
+                end = min(end, max(row, default=-1) + 1)
+                line = "".join(row[x].char if x in row else " " for x in range(end)).rstrip()
+                offset += max(0, physical_rows(line, columns) - 1)
+        if offset:
+            out.cursor_up(offset)
+        out.write_raw("\r")
+        out.erase_down()
 
     def leave(self, app: Application) -> None:
         out = app.renderer.output
-        out.erase_down()
+        self.erase_live(app)
         out.write_raw(self.partial)
-        out.show_cursor()
-        out.flush()
+        # The next renderer operation starts at this new origin.
+        app.renderer.reset(leave_alternate_screen=False)
 
 
 class ScrollbackRegion:

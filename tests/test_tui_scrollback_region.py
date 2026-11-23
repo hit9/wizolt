@@ -320,11 +320,13 @@ def test_restored_batch_draws_once_across_tmux_resizes(monkeypatch, wired):
 def test_tmux_viewport_keeps_partial_lines_and_draft_cursor_across_resize(monkeypatch, wired):
     output, app, _printer = wired
 
-    def draft_cells():
+    def assert_caret(character):
         screen = app.app.renderer.last_rendered_screen
-        assert not screen.show_cursor
-        return {cell.char: cell.style for row in screen.data_buffer.values() for cell in row.values()
-                if cell.char in ("界", "β", "γ")}
+        assert screen.show_cursor
+        x, y = screen.get_cursor_position(app.app.layout.current_window)
+        assert screen.data_buffer[y][x].char == character
+        assert output.column == x
+        assert "界βγ" in output.lines[output.row - 1]
 
     async def edit():
         app.scrollback.tmux_viewport_available = True
@@ -335,19 +337,18 @@ def test_tmux_viewport_keeps_partial_lines_and_draft_cursor_across_resize(monkey
         buffer.cursor_position = 1
         app.app._redraw()
         assert "first frag" in output.lines
-        assert draft_cells()["β"].endswith(" reverse")
+        assert_caret("β")
 
         # The frame measured a short pane before zoom. Its bytes reach a tall pane;
         # drawing at the old footer row would overwrite completed transcript.
         monkeypatch.setattr(output, "get_size", lambda: Size(rows=18, columns=60))
         app.app._on_resize()
         assert "first frag" in output.lines
-        assert draft_cells()["β"].endswith(" reverse")
+        assert_caret("β")
         buffer.cursor_right()
         app.record_scrollback("ment\r\nsecond frag")
         app.app._redraw()
-        cells = draft_cells()
-        assert cells["γ"].endswith(" reverse") and not cells["β"].endswith(" reverse")
+        assert_caret("γ")
         app.record_scrollback("ment\r\n")
         app.app._redraw()
         assert [line for line in output.lines if "frag" in line or "committed" in line] == [
@@ -392,7 +393,7 @@ def test_resize_rebuilds_the_transcript_regardless_of_notification_order(monkeyp
         if size_changed:
             output.size = Size(rows=ROWS - 1, columns=80)
         output.row = min(output.row, output.size.rows)
-        # In native history the terminal cursor moves with the first live row.
+        # In native history the terminal cursor moves with the draft.
         # On the replay path a stale copy anywhere on screen must be removed.
         output.lines[output.row - 1 if long_tmux else 0] = "displaced live preview"
         if signal_first:

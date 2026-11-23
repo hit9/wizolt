@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep the terminal cursor at the editing position in long tmux sessions so input method candidates follow the draft.
+
 - Upgrade Pillow to 13.0.0, PyJWT to 2.15.1 and opentelemetry-api to 1.45.2 for security fixes.
   Pillow 12.3.0 carries 62 advisories with no 12.x backport, including a critical FPX JPEG heap
   overflow (CVE-2026-112398); opentelemetry-api fixes CVE-2026-126360 (traceparent parsing DoS).

@@ -648,11 +648,10 @@ them to model messages, including compaction requests and checkpoints.
 ## Terminal boundary
 
 In a long tmux session with alternate-screen support, tmux owns completed transcript lines
-on its primary grid. The hardware cursor rests at the boundary after those lines between
-frames. tmux reflows that boundary with the history, so a taller pane exposes older lines
-without asking the application to print them again. Each frame saves the boundary, draws
-the live region and its editing caret below it, then restores the hardware cursor. An
-unfinished transcript line stays in the live region until its newline arrives. Flush the
+on its primary grid. The hardware cursor follows the focused editor so input methods can
+position their candidate window. Ordinary edits use the renderer's cell diff. To append
+output or replace a resized frame, move back from the caret across the old live rows,
+including any unfinished transcript line, before writing new history. Flush the
 live frame as one write. Ending DEC synchronized output makes tmux 3.7c redraw even
 untouched history on the attached client.
 

@@ -34,6 +34,7 @@ from typing import NamedTuple
 
 import pytest
 import terminal_acceptance as acceptance
+from prompt_toolkit.utils import get_cwidth
 
 test_builtin_plugin_can_be_enabled_resized_and_disabled = acceptance.test_builtin_plugin_can_be_enabled_resized_and_disabled
 test_plugin_views_shortcuts_and_resize_restore_input = acceptance.test_plugin_views_shortcuts_and_resize_restore_input
@@ -192,6 +193,25 @@ def test_long_transcript_is_available_in_copy_mode_after_resize(pane):
     assert int(tmux("display-message", "-p", "-t", pane.session, "#{scroll_position}")) > 0
     tmux("send-keys", "-t", pane.session, "-X", "history-top")
     assert "MARKER-0001" in tmux("display-message", "-p", "-t", pane.session, "#{copy_cursor_line}")
+
+
+def test_draft_uses_the_terminal_cursor_after_long_history_and_resize(pane):
+    log = pane.path / "caret.log"
+    pane.send(f"{sys.executable} {acceptance.DRIVER} 160 0.001 {log}")
+    acceptance._wait_for_markers(log, 160)
+    acceptance._stop_selectors(log)
+    pane.literal("start-" + "a界" * 21 + "界end")
+    pane.keys("Left")
+    for width in (WIDE, 31, WIDE):
+        pane.resize(width, TALL)
+        history = "\n".join(_settled_capture(pane))
+        assert history.count("start-") == 1
+        assert history.count("界end") == 1
+        assert re.findall(r"MARKER-(\d+)", history) == [f"{n:04d}" for n in range(1, 161)]
+        x, y = map(int, tmux("display-message", "-p", "-t", pane.session, "#{cursor_x} #{cursor_y}").split())
+        line = pane.visible().splitlines()[y]
+        assert line.endswith("界end")
+        assert x == get_cwidth(line[:-1])
 
 
 def test_dragging_split_boundary_settles_once_without_replaying_old_rows(pane):

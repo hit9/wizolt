@@ -310,6 +310,7 @@ context as needed so a session can run indefinitely. Run `/compact` to trim it n
 With tmux's default `alternate-screen on`, zooming a long session fills the space above
 the prompt with recent transcript lines. Shrinking the pane moves older lines back into
 scrollback. Press your tmux prefix followed by **[** to browse or search earlier output.
+Input method candidates follow the editing cursor, including on wrapped input lines.
 Earlier diffs keep their original layout and wrap with the pane. With `alternate-screen off`,
 resizing rebuilds the retained transcript.
 
