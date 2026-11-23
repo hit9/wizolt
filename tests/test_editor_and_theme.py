@@ -76,7 +76,7 @@ def test_theme_adapters_publish_only_the_styles_the_renderers_reference(monkeypa
             console.get_style(f"wizolt.{role.replace('_', '.')}")  # raises for a name Rich cannot resolve
 
 
-@pytest.mark.parametrize("mode,surface", [("dark", "2b2f36"), ("light", "e8ebef")])
+@pytest.mark.parametrize("mode,surface", [("dark", "292b2d"), ("light", "e8ebef")])
 def test_completion_menu_sits_on_one_surface(tmp_path, monkeypatch, mode, surface):
     """Every part of the menu that is not the selection band -- rows, meta, the key hint, the
     scrollbar track -- shares the menu's surface, so it reads as one block over the transcript.
@@ -112,11 +112,11 @@ def test_theme_does_not_restyle_frozen_interaction_regions(tmp_path, monkeypatch
     for name in ("choice.selected", "quickhint.focused", "approval.action.focused", "completion-menu.completion.current", "completion-menu.meta.completion.current"):
         band = style.get_attrs_for_style_str("class:" + name)
         assert (band.color, band.bgcolor, band.reverse) == (Theme.color("selection_fg")[1:], Theme.color("selection_bg")[1:], False), name
-    assert style.get_attrs_for_style_str("class:quickhint").color == "ansicyan"
+    assert style.get_attrs_for_style_str("class:quickhint").color == Theme.color("accent").lstrip("#")
     thinking = style.get_attrs_for_style_str("class:muted")
     assert thinking.color == "ansibrightblack"
     working = style.get_attrs_for_style_str("class:divider.working")
-    assert working.color == "ansimagenta" and working.bold
+    assert working.color == Theme.color("divider_label").lstrip("#") and working.bold
     assert style.get_attrs_for_style_str("class:queue.rule").color == rule
 
 
@@ -483,7 +483,7 @@ def test_editor_context_combined_budget_keeps_latest_without_note(tmp_path):
 
 def test_user_color_does_not_leak_into_default_ui_style(tmp_path, monkeypatch):
     command_loop = loop(tmp_path)
-    for mode, expected in (("dark", "fg:#cadbea"), ("light", "fg:#364d5c")):
+    for mode, expected in (("dark", "fg:#e0d8c9"), ("light", "fg:#364d5c")):
         monkeypatch.setattr(Theme, "_mode", mode)
         assert UiPrinter.user_log_style().split()[0] == expected
         assert command_loop.view.style().get_attrs_for_style_str("").color == ""
@@ -495,7 +495,7 @@ def test_tool_labels_take_the_palette_tool_color(monkeypatch):
         assert UiPrinter.log_styles(LogRole.TOOL) == (Theme.fg("tool"), Theme.fg("text"))
 
 
-@pytest.mark.parametrize(("mode", "rgb"), [("dark", "202;219;234"), ("light", "54;77;92")])
+@pytest.mark.parametrize(("mode", "rgb"), [("dark", "224;216;201"), ("light", "54;77;92")])
 def test_resumed_user_rendering_emits_user_truecolor(mode, rgb, monkeypatch):
     monkeypatch.setattr(Theme, "_mode", mode)
     ui = UiPrinter(output_fn=lambda text: None)
@@ -574,23 +574,17 @@ def test_interactive_renderer_keeps_theme_when_parent_exports_no_color(monkeypat
     assert ui.color
     ui.emit_answer("sent message", role="user", rule=False)
 
-    user_text = "".join(text for style, text in emitted if style.startswith("#cadbea"))
+    user_text = "".join(text for style, text in emitted if style.startswith("#e0d8c9"))
     assert "• sent message" in user_text
 
 
 def test_the_roles_that_carry_text_are_the_terminal_own_colors():
-    """The reader's scheme is the scheme.
-
-    Contrast, brightness, and taste belong to whoever set up the terminal, and a role drawn in one
-    of its own colors inherits all three. A fixed tone can only guess at them, so it is reserved
-    for the handful of things that are a specific colour rather than a role: an identity, the
-    syntax tones that pair with a Pygments style, the status footer, context categories, a gradient's endpoints, the
-    selection band, which has to stay one colour across every list instead of taking the colour of
-    the row it lands on, and the completion menu's surface, which carries no text of its own.
-    """
+    """Body text and semantic feedback inherit terminal ink in both default palettes."""
     fixed = {"preview", "user", "user_bg", "syntax_default", "divider_glow", "divider_rule", "selection_bg", "selection_fg", "menu_bg"}
     for palette in (Theme.DARK, Theme.LIGHT):
         for role in Theme.ROLES:
+            if palette is Theme.DARK and role in {"accent", "accent_secondary", "divider_label"}:
+                continue
             if role in fixed or role.startswith(("status_", "syntax_", "context_")):
                 continue
             value = palette[role]

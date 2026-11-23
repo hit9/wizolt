@@ -224,17 +224,17 @@ table.docutils th { background: var(--nc-surface); color: var(--nc-fg-strong); }
 }
 .term-shot span { display: block; }
 .term-shot .fs-i, .term-shot .fs-caret { display: inline; }
-.fs-user, .fs-queued { color: #cadbea; }
-.fs-user, .fs-prompt { background: #303238; }
+.fs-user, .fs-queued { color: #e0d8c9; }
+.fs-user, .fs-prompt { background: #303033; }
 .term-shot > .fs-user, .term-shot > .fs-prompt { padding-block: 1.7em; }
 .fs-tool { color: inherit; }
 .fs-prompt { color: #abb2bf; }
 .fs-divider, .fs-hint, .fs-dim { color: #5c6370; }
 .fs-add { color: #98c379; }
 .fs-del { color: #e06c75; }
-.fs-sel { color: #56b6c2; }
-.fs-tab-on { color: #282c34; background: #56b6c2; }
-.fs-tab-off { color: #56b6c2; }
+.fs-sel { color: #d7af87; }
+.fs-tab-on { color: #282c34; background: #d7af87; }
+.fs-tab-off { color: #d7af87; }
 .fs-output { color: #5c6370; }  /* tool output: LogRole.OUTPUT renders bright black, like .fs-dim */
 /* Diff rows, mirroring Theme.DARK diff.added/removed in wizolt/render.py: the row carries a
    background and the text keeps the default foreground; only the +/- marker is colored. */
@@ -242,41 +242,41 @@ table.docutils th { background: var(--nc-surface); color: var(--nc-fg-strong); }
 .fs-approve { color: #e5c07b; }
 /* The cursor, mirroring Theme.selection(): one band for every list, whatever the row it lands on
    is drawn in -- a picker row, a completion, a browser row, or the focused approval action. */
-.fs-selected { color: #edf3f6; background: #3e5769; }
+.fs-selected { color: #f1ebe0; background: #414f50; }
 /* Markdown rendered inside a viewer, mirroring Rich's output: headings magenta underlined,
    inline code cyan on a dark band. */
 .fs-md-b { font-weight: 700; }
-.fs-md-h { color: #c678dd; text-decoration: underline; }
-.fs-md-code { color: #56b6c2; background: #1c1f24; font-weight: 600; }
+.fs-md-h { color: #b7a6be; text-decoration: underline; }
+.fs-md-code { color: #d7af87; background: #1c1f24; font-weight: 600; }
 /* External editor (Ctrl-X Ctrl-E): vim's filler tildes and status line. */
 .fs-vim-fill { color: #4b5563; }
 .fs-vim-status { color: #abb2bf; background: #2c313a; }
-/* Working divider, mirroring cli/view.py: the label is ansimagenta bold, the rule is
+/* Working divider, mirroring cli/view.py: the label is the secondary accent in bold, the rule is
    divider.rule, and the comet head fades from divider.glow into it. */
-.fs-working { color: #c678dd; font-weight: 600; }
+.fs-working { color: #b7a6be; font-weight: 600; }
 /* The Ctrl-O sheet's title and its verdict column, mirroring Theme.DARK: choice.title is
    accent bold, choice.output.ok/fail are success/error bold. Its rules are class:rule, so
    this sheet's .fs-rule is the same dim the transcript's dividers use. */
-.fs-title { color: #56b6c2; font-weight: 700; }
+.fs-title { color: #d7af87; font-weight: 700; }
 .fs-ok { color: #98c379; font-weight: 600; }
 .fs-fail { color: #e06c75; font-weight: 600; }
 .fs-rule { color: #4b5563; }
-.fs-glow { color: #67e8f9; }
+.fs-glow { color: #ae947a; }
 .fs-diff-add { background: #005f00; }
 .fs-diff-del { background: #5f0000; }
-.fs-goal { color: #c678dd; }
+.fs-goal { color: #b7a6be; }
 .fs-doing { color: #e5c07b; }
 /* Status bar roles, mirroring the dark palette in wizolt/ui/render.py (Theme.DARK). */
-.sb-base { color: #cbd5e1; }
-.sb-provider { color: #a7bbc6; }
-.sb-model { color: #a4d0e2; }
+.sb-base { color: #ccc9c2; }
+.sb-provider { color: #a6adae; }
+.sb-model { color: #92bfbd; }
 .sb-agent { color: #c1b7ab; font-weight: bold; }
 .sb-sep { color: #4b5563; }
-.sb-reason { color: #bcc2cb; }
+.sb-reason { color: #ada9a5; }
 .sb-mcp { color: #93a4b7; }
-.sb-ctx { color: #8dd6a1; }
-.sb-cache { color: #a4b8c8; }
-.sb-yolo { color: #ff8f9c; }
+.sb-ctx { color: #a4ba98; }
+.sb-cache { color: #a3aaab; }
+.sb-yolo { color: #dc9992; }
 .sb-warn { color: #fb7185; }
 
 /* Admonitions */

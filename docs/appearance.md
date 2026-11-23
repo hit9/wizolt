@@ -46,9 +46,10 @@ Six themes, the same code. Preview the others in /theme.
 | Cyan and ochre | `solarized-dark` |
 | Orchid and ice blue with colorful syntax | `dracula` |
 | PaperColor's crisp, colorful syntax | `papercolor-light`, `papercolor-dark` |
-| Your terminal's own colors | `auto`, `dark`, `light` |
+| Warm amber prompts and mist-teal paths | `dark` |
+| Terminal cyan and chestnut paths on pale gray | `light` |
 
-The default is `auto`. Named themes change wizolt's colors, so choose one that suits your
+The default, `auto`, selects `dark` or `light` for your terminal background. Named themes change wizolt's colors, so choose one that suits your
 terminal's background. Your terminal keeps its own background.
 
 `papercolor` follows your terminal between its light and dark variants. Unknown or removed

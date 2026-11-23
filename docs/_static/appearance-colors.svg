@@ -2,7 +2,7 @@
 <title>Rendered UI sample</title>
 <style>
 .appearance-colors-matrix {font-family:monospace;font-size:20px;line-height:24.4px}
-.appearance-colors-r1 { fill: #56b6c2;font-weight: bold }
+.appearance-colors-r1 { fill: #d7af87;font-weight: bold }
 .appearance-colors-r2 { fill: #abb2bf }
 .appearance-colors-r3 { fill: #ff7b72 }
 .appearance-colors-r4 { fill: #d2a8ff;font-weight: bold }

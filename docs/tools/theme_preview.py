@@ -30,7 +30,7 @@ from wizolt.ui.cli.appearance import DIFF_STYLE_SAMPLE
 from wizolt.ui.render import Theme
 
 CAPTIONS = {
-    "dark": ("Terminal dark", "Terminal cyan with wheat-colored paths."),
+    "dark": ("Terminal dark", "Warm amber prompts, mist-teal paths and ivory user messages."),
     "light": ("Terminal light", "Cyan prompts and chestnut paths on pale gray."),
     "slate": ("Slate", "Dusty rose prompts with glacier-blue paths."),
     "forest": ("Forest", "Sage prompts and clay-colored paths."),
