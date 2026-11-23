@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.77.17 - 2026-11-23
+
 - Clarify automatic reply language for mixed-language requests, including the first progress update.
 
 ## 0.77.16 - 2026-11-23
