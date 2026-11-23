@@ -468,6 +468,22 @@ def test_tool_schemas_are_strict_for_high_risk_tools():
         walk(tool.schema())
 
 
+def test_readonly_tools_advertise_a_static_batchable_marker():
+    # The model-facing read-only signal grounds EXECUTION's "independent read-only call" rule.
+    marker = "Read-only; independent calls may share one response."
+    for tool in (ReadTool, ViewImageTool):
+        assert tool.READONLY is True
+        assert marker in tool.schema()["function"]["description"]
+        # Strict rewriting touches parameters, never the description marker.
+        assert marker in tool.schema(strict=True)["function"]["description"]
+    # Mutating tools stay unmarked: Bash readonly is command-sensitive, so a static claim would lie.
+    for tool in (EditTool, BashTool):
+        assert tool.READONLY is False
+        assert marker not in tool.schema()["function"]["description"]
+    # The marker is a per-session constant (cached prefix): identical across calls.
+    assert ReadTool.schema() == ReadTool.schema()
+
+
 async def test_tool_validation_rejects_bad_shapes_without_side_effects(tmp_path):
     s = session(tmp_path)
     (tmp_path / "sample.py").write_text("alpha\n", encoding="utf-8")

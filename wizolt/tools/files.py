@@ -37,6 +37,7 @@ from wizolt.utils.filelock import path_lock
 
 class ReadTool(Tool):
     NAME = "Read"
+    READONLY = True
     DESCRIPTION = (
         "Read UTF-8 file ranges. Each file returns editable 1-based lines and a source=view.N; "
         "large output is bounded; the truncation marker names the file holding the rest. Batch independent files in one call."
@@ -159,6 +160,7 @@ class ReadTool(Tool):
 
 class ViewImageTool(Tool):
     NAME = "ViewImage"
+    READONLY = True
     DESCRIPTION = "View a local PNG, JPEG, WebP, or single-frame GIF. Uses the active model when possible and the configured vision provider as fallback. Use an attachment's session-owned path when provided; outside-workspace paths require confirmation."
     PRODUCES_MODEL_OBSERVATION = True
 

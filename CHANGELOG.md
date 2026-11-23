@@ -14,6 +14,10 @@
 - Keep the tree rail unbroken across wrapped log rows: a continuation draws `│` in the edge column
   instead of blanking it, so a long output or code row no longer punches a hole in the block's
   vertical line.
+- Mark read-only tools (Read, ViewImage) in their schema description so the model can batch
+  independent calls in one response. A static `READONLY` tool attribute drives a concise marker;
+  it is a per-session constant, so the cached tool prefix is unchanged. Mutating and
+  command-sensitive tools (Bash) stay unmarked.
 
 ## 0.77.3 - 2026-11-22
 

@@ -35,6 +35,11 @@ class Tool:
     EXAMPLE: ClassVar[tuple[str, ...]] = ()
     RANGE_SCHEMA: ClassVar[Json] = {"type": "array", "items": {"type": "integer", "minimum": 0}, "minItems": 2, "maxItems": 2}
     MUTATES: ClassVar[bool] = False
+    # Model-facing read-only signal: a static declaration that this tool only observes, so the model
+    # can batch independent calls in one response (see EXECUTION). Distinct from MUTATES, which gates
+    # confirmation. Must be a per-session constant, never arg-dependent: the tool block is cached
+    # prefix, so a per-call marker (e.g. Bash's command-sensitive readonly) would discard it.
+    READONLY: ClassVar[bool] = False
     PRODUCES_MODEL_OBSERVATION: ClassVar[bool] = False
     STORES_RESULT: ClassVar[bool] = True
     LOG_LEXER: ClassVar[str] = "tool-args"
@@ -57,6 +62,8 @@ class Tool:
     @classmethod
     def schema(cls, strict: bool = False) -> Json:
         description = "\n".join([cls.DESCRIPTION, *(("- " + item) for item in cls.EXAMPLE if item)])
+        if cls.READONLY:
+            description += "\nRead-only; independent calls may share one response."
         return Tool.function_schema(cls.NAME, description, cls.params_schema(), strict)
 
     @staticmethod

@@ -117,7 +117,8 @@ def test_strict_tools_off_path_emits_non_strict_schema():
             "type": "function",
             "function": {
                 "name": tool.NAME,
-                "description": "\n".join([tool.DESCRIPTION, *(("- " + item) for item in tool.EXAMPLE if item)]),
+                "description": "\n".join([tool.DESCRIPTION, *(("- " + item) for item in tool.EXAMPLE if item)])
+                + ("\nRead-only; independent calls may share one response." if tool.READONLY else ""),
                 "parameters": tool.params_schema(),
             },
         }
