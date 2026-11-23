@@ -494,7 +494,9 @@ def _finish_display(
         # A nested block's runner already drew its call line, so only standalone blocks
         # receive the root-tail rewrite.
         tail = ((" → " + key) if key else "") + tag
-        root = LogLine(root.label, root.text, root.role, meta=root.meta + tail, syntax=root.syntax)
+        number = key.removeprefix("tr.")
+        read_record = int(number) if call.name == "Read" and not tag and key.startswith("tr.") and number.isdecimal() else None
+        root = replace(root, meta=root.meta + tail, read_record=read_record)
     return LogBlock.hierarchy(None if d.nested_display else root, children)
 
 

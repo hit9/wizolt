@@ -36,6 +36,7 @@ from wizolt.base import (
     Json,
     LogBlock,
     LogEdge,
+    LogLine,
     LogRole,
     Text,
     TurnBox,
@@ -223,6 +224,46 @@ class CallGap(WidthDependent):
 
     def fragments(self, width: int) -> StyleAndTextTuples:
         return [] if UiPrinter.one_line(self.above) and UiPrinter.one_line([self.below]) else [("", "\n")]
+
+
+TranscriptPart = FormattedText | ANSI | WidthDependent
+
+
+def _read_row(part: TranscriptPart) -> LogLine | None:
+    if isinstance(part, LogBlockCell):
+        block = part.block
+        items = block.redraw() if block.redraw else block.items
+        if len(items) == 1 and isinstance(row := items[0], LogLine) and row.read_record is not None:
+            return row
+    return None
+
+
+def _group_reads(parts: list[TranscriptPart]) -> Iterable[TranscriptPart]:
+    """Fold adjacent standard Read records within this write. A replay consults the current format."""
+    index = 0
+    while index < len(parts):
+        part = parts[index]
+        index += 1
+        if index + 1 >= len(parts) or not isinstance(parts[index], CallGap) or not isinstance(part, LogBlockCell):
+            yield part
+            continue
+        first = _read_row(part)
+        if first is None or first.read_record is None:
+            yield part
+            continue
+        paths = [first.text]
+        while index + 1 < len(parts) and isinstance(parts[index], CallGap):
+            row = _read_row(parts[index + 1])
+            number = first.read_record + len(paths)
+            if row is None or row.read_record != number or row.meta != f" → tr.{number}":
+                break
+            paths.append(row.text)
+            index += 2
+        if len(paths) == 1:
+            yield part
+        else:
+            summary = replace(first, text=", ".join(paths), meta=f"{first.meta}–tr.{first.read_record + len(paths) - 1}")
+            yield LogBlockCell(part.printer, LogBlock([summary]))
 
 
 @dataclass(frozen=True)
@@ -1267,7 +1308,7 @@ class UiPrinter:
         sink = self.transcript_sink
         if sink is None:
             depth = Theme.color_depth(get_app_session().output.get_default_color_depth())
-            print_formatted_text(*parts, sep="", end="", flush=True, color_depth=depth)
+            print_formatted_text(*_group_reads(parts), sep="", end="", flush=True, color_depth=depth)
             return
         # Snapshot the batch and the completed labels; replay must never consult live turn state.
         color_depth = get_app_session().output.get_default_color_depth()
@@ -1292,7 +1333,11 @@ class UiPrinter:
         # row redrawn after `/theme` takes the depth the new theme draws in.
         depth = Theme.color_depth(color_depth or get_app_session().output.get_default_color_depth())
         output = Vt100_Output(buffer, lambda: size, default_color_depth=depth)
-        fragments = [fragment for part in parts for fragment in (part.fragments(size.columns) if isinstance(part, WidthDependent) else to_formatted_text(part))]
+        fragments = [
+            fragment
+            for part in _group_reads(parts)
+            for fragment in (part.fragments(size.columns) if isinstance(part, WidthDependent) else to_formatted_text(part))
+        ]
         # The role classes resolve to the colors the fragments already carry inline, so this adds
         # nothing until the theme changes -- then a replay draws the new theme's colors.
         render_fragments_to_output(output, fragments, Theme.transcript_style())

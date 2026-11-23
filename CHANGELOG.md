@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Group consecutive successful file reads printed together in the standard transcript. Ctrl-O keeps each result separately.
+
 ## 0.77.5 - 2026-11-23
 
 - Show one quiet reasoning line by default, three live Bash output lines, and the response in normal text. The divider carries the phase.

@@ -11,6 +11,7 @@ import re
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
 
 from prompt_toolkit.formatted_text import StyleAndTextTuples
@@ -418,7 +419,12 @@ async def tool_output_viewer(loop: CommandLoop) -> None:
     if (running := running_script_entry(loop)) is not None:
         entries.append(running)
     for record in reversed(loop.session.tool_records):
-        view = (lambda record=record: job_view(loop, record)) if record.name == "Job" else record_view(loop, record)
+        if record.name == "Read":
+            view = partial(read_view, record)
+        elif record.name == "Job":
+            view = partial(job_view, loop, record)
+        else:
+            view = record_view(loop, record)
         if view is not None:
             code = tooloutput.bash_exit_code(record.output) if record.name == "Bash" else ""
             failed = (code and code != "0") or (record.name == "ToolScript" and record.output.startswith("ToolScript failed\n"))
@@ -449,6 +455,14 @@ def record_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView | N
     if record.name == "Edit":
         return edit_view(loop, record)
     return None
+
+
+def read_view(record: ToolResultRecord) -> ApprovalView:
+    text, note = tooloutput.viewer_text(record.output)
+    rows = [("key", record.key)]
+    if note:
+        rows.append(("shown", note))
+    return ApprovalView(f"read · {record.key}", text, "text", rows)
 
 
 def edit_view(loop: CommandLoop, record: ToolResultRecord) -> ApprovalView | None:

@@ -745,3 +745,15 @@ def test_bash_browser_keeps_workdir_even_without_output(tmp_path):
     view = modals_mod.bash_view(command_loop, command_loop.session.tool_records[-1])
     assert view is not None and view.text == "true"
     assert ("workdir", '" sub "') in view.rows
+
+
+async def test_read_detail_opens_the_saved_excerpt(tmp_path, monkeypatch):
+    command_loop = loop(tmp_path)
+    path = tmp_path / "example.py"
+    path.write_text("first\noriginal excerpt\n")
+    await command_loop.agent.tools.run([ToolCall("read", "Read", [{"path": path.name, "ranges": [[2, 2]]}])])
+    path.write_text("replacement\n")
+    modal = await _open_detail(command_loop, ["enter"], monkeypatch, rows=40)
+    text = "".join(text for _, text in modal.frames[-1])
+    assert "tr.1" in text and "2 | original excerpt" in text
+    assert "replacement" not in text

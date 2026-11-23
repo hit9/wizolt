@@ -57,17 +57,21 @@ reasoning stays on screen while it arrives is yours to choose on the `/theme` Tr
 Streaming is on by default. If your endpoint rejects it, set `stream = false` in its provider
 block, or use `/set provider.stream off` for this session.
 
-## Bash output
+## Tool output
 
 While Bash runs, its latest three output lines stay above the `working` divider. When the command
 finishes, up to three lines from each stream stay in the transcript, and the complete result
 is stored under its `tr.N` key.
+
+In the standard transcript, consecutive successful reads printed together share one row, such as
+`Read  src/main.py, tests/test_main.py → tr.4–tr.5`. Each result opens separately.
 
 Press **Ctrl-O** to browse results, newest first. Use `j`/`k` or the arrows to select,
 `/` to search and **Enter** to open. **Ctrl-O** or `q` closes the list.
 
 | Result | What opens |
 | --- | --- |
+| Read | The saved file excerpt and its line numbers |
 | Bash | The command and its output |
 | Edit | The file's full diff, syntax-highlighted with the added and removed lines banded |
 | ToolScript | The complete script and its printed result; a running script appears first |
@@ -195,7 +199,7 @@ Long inline lists scroll as you move, leaving a few rows of recent output visibl
 - `Ctrl-D` — exit from an empty prompt
 - `Ctrl-R` — reverse-search your history; `Enter` puts the match in the input to edit, a second
   `Enter` sends it
-- `Ctrl-O` — browse the selected agent's recent Bash outputs, ToolScript scripts, background
+- `Ctrl-O` — browse the selected agent's recent file reads, Bash outputs, ToolScript scripts, background
   Job logs and edit diffs; press it again to close
 - `Ctrl-X Ctrl-E` or `Ctrl-G` — edit the current input in `$VISUAL` / `$EDITOR` (falls back to
   vim), as a temporary Markdown file

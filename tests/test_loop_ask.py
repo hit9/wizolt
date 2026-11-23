@@ -644,3 +644,28 @@ async def test_resumed_session_draws_user_narration_and_silent_batch_rules(tmp_p
     rules = rules_for(silent_run(8), [record()] * 8)
     assert len(rules) == 1
     assert rules[0] >= Presentation.MIN_ROWS_BETWEEN_RULES  # the silent run's rule is far enough
+
+
+async def test_adjacent_read_results_share_a_row_until_a_failure_or_format_switch(tmp_path):
+    loop = _colored_loop(tmp_path)
+    transcript = _transcript(loop)
+    runner = loop.agent.tools
+    runner.output_fn = loop.presentation.tool_output
+    paths = ["first.py", "second.py", "missing.py", "last.py"]
+    for path in paths:
+        if path != "missing.py":
+            (tmp_path / path).write_text(path)
+    calls = [ToolCall(str(i), "Read", [{"path": path, "ranges": [[1, 1]]}]) for i, path in enumerate(paths)]
+    with loop.presentation.ui.batched():
+        messages = await runner.run(calls)
+    assert len(messages) == 4
+    assert [record.key for record in loop.session.tool_records] == ["tr.1", "tr.2", "tr.3"]
+    standard = transcript()
+    assert "first.py 1:1, second.py 1:1 → tr.1–tr.2" in standard
+    assert "Read  missing.py 1:1 · rejected: no such file" in standard
+    assert "last.py 1:1 → tr.3" in standard
+    loop.session.config.transcript = {"format": "preset:minimal"}
+    assert "first.py 1:1 → tr.1" in transcript()
+    assert "second.py 1:1 → tr.2" in transcript()
+    loop.session.config.transcript = {}
+    assert transcript() == standard

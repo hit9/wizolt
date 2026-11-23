@@ -550,6 +550,9 @@ class LogLine:
     meta: str = ""
     syntax: str = ""
 
+    # Consecutive standard Read rows can share one citation range in the terminal.
+    read_record: int | None = None
+
     def text_prefix(self) -> str:
         edge = "" if self.edge is LogEdge.NONE else self.edge.value + " "
         separator = "  " if self.edge is LogEdge.NONE else " "
