@@ -186,6 +186,8 @@ class AppearancePicker:
             **{transcripts.SETTINGS[group]: transcripts.current(loop, group) for group in ("thinking", "close")},
             **{kind + "_theme": Theme.selected_bar_theme(kind) for kind in ("statusbar", "divider")},
         }
+        self.previewed_turn_colors = False
+        self.all_themes = False
         self.selected = dict(self.original)
         # The formats behind `custom` rows: what was saved, or a draft accepted in the format panel.
         self.custom = {kind: self.layout_before.sources[kind] for kind in BAR_FORMATS if self.original[kind] == CUSTOM}
@@ -312,7 +314,12 @@ class AppearancePicker:
         offers and says about `auto`."""
         kind, state = self.kind(), self.lists[self.kind()]
         if kind == "theme":
-            state.choices, state.labels = Theme.choices(), {Theme.AUTO: f"auto (follows the terminal: {Theme.resolve(Theme.AUTO)})"}
+            state.choices = (
+                Theme.choices()
+                if self.all_themes or state.searching or state.query
+                else tuple(dict.fromkeys((Theme.AUTO, "slate", "paper", self.original["theme"], self.selected["theme"])))
+            )
+            state.labels = {Theme.AUTO: f"auto (follows the terminal: {Theme.resolve(Theme.AUTO)})"}
         elif kind == "diff":
             state.choices = Theme.diff_styles()
             state.labels = {
@@ -375,6 +382,8 @@ class AppearancePicker:
         return state
 
     def apply(self, kind: str, name: str) -> None:
+        if kind in {"theme", "diff"} and self.loop.agent.turn_active:
+            self.previewed_turn_colors = True
         if kind == "theme":
             Theme.set_mode(Theme.resolve(name))
         elif kind == "diff":
@@ -497,7 +506,9 @@ class AppearancePicker:
                 choice = state.selected_choice()
                 focused = state.labels.get(choice, choice) if choice is not None else "no matches"
                 keys = "↑↓ move · h/l tab · Enter save · Esc cancel"
-                if self.kind() in self.bar_focus:
+                if self.kind() == "theme":
+                    keys = "a all themes · h/l tab · Enter save · Esc cancel"
+                elif self.kind() in self.bar_focus:
                     keys = "Space choose · Tab group · f format · Enter save · Esc cancel"
                 elif self.kind() == "input":
                     keys = "↑↓ move · e edit · Enter save · Esc cancel"
@@ -519,6 +530,8 @@ class AppearancePicker:
             if path
             else "Full customization: edit your config file"
         )
+        if self.kind() == "theme":
+            hint = "a  fewer themes" if self.all_themes else "a  all themes"
         config_hint = (Theme.fg("muted"), "  " + Text.clip_width(hint, self.width - 2) + "\n")
         if self.input_edit is not None:
             parts = [*tabs, (Theme.fg("muted"), "  Tab field · Ctrl-U clear · Enter apply · Esc back\n"), config_hint]
@@ -645,6 +658,10 @@ class AppearancePicker:
             return TUI_MODAL_PENDING
         state = self.current_list()
         kind, before = self.kind(), state.selected_choice()
+        if kind == "theme" and not state.searching and key == "a":
+            self.all_themes = not self.all_themes
+            state.set_query("")
+            return TUI_MODAL_PENDING
         if kind in self.bar_focus and not state.searching and key == "f":
             # The divider's Sweep rows open its formula; any other row, the bar's format.
             self.open_format("sweep" if self.bar_focus[kind].startswith("sweep:") else kind)
@@ -776,23 +793,26 @@ async def pick(loop: CommandLoop) -> str | None:
     timer = asyncio.create_task(animate())
     result: Any = None
     try:
-        result = await tui.show_modal(picker.fragments, picker.handle_key)
+        result = await tui.show_modal(picker.fragments, picker.handle_key, wait_for_input=True)
     finally:
         timer.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await timer
         # Every preview is undone first; saving then applies each change for good.
         picker.restore()
+        if picker.previewed_turn_colors and result is not _SAVE:
+            # Completed output may have arrived in a palette the user only browsed.
+            tui.recolor()
         tui.invalidate()
     if isinstance(result, KeyboardInterrupt):
         raise result
     if result is not _SAVE:
         return None
     lines = picker.save()
+    if picker.previewed_turn_colors or picker.selected["theme"] != picker.original["theme"] or Theme.selected_diff_style() != diff_before:
+        tui.recolor()
     if not lines:
         return None
-    if picker.selected["theme"] != picker.original["theme"] or Theme.selected_diff_style() != diff_before:
-        tui.recolor()
     if warning := Theme.true_color_warning():
         lines.append(warning)
     return "\n".join(lines)
@@ -821,6 +841,8 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
 
     The colorscheme is saved to runtime.theme, as Codex and Claude Code save theirs; the transcript
     already on screen is redrawn in it once, the way a resize redraws it."""
+    if loop.appearance_open:
+        return None
     problems = Theme.load_custom(loop.session.data_path("themes"), loop.session.config.ui.get("themes"))
     words = args.split()
     if len(words) == 3 and words[0] in ("statusbar", "divider") and words[1] == "theme":
@@ -856,4 +878,8 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
         )
     for problem in problems:
         loop.presentation.emit(problem)
-    return await pick(loop)
+    loop.appearance_open = True
+    try:
+        return await pick(loop)
+    finally:
+        loop.appearance_open = False

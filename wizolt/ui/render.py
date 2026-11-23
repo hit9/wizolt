@@ -371,6 +371,7 @@ class Theme:
         "text": "default",
         "muted": "ansibrightblack",
         "subtle": "ansibrightblack",
+        "preview": "#757b80",
         "accent": "ansicyan",
         "accent_secondary": "ansimagenta",
         "info": "ansiblue",
@@ -419,6 +420,7 @@ class Theme:
         "text": "default",
         "muted": "ansibrightblack",
         "subtle": "ansibrightblack",
+        "preview": "#777b80",
         "accent": "ansicyan",
         "accent_secondary": "ansimagenta",
         "info": "ansiblue",
@@ -922,7 +924,7 @@ class Theme:
     @classmethod
     def tui_styles(cls) -> dict[str, str]:
         """Semantic classes referenced directly by prompt-toolkit fragments."""
-        return {role: f"fg:{cls.color(role)}" for role in ("text", "muted", "subtle", "accent", "rule", "success", "error")}
+        return {role: f"fg:{cls.color(role)}" for role in ("text", "muted", "subtle", "preview", "accent", "rule", "success", "error")}
 
     @classmethod
     def rich_theme(cls) -> RichTheme:
@@ -2397,7 +2399,7 @@ class LiveSpark:
 
 
 class BashLivePreview:
-    HEIGHT: ClassVar[int] = 5
+    HEIGHT: ClassVar[int] = 3
     MAX_CHARS: ClassVar[int] = 8000
     # Heartbeat tick so the elapsed timer advances even while a command produces no output
     # (e.g. quiet long-runners or `... | tail` that buffers until EOF), so the terminal never
@@ -2479,7 +2481,7 @@ class BashLivePreview:
         self.rendered_lines = len(rows)
         self.rendered_rows = rows
 
-    def frame_rows(self) -> list[list[tuple[str, str]]]:
+    def frame_rows(self, *, inline: bool = False) -> list[list[tuple[str, str]]]:
         """The frame as styled rows: a breathing spark capping the rail, then the output under it.
 
         The status row used to carry a BRANCH edge under a `hierarchy(None, ...)` — a `├` with no
@@ -2498,11 +2500,12 @@ class BashLivePreview:
         limit = max(1, width - get_cwidth(rail) - 1)
         # Always emit a status row so the frame is visible even before any output arrives.
         status = f"output · {label}{remaining}" if body else f"running… {label}{remaining}"
-        rows = [[(LiveSpark.style(self.started_at), LogBlock.margin(2) + LiveSpark.glyph(self.started_at)), (Theme.fg("muted"), status)]]
+        lead = ("", LogBlock.margin(2)) if inline else (LiveSpark.style(self.started_at), LogBlock.margin(2) + LiveSpark.glyph(self.started_at))
+        rows = [[lead, (Theme.fg("preview"), status)]]
         if body:
             # A blank row keeps the spark off the rail: the star caps the region, it does not sit on it.
             rows.append([("", "")])
-            rows.extend([(Theme.fg("muted"), rail + Text.clip_width(line, limit))] for line in body)
+            rows.extend([(Theme.fg("rule"), rail), (Theme.fg("preview"), Text.clip_width(line, limit))] for line in body)
         return rows
 
 

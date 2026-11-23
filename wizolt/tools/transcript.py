@@ -313,7 +313,7 @@ def _table(config: Any) -> dict[str, Any]:
 def thinking(config: Any) -> str:
     """How reasoning appears while it arrives: every line, its first line, or nothing."""
     value = _table(config).get("thinking")
-    return value if value in THINKING else THINKING[0]
+    return value if value in THINKING else "collapsed"
 
 
 def close(config: Any) -> str:

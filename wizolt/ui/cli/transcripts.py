@@ -46,7 +46,7 @@ GROUPS = ("format", "thinking", "close")
 SETTINGS = {"format": "transcript", "thinking": "transcript_thinking", "close": "transcript_close"}
 TITLES = {"format": "Record format", "thinking": "Thinking display", "close": "Tool-run divider"}
 LABELS = {
-    "expanded": "every line",
+    "expanded": "latest three lines",
     "collapsed": "first line only",
     "hidden": "hidden",
     "rule": "a full-width line",
@@ -119,11 +119,10 @@ def thinking_preview(mode: str, columns: int) -> StyleAndTextTuples:
     if mode == "hidden":
         # The live region draws nothing at all, spark included; the sample must not promise one.
         return [(Theme.fg("muted"), "  nothing while it thinks; only the divider below names the phase\n")]
-    head: StyleAndTextTuples = [(Theme.fg("muted"), "✻ thinking\n")]
     shown = SAMPLE_REASONING[:1] if mode == "collapsed" else SAMPLE_REASONING
-    rows: StyleAndTextTuples = list(head)
+    rows: StyleAndTextTuples = []
     for line in shown:
-        rows.extend([(Theme.fg("muted"), rail), (Theme.fg("muted"), " " + Text.clip_width(line, max(1, columns - len(rail) - 2)) + "\n")])
+        rows.extend([(Theme.fg("rule"), rail), (Theme.fg("preview"), Text.clip_width(line, max(1, columns - len(rail) - 2)) + "\n")])
     return rows
 
 

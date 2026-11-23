@@ -138,9 +138,9 @@ async def test_enter_saves_the_global_format_and_keeps_the_rest_of_the_file(comm
 
 async def test_saving_only_thinking_leaves_the_printed_transcript_alone(command_loop):
     """Thinking shapes the live reasoning preview, which nothing printed carries."""
-    modal = command_loop.presentation.tui = TranscriptModal(["h", "j", "j", "j", " ", "enter"])
+    modal = command_loop.presentation.tui = TranscriptModal(["h", "j", "j", " ", "enter"])
     result = await theme_command(command_loop, "")
-    assert result is not None and "transcript.thinking: collapsed (saved)" in result
+    assert result is not None and "transcript.thinking: expanded (saved)" in result
     assert modal.recolored == 0
 
 

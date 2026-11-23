@@ -253,16 +253,14 @@ def test_transcript_and_live_preview_leave_input_and_status_on_fixed_rows(monkey
 
 @pytest.mark.parametrize('kind,label', [('reasoning', 'thinking'), ('output', 'responding')])
 @pytest.mark.parametrize('columns', [30, 80])
-def test_stream_header_and_spark_survive_a_full_preview(monkeypatch, tmp_path, wired, kind, label, columns):
+def test_live_preview_leaves_the_phase_to_the_divider(monkeypatch, tmp_path, wired, kind, label, columns):
     output, app, printer = wired
     output = ReflowingTerminal(18, columns)
     command_loop = loop(tmp_path)
     command_loop.presentation.tui = app
     app.activity_fragments_fn = command_loop.view.tui_activity_fragments
     app.status_fragments_fn = lambda: [('', 'fixed-status')]
-    # This terminal model counts codepoints, not terminal-specific Unicode glyph widths.
-    # Freeze the animated spark to an ASCII cell while exercising its real header placement.
-    monkeypatch.setattr(LiveSpark, 'glyph', lambda _: '* ')
+    command_loop.session.config.transcript["thinking"] = "expanded"
 
     def drive(_pipe_input):
         wait_until(lambda: 'fixed-status' in output.lines[-1])
@@ -270,7 +268,7 @@ def test_stream_header_and_spark_survive_a_full_preview(monkeypatch, tmp_path, w
             def stream(count=count):
                 command_loop.presentation.model_stream_kind = kind
                 command_loop.presentation.model_stream_text = '\n'.join(f'chunk-{count}-{i}' for i in range(count))
-                app.set_running('+> ')
+                app.set_running('working')
                 app.invalidate()
             app.app.loop.call_soon_threadsafe(stream)
             wait_until(lambda count=count: any(f'chunk-{count}-{count - 1}' in line for line in output.lines))
@@ -278,8 +276,8 @@ def test_stream_header_and_spark_survive_a_full_preview(monkeypatch, tmp_path, w
 
             async def check(count=count):
                 lines = list(output.lines)
-                assert any(f'* {label}' in line for line in lines), '\n'.join(lines)
-                assert sum('chunk-' in line for line in lines) == min(count, 6)
+                assert sum(label in line for line in lines) == 1, '\n'.join(lines)
+                assert sum('chunk-' in line for line in lines) == min(count, 3 if kind == 'reasoning' else 6)
                 assert lines[-3].startswith('+>')
                 assert 'fixed-status' in lines[-1]
             asyncio.run_coroutine_threadsafe(check(), app.app.loop).result(timeout=5)

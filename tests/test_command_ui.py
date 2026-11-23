@@ -85,7 +85,7 @@ class ModalHarness:
         self.frames = []
         self.exclusive = []
 
-    def _drive(self, fragments_fn, key_fn, *, exclusive=False):
+    def _drive(self, fragments_fn, key_fn, *, exclusive=False, wait_for_input=False):
         self.exclusive.append(exclusive)
         self.frames.append(fragments_fn())
         result = TUI_MODAL_PENDING
@@ -99,7 +99,7 @@ class ModalHarness:
                 return result
         return None
 
-    async def show_modal(self, fragments_fn, key_fn, *, exclusive=False, follow_transcript=False):
+    async def show_modal(self, fragments_fn, key_fn, *, exclusive=False, follow_transcript=False, wait_for_input=False):
         return self._drive(fragments_fn, key_fn, exclusive=exclusive)
 
 

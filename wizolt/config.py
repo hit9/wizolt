@@ -742,7 +742,7 @@ model = ""
 # format = "preset:standard"  # or one bar-format row per line: {tool} {name} {args} {marker}
                                # {duration} {exit} {citation} {elided} {error}, {% if %};
                                # a line of just {output|tail:N} shows the last N output lines
-# thinking = "expanded"       # reasoning while it arrives: expanded, collapsed (first line), hidden
+# thinking = "collapsed"      # reasoning while it arrives: expanded, collapsed (first line), hidden
 # close = "rule"              # a long run of silent calls: rule, blank, none
 # [transcript.tool.Bash]      # sparse per-tool override; unset tools inherit format above
 # format = "preset:minimal"

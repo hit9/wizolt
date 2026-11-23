@@ -15,13 +15,14 @@ One picker for the whole look.
 **← / →** or **h / l** switches tabs. **↑ / ↓** moves through the choices.
 The screen previews each choice as you move. **Enter** saves everything you changed;
 **Esc** cancels. Use **/** to search a long list.
-The line beneath the shortcuts points to your config file for fuller customization.
+You can open the picker while the agent is working.
 Roomy panes separate the choices from a bordered sample panel. Small panes use a compact
 preview so more choices remain visible.
 
 ## Color themes
 
-Choose a familiar classic or a newer favorite in the **Colorscheme** tab.
+The **Colorscheme** tab opens with `auto`, `slate`, `paper` and your current theme.
+Press **a** to browse all colors, or **/** to search built-in, custom and plugin themes.
 Each theme carries its accent through your messages, the menu selection and the model in
 the status bar. Tool names and separators use quieter colors.
 The preview shows a short exchange with a user message, a reply, an edit and its test result.
@@ -217,9 +218,8 @@ minimal
   ● read src/db/rows.rs
 ```
 
-**Thinking display** decides how the model's reasoning reads while it arrives: `expanded` keeps
-the newest lines (the default), `collapsed` keeps its opening line only, and `hidden` shows
-nothing -- the divider below still says `thinking`.
+**Thinking display** defaults to `collapsed`, which keeps the first nonblank reasoning line
+in place. Choose `expanded` for the latest three lines or `hidden` for the phase label alone.
 
 **Tool-run divider** decides what closes a long run of tool calls the agent never talks over: a
 full-width line (the default), a blank line, or nothing. Saving it redraws the dividers already on

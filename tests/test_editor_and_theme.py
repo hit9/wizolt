@@ -65,7 +65,7 @@ def test_theme_adapters_publish_only_the_styles_the_renderers_reference(monkeypa
     for mode in ("dark", "light"):
         monkeypatch.setattr(Theme, "_mode", mode)
         tui_styles = Theme.tui_styles()
-        assert set(tui_styles) == {"text", "muted", "subtle", "accent", "rule", "success", "error"}
+        assert set(tui_styles) == {"text", "muted", "subtle", "preview", "accent", "rule", "success", "error"}
         style = Style.from_dict(tui_styles)
         console = Console(theme=Theme.rich_theme())
         for role in tui_styles:
@@ -588,7 +588,7 @@ def test_the_roles_that_carry_text_are_the_terminal_own_colors():
     selection band, which has to stay one colour across every list instead of taking the colour of
     the row it lands on, and the completion menu's surface, which carries no text of its own.
     """
-    fixed = {"user", "user_bg", "syntax_default", "divider_glow", "divider_rule", "selection_bg", "selection_fg", "menu_bg"}
+    fixed = {"preview", "user", "user_bg", "syntax_default", "divider_glow", "divider_rule", "selection_bg", "selection_fg", "menu_bg"}
     for palette in (Theme.DARK, Theme.LIGHT):
         for role in Theme.ROLES:
             if role in fixed or role.startswith(("status_", "syntax_", "context_")):

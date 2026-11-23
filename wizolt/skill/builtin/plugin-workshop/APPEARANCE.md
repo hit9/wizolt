@@ -32,7 +32,7 @@ custom highlight groups belong in bar formats.
 
 | Area | Roles |
 | --- | --- |
-| General | `text`, `muted`, `subtle`, `accent`, `accent_secondary`, `info`, `rule` |
+| General | `text`, `muted`, `subtle`, `preview`, `accent`, `accent_secondary`, `info`, `rule` |
 | Messages | `user`, `user_bg`, `tool`, `success`, `warning`, `error` |
 | Context bar | `context_tools`, `context_system`, `context_memory`, `context_skills`, `context_mcp`, `context_summary`, `context_chat`, `context_other` |
 | Syntax | `syntax_assign`, `syntax_string`, `syntax_number`, `syntax_ident`, `syntax_builtin`, `syntax_default` |

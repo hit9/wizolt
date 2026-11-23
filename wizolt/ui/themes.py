@@ -220,6 +220,7 @@ def scheme(
             **CONTEXT_COLORS[appearance],
             "text": "default",
             "muted": muted,
+            "preview": lift(background, edge, background, 3.5),
             "subtle": lift(comment, fg, background, 3.0),
             "accent": aqua,
             "accent_secondary": purple,

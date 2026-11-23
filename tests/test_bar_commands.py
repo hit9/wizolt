@@ -241,11 +241,11 @@ async def test_small_pane_prioritizes_choices_over_the_sample(command_loop, monk
     modal = command_loop.presentation.tui = BarModal(["escape"])
     await theme_command(command_loop, "")
     text = "".join(text for _, text in modal.frames[0])
-    assert "showing 1-6 of" in text
+    assert "slate" in text and "paper" in text and "dracula" not in text
     assert "Handle repeated spaces" in text and "Enter save" in text
     assert "Conversation preview" in text and "12 tests passed" not in text
     assert text.splitlines()[1].strip().endswith("Enter save · Esc cancel")
-    assert "customization" in text.splitlines()[2] and "config" in text.splitlines()[2]
+    assert "all themes" in text.splitlines()[2]
     assert 1 + text.count("\n") == 14
 
 
@@ -710,3 +710,20 @@ def test_an_empty_paste_or_key_types_nothing_into_a_draft():
         assert panel.draft.text == before, key
     panel.handle_key("paste", "{model}")
     assert panel.draft.text == before + "{model}"
+
+
+async def test_theme_picker_while_working_can_browse_all_and_save(command_loop, monkeypatch):
+    monkeypatch.setattr(type(command_loop.agent), "turn_active", property(lambda self: True))
+    command_loop.presentation.tui = BarModal(["a", "/", *"dracula", "enter", "enter"])
+    await command_loop.run_queued_command("/theme")
+    assert saved(command_loop)["runtime"]["theme"] == "dracula"
+    assert command_loop.session.pending_user_inputs == []
+
+
+async def test_interrupting_working_theme_picker_cancels_only_the_preview(command_loop, monkeypatch):
+    monkeypatch.setattr(type(command_loop.agent), "turn_active", property(lambda self: True))
+    original = saved(command_loop)
+    command_loop.presentation.tui = BarModal(["j", "c-c"])
+    await command_loop.run_queued_command("/theme")
+    assert saved(command_loop) == original
+    assert not command_loop.appearance_open

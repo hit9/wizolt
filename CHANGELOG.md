@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Show one quiet reasoning line by default, three live Bash output lines, and the response in normal text. The divider carries the phase.
+- Open `/theme` during a turn. Its Colorscheme tab starts with three presets and the current theme. Press `a` or search to reach the full collection.
+
 ## 0.77.4 - 2026-11-23
 
 - Keep the terminal cursor at the editing position in long tmux sessions so input method candidates follow the draft.

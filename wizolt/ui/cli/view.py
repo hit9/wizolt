@@ -34,7 +34,7 @@ from wizolt.ui.cli.hints import Context as HintContext
 from wizolt.ui.cli.hints import HintPicker
 from wizolt.ui.cli.registry import CommandCatalog
 from wizolt.ui.cli.runtime import RESUME_STATUS_LABEL, STARTING_STATUS_LABEL
-from wizolt.ui.render import ActivityPulse, InputStyle, LiveSpark, Theme, UiPrinter
+from wizolt.ui.render import ActivityPulse, InputStyle, Theme, UiPrinter
 from wizolt.ui.tui import InputMode
 
 if TYPE_CHECKING:
@@ -504,7 +504,7 @@ class View:
         if stream:
             fragments.append(("", "\n"))
         with self.presentation.live_preview.lock:
-            rows = self.presentation.live_preview.frame_rows() if self.presentation.live_preview.active else []
+            rows = self.presentation.live_preview.frame_rows(inline=True) if self.presentation.live_preview.active else []
         for row in rows:
             fragments.extend([*row, ("", "\n")])
         if rows:
@@ -540,7 +540,7 @@ class View:
         if kind == "output":
             # The reaction marker is shown beside the user's message, never as reply text.
             text = "" if opens_reaction(text) else split_reaction(text)[1]
-        mode = transcript.thinking(self.session.config) if kind == "reasoning" else transcript.THINKING[0]
+        mode = transcript.thinking(self.session.config) if kind == "reasoning" else "expanded"
         if not text or mode == "hidden":
             return []
         width = max(20, shutil.get_terminal_size((120, 20)).columns)
@@ -554,54 +554,41 @@ class View:
         # is not steady. Blank openings are skipped: a stream that starts with a bare newline would
         # otherwise draw an empty row for the whole answer, since only the first line is ever shown.
         lines = text.replace("\r", "\n").splitlines()
-        shown = [line for line in lines if line.strip()][:1] if mode == "collapsed" else lines[-6:]
+        limit = 3 if kind == "reasoning" else 6
+        shown = [next((line for line in lines if line.strip()), "")] if mode == "collapsed" else lines[-limit:]
+        if mode == "collapsed" and not shown[0]:
+            return []
         rows = [Text.clip_width(line.expandtabs(4), max(1, width - len(rail) - 1)) for line in shown]
-        # The spark's row is the region's own, never the text's: a gray word beside the spark names
-        # the phase (the same wording the divider below uses), and the first streamed line can arrive
-        # on the next row down instead of racing for whatever room the spark leaves. The rows are
-        # what the reader is actually reading, and breathing those would be a strobe rather than a
-        # sign of life.
-        spark = LogBlock.margin(TurnBox.CONTENT_LEVEL + 1) + LiveSpark.glyph(self.session.state.stream_started_at)
-        label = {"reasoning": "thinking", "output": "responding"}.get(kind)
-        fragments: StyleAndTextTuples = [
-            # Anchored to the stream this preview is showing, which ModelClient stamps on the
-            # first chunk of each request and clears between them, so every response opens the
-            # spark at its crest instead of wherever the wall clock happened to be.
-            (LiveSpark.style(self.session.state.stream_started_at), spark),
-            *([("class:muted", label)] if label else []),
-            ("", "\n"),
-            # A blank row keeps the spark off the rail: the star caps the region, it does not sit
-            # on it. The running-command frame draws the same gap whenever it has output.
-            ("", "\n"),
-        ]
+        fragments: StyleAndTextTuples = []
         for row in rows:
-            fragments.append(("class:muted", rail))
-            fragments.extend(self._stream_inline_fragments(row))
+            fragments.append(("class:rule", rail))
+            inline = self._stream_inline_fragments(row)
+            if kind == "reasoning":
+                fragments.append(("class:preview", "".join(text for _, text in inline)))
+            else:
+                fragments.extend(inline)
             fragments.append(("", "\n"))
         return fragments
 
     @classmethod
-    def _stream_inline_fragments(cls, row: str) -> StyleAndTextTuples:
-        """One preview row as fragments: plain gray text with closed inline markdown tokens
-        marked in the same gray tones (weight and underline, no color), so the region stays
-        uniformly gray. A marker without its closing partner stays literal, so a stream that has
-        not finished a token never toggles its style from frame to frame."""
-        fragments: StyleAndTextTuples = []
+    def _stream_inline_fragments(cls, row: str) -> list[tuple[str, str]]:
+        """Style complete inline tokens in an answer. Keep an unfinished marker literal."""
+        fragments: list[tuple[str, str]] = []
         cursor = 0
         for match in cls.STREAM_INLINE_RE.finditer(row):
             if match.start() > cursor:
-                fragments.append(("class:muted", row[cursor : match.start()]))
+                fragments.append(("class:text", row[cursor : match.start()]))
             token = match.group(1)
             if token.startswith("**"):
-                fragments.append(("class:muted bold", token[2:-2]))
+                fragments.append(("class:text bold", token[2:-2]))
             elif token.startswith("`"):
-                fragments.append(("class:muted underline", token[1:-1]))
+                fragments.append(("class:text underline", token[1:-1]))
             else:
-                fragments.append(("class:muted italic", token[1:-1]))
+                fragments.append(("class:text italic", token[1:-1]))
             cursor = match.end()
         if cursor < len(row):
-            fragments.append(("class:muted", row[cursor:]))
-        return fragments or [("class:muted", row)]
+            fragments.append(("class:text", row[cursor:]))
+        return fragments or [("class:text", row)]
 
     def tui_input_hint(self) -> str:
         tui = self.presentation.tui

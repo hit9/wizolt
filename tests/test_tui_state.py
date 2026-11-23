@@ -269,33 +269,20 @@ def test_live_spark_keeps_range_on_a_light_terminal(monkeypatch):
 
 
 def test_model_stream_preview_draws_the_same_tree_as_the_log(tmp_path):
-    """The spark's row belongs to the spark: a gray phase word (`thinking`, then `responding`) sits
-    beside it, and the streamed text starts on its own rail row below, so the first line never
-    races for whatever room the spark leaves -- with or without the word, the layout is the same.
-
-    The rows carry CONTINUE and nothing carries BRANCH -- `├` is a T-junction, and there is no
-    line above the block for one to join. Nothing closes it either: the stream is still arriving,
-    and a `└` would say it had finished."""
     config = Config()
     config.data_dir = str(tmp_path / "data")
     loop = CommandLoop(Agent(Session(cwd=str(tmp_path), config=config)), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
 
+    config.transcript["thinking"] = "expanded"
     loop.presentation.model_stream_output("reasoning", "weighing the two paths\nthe second option is cleaner")
     lines = "".join(text for _, text in loop.view.model_stream_fragments()).splitlines()
 
     rail = LogBlock.prefix(TurnBox.CONTENT_LEVEL + 1, LogEdge.CONTINUE)
-    assert any(
-        lines[0] == LogBlock.margin(TurnBox.CONTENT_LEVEL + 1) + glyph + "thinking" for glyph in LiveSpark.GLYPHS
-    )  # either star may lead the preview: no anchor means the wall clock picks the phase
-    assert lines[1] == ""  # the blank row lifts the spark off the rail below it
-    assert lines[2] == rail + "weighing the two paths"
-    assert lines[3] == rail + "the second option is cleaner"
-    assert len(LiveSpark.GLYPH) == len(LogBlock.RAIL)  # so the spark sits in the rail's column
-    assert all(len(glyph) == len(LogBlock.RAIL) for glyph in LiveSpark.GLYPHS)  # and its swapped partner does too
+    assert lines == [rail + "weighing the two paths", rail + "the second option is cleaner"]
     assert not any(LogEdge.BRANCH.value in line or LogEdge.END.value in line for line in lines)
     # The column a tool's own output lines are drawn in: the two trees share a grid.
     tool = str(LogBlock.hierarchy(LogLine("Bash", "pytest -q", LogRole.TOOL), [LogLine("", "output line", LogRole.OUTPUT, LogEdge.CONTINUE)]))
-    assert tool.splitlines()[1].index(LogEdge.CONTINUE.value) == lines[2].index(LogEdge.CONTINUE.value)
+    assert tool.splitlines()[1].index(LogEdge.CONTINUE.value) == lines[0].index(LogEdge.CONTINUE.value)
 
 
 def test_model_stream_preview_switches_phase_and_clears(tmp_path):
@@ -303,19 +290,17 @@ def test_model_stream_preview_switches_phase_and_clears(tmp_path):
     config.data_dir = str(tmp_path / "data")
     loop = CommandLoop(Agent(Session(cwd=str(tmp_path), config=config)), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
 
-    # The phase word rides beside the spark and follows the stream: `thinking` while the model
-    # reasons, `responding` once it answers; the preview carries only the text besides that.
     loop.presentation.model_stream_output("reasoning", "checking the request")
     reasoning = "".join(text for _, text in loop.view.model_stream_fragments())
     assert "checking the request" in reasoning
-    assert "thinking" in reasoning
+    assert "thinking" not in reasoning
     assert "thinking" in "".join(text for _, text in loop.view.queue_divider_fragments())
 
     loop.presentation.model_stream_output("output", "answering now")
     output = "".join(text for _, text in loop.view.model_stream_fragments())
     assert "answering now" in output
     assert "thinking" not in output  # the word follows the phase instead of staying stale
-    assert "responding" in output
+    assert "responding" not in output
     assert "checking the request" not in output
     assert "responding" in "".join(text for _, text in loop.view.queue_divider_fragments())
 
@@ -341,11 +326,13 @@ def test_model_stream_preview_styles_inline_markdown(tmp_path, monkeypatch):
 
     loop.presentation.model_stream_output("reasoning", "**bold** `code` *italic* and **unclosed")
 
+    assert ("class:preview", "bold code italic and **unclosed") in loop.view.model_stream_fragments()
+    loop.presentation.model_stream_output("output", "**bold** `code` *italic* and **unclosed")
     styled = {(text, style) for style, text in loop.view.model_stream_fragments() if text}
-    assert ("bold", "class:muted bold") in styled
-    assert ("code", "class:muted underline") in styled
-    assert ("italic", "class:muted italic") in styled
-    assert (" and **unclosed", "class:muted") in styled  # no closing marker: the tail stays literal
+    assert ("bold", "class:text bold") in styled
+    assert ("code", "class:text underline") in styled
+    assert ("italic", "class:text italic") in styled
+    assert (" and **unclosed", "class:text") in styled  # no closing marker: the tail stays literal
 
 
 def test_model_stream_preview_keeps_malformed_star_runs_literal(tmp_path, monkeypatch):
@@ -356,12 +343,12 @@ def test_model_stream_preview_keeps_malformed_star_runs_literal(tmp_path, monkey
     config.data_dir = str(tmp_path / "data")
     loop = CommandLoop(Agent(Session(cwd=str(tmp_path), config=config)), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
 
-    loop.presentation.model_stream_output("reasoning", "**a* *a** **** **a**b**")
+    loop.presentation.model_stream_output("output", "**a* *a** **** **a**b**")
 
     styled = {(text, style) for style, text in loop.view.model_stream_fragments() if text}
-    assert ("**a* *a** **** ", "class:muted") in styled  # unclosed and empty star runs stay literal
-    assert ("a", "class:muted bold") in styled  # the closed bold inside the last token still renders
-    assert ("b**", "class:muted") in styled  # the trailing unclosed run stays literal
+    assert ("**a* *a** **** ", "class:text") in styled  # unclosed and empty star runs stay literal
+    assert ("a", "class:text bold") in styled  # the closed bold inside the last token still renders
+    assert ("b**", "class:text") in styled  # the trailing unclosed run stays literal
     assert not any(text == "a" and "italic" in style for text, style in styled)  # no italic borrowed from `**`
 
 

@@ -57,12 +57,12 @@ async def preview_at(command_loop, row):
 def test_an_unset_or_unknown_look_setting_falls_back_to_the_builtin():
     """A key nobody set, a `transcript` key that is not a table, and a value this build does not
     know all land on the builtin look: the renderer falls back safely whatever the file says."""
-    assert (transcript.thinking(Config()), transcript.close(Config())) == ("expanded", "rule")
-    assert transcript.thinking(SimpleNamespace()) == "expanded"  # no `transcript` attribute at all
-    assert transcript.thinking(SimpleNamespace(transcript=None)) == "expanded"
-    assert transcript.thinking(SimpleNamespace(transcript="preset:minimal")) == "expanded"
-    assert transcript.thinking(SimpleNamespace(transcript={})) == "expanded"
-    assert transcript.thinking(SimpleNamespace(transcript={"thinking": "loud"})) == "expanded"
+    assert (transcript.thinking(Config()), transcript.close(Config())) == ("collapsed", "rule")
+    assert transcript.thinking(SimpleNamespace()) == "collapsed"  # no `transcript` attribute at all
+    assert transcript.thinking(SimpleNamespace(transcript=None)) == "collapsed"
+    assert transcript.thinking(SimpleNamespace(transcript="preset:minimal")) == "collapsed"
+    assert transcript.thinking(SimpleNamespace(transcript={})) == "collapsed"
+    assert transcript.thinking(SimpleNamespace(transcript={"thinking": "loud"})) == "collapsed"
     assert transcript.close(SimpleNamespace(transcript={"close": "dash"})) == "rule"
 
 
@@ -97,7 +97,7 @@ async def test_space_chooses_both_look_settings_and_enter_saves_them(command_loo
     # values they replaced carry neither any more.
     last = frames(modal)[-1]
     assert "* hidden" in last and "* a blank line" in last
-    assert "* every line" not in last and "* a full-width line" not in last
+    assert "* latest three lines" not in last and "* a full-width line" not in last
 
 
 async def test_enter_without_a_choice_writes_nothing(command_loop):
@@ -125,7 +125,7 @@ async def test_escape_discards_a_chosen_look_setting(command_loop):
 
 async def test_the_sample_follows_the_highlighted_thinking_row(command_loop):
     expanded = await preview_at(command_loop, "thinking:expanded")
-    assert "✻ thinking" in expanded
+    assert "✻ thinking" not in expanded
     assert all(any(line in row for row in expanded) for line in transcripts.SAMPLE_REASONING)
 
     collapsed = await preview_at(command_loop, "thinking:collapsed")
@@ -186,7 +186,7 @@ def test_the_reasoning_preview_keeps_the_rows_the_mode_asks_for(command_loop, mo
         monkeypatch.setattr(command_loop.session.config, "transcript", {"thinking": mode})
         return stream_rows(command_loop)
 
-    assert rows("expanded") == [RAIL + f"reasoning line {index}" for index in range(2, 8)]  # the newest six
+    assert rows("expanded") == [RAIL + f"reasoning line {index}" for index in range(5, 8)]  # the newest three
     assert rows("collapsed") == [RAIL + "reasoning line 0"]  # the opening line, not the newest one
     assert rows("hidden") == []
     assert command_loop.view.model_stream_fragments() == []  # Not even the spark row: the divider names the phase.

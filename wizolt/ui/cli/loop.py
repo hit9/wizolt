@@ -94,6 +94,7 @@ class CommandLoop:
         # the target is already owned when the next run opens it -- never release-and-reacquire.
         self.resume_request = ""
         self.resume_lease: SessionLease | None = None
+        self.appearance_open = False
         self.interactive_input = input_fn is input and sys.stdin.isatty()
         # Bytes already read from the default non-TTY stdin after the first newline. Keeping the
         # remainder here lets the loop use non-blocking os.read() without losing a following line.
@@ -225,7 +226,7 @@ class CommandLoop:
         return "\n".join(parts)
 
     async def run_queued_command(self, text: str) -> None:
-        """Dispatch a read-only slash command while an agent turn is running."""
+        """Dispatch a slash command allowed alongside the active turn."""
         name = text.partition(" ")[0]
         entry = self.commands.get(name)
         if entry is None or not entry.queue_safe:
@@ -236,7 +237,11 @@ class CommandLoop:
         if allowed and sub and sub[0] not in allowed:
             self.presentation.emit_turn(refusal)
             return
-        await self.command(text)
+        # Ctrl-C in a side panel dismisses that command. The agent owns its own interrupt.
+        try:
+            await self.command(text)
+        except KeyboardInterrupt:
+            return
 
     def take_pending_inputs(self) -> list[UserInput]:
         """Remove and return the queued inputs that open the next turn.

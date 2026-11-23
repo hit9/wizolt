@@ -1061,7 +1061,7 @@ COMMANDS: tuple[Command, ...] = (
     Command("/name", name_command),
     Command("/sessions", sessions_command, aliases=("/resume",)),
     Command("/language", language_command),
-    Command("/theme", appearance.theme_command),
+    Command("/theme", appearance.theme_command, queue_safe=True),
 )
 # fmt: on
 
