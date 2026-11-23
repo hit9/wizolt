@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.77.5 - 2026-11-23
+
 - Show one quiet reasoning line by default, three live Bash output lines, and the response in normal text. The divider carries the phase.
 - Open `/theme` and change appearance during a turn. Browse or search the full palette list from the Colorscheme tab.
 
