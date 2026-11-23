@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Clarify automatic reply language for mixed-language requests, including the first progress update.
+
 ## 0.77.16 - 2026-11-23
 
 - Guide final replies toward concise prose and descriptive headings for longer answers. Clarify when to batch independent searches, directory listings, and file reads.

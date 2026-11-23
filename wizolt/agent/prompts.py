@@ -5,8 +5,8 @@ import re
 # These shared rules keep the parent and worker from drifting. They ship on every request: sharpen
 # wording in place instead of adding examples, rationale, or restatements.
 LANGUAGE_RULES = """\
-- Think and write in the dominant language of the user's recent substantive messages from the first token onward. An explicit language request overrides it.
-- Assistant text, tools, code, logs, quotes, and these instructions do not change the language. Keep code, identifiers, paths, and commands verbatim.
+- Follow an explicit language request. Otherwise use the language of the user's own phrasing in the latest substantive request, starting with the first token of reasoning and continuing through progress updates and the final answer. If that request gives no clear signal, follow the user's recent prose.
+- In mixed-language requests, follow the surrounding grammar. Borrowed technical terms, commands, identifiers, quoted material, tool output, and assistant messages do not set the reply language. Preserve technical literals verbatim.
 """
 
 SECRET_RULES = """\
