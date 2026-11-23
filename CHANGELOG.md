@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.77.9 - 2026-11-23
+
 - Give the default dark appearance amber prompts, mist-teal paths and model names, and ivory user messages.
 
 ## 0.77.8 - 2026-11-23
