@@ -236,6 +236,7 @@ table.docutils th { background: var(--nc-surface); color: var(--nc-fg-strong); }
 .fs-tab-on { color: #282c34; background: #ffc36d; }
 .fs-tab-off { color: #ffc36d; }
 .fs-output { color: #edf2f6; }
+.fs-shell-output { color: #a4a4a4; }
 /* Diff rows, mirroring Theme.DARK diff.added/removed in wizolt/render.py: the row carries a
    background and the text keeps the default foreground; only the +/- marker is colored. */
 /* Approval action row, mirroring cli/view.py: actions are ansiyellow, the focused one banded. */

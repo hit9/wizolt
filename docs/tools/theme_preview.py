@@ -63,6 +63,10 @@ def sample(figures: Illustrations, terminal: TerminalTheme) -> dict:
         LogLine("Edit", "parser.py", LogRole.TOOL),
         [LogLine("", line, LogRole.DIFF, LogEdge.CONTINUE) for line in patch_text.splitlines()],
     )
+    bash = LogBlock.hierarchy(
+        LogLine("Bash", "cd tests && pytest -k 'empty' \"$target\"", LogRole.TOOL, syntax="bash"),
+        [LogLine("", "12 passed, 1 skipped", LogRole.SHELL_OUTPUT, LogEdge.END)],
+    )
     rows = [
         message,
         Text(""),
@@ -74,13 +78,7 @@ def sample(figures: Illustrations, terminal: TerminalTheme) -> dict:
         ),
         figures.styled([LiveSpark.marker(NOW, level=2), (Theme.fg("preview"), "Checking how the parser handles an empty token…")]),
         figures.styled(figures.printer.log_segments(edit, WIDTH)),
-        figures.styled(
-            [
-                (Theme.fg("success"), "  12 passed"),
-                (Theme.fg("muted"), " · "),
-                (Theme.fg("warning"), "1 skipped"),
-            ]
-        ),
+        figures.styled(figures.printer.log_segments(bash, WIDTH)),
         Text(""),
         figures.styled([("class:choice.selected", "  /theme  "), (Theme.fg("muted"), " Choose a color theme")]),
     ]

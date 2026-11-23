@@ -133,6 +133,12 @@ DIFF_STYLES: dict[str, DiffStyle] = {
 # fmt: on
 
 
+SHELL_COLORS = {
+    "dark": {"shell_command": "#acd39a", "shell_string": "#e2cf88", "shell_variable": "#9ecac4", "shell_output": "#a4a4a4"},
+    "light": {"shell_command": "#325628", "shell_string": "#70530d", "shell_variable": "#285954", "shell_output": "#646464"},
+}
+
+
 # Chat usually fills most of the bar. Keep it slate and reserve stronger hues for the smaller shares.
 CONTEXT_COLORS = {
     "dark": {
@@ -232,6 +238,7 @@ def scheme(
         appearance,
         {
             **CONTEXT_COLORS[appearance],
+            **SHELL_COLORS[appearance],
             "text": lift(fg, edge, background, 11.0),
             "muted": muted,
             "preview": lift(blend(background, comment, 0.50), fg, background, 3.0),

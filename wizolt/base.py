@@ -501,6 +501,7 @@ class LogRole(Enum):
     AUTO = auto()
     META = auto()
     OUTPUT = auto()
+    SHELL_OUTPUT = auto()
     ERROR = auto()
     WARNING = auto()
     SUCCESS = auto()

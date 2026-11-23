@@ -469,11 +469,11 @@ def _finish_display(
         rows, elided = tooloutput.bash_tail_preview(output, tooloutput.BASH_TRANSCRIPT_PREVIEW_LINES)
         citation = (key + tag).strip() if d.nested_display else ""
         if rows:
-            children.append(LogLine("", rows[0], LogRole.OUTPUT, LogEdge.BRANCH))
-            children.extend(LogLine("", line, LogRole.OUTPUT, LogEdge.CONTINUE) for line in rows[1:])
+            children.append(LogLine("", rows[0], LogRole.SHELL_OUTPUT, LogEdge.BRANCH))
+            children.extend(LogLine("", line, LogRole.SHELL_OUTPUT, LogEdge.CONTINUE) for line in rows[1:])
             if elided:
                 closing = " · ".join(part for part in (f"… +{elided} more lines · Ctrl-O for more", citation) if part)
-                children.append(LogLine("", closing, LogRole.META, LogEdge.END))
+                children.append(LogLine("", closing, LogRole.SHELL_OUTPUT, LogEdge.END))
             else:
                 # Nothing was dropped: the output's own last row closes the block, citing the key.
                 children[-1] = cited(children[-1], citation)

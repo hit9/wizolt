@@ -231,7 +231,7 @@ async def test_new_themes_switch_save_and_preview(tmp_path, name, appearance):
     preview = theme_preview(name)
     text = "".join(text for _, text in preview)
     assert Theme.appearance() == appearance
-    assert len(text.splitlines()) == 6
+    assert len(text.splitlines()) == 7
     assert 'text.split(" ")' in text and "text.split()" in text and "12 tests passed" in text
     assert any(Theme.color("user") in style and "repeated spaces" in text for style, text in preview)
     assert any(Theme.color("tool") in style and "Edit" in text for style, text in preview)
@@ -1211,3 +1211,13 @@ def test_finished_tool_calls_are_readable_on_the_theme_background(name):
     for token in ("Read", "main.py", "Bash", "echo", "ok", "42 passed"):
         ink = "#" + Theme.transcript_style().get_attrs_for_style_str(emitted[token]).color
         assert contrast(ink, bg) >= 7, (name, token, ink)
+
+
+@pytest.mark.parametrize("name", Theme.BUILTIN)
+def test_shell_preview_is_neutral_and_quieter_than_the_command(name):
+    palette = Theme.BUILTIN[name]
+    bg = palette.background or ("#282c34" if palette.appearance == "dark" else "#f5f4f0")
+    gray = palette.colors["shell_output"]
+    assert gray[1:3] == gray[3:5] == gray[5:7]
+    for role in ("shell_command", "shell_string", "shell_variable", "text"):
+        assert 4.5 <= contrast(gray, bg) < contrast(palette.colors[role], bg)

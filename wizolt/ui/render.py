@@ -48,6 +48,7 @@ from wizolt.ui.themes import BUILTIN as NAMED_THEMES
 from wizolt.ui.themes import (
     CONTEXT_COLORS,
     DIFF_STYLES,
+    SHELL_COLORS,
     Palette,
     blend,
     contrast,
@@ -420,6 +421,7 @@ class Theme:
 
     DARK: ClassVar[dict[str, str]] = {
         **CONTEXT_COLORS["dark"],
+        **SHELL_COLORS["dark"],
         "text": "#edf2f6",
         "muted": "#b1bfd0",
         "subtle": "#879ab1",
@@ -463,6 +465,7 @@ class Theme:
     }
     LIGHT: ClassVar[dict[str, str]] = {
         **CONTEXT_COLORS["light"],
+        **SHELL_COLORS["light"],
         "text": "#233545",
         "muted": "#575d70",
         "subtle": "#62677a",
@@ -1838,6 +1841,7 @@ class UiPrinter:
         LogRole.META: ("muted", "muted"),
         LogRole.FIELD: ("accent", "text"),
         LogRole.OUTPUT: ("text", "text"),
+        LogRole.SHELL_OUTPUT: ("shell_output", "shell_output"),
         LogRole.ERROR: ("error", "text"),
         LogRole.WARNING: ("warning", "text"),
         LogRole.SUCCESS: ("success", "text"),
@@ -1925,7 +1929,8 @@ class UiPrinter:
                 prefix.append((text_style, separator))
                 content.extend(self.syntax_segments(line.text, line.syntax, text_style))
             if line.meta:
-                content.append((Theme.fg("error" if line.role is LogRole.ERROR else "muted"), line.meta))
+                meta_style = text_style if line.role is LogRole.SHELL_OUTPUT else Theme.fg("error" if line.role is LogRole.ERROR else "muted")
+                content.append((meta_style, line.meta))
             # A wrapped row keeps the edge column's bracket unbroken: blanking the edge on a
             # continuation punches a hole in the block's vertical rail every time a row wraps.
             # The continuation draws CONTINUE there and blanks only the label and separator.
@@ -1973,6 +1978,8 @@ class UiPrinter:
             return [(fallback_style, text)]
         try:
             lexer = get_lexer_by_name(lexer_name, stripnl=False, ensurenl=False)
+            if lexer_name == "bash":
+                return cls.shell_segments(lexer.get_tokens(text), fallback_style)
             palette = Theme.active()
             background = palette.background or ("#282c34" if palette.appearance == "dark" else "#f5f4f0")
             return [
@@ -1984,9 +1991,39 @@ class UiPrinter:
             return [(fallback_style, text)]
 
     @staticmethod
+    def shell_segments(tokens: Iterable[tuple[Any, str]], fallback: str) -> list[tuple[str, str]]:
+        # BashLexer leaves external commands and their arguments as Text. Accent the first
+        # word of a command or pipeline stage, leaving ordinary arguments in the body ink.
+        from pygments.token import Token
+
+        command_start = True
+        segments = []
+        for token, value in tokens:
+            role = ""
+            if value.isspace():
+                if "\n" in value:
+                    command_start = True
+            else:
+                separator = value in {"&&", "||", "|", "|&", ";", "&", "("} and token in (Token.Operator, Token.Punctuation)
+                if token in Token.Name.Variable or token in Token.String.Interpol:
+                    role = "shell_variable"
+                elif token in Token.String:
+                    role = "shell_string"
+                elif (
+                    separator
+                    or token in Token.Keyword
+                    or (token is Token.Text and value in {">", ">>", "<"})
+                    or (command_start and token in (Token.Text, Token.Name.Builtin))
+                ):
+                    role = "shell_command"
+                command_start = separator or (token in Token.Keyword and value in {"if", "then", "elif", "else", "while", "until", "do"})
+            segments.append((Theme.fg(role) if role else fallback, value))
+        return segments
+
+    @staticmethod
     @lru_cache(maxsize=512)
     def call_token_style(style: str, fallback: str, text: str, background: str) -> str:
-        # A shell lexer can use dim code-comment colors for arguments the user needs to read.
+        # A lexer can use dim code-comment colors for arguments the user needs to read.
         # Lift only call-line tokens; edited source keeps its own syntax colors and diff bands.
         ink, space, attributes = style.partition(" ")
         if ink == "fg:default":
@@ -2562,11 +2599,11 @@ class BashLivePreview:
         # Always emit a status row so the frame is visible even before any output arrives.
         status = f"output · {label}{remaining}" if body else f"running… {label}{remaining}"
         lead = LiveSpark.marker(self.started_at, level=2)
-        rows = [[lead, (Theme.fg("preview"), status)]]
+        rows = [[lead, (Theme.fg("shell_output"), status)]]
         if body:
             # A blank row keeps the spark off the rail: the star caps the region, it does not sit on it.
             rows.append([("", "")])
-            rows.extend([(Theme.fg("rule"), rail), (Theme.fg("preview"), Text.clip_width(line, limit))] for line in body)
+            rows.extend([(Theme.fg("rule"), rail), (Theme.fg("shell_output"), Text.clip_width(line, limit))] for line in body)
         return rows
 
 

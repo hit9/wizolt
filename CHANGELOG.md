@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Give Bash command lines a restrained shell palette and show live and completed output previews in neutral gray across all built-in themes.
+
 ## 0.77.13 - 2026-11-23
 
 - Keep completed commands and their results together in long tmux sessions when the live preview closes.

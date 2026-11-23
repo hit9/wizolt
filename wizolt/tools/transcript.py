@@ -245,7 +245,8 @@ def template_block(
     # The first row is the call row. Nested, the runner already drew the call line above the live
     # preview -- in its own words, before the call ran -- so the format's call row would print the
     # call twice; only the rows after it belong under the preview.
-    children = [LogLine("", line, LogRole.OUTPUT, LogEdge.CONTINUE) for line in lines[1:]]
+    output_role = LogRole.SHELL_OUTPUT if tool == "Bash" else LogRole.OUTPUT
+    children = [LogLine("", line, output_role, LogEdge.CONTINUE) for line in lines[1:]]
     children.extend(extras or [])
     if failed:
         # Labelled as the builtin assembly labels it: a refusal is not an error.

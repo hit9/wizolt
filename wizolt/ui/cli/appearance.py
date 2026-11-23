@@ -75,8 +75,10 @@ def theme_preview(_name: str) -> StyleAndTextTuples:
         ("", "\n"),
         *UiPrinter().diff_segments('-    words = text.split(" ")\n+    words = text.split()'),
         ("", "\n"),
-        (fg("success"), "✓ "),
-        (fg("text"), "12 tests passed"),
+        (fg("tool"), "Bash  "),
+        *UiPrinter.syntax_segments("pytest -k 'spaces'", "bash", fg("text")),
+        ("", "\n"),
+        (fg("shell_output"), "  └ 12 tests passed"),
     ]
 
 

@@ -16,7 +16,7 @@ from wizolt.agent.context import ContextManager
 from wizolt.agent.engine import Agent
 from wizolt.agent.lifecycle import close_agent_resources
 from wizolt.agent.runner import ToolRunner
-from wizolt.base import LogBlock, LogEdge, LogLine, LogRole, ToolCall, ToolError
+from wizolt.base import LogBlock, LogLine, LogRole, ToolCall, ToolError
 from wizolt.session import Session
 from wizolt.session.jobs import BackgroundJob
 from wizolt.tools import BashTool, JobTool, Tool, tool_payload, toolblocks, tooloutput
@@ -1151,37 +1151,29 @@ async def test_tool_runner_job_wait_starts_live_preview_with_budget(tmp_path, mo
     assert not any(kind == "start" for kind, _ in events)
 
 
-def test_uiprinter_renders_completed_bash_output_in_the_text_color():
-    ui = UiPrinter(output_fn=lambda text: None)
-    block = LogBlock.hierarchy(
-        LogLine("Bash", "cmd", LogRole.TOOL),
-        [
-            LogLine("", "stderr:", LogRole.OUTPUT, LogEdge.CONTINUE),
-            LogLine("", "  Traceback", LogRole.OUTPUT, LogEdge.CONTINUE),
-            LogLine("", "    File x", LogRole.OUTPUT, LogEdge.CONTINUE),
-            LogLine("", "  AttributeError", LogRole.OUTPUT, LogEdge.CONTINUE),
-        ],
-    )
-    segs = ui.log_segments(block)
-
-    assert (Theme.fg("text"), "stderr:") in segs
-    assert (Theme.fg("text"), "  Traceback") in segs
-    assert (Theme.fg("text"), "    File x") in segs
-    assert (Theme.fg("text"), "  AttributeError") in segs
+def test_bash_live_and_completed_output_share_the_preview_color(tmp_path):
+    s = session(tmp_path)
+    output = Tool.process_result("BashToolResult", 0, "done", "")
+    block = toolblocks.finish_display(s, ToolCall("bash", "Bash", ["echo done"]), "tr.1", output, failed=False)
+    assert isinstance(block, LogBlock)
+    style = Theme.fg("shell_output")
+    assert (style, "done") in UiPrinter().log_segments(block)
+    preview = BashLivePreview()
+    preview.text = "done"
+    assert (style, "done") in preview.frame_rows()[-1]
 
 
 def test_uiprinter_syntax_highlights_bash_arguments(tmp_path):
     session(tmp_path)
-    line = toolblocks.log_root("Bash cd /tmp && printf '%s\\n' value")
-
-    assert line.syntax == "bash"
-    segments = UiPrinter(output_fn=lambda text: None).log_segments(LogBlock([line]))
-    # Lexed by pygments, so the colors are the theme's style rather than the palette's own roles;
-    # what matters is that keywords and strings are told apart and no band is painted behind them.
-    styles = {text: style for style, text in segments}
-    assert styles["cd"] == styles["printf"]  # both bash builtins
-    assert styles["'%s\\n'"] != styles["cd"]  # a string is not a builtin
-    assert not any("bg:" in style for style, _ in segments)
+    line = toolblocks.log_root("""Bash git status && printf '%s' "$branch" | grep git""")
+    segments = UiPrinter().log_segments(LogBlock([line]))
+    words = [(style, text.strip()) for style, text in segments if text.strip()]
+    command = Theme.fg("shell_command")
+    for token in ("git", "&&", "printf", "|", "grep"):
+        assert (command, token) in words
+    assert (Theme.fg("text"), "git") in words  # Argument of grep.
+    assert (Theme.fg("shell_string"), "'%s'") in words
+    assert (Theme.fg("shell_variable"), "$branch") in words
 
 
 def test_a_multi_line_command_is_clipped_on_its_call_line(tmp_path):
