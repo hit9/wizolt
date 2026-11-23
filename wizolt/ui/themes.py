@@ -86,6 +86,21 @@ def blend(color: str, toward: str, ratio: float) -> str:
     return "#" + "".join(f"{round(a + (b - a) * ratio):02x}" for a, b in zip(start, end, strict=True))
 
 
+# Lualine and Powerline separate fields by background. Start in different xterm color
+# cells before tinting with the bar surface, so a 256-color terminal retains the boundaries.
+def status_surfaces(appearance: str, band: str) -> dict[str, str]:
+    colors = {
+        "status_agent_bg": ("#876325", "#e5cb98"),
+        "status_model_bg": ("#639390", "#a9d6cd"),
+        "status_provider_bg": ("#1f6085", "#a5c9f4"),
+        "status_reason_bg": ("#655982", "#d5bdda"),
+        "status_context_bg": ("#63855d", "#bad5ac"),
+        "status_cache_bg": ("#475054", "#d7d7d7"),
+        "status_yolo_bg": ("#985d62", "#edb2ad"),
+    }
+    return {role: blend(dark if appearance == "dark" else light, band, 0.08) for role, (dark, light) in colors.items()}
+
+
 @dataclass(frozen=True)
 class DiffStyle:
     """The red and green a diff is drawn on, for the appearances the style was made for."""
@@ -249,16 +264,7 @@ def scheme(
             "status_cache": comment,
             "status_yolo": red,
             "status_agent": blend(comment, orange, 0.3),
-            # Mix raw accents with the theme's background, before text contrast is lifted.
-            # Lifted ink reused as a surface makes all segments pale; saturated accent fills
-            # overpower the theme. Only the model gets a stronger, still blended surface.
-            "status_provider_bg": blend(status, fg, 0.05),
-            "status_model_bg": blend(status, detail, 0.17),
-            "status_reason_bg": blend(status, fg, 0.10),
-            "status_context_bg": blend(status, success, 0.09),
-            "status_cache_bg": blend(status, fg, 0.05),
-            "status_agent_bg": blend(status, orange, 0.09),
-            "status_yolo_bg": blend(background, red, 0.27),
+            **status_surfaces(appearance, status),
             "status_bg": status,
             "user_bg": blend(background, fg, 0.055),
             "divider_glow": blend(rule, accent, 0.40),

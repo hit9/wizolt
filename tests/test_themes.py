@@ -1160,3 +1160,35 @@ def test_reloading_or_removing_custom_component_theme(tmp_path):
     Path(tmp_path, "mine.toml").unlink()
     Theme.load_custom(str(tmp_path))
     assert Theme.bar_palette("statusbar") is Theme.active()
+
+
+@pytest.mark.parametrize("name", Theme.BUILTIN)
+@pytest.mark.parametrize("preset", ["lualine", "powerline", "blocks"])
+def test_status_segments_survive_256_color_output(name, preset):
+    from rich.color import Color
+
+    from wizolt.ui.bars import FIELDS, BarLayout
+
+    Theme.set_mode(name)
+    layout = BarLayout()
+    assert not layout.configure({"statusbar": "preset:" + preset}, Theme.bar_styles)
+    values = dict.fromkeys(FIELDS, 0)
+    values.update(provider="provider", model="model", reasoning="high", yolo=True)
+    values.update({"agent.name": "main", "cache.percent": 88, "context.percent": 37})
+    backgrounds = {}
+    fields = {"main", "model", "provider", "high", "yolo", "cache 88%", "ctx 37%"}
+    if preset == "powerline":
+        fields.remove("cache 88%")
+    for style, label in layout.render("statusbar", values, 160, Theme.bar_styles):
+        if label.strip() in fields:
+            ansi = UiPrinter.render_to_ansi([FormattedText([(style, label)])], 160, color_depth=ColorDepth.DEPTH_8_BIT)
+            background = re.search(r"48;5;(\d+)", ansi)
+            assert background, (name, label, ansi)
+            foreground = re.search(r"38;5;(\d+)", ansi)
+            assert foreground, (name, label, ansi)
+            bg = int(background[1])
+            fg = int(foreground[1])
+            assert contrast(Color.from_ansi(fg).get_truecolor().hex, Color.from_ansi(bg).get_truecolor().hex) >= 4.5, (name, label)
+            backgrounds[label.strip()] = bg
+    assert backgrounds.keys() == fields
+    assert len(set(backgrounds.values())) == len(fields), (name, backgrounds)

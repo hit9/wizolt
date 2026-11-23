@@ -249,7 +249,7 @@ STATUS_LAYOUTS: dict[str, Callable[[bool], str]] = {
         + "[status.model] {model} [reset]"
         + "{% optional priority=20 %}[status.reason] {reasoning} [reset]{% endoptional %}",
         "{% optional priority=5 %}[status.services] {mcp.label} skills {skills.count} [reset]{% endoptional %}"
-        + "{% optional priority=10 %}[status.cache] cache {cache.percent}% [reset]{% endoptional %}"
+        + "{% optional priority=10 %}[status.cache.segment] cache {cache.percent}% [reset]{% endoptional %}"
         + "{% optional priority=30 %}"
         + SEGMENT_USAGE
         + "{% endoptional %}",
@@ -283,7 +283,7 @@ STATUS_LAYOUTS: dict[str, Callable[[bool], str]] = {
         band=True,
     ),
     "powerline": lambda split: compose(
-        segment("{agent.name}", "status.detail bold", when="agent.name") + segment("{model}", "status.model") + SEGMENT_DETAILS,
+        segment("{agent.name}", "status.agent", when="agent.name") + segment("{model}", "status.model") + SEGMENT_DETAILS,
         segment(SERVICE_COUNTS, "status.services", priority=5, right=split) + usage_segment(split),
         split,
         tail="[reset]",

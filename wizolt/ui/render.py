@@ -45,7 +45,18 @@ from wizolt.formats import clean, clip
 from wizolt.sdk import Line
 from wizolt.ui.bars import BarLayout, Value
 from wizolt.ui.themes import BUILTIN as NAMED_THEMES
-from wizolt.ui.themes import CONTEXT_COLORS, DIFF_STYLES, Palette, blend, contrast, generated_pygments_style, lift, load_custom, normalize_color
+from wizolt.ui.themes import (
+    CONTEXT_COLORS,
+    DIFF_STYLES,
+    Palette,
+    blend,
+    contrast,
+    generated_pygments_style,
+    lift,
+    load_custom,
+    normalize_color,
+    status_surfaces,
+)
 from wizolt.utils import terminal
 
 if TYPE_CHECKING:
@@ -430,22 +441,16 @@ class Theme:
         "syntax_builtin": "#d7af87",
         "syntax_default": "#e6edf3",
         "status_base": "#ccc9c2",
-        "status_provider": "#a6adae",
+        "status_provider": "#94b1cd",
         "status_model": "#92bfbd",
-        "status_reason": "#ada9a5",
+        "status_reason": "#baa5d1",
         "status_mcp": "#93a4b7",
-        "status_services": "#c8abc0",
-        "status_context": "#a4ba98",
-        "status_cache": "#a3aaab",
+        "status_services": "#c69eb8",
+        "status_context": "#a2bf88",
+        "status_cache": "#9da9b3",
         "status_yolo": "#dc9992",
-        "status_agent": "#c1b7ab",
-        "status_provider_bg": "#323d46",
-        "status_model_bg": "#384746",
-        "status_reason_bg": "#394048",
-        "status_context_bg": "#353e39",
-        "status_cache_bg": "#343f49",
-        "status_agent_bg": "#393b3e",
-        "status_yolo_bg": "#533b40",
+        "status_agent": "#d8b98d",
+        **status_surfaces("dark", "#292b2d"),
         "divider_glow": "#ae947a",
         "divider_rule": "#4b5563",
         "divider_label": "#b7a6be",
@@ -488,13 +493,7 @@ class Theme:
         "status_cache": "#285da6",
         "status_yolo": "#b63f58",
         "status_agent": "#a64b27",
-        "status_provider_bg": "#d6e0e2",
-        "status_model_bg": "#ccd9d7",
-        "status_reason_bg": "#dfe2e3",
-        "status_context_bg": "#dae2dd",
-        "status_cache_bg": "#d9e0e5",
-        "status_agent_bg": "#dfddda",
-        "status_yolo_bg": "#e6cbd0",
+        **status_surfaces("light", "#e8ebef"),
         "divider_glow": "#687c84",
         "divider_rule": "#9ca3af",
         "divider_label": "ansimagenta",
@@ -614,7 +613,7 @@ class Theme:
             if color.startswith("#"):
                 candidates = [value for value in (colors["status_base"], background) if value.startswith("#")]
                 ink = max(candidates, key=lambda value: contrast(value, color))
-                if contrast(ink, color) < 4.5:
+                if contrast(ink, color) < 5.5:  # Leave headroom for 256-color rounding.
                     ink = max(("#000000", "#ffffff"), key=lambda value: contrast(value, color))
             return f"fg:{ink} bg:{color}" + (" bold" if bold else "")
 

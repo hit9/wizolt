@@ -268,14 +268,14 @@ table.docutils th { background: var(--nc-surface); color: var(--nc-fg-strong); }
 .fs-doing { color: #e5c07b; }
 /* Status bar roles, mirroring the dark palette in wizolt/ui/render.py (Theme.DARK). */
 .sb-base { color: #ccc9c2; }
-.sb-provider { color: #a6adae; }
+.sb-provider { color: #94b1cd; }
 .sb-model { color: #92bfbd; }
-.sb-agent { color: #c1b7ab; font-weight: bold; }
+.sb-agent { color: #d8b98d; font-weight: bold; }
 .sb-sep { color: #4b5563; }
-.sb-reason { color: #ada9a5; }
+.sb-reason { color: #baa5d1; }
 .sb-mcp { color: #93a4b7; }
-.sb-ctx { color: #a4ba98; }
-.sb-cache { color: #a3aaab; }
+.sb-ctx { color: #a2bf88; }
+.sb-cache { color: #9da9b3; }
 .sb-yolo { color: #dc9992; }
 .sb-warn { color: #fb7185; }
 

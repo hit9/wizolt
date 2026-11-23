@@ -101,7 +101,7 @@ segments. Both arrow layouts need a Nerd Font, and their arrows follow the segme
 For other shapes, try `blocks` for adjoining rectangles, `vim` for a colored agent tab, `split`
 for a context meter across a tinted row, or `monitor` for a fuller dashboard. `brackets` uses
 colored outlines; `compact` highlights the model; `minimal` pairs it with a small meter.
-The colors follow your chosen theme, with separate text and segment colors.
+The built-in segment colors stay distinct in 256-color terminals, including tmux.
 
 Every preset names the selected agent and shows YOLO when enabled, and carries the
 connected MCP and skill counts. Narrow rows drop optional details, the counts first;
