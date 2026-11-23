@@ -69,7 +69,6 @@ group works only when the selected theme supplies it. `Text.role` does not accep
 `preset:plugins.NAME.CHOICE`. Registration does not select it; use `/theme` to select it.
 This is wizolt's small template language, not Jinja; there are no loops, includes or Python access.
 
-| Shell transcript | `shell_command`, `shell_string`, `shell_variable`, `shell_output` |
 | Syntax | Meaning |
 | --- | --- |
 | `{model}` | Plain-text field substitution; values cannot inject formatting |

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.77.14 - 2026-11-23
+
 - Give Bash command lines a restrained shell palette and show live and completed output previews in neutral gray across all built-in themes.
 
 ## 0.77.13 - 2026-11-23
