@@ -281,10 +281,9 @@ def test_subagents_inherit_the_secret_rules_and_are_told_about_repo_wide_command
 
 
 def test_system_prompt_asks_for_plain_markdown_without_prescribing_a_template():
-    """The renderer owns spacing, color, and rules; the prompt owns only what the model writes.
-
-    One short, general line, so it cannot grow into a style guide that fights the terminal: no
-    required headings, no fixed sections, and nothing about how the output is drawn."""
+    """Let longer replies use headings while keeping short replies free of mandatory sections."""
     output = SYSTEM_PROMPT.partition("OUTPUT:")[2].partition("LANGUAGE:")[0]
-    assert "short paragraphs, few headings, and lists only where they aid reading" in output
+    assert "A short answer can stand alone" in output
+    assert "descriptive Markdown headings" in output
+    assert "one blank line between headings, paragraphs, and lists" in output
     assert not any(word in output.lower() for word in ("blank row", "indent", "color", "divider"))

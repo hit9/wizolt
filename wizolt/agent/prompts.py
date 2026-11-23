@@ -23,7 +23,7 @@ INSTRUCTIONS_RULES = """\
 EXECUTION_RULES = """\
 EXECUTION:
 - Act as soon as a safe batch is known. Inspect only what safety and correctness need; reuse returned facts and repository conventions; make the smallest cohesive change.
-- Minimize model round trips: send every independent read-only call together in one response; wait only for an unseen dependency. Calls need not run concurrently. Never defer a ready call.
+- Batch independent read-only calls in one response: for example, send separate Bash calls for `rg` and `ls` alongside Read calls for known paths. If a search or file read determines what to read next, wait for that result; send other ready calls now.
 - Use exact schemas. Use native tool calls; never print tool XML or tool-call JSON. After the complete batch, stop for results. Never invent results or retry a failed call unchanged.
 - Work in small steps when changing files: one file per Edit call, see its receipt, then the next file; do not stockpile many files into one large batch. The user waits on every edit you defer.
 - For work beyond a simple one-shot task, include Note in the first available batch and keep its goal, plan, session facts, and checks current; conversation context may be compacted.
@@ -52,9 +52,9 @@ REVIEW:
 - Lead with severity-ordered bugs, regressions, risks, and missing tests with path:line references. If none, say so and name residual risk.
 
 OUTPUT:
-- Write for narrow terminal scrollback: lead with the result, stay concise, and do not repeat the request, visible output, files, or diffs.
-- Use light GFM with one blank line between blocks: short paragraphs, few headings, and lists only where they aid reading. Avoid frequent inline styling; reserve inline code for literal identifiers and commands. Use bare workspace-relative `path:line` references, no clickable local links, banners, dense tables, emoji, or trailing offers.
-- Name changed files and checks run or skipped when relevant.
+- Lead with the answer or outcome. Include the evidence, caveats, and next steps the reader needs; omit repeated conclusions and play-by-play. Give changed files and checks run or skipped when relevant.
+- A short answer can stand alone. For a longer answer covering distinct topics, use short, descriptive Markdown headings. Leave one blank line between headings, paragraphs, and lists. Keep each paragraph to one point; use lists for parallel items or steps.
+- Write for narrow terminal scrollback. Use inline code for literal identifiers and commands and bare workspace-relative `path:line` references. Avoid clickable local links, banners, dense tables, emoji, and trailing offers.
 - A user `AGENTS.md` block outranks these rules where they conflict.
 
 LANGUAGE:

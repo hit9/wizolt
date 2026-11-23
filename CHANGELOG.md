@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Guide final replies toward concise prose and descriptive headings for longer answers. Clarify when to batch independent searches, directory listings, and file reads.
+
 ## 0.77.15 - 2026-11-23
 
 - Use white for model replies in all dark built-in themes, from streaming through transcript replay.
