@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.77.11 - 2026-11-23
+
 - Bash accepts an optional per-call foreground wait (`wait_seconds`) before a running command becomes a Job.
 
 ## 0.77.10 - 2026-11-23
