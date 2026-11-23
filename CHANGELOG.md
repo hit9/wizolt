@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Show one quiet reasoning line by default, three live Bash output lines, and the response in normal text. The divider carries the phase.
-- Open `/theme` during a turn. Its Colorscheme tab starts with three presets and the current theme. Press `a` or search to reach the full collection.
+- Open `/theme` and change appearance during a turn. Browse or search the full palette list from the Colorscheme tab.
 
 ## 0.77.4 - 2026-11-23
 

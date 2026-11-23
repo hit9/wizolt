@@ -241,11 +241,11 @@ async def test_small_pane_prioritizes_choices_over_the_sample(command_loop, monk
     modal = command_loop.presentation.tui = BarModal(["escape"])
     await theme_command(command_loop, "")
     text = "".join(text for _, text in modal.frames[0])
-    assert "slate" in text and "paper" in text and "dracula" not in text
+    assert "showing 1-6 of" in text
     assert "Handle repeated spaces" in text and "Enter save" in text
     assert "Conversation preview" in text and "12 tests passed" not in text
     assert text.splitlines()[1].strip().endswith("Enter save · Esc cancel")
-    assert "all themes" in text.splitlines()[2]
+    assert not text.splitlines()[2].strip()
     assert 1 + text.count("\n") == 14
 
 
@@ -712,11 +712,18 @@ def test_an_empty_paste_or_key_types_nothing_into_a_draft():
     assert panel.draft.text == before + "{model}"
 
 
-async def test_theme_picker_while_working_can_browse_all_and_save(command_loop, monkeypatch):
+@pytest.mark.parametrize("name", ["sand", "gruvbox-dark"])
+async def test_theme_picker_while_working_can_browse_all_and_save(command_loop, monkeypatch, name):
     monkeypatch.setattr(type(command_loop.agent), "turn_active", property(lambda self: True))
-    command_loop.presentation.tui = BarModal(["a", "/", *"dracula", "enter", "enter"])
+    picker = AppearancePicker(command_loop, 0)
+    try:
+        assert picker.current_list().choices == Theme.choices()
+        assert name in picker.current_list().enabled()
+    finally:
+        picker.restore()
+    command_loop.presentation.tui = BarModal(["/", *name, "enter", "enter"])
     await command_loop.run_queued_command("/theme")
-    assert saved(command_loop)["runtime"]["theme"] == "dracula"
+    assert saved(command_loop)["runtime"]["theme"] == name
     assert command_loop.session.pending_user_inputs == []
 
 

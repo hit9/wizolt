@@ -674,7 +674,7 @@ async def test_the_picker_applies_each_row_it_lands_on_and_escape_restores_the_t
     command_loop = themed_loop(tmp_path, "slate")
     Theme.set_mode("slate")
     command_loop.interactive_input = True
-    tui = command_loop.presentation.tui = ThemeModal(["a", "j", "j", "escape"])
+    tui = command_loop.presentation.tui = ThemeModal(["j", "j", "escape"])
 
     assert await theme_command(command_loop, "") is None
 
@@ -682,7 +682,7 @@ async def test_the_picker_applies_each_row_it_lands_on_and_escape_restores_the_t
     assert tui.painted == ["forest", "sand", "slate"]
     assert Theme.name() == "slate" and tui.recolored == 0
     assert (tmp_path / "config.toml").read_text() == CONFIG.replace('"auto"', '"slate"')
-    assert any(BUILTIN["forest"].colors["user"] in style and "repeated spaces" in text for style, text in tui.frames[2])
+    assert any(BUILTIN["forest"].colors["user"] in style and "repeated spaces" in text for style, text in tui.frames[1])
 
 
 async def test_the_picker_restores_the_theme_when_interrupted(tmp_path):
@@ -705,24 +705,24 @@ async def test_enter_keeps_the_previewed_theme_and_saves_it(tmp_path):
 
     result = await theme_command(command_loop, "")
 
-    assert Theme.name() == "paper" and tui.recolored == 1 and Theme.selected_diff_style() == "auto"
-    assert result.startswith("Theme: paper (saved")
-    assert 'theme = "paper"' in (tmp_path / "config.toml").read_text()
+    assert Theme.name() == "forest" and tui.recolored == 1 and Theme.selected_diff_style() == "auto"
+    assert result.startswith("Theme: forest (saved")
+    assert 'theme = "forest"' in (tmp_path / "config.toml").read_text()
 
 
 async def test_the_theme_tabs_save_both_colorscheme_and_diff(tmp_path):
     command_loop = themed_loop(tmp_path, "slate")
     Theme.set_mode("slate")
     command_loop.interactive_input = True
-    # Theme: slate -> paper. Diff colors: auto -> paper's own, the first style listed.
+    # Theme: slate -> forest. Diff colors: auto -> forest's own, the first style listed.
     tui = command_loop.presentation.tui = ThemeModal(["j", "right", "j", "enter"], consumed=True)
 
     result = await theme_command(command_loop, "")
 
-    assert Theme.name() == "paper" and Theme.selected_diff_style() == "classic"
-    assert "Theme: paper (saved" in result and "Diff colors: classic (saved as ui.diff.style" in result
+    assert Theme.name() == "forest" and Theme.selected_diff_style() == "classic"
+    assert "Theme: forest (saved" in result and "Diff colors: classic (saved as ui.diff.style" in result
     config = (tmp_path / "config.toml").read_text()
-    assert 'theme = "paper"' in config and '[ui.diff]\nstyle = "classic"' in config
+    assert 'theme = "forest"' in config and '[ui.diff]\nstyle = "classic"' in config
     assert command_loop.session.config.ui["diff"] == {"style": "classic"}
     # One redraw for both choices, after the second.
     assert tui.recolored == 1

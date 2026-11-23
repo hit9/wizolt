@@ -21,8 +21,8 @@ preview so more choices remain visible.
 
 ## Color themes
 
-The **Colorscheme** tab opens with `auto`, `slate`, `paper` and your current theme.
-Press **a** to browse all colors, or **/** to search built-in, custom and plugin themes.
+The **Colorscheme** tab lists every built-in, custom and plugin theme and opens at your current choice.
+Press **/** to search by name, for example `sand` or `gruvbox-dark`.
 Each theme carries its accent through your messages, the menu selection and the model in
 the status bar. Tool names and separators use quieter colors.
 The preview shows a short exchange with a user message, a reply, an edit and its test result.

@@ -187,7 +187,6 @@ class AppearancePicker:
             **{kind + "_theme": Theme.selected_bar_theme(kind) for kind in ("statusbar", "divider")},
         }
         self.previewed_turn_colors = False
-        self.all_themes = False
         self.selected = dict(self.original)
         # The formats behind `custom` rows: what was saved, or a draft accepted in the format panel.
         self.custom = {kind: self.layout_before.sources[kind] for kind in BAR_FORMATS if self.original[kind] == CUSTOM}
@@ -314,11 +313,7 @@ class AppearancePicker:
         offers and says about `auto`."""
         kind, state = self.kind(), self.lists[self.kind()]
         if kind == "theme":
-            state.choices = (
-                Theme.choices()
-                if self.all_themes or state.searching or state.query
-                else tuple(dict.fromkeys((Theme.AUTO, "slate", "paper", self.original["theme"], self.selected["theme"])))
-            )
+            state.choices = Theme.choices()
             state.labels = {Theme.AUTO: f"auto (follows the terminal: {Theme.resolve(Theme.AUTO)})"}
         elif kind == "diff":
             state.choices = Theme.diff_styles()
@@ -506,9 +501,7 @@ class AppearancePicker:
                 choice = state.selected_choice()
                 focused = state.labels.get(choice, choice) if choice is not None else "no matches"
                 keys = "↑↓ move · h/l tab · Enter save · Esc cancel"
-                if self.kind() == "theme":
-                    keys = "a all themes · h/l tab · Enter save · Esc cancel"
-                elif self.kind() in self.bar_focus:
+                if self.kind() in self.bar_focus:
                     keys = "Space choose · Tab group · f format · Enter save · Esc cancel"
                 elif self.kind() == "input":
                     keys = "↑↓ move · e edit · Enter save · Esc cancel"
@@ -530,8 +523,6 @@ class AppearancePicker:
             if path
             else "Full customization: edit your config file"
         )
-        if self.kind() == "theme":
-            hint = "a  fewer themes" if self.all_themes else "a  all themes"
         config_hint = (Theme.fg("muted"), "  " + Text.clip_width(hint, self.width - 2) + "\n")
         if self.input_edit is not None:
             parts = [*tabs, (Theme.fg("muted"), "  Tab field · Ctrl-U clear · Enter apply · Esc back\n"), config_hint]
@@ -577,7 +568,8 @@ class AppearancePicker:
         )
         # Keep navigation beside the tabs, rather than below a preview or padding.
         legend = fragments.pop(-2 if state.searching else -1)
-        fragments[1] = config_hint
+        if self.kind() != "theme":
+            fragments[1] = config_hint
         if self.kind() in self.bar_focus:
             # Chosen values remain visible even when the cursor scrolls into the other group.
             kind = self.kind()
@@ -658,10 +650,6 @@ class AppearancePicker:
             return TUI_MODAL_PENDING
         state = self.current_list()
         kind, before = self.kind(), state.selected_choice()
-        if kind == "theme" and not state.searching and key == "a":
-            self.all_themes = not self.all_themes
-            state.set_query("")
-            return TUI_MODAL_PENDING
         if kind in self.bar_focus and not state.searching and key == "f":
             # The divider's Sweep rows open its formula; any other row, the bar's format.
             self.open_format("sweep" if self.bar_focus[kind].startswith("sweep:") else kind)
