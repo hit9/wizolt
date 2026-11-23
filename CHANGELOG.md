@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.77.8 - 2026-11-23
+
+- Version bump only.
+
 ## 0.77.7 - 2026-11-23
 
 - Rework all twelve built-in themes with distinct prompt and path colors, quieter live previews and more restrained status bands. Compare the palettes in the updated theme gallery.
