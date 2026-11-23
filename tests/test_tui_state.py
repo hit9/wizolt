@@ -259,13 +259,12 @@ def test_live_spark_breathes_across_a_wide_range_of_the_divider_accent(monkeypat
 
 
 def test_live_spark_keeps_range_on_a_light_terminal(monkeypatch):
-    """The crest stays shy of pure white and the trough stays dark, so the breath still reads
-    against a light background instead of vanishing into it or washing out."""
+    """The first frame has the strongest contrast even against a pale background."""
     monkeypatch.setattr(Theme, "_mode", "light")
     crest = Theme.rgb(LiveSpark.ramp()[-1].split()[0])
-    assert all(channel >= 225 for channel in crest)  # near-white, but not the background itself
     trough = Theme.rgb(LiveSpark.ramp()[0].split()[0])
-    assert sum(trough) <= sum(crest) - 300  # the trough stays clearly darker: the breath has range
+    assert max(crest) < 64
+    assert sum(trough) >= sum(crest) + 300
 
 
 def test_model_stream_preview_draws_the_same_tree_as_the_log(tmp_path, monkeypatch):
