@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.77.4 - 2026-11-23
+
 - Keep the terminal cursor at the editing position in long tmux sessions so input method candidates follow the draft.
 
 - Upgrade Pillow to 13.0.0, PyJWT to 2.15.1 and opentelemetry-api to 1.45.2 for security fixes.
