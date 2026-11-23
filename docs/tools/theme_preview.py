@@ -70,7 +70,7 @@ def sample(figures: Illustrations, terminal: TerminalTheme) -> dict:
     rows = [
         message,
         Text(""),
-        figures.message("Check the tokenizer, then handle empty input.", "assistant"),
+        figures.message("## Tokenizer\n\nCheck the tokenizer, then handle empty input.", "assistant"),
         figures.styled(
             figures.printer.log_segments(
                 LogBlock([LogLine("Read", "parser.py, tests/test_parser.py", LogRole.TOOL, meta=" → tr.1–tr.2", syntax="tool-args")]), WIDTH

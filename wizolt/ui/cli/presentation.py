@@ -27,6 +27,8 @@ class Presentation:
     MIN_ROWS_BETWEEN_RULES: ClassVar[int] = 6
     TOOL_RUN_RULE_BATCHES: ClassVar[int] = 4
 
+    MODEL_PREVIEW_CHARS: ClassVar[int] = 8000
+
     def __init__(self, session: Session, output_fn=print):
         self.session = session
         self.update = UpdateStatus()
@@ -285,7 +287,7 @@ class Presentation:
                 self.model_stream_kind, self.model_stream_text = kind, ""
             # The reaction shows the moment its marker completes, while the reply still streams.
             opening = kind == "output" and opens_reaction(self.model_stream_text)
-            self.model_stream_text = (self.model_stream_text + text)[-8000:]
+            self.model_stream_text = (self.model_stream_text + text)[-self.MODEL_PREVIEW_CHARS :]
             if opening and (reaction := split_reaction(self.model_stream_text)[0]):
                 self.react(reaction)
         if tui is not None:

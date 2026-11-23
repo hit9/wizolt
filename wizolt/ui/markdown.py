@@ -8,7 +8,9 @@ imported from there; every Rich render in the app goes through ``markdown_consol
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from functools import lru_cache
+from itertools import pairwise
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from rich import box
 from rich.console import Console, ConsoleOptions, RenderResult
@@ -18,11 +20,35 @@ from rich.table import Table
 
 from wizolt.ui.render import Theme
 
+if TYPE_CHECKING:
+    from markdown_it.token import Token
+
+
+def heading_weight(tag: str) -> str:
+    return "bold" if tag in {"h1", "h2", "h3"} else "italic"
+
+
+@lru_cache(maxsize=1)
+def stream_headings(text: str) -> dict[int, tuple[str, str]]:
+    """ATX heading source rows in a partial reply. Animation redraws reuse the last parse."""
+    return {
+        token.map[0]: (body.content, heading_weight(token.tag))
+        for token, body in pairwise(Markdown(text).parsed)
+        if token.type == "heading_open" and token.map and token.markup.startswith("#")
+    }
+
 
 class _Heading(Heading):
     """Keep headings aligned with the transcript body."""
 
     LEVEL_ALIGN: ClassVar[dict[str, Any]] = dict.fromkeys(Heading.LEVEL_ALIGN, "left")
+
+    @classmethod
+    def create(cls, markdown: Markdown, token: Token) -> _Heading:
+        heading = cls(token.tag)
+        if isinstance(markdown, WizoltMarkdown) and markdown.role == "assistant":
+            heading.style_name = f"{Theme.rich_color('accent_secondary')} {heading_weight(token.tag)}"
+        return heading
 
 
 class _CodeBlock(CodeBlock):
@@ -93,6 +119,7 @@ class WizoltMarkdown(Markdown):
     }
 
     def __init__(self, markup: str, *, role: str = "text") -> None:
+        self.role = role
         super().__init__(markup, style=Theme.rich_color(role), hyperlinks=False)
 
 

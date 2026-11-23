@@ -1232,3 +1232,16 @@ def test_model_reply_ink_matches_from_stream_to_transcript(name):
     for style, char in message.fragments(80):
         if char.strip():
             assert style.split()[0] == expected
+
+
+@pytest.mark.parametrize("name", Theme.BUILTIN)
+def test_reply_headings_use_the_secondary_accent_at_every_level(name):
+    Theme.set_mode(name)
+    heading_color = Theme.color("accent_secondary")
+    assert heading_color != Theme.color("assistant")
+    for level in range(1, 7):
+        message = MessageBlock(UiPrinter(), "#" * level + " 标题\n\n正文", "assistant", 0)
+        styles = {char: style.split() for style, char in message.fragments(40)}
+        assert heading_color in styles["标"]
+        assert ("bold" if level <= 3 else "italic") in styles["题"]
+        assert Theme.color("assistant") in styles["正"]

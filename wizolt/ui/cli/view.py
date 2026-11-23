@@ -360,9 +360,7 @@ class View:
     QUEUE_EMPTY_HINT = "Enter follow-up · Tab next turn · Ctrl-C interrupts"
     QUEUE_PENDING_HINT = "↑ recalls queued · Tab next turn · Ctrl-C interrupts"
 
-    # Line-level markdown tokens the live stream preview styles. Block constructs (headings,
-    # lists, fenced code) are deliberately not parsed: the preview shows partial streaming text,
-    # and only tokens that close on one line can render without flickering as the stream grows.
+    # Complete inline tokens can be styled while the surrounding line is still streaming.
     # Each token must hold a non-blank character, so whitespace-only runs (`** **`, `* *`) stay
     # literal; the italic branch's `(?<!\*) ... (?!\*)` guards keep a lone star from borrowing
     # itself out of a `**` run.
@@ -558,11 +556,26 @@ class View:
         shown = [next((line for line in lines if line.strip()), "")] if mode == "collapsed" else lines[-limit:]
         if mode == "collapsed" and not shown[0]:
             return []
-        rows = [Text.clip_width(line.expandtabs(4), max(1, width - len(rail) - 1)) for line in shown]
+        headings: dict[int, tuple[str, str]] = {}
+        if (
+            kind == "output"
+            and len(self.presentation.model_stream_text) < self.presentation.MODEL_PREVIEW_CHARS
+            and any(line.lstrip().startswith("#") for line in shown)
+        ):
+            # Use the same block parser as the completed reply: a shell comment or a code
+            # example can also start with '#'. A truncated window has lost its fence context.
+            from wizolt.ui.markdown import stream_headings
+
+            headings = stream_headings(text)
         fragments: StyleAndTextTuples = []
-        for index, row in enumerate(rows):
+        for index, line in enumerate(shown):
+            style = "class:assistant"
+            if heading := headings.get(len(lines) - len(shown) + index):
+                line, weight = heading
+                style = Theme.fg("accent_secondary", weight)
+            row = Text.clip_width(line.expandtabs(4), max(1, width - len(rail) - 1))
             fragments.append(("class:rule", rail) if index else LiveSpark.marker(self.session.state.stream_started_at, level=TurnBox.CONTENT_LEVEL + 1))
-            inline = self._stream_inline_fragments(row)
+            inline = self._stream_inline_fragments(row, style)
             if kind == "reasoning":
                 fragments.append(("class:preview", "".join(text for _, text in inline)))
             else:
@@ -571,24 +584,24 @@ class View:
         return fragments
 
     @classmethod
-    def _stream_inline_fragments(cls, row: str) -> list[tuple[str, str]]:
+    def _stream_inline_fragments(cls, row: str, style: str) -> list[tuple[str, str]]:
         """Style complete inline tokens in an answer. Keep an unfinished marker literal."""
         fragments: list[tuple[str, str]] = []
         cursor = 0
         for match in cls.STREAM_INLINE_RE.finditer(row):
             if match.start() > cursor:
-                fragments.append(("class:assistant", row[cursor : match.start()]))
+                fragments.append((style, row[cursor : match.start()]))
             token = match.group(1)
             if token.startswith("**"):
-                fragments.append(("class:assistant bold", token[2:-2]))
+                fragments.append((style + " bold", token[2:-2]))
             elif token.startswith("`"):
-                fragments.append(("class:assistant underline", token[1:-1]))
+                fragments.append((style + " underline", token[1:-1]))
             else:
-                fragments.append(("class:assistant italic", token[1:-1]))
+                fragments.append((style + " italic", token[1:-1]))
             cursor = match.end()
         if cursor < len(row):
-            fragments.append(("class:assistant", row[cursor:]))
-        return fragments or [("class:assistant", row)]
+            fragments.append((style, row[cursor:]))
+        return fragments or [(style, row)]
 
     def tui_input_hint(self) -> str:
         tui = self.presentation.tui
