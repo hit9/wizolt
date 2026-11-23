@@ -65,7 +65,7 @@ def test_theme_adapters_publish_only_the_styles_the_renderers_reference(monkeypa
     for mode in ("dark", "light"):
         monkeypatch.setattr(Theme, "_mode", mode)
         tui_styles = Theme.tui_styles()
-        assert set(tui_styles) == {"text", "muted", "subtle", "preview", "accent", "rule", "success", "error"}
+        assert set(tui_styles) == {"text", "assistant", "muted", "subtle", "preview", "accent", "rule", "success", "error"}
         style = Style.from_dict(tui_styles)
         console = Console(theme=Theme.rich_theme())
         for role in tui_styles:

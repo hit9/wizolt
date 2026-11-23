@@ -674,7 +674,7 @@ def test_agent_preview_is_a_bounded_box_with_wrapped_live_text(width, height):
     assert all(get_cwidth(line) == min(width, 100) for line in lines)
     assert "Task" in text and "Live" in text and "…" in text
     assert "live text" in text if width >= 40 else "text" in text
-    assert any(style == "class:text" for style, value in parts if "text" in value)
+    assert any(style == "class:assistant" for style, value in parts if "text" in value)
 
 
 def test_roomy_agent_preview_separates_headings_and_aligns_body_text():
