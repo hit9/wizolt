@@ -172,7 +172,7 @@ def setup(p):
 async def test_cli_returns_json_and_preview_without_starting_agent(tmp_path):
     path = Path(__file__).parents[1] / "wizolt/plugins/builtin/context_bar.py"
     facts = tmp_path / "facts.json"
-    facts.write_text(json.dumps({"window": {"used": 10, "limit": 100, "parts": [["messages", 10]]}}))
+    facts.write_text(json.dumps({"window": {"used": 10, "limit": 100, "parts": [["assistant", 10]]}}))
     process = await asyncio.create_subprocess_exec(
         sys.executable,
         "-m",
@@ -208,7 +208,7 @@ base = "solarized-dark"
 context_chat = "#aabbcc"
 ''')
     facts = tmp_path / "facts.json"
-    facts.write_text(json.dumps({"window": {"used": 10, "limit": 100, "parts": [["messages", 10]]}}))
+    facts.write_text(json.dumps({"window": {"used": 10, "limit": 100, "parts": [["assistant", 10]]}}))
     process = await asyncio.create_subprocess_exec(
         sys.executable,
         "-m",

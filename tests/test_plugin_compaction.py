@@ -9,6 +9,9 @@ from wizolt.agent.compaction import Compactor
 from wizolt.agent.engine import Agent
 from wizolt.sdk import PluginError
 
+# The breakdown's conversation categories: together they are what one `messages` part used to be.
+CONVERSATION_PARTS = ("user", "assistant", "tool calls", "reasoning", "tool out", "images")
+
 
 def source(tmp_path, body='return Summary("Reviewed the implementation; one test remains.")', name="summaries", match=""):
     path = tmp_path / f"{name}.py"
@@ -54,7 +57,8 @@ async def test_a_manual_compact_refreshes_the_window_parts_plugins_read(agent, t
     loop = CommandLoop(agent, output_fn=output.append)
 
     def messages_part() -> int:
-        return dict(session.plugins.snapshot().window.parts)["messages"]
+        parts = dict(session.plugins.snapshot().window.parts)
+        return sum(tokens for name, tokens in parts.items() if name in CONVERSATION_PARTS)
 
     before = messages_part()
     assert before > 20_000 // 4  # the plugin launch read the long conversation
@@ -63,13 +67,13 @@ async def test_a_manual_compact_refreshes_the_window_parts_plugins_read(agent, t
     assert any("Compacted context" in str(line) for line in output)
 
     assert messages_part() < before // 2
-    assert messages_part() == dict(agent.context.breakdown(session.system_prompt))["messages"]
+    assert messages_part() == sum(tokens for name, tokens in agent.context.breakdown(session.system_prompt) if name in CONVERSATION_PARTS)
     # What compaction left is its own part: the checkpoint, measured apart from the conversation.
     parts = dict(session.plugins.snapshot().window.parts)
     checkpoint = [message for message in session.messages if agent.context.is_compaction_summary(message)]
     rest = [message for message in session.messages if not agent.context.is_compaction_summary(message)]
     assert parts["summary"] == agent.context.estimated_tokens(checkpoint) > 0
-    assert parts["messages"] == agent.context.estimated_tokens(rest)
+    assert messages_part() == sum(tokens for _, tokens in agent.context.conversation_parts(rest))
 
 
 async def test_an_automatic_compaction_refreshes_the_window_parts_before_the_request(agent, tmp_path):
@@ -82,14 +86,14 @@ async def test_an_automatic_compaction_refreshes_the_window_parts_before_the_req
     ]
     session.transcript_messages = list(session.messages)
     await session.plugins.manage("enable", source(tmp_path))
-    before = dict(session.plugins.snapshot().window.parts)["messages"]
+    before = sum(tokens for name, tokens in dict(session.plugins.snapshot().window.parts).items() if name in CONVERSATION_PARTS)
     session.settings.max_context_tokens = before * 2 // 3  # the next request no longer fits
 
     await agent.prepare_request([])
 
     assert session.state.compaction_count == 1
     parts = dict(session.plugins.snapshot().window.parts)
-    assert parts["messages"] < before // 2
+    assert sum(tokens for name, tokens in parts.items() if name in CONVERSATION_PARTS) < before // 2
     assert parts == dict(agent.context.breakdown(session.system_prompt))
 
 

@@ -16,7 +16,9 @@ from wizolt.ui.render import Theme
 
 
 def context():
-    return Context("test", "main", "/tmp", "running", 20, 0, "model", 2, 20, Usage(output_rate=42), ContextWindow(200, 1000, 900, (("system", 100), ("messages", 100))))
+    return Context(
+        "test", "main", "/tmp", "running", 20, 0, "model", 2, 20, Usage(output_rate=42), ContextWindow(200, 1000, 900, (("system", 100), ("messages", 100)))
+    )
 
 
 def test_public_snapshot_roundtrip_keeps_typed_immutable_facts():
@@ -52,7 +54,7 @@ def test_multispan_rows_have_one_total_transport_budget():
 
 async def test_sampling_can_collect_metrics_before_pure_rendering(tmp_path):
     source = tmp_path / "wave.py"
-    source.write_text('''SDK_VERSION = 1
+    source.write_text("""SDK_VERSION = 1
 from wizolt.sdk import Line, Panel, Text
 def setup(p):
     rates = []
@@ -60,7 +62,7 @@ def setup(p):
         rates.append(event.context.usage.output_rate)
     p.on("tick", sample)
     p.component("above_divider", lambda ctx: Panel((Line((Text(str(len(rates)), "success"), Text(str(ctx.window.parts[0]), "warning"))),)))
-''')
+""")
     report = await PluginTrial(context()).run(str(source), times=(0, 1, 2))
     assert report.status == "passed", report.error
     panels = [Snapshot.decode(frame).panels["above_divider"] for frame in report.frames]
@@ -82,7 +84,7 @@ async def test_model_request_populates_context_categories_without_recomputing_on
     try:
         await agent.run("hello")
         snapshot = session.plugins.snapshot()
-        assert dict(snapshot.window.parts)["messages"] > 0
+        assert dict(snapshot.window.parts)["user"] > 0
         parts = session.plugins.context_parts
         session.usage.completion_tokens = 50
         other = session.plugins.snapshot()

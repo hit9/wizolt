@@ -322,19 +322,51 @@ class ContextManager:
         # that looks as if compacting barely freed anything.
         checkpoints = [message for message in conversation if self.is_compaction_summary(message)]
         conversation = [message for message in conversation if not self.is_compaction_summary(message)]
-        # Named for what a user configures: AGENTS.md files are "memory files", and what connected
+        # Named for what a user configures: the instruction files are "AGENTS.md", and what connected
         # MCP servers add to the prefix (their tools and resources index) is "mcp servers". Listed
         # in the context layout's order: the tool block leads the cached prefix with the system
-        # prompt, then the header in header_parts order, then the conversation.
+        # prompt, then the header in header_parts order, then the conversation split by what it
+        # actually carries.
         return [
             ("system tools", self.estimated_tokens(Tool.resolved_schemas(self.session))),
             ("system prompt", self.estimated_tokens(self.model_header(base_system)[:2])),
-            ("memory files", text(self.instructions_context())),
+            ("AGENTS.md", text(self.instructions_context())),
             ("skills", text(self.skills_context())),
             ("mcp servers", text(self.mcp_tools_context())),
             ("summary", self.estimated_tokens(checkpoints) if checkpoints else 0),
-            ("messages", self.estimated_tokens(self.dedup_skill_loads(self.dedup_mcp_describes(conversation)))),
+            *self.conversation_parts(self.dedup_skill_loads(self.dedup_mcp_describes(conversation))),
         ]
+
+    def conversation_parts(self, conversation: list[Json]) -> list[tuple[str, int]]:
+        """The conversation split by what each message carries, in first-appearance order: user
+        text, assistant text, tool calls, readable reasoning and tool results, then images once
+        for the whole conversation. The groups are disjoint and use the same text estimator as
+        `estimated_tokens`, so together they estimate what one `messages` part used to."""
+        groups: dict[str, list[Json]] = {}
+        for message in conversation:
+            role = str(message.get("role") or "")
+            if role == "assistant":
+                # Provider echoes are transport state: only their readable reasoning is estimated,
+                # as its own group, so the assistant text never carries it twice.
+                rest = {
+                    key: value
+                    for key, value in message.items()
+                    if key not in ("tool_calls", *PROVIDER_ECHO_KEYS, IMAGE_REFS_KEY, IMAGE_TEXT_ONLY_KEY, TOOL_IMAGE_OBSERVATION_KEY, SESSION_EVENT_KEY)
+                }
+                if any(value for key, value in rest.items() if key != "role"):
+                    groups.setdefault("assistant", []).append(rest)
+                if calls := message.get("tool_calls"):
+                    groups.setdefault("tool calls", []).append({"tool_calls": calls})
+                if readable := self._readable_provider_context(message):
+                    groups.setdefault("reasoning", []).append({"content": readable})
+            elif role == "tool":
+                groups.setdefault("tool out", []).append(message)
+            else:
+                groups.setdefault("user", []).append(message)
+        parts = [(name, self._payload_text_tokens(messages)) for name, messages in groups.items()]
+        if images := self.session.images.estimated_tokens(conversation):
+            parts.append(("images", images))
+        return parts
 
     async def prepare_messages(
         self, model: ModelClient, base_system: str, turn_messages: list[Json] | None = None, tools: list[Json] | None = None
@@ -790,24 +822,29 @@ class ContextManager:
         return snapped if len(snapped) >= limit * cls.EXCERPT_SNAP_FLOOR else window
 
     def estimated_tokens(self, messages: list[Json]) -> int:
+        return self._payload_text_tokens(messages) + self.session.images.estimated_tokens(messages)
+
+    @staticmethod
+    def _readable_provider_context(message: Json) -> list[str]:
         # Normalized assistant fields already contain visible text and tool calls, so provider
         # echoes would double-count them. Preserve only additional readable reasoning; ciphertext
         # and signatures are transport state whose byte length is not a prompt-token estimate.
-        def readable_provider_context(message: Json) -> list[str]:
-            readable: list[str] = []
-            responses = message.get(RESPONSES_OUTPUT_KEY)
-            if isinstance(responses, list):
-                for item in responses:
-                    if not isinstance(item, dict) or item.get("type") != "reasoning":
-                        continue
-                    readable.extend(str(item[key]) for key in ("content", "summary") if item.get(key))
-            anthropic = message.get(ANTHROPIC_CONTENT_KEY)
-            if isinstance(anthropic, list):
-                for block in anthropic:
-                    if isinstance(block, dict) and block.get("type") in ("thinking", "redacted_thinking") and block.get("thinking"):
-                        readable.append(str(block["thinking"]))
-            return readable
+        readable: list[str] = []
+        responses = message.get(RESPONSES_OUTPUT_KEY)
+        if isinstance(responses, list):
+            for item in responses:
+                if not isinstance(item, dict) or item.get("type") != "reasoning":
+                    continue
+                readable.extend(str(item[key]) for key in ("content", "summary") if item.get(key))
+        anthropic = message.get(ANTHROPIC_CONTENT_KEY)
+        if isinstance(anthropic, list):
+            for block in anthropic:
+                if isinstance(block, dict) and block.get("type") in ("thinking", "redacted_thinking") and block.get("thinking"):
+                    readable.append(str(block["thinking"]))
+        return readable
 
+    def _payload_text_tokens(self, messages: list[Json]) -> int:
+        """The text share of `estimated_tokens`: the readable payload, without image estimates."""
         payload: list[Json] = []
         for message in messages:
             estimated = {
@@ -815,12 +852,11 @@ class ContextManager:
                 for key, value in message.items()
                 if key not in (*PROVIDER_ECHO_KEYS, IMAGE_REFS_KEY, IMAGE_TEXT_ONLY_KEY, TOOL_IMAGE_OBSERVATION_KEY, SESSION_EVENT_KEY)
             }
-            if readable := readable_provider_context(message):
+            if readable := self._readable_provider_context(message):
                 estimated["_provider_context"] = readable
             payload.append(estimated)
         chars = len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
-        images = self.session.images.estimated_tokens(messages)
-        return (chars + 3) // 4 + images
+        return (chars + 3) // 4
 
     @staticmethod
     def estimated_text_tokens(text: str) -> int:

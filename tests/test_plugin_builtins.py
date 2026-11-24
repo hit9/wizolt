@@ -105,7 +105,7 @@ async def bar_panel(runtime, window, columns=60):
 
 
 async def test_context_bar_stacks_categories_and_the_unestimated_rest(runtime):
-    panel = await bar_panel(runtime, ContextWindow(50_000, 200_000, 180_000, (("system prompt", 10_000), ("messages", 30_000))))
+    panel = await bar_panel(runtime, ContextWindow(50_000, 200_000, 180_000, (("system prompt", 10_000), ("assistant", 30_000))))
     bar, legend = panel.rows
     # Measured against the input budget the status bar's ctx divides (50k * 100 // 180k), not
     # the whole 200k window: the bar used to read 25% beside a status row reading 27%.
@@ -115,19 +115,21 @@ async def test_context_bar_stacks_categories_and_the_unestimated_rest(runtime):
     assert [span.role for span in bar.spans] == ["context_system", "context_chat", "context_other", "rule", "text"]
     assert sum(len(span.text) for span in bar.spans[:3]) == round(50_000 * 56 / 180_000)
     assert "system 10k" in text(legend) and "other 10k" in text(legend) and text(legend).endswith("50k/180k")
+    # The legend lists the largest shares first, so the big ones survive a narrow pane.
+    assert text(legend).startswith("assistant 30k")
 
 
 async def test_context_bar_spreads_estimates_above_the_reported_fill_inside_it(runtime):
     # The local estimates can run ahead of the last reported request; the bar still ends where
     # the reported fill does, so its cells and its percentage tell the same story.
-    panel = await bar_panel(runtime, ContextWindow(90_000, 200_000, 180_000, (("system prompt", 20_000), ("messages", 100_000))))
+    panel = await bar_panel(runtime, ContextWindow(90_000, 200_000, 180_000, (("system prompt", 20_000), ("tool out", 100_000))))
     bar, _legend = panel.rows
     assert text(bar).endswith(" 50%")
     assert sum(len(span.text) for span in bar.spans if span.role != "rule" and span.role not in ("text", "warning")) == 28
 
 
 async def test_context_bar_draws_what_compaction_left_apart_from_the_conversation(runtime):
-    window = ContextWindow(60_000, 200_000, 180_000, (("skills", 10_000), ("summary", 20_000), ("messages", 30_000)))
+    window = ContextWindow(60_000, 200_000, 180_000, (("skills", 10_000), ("summary", 20_000), ("assistant", 30_000)))
     bar, legend = (await bar_panel(runtime, window)).rows
     # Its own role, distinct from both neighbours, in request order before the conversation.
     assert [span.role for span in bar.spans][:3] == ["context_skills", "context_summary", "context_chat"]
@@ -135,7 +137,7 @@ async def test_context_bar_draws_what_compaction_left_apart_from_the_conversatio
 
 
 async def test_context_bar_keeps_small_categories_and_fits_narrow_terminals(runtime):
-    window = ContextWindow(100_000, 200_000, 0, (("system prompt", 100), ("system tools", 9_900), ("skills", 40_000), ("messages", 50_000)))
+    window = ContextWindow(100_000, 200_000, 0, (("system prompt", 100), ("system tools", 9_900), ("skills", 40_000), ("tool out", 50_000)))
     panel = await bar_panel(runtime, window, columns=40)
     bar, legend = panel.rows
     assert len(text(bar)) == 40 and bar.spans[0] == Text("▉", "context_system")  # Tiny, still drawn.
@@ -149,7 +151,7 @@ async def test_context_bar_keeps_small_categories_and_fits_narrow_terminals(runt
 
 
 async def test_context_bar_never_draws_wider_than_the_panel(runtime):
-    window = ContextWindow(100_000, 200_000, 0, (("system prompt", 100), ("messages", 99_900)))
+    window = ContextWindow(100_000, 200_000, 0, (("system prompt", 100), ("assistant", 99_900)))
     runtime.state["context"] = facts(window=window)
     await runtime.manage("enable", str(BUILTIN / "context_bar.py"))
     for columns in range(4, 40):
@@ -184,7 +186,7 @@ def test_context_categories_are_distinct_in_terminal_output(depth, monkeypatch):
     for variable in ("COLORTERM", "PROMPT_TOOLKIT_COLOR_DEPTH", "NO_COLOR"):
         monkeypatch.delenv(variable, raising=False)
     parts = tuple((name, 100) for name in KEYS if name != "other")
-    panel = draw(facts(columns=180, window=ContextWindow(800, 1000, 1000, parts)))
+    panel = draw(facts(columns=180, window=ContextWindow(100 * len(KEYS), 2000, 2000, parts)))
     bar, legend = panel.rows
     segments = [span for span in bar.spans if span.text.endswith(("█", "▉"))]
     assert len(segments) == len(KEYS)
@@ -195,7 +197,7 @@ def test_context_categories_are_distinct_in_terminal_output(depth, monkeypatch):
         rendered = PluginView.render([panel], 180, 2)
         ansi = UiPrinter.render_to_ansi([FormattedText(rendered)], columns=180, color_depth=ColorDepth[depth])
         first = RichText.from_ansi(ansi.splitlines()[0])
-        colors = [span.style.color.get_truecolor() for span in first.spans if "█" in first.plain[span.start:span.end]]
+        colors = [span.style.color.get_truecolor() for span in first.spans if "█" in first.plain[span.start : span.end]]
         by_role = dict(zip((segment.role for segment in segments), colors, strict=True))
         chat = by_role["context_chat"]
         assert max(chat) - min(chat) <= 32, (theme, depth, chat)

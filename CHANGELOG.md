@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Split the context bar's conversation segment into user text, assistant text, tool calls, reasoning, tool results and images; rename the memory-files segment to AGENTS.md. The legend lists the largest categories first. Old sessions pick up the new breakdown on resume; theme role names are unchanged.
+
 ## 0.78.0 - 2026-11-24
 
 - Choose from five named palettes or Auto, with brighter Bash highlighting, neutral output previews and distinct status fields.

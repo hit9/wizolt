@@ -260,19 +260,43 @@ def test_status_breakdown_is_an_estimate_of_disjoint_parts(tmp_path):
     parts = dict(context.parts)
 
     # Named for what a user configures, in the order the request carries them.
-    # The context layout's order: the tool block, the system prompt, the header parts, then the conversation.
-    assert list(parts) == ["system tools", "system prompt", "memory files", "skills", "mcp servers", "summary", "messages"]
-    assert parts["messages"] >= 10_000 and parts["system prompt"] > 0 and parts["system tools"] > 0
-    assert parts["memory files"] > 0  # AGENTS.md
+    # The context layout's order: the tool block, the system prompt, the header parts, then the
+    # conversation split by what it carries (here a single user message).
+    assert list(parts) == ["system tools", "system prompt", "AGENTS.md", "skills", "mcp servers", "summary", "user"]
+    assert parts["user"] >= 10_000 and parts["system prompt"] > 0 and parts["system tools"] > 0
+    assert parts["AGENTS.md"] > 0
     # Without MCP, or before any compaction, a part is absent from the legend rather than shown
     # as a measured zero.
     assert parts["mcp servers"] == 0 and parts["summary"] == 0
     text = StatusReport.of(loop, full=True).text(100)
-    assert value(text, "messages").startswith("■") and "mcp servers" not in text and "summary" not in text
-    assert value(text, "memory files").startswith("■")
+    assert value(text, "user").startswith("■") and "mcp servers" not in text and "summary" not in text
+    assert value(text, "AGENTS.md").startswith("■")
     assert value(text, "total") == "~" + Text.abbreviate_count(sum(parts.values()))
     assert value(text, "compacts at") == Text.abbreviate_count(context.threshold)
     assert "Next request · estimated" in text
+
+
+def test_breakdown_splits_the_conversation_by_what_it_carries(tmp_path):
+    s = session(tmp_path)
+    s.messages = [
+        {"role": "user", "content": "question " * 200},
+        {
+            "role": "assistant",
+            "content": "answer " * 200,
+            "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "Bash", "arguments": '{"command": "' + "echo hi " * 100 + '"}'}}],
+            "_anthropic_content": [{"type": "thinking", "thinking": "thought " * 100}],
+        },
+        {"role": "tool", "tool_call_id": "c1", "content": "output " * 400},
+    ]
+    loop = CommandLoop(Agent(s, output_fn=lambda text: None), output_fn=lambda text: None)
+    context = loop.agent.context
+    parts = dict(context.breakdown(s.system_prompt))
+    conversation = ("user", "assistant", "tool calls", "reasoning", "tool out")
+    for name in conversation:
+        assert parts[name] > 0
+    # The split stays an estimate of the same conversation: only list framing may differ.
+    whole = context.estimated_tokens(context.dedup_skill_loads(context.dedup_mcp_describes(s.messages)))
+    assert abs(sum(parts[name] for name in conversation) - whole) <= 16
 
 
 def test_context_bar_parts_are_told_apart_without_losing_their_share(tmp_path):

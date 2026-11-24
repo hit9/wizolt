@@ -8,8 +8,9 @@ tools 14k  system 9.0k  …               74k/200k
 Each legend key matches its segment color. The thin track is free space.
 
 Each colored segment is one part of the next request, in its order: tool definitions, system
-prompt, memory files (AGENTS.md), skills, MCP servers, the summary `/compact` left, and the
-conversation. The percentage is the status bar's `ctx`; it warns from 80% and turns critical at 95%.
+prompt, AGENTS.md files, skills, MCP servers, the summary `/compact` left, and the conversation
+split by what it carries -- user text, assistant text, tool calls, reasoning, tool results,
+images. The percentage is the status bar's `ctx`; it warns from 80% and turns critical at 95%.
 
 ## Use
 
@@ -33,16 +34,21 @@ from wizolt.sdk import Context, Line, Panel, Plugin, Text
 
 SDK_VERSION = 1
 
-# Segment and legend share a hue. Short names keep the conversation visible in the
-# legend alongside the smaller categories even on a split pane.
+# Segment and legend share a hue. Short names keep more categories visible in the legend,
+# which lists the largest shares first so the big ones survive a narrow pane.
 KEYS = {
     "system tools": ("tools", "context_tools"),
     "system prompt": ("system", "context_system"),
-    "memory files": ("memory", "context_memory"),
+    "AGENTS.md": ("AGENTS.md", "context_memory"),
     "skills": ("skills", "context_skills"),
     "mcp servers": ("MCP", "context_mcp"),
     "summary": ("summary", "context_summary"),
-    "messages": ("chat", "context_chat"),
+    "user": ("user", "context_user"),
+    "assistant": ("assistant", "context_chat"),
+    "tool calls": ("calls", "context_calls"),
+    "reasoning": ("reasoning", "context_reasoning"),
+    "tool out": ("tool out", "context_tool_out"),
+    "images": ("images", "context_images"),
     "other": ("other", "context_other"),
 }
 FALLBACK_ROLES = ("accent", "accent_secondary", "success", "info")
@@ -82,7 +88,7 @@ def allocate(weights: list[int], width: int) -> list[int]:
 
 
 def legend(parts: list[tuple[str, int]], totals: str, columns: int) -> Line:
-    """Name the drawn categories in bar order, cut with an ellipsis, totals right-aligned."""
+    """Name the drawn categories largest first, cut with an ellipsis, totals right-aligned."""
     room = columns - len(totals) - 1
     if room < 16:  # Too little legend to be worth it: keep only the totals.
         # The narrowest terminals cannot even fit the totals: the percentage alone is the one
@@ -138,7 +144,13 @@ def draw(context: Context) -> Panel:
     spans += [Text(" " + percent, "error" if shown >= 95 else "warning" if shown >= 80 else "text")] if percent else []
     rows: list[Text | Line] = [Line(tuple(spans))]
     if parts and (context.layout is None or context.layout.rows >= 2):
-        rows.append(legend([(name, tokens) for name, tokens, _ in drawn], f"{compact(filled)}/{compact(total)}" + ("" if percent else f" {shown}%"), columns))
+        rows.append(
+            legend(
+                sorted(((name, tokens) for name, tokens, _ in drawn), key=lambda part: part[1], reverse=True),
+                f"{compact(filled)}/{compact(total)}" + ("" if percent else f" {shown}%"),
+                columns,
+            )
+        )
     return Panel(tuple(rows))
 
 

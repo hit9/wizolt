@@ -33,7 +33,7 @@ custom highlight groups belong in bar formats.
 | --- | --- |
 | General | `text`, `muted`, `subtle`, `preview`, `accent`, `accent_secondary`, `info`, `rule` |
 | Messages | `assistant`, `user`, `user_bg`, `tool`, `success`, `warning`, `error` |
-| Context bar | `context_tools`, `context_system`, `context_memory`, `context_skills`, `context_mcp`, `context_summary`, `context_chat`, `context_other` |
+| Context bar | `context_tools`, `context_system`, `context_memory`, `context_skills`, `context_mcp`, `context_summary`, `context_user`, `context_chat`, `context_calls`, `context_reasoning`, `context_tool_out`, `context_images`, `context_other` |
 | Shell transcript | `shell_command`, `shell_string`, `shell_variable`, `shell_output` |
 | Syntax | `syntax_assign`, `syntax_string`, `syntax_number`, `syntax_ident`, `syntax_builtin`, `syntax_default` |
 | Status text | `status_base`, `status_provider`, `status_model`, `status_reason`, `status_mcp`, `status_services`, `status_context`, `status_cache`, `status_yolo`, `status_agent` |

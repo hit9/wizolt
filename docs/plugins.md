@@ -123,10 +123,14 @@ the same spot, wizolt keeps its own drawing until you pick one with
 
 Enable **context_bar** in `/plugins` to see what fills your context window above the input: one
 colored segment per category, in the order the request carries them (tools, system prompt,
-memory files, skills, MCP servers, the summary compaction left, messages), the same percentage
-as the status bar's `ctx` at the end, and a legend with token counts. Each category has a dedicated color shared with its label. Chat uses a muted slate so long conversations leave the smaller categories easy to see. A narrow gap separates neighboring blocks. A subdued line shows free space. The percentage changes to the
-warning color at 80% and the error color at 95%. In a short terminal only
-the bar remains. It makes no model calls.
+AGENTS.md, skills, MCP servers, the summary compaction left, then the conversation split into
+user text, assistant text, tool calls, reasoning, tool results and images), the same percentage
+as the status bar's `ctx` at the end, and a legend with token counts. The legend lists the largest
+categories first, so the big ones stay visible in a narrow pane. Each category has a dedicated
+color shared with its label. Assistant text uses a muted slate so long conversations leave the
+smaller categories easy to see. A narrow gap separates neighboring blocks. A subdued line shows
+free space. The percentage changes to the warning color at 80% and the error color at 95%. In a
+short terminal only the bar remains. It makes no model calls.
 
 ![The context bar and matching legend at 46% and 80% usage.](_static/plugins-context-bar.svg)
 

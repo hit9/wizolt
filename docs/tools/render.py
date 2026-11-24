@@ -347,7 +347,7 @@ class Illustrations:
 
     def plugin_context(self, status: str = "completed") -> Context:
         """Fixed agent facts: what a plugin callback would receive mid-session."""
-        window = ContextWindow(74_000, 200_000, 160_000, (("system prompt", 9_000), ("system tools", 14_000), ("memory files", 3_000), ("messages", 48_000)))
+        window = ContextWindow(74_000, 200_000, 160_000, (("system prompt", 9_000), ("system tools", 14_000), ("AGENTS.md", 3_000), ("user", 6_000), ("assistant", 10_000), ("tool out", 32_000)))
         return Context("main", "main", self.session.cwd, status, 37, 12, "claude-sonnet", NOW, WIDTH - 4, Usage(6, 42_000, 3_100, 30_000, 42), window)
 
     def panel(self, plugin: Plugin, slot: str, context: Context) -> Text:
@@ -383,7 +383,7 @@ class Illustrations:
         plugin = load_plugin("context_bar", (ROOT / "wizolt/plugins/builtin/context_bar.py").read_text(encoding="utf-8"))
         context = replace(self.plugin_context(), columns=106)
         rows = [self.label("Request composition"), self.panel(plugin, "above_input", context)]
-        full = ContextWindow(246_000, 305_000, 305_000, (("system tools", 4200), ("system prompt", 1400), ("memory files", 2100), ("skills", 381), ("summary", 6600), ("messages", 224_000)))
+        full = ContextWindow(246_000, 305_000, 305_000, (("system tools", 4200), ("system prompt", 1400), ("AGENTS.md", 2100), ("skills", 381), ("summary", 6600), ("user", 18_000), ("assistant", 46_000), ("tool out", 160_000)))
         rows.extend([Text(""), self.label("Long conversation"), self.panel(plugin, "above_input", replace(context, window=full))])
         self.save("plugins-context-bar", rows, width=context.columns)
 
