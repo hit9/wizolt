@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.78.0 - 2026-11-24
+
+- Choose from five named palettes or Auto, with brighter Bash highlighting, neutral output previews and distinct status fields.
+- Long tool runs use a blank separator by default. Narrow panes show shorter Bash output footers, and Ctrl-R previews history without appending the idle prompt hint.
+
 ## 0.77.24 - 2026-11-24
 
 - Hide the empty-input hint when Ctrl-R previews a matching history entry.

@@ -1287,7 +1287,7 @@ wheels = [
 
 [[package]]
 name = "wizolt"
-version = "0.77.24"
+version = "0.78.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },

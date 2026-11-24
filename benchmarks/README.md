@@ -9,6 +9,23 @@ document any retained cost. Update `baselines/` and this README's reference befo
 never accept a regression merely by replacing the baseline. If the environment or workload changed,
 remeasure the previous reference revision too so the comparison remains meaningful.
 
+## 0.78.0 release reference
+
+The [merged reference](baselines/linux-arm64-py314-0.78.0.json) at `e607bf11` and
+the [0.77.20 comparison](results/linux-arm64-py314-before-0.78.0.json) at `c9f1981e`
+used Linux ARM64, CPython 3.14.7, the same dependencies and nine samples per timing metric.
+The median first frame took 156.9 ms versus 156.0 ms. Nine output digests changed across
+the replay and transcript probes, which include terminal color and formatting.
+
+Three optimization probes slowed by more than 10% on the initial run. Repeating that suite
+in reverse order reversed all three differences. Times below are medians in milliseconds.
+
+| Workload | 0.77.20 | Merged | 0.77.20 repeat | Merged repeat |
+| --- | ---: | ---: | ---: | ---: |
+| Prepare a 1 MB request | 8.12 | 9.56 | 9.31 | 8.38 |
+| Rescan 100 skills | 0.498 | 0.578 | 0.598 | 0.510 |
+| Restore 10,000 deltas | 37.49 | 42.39 | 41.08 | 38.36 |
+
 ## 0.77.20 release reference
 
 The [merged master reference](baselines/linux-arm64-py314-0.77.20.json) measures
