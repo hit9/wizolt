@@ -136,9 +136,11 @@ class CallbackPlaceholder(Processor):
 
     def apply_transformation(self, transformation_input) -> Transformation:
         ti = transformation_input
+        # Incremental search can display a history entry while the editable draft is empty.
+        if ti.document.text:
+            return Transformation(ti.fragments)
         text = self.text_fn()
-        buffer = ti.buffer_control.buffer
-        if not text or buffer.text or ti.lineno != ti.document.line_count - 1:
+        if not text:
             return Transformation(ti.fragments)
         return Transformation([*ti.fragments, ("class:queue.hint", text)])
 

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.77.24 - 2026-11-24
+
+- Hide the empty-input hint when Ctrl-R previews a matching history entry.
+
 ## 0.77.23 - 2026-11-24
 
 - Separate long runs of silent tools with one blank line by default. Shorten truncated Bash output footers while keeping the omitted count and Ctrl-O shortcut.

@@ -15,7 +15,7 @@ from prompt_toolkit.history import FileHistory
 from prompt_toolkit.input.defaults import create_pipe_input
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.output import DummyOutput
-from tui_harness import ResizableOutput, loop, run_interactive_tui, session, wait_for, wait_until
+from tui_harness import ResizableOutput, loop, rendered_screen_text, run_interactive_tui, session, wait_for, wait_until
 
 import wizolt.ui.tui.app as tui_module
 from wizolt.agent.engine import Agent
@@ -753,6 +753,31 @@ def test_interactive_tui_recall_over_a_draft_keeps_the_cursor(monkeypatch, tmp_p
     run_interactive_tui(monkeypatch, app, drive=drive)
 
 
+def test_reverse_search_preview_hides_idle_hint_until_cancel(monkeypatch, tmp_path):
+    history = FileHistory(str(tmp_path / "history.txt"))
+    history.append_string("review current branch")
+    hint = "$skill points the agent at a skill"
+    app = TuiApp(history=history, input_hint_fn=lambda: hint)
+    output = ResizableOutput()
+    frames = []
+
+    def drive(pipe_input):
+        wait_until(lambda: frames and hint in frames[-1])
+        pipe_input.send_text("\x12rev")
+        wait_until(lambda: "I-search backward: rev" in frames[-1] and "review current branch" in frames[-1])
+        assert hint not in frames[-1]
+        assert app.input_buffer.text == ""
+        pipe_input.send_text("\x03")
+        wait_until(lambda: hint in frames[-1] and "I-search" not in frames[-1])
+        assert app.input_buffer.text == ""
+        app.app.loop.call_soon_threadsafe(app.app.exit)
+
+    run_interactive_tui(
+        monkeypatch, app, drive=drive, output=output,
+        after_render=lambda application: frames.append(rendered_screen_text(application, output)),
+    )
+
+
 @pytest.mark.parametrize("accept_key", ["\r", "\x0a"])
 def test_interactive_tui_ctrl_r_search_accept_key_fills_input_without_submitting(monkeypatch, tmp_path, accept_key):
     received = []
@@ -1107,17 +1132,7 @@ def test_tui_running_input_shows_contextual_placeholder():
     placeholder = CallbackPlaceholder(lambda: hint["text"])
 
     def transform(text):
-        document = Document(text)
-        ti = type(
-            "TransformationInput",
-            (),
-            {
-                "buffer_control": type("Control", (), {"buffer": type("Buffer", (), {"text": text})()})(),
-                "document": document,
-                "lineno": document.line_count - 1,
-                "fragments": [],
-            },
-        )()
+        ti = SimpleNamespace(document=Document(text), fragments=[])
         return placeholder.apply_transformation(ti).fragments
 
     assert transform("") == [("class:queue.hint", "Enter queues follow-up")]
