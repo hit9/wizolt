@@ -9,6 +9,14 @@ document any retained cost. Update `baselines/` and this README's reference befo
 never accept a regression merely by replacing the baseline. If the environment or workload changed,
 remeasure the previous reference revision too so the comparison remains meaningful.
 
+## 0.79.3 release reference
+
+The [merged reference](baselines/linux-arm64-py314-0.79.3.json) at `08f5439a` uses the same
+environment, workload and nine samples as the [0.79.2 reference](baselines/linux-arm64-py314-0.79.2.json).
+Median time to the first prompt moved from 161.8 to 161.6 ms. Presenting 20 plugin tool results
+took 4.36 ms versus 3.93 ms. The sample ranges overlapped, and only the version constant changed
+in the application between the two measured revisions.
+
 ## 0.79.2 release reference
 
 The [merged reference](baselines/linux-arm64-py314-0.79.2.json) at `3f0c8533` uses the same

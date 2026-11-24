@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.79.3 - 2026-11-24
+
 - Keep terminal startup and agent-switch acceptance tests from waiting for the idle starfield to expire after a resize or modal closes.
 
 ## 0.79.2 - 2026-11-24
