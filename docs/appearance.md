@@ -145,7 +145,9 @@ and **Esc** discards it; **Enter** in the picker then saves it like any other ch
 ## Input symbols
 
 The **Input** tab changes the symbol before your typing. Choose `>` (default), `❯`, `→`, `λ`
-or `•`. The preview shows both ordinary input and a follow-up while the agent is working.
+or `•`. The preview shows ordinary input and a follow-up while the agent is working.
+Press **s** to toggle the idle starfield and preview its twinkle. **Enter** saves your choice
+and **Esc** cancels it.
 
 ```{figure} _static/appearance-input.svg
 :alt: The Input tab with five symbol presets and a custom choice, showing a chevron before ordinary input and a plus-chevron before a follow-up.
@@ -177,6 +179,7 @@ You can also choose without opening the picker:
 /theme divider theme sand
 /theme sweep aurora
 /theme input chevron
+/theme starfield off
 ```
 
 For your own colors, statusbar backgrounds, layouts or animations, see

@@ -1,0 +1,233 @@
+{
+  "workload": "benchmarks/frame.py sample, PTY 100x30, --answer-background --yolo --check-input, repository cwd, isolated HOME, warm filesystem cache",
+  "method": "Fresh interpreters, all source trees staged under the same /tmp directory. One warm-up and nine measured samples per revision, rotating the order each round.",
+  "environment": {
+    "platform": "Linux-6.8.0-111-generic-aarch64-with-glibc2.39",
+    "python": "3.14.7",
+    "dependencies": "uv.lock"
+  },
+  "results": {
+    "564fc23b": {
+      "median_ms": {
+        "banner": 52.703,
+        "frame": 104.667,
+        "banner_to_prompt": 51.081,
+        "first_echo": 107.851,
+        "prompt_to_echo": 3.265
+      },
+      "samples_ms": [
+        {
+          "banner": 52.703,
+          "frame": 103.295,
+          "banner_to_prompt": 50.593,
+          "first_echo": 106.753,
+          "prompt_to_echo": 3.457
+        },
+        {
+          "banner": 53.384,
+          "frame": 102.962,
+          "banner_to_prompt": 49.578,
+          "first_echo": 105.964,
+          "prompt_to_echo": 3.003
+        },
+        {
+          "banner": 55.326,
+          "frame": 105.122,
+          "banner_to_prompt": 49.795,
+          "first_echo": 108.386,
+          "prompt_to_echo": 3.265
+        },
+        {
+          "banner": 50.774,
+          "frame": 105.45,
+          "banner_to_prompt": 54.676,
+          "first_echo": 108.708,
+          "prompt_to_echo": 3.258
+        },
+        {
+          "banner": 54.265,
+          "frame": 112.282,
+          "banner_to_prompt": 58.017,
+          "first_echo": 115.774,
+          "prompt_to_echo": 3.492
+        },
+        {
+          "banner": 51.139,
+          "frame": 102.219,
+          "banner_to_prompt": 51.081,
+          "first_echo": 105.465,
+          "prompt_to_echo": 3.245
+        },
+        {
+          "banner": 56.84,
+          "frame": 112.819,
+          "banner_to_prompt": 55.979,
+          "first_echo": 116.249,
+          "prompt_to_echo": 3.43
+        },
+        {
+          "banner": 51.098,
+          "frame": 104.667,
+          "banner_to_prompt": 53.568,
+          "first_echo": 107.851,
+          "prompt_to_echo": 3.184
+        },
+        {
+          "banner": 51.559,
+          "frame": 101.837,
+          "banner_to_prompt": 50.278,
+          "first_echo": 105.235,
+          "prompt_to_echo": 3.398
+        }
+      ]
+    },
+    "3aed50f1": {
+      "median_ms": {
+        "banner": 52.236,
+        "frame": 108.454,
+        "banner_to_prompt": 52.485,
+        "first_echo": 111.944,
+        "prompt_to_echo": 3.248
+      },
+      "samples_ms": [
+        {
+          "banner": 54.703,
+          "frame": 112.952,
+          "banner_to_prompt": 58.249,
+          "first_echo": 116.155,
+          "prompt_to_echo": 3.203
+        },
+        {
+          "banner": 49.879,
+          "frame": 100.071,
+          "banner_to_prompt": 50.191,
+          "first_echo": 103.187,
+          "prompt_to_echo": 3.116
+        },
+        {
+          "banner": 52.236,
+          "frame": 103.433,
+          "banner_to_prompt": 51.197,
+          "first_echo": 106.556,
+          "prompt_to_echo": 3.123
+        },
+        {
+          "banner": 48.747,
+          "frame": 101.233,
+          "banner_to_prompt": 52.485,
+          "first_echo": 105.108,
+          "prompt_to_echo": 3.875
+        },
+        {
+          "banner": 55.175,
+          "frame": 111.559,
+          "banner_to_prompt": 56.384,
+          "first_echo": 114.807,
+          "prompt_to_echo": 3.248
+        },
+        {
+          "banner": 56.242,
+          "frame": 111.296,
+          "banner_to_prompt": 55.055,
+          "first_echo": 114.68,
+          "prompt_to_echo": 3.383
+        },
+        {
+          "banner": 49.611,
+          "frame": 99.661,
+          "banner_to_prompt": 50.05,
+          "first_echo": 102.691,
+          "prompt_to_echo": 3.03
+        },
+        {
+          "banner": 50.684,
+          "frame": 108.454,
+          "banner_to_prompt": 57.77,
+          "first_echo": 111.944,
+          "prompt_to_echo": 3.49
+        },
+        {
+          "banner": 59.97,
+          "frame": 112.371,
+          "banner_to_prompt": 52.401,
+          "first_echo": 115.814,
+          "prompt_to_echo": 3.442
+        }
+      ]
+    },
+    "dev32 with the changes in this commit": {
+      "median_ms": {
+        "banner": 52.776,
+        "frame": 107.19,
+        "banner_to_prompt": 54.965,
+        "first_echo": 110.675,
+        "prompt_to_echo": 3.517
+      },
+      "samples_ms": [
+        {
+          "banner": 51.208,
+          "frame": 106.173,
+          "banner_to_prompt": 54.965,
+          "first_echo": 109.69,
+          "prompt_to_echo": 3.517
+        },
+        {
+          "banner": 52.818,
+          "frame": 116.027,
+          "banner_to_prompt": 63.209,
+          "first_echo": 120.71,
+          "prompt_to_echo": 4.684
+        },
+        {
+          "banner": 48.522,
+          "frame": 98.786,
+          "banner_to_prompt": 50.264,
+          "first_echo": 101.932,
+          "prompt_to_echo": 3.146
+        },
+        {
+          "banner": 61.733,
+          "frame": 127.755,
+          "banner_to_prompt": 66.022,
+          "first_echo": 132.011,
+          "prompt_to_echo": 4.256
+        },
+        {
+          "banner": 50.908,
+          "frame": 104.14,
+          "banner_to_prompt": 53.232,
+          "first_echo": 107.581,
+          "prompt_to_echo": 3.441
+        },
+        {
+          "banner": 51.353,
+          "frame": 103.621,
+          "banner_to_prompt": 52.268,
+          "first_echo": 107.044,
+          "prompt_to_echo": 3.423
+        },
+        {
+          "banner": 52.776,
+          "frame": 110.302,
+          "banner_to_prompt": 57.526,
+          "first_echo": 114.531,
+          "prompt_to_echo": 4.229
+        },
+        {
+          "banner": 54.529,
+          "frame": 110.167,
+          "banner_to_prompt": 55.637,
+          "first_echo": 113.802,
+          "prompt_to_echo": 3.635
+        },
+        {
+          "banner": 54.395,
+          "frame": 107.19,
+          "banner_to_prompt": 52.795,
+          "first_echo": 110.675,
+          "prompt_to_echo": 3.486
+        }
+      ]
+    }
+  }
+}

@@ -33,12 +33,12 @@ from wizolt.ui.cli.modals import picker_height
 from wizolt.ui.render import InputStyle, StatusBar, Theme, UiPrinter
 from wizolt.ui.themes import DIFF_STYLES
 from wizolt.ui.tui import TUI_MODAL_PENDING, ChoiceViewState, TabbedViewState, TuiApp
+from wizolt.ui.tui.starfield import StarfieldControl
 
 if TYPE_CHECKING:
     from wizolt.ui.cli.loop import CommandLoop
 
-# Picker settings; the first six also name direct `/theme KIND NAME` commands.
-KINDS = ("theme", "diff", "statusbar", "divider", "sweep", "input", "statusbar_theme", "divider_theme")
+DIRECT_KINDS = ("diff", "statusbar", "divider", "sweep", "input", "starfield")
 TAB_KINDS = ("theme", "diff", "statusbar", "divider", "input", "transcript")
 TITLES = ("Colorscheme", "Diff", "StatusBar", "Divider", "Input", "Transcript")
 LEGEND = ("j/k move", "h/l tab", "/ search")
@@ -58,7 +58,7 @@ def fit_keys(keys: Sequence[str], width: int) -> str:
 CUSTOM = "custom"
 # Where a statusbar preset puts its usage group. Not a setting: each is a different format.
 PLACEMENTS = {"left": "All left", "split": "Left / Right"}
-BAR_FORMATS = KINDS[2:5]  # the bar settings a format string holds
+BAR_FORMATS = ("statusbar", "divider", "sweep")  # the bar settings a format string holds
 _SAVE = object()
 
 
@@ -127,6 +127,22 @@ def save_diff_style(loop: CommandLoop, name: str) -> str:
     return result
 
 
+def save_starfield(loop: CommandLoop, name: str) -> str:
+    if name not in ("on", "off"):
+        return "Choose starfield on or off."
+    enabled = name == "on"
+    loop.session.settings.starfield = enabled
+    result = f"Starfield: {name}"
+    if loop.session.config.path:
+        try:
+            ConfigFile.set_runtime(loop.session.config.path, "starfield", enabled)
+        except (OSError, ValueError, ConfigError) as error:
+            result += f"\nNot saved to {loop.session.config.path}: {error}"
+        else:
+            result += f" (saved as runtime.starfield in {display_path(loop.session.config.path)})"
+    return result
+
+
 def apply_input(loop: CommandLoop, style: InputStyle) -> None:
     loop.presentation.input_style = style
     if loop.presentation.tui is not None:
@@ -184,10 +200,12 @@ class AppearancePicker:
             **{kind: self.preset(kind) for kind in BAR_FORMATS},
             "placement": CUSTOM if placement is None else "split" if placement[1] else "left",
             "input": input_name,
+            "starfield": "on" if loop.session.settings.starfield else "off",
             "transcript": transcripts.name(transcripts.saved(loop), CUSTOM),
             **{transcripts.SETTINGS[group]: transcripts.current(loop, group) for group in ("thinking", "close")},
             **{kind + "_theme": Theme.selected_bar_theme(kind) for kind in ("statusbar", "divider")},
         }
+        self.starfield_preview = StarfieldControl(lambda: Theme.color("text"), lambda: Theme.color("user_bg"))
         self.previewed_turn_colors = False
         self.selected = dict(self.original)
         # The formats behind `custom` rows: what was saved, or a draft accepted in the format panel.
@@ -460,7 +478,14 @@ class AppearancePicker:
             width = max(0, (self.width if columns is None else columns) - 2 - get_cwidth(prefix))
             text = Text.clip_width(text, width)
             background = f"bg:{Theme.color('user_bg')}"
-            return [(f"class:prompt {background}", prefix), (Theme.fg("text", background), text + " " * max(0, width - get_cwidth(text)) + "\n")]
+            remaining = max(0, width - get_cwidth(text))
+            row = [(f"class:prompt {background}", prefix), (Theme.fg("text", background), text)]
+            if not running and self.selected["starfield"] == "on":
+                dots = self.starfield_preview.create_content(remaining, 1).get_line(0)
+                row.extend((f"{background} {style}", glyph) for style, glyph, *_ in dots)
+            else:
+                row.append((background, " " * remaining))
+            return [*row, ("", "\n")]
 
         return [
             (Theme.fg("muted"), "  Chat\n  "),
@@ -506,7 +531,7 @@ class AppearancePicker:
                 if self.kind() in self.bar_focus:
                     keys = "Space choose · Tab group · f format · Enter save · Esc cancel"
                 elif self.kind() == "input":
-                    keys = "↑↓ move · e edit · Enter save · Esc cancel"
+                    keys = f"s stars {self.selected['starfield']} · e edit · Enter save · Esc cancel"
                 elif self.kind() == "transcript":
                     keys = "↑↓ move · Space choose · Tab group · f format · Enter save · Esc cancel"
             rows = [("class:choice.selected", "  " + focused)]
@@ -560,7 +585,7 @@ class AppearancePicker:
             keys=fit_keys(
                 ("j/k move", "h/l tabs", "Tab group", "Space choose", *(("p placement",) if self.kind() == "statusbar" else ()), "f format")
                 if self.kind() in self.bar_focus
-                else ("j/k move", "h/l tab", "e edit")
+                else ("j/k move", "h/l tab", "e edit", f"s stars {self.selected['starfield']}")
                 if self.kind() == "input"
                 else ("j/k move", "h/l tabs", "Tab group", "Space choose", "f format")
                 if self.kind() == "transcript"
@@ -677,6 +702,9 @@ class AppearancePicker:
             self.selected["placement"] = "left" if self.selected["placement"] == "split" else "split"
             self.preview_bar(kind, self.bar_focus[kind])
             return TUI_MODAL_PENDING
+        if kind == "input" and not state.searching and key == "s":
+            self.selected["starfield"] = "off" if self.selected["starfield"] == "on" else "on"
+            return TUI_MODAL_PENDING
         if kind == "input" and not state.searching and key == "e":
             style = self.input_style(self.selected["input"])
             self.input_edit = [style.prefix(), style.prefix(running=True)]
@@ -736,7 +764,7 @@ class AppearancePicker:
     def save(self) -> list[str]:
         """Persist every setting a tab changed; the lines say what was saved where."""
         lines: list[str] = []
-        for kind in ("theme", "diff", "statusbar_theme", "divider_theme", "transcript", *KINDS[2:6]):
+        for kind in ("theme", "diff", "statusbar_theme", "divider_theme", "transcript", *BAR_FORMATS, "input", "starfield"):
             name = self.selected[kind]
             if kind in BAR_FORMATS:
                 # A bar is saved when its format text changes. One the picker merely recognizes,
@@ -763,6 +791,8 @@ class AppearancePicker:
                 lines.append(save_diff_style(self.loop, name))
             elif kind.endswith("_theme"):
                 lines.append(bars.select_theme(self.loop, kind.removesuffix("_theme"), name))
+            elif kind == "starfield":
+                lines.append(save_starfield(self.loop, name))
             elif kind == "input":
                 lines.append(save_input(self.loop, self.input_style(name)))
         return lines
@@ -817,6 +847,8 @@ def direct(loop: CommandLoop, kind: str, name: str) -> str:
         if loop.presentation.tui is not None:
             loop.presentation.tui.recolor()
         return result
+    if kind == "starfield":
+        return save_starfield(loop, name)
     if kind == "input":
         if name not in InputStyle.PRESETS:
             return f"Unknown input preset: {name}. Available: {', '.join(InputStyle.PRESETS)}"
@@ -826,7 +858,7 @@ def direct(loop: CommandLoop, kind: str, name: str) -> str:
 
 async def theme_command(loop: CommandLoop, args: str) -> str | None:
     """`/theme`: the tabbed picker. `/theme NAME` switches the colorscheme, and `/theme diff NAME`,
-    `/theme statusbar NAME`, `/theme divider NAME`, `/theme sweep NAME` and `/theme input NAME`
+    `/theme statusbar NAME`, `/theme divider NAME`, `/theme sweep NAME`, `/theme input NAME` and `/theme starfield on|off`
     set the others.
 
     The colorscheme is saved to runtime.theme, as Codex and Claude Code save theirs; the transcript
@@ -837,7 +869,7 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
     words = args.split()
     if len(words) == 3 and words[0] in ("statusbar", "divider") and words[1] == "theme":
         return "\n".join([*problems, bars.select_theme(loop, words[0], words[2])])
-    if len(words) == 2 and words[0] in KINDS[1:6]:
+    if len(words) == 2 and words[0] in DIRECT_KINDS:
         return "\n".join([*problems, direct(loop, words[0], words[1])])
     tui = loop.presentation.tui
     if args.strip():
@@ -863,6 +895,7 @@ async def theme_command(loop: CommandLoop, args: str) -> str | None:
                 f"Divider layouts: {', '.join(bars.DIVIDER_CHOICES)}. Sweeps: {', '.join(bars.SWEEP_CHOICES)}",
                 f"Divider theme: {Theme.selected_bar_theme('divider')}",
                 f"Input presets: {', '.join(InputStyle.PRESETS)}",
+                f"Starfield: {'on' if loop.session.settings.starfield else 'off'} (/theme starfield on|off)",
                 "Use /theme NAME, /theme diff|statusbar|divider|sweep|input NAME, or /theme statusbar|divider theme NAME.",
             ]
         )

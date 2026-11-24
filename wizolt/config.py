@@ -893,7 +893,7 @@ model = ""
         return named or {str(root.get("active", "default")): root}
 
     @staticmethod
-    def set_runtime(path: str, key: str, value: str) -> None:
+    def set_runtime(path: str, key: str, value: str | bool) -> None:
         """Set `runtime.<key>` in the config file, keeping its comments, layout and permissions.
 
         The config holds provider keys, so the rewrite keeps the mode the user gave it (a 0600
@@ -906,7 +906,7 @@ model = ""
         ConfigFile.set_ui_value(path, ("runtime",), key, value)
 
     @staticmethod
-    def set_ui_value(path: str, section: tuple[str, ...], key: str, value: str | Json, *, overwrite: bool = True, expected: Json | None = None) -> None:
+    def set_ui_value(path: str, section: tuple[str, ...], key: str, value: str | bool | Json, *, overwrite: bool = True, expected: Json | None = None) -> None:
         """Persist a selection; optional expected record prevents stale read/modify/write.
 
         A changed record is left untouched when expected is supplied. This is for automatic
@@ -971,7 +971,7 @@ model = ""
         return table
 
     @staticmethod
-    def _write_value(path: str, section: tuple[str, ...], key: str, value: str | Json, *, overwrite: bool, expected: Json | None) -> None:
+    def _write_value(path: str, section: tuple[str, ...], key: str, value: str | bool | Json, *, overwrite: bool, expected: Json | None) -> None:
         """Read and replace a complete document while the caller holds its write lease."""
         import tomlkit
 

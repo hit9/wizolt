@@ -450,7 +450,7 @@ class AgentsFrontend:
         finally:
             # Failure or cancellation before disposal leaves the retained view usable.
             for runtime in drained:
-                if runtime.loop.session.uid in self.runtimes:
+                if self.runtimes.get(runtime.loop.session.uid) is runtime:
                     runtime.accepting = True
                     runtime.submissions_task = runtime.spawn(runtime._consume_submissions(), name="agent-submissions")
 

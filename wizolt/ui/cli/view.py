@@ -28,7 +28,7 @@ from wizolt.providers.compat import bundled_policy
 from wizolt.session import QueuedInput, Session
 from wizolt.tools import transcript
 from wizolt.ui.bars import PRESETS, BarLayout
-from wizolt.ui.cli.appearance import KINDS
+from wizolt.ui.cli.appearance import DIRECT_KINDS
 from wizolt.ui.cli.commands import NEEDS_ARGUMENT, SET_KEYS, SET_VALUES
 from wizolt.ui.cli.hints import Context as HintContext
 from wizolt.ui.cli.hints import HintPicker
@@ -104,7 +104,7 @@ class CommandCompleter(Completer):
         if text.startswith("/theme "):
             tail = text[len("/theme ") :]
             if " " not in tail:
-                yield from self.matches((*Theme.choices(), *KINDS[1:6]), tail, more=KINDS[1:6])
+                yield from self.matches((*Theme.choices(), *DIRECT_KINDS), tail, more=DIRECT_KINDS)
                 return
             kind, _, value = tail.partition(" ")
             if kind in ("statusbar", "divider"):
@@ -121,6 +121,7 @@ class CommandCompleter(Completer):
                 "divider": tuple(self.bar_layout().presets["divider"]),
                 "sweep": tuple(PRESETS["sweep"]),
                 "input": tuple(InputStyle.PRESETS),
+                "starfield": ("on", "off"),
             }
             if kind in values:
                 yield from self.matches(values[kind], value)

@@ -194,7 +194,7 @@ async def test_background_summary_commits_at_next_request_only(tmp_path, monkeyp
     monkeypatch.setattr(ModelClient, "api_request", summarize)
     await context.prepare_messages(model, "system")
     await asyncio.wait_for(started.wait(), 1)
-    assert "compacting" in "".join(text for _, text in ui.status_bar.fragments())
+    assert "".join(text for _, text in ui.status_bar.fragments()).endswith("compacting")
     await context.prepare_messages(model, "system")
     assert s.state.compaction_count == 0
     if changed:
@@ -204,7 +204,7 @@ async def test_background_summary_commits_at_next_request_only(tmp_path, monkeyp
     release.set()
     await asyncio.wait_for(finished.wait(), 1)
     assert "compacting" not in "".join(text for _, text in ui.status_bar.fragments())
-    assert ("compaction ready" in "".join(text for _, text in ui.status_bar.fragments())) == ready
+    assert "".join(text for _, text in ui.status_bar.fragments()).endswith("compaction ready") == ready
     assert s.state.compaction_count == 0
     prepared = await context.prepare_messages(model, "system")
     assert appended in prepared

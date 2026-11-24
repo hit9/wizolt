@@ -336,8 +336,8 @@ class TuiApp:
     # Frame budget for the running divider. Motion is smooth only while a moving highlight advances
     # about one cell per frame, so this rate is what `View.QUEUE_SWEEP_CELLS_PER_SEC` follows.
     ANIMATION_INTERVAL: ClassVar[float] = 1 / 30
-    # Idle refresh: no animation runs on the idle screen, only the 0.2s index and MCP spinners.
     TMUX_RESIZE_SETTLE: ClassVar[float] = 0.30
+    # One idle refresh drives the starfield and discovery spinners.
     IDLE_REFRESH_INTERVAL: ClassVar[float] = 0.2
     # Debounce inline second-stage candidate refreshes while the user is still typing. The external
     # file picker overrides this with a zero-delay handoff at the namespace boundary.

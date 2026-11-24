@@ -319,6 +319,8 @@ async def test_archive_rechecks_selected_view_after_confirmation(frontend):
     assert frontend.current is frontend.runtimes[uid] is not runtime
     assert frontend.current.tui.read_only_notice
     assert frontend.switching
+    assert not runtime.accepting
+    assert runtime.submissions_task is None
     # The live entry is gone, so the retained view's statusbar now reports archived.
     assert frontend.current.loop.presentation.status_bar.values()["agent.state"] == "archived"
 

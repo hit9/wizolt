@@ -2,8 +2,11 @@
 
 ## Unreleased
 
+- The starfield shares the existing idle refresh timer. In a 100×30 PTY, median time to the first prompt was 104.7 ms before the starfield, 108.5 ms with the original field, and 107.2 ms with the shared timer. [Startup measurements](benchmarks/results/linux-arm64-py314-starfield-frame.json)
+- Right-align background compaction progress and readiness in the status bar.
+- Fix an event-loop error after archiving the subagent currently on screen. Its retired input consumer now stays closed when the read-only view opens.
 - Stop the tmux acceptance worker's server and remove its socket at shutdown, so an interrupted run no longer leaves orphaned tmux servers and dead socket files behind.
-- Add a sparkle field framing the idle input box (`runtime.starfield`, default on): tiny braille dots twinkling in place across the box background, in the spirit of Codex's Astra. They hide on typing and fade out after 15 seconds of quiet, and never paint over the draft or cursor.
+- Add a sparkle field framing the idle input box (`runtime.starfield`, default on, configurable with a live preview in the Input tab of `/theme`): tiny braille dots twinkling in place across the box background, in the spirit of Codex's Astra. They hide on typing and fade out after 15 seconds of quiet, and never paint over the draft or cursor.
 
 ## 0.79.1 - 2026-11-24
 

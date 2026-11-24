@@ -2772,10 +2772,14 @@ class StatusBar:
         # Background compaction sits outside the format language so every custom /theme format
         # keeps the notice: "compacting" while the speculative request runs, "compaction ready"
         # from a prepared candidate until the next request applies or drops it.
-        notice = "compacting · " if self.compacting else "compaction ready · " if self.compaction_ready else ""
-        bar: StyleAndTextTuples = list(self.layout.render("statusbar", self.values(), max(1, columns - 1 - len(notice)), Theme.bar_styles))
+        notice = "compacting" if self.compacting else "compaction ready" if self.compaction_ready else ""
+        width = max(0, columns - 1)
+        available = max(0, width - len(notice) - bool(notice))
+        bar: StyleAndTextTuples = list(self.layout.render("statusbar", self.values(), max(1, available), Theme.bar_styles))
         if notice:
-            bar.insert(0, ("class:subtle", notice))
+            bar = self.clip_fragments(bar, available)
+            padding = max(0, width - sum(get_cwidth(part[1]) for part in bar) - len(notice))
+            bar.append(("class:subtle", " " * padding + notice[:width]))
         return bar
 
     def mcp_label(self) -> str:

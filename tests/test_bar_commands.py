@@ -73,6 +73,17 @@ async def test_statusbar_preview_escape_restores_custom_template(command_loop):
     assert "ui" not in saved(command_loop)
 
 
+@pytest.mark.parametrize("columns", [8, 24, 80])
+def test_compaction_notice_uses_right_edge_with_a_custom_bar(command_loop, monkeypatch, columns):
+    bar = command_loop.presentation.status_bar
+    assert not bar.layout.configure({"statusbar": "界{model}"}, Theme.bar_styles)
+    monkeypatch.setattr("shutil.get_terminal_size", lambda fallback: os.terminal_size((columns, 24)))
+    bar.compacting = True
+    line = "".join(text for _, text in bar.fragments())
+    assert line.endswith("compacting"[:columns - 1])
+    assert get_cwidth(line) == columns - 1
+
+
 async def test_tabs_save_statusbar_layout_and_sweep_together(command_loop, monkeypatch):
     monkeypatch.setattr("wizolt.ui.cli.appearance.picker_height", lambda: 24)
     modal = command_loop.presentation.tui = BarModal(["right", "right", "j", " ", "l", "j", " ", "tab", "j", " ", "enter"], consumed=True)
@@ -216,6 +227,7 @@ def test_appearance_command_completion():
     assert choices("/theme divider fra") == ["frame"]
     assert choices("/theme sweep aur") == ["aurora"]
     assert choices("/theme diff cla") == ["classic"]
+    assert choices("/theme starfield of") == ["off"]
     assert choices("/theme input che") == ["chevron"]
 
 
@@ -359,6 +371,23 @@ async def test_input_picker_previews_a_preset_and_escape_restores_custom_prefixe
     assert command_loop.presentation.input_style == original and modal.input_style == original
     assert any("❯ " in text for frame in modal.frames for _, text in frame)
     assert "ui" not in saved(command_loop)
+
+
+async def test_starfield_picker_previews_cancels_and_saves(command_loop, monkeypatch):
+    from types import SimpleNamespace
+
+    from wizolt.ui.tui import starfield
+
+    monkeypatch.setattr(starfield, "time", SimpleNamespace(monotonic=lambda: 1000.0))
+
+    assert "saved" in await theme_command(command_loop, "starfield off")
+    assert "on or off" in await theme_command(command_loop, "starfield maybe")
+    for key in ("escape", "enter"):
+        modal = command_loop.presentation.tui = BarModal(["h", "h", "s", key])
+        await theme_command(command_loop, "")
+        assert any(ch in "".join(text for _, text in modal.frames[-1]) for ch in (*starfield.DOTS, "✦"))
+        assert command_loop.session.settings.starfield is (key == "enter")
+        assert saved(command_loop)["runtime"]["starfield"] is (key == "enter")
 
 
 async def test_input_custom_edit_returns_to_list_and_enter_saves_instead_of_editing_again(command_loop):

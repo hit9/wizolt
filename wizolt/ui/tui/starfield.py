@@ -17,8 +17,7 @@ from collections.abc import Callable
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.layout.controls import UIContent, UIControl
 
-# Seconds between redraws, and seconds of idle input before the field has fully faded.
-INTERVAL = 0.2
+# The TUI already refreshes the idle screen every 0.2s.
 TIMEOUT = 15.0
 # Subtle braille dots, as Codex uses -- not large star glyphs.
 DOTS = ("⠁", "⠂", "⠄", "⠈", "⠐", "⠠", "⡀", "⢀")

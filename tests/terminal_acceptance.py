@@ -595,7 +595,7 @@ def test_cli_agents_live_preview_and_stop_keys(pane):
         f'[paths]\ndata_dir = "{pane.path}/data"\n'
         '[provider]\nactive = "test"\n[provider.test]\n'
         'url = "http://127.0.0.1:9/v1"\nkey = "test-only"\nmodel = "test-model"\n'
-        '[runtime]\ntheme = "solarized-dark"\nstarfield = false\n[ui.statusbar]\nformat = "preset:lualine"\n'
+        '[runtime]\ntheme = "solarized-dark"\n[ui.statusbar]\nformat = "preset:lualine"\n'
     )
     entry = pane.path / "agent-controls.py"
     entry.write_text(
@@ -691,8 +691,7 @@ def test_cli_agents_live_preview_and_stop_keys(pane):
         wait("┌─ ui-review")
         assert "cancelling" not in pane.visible()
         pane.keys("Escape")
-        wait("agents 3 · run 0", absent="┌─ ui-review")
-        _settled_capture(pane)
+        wait("agents 3 · run 0", absent="┌─ ui-review", prompt=True)
     pane.send("/agents")
     wait("┌─ ui-review")
     pane.literal("d")
@@ -719,8 +718,7 @@ def test_cli_agents_live_preview_and_stop_keys(pane):
     pane.keys("Enter")
     wait("┌─ ")
     pane.keys("Up", "Up", "Enter")
-    wait("main  test-model", absent="read-only")
-    _settled_capture(pane)
+    wait("main  test-model", absent="read-only", prompt=True)
     pane.send("archive via model")
     wait("agents removed")
     wait("api-review: interrupted")

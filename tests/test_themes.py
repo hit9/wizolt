@@ -946,7 +946,7 @@ def test_theme_names_complete_after_the_command():
     completions = [completion.text for completion in CommandCompleter().get_completions(Document("/theme s"), None)]
 
     # A pair is accepted by name but not listed beside its two themes.
-    assert completions == ["sand", "solarized-dark", "statusbar ", "sweep "]
+    assert completions == ["sand", "solarized-dark", "statusbar ", "sweep ", "starfield "]
 
 
 def test_wrapped_reply_keeps_the_prose_foreground_across_newlines():
