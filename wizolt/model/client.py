@@ -571,6 +571,10 @@ class ModelClient:
         ctx/cache snapshot the status bar reads."""
         counter = self.session.compaction_usage if billing == Billing.COMPACTION else self.session.usage
         counter.add(usage, self.session.request_token_budget(), touch_last=billing != Billing.VISION)
+        # Only a main request pairs with the turn estimate the status anchor holds; a summary or
+        # vision request measured a different payload and would teach the factor the wrong ratio.
+        if billing == Billing.MAIN:
+            self.session.calibrate_context_estimate(counter.last_prompt_tokens)
 
     def wire(self, provider: ProviderConfig) -> WireProtocol:
         """The adapter for a provider's wire api, selected once per request.

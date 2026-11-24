@@ -4,6 +4,7 @@
 
 - Split the context bar's conversation segment into user text, assistant text, tool calls, reasoning, tool results and images; rename the memory-files segment to AGENTS.md. Old sessions pick up the new breakdown on resume; theme role names are unchanged.
 - Soften the context bar's new category colors to sit with the original muted palette instead of bright accents.
+- Calibrate the context estimate against provider-reported prompt tokens: a clamped, smoothed reported/raw ratio scales the budget decisions, the status percent and the context bar's parts, so JSON- and CJK-heavy sessions no longer carry a large `other` gap or compact late. The raw estimate stays the pairing anchor; the factor is transient and a resume starts uncalibrated.
 
 ## 0.78.0 - 2026-11-24
 

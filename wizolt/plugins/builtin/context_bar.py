@@ -20,8 +20,8 @@ images. The percentage is the status bar's `ctx`; it warns from 80% and turns cr
 - Compact (`/compact`) or start a new session when the bar is nearly full.
 """
 
-# Uses only the public SDK. `window.parts` are the host's local per-category estimates in request
-# order; `window.used` over `window.budget` is the reported fill the status bar's ctx divides, so
+# Uses only the public SDK. `window.parts` are the host's per-category estimates in request
+# order, calibrated against the provider's reported counts; `window.used` over `window.budget` is
 # the bar spans the budget and its percentage is that same number. Estimates that fall short of
 # the reported fill leave the difference as `other`; estimates that exceed it are drawn
 # proportionally inside it. The percentage rides on the bar so it survives a one-row allocation.

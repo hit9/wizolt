@@ -288,9 +288,15 @@ class ContextManager:
             return self.model.estimated_request_tokens(messages, tools)
         return self.estimated_tokens(messages) + (self.estimated_tokens(tools) if tools else 0)
 
+    def calibrated(self, tokens: int) -> int:
+        """A raw wire estimate read through the session's reported-to-estimated factor."""
+        return round(tokens * self.session.state.context_factor)
+
     def update_percent(self, messages: list[Json], tools: list[Json] | None = None, *, tokens: int | None = None) -> int:
+        # context_tokens stays the raw estimate: it is the anchor the next reported pair calibrates
+        # against. Only the displayed percent wears the factor.
         self.session.state.context_tokens = self.request_tokens(messages, tools) if tokens is None else tokens
-        self.session.state.context_percent = min(100, self.session.state.context_tokens * 100 // self.request_token_budget())
+        self.session.state.context_percent = min(100, self.calibrated(self.session.state.context_tokens) * 100 // self.request_token_budget())
         return self.session.state.context_percent
 
     def update_current_tokens(self, base_system: str) -> int:
@@ -298,7 +304,7 @@ class ContextManager:
         tools = Tool.resolved_schemas(self.session)
         tokens = self.request_tokens(messages, tools)
         self.session.state.context_tokens = tokens
-        self.session.state.context_percent = min(100, tokens * 100 // self.request_token_budget())
+        self.session.state.context_percent = min(100, self.calibrated(tokens) * 100 // self.request_token_budget())
         # The context changed outside a request -- `/compact`, a resume -- so the parts plugins read
         # (`Context.window.parts`) change with it here, not only at the next request; otherwise a
         # meter shows the evicted conversation beside the new total until the user sends again.
@@ -308,10 +314,11 @@ class ContextManager:
         return tokens
 
     def breakdown(self, base_system: str) -> list[tuple[str, int]]:
-        """The next request's parts with their locally estimated tokens, in request order.
+        """The next request's parts in request order, each the local estimate read through the
+        session's reported-to-estimated factor.
 
-        The parts are disjoint, so they add up to their own total. That total is neither the wire
-        estimate nor a provider's count: the wire adds framing, and a provider tokenizes."""
+        The parts are disjoint, so they add up to their own total -- an approximation of what the
+        provider will count, not the raw wire estimate (which adds framing) nor a provider count."""
 
         def text(content: str) -> int:
             return self.estimated_tokens([{"role": "user", "content": content}]) if content else 0
@@ -327,7 +334,7 @@ class ContextManager:
         # in the context layout's order: the tool block leads the cached prefix with the system
         # prompt, then the header in header_parts order, then the conversation split by what it
         # actually carries.
-        return [
+        parts = [
             ("system tools", self.estimated_tokens(Tool.resolved_schemas(self.session))),
             ("system prompt", self.estimated_tokens(self.model_header(base_system)[:2])),
             ("AGENTS.md", text(self.instructions_context())),
@@ -336,6 +343,8 @@ class ContextManager:
             ("summary", self.estimated_tokens(checkpoints) if checkpoints else 0),
             *self.conversation_parts(self.dedup_skill_loads(self.dedup_mcp_describes(conversation))),
         ]
+        factor = self.session.state.context_factor
+        return [(name, round(tokens * factor)) for name, tokens in parts]
 
     def conversation_parts(self, conversation: list[Json]) -> list[tuple[str, int]]:
         """The conversation split by what each message carries, in first-appearance order: user
@@ -382,12 +391,12 @@ class ContextManager:
         self.session.context_compact_requested = False
         limit = self.auto_compaction_limit()
         overdue = self._overdue_by_usage()
-        start = limit * 0.8 <= raw < limit and not overdue and not manual
+        start = limit * 0.8 <= self.calibrated(raw) < limit and not overdue and not manual
         if self.background_history.prepare(compactor, turn_messages, start=start, manual=manual):
             messages = self.model_messages(base_system, turn_messages)
             raw = self.request_tokens(messages, tools)
             overdue = False
-        if raw < limit and not overdue and not manual:
+        if self.calibrated(raw) < limit and not overdue and not manual:
             self.update_percent(messages, tools, tokens=raw)
             return messages
         await self.background_history.cancel()
@@ -404,7 +413,7 @@ class ContextManager:
                 messages = self.model_messages(base_system, turn_messages)
                 raw = self.request_tokens(messages, tools)
             self._auto_compacted_at["history"] = len(self.session.messages)
-        if turn_messages is not None and raw >= budget and self._auto_compaction_allowed("turn", turn_messages):
+        if turn_messages is not None and self.calibrated(raw) >= budget and self._auto_compaction_allowed("turn", turn_messages):
             attempted = True
             recent = None
             compacted, keep = compactor.turn_parts(turn_messages)
@@ -427,7 +436,7 @@ class ContextManager:
             # the header's current parts, so a stale projection drops its first message.
             messages = self.model_messages(base_system, turn_messages)
             raw = self.request_tokens(messages, tools)
-        if attempted and not compacted_any and raw >= budget:
+        if attempted and not compacted_any and self.calibrated(raw) >= budget:
             self._report_incompressible()
         self.update_percent(messages, tools, tokens=raw)
         return messages

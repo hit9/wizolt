@@ -316,6 +316,20 @@ class Session:
         provider = self.config.provider
         return request_budget_for(provider.context_token_limit(self.settings.max_context_tokens), provider.output_token_budget())
 
+    def calibrate_context_estimate(self, reported: int) -> None:
+        """Fold one main request's reported prompt tokens into the estimate's correction factor.
+
+        The ratio pairs the report with the raw wire estimate stored at request time; the raw
+        estimate stays uncalibrated so the next pair measures the tokenizer again instead of
+        cancelling the correction. Clamped before the EWMA so one odd report (a fallback request,
+        a stale anchor) cannot run the factor away, and the factor itself stays inside the clamp.
+        """
+        raw = self.state.context_tokens
+        if raw <= 0 or reported <= 0:
+            return
+        ratio = min(2.0, max(0.8, reported / raw))
+        self.state.context_factor = 0.5 * self.state.context_factor + 0.5 * ratio
+
     def context_fill(self) -> Json:
         """How full the window is, in the terms the status bar reports it.
 
@@ -327,7 +341,7 @@ class Session:
         usage = self.usage
         reported = bool(usage.last_prompt_tokens and usage.last_prompt_budget)
         budget = usage.last_prompt_budget if reported else self.request_token_budget()
-        used = usage.last_prompt_tokens if reported else self.state.context_tokens
+        used = usage.last_prompt_tokens if reported else round(self.state.context_tokens * self.state.context_factor)
         return {
             "percent": usage.context_percent(self.state.context_percent),
             "used": used,
