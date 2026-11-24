@@ -23,6 +23,7 @@ def session(tmp_path):
     config.data_dir = str(tmp_path / "data")
     session = Session(cwd=str(tmp_path), config=config)
     bootstrap_features(session)
+    session.settings.starfield = False  # cosmetic easter egg; keep test screens deterministic
     # The interactive runtime scans skills during the "starting" settle; a test plays the part of
     # that settle having finished, so the library it reads is indexed.
     if session.skills is not None:

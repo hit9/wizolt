@@ -658,7 +658,6 @@ class View:
                 "quickhint.sep": role("muted"),
                 "image.attachment": role("accent", "bold"),
                 "input.error": role("error"),
-                "input.sparkle": role("divider_glow"),
                 # The command word of a `/` draft, tinted as it is typed: the accent once it names
                 # a command, red once no spelling would accept it.
                 "input.command": role("accent"),

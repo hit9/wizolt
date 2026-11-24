@@ -595,7 +595,7 @@ def test_cli_agents_live_preview_and_stop_keys(pane):
         f'[paths]\ndata_dir = "{pane.path}/data"\n'
         '[provider]\nactive = "test"\n[provider.test]\n'
         'url = "http://127.0.0.1:9/v1"\nkey = "test-only"\nmodel = "test-model"\n'
-        '[runtime]\ntheme = "solarized-dark"\n[ui.statusbar]\nformat = "preset:lualine"\n'
+        '[runtime]\ntheme = "solarized-dark"\nstarfield = false\n[ui.statusbar]\nformat = "preset:lualine"\n'
     )
     entry = pane.path / "agent-controls.py"
     entry.write_text(

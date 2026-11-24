@@ -265,7 +265,7 @@ Optional; the defaults shown are used when omitted.
 | `attribution` | `true` | Ask the model to end every commit message and pull-request body it writes with `Generated with [wizolt](https://wizolt.readthedocs.io).` — a prompt-level request, not a guarantee. `/set runtime.attribution off` stops it for the session, `false` for good |
 | `reactions` | `true` | Let the model react to your message with an emoji, shown muted after it as `← 👍`. It costs one short block in the system prompt and a few tokens on a reply that reacts; no extra request. Your message appears in scrollback when the reply starts rather than the moment you send it. `/set runtime.reactions off` stops it for the session, `false` for good |
 | `agents_md` | `true` | Inject your instructions into every request, as one block of their own ahead of the skills and MCP indexes: the global `~/.wizolt/AGENTS.md` followed by the project's `AGENTS.md` files (each falling back to `CLAUDE.md`) from the repository root down to the working directory, together bounded to about 8,000 tokens |
-| `starfield` | `false` | A sparse sparkle field framing the idle input box. It hides the moment you type and again after 15 seconds of quiet, and never draws over your draft or the cursor. `/set runtime.starfield on` turns it on for the session |
+| `starfield` | `true` | A sparkle field of tiny twinkling dots framing the idle input box. It hides the moment you type and fades out after 15 seconds of quiet, and never draws over your draft or the cursor. `/set runtime.starfield off` turns it off for the session |
 
 Selected tuning values can be changed for the current session with `/set` (Tab completion
 lists the supported keys). `/yolo` toggles `yolo`.

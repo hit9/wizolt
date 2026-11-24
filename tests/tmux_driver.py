@@ -58,6 +58,7 @@ async def main(log) -> None:
         from wizolt.ui.cli.loop import CommandLoop
 
         session = Session(cwd=str(Path(log.name).parent), config=Config(data_dir=str(Path(log.name).parent / "data")))
+        session.settings.starfield = False  # cosmetic easter egg; keep test screens deterministic
         session.config.provider.model = "bars-model"
         command_loop = CommandLoop(Agent(session, output_fn=lambda _text: None), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
         command_loop.interactive_input = True
@@ -143,6 +144,7 @@ async def main(log) -> None:
         from wizolt.ui.cli.loop import CommandLoop
 
         session = Session(cwd=str(Path(log.name).parent), config=Config(data_dir=str(Path(log.name).parent / "data")))
+        session.settings.starfield = False  # cosmetic easter egg; keep test screens deterministic
         command_loop = CommandLoop(Agent(session, output_fn=lambda _text: None), input_fn=lambda _prompt: "", output_fn=lambda _text: None)
         command_loop.presentation.tui = app
         command_loop.presentation.ui.color = True

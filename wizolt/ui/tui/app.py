@@ -696,6 +696,23 @@ class TuiApp:
         app = self.app
         return app is not None and app.output.get_size().rows >= 20
 
+    def starfield_visibility(self) -> float:
+        """Fade the field out over the last seconds of the idle timeout, so it settles rather than
+        snapping off."""
+        if self._starfield_idle_since is None:
+            return 0.0
+        remaining = TIMEOUT - (time.monotonic() - self._starfield_idle_since)
+        return max(0.0, min(1.0, remaining / 3.0))
+
+    def _starfield_control(self, y_offset: int) -> StarfieldControl:
+        return StarfieldControl(
+            lambda: Theme.color("text"),
+            lambda: Theme.color("user_bg"),
+            y_offset=y_offset,
+            active_fn=self.starfield_active,
+            visibility_fn=self.starfield_visibility,
+        )
+
     def invalidate(self) -> None:
         app = self.app
         if app is None:
@@ -1708,13 +1725,13 @@ class TuiApp:
                         filter=idle & Condition(lambda: bool(self.idle_divider_fragments_fn())),
                     ),
                     ConditionalContainer(
-                        Window(height=Dimension(min=0, preferred=1, max=1), style=lambda: f"bg:{Theme.color('user_bg')}"),
+                        Window(self._starfield_control(0), height=Dimension(min=0, preferred=1, max=1), style=lambda: f"bg:{Theme.color('user_bg')}"),
                         filter=input_padding,
                     ),
                     self.input_window,
                     self.extension_window("below_input"),
                     ConditionalContainer(
-                        Window(height=Dimension(min=0, preferred=1, max=1), style=lambda: f"bg:{Theme.color('user_bg')}"),
+                        Window(self._starfield_control(2), height=Dimension(min=0, preferred=1, max=1), style=lambda: f"bg:{Theme.color('user_bg')}"),
                         filter=input_padding,
                     ),
                     quick_hints_gap,
@@ -1753,23 +1770,6 @@ class TuiApp:
         )
         self.exclusive_modal_window = Window(FormattedTextControl(self.modal_fragments, focusable=True), wrap_lines=False)
         exclusive_status = self._status_bar_window(dont_extend_height=False)
-        # Sparkle field framing the input box: a transparent float over the padding rows above and
-        # below the input line (top=-1, height 3), its middle row left clear so the input shows
-        # through. Behind the completion menu (z_index 1 vs the menu's 2) and never over the cursor.
-        starfield_float = Float(
-            ConditionalContainer(
-                Window(StarfieldControl(), height=3, dont_extend_height=True),
-                filter=Condition(self.starfield_active),
-            ),
-            attach_to_window=self.input_window,
-            top=-1,
-            left=0,
-            width=lambda: self.app.output.get_size().columns if self.app is not None else 80,
-            height=3,
-            transparent=True,
-            allow_cover_cursor=False,
-            z_index=1,
-        )
         root = FloatContainer(
             HSplit(
                 [
@@ -1777,17 +1777,7 @@ class TuiApp:
                     ConditionalContainer(HSplit([self.exclusive_modal_window, exclusive_status]), filter=exclusive_active),
                 ]
             ),
-            [
-                starfield_float,
-                Float(
-                    _AlignedCompletionsMenu(max_height=12, scroll_offset=1),
-                    xcursor=True,
-                    ycursor=True,
-                    attach_to_window=self.input_window,
-                    transparent=True,
-                    z_index=2,
-                ),
-            ],
+            [Float(_AlignedCompletionsMenu(max_height=12, scroll_offset=1), xcursor=True, ycursor=True, attach_to_window=self.input_window, transparent=True)],
         )
         return Layout(root, focused_element=self.input_window)
 

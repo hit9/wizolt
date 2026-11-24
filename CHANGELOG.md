@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Stop the tmux acceptance worker's server and remove its socket at shutdown, so an interrupted run no longer leaves orphaned tmux servers and dead socket files behind.
-- Add an optional sparkle field framing the idle input box (`runtime.starfield`, default off): sparse stars in the rows around the prompt that hide on typing and after 15 seconds of quiet, never over the draft or cursor.
+- Add a sparkle field framing the idle input box (`runtime.starfield`, default on): tiny braille dots twinkling in place across the box background, in the spirit of Codex's Astra. They hide on typing and fade out after 15 seconds of quiet, and never paint over the draft or cursor.
 
 ## 0.79.1 - 2026-11-24
 

@@ -11,27 +11,37 @@ def _row_text(fragments):
     return "".join(text for _style, text in fragments)
 
 
-def test_control_keeps_the_input_row_clear_and_stars_sparse(monkeypatch):
-    monkeypatch.setattr(starfield.time, "monotonic", lambda: 1000.0)
-    content = StarfieldControl().create_content(width=60, height=3)
-    assert content.line_count == 3
-    rows = [content.get_line(i) for i in range(3)]
-    # The middle row aligns with the input line: fully transparent, no glyphs, no style.
-    assert rows[1] == [("", " " * 60)]
-    for y in (0, 2):
-        assert len(_row_text(rows[y])) == 60
-        stars = [text for style, text in rows[y] if style]
-        assert 0 < len(stars) < 60  # sparse, not a solid block
-        assert all(ch in starfield.GLYPHS for ch in stars)
-        assert all(style == "class:input.sparkle" for style, _ in rows[y] if style)
+def _ctl(**kw):
+    return StarfieldControl(lambda: "#ffffff", lambda: "#000000", **kw)
 
 
-def test_control_frame_advances_with_time(monkeypatch):
+def test_control_paints_fixed_braille_dots_and_masks_reserved(monkeypatch):
     monkeypatch.setattr(starfield.time, "monotonic", lambda: 1000.0)
-    first = StarfieldControl().create_content(60, 3).get_line(0)
-    monkeypatch.setattr(starfield.time, "monotonic", lambda: 1000.0 + starfield.INTERVAL)
-    second = StarfieldControl().create_content(60, 3).get_line(0)
-    assert first != second
+    row = _ctl(reserved_fn=lambda: 10).create_content(60, 1).get_line(0)
+    assert len(_row_text(row)) == 60
+    assert _row_text(row)[:10] == " " * 10
+    assert all(not style for style, _ in row[:10])
+    dots = [text for style, text in row if style]
+    assert dots and all(ch in starfield.DOTS or ch == "✦" for ch in dots)
+    assert all(style.startswith("fg:#") for style, _ in row if style)
+    # Deterministic: the same instant paints the same cells.
+    assert _ctl(reserved_fn=lambda: 10).create_content(60, 1).get_line(0) == row
+
+
+def test_control_blank_when_inactive():
+    assert _ctl(active_fn=lambda: False).create_content(60, 1).get_line(0) == [("", " " * 60)]
+
+
+def test_control_twinkles_in_place_over_time(monkeypatch):
+    monkeypatch.setattr(starfield.time, "monotonic", lambda: 1000.0)
+    first = _ctl().create_content(60, 1).get_line(0)
+    monkeypatch.setattr(starfield.time, "monotonic", lambda: 1002.0)
+    second = _ctl().create_content(60, 1).get_line(0)
+    assert first != second  # brightness shifts
+    # A cell never swaps between two different dots (no movement); it may only flare braille ↔ ✦.
+    for (_s1, t1), (_s2, t2) in zip(first, second):
+        if t1 != " " and t2 != " ":
+            assert t1 == t2 or "✦" in (t1, t2)
 
 
 def _idle_tui(rows=30):
