@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.77.21 - 2026-11-24
+
 - Simplify the theme picker to Auto and five named palettes. Existing configurations using retired palettes resolve to a supported theme.
 - Use each palette’s own accents for Bash commands, strings, variables and status segments. Keep output previews neutral and shell separators subdued.
 
