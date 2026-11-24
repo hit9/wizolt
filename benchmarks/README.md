@@ -9,6 +9,26 @@ document any retained cost. Update `baselines/` and this README's reference befo
 never accept a regression merely by replacing the baseline. If the environment or workload changed,
 remeasure the previous reference revision too so the comparison remains meaningful.
 
+## 0.79.0 release reference
+
+The [merged reference](baselines/linux-arm64-py314-0.79.0.json) at `e35de95f` and
+the [0.78.0 comparison](results/linux-arm64-py314-before-0.79.0.json) at `e607bf11`
+used Linux ARM64, CPython 3.14.7, the same installed dependencies and nine samples per timing
+metric. The lock moved (httpx2 2.16.2, openai 3.52.0, wcwidth 0.9.4) but the measurement
+environment kept the installed 0.78.0 dependencies, so the comparison isolates the code changes.
+The median first frame took 159.6 ms versus 156.7 ms.
+
+Every output digest matched, and retained bytes were unchanged apart from +2.6 KB in one replay
+probe. The context-bar split and the estimate calibration added no measurable cost: the turn-loop
+probes differed by +26% and +13% on the initial run and by +6% and +3% on the reverse-order repeat.
+
+Three optimization probes stayed slower across both runs -- collect 10,000 external files
+(+16% then +23%), and 20 reads without hooks (+19% then +21%) and with hooks (+16% then +33%).
+Their code paths (file mentions, the Read tool and the shell-hook subprocess) are unchanged by this
+release, so the difference is subprocess and filesystem noise on the shared host, not a regression.
+The [reverse-order repeat](results/linux-arm64-py314-before-0.79.0-repeat.json) reversed the other
+large differences (replay append, the plugin probes and import times).
+
 ## 0.78.0 release reference
 
 The [merged reference](baselines/linux-arm64-py314-0.78.0.json) at `e607bf11` and

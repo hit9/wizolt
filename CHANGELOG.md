@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Refresh the performance reference for 0.79.0 on the unchanged measurement environment: no attributable regression and identical output digests; a reverse-order repeat separates shared-host subprocess/filesystem noise from the code changes.
+
 ## 0.79.0 - 2026-11-24
 
 - Split the context bar's conversation segment into user text, assistant text, tool calls, reasoning, tool results and images; rename the memory-files segment to AGENTS.md. Old sessions pick up the new breakdown on resume; theme role names are unchanged, though `context_chat` now colors assistant text only rather than the whole conversation.
