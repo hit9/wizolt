@@ -22,6 +22,7 @@ from wizolt.sdk import PluginError
 from wizolt.ui.cli.modals import tool_output_viewer
 from wizolt.ui.render import Theme, search_sources_footer
 from wizolt.ui.tui import TuiApp
+from wizolt.ui.tui.starfield import INTERVAL
 
 # The TUI status label shown while a resumed session's transcript is being restored: a quiet
 # lead-in before the single-write replay, so the wait reads as a restore in progress rather than a
@@ -483,6 +484,7 @@ class TuiRuntime:
             self.loop.session.plugins.read_stream = lambda: (self.loop.presentation.model_stream_kind, self.loop.presentation.model_stream_text)
             self.loop.session.plugins.interactions.handler = PluginDialogs(tui, self.loop.presentation, keys).call
         tui.input_hint_fn = self.loop.view.tui_input_hint
+        tui.starfield_enabled_fn = lambda: self.loop.session.settings.starfield
         tui.quick_hints_fn = lambda: self.loop.session.quick_hints
         if self.loop.session.mentions:
             tui.file_picker_available_fn = self.loop.session.mentions.picker.available
@@ -822,6 +824,8 @@ class TuiRuntime:
                 if skills is not None:
                     await self._until_shutdown(skills)
                 if not self.shutdown.is_set():
+                    if self.loop.session.settings.starfield:
+                        self.spawn(self._starfield_heartbeat(), name="starfield")
                     await self.run_agent_loop()
         finally:
             await self._shutdown(application)
@@ -845,6 +849,18 @@ class TuiRuntime:
             await asyncio.wait({scan})
         self.loop.presentation.starting = False
         self.tui.invalidate()
+
+    async def _starfield_heartbeat(self) -> None:
+        """Advance the sparkle field while it is visible, then stop. Redraws only while active (and
+        one frame after, to clear it), so a disabled or hidden field never keeps the terminal busy."""
+        assert self.shutdown is not None
+        was_active = False
+        while not self.shutdown.is_set():
+            active = self.tui.starfield_active()
+            if active or was_active:
+                self.tui.invalidate()
+            was_active = active
+            await asyncio.sleep(INTERVAL if active else 0.5)
 
     async def _await_ready(self, application: asyncio.Task) -> None:
         """Wait for the application to be live, or for it to have failed trying."""

@@ -347,6 +347,7 @@ class RuntimeSettings:
     attribution: bool = True  # ask the model to sign the commits and PR bodies it writes
     reactions: bool = True  # let the model react to your message with an emoji
     agents_md: bool = True  # inject global and project instructions into every request
+    starfield: bool = False  # sparkle field framing the idle input box; hides on typing and after a timeout
 
     @classmethod
     def from_dict(cls, data: Json, *, yolo: bool = False, theme: str = "") -> RuntimeSettings:
@@ -366,6 +367,7 @@ class RuntimeSettings:
             attribution=Config.bool(runtime, "attribution", True),
             reactions=Config.bool(runtime, "reactions", True),
             agents_md=Config.bool(runtime, "agents_md", True),
+            starfield=Config.bool(runtime, "starfield", False),
         )
 
     @staticmethod

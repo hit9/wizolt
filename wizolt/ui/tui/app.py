@@ -50,6 +50,7 @@ from wizolt.mentions import MENU_KEYS, FilePick, MentionSpan, active_mention, en
 from wizolt.paste import PASTE_MARKER, PasteRef
 from wizolt.ui.render import InputStyle, ScrollbackText, Theme, UiPrinter
 from wizolt.ui.tui.scrollback import ScrollbackRegion, app_top_row, physical_rows
+from wizolt.ui.tui.starfield import TIMEOUT, StarfieldControl
 from wizolt.ui.tui.terminal_replies import terminal_queries
 from wizolt.ui.tui.views import TUI_MODAL_PENDING
 
@@ -436,6 +437,12 @@ class TuiApp:
         self.on_ready: Callable[[], None] = lambda: None
         self.input_mode = InputMode.CHAT
         self.quick_hint_focus = -1  # -1 = input focused; 0..n-1 = that quick-input chip
+        # Sparkle field framing the idle input box (runtime.starfield). Bounded dependency, set by
+        # the runtime; _starfield_idle_since timestamps the last empty-idle moment for the timeout.
+        self.starfield_enabled_fn: Callable[[], bool] = lambda: False
+        # Start the idle clock now: a fresh session opens in chat without a set_idle call, and the
+        # field should frame the prompt from the first idle frame. Typing and turns reset it below.
+        self._starfield_idle_since: float | None = time.monotonic()
         self._quick_hint_resume_focus = -1  # last picked chip; Tab resumes after it once
         self._last_quick_hints: tuple[str, ...] | None = None  # hints seen by the last quick_hints() call
         self._file_picker_active = False
@@ -660,6 +667,11 @@ class TuiApp:
 
     def _set_mode(self, mode: InputMode, prompt: str) -> None:
         self.input_mode = mode
+        # Restart the sparkle idle clock on an empty chat prompt; suppress it outside chat.
+        if mode == InputMode.CHAT and not self.input_buffer.text:
+            self._starfield_idle_since = time.monotonic()
+        elif mode != InputMode.CHAT:
+            self._starfield_idle_since = None
         # The prompt reaches the input row through BeforeInput, a single-line processor, and
         # BufferControl does not split processor output on "\n" the way FormattedTextControl does --
         # a literal newline would reach the screen as the "^J" control character. Only the last line
@@ -673,6 +685,16 @@ class TuiApp:
         if mode not in {InputMode.CHAT, InputMode.RUNNING}:
             self.input_error = ""
         self.invalidate()
+
+    def starfield_active(self) -> bool:
+        """Whether the sparkle field should draw now: enabled, idle empty chat input, within the
+        idle timeout, and a pane tall enough to have the padding rows the field lives in."""
+        if not self.starfield_enabled_fn() or self.input_mode != InputMode.CHAT or self.input_buffer.text:
+            return False
+        if self._starfield_idle_since is None or time.monotonic() - self._starfield_idle_since >= TIMEOUT:
+            return False
+        app = self.app
+        return app is not None and app.output.get_size().rows >= 20
 
     def invalidate(self) -> None:
         app = self.app
@@ -1128,6 +1150,8 @@ class TuiApp:
         self._sync_input_images(old, delta)
         self._sync_input_pastes(old, delta)
         self._last_input_text = text
+        # Typing hides the sparkle field at once; clearing the draft restarts its idle clock.
+        self._starfield_idle_since = None if text else time.monotonic()
         if delta.inserted and delta.inserted[-1].isspace() and self.input_mode in {InputMode.CHAT, InputMode.RUNNING}:
             self._recognize_input()
         self._offer_mention_completions(buffer, delta)
@@ -1729,6 +1753,23 @@ class TuiApp:
         )
         self.exclusive_modal_window = Window(FormattedTextControl(self.modal_fragments, focusable=True), wrap_lines=False)
         exclusive_status = self._status_bar_window(dont_extend_height=False)
+        # Sparkle field framing the input box: a transparent float over the padding rows above and
+        # below the input line (top=-1, height 3), its middle row left clear so the input shows
+        # through. Behind the completion menu (z_index 1 vs the menu's 2) and never over the cursor.
+        starfield_float = Float(
+            ConditionalContainer(
+                Window(StarfieldControl(), height=3, dont_extend_height=True),
+                filter=Condition(self.starfield_active),
+            ),
+            attach_to_window=self.input_window,
+            top=-1,
+            left=0,
+            width=lambda: self.app.output.get_size().columns if self.app is not None else 80,
+            height=3,
+            transparent=True,
+            allow_cover_cursor=False,
+            z_index=1,
+        )
         root = FloatContainer(
             HSplit(
                 [
@@ -1736,7 +1777,17 @@ class TuiApp:
                     ConditionalContainer(HSplit([self.exclusive_modal_window, exclusive_status]), filter=exclusive_active),
                 ]
             ),
-            [Float(_AlignedCompletionsMenu(max_height=12, scroll_offset=1), xcursor=True, ycursor=True, attach_to_window=self.input_window, transparent=True)],
+            [
+                starfield_float,
+                Float(
+                    _AlignedCompletionsMenu(max_height=12, scroll_offset=1),
+                    xcursor=True,
+                    ycursor=True,
+                    attach_to_window=self.input_window,
+                    transparent=True,
+                    z_index=2,
+                ),
+            ],
         )
         return Layout(root, focused_element=self.input_window)
 

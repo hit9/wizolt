@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Stop the tmux acceptance worker's server and remove its socket at shutdown, so an interrupted run no longer leaves orphaned tmux servers and dead socket files behind.
+- Add an optional sparkle field framing the idle input box (`runtime.starfield`, default off): sparse stars in the rows around the prompt that hide on typing and after 15 seconds of quiet, never over the draft or cursor.
 
 ## 0.79.1 - 2026-11-24
 
