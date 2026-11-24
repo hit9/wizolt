@@ -262,6 +262,31 @@ async def test_small_pane_prioritizes_choices_over_the_sample(command_loop, monk
     assert 1 + text.count("\n") == 14
 
 
+@pytest.mark.parametrize("terminal_rows", [24, 30, 34])
+def test_input_tab_shows_all_choices_and_frames_the_prompt(command_loop, monkeypatch, terminal_rows):
+    from types import SimpleNamespace
+
+    from wizolt.ui.tui import starfield
+
+    monkeypatch.setattr("shutil.get_terminal_size", lambda fallback: os.terminal_size((80, terminal_rows)))
+    monkeypatch.setattr(starfield, "time", SimpleNamespace(monotonic=lambda: 1000.0))
+    picker = AppearancePicker(command_loop, 0)
+    try:
+        picker.handle_key("h")
+        picker.handle_key("h")
+        picker.selected["starfield"] = "on"
+        lines = "".join(text for _, text in picker.fragments()).splitlines()
+        assert any("custom (e to edit)" in line for line in lines)
+        assert not any("showing " in line for line in lines)
+        prompt = next(i for i, line in enumerate(lines) if "Explain this function" in line)
+        glyphs = {*starfield.DOTS, "✦"}
+        assert glyphs.intersection(lines[prompt - 1]) and glyphs.intersection(lines[prompt + 1])
+        assert not glyphs.intersection(lines[prompt])
+        assert len(lines) <= picker.height
+    finally:
+        picker.restore()
+
+
 @pytest.mark.parametrize("framed", [False, True])
 def test_input_sample_has_no_blank_row_after_its_last_line(command_loop, monkeypatch, framed):
     from wizolt.ui.cli import appearance

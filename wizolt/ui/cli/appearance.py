@@ -447,7 +447,7 @@ class AppearancePicker:
             if rows and not fragment_list_width(rows[-1]):
                 rows.pop()
             if kind == "input" and limit < 4:
-                rows = rows[1:4:2]
+                rows = [rows[1], rows[3]]
             rows = rows[:limit]
             if framed:
                 return self.preview_box(rows, title)
@@ -473,26 +473,21 @@ class AppearancePicker:
         return parts
 
     def input_preview(self, style: InputStyle, columns: int | None = None) -> StyleAndTextTuples:
+        width = max(0, (self.width if columns is None else columns) - 2)
+        background = f"bg:{Theme.color('user_bg')}"
+
         def sample(running: bool, text: str) -> StyleAndTextTuples:
             prefix = style.prefix(running=running)
-            width = max(0, (self.width if columns is None else columns) - 2 - get_cwidth(prefix))
-            text = Text.clip_width(text, width)
-            background = f"bg:{Theme.color('user_bg')}"
-            remaining = max(0, width - get_cwidth(text))
-            row = [(f"class:prompt {background}", prefix), (Theme.fg("text", background), text)]
-            if not running and self.selected["starfield"] == "on":
-                dots = self.starfield_preview.create_content(remaining, 1).get_line(0)
-                row.extend((f"{background} {style}", glyph) for style, glyph, *_ in dots)
-            else:
-                row.append((background, " " * remaining))
-            return [*row, ("", "\n")]
+            room = max(0, width - get_cwidth(prefix))
+            text = Text.clip_width(text, room)
+            return [("", "  "), (f"class:prompt {background}", prefix), (Theme.fg("text", background), text + " " * (room - get_cwidth(text)) + "\n")]
 
-        return [
-            (Theme.fg("muted"), "  Chat\n  "),
-            *sample(False, "Explain this function"),
-            (Theme.fg("muted"), "  Follow-up while running\n  "),
-            *sample(True, "Add a test too"),
-        ]
+        bands: list[StyleAndTextTuples] = []
+        field = self.starfield_preview.create_content(width, 2) if self.selected["starfield"] == "on" else None
+        for y in range(2):
+            line = field.get_line(y) if field else [("", " " * width)]
+            bands.append([("", "  "), *((f"{background} {color}", glyph) for color, glyph, *_ in line), ("", "\n")])
+        return [*bands[0], *sample(False, "Explain this function"), *bands[1], *sample(True, "Add a test too")]
 
     def fragments(self) -> StyleAndTextTuples:
         # Inline modal bounds follow terminal resizes. Reuse the same budget for every
@@ -506,8 +501,12 @@ class AppearancePicker:
             if tui.modal_window is not None:
                 self.height = min(self.height, to_dimension(tui.modal_window.height).max)
         state = self.current_list()
-        framed = self.height >= 20 and self.width >= 52
+        # Keep all six input choices beside the four-row sample before spending rows on a frame.
+        compact_input = self.kind() == "input" and self.height < 24
+        framed = not compact_input and self.height >= 20 and self.width >= 52
         state.height = self.height - (self.kind() in self.bar_focus) - (2 if framed else 0)
+        if compact_input:
+            state.height += 2  # omit the config hint and the list’s closing gap below
         titles = TITLES if self.width >= 60 else ("Colors", "Diff", "Status", "Divider", "Input", "Record")
         if self.width < 52:
             titles = ("Color", "Diff", "Bar", "Line", "Input", "Rec")
@@ -595,7 +594,10 @@ class AppearancePicker:
         )
         # Keep navigation beside the tabs, rather than below a preview or padding.
         legend = fragments.pop(-2 if state.searching else -1)
-        if self.kind() != "theme":
+        if compact_input:
+            fragments[1] = ("", "")
+            fragments.pop(-2 if state.searching else -1)  # blank row before the legend
+        elif self.kind() != "theme":
             fragments[1] = config_hint
         if self.kind() in self.bar_focus:
             # Chosen values remain visible even when the cursor scrolls into the other group.

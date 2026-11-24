@@ -146,7 +146,7 @@ and **Esc** discards it; **Enter** in the picker then saves it like any other ch
 
 The **Input** tab changes the symbol before your typing. Choose `>` (default), `❯`, `→`, `λ`
 or `•`. The preview shows ordinary input and a follow-up while the agent is working.
-Press **s** to toggle the idle starfield and preview its twinkle. **Enter** saves your choice
+Press **s** to toggle the idle starfield. The preview shows it twinkling above and below the chat prompt. **Enter** saves your choice
 and **Esc** cancels it.
 
 ```{figure} _static/appearance-input.svg
